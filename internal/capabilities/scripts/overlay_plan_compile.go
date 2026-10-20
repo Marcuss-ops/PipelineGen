@@ -23,6 +23,18 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, nil
 	}
 	canvas = canvas.withDefaults()
+	// A maps-only plan must retain its map items as standalone map primitives.
+	// Default chain coalescing can fuse a map with a phrase before the later
+	// semantic filter runs; that filter intentionally keeps only KindMap and
+	// would then discard the fused map segment along with the disabled phrase.
+	if canvas.MapsOnly {
+		counts := cloneAnimationCounts(canvas.AnimationCounts)
+		if counts == nil {
+			counts = make(map[string]int)
+		}
+		counts["chain_disabled"] = 1
+		canvas.AnimationCounts = counts
+	}
 
 	if strings.TrimSpace(planID) == "" || strings.TrimSpace(videoID) == "" {
 		return nil, fmt.Errorf("overlay plan: plan_id and video_id are required")
@@ -239,13 +251,13 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// Catalog runs disable the editorial projection so the operator-supplied
 	// grounded phrases keep the run budget (see DisableEditorialOverlays).
 	chapterCovered := map[string]bool{}
-	if !canvas.DisableEditorialOverlays {
-		scenes, chapterCovered = projectChapterBullets(result, language, timedScenes, resolved, scenes)
-		scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes, chapterCovered)
-	}
 	shortPhraseScenes := make(map[string]bool, len(timedScenes))
 	for _, scene := range timedScenes {
 		shortPhraseScenes[scene.ID] = scene.ShortPhraseOverlay
+	}
+	if !canvas.DisableEditorialOverlays {
+		scenes, chapterCovered = projectChapterBullets(result, language, timedScenes, resolved, scenes, canvas.OverlayCategories)
+		scenes = projectEditorialOverlays(result, language, timedScenes, resolved, scenes, canvas.OverlayCategories, chapterCovered, shortPhraseScenes)
 	}
 	for i := range scenes {
 		if !shortPhraseScenes[scenes[i].ID] {
@@ -265,6 +277,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if canvas.EnableCharts && !canvas.DisableChartOverlays {
 		chartPlacements = capabilityoverlay.ChartPlacementsForScenes(scenes)
 	}
+	// Disabled phrase/title/bullet candidates must not consume the planner's
+	// per-scene or run-level phrase slots before the final item filter runs.
+	scenes = filterScenePhrasesByCategory(scenes, timedScenes, canvas)
 
 	if err := validateOverlayGroupLimits(canvas.OverlayGroupLimits); err != nil {
 		return nil, err
@@ -341,6 +356,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	items = filteredItems
 	if canvas.RandomLightLeakOnOverlayStart {
 		items = append(items, scriptoverlay.OverlayStartLightLeakItems(planID, items)...)
+	}
+	// Random EffectsPack-derived runtime effects on image overlays: a
+	// deterministic per-image yes/no draw plus one light effect on top of the
+	// image's entrance animation. Explicit item effects always win.
+	if canvas.RandomImageEffects {
+		scriptoverlay.AttachRandomImageEffects(planID, items)
 	}
 	// Run-level style projection (text sizing, image frame/layer params) is
 	// owned by overlay_plan_finalize.go so this file stays inside the strict

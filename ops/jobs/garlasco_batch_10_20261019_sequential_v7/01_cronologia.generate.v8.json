@@ -2,7 +2,7 @@
   "version": 2,
   "preset": "custom",
   "correlation_id": "garlasco-batch-10-01-cronologia-20261019-pipeline-v8-visual-intro",
-  "force_refresh": true,
+  "force_refresh": false,
   "items": [
     {
       "id": "garlasco-batch-10-01-cronologia-20261019-pipeline-v8-visual-intro",
@@ -10,7 +10,7 @@
       "title": "Garlasco 01 — Cronologia dal 2007 al 2026 — circa 20 minuti",
       "language": "it",
       "tone": "documentario giornalistico sobrio, verificabile e garantista",
-      "style": "Copione già scritto e verificato nei 15 segmenti source_text. Mantieni ogni segmento esattamente verbatim: non generare, parafrasare, riscrivere, abbreviare o cambiare date, nomi, numeri e attribuzioni. Usa la narrazione solo per estrarre entità e pianificare gli overlay pertinenti. Circa 40 overlay effettivi, obiettivo 37: 10 frasi brevi, 10 frasi lunghe, circa 8 immagini di scena con didascalia, 5 schede entità con immagini verificate, 4 date. No maps. Per ogni affermazione controversa conserva l’attribuzione alla Procura, alla difesa o ad ANSA. Sempio è indagato nel procedimento distinto, respinge le accuse e non è stato condannato. Overlay in Playfair Display Italic, testo nero su sfondo bianco pieno. No full-video render. Le 3 mappe devono riguardare solo località reali citate nel copione, come Garlasco, Vigevano, Pavia e Milano; mai persone, corti o concetti. Renderizza mappe e dieci frasi brevi. Ogni overlay è Playfair Display Italic nero su fondo bianco pieno. Per le mappe usa solo luoghi geografici espliciti nel copione tra Garlasco, Vigevano, Pavia e Milano; non geocodificare persone, corti o concetti. Renderizza tre mappe editoriali e dieci frasi brevi da 2–5 parole. Per tutti gli overlay usa Playfair Display Italic nero su fondo bianco pieno.",
+      "style": "Copione già scritto e verificato nei 15 segmenti source_text. Mantieni ogni segmento esattamente verbatim: non generare, parafrasare, riscrivere, abbreviare o cambiare date, nomi, numeri e attribuzioni. Usa la narrazione solo per estrarre entità e pianificare gli overlay pertinenti. Circa 40 overlay effettivi, obiettivo 37: 10 frasi brevi, 10 frasi lunghe, circa 8 immagini di scena con didascalia, 5 schede entità con immagini verificate, 4 date. No maps. Per ogni affermazione controversa conserva l’attribuzione alla Procura, alla difesa o ad ANSA. Sempio è indagato nel procedimento distinto, respinge le accuse e non è stato condannato. Overlay in Playfair Display Italic, testo nero su sfondo bianco pieno. Le 3 mappe devono riguardare solo località reali citate nel copione, come Garlasco, Vigevano, Pavia e Milano; mai persone, corti o concetti. Renderizza mappe e dieci frasi brevi. Ogni overlay è Playfair Display Italic nero su fondo bianco pieno. Per le mappe usa solo luoghi geografici espliciti nel copione tra Garlasco, Vigevano, Pavia e Milano; non geocodificare persone, corti o concetti. Renderizza tre mappe editoriali e dieci frasi brevi da 2–5 parole. Per tutti gli overlay usa Playfair Display Italic nero su fondo bianco pieno.",
       "model": "gemma4:e4b",
       "source": {
         "type": "text",
@@ -82,7 +82,170 @@
         "docs": {
           "enabled": false
         },
-        "drive_subfolder_name": "garlasco-batch-10-01-cronologia-20261019-pipeline-v8-visual-intro"
+        "drive_subfolder_name": "garlasco-batch-10-01-cronologia-20261019-pipeline-v8-visual-intro",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "delitto-e-luogo",
+            "segment_id": "delitto-e-luogo",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 1,
+            "scene_id": "chiara-poggi",
+            "segment_id": "chiara-poggi",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 2,
+            "scene_id": "prime-indagini",
+            "segment_id": "prime-indagini",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 3,
+            "scene_id": "gup-2009",
+            "segment_id": "gup-2009",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 4,
+            "scene_id": "appello-2011",
+            "segment_id": "appello-2011",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 5,
+            "scene_id": "cassazione-2013",
+            "segment_id": "cassazione-2013",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 6,
+            "scene_id": "appello-bis-2014",
+            "segment_id": "appello-bis-2014",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 7,
+            "scene_id": "cassazione-2015",
+            "segment_id": "cassazione-2015",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 8,
+            "scene_id": "due-procedimenti",
+            "segment_id": "due-procedimenti",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 9,
+            "scene_id": "nuova-indagine-2026",
+            "segment_id": "nuova-indagine-2026",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 10,
+            "scene_id": "chiusura-indagini",
+            "segment_id": "chiusura-indagini",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 11,
+            "scene_id": "consulenze-ottobre",
+            "segment_id": "consulenze-ottobre",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 12,
+            "scene_id": "consulenze-difesa",
+            "segment_id": "consulenze-difesa",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 13,
+            "scene_id": "lettura-fonti",
+            "segment_id": "lettura-fonti",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 14,
+            "scene_id": "garanzie",
+            "segment_id": "garanzie",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          },
+          {
+            "index": 15,
+            "scene_id": "chiusura-cronologia",
+            "segment_id": "chiusura-cronologia",
+            "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+            "source": "drive",
+            "start_ms": 0,
+            "end_ms": 5000
+          }
+        ],
+        "stock_enabled": "enabled"
       },
       "media_plan": {
         "mode": "hybrid",
@@ -393,9 +556,11 @@
             "min_words": 185
           }
         ],
-        "force_refresh": true,
+        "force_refresh": false,
         "source_text_verbatim": true
-      }
+      },
+      "media_mode": "stock_only"
     }
-  ]
+  ],
+  "final_job": true
 }

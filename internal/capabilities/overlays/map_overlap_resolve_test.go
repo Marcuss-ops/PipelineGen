@@ -53,6 +53,18 @@ func TestResolveMapOverlapsDropsWhenNoRoom(t *testing.T) {
 	}
 }
 
+func TestResolveMapOverlapsDoesNotShrinkItemToSceneSliver(t *testing.T) {
+	items := []OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &MapOverlay{}},
+		{ID: "phrase1", Kind: "text_phrase", SceneID: "s1", StartUS: 0, DurationUS: 4_000_000, Text: "A complete phrase"},
+	}
+	scenes := map[string][2]int64{"s1": {0, 9_000_000}}
+	got := ResolveMapOverlaps(items, scenes, 24, 1)
+	if len(got) != 1 || got[0].ID != "map1" {
+		t.Fatalf("phrase must drop when only a 1s sliver remains, got %+v", got)
+	}
+}
+
 func TestResolveMapOverlapsDropsAnchoredInsteadOfShifting(t *testing.T) {
 	items := []OverlayItem{
 		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &MapOverlay{}},
@@ -87,5 +99,46 @@ func TestResolveMapOverlapsLeavesCleanPlanUntouched(t *testing.T) {
 	}
 	if byID["p1"].StartUS != 9_000_000 {
 		t.Fatalf("clear item untouched, got %d", byID["p1"].StartUS)
+	}
+}
+
+func TestResolveMapOverlapsKeepsMapInsideSceneWindow(t *testing.T) {
+	items := []OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 1_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+		{ID: "map2", Kind: "map", SceneID: "s2", StartUS: 4_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	}
+	scenes := map[string][2]int64{
+		"s1": {0, 4_000_000},
+		"s2": {4_000_000, 14_000_000},
+	}
+	got := ResolveMapOverlaps(items, scenes, 30, 1)
+	if len(got) != 2 {
+		t.Fatalf("both scene maps should remain, got %+v", got)
+	}
+	if got[0].StartUS+got[0].DurationUS > scenes["s1"][1] {
+		t.Fatalf("first map extends beyond its scene boundary: %+v", got[0])
+	}
+	if err := AdmitOverlayTimeline(got, 30, 1); err != nil {
+		t.Fatalf("scene-bounded maps must pass timeline admission: %v", err)
+	}
+}
+
+func TestTrimMapWindowsBeforeBudgetPreservesSequentialMaps(t *testing.T) {
+	items := []OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 1_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+		{ID: "map2", Kind: "map", SceneID: "s2", StartUS: 4_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+		{ID: "map3", Kind: "map", SceneID: "s3", StartUS: 8_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	}
+	got := TrimMapWindowsBeforeBudget(items, 24, 1)
+	if len(got) != 3 {
+		t.Fatalf("all requested maps should remain, got %d", len(got))
+	}
+	for i := 0; i < 2; i++ {
+		if got[i].StartUS+got[i].DurationUS > got[i+1].StartUS {
+			t.Fatalf("maps %q and %q still overlap: %+v %+v", got[i].ID, got[i+1].ID, got[i], got[i+1])
+		}
+	}
+	if err := AdmitOverlayTimeline(got, 24, 1); err != nil {
+		t.Fatalf("trimmed sequential maps must pass admission: %v", err)
 	}
 }

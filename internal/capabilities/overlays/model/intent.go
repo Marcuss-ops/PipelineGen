@@ -332,7 +332,8 @@ func canonicalVisualEntityKey(canonicalID, name string) string {
 //	PERSON → entity_card, ORG/ORGANIZATION → organization,
 //	GPE/PLACE/LOCATION/CITY/COUNTRY → location,
 //	NUMBER/NUM/CARDINAL/ORDINAL/MONEY/PERCENT/DATE/TIME → number,
-//	QUOTE → quote, PRODUCT → product, LOGO/BRAND → logo, everything else → concept.
+//	QUOTE → quote, PRODUCT → product, LOGO/BRAND → logo,
+//	CHAPTER → chapter_card, everything else → concept.
 func EntityTypeToKind(entityType string) OverlayKind {
 	switch strings.ToUpper(strings.TrimSpace(entityType)) {
 	case "PERSON":
@@ -351,6 +352,8 @@ func EntityTypeToKind(entityType string) OverlayKind {
 		return KindLogo
 	case "BRAND":
 		return KindBrandText
+	case "CHAPTER":
+		return KindChapterCard
 	default:
 		return KindConcept
 	}

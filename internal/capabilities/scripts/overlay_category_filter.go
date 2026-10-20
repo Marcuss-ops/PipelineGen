@@ -30,6 +30,41 @@ func filterOverlayItemsByCategory(items []capabilityoverlay.OverlayItem, scenes 
 	return out
 }
 
+// filterScenePhrasesByCategory runs the phrase-category gate before BuildPlan
+// applies its per-scene and run-level phrase budgets. Filtering only the
+// materialized items afterward lets disabled title/bullet/phrase candidates
+// consume those slots and leaves no candidate to backfill them.
+func filterScenePhrasesByCategory(inputs []capabilityoverlay.SceneInput, scenes []Scene, canvas OverlayCanvasSpec) []capabilityoverlay.SceneInput {
+	if len(inputs) == 0 || (len(canvas.OverlayCategories) == 0 && !hasSegmentOverlayCategories(canvas.OverlayCategorySegments)) {
+		return inputs
+	}
+	indexes := make(map[string]int, len(scenes))
+	for _, scene := range scenes {
+		indexes[scene.ID] = scene.Index
+	}
+	for sceneIndex := range inputs {
+		phrases := inputs[sceneIndex].Phrases
+		if len(phrases) == 0 {
+			continue
+		}
+		kept := phrases[:0]
+		for _, phrase := range phrases {
+			params := map[string]any{}
+			if role := strings.TrimSpace(phrase.PresentationRole); role != "" {
+				params["editorial_role"] = role
+			}
+			item := capabilityoverlay.OverlayItem{
+				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", SceneID: inputs[sceneIndex].ID, Params: params,
+			}
+			if !overlayItemCategoryDisabled(item, indexes[item.SceneID], canvas) {
+				kept = append(kept, phrase)
+			}
+		}
+		inputs[sceneIndex].Phrases = kept
+	}
+	return inputs
+}
+
 // overlayItemCategoryDisabled reports whether the item, or any child of a
 // composed chain, belongs to a disabled overlay category. A chain container
 // only names the coalescing family (phrase_chain, image_chain, ...), so the

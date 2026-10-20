@@ -44,6 +44,8 @@ const (
 	IntentKindLocationCard     VisualIntentKind = "LOCATION_CARD"
 	IntentKindTitleCard        VisualIntentKind = "TITLE_CARD"
 	IntentKindEventBadge       VisualIntentKind = "EVENT_BADGE"
+	// IntentKindChapterCard marks a full-frame chapter separator (CHAPTER).
+	IntentKindChapterCard VisualIntentKind = "CHAPTER_CARD"
 )
 
 // PresetFamily is the fine-grained sampling family of an intent. It is the
@@ -67,6 +69,12 @@ const (
 	FamilyTitle           PresetFamily = "title"
 	FamilyEvent           PresetFamily = "event"
 	FamilyImageEntity     PresetFamily = "image_entity"
+	// FamilyProduct samples the image-backed product family (PRODUCT).
+	FamilyProduct PresetFamily = "product"
+	// FamilyTime samples the spoken-duration numeric family (TIME).
+	FamilyTime PresetFamily = "time"
+	// FamilyChapterCard samples the chapter separator card family (CHAPTER).
+	FamilyChapterCard PresetFamily = "chapter_card"
 )
 
 // VisualIntent is the resolved visual intention for one semantic item. All
@@ -128,7 +136,8 @@ type visualIntentEntry struct {
 // owns the preset families owns the editorial priority of every semantic type.
 // Priorities follow the editorial table (IMPORTANT_PHRASE=100, MONEY=90,
 // PERSON=80, QUOTE=75, DATE=60, ORGANIZATION=50); value artifacts sit between
-// phrase and person, badges near quote, lower-thirds below.
+// phrase and person, badges near quote, lower-thirds below, PRODUCT just under
+// the entity cards, TIME between badges and lower-thirds, CHAPTER above EVENT.
 var visualIntentTable = loadVisualIntentTable()
 
 // loadVisualIntentTable projects the registry table into the typed vocabulary.

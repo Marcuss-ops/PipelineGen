@@ -20,10 +20,12 @@ func TestHeavyLaneRotatesFamilies(t *testing.T) {
 			return "3d"
 		case longFamilyBrush:
 			return "brush"
-		case longFamilyAppleClean:
-			return "apple_clean"
+		case longFamilyModernApple:
+			return "modern_apple"
+		case longFamilyClassicApple:
+			return "classic_apple"
 		default:
-			return "classic"
+			return "unknown"
 		}
 	}
 	pool := CertifiedPhraseMotions()
@@ -35,8 +37,37 @@ func TestHeavyLaneRotatesFamilies(t *testing.T) {
 		}
 		seen[familyOf(motion)] = true
 	}
-	if len(seen) < 3 {
-		t.Fatalf("heavy lane covered only %v families across 10 ordinals, want at least 3", seen)
+	for _, family := range []string{"documentary", "3d", "brush", "modern_apple", "classic_apple"} {
+		if !seen[family] {
+			t.Fatalf("heavy lane omitted %s across 10 ordinals: %v", family, seen)
+		}
+	}
+}
+
+func TestAutomaticHeavyLaneLimitKeepsAllFiveLongFamilies(t *testing.T) {
+	seen := map[string]bool{}
+	for ordinal := 0; ordinal < 10; ordinal++ {
+		motion := selectHeavyPhraseMotionLimited("heavy-auto-family-probe", "run", ordinal, nil, 10)
+		if motion == "" {
+			t.Fatalf("ordinal %d selected no motion", ordinal)
+		}
+		switch longPhraseFamilyBucketOf(motion) {
+		case longFamilyDocumentary:
+			seen["documentary"] = true
+		case longFamily3D:
+			seen["text_3d"] = true
+		case longFamilyBrush:
+			seen["brush"] = true
+		case longFamilyModernApple:
+			seen["modern_apple"] = true
+		case longFamilyClassicApple:
+			seen["classic_apple"] = true
+		}
+	}
+	for _, family := range []string{"documentary", "text_3d", "brush", "modern_apple", "classic_apple"} {
+		if !seen[family] {
+			t.Errorf("automatic heavy lane omitted %s under a 10-motion limit: %v", family, seen)
+		}
 	}
 }
 

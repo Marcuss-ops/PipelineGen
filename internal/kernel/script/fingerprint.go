@@ -98,6 +98,7 @@ type GenerationFingerprintInput struct {
 	OverlayCategories             map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
 	RandomLightLeakOnClipStart    bool                       `json:"random_light_leak_on_clip_start,omitempty"`
 	RandomLightLeakOnOverlayStart bool                       `json:"random_light_leak_on_overlay_start,omitempty"`
+	RandomImageEffects            bool                       `json:"random_image_effects,omitempty"`
 
 	// SourceTextVerbatim changes whether the model rewrites segment text.
 	SourceTextVerbatim bool `json:"source_text_verbatim,omitempty"`
@@ -206,6 +207,7 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 	input.OverlayCategories = CloneOverlayCategories(plan.OverlayCategories)
 	input.RandomLightLeakOnClipStart = plan.RandomLightLeakOnClipStart
 	input.RandomLightLeakOnOverlayStart = plan.RandomLightLeakOnOverlayStart
+	input.RandomImageEffects = plan.RandomImageEffects
 
 	if plan.ClipEvidence != nil {
 		input.ClipIDs = append([]string(nil), plan.ClipEvidence.AcceptedClipIDs...)
@@ -263,6 +265,7 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 		OverlayCategories:             CloneOverlayCategories(item.OverlayCategories),
 		RandomLightLeakOnClipStart:    item.RandomLightLeakOnClipStart,
 		RandomLightLeakOnOverlayStart: item.RandomLightLeakOnOverlayStart,
+		RandomImageEffects:            item.RandomImageEffects,
 	}
 	switch item.Output.ExtractEntities {
 	case ToggleEnabled, ToggleDisabled:

@@ -170,6 +170,13 @@ type GenerationItemV2 struct {
 	// RandomLightLeakOnOverlayStart emits a deterministic short leak at each
 	// finalized visual overlay's start.
 	RandomLightLeakOnOverlayStart bool `json:"random_light_leak_on_overlay_start,omitempty"`
+	// RandomImageEffects decorates each image overlay with a deterministic
+	// yes/no draw and, when drawn, one EffectsPack-derived light effect
+	// (ChrononTemplate's twenty procedural looks mapped to native wire
+	// effects) applied at runtime on top of the image's entrance animation.
+	// Retries of the same job replay the same decorations; different images
+	// and jobs vary.
+	RandomImageEffects bool `json:"random_image_effects,omitempty"`
 	// PhraseMotionFamily optionally restricts phrase_motions to a certified
 	// family. With no explicit pool or family, the runtime rotates through its
 	// seeded random sequence over the full certified animation catalog.

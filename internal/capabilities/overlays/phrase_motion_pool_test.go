@@ -414,8 +414,8 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 			t.Fatalf("motion %q repeated before the 15th phrase", item.MotionID)
 		}
 		seen[item.MotionID] = true
-		if got := item.MotionParams["enter_frames"]; got != 96 {
-			t.Fatalf("phrase %q enter_frames = %v, want 96 frames (4 s minimum entrance at 24 fps)", item.Text, got)
+		if got := item.MotionParams["enter_frames"]; got != 16 {
+			t.Fatalf("phrase %q enter_frames = %v, want 16 frames (one third of the 2 s window at 24 fps)", item.Text, got)
 		}
 	}
 	if count != MaxPhraseOverlaysPerRun {
@@ -431,8 +431,8 @@ func TestPhraseMotionEntranceUsesOneThirdPhraseDuration(t *testing.T) {
 		fpsDen     int
 		wantFrames int
 	}{
-		{name: "microsecond timing rounds up", phrase: TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, fpsNum: 24, fpsDen: 1, wantFrames: 96},
-		{name: "millisecond fallback", phrase: TimedAnnotation{StartMs: 100, EndMs: 3100}, fpsNum: 30, fpsDen: 1, wantFrames: 120},
+		{name: "microsecond timing rounds up", phrase: TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, fpsNum: 24, fpsDen: 1, wantFrames: 7},
+		{name: "millisecond fallback", phrase: TimedAnnotation{StartMs: 100, EndMs: 3100}, fpsNum: 30, fpsDen: 1, wantFrames: 30},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params := phraseMotionParams(tc.phrase, tc.fpsNum, tc.fpsDen)
@@ -880,7 +880,7 @@ func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
 				}
 			}
 		}
-		if _, removed := removedGeneratedPhraseMotions[definition.ID]; removed {
+		if _, removed := removedGeneratedPhraseMotions[definition.ID]; removed || !AnimationRendererSupported(definition.ID) {
 			continue
 		}
 		if definition.Category == "apple_v2" || definition.Category == "apple_v3" || definition.Category == "phrase_apple_clean_v1" || definition.Category == "apple_phrase_v1" || definition.Category == "text_3d_v1" || definition.Category == "documentary_highlighting_v1" || (definition.Category == "brush_v1" && strings.HasPrefix(definition.ID, "brush_phrase_")) {

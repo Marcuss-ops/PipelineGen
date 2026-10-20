@@ -14,10 +14,14 @@ import (
 // projectEditorialOverlays adds only extractive editorial text whose manifest,
 // language, scene identity, verbatim grounding and word-level audio timing all
 // agree. Every failure is a no-op: narration/annotations remain the fallback.
-func projectEditorialOverlays(result *GenerateResult, language Language, scenes []Scene, resolved []ResolvedScene, inputs []capabilityoverlay.SceneInput, covered ...map[string]bool) []capabilityoverlay.SceneInput {
+func projectEditorialOverlays(result *GenerateResult, language Language, scenes []Scene, resolved []ResolvedScene, inputs []capabilityoverlay.SceneInput, globalCategories map[scriptpkg.OverlayCategory]scriptpkg.Toggle, covered ...map[string]bool) []capabilityoverlay.SceneInput {
 	coveredScenes := map[string]bool{}
 	if len(covered) > 0 && covered[0] != nil {
 		coveredScenes = covered[0]
+	}
+	shortPhraseScenes := map[string]bool{}
+	if len(covered) > 1 && covered[1] != nil {
+		shortPhraseScenes = covered[1]
 	}
 	if result == nil || result.Editorial == nil || !result.Editorial.Certified ||
 		result.Editorial.SchemaVersion != scriptpkg.EditorialManifestVersion ||
@@ -53,6 +57,12 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 		if !exists || !hasBounds || scene.ExecutionMode.IsFixedMedia() || editorial.SceneID != strings.TrimSpace(editorial.SceneID) {
 			continue
 		}
+		// A short-phrase scene has an explicit phrase owner. Editorial titles
+		// and bullets would compete for that same text slot and category
+		// filtering could then erase the requested phrase when bullets are off.
+		if shortPhraseScenes[editorial.SceneID] {
+			continue
+		}
 		text := strings.TrimSpace(scene.Text[language])
 		if text == "" {
 			continue
@@ -74,7 +84,9 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 		if _, err := capabilityaudio.LocatePhrase(*voiceover.Timing, text); err != nil {
 			continue
 		}
-		titleAllowed := editorial.TitleStatus == "resolved" && editorial.Title != nil &&
+		titleCategoryEnabled := !editorialCategoryDisabled(scene, scriptpkg.OverlayCategoryTitles, globalCategories)
+		bulletCategoryEnabled := !editorialCategoryDisabled(scene, scriptpkg.OverlayCategoryBullets, globalCategories)
+		titleAllowed := titleCategoryEnabled && editorial.TitleStatus == "resolved" && editorial.Title != nil &&
 			validEditorialTitleSource(editorial.TitleSource) && editorialTitleIsGrounded(text, strings.TrimSpace(*editorial.Title))
 		// Editorial.Validate above certifies the manifest structure. Ground
 		// every displayed title or bullet phrase independently against this
@@ -94,6 +106,9 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 			continue
 		}
 		for _, bullet := range editorial.Bullets {
+			if !bulletCategoryEnabled {
+				break
+			}
 			if bullet.SentenceStart < 0 || bullet.SentenceEnd <= bullet.SentenceStart {
 				continue
 			}
@@ -113,7 +128,7 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 		}
 		// A fallback opening bullet is allowed only when the analysis explicitly
 		// had no title candidate. Never turn a rejected title into a bullet.
-		if !hasOpeningSceneBullet(inputs[inputIndex].Phrases) && editorial.Title == nil && editorial.TitleStatus == "unavailable" {
+		if bulletCategoryEnabled && !shortPhraseScenes[editorial.SceneID] && !hasOpeningSceneBullet(inputs[inputIndex].Phrases) && editorial.Title == nil && editorial.TitleStatus == "unavailable" {
 			if opening, ok := editorialOpeningPhrase(inputs[inputIndex], text, *voiceover.Timing); ok {
 				opening.PresentationRole = "scene_bullet"
 				opening.StartUS = window[0]
@@ -135,6 +150,13 @@ func projectEditorialOverlays(result *GenerateResult, language Language, scenes 
 		}
 	}
 	return inputs
+}
+
+func editorialCategoryDisabled(scene Scene, category scriptpkg.OverlayCategory, global map[scriptpkg.OverlayCategory]scriptpkg.Toggle) bool {
+	if override, ok := scene.OverlayCategories[category]; ok && override != scriptpkg.ToggleDefault {
+		return override == scriptpkg.ToggleDisabled
+	}
+	return global[category] == scriptpkg.ToggleDisabled
 }
 
 func hasOpeningSceneBullet(phrases []capabilityoverlay.TimedAnnotation) bool {

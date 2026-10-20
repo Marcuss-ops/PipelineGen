@@ -33,7 +33,7 @@ func editorialOverlayFixture() (*GenerateResult, []Scene, []ResolvedScene, []cap
 
 func TestProjectEditorialOverlaysGroundedAndAudioTimed(t *testing.T) {
 	result, scenes, resolved, inputs := editorialOverlayFixture()
-	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs)
+	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs, nil)
 	require.Len(t, got, 1)
 	require.Len(t, got[0].Phrases, 2)
 	roles := map[string]capabilityoverlay.TimedAnnotation{}
@@ -56,7 +56,7 @@ func TestEditorialBulletUsesFullExtractiveSentenceForLongMotionLane(t *testing.T
 	// mode deliberately shows the complete source sentence so 3D/camera
 	// motions for long phrases can be applied without paraphrasing.
 	result.Editorial.Scenes[0].Highlights = []scriptpkg.EditorialHighlight{{Text: "Duisburg factory", Score: 0.9, VisualEligible: true}}
-	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs)
+	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs, nil)
 	require.Len(t, got, 1)
 	var bullet *capabilityoverlay.TimedAnnotation
 	for i := range got[0].Phrases {
@@ -69,6 +69,35 @@ func TestEditorialBulletUsesFullExtractiveSentenceForLongMotionLane(t *testing.T
 	require.GreaterOrEqual(t, len(strings.Fields(bullet.Text)), 6)
 	require.Equal(t, int64(2_400_000), bullet.StartUS, "bullet starts at the first spoken word")
 	require.Greater(t, bullet.DurationUS, int64(0))
+}
+
+func TestShortPhraseSceneDoesNotBecomeFallbackBullet(t *testing.T) {
+	result, scenes, resolved, inputs := editorialOverlayFixture()
+	inputs[0].Phrases = []capabilityoverlay.TimedAnnotation{{
+		Text: "The short phrase stays a phrase.", StartMs: 0, EndMs: 300,
+		StartUS: 0, DurationUS: 300_000, Score: 1,
+	}}
+	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs, nil, nil, map[string]bool{"s1": true})
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Phrases, 1)
+	require.Empty(t, got[0].Phrases[0].PresentationRole, "short phrase must not be reclassified as a fallback bullet")
+}
+
+func TestDisabledEditorialCategoriesDoNotEvictGroundedPhrase(t *testing.T) {
+	result, scenes, resolved, inputs := editorialOverlayFixture()
+	text := "Steel output is collapsing."
+	inputs[0].Phrases = []capabilityoverlay.TimedAnnotation{{
+		Text: text, StartMs: 0, EndMs: 300, StartUS: 0, DurationUS: 300_000, Score: 1,
+	}}
+	globalCategories := map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+		scriptpkg.OverlayCategoryTitles:  scriptpkg.ToggleDisabled,
+		scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleDisabled,
+	}
+	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs, globalCategories)
+	require.Len(t, got, 1)
+	require.Len(t, got[0].Phrases, 1, "disabled title/bullet projections must not replace the normal phrase candidate")
+	require.Equal(t, text, got[0].Phrases[0].Text)
+	require.Empty(t, got[0].Phrases[0].PresentationRole)
 }
 
 func TestEditorialBulletLongPhraseReturnsExactExtractiveSpan(t *testing.T) {
@@ -221,7 +250,7 @@ func TestProjectEditorialOverlaysFailsClosed(t *testing.T) {
 			if tc.name == "missing scene bounds" {
 				resolved = nil
 			}
-			got := projectEditorialOverlays(result, "en", scenes, resolved, inputs)
+			got := projectEditorialOverlays(result, "en", scenes, resolved, inputs, nil)
 			switch tc.name {
 			case "ungrounded title", "unsupported title source":
 				require.Len(t, got[0].Phrases, 1, "the independently grounded bullet may render, but the invalid title must not leak")
@@ -258,7 +287,7 @@ func TestEditorialChartValuesMustBeGroundedStrictLiterals(t *testing.T) {
 func TestProjectEditorialOverlaysRequiresExactVoiceoverLanguageAndSceneText(t *testing.T) {
 	result, scenes, resolved, inputs := editorialOverlayFixture()
 	result.Editorial.SourceLanguage = "it"
-	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs)
+	got := projectEditorialOverlays(result, "en", scenes, resolved, inputs, nil)
 	require.Empty(t, got[0].Phrases)
 
 	result, scenes, resolved, inputs = editorialOverlayFixture()
@@ -267,6 +296,6 @@ func TestProjectEditorialOverlaysRequiresExactVoiceoverLanguageAndSceneText(t *t
 	timing.Words[0].Text = "Translated"
 	scenes[0].Voiceover["en"] = AudioReference{ID: "vo-s1", Timing: &timing}
 	result.Scenes = scenes
-	got = projectEditorialOverlays(result, "en", scenes, resolved, inputs)
+	got = projectEditorialOverlays(result, "en", scenes, resolved, inputs, nil)
 	require.Empty(t, got[0].Phrases, "both title/bullet must ground in the actual scene and timing")
 }

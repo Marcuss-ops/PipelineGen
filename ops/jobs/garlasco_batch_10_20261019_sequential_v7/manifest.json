@@ -1,11 +1,11 @@
 {
   "batch": "Garlasco 10 video — sequential delivery — 20 minutes each",
-  "status": "completed",
+  "status": "generating_scene_text_1_of_10",
   "drive_parent_folder_id": "1pcXIimINrkOcYd-dsiFyefxhcVH1SmrJ",
   "drive_parent_folder_url": "https://drive.google.com/drive/folders/1pcXIimINrkOcYd-dsiFyefxhcVH1SmrJ",
   "drive_job_01_folder_id": "1ZRpCSoind-Q8s6Ih9CNa5H1yAOJdqQmc",
   "drive_job_01_folder_url": "https://drive.google.com/drive/folders/1ZRpCSoind-Q8s6Ih9CNa5H1yAOJdqQmc",
-  "current_job": "",
+  "current_job": "01_cronologia",
   "job_ids": [
     "job_1792422744138217083_c8f1b036",
     "job_1792435584749534650_75f50f69",
@@ -28,7 +28,7 @@
     "planner:3937666130363962:6"
   ],
   "shared_stock_pool_folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
-  "render_enabled": false,
+  "render_enabled": true,
   "next_job_rule": "Use the ten retained SUCCEEDED payloads as references; keep three distinct strong intro clips per video and verify actual overlay count against the target before accepting each result.",
   "examples": [
     {
@@ -115,5 +115,77 @@
   "observed_overlay_count_range": [
     13,
     36
+  ],
+  "submitted_job_ids": [
+    "job_1792499692276017214_0139a9b0",
+    "job_1792502501453736397_4426349f",
+    "job_1792504735951647980_146a14dc"
+  ],
+  "cancelled_job_ids": [
+    "job_1792499692276017214_0139a9b0",
+    "job_1792500481597534405_095ebf5e",
+    "job_1792502501453736397_4426349f"
+  ],
+  "note": "Fixed local final-job overlay scheduling for entity_card, built and deployed; regression test passed. Prior retry reused a stale cancelled Master job id, so submitted a fresh final r4 with the corrected payload and refresh disabled. It is RUNNING on local worker YOutube_774401_2 in GENERATING_SCENE_TEXT; no new Master job has been created yet.",
+  "final_video_job_ids": [
+    "job_1792500481597534405_095ebf5e",
+    "job_1792500481597534405_095ebf5e",
+    "job_1792502501453736397_4426349f",
+    "job_1792504735951647980_146a14dc"
+  ],
+  "final_video_attempts": [
+    {
+      "script": "01_cronologia",
+      "job_id": "job_1792500481597534405_095ebf5e",
+      "idempotency_key": "20261020-garlasco-batch10-01-final-r2",
+      "status": "CANCELLED",
+      "failure": "PUBLISHING_DOCUMENTS: final_job clip-only scene delitto-e-luogo had no certified rendered clip and no stock-folder binding; automatic retries repeated the same deterministic error.",
+      "worker_ids": [
+        "YOutube_444861_2",
+        "YOutube_444861_1"
+      ],
+      "remote_master_job_created": false
+    },
+    {
+      "script": "01_cronologia",
+      "job_id": "job_1792502501453736397_4426349f",
+      "idempotency_key": "20261020-garlasco-batch10-01-final-r3",
+      "status": "QUEUED"
+    },
+    {
+      "script": "01_cronologia",
+      "job_id": "job_1792502501453736397_4426349f",
+      "idempotency_key": "20261020-garlasco-batch10-01-final-r3",
+      "status": "CANCELLED",
+      "failure": "PUBLISHING_DOCUMENTS: entity_card overlay overlapped a date card in final-job replace-mode frame windows; deterministic retry cancelled after first failure.",
+      "worker_ids": [
+        "YOutube_444861_1"
+      ],
+      "tts_calls": 0,
+      "remote_master_job_created": false
+    },
+    {
+      "script": "01_cronologia",
+      "job_id": "job_1792502501453736397_4426349f",
+      "retry_of": "20261020-garlasco-batch10-01-final-r3",
+      "status": "QUEUED",
+      "code_fix": "Treat entity_card overlays as image-style overlays and schedule them in a non-overlapping scene window.",
+      "resume_from_checkpoint": true,
+      "tts_calls_on_prior_attempt": 0,
+      "certified_overlay_artifacts_on_prior_attempt": 30
+    },
+    {
+      "script": "01_cronologia",
+      "job_id": "job_1792504735951647980_146a14dc",
+      "idempotency_key": "20261020-garlasco-batch10-01-final-r4",
+      "status": "RUNNING",
+      "worker_ids": [
+        "YOutube_774401_2"
+      ],
+      "code_fix": "Treat entity_card overlays as image-style overlays and schedule them in a non-overlapping scene window.",
+      "refresh_disabled": true,
+      "remote_master_job_created": false,
+      "current_stage": "GENERATING_SCENE_TEXT"
+    }
   ]
 }

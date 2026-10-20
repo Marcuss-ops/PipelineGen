@@ -686,3 +686,45 @@ func TestBuildPlanMultiMapRequestUsesBudgetForDistinctPlaces(t *testing.T) {
 		t.Fatalf("map placements = [%s, %s], want first Rome and distinct Ciampino; duplicate Rome should be skipped", maps[0].SceneID, maps[1].SceneID)
 	}
 }
+
+func TestBuildPlanPreservesThreeDistinctSceneMapsAtRequestedLimit(t *testing.T) {
+	const lisbonLat, lisbonLon = 38.7077507, -9.1365919
+	const coimbraLat, coimbraLon = 40.2111874, -8.4291478
+	const portoLat, portoLon = 41.1502195, -8.6103497
+	plates := []MapPlate{
+		testMapPlate(t, "plate-lisbon", lisbonLat, lisbonLon, mapTestWidth, mapTestHeight),
+		testMapPlate(t, "plate-coimbra", coimbraLat, coimbraLon, mapTestWidth, mapTestHeight),
+		testMapPlate(t, "plate-porto", portoLat, portoLon, mapTestWidth, mapTestHeight),
+	}
+	scenes := []SceneInput{
+		{ID: "lisbona", Maps: []MapCandidate{groundedCandidate(t, "city:lisbon", "Lisbona", lisbonLat, lisbonLon, 1_550_000, 662_500)}},
+		{ID: "coimbra", Maps: []MapCandidate{groundedCandidate(t, "city:coimbra", "Coimbra", coimbraLat, coimbraLon, 4_904_500, 550_000)}},
+		{ID: "porto", Maps: []MapCandidate{groundedCandidate(t, "city:porto", "Porto", portoLat, portoLon, 8_762_000, 512_500)}},
+	}
+	config := AllCandidatesPlannerConfig(scenes)
+	config.RunLevelMapOverlayLimit = 3
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "map-plan-portugal-three-stops", VideoID: "map-video-portugal-three-stops",
+		Width: mapTestWidth, Height: mapTestHeight, FPSNum: 24, FPSDen: 1,
+		PlateResolver:   stubPlateResolver{plates: plates},
+		AnimationCounts: map[string]int{"maps": 3, "one_map": 3},
+		Scenes:          scenes,
+	}, config)
+	if err != nil {
+		t.Fatalf("build three-scene map plan: %v", err)
+	}
+	var maps []OverlayItem
+	for _, item := range plan.Items {
+		if item.Kind == "map" {
+			maps = append(maps, item)
+		}
+	}
+	if len(maps) != 3 {
+		t.Fatalf("requested three scene maps, planner retained %d: %+v", len(maps), maps)
+	}
+	for i, wantScene := range []string{"lisbona", "coimbra", "porto"} {
+		if maps[i].SceneID != wantScene {
+			t.Fatalf("map %d belongs to scene %q, want %q", i, maps[i].SceneID, wantScene)
+		}
+	}
+}

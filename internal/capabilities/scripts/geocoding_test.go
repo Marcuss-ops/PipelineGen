@@ -115,6 +115,115 @@ func TestGeocodePlaceAnnotationsUsesGroundedSceneContext(t *testing.T) {
 	}
 }
 
+func TestGeocodePlaceAnnotationsRetriesCityAfterCountryContextAppears(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		switch req.Query {
+		case "Lisbona":
+			if req.Context.Country == "Portogallo" {
+				return capabilitygeocoding.Result{Latitude: 38.7223, Longitude: -9.1393, Scope: "city", DisplayName: "Lisboa, Portugal"}, nil
+			}
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		case "Portogallo":
+			return capabilitygeocoding.Result{Latitude: 39.6622, Longitude: -8.1354, Scope: "country", DisplayName: "Portugal"}, nil
+		default:
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		}
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
+		Version: 1, Language: "it", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "Lisbona", Type: "GPE"},
+			{CanonicalName: "Portogallo", Type: "GPE"},
+		},
+	}}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it"); err != nil {
+		t.Fatal(err)
+	}
+	city := annotations[0].PrimaryEntities[0].Geo
+	if city == nil || city.Latitude != 38.7223 || city.Longitude != -9.1393 {
+		t.Fatalf("city was not retried under the grounded country context: %+v", city)
+	}
+	if len(geocoder.requests) != 3 || geocoder.requests[0].Context.Country != "" || geocoder.requests[2].Context.Country != "Portogallo" {
+		t.Fatalf("lookup sequence did not retry the city after grounding country context: %+v", geocoder.requests)
+	}
+}
+
+func TestGeocodePlaceAnnotationsSkipsItalianGenericPaese(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		if req.Query == "Coimbra" {
+			return capabilitygeocoding.Result{Latitude: 40.2033, Longitude: -8.4103, DisplayName: "Coimbra, Portugal", Scope: "city"}, nil
+		}
+		return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
+		Version: 1, Language: "it", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Paese", Type: "LOCATION", Geo: &scriptpkg.GeoCoordinate{
+			Latitude: 45.6999302, Longitude: 12.1491918, DisplayName: "Paese, Treviso, Italia", Scope: "city",
+		}}},
+	}}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it", geocodeOptions{
+		sceneTexts: map[int]string{0: "Ci spostiamo verso Coimbra, nel centro del Paese."}, mapsOnly: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 1 || geocoder.requests[0].Query != "Coimbra" || annotations[0].PrimaryEntities[0].Geo != nil {
+		t.Fatalf("generic noun produced a homonymous map instead of recovering Coimbra: requests=%+v geo=%+v", geocoder.requests, annotations[0].PrimaryEntities[0].Geo)
+	}
+	if len(annotations[0].PrimaryEntities) < 2 || annotations[0].PrimaryEntities[1].CanonicalName != "Coimbra" || annotations[0].PrimaryEntities[1].Geo == nil || annotations[0].PrimaryEntities[1].Geo.Latitude != 40.2033 {
+		t.Fatalf("grounded city candidate was not recovered: %+v", annotations[0].PrimaryEntities)
+	}
+}
+
+func TestMapOnlyGeocodingUsesGroundedCountryForCity(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		if req.Query == "Lisbona" && req.Context.Country == "Portogallo" {
+			return capabilitygeocoding.Result{Latitude: 38.7223, Longitude: -9.1393, DisplayName: "Lisboa, Portugal", Scope: "city"}, nil
+		}
+		return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
+		Version: 1, Language: "it", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "Lisbona", Type: "GPE"},
+			{CanonicalName: "Portogallo", Type: "GPE", Geo: &scriptpkg.GeoCoordinate{Latitude: 39.66, Longitude: -8.13, Scope: "country"}},
+		},
+	}}
+	err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it", geocodeOptions{
+		sceneTexts: map[int]string{0: "Il viaggio comincia a Lisbona, in Portogallo."}, mapsOnly: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	city := annotations[0].PrimaryEntities[0].Geo
+	if city == nil || city.Latitude != 38.7223 || city.Longitude != -9.1393 {
+		t.Fatalf("map-only request did not resolve the grounded city under its country: %+v", city)
+	}
+}
+
+func TestMapOnlyGeocodingRecoversCityOmittedByEntityExtractor(t *testing.T) {
+	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{
+		Latitude: 40.2033, Longitude: -8.4103, DisplayName: "Coimbra, Portugal", Scope: "city",
+	}}
+	annotation := &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed"}
+	var geoContext capabilitygeocoding.Context
+	if err := geocodeGroundedPlaceNames(context.Background(), geocoder, map[string]capabilitygeocoding.Result{},
+		annotation, "Ci spostiamo verso Coimbra, nel centro del Paese.", "it", 0, &geoContext); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 1 || geocoder.requests[0].Query != "Coimbra" {
+		t.Fatalf("map-only candidate recovery requests=%+v, want only Coimbra", geocoder.requests)
+	}
+	if len(annotation.PrimaryEntities) != 1 || annotation.PrimaryEntities[0].CanonicalName != "Coimbra" || annotation.PrimaryEntities[0].Geo == nil || annotation.PrimaryEntities[0].Geo.Latitude != 40.2033 {
+		t.Fatalf("grounded Coimbra was not recovered without the generic Paese false positive: %+v", annotation.PrimaryEntities)
+	}
+}
+
 // TestGeocodePlaceAnnotationsSeparatesContextsAcrossScenes proves one name
 // under two different grounded contexts is two lookups, not one shared cached
 // answer: each scene resolves its own locality.

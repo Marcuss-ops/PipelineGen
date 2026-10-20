@@ -66,6 +66,10 @@
       ],
       "map": [
         "image.map_centered"
+      ],
+      "chapter_card": [
+        "phrase.all",
+        "bullet"
       ]
     },
     "number_template_contains": [
@@ -186,6 +190,21 @@
       "kind": "ENTITY_IMAGE",
       "family": "image_entity",
       "priority": 60
+    },
+    "PRODUCT": {
+      "kind": "ENTITY_IMAGE",
+      "family": "product",
+      "priority": 65
+    },
+    "TIME": {
+      "kind": "IMPORTANT_NUMBER",
+      "family": "time",
+      "priority": 58
+    },
+    "CHAPTER": {
+      "kind": "CHAPTER_CARD",
+      "family": "chapter_card",
+      "priority": 68
     }
   },
   "entries": [
@@ -1113,7 +1132,8 @@
       "families": [
         "phrase.classic_apple",
         "phrase.all",
-        "bullet"
+        "bullet",
+        "phrase.long"
       ],
       "lanes": [
         "long"
@@ -3845,7 +3865,8 @@
       "families": [
         "phrase.classic_apple",
         "phrase.all",
-        "bullet"
+        "bullet",
+        "phrase.long"
       ],
       "lanes": [
         "long"
@@ -3874,7 +3895,7 @@
         "long"
       ],
       "status": "active",
-      "renderer_supported": true,
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "phrase",
@@ -4502,7 +4523,8 @@
       "families": [
         "phrase.classic_apple",
         "phrase.all",
-        "bullet"
+        "bullet",
+        "phrase.long"
       ],
       "lanes": [
         "long"
@@ -7432,8 +7454,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "short_phrase"

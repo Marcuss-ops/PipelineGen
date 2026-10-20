@@ -9,9 +9,10 @@
 //
 // A SemanticItem is deliberately broader than an EntityOccurrence: it records
 // every meaningful surface a scene mentions — entities (PERSON/ORGANIZATION/
-// LOCATION), measurable values (DATE/MONEY/NUMBER/PERCENTAGE), editorial
-// artifacts (IMPORTANT_PHRASE/QUOTE/CLAIM/STATISTIC/RANKING/TITLE/EVENT) and
-// image-bound entities (IMAGE_ENTITY). It carries BOTH the verbatim rune span
+// LOCATION/PRODUCT), measurable values (DATE/MONEY/NUMBER/PERCENTAGE/TIME),
+// editorial artifacts (IMPORTANT_PHRASE/QUOTE/CLAIM/STATISTIC/RANKING/CHAPTER/
+// TITLE/EVENT) and image-bound entities (IMAGE_ENTITY). It carries BOTH the
+// verbatim rune span
 // (start_char/end_char) and the integer-microsecond timing (start_us/end_us),
 // so the WHAT (type/text) is always grounded in the WHEN — never text-length
 // estimates.
@@ -30,8 +31,8 @@ import (
 )
 
 // SemanticType is the canonical semantic-index vocabulary. It is a superset of
-// the entity vocabulary (PERSON/ORGANIZATION/LOCATION): the index also records
-// measurable values and editorial artifacts so the same index can drive
+// the entity vocabulary (PERSON/ORGANIZATION/LOCATION/PRODUCT): the index also
+// records measurable values and editorial artifacts so the same index can drive
 // overlays, motion graphics, sound effects and B-roll without any downstream
 // stage re-deriving what was said.
 type SemanticType string
@@ -41,12 +42,20 @@ const (
 	SemanticPerson       SemanticType = "PERSON"
 	SemanticOrganization SemanticType = "ORGANIZATION"
 	SemanticLocation     SemanticType = "LOCATION"
+	// SemanticProduct is a consumer/brand product name ("iPhone 17",
+	// "Tesla Model 3"): an imageable, asset-bound entity that resolves a
+	// product image popup.
+	SemanticProduct SemanticType = "PRODUCT"
 
 	// ── Measurable value types ──────────────────────────────────────
-	SemanticDate       SemanticType = "DATE"
+	SemanticDate       SemanticType = "DATE" // calendar day / point in time
 	SemanticMoney      SemanticType = "MONEY"
 	SemanticNumber     SemanticType = "NUMBER"
 	SemanticPercentage SemanticType = "PERCENTAGE"
+	// SemanticTime is a spoken duration ("tre ore", "20 minuti")
+	// or a time-of-day: a value artifact that renders as a numeric
+	// badge, never just a bare NUMBER or DATE.
+	SemanticTime SemanticType = "TIME"
 
 	// ── Editorial artifact types ────────────────────────────────────
 	SemanticImportantPhrase SemanticType = "IMPORTANT_PHRASE"
@@ -56,6 +65,9 @@ const (
 	SemanticRanking         SemanticType = "RANKING"
 	SemanticTitle           SemanticType = "TITLE"
 	SemanticEvent           SemanticType = "EVENT"
+	// SemanticChapter is a section heading that separates the video's
+	// chapters; it resolves to the full-frame chapter_card template.
+	SemanticChapter SemanticType = "CHAPTER"
 
 	// ── Image-bound entity ──────────────────────────────────────────
 	SemanticImageEntity SemanticType = "IMAGE_ENTITY"

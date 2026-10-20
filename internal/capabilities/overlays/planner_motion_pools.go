@@ -30,11 +30,15 @@ func itemPriority(item OverlayItem) float64 {
 	}
 }
 
-// shortPhraseEntranceFrames is the single 4-second entrance floor for the
-// short-phrase lane (1-5 words or <=6s duration). One helper so planner.go
-// and phraseMotionParams can never drift apart again.
-func shortPhraseEntranceFrames(fpsNum, fpsDen int) int64 {
-	return (4*int64(fpsNum) + int64(fpsDen) - 1) / int64(fpsDen)
+// phraseEntranceFrames keeps one third of the certified phrase window for
+// entrance and leaves the remaining two thirds settled and readable.
+func phraseEntranceFrames(durationUS int64, fpsNum, fpsDen int) int64 {
+	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return 0
+	}
+	numerator := durationUS * int64(fpsNum)
+	denominator := 3_000_000 * int64(fpsDen)
+	return (numerator + denominator - 1) / denominator
 }
 
 // phraseMotionParams gives the entrance one third of the phrase's on-screen
@@ -52,15 +56,7 @@ func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]a
 	if phraseDurationUS <= 0 && phrase.EndMs > phrase.StartMs {
 		phraseDurationUS = (phrase.EndMs - phrase.StartMs) * 1_000
 	}
-	framesNumerator := phraseDurationUS * int64(fpsNum)
-	framesDenominator := 3_000_000 * int64(fpsDen)
-	frames := (framesNumerator + framesDenominator - 1) / framesDenominator
-	wordCount := len(strings.Fields(phrase.Text))
-	if (wordCount > 0 && wordCount < 6) || phraseDurationUS <= 6_000_000 {
-		if minimum := shortPhraseEntranceFrames(fpsNum, fpsDen); frames < minimum {
-			frames = minimum
-		}
-	}
+	frames := phraseEntranceFrames(phraseDurationUS, fpsNum, fpsDen)
 	if frames < 1 {
 		frames = 1
 	}

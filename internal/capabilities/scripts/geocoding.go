@@ -67,6 +67,24 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 		if annotation == nil {
 			continue
 		}
+		if len(options) > 0 && options[0].mapsOnly {
+			// A generic noun can arrive pre-geocoded from an earlier enrichment
+			// surface (for example Italian "Paese" resolving to the town in
+			// Treviso). It is not a grounded proper name and must not become a
+			// map stop, regardless of whether Geo was already attached.
+			for entityIndex := range annotation.PrimaryEntities {
+				if isPlaceEntityType(annotation.PrimaryEntities[entityIndex].Type) &&
+					isGenericPlaceLabel(annotation.PrimaryEntities[entityIndex].CanonicalName) {
+					annotation.PrimaryEntities[entityIndex].Geo = nil
+				}
+			}
+			for entityIndex := range annotation.SecondaryEntities {
+				if isPlaceEntityType(annotation.SecondaryEntities[entityIndex].Type) &&
+					isGenericPlaceLabel(annotation.SecondaryEntities[entityIndex].CanonicalName) {
+					annotation.SecondaryEntities[entityIndex].Geo = nil
+				}
+			}
+		}
 		// The scene's own already-grounded places are the lookup context: a
 		// homonymous name is disambiguated by the country/region the scene has
 		// already certified, never by invented geography. The context grows as
@@ -101,6 +119,38 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 				continue
 			}
 			if len(options) > 0 && options[0].mapsOnly && !containsGroundedPlaceName(options[0].sceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName) {
+				continue
+			}
+			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.SecondaryEntities[entityIndex], index, language, &geoContext); err != nil {
+				return err
+			}
+		}
+		shouldRetry := func(entity scriptpkg.AnnotatedEntity) bool {
+			if !isPlaceEntityType(entity.Type) || entity.Geo != nil {
+				return false
+			}
+			if len(options) == 0 || !options[0].mapsOnly {
+				return true
+			}
+			return !ignoredMapCandidate(ignoredMapCandidates, entity.CanonicalName, language) &&
+				!personNameFragment(annotation, entity.CanonicalName) &&
+				!capitalizedNameFragment(options[0].sceneTexts[index], entity.CanonicalName) &&
+				containsGroundedPlaceName(options[0].sceneTexts[index], entity.CanonicalName)
+		}
+		// A city can appear before its country in a scene ("Lisbona, in
+		// Portogallo"). Its first lookup has no grounded context and may
+		// correctly return ErrNoResult. Retry unresolved place annotations
+		// after the full pass has adopted any country/region coordinates.
+		for entityIndex := range annotation.PrimaryEntities {
+			if !shouldRetry(annotation.PrimaryEntities[entityIndex]) {
+				continue
+			}
+			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.PrimaryEntities[entityIndex], index, language, &geoContext); err != nil {
+				return err
+			}
+		}
+		for entityIndex := range annotation.SecondaryEntities {
+			if !shouldRetry(annotation.SecondaryEntities[entityIndex]) {
 				continue
 			}
 			if err := geocodeAnnotatedEntity(ctx, r.geocoder, resolved, &annotation.SecondaryEntities[entityIndex], index, language, &geoContext); err != nil {
@@ -306,8 +356,12 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 	entityIndexes := make(map[string]int)
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
 		canonical := strings.ToLower(strings.TrimSpace(entity.CanonicalName))
-		seen[canonical] = struct{}{}
-		seen[strings.ToLower(normalizeGeocodePlaceQuery(entity.CanonicalName, language))] = struct{}{}
+		// Keep unresolved named places eligible for a context-aware retry below:
+		// their first annotation lookup may have run before the country entity.
+		if entity.Geo != nil || !isPlaceEntityType(entity.Type) || isGenericPlaceLabel(entity.CanonicalName) {
+			seen[canonical] = struct{}{}
+			seen[strings.ToLower(normalizeGeocodePlaceQuery(entity.CanonicalName, language))] = struct{}{}
+		}
 		if entity.Geo != nil && (entity.Geo.Scope == "continent" || entity.Geo.Scope == "country" || entity.Geo.Scope == "region" || entity.Geo.Scope == "city") {
 			seen[canonical] = struct{}{}
 		}
@@ -320,7 +374,7 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		match := text[span[0]:span[1]]
 		name := normalizeGeocodePlaceQuery(match, language)
 		key := strings.ToLower(name)
-		if name == "" {
+		if name == "" || isGenericPlaceLabel(name) {
 			continue
 		}
 		if _, ok := ignored[key]; ok {
@@ -574,7 +628,7 @@ func normalizeGeocodePlaceQuery(value, language string) string {
 func isGenericPlaceLabel(name string) bool {
 	switch strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " ")) {
 	case "here", "there", "local", "nearby", "home", "workplace", "city", "town", "village", "region", "area", "location",
-		"nesta", "neste", "nessa", "nesse", "esta", "este", "essa", "esse":
+		"paese", "paesi", "nesta", "neste", "nessa", "nesse", "esta", "este", "essa", "esse":
 		return true
 	default:
 		return false

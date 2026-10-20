@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"encoding/binary"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,6 +87,7 @@ type FlyoverPlateResolver interface {
 }
 
 func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasWidth, canvasHeight int, grouping MapGroupConfig) []MapPlan {
+	log.Printf("map resolver trace: candidates=%v width=%d height=%d resolver_nil=%t", mapCandidateTrace(candidates), canvasWidth, canvasHeight, resolver == nil)
 	if resolver == nil || len(candidates) == 0 {
 		return nil
 	}
@@ -135,6 +137,7 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	if flyovers, ok := resolver.(FlyoverPlateResolver); ok && !grouping.NoRoutes && len(valid) > 0 && canvasWidth > 0 && canvasHeight > 0 {
 		from, to := routeEndpoints(valid, MapCenter{Latitude: valid[0].Latitude, Longitude: valid[0].Longitude})
 		if plate, ok := flyovers.ResolveFlyover(from, to, canvasWidth, canvasHeight); ok && strings.TrimSpace(plate.ID) != "" && len(plate.LODs) > 0 {
+			log.Printf("map resolver trace: flyover resolved candidates=%v plate=%s lods=%d", mapCandidateTrace(valid), plate.ID, len(plate.LODs))
 			plans := make([]MapPlan, 0, len(valid))
 			allCovered := true
 			lodWindows := make([]geodesy.Window, 0, len(plate.LODs)+1)
@@ -159,6 +162,7 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 			// this here would fail the worker's fail-closed compile below and
 			// void the whole plan — fall back to per-place plates instead.
 			if allCovered {
+				log.Printf("map resolver trace: flyover covers all candidates=%v", mapCandidateTrace(valid))
 				moveStartZoom := float64(plate.Zoom)
 				moveEndZoom := float64(plate.LODs[len(plate.LODs)-1].Zoom)
 				lodZooms := make([]int, 0, len(plate.LODs)+1)
@@ -182,17 +186,27 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 				}
 				return plans
 			}
+			log.Printf("map resolver trace: flyover does not cover all candidates=%v", mapCandidateTrace(valid))
 		}
 	}
 	plans := make([]MapPlan, 0, len(valid))
 	for _, place := range valid {
 		plate, ok := resolver.ResolvePlate(place.Latitude, place.Longitude)
+		log.Printf("map resolver trace: place=%s entity=%s resolved=%t plate=%s", place.Label, place.EntityID, ok, plate.ID)
 		if !ok || strings.TrimSpace(plate.ID) == "" {
 			continue
 		}
 		plans = append(plans, MapPlan{Plate: plate, Place: place})
 	}
 	return plans
+}
+
+func mapCandidateTrace(candidates []MapCandidate) []string {
+	trace := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		trace = append(trace, candidate.Label+"/"+candidate.EntityID)
+	}
+	return trace
 }
 
 // mergeMapCandidateOccurrence folds one spoken occurrence of an already-known

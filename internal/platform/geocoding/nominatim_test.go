@@ -135,6 +135,32 @@ func TestNominatimResolvesAmbiguityWithGroundedContext(t *testing.T) {
 	}
 }
 
+func TestNominatimPrefersCityBoundaryOverSameNameCounty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[
+			{"lat":"38.7077507","lon":"-9.1365919","name":"Lisbona","display_name":"Lisbona, Portogallo","category":"boundary","type":"administrative","addresstype":"city","importance":0.7635,"address":{"city":"Lisbona","country":"Portogallo","country_code":"pt"}},
+			{"lat":"38.9952469","lon":"-9.1435928","name":"Lisbona","display_name":"Lisbona, Portogallo","category":"boundary","type":"administrative","addresstype":"county","importance":0.5597,"address":{"county":"Lisbona","country":"Portogallo","country_code":"pt"}}
+		]`))
+	}))
+	defer server.Close()
+	adapter, err := NewNominatim(NominatimConfig{
+		BaseURL: server.URL, UserAgent: "PipelineGen-test", CacheDir: t.TempDir(),
+		HTTPClient: server.Client(), MinimumInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := adapter.Geocode(context.Background(), capgeocoding.Request{
+		Query: "Lisbona", Language: "it", Context: capgeocoding.Context{Country: "Portogallo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Latitude != 38.7077507 || result.Longitude != -9.1365919 || result.Scope != "city" {
+		t.Fatalf("city boundary was not preferred over same-name county: %+v", result)
+	}
+}
+
 // TestNominatimCacheSeparatesGeographicContext proves one name under two
 // grounded contexts is two lookups: the cache never reuses a locality across
 // contexts.

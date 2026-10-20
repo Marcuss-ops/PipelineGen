@@ -5,6 +5,24 @@ import (
 	"testing"
 )
 
+func TestUnsupportedTextMotionIsExcludedFromAutomaticSelection(t *testing.T) {
+	registry := Canonical()
+	entry, ok := registry.byID["isometric_plane_fold"]
+	if !ok {
+		t.Fatal("isometric_plane_fold must remain catalogued for auditability")
+	}
+	if entry.Status != "active" || entry.RendererSupported {
+		t.Fatalf("isometric_plane_fold metadata = status %q, renderer_supported=%v; want active but not selectable until its GPU text path is fixed", entry.Status, entry.RendererSupported)
+	}
+	for _, group := range []string{"phrase.modern_apple", "phrase.all", "phrase.long"} {
+		for _, id := range registry.Candidates(group) {
+			if id == entry.ID {
+				t.Errorf("unsupported motion %q leaked into automatic group %q", id, group)
+			}
+		}
+	}
+}
+
 // TestItemMotionGroupsAreRegistryAuthored pins the overlay-kind → group mapping
 // to the registry document. The mapping lives in `item_motion_groups.by_kind`,
 // never in a Go switch, so an authored kind must resolve to exactly its authored
@@ -23,6 +41,7 @@ func TestItemMotionGroupsAreRegistryAuthored(t *testing.T) {
 		"entity_image":     {"image.all", "image.lightleak", "phrase.all"},
 		"image_popup":      {"image.all", "image.lightleak", "phrase.all"},
 		"product":          {"image.all", "image.lightleak", "phrase.all"},
+		"chapter_card":     {"phrase.all", "bullet"},
 		"map":              {"image.map_centered"},
 	}
 	authored := Canonical().itemMotionGroups.ByKind
@@ -109,8 +128,8 @@ func TestChartUpgradeIsRegistryAuthored(t *testing.T) {
 // so the planner's typed vocabulary must be a pure projection of them.
 func TestVisualIntentsTableIsRegistryAuthored(t *testing.T) {
 	intents := VisualIntents()
-	if len(intents) != 15 {
-		t.Fatalf("visual intents = %d, want the 15 canonical semantic types", len(intents))
+	if len(intents) != 18 {
+		t.Fatalf("visual intents = %d, want the 18 canonical semantic types", len(intents))
 	}
 	want := map[string]VisualIntentSpec{
 		"PERSON":           {Kind: "ENTITY_IMAGE", Family: "person_image", Priority: 80},
@@ -128,6 +147,9 @@ func TestVisualIntentsTableIsRegistryAuthored(t *testing.T) {
 		"TITLE":            {Kind: "TITLE_CARD", Family: "title", Priority: 70},
 		"EVENT":            {Kind: "EVENT_BADGE", Family: "event", Priority: 50},
 		"IMAGE_ENTITY":     {Kind: "ENTITY_IMAGE", Family: "image_entity", Priority: 60},
+		"PRODUCT":          {Kind: "ENTITY_IMAGE", Family: "product", Priority: 65},
+		"TIME":             {Kind: "IMPORTANT_NUMBER", Family: "time", Priority: 58},
+		"CHAPTER":          {Kind: "CHAPTER_CARD", Family: "chapter_card", Priority: 68},
 	}
 	for semanticType, spec := range want {
 		if got := intents[semanticType]; got != spec {
