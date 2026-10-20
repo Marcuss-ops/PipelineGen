@@ -45,6 +45,10 @@ type FinalJobStarter interface {
 // before handing the wait back.
 var ErrFinalJobPending = errors.New("remote final job is still rendering")
 
+// ErrFinalJobReceiptCheckpoint prevents an automatic retry when durable
+// receipt state could not be saved safely.
+var ErrFinalJobReceiptCheckpoint = errors.New("remote final job receipt checkpoint failed")
+
 // FinalJobAttacher is the OPTIONAL half of the final-job contract: waiting on a
 // job that a PREVIOUS attempt already submitted, with no second PREPARE. A
 // submitter that cannot resume one is still valid (it is what every non-final
@@ -59,8 +63,12 @@ type FinalJobAttacher interface {
 
 // RemoteFinalJobResult is the durable receipt for the two-stage remote job.
 type RemoteFinalJobResult struct {
-	JobID       string `json:"job_id"`
-	Status      string `json:"status"`
+	JobID  string `json:"job_id"`
+	Status string `json:"status"`
+	// Attempt distinguishes a new Master lease from a replay of PREPARE for
+	// the same logical render. Retries of a terminal receipt increment it;
+	// retries of PREPARE_INTENT keep it stable for idempotent reconciliation.
+	Attempt     int    `json:"attempt,omitempty"`
 	WorkerID    string `json:"worker_id,omitempty"`
 	ArtifactURL string `json:"artifact_url,omitempty"`
 	SHA256      string `json:"sha256,omitempty"`
@@ -292,10 +300,22 @@ func finalJobReceiptSucceeded(receipt *RemoteFinalJobResult) bool {
 	return receipt != nil && strings.EqualFold(strings.TrimSpace(receipt.Status), "SUCCEEDED")
 }
 
+func finalJobReceiptTerminal(receipt *RemoteFinalJobResult) bool {
+	if receipt == nil {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(receipt.Status)) {
+	case "FAILED", "CANCELLED", "CANCELED", "REJECTED":
+		return true
+	default:
+		return false
+	}
+}
+
 // finalJobPendingID returns the Master job id a previous attempt left in
 // flight, or "" when there is nothing to resume.
 func finalJobPendingID(receipt *RemoteFinalJobResult) string {
-	if receipt == nil || finalJobReceiptSucceeded(receipt) {
+	if receipt == nil || finalJobReceiptSucceeded(receipt) || finalJobReceiptTerminal(receipt) {
 		return ""
 	}
 	return strings.TrimSpace(receipt.JobID)
@@ -346,6 +366,21 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		}
 		return true
 	}
+	attempt := 1
+	if receipt != nil {
+		attempt = receipt.Attempt
+		if attempt < 1 {
+			attempt = 1
+		}
+		if finalJobReceiptTerminal(receipt) {
+			if result != nil {
+				result.RemoteFinalJobHistory = append(result.RemoteFinalJobHistory, *receipt)
+			}
+			attempt++
+		}
+		// A receipt without a job id is a durable PREPARE intent. Reuse its
+		// attempt key so a lost PREPARE response reconciles to the same lease.
+	}
 	if jobID := finalJobPendingID(receipt); jobID != "" {
 		attacher, ok := r.finalJobSubmitter.(FinalJobAttacher)
 		if !ok {
@@ -362,10 +397,20 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 				zap.Int("yields", receipt.Yields), zap.Bool("wait_to_completion", receipt.Yields > 0))
 		}
 		remote, err := attacher.AttachFinalJob(ctx, jobID, receipt.Yields > 0)
+		remote.Attempt = receipt.Attempt
 		return r.settleFinalJob(ctx, runID, result, remote, receipt.Yields, err)
 	}
 	if starter, ok := r.finalJobSubmitter.(FinalJobStarter); ok {
+		if result == nil {
+			return r.settleFinalJob(ctx, runID, result, RemoteFinalJobResult{}, 0, fmt.Errorf("remote final job has no result to checkpoint before PREPARE"))
+		}
+		intent := RemoteFinalJobResult{Status: "PREPARE_INTENT", Attempt: attempt}
+		result.RemoteFinalJob = &intent
+		if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
+			return r.settleFinalJob(ctx, runID, result, intent, 0, fmt.Errorf("%w: checkpoint PREPARE intent: %w", ErrFinalJobReceiptCheckpoint, err))
+		}
 		remote, err := starter.StartFinalJob(ctx, runID, req, result)
+		remote.Attempt = attempt
 		if err != nil {
 			return r.settleFinalJob(ctx, runID, result, remote, 0, err)
 		}
@@ -373,9 +418,6 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job starter returned no job id"))
 		}
 		remote.Yields = 0
-		if result == nil {
-			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job %s started but the run has no result to checkpoint", remote.JobID))
-		}
 		result.RemoteFinalJob = &remote
 		if err := r.repo.SavePartialResult(ctx, runID, result); err != nil {
 			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("checkpoint remote final job %s before attach: %w", remote.JobID, err))
@@ -385,6 +427,7 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 			return r.settleFinalJob(ctx, runID, result, remote, 0, fmt.Errorf("remote final job starter cannot attach to job %s", remote.JobID))
 		}
 		attached, err := attacher.AttachFinalJob(ctx, remote.JobID, false)
+		attached.Attempt = attempt
 		return r.settleFinalJob(ctx, runID, result, attached, 0, err)
 	}
 	remote, err := r.finalJobSubmitter.SubmitFinalJob(ctx, runID, req, result)
@@ -418,6 +461,15 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf(
 				"remote final job %s is still %s: %w", receipt.JobID, receipt.Status, ErrFinalJobPending))
 			return false
+		}
+		// Keep a terminal Master outcome in the durable result. Without this
+		// write the prior RUNNING receipt remains authoritative after failure and
+		// the next attempt incorrectly attaches to a job that has ended.
+		if result != nil && strings.TrimSpace(remote.JobID) != "" && strings.TrimSpace(remote.Status) != "" {
+			result.RemoteFinalJob = &remote
+			if saveErr := r.repo.SavePartialResult(ctx, runID, result); saveErr != nil {
+				err = fmt.Errorf("%w: persist terminal remote receipt %s/%s: %v; original failure: %w", ErrFinalJobReceiptCheckpoint, remote.JobID, remote.Status, saveErr, err)
+			}
 		}
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job: %w", err))
 		return false

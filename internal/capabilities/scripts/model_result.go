@@ -145,6 +145,9 @@ type GenerateResult struct {
 	// RemoteFinalJob is the durable receipt for an explicitly requested remote
 	// final render, recorded by the publishing stage after successful handoff.
 	RemoteFinalJob *RemoteFinalJobResult `json:"remote_final_job,omitempty"`
+	// RemoteFinalJobHistory retains terminal Master receipts when a new remote
+	// attempt is allocated for the same logical render.
+	RemoteFinalJobHistory []RemoteFinalJobResult `json:"remote_final_job_history,omitempty"`
 	// LocalizedOverlayRenders contains certified Chronon outputs for the
 	// translated plans above. OverlayRender remains the source-language
 	// compatibility projection.

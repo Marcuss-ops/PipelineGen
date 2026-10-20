@@ -358,7 +358,11 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if err != nil {
 		return nil, nil, err
 	}
-	key := finalJobIdempotencyKey(req.IdempotencyKey, runID)
+	attempt := 1
+	if result.RemoteFinalJob != nil && result.RemoteFinalJob.Attempt > 0 {
+		attempt = result.RemoteFinalJob.Attempt
+	}
+	key := finalJobAttemptIdempotencyKey(req.IdempotencyKey, runID, attempt)
 	pre := map[string]any{
 		"idempotency_key": key,
 		"job_type":        "scene.composite.v1",
@@ -440,6 +444,15 @@ func finalJobIdempotencyKey(requestKey, runID string) string {
 	// same lowercase hex, so the first 32 characters are the exact 16 bytes the
 	// previous hex.EncodeToString(sum[:16]) produced.
 	return "creator-77-request-" + digest.SHA256String(requestKey)[:32]
+}
+
+// finalJobAttemptIdempotencyKey is stable while reconciling one PREPARE
+// attempt, and distinct after Master reports a terminal lease.
+func finalJobAttemptIdempotencyKey(requestKey, runID string, attempt int) string {
+	if attempt < 1 {
+		attempt = 1
+	}
+	return finalJobIdempotencyKey(requestKey, runID) + fmt.Sprintf("-attempt-%d", attempt)
 }
 
 // compositeVideoScene preserves source identity in the remote contract. Stock
