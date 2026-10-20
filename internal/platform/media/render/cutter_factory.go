@@ -19,6 +19,13 @@ import (
 // process/cancellation/limiter policy.
 
 func NewConfiguredCutterWithExecutor(rustBinary, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger, executor *rustexec.Executor) (stockpipeline.VideoCutter, error) {
+	return NewConfiguredCutterWithExecutionConfig(rustBinary, ffmpegPath, mediaexec.ExecutionConfig{Profile: profile, Policy: policy}, log, executor)
+}
+
+// NewConfiguredCutterWithExecutionConfig wires the full Go-owned media
+// execution contract — policy, profile, and the cut capacity policy
+// (MaxParallelCuts) — into the Rust cutter backend.
+func NewConfiguredCutterWithExecutionConfig(rustBinary, ffmpegPath string, execCfg mediaexec.ExecutionConfig, log *zap.Logger, executor *rustexec.Executor) (stockpipeline.VideoCutter, error) {
 	if executor == nil {
 		if strings.TrimSpace(rustBinary) == "" {
 			return nil, fmt.Errorf("rust media executor requires rust_muscles_path")
@@ -28,5 +35,5 @@ func NewConfiguredCutterWithExecutor(rustBinary, ffmpegPath string, policy media
 		}
 		executor = rustexec.NewExecutor(rustBinary, ffmpegPath, log)
 	}
-	return rustexec.NewConfiguredVideoProcessorWithExecutor(executor, policy, profile, log), nil
+	return rustexec.NewConfiguredVideoProcessorWithExecutionConfig(executor, execCfg, log), nil
 }

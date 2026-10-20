@@ -219,9 +219,9 @@ func sceneForSegment(scenes []Scene, eligible []int, segment scriptpkg.ScriptSeg
 }
 
 func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scene {
-	// Verbatim source segments are the authoritative narration. Overlay hints
-	// may be grounded against them later, but must never be appended to the
-	// spoken text when a requested phrase is absent.
+	// Verbatim source segments are authoritative. For generated narration,
+	// callers require their requested phrase surfaces to survive generation so
+	// downstream phrase overlays can ground them literally.
 	if req.ScriptParams.SourceTextVerbatim {
 		return scenes
 	}
@@ -229,7 +229,6 @@ func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scen
 	if len(hints) == 0 || len(scenes) == 0 {
 		return scenes
 	}
-
 	eligible := make([]int, 0, len(scenes))
 	for i := range scenes {
 		if !scenes[i].ExecutionMode.IsFixedMedia() {
@@ -239,7 +238,7 @@ func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scen
 	if len(eligible) == 0 {
 		return scenes
 	}
-
+	fallbackCursor := 0
 	for _, rawHint := range hints {
 		hint := strings.TrimSpace(rawHint)
 		if hint == "" {
@@ -256,13 +255,21 @@ func ensureRequestedImportantPhrases(req GenerateRequest, scenes []Scene) []Scen
 			continue
 		}
 
-		index := eligible[0]
+		index := -1
 		for i, segment := range req.ScriptParams.Segments {
 			if strings.Contains(strings.ToLower(segment.SourceText), strings.ToLower(hint)) ||
 				strings.Contains(strings.ToLower(segment.Topic), strings.ToLower(hint)) {
 				index = sceneForSegment(scenes, eligible, segment, i)
 				break
 			}
+		}
+		if index < 0 {
+			// Unowned hints used to pile into the first scene, where phrase
+			// timing correctly rejected their overlapping windows. Spread only
+			// these fallback hints over eligible scenes; segment-owned hints
+			// continue to follow their matching segment.
+			index = eligible[fallbackCursor%len(eligible)]
+			fallbackCursor++
 		}
 		text := strings.TrimSpace(scenes[index].Text[req.SourceLanguage])
 		if text != "" {

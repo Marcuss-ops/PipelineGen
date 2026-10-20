@@ -366,3 +366,42 @@ func TestPhraseLocator_DoesNotMutateArtifact(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before, timing)
 }
+
+// Italian TTS emits an elided article attached to the number as ONE word
+// boundary ("fermandosi all'18", "%" as a separate token), while the grounded
+// annotation carries "18%". The digits must still match exactly so the
+// certified speech window is available; nothing else is loosened.
+func TestPhraseLocator_ElidedArticleBeforeNumber(t *testing.T) {
+	texts := []string{"fermandosi", "all'18", "%", "Questo", "divario"}
+	words := make([]SpeechWordTiming, len(texts))
+	for i, text := range texts {
+		words[i] = SpeechWordTiming{Index: i, Text: text, StartUS: int64(i) * 100_000, EndUS: int64(i+1) * 100_000}
+	}
+	timing := SpeechTimingArtifact{
+		Version: SpeechTimingVersion, Provider: "edge_tts", BoundaryMode: BoundaryWord,
+		Language: "it", TextSHA256: "h", AudioSHA256: "h",
+		DurationUS: int64(len(texts)) * 100_000, Words: words,
+	}
+	results, err := LocatePhrase(timing, "18%")
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, 1, results[0].WordStart)
+	require.Equal(t, 1, results[0].WordEnd)
+	require.Equal(t, int64(100_000), results[0].StartUS)
+	require.Equal(t, int64(200_000), results[0].EndUS)
+
+	// The elided surface itself still matches its own tokens.
+	results, err = LocatePhrase(timing, "all'18")
+	require.NoError(t, err)
+	require.Equal(t, 1, results[0].WordStart)
+
+	// Non-numeric tokens are never loosened: "18" must not match "418".
+	mismatch := append([]SpeechWordTiming(nil), words...)
+	mismatch[1] = SpeechWordTiming{Index: 1, Text: "418", StartUS: 100_000, EndUS: 200_000}
+	_, err = LocatePhrase(SpeechTimingArtifact{
+		Version: SpeechTimingVersion, Provider: "edge_tts", BoundaryMode: BoundaryWord,
+		Language: "it", TextSHA256: "h", AudioSHA256: "h",
+		DurationUS: int64(len(mismatch)) * 100_000, Words: mismatch,
+	}, "18%")
+	require.Error(t, err)
+}

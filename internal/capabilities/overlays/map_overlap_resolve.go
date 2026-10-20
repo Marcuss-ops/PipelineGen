@@ -63,11 +63,18 @@ func ResolveMapOverlaps(items []OverlayItem, sceneWindows map[string][2]int64, f
 	// grows as items resolve).
 	kept := make([]OverlayItem, 0, len(items))
 	mapKept := make([]int, 0, len(mapIdx))
+	// Register every map before resolving any other item. Plans are grouped by
+	// overlay type in some callers, so a later slice position can still be an
+	// earlier timeline window than a phrase/date item.
+	for _, idx := range mapIdx {
+		mapKept = append(mapKept, len(kept))
+		kept = append(kept, items[idx])
+	}
 	for _, it := range items {
-		if it.Map != nil || isBackgroundItem(it) {
-			if it.Map != nil && !isBackgroundItem(it) {
-				mapKept = append(mapKept, len(kept))
-			}
+		if it.Map != nil && !isBackgroundItem(it) {
+			continue
+		}
+		if isBackgroundItem(it) {
 			kept = append(kept, it)
 			continue
 		}
@@ -77,6 +84,13 @@ func ResolveMapOverlaps(items []OverlayItem, sceneWindows map[string][2]int64, f
 		}
 		kept = append(kept, resolved)
 	}
+	// Keep the original plan order because child render identities include each
+	// item's index. Map-first processing above is an internal resolution detail.
+	order := make(map[string]int, len(items))
+	for i := range items {
+		order[items[i].ID] = i
+	}
+	sort.SliceStable(kept, func(i, j int) bool { return order[kept[i].ID] < order[kept[j].ID] })
 	if len(kept) == len(items) {
 		unchanged := true
 		for i := range kept {

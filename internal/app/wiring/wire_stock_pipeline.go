@@ -130,11 +130,10 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// process-group cancellation, bounded diagnostics, and .part cleanup are
 	// owned by this composition root rather than each adapter separately.
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, ffmpegPath, log)
-	stockCutter, cutterErr := render.NewConfiguredCutterWithExecutor(
+	stockCutter, cutterErr := render.NewConfiguredCutterWithExecutionConfig(
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
-		mediaConfig.Policy,
-		mediaConfig.Profile,
+		mediaConfig,
 		log,
 		rustExecutor,
 	)

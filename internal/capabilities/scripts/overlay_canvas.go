@@ -268,96 +268,6 @@ func dropCategoryDisabledCandidates(in *capabilityoverlay.SceneInput, sceneID st
 	return &out
 }
 
-func filterOverlayItemsByCategory(items []capabilityoverlay.OverlayItem, scenes []Scene, canvas OverlayCanvasSpec) []capabilityoverlay.OverlayItem {
-	if len(canvas.OverlayCategories) == 0 && !hasSegmentOverlayCategories(canvas.OverlayCategorySegments) {
-		return items
-	}
-	indexes := make(map[string]int, len(scenes))
-	for _, scene := range scenes {
-		indexes[scene.ID] = scene.Index
-	}
-	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
-	for _, item := range items {
-		category, ok := overlayItemCategory(item)
-		if !ok || overlayCategoryEnabled(category, item.SceneID, indexes[item.SceneID], canvas) {
-			out = append(out, item)
-		}
-	}
-	return out
-}
-
-func overlayCategoryEnabled(category scriptpkg.OverlayCategory, sceneID string, sceneIndex int, canvas OverlayCanvasSpec) bool {
-	value := canvas.OverlayCategories[category]
-	for i, segment := range canvas.OverlayCategorySegments {
-		id := strings.TrimSpace(segment.ID)
-		if id != "" && id == sceneID {
-			if override := segment.OverlayCategories[category]; override != "" && override != scriptpkg.ToggleDefault {
-				value = override
-			}
-			break
-		}
-		if i == sceneIndex && id == "" {
-			if override := segment.OverlayCategories[category]; override != "" && override != scriptpkg.ToggleDefault {
-				value = override
-			}
-		}
-	}
-	return value != scriptpkg.ToggleDisabled
-}
-
-func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayCategory, bool) {
-	kind := strings.ToLower(strings.TrimSpace(item.Kind))
-	template := strings.ToLower(strings.TrimSpace(item.TemplateID))
-	role, _ := item.Params["editorial_role"].(string)
-	role = strings.ToLower(strings.TrimSpace(role))
-	switch {
-	case strings.Contains(template, "date") || strings.Contains(template, "metric") || kind == "number":
-		return scriptpkg.OverlayCategoryNumbers, true
-	case item.Map != nil || kind == "map":
-		return scriptpkg.OverlayCategoryMaps, true
-	case strings.Contains(template, "chart") || kind == "chart_card" || kind == "chart_bar":
-		return scriptpkg.OverlayCategoryCharts, true
-	case item.Params["recap"] == true || strings.Contains(template, "recap"):
-		return scriptpkg.OverlayCategoryRecaps, true
-	// Editorial roles override the shared IMPORTANT_PHRASE template: the
-	// request can independently enable bullets while disabling generic
-	// phrases/titles, and the template name alone must not recategorize a
-	// scene_bullet before its explicit role is examined.
-	case role == "chapter_bullet":
-		// A chapter opening rides the bullets category so the payload can
-		// switch it off with the same toggle as ordinary bullets.
-		return scriptpkg.OverlayCategoryBullets, true
-	case role == "bullet" || role == "bullet_point" || role == "scene_bullet":
-		return scriptpkg.OverlayCategoryBullets, true
-	case role == "title" || role == "headline" || role == "scene_title":
-		return scriptpkg.OverlayCategoryTitles, true
-	case strings.Contains(template, "title"):
-		return scriptpkg.OverlayCategoryTitles, true
-	case strings.Contains(template, "bullet"):
-		return scriptpkg.OverlayCategoryBullets, true
-	case strings.Contains(template, "quote") || role == "quote":
-		return scriptpkg.OverlayCategoryQuotes, true
-	case strings.Contains(kind, "brand") || role == "brand":
-		return scriptpkg.OverlayCategoryBrandText, true
-	case kind == "text_phrase" || strings.Contains(template, "phrase"):
-		return scriptpkg.OverlayCategoryPhrases, true
-	case kind == string(capabilityoverlay.KindEntityCard) && !isImageOverlayItem(item):
-		// A text-only named entity card is NOT imagery, whatever entity type it
-		// names: the planner caps these cards per scene and the payload controls
-		// them through the `entities_with_text` group limit, exactly like the
-		// group classifier (overlayGroupOf) already separates them from `images`.
-		// Categorizing them as images would let an `images: disabled` toggle — a
-		// control for photo overlays — silently delete every place, person and
-		// organization name card in the run, and an image-backed card of the
-		// SAME entity would still be filtered by that toggle.
-		return "", false
-	case strings.Contains(kind, "image") || kind == "entity_card" || kind == "product" || kind == "logo":
-		return scriptpkg.OverlayCategoryImages, true
-	default:
-		return "", false
-	}
-}
-
 // Merged here to keep the registered scripts hotspot at its committed
 // baseline: group capping reads the canvas OverlayGroupLimits and the
 // canvas helpers above. No behaviour change.
@@ -532,6 +442,23 @@ func stripOverlayImageCaptions(items []capabilityoverlay.OverlayItem) {
 }
 
 // overlayGroupLimit returns the cap for a group and whether it was set.
+// applyPhraseLaneCaps forwards explicit short/long phrase group caps into the
+// planner's first editorial budget pass. BuildPlan budgets before the later
+// materialization pass, so without these caps its default long-first selector
+// can discard short candidates before the split-lane budget admits them.
+func applyPhraseLaneCaps(config *capabilityoverlay.PlannerConfig, limits map[string]int) (shortCap int, hasShort bool, longCap int, hasLong bool) {
+	if config == nil {
+		return 0, false, 0, false
+	}
+	shortCap, hasShort = overlayGroupLimit(limits, overlayGroupShortPhrases)
+	longCap, hasLong = overlayGroupLimit(limits, overlayGroupLongPhrases)
+	if hasShort && hasLong && shortCap > 0 && longCap > 0 {
+		config.RunLevelShortPhraseLimit = shortCap
+		config.RunLevelLongPhraseLimit = longCap
+	}
+	return shortCap, hasShort, longCap, hasLong
+}
+
 func overlayGroupLimit(limits map[string]int, group string) (int, bool) {
 	value, ok := limits[group]
 	return value, ok

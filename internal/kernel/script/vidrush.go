@@ -319,16 +319,22 @@ type SegmentAssetCandidate struct {
 	// Provenance is copied onto every discovered, selected and materialized
 	// asset. It is the binding boundary: an asset carrying another segment's
 	// identity must never be accepted by a different segment.
-	SegmentID             string  `json:"segment_id"`
-	Position              int     `json:"position"`
-	TextHash              string  `json:"text_hash"`
-	EntityID              string  `json:"entity_id"`
-	AssetID               string  `json:"asset_id"`
-	Provider              string  `json:"provider"`
-	Query                 string  `json:"query"`
-	Entity                string  `json:"entity,omitempty"`
-	Score                 float64 `json:"score"`
-	RelevanceScore        float64 `json:"relevance_score,omitempty"`
+	SegmentID      string  `json:"segment_id"`
+	Position       int     `json:"position"`
+	TextHash       string  `json:"text_hash"`
+	EntityID       string  `json:"entity_id"`
+	AssetID        string  `json:"asset_id"`
+	Provider       string  `json:"provider"`
+	Query          string  `json:"query"`
+	Entity         string  `json:"entity,omitempty"`
+	Score          float64 `json:"score"`
+	RelevanceScore float64 `json:"relevance_score,omitempty"`
+	// EmbeddingSimilarity is the optional real vector similarity in
+	// [0,1] the provider carries for this candidate (e.g. a cosine score
+	// against the scene embedding). It is a SOFT signal only: the sampler
+	// never lets it outrank a source-derived anchor and never resurrects a
+	// hard-constraint reject with it. Zero/absent keeps the legacy path.
+	EmbeddingSimilarity   float64 `json:"embedding_similarity,omitempty"`
 	TechnicalQualityScore float64 `json:"technical_quality_score,omitempty"`
 	RightsScore           float64 `json:"rights_score,omitempty"`
 	DiversityScore        float64 `json:"diversity_score,omitempty"`

@@ -36,6 +36,9 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen),
 		KeyframeInterval: uint32(profile.KeyframeInterval), AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate,
 		SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels), NoAudio: req.NoAudio,
+		// Capacity policy travels only when the composition root supplied it
+		// (>0); omitempty keeps the historical Rust default otherwise.
+		MaxParallelCuts: uint32(p.maxParallelCuts),
 	}
 	wireJobs := make([]cutRequestJob, len(req.Jobs))
 	for i, job := range req.Jobs {

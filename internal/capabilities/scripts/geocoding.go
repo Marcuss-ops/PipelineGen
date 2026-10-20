@@ -54,6 +54,14 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 	}
 	sort.Ints(indices)
 	resolved := make(map[string]capabilitygeocoding.Result)
+	var ignoredMapCandidates map[string]struct{}
+	if len(options) > 0 && options[0].mapsOnly {
+		var err error
+		ignoredMapCandidates, err = mapPlaceCandidateIgnoredWords(linguistics.DefaultLexiconOrNil(), language)
+		if err != nil {
+			return fmt.Errorf("load map candidate exclusion lexicon: %w", err)
+		}
+	}
 	for _, index := range indices {
 		annotation := annotations[index]
 		if annotation == nil {
@@ -65,6 +73,10 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 		// coarse places resolve, so a later city lookup sees them.
 		geoContext := sceneGeoContext(annotation)
 		for entityIndex := range annotation.PrimaryEntities {
+			if len(options) > 0 && options[0].mapsOnly && ignoredMapCandidate(ignoredMapCandidates, annotation.PrimaryEntities[entityIndex].CanonicalName, language) {
+				annotation.PrimaryEntities[entityIndex].Geo = nil
+				continue
+			}
 			if len(options) > 0 && options[0].mapsOnly && (personNameFragment(annotation, annotation.PrimaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].sceneTexts[index], annotation.PrimaryEntities[entityIndex].CanonicalName)) {
 				// A one-token LOCATION/GPE annotation can be the first or last
 				// name of a separately grounded person (e.g. "Chiara" from
@@ -80,6 +92,10 @@ func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[in
 			}
 		}
 		for entityIndex := range annotation.SecondaryEntities {
+			if len(options) > 0 && options[0].mapsOnly && ignoredMapCandidate(ignoredMapCandidates, annotation.SecondaryEntities[entityIndex].CanonicalName, language) {
+				annotation.SecondaryEntities[entityIndex].Geo = nil
+				continue
+			}
 			if len(options) > 0 && options[0].mapsOnly && (personNameFragment(annotation, annotation.SecondaryEntities[entityIndex].CanonicalName) || capitalizedNameFragment(options[0].sceneTexts[index], annotation.SecondaryEntities[entityIndex].CanonicalName)) {
 				annotation.SecondaryEntities[entityIndex].Geo = nil
 				continue
@@ -321,6 +337,9 @@ func geocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		if len(name) > 1 && name == strings.ToUpper(name) {
 			continue
 		}
+		if ignoredMapCandidate(ignored, name, language) || groundedPersonName(annotation, name) {
+			continue
+		}
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -436,8 +455,57 @@ func mapPlaceCandidateIgnoredWords(registry *linguistics.LexiconRegistry, langua
 	// geocoder homonym cannot turn prose such as "Infine" into a map pin.
 	if strings.EqualFold(language, "it") || strings.HasPrefix(strings.ToLower(language), "it-") {
 		ignored["infine"] = struct{}{}
+		// These common Italian discourse words were misclassified as place
+		// entities and geocoded to unrelated homonymous settlements.
+		for _, word := range []string{"tale", "tali", "ciò", "cio", "egli", "ella", "esso", "essa", "essi", "esse", "lui", "lei", "loro", "questo", "questa", "questi", "queste", "quello", "quella", "quelli", "quelle", "primo", "prima", "secondo", "seconda", "solo", "usare", "dunque", "inoltre", "durante", "corte", "procura", "cassazione", "stasi", "sempio", "poggi", "alberto", "andrea", "chiara"} {
+			ignored[word] = struct{}{}
+		}
 	}
 	return ignored, nil
+}
+
+func ignoredMapCandidate(ignored map[string]struct{}, candidate, language string) bool {
+	if len(ignored) == 0 {
+		return false
+	}
+	key := strings.ToLower(normalizeGeocodePlaceQuery(candidate, language))
+	_, ok := ignored[key]
+	if ok {
+		return true
+	}
+	// A multiword extraction can bypass the exact-word discourse list even
+	// though one of its tokens is a known person name.
+	if strings.EqualFold(language, "it") || strings.HasPrefix(strings.ToLower(language), "it-") {
+		for _, word := range []string{"stasi", "sempio", "poggi", "alberto", "andrea", "chiara"} {
+			if strings.Contains(" "+key+" ", " "+word+" ") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func groundedPersonName(annotation *scriptpkg.SceneAnnotations, candidate string) bool {
+	if annotation == nil {
+		return false
+	}
+	normalize := func(value string) string {
+		return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+	}
+	name := normalize(candidate)
+	if name == "" {
+		return false
+	}
+	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), annotation.PrimaryEntities...), annotation.SecondaryEntities...) {
+		if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") {
+			continue
+		}
+		person := normalize(entity.CanonicalName)
+		if person == name || strings.Contains(" "+name+" ", " "+person+" ") || strings.Contains(" "+person+" ", " "+name+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Geocoder, resolved map[string]capabilitygeocoding.Result, entity *scriptpkg.AnnotatedEntity, sceneIndex int, language string, geoContext *capabilitygeocoding.Context) error {

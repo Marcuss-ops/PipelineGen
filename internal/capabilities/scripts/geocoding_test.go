@@ -292,6 +292,45 @@ func TestMapPlaceCandidateIgnoredWordsUsesConfiguredLexicon(t *testing.T) {
 	}
 }
 
+func TestMapGeocodingSkipsItalianDiscourseWordsMisclassifiedAsPlaces(t *testing.T) {
+	geocoder := &recordingGeocoder{result: capabilitygeocoding.Result{
+		Latitude: 45.184, Longitude: 9.158, DisplayName: "Pavia, Italy", Scope: "city",
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotation := &scriptpkg.SceneAnnotations{
+		Version: 1, Language: "it", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "Tale", Type: "LOCATION"},
+			{CanonicalName: "Ciò", Type: "LOCATION"},
+			{CanonicalName: "Egli", Type: "LOCATION"},
+			{CanonicalName: "Essa", Type: "LOCATION"},
+			{CanonicalName: "Secondo", Type: "LOCATION"},
+			{CanonicalName: "Solo", Type: "LOCATION"},
+			{CanonicalName: "Usare", Type: "LOCATION"},
+			{CanonicalName: "Durante", Type: "LOCATION"},
+			{CanonicalName: "Stasi", Type: "LOCATION"},
+			{CanonicalName: "Sempio", Type: "LOCATION"},
+			{CanonicalName: "Pavia", Type: "GPE"},
+		},
+	}
+	err := runner.geocodePlaceAnnotations(context.Background(), map[int]*scriptpkg.SceneAnnotations{0: annotation}, "it", geocodeOptions{
+		sceneTexts: map[int]string{0: "Tale è la procedura; ciò avviene; egli è indagato; essa parla secondo gli atti, usare con cautela durante il processo, solo Alberto Stasi e Andrea Sempio a Pavia."},
+		mapsOnly:   true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 1 || geocoder.requests[0].Query != "Pavia" {
+		t.Fatalf("map geocoder requests = %+v, want only the grounded city Pavia", geocoder.requests)
+	}
+	for _, entity := range annotation.PrimaryEntities[:10] {
+		if entity.Geo != nil {
+			t.Errorf("Italian discourse word %q unexpectedly received map coordinates: %+v", entity.CanonicalName, entity.Geo)
+		}
+	}
+}
+
 func TestGeocodePlaceAnnotationsFailsClosedForMissingAdapterAndInvalidResult(t *testing.T) {
 	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
 		PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: "Paris", Type: "GPE"}},

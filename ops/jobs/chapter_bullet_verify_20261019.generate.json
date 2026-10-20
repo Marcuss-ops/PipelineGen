@@ -1,0 +1,121 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "chapter-bullet-verify-20261019",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "chapter-bullet-verify-20261019",
+      "project": "chapter-bullet-verify-20261019",
+      "title": "Verifica chapter bullet overlay",
+      "language": "it",
+      "tone": "documentario sobrio",
+      "style": "Copia esattamente i 3 segmenti source_text, senza parafrasare.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "text",
+        "topic": "Verifica tecnica chapter bullet",
+        "source_text": "Testo narrativo italiano fissato nei 3 segmenti espliciti; mantenerlo verbatim."
+      },
+      "script_params": {
+        "target_words": 120,
+        "min_words": 90,
+        "segment_words": 40,
+        "single_scene": false,
+        "skip_quality_gate": true,
+        "segments": [
+          {
+            "id": "seg-1",
+            "kind": "narration",
+            "topic": "delitto e luogo",
+            "source_text": "Il caso riguarda la morte di Chiara Poggi, avvenuta il 13 agosto 2007 nella sua abitazione a Garlasco, in provincia di Pavia.",
+            "target_words": 30,
+            "min_words": 20
+          },
+          {
+            "id": "seg-2",
+            "kind": "narration",
+            "topic": "condanna stasi",
+            "source_text": "Alberto Stasi, allora fidanzato di Chiara Poggi, e stato condannato in via definitiva a sedici anni di reclusione per lomicidio.",
+            "target_words": 30,
+            "min_words": 20
+          },
+          {
+            "id": "seg-3",
+            "kind": "narration",
+            "topic": "indagine sempio",
+            "source_text": "Andrea Sempio e indagato nellinchiesta della Procura di Pavia, respinge le accuse e resta presunto innocente fino a sentenza definitiva.",
+            "target_words": 30,
+            "min_words": 20
+          }
+        ],
+        "force_refresh": true,
+        "source_text_verbatim": true
+      },
+      "max_phrase_overlays": 0,
+      "max_image_overlays": 0,
+      "max_map_overlays": 0,
+      "max_overlays_per_scene": 3,
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_metadata": false,
+        "generate_timeline": true,
+        "voiceover_enabled": true,
+        "languages": ["it"],
+        "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+        "render": {
+          "enabled": true,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "require_gpu": true,
+          "subtitles": {"enabled": false},
+          "drive_subfolder_name": "chapter-bullet-verify-20261019",
+          "background": {"mode": "none"}
+        },
+        "docs": {"enabled": false},
+        "drive_subfolder_name": "chapter-bullet-verify-20261019"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "internet_images": "disabled",
+          "image_generation": "disabled",
+          "artlist": "disabled",
+          "youtube": "disabled",
+          "geocoding": "disabled"
+        },
+        "cache": {"read": false, "write": true},
+        "force_refresh_assets": false,
+        "extraction": {
+          "enabled": false,
+          "include": [],
+          "max_entities_per_segment": 0,
+          "max_image_queries_per_segment": 0
+        },
+        "materialization": {"mode": "selected", "upload_to_drive": true, "wait_for_ready": true},
+        "include_trace": true
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "timing": {"mode": "required", "boundary": "word", "formats": ["json", "srt", "vtt"]}
+      },
+      "overlay_categories": {
+        "maps": "disabled",
+        "phrases": "disabled",
+        "images": "disabled",
+        "numbers": "disabled",
+        "quotes": "disabled",
+        "brand_text": "disabled",
+        "charts": "disabled",
+        "recaps": "disabled",
+        "titles": "disabled",
+        "bullets": "enabled"
+      },
+      "overlay_background": {
+        "kind": "color",
+        "color": [0.0, 0.0, 0.0, 0.0],
+        "opacity": 0.0
+      }
+    }
+  ]
+}

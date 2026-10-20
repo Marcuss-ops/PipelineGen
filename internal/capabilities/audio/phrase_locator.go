@@ -78,7 +78,7 @@ func LocatePhrase(timing SpeechTimingArtifact, phrase string) ([]LocatedPhrase, 
 	for start := 0; start+len(query) <= len(normalized); start++ {
 		match := true
 		for j, token := range query {
-			if normalized[start+j] != token {
+			if !phraseTokensMatch(token, normalized[start+j]) {
 				match = false
 				break
 			}
@@ -103,6 +103,45 @@ func LocatePhrase(timing SpeechTimingArtifact, phrase string) ([]LocatedPhrase, 
 		return nil, fmt.Errorf("%w: %s", ErrPhraseNotFound, describePhraseMismatch(query, normalized))
 	}
 	return found, nil
+}
+
+// phraseTokensMatch compares one query token with one timing token. Equality
+// is the rule; the single tolerated shape is an ELIDED ARTICLE in front of a
+// number, because Italian TTS emits "all'18" / "sull'18" as ONE word boundary
+// while the grounded annotation (and the spoken surface) carries "18%". The
+// numeric digits must still match exactly — this is not fuzzy matching, and
+// it never applies to name tokens ("per" cannot match "super").
+func phraseTokensMatch(queryToken, timingToken string) bool {
+	if queryToken == timingToken {
+		return true
+	}
+	if queryToken == "" || timingToken == "" || !isNumericToken(queryToken) {
+		return false
+	}
+	tail := strings.TrimSuffix(timingToken, queryToken)
+	if tail == timingToken || tail == "" {
+		return false
+	}
+	return strings.HasSuffix(tail, "'")
+}
+
+// isNumericToken reports whether a normalized token is digits with at most one
+// decimal separator. Percent/currency signs were already stripped as edge
+// punctuation, so "18%" normalizes to "18" here.
+func isNumericToken(token string) bool {
+	seenDot := false
+	seenDigit := false
+	for _, r := range token {
+		switch {
+		case r >= '0' && r <= '9':
+			seenDigit = true
+		case (r == '.' || r == ',') && !seenDot:
+			seenDot = true
+		default:
+			return false
+		}
+	}
+	return seenDigit
 }
 
 // describePhraseMismatch returns a bounded diagnostic describing WHERE a

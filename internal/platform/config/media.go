@@ -20,4 +20,24 @@ type MediaConfig struct {
 	// nested field is the SSOT path for new callers
 	// (buildDomainMediaServices consumes cfg.Media.Multilingual.*).
 	Multilingual MultilingualConfig `yaml:"multilingual"`
+	// Sampler carries the Go-owned selection policy for the Rust
+	// mediasampler: the DATA-DRIVEN keyword tables (replacing the worker's
+	// curated single-domain defaults wholesale when supplied) and the
+	// optional diversity weight. An empty policy keeps the Rust V1
+	// curated behaviour byte-for-byte, so an unconfigured operator sees
+	// no behavioral change.
+	Sampler SamplerPolicyConfig `yaml:"sampler"`
+}
+
+// SamplerPolicyConfig is the operator-facing selection policy for the
+// media sampler. Tables arrive lowercased in Rust (case-insensitive
+// matching); an empty list means "keep the worker's default table".
+// DiversityWeight must stay in [0.0, 0.1] (the stage's bounded blend
+// weight); zero means "unspecified" and the worker's default applies.
+type SamplerPolicyConfig struct {
+	MismatchedSubjects []string `yaml:"mismatched_subjects"`
+	CompatibleKeywords []string `yaml:"compatible_keywords"`
+	ActionVerbs        []string `yaml:"action_verbs"`
+	ContextKeywords    []string `yaml:"context_keywords"`
+	DiversityWeight    float64  `yaml:"diversity_weight"`
 }

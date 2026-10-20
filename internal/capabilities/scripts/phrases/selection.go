@@ -74,6 +74,15 @@ func ImportantPhrasesWithCorpus(text string, blockedSpans [][2]int, limit int, l
 	return SelectWithCorpus(text, blockedSpans, limit, profile, corpus)
 }
 
+// ImportantPhrasesWithCorpusWordRange selects grounded phrases in an explicit
+// word-count lane. The normal selector deliberately ranks complete/longer
+// phrases first; callers that need a guaranteed short-candidate pool must ask
+// for that range directly instead of filtering the default top results.
+func ImportantPhrasesWithCorpusWordRange(text string, blockedSpans [][2]int, limit int, language string, corpus []string, minWords, maxWords int) []string {
+	profile := importantPhraseLexicon(language)
+	return selectPhrasesWithWordRange(text, blockedSpans, limit, profile, corpus, minWords, maxWords)
+}
+
 // Select is ImportantPhrases against an explicit lexicon profile. A nil profile
 // falls back to the canonical phrase-extraction policy with no stop-word or
 // visual-verb configuration.
@@ -88,6 +97,10 @@ func SelectWithCorpus(text string, blockedSpans [][2]int, limit int, profile *li
 }
 
 func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *linguistics.LexiconProfile, corpus []string) []string {
+	return selectPhrasesWithWordRange(text, blockedSpans, limit, profile, corpus, 0, 0)
+}
+
+func selectPhrasesWithWordRange(text string, blockedSpans [][2]int, limit int, profile *linguistics.LexiconProfile, corpus []string, minWords, maxWords int) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -106,6 +119,15 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 	// survive extraction. The overlay planner applies its own word ceiling.
 	if policy.MaxWords > 16 {
 		policy.MaxWords = 16
+	}
+	if minWords > 0 {
+		policy.MinWords = minWords
+	}
+	if maxWords > 0 {
+		policy.MaxWords = maxWords
+	}
+	if policy.MaxWords < policy.MinWords {
+		return nil
 	}
 	if limit <= 0 {
 		limit = policy.MaxResults
@@ -213,6 +235,9 @@ func selectPhrases(text string, blockedSpans [][2]int, limit int, profile *lingu
 		for width := 1; width <= 2 && i+width <= len(sentences); width++ {
 			first, last := sentences[i], sentences[i+width-1]
 			wordCount := last.tokenEnd - first.tokenStart + 1
+			if minWords > 0 && wordCount < minWords || maxWords > 0 && wordCount > maxWords {
+				continue
+			}
 			if width == 2 && wordCount <= policy.MaxWords {
 				continue
 			}

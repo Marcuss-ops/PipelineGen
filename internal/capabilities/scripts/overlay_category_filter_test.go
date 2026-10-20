@@ -104,3 +104,24 @@ func TestOverlayCategoryFilterRecognizesSceneTitlesAndBullets(t *testing.T) {
 		t.Fatalf("filtered items = %#v, want scene title and bullet excluded when bullets are disabled", got)
 	}
 }
+
+// A chapter opening rides the bullets lane (chapter_bullet role): the same
+// toggle that disables ordinary bullets must remove it, even though its
+// template is the shared IMPORTANT_PHRASE card.
+func TestOverlayCategoryFilterDropsChapterBulletsWhenBulletsDisabled(t *testing.T) {
+	items := []overlays.OverlayItem{
+		{ID: "chapter", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
+			Params: map[string]any{"editorial_role": "chapter_bullet"}},
+		{ID: "phrase", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE"},
+	}
+	canvas := OverlayCanvasSpec{OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
+		scriptpkg.OverlayCategoryBullets: scriptpkg.ToggleDisabled,
+	}}
+	got := filterOverlayItemsByCategory(items, []Scene{{ID: "scene-0"}}, canvas)
+	if len(got) != 1 || got[0].ID != "phrase" {
+		t.Fatalf("kept %#v, want only the ordinary phrase", got)
+	}
+	if category, ok := overlayItemCategory(items[0]); !ok || category != scriptpkg.OverlayCategoryBullets {
+		t.Fatalf("chapter bullet category = %q, %v; want bullets", category, ok)
+	}
+}

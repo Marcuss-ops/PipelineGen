@@ -128,6 +128,11 @@ type VideoConfig struct {
 	EffectInterval     int      `yaml:"effect_interval" default:"4"`
 	TransitionInterval int      `yaml:"transition_interval" default:"4"`
 	TransitionPresets  []string `yaml:"transition_presets"`
+	// MaxParallelCuts is the Go-owned capacity policy for the Rust
+	// cut_batch wave fanout (concurrent FFmpeg processes per source).
+	// The historical executor default is 3; 0/negative resolves to that
+	// default so an unconfigured operator keeps today's behavior.
+	MaxParallelCuts int `yaml:"max_parallel_cuts" default:"3"`
 }
 
 // WithDefaults returns a copy of VideoConfig with zero-values replaced by defaults.
@@ -180,6 +185,9 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 	}
 	if v.SearchCount <= 0 {
 		v.SearchCount = 25
+	}
+	if v.MaxParallelCuts <= 0 {
+		v.MaxParallelCuts = 3
 	}
 	// Note: OverlayOpacity == 0 means fully transparent (no overlay); < 0 means use default.
 	if v.OverlayOpacity < 0 {

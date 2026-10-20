@@ -14,6 +14,10 @@ func MediaexecConfig(cfg *config.Config) mediaexec.ExecutionConfig {
 	}
 	profile := cfg.Video.CanonicalVideoProfile()
 	policy := cfg.Video.EncoderPolicy()
+	// MaxParallelCuts is capacity policy, not artifact geometry: it is
+	// resolved once here so every downstream builder receives the
+	// application-owned value instead of re-reading platform/config.
+	maxParallelCuts := cfg.Video.WithDefaults().MaxParallelCuts
 	return mediaexec.ExecutionConfig{
 		Profile: mediaexec.VideoProfile{
 			Width:            profile.Width,
@@ -26,6 +30,7 @@ func MediaexecConfig(cfg *config.Config) mediaexec.ExecutionConfig {
 			SampleRate:       profile.SampleRate,
 			Channels:         profile.Channels,
 		},
-		Policy: mediaexec.EncoderPolicy{Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF},
+		Policy:          mediaexec.EncoderPolicy{Codec: policy.Codec, Preset: policy.Preset, CRF: policy.CRF},
+		MaxParallelCuts: maxParallelCuts,
 	}
 }

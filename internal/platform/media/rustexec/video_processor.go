@@ -22,6 +22,9 @@ type VideoProcessor struct {
 	client  *Client
 	policy  mediaexec.EncoderPolicy
 	profile mediaexec.VideoProfile
+	// maxParallelCuts is the Go-owned cut fanout capacity policy. Zero
+	// keeps the wire default (the Rust executor's historical 3).
+	maxParallelCuts int
 }
 
 // CombinedAudioRenderer is the production bridge from the durable script
@@ -89,6 +92,18 @@ func NewConfiguredVideoProcessor(binaryPath, ffmpegPath string, policy mediaexec
 
 func NewConfiguredVideoProcessorWithExecutor(executor *Executor, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger) *VideoProcessor {
 	return &VideoProcessor{client: NewClientWithExecutor(executor, log), policy: policy, profile: profile}
+}
+
+// NewConfiguredVideoProcessorWithExecutionConfig binds the FULL Go-owned
+// media execution contract — encoder policy, artifact profile, and cut
+// capacity policy — to the capabilities this adapter exposes. Callers that
+// only carry policy/profile keep the historical constructor; only the
+// cut_batch path consumes the capacity value.
+func NewConfiguredVideoProcessorWithExecutionConfig(executor *Executor, exec mediaexec.ExecutionConfig, log *zap.Logger) *VideoProcessor {
+	return &VideoProcessor{
+		client: NewClientWithExecutor(executor, log), policy: exec.Policy, profile: exec.Profile,
+		maxParallelCuts: exec.MaxParallelCuts,
+	}
 }
 
 func (p *VideoProcessor) policyFor(codec, preset string, crf int) (string, string, int, error) {
