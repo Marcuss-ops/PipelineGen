@@ -25,7 +25,11 @@ type ExternalConfig struct {
 	RustMusclesPath             string   `yaml:"rust_muscles_path" env:"VELOX_RUST_MUSCLES_PATH" default:"bin/pipelinegen-muscles"`
 	RustPhraseImpactPath        string   `yaml:"rust_phrase_impact_path" env:"VELOX_RUST_PHRASE_IMPACT_PATH" default:"bin/phrase_impact"`
 	RustSceneIntelligencePath   string   `yaml:"rust_scene_intelligence_path" env:"VELOX_RUST_SCENE_INTELLIGENCE_PATH" default:"bin/scene_intelligence"`
-	RustVisualNERPath           string   `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`
+	// RustSceneIntelligenceShadowEnabled keeps the legacy SI analyzer available
+	// only for explicit parity/observability runs; Semantic Engine is the sole
+	// default production analysis path.
+	RustSceneIntelligenceShadowEnabled bool   `yaml:"rust_scene_intelligence_shadow_enabled" env:"VELOX_RUST_SCENE_INTELLIGENCE_SHADOW_ENABLED" default:"false"`
+	RustVisualNERPath                  string `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`
 	// RustSemanticEnginePath is the unified semantic worker
 	// (`semantic_manifest.v2`): one analyze call per script replaces the
 	// per-category VisualNER bullet/chart calls.

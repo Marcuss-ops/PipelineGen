@@ -477,10 +477,10 @@ func wirePhraseImpactAnalyzer(runner *scriptgen.Runner, cfg *config.Config, log 
 // worker only when its configured executable exists. Missing worker binaries
 // are a warning, never a reason to disable script generation.
 func wireSceneIntelligenceAnalyzer(runner *scriptgen.Runner, cfg *config.Config, log *zap.Logger) {
-	if runner == nil || cfg == nil {
+	if runner == nil {
 		return
 	}
-	path := strings.TrimSpace(cfg.External.RustSceneIntelligencePath)
+	path := sceneIntelligenceShadowPath(cfg)
 	if path == "" {
 		return
 	}
@@ -491,4 +491,11 @@ func wireSceneIntelligenceAnalyzer(runner *scriptgen.Runner, cfg *config.Config,
 	}
 	runner.SetSceneIntelligenceAnalyzer(rustexec.NewSIAnalyzer(path, nil))
 	log.Info("scene-intelligence Rust worker wired in shadow mode", zap.String("path", path))
+}
+
+func sceneIntelligenceShadowPath(cfg *config.Config) string {
+	if cfg == nil || !cfg.External.RustSceneIntelligenceShadowEnabled {
+		return ""
+	}
+	return strings.TrimSpace(cfg.External.RustSceneIntelligencePath)
 }
