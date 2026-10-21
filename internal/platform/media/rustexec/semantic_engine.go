@@ -9,6 +9,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"go.uber.org/zap"
 )
 
 // SemanticEngineAdapter is the Go boundary of the unified Rust semantic
@@ -21,12 +22,20 @@ import (
 // admission, overlay budget) stays in PipelineGen.
 type SemanticEngineAdapter struct {
 	executor        *Executor
+	embedder        passageBatchEmbedder
 	entityCacheMu   sync.RWMutex
 	entityCache     map[string][]scriptgen.SemanticEntityCandidate
 	entityCacheFIFO []string
 }
 
 const semanticEntityCacheCapacity = 512
+const semanticEngineOutputLimit = 8 << 20
+
+// NewSemanticEngineExecutor reserves bounded response headroom for whole-
+// script manifests while keeping ordinary media protocol caps conservative.
+func NewSemanticEngineExecutor(binaryPath, ffmpegPath string, log *zap.Logger) *Executor {
+	return NewExecutorWithOutputLimit(binaryPath, ffmpegPath, configuredExecutionSlots(), semanticEngineOutputLimit, log)
+}
 
 // NewSemanticEngineAdapter binds the adapter to a dedicated executor for
 // `bin/semantic-engine`. The executor is separate from the media executor so
@@ -45,61 +54,67 @@ const semanticManifestV2 = "semantic_manifest.v2"
 // closed on a contract violation; a scene the extractor refused is returned
 // with an empty bundle (never invented values).
 func (a *SemanticEngineAdapter) SemanticBundles(ctx context.Context, language string, scenes []scriptgen.SemanticSceneInput) (map[string]*scriptgen.SemanticCandidateBundle, error) {
+	bundles, _, err := a.semanticBundles(ctx, language, scenes, nil)
+	return bundles, err
+}
+
+func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language string, scenes []scriptgen.SemanticSceneInput, editorial *semanticEngineEditorial) (map[string]*scriptgen.SemanticCandidateBundle, *scriptpkg.PhraseImpactResult, error) {
 	if a == nil || a.executor == nil {
-		return nil, fmt.Errorf("semantic-engine: executor is not configured")
+		return nil, nil, fmt.Errorf("semantic-engine: executor is not configured")
 	}
 	language = strings.TrimSpace(language)
 	if language == "" {
-		return nil, fmt.Errorf("semantic-engine: language is required")
+		return nil, nil, fmt.Errorf("semantic-engine: language is required")
 	}
 	if len(scenes) == 0 {
-		return nil, fmt.Errorf("semantic-engine: at least one scene is required")
+		return nil, nil, fmt.Errorf("semantic-engine: at least one scene is required")
 	}
 	request := semanticEngineRequest{
 		Operation: "analyze_script",
 		Language:  language,
 		Scenes:    make([]semanticEngineScene, 0, len(scenes)),
+		Editorial: editorial,
 	}
 	seen := make(map[string]struct{}, len(scenes))
 	for _, scene := range scenes {
 		id := strings.TrimSpace(scene.SceneID)
 		if id == "" {
-			return nil, fmt.Errorf("semantic-engine: scene with empty id")
+			return nil, nil, fmt.Errorf("semantic-engine: scene with empty id")
 		}
 		if _, duplicate := seen[id]; duplicate {
-			return nil, fmt.Errorf("semantic-engine: duplicate scene id %q", id)
+			return nil, nil, fmt.Errorf("semantic-engine: duplicate scene id %q", id)
 		}
 		seen[id] = struct{}{}
 		request.Scenes = append(request.Scenes, semanticEngineScene{SceneID: id, Text: scene.Text})
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
-		return nil, fmt.Errorf("semantic-engine: encode: %w", err)
+		return nil, nil, fmt.Errorf("semantic-engine: encode: %w", err)
 	}
 	stdout, _, err := a.executor.Run(ctx, payload)
 	if err != nil {
-		return nil, fmt.Errorf("semantic-engine: execute: %w", err)
+		return nil, nil, fmt.Errorf("semantic-engine: execute: %w", err)
 	}
 	var response semanticEngineResponse
 	if err := json.Unmarshal(stdout, &response); err != nil {
-		return nil, fmt.Errorf("semantic-engine: decode: %w", err)
+		return nil, nil, fmt.Errorf("semantic-engine: decode: %w", err)
 	}
 	if !response.OK {
-		return nil, fmt.Errorf("semantic-engine: worker: %s", strings.TrimSpace(response.Error))
+		return nil, nil, fmt.Errorf("semantic-engine: worker: %s", strings.TrimSpace(response.Error))
 	}
 	manifest := response.Manifest
 	if manifest == nil {
-		return nil, fmt.Errorf("semantic-engine: response carries no manifest")
+		return nil, nil, fmt.Errorf("semantic-engine: response carries no manifest")
 	}
 	if manifest.SchemaVersion != semanticManifestV2 {
-		return nil, fmt.Errorf("semantic-engine: unsupported schema_version %q", manifest.SchemaVersion)
+		return nil, nil, fmt.Errorf("semantic-engine: unsupported schema_version %q", manifest.SchemaVersion)
 	}
 	if manifest.Language != language || manifest.Fingerprint == "" || manifest.Analyzers.VisualNER == "" ||
 		manifest.Analyzers.SemanticCore == "" || manifest.Analyzers.PhraseImpact == "" {
-		return nil, fmt.Errorf("semantic-engine: manifest metadata is incomplete or does not match request language")
+		return nil, nil, fmt.Errorf("semantic-engine: manifest metadata is incomplete or does not match request language")
 	}
 	if len(manifest.Scenes) != len(request.Scenes) {
-		return nil, fmt.Errorf("semantic-engine: manifest has %d scenes, request had %d", len(manifest.Scenes), len(request.Scenes))
+		return nil, nil, fmt.Errorf("semantic-engine: manifest has %d scenes, request had %d", len(manifest.Scenes), len(request.Scenes))
 	}
 
 	texts := make(map[string]string, len(request.Scenes))
@@ -110,10 +125,10 @@ func (a *SemanticEngineAdapter) SemanticBundles(ctx context.Context, language st
 	for index, scene := range manifest.Scenes {
 		source, ok := texts[scene.SceneID]
 		if !ok {
-			return nil, fmt.Errorf("semantic-engine: manifest scene %q was not requested", scene.SceneID)
+			return nil, nil, fmt.Errorf("semantic-engine: manifest scene %q was not requested", scene.SceneID)
 		}
 		if scene.SceneID != request.Scenes[index].SceneID {
-			return nil, fmt.Errorf("semantic-engine: manifest scene order changed at %d", index)
+			return nil, nil, fmt.Errorf("semantic-engine: manifest scene order changed at %d", index)
 		}
 		bundle := &scriptgen.SemanticCandidateBundle{}
 		bundle.SchemaVersion = manifest.SchemaVersion
@@ -132,7 +147,7 @@ func (a *SemanticEngineAdapter) SemanticBundles(ctx context.Context, language st
 			scene.Relations.AssertedRelations == nil || scene.NumericFacts == nil || scene.TemporalFacts == nil || scene.SemanticGroups == nil ||
 			scene.Bullets == nil || scene.ShortPhrases == nil || scene.LongPhrases == nil ||
 			scene.Quotes == nil || scene.ImportantWords == nil || scene.VisualProposals == nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q omits required manifest collections", scene.SceneID)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q omits required manifest collections", scene.SceneID)
 		}
 		if scene.Status != "valid" {
 			bundles[scene.SceneID] = bundle
@@ -140,52 +155,70 @@ func (a *SemanticEngineAdapter) SemanticBundles(ctx context.Context, language st
 			continue
 		}
 		if bundle.Entities, err = projectSemanticEntities(source, scene.Entities); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q entities: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q entities: %w", scene.SceneID, err)
 		}
 		if bundle.EntityFacts, err = projectSemanticEntityFacts(source, scene.EntityFacts); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q entity facts: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q entity facts: %w", scene.SceneID, err)
 		}
 		if bundle.Identities, err = projectSemanticIdentities(texts, scene.Identities); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q identities: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q identities: %w", scene.SceneID, err)
 		}
 		if bundle.Relations, err = projectSemanticRelations(source, scene.Relations); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q relations: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q relations: %w", scene.SceneID, err)
 		}
 		bundle.Bullets = projectSemanticBullets(source, scene.Bullets)
 		if bundle.ShortPhrases, err = projectSemanticText(source, scene.ShortPhrases); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q short phrases: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q short phrases: %w", scene.SceneID, err)
 		}
 		if bundle.LongPhrases, err = projectSemanticText(source, scene.LongPhrases); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q long phrases: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q long phrases: %w", scene.SceneID, err)
 		}
 		if bundle.Quotes, err = projectSemanticText(source, scene.Quotes); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q quotes: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q quotes: %w", scene.SceneID, err)
 		}
 		if bundle.ImportantWords, err = projectSemanticText(source, scene.ImportantWords); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q important words: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q important words: %w", scene.SceneID, err)
 		}
 		if bundle.Proposals, err = projectSemanticProposals(source, scene.VisualProposals); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q proposals: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q proposals: %w", scene.SceneID, err)
 		}
 		if bundle.Groups, err = projectSemanticGroups(scene.SceneID, texts, scene.SemanticGroups); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q groups: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q groups: %w", scene.SceneID, err)
 		}
 		if err := validateSemanticReferences(bundle); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q references: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q references: %w", scene.SceneID, err)
 		}
 		if bundle.Charts, err = projectSemanticCharts(source, scene.VisualProposals); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
 		}
 		if bundle.Temporal, err = projectSemanticTemporal(source, scene.TemporalFacts); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
 		}
 		if bundle.Numeric, err = projectSemanticNumeric(source, scene.NumericFacts); err != nil {
-			return nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q: %w", scene.SceneID, err)
 		}
 		bundles[scene.SceneID] = bundle
 		a.cacheEntities(manifest.Language, source, bundle.Entities)
 	}
-	return bundles, nil
+	var editorialResult *scriptpkg.PhraseImpactResult
+	if editorial != nil {
+		if manifest.Editorial == nil {
+			return nil, nil, fmt.Errorf("semantic-engine: requested editorial products are missing from manifest")
+		}
+		transcript, ok := editorial.Request["transcript"].(string)
+		if !ok || strings.TrimSpace(transcript) == "" {
+			return nil, nil, fmt.Errorf("semantic-engine: editorial request has no transcript")
+		}
+		result := scriptpkg.PhraseImpactResult{Summary: manifest.Editorial.Summary, ChapterManifest: manifest.Editorial.ChapterManifest}
+		for _, bullet := range manifest.Editorial.BulletPoints {
+			result.BulletPoints = append(result.BulletPoints, bullet.Text)
+		}
+		result.HeavySentences = manifest.Editorial.HeavySentences
+		result.SceneHighlights, result.SceneHighlightsCertified = validateSceneHighlights(transcript, manifest.Editorial.SceneHighlights)
+		result.Timings = manifest.Editorial.Timings
+		editorialResult = &result
+	}
+	return bundles, editorialResult, nil
 }
 
 func semanticEntityCacheKey(language, source string) string {

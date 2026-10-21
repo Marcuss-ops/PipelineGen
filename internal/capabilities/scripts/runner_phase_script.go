@@ -153,7 +153,8 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// instead of si+pi. Both compute VALUES only; the single writer
 		// below owns every result mutation.
 		siEnabled := r.sceneIntelligenceAnalyzer != nil && strings.TrimSpace(output.Text) != ""
-		piEnabled := r.phraseImpactAnalyzer != nil && strings.TrimSpace(output.Text) != ""
+		_, unifiedEditorialEnabled := r.sceneSemanticAnalyzer.(SceneSemanticEditorialBatchAnalyzer)
+		piEnabled := (r.phraseImpactAnalyzer != nil || unifiedEditorialEnabled) && strings.TrimSpace(output.Text) != ""
 		type siOutcome struct {
 			manifest *scriptpkg.SceneIntelligenceManifest
 			inputs   []scriptpkg.SISceneAnalysisInput

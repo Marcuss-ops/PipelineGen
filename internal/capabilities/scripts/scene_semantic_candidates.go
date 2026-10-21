@@ -2,6 +2,8 @@ package scriptgeneration
 
 import (
 	"context"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // ── Visual semantics, one worker call per scene (RUST-02) ──
@@ -171,4 +173,10 @@ type SceneSemanticAnalyzer interface {
 // it, the runner never issues a per-scene call.
 type SceneSemanticBatchAnalyzer interface {
 	SemanticBundles(ctx context.Context, language string, scenes []SemanticSceneInput) (map[string]*SemanticCandidateBundle, error)
+}
+
+// SceneSemanticEditorialBatchAnalyzer returns semantic candidates and
+// extractive editorial products from the same whole-script worker request.
+type SceneSemanticEditorialBatchAnalyzer interface {
+	AnalyzeSemanticEditorial(context.Context, string, string, []scriptpkg.SceneAnalysisInput) (map[string]*SemanticCandidateBundle, scriptpkg.PhraseImpactResult, error)
 }

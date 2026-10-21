@@ -198,16 +198,17 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
-	wirePhraseImpactAnalyzer(runner, cfg, log)
+	phraseEmbedder := wirePhraseImpactEmbedder(cfg)
 	// Unified semantic path: ONE analyze call per script returns entities,
 	// bullets, charts, dates and numbers from the same extraction. The worker
 	// is a dedicated binary (bin/semantic-engine), not the media executor and
 	// not the per-category VisualNER entry points.
-	semanticExecutor := rustexec.NewExecutor(cfg.External.RustSemanticEnginePath, cfg.External.FfmpegPath, log)
+	semanticExecutor := rustexec.NewSemanticEngineExecutor(cfg.External.RustSemanticEnginePath, cfg.External.FfmpegPath, log)
 	semanticAnalyzer, err := rustexec.NewSemanticEngineAdapter(semanticExecutor)
 	if err != nil {
 		return nil, fmt.Errorf("build semantic engine adapter: %w", err)
 	}
+	semanticAnalyzer.SetPassageEmbedder(phraseEmbedder)
 	runner.SetSceneSemanticAnalyzer(semanticAnalyzer)
 	wireSceneIntelligenceAnalyzer(runner, cfg, log)
 	// Location overlays use the real Nominatim adapter and the only accepted

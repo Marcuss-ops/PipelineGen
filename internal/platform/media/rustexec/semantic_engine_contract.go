@@ -1,10 +1,19 @@
 package rustexec
 
+import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+
 // semanticEngineRequest is the NDJSON request shape of the engine.
 type semanticEngineRequest struct {
-	Operation string                `json:"operation"`
-	Language  string                `json:"language"`
-	Scenes    []semanticEngineScene `json:"scenes"`
+	Operation string                   `json:"operation"`
+	Language  string                   `json:"language"`
+	Scenes    []semanticEngineScene    `json:"scenes"`
+	Editorial *semanticEngineEditorial `json:"editorial,omitempty"`
+}
+
+type semanticEngineEditorial struct {
+	Request        map[string]any                 `json:"request"`
+	Scenes         []scriptpkg.SceneAnalysisInput `json:"scenes"`
+	ChapterOptions map[string]any                 `json:"chapter_options"`
 }
 
 type semanticEngineScene struct {
@@ -27,6 +36,28 @@ type semanticEngineManifest struct {
 	Fingerprint   string                         `json:"fingerprint"`
 	Analyzers     semanticEngineAnalyzerVersions `json:"analyzers"`
 	Scenes        []semanticEngineSceneManifest  `json:"scenes"`
+	Editorial     *semanticEngineEditorialResult `json:"editorial,omitempty"`
+}
+
+type semanticEngineEditorialResult struct {
+	Summary      string `json:"summary"`
+	BulletPoints []struct {
+		Text string `json:"text"`
+	} `json:"bullet_points"`
+	HeavySentences  []scriptpkg.ImportantSentence `json:"heavy_sentences"`
+	ChapterManifest scriptpkg.ChapterManifest     `json:"chapter_manifest"`
+	SceneHighlights []scriptpkg.SceneHighlight    `json:"scene_highlights"`
+	Timings         scriptpkg.PhraseImpactTimings `json:"timings"`
+}
+
+type semanticEngineSplitResponse struct {
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	Sentences []struct {
+		Text      string `json:"text"`
+		StartByte int    `json:"start_byte"`
+		EndByte   int    `json:"end_byte"`
+	} `json:"sentences"`
 }
 
 type semanticEngineAnalyzerVersions struct {
