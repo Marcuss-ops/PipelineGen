@@ -145,3 +145,35 @@ func TestFinalJobOverlayAssetsMovesEntityCardAfterDateCard(t *testing.T) {
 		t.Fatalf("entity card frames %v still overlap date card frames %v", entity, date)
 	}
 }
+
+// TestFinalJobRejectsSplitChartGroup pins the chart atomicity contract: a chart
+// label card and its bars share one narration window, so they cannot be
+// handed to the Master as independent mode=replace overlays. The final job
+// must fail closed with the pre-composition requirement instead of silently
+// relocating bars to a different moment (which would show a card without its
+// graph).
+func TestFinalJobRejectsSplitChartGroup(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "chart-card", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
+			StartMs: 500, EndMs: 4000, Text: "42%\n18%",
+			Params: map[string]any{"chart_card": true, "chart_group_id": "chart-scene-1-42-18"}},
+		{ID: "chart-bar-0", SceneID: "scene-1", Kind: "shape", TemplateID: "SHAPE",
+			StartMs: 500, EndMs: 4000, Params: map[string]any{"chart_bar": true, "chart_group_id": "chart-scene-1-42-18"}},
+		{ID: "chart-bar-1", SceneID: "scene-1", Kind: "shape", TemplateID: "SHAPE",
+			StartMs: 500, EndMs: 4000, Params: map[string]any{"chart_bar": true, "chart_group_id": "chart-scene-1-42-18"}},
+	}
+	artifacts := map[string]RenderArtifact{
+		"chart-card":  {ID: "artifact-card", DriveFileID: "drive-card", SHA256: strings.Repeat("a", 64), SizeBytes: 10, CopyEligible: true},
+		"chart-bar-0": {ID: "artifact-bar-0", DriveFileID: "drive-bar-0", SHA256: strings.Repeat("b", 64), SizeBytes: 10, CopyEligible: true},
+		"chart-bar-1": {ID: "artifact-bar-1", DriveFileID: "drive-bar-1", SHA256: strings.Repeat("c", 64), SizeBytes: 10, CopyEligible: true},
+	}
+	result := ssotGateResult(items, artifacts)
+	result.CanonicalTimeline.DurationUS = 10_000_000
+	result.CanonicalTimeline.Segments[0].DurationUS = 10_000_000
+	result.FinalAudio = certifiedFinalAudio(10_000)
+
+	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
+	if err == nil || !strings.Contains(err.Error(), "pre-compose the chart") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want fail-closed split-chart rejection", err)
+	}
+}

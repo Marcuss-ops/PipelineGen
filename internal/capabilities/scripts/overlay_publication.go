@@ -211,6 +211,16 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 			byID[strings.TrimSpace(rendered.ItemID)] = *rendered.Artifact
 		}
 	}
+	// Charts are composed from one label card plus N bars on the SAME window.
+	// The Master replaces whole frames (mode=replace) and admits one overlay
+	// per frame interval, so a multi-item chart group cannot be handed off as
+	// separate clips: scheduling the bars after the card would show a graph
+	// without its bars, which is worse than not showing it. Refuse the split
+	// here, before any remote attempt, until the group is pre-composed into a
+	// single certified artifact.
+	if err := rejectSplitChartGroups(result.OverlayPlan.Items); err != nil {
+		return nil, err
+	}
 	fpsNum, fpsDen := result.OverlayPlan.FPSNum, result.OverlayPlan.FPSDen
 	if fpsNum <= 0 || fpsDen <= 0 {
 		return nil, fmt.Errorf("final_job overlay plan has invalid frame rate %d/%d", fpsNum, fpsDen)
@@ -532,4 +542,34 @@ func scheduleFinalJobSceneImage(result *GenerateResult, image capabilityoverlay.
 		return 0, 0, fmt.Errorf("final_job scene image %q cannot fit a non-overlapping %dµs window in scene %q", image.ID, duration, image.SceneID)
 	}
 	return candidate, candidate + duration, nil
+}
+
+// rejectSplitChartGroups fails closed when a chart comparison would reach the
+// Master as more than one replace-mode overlay. A chart is one visual unit
+// (label card + bars on a shared window); mode=replace admits one overlay per
+// frame interval, so handing the parts over separately would silently show a
+// card without bars or relocate the bars to a different moment. The group must
+// be pre-composed into a single certified artifact before publication.
+func rejectSplitChartGroups(items []capabilityoverlay.OverlayItem) error {
+	members := make(map[string][]string)
+	for _, item := range items {
+		if item.Params == nil {
+			continue
+		}
+		if item.Params["chart_card"] != true && item.Params["chart_bar"] != true {
+			continue
+		}
+		group, _ := item.Params["chart_group_id"].(string)
+		group = strings.TrimSpace(group)
+		if group == "" {
+			return fmt.Errorf("final_job chart item %q has no chart_group_id; charts must be composable as one artifact", item.ID)
+		}
+		members[group] = append(members[group], item.ID)
+	}
+	for group, ids := range members {
+		if len(ids) > 1 {
+			return fmt.Errorf("final_job chart group %q has %d replace overlays on one window; pre-compose the chart into a single certified artifact before the Master (mode=replace admits one overlay per frame interval)", group, len(ids))
+		}
+	}
+	return nil
 }

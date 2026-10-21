@@ -94,11 +94,16 @@ type visualBullet struct {
 }
 
 type visualChartPoint struct {
-	Entity        int     `json:"entity"`
+	// Entity is the matching NER entity when one survived the visual top-N;
+	// the value is admitted from the numeric fact, never from this link.
+	Entity        *int    `json:"entity"`
+	Text          string  `json:"text"`
 	Kind          string  `json:"kind"`
 	Value         float64 `json:"value"`
 	Label         string  `json:"label"`
 	SentenceIndex int     `json:"sentence_index"`
+	Start         int     `json:"start"`
+	End           int     `json:"end"`
 }
 
 // visualTemporalFact mirrors the Rust TemporalFact wire contract:
@@ -191,8 +196,11 @@ func (a *VisualNERAdapter) Analyze(ctx context.Context, language, sourceText str
 		}
 	}
 	for _, cp := range analysis.ChartPoints {
-		if !validIndex(cp.Entity) {
+		if cp.Entity != nil && !validIndex(*cp.Entity) {
 			return nil, fmt.Errorf("visualner: chart point references entity out of range")
+		}
+		if cp.Start < 0 || cp.End <= cp.Start || cp.End > len(sourceText) || sourceText[cp.Start:cp.End] != cp.Text {
+			return nil, fmt.Errorf("visualner: chart point %q is not grounded in source_text", cp.Text)
 		}
 	}
 	if err := validateTemporalFacts(sourceText, analysis.TemporalFacts); err != nil {
@@ -202,49 +210,6 @@ func (a *VisualNERAdapter) Analyze(ctx context.Context, language, sourceText str
 		return nil, err
 	}
 	return &analysis, nil
-}
-
-// ChartCandidates returns the worker's chart-point labels for one scene's
-// text. Each Text is an exact entity span of sourceText, so the scripts layer
-// can verify it by substring match and strict parsing; nothing is inferred.
-func (a *VisualNERAdapter) ChartCandidates(ctx context.Context, language, sourceText string, limit int) ([]scriptgen.ChartValueCandidate, error) {
-	analysis, err := a.Analyze(ctx, language, sourceText, limit)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]scriptgen.ChartValueCandidate, 0, len(analysis.ChartPoints))
-	for _, cp := range analysis.ChartPoints {
-		if cp.Entity < 0 || cp.Entity >= len(analysis.Entities) {
-			continue
-		}
-		out = append(out, scriptgen.ChartValueCandidate{Text: analysis.Entities[cp.Entity].Text, Value: cp.Value})
-	}
-	return out, nil
-}
-
-// BulletCandidates returns the worker's sentence bullets for one scene's
-// text. Each candidate is validated as an exact byte span of sourceText so
-// the scripts layer can re-map it onto its own sentence splitter; nothing
-// is inferred.
-func (a *VisualNERAdapter) BulletCandidates(ctx context.Context, language, sourceText string, limit int) ([]scriptgen.BulletCandidate, error) {
-	analysis, err := a.Analyze(ctx, language, sourceText, limit)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]scriptgen.BulletCandidate, 0, len(analysis.Bullets))
-	for _, b := range analysis.Bullets {
-		if b.Start < 0 || b.End <= b.Start || b.End > len(sourceText) {
-			continue
-		}
-		if sourceText[b.Start:b.End] != b.Text {
-			continue
-		}
-		if strings.TrimSpace(b.Text) == "" || b.SentenceIndex < 0 {
-			continue
-		}
-		out = append(out, scriptgen.BulletCandidate{Text: b.Text, SentenceIndex: b.SentenceIndex, Start: b.Start, End: b.End})
-	}
-	return out, nil
 }
 
 // validateTemporalFacts enforces the temporal contract at the boundary:
@@ -356,8 +321,8 @@ func daysInGoMonth(month, year int) int {
 	}
 }
 
-// projectBullets reuses the bullet projection of BulletCandidates for the
-// single-analyze bundle; nothing is inferred.
+// projectBullets projects the analyze response's grounded sentence bullets
+// into the capability contract; nothing is inferred.
 func projectBullets(sourceText string, analysis *VisualAnalysis) []scriptgen.BulletCandidate {
 	out := make([]scriptgen.BulletCandidate, 0, len(analysis.Bullets))
 	for _, b := range analysis.Bullets {
@@ -375,15 +340,15 @@ func projectBullets(sourceText string, analysis *VisualAnalysis) []scriptgen.Bul
 	return out
 }
 
-// projectCharts reuses the chart projection of ChartCandidates for the
-// single-analyze bundle; nothing is inferred.
+// projectCharts projects the analyze response's grounded chart points into the
+// capability contract; nothing is inferred.
 func projectCharts(sourceText string, analysis *VisualAnalysis) []scriptgen.ChartValueCandidate {
 	out := make([]scriptgen.ChartValueCandidate, 0, len(analysis.ChartPoints))
 	for _, cp := range analysis.ChartPoints {
-		if cp.Entity < 0 || cp.Entity >= len(analysis.Entities) {
+		if cp.Start < 0 || cp.End <= cp.Start || cp.End > len(sourceText) || sourceText[cp.Start:cp.End] != cp.Text {
 			continue
 		}
-		out = append(out, scriptgen.ChartValueCandidate{Text: analysis.Entities[cp.Entity].Text, Value: cp.Value})
+		out = append(out, scriptgen.ChartValueCandidate{Text: cp.Text, Value: cp.Value})
 	}
 	return out
 }

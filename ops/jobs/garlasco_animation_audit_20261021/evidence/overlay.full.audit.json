@@ -1,0 +1,216 @@
+{
+ "source": "ops/jobs/garlasco_animation_audit_20261021/evidence/overlay.full.json",
+ "plan_id": "run_efeb24bc-dc13-4f87-a75b-5039ef15e7a2",
+ "items": 30,
+ "checks": [
+  {
+   "id": "G01",
+   "title": "2 images side by side",
+   "status": "FAIL",
+   "detail": []
+  },
+  {
+   "id": "G02",
+   "title": "3-5 images in one group",
+   "status": "NOT_OBSERVED",
+   "detail": []
+  },
+  {
+   "id": "E01",
+   "title": "2 co-mentioned entities with 2 portraits and 2 captions",
+   "status": "FAIL",
+   "detail": []
+  },
+  {
+   "id": "E02",
+   "title": "repeated entities grouped correctly without asset reuse",
+   "status": "NOT_OBSERVED",
+   "detail": {
+    "entities": {},
+    "duplicates": []
+   }
+  },
+  {
+   "id": "M01",
+   "title": "maps of real narrated places",
+   "status": "FAIL",
+   "detail": {
+    "count": 0,
+    "maps": [],
+    "ungrounded": []
+   }
+  },
+  {
+   "id": "S01",
+   "title": "short phrases (2-5 words) extracted and animated",
+   "status": "PASS",
+   "detail": [
+    {
+     "scene_id": "appello-2011",
+     "text": "Corte d’Assise d’Appello confermò l’assoluzione",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_02_blur_focus_snap"
+    },
+    {
+     "scene_id": "appello-2011",
+     "text": "quindi evitare due semplificazioni opposte",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_20_tracking_spread_clean"
+    },
+    {
+     "scene_id": "appello-2011",
+     "text": "procuratore generale chiese una condanna",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_07_slide_up_soft"
+    },
+    {
+     "scene_id": "appello-2011",
+     "text": "difesa continuò a sostenere l’innocenza",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_16_scale_line_build"
+    },
+    {
+     "scene_id": "cassazione-2013",
+     "text": "Cassazione ritenne necessari approfondimenti istruttori",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_11_slide_left_ease"
+    },
+    {
+     "scene_id": "cassazione-2013",
+     "text": "Cassazione annullò la decisione d’appello",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_08_slide_up_spring"
+    },
+    {
+     "scene_id": "appello-bis-2014",
+     "text": "Quella conferma arrivò l’anno seguente.",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_09_slide_down_catch"
+    },
+    {
+     "scene_id": "appello-bis-2014",
+     "text": "d’Assise d’Appello dispose la riapertura",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_17_scale_in_place"
+    },
+    {
+     "scene_id": "appello-bis-2014",
+     "text": "procedimento furono quindi esaminati ulteriori",
+     "words": 5,
+     "motion_id": "phrase_apple_clean_15_scale_hero_focus"
+    },
+    {
+     "scene_id": "appello-bis-2014",
+     "text": "processo d’appello bis",
+     "words": 3,
+     "motion_id": "phrase_apple_clean_28_opacity_cinematic"
+    }
+   ]
+  },
+  {
+   "id": "L01",
+   "title": "long phrases (6-16 words) with more than one motion family",
+   "status": "PASS",
+   "detail": {
+    "count": 10,
+    "motions": [
+     "apple_expand_from_center",
+     "apple_line_cascade",
+     "apple_soft_scale",
+     "brush_phrase_white_light_sweep",
+     "counter_scroll_reveal",
+     "doc_03_documentary_quote_marker",
+     "hero_scale_focus",
+     "isometric_3d_fold",
+     "text_3d_camera_push",
+     "text_3d_roll_depth"
+    ],
+    "scenes": [
+     "chiara-poggi",
+     "appello-2011",
+     "appello-2011",
+     "cassazione-2013",
+     "appello-bis-2014",
+     "appello-bis-2014",
+     "appello-bis-2014",
+     "cassazione-2015",
+     "cassazione-2015",
+     "chiusura-cronologia"
+    ]
+   }
+  },
+  {
+   "id": "F01",
+   "title": "group final animation declared",
+   "status": "FAIL",
+   "detail": []
+  },
+  {
+   "id": "B01",
+   "title": "at least 2 grounded bullets",
+   "status": "FAIL",
+   "detail": {
+    "count": 0,
+    "grounded": [],
+    "ungrounded": [],
+    "roles": []
+   }
+  },
+  {
+   "id": "B02",
+   "title": "bullet animation visible and distinct",
+   "status": "FAIL",
+   "detail": []
+  },
+  {
+   "id": "C01",
+   "title": "no fabricated numeric comparison",
+   "status": "PASS",
+   "detail": {
+    "cards": 0,
+    "bars": 0,
+    "groups": {},
+    "violations": []
+   }
+  },
+  {
+   "id": "C02",
+   "title": "technical chart canary (grounded values, bars and labels)",
+   "status": "NOT_APPLICABLE",
+   "detail": "Charts in a news script may legitimately be zero; the positive canary is e2e_cert/T04 (C01-C05, 28 animated bars)."
+  },
+  {
+   "id": "X01",
+   "title": "replace-mode atomicity (no chart split across colliding overlays)",
+   "status": "PASS",
+   "detail": {
+    "split_chart_groups": []
+   }
+  },
+  {
+   "id": "X02",
+   "title": "non-chart same-frame collisions",
+   "status": "WARN",
+   "detail": {
+    "count": 2,
+    "pairs": [
+     [
+      "date-chronology-focus__13-agosto-2007__date_number__01",
+      "phrase-apple-clean-18-scale-card-tilt__chiara-poggi__entity_image__01",
+      "delitto-e-luogo"
+     ],
+     [
+      "metric-odometer-vertical__26-anni__date_number__01",
+      "phrase-apple-clean-23-tracking-precision-lock__chiara-poggi__entity_image__01",
+      "chiara-poggi"
+     ]
+    ]
+   }
+  }
+ ],
+ "totals": {
+  "checks": 14,
+  "passed": 4,
+  "failed": 6
+ }
+}

@@ -166,10 +166,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 
 	executor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
-	visualNER, err := buildVisualNERBackend(cfg, log)
-	if err != nil {
-		return nil, err
-	}
 	mediaSamplerExecutor := rustexec.NewExecutor(cfg.External.RustMediaSamplerPath, cfg.External.FfmpegPath, log)
 	// The Go-owned sampler selection policy (data-driven keyword tables,
 	// optional diversity weight) is bound ONCE here so both `select` and
@@ -203,16 +199,16 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
 	wirePhraseImpactAnalyzer(runner, cfg, log)
-	// The selected VisualNER backend supplies chart-point candidates only when
-	// it implements the optional chart contract (the Rust adapter does).
-	if chartAnalyzer, ok := visualNER.(scriptgen.SceneChartAnalyzer); ok {
-		runner.SetSceneChartAnalyzer(chartAnalyzer)
+	// Unified semantic path: ONE analyze call per script returns entities,
+	// bullets, charts, dates and numbers from the same extraction. The worker
+	// is a dedicated binary (bin/semantic-engine), not the media executor and
+	// not the per-category VisualNER entry points.
+	semanticExecutor := rustexec.NewExecutor(cfg.External.RustSemanticEnginePath, cfg.External.FfmpegPath, log)
+	semanticAnalyzer, err := rustexec.NewSemanticEngineAdapter(semanticExecutor)
+	if err != nil {
+		return nil, fmt.Errorf("build semantic engine adapter: %w", err)
 	}
-	// The same backend supplies VisualNER sentence bullets when it
-	// implements the optional bullet contract (the Rust adapter does).
-	if bulletAnalyzer, ok := visualNER.(scriptgen.SceneBulletAnalyzer); ok {
-		runner.SetSceneBulletAnalyzer(bulletAnalyzer)
-	}
+	runner.SetSceneSemanticAnalyzer(semanticAnalyzer)
 	wireSceneIntelligenceAnalyzer(runner, cfg, log)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer
@@ -389,7 +385,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		return nil, fmt.Errorf("build script generation runtime: Job Registry is required for execution lineage")
 	}
 
-	vidRushEntityExtractor, err := nlp.NewEntityExtractorAdapter(visualNER)
+	// SceneIR entity extraction and image search share the same semantic
+	// engine as the script batch analyzer. Exact source matches reuse the
+	// batch entity projection; translated/different text is analyzed by that
+	// same engine on demand.
+	vidRushEntityExtractor, err := nlp.NewEntityExtractorAdapter(semanticAnalyzer)
 	if err != nil {
 		return nil, fmt.Errorf("build NER entity extractor port: %w", err)
 	}
@@ -436,7 +436,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			return plan, err
 		}),
 		Backpressure: scriptgen.DefaultVidRushBackpressure(),
-		NERPort:      visualNER,
+		NERPort:      semanticAnalyzer,
 		SamplerPort:  mediaSampler,
 		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
 			return mediacert.Certify(spec, result), nil

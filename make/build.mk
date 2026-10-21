@@ -87,6 +87,11 @@ go-version-check:
 #   - bin/worker      : cross-host worker (cmd/worker) — registers
 #                       against an HTTP broker via VELOX_BROKER_URL for
 #                       users running the long-running worker on a
+#
+# build-muscles also installs the unified semantic engine: ONE NDJSON service
+# for the whole script (entities, bullets, charts, dates, numbers, relations).
+# It is a separate binary so the semantic path does not share the media
+# executor's dispatcher or build.
 build-muscles:
 	@test -n "$(ICU_MAJOR)" || (echo "ICU4C development libraries are required (pkg-config icu-i18n)" >&2; exit 1)
 	@mkdir -p bin
@@ -95,6 +100,7 @@ build-muscles:
 	install -m 0755 rust/target/release/pipelinegen-muscles bin/phrase_impact
 	install -m 0755 rust/target/release/pipelinegen-muscles bin/scene_intelligence
 	install -m 0755 rust/target/release/visualner bin/visualner
+	install -m 0755 rust/target/release/semantic-engine bin/semantic-engine
 	install -m 0755 rust/target/release/mediasampler bin/mediasampler
 
 build: go-version-check build-muscles

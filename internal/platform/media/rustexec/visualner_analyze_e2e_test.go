@@ -66,8 +66,11 @@ func TestVisualNERAnalyzeRealBinaryProducesBulletsAndChartPoints(t *testing.T) {
 
 	found25 := false
 	for _, cp := range analysis.ChartPoints {
-		if !validEntityIndex(cp.Entity, len(analysis.Entities)) {
+		if cp.Entity != nil && !validEntityIndex(*cp.Entity, len(analysis.Entities)) {
 			t.Fatalf("chart point entity out of range: %+v", cp)
+		}
+		if cp.Start < 0 || cp.End > len(text) || cp.Start >= cp.End || text[cp.Start:cp.End] != cp.Text {
+			t.Fatalf("chart point is not grounded: %+v", cp)
 		}
 		if cp.Value == 25 {
 			found25 = true
@@ -78,9 +81,10 @@ func TestVisualNERAnalyzeRealBinaryProducesBulletsAndChartPoints(t *testing.T) {
 	}
 }
 
-// TestVisualNERChartCandidatesRealBinaryGroundsLabels checks that the adapter
-// returns exact source labels for the worker's chart values.
-func TestVisualNERChartCandidatesRealBinaryGroundsLabels(t *testing.T) {
+// TestVisualNERSemanticBundleRealBinaryGroundsCharts checks that the unified
+// single-analyze bundle returns exact source labels for the worker's chart
+// values.
+func TestVisualNERSemanticBundleRealBinaryGroundsCharts(t *testing.T) {
 	binary := resolveVisualNERBinary()
 	if binary == "" {
 		t.Skip("visualner release binary not built; run cargo build --release -p visualner --bin visualner")
@@ -93,18 +97,18 @@ func TestVisualNERChartCandidatesRealBinaryGroundsLabels(t *testing.T) {
 	}
 	defer adapter.Close()
 
-	candidates, err := adapter.ChartCandidates(context.Background(), "it", text, 12)
+	bundle, err := adapter.SemanticCandidates(context.Background(), "it", text, 12)
 	if err != nil {
-		t.Fatalf("chart candidates failed: %v", err)
+		t.Fatalf("semantic candidates failed: %v", err)
 	}
 	found := false
-	for _, c := range candidates {
+	for _, c := range bundle.Charts {
 		if c.Value == 25 && c.Text == "25%" && strings.Contains(text, c.Text) {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected grounded 25%% candidate, got %+v", candidates)
+		t.Fatalf("expected grounded 25%% candidate, got %+v", bundle.Charts)
 	}
 }
 

@@ -29,25 +29,45 @@ func AttachRandomImageEffects(planID string, items []capabilityoverlay.OverlayIt
 		if item.EndMs <= item.StartMs && item.DurationUS <= 0 {
 			continue
 		}
-		if _, exists := item.Params["effects"]; exists {
+		if _, explicit := item.Params["effects"]; explicit {
 			continue
 		}
-		if !capabilityoverlay.SelectImageEffectDecorationEnabled(planID, item.ID) {
+		if len(item.ImageLayers) > 0 {
+			assetsByID := make(map[string]capabilityoverlay.OverlayAssetRef, len(item.AssetRefs))
+			for _, asset := range item.AssetRefs {
+				assetsByID[asset.AssetID] = asset
+			}
+			for layerIndex := range item.ImageLayers {
+				layer := &item.ImageLayers[layerIndex]
+				_, exists := assetsByID[layer.AssetID]
+				if !exists {
+					continue
+				}
+				layer.Params = attachRandomImageEffect(planID, layer.ID, layer.Params)
+			}
 			continue
 		}
-		name := capabilityoverlay.SelectImageEffectDecoration(planID, item.ID)
-		if name == "" {
-			continue
-		}
-		effect := capabilityoverlay.ImageEffectDecorationEffect(name, imageEffectDecorationSeed(planID, item.ID))
-		if effect == nil {
-			continue
-		}
-		if item.Params == nil {
-			item.Params = map[string]any{}
-		}
-		item.Params["effects"] = []any{effect}
+		item.Params = attachRandomImageEffect(planID, item.ID, item.Params)
 	}
+}
+
+func attachRandomImageEffect(planID, itemID string, params map[string]any) map[string]any {
+	if _, explicit := params["effects"]; explicit || !capabilityoverlay.SelectImageEffectDecorationEnabled(planID, itemID) {
+		return params
+	}
+	name := capabilityoverlay.SelectImageEffectDecoration(planID, itemID)
+	if name == "" {
+		return params
+	}
+	effect := capabilityoverlay.ImageEffectDecorationEffect(name, imageEffectDecorationSeed(planID, itemID))
+	if effect == nil {
+		return params
+	}
+	if params == nil {
+		params = make(map[string]any)
+	}
+	params["effects"] = []any{effect}
+	return params
 }
 
 // imageEffectDecorationSeed derives the decoration's per-item grain seed from

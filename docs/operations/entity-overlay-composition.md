@@ -39,12 +39,13 @@ Implemented by `composeNearbyEntityImages` in
 - **One group choreography**: composites carry a size-specific `group_motion_id`
   selected from the certified `image.group.count_2` through
   `image.group.count_5` catalog pools. The seeded draw is stable on retry and
-  avoids repeating the previous group when another candidate exists. Each
-  child still has its own layer entrance and caption animation.
+  avoids repeating the previous group when another candidate exists. All image
+  layers share the same start and end, so their entrance and exit are visible
+  while the group is on screen. Each child also keeps its own certified layer
+  entrance and caption animation.
 - **Wire shape**: one `entity_image` item carrying N `asset_refs` and N
   `image_layers`. Each layer keeps:
-  - its own relative `start_ms`/`end_ms` inside the parent window
-    (the staggered reveal follows each portrait's own spoken anchor);
+  - the shared relative `start_ms`/`end_ms` of the simultaneous group window;
   - its own `preset_id` and its own certified `motion_id`
     (`assignEntityImageMotions` consumes one motion-pool ordinal per
     layer, so animations stay independent and non-repeating);
@@ -52,7 +53,7 @@ Implemented by `composeNearbyEntityImages` in
   - per-slot geometry in `params` (`width`, `height`, `position_x`,
     `position_y`, `fit: contain`).
 - **Slot geometry** (1920×1080 reference; scales with the canvas):
-  duo = left/right cards at ±24 % width; trio = one row at 31 % pitch;
+  duo = left/right cards at ±25 % width; trio = two above and one centered below;
   quad = 2×2; penta = hero row of three + pair below. There is no hexa layout.
 - **Identity**: the composite item ID concatenates the child IDs
   (`id-a+id-b+…`); each layer ID is the original item ID and carries the

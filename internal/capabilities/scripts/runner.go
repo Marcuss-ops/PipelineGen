@@ -58,8 +58,6 @@ type Runner struct {
 	finalJobSubmitter         FinalJobSubmitter
 	phraseImpactAnalyzer      PhraseImpactAnalyzer
 	sceneIntelligenceAnalyzer SceneIntelligenceAnalyzer
-	sceneChartAnalyzer        SceneChartAnalyzer
-	sceneBulletAnalyzer       SceneBulletAnalyzer
 	sceneSemanticAnalyzer     SceneSemanticAnalyzer
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover

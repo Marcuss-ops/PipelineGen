@@ -14,7 +14,6 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"go.uber.org/zap"
 )
 
 type GenerateResult struct {
@@ -284,6 +283,12 @@ type SceneHighlightAnalyzer interface {
 	AnalyzeScenes(context.Context, string, string, []scriptpkg.SceneAnalysisInput) (scriptpkg.PhraseImpactResult, error)
 }
 
+// SemanticBulletCandidateAnalyzer lets the shared semantic pass provide
+// grounded candidate spans while Phrase Impact retains editorial ranking.
+type SemanticBulletCandidateAnalyzer interface {
+	AnalyzeScenesWithSemanticBullets(context.Context, string, string, []scriptpkg.SceneAnalysisInput, []scriptpkg.SemanticBulletSpan) (scriptpkg.PhraseImpactResult, error)
+}
+
 // SISceneRequest is the runner-facing scene payload accepted by the optional
 // Scene Intelligence analyzer. Video windows are required even though this
 // analysis does not place overlays; invalid/unresolved windows are skipped.
@@ -301,12 +306,6 @@ type ChartValueCandidate struct {
 	Value float64
 }
 
-// SceneChartAnalyzer returns VisualNER chart-point candidates for one scene's
-// text. It is optional; nil keeps chart authorization on the existing path.
-type SceneChartAnalyzer interface {
-	ChartCandidates(ctx context.Context, language, sourceText string, limit int) ([]ChartValueCandidate, error)
-}
-
 // BulletCandidate is one VisualNER sentence bullet grounded as an exact
 // source span. SentenceIndex is the worker's scene-local sentence number;
 // the scripts layer re-maps it onto the Go sentence splitter before it can
@@ -318,29 +317,9 @@ type BulletCandidate struct {
 	End           int
 }
 
-// SceneBulletAnalyzer returns VisualNER sentence-bullet candidates for one
-// scene's text. It is optional; nil keeps the existing phrase-impact bullets.
-type SceneBulletAnalyzer interface {
-	BulletCandidates(ctx context.Context, language, sourceText string, limit int) ([]BulletCandidate, error)
-}
-
-// SetSceneBulletAnalyzer wires the optional VisualNER bullet source.
-func (r *Runner) SetSceneBulletAnalyzer(analyzer SceneBulletAnalyzer) {
-	if r != nil {
-		r.sceneBulletAnalyzer = analyzer
-	}
-}
-
-// SetSceneChartAnalyzer wires the optional VisualNER chart-point source.
-func (r *Runner) SetSceneChartAnalyzer(analyzer SceneChartAnalyzer) {
-	if r != nil {
-		r.sceneChartAnalyzer = analyzer
-	}
-}
-
-// SetSceneSemanticAnalyzer wires the unified VisualNER semantic source: one
-// analyze call per scene replaces the separate bullet and chart calls. When
-// unset the runner falls back to the legacy separate analyzers.
+// SetSceneSemanticAnalyzer wires the unified semantic source. A batch-capable
+// implementation analyses the whole script in one call; the per-category
+// bullet/chart ports were retired with the cutover.
 func (r *Runner) SetSceneSemanticAnalyzer(analyzer SceneSemanticAnalyzer) {
 	if r != nil {
 		r.sceneSemanticAnalyzer = analyzer
@@ -369,40 +348,8 @@ func (r *Runner) SetPhraseImpactAnalyzer(analyzer PhraseImpactAnalyzer) {
 // baseline: chart candidates refine the rendered-output contract owned by
 // this file. No behaviour change.
 
-// visualChartCandidateLimit bounds the VisualNER entities requested per scene
-// so a numeric label is not truncated by the entity limit.
-const visualChartCandidateLimit = 12
-
 // maxEditorialChartValues mirrors the editorial manifest validation limit.
 const maxEditorialChartValues = 6
-
-// attachVisualChartValues adds VisualNER chart candidates to each scene's
-// ChartValues. A candidate survives only if its text is an exact substring of
-// the scene text and the strict chart parser reads it as the worker's value.
-// Failures keep the existing values; they never fail the generation.
-func (r *Runner) attachVisualChartValues(ctx context.Context, language string, inputs []scriptpkg.SceneAnalysisInput, highlights []scriptpkg.SceneHighlight) []scriptpkg.SceneHighlight {
-	if r == nil || r.sceneChartAnalyzer == nil || len(highlights) == 0 {
-		return highlights
-	}
-	texts := make(map[string]string, len(inputs))
-	for _, in := range inputs {
-		texts[in.SceneID] = in.Text
-	}
-	for i := range highlights {
-		text := texts[highlights[i].SceneID]
-		if strings.TrimSpace(text) == "" {
-			continue
-		}
-		candidates, err := r.sceneChartAnalyzer.ChartCandidates(ctx, language, text, visualChartCandidateLimit)
-		if err != nil {
-			r.log.Warn("visualner chart analysis unavailable; keeping existing chart values",
-				zap.String("scene_id", highlights[i].SceneID), zap.Error(err))
-			continue
-		}
-		highlights[i].ChartValues = mergeChartValues(highlights[i].ChartValues, candidates, text)
-	}
-	return highlights
-}
 
 // verifyChartCandidate turns one VisualNER chart row into the verbatim
 // source surface it authorizes. The worker frequently mirrors the dirty NLP

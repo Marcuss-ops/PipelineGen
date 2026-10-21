@@ -44,6 +44,12 @@ type PlannerConfig struct {
 	// around it. A zero value keeps the certified single-budget behavior.
 	RunLevelShortPhraseLimit int
 	RunLevelLongPhraseLimit  int
+	// RunLevelBulletOverlayLimit opts into an independent bullet lane. When
+	// positive, chapter bullet cards are admitted on their own quota instead
+	// of spending a long-phrase slot: the requested short-phrase ceiling and
+	// the long-phrase ceiling are then both fully available to ordinary
+	// narration phrases. Zero keeps the legacy shared-lane behavior.
+	RunLevelBulletOverlayLimit int
 	// RunLevelMapOverlayLimit is the per-scene map ceiling used by the
 	// map-aware editorial budget. Zero keeps the certified default
 	// (MaxMapOverlaysPerScene); a positive value raises it per run.

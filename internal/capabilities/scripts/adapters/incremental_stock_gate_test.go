@@ -73,6 +73,29 @@ func TestIncrementalFanoutStockBoundSegmentNeverSearches(t *testing.T) {
 	}
 }
 
+func TestIncrementalFanoutAllowsOnlyExplicitEntityImageSidecarForStock(t *testing.T) {
+	artlist := &stockGateArtlistSearcher{}
+	images := &stockGateImageSearcher{}
+	fanout := NewVidRushProviderFanout(artlist, images)
+	plan := stockGatePlan()
+	plan.MediaPlan.Extraction.EntityImages = mediadomain.EntityImagePolicy{
+		Enabled: true, Scope: "per_scene", EntityTypes: []string{"PERSON"},
+	}
+	got, err := fanout.ResolveProviders(context.Background(), plan, stockGateSegment())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Cache.Binding != "STOCK_BOUND" || got.Cache.Artlist != "BYPASSED" || got.Cache.YouTube != "BYPASSED" {
+		t.Fatalf("stock sidecar provider states = %+v", got.Cache)
+	}
+	if got.Cache.InternetImages == "BYPASSED" || len(got.Assets.SecondaryImages) == 0 {
+		t.Fatalf("explicit entity image sidecar did not search: cache=%+v secondary=%d", got.Cache, len(got.Assets.SecondaryImages))
+	}
+	if len(artlist.queries) != 0 {
+		t.Fatalf("stock-bound scene reached Artlist: %v", artlist.queries)
+	}
+}
+
 // TestMaterializePortStockBoundSegmentNeverAcquires covers the single-segment
 // Materialize port the incremental coordinator drives: the plan is the only
 // binding surface and the stock-bound segment must return untouched.
@@ -87,5 +110,42 @@ func TestMaterializePortStockBoundSegmentNeverAcquires(t *testing.T) {
 	}
 	if len(got.Assets.Candidates) != 0 || len(got.Assets.SecondaryImages) != 0 {
 		t.Fatalf("Materialize acquired provider media for a stock-bound segment: %+v", got.Assets)
+	}
+}
+
+func TestMaterializePortKeepsStockVideoAndMaterializesExplicitImageSidecar(t *testing.T) {
+	provider := internetImageMaterializationProviderStub{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
+	plan := stockGatePlan()
+	plan.ImagesPerScene = 1
+	plan.MediaPlan.Extraction.EntityImages = mediadomain.EntityImagePolicy{
+		Enabled: true, Scope: "per_scene", EntityTypes: []string{"PERSON"},
+	}
+	segment := stockGateSegment()
+	stockVideo := &scriptpkg.SegmentAssetCandidate{AssetID: "stock-video", Provider: scriptpkg.VidRushProviderYouTube}
+	segment.Assets.PrimaryVideo = stockVideo
+	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "portrait", Provider: scriptpkg.VidRushProviderInternetImages, SegmentID: segment.SegmentID, Position: segment.Position,
+		Entity: "Alberto Stasi", Query: "Alberto Stasi portrait", SourceURL: "https://images.example/alberto.jpg", RelevanceScore: .9,
+	}}
+	segment.Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON", Confidence: .99}}
+
+	got, err := processor.Materialize(context.Background(), plan, segment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Cache.Binding != "STOCK_BOUND" || got.Cache.Artlist != "BYPASSED" || got.Cache.ImageGeneration != "BYPASSED" {
+		t.Fatalf("stock sidecar cache state = %+v", got.Cache)
+	}
+	if got.Assets.PrimaryVideo == nil || got.Assets.PrimaryVideo.AssetID != "stock-video" {
+		t.Fatalf("stock primary video changed during image materialization: %+v", got.Assets.PrimaryVideo)
+	}
+	if len(got.Assets.SecondaryImages) != 1 || got.Assets.SecondaryImages[0].Provider != scriptpkg.VidRushProviderInternetImages {
+		t.Fatalf("explicit image sidecar was not materialized: cache=%+v images=%+v candidates=%+v warnings=%v", got.Cache, got.Assets.SecondaryImages, got.Assets.Candidates, got.Warnings)
 	}
 }

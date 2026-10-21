@@ -357,12 +357,6 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if canvas.RandomLightLeakOnOverlayStart {
 		items = append(items, scriptoverlay.OverlayStartLightLeakItems(planID, items)...)
 	}
-	// Random EffectsPack-derived runtime effects on image overlays: a
-	// deterministic per-image yes/no draw plus one light effect on top of the
-	// image's entrance animation. Explicit item effects always win.
-	if canvas.RandomImageEffects {
-		scriptoverlay.AttachRandomImageEffects(planID, items)
-	}
 	// Run-level style projection (text sizing, image frame/layer params) is
 	// owned by overlay_plan_finalize.go so this file stays inside the strict
 	// 600-line cap; the call is the same one this block performed inline.
@@ -462,7 +456,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// not treat a 2–5-image group as one indivisible image.
 	perSceneEntityImages := len(perSceneImages) > 0 && perSceneImages[0]
 	if hasShortPhraseCap && hasLongPhraseCap {
-		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithPhraseLanes(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages, shortPhraseCap, longPhraseCap)
+		// An explicit bullets cap opens the independent bullet lane here too:
+		// this is the authoritative admission pass, so omitting it would let
+		// chapter cards spend the long-phrase slots again.
+		bulletCap, _ := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupBullets)
+		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithBulletLane(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages, shortPhraseCap, longPhraseCap, bulletCap)
 	} else {
 		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages)
 	}
@@ -480,6 +478,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	items = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
 	items = capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
+	// Apply effects after entity assets are attached and nearby images have
+	// been composed, so the random policy covers both generic images and every
+	// entity-image child while respecting the final admitted render set.
+	if canvas.RandomImageEffects {
+		scriptoverlay.AttachRandomImageEffects(planID, items)
+	}
 	if limit, capped := canvas.OverlayGroupLimits[overlayGroupEntitiesWithText]; capped && limit == 0 {
 		// Composition creates caption text from entity names, so reapply the
 		// explicit no-text budget after it has fused the image items.

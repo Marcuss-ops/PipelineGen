@@ -80,14 +80,15 @@ func TestCompileOverlayPlanRetryKeepsStableIndependentImageMotions(t *testing.T)
 			t.Fatalf("plan %q should produce one two-image composite, got %+v", planID, plan.Items)
 		}
 		item := plan.Items[0]
-		// The composite is a camera sequence: each portrait enters after one
-		// hold+travel slot and every layer stays up for the whole group. The
-		// group spans the editorial image ceiling, not the 2s mention window.
-		secondStart := int64(entityImageHoldMS + entityImageTravelMS)
-		if item.StartMs != 0 || item.EndMs != int64(capabilityoverlay.MaxImageOverlayDurationMS) ||
-			item.ImageLayers[0].StartMS != 0 || item.ImageLayers[1].StartMS != secondStart ||
+		// The group is simultaneous: both portraits occupy the same 2s scene
+		// window, with side-by-side positions and no camera sequence.
+		if item.StartMs != 0 || item.EndMs != 2_000 ||
+			item.ImageLayers[0].StartMS != 0 || item.ImageLayers[1].StartMS != 0 ||
 			item.ImageLayers[0].EndMS != item.EndMs || item.ImageLayers[1].EndMS != item.EndMs {
-			t.Fatalf("plan %q has an unexpected composite sequence: %+v", planID, item)
+			t.Fatalf("plan %q has an unexpected simultaneous composite: %+v", planID, item)
+		}
+		if item.ImageLayers[0].Params["position_x"] == item.ImageLayers[1].Params["position_x"] || item.CameraMotionID != "" {
+			t.Fatalf("plan %q did not place both images side-by-side without a camera sequence: %+v", planID, item)
 		}
 		got := []string{item.ImageLayers[0].MotionID, item.ImageLayers[1].MotionID}
 		certified := capabilityoverlay.CertifiedImageMotions()

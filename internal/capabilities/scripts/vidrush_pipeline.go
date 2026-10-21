@@ -155,15 +155,30 @@ type VidRushTimingRecorder interface {
 func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (scriptpkg.VidRushSegmentResult, error) {
 	if _, stockBound := scriptpkg.StockBindingForSegment(plan, nil, segment); stockBound {
 		// A direct stock binding is the scene's authoritative visual source.
-		// Neither the local-first semantic probe nor the provider fanout may
-		// search for it. The gate only rewrites Cache strings (struct values),
-		// so a shallow struct copy is a sufficient isolated result here.
+		// Keep video discovery out of that scene, while allowing the caller's
+		// explicit, identity-scoped entity-image policy to retrieve portrait
+		// overlays. Those stills are separate overlay assets and do not replace
+		// or alter the stock-bound video.
 		cloned := segment
 		cloned.Cache.Artlist = "BYPASSED"
-		cloned.Cache.InternetImages = "BYPASSED"
 		cloned.Cache.YouTube = "BYPASSED"
 		cloned.Cache.Binding = "STOCK_BOUND"
-		return cloned, nil
+		if !stockBoundEntityImageSearchEnabled(plan) || r.fanout == nil {
+			cloned.Cache.InternetImages = "BYPASSED"
+			return cloned, nil
+		}
+		imagePlan := *plan
+		imagePlan.MediaPlan = plan.MediaPlan.Clone()
+		imagePlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
+		imagePlan.MediaPlan.ProviderPolicy.YouTube = mediadomain.MediaToggleDisabled
+		updated, err := r.fanout.ResolveProviders(ctx, &imagePlan, cloned)
+		if err != nil {
+			return segment, err
+		}
+		updated.Cache.Artlist = "BYPASSED"
+		updated.Cache.YouTube = "BYPASSED"
+		updated.Cache.Binding = "STOCK_BOUND"
+		return updated, nil
 	}
 	updated, err := r.semantic.ResolveProviders(ctx, plan, segment)
 	if err != nil {
@@ -178,6 +193,12 @@ func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *
 	// live search while preserving the caller's image/generation policy.
 	fanoutPlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
 	return r.fanout.ResolveProviders(ctx, &fanoutPlan, updated)
+}
+
+func stockBoundEntityImageSearchEnabled(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	return plan != nil && plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() &&
+		plan.MediaPlan.Extraction.EntityImages.Enabled &&
+		plan.MediaPlan.Extraction.EntityImages.PerScene()
 }
 
 // NewSemanticProviderResolver wires the new resolver. Both ports must be non-nil.

@@ -104,6 +104,22 @@ func TestStockBoundScenesBypassArtlistAndImageSearch(t *testing.T) {
 	require.Equal(t, "BYPASSED", imageResult.VidRushSegments[1].Cache.InternetImages)
 }
 
+func TestStockBoundSceneAllowsExplicitEntityImageSidecarSearch(t *testing.T) {
+	spec, bindings := stockGateSpec()
+	images := &stockGateImageSearcher{}
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "mixed", MediaPlan: mediadomain.MediaPlanSpec{
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+		Extraction:     mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{Enabled: true, Scope: "per_scene"}},
+	}}
+	result, err := NewMediaResolverImageStage(images).Process(context.Background(), plan, ProcessInput{
+		SpecScene: spec, StockBindings: bindings, VidRushSegments: stockGateSegments(),
+	})
+	require.NoError(t, err)
+	require.True(t, containsQuery(images.queries, "stock image query"),
+		"explicit entity sidecar may search for portraits while stock remains the scene's video source")
+	require.NotEmpty(t, result.VidRushSegments[1].Assets.Candidates)
+}
+
 func TestStockBoundSegmentNeverEntersMaterialization(t *testing.T) {
 	provider := &generationMaterializationProviderStub{}
 	registry := NewVidRushAssetProviderRegistry()

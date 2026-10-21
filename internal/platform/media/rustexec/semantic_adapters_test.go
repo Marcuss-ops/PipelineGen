@@ -11,9 +11,11 @@ import (
 type semanticRunner struct {
 	output []byte
 	input  []byte
+	calls  int
 }
 
 func (r *semanticRunner) Run(_ context.Context, _ string, input []byte, _ int64) ([]byte, []byte, error) {
+	r.calls++
 	r.input = append([]byte(nil), input...)
 	return r.output, nil, nil
 }
