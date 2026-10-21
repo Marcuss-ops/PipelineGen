@@ -70,6 +70,7 @@ var commandRegistry = map[string]commandHandler{
 	"db-migrations":                  withTimeout(database.RunDBMigrations, 5*time.Minute),
 	"db-restore":                     withTimeout(database.RunDBRestore, 15*time.Minute),
 	"db-rotate":                      withTimeout(database.RunDBRotate, 5*time.Minute),
+	"db-retention":                   withTimeout(database.RunDBRetention, 30*time.Minute),
 	"db-status":                      withTimeout(database.RunDBStatus, 5*time.Minute),
 	"delete-drive-images":            cleanup.RunDeleteDriveImages,
 	"download-sound-effects":         soundeffects.RunDownloadSoundEffects,

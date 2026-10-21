@@ -1,6 +1,6 @@
 // cmd/admin/db.go (June 2026 codex/db-doctor-restore):
 //
-// Dispatcher for the admin db {status,check,migrations,backup,restore,rotate}
+// Dispatcher for the admin db {status,check,migrations,backup,restore,rotate,retention}
 // subsystem. Each subcommand is implemented in its own file:
 //   - cmd/admin/db_status.go     → db status
 //   - cmd/admin/db_check.go      → db check  (incl. Qdrant health)
@@ -8,6 +8,7 @@
 //   - cmd/admin/db_backup.go     → db backup
 //   - cmd/admin/db_restore.go    → db restore --verify
 //   - cmd/admin/db_rotate.go     → db rotate (observability retention, branch 2)
+//   - cmd/admin/db_retention.go  → db retention (jobs/observability/media telemetry + history)
 //
 // All subcommands route through `internal/platform/sqlite.OpenSet`
 // and call helpers in `internal/platform/sqlite/doctor.go` and
@@ -27,13 +28,15 @@ import (
 
 func RunDB(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: admin db <subcmd> [args]\n  subcommands: status, check, migrations, backup, restore, rotate")
+		return fmt.Errorf("usage: admin db <subcmd> [args]\n  subcommands: status, check, migrations, backup, restore, rotate, retention")
 	}
 
 	// AGENTS.md §7 post-write save ctx — admin `db` composition root;
 	// parent Background ctx + signal notify — the admin binary is a
 	// one-shot CLI and never has a parent request ctx to inherit.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// 30m covers `db retention`, whose per-database VACUUM rewrites
+	// multi-GB files; faster subcommands still return immediately.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -54,7 +57,9 @@ func RunDB(args []string) error {
 		return RunDBRestore(ctx, rest)
 	case "rotate":
 		return RunDBRotate(ctx, rest)
+	case "retention":
+		return RunDBRetention(ctx, rest)
 	default:
-		return fmt.Errorf("unknown db subcommand: %s (expected: status, check, migrations, backup, restore, rotate)", sub)
+		return fmt.Errorf("unknown db subcommand: %s (expected: status, check, migrations, backup, restore, rotate, retention)", sub)
 	}
 }
