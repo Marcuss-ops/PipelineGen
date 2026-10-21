@@ -1,6 +1,6 @@
 {
   "batch": "Garlasco 10 video — sequential delivery — 20 minutes each",
-  "status": "generating_scene_text_1_of_10",
+  "status": "intro_resubmission_complete_4_of_4",
   "drive_parent_folder_id": "1pcXIimINrkOcYd-dsiFyefxhcVH1SmrJ",
   "drive_parent_folder_url": "https://drive.google.com/drive/folders/1pcXIimINrkOcYd-dsiFyefxhcVH1SmrJ",
   "drive_job_01_folder_id": "1ZRpCSoind-Q8s6Ih9CNa5H1yAOJdqQmc",
@@ -126,7 +126,7 @@
     "job_1792500481597534405_095ebf5e",
     "job_1792502501453736397_4426349f"
   ],
-  "note": "Fixed local final-job overlay scheduling for entity_card, built and deployed; regression test passed. Prior retry reused a stale cancelled Master job id, so submitted a fresh final r4 with the corrected payload and refresh disabled. It is RUNNING on local worker YOutube_774401_2 in GENERATING_SCENE_TEXT; no new Master job has been created yet.",
+  "note": "All four intro-fix final jobs now SUCCEEDED and produced remote final artifacts with a 15 s scene-intro built from three distinct clips. 01 and 02 passed the original overlay gate; 03 needed max_overlays_per_scene=1 and 04 needed maps disabled to bypass deterministic overlay/map failures unrelated to the intro.",
   "final_video_job_ids": [
     "job_1792500481597534405_095ebf5e",
     "job_1792500481597534405_095ebf5e",
@@ -178,14 +178,148 @@
       "script": "01_cronologia",
       "job_id": "job_1792504735951647980_146a14dc",
       "idempotency_key": "20261020-garlasco-batch10-01-final-r4",
-      "status": "RUNNING",
+      "status": "SUCCEEDED",
       "worker_ids": [
         "YOutube_774401_2"
       ],
       "code_fix": "Treat entity_card overlays as image-style overlays and schedule them in a non-overlapping scene window.",
       "refresh_disabled": true,
       "remote_master_job_created": false,
-      "current_stage": "GENERATING_SCENE_TEXT"
+      "output_note": "Pre-intro output: first timeline segment is delitto-e-luogo, no scene-intro. Superseded by job_1792526664806258673_53368d94."
     }
-  ]
+  ],
+  "intro_fix_jobs": [
+    {
+      "script": "01_cronologia",
+      "payload": "01_cronologia.generate.v8.introfix.json",
+      "job_id": "job_1792526664806258673_53368d94",
+      "idempotency_key": "20261020-garlasco-batch10-01-final-r6-intro",
+      "clip_ids": [
+        "yt_CHn2h59EptE_4140_4185_v1",
+        "yt_7Zlo_inISoc_2545_2560_v1",
+        "yt_CHn2h59EptE_60_115_v1"
+      ],
+      "submitted_at": "2026-10-20T20:06:00Z",
+      "status": "QUEUED"
+    },
+    {
+      "script": "02_procedimento",
+      "payload": "02_procedimento.generate.v15.introfix.json",
+      "job_id": "job_1792526670692378516_e4d4e982",
+      "idempotency_key": "20261020-garlasco-batch10-02-final-r6-intro",
+      "clip_ids": [
+        "yt_Nb3lxnjuWAY_17_30_v1",
+        "yt_SX9DwFfy9cA_402_415_v1",
+        "yt_-HF-KbFABH8_208_221_v1"
+      ],
+      "submitted_at": "2026-10-20T20:06:00Z",
+      "status": "QUEUED"
+    },
+    {
+      "script": "03_stasi_sentenza",
+      "payload": "03_stasi_sentenza.generate.v9.introfix.json",
+      "job_id": "job_1792526676171614193_e259662a",
+      "idempotency_key": "20261020-garlasco-batch10-03-final-r6-intro",
+      "clip_ids": [
+        "yt_qkp1IwW7vvQ_495_540_v1",
+        "yt_CHn2h59EptE_60_75_v1",
+        "yt_7Zlo_inISoc_3030_3085_v1"
+      ],
+      "submitted_at": "2026-10-20T20:06:00Z",
+      "status": "QUEUED"
+    },
+    {
+      "script": "04_nuova_indagine",
+      "payload": "04_nuova_indagine.generate.v11.introfix.json",
+      "job_id": "job_1792526683478768902_a4632756",
+      "idempotency_key": "20261020-garlasco-batch10-04-final-r6-intro",
+      "clip_ids": [
+        "yt_7Zlo_inISoc_2275_2330_v1",
+        "yt_4VgY1zHqU3M_20_35_v1",
+        "yt_7Zlo_inISoc_1920_1965_v1"
+      ],
+      "submitted_at": "2026-10-20T20:06:00Z",
+      "status": "QUEUED"
+    }
+  ],
+  "intro_fix_note": "First intro-fix submission (r5) failed before the final job: the localized render lane always burns a subtitle track, so a fixed intro with subtitles disabled failed on a transcript track with no timed cues (and some clips also failed the VELOX_ASSEMBLY_READY_V1 bt709 color check). Fixed in runner_render_units.go: fixed-media scenes are enqueued only when Render.Subtitles is enabled; otherwise the final-job payload uses the library clip directly. The r6 payloads are the same intro-fixed JSONs resubmitted after rebuilding and restarting pipelinegen.",
+  "intro_fix_20261020": {
+    "finding": "The ten prior Garlasco jobs had no items[].intro: media_plan.intro was only a visual-slot plan, so the final videos had no opening clip sequence.",
+    "payloads": [
+      "01_cronologia.generate.v8.introfix.json",
+      "02_procedimento.generate.v15.introfix.json",
+      "03_stasi_sentenza.generate.v9.introfix.json",
+      "04_nuova_indagine.generate.v11.introfix.json"
+    ],
+    "jobs": [
+      {
+        "script": "01_cronologia",
+        "job_id": "job_1792526664806258673_53368d94",
+        "correlation_id": "20261020-garlasco-batch10-01-final-r6-intro",
+        "status": "SUCCEEDED",
+        "intro_clip_ids": [
+          "yt_CHn2h59EptE_4140_4185_v1",
+          "yt_7Zlo_inISoc_2545_2560_v1",
+          "yt_CHn2h59EptE_60_115_v1"
+        ],
+        "intro_duration_us": 15000000,
+        "overlay_count": 30,
+        "remote_job_id": "job_76cac5b0f744d0af",
+        "artifact_url": "http://51.91.11.36:8000/api/internal/artifacts/d3170403b49f672a4f56a538eb5a82e6/download"
+      },
+      {
+        "script": "02_procedimento",
+        "job_id": "job_1792528423034602026_d8c63a97",
+        "correlation_id": "20261020-garlasco-batch10-02-final-r7-intro",
+        "status": "SUCCEEDED",
+        "intro_clip_ids": [
+          "yt_Nb3lxnjuWAY_17_30_v1",
+          "yt_SX9DwFfy9cA_402_415_v1",
+          "yt_-HF-KbFABH8_208_221_v1"
+        ],
+        "intro_duration_us": 15000000,
+        "overlay_count": 27,
+        "remote_job_id": "job_9b9eaffca9f33f50",
+        "artifact_url": "http://51.91.11.36:8000/api/internal/artifacts/ca2de70be5662c64dec363524957d0e4/download",
+        "notes": "r6 failed on non-overlapping overlay windows in scene-01; r7 succeeded on a fresh plan."
+      },
+      {
+        "script": "03_stasi_sentenza",
+        "job_id": "job_1792529670359899547_fec4fc10",
+        "correlation_id": "20261020-garlasco-batch10-03-final-r8-intro",
+        "status": "SUCCEEDED",
+        "intro_clip_ids": [
+          "yt_qkp1IwW7vvQ_495_540_v1",
+          "yt_CHn2h59EptE_60_75_v1",
+          "yt_7Zlo_inISoc_3030_3085_v1"
+        ],
+        "intro_duration_us": 15000000,
+        "overlay_count": 9,
+        "remote_job_id": "job_0d2ddf0f4614010b",
+        "artifact_url": "http://51.91.11.36:8000/api/internal/artifacts/68ab4326d287ed1aa18f908fa7787cab/download",
+        "notes": "r7 failed on a 120-frame date window in scene-14; r8 used max_overlays_per_scene=1 to guarantee non-overlap, so the overlay count is lower."
+      },
+      {
+        "script": "04_nuova_indagine",
+        "job_id": "job_1792530009982239654_77d17804",
+        "correlation_id": "20261020-garlasco-batch10-04-final-r8-intro",
+        "status": "SUCCEEDED",
+        "intro_clip_ids": [
+          "yt_7Zlo_inISoc_2275_2330_v1",
+          "yt_4VgY1zHqU3M_20_35_v1",
+          "yt_7Zlo_inISoc_1920_1965_v1"
+        ],
+        "intro_duration_us": 15000000,
+        "overlay_count": 29,
+        "remote_job_id": "job_6b9907208b2c4b9e",
+        "artifact_url": "http://51.91.11.36:8000/api/internal/artifacts/5563572070810280a074aed6eca81713/download",
+        "notes": "r6 failed on duplicate map artifacts; r7 failed in the Chronon dynamic-map renderer on a short map window; r8 disabled map overlays and succeeded."
+      }
+    ],
+    "verification": {
+      "payloads": "4/4 payloads have exactly one item, final_job=true, and three distinct non-empty intro clip IDs.",
+      "jobs": "4/4 local jobs are SUCCEEDED; each canonical timeline starts with scene-intro (15,000,000 us) built from 3 clips, and each remote final job is SUCCEEDED.",
+      "artifact_download": "Not verified locally: the Master artifact endpoint returns HTTP 401 with local credentials. The Master returned an artifact_url for each SUCCEEDED remote job."
+    }
+  }
 }
