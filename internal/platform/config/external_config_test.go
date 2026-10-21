@@ -55,6 +55,26 @@ func TestExternalConfigNERBackendBindingsAndValidation(t *testing.T) {
 	})
 }
 
+func TestRustSceneIntelligenceShadowRequiresExplicitOptIn(t *testing.T) {
+	t.Run("disabled by default while retaining the configured binary", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		assert.False(t, cfg.External.RustSceneIntelligenceShadowEnabled)
+		assert.Equal(t, "bin/scene_intelligence", cfg.External.RustSceneIntelligencePath)
+	})
+	t.Run("YAML and environment can opt into parity runs", func(t *testing.T) {
+		cfg := &Config{}
+		applyDefaults(cfg)
+		if err := yaml.Unmarshal([]byte("external:\n  rust_scene_intelligence_shadow_enabled: true\n"), cfg); err != nil {
+			t.Fatal(err)
+		}
+		assert.True(t, cfg.External.RustSceneIntelligenceShadowEnabled)
+		t.Setenv("VELOX_RUST_SCENE_INTELLIGENCE_SHADOW_ENABLED", "false")
+		applyEnvVars(cfg)
+		assert.False(t, cfg.External.RustSceneIntelligenceShadowEnabled)
+	})
+}
+
 func validConfigForNERTest() *Config {
 	return &Config{
 		Server:   ServerConfig{Port: 8000, ReadTimeout: 30, WriteTimeout: 30, Host: "127.0.0.1"},
