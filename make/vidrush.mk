@@ -79,7 +79,7 @@ verify-media-architecture:
 	@test "$$(rg -n '^type (ArtlistClipSearcher|InternetImageSearcher|MetadataGenerator) interface' internal/capabilities/scripts/adapters/media_ports.go | wc -l | tr -d ' ')" = 3
 	@test "$$(rg -n 'VidRushWindowRanker|selectVidRushPrimaryVideoWithPolicy|ScoreVidRushCandidate|chooseVidRushPrimary' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
 	@test "$$(rg -n 'rankInternetImageCandidates|preRankYouTubeCandidates|deterministicYouTubeScore' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
-	@test "$$(rg -n '^type MediaResolver interface' internal/capabilities/scripts/adapters/vidrush_registry_searchers.go | wc -l | tr -d ' ')" = 1
+	@test "$$(rg -n '^type MediaResolver interface' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 1
 	@test "$$(rg -n 'NewVidRushProviderFanoutWithResolver\(' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
 	@test "$$(rg -n 'NewInternetImagesProcessor' internal/app/wiring --glob '*.go' --glob '!**/*_test.go' | wc -l | tr -d ' ')" = 0
 	@test "$$(rg -n '^type InternetImagesProcessor |NewInternetImagesProcessor' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0

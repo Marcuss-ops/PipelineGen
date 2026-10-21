@@ -114,6 +114,24 @@ func hasMediaSearchSegments(input ProcessInput) bool {
 	return false
 }
 
+func hasImageSearchSegments(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {
+	for _, segment := range input.VidRushSegments {
+		if segment.ExecutionMode.IsFixedMedia() {
+			continue
+		}
+		if scriptpkg.SceneHasDirectStockBinding(input.SpecScene, input.StockBindings, segment.SceneID, segment.SegmentID, segment.Position) {
+			if stockBoundEntityImageMaterializationEnabled(plan) {
+				return true
+			}
+			continue
+		}
+		if sceneAllowsMediaSearch(input.SpecScene, segment.SceneID, segment.SegmentID, segment.Position) {
+			return true
+		}
+	}
+	return false
+}
+
 func markArtlistBypassed(input []scriptpkg.VidRushSegmentResult) *PostProcessResult {
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input))
 	for _, segment := range input {

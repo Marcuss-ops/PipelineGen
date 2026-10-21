@@ -6,20 +6,17 @@ import (
 
 // ── Visual semantics, one worker call per scene (RUST-02) ──
 //
-// attachVisualBullets and attachVisualChartValues used to drive two separate
-// VisualNER analyze calls for the same scene (one through BulletCandidates,
-// one through ChartCandidates, with different entity limits). The unified
-// SceneSemanticAnalyzer port performs ONE analyze call per scene and returns
-// every grounded projection:
+// The per-category VisualNER bullet and chart calls were retired: they
+// analysed the same scene twice, with different entity limits, and could
+// therefore disagree. The unified semantic analyzer performs ONE analyze per
+// script batch (SceneSemanticBatchAnalyzer) and returns every grounded
+// projection:
 //
 //	SemanticCandidateBundle
-//	 ├── Bullets   — phrase-impact-independent sentence bullets
+//	 ├── Bullets   — source sentences the planner may rank editorially
 //	 ├── Charts    — verified numeric chart candidates
-//	 └── Temporal  — every source-grounded date fact (top-N independent)
-//
-// The older SceneBulletAnalyzer / SceneChartAnalyzer ports remain valid for
-// backwards compatibility until parity is certified; the wired production
-// chain uses the bundle.
+//	 ├── Temporal  — every source-grounded date fact (top-N independent)
+//	 └── Numeric   — every source-grounded numeric fact
 
 // TemporalFactCandidate is one source-grounded date fact projected by the
 // Rust worker: Text is the exact byte span (Start..End) of sourceText, so
@@ -54,15 +51,124 @@ type NumericFactCandidate struct {
 // SemanticCandidateBundle carries the grounded projections from one analyze
 // call.
 type SemanticCandidateBundle struct {
-	Bullets  []BulletCandidate
-	Charts   []ChartValueCandidate
-	Temporal []TemporalFactCandidate
-	Numeric  []NumericFactCandidate
+	SchemaVersion  string
+	Language       string
+	Fingerprint    string
+	Analyzers      SemanticAnalyzerVersions
+	Status         string
+	Reason         string
+	RejectedItems  int
+	Entities       []SemanticEntityCandidate
+	EntityFacts    []SemanticEntityFact
+	Identities     []SemanticIdentity
+	Relations      SemanticRelationView
+	Bullets        []BulletCandidate
+	ShortPhrases   []SemanticTextCandidate
+	LongPhrases    []SemanticTextCandidate
+	Quotes         []SemanticTextCandidate
+	ImportantWords []SemanticTextCandidate
+	Charts         []ChartValueCandidate
+	Temporal       []TemporalFactCandidate
+	Numeric        []NumericFactCandidate
+	Proposals      []SemanticVisualProposal
+	Groups         []SemanticGroup
 }
 
-// SceneSemanticAnalyzer returns the unified VisualNER semantic bundle for
-// one scene's text. It is optional; nil falls back to the legacy separate
-// bullet and chart analyzers.
+type SemanticAnalyzerVersions struct {
+	VisualNER    string
+	SemanticCore string
+	PhraseImpact string
+}
+
+type SemanticEntityFact struct {
+	ID, SubjectEntityID, Predicate, Value, ValueType, NormalizedValue, TargetEntityID string
+	Unit, Operator, Status, Evidence                                                  string
+	SentenceIndex, Start, End, EvidenceStart, EvidenceEnd                             int
+}
+
+// SemanticTextCandidate preserves source-grounded phrase projections from the
+// engine for future planners without making Phrase Impact a second extractor.
+type SemanticTextCandidate struct {
+	ID, Text, Kind, Evidence, Provenance string
+	SentenceIndex, Start, End            int
+	Score                                float64
+}
+
+// SemanticEntityCandidate keeps a mention and its canonical identity together.
+type SemanticEntityCandidate struct {
+	SemanticTextCandidate
+	IdentityID string
+}
+
+type SemanticIdentityMention struct {
+	SceneID, Surface string
+	Start, End       int
+}
+
+type SemanticIdentity struct {
+	ID, CanonicalSurface, Kind string
+	Mentions                   []SemanticIdentityMention
+}
+
+type SemanticCoMention struct {
+	LeftID, RightID, Evidence string
+	SentenceIndex             int
+}
+
+type SemanticAssertedRelation struct {
+	SourceID, TargetID, Evidence, Predicate, Status string
+	SentenceIndex                                   int
+}
+
+type SemanticRelationView struct {
+	CoMentions        []SemanticCoMention
+	AssertedRelations []SemanticAssertedRelation
+}
+
+type SemanticChartItem struct {
+	Label, Text, Kind string
+	Value             float64
+	Start, End        int
+}
+
+type SemanticVisualProposal struct {
+	Type, SuggestedVisual, Status, Evidence             string
+	EntityIDs, TemporalSurfaces, VisualQuerySuggestions []string
+	Score                                               float64
+	ChartItems                                          []SemanticChartItem
+	Start, End                                          int
+}
+
+type SemanticGroupMember struct {
+	CandidateID, Text, Evidence, TemporalSurface string
+	SceneID                                      string
+	Rank                                         *int
+	SentenceIndex, Start, End                    int
+}
+
+type SemanticGroup struct {
+	ID, Type, Title, RankingBasis string
+	TargetCount                   *int
+	Complete                      *bool
+	Members                       []SemanticGroupMember
+}
+
+// SceneSemanticInput is one scene in a batch analysis request.
+type SemanticSceneInput struct {
+	SceneID string
+	Text    string
+}
+
+// SceneSemanticAnalyzer returns the unified semantic bundle for one scene.
+// It remains the portable per-scene contract; production uses the batch
+// interface below so a whole script is analysed once.
 type SceneSemanticAnalyzer interface {
 	SemanticCandidates(ctx context.Context, language, sourceText string, limit int) (*SemanticCandidateBundle, error)
+}
+
+// SceneSemanticBatchAnalyzer analyses every scene of a script in ONE worker
+// call and returns the bundles keyed by scene id. When a backend implements
+// it, the runner never issues a per-scene call.
+type SceneSemanticBatchAnalyzer interface {
+	SemanticBundles(ctx context.Context, language string, scenes []SemanticSceneInput) (map[string]*SemanticCandidateBundle, error)
 }

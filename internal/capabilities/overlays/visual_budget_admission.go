@@ -159,9 +159,21 @@ func overlayWindowsOverlap(a, b OverlayItem) bool {
 // default phrase admission policy remains unchanged for jobs without those
 // explicit editorial quotas.
 func rankedUniqueOverlayPhraseLanes(items []OverlayItem, shortLimit, longLimit int) []int {
+	return rankedUniqueOverlayPhraseLanesExcludingBullets(items, shortLimit, longLimit, false)
+}
+
+// rankedUniqueOverlayPhraseLanesExcludingBullets is the split-lane selector.
+// excludeBullets removes chapter bullet cards from both phrase lanes: when the
+// caller has opened the independent bullet lane those cards are admitted on
+// their own quota, and counting them here would make the requested short/long
+// ceilings unreachable.
+func rankedUniqueOverlayPhraseLanesExcludingBullets(items []OverlayItem, shortLimit, longLimit int, excludeBullets bool) []int {
 	seen := make(map[string]int)
 	for i, item := range items {
 		if item.Kind != "text_phrase" || item.Params != nil && (item.Params["chart_card"] == true || item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
+			continue
+		}
+		if excludeBullets && overlayItemIsBullet(item) {
 			continue
 		}
 		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
@@ -180,6 +192,85 @@ func rankedUniqueOverlayPhraseLanes(items []OverlayItem, shortLimit, longLimit i
 	long := selectNonOverlappingPhraseLane(candidates, items, false, longLimit, short)
 	selected := append(short, long...)
 	sort.Ints(selected)
+	return selected
+}
+
+// overlayItemIsBullet reports whether an item is an editorial bullet card.
+// Bullets are text_phrase items distinguished only by editorial_role. Both
+// roles are covered: scene_bullet (per-scene editorial opening) and
+// chapter_bullet (chapter manifest card).
+func overlayItemIsBullet(item OverlayItem) bool {
+	if item.Params == nil {
+		return false
+	}
+	role, _ := item.Params["editorial_role"].(string)
+	return role == "scene_bullet" || role == ChapterBulletRole
+}
+
+// removeBulletIndices drops bullet items from a phrase selection and keeps the
+// original order.
+func removeBulletIndices(items []OverlayItem, indices []int) []int {
+	out := indices[:0]
+	for _, index := range indices {
+		if index < 0 || index >= len(items) || overlayItemIsBullet(items[index]) {
+			continue
+		}
+		out = append(out, index)
+	}
+	return out
+}
+
+// rankedUniqueBulletIndices selects the bullet lane: unique normalized copy,
+// one card per scene, ordered by narration window and then priority, capped by
+// the caller's explicit quota. It is only called when the lane is enabled, so
+// a run without a bullets cap keeps the legacy admission unchanged.
+func rankedUniqueBulletIndices(items []OverlayItem, limit int) []int {
+	if limit <= 0 {
+		return nil
+	}
+	best := make(map[string]int)
+	for i, item := range items {
+		if item.Kind != "text_phrase" || !overlayItemIsBullet(item) {
+			continue
+		}
+		key := strings.ToLower(strings.Join(strings.Fields(item.Text), " "))
+		if key == "" {
+			continue
+		}
+		if prior, ok := best[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[prior]) {
+			best[key] = i
+		}
+	}
+	candidates := make([]int, 0, len(best))
+	for _, index := range best {
+		candidates = append(candidates, index)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		leftStart, _ := overlayItemWindowUS(items[candidates[i]])
+		rightStart, _ := overlayItemWindowUS(items[candidates[j]])
+		if leftStart != rightStart {
+			return leftStart < rightStart
+		}
+		if lp, rp := overlayItemPriority(items[candidates[i]]), overlayItemPriority(items[candidates[j]]); lp != rp {
+			return lp > rp
+		}
+		return candidates[i] < candidates[j]
+	})
+	// One bullet per scene: the visual contract of an opening card, and the
+	// same rule projectChapterBullets already enforces at projection time.
+	selected := make([]int, 0, limit)
+	seenScenes := make(map[string]struct{}, limit)
+	for _, candidate := range candidates {
+		sceneID := strings.TrimSpace(items[candidate].SceneID)
+		if _, seen := seenScenes[sceneID]; seen {
+			continue
+		}
+		seenScenes[sceneID] = struct{}{}
+		selected = append(selected, candidate)
+		if len(selected) >= limit {
+			break
+		}
+	}
 	return selected
 }
 

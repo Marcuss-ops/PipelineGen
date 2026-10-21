@@ -65,6 +65,40 @@ func TestAttachRandomImageEffectsDecoratesOnlyImageSurfaces(t *testing.T) {
 
 // TestAttachRandomImageEffectsIsDeterministic proves a plan re-derivation
 // replays the exact same decorations (same draw, same effect, same seed).
+func TestAttachRandomImageEffectsDecoratesEachCompositeLayerIndependently(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{{
+		ID: "entity-pair", Kind: "entity_image", SceneID: "scene-1", StartMs: 0, EndMs: 5000,
+		AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "ada"}, {AssetID: "grace"}},
+		ImageLayers: []capabilityoverlay.OverlayImageLayer{
+			{ID: "ada-layer", AssetID: "ada", StartMS: 0, EndMS: 5000, Params: map[string]any{"position_x": float64(-480)}},
+			{ID: "grace-layer", AssetID: "grace", StartMS: 0, EndMS: 5000, Params: map[string]any{"position_x": float64(480)}},
+		},
+	}}
+	const planID = "composite-random-effects"
+	AttachRandomImageEffects(planID, items)
+	for _, layer := range items[0].ImageLayers {
+		effects, ok := layer.Params["effects"].([]any)
+		if !ok {
+			// Randomized policy may intentionally leave a surface undecorated;
+			// when enabled, selection is deterministic for this layer identity.
+			if capabilityoverlay.SelectImageEffectDecorationEnabled(planID, layer.ID) {
+				t.Fatalf("layer %q was selected for decoration but has no effects", layer.ID)
+			}
+			continue
+		}
+		if len(effects) != 1 {
+			t.Fatalf("layer %q effects = %+v, want one independent decoration", layer.ID, effects)
+		}
+		entry, ok := effects[0].(map[string]any)
+		if !ok || entry["type"] == "" {
+			t.Fatalf("layer %q has malformed effect: %+v", layer.ID, effects[0])
+		}
+	}
+	if _, leaked := items[0].Params["effects"]; leaked {
+		t.Fatal("composite effects must be attached to their child layers, not the shared parent")
+	}
+}
+
 func TestAttachRandomImageEffectsIsDeterministic(t *testing.T) {
 	for run := 0; run < 10; run++ {
 		first := imageEffectItems()

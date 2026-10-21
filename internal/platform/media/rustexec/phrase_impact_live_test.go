@@ -251,6 +251,32 @@ func liveSentenceCloses(text string) bool {
 	return false
 }
 
+// TestLiveSemanticBulletsConstrainGlobalAndSceneRanking exercises the unified
+// semantic-candidate contract against the actual Rust worker, including the
+// NDJSON decoder and both Phrase Impact bullet projections.
+func TestLiveSemanticBulletsConstrainGlobalAndSceneRanking(t *testing.T) {
+	if strings.TrimSpace(os.Getenv("VELOX_RUST_PHRASE_IMPACT_PATH")) == "" {
+		t.Skip("set VELOX_RUST_PHRASE_IMPACT_PATH to a rebuilt phrase-impact worker to certify semantic bullet spans")
+	}
+	bin := liveBinaryPath(t)
+	first := "Germany lost one hundred thousand industrial jobs in a single year."
+	second := "Factory orders declined for the sixth consecutive quarter."
+	transcript := first + " " + second
+	start, end := len(first)+1, len(transcript)
+	sceneStart, sceneEnd := 0, len(transcript)
+	analyzer := NewPhraseImpactAnalyzer(bin, nil, nil)
+	result, err := analyzer.AnalyzeScenesWithSemanticBullets(context.Background(), transcript, "en", []SceneInput{{
+		SceneID: "s1", Text: transcript, StartByte: &sceneStart, EndByte: &sceneEnd,
+	}}, []scriptpkg.SemanticBulletSpan{{StartByte: start, EndByte: end, Text: second}})
+	require.NoError(t, err)
+	require.Equal(t, []string{second}, result.BulletPoints,
+		"the semantic candidate pool must constrain global Phrase Impact ranking")
+	require.Len(t, result.SceneHighlights, 1)
+	require.Len(t, result.SceneHighlights[0].Bullets, 1)
+	require.Equal(t, second, result.SceneHighlights[0].Bullets[0].Text,
+		"the same candidate pool must constrain per-scene ranking")
+}
+
 // liveBulletHasSubstance mirrors the worker's MIN_BULLET_WORDS/MIN_BULLET_CHARS
 // floor: a two-word tail is a fragment, not a bullet.
 func liveBulletHasSubstance(text string) bool {

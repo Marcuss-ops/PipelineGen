@@ -35,7 +35,7 @@
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-kernel \
 	whisper-preflight \
 	verify-component-coverage verify-reconciliation-contracts verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
-	regen-routes-yaml archcheck-strict \
+	regen-routes-yaml archcheck-strict audit-plan \
 	verify-artlist \
 	test-youtube-url test-youtube-metadata test-youtube-transcript test-highlight-selection \
 	verify-stock-unit verify-stock-integration \
@@ -106,6 +106,7 @@ help:
 	@echo "  make verify-race      Explicit race gate: unit + all registered components"
 	@echo "  make verify-full      Full headless gate: main + race"
 	@echo "  make verify-release   Pre-deploy gate: verify-full + integration"
+	@echo "  make audit-plan       Plan-only overlay audit (PAYLOAD=path.json [OUT=/tmp/dir])"
 	@echo "  make verify-unit      Race-tested Go unit tests by area (excludes ./tests/...)"
 	@echo "  make verify-components   All registered components (fast)"
 	@echo "  make verify-race-components  All registered components (race)"
@@ -157,5 +158,11 @@ include make/operations.auth.mk
 include make/operations.smoke-voiceover.mk
 include make/operations.tidy.mk
 include make/audio.mk
+
+# Plan-only audit: compile the overlay plan of a payload without paying for
+# the per-item overlay renders. Writes OUT/{plan-only.json,full.json,plan.json}.
+audit-plan:
+	@test -n "$(PAYLOAD)" || { echo "usage: make audit-plan PAYLOAD=path/to/payload.json [OUT=/tmp/dir]"; exit 2; }
+	@scripts/audit-plan.sh "$(PAYLOAD)" "$(if $(OUT),$(OUT),/tmp/garlasco-plan-audit)"
 
 all: build

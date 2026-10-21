@@ -94,16 +94,25 @@ func ApplyEditorialOverlayBudgetWithLimits(items []OverlayItem, phraseLimit, map
 // limit keeps the certified default.
 func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, allowRepeatedEntityImagesPerScene ...bool) ([]OverlayItem, PhraseOverlayBudget) {
 	perSceneEntityImages := len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0]
-	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, 0, 0)
+	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, 0, 0, 0)
 }
 
 // ApplyEditorialOverlayBudgetWithPhraseLanes applies the same run-level
 // budget while honoring explicit short/long phrase group limits.
 func ApplyEditorialOverlayBudgetWithPhraseLanes(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
-	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, shortPhraseLimit, longPhraseLimit)
+	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, shortPhraseLimit, longPhraseLimit, 0)
 }
 
-func applyEditorialOverlayBudget(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+// ApplyEditorialOverlayBudgetWithBulletLane adds an independent bullet quota
+// to the split phrase-lane budget. Bullet cards are admitted on their own
+// ceiling and are excluded from the short/long phrase lanes, so enabling them
+// cannot evict a requested narration phrase. A nonpositive bulletLimit keeps
+// the legacy behavior (chapter cards ride the phrase lane).
+func ApplyEditorialOverlayBudgetWithBulletLane(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit, bulletLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, shortPhraseLimit, longPhraseLimit, bulletLimit)
+}
+
+func applyEditorialOverlayBudget(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit, bulletLimit int) ([]OverlayItem, PhraseOverlayBudget) {
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	effectiveImageLimit := imageLimit
 	if effectiveImageLimit <= 0 {
@@ -123,10 +132,19 @@ func applyEditorialOverlayBudget(items []OverlayItem, phraseLimit, imageLimit, m
 	}
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
 	if shortPhraseLimit > 0 || longPhraseLimit > 0 {
-		phraseIndices = rankedUniqueOverlayPhraseLanes(items, shortPhraseLimit, longPhraseLimit)
+		phraseIndices = rankedUniqueOverlayPhraseLanesExcludingBullets(items, shortPhraseLimit, longPhraseLimit, bulletLimit > 0)
 		if len(phraseIndices) > limit {
 			phraseIndices = phraseIndices[:limit]
 		}
+	}
+	// The independent bullet lane is retained below like any other category.
+	// Without it a bullet card either spent a long-phrase slot or was dropped
+	// by retained-only admission, so 10 short + 10 long + bullets could not
+	// coexist in one run.
+	var bulletIndices []int
+	if bulletLimit > 0 {
+		phraseIndices = removeBulletIndices(items, phraseIndices)
+		bulletIndices = rankedUniqueBulletIndices(items, bulletLimit)
 	}
 	mapCeiling := mapLimit
 	if mapCeiling <= 0 {
@@ -137,13 +155,13 @@ func applyEditorialOverlayBudget(items []OverlayItem, phraseLimit, imageLimit, m
 	brandIndices := rankedUniqueKindIndices(items, "brand_text", MaxBrandTextOverlaysPerRun)
 	chartLabelIndices := chartLabelIndices(items)
 	chartBarIndices := chartBarIndices(items)
-	editorialIndices := editorialLabelIndices(items)
+	editorialIndices := editorialLabelIndicesExcludingBullets(items, bulletLimit > 0)
 	chainIndices := chainItemIndices(items)
 	// Text-only named entity cards are their own editorial category (see
 	// visual_budget_entity_cards.go). Without an arm here they were planned and
 	// capped but silently dropped by retainOverlayItems.
 	namedEntityIndices := rankedNamedEntityCardIndices(items)
-	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices, namedEntityIndices)
+	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices, namedEntityIndices, bulletIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
@@ -190,10 +208,27 @@ func chartLabelIndices(items []OverlayItem) []int {
 }
 
 func editorialLabelIndices(items []OverlayItem) []int {
+	return editorialLabelIndicesExcludingBullets(items, false)
+}
+
+// editorialLabelIndicesExcludingBullets selects the scene title/card lane. When
+// the independent bullet lane is enabled EVERY bullet (scene_bullet and
+// chapter_bullet) is admitted by rankedUniqueBulletIndices instead, so one
+// explicit quota governs bullets and the title lane cannot keep an extra
+// unbudgeted card.
+func editorialLabelIndicesExcludingBullets(items []OverlayItem, excludeBullets bool) []int {
 	indices := make([]int, 0)
 	for i, item := range items {
-		if item.Params != nil && (item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
+		if item.Params == nil {
+			continue
+		}
+		switch item.Params["editorial_role"] {
+		case "scene_title":
 			indices = append(indices, i)
+		case "scene_bullet":
+			if !excludeBullets {
+				indices = append(indices, i)
+			}
 		}
 	}
 	return indices

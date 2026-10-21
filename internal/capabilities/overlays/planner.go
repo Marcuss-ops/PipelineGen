@@ -415,7 +415,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	plan.Items = PruneOrphanChartBars(plan.Items)
 	if config.RunLevelEditorialBudget {
 		if config.RunLevelShortPhraseLimit > 0 && config.RunLevelLongPhraseLimit > 0 {
-			plan.Items, _ = ApplyEditorialOverlayBudgetWithPhraseLanes(plan.Items, config.RunLevelPhraseOverlayLimit, 0, config.RunLevelMapOverlayLimit, false, config.RunLevelShortPhraseLimit, config.RunLevelLongPhraseLimit)
+			// The bullet lane is an independent quota: chapter cards never spend
+			// a short/long phrase slot when the caller enables it.
+			plan.Items, _ = ApplyEditorialOverlayBudgetWithBulletLane(plan.Items, config.RunLevelPhraseOverlayLimit, 0, config.RunLevelMapOverlayLimit, false, config.RunLevelShortPhraseLimit, config.RunLevelLongPhraseLimit, config.RunLevelBulletOverlayLimit)
 		} else {
 			plan.Items, _ = ApplyEditorialOverlayBudgetWithLimits(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelMapOverlayLimit)
 		}

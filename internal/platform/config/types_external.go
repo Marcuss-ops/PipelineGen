@@ -26,12 +26,16 @@ type ExternalConfig struct {
 	RustPhraseImpactPath        string   `yaml:"rust_phrase_impact_path" env:"VELOX_RUST_PHRASE_IMPACT_PATH" default:"bin/phrase_impact"`
 	RustSceneIntelligencePath   string   `yaml:"rust_scene_intelligence_path" env:"VELOX_RUST_SCENE_INTELLIGENCE_PATH" default:"bin/scene_intelligence"`
 	RustVisualNERPath           string   `yaml:"rust_visualner_path" env:"VELOX_RUST_VISUALNER_PATH" default:"bin/visualner"`
-	RustMediaSamplerPath        string   `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
-	VisualNERBackend            string   `yaml:"visualner_backend" env:"VELOX_VISUALNER_BACKEND" default:"rust"`
-	SpacyNERURL                 string   `yaml:"spacy_ner_url" env:"VELOX_SPACY_NER_URL" default:""`
-	NvidiaAPIKey                string   `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
-	NvidiaModel                 string   `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
-	NvidiaLocalNIMURL           string   `yaml:"nvidia_local_nim_url" env:"NVIDIA_LOCAL_NIM_URL" default:"http://localhost:8000/v1/infer"`
+	// RustSemanticEnginePath is the unified semantic worker
+	// (`semantic_manifest.v2`): one analyze call per script replaces the
+	// per-category VisualNER bullet/chart calls.
+	RustSemanticEnginePath string `yaml:"rust_semantic_engine_path" env:"VELOX_RUST_SEMANTIC_ENGINE_PATH" default:"bin/semantic-engine"`
+	RustMediaSamplerPath   string `yaml:"rust_mediasampler_path" env:"VELOX_RUST_MEDIASAMPLER_PATH" default:"bin/mediasampler"`
+	VisualNERBackend       string `yaml:"visualner_backend" env:"VELOX_VISUALNER_BACKEND" default:"rust"`
+	SpacyNERURL            string `yaml:"spacy_ner_url" env:"VELOX_SPACY_NER_URL" default:""`
+	NvidiaAPIKey           string `yaml:"nvidia_api_key" env:"NVIDIA_API_KEY" default:""`
+	NvidiaModel            string `yaml:"nvidia_model" env:"NVIDIA_MODEL" default:"stabilityai/sdxl-turbo"`
+	NvidiaLocalNIMURL      string `yaml:"nvidia_local_nim_url" env:"NVIDIA_LOCAL_NIM_URL" default:"http://localhost:8000/v1/infer"`
 
 	// VeloxMasterURL is the canonical address of a remote PipelineGen master.
 	// Workers and external clients (n8n, Google Flow sidecars, scripts)

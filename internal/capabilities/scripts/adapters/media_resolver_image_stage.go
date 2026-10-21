@@ -116,7 +116,7 @@ func (p *MediaResolverImageStage) handleBypassOrUnavailable(plan *scriptpkg.Reso
 		}
 		return &PostProcessResult{VidRushSegments: segments, Changed: true}, true
 	}
-	if !hasMediaSearchSegments(input) {
+	if !hasImageSearchSegments(plan, input) {
 		return &PostProcessResult{VidRushSegments: markInternetImagesBypassed(input.VidRushSegments), Changed: true}, true
 	}
 	if p.searcher == nil && !options.cacheOnly {
@@ -152,7 +152,9 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 	var warnings []string
 	for _, seg := range input.VidRushSegments {
 		updated := CloneVidRushSegmentResult(seg)
-		if !sceneAllowsMediaSearchForPlan(input.SpecScene, input.StockBindings, seg.SceneID, seg.SegmentID, seg.Position) {
+		stockBound := scriptpkg.SceneHasDirectStockBinding(input.SpecScene, input.StockBindings, seg.SceneID, seg.SegmentID, seg.Position)
+		if (stockBound && !stockBoundEntityImageMaterializationEnabled(plan)) ||
+			(!stockBound && !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position)) {
 			updated.Cache.InternetImages = "BYPASSED"
 			updatedSegments = append(updatedSegments, updated)
 			continue

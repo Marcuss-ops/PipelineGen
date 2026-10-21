@@ -146,17 +146,7 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 
 	processed, err := concurrent.Map(ctx, input.VidRushSegments, materializationWorkers(plan), func(ctx context.Context, _ int, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
 		if _, ok := stockBindingForSegment(plan, input.StockBindings, segment); ok {
-			// A direct stock binding is this scene's authoritative visual
-			// source: acquiring, verifying or persisting provider media for it
-			// would leak the stock scene into provider search/materialization.
-			// Mark the provider delta and keep the scene out of the workers.
-			cloned := CloneVidRushSegmentResult(segment)
-			cloned.Cache.Artlist = "BYPASSED"
-			cloned.Cache.InternetImages = "BYPASSED"
-			cloned.Cache.ImageGeneration = "BYPASSED"
-			cloned.Cache.YouTube = "BYPASSED"
-			cloned.Cache.Binding = "STOCK_BOUND"
-			return vidRushMaterializedSegment{result: cloned}, nil
+			return p.materializeStockBoundEntityImages(ctx, plan, segment)
 		}
 		return p.materializeOne(ctx, plan, segment)
 	})
@@ -248,17 +238,8 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 		return cloned, nil
 	}
 	if _, stockBound := stockBindingForSegment(plan, nil, segment); stockBound {
-		// The incremental coordinator materializes one segment at a time and
-		// carries no ProcessInput bindings surface, so the plan is the only
-		// stock-binding source here. A stock-bound segment must leave this
-		// processor untouched exactly like the batch path.
-		cloned := CloneVidRushSegmentResult(segment)
-		cloned.Cache.Artlist = "BYPASSED"
-		cloned.Cache.InternetImages = "BYPASSED"
-		cloned.Cache.ImageGeneration = "BYPASSED"
-		cloned.Cache.YouTube = "BYPASSED"
-		cloned.Cache.Binding = "STOCK_BOUND"
-		return cloned, nil
+		result, err := p.materializeStockBoundEntityImages(ctx, plan, segment)
+		return result.result, err
 	}
 	if err := materializationDependenciesError(plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{segment}}, p.providers, p.finalizer); err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
@@ -290,6 +271,45 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 		p.log.Info("VidRush materialization completed", zap.String("segment_id", segment.SegmentID), zap.Int("selected_images", len(out.result.Assets.SecondaryImages)), zap.Int("materialized_candidates", len(out.result.Assets.Candidates)), zap.Strings("warnings", out.warnings))
 	}
 	return out.result, nil
+}
+
+// materializeStockBoundEntityImages permits the explicit named-entity image
+// sidecar policy on a stock video scene. The primary stock video remains
+// authoritative; only verified internet-image overlays pass through the
+// shared acquire/verify/finalize path.
+func (p *VidRushMaterializationProcessor) materializeStockBoundEntityImages(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
+	cloned := CloneVidRushSegmentResult(segment)
+	cloned.Cache.Artlist = "BYPASSED"
+	cloned.Cache.ImageGeneration = "BYPASSED"
+	cloned.Cache.YouTube = "BYPASSED"
+	cloned.Cache.Binding = "STOCK_BOUND"
+	if !stockBoundEntityImageMaterializationEnabled(plan) || p.providers == nil || p.finalizer == nil {
+		cloned.Cache.InternetImages = "BYPASSED"
+		return vidRushMaterializedSegment{result: cloned}, nil
+	}
+	imagePlan := *plan
+	imagePlan.MediaPlan = plan.MediaPlan.Clone()
+	imagePlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
+	imagePlan.MediaPlan.ProviderPolicy.YouTube = mediadomain.MediaToggleDisabled
+	imagePlan.MediaPlan.ProviderPolicy.ImageGeneration = mediadomain.MediaToggleDisabled
+	imagePlan.MediaPlan.ProviderPolicy.InternetImages = mediadomain.MediaToggleEnabled
+	primary := cloned.Assets.PrimaryVideo
+	materialized, err := p.materializeOne(ctx, &imagePlan, cloned)
+	if err != nil {
+		return vidRushMaterializedSegment{}, err
+	}
+	materialized.result.Assets.PrimaryVideo = primary
+	materialized.result.Cache.Artlist = "BYPASSED"
+	materialized.result.Cache.ImageGeneration = "BYPASSED"
+	materialized.result.Cache.YouTube = "BYPASSED"
+	materialized.result.Cache.Binding = "STOCK_BOUND"
+	return materialized, nil
+}
+
+func stockBoundEntityImageMaterializationEnabled(plan *scriptpkg.ResolvedGenerationPlan) bool {
+	return plan != nil && plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() &&
+		plan.MediaPlan.Extraction.EntityImages.Enabled &&
+		plan.MediaPlan.Extraction.EntityImages.PerScene()
 }
 
 func (p *VidRushMaterializationProcessor) hydrateEntityCatalogMaterialization(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptpkg.SegmentAssetCandidate, error) {

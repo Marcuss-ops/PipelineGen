@@ -66,6 +66,15 @@ type SceneAnalysisInput struct {
 	EndByte   *int    `json:"end_byte,omitempty"`
 }
 
+// SemanticBulletSpan is an exact UTF-8 span in the full transcript proposed
+// by the semantic engine. Phrase Impact remains the owner of editorial
+// ranking; when this collection is present it may rank only these candidates.
+type SemanticBulletSpan struct {
+	StartByte int    `json:"start_byte"`
+	EndByte   int    `json:"end_byte"`
+	Text      string `json:"text"`
+}
+
 // EditorialFingerprintInput covers everything that influences the result.
 type EditorialFingerprintInput struct {
 	Transcript       string

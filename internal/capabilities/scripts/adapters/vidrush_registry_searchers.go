@@ -8,6 +8,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -181,14 +182,24 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		return updated, nil
 	}
 	if _, stockBound := stockBindingForSegment(plan, nil, segment); stockBound {
-		// The incremental fanout resolves providers per segment with the plan
-		// as the only binding surface. A direct stock binding is the scene's
-		// authoritative visual source: no provider search may run for it.
+		// A stock binding owns the scene's video. The explicit entity-image
+		// policy may still fetch verified portrait overlays; keep every video
+		// provider disabled on this sidecar path.
+		if !stockBoundEntityImageMaterializationEnabled(plan) {
+			updated.Cache.Artlist = "BYPASSED"
+			updated.Cache.InternetImages = "BYPASSED"
+			updated.Cache.YouTube = "BYPASSED"
+			updated.Cache.Binding = "STOCK_BOUND"
+			return updated, nil
+		}
+		imagePlan := *plan
+		imagePlan.MediaPlan = plan.MediaPlan.Clone()
+		imagePlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
+		imagePlan.MediaPlan.ProviderPolicy.YouTube = mediadomain.MediaToggleDisabled
+		plan = &imagePlan
 		updated.Cache.Artlist = "BYPASSED"
-		updated.Cache.InternetImages = "BYPASSED"
 		updated.Cache.YouTube = "BYPASSED"
 		updated.Cache.Binding = "STOCK_BOUND"
-		return updated, nil
 	}
 	// Provider work is represented by a small outcome value and merged only
 	// by the caller, keeping concurrent providers away from shared state.

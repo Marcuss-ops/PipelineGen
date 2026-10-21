@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,6 +61,27 @@ func TestAnalyzeScenesRunsASingleWorkerPass(t *testing.T) {
 	if len(request.SceneInputs) != 1 || request.SceneInputs[0]["scene_id"] != "s1" {
 		t.Fatalf("scene_inputs = %#v, want the structured identity in the single call", request.SceneInputs)
 	}
+}
+
+func TestAnalyzeScenesCarriesGroundedSemanticBulletsInSingleWorkerPass(t *testing.T) {
+	transcript := "Opening context. Factory orders declined for the sixth consecutive quarter."
+	bullet := "Factory orders declined for the sixth consecutive quarter."
+	start := strings.Index(transcript, bullet)
+	end := start + len(bullet)
+	runner := &phraseImpactFakeRunner{replies: []string{
+		`{"ok":true,"result":{"summary":"s","bullet_points":[],"heavy_sentences":[],"chapter_manifest":{"schema_version":"chapter_manifest.v1","chapters":[]}}}`,
+	}}
+	analyzer := NewPhraseImpactAnalyzer("bin/phrase_impact", runner, nil)
+	_, err := analyzer.AnalyzeScenesWithSemanticBullets(context.Background(), transcript, "en", []SceneInput{{
+		SceneID: "s1", Text: bullet, StartByte: &start, EndByte: &end,
+	}}, []scriptpkg.SemanticBulletSpan{{StartByte: start, EndByte: end, Text: bullet}})
+	require.NoError(t, err)
+	require.Equal(t, 1, runner.requestCount())
+	var request struct {
+		SemanticBullets []scriptpkg.SemanticBulletSpan `json:"semantic_bullet_spans"`
+	}
+	require.NoError(t, json.Unmarshal(bytes.TrimSpace(runner.requests), &request))
+	require.Equal(t, []scriptpkg.SemanticBulletSpan{{StartByte: start, EndByte: end, Text: bullet}}, request.SemanticBullets)
 }
 
 func TestContractDuplicateIdentityIsUncertified(t *testing.T) {

@@ -281,6 +281,7 @@ const (
 	overlayGroupEntitiesWithText = "entities_with_text"
 	overlayGroupLocations        = "locations"
 	overlayGroupImages           = "images"
+	overlayGroupBullets          = "bullets"
 )
 
 var overlayGroupKeys = map[string]bool{
@@ -290,6 +291,7 @@ var overlayGroupKeys = map[string]bool{
 	overlayGroupEntitiesWithText: true,
 	overlayGroupLocations:        true,
 	overlayGroupImages:           true,
+	overlayGroupBullets:          true,
 }
 
 func cloneOverlayGroupLimits(src map[string]int) map[string]int {
@@ -343,6 +345,12 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 		return overlayGroupEntitiesWithText
 	case isImageOverlayItem(item):
 		return overlayGroupImages
+	case item.Params != nil && (item.Params["editorial_role"] == "scene_bullet" || item.Params["editorial_role"] == "chapter_bullet"):
+		// Bullets are their own editorial lane: a chapter card is not a long
+		// phrase, so it must never spend a long_phrases slot (or be counted as
+		// one). Without this case a 10 long-phrase cap silently included the
+		// chapter bullets and the requested 10+10+bullets never coexisted.
+		return overlayGroupBullets
 	case item.Kind == "text_phrase" || item.Kind == string(capabilityoverlay.KindImportantPhrase):
 		// Phrase lane is a content property. Visible motion IDs are often
 		// shared by both lanes, so using recipe membership here misclassifies
@@ -456,6 +464,11 @@ func applyPhraseLaneCaps(config *capabilityoverlay.PlannerConfig, limits map[str
 	if hasShort && hasLong && shortCap > 0 && longCap > 0 {
 		config.RunLevelShortPhraseLimit = shortCap
 		config.RunLevelLongPhraseLimit = longCap
+	}
+	// An explicit bullets cap opens the independent bullet lane. A zero or
+	// absent cap keeps the legacy path (chapter cards ride the phrase lane).
+	if bulletCap, hasBullets := overlayGroupLimit(limits, overlayGroupBullets); hasBullets && bulletCap > 0 {
+		config.RunLevelBulletOverlayLimit = bulletCap
 	}
 	return shortCap, hasShort, longCap, hasLong
 }

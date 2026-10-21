@@ -90,7 +90,7 @@ WORKDIR /src
 COPY rust/ ./rust/
 RUN RUST_ICU_MAJOR_VERSION_NUMBER=${RUST_ICU_MAJOR_VERSION_NUMBER} cargo build --release --locked --manifest-path rust/Cargo.toml \
  && mkdir -p /out \
- && cp rust/target/release/pipelinegen-muscles rust/target/release/visualner rust/target/release/mediasampler /out/
+ && cp rust/target/release/pipelinegen-muscles rust/target/release/visualner rust/target/release/mediasampler rust/target/release/semantic-engine /out/
 
 # ─── server-runtime ───────────────────────────────────────────────
 FROM debian:bookworm-slim AS server-runtime
@@ -105,13 +105,15 @@ RUN apt-get update \
 
 ENV VELOX_RUST_VISUALNER_PATH="/app/bin/visualner" \
     VELOX_RUST_MUSCLES_PATH="/app/bin/pipelinegen-muscles" \
-    VELOX_RUST_MEDIASAMPLER_PATH="/app/bin/mediasampler"
+    VELOX_RUST_MEDIASAMPLER_PATH="/app/bin/mediasampler" \
+    VELOX_RUST_SEMANTIC_ENGINE_PATH="/app/bin/semantic-engine"
 
 RUN mkdir -p /app/bin
 COPY --from=builder /out/pipelinegen /usr/local/bin/pipelinegen
 COPY --from=rust-builder /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
 COPY --from=rust-builder /out/visualner /app/bin/visualner
 COPY --from=rust-builder /out/mediasampler /app/bin/mediasampler
+COPY --from=rust-builder /out/semantic-engine /app/bin/semantic-engine
 
 # Copy migrations and config so the server can run DB migrations at startup.
 COPY migrations/ /app/migrations/
@@ -147,7 +149,8 @@ RUN apt-get update \
 
 ENV VELOX_RUST_VISUALNER_PATH="/app/bin/visualner" \
     VELOX_RUST_MUSCLES_PATH="/app/bin/pipelinegen-muscles" \
-    VELOX_RUST_MEDIASAMPLER_PATH="/app/bin/mediasampler"
+    VELOX_RUST_MEDIASAMPLER_PATH="/app/bin/mediasampler" \
+    VELOX_RUST_SEMANTIC_ENGINE_PATH="/app/bin/semantic-engine"
 RUN mkdir -p /app/bin
 
 # Keep the Python ML runtime isolated from Debian's externally-managed
@@ -187,6 +190,7 @@ COPY --from=builder /out/worker /usr/local/bin/pipelinegen-worker
 COPY --from=rust-builder /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
 COPY --from=rust-builder /out/visualner /app/bin/visualner
 COPY --from=rust-builder /out/mediasampler /app/bin/mediasampler
+COPY --from=rust-builder /out/semantic-engine /app/bin/semantic-engine
 
 # Copy Python scripts and config needed by the worker at runtime.
 COPY scripts/ /app/scripts/

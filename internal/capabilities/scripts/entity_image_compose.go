@@ -158,31 +158,21 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	parent := first
 	assetRefs := make([]capabilityoverlay.OverlayAssetRef, 0, len(group))
 	layers := make([]capabilityoverlay.OverlayImageLayer, 0, len(group))
-	sequenceStarts := make([]int64, len(group))
-	for slot, itemIndex := range group {
-		child := items[itemIndex]
-		anchorOffset := max(int64(0), child.StartMs-parentStart)
-		minimumOffset := int64(slot) * (entityImageHoldMS + entityImageTravelMS)
-		if slot > 0 {
-			minimumOffset = sequenceStarts[slot-1] + entityImageHoldMS + entityImageTravelMS
+	for _, itemIndex := range group {
+		if items[itemIndex].EndMs > parentEnd {
+			parentEnd = items[itemIndex].EndMs
 		}
-		sequenceStarts[slot] = max(anchorOffset, minimumOffset)
 	}
-	// The composite is a spatial set: all portraits and labels exist from the
-	// start, while the camera reveals each pair by travelling to its position.
-	parentEnd = parentStart + sequenceStarts[len(sequenceStarts)-1] + entityImageHoldMS
+	if parentEnd-parentStart < entityImageHoldMS {
+		parentEnd = parentStart + entityImageHoldMS
+	}
 	groupDuration := parentEnd - parentStart
 	for slot, itemIndex := range group {
 		child := items[itemIndex]
-		offset := sequenceStarts[slot]
-		// StartMS remains the camera departure marker. RenderingGen keeps each
-		// portrait and label in the spatial scene for the full group duration.
-		layerStart := offset
-		layerEnd := groupDuration
 		assetRefs = append(assetRefs, child.AssetRefs[0])
 		layers = append(layers, capabilityoverlay.OverlayImageLayer{
 			ID: child.ID, AssetID: child.AssetRefs[0].AssetID, EntityID: stableIDForOverlayItem(child),
-			StartMS: layerStart, EndMS: layerEnd, CaptionStartMS: 0, CaptionEndMS: groupDuration, PresetID: child.PresetID,
+			StartMS: 0, EndMS: groupDuration, CaptionStartMS: 0, CaptionEndMS: groupDuration, PresetID: child.PresetID,
 			CaptionLayout: "below",
 			Caption:       entityImageCaption(child),
 			Params:        entityImageLayerParams(width, height, len(group), slot),
@@ -224,7 +214,7 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	// timelines or deduplication at downstream consumers.
 	parent.EntityID = ""
 	parent.EntityRef = nil
-	parent.Params = map[string]any{"camera_travel_ms": entityImageTravelMS}
+	parent.Params = nil
 	return parent
 }
 
@@ -254,18 +244,35 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 	if width <= 0 || height <= 0 {
 		width, height = 1920, 1080
 	}
-	// Bound each photo to most of the canvas while preserving safe caption room.
-	// Contain preserves the source aspect ratio; one canvas-width step keeps
-	// neighboring photos and captions outside the camera viewport.
-	boxHeight := float64(height) * 0.76
-	boxWidth := float64(width) * 0.90
-	positionX, positionY := float64(slot)*float64(width), 0.0
-	if count > 1 {
-		// A shallow shared arc gives the same pan a natural, data-derived angle
-		// between stops without introducing separate camera motion modes.
-		positionY = math.Sin(2*math.Pi*float64(slot)/float64(count-1)) * 0.045 * float64(height)
+	boxWidth, boxHeight := float64(width)*0.42, float64(height)*0.56
+	var x, y float64
+	switch count {
+	case 2:
+		x = []float64{-0.25, 0.25}[slot]
+	case 3:
+		boxWidth, boxHeight = float64(width)*0.40, float64(height)*0.46
+		positions := [][2]float64{{-0.22, -0.22}, {0.22, -0.22}, {0, 0.25}}
+		x, y = positions[slot][0], positions[slot][1]
+	case 4:
+		positions := [][2]float64{{-0.24, -0.22}, {0.24, -0.22}, {-0.24, 0.22}, {0.24, 0.22}}
+		x, y = positions[slot][0], positions[slot][1]
+	case 5:
+		boxWidth, boxHeight = float64(width)*0.34, float64(height)*0.42
+		positions := [][2]float64{{-0.32, -0.25}, {0, -0.25}, {0.32, -0.25}, {-0.18, 0.24}, {0.18, 0.24}}
+		x, y = positions[slot][0], positions[slot][1]
+	default:
+		columns := int(math.Ceil(math.Sqrt(float64(count))))
+		rows := (count + columns - 1) / columns
+		x = (float64(slot%columns) - float64(columns-1)/2) * float64(width) * 0.46
+		y = (float64(slot/columns) - float64(rows-1)/2) * float64(height) * 0.52
+		boxWidth = float64(width) * 0.42 / math.Sqrt(float64(columns))
+		boxHeight = float64(height) * 0.56 / math.Sqrt(float64(rows))
 	}
-	return map[string]any{"width": int(boxWidth), "height": int(boxHeight), "position_x": positionX, "position_y": positionY, "fit": "contain"}
+	if count >= 2 && count <= 5 {
+		x *= float64(width)
+		y *= float64(height)
+	}
+	return map[string]any{"width": int(boxWidth), "height": int(boxHeight), "position_x": x, "position_y": y, "fit": "contain"}
 }
 
 // assignEntityImageMotions samples a fresh pool offset once per newly compiled
@@ -393,7 +400,7 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 			continue
 		}
 		if len(item.ImageLayers) > 0 {
-			item.CameraMotionID = capabilityoverlay.EntitySequenceCameraMotion()
+			item.CameraMotionID = ""
 			for layerIndex := range item.ImageLayers {
 				layer := &item.ImageLayers[layerIndex]
 				if len(requested) > 0 {

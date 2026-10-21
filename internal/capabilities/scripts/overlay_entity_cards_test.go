@@ -152,7 +152,7 @@ func TestCapEntityImageOverlaysPerSceneOnlyDropsRepeatedPhotoHashWithinScene(t *
 	}
 }
 
-func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
+func TestComposeNearbyEntityImagesCreatesOneSimultaneousComposite(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "second", SceneID: "scene-1", EntityID: "stable-second", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: 2500, EndMs: 7500,
 			EntityRef: &capabilityoverlay.OverlayEntityRef{EntityID: "stable-second", Type: "PERSON", Name: "Second Person", CanonicalEntityID: "person:second"},
@@ -177,7 +177,7 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	if composite == nil {
 		t.Fatalf("no composite item in %+v", got)
 	}
-	if composite.ID != "first+second" || composite.StartMs != 1000 || composite.EndMs != 6000 || composite.StartUS != 1_000_000 || composite.DurationUS != 5_000_000 {
+	if composite.ID != "first+second" || composite.StartMs != 1000 || composite.EndMs != 7500 || composite.StartUS != 1_000_000 || composite.DurationUS != 6_500_000 {
 		t.Fatalf("composite timing/identity = %+v", composite)
 	}
 	if len(composite.AssetRefs) != 2 || len(composite.ImageLayers) != 2 {
@@ -187,19 +187,19 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 		t.Fatalf("composite captions = %q / %q, want both entity names", composite.ImageLayers[0].Caption, composite.ImageLayers[1].Caption)
 	}
 	first, second := composite.ImageLayers[0], composite.ImageLayers[1]
-	if first.AssetID != "asset-a" || first.StartMS != 0 || first.EndMS != 5000 || first.PresetID != "image_scale_in" {
+	if first.AssetID != "asset-a" || first.StartMS != 0 || first.EndMS != 6500 || first.PresetID != "image_scale_in" {
 		t.Fatalf("first portrait layer = %+v", first)
 	}
-	if second.AssetID != "asset-b" || second.StartMS != 3500 || second.EndMS != 5000 || second.PresetID != "image_focus_in" {
+	if second.AssetID != "asset-b" || second.StartMS != 0 || second.EndMS != 6500 || second.PresetID != "image_focus_in" {
 		t.Fatalf("second portrait layer = %+v", second)
 	}
-	if first.EndMS != 5000 {
+	if first.EndMS != 6500 {
 		t.Fatalf("first portrait should stay visible to the group end, got %d ms", first.EndMS)
 	}
-	if first.Params["position_x"] != float64(0) || second.Params["position_x"] != float64(1920) {
+	if first.Params["position_x"] != float64(-480) || second.Params["position_x"] != float64(480) {
 		t.Fatalf("portrait positions = %v / %v", first.Params["position_x"], second.Params["position_x"])
 	}
-	if first.Params["width"] != 1728 || second.Params["width"] != 1728 {
+	if first.Params["width"] != 806 || second.Params["width"] != 806 {
 		t.Fatalf("producer portrait widths = %v / %v, want the shared scene layout width", first.Params["width"], second.Params["width"])
 	}
 	if first.EntityID != "stable-first" || second.EntityID != "stable-second" {
@@ -246,7 +246,7 @@ func TestComposeNearbyEntityImagesCreatesOneStaggeredComposite(t *testing.T) {
 	}
 }
 
-func TestComposeNearbyEntityCardsIntoCameraSequenceAndDropPlaceTitle(t *testing.T) {
+func TestComposeNearbyEntityCardsIntoSimultaneousGroupAndDropPlaceTitle(t *testing.T) {
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "garlasco", SceneID: "scene", Kind: "location", Text: "Garlasco", StartMs: 0, EndMs: 3000,
 			EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "LOCATION", Name: "Garlasco"}},
@@ -260,10 +260,10 @@ func TestComposeNearbyEntityCardsIntoCameraSequenceAndDropPlaceTitle(t *testing.
 
 	got := composeNearbyEntityImages(items, 1920, 1080)
 	if len(got) != 1 || got[0].Kind != string(capabilityoverlay.KindEntityImage) || len(got[0].ImageLayers) != 2 {
-		t.Fatalf("image-backed person cards should form one camera sequence and suppress the place title: %+v", got)
+		t.Fatalf("image-backed person cards should form one simultaneous group and suppress the place title: %+v", got)
 	}
 	if got[0].ImageLayers[0].Caption != "Chiara Poggi" || got[0].ImageLayers[1].Caption != "Alberto Stasi" {
-		t.Fatalf("camera sequence captions = %+v", got[0].ImageLayers)
+		t.Fatalf("simultaneous group captions = %+v", got[0].ImageLayers)
 	}
 	if got[0].CameraMotionID != "" {
 		t.Fatalf("camera motion is assigned after composition, got premature id %q", got[0].CameraMotionID)
@@ -271,8 +271,14 @@ func TestComposeNearbyEntityCardsIntoCameraSequenceAndDropPlaceTitle(t *testing.
 	if err := assignEntityImageMotions(got, 0, 1920, 1080, ""); err != nil {
 		t.Fatal(err)
 	}
-	if got[0].CameraMotionID != capabilityoverlay.EntitySequenceCameraMotion() {
-		t.Fatalf("shared camera motion = %q", got[0].CameraMotionID)
+	if got[0].CameraMotionID != "" {
+		t.Fatalf("simultaneous images must not use sequential camera motion: %q", got[0].CameraMotionID)
+	}
+	if got[0].ImageLayers[0].StartMS != got[0].ImageLayers[1].StartMS || got[0].ImageLayers[0].EndMS != got[0].ImageLayers[1].EndMS {
+		t.Fatalf("both portraits must be visible over the same interval: %+v", got[0].ImageLayers)
+	}
+	if got[0].ImageLayers[0].Params["position_x"] != float64(-480) || got[0].ImageLayers[1].Params["position_x"] != float64(480) {
+		t.Fatalf("portraits are not positioned side-by-side: %+v", got[0].ImageLayers)
 	}
 }
 

@@ -471,11 +471,17 @@ func editorialTimedAnnotation(span capabilityaudio.LocatedPhrase, timelineStartU
 // enough and keeps the persistent worker's output bounded.
 const visualBulletCandidateLimit = 12
 
-// attachVisualSemantics is the single-analyze path: each scene drives ONE
-// VisualNER analyze call and the grounded projections are applied in place
-// (bullets always, chart values when the editorial gate is open). Scenes
-// whose analysis fails keep the existing values, exactly like the two-pass
-// legacy path.
+// attachVisualSemantics is the single-analyze path. When the wired analyzer
+// implements SceneSemanticBatchAnalyzer (the production semantic engine
+// does), ONE call covers every scene of the script. Otherwise the same
+// analyzer is called once per scene, which is still a single analysis per
+// scene — never the retired separate bullet + chart passes.
+//
+// Chart projections are applied when the editorial gate is open. Bullet
+// candidates remain in the semantic manifest for planning and audit, while
+// the already selected Phrase Impact bullet stays authoritative for editorial
+// ranking, repetition control and scene budget. A failed batch keeps every
+// existing value; analysis never fails the generation.
 func (r *Runner) attachVisualSemantics(
 	ctx context.Context,
 	language string,
@@ -486,109 +492,109 @@ func (r *Runner) attachVisualSemantics(
 	if r == nil || r.sceneSemanticAnalyzer == nil || len(highlights) == 0 {
 		return highlights
 	}
+	bundles, ok := r.analyzeSemanticBundles(ctx, language, inputs)
+	if !ok {
+		return highlights
+	}
+	return r.mergeSemanticCharts(inputs, highlights, bundles, chartsEnabled)
+}
+
+func semanticBulletSpans(transcript string, inputs []scriptpkg.SceneAnalysisInput, bundles map[string]*SemanticCandidateBundle) ([]scriptpkg.SemanticBulletSpan, bool) {
+	if len(inputs) == 0 {
+		return nil, false
+	}
+	for _, in := range inputs {
+		if in.StartByte == nil || in.EndByte == nil || *in.StartByte < 0 || *in.EndByte <= *in.StartByte || *in.EndByte > len(transcript) || transcript[*in.StartByte:*in.EndByte] != in.Text {
+			return nil, false
+		}
+	}
+	spans := make([]scriptpkg.SemanticBulletSpan, 0)
+	for _, in := range inputs {
+		bundle := bundles[in.SceneID]
+		if bundle == nil {
+			continue
+		}
+		for _, candidate := range bundle.Bullets {
+			if candidate.Start < 0 || candidate.End <= candidate.Start || candidate.End > len(in.Text) || in.Text[candidate.Start:candidate.End] != candidate.Text {
+				continue
+			}
+			start, end := *in.StartByte+candidate.Start, *in.StartByte+candidate.End
+			if end > len(transcript) || transcript[start:end] != candidate.Text {
+				continue
+			}
+			spans = append(spans, scriptpkg.SemanticBulletSpan{StartByte: start, EndByte: end, Text: candidate.Text})
+		}
+	}
+	return spans, true
+}
+
+// analyzeSemanticBundles reuses the production batch interface so the caller
+// can pass the same extraction to Phrase Impact and visual projections.
+func (r *Runner) analyzeSemanticBundles(ctx context.Context, language string, inputs []scriptpkg.SceneAnalysisInput) (map[string]*SemanticCandidateBundle, bool) {
+	bundles := make(map[string]*SemanticCandidateBundle, len(inputs))
+	if r == nil || r.sceneSemanticAnalyzer == nil {
+		return bundles, false
+	}
+	if batch, ok := r.sceneSemanticAnalyzer.(SceneSemanticBatchAnalyzer); ok {
+		request := make([]SemanticSceneInput, 0, len(inputs))
+		for _, in := range inputs {
+			if strings.TrimSpace(in.Text) == "" {
+				continue
+			}
+			request = append(request, SemanticSceneInput{SceneID: in.SceneID, Text: in.Text})
+		}
+		if len(request) > 0 {
+			result, err := batch.SemanticBundles(ctx, language, request)
+			if err != nil {
+				r.log.Warn("semantic engine batch analysis unavailable; keeping existing values", zap.Error(err))
+				return bundles, false
+			}
+			bundles = result
+		}
+	} else {
+		texts := make(map[string]string, len(inputs))
+		for _, in := range inputs {
+			texts[in.SceneID] = in.Text
+		}
+		for _, in := range inputs {
+			text := texts[in.SceneID]
+			if strings.TrimSpace(text) == "" {
+				continue
+			}
+			bundle, err := r.sceneSemanticAnalyzer.SemanticCandidates(ctx, language, text, visualBulletCandidateLimit)
+			if err != nil {
+				r.log.Warn("visualner semantic analysis unavailable; keeping existing values",
+					zap.String("scene_id", in.SceneID), zap.Error(err))
+				continue
+			}
+			bundles[in.SceneID] = bundle
+		}
+	}
+	return bundles, true
+}
+
+func (r *Runner) mergeSemanticCharts(
+	inputs []scriptpkg.SceneAnalysisInput,
+	highlights []scriptpkg.SceneHighlight,
+	bundles map[string]*SemanticCandidateBundle,
+	chartsEnabled bool,
+) []scriptpkg.SceneHighlight {
 	texts := make(map[string]string, len(inputs))
 	for _, in := range inputs {
 		texts[in.SceneID] = in.Text
 	}
 	for i := range highlights {
+		bundle := bundles[highlights[i].SceneID]
+		if bundle == nil {
+			continue
+		}
 		text := texts[highlights[i].SceneID]
 		if strings.TrimSpace(text) == "" {
 			continue
-		}
-		bundle, err := r.sceneSemanticAnalyzer.SemanticCandidates(ctx, language, text, visualBulletCandidateLimit)
-		if err != nil {
-			r.log.Warn("visualner semantic analysis unavailable; keeping existing values",
-				zap.String("scene_id", highlights[i].SceneID), zap.Error(err))
-			continue
-		}
-		if replacement, ok := selectVisualBullet(bundle.Bullets, text); ok {
-			highlights[i].Bullets = replacement
-			highlights[i].GloballyIndexed = false
 		}
 		if chartsEnabled {
 			highlights[i].ChartValues = mergeChartValues(highlights[i].ChartValues, bundle.Charts, text)
 		}
 	}
 	return highlights
-}
-
-// attachVisualBullets replaces each scene's phrase-impact bullets with the
-// first VisualNER sentence bullet that re-maps onto the Go sentence
-// splitter. Exactly one bullet per scene is kept (the visual contract); a
-// scene with no mappable candidate keeps its existing bullets. Failures keep
-// the existing bullets; they never fail the generation.
-func (r *Runner) attachVisualBullets(ctx context.Context, language string, inputs []scriptpkg.SceneAnalysisInput, highlights []scriptpkg.SceneHighlight) []scriptpkg.SceneHighlight {
-	if r == nil || r.sceneBulletAnalyzer == nil || len(highlights) == 0 {
-		return highlights
-	}
-	texts := make(map[string]string, len(inputs))
-	for _, in := range inputs {
-		texts[in.SceneID] = in.Text
-	}
-	for i := range highlights {
-		text := texts[highlights[i].SceneID]
-		if strings.TrimSpace(text) == "" {
-			continue
-		}
-		candidates, err := r.sceneBulletAnalyzer.BulletCandidates(ctx, language, text, visualBulletCandidateLimit)
-		if err != nil {
-			r.log.Warn("visualner bullet analysis unavailable; keeping existing bullets",
-				zap.String("scene_id", highlights[i].SceneID), zap.Error(err))
-			continue
-		}
-		if replacement, ok := selectVisualBullet(candidates, text); ok {
-			highlights[i].Bullets = replacement
-			highlights[i].GloballyIndexed = false
-		}
-	}
-	return highlights
-}
-
-// selectVisualBullet returns the first candidate whose text re-maps onto a
-// contiguous run of Go sentences. The span uses the Go splitter's indices so
-// validEditorialBullet accepts it; the Rust sentence index is only a
-// preference hint, never trusted blindly.
-func selectVisualBullet(candidates []BulletCandidate, sceneText string) ([]scriptpkg.SceneBulletSpan, bool) {
-	sentences := editorialSentences(sceneText)
-	if len(sentences) == 0 {
-		return nil, false
-	}
-	for _, candidate := range candidates {
-		trimmed := strings.TrimSpace(candidate.Text)
-		if trimmed == "" {
-			continue
-		}
-		if !strings.Contains(sceneText, candidate.Text) {
-			continue
-		}
-		if span, ok := mapBulletToSentences(sentences, trimmed); ok {
-			return []scriptpkg.SceneBulletSpan{{
-				SentenceStart: span[0],
-				SentenceEnd:   span[1],
-				Text:          trimmed,
-			}}, true
-		}
-	}
-	return nil, false
-}
-
-// mapBulletToSentences finds a contiguous sentence run whose space-joined
-// text equals the candidate (case-insensitive, trimmed). Single-sentence
-// matches win; multi-sentence matches cover splitter drift.
-func mapBulletToSentences(sentences []string, candidate string) ([2]int, bool) {
-	for s := range sentences {
-		if strings.EqualFold(strings.TrimSpace(sentences[s]), candidate) {
-			return [2]int{s, s + 1}, true
-		}
-	}
-	for s := range sentences {
-		joined := strings.TrimSpace(sentences[s])
-		for e := s + 1; e < len(sentences); e++ {
-			joined = strings.TrimSpace(joined + " " + strings.TrimSpace(sentences[e]))
-			if strings.EqualFold(joined, candidate) {
-				return [2]int{s, e + 1}, true
-			}
-		}
-	}
-	return [2]int{}, false
 }

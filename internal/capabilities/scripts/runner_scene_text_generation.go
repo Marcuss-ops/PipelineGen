@@ -131,7 +131,23 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 	out := &phraseImpactEnrichment{}
 	var rawImpact interface{} = r.phraseImpactAnalyzer
 	if sceneAnalyzer, ok := rawImpact.(SceneHighlightAnalyzer); ok && len(sceneInputs) > 0 {
-		impactRes, err := sceneAnalyzer.AnalyzeScenes(ctx, transcript, string(req.SourceLanguage), sceneInputs)
+		language := string(req.SourceLanguage)
+		var semanticBundles map[string]*SemanticCandidateBundle
+		var semanticReady bool
+		var semanticBullets []scriptpkg.SemanticBulletSpan
+		if r.sceneSemanticAnalyzer != nil {
+			semanticBundles, semanticReady = r.analyzeSemanticBundles(ctx, language, sceneInputs)
+			if semanticReady {
+				semanticBullets, semanticReady = semanticBulletSpans(transcript, sceneInputs, semanticBundles)
+			}
+		}
+		var impactRes scriptpkg.PhraseImpactResult
+		var err error
+		if candidateAnalyzer, ok := rawImpact.(SemanticBulletCandidateAnalyzer); ok && semanticReady {
+			impactRes, err = candidateAnalyzer.AnalyzeScenesWithSemanticBullets(ctx, transcript, language, sceneInputs, semanticBullets)
+		} else {
+			impactRes, err = sceneAnalyzer.AnalyzeScenes(ctx, transcript, language, sceneInputs)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -143,16 +159,8 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 			out.chapterManifest = &manifest
 		}
 		chartsEnabled := req.EnableCharts && !req.DisableChartOverlays
-		if r.sceneSemanticAnalyzer != nil {
-			// RUST-02: one analyze call per scene carries bullets and charts;
-			// when the chart gate is closed the bundle's chart rows are not
-			// merged here and existing values are cleared below.
-			impactRes.SceneHighlights = r.attachVisualSemantics(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights, chartsEnabled)
-		} else {
-			impactRes.SceneHighlights = r.attachVisualBullets(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
-			if chartsEnabled {
-				impactRes.SceneHighlights = r.attachVisualChartValues(ctx, string(req.SourceLanguage), sceneInputs, impactRes.SceneHighlights)
-			}
+		if semanticReady {
+			impactRes.SceneHighlights = r.mergeSemanticCharts(sceneInputs, impactRes.SceneHighlights, semanticBundles, chartsEnabled)
 		}
 		if !chartsEnabled {
 			for i := range impactRes.SceneHighlights {

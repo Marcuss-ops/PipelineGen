@@ -1,0 +1,101 @@
+# Rust Semantic Engine TODO
+
+Acceptance checklist for consolidating semantic extraction in PipelineGen. Each item is checked only after its evidence is recorded here or in a focused test. `[x]` means the criterion is currently satisfied; `[ ]` means work remains.
+
+## A. Baseline and scope
+
+- [x] Confirm the target checkout is `refactored/` and read its `AGENTS.md` constraints.
+- [x] Preserve the existing user worktree changes and identify Rust semantic-engine work already present.
+- [x] Capture the existing dirty-tree baseline and diff summary in `/tmp/pipelinegen-status-before-semantic-audit.txt` and `/tmp/pipelinegen-diff-before-semantic-audit.txt` so no unrelated changes are overwritten.
+
+## B. Architecture and worker
+
+- [x] Keep semantic extraction in `semantic-core` and `semantic-engine`, separate from FFmpeg/media operations in `pipelinegen-muscles`.
+- [x] Expose the new semantic worker as a dedicated NDJSON executable with a script-level request/manifest contract.
+- [x] Wire production Go script generation through `RustSemanticEnginePath` and one `SceneSemanticAnalyzer` setter.
+- [x] Route script-level bullet/chart/date/number analysis and VidRush SceneIR/image-search entity extraction through the same `SemanticEngineAdapter`; exact language+text matches reuse the batch entity projection (focused adapter test asserts one worker call). Different translated text is analyzed on demand by that same engine. The unrelated `buildVisualNERBackend` remains available for other consumers/configurations.
+- [x] Ensure one script request yields the grounded V2 collections for entities, facts, phrases, bullets, chart proposals, dates, relations, groups and visual queries where supported; eliminate undocumented placeholder fields. Entity searches now offer both the exact mention and its exact canonical source sentence as provider-neutral query suggestions; explicit paired quotations and all current manifest collections are grounded and checked by the Go adapter.
+- [x] Expand entity search beyond the entity name and full sentence with an exact, bounded multiword source phrase around the mention; Rust and real Go-to-release-worker tests verify the query remains a verbatim source slice. This improves the query surface but does not establish higher recall or usefulness.
+- [ ] Evaluate phrase and visual-concept candidate usefulness, precision and recall against independent annotations. The current entity/context query variants are grounded; semantic quality remains unscored.
+- [x] Ensure entity limits are safety bounds only (`DEFAULT_ENTITY_SAFETY_CAP=10_000`); editorial top-N is owned by the planner.
+
+## C. Canonical shared algorithms
+
+- [x] Make VisualNER sentence splitting call the shared `semantic-core` sentence segmenter.
+- [x] Make Phrase Impact and Scene Intelligence call the same sentence segmenter and preserve UTF-8 offsets.
+- [x] Make VisualNER numeric facts use the shared numeric parser and derive chart points as a typed projection.
+- [x] Make VisualNER temporal facts re-export/use the shared date extraction implementation.
+- [x] Route Phrase Impact's literal chart-value parsing through the shared locale-aware numeric parser; preserve its existing literal-only and scene eligibility rules. Added Italian/English regression assertions.
+- [x] Make entity co-mentions distinct from asserted relations; emit explicitly marked ownership/location, collaboration, competition, contrast, funding, causal and temporal edges with source sentence and negation/uncertainty status.
+- [x] Preserve Phrase Impact's selected editorial bullet through the semantic cutover; Rust bullet candidates no longer overwrite it. Added regression coverage for both preserving a selected bullet and leaving an empty editorial selection empty.
+- [x] Consolidate bullet candidate generation/ranking: the unified semantic batch supplies exact scene-local spans, Go grounds them into full-transcript UTF-8 spans, and Phrase Impact restricts both global and per-scene editorial ranking/repetition/novelty selection to that candidate pool. A successful empty candidate set remains empty; absent/failed semantic analysis falls back to the historical Phrase Impact pool. Rust checks exact source slices; Go contract tests cover transport, and a real Go-to-release-Rust integration test covers both ranking surfaces.
+
+## D. Manifest and acceptance behavior
+
+- [x] Version and fingerprint the semantic manifest deterministically with analyzer provenance.
+- [x] Ground candidate spans against source text and reject invalid/un-grounded candidates.
+- [x] Carry the complete current V2 manifest surface through the Go adapter (entities, entity-linked facts, identities/mentions, relation views, phrase candidates, numeric/date facts, bullets, proposals, semantic groups, refusal diagnostics and provenance) and fail closed on missing collections, ungrounded spans or dangling identity references.
+- [x] Replace the always-empty quote collection with source-grounded candidates for explicit paired quotation marks; UTF-8 spans verified by focused Rust acceptance test. Single quotes/apostrophes are intentionally not treated as quote delimiters.
+- [x] Populate short/long sentence candidates from the canonical shared segmenter, with stable sentence IDs/indices and grounded UTF-8 evidence offsets; retain all non-numeric VisualNER entities in `important_words`.
+- [x] Implement grounded chronological groups from normalized dates plus explicit event predicates; verify member spans.
+- [x] Implement scene-local process groups for at least three explicitly ordered phases tied to the same grounded entity; reject negated and uncertain phase sentences. Focused Rust positive and negative tests pass.
+- [x] Address semantic group members to their source scene and ground cross-scene spans against that scene in Go; unknown scene references fail closed. Focused adapter test covers both cases.
+- [x] Link three or more explicit positive, certain process phases across scenes only when every sentence names the same canonical entity; preserve each member's scene ID, local sentence index and UTF-8 span. Positive and negative Rust acceptance tests pass.
+- [x] Build scene-local comparison groups only from an explicit comparison cue and at least two distinct grounded entity IDs; omit negated/uncertain sentences. Build cause-effect groups only from an asserted causal relation and preserve grounded endpoints. Rust positive and negative tests pass.
+- [x] Implement cross-scene comparison groups when the same canonical entity set is explicitly compared in multiple scenes, and causal-chain groups when successive asserted edges share a canonical intermediate entity. Each member retains its own scene ID and UTF-8 span. Positive/negative Rust acceptance tests cover both cases, and a real release-worker Go adapter test validates cross-scene members against their individual sources.
+- [x] Recognize explicitly numbered enumeration/ranking items in source order and preserve rank/evidence.
+- [x] Implement explicit Top 10 completeness metadata; six source items remain six and are marked incomplete, while ten consecutive ranks can be complete.
+- [x] Emit grounded visual query suggestions from entity-backed proposals while leaving asset retrieval to Go; the Go boundary validates every query token against the source. Every retained visual entity mention now gets an `entity_search` proposal, including mentions without a lower third or co-mentioned entity; a Rust acceptance test checks one grounded query per visual entity. Extraction recall and false-positive rate over a fully annotated corpus remain unscored.
+- [x] Keep numeric facts separate from charts; emit chart proposals only for parsed, same-kind values in sentences with explicit comparison language.
+- [x] Add negative coverage proving unrelated names, dates and values do not create groups or charts.
+
+## E. Go cutover and retirement
+
+- [x] Wire the unified adapter in production `script_generation_runtime.go` for script batch analysis, SceneIR NER and image-search query extraction.
+- [x] Verify the semantic adapter maps the complete current V2 contract without dropping fields, including groups, refusal diagnostics and analyzer provenance (`go test ./internal/platform/media/rustexec/... -count=1` passed against the rebuilt release worker; real-binary whole-script E2E included).
+- [x] Confirm legacy bullet/chart interfaces, setters and production branches are already retired; repository search returns no `SceneBulletAnalyzer`, `SceneChartAnalyzer`, or setter symbols.
+- [ ] Remove or narrow shadow Scene Intelligence paths only after their useful validation/observability is retained and parity is demonstrated.
+- [x] Search production callers before considering retirement: `buildScriptUseCases` still wires VisualNER, and script runtime still wires Phrase Impact and Scene Intelligence for active paths. Preserve their workers/configuration until those callers are migrated and parity-certified.
+
+## F. Certification
+
+- [ ] T01: run the exact 2,013-word Garlasco gold script against its independent annotations; measure omissions, duplicates and false positives.
+- [ ] End-to-end Garlasco acceptance: run the certified semantic manifest through PipelineGen asset selection and Chronon, then inspect the rendered MP4 for expected categories and groups. Not run; keep separate from the synthetic semantic tests and only certify against the supplied production gold input.
+- [x] T02: link a fictional stadium's stated date, quantity, ownership and location to its canonical facility entity with grounded value and sentence evidence. The focused acceptance test verifies inauguration year, capacity operator/unit, owner and location.
+- [x] T03: group four explicitly dated construction phases into one chronological sequence with grounded members.
+- [x] T04: preserve explicit Top 10 ranks and report six-of-ten as incomplete without generating four entries.
+- [x] Long-script capacity: a synthetic 10,000-word single-scene request retains all 2,500 canonical sentence candidates with UTF-8 evidence spans (`ten_thousand_word_script_keeps_every_canonical_sentence_candidate`). This validates transport/coverage, not semantic recall against a gold annotation.
+- [x] Verify each extracted person in the eight-person acceptance fixture receives a grounded reusable visual query proposal; the Rust acceptance test checks all eight names. Full object/entity recall remains unscored.
+- [x] T05 contract: every visual entity currently extracted, including the curated ten-language sports-object slice, receives a reusable provider-neutral query surface. Entity-specific query variants preserve the exact mention and add its source sentence; typed-object fixtures verify grounded proposals.
+- [ ] T05 corpus score: establish recall and precision for all visual objects/keywords and contextual image/stock queries against an independently annotated script corpus. The current lexical object vocabulary is deliberately partial.
+- [x] T05 object slice: a tokenizer-backed, source-span-preserving lexicon classifies common sports objects as `OBJECT` across all ten configured VisualNER languages; acceptance fixtures verify three grounded object mentions and one reusable search proposal per object in each language. This is a curated vocabulary slice, not complete object recall or a corpus-level precision/recall score.
+- [x] T06: compare supported percentage values, keep dates out of charts, and reject unrelated values without an explicit comparison cue.
+- [x] Negative grouping: unrelated dates and numeric values do not create an automatic sequence or chart.
+- [x] Run Rust workspace tests (`RUST_ICU_MAJOR_VERSION_NUMBER=70 cargo test --manifest-path rust/Cargo.toml --workspace`): all crates, unit tests, integration tests and doc tests passed, including four-phase sequence, explicit Top 10 and negative grouping coverage.
+- [x] Run Rust workspace Clippy with warnings denied (`RUST_ICU_MAJOR_VERSION_NUMBER=70 cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings`).
+- [x] Run full Go rustexec suite against rebuilt release workers (`go test ./internal/platform/media/rustexec/... -count=1`, passed; 251.292s; the latest `verify-agent` media run also passed after the contextual-query E2E was added). Semantic bullet restriction passed ten real-binary runs through `VELOX_RUST_PHRASE_IMPACT_PATH`; the entity/context query passed through the real semantic-engine Go adapter.
+- [x] Run Go scripts and kernel/script contract suites (`go test ./internal/capabilities/scripts/... -count=1`; `go test ./internal/kernel/script/... -count=1`).
+- [x] Run `make verify-media-intelligence` (all architecture, SceneIR, VisualNER, MediaSampler, Stock Intelligence and VidRush semantic/contract/extraction/query/binding gates passed).
+- [x] Exercise repository acceptance fixtures for 10,000-word candidate coverage, fictional entity facts, four-step sequences, explicit Top 10, many named entities, the ten-language object slice, numeric comparisons, and negative grouping. These prove contract behavior and transport coverage.
+- [ ] Certify long-script semantic recall and complete object coverage against independent gold annotations; the synthetic capacity fixtures do not prove corpus-level quality.
+- [x] Record unavailable or non-runnable acceptance criteria with the exact blocker: the checkout contains Garlasco production/job JSON, but no exact 2,013-word gold input with independent annotations, so T01 and measured GLiNER2 comparison cannot be scored reproducibly.
+- [x] Run `make verify-agent` after splitting the Go semantic adapter to satisfy the architecture file-size gate: gitleaks found no leaks, submodule integrity, module tidy, `go vet ./...`, `go build ./...`, `verify-dev`, and changed-components passed (`136` changed files across `21` components, `final=PASS`).
+- [x] Re-run `make verify-fast` after the bounded multiword contextual-query change: gitleaks found no leaks, submodule integrity, module tidy, Go vet/build, static verification, and `verify-fast` passed.
+- [x] Re-run post-cutover gates after routing VidRush SceneIR/image search through the same adapter: `go test ./internal/platform/media/rustexec/... ./internal/app/wiring/... -count=1`, scripts/kernel contract suites, `make verify-media-intelligence`, `make verify-agent`, `make verify-fast`, and `git diff --check` all passed. A focused test asserts an exact-text SceneIR extraction reuses the script batch result and does not invoke Rust a second time.
+
+## H. External design references
+
+- [x] Adopt the useful local patterns: multi-task manifest, exact source grounding, identity registry, explicit co-mention versus asserted relation, deterministic replay, and planner-owned visual admission.
+- [ ] Run a measured GLiNER2 comparison on the 2,013-word Garlasco gold script (recall, precision, relation quality, CPU, RSS and latency) before deciding whether an external model belongs in production. Blocked by the absent exact gold input and independent labels; no external model was added.
+- [x] Review LangExtract's source-offset alignment design. Its resolver propagates token and character offsets across chunks ([Google LangExtract resolver](https://github.com/google/langextract/blob/main/langextract/resolver.py)); PipelineGen already uses exact UTF-8 source spans and currently processes a 10,000-word scene without chunking. Preserve fail-closed exact grounding; if bounded-memory chunking becomes necessary, add each chunk's global byte base before projection rather than adopting fuzzy matches.
+
+## G. Final cleanup
+
+- [ ] Remove only superseded implementations with proven parity and no remaining callers.
+- [x] Confirm `semantic-engine` has no FFmpeg/render dependencies; `pipelinegen-muscles` retains media operations, and `mediasampler` plus `ndjson-stdio` remain workspace crates. The complete Rust workspace test suite passes.
+- [x] Re-run focused gates affected by the bounded multiword visual-query and adapter split; Rust semantic-engine acceptance (39 tests), Clippy, `cargo fmt --check`, real release-worker Go adapter E2E, `go test ./internal/platform/media/rustexec -run '^TestSemanticEngine'`, `git diff --check`, `archcheck` (zero hard gates), and `make verify-agent` passed. Pre-existing unrelated worktree changes remain excluded from this task commit.
+
+## Current implementation limits
+
+- `semantic-engine` currently grounds entities, identity mentions, temporal/numeric facts, explicit facility facts, simple asserted relations, bullet candidates, numeric comparison proposals, explicit numbered lists, Top 10 completeness and date-backed chronological groups.
+- Broader asserted-relation extraction beyond the current lexical marker set and one shared editorial bullet-ranking implementation are not yet implemented or parity-certified. Quotes cover explicit paired double quotation marks only. Every retained visual entity now gets a grounded source-text search query, but synonym expansion, independently authored search variants, and corpus-level object recall/precision remain unmeasured. The extractor now excludes Italian `si` pronouns from visual candidates without allowing a noisy PRON tag to discard proper-name candidates; the OpenAI and song-title regression tests pass. Process groups work within and across scenes when each phase explicitly names the same grounded identity. Cross-scene comparison groups require matching explicit comparison entity sets; causal chains require successive asserted edges sharing an identity and increasing scene order. These lexical groups require positive, certain wording. The semantic cutover preserves Phrase Impact's chosen bullet instead of letting the first VisualNER candidate replace it, but candidate generation/ranking is still not one shared algorithm. Co-mentions remain distinct from asserted relations. Existing Phrase Impact and Scene Intelligence modules remain pending those migrations.

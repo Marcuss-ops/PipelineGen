@@ -97,6 +97,12 @@ func (a *PhraseImpactAnalyzer) Analyze(ctx context.Context, transcript, language
 // rather than retrying blindly. A valid manifest with zero highlights is a
 // successful empty result, not an error.
 func (a *PhraseImpactAnalyzer) AnalyzeScenes(ctx context.Context, transcript, language string, scenes []SceneInput) (scriptpkg.PhraseImpactResult, error) {
+	return a.AnalyzeScenesWithSemanticBullets(ctx, transcript, language, scenes, nil)
+}
+
+// AnalyzeScenesWithSemanticBullets ranks the semantic engine's exact grounded
+// sentence spans using Phrase Impact's existing editorial scoring.
+func (a *PhraseImpactAnalyzer) AnalyzeScenesWithSemanticBullets(ctx context.Context, transcript, language string, scenes []SceneInput, candidates []scriptpkg.SemanticBulletSpan) (scriptpkg.PhraseImpactResult, error) {
 	transcript = strings.TrimSpace(transcript)
 	if transcript == "" {
 		return scriptpkg.PhraseImpactResult{}, nil
@@ -136,14 +142,14 @@ func (a *PhraseImpactAnalyzer) AnalyzeScenes(ctx context.Context, transcript, la
 	// legacy context, so the highlight pass no longer re-runs the worker on
 	// the same transcript. A coherent-identity failure degrades to the
 	// uncertified manifest instead of an error, exactly like before.
-	return a.runEditorialAnalysis(ctx, transcript, language, legacyScenes, legacyTopics, scenes)
+	return a.runEditorialAnalysis(ctx, transcript, language, legacyScenes, legacyTopics, scenes, candidates)
 }
 
 // AnalyzeWithContext preserves the historical string-based API; it never
 // carries structured scene identity, so the certified highlights path is the
 // structured one in runEditorialAnalysis.
 func (a *PhraseImpactAnalyzer) AnalyzeWithContext(ctx context.Context, transcript, language string, scenes, topics []string) (scriptpkg.PhraseImpactResult, error) {
-	return a.runEditorialAnalysis(ctx, transcript, language, scenes, topics, nil)
+	return a.runEditorialAnalysis(ctx, transcript, language, scenes, topics, nil, nil)
 }
 
 // runEditorialAnalysis builds and runs the single editorial request: with
@@ -157,6 +163,7 @@ func (a *PhraseImpactAnalyzer) runEditorialAnalysis(
 	transcript, language string,
 	scenes, topics []string,
 	structured []SceneInput,
+	semanticBullets []scriptpkg.SemanticBulletSpan,
 ) (scriptpkg.PhraseImpactResult, error) {
 	transcript = strings.TrimSpace(transcript)
 	if transcript == "" {
@@ -228,6 +235,9 @@ func (a *PhraseImpactAnalyzer) runEditorialAnalysis(
 	}
 	if len(structured) > 0 {
 		request["scene_inputs"] = structuredSceneInputs(structured)
+	}
+	if semanticBullets != nil {
+		request["semantic_bullet_spans"] = semanticBullets
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
