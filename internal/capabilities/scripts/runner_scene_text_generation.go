@@ -11,6 +11,7 @@ import (
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
+	"go.uber.org/zap"
 )
 
 // ── Scene-text generation path selection + dispatch ────────────────
@@ -129,9 +130,44 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 	}
 	sceneInputs := buildSceneAnalysisInputs(transcript, scenes, req)
 	out := &phraseImpactEnrichment{}
+	language := string(req.SourceLanguage)
+	if batch, ok := r.sceneSemanticAnalyzer.(SceneSemanticEditorialBatchAnalyzer); ok {
+		if len(sceneInputs) == 0 {
+			return out, nil
+		}
+		semanticBundles, impactRes, err := batch.AnalyzeSemanticEditorial(ctx, transcript, language, sceneInputs)
+		if err == nil {
+			out.summary = impactRes.Summary
+			out.bullets = impactRes.BulletPoints
+			out.heavy = impactRes.HeavySentences
+			if impactRes.ChapterManifest.SchemaVersion != "" {
+				manifest := impactRes.ChapterManifest
+				out.chapterManifest = &manifest
+			}
+			chartsEnabled := req.EnableCharts && !req.DisableChartOverlays
+			impactRes.SceneHighlights = r.mergeSemanticCharts(sceneInputs, impactRes.SceneHighlights, semanticBundles, chartsEnabled)
+			if !chartsEnabled {
+				for i := range impactRes.SceneHighlights {
+					impactRes.SceneHighlights[i].ChartValues = nil
+				}
+			}
+			out.highlights = impactRes.SceneHighlights
+			out.editorial = buildEditorialManifest(req, sceneInputs, impactRes)
+			out.timings = append(out.timings, impactRes.Timings)
+			return out, nil
+		}
+		if r.log != nil {
+			r.log.Warn("combined Rust semantic/editorial batch failed", zap.Error(err))
+		}
+		// Production uses this unified adapter. Do not silently launch the
+		// retired Phrase Impact worker as a second analysis path on failure.
+		return out, nil
+	}
+	if r.phraseImpactAnalyzer == nil {
+		return out, nil
+	}
 	var rawImpact interface{} = r.phraseImpactAnalyzer
 	if sceneAnalyzer, ok := rawImpact.(SceneHighlightAnalyzer); ok && len(sceneInputs) > 0 {
-		language := string(req.SourceLanguage)
 		var semanticBundles map[string]*SemanticCandidateBundle
 		var semanticReady bool
 		var semanticBullets []scriptpkg.SemanticBulletSpan
@@ -172,7 +208,7 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		out.timings = append(out.timings, impactRes.Timings)
 		return out, nil
 	}
-	legacy, err := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, transcript, string(req.SourceLanguage), chapterScenes, chapterTopics)
+	legacy, err := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, transcript, language, chapterScenes, chapterTopics)
 	if err != nil {
 		return nil, err
 	}

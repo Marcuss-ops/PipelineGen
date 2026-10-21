@@ -29,6 +29,24 @@ type stubPhraseImpactAnalyzer struct {
 	lastTopics []string
 }
 
+type stubCombinedSemanticAnalyzer struct {
+	calls  int
+	result scriptpkg.PhraseImpactResult
+	err    error
+}
+
+func (s *stubCombinedSemanticAnalyzer) SemanticCandidates(context.Context, string, string, int) (*SemanticCandidateBundle, error) {
+	return &SemanticCandidateBundle{}, nil
+}
+
+func (s *stubCombinedSemanticAnalyzer) AnalyzeSemanticEditorial(_ context.Context, _, _ string, _ []scriptpkg.SceneAnalysisInput) (map[string]*SemanticCandidateBundle, scriptpkg.PhraseImpactResult, error) {
+	s.calls++
+	if s.err != nil {
+		return nil, scriptpkg.PhraseImpactResult{}, s.err
+	}
+	return map[string]*SemanticCandidateBundle{}, s.result, nil
+}
+
 func (s *stubPhraseImpactAnalyzer) AnalyzeWithContext(_ context.Context, transcript, language string, scenes, topics []string) (scriptpkg.PhraseImpactResult, error) {
 	s.calls++
 	s.lastText = transcript
@@ -79,6 +97,50 @@ func TestRunnerPersistsExtractiveSummaryOnTheResult(t *testing.T) {
 
 	// The editorial summary must never leak into the rendered narration.
 	assert.Equal(t, "First scene text\n\nSecond scene text\n\nThird scene text", final.Result.Output.Text)
+}
+
+func TestRunnerConsumesEditorialProductsFromTheUnifiedSemanticBatch(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	combined := &stubCombinedSemanticAnalyzer{result: scriptpkg.PhraseImpactResult{
+		Summary: "one batch summary", BulletPoints: []string{"one grounded point"},
+		ChapterManifest: scriptpkg.ChapterManifest{SchemaVersion: "chapter_manifest.v1"},
+	}}
+	runner.SetSceneSemanticAnalyzer(combined)
+
+	req := defaultTestRequest()
+	runID := "run-unified-semantic-editorial-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	require.NotNil(t, final.Result)
+	assert.Equal(t, 1, combined.calls, "the combined manifest should be requested once per script")
+	assert.Equal(t, "one batch summary", final.Result.Summary)
+	assert.Equal(t, []string{"one grounded point"}, final.Result.BulletPoints)
+}
+
+func TestRunnerDoesNotLaunchLegacyPhraseImpactAfterUnifiedFailure(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	combined := &stubCombinedSemanticAnalyzer{err: errors.New("semantic worker unavailable")}
+	legacy := &stubPhraseImpactAnalyzer{result: scriptpkg.PhraseImpactResult{Summary: "legacy fallback"}}
+	runner.SetSceneSemanticAnalyzer(combined)
+	runner.SetPhraseImpactAnalyzer(legacy)
+
+	req := defaultTestRequest()
+	runID := "run-unified-semantic-failure-no-fallback-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+	runner.Execute(context.Background(), runID, req)
+	final := awaitCompletion(t, repo, runID, 5*time.Second)
+	require.NotNil(t, final)
+	require.Equal(t, RunStatusCompleted, final.Status)
+	assert.Equal(t, 1, combined.calls)
+	assert.Zero(t, legacy.calls, "a failed unified request must not trigger a second semantic worker")
+	assert.Empty(t, final.Result.Summary)
 }
 
 // TestRunnerPublishesPhraseImpactStageTimings pins the measurement contract:

@@ -451,26 +451,14 @@ func wireMapPlates(runner mapPlateWiringTarget, manifestPath string, log *zap.Lo
 	return nil
 }
 
-// wirePhraseImpactAnalyzer wires the dedicated Rust extractive-summary worker
-// (a separate NDJSON contract from mediaexec.v1) into the script runner. It is
-// wired only when the configured binary is present, so a deployment that has
-// not yet built it degrades to "no summary" instead of failing every
-// generation.
-func wirePhraseImpactAnalyzer(runner *scriptgen.Runner, cfg *config.Config, log *zap.Logger) {
-	path := strings.TrimSpace(cfg.External.RustPhraseImpactPath)
-	if path == "" {
-		return
-	}
-	if _, statErr := os.Stat(path); statErr != nil {
-		log.Warn("phrase-impact Rust worker not found; extractive summary disabled",
-			zap.String("path", path), zap.Error(statErr))
-		return
-	}
+// wirePhraseImpactEmbedder configures the passage embedder shared by the
+// unified semantic worker's editorial analysis.
+func wirePhraseImpactEmbedder(cfg *config.Config) *embeddings.HTTPTextEmbedder {
 	var phraseEmbedder *embeddings.HTTPTextEmbedder
 	if strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" {
 		phraseEmbedder = embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()).(*embeddings.HTTPTextEmbedder)
 	}
-	runner.SetPhraseImpactAnalyzer(rustexec.NewPhraseImpactAnalyzer(path, nil, phraseEmbedder))
+	return phraseEmbedder
 }
 
 // wireSceneIntelligenceAnalyzer wires the independently versioned Rust SI

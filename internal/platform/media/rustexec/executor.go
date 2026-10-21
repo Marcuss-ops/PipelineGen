@@ -74,8 +74,18 @@ func configuredExecutionSlots() int {
 }
 
 func NewExecutorWithLimit(binaryPath, ffmpegPath string, slots int, log *zap.Logger) *Executor {
+	return NewExecutorWithOutputLimit(binaryPath, ffmpegPath, slots, defaultRustOutputLimit, log)
+}
+
+// NewExecutorWithOutputLimit creates a bounded process executor with an
+// explicit protocol response cap. Semantic manifests need a larger cap than
+// media command acknowledgements because they carry grounded source spans.
+func NewExecutorWithOutputLimit(binaryPath, ffmpegPath string, slots int, outputLimit int64, log *zap.Logger) *Executor {
 	if log == nil {
 		log = zap.NewNop()
+	}
+	if outputLimit <= 0 {
+		outputLimit = defaultRustOutputLimit
 	}
 	if ffmpegPath == "" {
 		ffmpegPath = "ffmpeg"
@@ -86,7 +96,7 @@ func NewExecutorWithLimit(binaryPath, ffmpegPath string, slots int, log *zap.Log
 		ffmpegPath:  ffmpegPath,
 		log:         log,
 		runner:      primary,
-		outputLimit: defaultRustOutputLimit,
+		outputLimit: outputLimit,
 		timeout:     defaultRustTimeout,
 	}
 	if slots > 1 {
