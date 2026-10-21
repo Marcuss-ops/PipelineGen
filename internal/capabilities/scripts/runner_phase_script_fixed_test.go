@@ -415,7 +415,28 @@ func TestExpectedRenderUnitsCountsFixedMultilingualFanout(t *testing.T) {
 		t.Fatalf("expectedRenderUnits = %d, want 7 (2 clips x 3 langs + 1 generated)", got)
 	}
 	solo := GenerateRequest{SourceLanguage: "en"}
-	if got := expectedRenderUnits(solo, []Scene{fixed, generated}); got != 3 {
-		t.Fatalf("expectedRenderUnits source-only = %d, want 3", got)
+	// Without subtitles the fixed lane cannot burn a subtitle track, so the
+	// fixed intro is left to the final-job library-asset fallback and only the
+	// generated scene remains a local render unit.
+	if got := expectedRenderUnits(solo, []Scene{fixed, generated}); got != 1 {
+		t.Fatalf("expectedRenderUnits source-only = %d, want 1 (fixed media falls back to the library asset)", got)
+	}
+}
+
+// TestFixedMediaRenderUnitsSkipsWhenSubtitlesAreDisabled pins the render-lane
+// contract: the localization path always burns a subtitle track, so a fixed
+// intro whose request disables subtitles must not be enqueued. The final-job
+// payload uses the library clip instead.
+func TestFixedMediaRenderUnitsSkipsWhenSubtitlesAreDisabled(t *testing.T) {
+	req := GenerateRequest{SourceLanguage: "en", Languages: []Language{"it"}}
+	req.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: false}
+	fixed := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		Text:  map[Language]string{"en": "Garlasco — introduzione"},
+		Clips: []*ClipReference{{ID: "intro-1"}, {ID: "intro-2"}}}
+	if got := fixedMediaRenderUnits(req, []Scene{fixed}); got != 0 {
+		t.Fatalf("fixedMediaRenderUnits without subtitles = %d, want 0", got)
+	}
+	if got := expectedRenderUnits(req, []Scene{fixed}); got != 0 {
+		t.Fatalf("expectedRenderUnits without subtitles = %d, want 0", got)
 	}
 }
