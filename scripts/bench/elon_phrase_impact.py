@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "rust/pipelinegen-muscles/fixtures/elon_musk_synthetic_transcript_it.txt"
-GROUND_TRUTH = ROOT / "rust/pipelinegen-muscles/fixtures/elon_musk_synthetic_ground_truth.json"
+FIXTURE = ROOT / "rust/semantic-core/fixtures/elon_musk_synthetic_transcript_it.txt"
+GROUND_TRUTH = ROOT / "rust/semantic-core/fixtures/elon_musk_synthetic_ground_truth.json"
 DEFAULT_BINARY = ROOT / "bin/phrase_impact"
 DEFAULT_REPORT = ROOT / ".cache/phrase-impact/elon_musk_phrase_impact.json"
 
