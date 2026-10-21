@@ -303,15 +303,33 @@ func fixedCaptionText(scene Scene, source, lang Language) string {
 	return strings.TrimSpace(scene.Text[source])
 }
 
+// fixedMediaNeedsLocalizedRender reports whether a protected fixed-media
+// scene must go through the localized render lane. That lane ALWAYS burns a
+// subtitle track (the localization plan requires a timed subtitle and the
+// renderer re-encodes the clip), so a render is only meaningful when the
+// request enables subtitles. With subtitles disabled the final-job payload
+// falls back to the library clip, which is the documented behaviour for
+// protected intros without a render lane. Enqueuing one anyway fails
+// deterministically on a transcript track with no timed cues.
+func fixedMediaNeedsLocalizedRender(req GenerateRequest, scene Scene) bool {
+	return scene.ExecutionMode.IsFixedMedia() && req.Render.Subtitles != nil && req.Render.Subtitles.Enabled
+}
+
 // expectedRenderUnits counts the localized render matrix. Fixed-media
-// sections always fan out across languages; normal generated scenes fan out
-// across languages for the subtitle-only (audio NONE) lane, while the legacy
-// voiceover lane renders generated scenes from the source audio once.
+// sections fan out across languages when the request enables subtitles;
+// normal generated scenes fan out across languages for the subtitle-only
+// (audio NONE) lane, while the legacy voiceover lane renders generated scenes
+// from the source audio once.
 func expectedRenderUnits(req GenerateRequest, scenes []Scene) int {
 	total := 0
 	for _, scene := range scenes {
 		units := len(RenderUnitsForScene(scene))
-		if scene.ExecutionMode.IsFixedMedia() || req.Audio == "NONE" {
+		if scene.ExecutionMode.IsFixedMedia() {
+			if !fixedMediaNeedsLocalizedRender(req, scene) {
+				continue
+			}
+			total += units * len(renderLanguages(req, scene))
+		} else if req.Audio == "NONE" {
 			total += units * len(renderLanguages(req, scene))
 		} else {
 			total += units
@@ -326,7 +344,7 @@ func expectedRenderUnits(req GenerateRequest, scenes []Scene) int {
 func fixedMediaRenderUnits(req GenerateRequest, scenes []Scene) int {
 	total := 0
 	for _, scene := range scenes {
-		if !scene.ExecutionMode.IsFixedMedia() {
+		if !fixedMediaNeedsLocalizedRender(req, scene) {
 			continue
 		}
 		total += len(RenderUnitsForScene(scene)) * len(renderLanguages(req, scene))
@@ -370,7 +388,7 @@ func (r *Runner) launchFixedMediaRenders(
 	if r == nil || wg == nil || !req.Render.Enabled {
 		return
 	}
-	if !scene.ExecutionMode.IsFixedMedia() {
+	if !fixedMediaNeedsLocalizedRender(req, scene) {
 		return
 	}
 	for _, lang := range fixedRenderLanguages(req, scene) {
