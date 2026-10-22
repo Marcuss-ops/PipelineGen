@@ -54,10 +54,40 @@ type LexiconRegistry struct {
 //	verb_morphology.txt  — verb suffixes, one per line
 //	entity_blocklist.txt — words never treated as entities, one per line
 //	phrase_policy.txt    — YAML or simple key=value lines (min_words, max_words, etc.)
+//	<extra_word_set>.txt — one word per line (see extraWordSetFiles)
+//	<extra_phrase_set>.txt — one phrase per line (see extraPhraseSetFiles)
+//
+// The extra word/phrase sets are the remaining linguistic vocabulary that
+// used to live as literals in capability code (subordinate markers, pronouns,
+// articles, possessives, clitic pronouns, pro-drop auxiliaries, contrast
+// openers, negative phrases and the cross-language numeric overlay
+// vocabulary). They are loaded by name so a consumer asks for the set it
+// needs instead of keeping a second copy of the words.
 //
 // A "fallback" subdirectory is required and is used only when callers
 // explicitly request the fallback profile. Missing configuration is an
 // error; the registry never manufactures linguistic data.
+// extraWordSetFiles are the named word-set files loaded beside the typed base
+// files. The name is both the file stem and the key consumers ask for through
+// WordSet; a language without the file simply has no such set.
+var extraWordSetFiles = []string{
+	"subordinate_markers",
+	"pronouns",
+	"articles",
+	"possessives",
+	"pronoun_clitics",
+	"pro_drop_aux",
+	"contrast_openers",
+	"numeric_overlay_words",
+	"numeric_overlay_context",
+}
+
+// extraPhraseSetFiles are the named phrase-list files (one phrase per line,
+// tokenised on whitespace at load time). See PhraseSet.
+var extraPhraseSetFiles = []string{
+	"negative_phrases",
+}
+
 func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 	if rootDir == "" {
 		return nil, fmt.Errorf("lexicon registry: root directory is required")
@@ -84,6 +114,8 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 			VisualVerbs:       make(map[string]struct{}),
 			VerbSuffixes:      nil,
 			PhrasePolicy:      DefaultPhraseExtractionPolicy(),
+			WordSets:          make(map[string]map[string]struct{}),
+			PhraseSets:        make(map[string][][]string),
 		}
 
 		if err := loadWordSet(filepath.Join(dir, "stopwords.txt"), profile.StopWords); err != nil {
@@ -110,6 +142,30 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 			return nil, err
 		} else if ok {
 			profile.PhrasePolicy = p
+		}
+		for _, name := range extraWordSetFiles {
+			words := make(map[string]struct{})
+			if err := loadWordSet(filepath.Join(dir, name+".txt"), words); err != nil {
+				return nil, err
+			}
+			if len(words) > 0 {
+				profile.WordSets[name] = words
+			}
+		}
+		for _, name := range extraPhraseSetFiles {
+			lines, err := loadStringList(filepath.Join(dir, name+".txt"))
+			if err != nil {
+				return nil, err
+			}
+			phrases := make([][]string, 0, len(lines))
+			for _, line := range lines {
+				if fields := strings.Fields(line); len(fields) > 0 {
+					phrases = append(phrases, fields)
+				}
+			}
+			if len(phrases) > 0 {
+				profile.PhraseSets[name] = phrases
+			}
 		}
 
 		profiles[lang] = profile

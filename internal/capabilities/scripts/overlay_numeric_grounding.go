@@ -1,16 +1,12 @@
 package scriptgeneration
 
-// LEXICON_MIRROR_DEBT: owner=scripts, deadline=2026-12-31 — the spoken
-// number-word and date-context sets below predate numeric/month vocabulary
-// in the LexiconRegistry; migrate them to config/lexicons/** once the
-// registry gains that data instead of extending these literals.
-
 import (
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -27,12 +23,12 @@ import (
 // dates; the word set preserves common spoken number forms in the supported
 // output languages.
 func isNumericOverlayValue(value string) bool {
-	words := numericOverlayWords
+	words := numericOverlayWordSet()
 	// A number mention may carry a date month, a short date connector, or a
 	// unit. Other prose around digits is not a numeric card: letting one number
 	// token admit an entire sentence produced mirrored date-card animations for
 	// phrases such as "partendo dal 13 agosto 2007".
-	context := numericOverlayContext
+	context := numericOverlayContextSet()
 	var token strings.Builder
 	sawNumber := false
 	valid := true
@@ -89,26 +85,24 @@ func numericOverlayValueStartsWithNumber(value string) bool {
 			return false
 		}
 	}
-	_, ok := numericOverlayWords[strings.ToLower(first)]
+	_, ok := numericOverlayWordSet()[strings.ToLower(first)]
 	return ok
 }
 
-var numericOverlayWords = map[string]struct{}{
-	"zero": {}, "one": {}, "two": {}, "three": {}, "four": {}, "five": {}, "six": {}, "seven": {}, "eight": {}, "nine": {}, "ten": {},
-	"eleven": {}, "twelve": {}, "thirteen": {}, "fourteen": {}, "fifteen": {}, "sixteen": {}, "seventeen": {}, "eighteen": {}, "nineteen": {}, "twenty": {}, "thirty": {}, "forty": {}, "fifty": {}, "sixty": {}, "seventy": {}, "eighty": {}, "ninety": {}, "hundred": {}, "thousand": {}, "million": {}, "billion": {}, "first": {}, "second": {}, "third": {}, "fourth": {}, "fifth": {}, "sixth": {}, "seventh": {}, "eighth": {}, "ninth": {}, "tenth": {},
-	"cero": {}, "uno": {}, "una": {}, "dos": {}, "tres": {}, "cuatro": {}, "cinco": {}, "seis": {}, "siete": {}, "ocho": {}, "nueve": {}, "diez": {}, "once": {}, "doce": {}, "trece": {}, "catorce": {}, "quince": {}, "dieciséis": {}, "veinte": {}, "treinta": {}, "cuarenta": {}, "cincuenta": {}, "sesenta": {}, "setenta": {}, "ochenta": {}, "noventa": {}, "cien": {}, "ciento": {}, "mil": {}, "millón": {}, "millones": {}, "primero": {}, "segunda": {}, "tercero": {}, "tercera": {},
-	"due": {}, "tre": {}, "quattro": {}, "cinque": {}, "undici": {}, "dodici": {}, "tredici": {}, "quattordici": {}, "quindici": {}, "sedici": {}, "diciassette": {}, "diciotto": {}, "diciannove": {}, "venti": {}, "trenta": {}, "quaranta": {}, "cinquanta": {}, "sessanta": {}, "settanta": {}, "ottanta": {}, "novanta": {}, "cento": {}, "mille": {}, "mila": {}, "milione": {}, "milioni": {}, "primo": {}, "prima": {}, "secondo": {}, "terzo": {}, "terza": {},
-	"um": {}, "uma": {}, "dois": {}, "duas": {}, "três": {}, "quatro": {}, "sete": {}, "oito": {}, "dez": {}, "onze": {}, "doze": {}, "treze": {}, "quatorze": {}, "quinze": {}, "dezesseis": {}, "vinte": {}, "trinta": {}, "quarenta": {}, "cinquenta": {}, "sessenta": {}, "oitenta": {}, "cem": {}, "milhão": {}, "milhões": {}, "primeiro": {}, "primeira": {}, "segundo": {}, "terceiro": {}, "terceira": {},
+// numericOverlayWordSet is the cross-language spoken-number vocabulary used by
+// the entity-card admission path. It lives in
+// config/lexicons/fallback/numeric_overlay_words.txt (the fallback profile is
+// the cross-linguistic set, because a numeric surface may arrive in any output
+// language), so the check stays language-agnostic without a second copy here.
+func numericOverlayWordSet() map[string]struct{} {
+	return linguistics.DefaultLexicon().WordSet("fallback", "numeric_overlay_words")
 }
 
-var numericOverlayContext = map[string]struct{}{
-	"data": {}, "date": {}, "fecha": {}, "dia": {}, "día": {}, "day": {}, "anno": {}, "year": {}, "ano": {}, "año": {},
-	"de": {}, "del": {}, "di": {}, "da": {}, "do": {}, "dos": {}, "el": {}, "la": {}, "l": {}, "the": {},
-	"gennaio": {}, "febbraio": {}, "marzo": {}, "aprile": {}, "maggio": {}, "giugno": {}, "luglio": {}, "agosto": {}, "settembre": {}, "ottobre": {}, "novembre": {}, "dicembre": {},
-	"january": {}, "february": {}, "march": {}, "april": {}, "may": {}, "june": {}, "july": {}, "august": {}, "september": {}, "october": {}, "november": {}, "december": {},
-	"enero": {}, "febrero": {}, "abril": {}, "mayo": {}, "junio": {}, "julio": {}, "septiembre": {}, "octubre": {}, "diciembre": {},
-	"janeiro": {}, "fevereiro": {}, "maio": {}, "junho": {}, "julho": {}, "setembro": {}, "outubro": {}, "dezembro": {},
-	"anni": {}, "years": {}, "anos": {}, "months": {}, "mesi": {}, "meses": {}, "km": {}, "kg": {},
+// numericOverlayContextSet is the date-context vocabulary (day/year words,
+// connectors, month names and units) from
+// config/lexicons/fallback/numeric_overlay_context.txt.
+func numericOverlayContextSet() map[string]struct{} {
+	return linguistics.DefaultLexicon().WordSet("fallback", "numeric_overlay_context")
 }
 
 // cleanNumericOverlayValue reduces a dirty NLP numeric surface to the

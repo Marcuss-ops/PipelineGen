@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -101,24 +102,39 @@ type artlistIsolationContext struct {
 	termOwners     map[string]string
 }
 
-// LEXICON_MIRROR_DEBT: owner=scripts, deadline=2026-12-31 — the English
-// function/stop words below are already canonical lexicon data
-// (config/lexicons/en/{function_words,stopwords}.txt); the remaining entries
-// are this heuristic's own content terms and stay explicit. The canonical part
-// must be loaded from the LexiconRegistry before that date, with the
-// isolation golden tests re-run (it changes which terms a segment owns). Until
-// then percheck_stopword_maps_in_app reports this file as residue (non-fatal)
-// and fails closed automatically after 2026-12-31.
-var artlistIsolationStopWords = map[string]struct{}{
-	"about": {}, "after": {}, "also": {}, "and": {}, "are": {}, "around": {},
-	"been": {}, "being": {}, "built": {}, "cooked": {}, "creating": {},
-	"directly": {}, "during": {}, "from": {}, "into": {}, "made": {},
-	"most": {}, "often": {}, "one": {}, "over": {}, "served": {},
-	"should": {}, "such": {}, "that": {}, "their": {}, "these": {},
-	"this": {}, "through": {}, "traditionally": {}, "usually": {},
-	"with": {}, "within": {}, "fresh": {}, "classic": {}, "simple": {},
-	"dish": {}, "dishes": {}, "food": {}, "foods": {}, "cuisine": {},
-	"mediterranean": {}, "middle": {}, "eastern": {}, "coastal": {},
+// artlistIsolationContentTerms are this heuristic's own low-signal content
+// terms (cooking/media vocabulary). The canonical English stop/function-word
+// set is loaded from the LexiconRegistry (config/lexicons/en) below; these
+// entries stay explicit because they describe this provider heuristic rather
+// than a language-wide word class.
+var artlistIsolationContentTerms = map[string]struct{}{
+	"built": {}, "cooked": {}, "creating": {}, "directly": {},
+	"traditionally": {}, "served": {}, "fresh": {}, "classic": {},
+	"simple": {}, "dish": {}, "dishes": {}, "food": {}, "foods": {},
+	"cuisine": {}, "mediterranean": {}, "middle": {}, "eastern": {},
+	"coastal": {},
+}
+
+// artlistCanonicalStopWords holds the canonical English stop/function-word
+// union, loaded once per process from the LexiconRegistry.
+var (
+	artlistCanonicalStopWordsOnce sync.Once
+	artlistCanonicalStopWords     map[string]struct{}
+)
+
+func artlistStopWords() map[string]struct{} {
+	artlistCanonicalStopWordsOnce.Do(func() {
+		lex := linguistics.DefaultLexicon()
+		words := make(map[string]struct{})
+		for word := range lex.StopWords("en") {
+			words[word] = struct{}{}
+		}
+		for word := range lex.FunctionWords("en") {
+			words[word] = struct{}{}
+		}
+		artlistCanonicalStopWords = words
+	})
+	return artlistCanonicalStopWords
 }
 
 func artlistIsolationLexeme(raw string) string {
@@ -140,13 +156,17 @@ func artlistIsolationLexeme(raw string) string {
 
 func artlistSceneTerms(segment scriptpkg.VidRushSegmentResult) map[string]struct{} {
 	terms := make(map[string]struct{})
+	stopWords := artlistStopWords()
 	add := func(raw string) {
 		for _, token := range textutil.Tokenize(raw) {
 			term := artlistIsolationLexeme(token)
 			if len(term) < 4 {
 				continue
 			}
-			if _, stop := artlistIsolationStopWords[term]; stop {
+			if _, stop := stopWords[term]; stop {
+				continue
+			}
+			if _, stop := artlistIsolationContentTerms[term]; stop {
 				continue
 			}
 			terms[term] = struct{}{}

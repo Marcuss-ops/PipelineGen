@@ -268,7 +268,7 @@ func normalizeBaselineValue(value string) string {
 	// span ("Unlike Mike Tyson" → "Mike Tyson", deduped onto the KB id).
 	for len(fields) > 0 {
 		first := strings.ToLower(strings.Trim(fields[0], ".,;:!?\"'"))
-		if !leadingContrastWords[first] {
+		if !isContrastOpener(first) {
 			break
 		}
 		fields = fields[1:]
