@@ -19,7 +19,10 @@ git ls-files --error-unmatch -- .gitmodules >/dev/null 2>&1 || {
 }
 while IFS= read -r path; do
   [[ -n "$path" ]] || continue
-  git config --file .gitmodules --get-regexp '^submodule\..*\.path$' | grep -Fq " $path$" || {
+  # Compare the declared path field exactly: `grep -F` cannot anchor `$`, so
+  # read the value column and match it whole rather than the raw config line.
+  git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+    | awk '{print $2}' | grep -Fxq -- "$path" || {
     echo "❌ submodule integrity: undeclared gitlink $path" >&2
     exit 1
   }
