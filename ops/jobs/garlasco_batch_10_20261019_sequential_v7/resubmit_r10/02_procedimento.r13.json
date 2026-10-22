@@ -1,0 +1,651 @@
+{
+ "version": 2,
+ "preset": "custom",
+ "correlation_id": "garlasco-batch-10-02-procedimento-20261019-pipeline-v15-visual-intro-introfix-20261020-r13",
+ "force_refresh": false,
+ "items": [
+  {
+   "id": "garlasco-batch-10-02-procedimento-20261019-pipeline-v15-visual-intro-introfix-20261020-r13",
+   "project": "garlasco-batch-10-02-procedimento-20261019-pipeline-v15-visual-intro",
+   "title": "Garlasco 02 — Indagine, processo e condanna — copione di circa 20 minuti — copione circa 20 minuti",
+   "language": "it",
+   "tone": "documentario giornalistico sobrio, verificabile e garantista",
+   "style": "Lunghezza finale rigorosa: obiettivo 2.700–3.000 parole, massimo 3.100; 20 segmenti di circa 95 parole ciascuno. Non allungare con ripetizioni o spiegazioni duplicate. Genera un copione nuovo e specifico per questo episodio; non riutilizzare un copione standard. Scrivi un copione documentario in italiano di circa 2.500–3.000 parole, con obiettivo intorno a 2.800, suddiviso in segmenti di narrazione chiari. Usa soltanto le informazioni esplicitate nel brief e nelle fonti indicate; se un dettaglio non è confermato, omettilo. Mantieni distinti la condanna definitiva di Alberto Stasi e il procedimento su Andrea Sempio. Andrea Sempio è indagato, respinge le accuse e non è stato condannato in questo procedimento. Attribuisci alle fonti le notizie e alle parti le rispettive valutazioni. Nessuna conclusione anticipata, nessun dettaglio grafico, tono sobrio e garantista. Il piano deve includere esattamente 40 overlay effettivi: 10 frasi brevi, 10 frasi lunghe, 13 immagini con didascalia (di cui 5 schede entità), 4 date documentate e 3 mappe pertinenti. Rispetta la configurazione overlay del payload e non aggiungere testo falso. Brief episodio: Video divulgativo sul significato delle diverse fasi: indagini preliminari, avviso di conclusione delle indagini, eventuale richiesta di rinvio a giudizio, processo e sentenza. Applica le distinzioni al caso Garlasco senza anticipare esiti futuri e senza confondere l’indagine su Andrea Sempio con la condanna definitiva di Alberto Stasi. Riferimento ANSA sulla chiusura delle indagini notificata il 28 settembre 2026: https://www.ansa.it/amp/lombardia/notizie/2026/09/28/garlasco-chiuse-le-indagini-su-sempio-con-nuovi-atti-e-consulenze_6c2fd97e-a8b7-4b67-b88e-7c73cb7abec4.html Grafica per tutti gli overlay: Playfair Display Italic nero su fondo bianco pieno. Il copione deve contenere 20 segmenti di narrazione, con sviluppo distinto per ciascun tema; evita ripetizioni, riempitivi e frammenti di istruzioni per overlay nel parlato. Pianifica esattamente 40 overlay effettivi nel rispetto dei gruppi: 10 frasi brevi, 10 frasi lunghe, 13 immagini (5 schede entità comprese), 4 date e 3 mappe; non contare overlay non materializzati.",
+   "model": "gemma4:e4b",
+   "source": {
+    "type": "text",
+    "topic": "Come si distinguono indagine, processo e condanna",
+    "source_text": "Video divulgativo sul significato delle diverse fasi: indagini preliminari, avviso di conclusione delle indagini, eventuale richiesta di rinvio a giudizio, processo e sentenza. Applica le distinzioni al caso Garlasco senza anticipare esiti futuri e senza confondere l’indagine su Andrea Sempio con la condanna definitiva di Alberto Stasi. Riferimento ANSA sulla chiusura delle indagini notificata il 28 settembre 2026: https://www.ansa.it/amp/lombardia/notizie/2026/09/28/garlasco-chiuse-le-indagini-su-sempio-con-nuovi-atti-e-consulenze_6c2fd97e-a8b7-4b67-b88e-7c73cb7abec4.html"
+   },
+   "max_phrase_overlays": 20,
+   "max_image_overlays": 13,
+   "max_map_overlays": 3,
+   "overlay_style": {
+    "font_family": "playfair_display_italic",
+    "color": [
+     0,
+     0,
+     0,
+     1
+    ],
+    "size": {
+     "font_size": 96
+    },
+    "glow_size": 0,
+    "glow_color": "#000000",
+    "stroke_size": 0,
+    "shadow": {
+     "enabled": false,
+     "color": "#000000",
+     "opacity": 0,
+     "blur": 0,
+     "offset": [
+      0,
+      0
+     ]
+    }
+   },
+   "animation_counts": {
+    "maps": 3,
+    "images": 13,
+    "images_with_text": 13,
+    "important_phrase": 20,
+    "short_important_phrase": 10,
+    "entities": 5,
+    "entity_caption": 5,
+    "dates": 4,
+    "chain_disabled": 1
+   },
+   "entity_style_id": "below",
+   "output": {
+    "save_to_db": true,
+    "extract_entities": true,
+    "generate_metadata": true,
+    "generate_timeline": true,
+    "voiceover_enabled": true,
+    "languages": [
+     "it"
+    ],
+    "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+    "render": {
+     "enabled": true,
+     "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+     "require_gpu": true,
+     "subtitles": {
+      "enabled": false
+     },
+     "drive_subfolder_name": "garlasco-batch-10-02-procedimento-20261019-pipeline-v15-visual-intro-introfix-r13",
+     "background": {
+      "mode": "none"
+     }
+    },
+    "docs": {
+     "enabled": false
+    },
+    "drive_subfolder_name": "garlasco-batch-10-02-procedimento-20261019-pipeline-v15-visual-intro-introfix-r7",
+    "stock_enabled": "enabled",
+    "stock_bindings": [
+     {
+      "index": 0,
+      "scene_id": "scene-01",
+      "segment_id": "scene-01",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 1,
+      "scene_id": "scene-02",
+      "segment_id": "scene-02",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 2,
+      "scene_id": "scene-03",
+      "segment_id": "scene-03",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 3,
+      "scene_id": "scene-04",
+      "segment_id": "scene-04",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 4,
+      "scene_id": "scene-05",
+      "segment_id": "scene-05",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 5,
+      "scene_id": "scene-06",
+      "segment_id": "scene-06",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 6,
+      "scene_id": "scene-07",
+      "segment_id": "scene-07",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 7,
+      "scene_id": "scene-08",
+      "segment_id": "scene-08",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 8,
+      "scene_id": "scene-09",
+      "segment_id": "scene-09",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 9,
+      "scene_id": "scene-10",
+      "segment_id": "scene-10",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 10,
+      "scene_id": "scene-11",
+      "segment_id": "scene-11",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 11,
+      "scene_id": "scene-12",
+      "segment_id": "scene-12",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 12,
+      "scene_id": "scene-13",
+      "segment_id": "scene-13",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 13,
+      "scene_id": "scene-14",
+      "segment_id": "scene-14",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 14,
+      "scene_id": "scene-15",
+      "segment_id": "scene-15",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 15,
+      "scene_id": "scene-16",
+      "segment_id": "scene-16",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 16,
+      "scene_id": "scene-17",
+      "segment_id": "scene-17",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 17,
+      "scene_id": "scene-18",
+      "segment_id": "scene-18",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 18,
+      "scene_id": "scene-19",
+      "segment_id": "scene-19",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     },
+     {
+      "index": 19,
+      "scene_id": "scene-20",
+      "segment_id": "scene-20",
+      "folder_id": "1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "folder_link": "https://drive.google.com/drive/folders/1c-pjyGbD56VzwycK8N0yqvycjKpnPrPM",
+      "source": "drive",
+      "start_ms": 0,
+      "end_ms": 5000
+     }
+    ]
+   },
+   "media_plan": {
+    "mode": "hybrid",
+    "provider_policy": {
+     "internet_images": "enabled",
+     "image_generation": "disabled",
+     "artlist": "disabled",
+     "youtube": "disabled",
+     "geocoding": "enabled"
+    },
+    "cache": {
+     "read": false,
+     "write": true
+    },
+    "force_refresh_assets": true,
+    "extraction": {
+     "enabled": true,
+     "include": [
+      "persons",
+      "important_phrases",
+      "metrics",
+      "locations",
+      "organizations",
+      "dates"
+     ],
+     "important_phrases": [
+      "morte di Chiara Poggi",
+      "abitazione a Garlasco",
+      "giovane donna di ventisei anni",
+      "sedici anni di reclusione",
+      "sentenza della Cassazione",
+      "Procura di Pavia",
+      "seconda chiusura delle indagini",
+      "L’impronta indicata come numero 33",
+      "pedali di una bicicletta",
+      "presunzione di innocenza",
+      "Il caso riguarda la morte di Chiara Poggi, avvenuta",
+      "Alberto Stasi, allora fidanzato di Chiara Poggi, è stato condannato",
+      "Un singolo elemento non va isolato dal contesto né descritto",
+      "Andrea Sempio è indagato nell’inchiesta della Procura di Pavia.",
+      "Il 28 settembre 2026 la Procura di Pavia ha notificato",
+      "Il contraddittorio consente alla difesa di esaminare gli atti",
+      "L’impronta indicata come numero 33 è stata oggetto di valutazioni",
+      "Le tracce sui pedali di una bicicletta sono state oggetto",
+      "L’8 ottobre 2026 ANSA ha riferito dell’acquisizione di documenti",
+      "I fatti accertati, le ipotesi investigative, le dichiarazioni e i punti contestati devono restare distinti.",
+      "Chiara Poggi",
+      "ventisei anni",
+      "13 agosto 2007",
+      "via definitiva",
+      "respinge le accuse",
+      "non equivale a essere condannato",
+      "non è una richiesta",
+      "né una sentenza",
+      "prove dei fatti"
+     ],
+     "max_entities_per_segment": 5,
+     "max_important_phrases_per_segment": 8,
+     "max_image_queries_per_segment": 2,
+     "entity_images": {
+      "enabled": true,
+      "entity_types": [
+       "PERSON",
+       "ORG",
+       "GPE"
+      ],
+      "max_per_entity": 1,
+      "scope": "per_scene",
+      "upload_to_drive": true
+     }
+    },
+    "materialization": {
+     "mode": "selected",
+     "upload_to_drive": true,
+     "wait_for_ready": true
+    },
+    "planner": {
+     "candidate_limit": 12
+    },
+    "include_trace": true,
+    "intro": {
+     "mode": "manual",
+     "clips": [
+      {
+       "asset_id": "1Rc8lxEQjP8-CifHA6Mk9XeEVwgEzF7BX",
+       "duration_ms": 4979
+      },
+      {
+       "asset_id": "1cXux36S6uE_nm_noJ4xt0-mtzRGYE0fW",
+       "duration_ms": 4979
+      },
+      {
+       "asset_id": "1IQwJ7aaMb0QGpVKqg6Z5jgwpSHuQ1QzU",
+       "duration_ms": 4979
+      }
+     ],
+     "target_duration_ms": 14937,
+     "max_clips": 3,
+     "goal": "Tre clip visive forti e distinte selezionate dal catalogo vettoriale Garlasco; massimo tre clip, senza audio originale."
+    }
+   },
+   "audio": {
+    "mode": "COMBINED_TIMELINE",
+    "timing": {
+     "mode": "required",
+     "boundary": "word",
+     "formats": [
+      "json",
+      "srt",
+      "vtt"
+     ]
+    }
+   },
+   "docs": {
+    "enabled": false
+   },
+   "overlay_background": {
+    "kind": "color",
+    "color": [
+     1,
+     1,
+     1,
+     1
+    ],
+    "opacity": 1
+   },
+   "overlay_group_limits": {
+    "maps": 3,
+    "short_phrases": 10,
+    "long_phrases": 10,
+    "entities_with_text": 5,
+    "images": 13,
+    "locations": 0
+   },
+   "overlay_categories": {
+    "maps": "enabled",
+    "phrases": "enabled",
+    "images": "enabled",
+    "numbers": "enabled",
+    "quotes": "disabled",
+    "brand_text": "disabled",
+    "charts": "disabled",
+    "recaps": "disabled",
+    "titles": "disabled",
+    "bullets": "disabled"
+   },
+   "image_motions": [
+    "image_fade_reveal",
+    "image_focus_reveal",
+    "image_scale_reveal",
+    "image_slide_left_reveal",
+    "image_slide_right_reveal"
+   ],
+   "entity_image_motions": [
+    "image_fade_reveal",
+    "image_focus_reveal",
+    "image_scale_reveal",
+    "image_slide_left_reveal",
+    "image_slide_right_reveal"
+   ],
+   "phrase_motion_family": "modern_product_v1",
+   "entity_caption_motions": [
+    "entity_caption_rise",
+    "entity_border_then_caption",
+    "entity_glow_focus",
+    "entity_name_underline",
+    "entity_name_pill",
+    "entity_focus_frame"
+   ],
+   "map_type": "chronon_editorial",
+   "map_camera_animation": "slow_approach",
+   "map_label_animation": "none",
+   "map_animation": "region_zoom",
+   "max_overlays_per_scene": 10,
+   "script_params": {
+    "target_words": 1900,
+    "min_words": 1600,
+    "segment_words": 95,
+    "single_scene": false,
+    "skip_quality_gate": false,
+    "force_refresh": false,
+    "source_text_verbatim": false,
+    "segments": [
+     {
+      "id": "scene-01",
+      "kind": "narration",
+      "topic": "Che cosa significa indagare: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a Che cosa significa indagare. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-02",
+      "kind": "narration",
+      "topic": "Che cosa significa indagare: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come Che cosa significa indagare è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-03",
+      "kind": "narration",
+      "topic": "La chiusura delle indagini: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a La chiusura delle indagini. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-04",
+      "kind": "narration",
+      "topic": "La chiusura delle indagini: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come La chiusura delle indagini è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-05",
+      "kind": "narration",
+      "topic": "La discovery degli atti: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a La discovery degli atti. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-06",
+      "kind": "narration",
+      "topic": "La discovery degli atti: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come La discovery degli atti è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-07",
+      "kind": "narration",
+      "topic": "Le consulenze delle parti: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a Le consulenze delle parti. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-08",
+      "kind": "narration",
+      "topic": "Le consulenze delle parti: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come Le consulenze delle parti è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-09",
+      "kind": "narration",
+      "topic": "La richiesta di rinvio a giudizio: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a La richiesta di rinvio a giudizio. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-10",
+      "kind": "narration",
+      "topic": "La richiesta di rinvio a giudizio: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come La richiesta di rinvio a giudizio è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-11",
+      "kind": "narration",
+      "topic": "Il ruolo del giudice: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a Il ruolo del giudice. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-12",
+      "kind": "narration",
+      "topic": "Il ruolo del giudice: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come Il ruolo del giudice è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-13",
+      "kind": "narration",
+      "topic": "Il dibattimento: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a Il dibattimento. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-14",
+      "kind": "narration",
+      "topic": "Il dibattimento: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come Il dibattimento è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-15",
+      "kind": "narration",
+      "topic": "La sentenza: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a La sentenza. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-16",
+      "kind": "narration",
+      "topic": "La sentenza: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come La sentenza è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-17",
+      "kind": "narration",
+      "topic": "La posizione di Sempio: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a La posizione di Sempio. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-18",
+      "kind": "narration",
+      "topic": "La posizione di Sempio: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come La posizione di Sempio è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-19",
+      "kind": "narration",
+      "topic": "Le fasi senza confusione: fatti, cronologia e contesto",
+      "source_text": "Approfondisci i fatti pubblici e il contesto relativo a Le fasi senza confusione. Attieniti alle informazioni nel brief generale e alle fonti indicate; non ripetere le conclusioni del segmento successivo.",
+      "target_words": 95,
+      "min_words": 75
+     },
+     {
+      "id": "scene-20",
+      "kind": "narration",
+      "topic": "Le fasi senza confusione: fonti, interpretazioni e limiti",
+      "source_text": "Spiega come Le fasi senza confusione è descritto dalle fonti e quali aspetti vanno distinti tra atti, decisioni, dichiarazioni e ipotesi. Attieniti al brief generale, attribuisci le valutazioni e non ripetere il segmento precedente.",
+      "target_words": 95,
+      "min_words": 75
+     }
+    ]
+   },
+   "media_mode": "stock_only",
+   "intro": {
+    "clip_ids": [
+     "1Rc8lxEQjP8-CifHA6Mk9XeEVwgEzF7BX",
+     "1cXux36S6uE_nm_noJ4xt0-mtzRGYE0fW",
+     "1IQwJ7aaMb0QGpVKqg6Z5jgwpSHuQ1QzU"
+    ],
+    "title": "Garlasco 02 — Indagine, processo e condanna: introduzione",
+    "playback": {
+     "audio_mode": "original_clip",
+     "source_in_ms": 0,
+     "source_out_ms": 4979
+    }
+   }
+  }
+ ],
+ "final_job": true
+}

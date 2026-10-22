@@ -74,21 +74,25 @@ type TableRetentionResult struct {
 
 // RetentionResult reports the outcome for a single database.
 type RetentionResult struct {
-	Name           string                 `json:"name"`
-	Path           string                 `json:"path"`
-	DryRun         bool                   `json:"dry_run"`
-	Tables         []TableRetentionResult `json:"tables"`
-	PreSizeBytes   int64                  `json:"pre_size_bytes"`
-	PostSizeBytes  int64                  `json:"post_size_bytes"`
-	BytesReclaimed int64                  `json:"bytes_reclaimed"`
-	WALBytes       int64                  `json:"wal_bytes"`
-	Vacuumed       bool                   `json:"vacuumed"`
-	// CheckpointBusy reports that the final wal_checkpoint(TRUNCATE)
-	// could not complete because the runtime kept a read transaction
-	// open. The -wal file therefore still holds the pages that VACUUM
-	// rewrote; a later checkpoint (or the next retention run) folds
-	// them back. BytesReclaimed stays accurate for the main DB file,
-	// WALBytes reports what is still pending.
+	Name   string                 `json:"name"`
+	Path   string                 `json:"path"`
+	DryRun bool                   `json:"dry_run"`
+	Tables []TableRetentionResult `json:"tables"`
+	// PreSizeBytes/PostSizeBytes measure the MAIN database file only.
+	// BytesReclaimed is their delta: it stays meaningful even when the
+	// final checkpoint cannot truncate the WAL on a live service.
+	PreSizeBytes   int64 `json:"pre_size_bytes"`
+	PreWALBytes    int64 `json:"pre_wal_bytes"`
+	PostSizeBytes  int64 `json:"post_size_bytes"`
+	BytesReclaimed int64 `json:"bytes_reclaimed"`
+	// WALBytes is the -wal file size after the run. VACUUM rewrites the
+	// whole DB through the WAL, so a non-zero value right after a busy
+	// checkpoint is pending pages, not leaked space: SQLite checkpoints
+	// them on the next write (or the next retention run).
+	WALBytes int64 `json:"wal_bytes"`
+	Vacuumed bool  `json:"vacuumed"`
+	// CheckpointBusy reports that wal_checkpoint(TRUNCATE) could not
+	// complete because the runtime kept a read transaction open.
 	CheckpointBusy bool  `json:"checkpoint_busy"`
 	DurationMs     int64 `json:"duration_ms"`
 }
@@ -109,7 +113,9 @@ func ApplyRetentionPlan(ctx context.Context, db *sql.DB, plan RetentionPlan, dry
 	}
 	start := time.Now()
 	result := &RetentionResult{Name: plan.Name, Path: plan.Path, DryRun: dryRun}
-	result.PreSizeBytes = sqliteFootprint(plan.Path)
+	result.PreSizeBytes = fileBytes(plan.Path)
+	result.PreWALBytes = walSize(plan.Path)
+	var deletedTotal int64
 
 	for _, op := range plan.Ops {
 		if err := validateRetentionOp(op); err != nil {
@@ -137,25 +143,31 @@ func ApplyRetentionPlan(ctx context.Context, db *sql.DB, plan RetentionPlan, dry
 		}
 		deleted, _ := res.RowsAffected()
 		table.DeletedRows = deleted
+		deletedTotal += deleted
 		result.Tables = append(result.Tables, table)
 	}
 
-	if !dryRun && vacuum {
-		if _, err := checkpointWALWithRetry(ctx, db); err != nil {
-			return nil, fmt.Errorf("retention: checkpoint %s: %w", plan.Name, err)
-		}
-		if _, err := execRetentionWithRetry(ctx, db, "VACUUM"); err != nil {
-			return nil, fmt.Errorf("retention: vacuum %s: %w", plan.Name, err)
-		}
+	if !dryRun {
 		busy, err := checkpointWALWithRetry(ctx, db)
 		if err != nil {
-			return nil, fmt.Errorf("retention: post-vacuum checkpoint %s: %w", plan.Name, err)
+			return nil, fmt.Errorf("retention: checkpoint %s: %w", plan.Name, err)
 		}
 		result.CheckpointBusy = busy
-		result.Vacuumed = true
+		// VACUUM only pays for itself when the deletes freed pages.
+		if vacuum && deletedTotal > 0 {
+			if _, err := execRetentionWithRetry(ctx, db, "VACUUM"); err != nil {
+				return nil, fmt.Errorf("retention: vacuum %s: %w", plan.Name, err)
+			}
+			busy, err = checkpointWALWithRetry(ctx, db)
+			if err != nil {
+				return nil, fmt.Errorf("retention: post-vacuum checkpoint %s: %w", plan.Name, err)
+			}
+			result.CheckpointBusy = busy
+			result.Vacuumed = true
+		}
 	}
 
-	result.PostSizeBytes = sqliteFootprint(plan.Path)
+	result.PostSizeBytes = fileBytes(plan.Path)
 	result.WALBytes = walSize(plan.Path)
 	result.BytesReclaimed = result.PreSizeBytes - result.PostSizeBytes
 	result.DurationMs = time.Since(start).Milliseconds()
@@ -228,12 +240,12 @@ func checkpointWAL(ctx context.Context, db *sql.DB) (bool, error) {
 	return busy != 0, err
 }
 
-// checkpointWALWithRetry gives the runtime's short-lived readers a few
-// chances to release the DB; VACUUM itself needs the write lock, so a
-// busy checkpoint right after it is common on a live service.
+// checkpointWALWithRetry gives the runtime's short-lived readers time to
+// release the DB; a busy checkpoint right after VACUUM is common on a
+// live service. Budget: ~60s.
 func checkpointWALWithRetry(ctx context.Context, db *sql.DB) (bool, error) {
-	const attempts = 5
-	for attempt := 0; attempt < attempts; attempt++ {
+	const dismissDelay = 3 * time.Second
+	for attempt := 0; attempt < 20; attempt++ {
 		busy, err := checkpointWAL(ctx, db)
 		if err != nil {
 			return false, err
@@ -244,7 +256,7 @@ func checkpointWALWithRetry(ctx context.Context, db *sql.DB) (bool, error) {
 		select {
 		case <-ctx.Done():
 			return false, ctx.Err()
-		case <-time.After(time.Duration(attempt+1) * time.Second):
+		case <-time.After(dismissDelay):
 		}
 	}
 	return true, nil
@@ -253,10 +265,6 @@ func checkpointWALWithRetry(ctx context.Context, db *sql.DB) (bool, error) {
 // sqliteFootprint is the on-disk footprint of a SQLite database,
 // WAL included. A plain stat on the main file misses rows still sitting
 // in the -wal file (exactly the state right after a large DELETE).
-func sqliteFootprint(path string) int64 {
-	return fileBytes(path) + walSize(path)
-}
-
 func walSize(path string) int64 { return fileBytes(path + "-wal") }
 
 func fileBytes(path string) int64 {

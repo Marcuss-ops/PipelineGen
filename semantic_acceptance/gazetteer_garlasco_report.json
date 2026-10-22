@@ -1,0 +1,100 @@
+{
+  "fixture": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/garlasco_full.txt",
+  "words": 2797,
+  "scenes": 12,
+  "scene_words": 220,
+  "places": 69433,
+  "aliases": 349787,
+  "levels": {
+    "baseline": [
+      {
+        "level": "VisualNER",
+        "unique": 5,
+        "mentions": 7,
+        "gold_recall": "1/2",
+        "gold_found": [
+          "Milano"
+        ],
+        "locations": {
+          "Cassazione": 2,
+          "Milano": 2,
+          "Corte Suprema": 1,
+          "Procura": 1,
+          "Udienza Preliminare": 1
+        }
+      },
+      {
+        "level": "semantic-engine manifest",
+        "unique": 5,
+        "mentions": 7,
+        "gold_recall": "1/2",
+        "gold_found": [
+          "Milano"
+        ],
+        "locations": {
+          "Cassazione": 2,
+          "Milano": 2,
+          "Corte Suprema": 1,
+          "Procura": 1,
+          "Udienza Preliminare": 1
+        }
+      }
+    ],
+    "enabled": [
+      {
+        "level": "VisualNER",
+        "unique": 6,
+        "mentions": 8,
+        "gold_recall": "2/2",
+        "gold_found": [
+          "Milano",
+          "Pavia"
+        ],
+        "locations": {
+          "Cassazione": 2,
+          "Milano": 2,
+          "Corte Suprema": 1,
+          "Pavia": 1,
+          "Procura": 1,
+          "Udienza Preliminare": 1
+        }
+      },
+      {
+        "level": "semantic-engine manifest",
+        "unique": 6,
+        "mentions": 8,
+        "gold_recall": "2/2",
+        "gold_found": [
+          "Milano",
+          "Pavia"
+        ],
+        "locations": {
+          "Cassazione": 2,
+          "Milano": 2,
+          "Corte Suprema": 1,
+          "Pavia": 1,
+          "Procura": 1,
+          "Udienza Preliminare": 1
+        }
+      }
+    ]
+  },
+  "added": [
+    "Pavia"
+  ],
+  "removed": [],
+  "precision_checks": [
+    {
+      "surface": "Corte",
+      "verdict": "PASS (escluso)"
+    },
+    {
+      "surface": "Come",
+      "verdict": "PASS (escluso)"
+    },
+    {
+      "surface": "Pavia",
+      "verdict": "PASS (riconosciuto)"
+    }
+  ]
+}
