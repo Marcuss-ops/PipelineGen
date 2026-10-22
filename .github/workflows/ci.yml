@@ -251,6 +251,19 @@ jobs:
         ICU_MAJOR=$(pkg-config --modversion icu-i18n | cut -d. -f1)
         echo "RUST_ICU_MAJOR_VERSION_NUMBER=$ICU_MAJOR" >> "$GITHUB_ENV"
 
+    # The suite fails closed when a language profile declares a UDPipe
+    # treebank but its model is absent (visualner/tests/language_profiles.rs).
+    # The 234 MB model set is a provisioned fixture, not repository content:
+    # cache it and let make/rust-models download only what is missing.
+    - name: Cache UDPipe models
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/share/visualner/models
+        key: udpipe-models-2.5-191206-v1
+
+    - name: Install UDPipe models
+      run: make rust-models
+
     - name: cargo test (workspace)
       run: cargo test --manifest-path rust/Cargo.toml --workspace
 
