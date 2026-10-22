@@ -236,6 +236,11 @@ jobs:
       with:
         submodules: false
 
+    # The Rust workspace lives in its own repository (BrainRust) and is
+    # mounted at rust/ as a submodule pinned to a released commit.
+    - name: Check out the Rust workspace
+      run: git submodule update --init --depth 1 rust
+
     - name: Install ICU4C development package
       run: |
         sudo apt-get update
