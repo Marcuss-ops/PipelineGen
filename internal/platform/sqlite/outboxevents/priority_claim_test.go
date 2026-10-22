@@ -49,6 +49,34 @@ func setupPriorityOutboxTable(t *testing.T) *sql.DB {
 	return db
 }
 
+func TestMarkDeferredDoesNotConsumeAttempt(t *testing.T) {
+	db := setupPriorityOutboxTable(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+	if _, err := repo.Enqueue(ctx, nil, "test.defer", "job-1", "job", `{}`, "defer-key"); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := repo.ClaimNext(ctx, "worker-defer", time.Minute)
+	if err != nil || claim == nil {
+		t.Fatalf("ClaimNext = (%v, %v), want claim", claim, err)
+	}
+	if claim.Event.AttemptCount != 1 {
+		t.Fatalf("claimed attempt count = %d, want 1", claim.Event.AttemptCount)
+	}
+	next := time.Now().UTC().Add(time.Minute)
+	if err := repo.MarkDeferred(ctx, claim.Event.ID, claim.LeaseID, "parent job still running", next); err != nil {
+		t.Fatalf("MarkDeferred: %v", err)
+	}
+	var status, lastError string
+	var attempts int
+	if err := db.QueryRowContext(ctx, `SELECT status, attempt_count, last_error FROM outbox_events WHERE id = ?`, claim.Event.ID).Scan(&status, &attempts, &lastError); err != nil {
+		t.Fatal(err)
+	}
+	if status != "pending" || attempts != 0 || lastError != "parent job still running" {
+		t.Fatalf("deferred event = status %q, attempts %d, error %q", status, attempts, lastError)
+	}
+}
+
 // TestClaimNext_PriorityClaimsHighFirst locks in the migration-186
 // scheduling contract: a high-priority (script-required) event enqueued
 // AFTER a normal-priority (bulk-folder-sync) event is claimed FIRST.

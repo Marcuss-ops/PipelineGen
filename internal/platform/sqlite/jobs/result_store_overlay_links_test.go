@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -15,7 +16,7 @@ func TestRecordOverlayDriveLinkMergesCompletedLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	ctx := context.Background()
 	for _, schema := range []string{
@@ -76,7 +77,7 @@ func TestRecordOverlayDriveLinkKeepsAsyncReceiptBesideRenderArtifact(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	ctx := context.Background()
 	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL); INSERT INTO jobs(id,status) VALUES('job-overlay-render','SUCCEEDED'); CREATE TABLE job_results (id INTEGER PRIMARY KEY, job_id TEXT, attempt INTEGER, result_hash TEXT, codec_id TEXT, result_payload TEXT, created_at TEXT); INSERT INTO job_results VALUES(1,'job-overlay-render',0,'h','json','{"run_id":"run-overlay","result":{"overlay_plan":{"plan_id":"plan-en","language":"en"},"overlay_render":{"status":"COMPLETED","artifact":{"sha256":"render-sha"}}}}','now')`); err != nil {
@@ -120,12 +121,27 @@ func TestRecordOverlayDriveLinkWaitsForSuccessfulJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL); INSERT INTO jobs(id,status) VALUES('job-running','RUNNING'); CREATE TABLE job_results (id INTEGER PRIMARY KEY, job_id TEXT, attempt INTEGER, result_hash TEXT, codec_id TEXT, result_payload TEXT, created_at TEXT); INSERT INTO job_results VALUES(1,'job-running',0,'h','json','{}','now')`); err != nil {
 		t.Fatal(err)
 	}
 	err = NewSQLiteStore(db, zap.NewNop()).RecordOverlayDriveLink(context.Background(), "job-running", OverlayDriveLink{ItemID: "phrase", Language: "it", DriveLink: "https://drive/f"})
 	if err == nil {
 		t.Fatal("expected non-terminal job to be retried by outbox")
+	}
+}
+
+func TestOverlayDriveLinkIsCurrentClassifiesNonTerminalParent(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT NOT NULL); INSERT INTO jobs(id,status) VALUES('job-running','RUNNING')`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewSQLiteStore(db, zap.NewNop()).OverlayDriveLinkIsCurrent(context.Background(), "job-running", OverlayDriveLink{ItemID: "phrase", Language: "it"})
+	if !errors.Is(err, ErrOverlayDriveParentNotTerminal) {
+		t.Fatalf("non-terminal parent error = %v, want ErrOverlayDriveParentNotTerminal", err)
 	}
 }
