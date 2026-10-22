@@ -1,0 +1,21 @@
+{
+  "source": "derived_from_fixture_text_grep_verified; NOT an independent annotation (manual review pending)",
+  "entities": [
+    {"canonical": "Chiara Poggi", "type": "PERSON", "min_mentions": 2},
+    {"canonical": "Alberto Stasi", "type": "PERSON", "min_mentions": 3},
+    {"canonical": "Andrea Sempio", "type": "PERSON", "min_mentions": 4},
+    {"canonical": "Milano", "type": "LOCATION", "min_mentions": 2},
+    {"canonical": "Pavia", "type": "LOCATION", "min_mentions": 1}
+  ],
+  "events": [
+    {"id": "E01", "date": "2007-08-13", "phrase": "13 agosto 2007"},
+    {"id": "E02", "phrase": "assoluzione", "min_mentions": 8},
+    {"id": "E03", "phrase": "Cassazione", "min_mentions": 5},
+    {"id": "E04", "phrase": "sedici anni di reclusione"},
+    {"id": "E05", "phrase": "condanna diventa definitiva"},
+    {"id": "E06", "phrase": "chiusura delle indagini", "min_mentions": 1},
+    {"id": "E07", "phrase": "consulenze difensive", "min_mentions": 2}
+  ],
+  "keywords": ["assoluzione", "condanna", "Cassazione", "appello", "indagini", "consulenze"],
+  "groups_expected_min": 1
+}

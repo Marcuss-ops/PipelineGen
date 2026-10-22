@@ -1,0 +1,10 @@
+=== 2026-10-21T07:52:36Z submit 02_procedimento (idem=garlasco-introfix-r13-02_procedimento-20261021T075236Z)
+{
+  "ok": true,
+  "job_id": "job_1792569158777952752_2d32734b",
+  "status": "QUEUED",
+  "status_url": "/api/jobs/job_1792569158777952752_2d32734b/full",
+  "current_stage": "NORMALIZING",
+  "project": "garlasco-batch-10-introfix-r13",
+  "idempotency_key": "garlasco-introfix-r13-02_procedimento-20261021T075236Z"
+}
