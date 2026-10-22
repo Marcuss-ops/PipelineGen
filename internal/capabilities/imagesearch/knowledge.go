@@ -335,114 +335,12 @@ var eventREIT = regexp.MustCompile(`((?:storico|grande|importante|epico|leggenda
 
 // ── Structural vocabulary ─────────────────────────────────────────────
 //
-// LEXICON_MIRROR_DEBT: owner=imagesearch, deadline=2026-12-31 — the maps
-// below are hardcoded mirrors of the canonical lexicon data
-// (config/lexicons/<lang>/{negative_particles,function_words,stopwords}.txt),
-// already drifted (`nor` here, absent from negative_particles.txt). They must
-// be migrated onto LexiconProfile before that date; the migration changes the
-// entity resolver's behaviour, so it ships with the golden battery. Until then
-// percheck_stopword_maps_in_app reports them as residue (non-fatal) and fails
-// closed automatically after 2026-12-31.
-
-// negationPhrases are the English constructions that exclude an entity that
-// follows them: particles ("not Mike Tyson") and multi-word contrast
-// phrases ("instead of Mike Tyson", "rather than Mike Tyson", "unlike Mike
-// Tyson", "as opposed to Mike Tyson"). The particle set mirrors
-// config/lexicons/en/negative_particles.txt.
-var negationPhrases = [][]string{
-	{"not"}, {"no"}, {"never"}, {"neither"}, {"nor"},
-	{"instead", "of"}, {"rather", "than"}, {"unlike"}, {"other", "than"},
-	{"as", "opposed", "to"}, {"in", "contrast", "to"},
-}
-
-// negationPhrasesIT are the Italian negation constructions ("non Mike
-// Tyson", "invece di Mike Tyson", "piuttosto che Mike Tyson", "a
-// differenza di Mike Tyson", "anziché Mike Tyson"). The particle set
-// mirrors config/lexicons/it/negative_particles.txt.
-var negationPhrasesIT = [][]string{
-	{"non"}, {"no"}, {"mai"}, {"ne"}, {"né"}, {"neanche"}, {"nemmeno"}, {"neppure"},
-	{"invece", "di"}, {"piuttosto", "che"}, {"anziché"},
-	{"a", "differenza", "di"}, {"al", "posto", "di"}, {"diversamente", "da"},
-}
-
-// leadingContrastWords are sentence-initial contrast openers that the CPU
-// extractor may fold into a person span ("Unlike Mike Tyson" → "Mike
-// Tyson"). normalizeBaselineValue strips them from the front of a baseline
-// value so the dedup collapses onto the KB identity.
-var leadingContrastWords = map[string]bool{
-	// English.
-	"unlike": true, "rather": true, "instead": true, "despite": true,
-	// Italian.
-	"invece": true, "piuttosto": true, "anziché": true,
-}
-
-// pronouns are the English subject/possessive pronouns the resolver can
-// ground on a prior sentence (coreference). Only a leading pronoun triggers
-// resolution.
-var pronouns = map[string]bool{
-	"he": true, "his": true, "him": true, "she": true, "her": true, "hers": true,
-	"they": true, "their": true, "them": true, "it": true, "its": true,
-	"we": true, "our": true, "us": true,
-}
-
-// pronounsIT are the Italian subject/possessive pronouns that can open a
-// sentence and ground on a prior person (coreference): "Lui in seguito …",
-// "Suo padre …".
-var pronounsIT = map[string]bool{
-	"lui": true, "lei": true, "egli": true, "ella": true, "essi": true, "esse": true,
-	"esso": true, "essa": true, "loro": true, "suo": true, "sua": true,
-	"suoi": true, "sue": true,
-}
-
-// italianArticles and italianPossessives support the "il suo / la sua / i
-// suoi / le sue" possessive opener pattern ("La sua fortuna cambiò …").
-var italianArticles = map[string]bool{
-	"il": true, "lo": true, "la": true, "i": true, "gli": true, "le": true,
-}
-
-var italianPossessives = map[string]bool{
-	"suo": true, "sua": true, "suoi": true, "sue": true,
-}
-
-// italianPronounClitics are the clitic/pronoun tokens that mark a pronoun
-// reference anywhere in the sentence ("…, lo ha trasformato …").
-var italianPronounClitics = map[string]bool{
-	"lui": true, "lei": true, "egli": true, "ella": true, "essi": true, "esse": true,
-	"esso": true, "essa": true, "loro": true, "lo": true, "la": true, "gli": true,
-	"ne": true, "li": true, "le": true, "suo": true, "sua": true, "suoi": true, "sue": true,
-}
-
-// italianProDropAux are the third-person auxiliary/verb forms that mark a
-// DROPPED subject in Italian ("Dopo aver guadagnato …, ha ampliato …" = "…
-// he expanded …"). Only consulted when a leading subordinate clause is
-// present AND a prior person exists, so "ha/è/sono" in ordinary sentences
-// never fabricate an antecedent.
-var italianProDropAux = map[string]bool{
-	"ha": true, "hanno": true, "è": true, "sono": true, "era": true, "erano": true,
-	"fu": true, "furono": true, "aveva": true, "avevano": true, "sarà": true,
-	"saranno": true, "sta": true, "stavano": true, "stava": true, "avrebbe": true,
-	"avrebbero": true, "sia": true, "fosse": true, "fossero": true,
-}
-
-// subordinateMarkers open a leading subordinate clause ("After earning huge
-// purses …, Floyd Mayweather invested …"). When present, the primary person
-// is the LAST-mentioned person (the main-clause subject), not the first.
-var subordinateMarkers = map[string]bool{
-	"after": true, "before": true, "although": true, "while": true, "since": true,
-	"because": true, "as": true, "when": true, "despite": true, "once": true,
-	"until": true, "if": true, "though": true, "having": true, "with": true,
-	"in": true, "by": true, "through": true, "upon": true,
-}
-
-// subordinateMarkersIT open a leading Italian subordinate clause ("Dopo aver
-// guadagnato …, Floyd Mayweather ha investito …"; "In seguito ha investito
-// …").
-var subordinateMarkersIT = map[string]bool{
-	"dopo": true, "prima": true, "sebbene": true, "benché": true, "mentre": true,
-	"poiché": true, "perché": true, "quando": true, "nonostante": true,
-	"finché": true, "se": true, "avendo": true, "in": true, "da": true,
-	"con": true, "attraverso": true, "pur": true,
-}
+// Negation phrases, contrast openers, pronouns, articles, possessives,
+// clitic pronouns, pro-drop auxiliaries and subordinate markers are language
+// data, not code: they live in config/lexicons/<lang>/*.txt and are read
+// through the LexiconRegistry (see knowledge_language.go). This file keeps
+// only the resolver's own knowledge (identities, aliases, value/event
+// patterns) and the fight-event trigger lists below.
 
 // fightContextWords trigger the "N1 N2 fight" event query when two known
 // boxers co-occur. "fights against" (a source description) is deliberately

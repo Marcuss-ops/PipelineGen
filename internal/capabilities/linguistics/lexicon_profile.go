@@ -16,4 +16,17 @@ type LexiconProfile struct {
 	VisualVerbs       map[string]struct{}
 	VerbSuffixes      []string
 	PhrasePolicy      PhraseExtractionPolicy
+
+	// WordSets holds the additional named per-language word sets loaded
+	// from config/lexicons/<lang>/<name>.txt (subordinate markers, pronouns,
+	// articles, possessives, clitic pronouns, pro-drop auxiliaries, contrast
+	// openers, numeric overlay vocabulary). A set that has no data file is
+	// absent from the map rather than present and empty; callers treat the
+	// returned sets as read-only.
+	WordSets map[string]map[string]struct{}
+	// PhraseSets holds the named multi-word lists loaded from
+	// config/lexicons/<lang>/<name>.txt, tokenised on whitespace at load
+	// time (for example "instead of" becomes {"instead", "of"}). Like
+	// WordSets, a missing file leaves the name absent.
+	PhraseSets map[string][][]string
 }

@@ -134,15 +134,18 @@ func (r *Resolver) applyCoreference(text string, req Request, entities []Resolve
 // subject, which is only meaningful when a leading subordinate clause is
 // present (checked by the caller).
 func sentenceHasPronoun(text string, lang string) bool {
+	clitics := lexiconWordSet("it", "pronoun_clitics")
+	proDropAux := lexiconWordSet("it", "pro_drop_aux")
+	englishPronouns := lexiconWordSet("en", "pronouns")
 	for _, token := range tokenizeWords(text) {
 		tok := strings.ToLower(strings.Trim(token, ".,;:!?\"'"))
 		if lang == "it" {
-			if italianPronounClitics[tok] || italianProDropAux[tok] {
+			if wordIn(clitics, tok) || wordIn(proDropAux, tok) {
 				return true
 			}
 			continue
 		}
-		if pronouns[tok] {
+		if wordIn(englishPronouns, tok) {
 			return true
 		}
 	}

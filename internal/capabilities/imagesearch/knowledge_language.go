@@ -1,12 +1,44 @@
 package imagesearch
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
+)
+
+// lexiconWordSet returns the named word set for lang, falling back to English
+// when the language profile does not own that set. The fallback preserves the
+// resolver's historical default: a language it does not enumerate is handled
+// with the English structural vocabulary.
+func lexiconWordSet(lang string, name string) map[string]struct{} {
+	lex := linguistics.DefaultLexicon()
+	if lex.HasProfile(lang) {
+		if set := lex.WordSet(lang, name); len(set) > 0 {
+			return set
+		}
+	}
+	return lex.WordSet("en", name)
+}
+
+// lexiconPhraseSet is lexiconWordSet for tokenised phrase lists.
+func lexiconPhraseSet(lang string, name string) [][]string {
+	lex := linguistics.DefaultLexicon()
+	if lex.HasProfile(lang) {
+		if phrases := lex.PhraseSet(lang, name); len(phrases) > 0 {
+			return phrases
+		}
+	}
+	return lex.PhraseSet("en", name)
+}
+
+// wordIn reports whether token belongs to set. Nil sets are handled.
+func wordIn(set map[string]struct{}, token string) bool {
+	_, ok := set[token]
+	return ok
+}
 
 func negationPhrasesFor(lang string) [][]string {
-	if lang == "it" {
-		return negationPhrasesIT
-	}
-	return negationPhrases
+	return lexiconPhraseSet(lang, "negative_phrases")
 }
 
 // matchAlias returns the longest alias descriptor that opens the sentence,
@@ -111,13 +143,6 @@ func resolvePriorPerson(priors []string, alias *aliasDescriptor) string {
 	return ""
 }
 
-func subordinateMarkersFor(lang string) map[string]bool {
-	if lang == "it" {
-		return subordinateMarkersIT
-	}
-	return subordinateMarkers
-}
-
 func fightContextWordsFor(lang string) []string {
 	if lang == "it" {
 		return fightContextWordsIT
@@ -160,7 +185,7 @@ func startsWithPronoun(text string, lang string) bool {
 	if lang == "it" {
 		return startsWithPronounIT(text)
 	}
-	return pronouns[leadingToken(text)]
+	return wordIn(lexiconWordSet("en", "pronouns"), leadingToken(text))
 }
 
 // startsWithPronounIT handles the Italian pronoun openers: a bare subject /
@@ -172,12 +197,13 @@ func startsWithPronounIT(text string) bool {
 		return false
 	}
 	first := strings.ToLower(strings.Trim(fields[0], ".,;:!?\"'"))
-	if pronounsIT[first] {
+	if wordIn(lexiconWordSet("it", "pronouns"), first) {
 		return true
 	}
 	if len(fields) >= 2 {
 		second := strings.ToLower(strings.Trim(fields[1], ".,;:!?\"'"))
-		if italianArticles[first] && italianPossessives[second] {
+		if wordIn(lexiconWordSet("it", "articles"), first) &&
+			wordIn(lexiconWordSet("it", "possessives"), second) {
 			return true
 		}
 	}
@@ -188,5 +214,14 @@ func startsWithPronounIT(text string) bool {
 // clause ("After earning … , Floyd Mayweather …", "Dopo aver guadagnato …"),
 // for the request language.
 func startsSubordinateClause(text string, lang string) bool {
-	return subordinateMarkersFor(lang)[leadingToken(text)]
+	return wordIn(lexiconWordSet(lang, "subordinate_markers"), leadingToken(text))
+}
+
+// isContrastOpener reports whether token opens a contrast phrase that the CPU
+// extractor may fold into a person span ("Unlike Mike Tyson"). English and
+// Italian openers are both consulted because the baseline span carries no
+// language tag of its own.
+func isContrastOpener(token string) bool {
+	return wordIn(lexiconWordSet("en", "contrast_openers"), token) ||
+		wordIn(lexiconWordSet("it", "contrast_openers"), token)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash"
 	"sort"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
@@ -94,6 +95,8 @@ func writeLexiconFingerprint(h hash.Hash, key string, p *LexiconProfile) {
 		_, _ = h.Write([]byte(suffix))
 		_, _ = h.Write([]byte("\n"))
 	}
+	writeWordSetsFingerprint(h, p.WordSets)
+	writePhraseSetsFingerprint(h, p.PhraseSets)
 	_, _ = h.Write([]byte(fmt.Sprintf("policy:%d,%d,%d,%t\n",
 		p.PhrasePolicy.MinWords,
 		p.PhrasePolicy.MaxWords,
@@ -116,5 +119,36 @@ func writeSortedSetFingerprint(h hash.Hash, label string, set map[string]struct{
 	for _, k := range keys {
 		_, _ = h.Write([]byte(k))
 		_, _ = h.Write([]byte("\n"))
+	}
+}
+
+// writeWordSetsFingerprint appends the named word sets in sorted name order
+// (and each set as a sorted-key enumeration) so the version changes when any
+// migrated vocabulary changes, exactly like the typed base sets.
+func writeWordSetsFingerprint(h hash.Hash, sets map[string]map[string]struct{}) {
+	names := make([]string, 0, len(sets))
+	for name := range sets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		writeSortedSetFingerprint(h, "set:"+name, sets[name])
+	}
+}
+
+// writePhraseSetsFingerprint appends the named phrase lists in sorted name
+// order, with each phrase rendered as its whitespace-joined tokens.
+func writePhraseSetsFingerprint(h hash.Hash, sets map[string][][]string) {
+	names := make([]string, 0, len(sets))
+	for name := range sets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		_, _ = h.Write([]byte("phrases:" + name + ":"))
+		for _, phrase := range sets[name] {
+			_, _ = h.Write([]byte(strings.Join(phrase, " ")))
+			_, _ = h.Write([]byte("\n"))
+		}
 	}
 }
