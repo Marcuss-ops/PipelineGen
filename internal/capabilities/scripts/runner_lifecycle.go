@@ -16,6 +16,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
 )
 
@@ -312,7 +313,14 @@ func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage
 	// Compute the next retry attempt (1-based for display, 0-based for storage).
 	nextAttempt := attempt + 1
 	var nextRetryAt *time.Time
-	if nextAttempt <= MaxRetries && !isPermanentMediaPreflightFailure(err) {
+	// A durable retry must represent work that may succeed on another attempt.
+	// Retrying arbitrary errors made deterministic failures (invalid overlay
+	// timelines, missing media/Drive assets, and lost local artifacts) repeat
+	// the same expensive pipeline without changing their inputs. The canonical
+	// typed retry contract is shared with the job worker; the one intentional
+	// non-error deferral is a remote final render that is still running.
+	retryable := retry.IsTransient(err) || errors.Is(err, ErrFinalJobPending) || errors.Is(err, ErrFinalAudioLocalArtifactMissing)
+	if nextAttempt <= MaxRetries && retryable && !isPermanentMediaPreflightFailure(err) {
 		delay := RetryDelay(attempt)
 		now := time.Now().UTC()
 		t := now.Add(delay)

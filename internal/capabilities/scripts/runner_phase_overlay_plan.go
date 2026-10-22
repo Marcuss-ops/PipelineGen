@@ -214,6 +214,12 @@ func (e *executionRun) audioCompile() bool {
 			_, outcome.err = kernobs.MeasureIndependentStageReport(ctx, StageOverlayRender, func(c context.Context) error {
 				var err error
 				outcome.outcomes, err = e.r.renderOverlayPlans(c, e.req, e.resumeIdx, snapshot)
+				if err == nil && e.req.FinalJob && e.r.overlayPublicationDrainer != nil {
+					// All child renders are now submitted; join their bounded Drive
+					// publications before closing the measured overlay stage. The
+					// final master consumes these certified Drive IDs.
+					err = e.r.overlayPublicationDrainer.Wait(c)
+				}
 				return err
 			})
 			if outcome.err != nil {

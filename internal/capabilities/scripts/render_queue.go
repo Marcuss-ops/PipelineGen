@@ -468,7 +468,11 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				publication.SourceEndUS = metadata.SourceEndUS
 				publication.TargetDurationUS = metadata.TargetDurationUS
 			}
-			if err := e.publisher.PublishOverlay(postCtx, publication, done.Artifact); err != nil {
+			if err := kernobs.MeasureOperation(postCtx, kernobs.OperationInfo{
+				Stage: StageOverlayRender, Component: "drive", Operation: "overlay_upload", Provider: "drive",
+			}, func(measureCtx context.Context) error {
+				return e.publisher.PublishOverlay(measureCtx, publication, done.Artifact)
+			}); err != nil {
 				return fmt.Errorf("publish overlay artifact to Drive: %w", err)
 			}
 		}

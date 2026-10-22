@@ -135,6 +135,14 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 		if err != nil {
 			return overlayItemRenderResult{}, err
 		}
+		// A final job still requires every Drive artifact before its master is
+		// submitted, but publishing each item inline serializes Drive latency
+		// with the next GPU render. Let the existing bounded, run-scoped
+		// publication pool drain the uploads; the runner joins that pool at the
+		// final-job boundary before building the master payload.
+		if child.RequireDriveBeforeReturn && e.asyncPublication && e.publisher != nil {
+			child.RequireDriveBeforeReturn = false
+		}
 		ref, err := e.enqueueChrononPlan(opCtx, child, metadata)
 		if err != nil {
 			return overlayItemRenderResult{}, fmt.Errorf("render overlay item %q: %w", candidate.source.ID, err)

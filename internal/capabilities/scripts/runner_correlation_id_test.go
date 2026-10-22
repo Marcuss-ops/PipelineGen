@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -116,7 +117,9 @@ func TestRunnerCorrelationID_RenderValidationFinalAudioDrive(t *testing.T) {
 
 	recorder := &recordingExecutionRecorder{}
 	runner.SetExecutionRecorder(recorder)
-	runner.SetCombinedAudioRenderer(lineageAudioRenderer{}) // AssetID "final-audio"
+	audioPath := filepath.Join(t.TempDir(), "final-audio.m4a")
+	require.NoError(t, os.WriteFile(audioPath, []byte("audio"), 0o600))
+	runner.SetCombinedAudioRenderer(lineageAudioRenderer{path: audioPath}) // AssetID "final-audio"
 	runner.SetFinalAudioPublisher(&stubFinalAudioPublisher{result: FinalAudioPublishResult{
 		AssetID: "final-audio-published", DriveLink: "https://drive.google.com/file/d/final-audio",
 	}})

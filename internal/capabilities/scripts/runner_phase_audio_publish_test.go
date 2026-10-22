@@ -2,6 +2,8 @@ package scriptgeneration
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -39,10 +41,12 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 
 	req := defaultTestRequest()
 	req.SourceLanguage = "en"
+	localAudio := filepath.Join(t.TempDir(), "final-audio.m4a")
+	require.NoError(t, os.WriteFile(localAudio, []byte("audio"), 0o600))
 	result := &GenerateResult{
 		FinalAudio: &FinalAudioReference{
-			AssetID:          "/tmp/pipelinegen-final-audio-local.m4a",
-			Path:             "/tmp/pipelinegen-final-audio-local.m4a",
+			AssetID:          localAudio,
+			Path:             localAudio,
 			FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			DurationMS:       1000,
 		},
@@ -54,7 +58,7 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 	require.Equal(t, 1, publisher.calls)
 	require.Equal(t, "final-audio-canonical-01k", result.FinalAudio.AssetID, "audio_asset_id must be the canonical asset ID, not the local path")
 	require.Equal(t, "https://drive.google.com/file/d/abc", result.FinalAudio.DriveLink)
-	require.Equal(t, "/tmp/pipelinegen-final-audio-local.m4a", result.FinalAudio.Path, "local path must remain on the internal Path field")
+	require.Equal(t, localAudio, result.FinalAudio.Path, "local path must remain on the internal Path field")
 }
 
 func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T) {
@@ -66,13 +70,15 @@ func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T)
 
 	req := defaultTestRequest()
 	req.SourceLanguage = "en"
+	localAudio := filepath.Join(t.TempDir(), "final-audio.m4a")
+	require.NoError(t, os.WriteFile(localAudio, []byte("audio"), 0o600))
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: "run-2", Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
 	}))
 	result := &GenerateResult{
 		FinalAudio: &FinalAudioReference{
-			AssetID:          "/tmp/pipelinegen-final-audio-local.m4a",
-			Path:             "/tmp/pipelinegen-final-audio-local.m4a",
+			AssetID:          localAudio,
+			Path:             localAudio,
 			FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		},
 	}
