@@ -48,12 +48,18 @@ Modifica in `internal/capabilities/scripts/runner_lifecycle.go`: il run pianific
 
 Riferimenti: `ops/jobs/garlasco_batch_10_20261019_sequential_v7/manifest.json`, i payload `*.generate*.json` della stessa cartella e `TODO-milton-finaljob-performance.md` per precedenti misure di fasi overlay e tempi di job (non direttamente comparabili finché non vengono normalizzate).
 
+### Golden case v1 — baseline live in corso
+
+Payload immutabile: `ops/jobs/overlay_throughput_golden_100_20261022.generate.json` (SHA-256 `c31f3a6e5a01c6c024dc84d687ec7c66662cff55a9cb279fdb80a54ea6f9ef50`). Deriva dal JSON reale `08_fonti_media.generate.v11.json`: mantiene i 20 segmenti, le impostazioni editoriali e le tre clip intro già selezionate (`yt_CHn2h59EptE_2235_2250_v1`, `yt_CHn2h59EptE_2235_2280_v1`, `yt_CHn2h59EptE_2520_2565_v1`), con progetto e correlazione dedicati. Il mix richiesto è 25 frasi brevi, 25 lunghe, 30 immagini (10 schede entità comprese), 10 date e 10 mappe; `max_overlays_per_scene=10`. Il riuso della cache è abilitato e il refresh forzato degli asset disabilitato per non confondere il benchmark con download duplicati.
+
+Prima baseline live inviata il 2026-10-22: job `job_1792685428589251856_a9f967b8`, endpoint locale `127.0.0.1:8000`, stato iniziale RUNNING. L’API attiva dichiara il build `53c200925` (avviato alle 14:38 UTC), che precede la correzione; questa run misura quindi il percorso precedente. Risultato completo e breakdown delle fasi da allegare dopo il completamento. Il confronto della correzione richiede lo stesso payload e un build che contenga il commit `5538ed8d6`.
+
 ## Lavoro richiesto
 
 - [~] Ricostruire i job recenti e storici con timestamp di inizio/fine, script e revisione, overlay richiesti/pianificati/materializzati/validati, esito e numero di retry. Prima ricostruzione dei dieci job completata; resta da classificare la telemetria per tipo di item e per worker.
 - [ ] Separare il wall time per fase: generazione del piano/contenuto, risoluzione immagini e asset, enqueue/wait, rendering, validazione e retry. Registrare parallelismo e risorse della macchina, quando disponibili.
 - [ ] Identificare i colli di bottiglia principali con dati; distinguere tempo CPU/GPU attivo, attese esterne e lavoro ripetuto.
-- [ ] Creare un **golden case da 100 overlay** ripetibile, derivato da un job reale rappresentativo e coperto da una composizione documentata di tipologie (frasi, immagini/entity-card, date e mappe). Fissare input, asset, configurazione, revisione del codice e criteri di correttezza.
+- [~] Creare un **golden case da 100 overlay** ripetibile, derivato da un job reale rappresentativo e coperto da una composizione documentata di tipologie (frasi, immagini/entity-card, date e mappe). Payload fissato e hashato; prima run live in corso. Restano conteggio degli output validi e rerun sul build corretto.
 - [ ] Eseguire il golden case sul codice corrente e registrare tempo totale, overlay/minuto, tempi di fase, overlay effettivi, errori, retry, parallelismo e risorse. Ripetere almeno tre volte e riportare mediana e dispersione.
 - [ ] Salvare input, output atteso, report e comando di ripetizione in una cartella versionata sotto `ops/jobs/` (o nella sede di fixture del componente, se il caso è puramente di test).
 - [ ] Selezionare almeno un job storico rappresentativo, conservandone payload e riferimento ai risultati già disponibili. Rifarlo sul golden path solo se gli input e le dipendenze sono riproducibili; altrimenti usare la stessa richiesta con asset fissati e dichiarare la differenza.
@@ -75,7 +81,7 @@ Per ogni run salvare almeno: `run_id`, input hash, revisione, configurazione e w
 
 ## Criteri di accettazione
 
-- [ ] Golden case immutabile da 100 overlay, ripetibile e verificabile automaticamente o con report verificabile.
+- [~] Golden case immutabile da 100 overlay, ripetibile e verificabile automaticamente o con report verificabile; payload v1 fissato, verifica output e report della run ancora da completare.
 - [ ] Baseline iniziale del golden case registrata con almeno tre run confrontabili e conteggio degli overlay validi.
 - [ ] Almeno un job storico valutato: confronto diretto quando riproducibile, altrimenti confronto documentato con fixture equivalente.
 - [ ] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili.
