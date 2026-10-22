@@ -3,8 +3,10 @@ package wiring
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
@@ -92,8 +94,12 @@ func (h *overlayDrivePublicationHandler) Handle(ctx context.Context, evt outboxe
 	}
 	current, err := h.results.OverlayDriveLinkIsCurrent(ctx, jobID, link)
 	if err != nil {
-		// The outbox retries while the parent job is running. Wait before the
-		// external upload so every retry does not create another Drive file.
+		if errors.Is(err, sqljobs.ErrOverlayDriveParentNotTerminal) {
+			// Parent completion is a scheduling precondition, not a failed upload.
+			// Defer without consuming attempts; the publisher will retry at a
+			// one-minute cadence until the parent result is committed.
+			return outboxevents.NewDeferredError(err, time.Minute)
+		}
 		return fmt.Errorf("check overlay Drive result target: %w", err)
 	}
 	if !current {

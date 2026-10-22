@@ -35,6 +35,7 @@ func (c *FakeClock) Advance(d time.Duration) {
 type fakeFinisher struct {
 	deadLetters atomic.Int32
 	supersededs atomic.Int32
+	deferred    atomic.Int32
 	failed      atomic.Int32
 	completed   atomic.Int32
 	lastErr     string
@@ -51,6 +52,14 @@ func (r *fakeFinisher) MarkDeadLetter(_ context.Context, _ int64, _, errMsg stri
 
 func (r *fakeFinisher) MarkSuperseded(_ context.Context, _ int64, _, _ string) error {
 	r.supersededs.Add(1)
+	return nil
+}
+
+func (r *fakeFinisher) MarkDeferred(_ context.Context, _ int64, _, errMsg string, _ time.Time) error {
+	r.deferred.Add(1)
+	r.lastMu.Lock()
+	r.lastErr = errMsg
+	r.lastMu.Unlock()
 	return nil
 }
 
@@ -150,6 +159,29 @@ func TestPool_MissingHandler_DeadLettersImmediately(t *testing.T) {
 	}
 	if fin.failed.Load() != 0 {
 		t.Errorf("expected 0 retryable failures (should dead_letter), got %d", fin.failed.Load())
+	}
+}
+
+func TestPool_DeferredEventDoesNotConsumeRetry(t *testing.T) {
+	reg := NewHandlerRegistry()
+	fin := &fakeFinisher{}
+	handler := &testHandler{
+		eventType: "test.deferred",
+		handleFn: func(_ context.Context, _ Event) error {
+			return NewDeferredError(fmt.Errorf("parent job is still running"), time.Minute)
+		},
+	}
+	reg.Register(handler)
+	clock := NewFakeClock(time.Date(2026, 10, 22, 16, 0, 0, 0, time.UTC))
+	pool := NewPool("deferred-test", nil, reg, zap.NewNop(), defaultTestConfig())
+	pool.clock = clock
+	pool.finisher = fin
+	event := makeTestEvent("test.deferred")
+	event.AttemptCount = 3
+	pool.processEvent(context.Background(), &Claim{Event: event, LeaseID: "lease-deferred"})
+
+	if fin.deferred.Load() != 1 || fin.failed.Load() != 0 || fin.completed.Load() != 0 {
+		t.Fatalf("deferred transition counts: deferred=%d failed=%d completed=%d", fin.deferred.Load(), fin.failed.Load(), fin.completed.Load())
 	}
 }
 

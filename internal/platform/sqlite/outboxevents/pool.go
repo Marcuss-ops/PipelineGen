@@ -95,6 +95,7 @@ type WorkerPollConfig struct {
 type eventFinisher interface {
 	MarkDeadLetter(ctx context.Context, eventID int64, leaseID, errMsg string) error
 	MarkSuperseded(ctx context.Context, eventID int64, leaseID, errMsg string) error
+	MarkDeferred(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error
 	MarkFailed(ctx context.Context, eventID int64, leaseID, errMsg string, nextAttemptAt time.Time) error
 	MarkCompleted(ctx context.Context, eventID int64, leaseID string) error
 }
@@ -414,6 +415,19 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 
 	// ── Route by error classification ────────────────────────────
 	if handlerErr != nil {
+		if delay, deferred := deferredDelay(handlerErr); deferred {
+			nextAttempt := p.clock.Now().Add(delay)
+			p.log.Info("event deferred until downstream precondition is ready",
+				zap.Int64("event_id", evt.ID),
+				zap.String("type", evt.EventType),
+				zap.Duration("delay", delay),
+				zap.Error(handlerErr))
+			p.finish(ctx, evt, claim, "deferred", func() error {
+				return p.finisher.MarkDeferred(ctx, evt.ID, claim.LeaseID, handlerErr.Error(), nextAttempt)
+			}, "deferred")
+			return
+		}
+
 		// QDRANT-002 item F: supersede → terminal success.
 		if IsSupersede(handlerErr) {
 			p.log.Info("event superseded by newer aggregate version — closing as superseded",

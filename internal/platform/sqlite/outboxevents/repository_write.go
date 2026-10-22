@@ -278,6 +278,29 @@ func (r *Repository) MarkFailed(ctx context.Context, eventID int64, leaseID stri
 	return nil
 }
 
+// MarkDeferred returns a claimed event to pending after a scheduling
+// precondition is not ready. ClaimNext increments attempts on claim, so this
+// transition reverses that increment and does not count as a failed attempt.
+// The lease predicate fences stale workers just like MarkFailed.
+func (r *Repository) MarkDeferred(ctx context.Context, eventID int64, leaseID, reason string, nextAttemptAt time.Time) error {
+	now := time.Now()
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE outbox_events
+		SET status = 'pending', attempt_count = CASE WHEN attempt_count > 0 THEN attempt_count - 1 ELSE 0 END,
+		    next_attempt_at = ?, last_error = ?, worker_id = '', lease_id = '', lease_expiry = NULL,
+		    updated_at = ?
+		WHERE id = ? AND lease_id = ? AND status = 'processing'
+	`, timeutil.FormatRFC3339(nextAttemptAt), reason, timeutil.FormatRFC3339(now), eventID, leaseID)
+	if err != nil {
+		return fmt.Errorf("outboxevents.MarkDeferred(%d): %w", eventID, err)
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return fmt.Errorf("outboxevents.MarkDeferred(%d): %w", eventID, ErrLeaseLost)
+	}
+	return nil
+}
+
 // SupersedeStatus is the canonical outbox status for events
 // obsoleted by a newer version of the same aggregate. Distinct from
 // dead_letter so an operator dashboard distinguishes "the producer

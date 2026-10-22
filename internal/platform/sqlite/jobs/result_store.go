@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
+
+// ErrOverlayDriveParentNotTerminal marks a publication event that arrived
+// before its parent job committed a terminal result. This is a scheduling
+// condition, not a failed publication.
+var ErrOverlayDriveParentNotTerminal = errors.New("overlay Drive parent job is not terminal")
 
 // OverlayDriveLink is the operator-facing receipt written after the durable
 // Drive outbox event has completed.
@@ -36,7 +42,7 @@ func (r *SQLiteStore) OverlayDriveLinkIsCurrent(ctx context.Context, jobID strin
 		return false, fmt.Errorf("check overlay Drive link: read job status: %w", err)
 	}
 	if !job.Status(status).IsTerminal() {
-		return false, fmt.Errorf("check overlay Drive link: job %s is not terminal (status %s)", jobID, status)
+		return false, fmt.Errorf("check overlay Drive link: %w: job %s has status %s", ErrOverlayDriveParentNotTerminal, jobID, status)
 	}
 	var payload string
 	if err := r.db.QueryRowContext(ctx, `SELECT result_payload FROM job_results WHERE job_id = ? ORDER BY attempt DESC, id DESC LIMIT 1`, jobID).Scan(&payload); err != nil {
