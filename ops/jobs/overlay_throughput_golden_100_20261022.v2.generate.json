@@ -1,13 +1,13 @@
 {
   "version": 2,
   "preset": "custom",
-  "correlation_id": "overlay-throughput-golden-100-20261022-baseline-v1",
+  "correlation_id": "overlay-throughput-golden-100-20261022-overlay-only-v2",
   "force_refresh": false,
   "items": [
     {
-      "id": "overlay-throughput-golden-100-20261022-baseline-v1",
-      "project": "overlay-throughput-golden-100-20261022-baseline-v1",
-      "title": "Cronaca, documenti e dichiarazioni: come leggere le fonti — copione 20 minuti — copione circa 20 minuti — Golden throughput 100 overlay — 2026-10-22",
+      "id": "overlay-throughput-golden-100-20261022-overlay-only-v2",
+      "project": "overlay-throughput-golden-100-20261022-overlay-only-v2",
+      "title": "Cronaca, documenti e dichiarazioni: come leggere le fonti — copione 20 minuti — copione circa 20 minuti — Golden throughput 100 overlay-only — 2026-10-22",
       "language": "it",
       "tone": "documentario giornalistico sobrio, verificabile e garantista",
       "style": "Lunghezza finale rigorosa: obiettivo 2.700–3.000 parole, massimo 3.100; 20 segmenti di circa 95 parole ciascuno. Non allungare con ripetizioni o spiegazioni duplicate. Genera un copione nuovo e specifico per questo episodio; non riutilizzare un copione standard. Scrivi un copione documentario in italiano di circa 2.500–3.000 parole, con obiettivo intorno a 2.800, suddiviso in segmenti di narrazione chiari. Usa soltanto le informazioni esplicitate nel brief e nelle fonti indicate; se un dettaglio non è confermato, omettilo. Mantieni distinti la condanna definitiva di Alberto Stasi e il procedimento su Andrea Sempio. Andrea Sempio è indagato, respinge le accuse e non è stato condannato in questo procedimento. Attribuisci alle fonti le notizie e alle parti le rispettive valutazioni. Nessuna conclusione anticipata, nessun dettaglio grafico, tono sobrio e garantista. Il piano deve includere esattamente 100 overlay effettivi: 25 frasi brevi, 25 frasi lunghe, 30 immagini con didascalia (di cui 10 schede entità), 10 date documentate e 10 mappe pertinenti. Rispetta la configurazione overlay del payload e non aggiungere testo falso. Brief episodio: Guida alla lettura delle notizie sul caso Garlasco: separa atti e decisioni, resoconti giornalistici, dichiarazioni delle difese e interpretazioni televisive. Ogni informazione deve avere fonte e contesto; le affermazioni controverse vanno attribuite e non trasformate in conclusioni. Usa solo fonti rintracciabili e non inventare citazioni. Grafica per tutti gli overlay: Playfair Display Italic nero su fondo bianco pieno. Il copione deve contenere 20 segmenti di narrazione, con sviluppo distinto per ciascun tema; evita ripetizioni, riempitivi e frammenti di istruzioni per overlay nel parlato. Pianifica esattamente 100 overlay effettivi nel rispetto dei gruppi: 25 frasi brevi, 25 frasi lunghe, 30 immagini (10 schede entità comprese), 10 date e 10 mappe; non contare overlay non materializzati. Restrizione mappe: inserisci soltanto mappe di località geografiche reali esplicitamente nominate nel copione, per esempio Garlasco, Vigevano, Pavia o Milano; mai persone, corti o concetti. Le mappe devono essere renderizzate come overlay. Renderizza anche venticinque short phrases da 2 a 5 parole ciascuna. Tutti gli overlay: Playfair Display Italic nero su fondo bianco pieno. Per le mappe usa solo luoghi geografici espliciti nel copione tra Garlasco, Vigevano, Pavia e Milano; non geocodificare persone, corti o concetti. Renderizza dieci mappe editoriali e dieci frasi brevi da 2–5 parole. Per tutti gli overlay usa Playfair Display Italic nero su fondo bianco pieno.",
@@ -634,5 +634,5 @@
       "media_mode": "stock_only"
     }
   ],
-  "final_job": true
+  "final_job": false
 }
