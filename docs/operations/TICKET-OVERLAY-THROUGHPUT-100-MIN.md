@@ -48,11 +48,13 @@ Modifica in `internal/capabilities/scripts/runner_lifecycle.go`: il run pianific
 
 Riferimenti: `ops/jobs/garlasco_batch_10_20261019_sequential_v7/manifest.json`, i payload `*.generate*.json` della stessa cartella e `TODO-milton-finaljob-performance.md` per precedenti misure di fasi overlay e tempi di job (non direttamente comparabili finché non vengono normalizzate).
 
-### Golden case v1 — baseline live in corso
+### Golden case v2 — baseline live overlay-only in corso
 
-Payload immutabile: `ops/jobs/overlay_throughput_golden_100_20261022.generate.json` (SHA-256 `c31f3a6e5a01c6c024dc84d687ec7c66662cff55a9cb279fdb80a54ea6f9ef50`). Deriva dal JSON reale `08_fonti_media.generate.v11.json`: mantiene i 20 segmenti, le impostazioni editoriali e le tre clip intro già selezionate (`yt_CHn2h59EptE_2235_2250_v1`, `yt_CHn2h59EptE_2235_2280_v1`, `yt_CHn2h59EptE_2520_2565_v1`), con progetto e correlazione dedicati. Il mix richiesto è 25 frasi brevi, 25 lunghe, 30 immagini (10 schede entità comprese), 10 date e 10 mappe; `max_overlays_per_scene=10`. Il riuso della cache è abilitato e il refresh forzato degli asset disabilitato per non confondere il benchmark con download duplicati.
+Payload immutabile: `ops/jobs/overlay_throughput_golden_100_20261022.v2.generate.json` (SHA-256 `60fb14ec1e6ace95489f38e2b84f91dd7a28d45d89edbcf1e5c060a52d63080d`). Deriva dal JSON reale `08_fonti_media.generate.v11.json`: mantiene i 20 segmenti, le impostazioni editoriali e le tre clip intro già selezionate (`yt_CHn2h59EptE_2235_2250_v1`, `yt_CHn2h59EptE_2235_2280_v1`, `yt_CHn2h59EptE_2520_2565_v1`), con progetto e correlazione dedicati. Il mix richiesto è 25 frasi brevi, 25 lunghe, 30 immagini (10 schede entità comprese), 10 date e 10 mappe; `max_overlays_per_scene=10`. Il riuso della cache è abilitato, il refresh forzato degli asset è disabilitato e `final_job=false`: la misura termina al percorso overlay senza generare il video finale.
 
-Prima baseline live inviata il 2026-10-22: job `job_1792685428589251856_a9f967b8`, endpoint locale `127.0.0.1:8000`, stato iniziale RUNNING. L’API attiva dichiara il build `53c200925` (avviato alle 14:38 UTC), che precede la correzione; questa run misura quindi il percorso precedente. Risultato completo e breakdown delle fasi da allegare dopo il completamento. Il confronto della correzione richiede lo stesso payload e un build che contenga il commit `5538ed8d6`.
+La prima prova live v1 con `final_job=true` è stata interrotta dopo che la fase overlay era terminata. Il job `job_1792685428589251856_a9f967b8` ha renderizzato e pubblicato 39 overlay tra le 16:15:58 e le 16:19:16 UTC; il final job remoto è poi fallito per `timeline segment 33 has zero frames`, con due overlay numerici mancanti in prefetch. Il binario attivo `53c200925` (avvio 14:38 UTC, precedente alle correzioni) ha pianificato un retry sullo stesso errore terminale; il job è stato annullato alle 16:23 UTC per non spendere altra capacità sul video finale. Il conteggio 39 è inferiore ai 100 richiesti: questa prova non certifica il golden.
+
+La run v2 overlay-only è la baseline valida: job `job_1792686265115244060_107c6817`, inviato alle 16:24 UTC sul binario attivo `53c200925`. Il job e il suo report temporale si aggiungeranno al termine. Il confronto post-fix richiede lo stesso payload su un build contenente `5538ed8d6`.
 
 ## Lavoro richiesto
 
