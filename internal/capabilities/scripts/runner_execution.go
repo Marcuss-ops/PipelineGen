@@ -10,7 +10,11 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"strings"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -123,6 +127,18 @@ func (e *executionRun) start() bool {
 	e.resumeIdx = -1 // -1 means start from beginning
 	if err == nil && run != nil {
 		resumeStage := ResumeFrom(run)
+		if run.Status == RunStatusFailed && run.FailedStage == StagePublishingDocuments && missingUnpublishedFinalAudio(run.Result) {
+			// A publish-stage retry normally resumes at publication. That cannot
+			// recover a final-audio file which disappeared from local storage:
+			// the same stale path would be checked again. Re-enter audio compile,
+			// discard only the lost local artifact reference, and keep the already
+			// rendered overlay references in the durable result.
+			resumeStage = StageCompilingAudio
+			run.Result.FinalAudio = nil
+			e.r.log.Warn("final audio artifact is missing; retrying from audio compile",
+				zap.String("run_id", e.runID),
+			)
+		}
 		if resumeStage == StageCompleted {
 			e.r.log.Info("run already completed", zap.String("run_id", e.runID))
 			return false
@@ -158,6 +174,18 @@ func (e *executionRun) start() bool {
 		}
 	}
 	return true
+}
+
+func missingUnpublishedFinalAudio(result *GenerateResult) bool {
+	if result == nil || result.FinalAudio == nil || strings.TrimSpace(result.FinalAudio.DriveLink) != "" {
+		return false
+	}
+	path := strings.TrimSpace(result.FinalAudio.Path)
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // normalize runs the Stage 1 normalize phase.

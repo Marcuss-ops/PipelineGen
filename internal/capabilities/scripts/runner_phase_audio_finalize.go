@@ -2,7 +2,9 @@ package scriptgeneration
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -65,6 +67,11 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	}
 	if strings.TrimSpace(result.FinalAudio.DriveLink) != "" {
 		return true
+	}
+	if _, err := os.Stat(result.FinalAudio.Path); errors.Is(err, os.ErrNotExist) {
+		cause := fmt.Errorf("publish final audio: %w: %s", ErrFinalAudioLocalArtifactMissing, result.FinalAudio.Path)
+		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
+		return false
 	}
 	lang := req.SourceLanguage
 	result.FinalAudio.Filename = audioOutputFilename(req.OutputName, lang)

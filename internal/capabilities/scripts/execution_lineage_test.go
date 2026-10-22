@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,11 +14,11 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
-type lineageAudioRenderer struct{}
+type lineageAudioRenderer struct{ path string }
 
-func (lineageAudioRenderer) Render(_ context.Context, plan capabilityaudio.CompiledAudioPlan, _ capabilityaudio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error) {
+func (r lineageAudioRenderer) Render(_ context.Context, plan capabilityaudio.CompiledAudioPlan, _ capabilityaudio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error) {
 	return FinalAudioReference{
-		AssetID: "final-audio", Path: "/tmp/final-audio.m4a",
+		AssetID: "final-audio", Path: r.path,
 		AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: plan.Version,
 		PlanSHA256: plan.PlanSHA256, FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Codec: plan.Output.Codec,
 		Profile: plan.Output.Profile, SampleRate: plan.Output.SampleRate, Channels: plan.Output.Channels,
@@ -92,7 +93,11 @@ func TestRunnerExecutionContextAndLineageCertification(t *testing.T) {
 
 	recorder := &recordingExecutionRecorder{}
 	runner.SetExecutionRecorder(recorder)
-	runner.SetCombinedAudioRenderer(lineageAudioRenderer{})
+	audioPath := filepath.Join(t.TempDir(), "final-audio.m4a")
+	if err := os.WriteFile(audioPath, []byte("audio"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner.SetCombinedAudioRenderer(lineageAudioRenderer{path: audioPath})
 	runner.SetScriptPersistence(&recordingScriptPersistence{})
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline

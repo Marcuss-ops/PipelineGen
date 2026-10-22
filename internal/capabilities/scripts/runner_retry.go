@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// ErrFinalAudioLocalArtifactMissing marks the one deterministic local-file
+// failure that is recoverable by replaying the audio compile phase. The
+// checkpoint resume path clears the stale reference before compiling again.
+var ErrFinalAudioLocalArtifactMissing = errors.New("final audio local artifact missing")
+
 // deriveErrorCode extracts a stable machine-readable error code from
 // the error chain and the failing stage. Returns a canonical string
 // suitable for persisting as GenerationRun.ErrorCode.
