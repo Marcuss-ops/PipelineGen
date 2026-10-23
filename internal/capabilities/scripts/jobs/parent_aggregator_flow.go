@@ -133,7 +133,8 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 				status = job.StatusFailed
 			}
 		}
-		if status == job.StatusFailed || status == job.StatusCancelled {
+		switch status {
+		case job.StatusFailed, job.StatusCancelled:
 			if len(childJob.Result) > 0 {
 				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
 					if childResult.OK != nil {
@@ -141,7 +142,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 					}
 				}
 			}
-		} else if status == job.StatusSucceeded {
+		case job.StatusSucceeded:
 			if len(childJob.Result) > 0 {
 				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
 					if childResult.OK != nil {

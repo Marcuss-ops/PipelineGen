@@ -12,7 +12,7 @@ func TestResolve_EmptyIDs_ReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Errorf("Resolve([]) err = %v; want nil", err)
 	}
-	if got != nil && len(got) != 0 {
+	if len(got) != 0 {
 		t.Errorf("len(Resolve([])) = %d; want 0", len(got))
 	}
 }

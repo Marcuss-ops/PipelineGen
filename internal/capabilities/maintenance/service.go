@@ -59,69 +59,8 @@ type DispatcherPort interface {
 	EnqueueAndDelete(ctx context.Context, assetID string) error
 }
 
-// qdrantClient is the internal/platform/qdrant.Client structural
-// surface that the Service needs (GetAliasTarget). The concrete adapter
-// is injected at NewService time.
-type qdrantClient interface {
-	ResolveRuntimeCollection(ctx context.Context, alias string) (string, error)
-}
-
-// Service is the canonical qdrant-maintenance use-case orchestrator for
-// the 3 mode set (audit / repair-locators / delete-invalid). Per
-// godlike/06 SSOT, this struct + the NewService constructor are the SOLE
-// owner of mode dispatch. cmd/admin imports ONLY this struct.
-//
-// Field access pattern per mode (godlike/07 honest-disclosure):
-//
-//   - Repair (repair-locators mode): reads s.cleaner (QdrantCleaner port).
-//     The heavy-init fields (sqliteDB, root, scanner, dispatcher) remain
-//     nil — this mode handler does NOT touch them.
-//   - Audit: reads s.scanner + s.activeCol (via classifyForMaintenance).
-//     The orchestrator-internal fields (client, sqliteDB, dispatcher) are
-//     NOT read by this mode handler.
-//   - Delete (delete-invalid mode): reads s.scanner + s.activeCol (via
-//     classifyForMaintenance) + s.dispatcher (for EnqueueAndDelete).
-//     The orchestrator-internal fields (client, sqliteDB) are NOT read by
-//     this mode handler.
-type Service struct {
-	cfg *config.Config
-	log *zap.Logger
-
-	// cli is the godlike/06 SSOT CLI-UX surface (the typed CLIOutput
-	// adapter declared in output.go). Owns ONLY the printable side of
-	// CLI UX — formatted human-readable reports, JSON dumps, on-screen
-	// UI hints. Decoupled from zap's operator-log channel: zap writes
-	// to stderr / log-configured sinks via Service.log; the cli adapter
-	// writes to its injected io.Writer (default os.Stdout via NewCLIOutput).
-	//
-	// godlike/07 NO-FAKE-AVAILABILITY: nil CLIOutput is NEVER a silent
-	// no-op — NewCLIOutput fails closed by defaulting to os.Stdout when
-	// d.CliWriter is nil so the operator never loses CLI UX. Tests that
-	// want to capture output pass a bytes.Buffer via Deps.CliWriter.
-	//
-	// CR-thinker Q5 rationale (2026-07): Service.log stays separate (NOT
-	// folded into cli) because Service.initHeavy reaches s.log directly
-	// for storage.OpenSQLiteDB(..., s.log) and app.InitComposition(s.cfg, s.log).
-	// Folding zap into this adapter would either force a cli.Logger()
-	// getter (godlike/07 minimum-blast-radius regression — re-exports
-	// the structured logger through an extra indirection) or accept a
-	// weaker interface upstream (godlike/06 SSOT regression). Both are
-	// anti-patterns; the 2-field (log + cli) layout is the canonical
-	// scope-discipline answer.
-	cli *CLIOutput
-
-	// Heavy-init fields (Audit + Delete modes only).
-	sqliteDB   *sql.DB
-	client     qdrantClient
-	activeCol  string
-	scanner    *QdrantScannerAdapter
-	dispatcher DispatcherPort
-
-	// Port typed-injected at construction time.
-	cleaner QdrantCleaner
-}
-
-// Deps is the canonical constructor-input envelope for NewService.
+// Deps is the canonical constructor-input envelope for the maintenance
+// use-case surface.
 // godlike/06 SSOT: this struct is the canonical SOLE owner of the
 // dependency-contract shape for the maintenance package.
 type Deps struct {

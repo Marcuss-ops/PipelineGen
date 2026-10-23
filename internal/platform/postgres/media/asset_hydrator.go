@@ -54,6 +54,26 @@ func (r *AssetDetailsReader) Get(ctx context.Context, id string) (*asset.Details
 	return r.reader.GetAssetDetails(ctx, id)
 }
 
+// FindByContentHash resolves an asset by canonical content fingerprint on the
+// media SSOT. A missing row returns (nil, nil), mirroring Get's not-found
+// contract for the ingest lifecycle's FindExisting surface.
+func (r *AssetDetailsReader) FindByContentHash(ctx context.Context, sha256 string) (*asset.Details, error) {
+	if r == nil || r.reader == nil {
+		return nil, errors.New("postgres media: asset details reader not wired")
+	}
+	rec, err := r.reader.FindByHash(ctx, sha256)
+	if err != nil {
+		if errors.Is(err, ErrMediaAssetNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if rec == nil {
+		return nil, nil
+	}
+	return r.reader.GetAssetDetails(ctx, rec.ID)
+}
+
 // GetAssetDetails returns the canonical asset plus its location projection,
 // mirroring detail.Service.Get against the PostgreSQL media SSOT. A missing
 // row returns (nil, nil) so the LocationVerifier orphan check keeps its exact

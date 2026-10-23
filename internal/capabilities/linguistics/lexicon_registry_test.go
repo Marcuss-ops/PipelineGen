@@ -29,9 +29,11 @@ func writeLexiconFile(t *testing.T, dir, name string, lines ...string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	for _, line := range lines {
-		f.WriteString(line + "\n")
+		if _, err := f.WriteString(line + "\n"); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -359,7 +361,9 @@ func TestDefaultLexiconFailsBeforeBootstrap(t *testing.T) {
 func TestLexiconRegistry_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
 	// Create an empty directory structure without fallback.
-	os.MkdirAll(filepath.Join(dir, "en"), 0755)
+	if err := os.MkdirAll(filepath.Join(dir, "en"), 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := NewLexiconRegistry(dir); err == nil {
 		t.Fatal("expected empty root without fallback to fail")

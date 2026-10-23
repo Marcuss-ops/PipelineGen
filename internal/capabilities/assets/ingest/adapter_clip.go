@@ -97,6 +97,14 @@ type AssetDetailsReader interface {
 	Get(ctx context.Context, id string) (*asset.Details, error)
 }
 
+// AssetContentHashReader is the optional content-address lookup the media SSOT
+// read surface may implement. Readers that cannot answer by content hash keep
+// the ID/Drive/Filename lookups; only the canonical PostgreSQL reader supports
+// it today.
+type AssetContentHashReader interface {
+	FindByContentHash(ctx context.Context, sha256 string) (*asset.Details, error)
+}
+
 func NewClipStoreAdapter(
 	db *sql.DB,
 	retirer persistence.AssetSoftDeleter,
@@ -291,21 +299,17 @@ func (a *clipStoreAdapter) FindExisting(ctx context.Context, query assetop.Exist
 		}
 	}
 
-	if query.LegacyFileMD5 != "" {
-		rows, err := a.db.QueryContext(ctx, `
-			SELECT asset_id FROM asset_locations 
-			WHERE legacy_file_md5 = ? AND location_kind = 'local'
-		`, query.LegacyFileMD5)
-		if err == nil {
-			defer rows.Close()
-			var assetID string
-			if rows.Next() {
-				if err := rows.Scan(&assetID); err == nil && assetID != "" {
-					rec, err := a.Get(ctx, assetID)
-					if err == nil && rec != nil {
-						return mediaRecordToAssetRecord(rec), nil
-					}
-				}
+	if query.ContentSHA256 != "" {
+		// Content-address dedupe reads the media SSOT through the injected
+		// details reader; this adapter must never query media_assets on the
+		// operational SQLite handle (MEDIA-SSOT read-side gate).
+		if reader, ok := a.querySvc.(AssetContentHashReader); ok {
+			details, err := reader.FindByContentHash(ctx, query.ContentSHA256)
+			if err != nil {
+				return nil, err
+			}
+			if details != nil && details.Asset != nil {
+				return mediaRecordToAssetRecord(detailsToMediaRecord(details)), nil
 			}
 		}
 	}
@@ -396,10 +400,11 @@ func detailsToMediaRecord(details *asset.Details) *artifacts.MediaRecord {
 	rec.Metadata = details.Asset.MetadataJSON()
 
 	for _, loc := range details.Locations {
-		if loc.LocationKind == asset.LocationKindLocal {
+		switch loc.LocationKind {
+		case asset.LocationKindLocal:
 			rec.LocalPath = loc.URI
 			rec.LegacyFileMD5 = loc.LegacyFileMD5
-		} else if loc.LocationKind == asset.LocationKindDrive {
+		case asset.LocationKindDrive:
 			rec.DriveFileID = loc.ExternalID
 			rec.DriveLink = loc.AccessURL
 			rec.DownloadLink = loc.DownloadURL

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -69,6 +71,12 @@ func firstNonEmptyOverlay(values ...string) string {
 type overlayDrivePublicationHandler struct {
 	direct  scriptgen.OverlayArtifactPublisher
 	results *sqljobs.SQLiteStore
+	// observer builds the delivery run that makes the REAL Drive upload
+	// measurable: the outbox worker dispatches events outside any job run,
+	// so without a bound run the publication cost would stay invisible wall
+	// time (the overlay_upload metric on the render run only measures the
+	// async enqueue). Nil degrades to the unmeasured pass-through.
+	observer *kernobs.RunObserver
 }
 
 func (h *overlayDrivePublicationHandler) EventType() string {
@@ -107,7 +115,45 @@ func (h *overlayDrivePublicationHandler) Handle(ctx context.Context, evt outboxe
 		// committed a newer plan. Acknowledge this stale event without publishing.
 		return nil
 	}
-	if err := h.direct.PublishOverlay(ctx, req.Spec, &req.Artifact); err != nil {
+	// Measure the REAL Drive upload as one canonical operation. When the
+	// dispatch context carries no run (the normal outbox case) a delivery run
+	// is bound for this event so the measurement lands in
+	// run_operation_observations like every other owner-measured operation:
+	// the rows carry the job identity and overlay item in metadata_json and
+	// join the owning job through the delivery run's job_id.
+	publishCtx := ctx
+	if kernobs.FromContext(ctx) == nil && h.observer != nil {
+		delivery := h.observer.StartRun(ctx, kernobs.RunInfo{
+			JobID:     jobID,
+			JobType:   renderinggen.EventOverlayDrivePublicationRequested,
+			AttemptID: kernobs.NewAttemptID(),
+		})
+		publishCtx = kernobs.WithRun(ctx, delivery)
+		defer delivery.Finish()
+	}
+	metadata, err := json.Marshal(map[string]any{
+		"path":          "outbox",
+		"job_id":        jobID,
+		"plan_id":       req.Spec.PlanID,
+		"item_id":       req.Spec.OverlayItemID,
+		"language":      req.Spec.Language,
+		"event_id":      evt.ID,
+		"artifact_sha":  req.Artifact.SHA256,
+		"artifact_size": req.Artifact.SizeBytes,
+	})
+	if err != nil {
+		return fmt.Errorf("encode overlay Drive publication measurement: %w", err)
+	}
+	if err := kernobs.MeasureOperation(publishCtx, kernobs.OperationInfo{
+		Stage:        kernobs.StageOverlayRender,
+		Component:    kernobs.ComponentDrive,
+		Operation:    kernobs.OperationDrivePublish,
+		Provider:     "drive",
+		Items:        1,
+		MetadataJSON: string(metadata),
+	}, func(measureCtx context.Context) error {
+		return h.direct.PublishOverlay(measureCtx, req.Spec, &req.Artifact)
+	}); err != nil {
 		return fmt.Errorf("publish overlay Drive artifact: %w", err)
 	}
 	link.DriveFileID = req.Artifact.DriveFileID
@@ -126,7 +172,17 @@ func wireDurableOverlayPublisher(root *ComposeRoot, direct scriptgen.OverlayArti
 	if root.Jobs == nil || root.Jobs.Repo == nil {
 		return nil, fmt.Errorf("wire overlay Drive publisher: jobs result repository is required")
 	}
-	handler := &overlayDrivePublicationHandler{direct: direct, results: root.Jobs.Repo}
+	// The delivery-run observer persists measurements to the observability
+	// database when available; without it the handler still publishes, only
+	// unmeasured (fail-open: instrumentation must never block a publication).
+	var observer *kernobs.RunObserver
+	if root.ObservabilityDB != nil && root.ObservabilityDB.DB != nil {
+		observer = kernobs.NewRunObserverWithCollector(
+			obsmetrics.NewSQLiteRecorder(root.ObservabilityDB.DB),
+			obsmetrics.NewRunReportsCollector(),
+		)
+	}
+	handler := &overlayDrivePublicationHandler{direct: direct, results: root.Jobs.Repo, observer: observer}
 	if err := root.Outbox.EventsRegistry.Register(handler); err != nil {
 		return nil, fmt.Errorf("register overlay Drive outbox handler: %w", err)
 	}

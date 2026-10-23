@@ -54,7 +54,7 @@ func newRecordingServer() (*httptest.Server, *recordingServer) {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprint(w, `{"result":{"status":"ok"}}`)
+		_, _ = fmt.Fprint(w, `{"result":{"status":"ok"}}`)
 	}))
 	return srv, rec
 }

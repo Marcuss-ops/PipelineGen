@@ -55,7 +55,7 @@ func (r *SQLiteStore) ListEvents(ctx context.Context, jobID string) ([]job.Event
 	if err != nil {
 		return nil, fmt.Errorf("listEvents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []job.Event
 	for rows.Next() {
@@ -66,7 +66,9 @@ func (r *SQLiteStore) ListEvents(ctx context.Context, jobID string) ([]job.Event
 			return nil, fmt.Errorf("listEvents: scan: %w", err)
 		}
 		if len(dataJSON) > 0 {
-			json.Unmarshal([]byte(dataJSON), &evt.Data)
+			if err := json.Unmarshal([]byte(dataJSON), &evt.Data); err != nil {
+				return nil, fmt.Errorf("listEvents: unmarshal data: %w", err)
+			}
 		}
 		events = append(events, evt)
 	}

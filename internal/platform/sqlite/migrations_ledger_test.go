@@ -118,7 +118,7 @@ func TestMigrations_LedgerExpandsLegacySchemaAndBackfillsIdentity(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE schema_migrations (
 		version INTEGER PRIMARY KEY,
 		filename TEXT NOT NULL,
@@ -168,7 +168,7 @@ func TestMigrations_LegacyLedgerCertifiesCurrent194And197Files(t *testing.T) {
 		checksum TEXT NOT NULL,
 		applied_at TEXT NOT NULL
 	)`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	for _, migration := range []struct {
@@ -180,15 +180,15 @@ func TestMigrations_LegacyLedgerCertifiesCurrent194And197Files(t *testing.T) {
 	} {
 		content, err := os.ReadFile(filepath.Join(targetDir, migration.filename))
 		if err != nil {
-			db.Close()
+			_ = db.Close()
 			t.Fatal(err)
 		}
 		if _, err := db.Exec(`INSERT INTO schema_migrations(version, filename, checksum, applied_at) VALUES (?, ?, ?, '2026-08-12T00:00:00Z')`, migration.version, migration.filename, sha256Hex(content)); err != nil {
-			db.Close()
+			_ = db.Close()
 			t.Fatal(err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	if err := RunMigrationsOnDB(dbPath, nil, fixtureDir, "primary"); err != nil {
 		t.Fatalf("legacy ledger failed current-file certification: %v", err)
@@ -200,7 +200,7 @@ func TestMigrations_LedgerRejectsMigrationIDMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE schema_migrations (
 		version INTEGER PRIMARY KEY,
 		migration_id INTEGER,
@@ -287,10 +287,10 @@ func TestMigrations_ReconcilesHistoricalRunResourceReports238To239(t *testing.T)
 		VALUES (238, 238, '238_run_resource_reports.sql', '66be1ded3070b3a2dfe09039e848a70981396cbe0407cdb90914003670b7a8f4', '66be1ded3070b3a2dfe09039e848a70981396cbe0407cdb90914003670b7a8f4');
 	`)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	if err := RunMigrationsOnDB(dbPath, nil, targetDir, "observability"); err != nil {
 		t.Fatalf("historical 238 ledger was not reconciled: %v", err)
@@ -299,7 +299,7 @@ func TestMigrations_ReconcilesHistoricalRunResourceReports238To239(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var version, migrationID int
 	var filename, checksum string
 	if err := db.QueryRow(`SELECT version, migration_id, filename, checksum FROM schema_migrations`).Scan(&version, &migrationID, &filename, &checksum); err != nil {
@@ -329,7 +329,7 @@ func TestMigrations_RejectsUnknownHistoricalRunResourceReports238Checksum(t *tes
 		CREATE TABLE run_resource_reports (run_id TEXT PRIMARY KEY);
 		CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, migration_id INTEGER NOT NULL UNIQUE, filename TEXT NOT NULL, checksum TEXT NOT NULL, checksum_sha256 TEXT NOT NULL, applied_at TEXT NOT NULL DEFAULT (datetime('now')), duration_ms INTEGER NOT NULL DEFAULT 0, app_git_sha TEXT NOT NULL DEFAULT 'test');
 		INSERT INTO schema_migrations(version, migration_id, filename, checksum, checksum_sha256) VALUES (238, 238, '238_run_resource_reports.sql', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');`)
-	db.Close()
+	_ = db.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,10 +350,10 @@ func TestMigrations_LedgerRejectsAppliedGap(t *testing.T) {
 	}
 	db := openMigrationTestDB(t, dbPath)
 	if _, err := db.Exec(`DELETE FROM schema_migrations WHERE version=2`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
-	db.Close()
+	_ = db.Close()
 	if err := RunMigrationsOnDB(dbPath, nil, dir, "primary"); err == nil || !strings.Contains(err.Error(), "migration ledger gap") {
 		t.Fatalf("applied gap error = %v, want migration ledger gap", err)
 	}
@@ -373,14 +373,14 @@ func TestMigrations_InterruptedMigrationRollsBackAndIsSafeToRetry(t *testing.T) 
 	assertMigrationTestTable(t, db, "partial_table", false)
 	var versionTwo int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=2`).Scan(&versionTwo); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if versionTwo != 0 {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("failed migration ledger rows=%d, want 0", versionTwo)
 	}
-	db.Close()
+	_ = db.Close()
 
 	if err := os.WriteFile(filepath.Join(dir, "002_broken.sql"), []byte("CREATE TABLE partial_table (id INTEGER PRIMARY KEY);\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -389,7 +389,7 @@ func TestMigrations_InterruptedMigrationRollsBackAndIsSafeToRetry(t *testing.T) 
 		t.Fatalf("retry after repairing migration: %v", err)
 	}
 	db = openMigrationTestDB(t, dbPath)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	assertMigrationTestTable(t, db, "partial_table", true)
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=2`).Scan(&versionTwo); err != nil {
 		t.Fatal(err)
@@ -414,23 +414,23 @@ func TestMigrations_194197PreserveDataAndRestoreIntegrity(t *testing.T) {
 	// must survive both the ALTER TABLE and the new registry-table creation.
 	db := openMigrationTestDB(t, dbPath)
 	if _, err := db.Exec(`INSERT INTO media_assets (id, lifecycle_state, index_state) VALUES ('phase1-existing-asset', 'ACTIVE', 'NOT_INDEXABLE')`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO asset_text_tracks (asset_id, language_code, text_kind, text_content) VALUES ('phase1-existing-asset', 'en', 'transcript', 'preserved transcript')`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	var beforeAssets, beforeTracks int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets`).Scan(&beforeAssets); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM asset_text_tracks`).Scan(&beforeTracks); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	backupPath := filepath.Join(t.TempDir(), "backup.sqlite")
 	copySQLiteFile(t, dbPath, backupPath)
@@ -440,24 +440,24 @@ func TestMigrations_194197PreserveDataAndRestoreIntegrity(t *testing.T) {
 	db = openMigrationTestDB(t, dbPath)
 	var afterAssets, afterTracks int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets`).Scan(&afterAssets); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM asset_text_tracks`).Scan(&afterTracks); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if beforeAssets != afterAssets || beforeTracks != afterTracks {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("counts changed after 194/197: assets %d->%d tracks %d->%d", beforeAssets, afterAssets, beforeTracks, afterTracks)
 	}
 	var transcript string
 	if err := db.QueryRow(`SELECT text_content FROM asset_text_tracks WHERE asset_id='phase1-existing-asset'`).Scan(&transcript); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if transcript != "preserved transcript" {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("preserved transcript = %q", transcript)
 	}
 	// Regression (September 2026): a partially-migrated DB whose ledger stops
@@ -470,15 +470,15 @@ func TestMigrations_194197PreserveDataAndRestoreIntegrity(t *testing.T) {
 	for _, version := range []int{198, 199, 200, 266} {
 		var ledgerRows int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=?`, version).Scan(&ledgerRows); err != nil {
-			db.Close()
+			_ = db.Close()
 			t.Fatal(err)
 		}
 		if ledgerRows != 1 {
-			db.Close()
+			_ = db.Close()
 			t.Fatalf("ledger missing historical incremental %d after partial-migration upgrade", version)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 
 	// Reapplication must be a no-op and retain the same rows.
 	if err := RunMigrationsOnDB(dbPath, nil, targetDir, "primary"); err != nil {
@@ -487,18 +487,18 @@ func TestMigrations_194197PreserveDataAndRestoreIntegrity(t *testing.T) {
 	db = openMigrationTestDB(t, dbPath)
 	var reappliedAssets, reappliedTracks int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets`).Scan(&reappliedAssets); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM asset_text_tracks`).Scan(&reappliedTracks); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if reappliedAssets != beforeAssets || reappliedTracks != beforeTracks {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("counts changed after reapply: assets %d->%d tracks %d->%d", beforeAssets, reappliedAssets, beforeTracks, reappliedTracks)
 	}
-	db.Close()
+	_ = db.Close()
 
 	// Restore the pre-194 copy elsewhere, apply the same migrations, and
 	// certify physical integrity, preserved rows, and both ledger entries.
@@ -506,7 +506,7 @@ func TestMigrations_194197PreserveDataAndRestoreIntegrity(t *testing.T) {
 		t.Fatal(err)
 	}
 	db = openMigrationTestDB(t, backupPath)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	var integrity string
 	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&integrity); err != nil {
 		t.Fatal(err)
@@ -599,7 +599,7 @@ func openMigrationTestDB(t *testing.T, path string) *sql.DB {
 		t.Fatal(err)
 	}
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	return db
@@ -620,7 +620,7 @@ func copySQLiteFile(t *testing.T, source, destination string) {
 	t.Helper()
 	_ = os.Remove(destination)
 	db := openMigrationTestDB(t, source)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`VACUUM INTO ?`, destination); err != nil {
 		t.Fatalf("VACUUM INTO %s: %v", destination, err)
 	}

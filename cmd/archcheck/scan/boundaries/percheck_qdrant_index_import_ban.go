@@ -218,7 +218,7 @@ func qdrantImportBanWarnBucket(r *report.Report, label, msg string) {
 // `internal/platform/qdrant` import is banned.
 func ScanQdrantIndexImportBan(root string, _ *policy.Policy, r *report.Report) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -268,7 +268,9 @@ func ScanQdrantIndexImportBan(root string, _ *policy.Policy, r *report.Report) {
 		}
 		scanQdrantImportBanFile(path, relSlash, r)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, qdrantImportBanRule+" scan "+root+": "+err.Error())
+	}
 }
 
 // scanQdrantImportBanFile opens a single .go file and emits
@@ -280,7 +282,7 @@ func scanQdrantImportBanFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

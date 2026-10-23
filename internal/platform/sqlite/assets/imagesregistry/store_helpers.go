@@ -103,7 +103,7 @@ func (s *AssetStoreSQLite) GetFolderChildren(ctx context.Context, parentID strin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]*asset.Asset, 0)
 	for rows.Next() {

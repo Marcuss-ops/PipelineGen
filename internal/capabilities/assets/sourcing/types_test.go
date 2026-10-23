@@ -50,15 +50,15 @@ func repoRoot(t *testing.T) string {
 // production code consumes domain.SourcingIndexStatus directly.
 func TestIndexingStatus_TypeIdentity(t *testing.T) {
 	// Canonical constant assignment.
-	var x domain.SourcingIndexStatus = domain.SourcingIndexStatusPending
-	var y domain.SourcingIndexStatus = x
+	var x = domain.SourcingIndexStatusPending
+	var y = x
 	if y != domain.SourcingIndexStatusPending {
 		t.Fatalf("round-trip identity mismatch: x=%q y=%q", x, y)
 	}
 
 	// Empty-marker round-trip.
 	var empty domain.SourcingIndexStatus = ""
-	var back domain.SourcingIndexStatus = empty
+	var back = empty
 	if back != "" {
 		t.Fatalf("empty string round-trip mismatch: empty=%q back=%q", empty, back)
 	}

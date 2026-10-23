@@ -152,7 +152,7 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -197,7 +197,7 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	// Create a mock job matching what the jobs dispatcher would produce.
 	payloadBytes, err := json.Marshal(map[string]any{
@@ -291,7 +291,7 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -319,7 +319,7 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	payloadBytes, err := json.Marshal(map[string]any{
 		"term":           "unreachable",

@@ -30,9 +30,9 @@ import (
 	"time"
 )
 
-// terminalValidationErr is a typed sentinel for tests asserting bail-out
+// errTerminalValidation is a typed sentinel for tests asserting bail-out
 // on retryable=false (terminal-validation substring match).
-var terminalValidationErr = errors.New("validation: schema mismatch on payload")
+var errTerminalValidation = errors.New("validation: schema mismatch on payload")
 
 // ── Classify unit tests ──────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ func TestClassify_TransientLockBusy(t *testing.T) {
 }
 
 func TestClassify_TerminalValidation(t *testing.T) {
-	cat, retryable := Classify(terminalValidationErr)
+	cat, retryable := Classify(errTerminalValidation)
 	if cat != ErrValidation || retryable {
 		t.Errorf("Classify(validation err) = (%q, %v); want (%q, false)", cat, retryable, ErrValidation)
 	}
@@ -173,7 +173,7 @@ func TestRetryable_MatchesBinaryFromClassify(t *testing.T) {
 		{&TransientInfrastructureError{Err: errors.New("connection refused")}, true},
 		{&TransientInfrastructureError{Err: errors.New("timeout")}, true},
 		{&TransientInfrastructureError{Err: errors.New("database is locked")}, true},
-		{terminalValidationErr, false},
+		{errTerminalValidation, false},
 		{errors.New("random nonsense shape"), false},
 		{nil, false},
 	}
@@ -267,7 +267,7 @@ func TestRetry_PermanentBail(t *testing.T) {
 	var calls int
 	walk := func() error {
 		calls++
-		return terminalValidationErr // classifies as ErrValidation, retryable=false
+		return errTerminalValidation // classifies as ErrValidation, retryable=false
 	}
 	start := time.Now()
 	err := Do(context.Background(), walk, Options{

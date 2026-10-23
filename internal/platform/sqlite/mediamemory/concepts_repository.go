@@ -143,7 +143,7 @@ func (r *conceptsRepository) FindManyByFingerprints(ctx context.Context, languag
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: bulk find concepts (lang=%q, n=%d): %w", language, len(fingerprints), err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]mediamemory.MediaConcept, 0, len(fingerprints))
 	for rows.Next() {

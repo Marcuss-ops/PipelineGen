@@ -206,7 +206,9 @@ func TestComposeNearbyEntityImagesCreatesOneSimultaneousComposite(t *testing.T) 
 		t.Fatalf("composite child entity ids = %q / %q", first.EntityID, second.EntityID)
 	}
 
-	assignEntityImageMotions(got, 7, 1920, 1080, "")
+	if err := assignEntityImageMotions(got, 7, 1920, 1080, ""); err != nil {
+		t.Fatalf("assign entity image motions: %v", err)
+	}
 	firstMotion, secondMotion := got[0].ImageLayers[0].MotionID, got[0].ImageLayers[1].MotionID
 	if firstMotion == "" || secondMotion == "" || firstMotion == secondMotion {
 		t.Fatalf("composite child motions must be independently assigned: %q / %q", firstMotion, secondMotion)

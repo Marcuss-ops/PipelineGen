@@ -28,7 +28,7 @@ func TestIsKnownSlotKindAcceptsCanonical(t *testing.T) {
 		media.SlotPrimaryVideo, media.SlotSecondaryImage, media.SlotEvidenceOverlay,
 		media.SlotMap, media.SlotPortrait, media.SlotDocument, media.SlotBackground,
 	} {
-		assert.Truef(t, media.IsKnownSlotKind(k),
+		assert.Truef(t, k.IsValid(),
 			"canonical SlotKind %q MUST be accepted", k)
 	}
 }
@@ -38,7 +38,7 @@ func TestIsKnownSlotKindRejectsDrift(t *testing.T) {
 		"", "primaryvideo", "PRIMARY_VIDEO", "primary_video_typo",
 		"third_layer", "video_primary",
 	} {
-		assert.Falsef(t, media.IsKnownSlotKind(k),
+		assert.Falsef(t, k.IsValid(),
 			"uncanonical SlotKind %q MUST be rejected", k)
 	}
 }

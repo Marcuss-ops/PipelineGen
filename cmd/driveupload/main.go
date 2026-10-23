@@ -76,7 +76,7 @@ func uploadOne(ctx context.Context, svc *drive.Service, path, folderID string) (
 	if err != nil {
 		return "", fmt.Errorf("open: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	name := filepath.Base(path)
 	file := &drive.File{
@@ -125,9 +125,7 @@ func (m *multiFlag) Set(v string) error {
 		if err != nil {
 			return err
 		}
-		for _, line := range strings.Fields(string(b)) {
-			m.values = append(m.values, line)
-		}
+		m.values = append(m.values, strings.Fields(string(b))...)
 		return nil
 	}
 	m.values = append(m.values, v)

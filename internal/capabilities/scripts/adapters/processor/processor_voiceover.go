@@ -145,9 +145,9 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return nil, fmt.Errorf("%w: voiceover processor: VoiceoverService not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
-	if val, ok := ctx.Value("script_job_id").(string); !ok || val == "" {
+	if val, ok := ctx.Value(scriptpkg.ContextKeyScriptJobID).(string); !ok || val == "" {
 		if parentJobID := corid.FromContext(ctx); parentJobID != "" {
-			ctx = context.WithValue(ctx, "script_job_id", parentJobID)
+			ctx = context.WithValue(ctx, scriptpkg.ContextKeyScriptJobID, parentJobID)
 		}
 	}
 

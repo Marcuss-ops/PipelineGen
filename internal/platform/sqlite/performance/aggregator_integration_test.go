@@ -12,8 +12,8 @@ import (
 
 func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 	jobs, obs := testSourceDBs(t)
-	defer jobs.Close()
-	defer obs.Close()
+	defer func() { _ = jobs.Close() }()
+	defer func() { _ = obs.Close() }()
 
 	jobID := "job-e2e"
 	report := kernobs.RunReport{
@@ -141,8 +141,8 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 
 func TestAggregatorComparesAcrossJobs(t *testing.T) {
 	jobs, obs := testSourceDBs(t)
-	defer jobs.Close()
-	defer obs.Close()
+	defer func() { _ = jobs.Close() }()
+	defer func() { _ = obs.Close() }()
 
 	insert := func(jobID string, wall, mix int64) {
 		t.Helper()

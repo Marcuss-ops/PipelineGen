@@ -152,7 +152,7 @@ type ArtlistPortDeps struct {
 
 // ArtlistDomainDeps groups the cross-cutting domain services.
 type ArtlistDomainDeps struct {
-	MediaProcessor    detail.Processor
+	MediaProcessor    detail.MediaProcessor
 	AssetDestResolver asset.Resolver
 	JobsSvc           *appjobs.Service
 }

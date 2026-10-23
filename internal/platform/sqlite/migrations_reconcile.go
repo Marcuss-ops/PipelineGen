@@ -42,7 +42,7 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	if err != nil {
 		return fmt.Errorf("read legacy migration 238: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("read legacy migration 238 rows: %w", err)
@@ -65,7 +65,7 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	if err != nil {
 		return fmt.Errorf("check canonical migration 239: %w", err)
 	}
-	defer canonicalRows.Close()
+	defer func() { _ = canonicalRows.Close() }()
 	var canonicalExists int
 	if !canonicalRows.Next() || canonicalRows.Scan(&canonicalExists) != nil {
 		return fmt.Errorf("scan canonical migration 239 presence")
@@ -77,7 +77,7 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	if err != nil {
 		return fmt.Errorf("check run_resource_reports schema: %w", err)
 	}
-	defer tableRows.Close()
+	defer func() { _ = tableRows.Close() }()
 	var tableExists int
 	if !tableRows.Next() || tableRows.Scan(&tableExists) != nil {
 		return fmt.Errorf("scan run_resource_reports schema presence")
@@ -95,7 +95,7 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	if err != nil {
 		return fmt.Errorf("begin migration identity reconciliation: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.Exec(`UPDATE schema_migrations SET version = 239, migration_id = 239, filename = ?, checksum = ?, checksum_sha256 = ? WHERE version = 238 AND filename = ?`, canonical.filename, checksum, checksum, oldFilename); err != nil {
 		return fmt.Errorf("move migration ledger 238→239: %w", err)
 	}
@@ -122,7 +122,7 @@ func isLegacyControlPlaneMetaSchema(db queryable) bool {
 	if err != nil {
 		return false
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	want := map[string]bool{
 		"database_id":       false,
@@ -156,7 +156,7 @@ func isLegacyControlPlaneMetaSchema(db queryable) bool {
 	if err != nil {
 		return false
 	}
-	defer countRows.Close()
+	defer func() { _ = countRows.Close() }()
 	if !countRows.Next() {
 		return false
 	}
@@ -172,7 +172,7 @@ func hasMediaTaxonomyColumns(db queryable) bool {
 	if err != nil {
 		return false
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	want := map[string]bool{"namespace": false, "asset_kind": false, "source_type": false}
 	for rows.Next() {
 		var cid, notNull, pk int

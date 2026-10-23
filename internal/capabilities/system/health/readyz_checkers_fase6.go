@@ -197,7 +197,7 @@ func (c *defaultTempWritableChecker) CheckTempWritable(path string) error {
 	if err != nil {
 		return err
 	}
-	f.Close()
+	_ = f.Close()
 	return os.Remove(f.Name())
 }
 
@@ -215,16 +215,6 @@ type TTSChecker interface {
 type DriveRootChecker interface {
 	CheckDriveRoot(ctx context.Context, folderID string) error
 }
-
-// driveRootAdapter satisfies DriveRootChecker via a reachability
-// closure. The composition root adapts drive.Reader.ListFiles to
-// an error-only probe (discard file list, return only the error).
-type driveRootAdapter struct {
-	probe func(ctx context.Context, folderID string) error
-}
-
-// CheckDriveRoot runs the closure. Returns a typed error if the
-// probe is nil (composition root misconfiguration signal).
 
 // NewDriveRootChecker creates a Drive root folder probe from a
 // reachability closure. The closure should call the Drive API
@@ -246,15 +236,15 @@ type driveRootTrashAdapter struct {
 // CheckDriveRoot fails closed when the configured root is trashed.
 func (a *driveRootTrashAdapter) CheckDriveRoot(ctx context.Context, folderID string) error {
 	if a.reach == nil {
-		return fmt.Errorf("Drive reader not wired")
+		return fmt.Errorf("drive reader not wired")
 	}
 	if a.notTrashed != nil {
 		notTrashed, err := a.notTrashed(ctx, folderID)
 		if err != nil {
-			return fmt.Errorf("Drive root trashed-state probe: %w", err)
+			return fmt.Errorf("drive root trashed-state probe: %w", err)
 		}
 		if !notTrashed {
-			return fmt.Errorf("Drive root folder %s is TRASHED: published artifacts would be invisible in Drive (repoint the configured Drive root at a live folder)", folderID)
+			return fmt.Errorf("drive root folder %s is TRASHED: published artifacts would be invisible in Drive (repoint the configured Drive root at a live folder)", folderID)
 		}
 	}
 	return a.reach(ctx, folderID)
@@ -284,15 +274,15 @@ type ollamaHealthAdapter struct {
 }
 
 // CheckOllama runs the closure. Two typed errors surface:
-// fmt.Errorf("Ollama health check not wired") when closure is
-// nil, fmt.Errorf("Ollama health check returned false") when the
+// fmt.Errorf("ollama health check not wired") when closure is
+// nil, fmt.Errorf("ollama health check returned false") when the
 // closure signals down.
 func (a *ollamaHealthAdapter) CheckOllama(ctx context.Context) error {
 	if a.check == nil {
-		return fmt.Errorf("Ollama health check not wired")
+		return fmt.Errorf("ollama health check not wired")
 	}
 	if !a.check(ctx) {
-		return fmt.Errorf("Ollama health check returned false")
+		return fmt.Errorf("ollama health check returned false")
 	}
 	return nil
 }

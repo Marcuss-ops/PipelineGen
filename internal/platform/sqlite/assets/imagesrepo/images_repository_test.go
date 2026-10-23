@@ -365,7 +365,7 @@ func TestScanImageAssetFromRow_RowVsRowsEquivalence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryContext: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		t.Fatal("rows.Next returned false; expected 1 row")
 	}
@@ -457,7 +457,7 @@ func TestScanImageAssetFromRow_SwallowMalformedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryContext: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		t.Fatal("rows.Next false; expected 1 row")
 	}
@@ -675,7 +675,7 @@ func TestListImagesByOrigin_Limit200Cap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare bulk insert: %v", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	for i := 0; i < 250; i++ {
 		_, err := stmt.ExecContext(context.Background(),
 			fmt.Sprintf("img-bulk-%03d", i),

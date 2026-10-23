@@ -167,7 +167,7 @@ func (r *Repository) ListGroups(ctx context.Context, batchID string) ([]stockpip
 	if err != nil {
 		return nil, fmt.Errorf("stockbatches.ListGroups: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []stockpipeline.StockBatchGroup
 	for rows.Next() {
@@ -335,7 +335,7 @@ func (r *Repository) FindIncompleteArtifacts(ctx context.Context, groupID string
 	if err != nil {
 		return nil, fmt.Errorf("stockbatches.FindIncompleteArtifacts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []stockpipeline.StockArtifact
 	for rows.Next() {

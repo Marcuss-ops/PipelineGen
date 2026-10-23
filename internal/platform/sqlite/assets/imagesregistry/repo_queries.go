@@ -89,7 +89,7 @@ func (a *assetRepositoryAdapter) HardDelete(ctx context.Context, id string) erro
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := HardDeleteMediaAssetTx(ctx, tx, id); err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (s *AssetStoreSQLite) listAssetsByFilter(ctx context.Context, filter asset.
 	if err != nil {
 		return nil, fmt.Errorf("assets.listAssetsByFilter: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]*asset.Asset, 0)
 	for rows.Next() {

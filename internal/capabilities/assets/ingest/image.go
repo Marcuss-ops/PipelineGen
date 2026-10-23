@@ -53,7 +53,7 @@ func (s *Service) materializeImage(sourcePath, filename string, req *Request) (s
 	if err != nil {
 		return "", "", nil, fmt.Errorf("failed to open image source: %w", err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	out, err := os.Create(dstPath)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Service) materializeImage(sourcePath, filename string, req *Request) (s
 	}
 
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		_ = os.Remove(dstPath)
 		return "", "", nil, fmt.Errorf("failed to copy image into storage: %w", err)
 	}

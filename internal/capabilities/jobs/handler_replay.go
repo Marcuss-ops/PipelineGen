@@ -64,8 +64,8 @@ func (h *JobsHandler) Replay(c *gin.Context) {
 		return
 	}
 
-	status := "queued"
-	if status, err = h.replay.dispatcher.Dispatch(c.Request.Context(), *prepared); err != nil {
+	status, err := h.replay.dispatcher.Dispatch(c.Request.Context(), *prepared)
+	if err != nil {
 		h.log.Error("failed to dispatch replay", zap.String("original_job_id", prepared.OriginalJobID), zap.String("replay_job_id", prepared.ReplayJobID), zap.Error(err))
 		apiutil.InternalError(c, err)
 		return

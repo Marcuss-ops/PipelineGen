@@ -143,7 +143,7 @@ func (w *CachedWhisperTranscriber) readCached(ctx context.Context, entry *capcac
 	if err != nil {
 		return detail.TranscriptResult{}, err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		return detail.TranscriptResult{}, err
@@ -160,7 +160,7 @@ func whisperCacheKey(localPath, version string) (capcache.Key, bool) {
 	if err != nil {
 		return capcache.Key{}, false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return capcache.Key{}, false

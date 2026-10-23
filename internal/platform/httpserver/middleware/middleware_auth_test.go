@@ -53,7 +53,6 @@ import (
 type captureSink struct {
 	mu      sync.Mutex
 	entries []requestlog.RequestLogEntry
-	dropped uint64
 }
 
 // Compile-time assertion: captureSink satisfies the canonical port.

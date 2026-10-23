@@ -117,7 +117,7 @@ func (r *ClipsRepository) List(ctx context.Context, filter asset.Filter) ([]*ass
 	if err != nil {
 		return nil, fmt.Errorf("clips.List: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.Asset
 	for rows.Next() {

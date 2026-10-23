@@ -51,7 +51,7 @@ func (s sqliteSourceURLMetadataSource) ListSourceURLMetadataCandidates(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []pgmedia.SourceURLMetadataCandidate
 	for rows.Next() {
 		var rec pgmedia.SourceURLMetadataCandidate

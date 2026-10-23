@@ -143,7 +143,9 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("overlay.render: %v", err)
 	}
-	defer os.RemoveAll(filepath.Join(os.TempDir(), "pipelinegen", "renderinggen", "workspace", "jobs", jobID))
+	defer func() {
+		_ = os.RemoveAll(filepath.Join(os.TempDir(), "pipelinegen", "renderinggen", "workspace", "jobs", jobID))
+	}()
 
 	manifest, ok := result[job.ManifestKey].(job.ArtifactManifest)
 	if !ok {
@@ -225,13 +227,13 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 
 	// ── Stage 4: AssetTxFinalizer → media_assets ──────────────────────────
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, _, err := finalizer.NewAssetTxFinalizer(nil, testsupport.NewSQLiteAssetCommitter(db, outboxevents.NewRepository(db), nil)).FinalizeAsset(ctx, finalizer.WrapTx(tx), published); err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)

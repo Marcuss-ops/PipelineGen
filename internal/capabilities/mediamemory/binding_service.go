@@ -22,7 +22,6 @@ package mediamemory
 import (
 	"context"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // BindingService is the canonical port for media_bindings
@@ -156,7 +155,7 @@ func (s *defaultBindingService) Create(ctx context.Context, b MediaBinding) (Med
 	if s.dispatcher == nil {
 		return MediaBinding{}, fmt.Errorf("mediamemory: create binding: %w", ErrBindingMutationDispatcherUnavailable)
 	}
-	if !media.IsKnownSlotKind(b.SlotKind) {
+	if !b.SlotKind.IsValid() {
 		return MediaBinding{}, fmt.Errorf(
 			"mediamemory: create binding slot_kind=%q: %w",
 			string(b.SlotKind), ErrInvalidSlotKind,
@@ -192,7 +191,7 @@ func (s *defaultBindingService) Update(ctx context.Context, b MediaBinding) (Med
 	if s.dispatcher == nil {
 		return MediaBinding{}, fmt.Errorf("mediamemory: update binding: %w", ErrBindingMutationDispatcherUnavailable)
 	}
-	if !media.IsKnownSlotKind(b.SlotKind) {
+	if !b.SlotKind.IsValid() {
 		return MediaBinding{}, fmt.Errorf(
 			"mediamemory: update binding slot_kind=%q: %w",
 			string(b.SlotKind), ErrInvalidSlotKind,
@@ -292,7 +291,7 @@ func (s *defaultBindingService) ListByConcept(ctx context.Context, conceptID str
 // ListBySlot is the ranker's resolver-hot-path pre-load.
 // ListApprovedByConcept is reused (single-slot filter via []SlotKind).
 func (s *defaultBindingService) ListBySlot(ctx context.Context, conceptID string, slot SlotKind, limit int) ([]MediaBinding, error) {
-	if !media.IsKnownSlotKind(slot) {
+	if !slot.IsValid() {
 		return nil, fmt.Errorf(
 			"mediamemory: list by slot slot_kind=%q: %w",
 			string(slot), ErrInvalidSlotKind,

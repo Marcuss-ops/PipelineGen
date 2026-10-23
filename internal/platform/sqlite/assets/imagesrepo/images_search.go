@@ -77,7 +77,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	images := make([]detail.ImageAsset, 0)
 	for rows.Next() {
@@ -103,7 +103,7 @@ func (r *ImagesRepository) ListAll(ctx context.Context) ([]*detail.ImageAsset, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	images := make([]*detail.ImageAsset, 0)
 	for rows.Next() {

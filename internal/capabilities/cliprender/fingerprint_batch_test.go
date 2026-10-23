@@ -337,7 +337,7 @@ func TestRenderBatch_CacheHitReturnsCached(t *testing.T) {
 	req.Normalize()
 	fp, _ := req.Fingerprint()
 	cache := newMemoryRenderCache()
-	_ = cache.Put(nil, &RenderCacheRecord{Fingerprint: fp, AssetID: "asset_cached_1", StorageKey: "k1", ArtifactURL: "http://x/1", SHA256: "abc", SizeBytes: 123})
+	_ = cache.Put(context.Background(), &RenderCacheRecord{Fingerprint: fp, AssetID: "asset_cached_1", StorageKey: "k1", ArtifactURL: "http://x/1", SHA256: "abc", SizeBytes: 123})
 	svc := &stubJobsSvc{returnJob: &job.Job{ID: "job_new"}}
 	h := NewHandler(svc, zap.NewNop()).WithRenderCache(cache)
 	r := gin.New()

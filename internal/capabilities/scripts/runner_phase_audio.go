@@ -69,7 +69,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 	audioSkipped := stageSkipped(resumeIdx, StageCompilingAudio) || !needsTimeline
 	if !audioSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageCompilingAudio); err != nil {
-			r.failExecutionStep(ctx, exec, payloadStep, err)
+			r.failExecutionStepBestEffort(ctx, exec, payloadStep, err)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 			return false
 		}
@@ -80,7 +80,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		if mismatches := AuditSceneClipIdentity(*result); len(mismatches) > 0 {
 			if err := r.recordExecutionMetric(ctx, exec, payloadStep.StepID, "clip_identity_mismatches", float64(len(mismatches)), "count"); err != nil {
 				cause := fmt.Errorf("record clip identity mismatch metric: %w", err)
-				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, payloadStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -91,7 +91,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			)
 			if req.EnforceClipIdentity {
 				cause := fmt.Errorf("scene↔clip identity certification failed: %w", ValidateSceneClipIdentity(*result))
-				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, payloadStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -102,11 +102,12 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		// Audio == COMBINED_TIMELINE. There is no video render phase.
 		if mode != capabilityaudio.AudioModeCombinedTimeline && result.FinalAudio != nil {
 			cause := fmt.Errorf("%s must not carry final audio", mode)
-			r.failExecutionStep(ctx, exec, payloadStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, payloadStep, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
-		if mode == capabilityaudio.AudioModeCombinedTimeline {
+		switch mode {
+		case capabilityaudio.AudioModeCombinedTimeline:
 			audioStep, startErr := r.startExecutionStep(ctx, exec, "AUDIO_COMPILE", "audio")
 			if startErr != nil {
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, startErr)
@@ -114,7 +115,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			}
 			if r.combinedAudioRenderer == nil {
 				cause := fmt.Errorf("COMBINED_TIMELINE requires a CombinedAudioRenderer")
-				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -141,7 +142,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			clipPrepareMS, prepareErr := prepareClipAudioAssets(ctx, result, clipAudioSource, policy)
 			if prepareErr != nil {
 				cause := fmt.Errorf("prepare original clip audio failed: %w", prepareErr)
-				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -159,7 +160,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				}
 				if audioSource == nil {
 					cause := fmt.Errorf("audio intent block requires an audio asset resolver")
-					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 					return false
 				}
@@ -177,7 +178,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			}
 			if err != nil {
 				cause := fmt.Errorf("compile canonical audio plan failed: %w", err)
-				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -196,7 +197,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				}
 				if frameErr != nil {
 					cause := fmt.Errorf("align final-job audio master to video frames: %w", frameErr)
-					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 					return false
 				}
@@ -209,7 +210,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			r.recordAudioCompileOperations(ctx, compileTimings)
 			if result.ResolvedScenes, err = ResolveScenes(result.Scenes, req.SourceLanguage, mode, false); err != nil {
 				cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)
-				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -270,7 +271,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 					return renderErr
 				}); opErr != nil {
 					cause := fmt.Errorf("combined audio render failed: %w", opErr)
-					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 					return false
 				}
@@ -287,13 +288,13 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 					AssetID:     finalAudio.AssetID,
 					Status:      "COMPLETED",
 				}); err != nil {
-					r.failExecutionStep(ctx, exec, audioStep, err)
+					r.failExecutionStepBestEffort(ctx, exec, audioStep, err)
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 					return false
 				}
 				if err := ValidateFinalAudioReference(finalAudio, compiledAudioPlan); err != nil {
 					cause := fmt.Errorf("final audio certification failed: %w", err)
-					r.failExecutionStep(ctx, exec, audioStep, cause)
+					r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 					return false
 				}
@@ -303,7 +304,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			// Runs for both freshly rendered and checkpointed final audio.
 			if err := ValidateVoiceoverSourceDurations(*result, req.SourceLanguage, canonicalTimeline, compiledAudioPlan); err != nil {
 				cause := fmt.Errorf("voiceover source-duration certification failed: %w", err)
-				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -313,7 +314,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			// for both freshly rendered and checkpointed final audio.
 			if err := ValidateMasterAudioInvariants(canonicalTimeline, compiledAudioPlan, finalAudio); err != nil {
 				cause := fmt.Errorf("master audio certification failed: %w", err)
-				r.failExecutionStep(ctx, exec, audioStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -326,7 +327,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				AssetID:     finalAudio.AssetID,
 				Status:      "COMPLETED",
 			}); err != nil {
-				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, err)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false
 			}
@@ -372,17 +373,17 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				metrics.AudioSpeed = 1 / metrics.AudioRTF
 			}
 			if err := r.attachOutputAsset(ctx, exec, audioStep.StepID, finalAudio.AssetID, 0); err != nil {
-				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, err)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false
 			}
 			if err := r.recordExecutionMetric(ctx, exec, audioStep.StepID, "audio_duration_ms", float64(finalAudio.DurationMS), "ms"); err != nil {
-				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, err)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false
 			}
 			if err := r.completeExecutionStep(ctx, exec, audioStep); err != nil {
-				r.failExecutionStep(ctx, exec, audioStep, err)
+				r.failExecutionStepBestEffort(ctx, exec, audioStep, err)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false
 			}
@@ -392,25 +393,25 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			result.CanonicalTimeline = &canonicalTimeline
 			result.AudioPlan = &compiledAudioPlan
 			// The joined finalize boundary checkpoints both certified siblings.
-		} else if mode == capabilityaudio.AudioModeChunkedVoiceover {
+		case capabilityaudio.AudioModeChunkedVoiceover:
 			canonicalTimeline, err = CompileCanonicalTimeline(*result)
 			if err != nil {
 				cause := fmt.Errorf("compile canonical timeline failed: %w", err)
-				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, payloadStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
 			if err := ValidateChunkedVoiceoversForLanguages(*result, req.VoiceoverLanguages); err != nil {
-				r.failExecutionStep(ctx, exec, payloadStep, err)
+				r.failExecutionStepBestEffort(ctx, exec, payloadStep, err)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 				return false
 			}
 			result.AudioStrategy = capabilityaudio.TimelineMix
-		} else if mode == capabilityaudio.AudioModeNone {
+		case capabilityaudio.AudioModeNone:
 			canonicalTimeline, err = CompileCanonicalTimeline(*result)
 			if err != nil {
 				cause := fmt.Errorf("compile canonical timeline failed: %w", err)
-				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, payloadStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -423,7 +424,7 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			result.ResolvedScenes, err = ResolveScenes(scenesForPersistence, req.SourceLanguage, mode, false)
 			if err != nil {
 				cause := fmt.Errorf("resolve scenes for persistence failed: %w", err)
-				r.failExecutionStep(ctx, exec, payloadStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, payloadStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -530,7 +531,7 @@ func (r *Runner) logLocationOverlayPlan(req GenerateRequest, result *GenerateRes
 // same fail-closed boundary, so it lives with the phase that owns the audio
 // compile step instead of in a file of its own.
 func (r *Runner) failAudioCompileStep(ctx context.Context, runID string, exec ExecutionContext, step ExecutionStep, cause error) bool {
-	r.failExecutionStep(ctx, exec, step, cause)
+	r.failExecutionStepBestEffort(ctx, exec, step, cause)
 	r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 	return false
 }

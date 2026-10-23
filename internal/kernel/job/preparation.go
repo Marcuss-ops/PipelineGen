@@ -309,14 +309,14 @@ type WorkloadDriver struct {
 // back to the per-kind average instead of computing a bogus scaled estimate.
 func (u PreparationUnit) Driver() WorkloadDriver {
 	dim := WorkloadNone
-	switch {
-	case u.Kind == "tts.synthesize" || u.Kind == "tts" || u.Kind == "TTS":
+	switch u.Kind {
+	case "tts.synthesize", "tts", "TTS":
 		dim = WorkloadChars
-	case u.Kind == "chronon.render" || u.Kind == "render" || u.Kind == "clip.process" || u.Kind == "RENDER":
+	case "chronon.render", "render", "clip.process", "RENDER":
 		dim = WorkloadFrames
-	case u.Kind == "asset.download" || u.Kind == "download" || u.Kind == "clip.download" || u.Kind == "NETWORK":
+	case "asset.download", "download", "clip.download", "NETWORK":
 		dim = WorkloadBytes
-	case u.Kind == TypeScriptGenerate || u.Kind == "research.llm" || u.Kind == "LLM":
+	case TypeScriptGenerate, "research.llm", "LLM":
 		dim = WorkloadTokens
 	}
 	if dim == WorkloadNone {

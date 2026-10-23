@@ -18,7 +18,7 @@ func get(t *testing.T, rawURL string) *http.Response {
 	if err != nil {
 		t.Fatalf("get %s: %v", rawURL, err)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	return resp
 }
 

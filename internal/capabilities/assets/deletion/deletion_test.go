@@ -123,7 +123,7 @@ func memoryDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open sqlite3 memory: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 

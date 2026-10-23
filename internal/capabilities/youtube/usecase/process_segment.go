@@ -82,7 +82,7 @@ type ProcessYouTubeSegmentUseCase struct {
 // anywhere in Execute. Fail-closed: an empty returned id is a typed error.
 func (u *ProcessYouTubeSegmentUseCase) ResolveSubtitleFolder(ctx context.Context, videoID, parentFolderID string) (string, error) {
 	if u == nil || u.media.DriveFolderMgr == nil {
-		return "", fmt.Errorf("Drive folder manager not wired")
+		return "", fmt.Errorf("drive folder manager not wired")
 	}
 	videoFolderName := strings.TrimSpace(videoID)
 	if videoFolderName == "" {
@@ -93,7 +93,7 @@ func (u *ProcessYouTubeSegmentUseCase) ResolveSubtitleFolder(ctx context.Context
 		return "", err
 	}
 	if folderID == "" {
-		return "", errors.New("Drive returned an empty subtitle folder ID")
+		return "", errors.New("drive returned an empty subtitle folder ID")
 	}
 	return folderID, nil
 }

@@ -78,7 +78,7 @@ func (f *ChrononTimingFetcher) FetchChrononTiming(ctx context.Context, storageKe
 	if err != nil {
 		return nil, fmt.Errorf("chronon timing sidecar transport: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("chronon timing sidecar: HTTP %d", resp.StatusCode)
 	}

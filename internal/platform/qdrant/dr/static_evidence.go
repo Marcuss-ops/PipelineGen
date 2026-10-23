@@ -37,7 +37,7 @@ func MeasureStaticRemovalEvidence(root, allowlistPath string, legacyTestRoots []
 	if err != nil {
 		return StaticRemovalEvidence{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out StaticRemovalEvidence
 	scanner := bufio.NewScanner(f)

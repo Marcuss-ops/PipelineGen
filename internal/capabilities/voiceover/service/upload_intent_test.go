@@ -189,7 +189,7 @@ func (m *mockUploadIntentRepo) ListPending(ctx context.Context, olderThan time.T
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []UploadIntent
 	for rows.Next() {
 		var r UploadIntent

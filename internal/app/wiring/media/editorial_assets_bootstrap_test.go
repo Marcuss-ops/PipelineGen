@@ -272,8 +272,5 @@ func (s *stubBytesSource) Materialize(_ context.Context, req drive.MaterializeRe
 // materializer — a second implementation would be a second byte-verification
 // path.
 func TestEditorialAssetBytesSourceContractMatchesTheCanonicalMaterializer(t *testing.T) {
-	var source EditorialAssetBytesSource = (*drive.CanonicalAssetMaterializer)(nil)
-	if source == nil {
-		t.Fatal("*drive.CanonicalAssetMaterializer must satisfy EditorialAssetBytesSource")
-	}
+	var _ EditorialAssetBytesSource = (*drive.CanonicalAssetMaterializer)(nil)
 }

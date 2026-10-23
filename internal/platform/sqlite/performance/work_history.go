@@ -37,7 +37,7 @@ func (s *OperationStore) ListWorkHistory(ctx context.Context, limit int) ([]capp
 	if err != nil {
 		return nil, fmt.Errorf("list performance work history: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := []capperformance.WorkHistoryRow{}
 	for rows.Next() {

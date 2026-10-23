@@ -347,7 +347,7 @@ func (m *CanonicalAssetMaterializer) downloadAndVerifyLeader(ctx context.Context
 		)
 		return nil, fmt.Errorf("download asset %q from Drive: %w", req.AssetID, err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	out, err := os.CreateTemp(filepath.Dir(finalPath), ".source-*.part")
 	if err != nil {
@@ -359,7 +359,7 @@ func (m *CanonicalAssetMaterializer) downloadAndVerifyLeader(ctx context.Context
 		return nil, fmt.Errorf("create part file in %q: %w", filepath.Dir(finalPath), err)
 	}
 	partPath := out.Name()
-	defer os.Remove(partPath)
+	defer func() { _ = os.Remove(partPath) }()
 	m.log.Info("canonical_materializer.drive_download.start",
 		zap.String("asset_id", req.AssetID),
 		zap.String("drive_file_id", req.DriveFileID),
@@ -499,7 +499,7 @@ func cleanExpectedSHA256(s string) string {
 	}
 	for i := 0; i < 64; i++ {
 		c := s[i]
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return ""
 		}
 	}

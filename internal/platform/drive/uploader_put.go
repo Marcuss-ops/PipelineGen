@@ -425,7 +425,7 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 	if err != nil {
 		return nil, err
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 	mediaType := mime.TypeByExtension(filepath.Ext(req.Filename))
 	if req.ContentType != "" {
 		mediaType = req.ContentType

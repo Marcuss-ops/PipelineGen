@@ -114,7 +114,7 @@ func SanitizeTimestamp(ts string) error {
 	}
 	// We allow dashes now, but maybe not at the very start unless it's followed by a number or *
 	for _, c := range ts {
-		if !((c >= '0' && c <= '9') || c == ':' || c == '.' || c == '*' || c == '-') {
+		if (c < '0' || c > '9') && c != ':' && c != '.' && c != '*' && c != '-' {
 			return fmt.Errorf("timestamp contains invalid character %q", c)
 		}
 	}
@@ -130,7 +130,7 @@ func ValidateVideoID(id string) error {
 		return fmt.Errorf("video id too long (%d chars, max 64)", len(id))
 	}
 	for _, c := range id {
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' {
 			return fmt.Errorf("video id contains invalid character %q", c)
 		}
 	}

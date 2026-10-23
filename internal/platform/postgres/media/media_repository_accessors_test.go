@@ -343,7 +343,7 @@ func (f *fakeScanRow) Scan(dest ...any) error {
 	}
 	for i, d := range dest {
 		target := reflect.ValueOf(d)
-		if target.Kind() != reflect.Ptr {
+		if target.Kind() != reflect.Pointer {
 			return fmt.Errorf("dest[%d] is not a pointer", i)
 		}
 		value := reflect.ValueOf(f.values[i])

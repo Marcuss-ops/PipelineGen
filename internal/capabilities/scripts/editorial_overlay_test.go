@@ -299,3 +299,55 @@ func TestProjectEditorialOverlaysRequiresExactVoiceoverLanguageAndSceneText(t *t
 	got = projectEditorialOverlays(result, "en", scenes, resolved, inputs, nil)
 	require.Empty(t, got[0].Phrases, "both title/bullet must ground in the actual scene and timing")
 }
+
+func TestMergeSemanticMicroSummariesPromotesFactBackedEvidence(t *testing.T) {
+	text := "Il tribunale assolve Marco Rossi. La folla protesta fuori."
+	inputs := []scriptpkg.SceneAnalysisInput{{SceneID: "s1", Text: text}}
+	other := "La folla protesta fuori."
+	factBacked := "Il tribunale assolve Marco Rossi."
+	highlights := []scriptpkg.SceneHighlight{{
+		SceneID: "s1",
+		Bullets: []scriptpkg.SceneBulletSpan{
+			{SentenceStart: 1, SentenceEnd: 2, Text: other},
+			{SentenceStart: 0, SentenceEnd: 1, Text: factBacked},
+		},
+	}}
+	bundles := map[string]*SemanticCandidateBundle{"s1": {
+		EntityFacts: []SemanticEntityFact{{ID: "fact_01", Importance: 0.9}},
+		MicroSummaries: []SemanticMicroSummary{{
+			ID: "micro_001", Kind: "micro_summary", Text: "Marco Rossi: assoluzione",
+			EvidenceFactIDs: []string{"fact_01"}, Evidence: factBacked,
+			SentenceIndex: 0, Start: 0, End: len(factBacked), Score: 0.8,
+		}},
+	}}
+	got := mergeSemanticMicroSummaries(inputs, highlights, bundles)
+	require.Len(t, got, 1)
+	require.Equal(t, factBacked, got[0].Bullets[0].Text, "fact-backed evidence must win the scene slot")
+	require.Equal(t, 0, got[0].Bullets[0].SentenceStart)
+	require.Equal(t, 1, got[0].Bullets[0].SentenceEnd)
+}
+
+func TestMergeSemanticMicroSummariesAddsEvidenceWhenNoBulletExists(t *testing.T) {
+	text := "Il tribunale assolve Marco Rossi. La folla protesta fuori."
+	inputs := []scriptpkg.SceneAnalysisInput{{SceneID: "s1", Text: text}}
+	evidence := "La folla protesta fuori."
+	bundles := map[string]*SemanticCandidateBundle{"s1": {
+		MicroSummaries: []SemanticMicroSummary{{
+			ID: "micro_001", Kind: "micro_summary", Text: "protesta",
+			EvidenceFactIDs: []string{"fact_01"}, Evidence: evidence,
+			Start: strings.Index(text, evidence), End: len(text), Score: 0.8,
+		}},
+	}}
+	got := mergeSemanticMicroSummaries(inputs, []scriptpkg.SceneHighlight{{SceneID: "s1"}}, bundles)
+	require.Len(t, got[0].Bullets, 1)
+	require.Equal(t, evidence, got[0].Bullets[0].Text)
+	require.Equal(t, 1, got[0].Bullets[0].SentenceStart)
+	require.Equal(t, 2, got[0].Bullets[0].SentenceEnd)
+
+	// An evidence sentence absent from the scene is never injected.
+	other := strings.Replace(text, evidence, "Un altro fatto.", 1)
+	got = mergeSemanticMicroSummaries(
+		[]scriptpkg.SceneAnalysisInput{{SceneID: "s1", Text: other}},
+		[]scriptpkg.SceneHighlight{{SceneID: "s1"}}, bundles)
+	require.Empty(t, got[0].Bullets)
+}

@@ -119,7 +119,7 @@ func (p *Processor) materializeCachedFile(ctx context.Context, key capcache.Key,
 		_ = p.artifactCache.Invalidate(ctx, key)
 		return false, ""
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	if err := writeAtomicFromReader(destination, reader); err != nil {
 		p.log.Warn("artifact cache materialization failed; invalidating entry", zap.Error(err))
 		_ = p.artifactCache.Invalidate(ctx, key)
@@ -137,7 +137,7 @@ func (p *Processor) storeCachedFile(ctx context.Context, key capcache.Key, lease
 		p.releaseCachedClaim(ctx, key, leaseID, err.Error())
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	var storeErr error
 	if leaseID != "" {
 		if leaseStore, ok := p.artifactCache.(capcache.LeaseStore); ok {

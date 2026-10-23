@@ -88,22 +88,6 @@ func fiveDistinctScenes() []Scene {
 	return out
 }
 
-func highlightsForScenes(ids []string, transcript string) []scriptpkg.SceneHighlight {
-	out := make([]scriptpkg.SceneHighlight, 0, len(ids))
-	for _, id := range ids {
-		title := "Title " + id
-		// Find a verbatim word of the scene inside the transcript for a certified span.
-		out = append(out, scriptpkg.SceneHighlight{
-			SceneID: id, Title: &title, TitleStatus: "resolved", TitleSource: "topic_validated",
-			Bullets:         []scriptpkg.SceneBulletSpan{{SentenceStart: 0, SentenceEnd: 1, Text: "bullet for " + id}},
-			Highlights:      []scriptpkg.ScenePhraseSpan{},
-			GloballyIndexed: false,
-		})
-	}
-	_ = transcript
-	return out
-}
-
 // R01: job with 5 scenes, no important_phrases => manifest + highlights.
 func TestEditorialRuntimeCert_R01_FiveScenesSealManifest(t *testing.T) {
 	runner, repo, textGen, _, _, _, _ := newTestRunner()

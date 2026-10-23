@@ -64,7 +64,7 @@ func Load(path string) (*Policy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	p := &Policy{}
 	sc := bufio.NewScanner(f)

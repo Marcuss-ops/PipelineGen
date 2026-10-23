@@ -52,7 +52,7 @@ func (s *ReplayAssetSource) Materialize(ctx context.Context, asset capreplay.Rep
 	if err != nil {
 		return capreplay.MaterializedAsset{}, err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	tmp, err := os.CreateTemp(s.stagingDir, "replay-*.asset")
 	if err != nil {

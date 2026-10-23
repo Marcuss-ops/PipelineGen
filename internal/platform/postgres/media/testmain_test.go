@@ -172,7 +172,7 @@ func applyMediaMigrations(db *sql.DB) error {
 }
 
 func firstToken(s string) string {
-	fields := strings.Fields(strings.TrimLeft(s, "TRUNCATE "))
+	fields := strings.Fields(strings.TrimLeft(s, "TRUNCAE "))
 	if len(fields) == 0 {
 		return s
 	}

@@ -47,7 +47,7 @@ func mattDamonTableColumns(ctx context.Context, db *sql.DB, table string) (map[s
 	if err != nil {
 		return nil, fmt.Errorf("audit-matt-damon-assets: inspect table %q: %w", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	columns := make(map[string]bool)
 	for rows.Next() {
 		var name string

@@ -116,7 +116,7 @@ func (r *AssetLicenseRepository) ListByAsset(ctx context.Context, assetID string
 	if err != nil {
 		return nil, fmt.Errorf("asset_license_repository.ListByAsset: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.AssetLicense
 	for rows.Next() {
@@ -144,7 +144,7 @@ func (r *AssetLicenseRepository) ListByProject(ctx context.Context, projectID st
 	if err != nil {
 		return nil, fmt.Errorf("asset_license_repository.ListByProject: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.AssetLicense
 	for rows.Next() {

@@ -146,7 +146,7 @@ const pgDualWriteNote = "migration 004 dual-write contract violated (PostgreSQL 
 func ScanPGDualWriteContract(root string, _ *policy.Policy, r *report.Report) {
 	for _, scanRoot := range pgDualWriteScanRoots {
 		absRoot := filepath.Join(root, scanRoot)
-		filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+		if err := filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -161,7 +161,9 @@ func ScanPGDualWriteContract(root string, _ *policy.Policy, r *report.Report) {
 			}
 			inspectPGDualWriteFile(root, path, r)
 			return nil
-		})
+		}); err != nil {
+			r.Warnings = append(r.Warnings, "percheck_pg_dual_write_contract scan "+absRoot+": "+err.Error())
+		}
 	}
 }
 

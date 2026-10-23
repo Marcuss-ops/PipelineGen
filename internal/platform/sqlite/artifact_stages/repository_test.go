@@ -308,7 +308,7 @@ func TestRepository_ListByJob_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListByJob empty: %v", err)
 	}
-	if got != nil && len(got) != 0 {
+	if len(got) != 0 {
 		t.Errorf("ListByJob empty: got %d rows, want 0", len(got))
 	}
 }

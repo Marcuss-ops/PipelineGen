@@ -80,19 +80,31 @@ func parseTimestampSeconds(ts string) float64 {
 	parts := strings.Split(ts, ":")
 	if len(parts) == 3 {
 		var h, m, s float64
-		fmt.Sscanf(parts[0], "%f", &h)
-		fmt.Sscanf(parts[1], "%f", &m)
-		fmt.Sscanf(parts[2], "%f", &s)
+		if _, err := fmt.Sscanf(parts[0], "%f", &h); err != nil {
+			return 0
+		}
+		if _, err := fmt.Sscanf(parts[1], "%f", &m); err != nil {
+			return 0
+		}
+		if _, err := fmt.Sscanf(parts[2], "%f", &s); err != nil {
+			return 0
+		}
 		return h*3600 + m*60 + s
 	}
 	if len(parts) == 2 {
 		var m, s float64
-		fmt.Sscanf(parts[0], "%f", &m)
-		fmt.Sscanf(parts[1], "%f", &s)
+		if _, err := fmt.Sscanf(parts[0], "%f", &m); err != nil {
+			return 0
+		}
+		if _, err := fmt.Sscanf(parts[1], "%f", &s); err != nil {
+			return 0
+		}
 		return m*60 + s
 	}
 	var s float64
-	fmt.Sscanf(ts, "%f", &s)
+	if _, err := fmt.Sscanf(ts, "%f", &s); err != nil {
+		return 0
+	}
 	return s
 }
 

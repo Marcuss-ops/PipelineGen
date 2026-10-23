@@ -26,7 +26,7 @@ func TestSamplerRegistry_SingleImplInvariantPerCallerTag(t *testing.T) {
 		t.Errorf("expected single-impl invariant (pointer-equal across caller tags); got distinct: %p %p %p", a, b, c)
 	}
 	// Type assertion: the impl must satisfy the canonical port.
-	var _ ports.ClipSampler = a
+	_ = ports.ClipSampler(a)
 }
 
 func TestSamplerRegistry_NilReceiverPanicsFailClosed(t *testing.T) {

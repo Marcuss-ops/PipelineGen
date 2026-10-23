@@ -1,6 +1,7 @@
 package cliprender
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func TestV2ResolverRejectsNonCanonicalFPS(t *testing.T) {
 		Contract: OutputContractVeloxAssemblyReadyV2,
 		Width:    1920, Height: 1080, FPSNum: 30000, FPSDen: 1001,
 	}}
-	if _, err := NewContractResolver().Resolve(nil, req); err == nil || !errors.Is(err, ErrOutputContractMismatch) {
+	if _, err := NewContractResolver().Resolve(context.Background(), req); err == nil || !errors.Is(err, ErrOutputContractMismatch) {
 		t.Fatalf("expected OUTPUT_CONTRACT_MISMATCH, got %v", err)
 	}
 }
@@ -35,7 +36,7 @@ func TestV2ResolverAcceptsCanonicalFPS(t *testing.T) {
 		Contract: OutputContractVeloxAssemblyReadyV2,
 		Width:    1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 	}}
-	resolved, err := NewContractResolver().Resolve(nil, req)
+	resolved, err := NewContractResolver().Resolve(context.Background(), req)
 	if err != nil {
 		t.Fatalf("canonical FPS must resolve: %v", err)
 	}

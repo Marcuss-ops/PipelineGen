@@ -57,7 +57,7 @@ func (p *WikipediaProvider) Healthy(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("wikipedia unreachable: %w", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return nil
 }
 

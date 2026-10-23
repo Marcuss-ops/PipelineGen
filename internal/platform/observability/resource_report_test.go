@@ -16,6 +16,7 @@ func resourceReportSchema(t *testing.T, db *sql.DB) {
 	for _, stmt := range []string{
 		`CREATE TABLE run_resource_reports (run_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, attempt_id TEXT NOT NULL UNIQUE, schema_version INTEGER NOT NULL, started_at TEXT, finished_at TEXT, sample_count INTEGER NOT NULL DEFAULT 0, report_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
 		`CREATE TABLE run_resource_samples (sample_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, job_id TEXT NOT NULL, attempt_id TEXT NOT NULL, observed_at TEXT NOT NULL, sample_json TEXT NOT NULL, created_at TEXT NOT NULL)`,
+		`CREATE TABLE run_resource_aggregates (run_id TEXT PRIMARY KEY, job_id TEXT, attempt_id TEXT, schema_version INTEGER, sample_count INTEGER, first_observed_at TEXT, last_observed_at TEXT, aggregate_json TEXT, created_at TEXT, updated_at TEXT)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatal(err)
@@ -28,7 +29,7 @@ func TestSQLiteRecorderSaveResourceReportRoundTripAndIdempotency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	resourceReportSchema(t, db)
 	recorder := NewSQLiteRecorder(db)
 	now := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
@@ -78,7 +79,7 @@ func TestSQLiteRecorderSaveResourceReportRejectsSampleIdentityReuse(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	resourceReportSchema(t, db)
 	recorder := NewSQLiteRecorder(db)
 	now := time.Now().UTC()

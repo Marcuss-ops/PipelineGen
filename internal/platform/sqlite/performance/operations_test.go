@@ -42,7 +42,7 @@ func newOperationsStore(t *testing.T) *OperationStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(operationsDDL); err != nil {
 		t.Fatal(err)
 	}

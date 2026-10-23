@@ -94,7 +94,7 @@ func (h *Probe) Probe(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("qdrant health: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return &transport.APIError{
 			Operation: "HealthProbe.Probe",

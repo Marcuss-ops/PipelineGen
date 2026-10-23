@@ -207,7 +207,7 @@ func TestArtifactIdempotencyKey_LegacyFreeFunction_StillWorks(t *testing.T) {
 		// The condition is inverted for readability; we want to assert ALL chars are [0-9a-f]
 		// Sanity check: the canonical SHA-256 produces lowercase hex.
 		for _, r := range key {
-			if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 				t.Errorf("legacy free function returned non-lowercase-hex char: %q (rune=%q)", key, r)
 				break
 			}

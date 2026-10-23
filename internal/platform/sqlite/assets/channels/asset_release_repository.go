@@ -120,7 +120,7 @@ func (r *AssetReleaseRepository) ListByAsset(ctx context.Context, assetID string
 	if err != nil {
 		return nil, fmt.Errorf("asset_release_repository.ListByAsset: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.AssetRelease
 	for rows.Next() {

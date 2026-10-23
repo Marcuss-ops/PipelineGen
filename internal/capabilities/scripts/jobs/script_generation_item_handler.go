@@ -171,9 +171,9 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 
 	execCtx := ctx
 	if parentJobID != "" && parentJobID != "unknown" {
-		execCtx = context.WithValue(ctx, "script_job_id", parentJobID)
+		execCtx = context.WithValue(ctx, domainScript.ContextKeyScriptJobID, parentJobID)
 	} else if j.ID != "" {
-		execCtx = context.WithValue(ctx, "script_job_id", j.ID)
+		execCtx = context.WithValue(ctx, domainScript.ContextKeyScriptJobID, j.ID)
 	}
 
 	res, err := h.oneUC.Execute(execCtx, item, preset, tracker)
@@ -195,7 +195,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	// → semantic failure (false-success gate).
 	ok := scriptItemIsSuccessful(res)
 	if !ok {
-		errMsg := fmt.Sprintf("script.generate_item: per-item pipeline produced structurally empty result (P0 #4 P0.1-gate-extension, ok=false)")
+		errMsg := "script.generate_item: per-item pipeline produced structurally empty result (P0 #4 P0.1-gate-extension, ok=false)"
 		h.logger.Error("script.generate_item semantic failure (P0 #1-style false-success gate EXTENDED to scripts P0 #4)",
 			zap.String("job_id", j.ID),
 			zap.String("item_id", item.ID),

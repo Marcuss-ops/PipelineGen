@@ -83,7 +83,7 @@ type overlayRenderOutcome struct {
 func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *GenerateResult) bool {
 	outcomes, fanOutErr := r.renderOverlayPlans(ctx, req, resumeIdx, result)
 	if fanOutErr != nil {
-		r.failExecutionStep(ctx, exec, state.Step, fanOutErr)
+		r.failExecutionStepBestEffort(ctx, exec, state.Step, fanOutErr)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, fanOutErr)
 		return false
 	}

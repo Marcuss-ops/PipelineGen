@@ -86,7 +86,6 @@ func researchHitMatchesIdentity(identity scriptpkg.SubjectIdentity, text string)
 			continue
 		default:
 			distinctive = candidate
-			break
 		}
 		if distinctive != "" {
 			break

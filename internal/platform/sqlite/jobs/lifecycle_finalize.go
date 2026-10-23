@@ -114,7 +114,7 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 	if err != nil {
 		return fmt.Errorf("terminalFlip: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// FASE 2 (July 2026): version-based CAS — when expectedVersion > 0,
 	// add `AND revision = expectedVersion` as a second fence. The

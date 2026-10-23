@@ -27,7 +27,7 @@ func TestMigrations_226ProductionCopyPreservesLegacyCatalogDataAndIsIdempotent(t
 			canonical_entity_id, entity_type, canonical_name
 		) VALUES ('person:michael-jordan', 'PERSON', 'Michael Jordan')
 	`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("seed legacy entity: %v", err)
 	}
 	if _, err := db.Exec(`
@@ -42,7 +42,7 @@ func TestMigrations_226ProductionCopyPreservesLegacyCatalogDataAndIsIdempotent(t
 			 'https://images.example/michael-jordan-2.jpg',
 			 'https://images.example/thumb-2.jpg', 1280, 720, 'stale')
 	`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("seed legacy candidates: %v", err)
 	}
 	if _, err := db.Exec(`
@@ -55,7 +55,7 @@ func TestMigrations_226ProductionCopyPreservesLegacyCatalogDataAndIsIdempotent(t
 		FROM entity_image_catalog_candidates
 		WHERE source_url = 'https://images.example/michael-jordan-1.jpg'
 	`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("seed legacy materialization: %v", err)
 	}
 
@@ -66,16 +66,16 @@ func TestMigrations_226ProductionCopyPreservesLegacyCatalogDataAndIsIdempotent(t
 		"SELECT COUNT(*) FROM entity_image_catalog_materializations": &beforeMaterializations,
 	} {
 		if err := db.QueryRow(query).Scan(destination); err != nil {
-			db.Close()
+			_ = db.Close()
 			t.Fatalf("snapshot %q: %v", query, err)
 		}
 	}
 	backupPath := filepath.Join(t.TempDir(), "production-copy-backup.sqlite")
 	if _, err := db.Exec(`VACUUM INTO ?`, backupPath); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("create backup copy: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	if err := RunMigrationsOnDB(dbPath, nil, fullDir, "primary"); err != nil {
 		t.Fatalf("apply migration 226 to production-shaped copy: %v", err)
@@ -93,16 +93,16 @@ func TestMigrations_226ProductionCopyPreservesLegacyCatalogDataAndIsIdempotent(t
 			'https://images.example/michael-jordan-3.jpg', 'fresh',
 			'accepted', 1.0, 0.9, 'migration 226 compatibility write')
 	`); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("insert post-226 candidate: %v", err)
 	}
 	var postMigrationCandidates int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM entity_image_catalog_candidates`).Scan(&postMigrationCandidates); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if postMigrationCandidates != beforeCandidates+1 {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("post-migration candidate count = %d, want %d", postMigrationCandidates, beforeCandidates+1)
 	}
 	var duplicateCount int
@@ -112,23 +112,23 @@ func TestMigrations_226ProductionCopyPreservesLegacyCatalogDataAndIsIdempotent(t
 		  AND provider='duckduckgo'
 		  AND source_url='https://images.example/michael-jordan-1.jpg'
 	`).Scan(&duplicateCount); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if duplicateCount != 1 {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("legacy URL uniqueness count = %d, want 1", duplicateCount)
 	}
 	var integrity string
 	if err := db.QueryRow(`PRAGMA integrity_check`).Scan(&integrity); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if integrity != "ok" {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("post-226 integrity = %q, want ok", integrity)
 	}
-	db.Close()
+	_ = db.Close()
 
 	if err := RunMigrationsOnDB(dbPath, nil, fullDir, "primary"); err != nil {
 		t.Fatalf("reapply migration 226: %v", err)
@@ -136,29 +136,29 @@ func TestMigrations_226ProductionCopyPreservesLegacyCatalogDataAndIsIdempotent(t
 	db = openMigrationTestDB(t, dbPath)
 	var reappliedCandidates int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM entity_image_catalog_candidates`).Scan(&reappliedCandidates); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if reappliedCandidates != beforeCandidates+1 {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("reapplied candidate count = %d, want %d", reappliedCandidates, beforeCandidates+1)
 	}
 	var applied226 int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version=226`).Scan(&applied226); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	if applied226 != 1 {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("schema_migrations version 226 rows = %d, want 1", applied226)
 	}
-	db.Close()
+	_ = db.Close()
 
 	if err := RunMigrationsOnDB(backupPath, nil, fullDir, "primary"); err != nil {
 		t.Fatalf("apply migration 226 to backup copy: %v", err)
 	}
 	backupDB := openMigrationTestDB(t, backupPath)
-	defer backupDB.Close()
+	defer func() { _ = backupDB.Close() }()
 	assertEntityImageCatalog226Schema(t, backupDB)
 	assertEntityImageCatalogCounts(t, backupDB, beforeEntities, beforeCandidates, beforeMaterializations)
 	assertLegacyEntityImageCatalogRows(t, backupDB)

@@ -6,12 +6,6 @@ import (
 	stockplan "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
 )
 
-type threeURLMetadata struct{}
-
-type threeURLTranscript struct{}
-
-type threeURLExtractor struct{}
-
 func TestYouTubeThreeSourcesRankSemanticallyAndSelectWinner(t *testing.T) {
 	// The adapter only needs the planning portion for this assertion. Use the
 	// canonical stock service directly so the test isolates transcript ranking

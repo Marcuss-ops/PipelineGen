@@ -1,7 +1,7 @@
 // Package app — WireAssets diagnostics capability builder (PR-WIRE-ASSETS-CAPABILITY-SPLIT, July 2026).
 //
 // The diagnostics capability needs only 1 business dep (clipsRepo) +
-// constructs the appdiag.Service from typed-port adapters.
+// constructs the assetsdiag.Service from typed-port adapters.
 //
 // godlike/06 SSOT: this file is the canonical owner of the diagnostics
 // build pipeline. The canonical diagnostics handler lives in
@@ -15,7 +15,6 @@ package wiring
 import (
 	"fmt"
 
-	appdiag "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/diagnostics"
 	assetsdiag "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/diagnostics"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"go.uber.org/zap"
@@ -24,7 +23,7 @@ import (
 // buildDiagnosticsBundle constructs the canonical *assetsdiag.DiagnosticsDescriptor.
 //
 // The function returns BOTH the descriptor AND the underlying
-// *appdiag.Service so the caller (WireAssets) can emit a contextual
+// *assetsdiag.Service so the caller (WireAssets) can emit a contextual
 // log line ("diagnostics and search services wired with production
 // ports" vs "diagnostics service NOT fully wired — some routes will
 // return 503") based on whether the service was constructed (clipsRepo
@@ -50,14 +49,14 @@ import (
 func buildDiagnosticsBundle(
 	log *zap.Logger,
 	clipsRepo *sqassets.ClipsRepository,
-) (*assetsdiag.DiagnosticsDescriptor, *appdiag.Service, error) {
-	// (1) Build the application-layer *appdiag.Service from typed-port
+) (*assetsdiag.DiagnosticsDescriptor, *assetsdiag.Service, error) {
+	// (1) Build the application-layer *assetsdiag.Service from typed-port
 	// adapters. Nil-tolerant: when clipsRepo is nil the handler returns
 	// 503 (per QDRANT-005 Fase 1 + Blocco C1-Step 10 + AGENTS.md
 	// Pattern 0 — the api/ layer never builds the service directly).
-	var diagSvc *appdiag.Service
+	var diagSvc *assetsdiag.Service
 	if clipsRepo != nil {
-		diagSvc = appdiag.NewService(
+		diagSvc = assetsdiag.NewService(
 			&diagIndexHealthAdapter{clips: clipsRepo, qdrant: nil, collectionName: ""},
 			&diagAssetStatsAdapter{clips: clipsRepo},
 			&zapDiagLogAdapter{log: log},

@@ -102,7 +102,7 @@ func (s *OperationStore) OperationStats(ctx context.Context, since string) ([]ca
 	if err != nil {
 		return nil, fmt.Errorf("performance operation stats: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var stats []capperformance.OperationStats
 	for rows.Next() {
@@ -156,7 +156,7 @@ func (s *OperationStore) OperationSamples(ctx context.Context, operation, since 
 	if err != nil {
 		return nil, fmt.Errorf("performance operation samples %q: %w", operation, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var samples []int64
 	for rows.Next() {
 		var elapsed int64
@@ -189,7 +189,7 @@ func (s *OperationStore) BenchmarkStats(ctx context.Context, since string) ([]ca
 	if err != nil {
 		return nil, fmt.Errorf("performance benchmark stats: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type accumulator struct {
 		elapsed   []int64

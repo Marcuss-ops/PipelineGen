@@ -278,7 +278,7 @@ func TestHashJSONString_NullBecomesEmptyObject(t *testing.T) {
 // This is Step 4's proof that the new spine is operational.
 func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 	db := setupFinalizerE2EDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -639,7 +639,7 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 func TestFinalizerE2E_CreateSpineSetupDB(t *testing.T) {
 	// Smoke test: verify the setup helper works.
 	db := setupFinalizerE2EDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var count int
 	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table'").Scan(&count); err != nil {
@@ -652,7 +652,7 @@ func TestFinalizerE2E_CreateSpineSetupDB(t *testing.T) {
 
 func TestFinalizerE2E_RejectsStaleLease(t *testing.T) {
 	db := setupFinalizerE2EDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	now := time.Now().UTC()

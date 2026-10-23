@@ -92,7 +92,7 @@ func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchReq
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: local search: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanMediaAssetRows(rows)
 }
 
@@ -121,7 +121,7 @@ func (s *MediaSearcher) FindAllByHash(ctx context.Context, hash string, limit in
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: find all by hash: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanMediaAssetRows(rows)
 }
 

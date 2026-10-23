@@ -150,7 +150,7 @@ func TestAssetStoreSQLiteGet_AlignsWithScan(t *testing.T) {
 			"SELECT "+MediaAssetColumns+" FROM media_assets LIMIT 0")
 		require.NoError(t, err,
 			"SELECT with MediaAssetColumns MUST parse + execute against the 40-col schema")
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		cols, err := rows.Columns()
 		require.NoError(t, err)

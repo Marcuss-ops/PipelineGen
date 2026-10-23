@@ -217,7 +217,7 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 	if err != nil {
 		return nil, fmt.Errorf("transition: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, query, allArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("transition: exec: %w", err)

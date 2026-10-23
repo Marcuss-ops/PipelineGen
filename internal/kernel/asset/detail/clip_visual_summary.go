@@ -304,6 +304,6 @@ func ComputeSourceHash(
 	b.WriteString(";preproc:")
 	b.WriteString(preprocessingVersion)
 	b.WriteString(";frames:")
-	b.WriteString(fmt.Sprintf("%d", frameCount))
+	fmt.Fprintf(&b, "%d", frameCount)
 	return digest.SHA256String(b.String())
 }

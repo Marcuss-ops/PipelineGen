@@ -72,8 +72,8 @@ func TestPostgresCatalogRepository_GetClip_MapsRecord(t *testing.T) {
 	if reader.got != "clip-1" || got.ID != "clip-1" || got.Source != asset.Source("youtube") {
 		t.Fatalf("unexpected identity: %+v", got)
 	}
-	if got.LegacyFileMD5() != "sha256:abc" || got.LocalPath() != "/media/n.mp4" {
-		t.Fatalf("locator accessors not populated: md5=%q path=%q", got.LegacyFileMD5(), got.LocalPath())
+	if got.GetMetadataString("legacy_file_md5") != "sha256:abc" || got.LocalPath() != "/media/n.mp4" {
+		t.Fatalf("locator accessors not populated: md5=%q path=%q", got.GetMetadataString("legacy_file_md5"), got.LocalPath())
 	}
 	if got.FolderID() != "folder-1" || got.ParentFolderID() != "parent-1" || got.FolderPath() != "/a/b" {
 		t.Fatalf("folder accessors not populated: %q/%q/%q", got.FolderID(), got.ParentFolderID(), got.FolderPath())

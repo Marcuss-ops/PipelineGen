@@ -81,7 +81,7 @@ func RunApplyAssetMetadata(args []string) error {
 	if clip == nil {
 		return fmt.Errorf("clip %s is not indexed", manifest.ClipID)
 	}
-	if strings.TrimSpace(clip.LegacyFileMD5()) == "" {
+	if strings.TrimSpace(clip.ContentAddress()) == "" {
 		return errors.New("clip has no file hash")
 	}
 	if manifest.Name != "" {
@@ -110,7 +110,7 @@ func RunApplyAssetMetadata(args []string) error {
 	}
 	go root.Outbox.EventsPool.Start(ctx, 1)
 	defer func() { _ = root.Outbox.EventsPool.Stop(15 * time.Second) }()
-	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
+	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.ContentAddress()); err != nil {
 		return fmt.Errorf("apply asset metadata: %w", err)
 	}
 	if err := cli.WaitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {

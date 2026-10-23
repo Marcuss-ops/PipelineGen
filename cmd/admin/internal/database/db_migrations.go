@@ -21,7 +21,9 @@ import (
 func RunDBMigrations(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("db migrations", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "./data", "root data directory")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
 
 	fullCfg, err := config.Get()
 	if err != nil {
@@ -32,7 +34,7 @@ func RunDBMigrations(ctx context.Context, args []string) error {
 	}
 	resolved := fullCfg.Storage.ToDatabaseStorageConfig()
 	log, _ := zap.NewProduction()
-	defer log.Sync()
+	defer func() { _ = log.Sync() }()
 
 	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
@@ -41,7 +43,7 @@ func RunDBMigrations(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("open set: %w", err)
 	}
-	defer ds.Close()
+	defer func() { _ = ds.Close() }()
 
 	report, err := storage.GetMigrationStatus(ds.Primary.DB, "migrations/sqlite")
 	if err != nil {

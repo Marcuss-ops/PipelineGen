@@ -83,10 +83,7 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 	// concrete wire that defers Drive + metadata persistence to
 	// the post-commit outbox dispatch loop. When delivery_mode ==
 	// "complete" we additionally wait for that loop to ack.
-	skipDrive := true
-	if mode == deliveryModeComplete {
-		skipDrive = false
-	}
+	skipDrive := mode != deliveryModeComplete
 
 	asset, err := h.service.GenerateSmartImage(
 		c.Request.Context(),

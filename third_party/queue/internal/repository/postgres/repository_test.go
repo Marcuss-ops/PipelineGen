@@ -28,7 +28,7 @@ func setupRepo(t *testing.T, lease time.Duration, maxAttempts int) (*Repository,
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	ctx := context.Background()
 	if err := db.PingContext(ctx); err != nil {

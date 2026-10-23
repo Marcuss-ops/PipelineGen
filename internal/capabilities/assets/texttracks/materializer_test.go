@@ -623,10 +623,9 @@ func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
 		Status:             detail.TextTrackReady,
 	}
 
-	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 	// Patch the new model name so the resolver's translation_key
 	// diff-matches the pre-populated row's translation_key:
-	m = newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "ollama-qwen", "model-v1", "prompt-v1")
+	m := newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "ollama-qwen", "model-v1", "prompt-v1")
 
 	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, detail.TextTrackTranscript, nil)
 	if err != nil {

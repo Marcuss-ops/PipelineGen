@@ -34,7 +34,6 @@ import (
 	brainNormalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/normalizer"
 	brainPlanner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/brain/planner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	qdrantmm "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	sqliteMediaMemory "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediamemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
@@ -88,7 +87,7 @@ func WireMediaMemoryResolver(searchFanOut search.SearchFanOut, db *sql.DB, log *
 	concepts := sqliteMediaMemory.NewConceptsRepository(db)
 	bindings := sqliteMediaMemory.NewBindingsRepository(db)
 	mmRanker := mediamemory.NewDefaultRanker(nil, logAdapter)
-	adapter, err := qdrantmm.NewSearchFanOutAdapter(searchFanOut)
+	adapter, err := mediamemory.NewSearchFanOutAdapter(searchFanOut)
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: search fanout adapter: %w", err)
 	}

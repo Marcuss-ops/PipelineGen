@@ -73,7 +73,7 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 
 	deps, err := WireMinimal(cfg, log, "")
 	require.NoError(t, err)
-	t.Cleanup(func() { deps.Runtime.Lifecycle.Stop(context.Background()) })
+	t.Cleanup(func() { _ = deps.Runtime.Lifecycle.Stop(context.Background()) })
 
 	// WireMinimal returns nil ReadyChecker (no composition root).
 	assert.Nil(t, deps.Health.ReadyChecker, "WireMinimal should have nil ReadyChecker")

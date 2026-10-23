@@ -36,7 +36,7 @@ func (s *AssetStoreSQLite) GetSegmentEmbeddingsByScriptKey(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]detail.SegmentEmbeddingRecord, 0)
 	for rows.Next() {

@@ -17,8 +17,8 @@ func registerScriptEntries(r *Registry) {
 	// ArtifactOwnership is unchanged, so ProducesArtifacts (ownership-derived)
 	// and the spine publication path are unaffected — only the terminal
 	// ownership moves (TICKET-CORE-READY-DURABLE-DAG steps 2-4).
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifactsThenDefer}, Description: "Script generation", Timeout: 3 * time.Hour, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaCurate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerate, ArtifactOwnership: ArtifactOwnershipWorkerSpine, FinalizationStrategy: FinalizationStrategyCompleteWithArtifactsThenDefer}, Description: "Script generation", Timeout: 3 * time.Hour, DefaultMaxRetries: 2})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeMediaCurate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Media curation", Timeout: 30 * time.Minute, DefaultMaxRetries: 1})
 
 	// Step 11B sibling types (script.generate -> voiceover / image fan-out).
 	// Concurrency=4 per user spec bounds per-worker sibling fan-out. Both
@@ -29,13 +29,13 @@ func registerScriptEntries(r *Registry) {
 	// registry entries — no production handler is statically registered
 	// (the sibling fan-out is orchestrated by the parent handler directly,
 	// not via a separate job dispatch).
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptVoiceoverSibling, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptImageSibling, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptVoiceoverSibling, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptImageSibling, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 
 	// ── P0 #4 script.generate_item child-job ──
 	// Per-item retry via broker-emitted child jobs. The parent aggregator
 	// reads child outcomes and finalizes the parent.
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerateItem, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptGenerateItem, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 
 	// ── Durable-DAG deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 2) ──
 	// One `script.docs_publish` child per script.generate run that has documents
@@ -52,7 +52,7 @@ func registerScriptEntries(r *Registry) {
 	// DefaultMaxRetries=2: the leg is a bounded number of Drive/Docs round
 	// trips, and a transient Drive failure must not fail a run whose core is
 	// already durable. It fails typed rather than silently succeeding.
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptDocsPublish, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Script document publication (deferred CORE_READY post-core leg: run_id + durable snapshot reference, never a copy of the result)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeScriptDocsPublish, ArtifactOwnership: ArtifactOwnershipApplication, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Script document publication (deferred CORE_READY post-core leg: run_id + durable snapshot reference, never a copy of the result)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 
 	// ── Spina Dorsale Fase 2 (July 2026): downstream artifact jobs ──
 	// These are spawned by the script.generate pipeline cutover
@@ -65,13 +65,13 @@ func registerScriptEntries(r *Registry) {
 	// broker routes the job to the dead-letter path. Mirrors the
 	// TypeScriptGenerate envelope (same timeout + retry budget) since
 	// image generation is the costliest downstream operation.
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeImagesGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "AI image generation for script scenes (Chrome + Playwright — Spina Dorsale Fase 2 downstream cutover)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeImagesGenerate, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "AI image generation for script scenes (Chrome + Playwright — Spina Dorsale Fase 2 downstream cutover)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 
 	// TypeAssetsResolve: semantic asset resolution via Qdrant hybrid
 	// search. DefaultMaxRetries=1 because resolution is lightweight and
 	// deterministic (a single Qdrant query per scene); 1 retry covers
 	// transient Qdrant connection blips without wasting broker resources
 	// on repeated lookups that would yield the same result set.
-	r.Register(JobPolicy{Completion: CompletionDeclaration{JobType: TypeAssetsResolve, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Semantic asset resolution via Qdrant (script scene → clip/stock matching — Spina Dorsale Fase 2 downstream cutover)", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
+	mustRegister(r, JobPolicy{Completion: CompletionDeclaration{JobType: TypeAssetsResolve, ArtifactOwnership: ArtifactOwnershipNone, FinalizationStrategy: FinalizationStrategyLegacyComplete}, Description: "Semantic asset resolution via Qdrant (script scene → clip/stock matching — Spina Dorsale Fase 2 downstream cutover)", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
 
 }

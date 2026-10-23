@@ -23,7 +23,7 @@ func TestConcurrencyReport_DerivesDeterministicBatchReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer primary.Close()
+	defer func() { _ = primary.Close() }()
 	if _, err := primary.Exec(`CREATE TABLE benchmark_batches (batch_id TEXT PRIMARY KEY,run_id TEXT NOT NULL DEFAULT '',worker_slot_count INTEGER NOT NULL CHECK(worker_slot_count > 0),started_at TEXT NOT NULL,completed_at TEXT,created_at TEXT NOT NULL); CREATE TABLE benchmark_batch_jobs (batch_id TEXT NOT NULL,job_id TEXT NOT NULL,run_id TEXT NOT NULL DEFAULT '',worker_slot INTEGER,queued_at TEXT,started_at TEXT NOT NULL,completed_at TEXT,status TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,PRIMARY KEY(batch_id,job_id))`); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestConcurrencyReport_DerivesDeterministicBatchReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer obs.Close()
+	defer func() { _ = obs.Close() }()
 	if _, err := obs.Exec(`CREATE TABLE run_observability (run_id TEXT PRIMARY KEY, report_json TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestConcurrencyReport_UnknownBatchAndMissingRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer primary.Close()
+	defer func() { _ = primary.Close() }()
 	if _, err := primary.Exec(`CREATE TABLE benchmark_batches (batch_id TEXT PRIMARY KEY,run_id TEXT NOT NULL DEFAULT '',worker_slot_count INTEGER NOT NULL CHECK(worker_slot_count > 0),started_at TEXT NOT NULL,completed_at TEXT,created_at TEXT NOT NULL); CREATE TABLE benchmark_batch_jobs (batch_id TEXT NOT NULL,job_id TEXT NOT NULL,run_id TEXT NOT NULL DEFAULT '',worker_slot INTEGER,queued_at TEXT,started_at TEXT NOT NULL,completed_at TEXT,status TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,PRIMARY KEY(batch_id,job_id))`); err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestConcurrencyReport_UnknownBatchAndMissingRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer obs.Close()
+	defer func() { _ = obs.Close() }()
 	if _, err := obs.Exec(`CREATE TABLE run_observability (run_id TEXT PRIMARY KEY, report_json TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}

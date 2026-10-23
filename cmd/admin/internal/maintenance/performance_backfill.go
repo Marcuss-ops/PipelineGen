@@ -47,7 +47,7 @@ func RunPerformanceBackfill(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	src, err := perfstore.NewSource(dbSet.Primary.DB, dbSet.Observability.DB)
 	if err != nil {
@@ -74,7 +74,7 @@ func RunPerformanceBackfill(args []string) error {
 		query += " LIMIT ?"
 		queryArgs = append(queryArgs, *limit)
 	}
-	rows, err := dbSet.Primary.DB.QueryContext(ctx, query, queryArgs...)
+	rows, err := dbSet.Primary.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return fmt.Errorf("select jobs for performance backfill: %w", err)
 	}
@@ -89,7 +89,7 @@ func RunPerformanceBackfill(args []string) error {
 	for rows.Next() {
 		var j backfillJob
 		if err := rows.Scan(&j.id, &j.rootJobID, &j.parentJobID, &j.videoID, &j.gitSHA, &j.host); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("scan performance backfill job: %w", err)
 		}
 		// root_job_id is canonical now: it is populated at enqueue and
@@ -102,10 +102,10 @@ func RunPerformanceBackfill(args []string) error {
 		candidates = append(candidates, j)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return fmt.Errorf("iterate performance backfill jobs: %w", err)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	var projected, skipped int
 	for _, j := range candidates {

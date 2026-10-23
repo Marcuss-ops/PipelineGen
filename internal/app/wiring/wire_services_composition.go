@@ -63,7 +63,7 @@ func initCompositionMinimal(cfg *config.Config, log *zap.Logger, mode string) (*
 	return initCompositionMinimalWithContext(context.Background(), cfg, log, mode, context.Background())
 }
 
-func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
+func initCompositionMinimalWithContext(_ context.Context, cfg *config.Config, log *zap.Logger, mode string, parent context.Context) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -214,7 +214,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		if len(spineTypes) > 0 {
 			partialCleanup()
 			return nil, nil, nil, fmt.Errorf(
-				"FAIL BOOT: cannot wire JobFinalizer for artifact-producing jobs (root.Outbox=%v, root.Outbox.EventsRepo=%v, root.DB=%v). %d registered job type(s) require CompleteWithArtifacts: %v. Fix: ensure the outbox, events repo, and DB are available at composition time.",
+				"fail boot: cannot wire JobFinalizer for artifact-producing jobs (root.Outbox=%v, root.Outbox.EventsRepo=%v, root.DB=%v). %d registered job type(s) require CompleteWithArtifacts: %v. Fix: ensure the outbox, events repo, and DB are available at composition time",
 				root.Outbox == nil, root.Outbox != nil && root.Outbox.EventsRepo == nil, root.DB == nil,
 				len(spineTypes), spineTypes,
 			)

@@ -59,7 +59,9 @@ func RunDBRetention(ctx context.Context, args []string) error {
 	historyDays := fs.Int("history-max-age-days", 0, "retention window in days for job registry/event history (default cfg.jobs.retention_days)")
 	dryRun := fs.Bool("dry-run", false, "count matching rows without deleting or vacuuming")
 	noVacuum := fs.Bool("no-vacuum", false, "delete rows but skip VACUUM (freed pages stay on the freelist)")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
 
 	fullCfg, err := config.Get()
 	if err != nil {

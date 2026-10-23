@@ -9,9 +9,6 @@ import (
 // MaxBodySize is the default maximum request body size (1MB).
 const MaxBodySize = 1 << 20 // 1MB
 
-// validate is a shared validator instance.
-var validate = validator.New()
-
 // BindAndValidate binds JSON from the request body into dst, limits body size,
 // and runs struct validation. Returns a user-friendly error on failure.
 

@@ -101,8 +101,8 @@ func (f *partialDriveProcessor) Process(_ context.Context, input *detail.Process
 }
 
 // Compile-time assertions: both processors satisfy the Processor port.
-var _ detail.Processor = (*driveFailureProcessor)(nil)
-var _ detail.Processor = (*partialDriveProcessor)(nil)
+var _ detail.MediaProcessor = (*driveFailureProcessor)(nil)
+var _ detail.MediaProcessor = (*partialDriveProcessor)(nil)
 
 // TestGate02_DriveFieldsPopulated verifies that every clip processed
 // through the happy-path pipeline has non-empty DriveFileID,
@@ -139,7 +139,7 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -191,7 +191,7 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "drive test",
@@ -271,7 +271,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -316,7 +316,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "drive failure",
@@ -391,7 +391,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -442,7 +442,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "mixed ok fail",
@@ -539,7 +539,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -594,7 +594,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "outbox test",
@@ -635,7 +635,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 	seen := map[string]int{}
 	rows, err := db.Query(`SELECT aggregate_id FROM outbox_events WHERE event_type = 'asset.index.requested'`)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var cid string
 		require.NoError(t, rows.Scan(&cid))
@@ -682,7 +682,7 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -735,7 +735,7 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "dispatch ok nodrive",

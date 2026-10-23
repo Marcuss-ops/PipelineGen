@@ -144,7 +144,7 @@ func (r *Repository) FindReadyByGroup(ctx context.Context, group, subfolder stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*AssetRecord
 	for rows.Next() {
@@ -297,7 +297,7 @@ func (r *Repository) GetStats(ctx context.Context) (*Stats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var assetType string
@@ -313,7 +313,7 @@ func (r *Repository) GetStats(ctx context.Context) (*Stats, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var status string
@@ -339,7 +339,7 @@ func (r *Repository) ListAll(ctx context.Context) ([]*AssetRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*AssetRecord
 	for rows.Next() {

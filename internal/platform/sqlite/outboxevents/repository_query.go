@@ -68,7 +68,7 @@ func (r *Repository) ListPending(ctx context.Context) ([]Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("outboxevents.ListPending: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []Event
 	for rows.Next() {
@@ -104,7 +104,7 @@ func (r *Repository) ListByStatus(ctx context.Context, status string) ([]Event, 
 	if err != nil {
 		return nil, fmt.Errorf("outboxevents.ListByStatus(%q): %w", status, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []Event
 	for rows.Next() {

@@ -26,9 +26,9 @@ func (r *CommandRenderer) Render(ctx context.Context, plan []byte, output string
 		return err
 	}
 	planPath := planFile.Name()
-	defer os.Remove(planPath)
+	defer func() { _ = os.Remove(planPath) }()
 	if _, err := planFile.Write(plan); err != nil {
-		planFile.Close()
+		_ = planFile.Close()
 		return err
 	}
 	if err := planFile.Close(); err != nil {

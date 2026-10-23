@@ -60,7 +60,7 @@ func (r *PostgresCanonicalIdentityResolver) ResolveSource(ctx context.Context, s
 	if err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver (postgres): resolve source (%s, %s): %w", sourceType, sourceRef, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var (
 		identity capregistry.CanonicalIdentity
@@ -112,7 +112,7 @@ func (r *PostgresCanonicalIdentityResolver) ResolveContent(ctx context.Context, 
 	if err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver (postgres): resolve content %q: %w", contentSHA256, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var assetIDs []string
 	for rows.Next() {

@@ -22,7 +22,9 @@ func RunDBRestore(ctx context.Context, args []string) error {
 	src := fs.String("src", "", "source backup path (required)")
 	dst := fs.String("dst", "", "destination DB path (required)")
 	verify := fs.Bool("verify", false, "REQUIRED: run integrity check + smoke probe")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
 
 	if *src == "" || *dst == "" {
 		return fmt.Errorf("-src and -dst are required")

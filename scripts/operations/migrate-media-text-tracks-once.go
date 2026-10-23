@@ -27,12 +27,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer sdb.Close()
+	defer func() { _ = sdb.Close() }()
 	pdb, err := sql.Open("pgx", *dst)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer pdb.Close()
+	defer func() { _ = pdb.Close() }()
 	if err := sdb.PingContext(ctx); err != nil {
 		log.Fatal(err)
 	}
@@ -48,7 +48,7 @@ status, created_at, updated_at FROM asset_text_tracks ORDER BY id`)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	trackIDs := map[int64]int64{}
 	count := 0
 	for rows.Next() {

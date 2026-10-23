@@ -177,14 +177,16 @@ func classifyURLError(err error) (RetryDecision, bool) {
 			SafeMessage: fmt.Sprintf("url: %s %s: timeout", ue.Op, redactedURL(ue.URL)),
 		}, true
 	}
-	// Path 3: net.Error with Temporary() marked. Most net.DNS / dial
-	// errors return Temporary()==true (the upstream canonical
-	// signal).
-	if errors.As(inner, &ne) && ne.Temporary() {
+	// Path 3: any other net.Error. net.Error.Temporary() was deprecated
+	// in Go 1.18 because "temporary" is not a well-defined signal; the
+	// remaining contract is that the transport returned a network-level
+	// error, so classify it as a retryable network failure. Timeouts were
+	// already handled above.
+	if errors.As(inner, &ne) {
 		return RetryDecision{
 			Class:       ErrNetwork,
 			Retryable:   true,
-			SafeMessage: fmt.Sprintf("url: %s %s: temporary", ue.Op, redactedURL(ue.URL)),
+			SafeMessage: fmt.Sprintf("url: %s %s: network", ue.Op, redactedURL(ue.URL)),
 		}, true
 	}
 	// Path 4: URL parse error. op == "parse" + inner implements

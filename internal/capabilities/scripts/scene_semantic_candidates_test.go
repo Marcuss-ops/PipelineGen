@@ -12,8 +12,7 @@ import (
 // countingSemanticAnalyzer records every analyze call, so the single-call
 // invariant (RUST-02) can be asserted per scene.
 type countingSemanticAnalyzer struct {
-	calls  int
-	bundle *SemanticCandidateBundle
+	calls int
 }
 
 func (f *countingSemanticAnalyzer) SemanticCandidates(_ context.Context, _ string, sourceText string, _ int) (*SemanticCandidateBundle, error) {

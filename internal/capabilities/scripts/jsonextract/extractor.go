@@ -156,9 +156,10 @@ func findMatchingDelim(s string, open, close byte) int {
 			continue
 		}
 
-		if ch == open {
+		switch ch {
+		case open:
 			depth++
-		} else if ch == close {
+		case close:
 			depth--
 			if depth == 0 {
 				return i

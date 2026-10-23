@@ -56,14 +56,6 @@ var mediaTxnBoundaryScanRoots = []string{
 	"cmd",
 }
 
-// mediaTxnBoundaryTxBoundNames are the DEMOLISHED transaction-bound media
-// mutation method names. Any occurrence outside the canonical PostgreSQL
-// media package is a violation.
-var mediaTxnBoundaryTxBoundNames = []string{
-	"UpsertClipTx",
-	"SetIndexStateTx",
-}
-
 // mediaTxnBoundaryNameRe matches one of the demolished identifiers.
 var mediaTxnBoundaryNameRe = regexp.MustCompile(`\b(UpsertClipTx|SetIndexStateTx)\b`)
 
@@ -86,7 +78,7 @@ func mediaTxnBoundaryInterfaceRe(name string) *regexp.Regexp {
 func ScanMediaTxBoundary(root string, _ *policy.Policy, r *report.Report) {
 	for _, scanRoot := range mediaTxnBoundaryScanRoots {
 		absRoot := filepath.Join(root, scanRoot)
-		filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+		if err := filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -101,7 +93,9 @@ func ScanMediaTxBoundary(root string, _ *policy.Policy, r *report.Report) {
 			}
 			inspectMediaTxnBoundaryFile(root, path, r)
 			return nil
-		})
+		}); err != nil {
+			r.Warnings = append(r.Warnings, "media-txn-boundary scan "+absRoot+": "+err.Error())
+		}
 	}
 	inspectCanonicalWriteBoundary(root, r)
 }

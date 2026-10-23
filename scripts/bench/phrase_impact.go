@@ -44,7 +44,7 @@ func run(input io.Reader, output io.Writer) error {
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64*1024), 32*1024*1024)
 	writer := bufio.NewWriter(output)
-	defer writer.Flush()
+	defer func() { _ = writer.Flush() }()
 	encoder := json.NewEncoder(writer)
 	for scanner.Scan() {
 		var req request

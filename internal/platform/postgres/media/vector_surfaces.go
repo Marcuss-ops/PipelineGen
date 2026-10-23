@@ -134,7 +134,7 @@ func (w *VectorSurfaceWriter) ActiveEmbeddingFamily(ctx context.Context, embeddi
 	if err != nil {
 		return "", 0, fmt.Errorf("media embedding family: query %s: %w", embeddingType, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	families := make([][2]any, 0, 1)
 	for rows.Next() {

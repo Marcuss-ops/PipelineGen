@@ -78,7 +78,7 @@ func TestDriveRootChecker_NilReachFailsClosed(t *testing.T) {
 
 	err := checker.CheckDriveRoot(context.Background(), "ROOT")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "Drive reader not wired")
+	require.Contains(t, err.Error(), "drive reader not wired")
 }
 
 // TestReadyChecker_ReportsTrashedDriveRootAsUnhealthy pins the /ready

@@ -175,11 +175,8 @@ func (w *IndexWriter) ReindexAll(ctx context.Context, targetCollection string, l
 	points := make([]schema.Point, 0, 100)
 	var batchCount int
 
-	for {
+	for limit <= 0 || totalSeen < limit {
 		// Respect the limit: if we've seen enough, stop.
-		if limit > 0 && totalSeen >= limit {
-			break
-		}
 
 		// Fetch one page of full AssetData rows.
 		pageLimit := pageSize

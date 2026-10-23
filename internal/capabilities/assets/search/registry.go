@@ -55,7 +55,7 @@ func (r *BackendRegistry) Register(b SearchBackend) error {
 	if b == nil {
 		return ErrNilBackend
 	}
-	if rv := reflect.ValueOf(b); rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv := reflect.ValueOf(b); rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return ErrNilBackend
 	}
 	name := b.Name()

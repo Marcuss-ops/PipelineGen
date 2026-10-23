@@ -130,7 +130,7 @@ func (r *MediaDuplicateGroupReader) DuplicateYouTubeIDGroups(ctx context.Context
 	if err != nil {
 		return nil, fmt.Errorf("media duplicate group reader: duplicate group query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var groups []YouTubeIDDuplicateGroup
 	for rows.Next() {
@@ -171,7 +171,7 @@ func (r *MediaDuplicateGroupReader) DuplicateAssetIDsByYouTubeID(ctx context.Con
 	if err != nil {
 		return nil, fmt.Errorf("media duplicate group reader: duplicate id query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []string
 	for rows.Next() {

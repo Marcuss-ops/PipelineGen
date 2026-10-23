@@ -24,9 +24,6 @@ func NewScanner(mode Mode) *Scanner { return &Scanner{Mode: mode} }
 // Scan accepts a valid V1 JSON envelope or raw prose. JSON-shaped malformed
 // input fails closed instead of being silently wrapped as prose.
 func (s *Scanner) Scan(raw []byte, _ string) (*scriptpkg.ModelScriptOutputV1, error) {
-	if s == nil {
-		s = &Scanner{}
-	}
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("%w: empty output", scriptpkg.ErrModelOutputMalformed)
 	}

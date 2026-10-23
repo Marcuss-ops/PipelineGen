@@ -34,7 +34,7 @@ func RunNormalizeSoundEffectsDrive(args []string) error {
 	}
 	defer rootCleanup()
 	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Publisher == nil {
-		return fmt.Errorf("Drive reader and publisher are required")
+		return fmt.Errorf("drive reader and publisher are required")
 	}
 	uploader, err := delivery.NewAdminUploadService(root.Drive.Publisher)
 	if err != nil {

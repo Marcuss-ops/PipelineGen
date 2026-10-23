@@ -100,7 +100,7 @@ func executeDoctor(ctx context.Context, cfg *config.Config, log *zap.Logger, fla
 	if err != nil {
 		return fmt.Errorf("drive-doctor: open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	catalogRepo := sqlitedelivery.NewRepository(dbSet.Primary.DB)
 	entries, err := catalogRepo.FindAll(ctx)

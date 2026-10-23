@@ -92,8 +92,7 @@ func TestPutFile_IdempotencyKey_DifferentArtifactSameFilename(t *testing.T) {
 	const idemKeyA = "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111aaaa"
 	const idemKeyB = "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222bbbb"
 
-	var lookupCalls int
-	lookupCalls = 0
+	lookupCalls := 0
 
 	u := &Uploader{
 		Service: newFakeDriveService(t),

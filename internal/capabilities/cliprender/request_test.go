@@ -1,6 +1,7 @@
 package cliprender
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -201,14 +202,14 @@ func TestValidate_OutputContract(t *testing.T) {
 		Contract: OutputContractVeloxAssemblyReadyV2, Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
 	}}
 	req.Normalize()
-	if _, err := NewContractResolver().Resolve(nil, req); err == nil || !errors.Is(err, ErrOutputContractMismatch) {
+	if _, err := NewContractResolver().Resolve(context.Background(), req); err == nil || !errors.Is(err, ErrOutputContractMismatch) {
 		t.Fatalf("V2 30/1 must return OUTPUT_CONTRACT_MISMATCH, got %v", err)
 	}
 
 	// V2 accepts the exact canonical rational FPS.
 	req.Output.FPSNum = 24
 	req.Output.FPSDen = 1
-	if _, err := NewContractResolver().Resolve(nil, req); err != nil {
+	if _, err := NewContractResolver().Resolve(context.Background(), req); err != nil {
 		t.Fatalf("V2 24/1 must resolve: %v", err)
 	}
 	// Portrait and square outputs are intentionally removed from the

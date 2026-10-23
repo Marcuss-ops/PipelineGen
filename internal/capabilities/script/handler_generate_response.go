@@ -34,7 +34,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -45,7 +44,7 @@ import (
 //
 // P0 verdetto error classification (July 2026):
 //   - context.DeadlineExceeded | context.Canceled → 504 {"ok":false,"error":"JOB_ENQUEUE_TIMEOUT"}
-//   - domainops.ErrIdempotencyConflict            → 409 {"ok":false,"error":"Idempotency-Key reused with different payload","code":"IDEMPOTENCY_KEY_CONFLICT"}
+//   - opsapp.ErrIdempotencyConflict            → 409 {"ok":false,"error":"Idempotency-Key reused with different payload","code":"IDEMPOTENCY_KEY_CONFLICT"}
 //   - opsapp.ErrSubmitQueueFull / ErrUnavailable  → 503 via mapErrorToHTTP
 //   - any other error                              → mapErrorToHTTP(err) which
 //     returns 400/422/502/504/500 per the typed error contract
@@ -67,7 +66,7 @@ func writeGenerateSubmitError(c *gin.Context, err error) {
 	}
 
 	// 409 — idempotency conflict.
-	if errors.Is(err, domainops.ErrIdempotencyConflict) {
+	if errors.Is(err, opsapp.ErrIdempotencyConflict) {
 		c.JSON(http.StatusConflict, gin.H{
 			"ok":    false,
 			"error": "Idempotency-Key reused with different payload",

@@ -56,13 +56,15 @@ func TestSourceEnricher_Enrich_Hit(t *testing.T) {
 
 	// Pre-seed the cache.
 	key := computeSourceCacheKey(&item)
-	cache.SaveResearchCache(context.Background(), scriptpkg.ResearchCacheRecord{
+	if err := cache.SaveResearchCache(context.Background(), scriptpkg.ResearchCacheRecord{
 		Key:        key,
 		Topic:      "Cached Topic",
 		Language:   "en",
 		SourceText: "cached source text",
 		ExpiresAt:  time.Now().UTC().Add(time.Hour),
-	})
+	}); err != nil {
+		t.Fatalf("seed research cache: %v", err)
+	}
 
 	// Reset mutable field used by the test subject.
 	item.Source.SourceText = ""
@@ -115,13 +117,15 @@ func TestSourceEnricher_Enrich_ForceRefresh(t *testing.T) {
 	}
 
 	key := computeSourceCacheKey(&item)
-	cache.SaveResearchCache(context.Background(), scriptpkg.ResearchCacheRecord{
+	if err := cache.SaveResearchCache(context.Background(), scriptpkg.ResearchCacheRecord{
 		Key:        key,
 		Topic:      "Cached Topic",
 		Language:   "en",
 		SourceText: "cached source text",
 		ExpiresAt:  time.Now().UTC().Add(time.Hour),
-	})
+	}); err != nil {
+		t.Fatalf("seed research cache: %v", err)
+	}
 
 	res, err := e.Enrich(context.Background(), &item)
 	if err != nil {
@@ -148,13 +152,15 @@ func TestSourceEnricher_Enrich_ClipsBypassCache(t *testing.T) {
 	}
 
 	key := computeSourceCacheKey(&item)
-	cache.SaveResearchCache(context.Background(), scriptpkg.ResearchCacheRecord{
+	if err := cache.SaveResearchCache(context.Background(), scriptpkg.ResearchCacheRecord{
 		Key:        key,
 		Topic:      "Clip Topic",
 		Language:   "en",
 		SourceText: "cached clip source text",
 		ExpiresAt:  time.Now().UTC().Add(time.Hour),
-	})
+	}); err != nil {
+		t.Fatalf("seed research cache: %v", err)
+	}
 
 	res, err := e.Enrich(context.Background(), &item)
 	if err != nil {

@@ -145,9 +145,7 @@ func parseDiscoveryVideo(rawURL, fallbackID string) (stockplan.YouTubeVideo, err
 	if err == nil {
 		return video, nil
 	}
-	if strings.HasPrefix(fallbackID, "youtube_") {
-		fallbackID = strings.TrimPrefix(fallbackID, "youtube_")
-	}
+	fallbackID = strings.TrimPrefix(fallbackID, "youtube_")
 	if fallbackID == "" {
 		return stockplan.YouTubeVideo{}, err
 	}

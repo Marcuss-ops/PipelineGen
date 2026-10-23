@@ -92,7 +92,7 @@ func RunClassifySoundEffects(args []string) error {
 		if oldFamily == "" || oldFamily == "file" {
 			clip.SetMetadataString("sfx_category", taxonomy.Family)
 		}
-		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
+		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.ContentAddress()); err != nil {
 			return fmt.Errorf("reindex sound effect %s: %w", id, err)
 		}
 		updated++

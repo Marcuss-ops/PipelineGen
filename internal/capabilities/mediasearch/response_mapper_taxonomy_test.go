@@ -16,7 +16,7 @@ func TestResultToResponseCarriesTaxonomy(t *testing.T) {
 			{AssetID: "planner:1", Source: "youtube", AssetKind: "stock_video", SemanticRole: "stock", Title: "Mike Tyson stock library", Score: 0.8},
 		},
 	}
-	resp := resultToResponse(r, "mike", search.SearchModeHybrid, search.SearchCatalog, "")
+	resp := resultToResponse(r, "mike", search.RetrievalModeHybrid, search.SearchCatalog, "")
 	if len(resp.Items) != 2 {
 		t.Fatalf("items = %d, want 2", len(resp.Items))
 	}

@@ -33,7 +33,7 @@ func TestSQLiteRecorder_StartReportRejectsIdentityReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	testObservabilitySchema(t, db)
 	recorder := NewSQLiteRecorder(db)
 	now := time.Now().UTC()
@@ -60,7 +60,7 @@ func TestSQLiteRecorder_RecoverAbandonedPersistsWorkerLost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	testObservabilitySchema(t, db)
 	recorder := NewSQLiteRecorder(db)
 	started := time.Date(2026, time.August, 5, 10, 0, 0, 0, time.UTC)
@@ -97,7 +97,7 @@ func TestSQLiteRecorder_RecoverAbandonedCommitsWhenRunAndAttemptCountsDiffer(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	testObservabilitySchema(t, db)
 	recorder := NewSQLiteRecorder(db)
 	now := time.Date(2026, time.August, 5, 10, 0, 0, 0, time.UTC)
@@ -132,7 +132,7 @@ func TestSQLiteRecorder_ChildLifecycleRefreshesParentIdempotently(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	testObservabilitySchema(t, db)
 	recorder := NewSQLiteRecorder(db)
 	now := time.Now().UTC()

@@ -62,7 +62,7 @@ func (s *ImageStorageService) downloadAndIngest(ctx context.Context, slug, imgUR
 	if openErr != nil {
 		return nil, fmt.Errorf("open staged source %q: %w", prepared.LocalPath, openErr)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	filename := filepath.Base(imgURL)
 	if parsed, err := url.Parse(imgURL); err == nil && parsed.Path != "" {
 		filename = filepath.Base(parsed.Path)

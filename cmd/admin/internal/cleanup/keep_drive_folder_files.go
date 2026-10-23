@@ -39,8 +39,8 @@ func RunKeepDriveFolderFiles(args []string) error {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("Drive reader and admin are required")
+	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Lifecycle == nil {
+		return fmt.Errorf("drive reader and admin are required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -63,7 +63,7 @@ func RunKeepDriveFolderFiles(args []string) error {
 		return nil
 	}
 	for _, file := range files[*keep:] {
-		if err := root.Drive.Admin.TrashFile(ctx, file.ID); err != nil {
+		if err := root.Drive.Lifecycle.Trash(ctx, file.ID); err != nil {
 			return fmt.Errorf("trash %q: %w", file.Name, err)
 		}
 	}

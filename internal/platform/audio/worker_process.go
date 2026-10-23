@@ -102,7 +102,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		p.cmd.Stderr = os.Stderr
 	} else {
 		p.cmd.Stderr = stderrFile
-		defer stderrFile.Close()
+		defer func() { _ = stderrFile.Close() }()
 	}
 
 	if err := p.cmd.Start(); err != nil {
@@ -253,7 +253,7 @@ func (p *Processor) Stop() error {
 		if err == nil {
 			resp, _ := p.httpClient.Do(req)
 			if resp != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}
 		cancel()

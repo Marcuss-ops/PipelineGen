@@ -36,7 +36,7 @@ const IndexRestoreEventType = event.AssetIndexRestoreRequested
 // the handler. Schema drift is terminal rather than retryable.
 const IndexRestoreRequestSchemaVersion = event.AssetIndexRestoreRequestedV1Schema
 
-var indexRestoreTerminalErr = errors.New("index_restore: terminal envelope error")
+var errIndexRestoreTerminal = errors.New("index_restore: terminal envelope error")
 
 // indexRestoreRequestV1 is the canonical envelope for
 // asset.index.restore_requested.v1 events. It mirrors the producer's payload
@@ -105,14 +105,14 @@ func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event
 	if err := json.Unmarshal([]byte(evt.PayloadJSON), &req); err != nil {
 		log.Warn("asset.index.restore_requested payload parse failed (terminal)",
 			zap.Int64("event_id", evt.ID), zap.String("aggregate_id", evt.AggregateID), zap.Error(err))
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: payload parse: %v", indexRestoreTerminalErr, err))
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: payload parse: %v", errIndexRestoreTerminal, err))
 	}
 	if req.SchemaVersion != IndexRestoreRequestSchemaVersion {
 		log.Warn("asset.index.restore_requested schema_version mismatch (terminal)",
 			zap.Int64("event_id", evt.ID), zap.String("got_version", req.SchemaVersion),
 			zap.String("want_version", IndexRestoreRequestSchemaVersion))
 		return outboxevents.NewTerminalError(fmt.Errorf(
-			"%w: schema_version %q != %q", indexRestoreTerminalErr, req.SchemaVersion, IndexRestoreRequestSchemaVersion))
+			"%w: schema_version %q != %q", errIndexRestoreTerminal, req.SchemaVersion, IndexRestoreRequestSchemaVersion))
 	}
 	// The asset identity prefers the envelope field and falls back to the
 	// aggregate id, exactly like the sibling index/delete handlers.
@@ -122,16 +122,16 @@ func (h *IndexRestoreHandler) Handle(ctx context.Context, evt outboxevents.Event
 	}
 	if assetID == "" {
 		log.Warn("asset.index.restore_requested: empty asset_id (terminal)", zap.Int64("event_id", evt.ID))
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: asset_id is required", indexRestoreTerminalErr))
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: asset_id is required", errIndexRestoreTerminal))
 	}
 	if req.IdempotencyKey == "" {
 		log.Warn("asset.index.restore_requested: missing idempotency_key (terminal)",
 			zap.Int64("event_id", evt.ID), zap.String("asset_id", assetID))
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: idempotency_key is required", indexRestoreTerminalErr))
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: idempotency_key is required", errIndexRestoreTerminal))
 	}
 
 	if h.restorer == nil {
-		return outboxevents.NewTerminalError(fmt.Errorf("%w: restore port is not wired", indexRestoreTerminalErr))
+		return outboxevents.NewTerminalError(fmt.Errorf("%w: restore port is not wired", errIndexRestoreTerminal))
 	}
 	if err := h.restorer.RestoreIndexedAsset(ctx, assetID); err != nil {
 		log.Warn("asset.index.restore_requested: re-emit index request failed (retryable)",

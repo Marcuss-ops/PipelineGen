@@ -21,7 +21,7 @@ func TestSQLiteRecorder_AppendOperationStampsMissingCreatedAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	testObservabilitySchema(t, db)
 	recorder := NewSQLiteRecorder(db)
 

@@ -230,7 +230,7 @@ func (p *Provider) searchViaServer(ctx context.Context, term string, limit int, 
 		}
 		return nil, fmt.Errorf("%w: %v", artapp.ErrTransportFallback, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		return nil, fmt.Errorf("%w: status %d", artapp.ErrRateLimited, resp.StatusCode)
@@ -419,7 +419,7 @@ func (p *Provider) FetchDetails(ctx context.Context, clipPageURL string) (*artap
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", artapp.ErrUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, artapp.ErrNotFound

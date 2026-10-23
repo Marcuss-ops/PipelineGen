@@ -11,7 +11,7 @@ const mapFadeHalfBandZoom = 0.5
 // flyoverActiveZoomRange mirrors the worker's mapLODActiveZoomRange: the zoom
 // interval where LOD[index] is visible over the move.
 func flyoverActiveZoomRange(index int, zooms []int, startZoom, endZoom float64) (float64, float64) {
-	low, high := float64(zooms[index]), float64(zooms[index])
+	var low, high float64
 	if index == 0 {
 		low = startZoom
 	} else {

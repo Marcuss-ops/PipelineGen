@@ -58,7 +58,7 @@ type identityStoreStub struct {
 }
 
 func (s *identityStoreStub) FindExisting(_ context.Context, query assetop.ExistingAssetQuery) (*assetop.AssetRecord, error) {
-	if strings.TrimSpace(query.LegacyFileMD5) != "" && query.ID == "" && query.ContentSHA256 == "" {
+	if query.ID == "" && query.ContentSHA256 == "" && query.DriveFileID == "" {
 		s.legacyTierQueries++
 	}
 	for _, rec := range s.records {

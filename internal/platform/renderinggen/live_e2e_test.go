@@ -106,7 +106,7 @@ func putObject(t *testing.T, baseURL, hash string, data []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("object store PUT %s: HTTP %d: %s", hash, resp.StatusCode, body)

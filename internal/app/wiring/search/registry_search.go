@@ -7,7 +7,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
@@ -15,7 +14,7 @@ import (
 
 // SelectMediaSearchStore resolves the single canonical PostgreSQL media
 // search adapter. Retrieval and hydration remain on the same MediaSearcher.
-func SelectMediaSearchStore(cfg *config.Config, pg *sql.DB, log *zap.Logger) (assetsearch.VectorStorePort, assetsearch.MediaReadRepository, bool, error) {
+func SelectMediaSearchStore(cfg *config.Config, pg *sql.DB, log *zap.Logger) (search.VectorStorePort, search.MediaReadRepository, bool, error) {
 	if cfg == nil || !cfg.MediaPostgreSQL.Enabled {
 		return nil, nil, false, nil
 	}
@@ -33,7 +32,7 @@ func SelectMediaSearchStore(cfg *config.Config, pg *sql.DB, log *zap.Logger) (as
 // registerSearchBackend is called only after provider bootstrap and freeze.
 // There is intentionally no extra-provider parameter or late-registration
 // escape hatch.
-func Build(log *zap.Logger, providerReg *providers.Registry, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker RerankerClient, resolver search.CanonicalIdentityResolver) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
+func Build(log *zap.Logger, providerReg *providers.Registry, embeddings search.EmbeddingChannelRegistry, vectorStore search.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker RerankerClient, resolver search.CanonicalIdentityResolver) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}

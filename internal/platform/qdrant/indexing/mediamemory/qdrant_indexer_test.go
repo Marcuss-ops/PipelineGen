@@ -143,7 +143,7 @@ func (mq *mockQdrantServer) handle(w http.ResponseWriter, r *http.Request) {
 		for _, p := range req.Points {
 			bucket[p.ID] = p.Payload
 		}
-		fmt.Fprint(w, `{"result":{"status":"ok"}}`)
+		_, _ = fmt.Fprint(w, `{"result":{"status":"ok"}}`)
 		return
 	}
 
@@ -164,7 +164,7 @@ func (mq *mockQdrantServer) handle(w http.ResponseWriter, r *http.Request) {
 				delete(bucket, id)
 			}
 		}
-		fmt.Fprint(w, `{"result":{"status":"ok"}}`)
+		_, _ = fmt.Fprint(w, `{"result":{"status":"ok"}}`)
 		return
 	}
 

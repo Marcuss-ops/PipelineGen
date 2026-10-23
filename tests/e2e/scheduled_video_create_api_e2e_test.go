@@ -56,7 +56,7 @@ func schedE2EPost(t *testing.T, url, body string) (int, map[string]any) {
 	t.Helper()
 	resp, err := http.Post(url, "application/json", strings.NewReader(body))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	var decoded map[string]any
@@ -71,7 +71,7 @@ func schedE2EGet(t *testing.T, url string) (int, map[string]any) {
 	t.Helper()
 	resp, err := http.Get(url)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	var decoded map[string]any

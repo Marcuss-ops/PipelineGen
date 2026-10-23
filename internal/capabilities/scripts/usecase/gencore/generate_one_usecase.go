@@ -356,7 +356,8 @@ func (uc *GenerateOneUseCase) Execute(
 			return nil, uc.logPhaseError(item, "finalize", scriptpkg.ErrGenerationFailed, err, tracker)
 		}
 	}
-	if plan.AudioMode == "COMBINED_TIMELINE" {
+	switch plan.AudioMode {
+	case "COMBINED_TIMELINE":
 		// audio.pipeline is a STAGE boundary; the canonical Run clock is the
 		// only wall-time source. AudioPipelineMetrics is derived from the
 		// completed canonical stage/operations, never timed independently.
@@ -365,7 +366,7 @@ func (uc *GenerateOneUseCase) Execute(
 		}); audioErr != nil {
 			return nil, uc.logPhaseError(item, "combined_audio", scriptpkg.ErrGenerationFailed, audioErr, tracker)
 		}
-	} else if plan.AudioMode == "CHUNKED_VOICEOVER" {
+	case "CHUNKED_VOICEOVER":
 		result.AudioStrategy = "TIMELINE_MIX"
 		if result.FinalAudio != nil {
 			return nil, uc.logPhaseError(item, "audio_mode", scriptpkg.ErrGenerationFailed, fmt.Errorf("CHUNKED_VOICEOVER must not produce final_audio"), tracker)

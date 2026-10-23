@@ -68,7 +68,7 @@ func (r *Repository) ListByJob(ctx context.Context, jobID string) ([]artifact.Ar
 	if err != nil {
 		return nil, fmt.Errorf("artifact_stages.ListByJob (job_id=%s): %w", jobID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []artifact.ArtifactStage
 	for rows.Next() {
 		stage, scanErr := scanRow(rows)
@@ -98,7 +98,7 @@ func (r *Repository) ListByState(ctx context.Context, state artifact.ArtifactSta
 	if err != nil {
 		return nil, fmt.Errorf("artifact_stages.ListByState (state=%s): %w", state, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []artifact.ArtifactStage
 	for rows.Next() {
 		stage, scanErr := scanRow(rows)

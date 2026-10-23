@@ -66,7 +66,7 @@ func TestSkipCatalogCommit_UnpublishedMetadataArtifact(t *testing.T) {
 // media_assets untouched — while a normally published artifact still commits.
 func TestFinalizeAsset_UnpublishedMetadataWritesNothing(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -89,7 +89,7 @@ func TestFinalizeAsset_UnpublishedMetadataWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	ref, events, err := fx.FinalizeAsset(ctx, WrapTx(tx), unpublished)
 	if err != nil {
@@ -124,7 +124,7 @@ func TestFinalizeAsset_UnpublishedMetadataWritesNothing(t *testing.T) {
 		if err != nil {
 			t.Fatalf("begin tx2: %v", err)
 		}
-		defer tx2.Rollback()
+		defer func() { _ = tx2.Rollback() }()
 		r, _, err := fx.FinalizeAsset(ctx, WrapTx(tx2), published)
 		return r, err
 	}()

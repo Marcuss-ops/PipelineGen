@@ -233,10 +233,7 @@ func TestSampler_Shuffle_DifferentSeedsProduceDifferentOrderings(t *testing.T) {
 	}
 	// Aggregated assertion: not ALL of them equal the identity order.
 	identity := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	differs := !(equalSlice(a, identity) &&
-		equalSlice(b, identity) &&
-		equalSlice(c, identity) &&
-		equalSlice(d, identity))
+	differs := !equalSlice(a, identity) || !equalSlice(b, identity) || !equalSlice(c, identity) || !equalSlice(d, identity)
 	assert.True(t, differs, "at least one shuffle with non-trivial seed must permute the slice")
 }
 

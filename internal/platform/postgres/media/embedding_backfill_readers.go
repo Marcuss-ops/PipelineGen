@@ -117,7 +117,7 @@ func (r *BackfillReader) ListEmbeddingBackfillCandidates(ctx context.Context, q 
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query embedding candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []EmbeddingCandidate
 	for rows.Next() {
@@ -170,7 +170,7 @@ func (r *BackfillReader) ListEmbeddingCandidatesByID(ctx context.Context, ids []
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query embedding candidates by id: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []EmbeddingCandidate
 	for rows.Next() {
@@ -241,7 +241,7 @@ func (r *BackfillReader) ListMissingEmbeddingAssets(ctx context.Context, ids []s
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query missing embedding assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []MissingEmbeddingAsset
 	for rows.Next() {

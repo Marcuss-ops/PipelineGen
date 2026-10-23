@@ -59,14 +59,7 @@ func (r *resolver) Resolve(styleID, _, _ string) (ResolvedStyle, error) {
 	if !snap.Enabled {
 		return ResolvedStyle{}, fmt.Errorf("%w: %s", ErrStyleDisabled, styleID)
 	}
-	return ResolvedStyle{
-		ID:             snap.ID,
-		Version:        snap.Version,
-		PromptSuffix:   snap.PromptSuffix,
-		NegativePrompt: snap.NegativePrompt,
-		DestinationKey: snap.DestinationKey,
-		Enabled:        snap.Enabled,
-	}, nil
+	return ResolvedStyle(snap), nil
 }
 
 func (r *resolver) Validate(styleID, provider, model string) error {

@@ -218,9 +218,9 @@ func (e *GoogleAPIError) RetryAfterDuration() time.Duration {
 // off-spec error without a recognised status code. The nil guard
 // is defense-in-depth — the entrypoint (ClassifyGoogleAPIError) has
 // already nil-checked via errors.As.
-func classifyGoogleAPIErrorInfo(rawErr *googleapi.Error) (kind error, statusCode int, retryAfter time.Duration) {
+func classifyGoogleAPIErrorInfo(rawErr *googleapi.Error) (statusCode int, retryAfter time.Duration, kind error) {
 	if rawErr == nil {
-		return ErrGoogleAPIUnknown, 0, 0
+		return 0, 0, ErrGoogleAPIUnknown
 	}
 	statusCode = rawErr.Code
 	// Status code 0 (malformed response, e.g. raw transport error
@@ -239,14 +239,14 @@ func classifyGoogleAPIErrorInfo(rawErr *googleapi.Error) (kind error, statusCode
 	}
 	switch {
 	case statusCode == http.StatusTooManyRequests:
-		return ErrGoogleAPIThrottled, statusCode, retryAfter
+		return statusCode, retryAfter, ErrGoogleAPIThrottled
 	case statusCode == http.StatusRequestTimeout,
 		statusCode >= http.StatusInternalServerError && statusCode <= 599:
-		return ErrGoogleAPIServer, statusCode, retryAfter
+		return statusCode, retryAfter, ErrGoogleAPIServer
 	case statusCode == http.StatusForbidden:
-		return ErrGoogleAPIPermission, statusCode, 0
+		return statusCode, 0, ErrGoogleAPIPermission
 	case statusCode == http.StatusNotFound:
-		return ErrGoogleAPINotFound, statusCode, 0
+		return statusCode, 0, ErrGoogleAPINotFound
 	case statusCode >= http.StatusBadRequest && statusCode <= 499:
 		// Off-spec 4xx codes (418 I'm-a-teapot, 426 Upgrade
 		// Required, 451 Unavailable-For-Legal-Reasons, etc.) are
@@ -258,9 +258,9 @@ func classifyGoogleAPIErrorInfo(rawErr *googleapi.Error) (kind error, statusCode
 		// default branch below). Some test cases (e.g. the 418
 		// expectation in TestClassifyGoogleAPIError_StatusCodeMapping)
 		// pin this convention.
-		return ErrGoogleAPIClient, statusCode, 0
+		return statusCode, 0, ErrGoogleAPIClient
 	}
-	return ErrGoogleAPIUnknown, statusCode, 0
+	return statusCode, 0, ErrGoogleAPIUnknown
 }
 
 // parseRetryAfter parses an RFC 7231 §7.1.3 Retry-After value.
@@ -333,7 +333,7 @@ func ClassifyGoogleAPIError(err error) error {
 	// Path 2: typed *googleapi.Error → wrap into the envelope.
 	var gerr *googleapi.Error
 	if errors.As(err, &gerr) {
-		kind, code, retryAfter := classifyGoogleAPIErrorInfo(gerr)
+		code, retryAfter, kind := classifyGoogleAPIErrorInfo(gerr)
 		return &GoogleAPIError{
 			Kind:       kind,
 			StatusCode: code,

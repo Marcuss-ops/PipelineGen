@@ -55,7 +55,7 @@ type Processor struct {
 	artifactCache capcache.Cache
 }
 
-var _ detail.Processor = (*Processor)(nil)
+var _ detail.MediaProcessor = (*Processor)(nil)
 
 // SetArtifactCache attaches the shared CAS-backed derived-artifact cache.
 // Cache failures never replace the media processor's fail-closed execution
@@ -144,7 +144,7 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 		return result, fmt.Errorf("ProcessInput.SourceURL or LocalPath is required")
 	}
 	if p.dl == nil && input.LocalPath == "" {
-		return result, fmt.Errorf("Processor.dl (YTDLP) is nil - cannot download and LocalPath not set")
+		return result, fmt.Errorf("processor.dl (YTDLP) is nil - cannot download and LocalPath not set")
 	}
 
 	// Setup paths.

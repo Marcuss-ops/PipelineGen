@@ -19,7 +19,7 @@ func TestBackupSetCreatesDurablePlaneManifestAndExcludesCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 
 	if _, err := set.Primary.Exec(`CREATE TABLE backup_probe (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatal(err)

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func executionStepID(exec ExecutionContext, name string) string {
@@ -66,6 +68,16 @@ func (r *Runner) failExecutionStep(ctx context.Context, exec ExecutionContext, s
 		return fmt.Errorf("record failed step %q: %w", step.Name, err)
 	}
 	return nil
+}
+
+// failExecutionStepBestEffort records a failed step on a path that must keep
+// the ORIGINAL error as the run result. A recorder failure is logged instead of
+// replacing that cause; callers that can propagate the recorder error use
+// failExecutionStep directly.
+func (r *Runner) failExecutionStepBestEffort(ctx context.Context, exec ExecutionContext, step ExecutionStep, cause error) {
+	if err := r.failExecutionStep(ctx, exec, step, cause); err != nil && r.log != nil {
+		r.log.Warn("record failed execution step", zap.String("step", step.Name), zap.Error(err))
+	}
 }
 
 func (r *Runner) attachInputAsset(ctx context.Context, exec ExecutionContext, stepID, assetID string, ordinal int) error {

@@ -259,7 +259,7 @@ func TestOrchestrator_PostRestart_ListRowCountMatchesDispatchSlice(t *testing.T)
 		`SELECT step_key, COUNT(*) FROM execution_steps WHERE job_id = ? GROUP BY step_key HAVING COUNT(*) > 1`,
 		jobID)
 	require.NoError(t, listErr)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	dupKeys := []string{}
 	for rows.Next() {
 		var k string

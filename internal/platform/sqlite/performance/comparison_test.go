@@ -13,7 +13,7 @@ func TestReportReaderCompareRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ddls := []string{
 		`CREATE TABLE performance_runs (run_id TEXT PRIMARY KEY,job_id TEXT,wall_ms INTEGER,started_at TEXT)`,
 		`CREATE TABLE benchmark_batches (batch_id TEXT PRIMARY KEY,run_id TEXT,worker_slot_count INTEGER)`,

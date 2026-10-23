@@ -187,7 +187,7 @@ func (f *Finalizer) CompleteWithArtifacts(
 	if err != nil {
 		return nil, fmt.Errorf("finalizer: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// 3. SELECT job with lease fence.
 	jobRow, err := f.selectJobForFinalization(ctx, tx, &req.Lease)

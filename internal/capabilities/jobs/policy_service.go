@@ -395,9 +395,10 @@ func convertMediaAsset(details *asset.Details) *resolvedAsset {
 	driveLink := ""
 	downloadLink := ""
 	for _, loc := range details.Locations {
-		if loc.LocationKind == asset.LocationKindLocal {
+		switch loc.LocationKind {
+		case asset.LocationKindLocal:
 			localPath = loc.URI
-		} else if loc.LocationKind == asset.LocationKindDrive {
+		case asset.LocationKindDrive:
 			driveLink = loc.AccessURL
 			downloadLink = loc.DownloadURL
 		}

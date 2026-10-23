@@ -43,22 +43,6 @@ const (
 	SourceSoundEffect SourceType = "sound_effect"
 )
 
-// validSourceTypes is the canonical set of known SourceType values.
-// The map lookup keeps the C2-C AST check deterministic rather than relying on
-// detection (godlike/06 SSOT co-located structural validation: the
-// enum declaration and its membership test live in the same file).
-var validSourceTypes = map[SourceType]struct{}{
-	SourceStock:       {},
-	SourceArtlist:     {},
-	SourceYoutubeClip: {},
-	SourceClipDrive:   {},
-	SourceImage:       {},
-	SourceGenerated:   {},
-	SourceSoundEffect: {},
-}
-
-// IsValid reports whether the SourceType matches a known constant.
-
 // ── Tree node (API response shape) ──────────────────────────────────
 
 // ── AssetStatus enum REMOVED ────────────────────────────────────────

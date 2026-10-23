@@ -109,7 +109,7 @@ func (e *singleGenerationExecutor) Execute(
 			zap.Any("source_text", gencore.SourceTextLogFields(item.Source.SourceText, processor.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
 	}
 
-	execCtx := context.WithValue(ctx, "script_job_id", j.ID)
+	execCtx := context.WithValue(ctx, domainScript.ContextKeyScriptJobID, j.ID)
 	result, err := e.one.Execute(execCtx, item, env.Preset, tracker)
 	if err != nil {
 		tracker.TrackStage(string(job.StageScript), item.Language, string(job.StageFailed), j.ID, err.Error())

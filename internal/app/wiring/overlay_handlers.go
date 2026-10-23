@@ -421,10 +421,9 @@ func trimZoomsToViewport(covered []int, plateWidth, plateHeight int, center, fro
 		endZoom := float64(covered[len(covered)-1])
 		ok := true
 		for index, zoom := range covered {
-			low, high := float64(zoom), float64(zoom)
-			if index == 0 {
-				low = startZoom
-			} else {
+			low := float64(zoom)
+			var high float64
+			if index > 0 {
 				low = (float64(covered[index-1])+float64(zoom))/2 - mapPlateFadeHalfBandZoom
 				if low < startZoom {
 					low = startZoom

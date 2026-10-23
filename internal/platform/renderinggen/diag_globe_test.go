@@ -70,11 +70,15 @@ func TestDiagGlobeOverlay(t *testing.T) {
 		if err != nil {
 			t.Logf("download artifact: %v", err)
 		} else {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			buf := &bytes.Buffer{}
-			io.Copy(buf, resp.Body)
-			os.WriteFile(out, buf.Bytes(), 0o644)
-			t.Logf("artifact saved to %s (%d bytes)", out, buf.Len())
+			if _, err := io.Copy(buf, resp.Body); err != nil {
+				t.Errorf("download artifact body: %v", err)
+			} else if err := os.WriteFile(out, buf.Bytes(), 0o644); err != nil {
+				t.Errorf("write artifact %s: %v", out, err)
+			} else {
+				t.Logf("artifact saved to %s (%d bytes)", out, buf.Len())
+			}
 		}
 	}
 }

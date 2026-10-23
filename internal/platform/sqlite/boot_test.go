@@ -81,7 +81,7 @@ func TestBoot_OnEmpty_Primary_AllExpectedTablesExist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSQLiteDB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	targetDir, err := filepath.Abs(migrationsDirFrom)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestBoot_OnEmpty_Observability_OnlyApiRequests(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSQLiteDB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	targetDir, err := filepath.Abs(migrationsDirFrom)
 	if err != nil {
@@ -192,7 +192,7 @@ func TestBoot_Populated_NoDoubleApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSQLiteDB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	targetDir, err := filepath.Abs(migrationsDirFrom)
 	if err != nil {
@@ -270,7 +270,7 @@ func TestBoot_HeaderScope_Respected(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSQLiteDB primary: %v", err)
 		}
-		defer primaryDB.Close()
+		defer func() { _ = primaryDB.Close() }()
 		if err := primaryDB.RunMigrations(log, migrationsDir, "primary"); err != nil {
 			t.Fatalf("primary RunMigrations: %v", err)
 		}
@@ -293,7 +293,7 @@ func TestBoot_HeaderScope_Respected(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSQLiteDB observability: %v", err)
 		}
-		defer observDB.Close()
+		defer func() { _ = observDB.Close() }()
 		if err := observDB.RunMigrations(log, migrationsDir, "observability"); err != nil {
 			t.Fatalf("observability RunMigrations: %v", err)
 		}
@@ -333,7 +333,7 @@ func TestBoot_HeaderScope_Respected(t *testing.T) {
 				t.Fatalf("RunMigrations %s: %v", scope, err)
 			}
 			assertTableExists(t, db, "both_with_multi_scope", true)
-			db.Close()
+			_ = db.Close()
 		}
 	})
 
@@ -360,7 +360,7 @@ func TestBoot_HeaderScope_Respected(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSQLiteDB primary: %v", err)
 		}
-		defer primaryDB.Close()
+		defer func() { _ = primaryDB.Close() }()
 		if err := primaryDB.RunMigrations(log, commentsDir, "primary"); err != nil {
 			t.Fatalf("primary RunMigrations: %v", err)
 		}
@@ -372,7 +372,7 @@ func TestBoot_HeaderScope_Respected(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSQLiteDB observability: %v", err)
 		}
-		defer observDB.Close()
+		defer func() { _ = observDB.Close() }()
 		if err := observDB.RunMigrations(log, commentsDir, "observability"); err != nil {
 			t.Fatalf("observability RunMigrations: %v", err)
 		}
@@ -405,7 +405,7 @@ func TestBoot_HeaderScope_Respected(t *testing.T) {
 				t.Fatalf("RunMigrations %s: %v", scope, err)
 			}
 			assertTableExists(t, db, "typo_scope_fallback", true)
-			db.Close()
+			_ = db.Close()
 		}
 	})
 }

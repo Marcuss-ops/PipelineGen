@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 )
 
@@ -31,7 +30,7 @@ func (s *slowSubmissionService) Submit(ctx context.Context, req opsapp.SubmitReq
 		return nil, ctx.Err()
 	case <-time.After(s.blockDuration):
 		return &opsapp.SubmitResult{
-			Operation: &domainops.Operation{JobID: "job-slow"},
+			Operation: &opsapp.Operation{JobID: "job-slow"},
 		}, nil
 	}
 }

@@ -123,7 +123,7 @@ func RunMattDamonAssetsAudit(args []string) error {
 	if err != nil {
 		return fmt.Errorf("audit-matt-damon-assets: open canonical DB read-only: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// MEDIA-SSOT: the asset inventory is a media_assets read. The operational
 	// SQLite handle above stays read-only for the image-domain membership
@@ -135,7 +135,7 @@ func RunMattDamonAssetsAudit(args []string) error {
 	if mediaDB == nil {
 		return errors.New("audit-matt-damon-assets: media PostgreSQL SSOT is required")
 	}
-	defer mediaDB.Close()
+	defer func() { _ = mediaDB.Close() }()
 	mediaSource := pgmedia.NewStructuredAssetIdentityReader(mediaDB)
 
 	report, err := auditMattDamonAssets(cli.CmdContext(), db, mediaSource, *expectedCount)
@@ -187,7 +187,7 @@ func auditMattDamonAssets(ctx context.Context, db *sql.DB, media mattDamonMediaS
 		return mattDamonAuditReport{}, err
 	}
 
-	catalogAssetIDs, catalogEvidence, unresolvedCatalogIDs, err := mattDamonCatalogAssets(ctx, db)
+	catalogAssetIDs, catalogEvidence, _, err := mattDamonCatalogAssets(ctx, db)
 	if err != nil {
 		return mattDamonAuditReport{}, err
 	}
@@ -224,7 +224,7 @@ func auditMattDamonAssets(ctx context.Context, db *sql.DB, media mattDamonMediaS
 	// Catalog materializations are structured membership evidence. Report only
 	// stale links that do not resolve to a live media_assets row; they must not
 	// inflate the asset count or become phantom duplicate members.
-	unresolvedCatalogIDs = sortedStringSetDifference(catalogAssetIDs, assetIDs)
+	unresolvedCatalogIDs := sortedStringSetDifference(catalogAssetIDs, assetIDs)
 
 	return mattDamonAuditReport{
 		SchemaVersion:       1,
@@ -275,7 +275,7 @@ func mattDamonSubjectTokens(ctx context.Context, db *sql.DB, identity entitycata
 	if err != nil {
 		return nil, fmt.Errorf("audit-matt-damon-assets: resolve structured subject: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		values := make([]any, len(selectColumns))
 		pointers := make([]any, len(selectColumns))
@@ -313,7 +313,7 @@ func mattDamonCatalogAssets(ctx context.Context, db *sql.DB) (map[string]struct{
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("audit-matt-damon-assets: read entity catalog materializations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var assetID string
 		var candidateID int64
@@ -348,7 +348,7 @@ func mattDamonSourceRows(ctx context.Context, db *sql.DB, assetIDs map[string]st
 	if err != nil {
 		return nil, fmt.Errorf("audit-matt-damon-assets: read source identities: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]mattDamonSourceRow, 0)
 	for rows.Next() {
 		var row mattDamonSourceRow

@@ -115,7 +115,7 @@ func (r *StockRenderer) Render(ctx context.Context, input stockpipeline.RenderRe
 	if muxAudio {
 		// Always remove the intermediate video, including when the render
 		// process fails before the mux step starts.
-		defer os.Remove(renderOutput)
+		defer func() { _ = os.Remove(renderOutput) }()
 	}
 	_, err = r.client.call(ctx, request{
 		Operation: OperationRenderStock, OutputPath: renderOutput, InputPaths: inputPaths,
@@ -180,7 +180,7 @@ func (r *StockRenderer) RenderCanonicalPlan(ctx context.Context, validated rende
 		videoOutput = plan.OutputPath + ".video.mp4"
 		// Always remove the intermediate video, including when the render
 		// process fails before the mux step starts.
-		defer os.Remove(videoOutput)
+		defer func() { _ = os.Remove(videoOutput) }()
 	}
 	_, err = r.client.call(ctx, request{
 		Operation:        OperationRenderStock,

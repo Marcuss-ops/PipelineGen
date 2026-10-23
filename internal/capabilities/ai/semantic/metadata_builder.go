@@ -122,10 +122,8 @@ func AssetTypeForMediaType(mediaType string) string {
 // `if len > 0` guard rather than a blanket copy.
 func BuildAssetMetadata(input AssetSemanticInput, existing map[string]any) map[string]any {
 	meta := make(map[string]any)
-	if existing != nil {
-		for k, v := range existing {
-			meta[k] = v
-		}
+	for k, v := range existing {
+		meta[k] = v
 	}
 	if input.AssetID != "" {
 		meta["asset_id"] = input.AssetID

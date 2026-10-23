@@ -33,42 +33,6 @@ import (
 	"strings"
 )
 
-// ── Audit report types ───────────────────────────────────────────────────
-
-type auditRecord struct {
-	SchemaVersion int             `json:"schema_version"`
-	Mode          string          `json:"mode"`
-	GeneratedAt   string          `json:"generated_at"`
-	NoDeletions   bool            `json:"no_deletions_performed"`
-	Summary       auditSummary    `json:"summary"`
-	Tables        []auditTableRow `json:"tables"`
-}
-
-type auditSummary struct {
-	TotalRows          int `json:"total_rows"`
-	Live               int `json:"live"`
-	StaleButReferenced int `json:"stale_but_referenced"`
-	Orphan             int `json:"orphan"`
-	Duplicate          int `json:"duplicate"`
-	TerminalHistory    int `json:"terminal_history"`
-	CacheExpired       int `json:"cache_expired"`
-	BrokenReference    int `json:"broken_reference"`
-}
-
-type auditTableRow struct {
-	Table              string `json:"table"`
-	RootType           string `json:"root_type"`
-	TotalRows          int    `json:"total_rows"`
-	Live               int    `json:"live"`
-	StaleButReferenced int    `json:"stale_but_referenced"`
-	Orphan             int    `json:"orphan"`
-	Duplicate          int    `json:"duplicate"`
-	TerminalHistory    int    `json:"terminal_history"`
-	CacheExpired       int    `json:"cache_expired"`
-	BrokenReference    int    `json:"broken_reference"`
-	Error              string `json:"error,omitempty"`
-}
-
 // ── CLI entry point ──────────────────────────────────────────────────────
 
 // reportTableFailures lists every table whose classification recorded an

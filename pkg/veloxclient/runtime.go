@@ -406,7 +406,7 @@ func (c *Client) UploadVideoClip(ctx context.Context, meta VideoUploadMeta, file
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrServer, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("%w: read upload body: %v", ErrServer, err)

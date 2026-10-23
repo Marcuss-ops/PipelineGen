@@ -40,13 +40,13 @@ import "testing"
 // alias ensures the canary job's PublishResult.Action field continues
 // to compile post-P2.3 without any caller-side changes.
 func TestPublishAction_To_UploadOutcome_Alias(t *testing.T) {
-	var publish PublishAction = UploadOutcomeCreated
+	var publish = UploadOutcomeCreated
 	if string(publish) != "created" {
 		t.Fatalf("back-compat alias round-trip mismatch: got %q, want %q", publish, "created")
 	}
 	// Round-trip both ways — Go type alias identity makes this a noop
 	// at runtime but exercises the alias surface at compile time.
-	var outcome UploadOutcome = PublishActionCreated
+	var outcome = PublishActionCreated
 	if outcome != UploadOutcomeCreated {
 		t.Fatalf("PublishActionCreated alias not equal to UploadOutcomeCreated")
 	}
@@ -87,8 +87,9 @@ func TestUploadOutcomeConstants_Canonical5(t *testing.T) {
 	// canonical closed-set (e.g. switch-statement exhaustiveness checks,
 	// JSON-validator dynamic enumeration). If it doesn't exist yet, this
 	// assertion is forward-pointer to a future P2.x wave.
-	if vals := CanonicalUploadOutcomeValues(); len(vals) != 5 {
-		t.Errorf("CanonicalUploadOutcomeValues: want 5 values, got %d", len(vals))
+	vals := CanonicalUploadOutcomeValues()
+	if vals != [5]UploadOutcome{UploadOutcomeUnknown, UploadOutcomeCreated, UploadOutcomeUpdated, UploadOutcomeSkipped, UploadOutcomeRenamed} {
+		t.Errorf("CanonicalUploadOutcomeValues: unexpected closed set %v", vals)
 	}
 }
 

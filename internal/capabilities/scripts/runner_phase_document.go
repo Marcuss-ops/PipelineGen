@@ -55,13 +55,13 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 	documentSkipped := stageSkipped(resumeIdx, StagePublishingDocuments) || r.docPublisher == nil || !docsEnabled || len(docsLangs) == 0
 	if !documentSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StagePublishingDocuments); err != nil {
-			r.failExecutionStep(ctx, exec, documentStep, err)
+			r.failExecutionStepBestEffort(ctx, exec, documentStep, err)
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 			return false
 		}
 		if r.documentRenderer == nil {
 			cause := fmt.Errorf("canonical document renderer is not configured")
-			r.failExecutionStep(ctx, exec, documentStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, documentStep, cause)
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 			return false
 		}
@@ -158,7 +158,7 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			return group.Wait()
 		}); prepareErr != nil {
 			cause := fmt.Errorf("document prepare: %w", prepareErr)
-			r.failExecutionStep(ctx, exec, documentStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, documentStep, cause)
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 			return false
 		}
@@ -298,7 +298,7 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			return nil
 		}); publishErr != nil {
 			cause := fmt.Errorf("document publish: %w", publishErr)
-			r.failExecutionStep(ctx, exec, documentStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, documentStep, cause)
 			r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 			return false
 		}
@@ -312,7 +312,7 @@ func (r *Runner) runDocumentPhase(ctx context.Context, runID string, req Generat
 			return false
 		}
 	} else if err := r.completeExecutionStep(ctx, exec, documentStep); err != nil {
-		r.failExecutionStep(ctx, exec, documentStep, err)
+		r.failExecutionStepBestEffort(ctx, exec, documentStep, err)
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 		return false
 	}

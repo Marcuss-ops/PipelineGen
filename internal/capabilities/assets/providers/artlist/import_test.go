@@ -118,7 +118,7 @@ func TestStringSliceFromMetadata(t *testing.T) {
 func TestImportClip_DownloadPersistsMediaAsset(t *testing.T) {
 	ctx := context.Background()
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cfg := &config.Config{
 		Storage: config.StorageConfig{DataDir: t.TempDir()},

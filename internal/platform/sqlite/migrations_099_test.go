@@ -46,7 +46,7 @@ func TestMigrations_099_QdrantAssetColumnsPresent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PRAGMA table_info(media_assets): %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	seen := make(map[string]struct{}, 64)
 	for rows.Next() {
 		var cid, notnull, pk int

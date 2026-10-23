@@ -121,7 +121,7 @@ func sqliteDSNOf(t *testing.T, db *sql.DB) string {
 		var seq int
 		var name, path string
 		if err := rows.Scan(&seq, &name, &path); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			t.Fatalf("scan pragma database_list: %v", err)
 		}
 		if name == "main" && path != "" {
@@ -129,10 +129,10 @@ func sqliteDSNOf(t *testing.T, db *sql.DB) string {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		t.Fatalf("iterate pragma database_list: %v", err)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if file == "" {
 		t.Fatal("could not resolve sqlite test db file path")
 	}

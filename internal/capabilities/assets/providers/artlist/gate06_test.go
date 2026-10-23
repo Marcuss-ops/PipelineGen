@@ -84,7 +84,7 @@ func TestGate06_QdrantIndexStateAfterRun(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -136,7 +136,7 @@ func TestGate06_QdrantIndexStateAfterRun(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "qdrantidx",
@@ -223,7 +223,7 @@ func TestGate06_QdrantIndexStatePerClip(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -274,7 +274,7 @@ func TestGate06_QdrantIndexStatePerClip(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "perclip",

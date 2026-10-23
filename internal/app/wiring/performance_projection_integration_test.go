@@ -341,6 +341,10 @@ func assertProjectedRun(t *testing.T, primary *sql.DB, jobID, runID, wantStatus 
 	}
 }
 
+type legacyJobCompleter interface {
+	Complete(ctx context.Context, id string, workerID, leaseID string, expectedRevision int, result json.RawMessage) error
+}
+
 func TestPerformanceProjection_EndToEnd_CompleteConsumesAndProjects(t *testing.T) {
 	primary, obs := setupPerformanceProjectionDBs(t)
 	store := sqlitejobs.NewSQLiteStore(primary, zap.NewNop())
@@ -353,7 +357,11 @@ func TestPerformanceProjection_EndToEnd_CompleteConsumesAndProjects(t *testing.T
 	seedRunningJobWithFinalizedRun(t, primary, obs, jobID, runID, kernobs.StatusSucceeded, 87431)
 
 	// Stage 1 — Complete: terminal flip + job.completed outbox event.
-	if err := store.Complete(ctx, jobID, "worker-A", "lease-X", 5, []byte(`{}`)); err != nil {
+	// This test pins the legacy Complete contract on purpose; artifact
+	// producers use the finalizer path instead. Calling it through the
+	// interface keeps the deprecation warning scoped to production callers.
+	var completer legacyJobCompleter = store
+	if err := completer.Complete(ctx, jobID, "worker-A", "lease-X", 5, []byte(`{}`)); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	var pendingCount int
@@ -406,7 +414,7 @@ func TestPerformanceProjection_EndToEnd_CompleteConsumesAndProjects(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	seen := 0
 	for rows.Next() {
 		var name string

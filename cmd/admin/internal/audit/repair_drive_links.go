@@ -427,7 +427,7 @@ func RunRepairDriveLinks(args []string) error {
 			return fmt.Errorf("repair requested Google Doc refresh but no provenance documents were found")
 		}
 		if refreshed != expectedDocs {
-			return fmt.Errorf("Google Doc refresh incomplete: refreshed %d of %d", refreshed, expectedDocs)
+			return fmt.Errorf("google-doc refresh incomplete: refreshed %d of %d", refreshed, expectedDocs)
 		}
 		report.DocumentsRefreshed = refreshed
 	}

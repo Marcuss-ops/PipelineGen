@@ -64,7 +64,7 @@ const searchModeForcedScanScope = "internal/"
 // Mode assignment to SearchModeANN outside the exempt zones.
 func ScanSearchModeForcedBan(root string, _ *policy.Policy, r *report.Report) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -101,7 +101,9 @@ func ScanSearchModeForcedBan(root string, _ *policy.Policy, r *report.Report) {
 		}
 		scanSearchModeForcedBanFile(path, relSlash, r)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, "percheck_searchmode_forced_ban scan "+root+": "+err.Error())
+	}
 }
 
 func scanSearchModeForcedBanFile(path, relPath string, r *report.Report) {
@@ -109,7 +111,7 @@ func scanSearchModeForcedBanFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

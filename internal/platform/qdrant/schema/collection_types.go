@@ -136,7 +136,7 @@ func ValidateEmergencyCollection(name string) error {
 		return fmt.Errorf("emergency collection %q is an alias; pass the physical collection name", name)
 	}
 	for _, r := range name {
-		if unicode.IsSpace(r) || !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' || r == '.') {
+		if unicode.IsSpace(r) || (!unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-' && r != '.') {
 			return fmt.Errorf("emergency collection %q contains an unsafe character", name)
 		}
 	}

@@ -26,7 +26,6 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
@@ -181,7 +180,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	// /api/jobs/:id/full is owned by the Jobs module.
 	var runRepo scriptgen.RunRepository
 	if root.ObservabilityDB != nil {
-		repo, err := scriptgenrepo.NewSQLiteRunRepository(root.ObservabilityDB.DB, log)
+		repo, err := sqlitescripts.NewSQLiteRunRepository(root.ObservabilityDB.DB, log)
 		if err != nil {
 			return fmt.Errorf("wireScriptFlow: build script generation run repository: %w", err)
 		}

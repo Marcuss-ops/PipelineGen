@@ -40,7 +40,6 @@ func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
 	err := youtubeapp.ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.Error(t, err, "ValidateServiceDepsFromSubBundles should reject typed-nil SearchRunner")
 	assert.True(t, portutil.IsNilPort(runner), "precondition: runner should be typed-nil")
-	assert.True(t, runner != nil, "precondition: typed-nil runner should != nil (Go semantics)")
 }
 
 // TestYouTubeComposition_ValidDepsBuildSuccessfully verifies that a fully

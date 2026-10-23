@@ -305,6 +305,17 @@ const (
 	// reported in the canonical clip report and projected onto the run —
 	// never a parallel timing family. gpu_copy / gpu_readback carry Bytes,
 	// not a fake duration.
+	// Chronon dynamic-map phase operations. The dynamic map renderer reports
+	// its own phases in the chronon.dynamic-map-telemetry.v1 summary (tile
+	// prefetch / plate prepare / render+encode wall); PipelineGen projects
+	// them onto the run exactly like the clip render phases above — the
+	// projection records the owner-measured duration and never re-times the
+	// renderer. For map items "encode" is the renderer's render+encode wall
+	// (render_encode_wall_s), the same wall the worker log prints as
+	// encode_wall_s.
+	OperationPrefetch OperationName = "prefetch"
+	OperationPrepare  OperationName = "prepare"
+
 	OperationRendererStartup OperationName = "renderer_startup"
 	OperationDecode          OperationName = "decode"
 	OperationComposite       OperationName = "composite"
@@ -340,6 +351,7 @@ func AllOperations() []OperationName {
 		OperationEnrich, OperationVerify,
 		OperationMaterialize, OperationPlan, OperationRender, OperationHash,
 		OperationObjectStoreUpload, OperationDrivePublish,
+		OperationPrefetch, OperationPrepare,
 		OperationRendererStartup, OperationDecode, OperationComposite,
 		OperationSubtitleRaster, OperationWatermarkRaster,
 		OperationFrameConversion, OperationEncode, OperationAudioMux,

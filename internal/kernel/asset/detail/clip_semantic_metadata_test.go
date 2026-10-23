@@ -363,7 +363,7 @@ func TestAsSearchTextInput_Stock_AllZeroValues_NoAdditional(t *testing.T) {
 	sti := m.AsSearchTextInput("stock")
 	// Event="", Round=0, Subject="", StartSec=0, EndSec=0
 	// → Additional should be nil or empty
-	if sti.Additional != nil && len(sti.Additional) > 0 {
+	if len(sti.Additional) > 0 {
 		t.Errorf("Additional should be nil/empty for all-zero stock fields, got %v", sti.Additional)
 	}
 }

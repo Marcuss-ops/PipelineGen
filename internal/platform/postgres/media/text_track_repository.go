@@ -79,7 +79,7 @@ func (r *TextTrackRepositoryPG) UpsertBatch(ctx context.Context, tracks []detail
 	if err != nil {
 		return fmt.Errorf("postgres text tracks: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, t := range tracks {
 		if t.AssetID == "" || t.LanguageCode == "" || t.TextKind == "" {
 			return errors.New("postgres text tracks: asset, language and kind are required")
@@ -148,7 +148,7 @@ func (r *TextTrackRepositoryPG) cues(ctx context.Context, id int64) ([]detail.Ti
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []detail.TimedCue
 	for rows.Next() {
 		var c detail.TimedCue
@@ -164,7 +164,7 @@ func (r *TextTrackRepositoryPG) ListByAsset(ctx context.Context, assetID string)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]detail.TextTrack, 0)
 	for rows.Next() {
 		t, e := scanPGTextTrack(rows)
@@ -180,7 +180,7 @@ func (r *TextTrackRepositoryPG) ListReadyLanguages(ctx context.Context, assetID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []string{}
 	for rows.Next() {
 		var v string
@@ -203,7 +203,7 @@ func (r *TextTrackRepositoryPG) InsertTranslationWithAuditPredecessor(ctx contex
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	var id int64
 	if err = tx.QueryRowContext(ctx, `SELECT id FROM asset_text_tracks WHERE asset_id=$1 AND language_code=$2 AND text_kind=$3 AND translation_key=$4 AND is_current=1`, t.AssetID, t.LanguageCode, string(t.TextKind), t.TranslationKey).Scan(&id); err == nil {
 		return tx.Commit()

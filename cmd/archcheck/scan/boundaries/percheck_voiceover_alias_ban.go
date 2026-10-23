@@ -213,7 +213,7 @@ var retiredVoiceoverSkipFiles = map[string]bool{}
 // entry point keeps a (now unnamed) policy slot for signature uniformity.
 func scanVoiceoverAliasBanOne(root, literal, note string, r *report.Report, productionOnly bool) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -252,7 +252,9 @@ func scanVoiceoverAliasBanOne(root, literal, note string, r *report.Report, prod
 		// Production-code violation detection (one file at a time).
 		scanVoiceoverAliasBanFile(path, root, literal, note, r, productionOnly)
 		return nil
-	})
+	}); walkErr != nil {
+		r.Warnings = append(r.Warnings, "voiceover-alias scan "+root+": "+walkErr.Error())
+	}
 }
 
 // ScanVoiceoverAliasBan is the public entry point. The policy slot is intentionally
@@ -281,7 +283,7 @@ func scanVoiceoverAliasBanFile(path, root, literal, note string, r *report.Repor
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

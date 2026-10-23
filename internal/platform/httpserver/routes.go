@@ -2,7 +2,6 @@
 package httpserver
 
 import (
-	"context"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -70,8 +69,6 @@ type Router struct {
 	// have not provisioned an m2m_clients row keep working).
 	m2mJobsHandler  interface{ RegisterRoutes(*gin.RouterGroup) }
 	m2mMediaHandler interface{ RegisterRoutes(*gin.RouterGroup) }
-	m2mSec          mwports.M2MSecurityPort
-	ctx             context.Context
 	healthSvc       any                      // *systemhealth.Service; any keeps the router infra-clean.
 	readyChecker    any                      // *systemhealth.ReadyChecker; any keeps the router infra-clean.
 	qdrantHealth    any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.

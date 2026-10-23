@@ -45,16 +45,16 @@ func RunMigrateLegacyCache(args []string) error {
 	if err != nil {
 		return fmt.Errorf("migrate-legacy-cache: open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	sdb := dbSet.Primary
 
 	// Read all exact-cache rows.
-	rows, err := sdb.DB.QueryContext(ctx,
+	rows, err := sdb.QueryContext(ctx,
 		`SELECT id, output_text FROM gemma_script_outputs`)
 	if err != nil {
 		return fmt.Errorf("migrate-legacy-cache: query rows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type migrationResult struct {
 		ID         string `json:"id"`
@@ -115,7 +115,7 @@ func RunMigrateLegacyCache(args []string) error {
 		beforeType := classifyLegacyShape([]byte(outputText))
 
 		if !*dryRun {
-			_, updateErr := sdb.DB.ExecContext(ctx,
+			_, updateErr := sdb.ExecContext(ctx,
 				`UPDATE gemma_script_outputs SET output_text = ?, updated_at = datetime('now') WHERE id = ?`,
 				v1JSONStr, id,
 			)

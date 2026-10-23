@@ -157,16 +157,16 @@ func (r *SQLiteStore) claimNextScoped(ctx context.Context, workerID string, leas
 	for rows.Next() {
 		candidate := &job.Job{}
 		if scanErr := scanJobColumns(rows, candidate); scanErr != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, fmt.Errorf("ClaimNextMatching: scan: %w", scanErr)
 		}
 		candidates = append(candidates, candidate)
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
-		rows.Close()
+		_ = rows.Close()
 		return nil, fmt.Errorf("ClaimNextMatching: rows: %w", rowsErr)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	for _, candidate := range candidates {
 		if hydrateErr := r.hydrateLatestPayload(ctx, candidate); hydrateErr != nil {
@@ -214,7 +214,7 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 	if err != nil {
 		return nil, fmt.Errorf("start: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'RUNNING', started_at = ?,
 		 lease_expiry = ?, lease_id = ?, worker_id = ?,
@@ -392,12 +392,12 @@ func (r *SQLiteStore) RequeueExpiredLeases(ctx context.Context, now time.Time, l
 	for rows.Next() {
 		var item reqItem
 		if err := rows.Scan(&item.jobID, &item.retryCount, &item.maxRetries, &item.revision); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, fmt.Errorf("requeueExpired: scan: %w", err)
 		}
 		items = append(items, item)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	var results []RequeueResult
 	for _, item := range items {
@@ -412,7 +412,7 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 	if err != nil {
 		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("begin tx: %v", err)}
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Determine current status.
 	var currentStatus job.Status

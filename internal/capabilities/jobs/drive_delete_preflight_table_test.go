@@ -62,7 +62,7 @@ import (
 //	    confirmation hop that IndexDeleteHandler's Drive-block guard
 //	    consults on entry.
 //	terminal_lifecycle_state — Handler returns non-nil wrapped with
-//	    driveLifecycleTerminalErr. State ∉ any of the 5 deletion-chain
+//	    errDriveLifecycleTerminal. State ∉ any of the 5 deletion-chain
 //	    states (e.g. {ACTIVE, STAGING, PROCESSING, ERROR}).
 //	empty_fileid_path — Handler returns nil; writer 1; drive 0;
 //	    advancer 1. State = DELETE_REQUESTED with no Drive metadata.
@@ -196,8 +196,8 @@ func TestDriveDeleteHandler_PreflightIdempotencyTable(t *testing.T) {
 				if err == nil {
 					t.Fatalf("terminal: Handle returned nil, want wrapped terminal error")
 				}
-				if !errors.Is(err, driveLifecycleTerminalErr) {
-					t.Fatalf("terminal: error %v must wrap %v", err, driveLifecycleTerminalErr)
+				if !errors.Is(err, errDriveLifecycleTerminal) {
+					t.Fatalf("terminal: error %v must wrap %v", err, errDriveLifecycleTerminal)
 				}
 				if len(adv.calls) != 0 {
 					t.Fatalf("terminal: advancer must NOT fire; got %d calls", len(adv.calls))

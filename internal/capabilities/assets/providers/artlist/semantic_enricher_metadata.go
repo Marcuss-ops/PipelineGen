@@ -84,7 +84,7 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 		if body == nil {
 			return fmt.Errorf("semantic_enricher: download existing metadata.json returned nil body")
 		}
-		defer body.Close()
+		defer func() { _ = body.Close() }()
 		var raw []map[string]any
 		if decErr := json.NewDecoder(body).Decode(&raw); decErr != nil {
 			// Data-loss guard: never trash + re-publish a malformed
@@ -126,7 +126,7 @@ func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, fol
 		e.log.Warn("failed to write metadata json temp file", zap.Error(err))
 		return fmt.Errorf("semantic_enricher: write metadata json temp file: %w", err)
 	}
-	defer os.Remove(metaTempPath)
+	defer func() { _ = os.Remove(metaTempPath) }()
 
 	// F2.11 (June 2026): route the metadata.json upload through the
 	// canonical delivery.Publisher.Publish (the F2.11 successor to the

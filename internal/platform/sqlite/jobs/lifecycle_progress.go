@@ -40,7 +40,7 @@ func (r *SQLiteStore) setProgressData(ctx context.Context, jobID string, progres
 	if err != nil {
 		return fmt.Errorf("setProgress: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().UTC()
 	result, err := tx.ExecContext(ctx, `UPDATE jobs SET progress = ?, updated_at = ? WHERE id = ?`, progress, timeutil.FormatRFC3339(now), jobID)
@@ -98,13 +98,13 @@ func (r *SQLiteStore) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff
 	for rows.Next() {
 		var item staleJob
 		if err := rows.Scan(&item.id, &item.revision); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, fmt.Errorf("markRunningJobsOlderThanFailed: scan: %w", err)
 		}
 		stale = append(stale, item)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return 0, fmt.Errorf("markRunningJobsOlderThanFailed: rows: %w", err)
 	}
 	if err := rows.Close(); err != nil {
@@ -118,7 +118,7 @@ func (r *SQLiteStore) MarkRunningJobsOlderThanFailed(ctx context.Context, cutoff
 	if err != nil {
 		return 0, fmt.Errorf("markRunningJobsOlderThanFailed: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	changed := 0
 	for _, item := range stale {
 		res, err := tx.ExecContext(ctx,
@@ -230,7 +230,7 @@ func (r *SQLiteStore) AddEvent(ctx context.Context, id string, eventType, messag
 	if err != nil {
 		return fmt.Errorf("addEvent: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UTC()
 	if err := insertJobTimelineEvent(ctx, tx, id, eventType, message, data, now); err != nil {
 		return fmt.Errorf("addEvent: %w", err)

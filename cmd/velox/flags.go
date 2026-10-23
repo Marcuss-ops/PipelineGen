@@ -9,7 +9,7 @@ import (
 
 // usage writes the CLI help text.
 func usage(w *os.File) {
-	fmt.Fprint(w, `velox — PipelineGen operations CLI
+	_, _ = fmt.Fprint(w, `velox — PipelineGen operations CLI
 
 Usage:
   velox submit   <job-alias|--path PATH> --key PROJECT --payload FILE [--m2m] [--json]
@@ -44,7 +44,6 @@ type flagSet struct {
 	pos   []string
 	flags map[string]string
 	bools map[string]bool
-	json  bool
 }
 
 // parseFlags reads `-name value`, `--name value`, `--name=value` and bare

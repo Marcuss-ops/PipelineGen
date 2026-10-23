@@ -315,6 +315,9 @@ type BulletCandidate struct {
 	SentenceIndex int
 	Start         int
 	End           int
+	// Score is the semantic engine's grounded salience; it travels to
+	// Phrase Impact so candidate ranking uses one shared priority function.
+	Score float64
 }
 
 // SetSceneSemanticAnalyzer wires the unified semantic source. A batch-capable

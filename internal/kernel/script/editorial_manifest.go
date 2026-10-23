@@ -73,6 +73,11 @@ type SemanticBulletSpan struct {
 	StartByte int    `json:"start_byte"`
 	EndByte   int    `json:"end_byte"`
 	Text      string `json:"text"`
+	// Score is the semantic engine's grounded salience for this sentence.
+	// Phrase Impact combines it with its embedding importance through the
+	// shared editorial_priority ranking. Nil keeps the historical
+	// importance-only order for spans that carry no salience.
+	Score *float64 `json:"score,omitempty"`
 }
 
 // EditorialFingerprintInput covers everything that influences the result.

@@ -121,7 +121,6 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 				if parseErr == nil && retrySkipped == 0 && speechBoundariesFitDuration(retryBoundaries, retryRes.Duration) {
 					res = retryRes
 					boundaries = retryBoundaries
-					skippedCorrupt = 0
 					retryValid = true
 				}
 			}
@@ -199,7 +198,7 @@ func parseEdgeWordBoundaries(metadataPath string) ([]voiceover.RawSpeechBoundary
 	if err != nil {
 		return nil, 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var boundaries []voiceover.RawSpeechBoundary
 	skippedCorrupt := 0

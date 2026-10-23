@@ -79,7 +79,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open %s: %v", dbPath, err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	_, err = db.Exec(`
 		CREATE TABLE media_assets (
@@ -137,7 +137,7 @@ func TestMigration115(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PRAGMA table_info: %v", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		seen := map[string]string{}
 		for rows.Next() {
 			var cid, notnull, pk int

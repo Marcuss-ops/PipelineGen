@@ -21,9 +21,7 @@ import (
 
 // blockingChecker blocks until ctx is done, then returns ok=false.
 // Used for context-timeout tests.
-type blockingChecker struct {
-	blockCh chan struct{}
-}
+type blockingChecker struct{}
 
 func (b *blockingChecker) CheckDB(ctx context.Context) systemhealth.CheckResult {
 	<-ctx.Done()

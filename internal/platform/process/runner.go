@@ -303,7 +303,7 @@ func looksLikePythonScript(name string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	buf := make([]byte, 128)
 	n, _ := io.ReadFull(f, buf)

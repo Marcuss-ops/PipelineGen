@@ -139,7 +139,7 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAt
 	if err != nil {
 		return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// ── Step 1: read jobs row for CAS fence + retry-limit + DLQ data ───
 	var (

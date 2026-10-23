@@ -19,7 +19,7 @@ func newContentLinkDB(t *testing.T) (*sql.DB, *Ledger) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	_, err = db.Exec(`
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,

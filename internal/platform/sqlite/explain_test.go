@@ -54,7 +54,7 @@ func TestExplainQueryPlan_ReturnsRows(t *testing.T) {
 
 	pool, err := NewDualPool(ctx, tmpFile, 2)
 	require.NoError(t, err)
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	_, err = pool.Writer.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS jobs (

@@ -39,7 +39,7 @@ func (a *YTDLPSubtitleAdapter) fetchTimedTranscript(ctx context.Context, videoUR
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	subArgs := a.buildSubtitleArgs(videoURL, filepath.Join(tempDir, "subs"))
 	subCmd := exec.CommandContext(ctx, a.ytdlp.Path(), subArgs...)

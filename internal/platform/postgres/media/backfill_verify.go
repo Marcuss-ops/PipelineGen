@@ -79,7 +79,7 @@ func compareRowsByKey(ctx context.Context, sqliteDB, pg *sql.DB, table, keyCols 
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		out := map[string]map[string]any{}
 		for rows.Next() {
 			vals := make([]any, len(names))

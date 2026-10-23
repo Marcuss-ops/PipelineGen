@@ -6,7 +6,6 @@ import (
 	"time"
 
 	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
-	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
@@ -67,7 +66,7 @@ type MediaIngestBundle struct {
 
 // MediaIngestWiring holds the Mediaingest module
 type MediaIngestWiring struct {
-	Handler *assetsapi.MediaingestHandler
+	Handler *assets.MediaingestHandler
 	Module  module.Module
 	Service *ingest.Service
 }
@@ -158,7 +157,7 @@ func WireMediaIngest(cfg *config.Config, log *zap.Logger, bundle *MediaIngestBun
 			// live state-machine here.
 		}, nil /* enrichState: nil for EXPAND phase */)
 	}
-	handler := assetsapi.NewMediaingestHandler(svc, idempotencyMiddleware)
+	handler := assets.NewMediaingestHandler(svc, idempotencyMiddleware)
 	mod := module.NewRouteModule(
 		"media-ingest",
 		func() bool { return handler != nil },

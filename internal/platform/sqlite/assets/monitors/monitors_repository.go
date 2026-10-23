@@ -75,7 +75,7 @@ func (r *MonitorsRepository) ListDue(ctx context.Context, sourceType string, lim
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var gathered []MonitoredSourceRow
 	for rows.Next() {

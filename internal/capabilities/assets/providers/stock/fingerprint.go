@@ -145,7 +145,7 @@ func NewSampler(seedHex string) *Sampler {
 		fnvOffset uint64 = 14695981039346656037
 		fnvPrime  uint64 = 1099511628211
 	)
-	var h uint64 = fnvOffset
+	var h = fnvOffset
 	for i := 0; i < len(seedHex) && i < 64; i++ {
 		h ^= uint64(seedHex[i])
 		h *= fnvPrime

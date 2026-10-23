@@ -135,7 +135,7 @@ func TestMetadataFetcherAdapter_PreservesThumbnailsArray(t *testing.T) {
 
 	// Compile-time assertion: the raw anonymous-struct fields match
 	// the DTO type GetVideoMetadata now maps to.
-	var _ []youtubedto.VideoThumbnail = []youtubedto.VideoThumbnail{
+	var _ = []youtubedto.VideoThumbnail{
 		{URL: raw.Thumbnails[0].URL, Width: raw.Thumbnails[0].Width, Height: raw.Thumbnails[0].Height},
 		{URL: raw.Thumbnails[1].URL, Width: raw.Thumbnails[1].Width, Height: raw.Thumbnails[1].Height},
 		{URL: raw.Thumbnails[2].URL, Width: raw.Thumbnails[2].Width, Height: raw.Thumbnails[2].Height},

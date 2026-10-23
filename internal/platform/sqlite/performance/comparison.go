@@ -38,7 +38,7 @@ func (r *ReportReader) CompareRuns(ctx context.Context, runIDs []string) ([]capp
 	if err != nil {
 		return nil, fmt.Errorf("performance comparison: query runs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]capperformance.RunComparison, 0, len(runIDs))
 	for rows.Next() {
 		var c capperformance.RunComparison

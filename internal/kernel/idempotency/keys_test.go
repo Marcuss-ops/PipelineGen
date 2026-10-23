@@ -303,7 +303,7 @@ func TestKeys_DeterministicAcross1000Calls(t *testing.T) {
 // MUST be value-identity (not constructed via fmt.Errorf %w)
 // so callers can branch on them.
 func TestErrEmptyProvider_Type(t *testing.T) {
-	var err error = ErrEmptyProvider
+	var err = ErrEmptyProvider
 	if !errors.Is(err, ErrEmptyProvider) {
 		t.Errorf("ErrEmptyProvider must be a typed sentinel (errors.Is identity)")
 	}
@@ -321,7 +321,7 @@ func TestErrEmptyProvider_Type(t *testing.T) {
 // `if sha256File == ""` check must surface a useful
 // diagnostic, not just "empty input".
 func TestErrEmptySHA256_HintsJobKey(t *testing.T) {
-	var err error = ErrEmptySHA256
+	var err = ErrEmptySHA256
 	assert.ErrorIs(t, err, ErrEmptySHA256)
 	assert.Contains(t, err.Error(), "JobKey",
 		"err message must hint that JobKey is the pre-download alternative")
@@ -663,7 +663,7 @@ func TestBuildKey_DoesNotPanicOnMarshalableSubset(t *testing.T) {
 // (errors.Is dispatchable). Callers branch on errors.Is so the
 // sentinel MUST be value-identity, not fmt.Errorf %w.
 func TestErrInvalidRunForDedup_Type(t *testing.T) {
-	var err error = ErrInvalidRunForDedup
+	var err = ErrInvalidRunForDedup
 	if !errors.Is(err, ErrInvalidRunForDedup) {
 		t.Errorf("ErrInvalidRunForDedup must be a typed sentinel (errors.Is identity)")
 	}

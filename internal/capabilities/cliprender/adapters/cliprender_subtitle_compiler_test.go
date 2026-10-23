@@ -173,10 +173,19 @@ func assTimestampMs(t *testing.T, raw string) int64 {
 		t.Fatalf("bad ASS timestamp %q", raw)
 	}
 	var h, m, s, cs int64
-	fmt.Sscanf(parts[0], "%d", &h)
-	fmt.Sscanf(parts[1], "%d", &m)
-	fmt.Sscanf(sec[0], "%d", &s)
-	fmt.Sscanf(sec[1], "%d", &cs)
+	for _, part := range []struct {
+		dst *int64
+		raw string
+	}{
+		{&h, parts[0]},
+		{&m, parts[1]},
+		{&s, sec[0]},
+		{&cs, sec[1]},
+	} {
+		if _, err := fmt.Sscanf(part.raw, "%d", part.dst); err != nil {
+			t.Fatalf("bad ASS timestamp segment %q in %q: %v", part.raw, raw, err)
+		}
+	}
 	return ((h*60+m)*60+s)*1000 + cs*10
 }
 

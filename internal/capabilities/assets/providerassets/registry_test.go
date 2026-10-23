@@ -45,7 +45,9 @@ func TestRegistry_RegisterNil(t *testing.T) {
 
 func TestRegistry_RegisterDuplicate(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&fakeAdapter{name: "artlist"})
+	if err := r.Register(&fakeAdapter{name: "artlist"}); err != nil {
+		t.Fatalf("initial Register failed: %v", err)
+	}
 	if err := r.Register(&fakeAdapter{name: "artlist"}); !errors.Is(err, ErrAlreadyRegistered) {
 		t.Fatalf("expected ErrAlreadyRegistered, got %v", err)
 	}
@@ -60,7 +62,9 @@ func TestRegistry_RegisterEmptyName(t *testing.T) {
 
 func TestRegistry_Freeze(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&fakeAdapter{name: "artlist"})
+	if err := r.Register(&fakeAdapter{name: "artlist"}); err != nil {
+		t.Fatalf("initial Register failed: %v", err)
+	}
 	r.Freeze()
 	if !r.IsFrozen() {
 		t.Fatal("expected registry to be frozen")
@@ -72,8 +76,12 @@ func TestRegistry_Freeze(t *testing.T) {
 
 func TestRegistry_AllAndNames(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&fakeAdapter{name: "pexels"})
-	r.Register(&fakeAdapter{name: "artlist"})
+	if err := r.Register(&fakeAdapter{name: "pexels"}); err != nil {
+		t.Fatalf("register pexels: %v", err)
+	}
+	if err := r.Register(&fakeAdapter{name: "artlist"}); err != nil {
+		t.Fatalf("register artlist: %v", err)
+	}
 
 	names := r.Names()
 	if len(names) != 2 || names[0] != "artlist" || names[1] != "pexels" {
@@ -87,7 +95,9 @@ func TestRegistry_AllAndNames(t *testing.T) {
 
 func TestRegistry_Search(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&fakeAdapter{name: "artlist", assets: []ProviderAsset{{ID: "1"}}})
+	if err := r.Register(&fakeAdapter{name: "artlist", assets: []ProviderAsset{{ID: "1"}}}); err != nil {
+		t.Fatalf("register artlist: %v", err)
+	}
 
 	res, err := r.Search(context.Background(), "artlist", SearchRequest{Query: "test"})
 	if err != nil {
@@ -108,8 +118,12 @@ func TestRegistry_SearchNotFound(t *testing.T) {
 
 func TestRegistry_SearchAll(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&fakeAdapter{name: "artlist", assets: []ProviderAsset{{ID: "1"}}})
-	r.Register(&fakeAdapter{name: "pexels", assets: []ProviderAsset{{ID: "2"}}})
+	if err := r.Register(&fakeAdapter{name: "artlist", assets: []ProviderAsset{{ID: "1"}}}); err != nil {
+		t.Fatalf("register artlist: %v", err)
+	}
+	if err := r.Register(&fakeAdapter{name: "pexels", assets: []ProviderAsset{{ID: "2"}}}); err != nil {
+		t.Fatalf("register pexels: %v", err)
+	}
 
 	res, errs := r.SearchAll(context.Background(), SearchRequest{Query: "test"})
 	if len(errs) != 0 {
@@ -122,8 +136,12 @@ func TestRegistry_SearchAll(t *testing.T) {
 
 func TestRegistry_SearchAllPartialError(t *testing.T) {
 	r := NewRegistry()
-	r.Register(&fakeAdapter{name: "artlist", assets: []ProviderAsset{{ID: "1"}}})
-	r.Register(&fakeAdapter{name: "pexels", err: errors.New("boom")})
+	if err := r.Register(&fakeAdapter{name: "artlist", assets: []ProviderAsset{{ID: "1"}}}); err != nil {
+		t.Fatalf("register artlist: %v", err)
+	}
+	if err := r.Register(&fakeAdapter{name: "pexels", err: errors.New("boom")}); err != nil {
+		t.Fatalf("register pexels: %v", err)
+	}
 
 	res, errs := r.SearchAll(context.Background(), SearchRequest{Query: "test"})
 	if len(errs) != 1 {

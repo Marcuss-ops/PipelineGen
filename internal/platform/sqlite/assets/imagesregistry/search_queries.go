@@ -172,7 +172,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*asset.Asset
 	for rows.Next() {
@@ -204,7 +204,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 			if err != nil {
 				return nil, err
 			}
-			defer orRows.Close()
+			defer func() { _ = orRows.Close() }()
 
 			for orRows.Next() {
 				clip, err := ScanCanonicalAssetRowsPublic(orRows)
@@ -352,7 +352,7 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req detail.A
 	if err != nil {
 		return nil, fmt.Errorf("data query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var clips []*asset.Asset
 	for rows.Next() {

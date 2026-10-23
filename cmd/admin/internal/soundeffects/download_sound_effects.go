@@ -104,13 +104,11 @@ func RunDownloadSoundEffects(args []string) error {
 		}
 		hash, err := cli.Sha256File(dest)
 		if err != nil {
-			failed++
 			return fmt.Errorf("hash downloaded sound effect %s: %w", id, err)
 		}
 		clip.SetLocalPath(dest)
 		clip.SetLegacyFileMD5(hash)
 		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, hash); err != nil {
-			failed++
 			return fmt.Errorf("persist local sound effect %s: %w", id, err)
 		}
 		downloaded++
@@ -149,13 +147,13 @@ func downloadSoundEffect(ctx context.Context, reader interface {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	tmp, err := os.CreateTemp(filepath.Dir(dest), ".sfx-download-*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := io.Copy(tmp, rc); err != nil {
 		_ = tmp.Close()
 		return err
@@ -164,15 +162,6 @@ func downloadSoundEffect(ctx context.Context, reader interface {
 		return err
 	}
 	return os.Rename(tmpName, dest)
-}
-
-type namedSoundEffect struct {
-	OldName     string
-	NewName     string
-	Category    string
-	Description string
-	Tags        []string
-	Duration    float64
 }
 
 func RunApplyAdditionalSoundEffects(args []string) error {
@@ -191,7 +180,7 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if root == nil || root.DB == nil || root.Drive == nil || root.Drive.Admin == nil || root.Repos == nil || root.Repos.ClipsRepo == nil || root.Outbox == nil || root.Outbox.Dispatcher == nil {
+	if root == nil || root.DB == nil || root.Drive == nil || root.Drive.Lifecycle == nil || root.Repos == nil || root.Repos.ClipsRepo == nil || root.Outbox == nil || root.Outbox.Dispatcher == nil {
 		return fmt.Errorf("database, Drive admin, clips repository and outbox dispatcher are required")
 	}
 	// MEDIA-SSOT: the row probe is a media_assets read, so it MUST resolve from
@@ -215,7 +204,7 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 		}
 		id, currentName, driveID, localPath := row.ID, row.Name, row.DriveFileID, row.LocalPath
 		if currentName != item.NewName {
-			if err := root.Drive.Admin.RenameFile(ctx, driveID, item.NewName); err != nil {
+			if err := root.Drive.Lifecycle.Rename(ctx, driveID, item.NewName); err != nil {
 				return fmt.Errorf("rename Drive file %s: %w", driveID, err)
 			}
 		}
@@ -247,7 +236,7 @@ func RunApplyAdditionalSoundEffects(args []string) error {
 		if duration := suppliedSoundEffectDuration(item.NewName); duration > 0 {
 			clip.Duration = duration
 		}
-		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
+		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.ContentAddress()); err != nil {
 			return fmt.Errorf("persist additional effect %s: %w", id, err)
 		}
 		changed++

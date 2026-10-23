@@ -123,6 +123,11 @@ func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, sub
 	}
 
 	subject, err := s.repo.GetSubjectBySlugOrAlias(ctx, slug)
+	if err != nil {
+		s.log.Warn("Image subject lookup failed; continuing with the asset cache key",
+			zap.String("slug", slug), zap.Error(err))
+		subject = nil
+	}
 	// media_assets.metadata_json.subject_id is the durable cache key. Do not
 	// gate this read on the optional/legacy subjects row: old databases can
 	// reject subject creation because of a historical uuid constraint while

@@ -46,7 +46,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
-// indexLifecycleTerminalErr is the typed-terminal error sentinel
+// errIndexLifecycleTerminal is the typed-terminal error sentinel
 // raised on envelope failures. The wrap path stamps every string
 // with a recognisable prefix so the production pool's
 // IsTerminal classifier (outboxevents.NewTerminalError consumer)
@@ -60,7 +60,7 @@ import (
 // through this sentinel + NewTerminalError wrap. Pragmatic
 // envelope-validation loops (e.g. "missing lifecycle_state hop")
 // belong here, NOT in handler-side transient error returns.
-var indexLifecycleTerminalErr = errors.New("index_delete: terminal envelope error")
+var errIndexLifecycleTerminal = errors.New("index_delete: terminal envelope error")
 
 // DeleteRequestSchemaVersion is the canonical, EXACT string the handler
 // accepts. Producers MUST send "asset.index.delete_requested.v1"
@@ -352,7 +352,7 @@ func (h *IndexDeleteHandler) Handle(ctx context.Context, evt outboxevents.Event)
 			)
 			return terminalWrap(fmt.Errorf(
 				"%w: drive_file_alive_block (asset row at %q instead of the expected post-Drive-confirmation state); the asset.index.delete_requested event arrived before DriveDeleteHandler confirmed the Drive side-effect (file ancora vivo / file still alive in user's Drive account); re-enqueue the index-delete event ONLY after DriveDeleteHandler has stamped DRIVE_DELETED — a retry against the current lifecycle_state will keep firing this guard",
-				indexLifecycleTerminalErr, existing.LifecycleState,
+				errIndexLifecycleTerminal, existing.LifecycleState,
 			))
 		}
 	}

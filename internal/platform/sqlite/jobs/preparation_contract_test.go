@@ -14,7 +14,7 @@ func TestPreparationSchema_ConstraintsAndIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.ExecContext(context.Background(), `
 CREATE TABLE preparation_dependencies (
  job_id TEXT NOT NULL, unit_id TEXT NOT NULL, depends_on_unit_id TEXT NOT NULL,

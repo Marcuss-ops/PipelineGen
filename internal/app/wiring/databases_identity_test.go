@@ -13,7 +13,7 @@ func TestDatabasesValidateControlPlaneIdentityAcceptsCanonicalPrimary(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer mainDB.Close()
+	defer func() { _ = mainDB.Close() }()
 	insertMeta(t, mainDB, "CANONICAL")
 
 	dbs := &Databases{Main: mainDB}
@@ -27,7 +27,7 @@ func TestDatabasesValidateControlPlaneIdentityRejectsReadOnlyPrimary(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer mainDB.Close()
+	defer func() { _ = mainDB.Close() }()
 	insertMeta(t, mainDB, "READ_ONLY")
 
 	err = (&Databases{Main: mainDB}).ValidateControlPlaneIdentity(context.Background())
@@ -41,12 +41,12 @@ func TestDatabasesValidateControlPlaneIdentityAcceptsSeparateExecutionJobsDB(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer mainDB.Close()
+	defer func() { _ = mainDB.Close() }()
 	jobsDB, err := storage.OpenSQLiteDB(t.TempDir()+"/jobs.sqlite", zaptest.NewLogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer jobsDB.Close()
+	defer func() { _ = jobsDB.Close() }()
 	insertMeta(t, mainDB, "CANONICAL")
 
 	dbs := &Databases{Main: mainDB, Jobs: jobsDB}

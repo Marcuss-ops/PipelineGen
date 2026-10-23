@@ -124,7 +124,7 @@ func ScanRightsStatusCanonical6(root string, _ *policy.Policy, r *report.Report)
 		})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

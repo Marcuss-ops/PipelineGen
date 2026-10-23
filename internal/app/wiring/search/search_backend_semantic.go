@@ -38,9 +38,7 @@ import (
 
 	"go.uber.org/zap"
 
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	searchprofile "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
 
@@ -98,7 +96,7 @@ const (
 // plug in here.
 type semanticSearchBackend struct {
 	embeddings  search.EmbeddingChannelRegistry
-	vectorStore assetsearch.VectorStorePort
+	vectorStore search.VectorStorePort
 	mediaReader search.MediaReadRepository
 	delivery    search.AssetDeliveryService
 	log         *zap.Logger
@@ -211,16 +209,16 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 	}
 
 	// ── 5. Execute vector search ───────────────────────────────
-	var results []assetsearch.VectorSearchResult
+	var results []search.VectorSearchResult
 	switch q.Mode {
-	case search.SearchModeHybrid:
+	case search.RetrievalModeHybrid:
 		// TranscriptVector is intentionally absent: the
 		// orchestrator does NOT pass a transcript-channel
 		// vector today (passing the same dense vector would
 		// silently inflate Qdrant RRF fusion). A dedicated
 		// transcript embedder is QDRANT-005 territory.
 		// See mediasearch/ports.go::ChannelTranscript comment.
-		results, err = b.vectorStore.HybridSearch(ctx, assetsearch.HybridSearchRequest{
+		results, err = b.vectorStore.HybridSearch(ctx, search.HybridSearchRequest{
 			DenseVector:      vec,
 			DenseVectorName:  semanticDenseVectorName,
 			SparseText:       q.Text,
@@ -238,7 +236,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			IsSystem:         scope.IsSystem,
 		})
 	default: // SearchModeANN (or empty string → ANN)
-		results, err = b.vectorStore.Search(ctx, assetsearch.VectorSearchRequest{
+		results, err = b.vectorStore.Search(ctx, search.VectorSearchRequest{
 			QueryVector:    vec,
 			VectorName:     semanticDenseVectorName,
 			Limit:          fetchLimit,
@@ -423,16 +421,16 @@ func semanticDisplayTitle(title, name string) string {
 	return name
 }
 
-func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearch.AssetFilter) {
+func compileSemanticFilters(q search.Query) (search.SearchScope, search.AssetFilter) {
 	category := strings.TrimSpace(q.Filters.Category)
 	if category == "" {
 		category = search.InferCategoryFromQuery(q.Text)
 	}
-	return assetsearch.SearchScope{
+	return search.SearchScope{
 			WorkspaceID: strings.TrimSpace(q.Actor.WorkspaceID),
 			IsSystem:    q.Actor.IsSystem || q.Actor.IsAdmin,
 		},
-		assetsearch.AssetFilter{
+		search.AssetFilter{
 			Source:    strings.TrimSpace(q.Filters.Source),
 			Category:  category,
 			MediaType: strings.TrimSpace(q.Filters.MediaType),
@@ -475,7 +473,7 @@ func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Q
 		return candidates, nil
 	}
 
-	prof := searchprofile.Resolve(q.Filters.Source)
+	prof := search.Resolve(q.Filters.Source)
 	topK := b.reranker.TopK()
 	if prof.RerankTopK > 0 && (topK <= 0 || prof.RerankTopK < topK) {
 		topK = prof.RerankTopK
@@ -491,10 +489,10 @@ func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Q
 		if !ok {
 			continue
 		}
-		assetProfile := searchprofile.Resolve(asset.Source)
+		assetProfile := search.Resolve(asset.Source)
 		requestCandidates = append(requestCandidates, reranker.Candidate{
 			ID:          cand.AssetID,
-			Text:        searchprofile.CandidateText(assetProfile, asset.Name, asset.Category, asset.Language, asset.SearchText, asset.Tags, asset.Source, asset.MediaType),
+			Text:        search.CandidateText(assetProfile, asset.Name, asset.Category, asset.Language, asset.SearchText, asset.Tags, asset.Source, asset.MediaType),
 			QdrantScore: float64Ptr(cand.Score),
 		})
 	}

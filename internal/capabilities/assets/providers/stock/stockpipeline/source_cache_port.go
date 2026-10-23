@@ -184,7 +184,7 @@ func copyFileToPath(srcPath, dstPath string, fs LocalFSPort) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := fs.Create(dstPath)
 	if err != nil {

@@ -231,7 +231,7 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 		t.Errorf("DownloadLink = %q, want canonical pubRes.DownloadLink (no reconstruction)", got)
 	}
 	// Audit pin #4: LegacyFileMD5 (MD5) = pubRes.MD5Checksum
-	if got := dispatchedClip.LegacyFileMD5(); got != "md5-f29-fake" {
+	if got := dispatchedClip.GetMetadataString("legacy_file_md5"); got != "md5-f29-fake" {
 		t.Errorf("LegacyFileMD5 (MD5) = %q, want %q (canonical pubRes.MD5Checksum)", got, "md5-f29-fake")
 	}
 	// Audit pin #5: publish_action recorded on Asset.Metadata

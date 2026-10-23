@@ -181,9 +181,7 @@ type ObjectInfo struct {
 }
 
 // ResolverRegistry manages scheme-to-resolver mappings (PR3: from assetregistry).
-type ResolverRegistry struct {
-	resolvers map[string]Resolver
-}
+type ResolverRegistry struct{}
 
 // NewResolverRegistry creates an empty resolver registry.
 
@@ -219,10 +217,7 @@ type BindingExtractor interface {
 }
 
 // BindingExtractorRegistry manages job-type to extractor mappings (PR3: from assetregistry).
-type BindingExtractorRegistry struct {
-	extractors []BindingExtractor
-	byJobType  map[string][]BindingExtractor
-}
+type BindingExtractorRegistry struct{}
 
 // NewBindingExtractorRegistry creates an empty extractor registry.
 

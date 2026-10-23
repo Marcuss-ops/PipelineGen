@@ -196,7 +196,7 @@ func parseMetadataKeys(root string, r *report.Report) []string {
 		})
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	keys := []string{}
 	sc := bufio.NewScanner(f)
@@ -260,7 +260,7 @@ func scanMetadataKeysRuleFile(state any, path, relPath string, r *report.Report,
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -354,7 +354,7 @@ func scanIndexedStateWriterRuleFile(_ any, path, relPath string, r *report.Repor
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -437,7 +437,7 @@ func scanAssetCommitterEventRuleFile(_ any, path, relPath string, r *report.Repo
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

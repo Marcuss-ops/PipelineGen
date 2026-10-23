@@ -344,7 +344,7 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 					s.Excerpt = trimResearch(s.Excerpt, 2000)
 					report.Sources = append(report.Sources, s)
 					report.Claims = append(report.Claims, scriptpkg.ResearchClaim{Text: s.Excerpt, SourceIDs: []string{s.ID}, Verified: true})
-					source.WriteString(fmt.Sprintf("[%s] %s\n", s.ID, s.Excerpt))
+					fmt.Fprintf(&source, "[%s] %s\n", s.ID, s.Excerpt)
 				}
 			}
 			continue
@@ -378,7 +378,7 @@ func (r *WebResearchResolver) Resolve(ctx context.Context, src scriptpkg.SourceS
 			s.Excerpt = text
 		}
 		if strings.TrimSpace(s.Excerpt) != "" {
-			source.WriteString(fmt.Sprintf("[%s] %s\n", s.ID, s.Excerpt))
+			fmt.Fprintf(&source, "[%s] %s\n", s.ID, s.Excerpt)
 			report.Claims = append(report.Claims, scriptpkg.ResearchClaim{Text: s.Excerpt, SourceIDs: []string{s.ID}, Verified: true})
 		}
 		report.Sources = append(report.Sources, s)

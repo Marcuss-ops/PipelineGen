@@ -285,7 +285,7 @@ func (r *UploadIntentsRepository) ListPending(ctx context.Context, olderThan tim
 	if err != nil {
 		return nil, fmt.Errorf("upload_intents_repository.ListPending: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []UploadIntent
 	for rows.Next() {

@@ -194,7 +194,7 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 	if err != nil {
 		return nil, "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, "", fmt.Errorf("vidrush image: upstream status %d", response.StatusCode)
 	}
@@ -396,7 +396,7 @@ func CanonicalizeVidRushImageFile(path string, policy VidRushImagePolicy) error 
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := tmp.Write(encoded.Bytes()); err != nil {
 		_ = tmp.Close()
 		return err

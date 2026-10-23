@@ -71,7 +71,9 @@ func TestGenerateMarkdown_GoldenFile(t *testing.T) {
 	}
 
 	if os.Getenv("UPDATE_GOLDEN") == "1" {
-		os.MkdirAll("testdata", 0755)
+		if err := os.MkdirAll("testdata", 0755); err != nil {
+			t.Fatalf("create testdata: %v", err)
+		}
 		if err := os.WriteFile(goldenPath, []byte(out), 0644); err != nil {
 			t.Fatalf("write golden: %v", err)
 		}

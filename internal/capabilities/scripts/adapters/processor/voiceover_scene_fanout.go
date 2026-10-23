@@ -49,6 +49,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -291,7 +292,7 @@ func voiceoverLaunchOrder(items []VoiceoverSceneInput) []int {
 //     deterministic for a given run, distinct across runs, and
 //     traceable in logs (it carries the run start time).
 func resolveSceneFanoutRequestID(ctx context.Context) string {
-	if val, ok := ctx.Value("script_job_id").(string); ok && val != "" {
+	if val, ok := ctx.Value(scriptpkg.ContextKeyScriptJobID).(string); ok && val != "" {
 		return val
 	}
 	if cid := corid.FromContext(ctx); cid != "" {

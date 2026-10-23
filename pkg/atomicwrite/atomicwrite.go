@@ -146,7 +146,7 @@ func syncDir(dir string) error {
 	if err != nil {
 		return err
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 	if err := d.Sync(); err != nil {
 		// Some filesystems (e.g. certain network mounts) reject fsync on a
 		// directory. Treat that as non-fatal: the rename itself already

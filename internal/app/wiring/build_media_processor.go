@@ -39,7 +39,7 @@ func wireMediaProcessor(
 	log *zap.Logger,
 	mediaPG *sql.DB,
 	mediaConfig mediaexec.ExecutionConfig,
-) (detail.Processor, error) {
+) (detail.MediaProcessor, error) {
 	if outbox == nil || outbox.Dispatcher == nil {
 		log.Warn("BuildProcessBundle: outbox.Dispatcher is nil — MediaProcessor left nil (QDRANT-002 PR8 fail-closed)")
 		return nil, nil

@@ -65,7 +65,7 @@ func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, 
 	if err != nil {
 		return nil, fmt.Errorf("fetch asset batch (after %q): %w", afterID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*AssetData
 	for rows.Next() {
@@ -122,7 +122,7 @@ func (s *SQLiteAssetStore) populateTranscriptsBatch(ctx context.Context, page []
 	if err != nil {
 		return // godlike/07 transition: missing schema is no crash
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var assetID, lang, text string
 		if err := rows.Scan(&assetID, &lang, &text); err != nil {

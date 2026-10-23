@@ -146,7 +146,7 @@ func ScanSearchAggregatorSingleton(root string, _ *policy.Policy, r *report.Repo
 	firstConstructionSite := ""
 	firstConstructionLine := 0
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -186,7 +186,9 @@ func ScanSearchAggregatorSingleton(root string, _ *policy.Policy, r *report.Repo
 		totalCallSites, firstConstructionSite, firstConstructionLine =
 			countSearchAggregatorSingletonFile(path, relSlash, totalCallSites, firstConstructionSite, firstConstructionLine, r)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, searchAggregatorSingletonRule+" scan "+root+": "+err.Error())
+	}
 
 	// Singleton assertion: count MUST equal exactly 1.
 	switch {
@@ -234,7 +236,7 @@ func countSearchAggregatorSingletonFile(
 	if err != nil {
 		return totalCallSites, firstConstructionSite, firstConstructionLine
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

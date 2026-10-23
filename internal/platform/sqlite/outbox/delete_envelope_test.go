@@ -37,7 +37,7 @@ func (t *txMgrCapture) InTransaction(ctx context.Context, fn func(tx *sql.Tx) er
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := fn(tx); err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func memoryDB(t *testing.T) *sql.DB {
 	// :memory: is per-connection in SQLite; without SetMaxOpenConns(1)
 	// different pool connections see entirely different databases.
 	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 } // ensureOutboxSchema creates the outbox_events table AND the media_assets
 // table (needed by EnqueueDriveDelete which stamps lifecycle_state).

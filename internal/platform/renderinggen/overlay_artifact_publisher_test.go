@@ -43,7 +43,7 @@ func TestDownloadCertifiedArtifactHashesStreamedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("temp file: %v", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	if err := downloadCertifiedArtifact(context.Background(), srv.Client(), url, file, int64(len(payload)), hash); err != nil {
 		t.Fatalf("download: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestDownloadCertifiedArtifactHashesStreamedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("temp file: %v", err)
 	}
-	defer sizeFile.Close()
+	defer func() { _ = sizeFile.Close() }()
 	if err := downloadCertifiedArtifact(context.Background(), srv.Client(), url, sizeFile, int64(len(payload)+1), hash); err == nil {
 		t.Fatal("size drift must fail closed")
 	}
@@ -68,7 +68,7 @@ func TestDownloadCertifiedArtifactHashesStreamedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("temp file: %v", err)
 	}
-	defer hashFile.Close()
+	defer func() { _ = hashFile.Close() }()
 	if err := downloadCertifiedArtifact(context.Background(), srv.Client(), url, hashFile, int64(len(payload)), strings.Repeat("0", 64)); err == nil {
 		t.Fatal("hash drift must fail closed")
 	}

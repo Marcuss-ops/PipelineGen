@@ -44,7 +44,7 @@ func TestTransportProjectionWriter_DelegatesToTransport(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprint(w, `{"result":{"status":"ok"}}`)
+		_, _ = fmt.Fprint(w, `{"result":{"status":"ok"}}`)
 	}))
 	defer srv.Close()
 

@@ -28,8 +28,8 @@ import (
 func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	t.Helper()
 
-	if deps.ServiceDependencies.Infra.Log == nil {
-		deps.ServiceDependencies.Infra.Log = zap.NewNop()
+	if deps.Infra.Log == nil {
+		deps.Infra.Log = zap.NewNop()
 	}
 
 	// Mandatory ports that must be non-nil for NewService.
@@ -42,8 +42,8 @@ func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	if deps.Transcriber == nil {
 		deps.Transcriber = &stubTranscriber{}
 	}
-	if deps.ServiceDependencies.Repos.TextTrackRepo == nil {
-		deps.ServiceDependencies.Repos.TextTrackRepo = &stubTextTrackRepo{}
+	if deps.Repos.TextTrackRepo == nil {
+		deps.Repos.TextTrackRepo = &stubTextTrackRepo{}
 	}
 	// MEDIA-SSOT P1-5 (September 2026): the PRODUCTION SQLite searcher bridge
 	// and its `NewSQLiteSearcher(s.assetStore)` fallback in buildSearcherChain
@@ -52,17 +52,17 @@ func baseServiceDeps(t testing.TB, deps ServiceDeps) ServiceDeps {
 	// fixture tests build a service around an in-memory SQLite AssetStore, so
 	// they must opt into the test-only searcher explicitly instead of relying
 	// on a production fallback that no longer exists.
-	if deps.ServicePorts.LocalSearcher == nil && deps.ServicePorts.AssetStore != nil {
-		deps.ServicePorts.LocalSearcher = NewDBSearcher(deps.ServicePorts.AssetStore)
+	if deps.LocalSearcher == nil && deps.AssetStore != nil {
+		deps.LocalSearcher = NewDBSearcher(deps.AssetStore)
 	}
-	if deps.ServiceDependencies.Infra.MainDB != nil {
-		box := outboxevents.NewRepository(deps.ServiceDependencies.Infra.MainDB)
-		assetCommitter := testsupport.NewSQLiteAssetCommitter(deps.ServiceDependencies.Infra.MainDB, box, deps.ServiceDependencies.Infra.Log)
-		deps.ServiceDependencies.Finalizer.AssetFinalizerTx = assetfinalizer.NewAssetTxFinalizer(
-			deps.ServiceDependencies.Infra.Log,
+	if deps.Infra.MainDB != nil {
+		box := outboxevents.NewRepository(deps.Infra.MainDB)
+		assetCommitter := testsupport.NewSQLiteAssetCommitter(deps.Infra.MainDB, box, deps.Infra.Log)
+		deps.Finalizer.AssetFinalizerTx = assetfinalizer.NewAssetTxFinalizer(
+			deps.Infra.Log,
 			assetCommitter,
 		)
-		if repo, ok := deps.ServicePorts.AssetStore.(*sqassets.ClipsRepository); ok {
+		if repo, ok := deps.AssetStore.(*sqassets.ClipsRepository); ok {
 			mediacommitadapters.WireCanonicalAssetStore(repo.AssetStoreSQLite, assetCommitter)
 		}
 	}

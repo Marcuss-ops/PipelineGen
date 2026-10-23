@@ -30,7 +30,7 @@ func post(t *testing.T, url, body string) *http.Response {
 	if err != nil {
 		t.Fatalf("post %s: %v", url, err)
 	}
-	t.Cleanup(func() { resp.Body.Close() })
+	t.Cleanup(func() { _ = resp.Body.Close() })
 	return resp
 }
 

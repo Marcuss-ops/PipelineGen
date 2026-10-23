@@ -93,7 +93,7 @@ func (s sqliteClipAuditSource) ListYouTubeClipRows(ctx context.Context, limit in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []pgmedia.ClipAuditRow
 	for rows.Next() {
 		var rec pgmedia.ClipAuditRow

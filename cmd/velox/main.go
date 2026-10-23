@@ -69,7 +69,7 @@ func run(args []string) int {
 	case "types":
 		return cmdTypes(rest)
 	default:
-		os.Stderr.WriteString("velox: unknown command " + cmd + "\n\n")
+		_, _ = os.Stderr.WriteString("velox: unknown command " + cmd + "\n\n")
 		usage(os.Stderr)
 		return exitUsage
 	}

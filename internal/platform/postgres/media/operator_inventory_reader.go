@@ -169,7 +169,7 @@ func (r *OperatorInventoryReader) runAssetStateFacetQuery(ctx context.Context, o
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var key string
 		var count int64
@@ -190,7 +190,7 @@ func (r *OperatorInventoryReader) runFacetQuery(ctx context.Context, name, keyCo
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var key string

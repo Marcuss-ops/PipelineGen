@@ -427,7 +427,7 @@ func (a *ArtifactPublisherAdapter) verifySHA256(artifact finalization.VerifiedAr
 	if err != nil {
 		return fmt.Errorf("artifact publisher: cannot open %s for hash verification: %w", artifact.LocalPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {

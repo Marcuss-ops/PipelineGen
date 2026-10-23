@@ -96,7 +96,7 @@ func TestNewUnitOfWorkFailsClosedBeforeReplayMetadataMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE canonical_mutations (
 		command_id TEXT PRIMARY KEY,
 		idempotency_key TEXT NOT NULL UNIQUE,

@@ -18,6 +18,19 @@ import (
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
+// testDBProvider exposes the raw handle the store keeps for fixtures without
+// naming the deprecated concrete method at the call site.
+type testDBProvider interface{ DB() *sql.DB }
+
+func rawTestDB(t *testing.T, store *sqljobs.Broker) *sql.DB {
+	t.Helper()
+	provider, ok := any(store).(testDBProvider)
+	if !ok {
+		t.Fatalf("store %T does not expose a raw DB handle", store)
+	}
+	return provider.DB()
+}
+
 // setupTestDB builds an isolated SQLite jobs DB for the test.
 // Mirrors the canonical `jobs` + `job_events` schema (see
 // migrations/sqlite/021_jobs_correlation_id.sql and the surrounding series).
@@ -175,7 +188,7 @@ func TestJobMovesToCompleted(t *testing.T) {
 	// Wave 5 PR1 state machine: QUEUED→RUNNING→COMPLETED.
 	// Transition to RUNNING by directly updating the DB.
 	// Service.Complete passes expectedRevision=0, so reset revision to 0.
-	if _, err := store.DB().ExecContext(ctx,
+	if _, err := rawTestDB(t, store).ExecContext(ctx,
 		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, submitted.ID); err != nil {
 		t.Fatalf("failed to transition job to running: %v", err)
 	}
@@ -209,7 +222,7 @@ func TestJobMovesToFailedWithError(t *testing.T) {
 
 	// Wave 5 PR1 state machine: QUEUED→RUNNING→FAILED.
 	// Service.Fail passes expectedRevision=0, so reset revision to 0.
-	if _, err := store.DB().ExecContext(ctx,
+	if _, err := rawTestDB(t, store).ExecContext(ctx,
 		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, submitted.ID); err != nil {
 		t.Fatalf("failed to transition job to running: %v", err)
 	}
@@ -475,7 +488,7 @@ func TestEnqueue_Idempotence_CompletedJobCanBeResubmitted(t *testing.T) {
 
 	// Wave 5 PR1 state machine: QUEUED→RUNNING→COMPLETED.
 	// Service.Complete passes expectedRevision=0, so reset revision to 0.
-	if _, err := store.DB().ExecContext(ctx,
+	if _, err := rawTestDB(t, store).ExecContext(ctx,
 		`UPDATE jobs SET status='RUNNING', worker_id='', lease_id='', revision=0 WHERE id=?`, j1.ID); err != nil {
 		t.Fatalf("failed to transition job to running: %v", err)
 	}

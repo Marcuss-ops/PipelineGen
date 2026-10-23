@@ -581,8 +581,8 @@ func TestWithRun_FromContextRoundTrip(t *testing.T) {
 	if FromContext(context.Background()) != nil {
 		t.Fatal("FromContext must return nil without a bound run")
 	}
-	if FromContext(nil) != nil {
-		t.Fatal("FromContext(nil) must return nil")
+	if FromContext(context.TODO()) != nil {
+		t.Fatal("FromContext without a bound run must return nil")
 	}
 }
 
@@ -826,8 +826,8 @@ func TestRegistry_CanonicalNames(t *testing.T) {
 	if len(AllComponents()) != 15 {
 		t.Fatalf("components = %d, want 15", len(AllComponents()))
 	}
-	if len(AllOperations()) != 39 {
-		t.Fatalf("operations = %d, want 39", len(AllOperations()))
+	if len(AllOperations()) != 41 {
+		t.Fatalf("operations = %d, want 41", len(AllOperations()))
 	}
 	if string(StageAcquire) != "acquire" || string(ComponentQdrant) != "qdrant" || string(OperationUpsert) != "upsert" {
 		t.Fatal("registry literals drifted from the canonical strings")

@@ -13,7 +13,7 @@ func TestPreparationLegacyCleanupBackfillsCanonicalFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE preparation_units (unit_fingerprint TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT ''); CREATE TABLE preparation_attempts (workload_dimension TEXT NOT NULL DEFAULT '', workload_amount REAL NOT NULL DEFAULT 0, status TEXT NOT NULL, finished_at TEXT)`); err != nil {
 		t.Fatal(err)
 	}

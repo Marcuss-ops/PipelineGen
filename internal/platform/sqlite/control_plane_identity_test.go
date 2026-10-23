@@ -99,7 +99,7 @@ func TestReadControlPlaneMetaValidatesCanonicalIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE control_plane_meta (
 		database_id TEXT PRIMARY KEY,
 		schema_family TEXT NOT NULL,

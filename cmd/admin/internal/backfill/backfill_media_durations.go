@@ -269,7 +269,7 @@ func persistMeasuredDuration(ctx context.Context, root *wiring.ComposeRoot, clip
 	clip.SetMetadataString("duration_source", string(asset.DurationProbe))
 	clip.SetMetadataInt("width", width)
 	clip.SetMetadataInt("height", height)
-	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
+	if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.BinarySHA256()); err != nil {
 		return fmt.Errorf("persist and index measured asset: %w", err)
 	}
 	return nil
@@ -283,7 +283,7 @@ func probeDriveDuration(ctx context.Context, root *wiring.ComposeRoot, probe *ru
 	if err != nil {
 		return 0, 0, 0, "", fmt.Errorf("download Drive file: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	tmpPath := ""
 	if strings.TrimSpace(retainDir) != "" {
 		tmpPath = filepath.Join(retainDir, assetID+".mp4")
@@ -294,7 +294,7 @@ func probeDriveDuration(ctx context.Context, root *wiring.ComposeRoot, probe *ru
 		}
 		tmpPath = tmp.Name()
 		_ = tmp.Close()
-		defer os.Remove(tmpPath)
+		defer func() { _ = os.Remove(tmpPath) }()
 	}
 	tmp, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {

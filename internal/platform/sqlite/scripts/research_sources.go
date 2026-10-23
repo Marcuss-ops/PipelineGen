@@ -13,7 +13,7 @@ func (r *ScriptRepository) SaveResearchSources(ctx context.Context, scriptID int
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction for research sources: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, src := range sources {
 		_, err := tx.ExecContext(ctx, `
@@ -38,7 +38,7 @@ func (r *ScriptRepository) GetResearchSources(ctx context.Context, scriptID int6
 	if err != nil {
 		return nil, fmt.Errorf("failed to query research sources: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sources []ScriptResearchSource
 	for rows.Next() {

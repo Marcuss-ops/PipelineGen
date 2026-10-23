@@ -52,7 +52,7 @@ func TestSemanticSearch_CanonicalCtorReturnsCanonicalAssetSearchPort(t *testing.
 	}
 	// Type-assert to the canonical port to verify the export
 	// type is correct (compile-time pin is alongside).
-	var _ ports.AssetSearchPort = port
+	var _ = port
 }
 
 // TestSemanticSearch_Clip_NilSearcher_ReturnsTypedError

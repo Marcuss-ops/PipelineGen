@@ -128,7 +128,7 @@ process.stdout.write(JSON.stringify({
 
 func TestArtlistServiceCreation(t *testing.T) {
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cfg := &config.Config{
 		Storage: config.StorageConfig{
@@ -170,7 +170,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create service: %v", err)
 	}
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	if svc == nil {
 		t.Error("expected service to be non-nil")
@@ -180,7 +180,7 @@ func TestArtlistServiceCreation(t *testing.T) {
 
 func TestArtlistSearchRequest(t *testing.T) {
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cfg := &config.Config{}
 	logger, _ := zap.NewDevelopment()
@@ -204,6 +204,9 @@ func TestArtlistSearchRequest(t *testing.T) {
 			},
 		},
 	}))
+	if err != nil {
+		t.Fatalf("NewService: %v", err)
+	}
 
 	ctx := context.Background()
 
@@ -232,7 +235,7 @@ func TestArtlistSearchRequest(t *testing.T) {
 
 func TestArtlistClipStoredInSQLite(t *testing.T) {
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Insert a clip directly
 	clip := &asset.Asset{
@@ -270,7 +273,7 @@ func TestArtlistClipStoredInSQLite(t *testing.T) {
 
 func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Insert a clip with drive link
 	clip := &asset.Asset{
@@ -447,7 +450,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -496,7 +499,7 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "city",
@@ -542,7 +545,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -587,7 +590,7 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "city",
@@ -647,7 +650,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -694,7 +697,7 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	// Create a job directly (simulate a job that would be processed by a worker)
 	payload := mustMarshalJSON(t, map[string]any{"term": "city", "limit": 1, "strategy": "replace", "root_folder_id": "artlist-root"})

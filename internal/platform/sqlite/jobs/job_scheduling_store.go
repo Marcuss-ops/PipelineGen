@@ -69,7 +69,7 @@ func (r *SQLiteStore) CreateScheduled(ctx context.Context, j *job.Job, runAt tim
 	if err != nil {
 		return fmt.Errorf("jobs.CreateScheduled: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
@@ -124,7 +124,7 @@ func (r *SQLiteStore) ListDueSchedules(ctx context.Context, now time.Time, limit
 	if err != nil {
 		return nil, fmt.Errorf("ListDueSchedules: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]job.Schedule, 0)
 	for rows.Next() {
@@ -160,7 +160,7 @@ func (r *SQLiteStore) ListPendingSchedules(ctx context.Context, limit int) ([]jo
 	if err != nil {
 		return nil, fmt.Errorf("ListPendingSchedules: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]job.Schedule, 0)
 	for rows.Next() {
@@ -197,7 +197,7 @@ func (r *SQLiteStore) ListScheduledViews(ctx context.Context, limit int) ([]job.
 	if err != nil {
 		return nil, fmt.Errorf("ListScheduledViews: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]job.ScheduledJobView, 0)
 	for rows.Next() {
@@ -250,7 +250,7 @@ func (r *SQLiteStore) PromoteScheduled(ctx context.Context, jobID string, now ti
 	if err != nil {
 		return false, fmt.Errorf("PromoteScheduled: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'QUEUED', worker_id = '', lease_id = '', lease_expiry = NULL,
@@ -310,7 +310,7 @@ func (r *SQLiteStore) ReserveDailyPromotion(ctx context.Context, day string, quo
 	if err != nil {
 		return false, fmt.Errorf("ReserveDailyPromotion: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var promoted int
 	err = tx.QueryRowContext(ctx, `SELECT promoted FROM job_scheduler_counters WHERE day = ?`, day).Scan(&promoted)
@@ -393,7 +393,7 @@ func (r *SQLiteStore) ListJobStageStatuses(ctx context.Context, jobID string) ([
 	if err != nil {
 		return nil, fmt.Errorf("ListJobStageStatuses: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	byStage := make(map[string]job.JobStageStatus)
 	for rows.Next() {

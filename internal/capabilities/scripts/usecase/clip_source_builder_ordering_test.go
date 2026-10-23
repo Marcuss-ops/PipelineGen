@@ -52,7 +52,7 @@ func TestClipSourceBuilder_ChronologicalOrdering_ReordersByStartMs(t *testing.T)
 	} else {
 		idxA := strings.Index(sourceText, "CLIP clip-a:")
 		idxC := strings.Index(sourceText, "CLIP clip-c:")
-		if !(idx < idxA && idxA < idxC) {
+		if idx >= idxA || idxA >= idxC {
 			t.Fatalf("sourceText order wrong: clip-b=%d clip-a=%d clip-c=%d", idx, idxA, idxC)
 		}
 	}

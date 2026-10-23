@@ -119,7 +119,7 @@ func buildEnrichmentUserPrompt(req EnrichmentRequest) string {
 		b.WriteString("\n")
 	}
 	if req.StartSec != 0 || req.EndSec != 0 {
-		b.WriteString(fmt.Sprintf("Time range: %.1fs - %.1fs\n", req.StartSec, req.EndSec))
+		fmt.Fprintf(&b, "Time range: %.1fs - %.1fs\n", req.StartSec, req.EndSec)
 	}
 	return b.String()
 }

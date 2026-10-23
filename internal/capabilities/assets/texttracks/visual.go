@@ -54,7 +54,7 @@ func BuildVisualTracks(assetID string, original detail.VisualAnalysis, translati
 func cuesFromEvents(events []detail.VisualEvent) []detail.TimedCue {
 	out := make([]detail.TimedCue, len(events))
 	for i, event := range events {
-		out[i] = detail.TimedCue{StartMs: event.StartMs, EndMs: event.EndMs, Text: event.Text}
+		out[i] = detail.TimedCue(event)
 	}
 	return out
 }

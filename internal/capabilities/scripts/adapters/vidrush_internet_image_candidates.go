@@ -130,6 +130,15 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
 					return
 				}
+				filteredResults, filterErr := excludeUnavailableEntityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, results)
+				if filterErr != nil {
+					if releaseCatalog != nil {
+						releaseCatalog()
+					}
+					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: filterErr}
+					return
+				}
+				results = filteredResults
 			}
 		}
 		if !fromCache {
@@ -170,7 +179,6 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 				}
 				if releaseCatalog != nil {
 					releaseCatalog()
-					releaseCatalog = nil
 				}
 				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: catalogFallback, err: err}
 				return
@@ -215,6 +223,15 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}
 					return
 				}
+				filteredResults, filterErr := excludeUnavailableEntityImageCatalogCandidates(ctx, f.catalog, catalogIdentity, providerResults)
+				if filterErr != nil {
+					if releaseCatalog != nil {
+						releaseCatalog()
+					}
+					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: filterErr}
+					return
+				}
+				providerResults = filteredResults
 			}
 			results = AppendProviderCandidatesUnique(catalogFallback, providerResults)
 			if len(results) > 0 {

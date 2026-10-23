@@ -16,7 +16,7 @@ func newSourceIdentityDB(t *testing.T) (*sql.DB, *SourceIdentityStore) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`
 		CREATE TABLE source_identity_registry (
 			source_type         TEXT NOT NULL,

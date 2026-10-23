@@ -521,7 +521,7 @@ func ComputeSHA256(f FileReader, path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("sha256: open %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	sum, err := digest.SHA256Reader(file)
 	if err != nil {

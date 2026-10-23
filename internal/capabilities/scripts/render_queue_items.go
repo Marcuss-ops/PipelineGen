@@ -24,24 +24,34 @@ import (
 // gpu_lanes (now 3) remains the sole GPU authority.
 const defaultSeparateItemRenderWorkers = 2
 
-// Overlay-batch back-pressure (retuned 2026-09-27). The queue-wait audit showed
-// wall time dominated by admission wait (62% of wall at pool width 4 behind
-// gpu_lanes=2), so a DEEP batch is clamped below the configured width: an
-// operator may temporarily widen the pool, but a large overlay batch must not
-// widen the queue behind the worker's fixed gpu_lanes. The rule is a pure
+// Overlay-batch back-pressure (retuned 2026-10-22). The rule is a pure
 // function of (requested width, batch depth) so it is testable without a queue
 // and cannot drift from what the enqueue path actually applies.
+//
+// 2026-09-27 history: a deep batch used to be clamped to width 1, because at
+// pool width 4 behind gpu_lanes=2 the queue-wait audit showed 62% of wall in
+// admission wait. The 2026-10-22 golden runs (v8/v9/v10) then showed the other
+// side of that trade: the overlay window is 100% RENDER SERVICE (v9: 41 items,
+// 91.7 s of render_ms vs a 90.5 s window; the whole post chain was 1.5 s), so a
+// width-1 deep batch starves the second GPU lane and pins throughput at one
+// render per serialized service time (measured 25-29 item/min). The topology
+// now declares TWO render lanes (two Chronon daemons — chronon3d.service +
+// chronon3d-b.service, one RENDER_JOB each — reached through the worker's
+// chronon.socket_paths), so the deep clamp must keep exactly two child renders
+// in flight: one per lane, no queue widening. The map class keeps its own
+// width-1 pool (LOD pyramid RAM/VRAM), unchanged.
 const (
 	overlayItemBackPressureDepth = 4
 	overlayItemBackPressureWidth = 2
 	overlayItemDeepDepth         = 8
-	overlayItemDeepWidth         = 1
+	overlayItemDeepWidth         = 2
 )
 
 // resolveOverlayItemWorkers applies the certified back-pressure rule: a batch
 // deeper than overlayItemBackPressureDepth is clamped to
 // overlayItemBackPressureWidth, and a batch deeper than overlayItemDeepDepth to
-// overlayItemDeepWidth. A requested width already at or below the clamp is left
+// overlayItemDeepWidth (the two-lane floor/ceiling of the dual-daemon
+// topology). A requested width already at or below the clamp is left
 // alone — the clamp only ever narrows, never widens.
 func resolveOverlayItemWorkers(requested, candidates int) int {
 	if candidates > overlayItemDeepDepth && requested > overlayItemDeepWidth {

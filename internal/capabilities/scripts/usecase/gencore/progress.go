@@ -498,7 +498,8 @@ func (p *ProgressTracker) PhasePostprocessEvent(index, total int, processor, sta
 		payload["error"] = err.Error()
 	}
 	subKind := "script.postprocess." + processor
-	if status == "started" {
+	switch status {
+	case "started":
 		p.finishActivity("completed", nil)
 		p.TrackActivity(subKind, "running", detail, payload)
 		p.activityMu.Lock()
@@ -506,7 +507,7 @@ func (p *ProgressTracker) PhasePostprocessEvent(index, total int, processor, sta
 		p.currentDetail = detail
 		p.currentPayload = cloneActivityPayload(payload)
 		p.activityMu.Unlock()
-	} else if status == "completed" || status == "failed" {
+	case "completed", "failed":
 		p.finishActivity(status, payload)
 	}
 }

@@ -42,7 +42,6 @@ type stubBackend struct {
 	name     string
 	caps     []Capability
 	universe SearchUniverse
-	delaysMu sync.Mutex
 	items    []Candidate
 	err      error
 	delay    time.Duration
@@ -417,7 +416,7 @@ func TestAggregatorMediaTypeFilter(t *testing.T) {
 		names = append(names, c.Source)
 	}
 	sort.Strings(names)
-	if !(len(names) == 2 && names[0] == "audio-only" && names[1] == "both") {
+	if len(names) != 2 || names[0] != "audio-only" || names[1] != "both" {
 		t.Fatalf("expected [audio-only both]; got %v", names)
 	}
 }

@@ -308,14 +308,14 @@ func seedQueuedJobs(tb testing.TB, db *sql.DB, n int) {
 	stmt, err := tx.Prepare(`INSERT INTO jobs (id, type, status, priority, project, payload_json, retry_count, max_retries, created_at, updated_at, revision)
 		VALUES (?, ?, 'QUEUED', ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 1)`)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		tb.Fatalf("seedQueuedJobs prepare: %v", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	for i := 0; i < n; i += rowsPerInsert {
 		id := fmt.Sprintf("job-bench-%08d", i)
 		if _, err := stmt.Exec(id, "bench.claim.complete", 5, "bench-project", `{}`, 0, 3); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			tb.Fatalf("seedQueuedJobs exec %d: %v", i, err)
 		}
 	}
@@ -374,7 +374,7 @@ func runBenchShape(b *testing.B, shape benchShape) {
 		if err != nil {
 			b.Fatalf("open aux db: %v", err)
 		}
-		defer auxDB.Close()
+		defer func() { _ = auxDB.Close() }()
 		benchPragmaSurface(b, auxDB)
 		if _, err := auxDB.Exec(benchAuxSchema); err != nil {
 			b.Fatalf("create aux schema: %v", err)
@@ -385,7 +385,7 @@ func runBenchShape(b *testing.B, shape benchShape) {
 	if err != nil {
 		b.Fatalf("open jobs db: %v", err)
 	}
-	defer jobsDB.Close()
+	defer func() { _ = jobsDB.Close() }()
 	benchPragmaSurface(b, jobsDB)
 	if _, err := jobsDB.Exec(benchQueueSchema); err != nil {
 		b.Fatalf("create jobs schema: %v", err)

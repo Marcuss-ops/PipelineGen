@@ -56,12 +56,12 @@ const (
 // Compile-time pin via typed assignment. Signature drift in the
 // canonical surface surfaces as a build failure, not a runtime panic.
 func TestPkgHTTPJSON_GetJSONExported(t *testing.T) {
-	var _ func(
+	var _ = (func(
 		ctx context.Context,
 		client httpjson.Client,
 		targetURL string,
 		opts *httpjson.Options,
-	) (map[string]any, error) = httpjson.GetJSON[map[string]any]
+	) (map[string]any, error))(httpjson.GetJSON[map[string]any])
 
 	opts := &httpjson.Options{UserAgent: "test-ua"}
 	if opts.UserAgent != "test-ua" {

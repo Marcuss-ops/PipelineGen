@@ -41,7 +41,6 @@ func (e *discoveryExtractor) Extract(_ context.Context, request *youtubedto.Extr
 }
 
 type stubDiscovery struct {
-	queries  []string
 	requests []scriptports.VideoSourceDiscoveryRequest
 	urls     []string
 	err      error

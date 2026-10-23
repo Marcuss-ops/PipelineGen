@@ -298,7 +298,7 @@ func (v *UploadVerifier) computeSHA256(ctx context.Context, fileID string) (stri
 	if err != nil {
 		return "", fmt.Errorf("download file %q: %w", fileID, err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	h := sha256.New()
 	// 1 MiB buffer — matches the canonical streaming hash buffer
 	// used elsewhere in the codebase (e.g. fileutil.HashFile).

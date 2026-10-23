@@ -93,7 +93,7 @@ const testSchema = `
 func newTestRepo(t *testing.T) *ScriptRepository {
 	t.Helper()
 	db := drive.NewTestDBWithSchema(t, testSchema)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return NewScriptRepository(db)
 }
 

@@ -66,10 +66,16 @@ func TestDiagText(t *testing.T) {
 		if err != nil {
 			t.Logf("download artifact: %v", err)
 		} else {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			buf := &bytes.Buffer{}
-			io.Copy(buf, resp.Body)
-			os.WriteFile(out, buf.Bytes(), 0o644)
+			if _, err := io.Copy(buf, resp.Body); err != nil {
+				t.Logf("download artifact body: %v", err)
+				return
+			}
+			if err := os.WriteFile(out, buf.Bytes(), 0o644); err != nil {
+				t.Logf("write artifact: %v", err)
+				return
+			}
 			t.Logf("artifact saved to %s (%d bytes)", out, buf.Len())
 		}
 	}

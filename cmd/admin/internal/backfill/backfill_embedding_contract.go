@@ -14,17 +14,6 @@ import (
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
-// embeddingContractSource is the narrow media read this backfill depends on.
-//
-// MEDIA-SSOT: production binds the PostgreSQL reader (pgmedia.BackfillReader).
-// The eligibility boundary is capregistry.SearchIndexTaxonomySQL inside that
-// reader, so the backfill grades exactly the rows the indexer projects.
-type embeddingContractSource interface {
-	CountEmbeddingContractEligible(ctx context.Context, modelID, modelRevision string) (int, error)
-	CountEmbeddingContractStamped(ctx context.Context, contractHash string) (int, error)
-	ListEmbeddingContractToStamp(ctx context.Context, modelID, modelRevision, contractHash string) ([]string, error)
-}
-
 // runBackfillEmbeddingContract stamps the canonical contract hash only on
 // rows whose observed model and revision already match the E5 contract. It
 // never upgrades an unknown vector by assertion; the vector must first be

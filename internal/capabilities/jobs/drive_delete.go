@@ -29,7 +29,7 @@ type driveDeleteRequestV1 struct {
 	IdempotencyKey string `json:"idempotency_key"`
 }
 
-var driveLifecycleTerminalErr = errors.New("drive_delete: terminal envelope error")
+var errDriveLifecycleTerminal = errors.New("drive_delete: terminal envelope error")
 
 func terminalWrap(err error) error {
 	return outboxevents.NewTerminalError(err)
@@ -90,7 +90,7 @@ func parseDriveDeleteRequest(
 			zap.String("aggregate_id", evt.AggregateID),
 			zap.Error(err),
 		)
-		return driveDeleteRequestV1{}, nil, terminalWrap(fmt.Errorf("%w: %v", driveLifecycleTerminalErr, err))
+		return driveDeleteRequestV1{}, nil, terminalWrap(fmt.Errorf("%w: %v", errDriveLifecycleTerminal, err))
 	}
 
 	if req.SchemaVersion != DriveDeleteRequestSchemaVersion {
@@ -101,21 +101,21 @@ func parseDriveDeleteRequest(
 		)
 		return driveDeleteRequestV1{}, nil, terminalWrap(fmt.Errorf(
 			"%w: schema_version %q != %q",
-			driveLifecycleTerminalErr,
+			errDriveLifecycleTerminal,
 			req.SchemaVersion,
 			DriveDeleteRequestSchemaVersion,
 		))
 	}
 	if req.AssetID == "" {
 		log.Warn("drive_delete: empty asset_id", zap.Int64("event_id", evt.ID))
-		return driveDeleteRequestV1{}, nil, terminalWrap(fmt.Errorf("%w: asset_id is required", driveLifecycleTerminalErr))
+		return driveDeleteRequestV1{}, nil, terminalWrap(fmt.Errorf("%w: asset_id is required", errDriveLifecycleTerminal))
 	}
 	if req.IdempotencyKey == "" {
 		log.Warn("drive_delete: missing idempotency_key",
 			zap.Int64("event_id", evt.ID),
 			zap.String("aggregate_id", req.AssetID),
 		)
-		return driveDeleteRequestV1{}, nil, terminalWrap(fmt.Errorf("%w: idempotency_key is required", driveLifecycleTerminalErr))
+		return driveDeleteRequestV1{}, nil, terminalWrap(fmt.Errorf("%w: idempotency_key is required", errDriveLifecycleTerminal))
 	}
 
 	reqLog := []zap.Field{

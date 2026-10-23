@@ -135,7 +135,7 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assetsports.Source
 	if dlErr != nil {
 		return nil, fmt.Errorf("stock stager: drive download file %q: %w", fileID, dlErr)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	f, createErr := fs.Create(outputPath)
 	if createErr != nil {
@@ -143,7 +143,7 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assetsports.Source
 	}
 
 	if _, copyErr := io.Copy(f, body); copyErr != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("stock stager: write downloaded file: %w", copyErr)
 	}
 

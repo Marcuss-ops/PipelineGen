@@ -208,7 +208,7 @@ func newArtlistIsolationContext(segments []scriptpkg.VidRushSegmentResult) (*art
 				return nil, fmt.Errorf("segment %s has an empty Artlist query", segmentID)
 			}
 			if owner, exists := ctx.queryOwners[query]; exists && owner != segmentID {
-				return nil, fmt.Errorf("Artlist query %q is shared by segments %s and %s", rawQuery, owner, segmentID)
+				return nil, fmt.Errorf("artlist query %q is shared by segments %s and %s", rawQuery, owner, segmentID)
 			}
 			ctx.queryOwners[query] = segmentID
 		}
@@ -324,11 +324,11 @@ func validateArtlistCandidateForContext(ctx *artlistIsolationContext, candidate 
 func ValidateVidRushArtlistIsolation(segments []scriptpkg.VidRushSegmentResult) error {
 	ctx, err := newArtlistIsolationContext(segments)
 	if err != nil {
-		return fmt.Errorf("Artlist isolation: %w", err)
+		return fmt.Errorf("artlist isolation: %w", err)
 	}
 	for _, segment := range segments {
 		if err := validateArtlistQueriesForSegment(ctx, segment); err != nil {
-			return fmt.Errorf("Artlist isolation: %w", err)
+			return fmt.Errorf("artlist isolation: %w", err)
 		}
 		candidates := append([]scriptpkg.SegmentAssetCandidate(nil), segment.Assets.Candidates...)
 		if segment.Assets.PrimaryVideo != nil {
@@ -337,14 +337,14 @@ func ValidateVidRushArtlistIsolation(segments []scriptpkg.VidRushSegmentResult) 
 		seenAssets := make(map[string]string)
 		for _, candidate := range candidates {
 			if err := validateArtlistCandidateForContext(ctx, candidate, segment); err != nil {
-				return fmt.Errorf("Artlist isolation: segment %s: %w", segment.SegmentID, err)
+				return fmt.Errorf("artlist isolation: segment %s: %w", segment.SegmentID, err)
 			}
 			if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
 				continue
 			}
 			assetID := strings.ToLower(strings.TrimSpace(candidate.AssetID))
 			if owner, exists := seenAssets[assetID]; exists && owner != segment.SegmentID {
-				return fmt.Errorf("Artlist isolation: asset %q is bound to segments %s and %s", candidate.AssetID, owner, segment.SegmentID)
+				return fmt.Errorf("artlist isolation: asset %q is bound to segments %s and %s", candidate.AssetID, owner, segment.SegmentID)
 			}
 			seenAssets[assetID] = segment.SegmentID
 		}
@@ -357,7 +357,7 @@ func ValidateVidRushArtlistIsolation(segments []scriptpkg.VidRushSegmentResult) 
 			}
 			key := strings.ToLower(strings.TrimSpace(candidate.AssetID))
 			if owner, exists := assetOwners[key]; exists && owner != segment.SegmentID {
-				return fmt.Errorf("Artlist isolation: asset %q is bound to segments %s and %s", candidate.AssetID, owner, segment.SegmentID)
+				return fmt.Errorf("artlist isolation: asset %q is bound to segments %s and %s", candidate.AssetID, owner, segment.SegmentID)
 			}
 			assetOwners[key] = segment.SegmentID
 		}

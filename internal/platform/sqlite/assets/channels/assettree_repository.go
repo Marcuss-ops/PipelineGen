@@ -102,7 +102,7 @@ func (r *AssetTreeRepository) GetChildrenPaged(ctx context.Context, source, pare
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []*AssetNode
 	for rows.Next() {
@@ -170,7 +170,7 @@ func (r *AssetTreeRepository) ListByRoot(ctx context.Context, source, rootID str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var nodes []*AssetNode
 	for rows.Next() {

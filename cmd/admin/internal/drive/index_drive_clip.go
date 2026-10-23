@@ -84,7 +84,7 @@ func RunIndexDriveClip(args []string) error {
 	}
 	defer rootCleanup()
 	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Repos == nil || root.Repos.ClipsRepo == nil || root.Outbox == nil || root.Outbox.Dispatcher == nil || root.Outbox.EventsPool == nil || root.Outbox.EventsRepo == nil {
-		return fmt.Errorf("Drive reader, clips repository and outbox dispatcher are required")
+		return fmt.Errorf("drive reader, clips repository and outbox dispatcher are required")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -101,7 +101,7 @@ func RunIndexDriveClip(args []string) error {
 		return fmt.Errorf("read Drive metadata: %w", err)
 	}
 	if meta == nil || meta.Trashed {
-		return fmt.Errorf("Drive file is missing or trashed")
+		return fmt.Errorf("drive file is missing or trashed")
 	}
 
 	filename := strings.TrimSpace(meta.Name)
@@ -109,7 +109,7 @@ func RunIndexDriveClip(args []string) error {
 		filename = strings.TrimSpace(manifest.DefaultFilename)
 	}
 	if filename == "" {
-		return fmt.Errorf("Drive file name is empty and manifest does not provide default_filename")
+		return fmt.Errorf("drive file name is empty and manifest does not provide default_filename")
 	}
 
 	localSubdir := strings.TrimSpace(manifest.LocalSubdir)
@@ -129,7 +129,7 @@ func RunIndexDriveClip(args []string) error {
 	if err != nil {
 		return fmt.Errorf("download Drive clip: %w", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	out, err := os.Create(localPath)
 	if err != nil {
 		return fmt.Errorf("create local clip: %w", err)

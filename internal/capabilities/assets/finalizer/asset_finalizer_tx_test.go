@@ -204,7 +204,7 @@ func publishedArtifact(assetID, sha256, fileID string) finalization.PublishedArt
 // asset_locations) inside a transaction.
 func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -214,7 +214,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	domainTx := WrapTx(tx)
 	ref, events, err := fx.FinalizeAsset(ctx, domainTx, artifact)
@@ -325,7 +325,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 // SizeBytes/250000 fallback.
 func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	artifact := finalization.PublishedArtifact{
 		ArtifactID:     "job_overlay:overlay:001",
@@ -360,7 +360,7 @@ func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), WrapTx(tx), artifact); err != nil {
 		t.Fatalf("FinalizeAsset: %v", err)
@@ -417,7 +417,7 @@ func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 
 func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	artifact := publishedArtifact("asset-rendition", "hash-rendition", "drive-rendition")
 	artifact.Renditions = []finalization.AssetRenditionLocation{{
@@ -435,7 +435,7 @@ func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := newTestFinalizer(t, db).FinalizeAsset(context.Background(), WrapTx(tx), artifact); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		t.Fatalf("FinalizeAsset with rendition: %v", err)
 	}
 	var locationKind, renditionKind string
@@ -444,7 +444,7 @@ func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 		FROM asset_locations al
 		JOIN asset_renditions ar ON ar.location_id = al.id
 		WHERE al.asset_id = ?`, artifact.ArtifactID).Scan(&locationKind, &renditionKind); err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		t.Fatalf("read rendition location: %v", err)
 	}
 	if locationKind != "local" || renditionKind != "master" {
@@ -469,7 +469,7 @@ func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 // the version_number correctly.
 func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -479,37 +479,45 @@ func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
 	ref1, _, err := fx.FinalizeAsset(ctx, WrapTx(tx1),
 		publishedArtifact("asset-002", "hash-v1", "file-v1"))
 	if err != nil {
-		tx1.Rollback()
+		_ = tx1.Rollback()
 		t.Fatalf("first finalize: %v", err)
 	}
 	if ref1.SourceVersion != 1 {
 		t.Errorf("first version = %d, want 1", ref1.SourceVersion)
 	}
-	tx1.Commit()
+	if err := tx1.Commit(); err != nil {
+		t.Fatalf("commit first finalize: %v", err)
+	}
 
 	// Second finalization (new content hash, new file).
 	tx2, _ := db.BeginTx(ctx, nil)
 	ref2, _, err := fx.FinalizeAsset(ctx, WrapTx(tx2),
 		publishedArtifact("asset-002", "hash-v2", "file-v2"))
 	if err != nil {
-		tx2.Rollback()
+		_ = tx2.Rollback()
 		t.Fatalf("second finalize: %v", err)
 	}
 	if ref2.SourceVersion != 2 {
 		t.Errorf("second version = %d, want 2", ref2.SourceVersion)
 	}
-	tx2.Commit()
+	if err := tx2.Commit(); err != nil {
+		t.Fatalf("commit second finalize: %v", err)
+	}
 
 	// Verify both versions exist.
 	var count int
-	db.QueryRowContext(ctx, `SELECT COUNT(*) FROM asset_versions WHERE asset_id = ?`, "asset-002").Scan(&count)
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM asset_versions WHERE asset_id = ?`, "asset-002").Scan(&count); err != nil {
+		t.Fatalf("count asset versions: %v", err)
+	}
 	if count != 2 {
 		t.Errorf("version count = %d, want 2", count)
 	}
 
 	// Verify media_assets now reflects the latest hash.
 	var fileHash string
-	db.QueryRowContext(ctx, `SELECT legacy_file_md5 FROM media_assets WHERE id = ?`, "asset-002").Scan(&fileHash)
+	if err := db.QueryRowContext(ctx, `SELECT legacy_file_md5 FROM media_assets WHERE id = ?`, "asset-002").Scan(&fileHash); err != nil {
+		t.Fatalf("read media asset hash: %v", err)
+	}
 	if fileHash != "hash-v2" {
 		t.Errorf("media_assets legacy_file_md5 = %q after second finalize, want hash-v2", fileHash)
 	}
@@ -519,7 +527,7 @@ func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
 // mapping for each ArtifactKind.
 func TestAssetTxFinalizer_DifferentArtifactKinds(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -546,16 +554,18 @@ func TestAssetTxFinalizer_DifferentArtifactKinds(t *testing.T) {
 			pa.Kind = c.kind
 
 			tx, _ := db.BeginTx(ctx, nil)
-			defer tx.Rollback()
+			defer func() { _ = tx.Rollback() }()
 			_, _, err := fx.FinalizeAsset(ctx, WrapTx(tx), pa)
 			if err != nil {
 				t.Fatalf("FinalizeAsset(%s): %v", c.kind, err)
 			}
 
 			var mediaType string
-			tx.QueryRowContext(ctx,
+			if err := tx.QueryRowContext(ctx,
 				`SELECT media_type FROM media_assets WHERE id = ?`, assetID,
-			).Scan(&mediaType)
+			).Scan(&mediaType); err != nil {
+				t.Fatalf("read media_type for %s: %v", c.kind, err)
+			}
 			if mediaType != c.wantMedia {
 				t.Errorf("media_type = %q, want %q", mediaType, c.wantMedia)
 			}
@@ -569,14 +579,14 @@ func TestAssetTxFinalizer_DifferentArtifactKinds(t *testing.T) {
 // source_version, idempotency_key).
 func TestAssetTxFinalizer_OutboxEventPayload(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
 
 	artifact := publishedArtifact("asset-payload", "sha256-hash", "drive-id-xyz")
 	tx, _ := db.BeginTx(ctx, nil)
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, events, err := fx.FinalizeAsset(ctx, WrapTx(tx), artifact)
 	if err != nil {
@@ -614,7 +624,7 @@ func TestAssetTxFinalizer_OutboxEventPayload(t *testing.T) {
 // write inside the transaction doesn't persist.
 func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -627,11 +637,15 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first finalize: %v", err)
 	}
-	tx.Commit()
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit first finalize: %v", err)
+	}
 
 	// Insert a conflicting asset_versions row manually.
-	db.Exec(`INSERT INTO asset_versions (asset_id, version_number, legacy_file_md5, created_at)
-		VALUES ('asset-rollback', 999, 'h999', '2024-01-01')`)
+	if _, err := db.Exec(`INSERT INTO asset_versions (asset_id, version_number, legacy_file_md5, created_at)
+		VALUES ('asset-rollback', 999, 'h999', '2024-01-01')`); err != nil {
+		t.Fatalf("insert conflicting asset version: %v", err)
+	}
 
 	// Now finalize again — the MAX(version_number)+1 should give 1000,
 	// but if someone manually inserted 999, the unique constraint should
@@ -646,7 +660,9 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	if ref2.SourceVersion != 1000 {
 		t.Errorf("expected version 1000 after manual version 999 insert, got %d", ref2.SourceVersion)
 	}
-	tx2.Commit()
+	if err := tx2.Commit(); err != nil {
+		t.Fatalf("commit second finalize: %v", err)
+	}
 }
 
 // TestAssetTxFinalizer_IndexStatePendingAtInsert pins the godlike/07
@@ -665,7 +681,7 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 // (INDEXING / INDEXED / INDEX_FAILED).
 func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -674,7 +690,7 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	artifact := publishedArtifact("asset-e2e-finale", "hash-e2e", "file-e2e")
 	if _, _, err := fx.FinalizeAsset(ctx, WrapTx(tx), artifact); err != nil {
@@ -712,7 +728,7 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 
 	// Open a NEW tx + re-finalize (new hash → re-finalization).
 	tx2, _ := db.BeginTx(ctx, nil)
-	defer tx2.Rollback()
+	defer func() { _ = tx2.Rollback() }()
 	artifact2 := publishedArtifact("asset-e2e-finale", "hash-e2e-v2", "file-e2e-v2")
 	if _, _, err := fx.FinalizeAsset(ctx, WrapTx(tx2), artifact2); err != nil {
 		t.Fatalf("re-FinalizeAsset: %v", err)
@@ -751,7 +767,7 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 // pgmedia/index_event.go.
 func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -761,7 +777,7 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 	_, _, err := fx.FinalizeAsset(ctx, WrapTx(tx1),
 		publishedArtifact("asset-content-hash", "old-hash", "file-old"))
 	if err != nil {
-		tx1.Rollback()
+		_ = tx1.Rollback()
 		t.Fatalf("first finalize: %v", err)
 	}
 	if err := tx1.Commit(); err != nil {
@@ -770,10 +786,12 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 
 	// Verify content_hash in metadata_json after first ingest.
 	var metaJSON1 string
-	db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		`SELECT metadata_json FROM media_assets WHERE id = ?`,
 		"asset-content-hash",
-	).Scan(&metaJSON1)
+	).Scan(&metaJSON1); err != nil {
+		t.Fatalf("read metadata_json (1st): %v", err)
+	}
 	var meta1 map[string]any
 	if err := json.Unmarshal([]byte(metaJSON1), &meta1); err != nil {
 		t.Fatalf("unmarshal metadata_json (1st): %v", err)
@@ -796,7 +814,7 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 	ref2, events2, err := fx.FinalizeAsset(ctx, WrapTx(tx2),
 		publishedArtifact("asset-content-hash", "new-hash", "file-new"))
 	if err != nil {
-		tx2.Rollback()
+		_ = tx2.Rollback()
 		t.Fatalf("second finalize: %v", err)
 	}
 	if err := tx2.Commit(); err != nil {
@@ -808,10 +826,12 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 
 	// Verify content_hash in metadata_json is the NEW hash after republish.
 	var metaJSON2 string
-	db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		`SELECT metadata_json FROM media_assets WHERE id = ?`,
 		"asset-content-hash",
-	).Scan(&metaJSON2)
+	).Scan(&metaJSON2); err != nil {
+		t.Fatalf("read metadata_json (2nd): %v", err)
+	}
 	var meta2 map[string]any
 	if err := json.Unmarshal([]byte(metaJSON2), &meta2); err != nil {
 		t.Fatalf("unmarshal metadata_json (2nd): %v", err)
@@ -827,10 +847,12 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 
 	// Verify legacy_file_md5 column is also the new hash.
 	var colHash string
-	db.QueryRowContext(ctx,
+	if err := db.QueryRowContext(ctx,
 		`SELECT legacy_file_md5 FROM media_assets WHERE id = ?`,
 		"asset-content-hash",
-	).Scan(&colHash)
+	).Scan(&colHash); err != nil {
+		t.Fatalf("read legacy_file_md5 column: %v", err)
+	}
 	if colHash != "new-hash" {
 		t.Errorf("legacy_file_md5 column = %q, want %q", colHash, "new-hash")
 	}
@@ -859,10 +881,10 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 
 func TestTxAdapter_SatisfiesInterface(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	tx, _ := db.BeginTx(context.Background(), nil)
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	domainTx := WrapTx(tx)
 	// Use ExecContext to verify the adapter forwards correctly.

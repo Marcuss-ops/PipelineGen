@@ -155,11 +155,6 @@ func annotationsForLanguage(scene Scene, language Language, sourceLanguage ...La
 	return nil
 }
 
-// entityRepeatPolicy is the explicit product policy for entity visual
-// repetition: each entity is rendered at most once per scene (first
-// renderable occurrence). See the package doc for the full contract.
-const entityRepeatPolicy = "once_per_scene"
-
 // entitySourcesFromAnnotations projects a scene's annotations onto the
 // neutral EntitySource inputs consumed by the capability builder. It emits
 // exactly ONE source per entity (entityRepeatPolicy = once_per_scene): the
@@ -307,7 +302,7 @@ func findLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, 
 	hasSingleRunePart := false
 	for _, rawPart := range strings.Fields(strings.ToLower(strings.TrimSpace(candidate))) {
 		part := make([]rune, 0, len([]rune(rawPart)))
-		for _, r := range []rune(rawPart) {
+		for _, r := range rawPart {
 			if unicode.IsLetter(r) || unicode.IsNumber(r) {
 				part = append(part, r)
 			}
@@ -320,7 +315,7 @@ func findLocalizedEntitySpan(text, candidate string) (scriptpkg.AnnotationSpan, 
 		}
 		parts = append(parts, part)
 	}
-	for _, r := range []rune(strings.ToLower(strings.TrimSpace(candidate))) {
+	for _, r := range strings.ToLower(strings.TrimSpace(candidate)) {
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
 			want = append(want, r)
 		}

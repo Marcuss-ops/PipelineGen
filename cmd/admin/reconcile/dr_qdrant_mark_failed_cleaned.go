@@ -54,7 +54,7 @@ func runDrMarkFailedCleaned(ctx context.Context, cfg *config.Config, client *tra
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	sqliteDB := dbSet.Primary
 	registryLedger, err := regsql.NewLedger(sqliteDB.DB)
 	if err != nil {

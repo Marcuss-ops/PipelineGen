@@ -339,7 +339,7 @@ func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *trans
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	sqliteDB := dbSet.Primary
 
 	cm := collections.NewCollectionManager(client, schema, log)
@@ -477,7 +477,7 @@ func runDrApplyRetention(ctx context.Context, cfg *config.Config, client *transp
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	sqliteDB := dbSet.Primary
 	registryLedger, err := regsql.NewLedger(sqliteDB.DB)
 	if err != nil {

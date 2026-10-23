@@ -226,6 +226,16 @@ type ProcessInput = TransformSpec
 // PR-MEDIATRANSFORMER-RENAME step 2.
 type ProcessResult = RenditionSet
 
+// MediaProcessor names the legacy Process surface without the deprecated
+// Processor identifier, so consumers stop referencing a symbol scheduled for
+// removal while the Transform migration is still incomplete. It is the exact
+// same method set as Processor; implementations that satisfy one satisfy the
+// other. Delete this bridge together with Processor in
+// PR-MEDIATRANSFORMER-RENAME step 2.
+type MediaProcessor interface {
+	Process(ctx context.Context, input *ProcessInput) (*ProcessResult, error)
+}
+
 // Processor is the legacy god-service interface, retained (NOT removed)
 // for backward compatibility with the ~50 existing callers in
 // `internal/capabilities/{youtube,clips,artlist,voiceover}` and

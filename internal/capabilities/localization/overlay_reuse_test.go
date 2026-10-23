@@ -203,7 +203,9 @@ func TestFingerprint_ChangesWithOverlay(t *testing.T) {
 	if Fingerprint(without) == Fingerprint(withOverlay) {
 		t.Fatalf("an overlay-bearing variant must not share the overlay-free digest")
 	}
-	if Fingerprint(withOverlay) != Fingerprint(withOverlay) {
+	again := basePlan()
+	again.Overlays = testOverlayLineages()
+	if Fingerprint(withOverlay) != Fingerprint(again) {
 		t.Fatalf("fingerprint must be deterministic")
 	}
 

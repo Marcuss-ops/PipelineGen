@@ -57,13 +57,13 @@ func (r *TextSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSp
 	// Assemble source text block.
 	var assembled strings.Builder
 	if topic != "" {
-		assembled.WriteString(fmt.Sprintf("Topic: %s\n", topic))
+		fmt.Fprintf(&assembled, "Topic: %s\n", topic)
 	}
 	if sourceText != "" {
-		assembled.WriteString(fmt.Sprintf("Source: %s\n", sourceText))
+		fmt.Fprintf(&assembled, "Source: %s\n", sourceText)
 	}
 	if guidelines != "" {
-		assembled.WriteString(fmt.Sprintf("Guidelines: %s\n", guidelines))
+		fmt.Fprintf(&assembled, "Guidelines: %s\n", guidelines)
 	}
 
 	resolved := &scriptpkg.ResolvedSource{

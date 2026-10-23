@@ -113,7 +113,7 @@ func TestRecovery_SQLiteStore_RestartAndReplay(t *testing.T) {
 
 	// ── Process lifetime 2: the same job is redelivered ──────────────
 	db2, store2 := openStore()
-	defer db2.Close()
+	defer func() { _ = db2.Close() }()
 	deps.Steps = store2
 	handler2, err := NewHandler(deps)
 	if err != nil {

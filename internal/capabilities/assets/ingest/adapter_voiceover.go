@@ -58,13 +58,13 @@ func (a *voiceoverStoreAdapter) FindExisting(ctx context.Context, query assetop.
 		}
 	}
 
-	if query.LegacyFileMD5 != "" {
+	if query.ContentSHA256 != "" {
 		recs, err := a.repo.ListAll(ctx)
 		if err != nil {
 			return nil, err
 		}
 		for _, rec := range recs {
-			if strings.EqualFold(strings.TrimSpace(rec.LegacyFileMD5), strings.TrimSpace(query.LegacyFileMD5)) {
+			if strings.EqualFold(strings.TrimSpace(rec.LegacyFileMD5), strings.TrimSpace(query.ContentSHA256)) {
 				return mediaRecordToAssetRecord(voiceoverToMediaRecord(rec)), nil
 			}
 		}

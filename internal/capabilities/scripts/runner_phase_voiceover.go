@@ -102,7 +102,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// Envelope validation and the builder reject invalid audio-mode
 		// combinations earlier; fail closed here for direct-runner callers.
 		cause := fmt.Errorf("voiceover phase: resolve audio mode: %w", modeErr)
-		r.failExecutionStep(ctx, exec, voiceoverStep, cause)
+		r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, cause)
 		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
 		return false
 	}
@@ -113,7 +113,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 	voiceoverSkipped := stageSkipped(resumeIdx, StageGeneratingVoiceovers) || r.voiceoverGen == nil || !needsVoiceover
 	if !voiceoverSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingVoiceovers); err != nil {
-			r.failExecutionStep(ctx, exec, voiceoverStep, err)
+			r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, err)
 			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 			return false
 		}
@@ -130,7 +130,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					continue
 				}
 				if err := r.attachOutputAsset(ctx, exec, voiceoverStep.StepID, ref.ID, existingOrdinal); err != nil {
-					r.failExecutionStep(ctx, exec, voiceoverStep, err)
+					r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, err)
 					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 					return false
 				}
@@ -149,7 +149,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 		// fixed_media is intentionally excluded from this phase.
 		if len(work) > 0 && routing.Project == "" {
 			cause := fmt.Errorf("%w: voiceover publishing requires a resolved Project", ErrProjectRequired)
-			r.failExecutionStep(ctx, exec, voiceoverStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
 			return false
 		}
@@ -175,7 +175,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					r.checkpoint(ctx, runID, snapshot)
 				}
 				cause := fmt.Errorf("voiceover generation failed: %w", err)
-				r.failExecutionStep(ctx, exec, voiceoverStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, cause)
 				return false
 			}
@@ -206,7 +206,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 				res := results[i]
 				result.AudioMetrics.TTSScenes = append(result.AudioMetrics.TTSScenes, res.metric)
 				if err := r.attachOutputAsset(ctx, exec, voiceoverStep.StepID, res.audioRef.ID, i); err != nil {
-					r.failExecutionStep(ctx, exec, voiceoverStep, err)
+					r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, err)
 					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 					return false
 				}
@@ -221,7 +221,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 					AssetID:     res.audioRef.ID,
 					Status:      "COMPLETED",
 				}); err != nil {
-					r.failExecutionStep(ctx, exec, voiceoverStep, err)
+					r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, err)
 					r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 					return false
 				}
@@ -238,7 +238,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 			return false
 		}
 	} else if err := r.completeExecutionStep(ctx, exec, voiceoverStep); err != nil {
-		r.failExecutionStep(ctx, exec, voiceoverStep, err)
+		r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, err)
 		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, err)
 		return false
 	}
@@ -486,7 +486,7 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 	select {
 	case <-renderDone:
 		for renderErr := range renderErrors {
-			r.failExecutionStep(ctx, exec, voiceoverStep, renderErr)
+			r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, renderErr)
 			r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, renderErr)
 			return false
 		}
@@ -502,7 +502,7 @@ func (r *Runner) projectVoiceoverMetrics(ctx context.Context, runID string, req 
 			r.checkpoint(ctx, runID, snapshot)
 		}
 	case <-ctx.Done():
-		r.failExecutionStep(ctx, exec, voiceoverStep, ctx.Err())
+		r.failExecutionStepBestEffort(ctx, exec, voiceoverStep, ctx.Err())
 		r.failRunWithRetry(ctx, runID, StageGeneratingVoiceovers, ctx.Err())
 		return false
 	}

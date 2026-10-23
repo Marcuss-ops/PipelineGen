@@ -49,7 +49,7 @@ type panickingMediaProcessor_MustNotBeCalled struct {
 	processCalls atomic.Int32
 }
 
-var _ detail.Processor = (*panickingMediaProcessor_MustNotBeCalled)(nil)
+var _ detail.MediaProcessor = (*panickingMediaProcessor_MustNotBeCalled)(nil)
 
 var errProcessorShouldNotBeCalled = errors.New(
 	"panickingMediaProcessor_MustNotBeCalled: Process was invoked — the gate-block short-circuit did NOT short-circuit (a godlike/07 regression). The orchestrator MUST return early after gateBlockShortCircuit fires so mediaProcessor.Process is NEVER invoked on a typed gate block",

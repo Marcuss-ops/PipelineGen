@@ -40,9 +40,7 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 	if prepared.Source == nil {
 		prepared.Source = &MaterializedAsset{}
 	}
-	if prepared.Watermark == nil {
-		// materializationResult is nil-safe; no initialization needed.
-	}
+	// materializationResult is nil-safe; no watermark initialization needed.
 	backgroundMode := ""
 	if plan.Background != nil {
 		backgroundMode = plan.Background.Mode

@@ -122,7 +122,7 @@ func (c *CollectionInfo) unmarshalQdrantEnvelope(result json.RawMessage) error {
 	// Sparse Vectors: map modifier/model onto the public struct.
 	c.SparseConfigs = make(map[string]SparseConfig, len(r.Config.Params.SparseVectors))
 	for ch, sv := range r.Config.Params.SparseVectors {
-		c.SparseConfigs[ch] = SparseConfig{Modifier: sv.Modifier, Model: sv.Model}
+		c.SparseConfigs[ch] = SparseConfig(sv)
 	}
 
 	// payload_schema is a map keyed by field name; flatten to a list of

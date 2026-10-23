@@ -10,8 +10,6 @@ import (
 	structure "github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/structure"
 )
 
-const testDomainJobImport = "github.com/Marcuss-ops/PipelineGen/internal/domain/" + "job"
-
 // NOTE: P1-7 retired `internal/domain/job/` entirely (atomic cutover
 // → `internal/kernel/job/`, 2026-07-30). The 3 test functions below
 // (TestCollectDomainJobImportsProductionOnly,

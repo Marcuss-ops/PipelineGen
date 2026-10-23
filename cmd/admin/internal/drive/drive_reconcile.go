@@ -108,7 +108,7 @@ func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 	if err != nil {
 		return fmt.Errorf("drive-reconcile: open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	catalogRepo := sqlitedelivery.NewRepository(dbSet.Primary.DB)
 
@@ -310,7 +310,7 @@ func syncMediaAssetsToCatalog(ctx context.Context, db *sql.DB, repo *sqlitedeliv
 	if err != nil {
 		return 0, fmt.Errorf("syncMediaAssets: query media_assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	synced := 0
 	for rows.Next() {

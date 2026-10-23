@@ -73,21 +73,21 @@ func (s *LocalBlobStore) VerifyAndPromote(ctx context.Context, stagingKey string
 	if err != nil {
 		return PromoteResult{}, fmt.Errorf("artifacts: open staging %s: %w", stagingKey, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	sizeBytes, err := io.Copy(h, f)
 	if err != nil {
 		return PromoteResult{}, fmt.Errorf("artifacts: hash staging %s: %w", stagingKey, err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	hash := hex.EncodeToString(h.Sum(nil))
 
 	// Validate expected hash (if provided)
 	if expectedSHA256 != "" && hash != expectedSHA256 {
 		// Clean up the staging file since it doesn't match
-		os.Remove(stagingPath)
+		_ = os.Remove(stagingPath)
 		return PromoteResult{}, fmt.Errorf(
 			"artifacts: hash mismatch for %s: expected=%s actual=%s",
 			stagingKey, expectedSHA256, hash,
@@ -106,7 +106,7 @@ func (s *LocalBlobStore) VerifyAndPromote(ctx context.Context, stagingKey string
 
 	// Atomic rename from staging to canonical
 	if err := os.Rename(stagingPath, canonicalPath); err != nil {
-		os.Remove(stagingPath)
+		_ = os.Remove(stagingPath)
 		return PromoteResult{}, fmt.Errorf("artifacts: rename staging→canonical: %w", err)
 	}
 

@@ -167,7 +167,9 @@ func (r *assetRowScanner) populate(a *AssetData) {
 
 	// Parse tags JSON.
 	if r.tagsJSON.Valid && r.tagsJSON.String != "" && r.tagsJSON.String != "[]" {
-		json.Unmarshal([]byte(r.tagsJSON.String), &a.Tags)
+		if err := json.Unmarshal([]byte(r.tagsJSON.String), &a.Tags); err != nil {
+			a.Tags = nil
+		}
 	}
 
 	// Parse metadata JSON.
@@ -181,16 +183,24 @@ func (r *assetRowScanner) populate(a *AssetData) {
 
 	// Parse embedding vectors.
 	if r.textEmbJSON.Valid && r.textEmbJSON.String != "" && r.textEmbJSON.String != "[]" && r.textEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(r.textEmbJSON.String), &a.TextVector)
+		if err := json.Unmarshal([]byte(r.textEmbJSON.String), &a.TextVector); err != nil {
+			a.TextVector = nil
+		}
 	}
 	if r.transcriptEmbJSON.Valid && r.transcriptEmbJSON.String != "" && r.transcriptEmbJSON.String != "[]" && r.transcriptEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(r.transcriptEmbJSON.String), &a.TranscriptVector)
+		if err := json.Unmarshal([]byte(r.transcriptEmbJSON.String), &a.TranscriptVector); err != nil {
+			a.TranscriptVector = nil
+		}
 	}
 	if r.visualEmbJSON.Valid && r.visualEmbJSON.String != "" && r.visualEmbJSON.String != "[]" && r.visualEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(r.visualEmbJSON.String), &a.VisualVector)
+		if err := json.Unmarshal([]byte(r.visualEmbJSON.String), &a.VisualVector); err != nil {
+			a.VisualVector = nil
+		}
 	}
 	if r.audioEmbJSON.Valid && r.audioEmbJSON.String != "" && r.audioEmbJSON.String != "[]" && r.audioEmbJSON.String != "{}" {
-		json.Unmarshal([]byte(r.audioEmbJSON.String), &a.AudioVector)
+		if err := json.Unmarshal([]byte(r.audioEmbJSON.String), &a.AudioVector); err != nil {
+			a.AudioVector = nil
+		}
 	}
 
 	// Optional fields.

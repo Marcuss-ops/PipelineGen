@@ -14,7 +14,7 @@ func TestRegistryIsIdempotentAndCorrelatesRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for _, ddl := range []string{
 		`CREATE TABLE performance_runs (run_id TEXT PRIMARY KEY, job_id TEXT, root_job_id TEXT, video_id TEXT, workload_id TEXT, workload_version TEXT, git_sha TEXT, worker_id TEXT, host_id TEXT, status TEXT, wall_ms INTEGER, cpu_user_ms INTEGER, cpu_system_ms INTEGER, peak_rss_bytes INTEGER, disk_read_bytes INTEGER, disk_write_bytes INTEGER, network_rx_bytes INTEGER, network_tx_bytes INTEGER, metadata_json TEXT, started_at TEXT, completed_at TEXT)`,
 		`CREATE TABLE performance_steps (step_id TEXT PRIMARY KEY, run_id TEXT, job_id TEXT, name TEXT, status TEXT, duration_ms INTEGER, input_count INTEGER, output_count INTEGER, input_bytes INTEGER, output_bytes INTEGER, cache_hits INTEGER, cache_misses INTEGER, metadata_json TEXT, started_at TEXT, completed_at TEXT)`,
@@ -60,7 +60,7 @@ func TestWorkloadSamplesReturnsBaselineInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE performance_runs (run_id TEXT PRIMARY KEY, job_id TEXT, root_job_id TEXT, video_id TEXT, workload_id TEXT, workload_version TEXT, git_sha TEXT, worker_id TEXT, host_id TEXT, status TEXT, wall_ms INTEGER, cpu_user_ms INTEGER, cpu_system_ms INTEGER, peak_rss_bytes INTEGER, disk_read_bytes INTEGER, disk_write_bytes INTEGER, network_rx_bytes INTEGER, network_tx_bytes INTEGER, metadata_json TEXT, started_at TEXT, completed_at TEXT)`); err != nil {
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "logger init: %v\n", err)
 		os.Exit(1)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	projectRoot, err := os.Getwd()
 	if err != nil {
@@ -116,7 +116,7 @@ func clearAndReapply(dbPath, migrationsDir string, logger *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dbPath, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec("DELETE FROM schema_migrations"); err != nil {
 		logger.Warn("DELETE FROM schema_migrations failed (probably first seed)", zap.Error(err))
@@ -158,14 +158,14 @@ func assertTablesPresent(dbPath string, expected []string) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dbPath, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	actual := make(map[string]bool, len(expected))
 	rows, err := db.Query(`SELECT name FROM sqlite_master WHERE type='table'`)
 	if err != nil {
 		return fmt.Errorf("query sqlite_master: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {

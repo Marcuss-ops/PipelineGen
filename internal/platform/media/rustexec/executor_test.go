@@ -262,9 +262,10 @@ func TestExecutorPoolRunsRequestsConcurrentlyAcrossWorkers(t *testing.T) {
 		}
 		pids[pid] = true
 		marker := marker{pid: pid, ns: ns}
-		if fields[1] == "start" {
+		switch fields[1] {
+		case "start":
 			starts = append(starts, marker)
-		} else if fields[1] == "end" {
+		case "end":
 			ends = append(ends, marker)
 		}
 	}

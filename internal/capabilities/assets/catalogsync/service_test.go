@@ -16,7 +16,7 @@ func TestPruneMissingFoldersDeletesStaleRecords(t *testing.T) {
 	ctx := context.Background()
 
 	db := drive.NewMigratedTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := assets.NewClipsRepository(db, zap.NewNop())
 	now := time.Now().UTC()

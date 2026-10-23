@@ -184,7 +184,7 @@ func TestOverlayRenderBrokerE2E(t *testing.T) {
 		if err != nil {
 			t.Errorf("objectstore GET %s: %v", job.Artifact.StorageKey, err)
 		} else {
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("objectstore GET returned status %d, want 200", resp.StatusCode)
 			} else {

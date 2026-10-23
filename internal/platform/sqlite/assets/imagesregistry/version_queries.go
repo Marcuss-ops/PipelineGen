@@ -42,7 +42,7 @@ func (s *AssetStoreSQLite) ListVersions(ctx context.Context, assetID string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []asset.Version
 	for rows.Next() {
@@ -62,7 +62,7 @@ func (s *AssetStoreSQLite) AppendVersion(ctx context.Context, v *asset.Version) 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var nextVer int
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version_number), 0) + 1 FROM asset_versions WHERE asset_id = ?`, v.AssetID).Scan(&nextVer)

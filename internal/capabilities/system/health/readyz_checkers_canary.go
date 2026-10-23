@@ -55,12 +55,12 @@ func (c *publisherCanary) CanaryUpload(ctx context.Context, folderID string) err
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.WriteString("/readyz Drive canary probe\n"); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
-	tmp.Close()
+	_ = tmp.Close()
 	result, err := c.pub.Publish(ctx, delivery.PublishRequest{
 		Destination:    delivery.DestinationAdmin,
 		LocalPath:      tmp.Name(),

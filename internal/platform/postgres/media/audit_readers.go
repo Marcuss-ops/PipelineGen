@@ -92,7 +92,7 @@ func (r *ClipDriveAuditReader) ListYouTubeClipRows(ctx context.Context, limit in
 	if err != nil {
 		return nil, fmt.Errorf("postgres clip-drive audit: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []ClipAuditRow
 	for rows.Next() {
@@ -172,7 +172,7 @@ func (r *MediaReferenceAuditReader) ListDriveFileRefs(ctx context.Context) ([]Me
 	if err != nil {
 		return nil, fmt.Errorf("postgres media reference audit: query drive refs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []MediaDriveRef
 	for rows.Next() {
@@ -203,7 +203,7 @@ func (r *MediaReferenceAuditReader) ListLocalPaths(ctx context.Context) ([]Media
 	if err != nil {
 		return nil, fmt.Errorf("postgres media reference audit: query local paths: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []MediaLocalPathRef
 	for rows.Next() {
@@ -239,7 +239,7 @@ func (r *MediaReferenceAuditReader) ListSearchEligibleAssetIDs(ctx context.Conte
 	if err != nil {
 		return nil, fmt.Errorf("postgres media reference audit: query eligible assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []string
 	for rows.Next() {
@@ -327,7 +327,7 @@ func (r *StructuredAssetIdentityReader) ListStructuredAssetIdentities(ctx contex
 	if err != nil {
 		return nil, fmt.Errorf("postgres structured asset identity: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []StructuredAssetIdentityRow
 	for rows.Next() {

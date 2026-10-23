@@ -71,10 +71,10 @@ func (c *completingMapClient) Submit(ctx context.Context, job RenderQueueJob) er
 	if err := c.fakeRenderQueueClient.Submit(ctx, job); err != nil {
 		return err
 	}
-	stored := c.fakeRenderQueueClient.jobs[job.ID]
+	stored := c.jobs[job.ID]
 	stored.State = "completed"
 	stored.Artifact = c.artifact
-	c.fakeRenderQueueClient.jobs[job.ID] = stored
+	c.jobs[job.ID] = stored
 	return nil
 }
 
@@ -110,7 +110,7 @@ func TestRenderDynamicMapVideoHonorsDeclaredEncodeProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("declared CPU profile with CPU telemetry must render: %v", err)
 	}
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 }
 
 func TestRenderDynamicMapVideoRefusesCrossProfileTelemetry(t *testing.T) {

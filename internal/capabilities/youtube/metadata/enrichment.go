@@ -18,7 +18,6 @@ import (
 
 	"go.uber.org/zap"
 
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -48,7 +47,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		youtubeURL = fmt.Sprintf("https://www.youtube.com/watch?v=%s", ym.ID)
 	}
 
-	tags := tagutil.NormalizeClipTagList(clip.Tags)
+	tags := youtubetypes.NormalizeClipTagList(clip.Tags)
 	if len(tags) == 0 {
 		tags = ymTagsCanonical(ym, clip)
 	}
@@ -62,9 +61,9 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 	if transcriptBytes, err := os.ReadFile(transcriptPath); err == nil && len(transcriptBytes) > 0 {
 		transcript = strings.TrimSpace(string(transcriptBytes))
 	}
-	cleanTranscriptText := tagutil.CleanClipTranscript(transcript)
+	cleanTranscriptText := youtubetypes.CleanClipTranscript(transcript)
 
-	description := tagutil.CompactYouTubeDescription(ymDescriptionCanonical(ym, clip))
+	description := youtubetypes.CompactYouTubeDescription(ymDescriptionCanonical(ym, clip))
 	rawTitle := clip.Name
 	cleanTitle := clip.CleanTitle()
 	if cleanTitle == "" {
@@ -73,13 +72,13 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 	shortTitle := clip.ShortTitle()
 	clipSummary := clip.ClipSummary()
 	hook := clip.Hook()
-	topics := tagutil.NormalizeClipTagList(clip.Topics())
-	speakers := tagutil.NormalizeClipTagList(clip.Speakers())
-	mentionedPeople := tagutil.NormalizeClipTagList(clip.MentionedPeople())
-	people := tagutil.NormalizeClipTagList(clip.People())
-	sourceTags := tagutil.NormalizeClipTagList(clip.SourceTags())
-	clipTags := tagutil.NormalizeClipTagList(clip.ClipTags())
-	searchKeywords := tagutil.NormalizeClipTagList(clip.SearchKeywords())
+	topics := youtubetypes.NormalizeClipTagList(clip.Topics())
+	speakers := youtubetypes.NormalizeClipTagList(clip.Speakers())
+	mentionedPeople := youtubetypes.NormalizeClipTagList(clip.MentionedPeople())
+	people := youtubetypes.NormalizeClipTagList(clip.People())
+	sourceTags := youtubetypes.NormalizeClipTagList(clip.SourceTags())
+	clipTags := youtubetypes.NormalizeClipTagList(clip.ClipTags())
+	searchKeywords := youtubetypes.NormalizeClipTagList(clip.SearchKeywords())
 	embeddingText := clip.EmbeddingText()
 	rawTranscript := clip.RawTranscript()
 	if rawTranscript == "" {
@@ -95,7 +94,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 	}
 
 	fallbackTopics, fallbackSpeakers, fallbackMentionedPeople, fallbackSourceTags, fallbackClipTags, fallbackSearchKeywords, _, fallbackHook :=
-		tagutil.DeriveFallbackSemanticFields(videoTitle, storedCleanTranscript, description, cleanTitle)
+		youtubetypes.DeriveFallbackSemanticFields(videoTitle, storedCleanTranscript, description, cleanTitle)
 	if len(topics) == 0 {
 		topics = fallbackTopics
 	}
@@ -105,7 +104,7 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 	if len(mentionedPeople) == 0 {
 		mentionedPeople = fallbackMentionedPeople
 	}
-	people = tagutil.MergeTagLists(speakers, mentionedPeople, people)
+	people = youtubetypes.MergeTagLists(speakers, mentionedPeople, people)
 	if len(sourceTags) == 0 {
 		sourceTags = fallbackSourceTags
 	}
@@ -119,12 +118,12 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 		hook = fallbackHook
 	}
 	if embeddingText == "" {
-		embeddingText = tagutil.BuildEmbeddingText(cleanTitle, clipSummary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, storedCleanTranscript)
+		embeddingText = youtubetypes.BuildEmbeddingText(cleanTitle, clipSummary, hook, topics, speakers, mentionedPeople, sourceTags, clipTags, searchKeywords, storedCleanTranscript)
 	}
 	qualityScore := asset.MetadataFloat(clip.Metadata, "quality_score")
 	searchVisibility := clip.SearchVisibility()
 	if searchVisibility == "" {
-		searchVisibility = tagutil.DeriveSearchVisibility(qualityScore)
+		searchVisibility = youtubetypes.DeriveSearchVisibility(qualityScore)
 	}
 
 	meta := youtubetypes.ClipMetadataFile{
@@ -206,28 +205,28 @@ func WriteClipMetadataFile(log *zap.Logger, clip *asset.Asset, ym *youtubeports.
 
 func ymDescriptionCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asset) string {
 	if ym != nil && ym.Description != "" {
-		return tagutil.CompactYouTubeDescription(ym.Description)
+		return youtubetypes.CompactYouTubeDescription(ym.Description)
 	}
 	desc := clip.YouTubeDescription()
 	if desc != "" {
-		return tagutil.CompactYouTubeDescription(desc)
+		return youtubetypes.CompactYouTubeDescription(desc)
 	}
 	return ""
 }
 
 func ymTagsCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asset) []string {
 	if ym != nil && len(ym.Tags) > 0 {
-		return tagutil.NormalizeClipTagList(ym.Tags)
+		return youtubetypes.NormalizeClipTagList(ym.Tags)
 	}
 	tagsJSON := asset.MetadataString(clip.Metadata, "youtube_tags")
 	if tagsJSON != "" && tagsJSON != "[]" {
 		var tags []string
 		if err := json.Unmarshal([]byte(tagsJSON), &tags); err == nil {
-			return tagutil.NormalizeClipTagList(tags)
+			return youtubetypes.NormalizeClipTagList(tags)
 		}
 	}
 	if len(clip.Tags) > 0 {
-		return tagutil.NormalizeClipTagList(clip.Tags)
+		return youtubetypes.NormalizeClipTagList(clip.Tags)
 	}
 	return nil
 }
@@ -239,7 +238,9 @@ func ymCategoriesCanonical(ym *youtubeports.DownloaderMetadata, clip *asset.Asse
 	catsJSON := clip.YouTubeCategories()
 	if catsJSON != "" && catsJSON != "[]" {
 		var cats []string
-		json.Unmarshal([]byte(catsJSON), &cats)
+		if err := json.Unmarshal([]byte(catsJSON), &cats); err != nil {
+			return nil
+		}
 		return cats
 	}
 	return nil

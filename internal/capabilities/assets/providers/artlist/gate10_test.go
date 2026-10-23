@@ -90,7 +90,7 @@ func TestGate10_QdrantFailureIndexStateNotIndexed(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -148,7 +148,7 @@ func TestGate10_QdrantFailureIndexStateNotIndexed(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	// We don't assert on err here: the production code may or may
 	// not bubble the dispatcher error up to RunTag. Gate 10
@@ -223,7 +223,7 @@ func TestGate10_QdrantFailureProcessedCountUnaffected(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -279,7 +279,7 @@ func TestGate10_QdrantFailureProcessedCountUnaffected(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "proccount",
@@ -349,7 +349,7 @@ func TestGate10_QdrantFailureDoesNotPreventArtlistRun(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -404,7 +404,7 @@ func TestGate10_QdrantFailureDoesNotPreventArtlistRun(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, _ := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "runok",

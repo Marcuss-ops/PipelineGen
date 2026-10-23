@@ -233,10 +233,10 @@ func (a *JobAdapter) HandleCacheRefresh(
 		ForceRefresh: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Artlist cache refresh search for %q: %w", term, err)
+		return nil, fmt.Errorf("artlist cache refresh search for %q: %w", term, err)
 	}
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("%w: Artlist cache refresh returned no candidates for %q", ErrEmptyResult, term)
+		return nil, fmt.Errorf("%w: artlist cache refresh returned no candidates for %q", ErrEmptyResult, term)
 	}
 
 	if err := a.service.liveCache.setWithContext(ctx, term, candidates); err != nil {

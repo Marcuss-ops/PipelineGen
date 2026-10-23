@@ -110,7 +110,7 @@ func (c *Client) GenerateDetailed(ctx context.Context, model, prompt string, opt
 		}
 		return GenerateResult{}, fmt.Errorf("ollama request failed: %w", &retry.TransientInfrastructureError{Err: err})
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
@@ -252,7 +252,7 @@ func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt st
 			}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {

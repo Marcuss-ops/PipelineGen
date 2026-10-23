@@ -27,9 +27,7 @@ func TestNormalizeBatchRequestDefaults(t *testing.T) {
 		Text:      "Hello world",
 		Languages: nil,
 	}
-	if req != nil {
-		*req = normalizeBatchRequest(*req)
-	}
+	*req = normalizeBatchRequest(*req)
 
 	assert.Equal(t, "{slug}_{lang}.mp3", req.FilenameTemplate, "default filename template")
 	assert.Equal(t, "verify", req.Strategy, "default strategy")
@@ -43,9 +41,7 @@ func TestNormalizeBatchRequestPreservesCustom(t *testing.T) {
 		FilenameTemplate: "{slug}_{lang}_{hash}.mp3",
 		Strategy:         "replace",
 	}
-	if req != nil {
-		*req = normalizeBatchRequest(*req)
-	}
+	*req = normalizeBatchRequest(*req)
 
 	assert.Equal(t, "{slug}_{lang}_{hash}.mp3", req.FilenameTemplate)
 	assert.Equal(t, "replace", req.Strategy)

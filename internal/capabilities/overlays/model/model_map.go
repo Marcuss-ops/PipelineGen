@@ -243,7 +243,7 @@ func wrapMapPlaneDelta(value, worldSize float64) float64 {
 }
 
 func mapLODActiveZoomRange(index int, lods []MapOverlayLOD, move *MapCameraMove) (float64, float64) {
-	low, high := float64(lods[index].Zoom), float64(lods[index].Zoom)
+	var low, high float64
 	if index == 0 {
 		low = move.StartZoom
 	} else {
@@ -422,7 +422,7 @@ func verifyPNGRasterDimensions(path string) (int, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	header := make([]byte, len(pngSignature))
 	if _, err := io.ReadFull(file, header); err != nil {
 		return 0, 0, fmt.Errorf("not a PNG raster: %w", err)

@@ -52,7 +52,7 @@ func (r *MetadataExportResolver) ResolveAssetIDs(ctx context.Context, jobID stri
 	if err != nil {
 		return nil, fmt.Errorf("postgres metadata export: resolve job scope %q: %w", jobID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	ids := make([]string, 0, 16)
 	for rows.Next() {
@@ -159,7 +159,7 @@ func (r *MetadataExportResolver) LoadDeliverySection(ctx context.Context, assetI
 	if err != nil {
 		return nil, fmt.Errorf("sqlite metadata export: load delivery %q: %w", assetID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]any, 0, 16)
 	for rows.Next() {

@@ -176,7 +176,7 @@ func (a *imageEmbedderAdapter) embedBatch(ctx context.Context, imagePaths []stri
 	if err != nil {
 		return nil, fmt.Errorf("visual batch embed request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotImplemented {
 		// 501 = SigLIP model not loaded — not an error, channel unavailable.

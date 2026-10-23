@@ -45,7 +45,7 @@ func TestFingerprint_Deterministic(t *testing.T) {
 		t.Fatalf("fingerprint must be 64 hex chars, got %d (%q)", len(a), a)
 	}
 	for _, c := range a {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Fatalf("fingerprint must be lowercase hex, got %q", a)
 		}
 	}

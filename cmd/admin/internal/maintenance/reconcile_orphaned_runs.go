@@ -64,7 +64,7 @@ func RunReconcileOrphanedRuns(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	ctx := context.Background()
 	rec := obsmetrics.NewSQLiteRecorderWithLogger(dbSet.Observability.DB, log)
@@ -79,7 +79,7 @@ func RunReconcileOrphanedRuns(args []string) error {
 		jobDB = dbSet.Jobs.DB
 	}
 
-	rows, err := dbSet.Observability.DB.QueryContext(ctx,
+	rows, err := dbSet.Observability.QueryContext(ctx,
 		`SELECT run_id, job_id, job_type, attempt_id, created_at, started_at, queue_wait_ms, report_json
 		 FROM run_observability
 		 WHERE status = 'RUNNING'
@@ -87,7 +87,7 @@ func RunReconcileOrphanedRuns(args []string) error {
 	if err != nil {
 		return fmt.Errorf("select running runs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var orphans []orphanRun
 	for rows.Next() {

@@ -383,7 +383,7 @@ func (s *sqliteStore) ListByJob(ctx context.Context, jobID string) ([]StepState,
 	if err != nil {
 		return nil, fmt.Errorf("steps.SqliteStore.ListByJob: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []StepState
 	for rows.Next() {

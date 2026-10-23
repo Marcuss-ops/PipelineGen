@@ -134,7 +134,7 @@ func apiDepsWarn(r *report.Report, label, msg string) {
 // surfaced as single violations per file (operator-readable
 // infra failure, not silent skip).
 func ScanApiModuleDepsMax8(root string, _ *policy.Policy, r *report.Report) {
-	walkApiModuleFiles(root, func(relPath, absPath string) {
+	if err := walkApiModuleFiles(root, func(relPath, absPath string) {
 		count, found, parseErr := scanApiModuleDepsFile(absPath)
 		if parseErr != nil {
 			// Surface parse failures as a single violation
@@ -180,7 +180,9 @@ func ScanApiModuleDepsMax8(root string, _ *policy.Policy, r *report.Report) {
 				AllowedCount: apiModuleDepsMaxCap,
 			})
 		}
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, "percheck_api_module_deps_max_8 scan "+root+": "+err.Error())
+	}
 }
 
 // walkApiModuleFiles walks <root>/internal/capabilities/**/module.go.
@@ -188,7 +190,7 @@ func ScanApiModuleDepsMax8(root string, _ *policy.Policy, r *report.Report) {
 // though module.go is rarely a test path — defence-in-depth for
 // future fixture patterns. Skip-dir mirrors the canonical
 // skip-dir set used by sibling perchecks.
-func walkApiModuleFiles(root string, fn func(relPath, absPath string)) {
+func walkApiModuleFiles(root string, fn func(relPath, absPath string)) error {
 	// Rescoped 2026-09-12: internal/api was deleted in the August 2026 root
 	// consolidation, so the walk yielded nothing and this cap was unenforced. The
 	// HTTP-layer module packages now live under internal/platform/httpserver, and
@@ -205,7 +207,7 @@ func walkApiModuleFiles(root string, fn func(relPath, absPath string)) {
 		"docs":         true,
 		"data":         true,
 	}
-	filepath.WalkDir(apiRoot, func(path string, d os.DirEntry, err error) error {
+	return filepath.WalkDir(apiRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}

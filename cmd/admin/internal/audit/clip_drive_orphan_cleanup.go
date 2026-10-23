@@ -64,8 +64,8 @@ func RunClipDriveOrphanCleanup(args []string) error {
 	if rootCtx.Drive == nil || rootCtx.Drive.Reader == nil {
 		return fmt.Errorf("drive reader port is not available")
 	}
-	if *apply && rootCtx.Drive.Admin == nil {
-		return fmt.Errorf("drive admin port is required for --apply (trash)")
+	if *apply && rootCtx.Drive.Lifecycle == nil {
+		return fmt.Errorf("drive lifecycle port is required for --apply (trash)")
 	}
 
 	rootFolderID := strings.TrimSpace(*root)
@@ -131,7 +131,7 @@ func RunClipDriveOrphanCleanup(args []string) error {
 	skipped := 0
 	failed := 0
 	for _, o := range selectTrueOrphans(report.OrphanFiles, referenced) {
-		if err := rootCtx.Drive.Admin.TrashFile(ctx, o.FileID); err != nil {
+		if err := rootCtx.Drive.Lifecycle.Trash(ctx, o.FileID); err != nil {
 			fmt.Printf("  FAILED to trash %s (%s): %v\n", o.Name, o.FileID, err)
 			failed++
 			continue

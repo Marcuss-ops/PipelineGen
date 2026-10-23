@@ -149,7 +149,7 @@ func ExplainQueryPlan(ctx context.Context, db *sql.DB, query string) ([]QueryPla
 	if err != nil {
 		return nil, fmt.Errorf("sqlite.ExplainQueryPlan: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var plan []QueryPlanRow
 	for rows.Next() {
@@ -166,7 +166,7 @@ func ExplainQueryPlan(ctx context.Context, db *sql.DB, query string) ([]QueryPla
 			if err2 != nil {
 				return nil, fmt.Errorf("sqlite.ExplainQueryPlan: 3-col fallback query: %w", err2)
 			}
-			defer rows2.Close()
+			defer func() { _ = rows2.Close() }()
 			for rows2.Next() {
 				var r3 QueryPlanRow
 				if err := rows2.Scan(&r3.ID, &r3.Parent, &r3.Detail); err != nil {
@@ -195,7 +195,7 @@ func formatPlanForLog(plan []QueryPlanRow) string {
 	}
 	var sb strings.Builder
 	for _, row := range plan {
-		sb.WriteString(fmt.Sprintf("[id=%d parent=%d detail=%q] ", row.ID, row.Parent, row.Detail))
+		fmt.Fprintf(&sb, "[id=%d parent=%d detail=%q] ", row.ID, row.Parent, row.Detail)
 	}
 	return sb.String()
 }

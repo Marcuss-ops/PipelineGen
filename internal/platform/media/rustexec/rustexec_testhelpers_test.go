@@ -89,44 +89,6 @@ func newRealExecutor(t *testing.T, musclesPath, ffmpegPath string) *Executor {
 	return executor
 }
 
-func renderRealAudio(t *testing.T, musclesPath, ffmpegPath string, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) string {
-	t.Helper()
-	executor := newRealExecutor(t, musclesPath, ffmpegPath)
-	processor := &VideoProcessor{client: NewClientWithExecutor(executor, nil)}
-	combinedAudio, err := NewCombinedAudioRenderer(processor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	finalAudio, metrics, err := combinedAudio.Render(context.Background(), plan, assets)
-	if err != nil {
-		t.Fatalf("real render_audio_plan failed: %v", err)
-	}
-	if metrics.AudioEncodePasses != 1 || metrics.MixMS != 0 || metrics.AACEncodeMS <= 0 || metrics.ProbeMS <= 0 || metrics.HashMS <= 0 {
-		t.Fatalf("real render must encode once with measured encode/probe/hash timings: %+v", metrics)
-	}
-	if err := audio.ValidateFinalAudio(audio.FinalAudioAsset{
-		AssetID:              finalAudio.AssetID,
-		AudioContractVersion: finalAudio.AudioContractVersion,
-		AudioPlanVersion:     finalAudio.AudioPlanVersion,
-		AudioPlanSHA256:      finalAudio.PlanSHA256,
-		FinalAudioSHA256:     finalAudio.FinalAudioSHA256,
-		Codec:                finalAudio.Codec,
-		Profile:              finalAudio.Profile,
-		SampleRate:           finalAudio.SampleRate,
-		Channels:             finalAudio.Channels,
-		ChannelLayout:        finalAudio.ChannelLayout,
-		Bitrate:              finalAudio.Bitrate,
-		DurationMS:           finalAudio.DurationMS,
-		StartPTS:             finalAudio.StartPTS,
-		SizeBytes:            finalAudio.SizeBytes,
-		FinalMix:             finalAudio.FinalMix,
-		CopyEligible:         finalAudio.CopyEligible,
-	}, plan); err != nil {
-		t.Fatalf("real final audio certification failed: %v", err)
-	}
-	return finalAudio.Path
-}
-
 // resolveMusclesBinary locates the pipelinegen-muscles binary for e2e tests.
 // Formerly owned by the deleted comedians_voiceover_certification_test.go;
 // kept because several *_e2e_test.go files still use it.

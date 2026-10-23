@@ -85,7 +85,7 @@ func (c *slowBoundaryRenderClient) WaitTerminal(ctx context.Context, id string) 
 		return RenderQueueJob{}, ctx.Err()
 	case <-time.After(5 * time.Millisecond):
 	}
-	return c.fakeRenderQueueClient.Get(ctx, id)
+	return c.Get(ctx, id)
 }
 
 // TestEnqueueChrononPlanRecordsBoundaryOperations is the end-to-end pin on the

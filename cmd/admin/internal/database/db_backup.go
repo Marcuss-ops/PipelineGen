@@ -23,7 +23,9 @@ func RunDBBackup(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("db backup", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "./data", "root data directory")
 	out := fs.String("out", "", "output backup path (required)")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
 
 	if *out == "" {
 		return fmt.Errorf("-out is required")
@@ -39,7 +41,7 @@ func RunDBBackup(ctx context.Context, args []string) error {
 	srcPath := fullCfg.Storage.PrimaryDBFullPath()
 
 	log, _ := zap.NewProduction()
-	defer log.Sync()
+	defer func() { _ = log.Sync() }()
 
 	r, err := storage.Backup(srcPath, *out)
 	if err != nil {

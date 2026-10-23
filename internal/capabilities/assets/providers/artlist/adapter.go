@@ -131,7 +131,7 @@ func (a *Adapter) checkWired() error {
 		return ErrSourceNotWired
 	}
 	rv := reflect.ValueOf(a.src)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return ErrSourceNotWired
 	}
 	return nil

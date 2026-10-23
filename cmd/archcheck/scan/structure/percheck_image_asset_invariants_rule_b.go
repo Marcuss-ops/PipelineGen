@@ -125,7 +125,7 @@ func (imageAssetGemmaDTOLeakBanRule) Scan(root string, r *report.Report) {
 // emits gemma_dto_leak_ban Rule B violations for any struct
 // JSON tag that names one of the canonical forbidden fields.
 func scanImageAssetGemmaDTOFields(root string, r *report.Report) {
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -201,7 +201,7 @@ func scanImageAssetGemmaDTOFieldsFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

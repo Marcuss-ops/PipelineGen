@@ -75,7 +75,7 @@ func (s LanguageSpec) Validate() error {
 		return fmt.Errorf("language_spec: code %q is too short (min 2 chars)", s.Code)
 	}
 	first := s.Code[0]
-	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')) {
+	if (first < 'a' || first > 'z') && (first < 'A' || first > 'Z') {
 		return fmt.Errorf("language_spec: code %q must start with an ASCII letter", s.Code)
 	}
 	return nil

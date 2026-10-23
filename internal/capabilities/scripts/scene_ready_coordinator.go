@@ -9,7 +9,6 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
@@ -22,7 +21,7 @@ type sceneReadyCoordinator struct {
 	runner  *Runner
 	runID   string
 	req     GenerateRequest
-	routing kernelscript.ArtifactRoutingContext
+	routing scriptpkg.ArtifactRoutingContext
 	ctx     context.Context
 	exec    ExecutionContext
 
@@ -75,7 +74,7 @@ func poolSize(value, fallback int) int {
 	return value
 }
 
-func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext) *sceneReadyCoordinator {
+func newSceneReadyCoordinator(ctx context.Context, runner *Runner, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext) *sceneReadyCoordinator {
 	return &sceneReadyCoordinator{
 		ctx:       ctx,
 		runner:    runner,

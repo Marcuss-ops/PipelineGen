@@ -84,7 +84,7 @@ func TestGate07_SearchFindsIndexedClips(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -135,7 +135,7 @@ func TestGate07_SearchFindsIndexedClips(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	// Step 1: RunTag processes the 2 clips.
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
@@ -225,7 +225,7 @@ func TestGate07_DBSearcherDoesNotFilterByIndexState(t *testing.T) {
 	ctx := context.Background()
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)

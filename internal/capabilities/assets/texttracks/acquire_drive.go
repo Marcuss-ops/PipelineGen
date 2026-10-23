@@ -13,15 +13,15 @@ func (s *AcquireService) acquireFromDrive(ctx context.Context, cmd AcquireComman
 	if err != nil {
 		return nil, fmt.Errorf("download Drive file %s: %w", cmd.DriveFileID, err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	f, err := os.CreateTemp("", "pipelinegen-drive-*.mp4")
 	if err != nil {
 		return nil, fmt.Errorf("create Drive temp file: %w", err)
 	}
 	path := f.Name()
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 	if _, err := io.Copy(f, rc); err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, fmt.Errorf("write Drive temp file: %w", err)
 	}
 	if err := f.Close(); err != nil {

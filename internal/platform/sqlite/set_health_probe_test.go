@@ -22,7 +22,7 @@ func TestPlaneLivenessCheckSucceedsOnALiveHandleAndFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open in-memory db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(`CREATE TABLE probe (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatalf("create table: %v", err)

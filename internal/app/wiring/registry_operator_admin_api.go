@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
-	operatorapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/operator"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
@@ -66,7 +65,7 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 	// read model is wired; the EnableM2M() gate + the media.read scope live
 	// inside the middleware.
 	if wiring != nil {
-		wiring.M2MMediaHandler = operatorapi.NewM2MModule(readModel, log, func() bool { return true })
+		wiring.M2MMediaHandler = operator.NewM2MModule(readModel, log, func() bool { return true })
 		log.Info("created M2M media read module (GET /assets, /assets/:id, /facets on /api/v1/media)")
 	}
 
@@ -75,14 +74,14 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 		verifier = operatorverify.NewOperatorIndexVerifier(root.Process.QdrantClient)
 	}
 
-	desc, err := operatorapi.Build(operatorapi.Dependencies{
+	desc, err := operator.Build(operator.Dependencies{
 		AssetService:    assetReader,
 		ReadModel:       readModel,
 		IndexVerifier:   verifier,
 		JobService:      root.Jobs.Facade,
 		OutboxPort:      nil, // optional — outbox monitoring degrades gracefully
 		Mutator:         root.Outbox.Dispatcher,
-		OperatorOptions: &operatorapi.OperatorOptions{AllowedRoots: allowedRoots},
+		OperatorOptions: &operator.OperatorOptions{AllowedRoots: allowedRoots},
 	}, log)
 	if err != nil {
 		return fmt.Errorf("wire registry: operator-admin-api build: %w", err)

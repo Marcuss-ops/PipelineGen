@@ -152,7 +152,7 @@ func GetBytes(ctx context.Context, client Client, targetURL string, opts *Option
 	if err != nil {
 		return nil, fmt.Errorf("%w: do: %v (url=%s)", ErrRequestFailed, err, targetURL)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		preview, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))

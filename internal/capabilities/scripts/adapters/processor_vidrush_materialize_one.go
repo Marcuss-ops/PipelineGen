@@ -100,7 +100,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				candidate.PersistenceStatus = ""
 				candidate.IndexStatus = ""
 			}
-			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages && !(catalogImage && !wasReady) && !belowSourceMinimum(candidate.Provider) {
+			if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages && (!catalogImage || wasReady) && !belowSourceMinimum(candidate.Provider) {
 				// Keep the remaining remote hits for diagnostics/candidate-set
 				// hashing, but do not download or persist surplus images. This
 				// prevents Qdrant/Drive fan-out from exceeding the scene plan.
@@ -217,7 +217,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				if catalogImage {
 					addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageAcquire, scriptmetrics.EntityImageOutcomeRejected, 1)
 				}
-				if catalogMaterializationStarted.IsZero() == false {
+				if !catalogMaterializationStarted.IsZero() {
 					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogURLBroken()
 					}
@@ -396,8 +396,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		updated.Assets.PrimaryVideo = nil
 	}
 	if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
-		diagnostics := make([]string, 0, min(len(materialized), 3))
-		diagnostics = vidRushArtlistDiagnostics(materialized)
+		diagnostics := vidRushArtlistDiagnostics(materialized)
 		if len(diagnostics) == 0 {
 			providers := make(map[string]int)
 			for _, candidate := range discoveredCandidates {

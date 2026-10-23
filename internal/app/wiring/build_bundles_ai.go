@@ -44,7 +44,6 @@ import (
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
-	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 )
 
 // ollamaAdmissionObserver projects the in-flight admission budget of an Ollama
@@ -247,7 +246,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 				// chat model is unrelated and must not invalidate or alias
 				// transcription artifacts.
 				version := whisperBridgeVersion("scripts/bridges/whisper_transcriber.py")
-				if cached, wrapErr := ytplatform.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
+				if cached, wrapErr := ytinfra.NewCachedWhisperTranscriber(whisperAdapter, cache, version, log); wrapErr == nil {
 					whisperAdapter = cached
 					log.Info("Whisper artifact cache wired", zap.String("processor_version", version))
 				} else {

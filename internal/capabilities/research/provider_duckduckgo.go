@@ -181,7 +181,7 @@ func (d *DuckDuckGoSearchProvider) searchOnce(ctx context.Context, query string,
 	if err != nil {
 		return nil, 0, fmt.Errorf("ddg search: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		// The 202 challenge page is large; keep only the first 4KB in the

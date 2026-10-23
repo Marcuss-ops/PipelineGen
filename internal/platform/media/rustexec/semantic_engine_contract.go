@@ -67,23 +67,41 @@ type semanticEngineAnalyzerVersions struct {
 }
 
 type semanticEngineSceneManifest struct {
-	SceneID         string                     `json:"scene_id"`
-	Status          string                     `json:"status"`
-	Reason          *string                    `json:"reason"`
-	RejectedItems   int                        `json:"rejected_items"`
-	Entities        []semanticEngineCandidate  `json:"entities"`
-	EntityFacts     []semanticEngineEntityFact `json:"entity_facts"`
-	Identities      []semanticEngineIdentity   `json:"identities"`
-	Relations       semanticEngineRelationView `json:"relations"`
-	NumericFacts    []semanticEngineNumeric    `json:"numeric_facts"`
-	TemporalFacts   []semanticEngineTemporal   `json:"temporal_facts"`
-	Bullets         []semanticEngineCandidate  `json:"bullets"`
-	ShortPhrases    []semanticEngineCandidate  `json:"short_phrases"`
-	LongPhrases     []semanticEngineCandidate  `json:"long_phrases"`
-	Quotes          []semanticEngineCandidate  `json:"quotes"`
-	ImportantWords  []semanticEngineCandidate  `json:"important_words"`
-	VisualProposals []semanticEngineProposal   `json:"visual_proposals"`
-	SemanticGroups  []semanticEngineGroup      `json:"semantic_groups"`
+	SceneID         string                       `json:"scene_id"`
+	Status          string                       `json:"status"`
+	Reason          *string                      `json:"reason"`
+	RejectedItems   int                          `json:"rejected_items"`
+	Entities        []semanticEngineCandidate    `json:"entities"`
+	EntityFacts     []semanticEngineEntityFact   `json:"entity_facts"`
+	Identities      []semanticEngineIdentity     `json:"identities"`
+	Relations       semanticEngineRelationView   `json:"relations"`
+	NumericFacts    []semanticEngineNumeric      `json:"numeric_facts"`
+	TemporalFacts   []semanticEngineTemporal     `json:"temporal_facts"`
+	Bullets         []semanticEngineCandidate    `json:"bullets"`
+	ShortPhrases    []semanticEngineCandidate    `json:"short_phrases"`
+	LongPhrases     []semanticEngineCandidate    `json:"long_phrases"`
+	Quotes          []semanticEngineCandidate    `json:"quotes"`
+	ImportantWords  []semanticEngineCandidate    `json:"important_words"`
+	VisualProposals []semanticEngineProposal     `json:"visual_proposals"`
+	SemanticGroups  []semanticEngineGroup        `json:"semantic_groups"`
+	MicroSummaries  []semanticEngineMicroSummary `json:"micro_summaries"`
+}
+
+// semanticEngineMicroSummary mirrors semantic-core::manifest::MicroSummary.
+// StartByte/EndByte locate the verbatim Evidence sentence (not the paraphrased
+// Text), so the Go boundary can re-verify the claim's source before planning.
+type semanticEngineMicroSummary struct {
+	ID              string   `json:"id"`
+	Kind            string   `json:"kind"`
+	Text            string   `json:"text"`
+	EvidenceFactIDs []string `json:"evidence_fact_ids"`
+	SubjectEntityID *string  `json:"subject_entity_id"`
+	NormalizedDate  *string  `json:"normalized_date"`
+	SentenceIndex   int      `json:"sentence_index"`
+	Evidence        string   `json:"evidence"`
+	StartByte       int      `json:"start_byte"`
+	EndByte         int      `json:"end_byte"`
+	Score           float64  `json:"score"`
 }
 
 type semanticEngineCandidate struct {
@@ -99,22 +117,25 @@ type semanticEngineCandidate struct {
 }
 
 type semanticEngineEntityFact struct {
-	ID                string  `json:"id"`
-	SubjectEntityID   string  `json:"subject_entity_id"`
-	Predicate         string  `json:"predicate"`
-	Value             string  `json:"value"`
-	ValueType         string  `json:"type"`
-	NormalizedValue   *string `json:"normalized_value"`
-	TargetEntityID    *string `json:"target_entity_id"`
-	Unit              *string `json:"unit"`
-	Operator          *string `json:"operator"`
-	Status            string  `json:"status"`
-	SentenceIndex     int     `json:"sentence_index"`
-	Evidence          string  `json:"evidence"`
-	StartByte         int     `json:"start_byte"`
-	EndByte           int     `json:"end_byte"`
-	EvidenceStartByte int     `json:"evidence_start_byte"`
-	EvidenceEndByte   int     `json:"evidence_end_byte"`
+	ID                string   `json:"id"`
+	SubjectEntityID   string   `json:"subject_entity_id"`
+	Predicate         string   `json:"predicate"`
+	Value             string   `json:"value"`
+	ValueType         string   `json:"type"`
+	NormalizedValue   *string  `json:"normalized_value"`
+	TargetEntityID    *string  `json:"target_entity_id"`
+	Unit              *string  `json:"unit"`
+	Operator          *string  `json:"operator"`
+	NormalizedDate    *string  `json:"normalized_date"`
+	Status            string   `json:"status"`
+	Importance        float64  `json:"importance"`
+	VisualConceptIDs  []string `json:"visual_concept_ids"`
+	SentenceIndex     int      `json:"sentence_index"`
+	Evidence          string   `json:"evidence"`
+	StartByte         int      `json:"start_byte"`
+	EndByte           int      `json:"end_byte"`
+	EvidenceStartByte int      `json:"evidence_start_byte"`
+	EvidenceEndByte   int      `json:"evidence_end_byte"`
 }
 
 type semanticEngineIdentity struct {

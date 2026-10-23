@@ -73,7 +73,7 @@ func numericOverlayValueStartsWithNumber(value string) bool {
 	if len(fields) == 0 {
 		return false
 	}
-	first := strings.Trim(fields[0], "'\u2019.-.,%\u20ac$\u00a3\u00a5")
+	first := strings.Trim(fields[0], "'\u2019.-,%\u20ac$\u00a3\u00a5")
 	if first == "" {
 		return false
 	}

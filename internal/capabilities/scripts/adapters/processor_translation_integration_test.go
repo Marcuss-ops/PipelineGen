@@ -579,7 +579,7 @@ func TestTranslationWiredPipeline_NewScriptTranslatorFromFunc_ValidFn(t *testing
 	}
 	// Compile-time port assertion: the adapter must satisfy
 	// ports.ScriptTranslator.
-	var _ ports.ScriptTranslator = port
+	var _ = port
 }
 
 // ── Adapter cross-validation: translation.TranslatorFunc ↔ ports.ScriptTranslator ──

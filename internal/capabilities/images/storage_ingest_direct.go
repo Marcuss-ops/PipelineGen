@@ -104,7 +104,6 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 			}
 		}
 	}
-	origin := detail.ClassifyImageOrigin(source, generator)
 	width, height := decodeImageDimensions(content)
 
 	// PR-QDRANT-IMAGES-INDEX (July 2026): tagImageMetadata failure is
@@ -166,7 +165,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	metaJSON := []byte(metaJSONStr)
 	// The builder is the SSOT for origin/provider; align the asset
 	// record so that MetadataJSON.origin matches asset.Origin.
-	origin = builtOrigin
+	origin := builtOrigin
 	provider = builtProvider
 
 	deliveryStatus := "ready"

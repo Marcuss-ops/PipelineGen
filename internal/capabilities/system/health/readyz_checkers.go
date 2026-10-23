@@ -273,8 +273,8 @@ func (r *ReadyChecker) runClipsPathCheck(resp *HealthResponse) {
 		resp.OK = false
 		resp.Status = "unhealthy"
 	} else {
-		f.Close()
-		os.Remove(tmpFile)
+		_ = f.Close()
+		_ = os.Remove(tmpFile)
 		resp.Checks["clips_path"] = CheckResult{"ok": true, "duration_ms": elapsed, "path": r.clipsPath, "writable": true}
 	}
 }

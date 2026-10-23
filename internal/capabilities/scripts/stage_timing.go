@@ -25,6 +25,8 @@ import (
 	"context"
 	"errors"
 
+	"go.uber.org/zap"
+
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -111,12 +113,14 @@ var errPhaseFailed = errors.New("scriptgeneration: phase failed")
 // identical to calling the phase directly.
 func (r *Runner) measurePhase(ctx context.Context, stage kernobs.StageName, fn func(context.Context) bool) bool {
 	ok := false
-	kernobs.MeasureStageReport(ctx, stage, func(c context.Context) error {
+	if _, err := kernobs.MeasureStageReport(ctx, stage, func(c context.Context) error {
 		ok = fn(c)
 		if !ok {
 			return errPhaseFailed
 		}
 		return nil
-	})
+	}); err != nil && r.log != nil {
+		r.log.Warn("script phase stage report failed", zap.String("stage", string(stage)), zap.Error(err))
+	}
 	return ok
 }

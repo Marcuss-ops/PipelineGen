@@ -15,9 +15,9 @@ func withCreateMedia(call *driveapi.FilesCreateCall, ctx context.Context, src up
 		if reader, opts, ok := bigChunkResumableOptions(src, size, mediaType); ok {
 			return call.Media(reader, opts...).Context(ctx)
 		}
-		return call.ResumableMedia(ctx, src, size, mediaType)
+		return call.Media(src, resumableSmallFileOptions(size, mediaType)...).Context(ctx)
 	}
-	return call.Media(src).Context(ctx)
+	return call.Media(src, resumableSmallFileOptions(size, mediaType)...).Context(ctx)
 }
 
 func withUpdateMedia(call *driveapi.FilesUpdateCall, ctx context.Context, src uploadSource, size int64, mediaType string) *driveapi.FilesUpdateCall {
@@ -25,9 +25,28 @@ func withUpdateMedia(call *driveapi.FilesUpdateCall, ctx context.Context, src up
 		if reader, opts, ok := bigChunkResumableOptions(src, size, mediaType); ok {
 			return call.Media(reader, opts...).Context(ctx)
 		}
-		return call.ResumableMedia(ctx, src, size, mediaType)
+		return call.Media(src, resumableSmallFileOptions(size, mediaType)...).Context(ctx)
 	}
-	return call.Media(src).Context(ctx)
+	return call.Media(src, resumableSmallFileOptions(size, mediaType)...).Context(ctx)
+}
+
+// resumableSmallFileOptions preserves the Drive SDK's historical resumable
+// route for artifacts below one configured chunk. The chunk equals the file
+// size rounded down to the 256 KiB granularity the API requires, so the first
+// chunk fills without hitting EOF and the SDK opens a resumable session
+// instead of collapsing into a single multipart request. A 5 MiB artifact is
+// therefore one acknowledged chunk PUT, exactly like the retired
+// ResumableMedia route.
+func resumableSmallFileOptions(size int64, mediaType string) []googleapi.MediaOption {
+	const granularity = 256 << 10
+	chunk := int(size) / granularity * granularity
+	if chunk <= 0 {
+		chunk = granularity
+	}
+	return []googleapi.MediaOption{
+		googleapi.ChunkSize(chunk),
+		googleapi.ContentType(mediaType),
+	}
 }
 
 // bigChunkResumableOptions selects the caller-sized resumable upload route for

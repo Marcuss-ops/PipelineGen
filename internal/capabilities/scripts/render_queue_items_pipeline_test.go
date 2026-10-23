@@ -394,18 +394,21 @@ func TestSeparateOverlayItemsExposeMeasuredPipeliningDepth(t *testing.T) {
 // configured width (the queue-wait audit measured 62% of wall in admission wait
 // at width 4 behind gpu_lanes=2), a shallow one is left alone, and the clamp
 // only ever narrows — it can never widen a pool the operator set below it.
+// The deep clamp is overlayItemDeepWidth = 2 (2026-10-22): one child render per
+// GPU lane of the dual-daemon topology, never below — a width-1 deep batch
+// starves the second lane and pins throughput at one serialized render service.
 func TestOverlayItemBackPressureNarrowsDeepBatches(t *testing.T) {
 	cases := []struct{ requested, candidates, want int }{
 		{4, 1, 4},
 		{4, 4, 4},
 		{4, 5, 2},
 		{4, 8, 2},
-		{4, 9, 1},
+		{4, 9, 2},
 		{3, 5, 2},
 		{2, 5, 2},
 		{1, 9, 1},
-		{2, 9, 1},
-		{8, 9, 1},
+		{2, 9, 2},
+		{8, 9, 2},
 	}
 	for _, tc := range cases {
 		if got := resolveOverlayItemWorkers(tc.requested, tc.candidates); got != tc.want {

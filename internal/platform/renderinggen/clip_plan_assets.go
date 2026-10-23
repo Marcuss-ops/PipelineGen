@@ -62,9 +62,7 @@ func overlayPlanAssets(plan cliprender.ClipRenderPlanV1) ([]assetRef, error) {
 			LogicalPath: hashAddressedPath(plan.Background.AssetID, filename),
 		})
 	}
-	if plan.Background != nil && plan.Background.Mode == cliprender.BackgroundModeBlurSource {
-		// blur_source reuses the source asset — already registered above.
-	}
+	// blur_source reuses the source asset, which is already registered above.
 	if plan.Subtitles != nil {
 		refs = append(refs, assetRef{
 			Hash:        plan.Subtitles.SHA256,

@@ -300,7 +300,7 @@ func (s *VisualSummaryService) RunJob(ctx context.Context, cfg VLMJobConfig) (*d
 	if err != nil {
 		return nil, fmt.Errorf("visual_summary_service.MkdirTemp(temp=%s): %w", s.tempDir, err)
 	}
-	defer os.RemoveAll(jobDir)
+	defer func() { _ = os.RemoveAll(jobDir) }()
 	// Step 3: extract frames.
 	frames, err := s.sampler.ExtractFrames(ctx, cfg.LocalPath, cfg.IntervalSeconds, jobDir)
 	if err != nil {

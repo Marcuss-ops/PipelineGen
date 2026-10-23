@@ -161,7 +161,7 @@ func RunZombieSweep(args []string) error {
 	if openErr != nil {
 		return fmt.Errorf("%w: %w", ErrZombieSweepOpenDB, openErr)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	store := jobs.NewSQLiteStore(dbSet.Primary.DB, log)
 	ctx := cli.CmdContext()

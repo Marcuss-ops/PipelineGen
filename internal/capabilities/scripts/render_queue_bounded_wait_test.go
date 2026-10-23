@@ -149,7 +149,7 @@ func TestBoundedWaitRequiresAClient(t *testing.T) {
 type stubbedWaiter struct{ *renderQueueStub }
 
 func (s stubbedWaiter) WaitTerminal(ctx context.Context, id string) (RenderQueueJob, error) {
-	return s.renderQueueStub.waitTerminal(ctx, id)
+	return s.waitTerminal(ctx, id)
 }
 
 // The two clients must stay distinguishable: the polling one must NOT satisfy

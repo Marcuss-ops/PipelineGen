@@ -174,10 +174,6 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if assetID == "" {
 		assetID = strings.TrimSpace(in.ClipID)
 	}
-	clipIDForChild := strings.TrimSpace(in.ClipID)
-	if clipIDForChild == "" {
-		clipIDForChild = assetID
-	}
 	// No child JOB is created here. The production worker claims queued jobs
 	// globally, even when a caller supplies a narrow type filter, so an inline
 	// child would race it (or reach a worker with no child handler) and fail its
@@ -195,8 +191,6 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 	if err != nil {
 		return err
 	}
-	assetID = built.identity.assetID
-	clipIDForChild = built.identity.clipIDChild
 	clipID := built.identity.clipID
 	res, err := a.svc.Localize(ctx, a.localizeInput(in, built))
 	if err != nil {

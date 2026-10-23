@@ -271,7 +271,7 @@ func (p *VisualEmbeddingPipeline) EmbedAndStore(ctx context.Context, vectors *Ve
 	if err != nil {
 		return nil, fmt.Errorf("visual embedding: temp dir: %w", err)
 	}
-	defer os.RemoveAll(outDir)
+	defer func() { _ = os.RemoveAll(outDir) }()
 	frames, err := p.deps.Keyframes.ExtractPercentageFrames(ctx, localPath, uniformPercentages(p.deps.FrameCount), outDir)
 	if err != nil {
 		return nil, fmt.Errorf("visual embedding: keyframes asset %q: %w", assetID, err)

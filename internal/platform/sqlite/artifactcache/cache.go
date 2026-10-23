@@ -273,7 +273,7 @@ func (c *Cache) storeWithLease(ctx context.Context, key capcache.Key, leaseID st
 			}
 		}
 	} else {
-		result, err = c.db.ExecContext(ctx, `
+		_, err = c.db.ExecContext(ctx, `
 			INSERT INTO artifact_cache_entries
 			(cache_key, source_sha256, operation, parameters_json, processor_version,
 			 artifact_sha256, size_bytes, mime_type, status, lease_id, lease_until,

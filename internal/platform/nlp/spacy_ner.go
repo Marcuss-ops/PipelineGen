@@ -118,7 +118,7 @@ func (a *SpacyNERAdapter) Extract(ctx context.Context, language, sourceText stri
 	if err != nil {
 		return nil, fmt.Errorf("spacy NER: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	limited := io.LimitReader(resp.Body, maxNERResponseBytes+1)
 	responseBody, err := io.ReadAll(limited)
 	if err != nil {

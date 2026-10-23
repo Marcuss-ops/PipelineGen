@@ -121,7 +121,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -177,7 +177,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	// ── Execute: RunTag with 3 clips ──
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
@@ -278,7 +278,7 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -330,7 +330,7 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "sunset ocean",
@@ -386,7 +386,7 @@ func TestGate01_ArtlistFullRun_ZeroCandidates(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -410,7 +410,7 @@ func TestGate01_ArtlistFullRun_ZeroCandidates(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "nonexistent",
@@ -457,7 +457,7 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -497,7 +497,7 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "dry run",
@@ -520,4 +520,4 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 }
 
 // Compile-time: successMediaProcessor satisfies the Processor port.
-var _ detail.Processor = (*successMediaProcessor)(nil)
+var _ detail.MediaProcessor = (*successMediaProcessor)(nil)

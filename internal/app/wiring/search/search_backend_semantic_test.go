@@ -17,8 +17,7 @@ import (
 	"errors"
 	"testing"
 
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
 
@@ -67,19 +66,19 @@ func (m *mockEmbeddingRegistry) EmbedQuery(_ context.Context, channel string, te
 var _ search.EmbeddingChannelRegistry = (*mockEmbeddingRegistry)(nil)
 
 type mockVectorStore struct {
-	annRes        []assetsearch.VectorSearchResult
-	hybRes        []assetsearch.VectorSearchResult
+	annRes        []search.VectorSearchResult
+	hybRes        []search.VectorSearchResult
 	err           error
-	lastHybridReq *assetsearch.HybridSearchRequest // captured for inspection
-	lastAnnReq    *assetsearch.VectorSearchRequest // captured for inspection
+	lastHybridReq *search.HybridSearchRequest // captured for inspection
+	lastAnnReq    *search.VectorSearchRequest // captured for inspection
 }
 
-func (m *mockVectorStore) Search(_ context.Context, req assetsearch.VectorSearchRequest) ([]assetsearch.VectorSearchResult, error) {
+func (m *mockVectorStore) Search(_ context.Context, req search.VectorSearchRequest) ([]search.VectorSearchResult, error) {
 	m.lastAnnReq = &req
 	return m.annRes, m.err
 }
 
-func (m *mockVectorStore) HybridSearch(_ context.Context, req assetsearch.HybridSearchRequest) ([]assetsearch.VectorSearchResult, error) {
+func (m *mockVectorStore) HybridSearch(_ context.Context, req search.HybridSearchRequest) ([]search.VectorSearchResult, error) {
 	m.lastHybridReq = &req
 	return m.hybRes, m.err
 }
@@ -172,7 +171,7 @@ func newSemanticBackendWithReranker(reg *mockEmbeddingRegistry, vs *mockVectorSt
 func TestSemanticBackendANN(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1, 0.2, 0.3}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "asset-1", Score: 0.95, Source: "youtube", Name: "Clip A", MediaType: "video"},
 		},
 	}
@@ -186,7 +185,7 @@ func TestSemanticBackendANN(t *testing.T) {
 
 	q := search.Query{
 		Text:  "funny cat",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 10,
 	}
 	candidates, err := b.Search(context.Background(), q)
@@ -233,7 +232,7 @@ func TestSemanticBackendANN(t *testing.T) {
 func TestSemanticBackendHybrid(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.5, 0.6}}
 	vs := &mockVectorStore{
-		hybRes: []assetsearch.VectorSearchResult{
+		hybRes: []search.VectorSearchResult{
 			{AssetID: "hyb-1", Score: 0.88, Name: "Hybrid Hit"},
 		},
 	}
@@ -247,7 +246,7 @@ func TestSemanticBackendHybrid(t *testing.T) {
 
 	q := search.Query{
 		Text:  "epic landscape",
-		Mode:  search.SearchModeHybrid,
+		Mode:  search.RetrievalModeHybrid,
 		Limit: 5,
 	}
 	candidates, err := b.Search(context.Background(), q)
@@ -290,7 +289,7 @@ func TestSemanticBackendHybridMinScoreFloor(t *testing.T) {
 	b := newSemanticBackend(&mockEmbeddingRegistry{vec: []float32{0.5}}, vs, &mockMediaReader{}, &mockDelivery{})
 	_, err := b.Search(context.Background(), search.Query{
 		Text:  "epic landscape",
-		Mode:  search.SearchModeHybrid,
+		Mode:  search.RetrievalModeHybrid,
 		Limit: 5,
 	})
 	if err != nil {
@@ -311,7 +310,7 @@ func TestSemanticBackendHybridMinScoreFloor(t *testing.T) {
 	b2 := newSemanticBackend(&mockEmbeddingRegistry{vec: []float32{0.5}}, vs2, &mockMediaReader{}, &mockDelivery{})
 	_, err = b2.Search(context.Background(), search.Query{
 		Text:  "epic landscape",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 5,
 	})
 	if err != nil {
@@ -329,7 +328,7 @@ func TestSemanticBackendHybridMinScoreFloor(t *testing.T) {
 	b3 := newSemanticBackend(&mockEmbeddingRegistry{vec: []float32{0.5}}, vs3, &mockMediaReader{}, &mockDelivery{})
 	_, err = b3.Search(context.Background(), search.Query{
 		Text:     "epic landscape",
-		Mode:     search.SearchModeHybrid,
+		Mode:     search.RetrievalModeHybrid,
 		Limit:    5,
 		MinScore: 0.35,
 	})
@@ -360,7 +359,7 @@ func TestSemanticBackendHybridError(t *testing.T) {
 
 	q := search.Query{
 		Text:  "test",
-		Mode:  search.SearchModeHybrid,
+		Mode:  search.RetrievalModeHybrid,
 		Limit: 5,
 	}
 	_, err := b.Search(context.Background(), q)
@@ -386,7 +385,7 @@ func TestSemanticBackendHybridError(t *testing.T) {
 func TestSemanticBackendFiltersWorkspace(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "ws-1", Score: 0.9},
 		},
 	}
@@ -400,7 +399,7 @@ func TestSemanticBackendFiltersWorkspace(t *testing.T) {
 
 	q := search.Query{
 		Text:  "workspace test",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 5,
 		Actor: search.Actor{WorkspaceID: "tenant-42"},
 	}
@@ -434,7 +433,7 @@ func TestSemanticBackendFiltersWorkspace(t *testing.T) {
 func TestSemanticBackendFiltersUnavailableAssetWithStaleDriveLink(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "active-1", Score: 0.9},
 			{AssetID: "stale-1", Score: 0.8},
 		},
@@ -449,7 +448,7 @@ func TestSemanticBackendFiltersUnavailableAssetWithStaleDriveLink(t *testing.T) 
 
 	candidates, err := b.Search(context.Background(), search.Query{
 		Text:  "lifecycle",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 5,
 	})
 	if err != nil {
@@ -466,7 +465,7 @@ func TestSemanticBackendFiltersUnavailableAssetWithStaleDriveLink(t *testing.T) 
 func TestSemanticBackendFiltersLifecycle(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "active-1", Score: 0.9},
 			{AssetID: "deleted-1", Score: 0.8}, // DELETED in SQLite
 		},
@@ -482,7 +481,7 @@ func TestSemanticBackendFiltersLifecycle(t *testing.T) {
 
 	q := search.Query{
 		Text:  "lifecycle",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 5,
 	}
 	candidates, err := b.Search(context.Background(), q)
@@ -507,7 +506,7 @@ func TestSemanticBackendFiltersLifecycle(t *testing.T) {
 func TestSemanticBackendRerankerReordersTopCandidates(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.9, 0.8}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "asset-1", Score: 0.95},
 			{AssetID: "asset-2", Score: 0.90},
 		},
@@ -532,7 +531,7 @@ func TestSemanticBackendRerankerReordersTopCandidates(t *testing.T) {
 
 	q := search.Query{
 		Text:  "Pacquiao near the ropes",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 2,
 		Filters: search.Filters{
 			Source: "youtube",
@@ -569,7 +568,7 @@ func TestSemanticBackendRerankerReordersTopCandidates(t *testing.T) {
 
 func TestSemanticBackendRerankerWindowAndTopFive(t *testing.T) {
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "a-1", Score: 0.95},
 			{AssetID: "a-2", Score: 0.94},
 			{AssetID: "a-3", Score: 0.93},
@@ -605,7 +604,7 @@ func TestSemanticBackendRerankerWindowAndTopFive(t *testing.T) {
 
 	candidates, err := b.Search(context.Background(), search.Query{
 		Text:  "top five please",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 5,
 	})
 	if err != nil {
@@ -646,7 +645,7 @@ func TestSemanticBackendRerankerWindowAndTopFive(t *testing.T) {
 func TestSemanticBackend_IsAdmin_PropagatesIsSystem_ANN(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1, 0.2}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "admin-hit", Score: 0.9},
 		},
 	}
@@ -660,7 +659,7 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_ANN(t *testing.T) {
 
 	q := search.Query{
 		Text:  "admin query",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 5,
 		Actor: search.Actor{IsAdmin: true},
 	}
@@ -688,7 +687,7 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_ANN(t *testing.T) {
 func TestSemanticBackend_IsAdmin_PropagatesIsSystem_Hybrid(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.3, 0.4}}
 	vs := &mockVectorStore{
-		hybRes: []assetsearch.VectorSearchResult{
+		hybRes: []search.VectorSearchResult{
 			{AssetID: "admin-hyb", Score: 0.85},
 		},
 	}
@@ -702,7 +701,7 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_Hybrid(t *testing.T) {
 
 	q := search.Query{
 		Text:  "admin hybrid query",
-		Mode:  search.SearchModeHybrid,
+		Mode:  search.RetrievalModeHybrid,
 		Limit: 5,
 		Actor: search.Actor{IsAdmin: true},
 	}
@@ -729,7 +728,7 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_Hybrid(t *testing.T) {
 func TestSemanticBackend_NonAdmin_IsSystemFalse(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "tenant-hit", Score: 0.9},
 		},
 	}
@@ -743,7 +742,7 @@ func TestSemanticBackend_NonAdmin_IsSystemFalse(t *testing.T) {
 
 	q := search.Query{
 		Text:  "tenant query",
-		Mode:  search.SearchModeANN,
+		Mode:  search.RetrievalModeANN,
 		Limit: 5,
 		Actor: search.Actor{WorkspaceID: "tenant-42", IsAdmin: false},
 	}
@@ -895,7 +894,7 @@ func TestCompileSemanticFilters_InfersYouTubeCategoryFromQuery(t *testing.T) {
 func TestSemanticBackendFiltersMediaType(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
 	vs := &mockVectorStore{
-		annRes: []assetsearch.VectorSearchResult{
+		annRes: []search.VectorSearchResult{
 			{AssetID: "img-1", Score: 0.9, MediaType: "image"},
 		},
 	}
@@ -909,7 +908,7 @@ func TestSemanticBackendFiltersMediaType(t *testing.T) {
 
 	q := search.Query{
 		Text:    "sunset",
-		Mode:    search.SearchModeANN,
+		Mode:    search.RetrievalModeANN,
 		Limit:   5,
 		Filters: search.Filters{MediaType: "image"},
 	}

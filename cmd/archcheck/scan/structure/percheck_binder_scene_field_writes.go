@@ -158,7 +158,7 @@ func sceneFieldWriteWarnBucket(r *report.Report, label, msg string) {
 // tests there), not bypass this gate.
 func ScanBinderSceneFieldWrites(root string, _ *policy.Policy, r *report.Report) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -214,7 +214,15 @@ func ScanBinderSceneFieldWrites(root string, _ *policy.Policy, r *report.Report)
 		}
 		scanSceneFieldWriteFile(path, relSlash, r)
 		return nil
-	})
+	}); err != nil {
+		r.Violations = append(r.Violations, report.Violation{
+			File:        binderSceneFilerScopedDir,
+			MatchedRule: "percheck_binder_scene_field_writes",
+			Rule:        "percheck_binder_scene_field_writes_walk_error",
+			Severity:    "warn",
+			Note:        err.Error(),
+		})
+	}
 }
 
 // scanSceneFieldWriteFile opens a single .go file and emits
@@ -227,7 +235,7 @@ func scanSceneFieldWriteFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

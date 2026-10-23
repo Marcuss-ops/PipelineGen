@@ -56,9 +56,9 @@ func seedFinalizerMarker(t *testing.T, db *sql.DB, value string) {
 // transaction on it (the committer's engine) instead of mainDB.
 func TestStagePersistResults_OpensFinalizerTxOnMediaDB(t *testing.T) {
 	mainDB := createTestDB(t)
-	defer mainDB.Close()
+	defer func() { _ = mainDB.Close() }()
 	mediaDB := createTestDB(t)
-	defer mediaDB.Close()
+	defer func() { _ = mediaDB.Close() }()
 	seedFinalizerMarker(t, mainDB, "main")
 	seedFinalizerMarker(t, mediaDB, "media")
 

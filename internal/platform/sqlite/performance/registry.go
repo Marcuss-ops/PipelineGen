@@ -75,7 +75,7 @@ func (r *Registry) WorkloadSamples(ctx context.Context, workloadID string) ([]in
 	if err != nil {
 		return nil, fmt.Errorf("performance registry: workload samples %q: %w", workloadID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var samples []int64
 	for rows.Next() {
 		var wallMS int64

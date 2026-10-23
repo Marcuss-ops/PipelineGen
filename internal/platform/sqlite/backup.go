@@ -154,7 +154,7 @@ func Backup(srcPath, outPath string) (*BackupResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("backup: open source %s: %w", srcPath, err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	if _, err := src.Exec("VACUUM INTO ?", outPath); err != nil {
 		return nil, fmt.Errorf("backup: VACUUM INTO %s: %w", outPath, err)
@@ -165,7 +165,7 @@ func Backup(srcPath, outPath string) (*BackupResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("backup: open output %s: %w", outPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return nil, fmt.Errorf("backup: hash output: %w", err)
@@ -234,7 +234,7 @@ func Restore(ctx context.Context, srcPath, dstPath string) (*RestoreResult, erro
 	if err != nil {
 		return nil, fmt.Errorf("restore: open source %s: %w", srcPath, err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	if _, err := src.Exec("VACUUM INTO ?", dstPath); err != nil {
 		return nil, fmt.Errorf("restore: VACUUM INTO %s: %w", dstPath, err)
@@ -259,10 +259,10 @@ func Restore(ctx context.Context, srcPath, dstPath string) (*RestoreResult, erro
 	}
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		f.Close()
+		_ = f.Close()
 		return r, fmt.Errorf("restore: hash output: %w", err)
 	}
-	f.Close()
+	_ = f.Close()
 	r.SHA256 = hex.EncodeToString(h.Sum(nil))
 
 	// Read-only probes: integrity_check, foreign_key_check.
@@ -271,17 +271,17 @@ func Restore(ctx context.Context, srcPath, dstPath string) (*RestoreResult, erro
 		return r, fmt.Errorf("restore: open destination read-only: %w", err)
 	}
 	if err := IntegrityCheck(ctx, dst); err != nil {
-		dst.Close()
+		_ = dst.Close()
 		return r, fmt.Errorf("restore: integrity: %w", err)
 	}
 	r.IntegrityOK = true
 	fk, err := ForeignKeyCheck(ctx, dst)
 	if err != nil {
-		dst.Close()
+		_ = dst.Close()
 		return r, fmt.Errorf("restore: foreign_key_check: %w", err)
 	}
 	r.FKViolations = fk
-	dst.Close()
+	_ = dst.Close()
 
 	// Writable smoke probe (NON-destructive — fully rolled back).
 	r.SmokeInsertOK, r.SmokeRowsRead, err = runRestoreSmoke(ctx, dstPath)
@@ -307,7 +307,7 @@ func runRestoreSmoke(ctx context.Context, dstPath string) (bool, int, error) {
 	if err != nil {
 		return false, 0, fmt.Errorf("open writable: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	tx, err := db.BeginTx(probeCtx, nil)
 	if err != nil {

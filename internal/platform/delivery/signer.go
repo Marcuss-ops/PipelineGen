@@ -178,6 +178,6 @@ func canonicalPayload(assetID, workspaceID string, exp int64) string {
 	sb.WriteByte('|')
 	// exp is fixed-width so verification is deterministic without
 	// relying on the receiver's locale / formatting conventions.
-	sb.WriteString(fmt.Sprintf("%d", exp))
+	fmt.Fprintf(&sb, "%d", exp)
 	return sb.String()
 }

@@ -89,9 +89,6 @@ func PersistGeneratedArtifacts(
 	result *domainScript.GenerationResult,
 	log *zap.Logger,
 ) ([]job.Artifact, error) {
-	if log == nil {
-		log = zap.NewNop()
-	}
 	if result == nil {
 		return nil, nil
 	}

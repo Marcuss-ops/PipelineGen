@@ -37,7 +37,7 @@ func (c *Client) UpsertPoints(ctx context.Context, collection string, points []s
 	if err != nil {
 		return fmt.Errorf("upsert points to %q: %w", collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)
@@ -63,7 +63,7 @@ func (c *Client) DeletePoints(ctx context.Context, collection string, ids []stri
 	if err != nil {
 		return fmt.Errorf("delete points from %q: %w", collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)
@@ -89,7 +89,7 @@ func (c *Client) CountPoints(ctx context.Context, collection string) (int, error
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return 0, &ErrCollectionNotFound{Name: collection}
@@ -131,7 +131,7 @@ func (c *Client) DeletePayloadKeys(ctx context.Context, collection string, keys 
 	if err != nil {
 		return fmt.Errorf("delete payload keys from %q: %w", collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)

@@ -135,7 +135,7 @@ func ScanLegacyRootImportBan(root string, _ *policy.Policy, r *report.Report) {
 		if openErr != nil {
 			return nil
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		sc := bufio.NewScanner(f)
 		lineNum := 0
 		for sc.Scan() {

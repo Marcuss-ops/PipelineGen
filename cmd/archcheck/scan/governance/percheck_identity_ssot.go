@@ -98,7 +98,7 @@ func ScanIdentitySSOT(root string, _ *policy.Policy, r *report.Report) {
 	owners := identityOwners()
 	skipDirs := policy.SkipDirs()
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -131,7 +131,9 @@ func ScanIdentitySSOT(root string, _ *policy.Policy, r *report.Report) {
 		}
 		scanIdentitySSOTFile(path, relSlash, owners, r)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, "percheck_identity_ssot scan "+root+": "+err.Error())
+	}
 }
 
 // scanIdentitySSOTFile emits one violation per re-declaration found in a
@@ -141,7 +143,7 @@ func scanIdentitySSOTFile(path, relPath string, owners map[string]identityOwner,
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

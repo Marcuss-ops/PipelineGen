@@ -95,7 +95,7 @@ func (p *Processor) extractPHash(ctx context.Context, videoPath string) string {
 		p.log.Warn("failed to extract frame for pHash", zap.Error(err))
 		return ""
 	}
-	defer os.Remove(thumbPath)
+	defer func() { _ = os.Remove(thumbPath) }()
 
 	// 2. Call embedding server to get pHash
 	serverURL := strings.TrimSuffix(p.embeddingURL, "/") + "/phash"
@@ -120,7 +120,7 @@ func (p *Processor) extractPHash(ctx context.Context, videoPath string) string {
 		p.log.Warn("failed to connect to embedding server for pHash", zap.Error(err))
 		return ""
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return ""

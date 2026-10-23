@@ -141,9 +141,9 @@ func newMockFilesGetServer() *mockFilesGetServer {
 
 func (s *mockFilesGetServer) attachMockService(t *testing.T) *driveapi.Service {
 	t.Helper()
-	mockURL, err := url.Parse(s.Server.URL)
+	mockURL, err := url.Parse(s.URL)
 	if err != nil {
-		t.Fatalf("mockFilesGetServer.attachMockService: parse mock URL %q: %v", s.Server.URL, err)
+		t.Fatalf("mockFilesGetServer.attachMockService: parse mock URL %q: %v", s.URL, err)
 	}
 	httpClient := &http.Client{
 		Transport: &urlRewritingVerifierTransport{
@@ -170,7 +170,7 @@ func (s *mockFilesGetServer) attachMockService(t *testing.T) *driveapi.Service {
 // and FileNotInTrash both true).
 func TestUploadVerifier_HappyPath(t *testing.T) {
 	srv := newMockFilesGetServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 
 	u := &Uploader{Service: srv.attachMockService(t), Log: nil}
 	verifier := NewUploadVerifier(u)
@@ -211,7 +211,7 @@ func TestUploadVerifier_HappyPath(t *testing.T) {
 // from "API error" from "file in trash".
 func TestUploadVerifier_404_NotFound(t *testing.T) {
 	srv := newMockFilesGetServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 	srv.responses = []rawGetResp{
 		{status: 404, body: `{"error":{"code":404,"message":"File not found"}}`},
 	}
@@ -244,7 +244,7 @@ func TestUploadVerifier_404_NotFound(t *testing.T) {
 // silently accepted by the PutActionSkipped branch of PutFile.
 func TestUploadVerifier_Trashed(t *testing.T) {
 	srv := newMockFilesGetServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 	srv.responses = []rawGetResp{
 		{status: 200, body: `{"id":"trashed-file","name":"clip.mp4","mimeType":"video/mp4","size":"1024","webViewLink":"https://drive.google.com/file/d/trashed-file/view","parents":["root-folder"],"trashed":true}`},
 	}
@@ -277,7 +277,7 @@ func TestUploadVerifier_Trashed(t *testing.T) {
 
 func TestUploadVerifier_NameMismatch(t *testing.T) {
 	srv := newMockFilesGetServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 	srv.responses = []rawGetResp{
 		{status: http.StatusOK, body: `{"id":"file-name-mismatch","name":"actual.mp3","size":"1024","parents":["resolved-folder"],"trashed":false}`},
 	}
@@ -290,7 +290,7 @@ func TestUploadVerifier_NameMismatch(t *testing.T) {
 
 func TestUploadVerifier_IDMismatch(t *testing.T) {
 	srv := newMockFilesGetServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 	srv.responses = []rawGetResp{
 		{status: http.StatusOK, body: `{"id":"different-file","name":"voice.mp3","size":"1024","parents":["resolved-folder"],"trashed":false}`},
 	}
@@ -303,7 +303,7 @@ func TestUploadVerifier_IDMismatch(t *testing.T) {
 
 func TestUploadVerifier_ParentMismatch(t *testing.T) {
 	srv := newMockFilesGetServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 	srv.responses = []rawGetResp{
 		{status: http.StatusOK, body: `{"id":"file-wrong-parent","name":"voice.mp3","size":"1024","parents":["actual-folder"],"trashed":false}`},
 	}
@@ -345,7 +345,7 @@ func TestUploadVerifier_NilReader(t *testing.T) {
 // have to special-case the empty-string path.
 func TestUploadVerifier_EmptyFileID(t *testing.T) {
 	srv := newMockFilesGetServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 
 	u := &Uploader{Service: srv.attachMockService(t), Log: nil}
 	verifier := NewUploadVerifier(u)

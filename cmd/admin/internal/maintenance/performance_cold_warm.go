@@ -50,7 +50,7 @@ func RunPerformanceColdWarmReport(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	store, err := perfstore.NewOperationStore(dbSet.Primary.DB)
 	if err != nil {

@@ -462,9 +462,10 @@ func (r *Run) RegisterChild(child *RunReport) {
 	requested, completed, failed, wall := 0, 0, 0, int64(0)
 	for _, item := range r.children {
 		requested++
-		if item.Status == StatusSucceeded {
+		switch item.Status {
+		case StatusSucceeded:
 			completed++
-		} else if item.Status == StatusFailed || item.Status == StatusCancelled || item.Status == StatusAbandoned {
+		case StatusFailed, StatusCancelled, StatusAbandoned:
 			failed++
 		}
 		wall += item.WallTimeMs

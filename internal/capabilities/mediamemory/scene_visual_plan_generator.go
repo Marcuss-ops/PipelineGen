@@ -291,7 +291,7 @@ func filterSceneSlots(userSlots []SlotKind, canonical []SlotKind) []SlotKind {
 	// triple (and known SlotKind for the wider set).
 	out := make([]SlotKind, 0, len(userSlots))
 	for _, s := range userSlots {
-		if !media.IsKnownSlotKind(s) {
+		if !s.IsValid() {
 			continue
 		}
 		found := false

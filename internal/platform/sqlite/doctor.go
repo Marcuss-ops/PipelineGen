@@ -63,7 +63,7 @@ func ForeignKeyCheck(ctx context.Context, db *sql.DB) ([]string, error) {
 		}
 		return nil, fmt.Errorf("foreign_key_check: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var violations []string
 	for rows.Next() {
@@ -148,7 +148,7 @@ func AllUserTables(ctx context.Context, db *sql.DB) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list tables: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []string
 	for rows.Next() {

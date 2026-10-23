@@ -508,12 +508,9 @@ func TestEnsureStarted_ScriptMissing(t *testing.T) {
 func TestProcessorShape_CompilePin(t *testing.T) {
 	t.Parallel()
 
-	var s processorShape = &Processor{
+	var _ processorShape = &Processor{
 		pythonScriptsDir: t.TempDir(),
 		log:              zap.NewNop(),
-	}
-	if s == nil {
-		t.Fatal("Processor does not satisfy processorShape (compile-time pin drift)")
 	}
 }
 

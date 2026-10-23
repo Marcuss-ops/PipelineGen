@@ -48,7 +48,7 @@ func RunOrganizeSoundEffectsDrive(args []string) error {
 	}
 	defer rootCleanup()
 	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil || root.DB == nil {
-		return fmt.Errorf("Drive reader, admin and database are required")
+		return fmt.Errorf("drive reader, admin and database are required")
 	}
 
 	// MEDIA-SSOT: the Drive classification is a media_assets read, so it MUST

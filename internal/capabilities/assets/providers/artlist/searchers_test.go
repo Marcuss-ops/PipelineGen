@@ -72,7 +72,7 @@ var _ Searcher = (*mockSearcher)(nil)
 // as a test failure here before reaching production.
 func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cfg := &config.Config{
 		Storage: config.StorageConfig{
@@ -109,7 +109,7 @@ func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	gotScraper, gotPixabay, gotPexels := svc.Searchers()
 

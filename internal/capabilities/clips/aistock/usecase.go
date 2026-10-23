@@ -102,7 +102,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd CreateAIStockCommand) (*Crea
 	if err != nil {
 		return nil, fmt.Errorf("aistock: download drive file: %w", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	if contentType == "" {
 		contentType = "video/mp4"
 	}

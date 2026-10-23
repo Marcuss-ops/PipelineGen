@@ -291,7 +291,7 @@ func RunReachabilityGraph(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	sdb := dbSet.Primary
 
 	report, err := computeReachabilityGraph(ctx, sdb.DB, *limitIDs)
@@ -330,7 +330,7 @@ func computeReachabilityGraph(ctx context.Context, db *sql.DB, limitIDs int) (*r
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var realTables []string
 	for rows.Next() {
@@ -472,7 +472,7 @@ func computeReachabilityGraph(ctx context.Context, db *sql.DB, limitIDs int) (*r
 				st.Error = fmt.Sprintf("orphan query: %v", err)
 				break
 			}
-			defer orphanRows.Close()
+			defer func() { _ = orphanRows.Close() }()
 			for orphanRows.Next() {
 				var val string
 				if err := orphanRows.Scan(&val); err != nil {
@@ -480,7 +480,7 @@ func computeReachabilityGraph(ctx context.Context, db *sql.DB, limitIDs int) (*r
 				}
 				st.OrphanIDs = append(st.OrphanIDs, val)
 			}
-			orphanRows.Close()
+			_ = orphanRows.Close()
 			st.OrphanCands = total - reachable - nullOwner
 
 			st.Owner = rel.OwnerTable

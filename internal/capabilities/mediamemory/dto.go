@@ -347,11 +347,7 @@ func traceToDTO(in SceneResolutionTrace) *resolveTraceDTO {
 	}
 	backendCalls := make([]resolveBackendCallDTO, 0, len(in.BackendCalls))
 	for _, call := range in.BackendCalls {
-		backendCalls = append(backendCalls, resolveBackendCallDTO{
-			Backend: call.Backend,
-			Hits:    call.Hits,
-			Error:   call.Error,
-		})
+		backendCalls = append(backendCalls, resolveBackendCallDTO(call))
 	}
 	return &resolveTraceDTO{
 		NormalizedText: in.NormalizedText,

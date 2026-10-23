@@ -25,7 +25,6 @@ import (
 // countingVideoPipeline records DownloadAndCutYouTubeVideo calls so the
 // cache-hit tests can prove acquisition/cut is skipped on a binary cache hit.
 type countingVideoPipeline struct {
-	stubVideoPipeline
 	calls int32
 }
 

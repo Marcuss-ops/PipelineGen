@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remote/jobbrokerclient"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/platform/remote/shared"
@@ -159,10 +158,10 @@ func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 
-	session, err := client.RegisterWorker(ctx, appjobs.RegisterWorkerCommand{
+	session, err := client.RegisterWorker(ctx, jobs.RegisterWorkerCommand{
 		WorkerID: "w-e2e-1",
 		Name:     "test-worker",
-		Capabilities: appjobs.WorkerCapabilities{
+		Capabilities: jobs.WorkerCapabilities{
 			JobTypes: []string{"test.dummy"},
 		},
 	})

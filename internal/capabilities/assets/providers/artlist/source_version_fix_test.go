@@ -74,7 +74,7 @@ func TestSourceVersionFix_EmptyHashRejected(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -117,7 +117,7 @@ func TestSourceVersionFix_EmptyHashRejected(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "svfix",
@@ -153,4 +153,4 @@ func TestSourceVersionFix_EmptyHashRejected(t *testing.T) {
 }
 
 // Compile-time: emptyHashMediaProcessor satisfies the Processor port.
-var _ detail.Processor = (*emptyHashMediaProcessor)(nil)
+var _ detail.MediaProcessor = (*emptyHashMediaProcessor)(nil)

@@ -705,9 +705,7 @@ type fakeClipAssets struct {
 	resolved map[string]cliprender.AssetRef
 }
 
-type fakeClipMaterializer struct {
-	assets map[string]cliprender.AssetRef
-}
+type fakeClipMaterializer struct{}
 
 func (f *fakeClipAssets) ResolveAsset(_ context.Context, assetID string) (*cliprender.AssetRef, error) {
 	if ref, ok := f.resolved[assetID]; ok {

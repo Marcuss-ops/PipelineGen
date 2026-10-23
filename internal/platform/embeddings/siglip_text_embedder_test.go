@@ -326,6 +326,5 @@ func TestSigLIPTextEmbedder_CompileTimeAssertion(t *testing.T) {
 	// Ensure the ChannelEncoder port surface is referenced by this
 	// test (so the searchpkg import has a real consumer in the test
 	// surface, not just at compile-time via the production file).
-	var chEnc searchpkg.ChannelEncoder = enc
-	_ = chEnc
+	_ = searchpkg.ChannelEncoder(enc)
 }

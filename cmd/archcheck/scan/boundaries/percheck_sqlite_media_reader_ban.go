@@ -441,7 +441,7 @@ func sqliteMediaReaderRegisterEntryIsLive(root, relPath string) (bool, error) {
 func ScanSQLiteMediaReaderBan(root string, _ *policy.Policy, r *report.Report) {
 	for _, scanRoot := range sqliteMediaReaderScanRoots {
 		absRoot := filepath.Join(root, scanRoot)
-		filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+		if err := filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -456,7 +456,9 @@ func ScanSQLiteMediaReaderBan(root string, _ *policy.Policy, r *report.Report) {
 			}
 			inspectSQLiteMediaReaderFile(root, path, r)
 			return nil
-		})
+		}); err != nil {
+			r.Warnings = append(r.Warnings, "sqlite-media-reader scan "+absRoot+": "+err.Error())
+		}
 	}
 }
 

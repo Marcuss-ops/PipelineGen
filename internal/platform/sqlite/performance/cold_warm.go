@@ -99,7 +99,7 @@ func (s *OperationStore) ColdWarmComparison(ctx context.Context, opts capperform
 	if err != nil {
 		return capperformance.ColdWarmComparison{}, fmt.Errorf("cold/warm comparison: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var (

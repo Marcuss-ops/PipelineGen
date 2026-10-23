@@ -128,7 +128,7 @@ func WriteMapDecisionReport(dir string, r *MapDecisionReport) (string, error) {
 		return "", fmt.Errorf("create map decision report temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 	if _, err := tmp.Write(append(encoded, '\n')); err != nil {
 		_ = tmp.Close()
 		return "", fmt.Errorf("write map decision report: %w", err)

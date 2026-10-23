@@ -239,7 +239,7 @@ func (s *concurrentCompletionStore) MarkStarted(ctx context.Context, key steps.S
 	if err := s.fakeStore.MarkStarted(ctx, key); err != nil {
 		return err
 	}
-	if err := s.fakeStore.MarkCompleted(ctx, key, s.completedOutput, nil); err != nil {
+	if err := s.MarkCompleted(ctx, key, s.completedOutput, nil); err != nil {
 		return err
 	}
 	return steps.ErrStepAlreadyCompleted

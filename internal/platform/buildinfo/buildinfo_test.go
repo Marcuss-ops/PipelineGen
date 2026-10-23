@@ -68,7 +68,9 @@ func TestSetRuntime_EmptyLeavesPreviousValue(t *testing.T) {
 func TestDigest_IsStableAndFieldSensitive(t *testing.T) {
 	base := Identity{Version: "1.0.0", GitCommitFull: "abcdef012345", BinarySHA256: "aa", ConfigPath: "/etc/a.yaml", Mode: "all"}
 
-	if base.Digest() != base.Digest() {
+	first := base.Digest()
+	second := base.Digest()
+	if first != second {
 		t.Error("digest must be deterministic for the same tuple")
 	}
 

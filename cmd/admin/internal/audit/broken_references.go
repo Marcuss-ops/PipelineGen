@@ -84,7 +84,7 @@ func RunBrokenReferences(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	sdb := dbSet.Primary
 
 	// MEDIA-SSOT: the drive/local/Qdrant checks all read media_assets, so the
@@ -93,7 +93,7 @@ func RunBrokenReferences(args []string) error {
 	// that skips all three reads no media rows at all. A nil handle fails
 	// closed (the check is recorded as a failure, never silently skipped).
 	var media brokenRefMediaSource
-	if !(*skipDrive && *skipLocal && *skipQdrant) {
+	if !*skipDrive || !*skipLocal || !*skipQdrant {
 		mediaDB, mErr := cli.OpenMediaPostgres(ctx, cfg)
 		if mErr != nil {
 			return fmt.Errorf("open media postgres: %w", mErr)
@@ -101,7 +101,7 @@ func RunBrokenReferences(args []string) error {
 		if mediaDB == nil {
 			return fmt.Errorf("media PostgreSQL SSOT is required for broken-references")
 		}
-		defer mediaDB.Close()
+		defer func() { _ = mediaDB.Close() }()
 		media = pgmedia.NewMediaReferenceAuditReader(mediaDB)
 	}
 
@@ -312,7 +312,7 @@ func detectFKOrphans(ctx context.Context, db *sql.DB, noDetail bool) ([]fkOrphan
 				if err := sRows.Err(); err != nil {
 					errs = append(errs, fmt.Sprintf("fk orphans sample rows %s: %v", rel.ChildTable, err))
 				}
-				sRows.Close()
+				_ = sRows.Close()
 			}
 		}
 		results = append(results, entry)
@@ -393,7 +393,7 @@ func detectBrokenDriveRefs(ctx context.Context, db *sql.DB, knownIDs map[string]
 			}
 			ids = append(ids, id)
 		}
-		rows.Close()
+		_ = rows.Close()
 
 		total += len(ids)
 		for _, id := range ids {
@@ -446,16 +446,14 @@ func detectBrokenLocalPaths(ctx context.Context, db *sql.DB) ([]brokenLocalRef, 
 			}
 			paths = append(paths, p)
 		}
-		rows.Close()
+		_ = rows.Close()
 
 		total += len(paths)
 		for _, p := range paths {
-			info, statErr := os.Stat(p)
+			_, statErr := os.Stat(p)
 			if statErr != nil {
 				kind := "file_not_found"
-				if os.IsNotExist(statErr) {
-					kind = "file_not_found"
-				} else {
+				if !os.IsNotExist(statErr) {
 					kind = "stat_error"
 				}
 				broken = append(broken, brokenLocalRef{
@@ -465,10 +463,9 @@ func detectBrokenLocalPaths(ctx context.Context, db *sql.DB) ([]brokenLocalRef, 
 					FailureKind: kind,
 					Error:       statErr.Error(),
 				})
-			} else if info.IsDir() {
-				// local_path pointing at a directory is suspicious but not necessarily broken.
-				// Skip for now — directories can be valid (e.g. artifact caches).
 			}
+			// local_path pointing at a directory is suspicious but not necessarily broken:
+			// directories can be valid (e.g. artifact caches), so it is not reported.
 		}
 	}
 
@@ -543,7 +540,7 @@ func tablesWithColumn(ctx context.Context, db *sql.DB, colName string) ([]string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var name string

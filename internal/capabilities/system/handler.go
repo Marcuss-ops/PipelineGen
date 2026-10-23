@@ -310,7 +310,7 @@ func (h *SystemHandler) checkGoogleAccounting(ctx context.Context, resp *DoctorR
 		resp.Checks["google_accounting"] = "offline"
 		resp.Fixes = append(resp.Fixes, "Start Google Accounting worker: cd google-accounting && uvicorn main:app --port 8000")
 	} else {
-		defer hResp.Body.Close()
+		defer func() { _ = hResp.Body.Close() }()
 		if hResp.StatusCode == http.StatusOK {
 			resp.Checks["google_accounting"] = "ok"
 		} else {

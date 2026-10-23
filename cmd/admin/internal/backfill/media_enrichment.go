@@ -60,7 +60,7 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open postgres: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
@@ -98,8 +98,8 @@ func RunMediaEnrichmentBackfill(args []string) error {
 	// sampler. An unavailable sidecar with that leg requested = typed
 	// fail-closed error, never a zero vector. The features leg runs without
 	// any model (ffmpeg only).
-	wantFeatures := cfg.AnalyzeFeatures || (cfg.AnalyzeFeatures == false && cfg.BackfillSemantic == false && cfg.BackfillVisual == false)
-	wantVisual := cfg.BackfillVisual || (cfg.AnalyzeFeatures == false && cfg.BackfillSemantic == false && cfg.BackfillVisual == false)
+	wantFeatures := cfg.AnalyzeFeatures || (!cfg.AnalyzeFeatures && !cfg.BackfillSemantic && !cfg.BackfillVisual)
+	wantVisual := cfg.BackfillVisual || (!cfg.AnalyzeFeatures && !cfg.BackfillSemantic && !cfg.BackfillVisual)
 	var analyzer *pgmedia.MediaFeatureAnalyzer
 	var visual *pgmedia.VisualEmbeddingPipeline
 	var registry *pgmedia.VisualEmbeddingModelRegistry

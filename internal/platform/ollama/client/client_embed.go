@@ -41,7 +41,7 @@ func (c *Client) Embed(ctx context.Context, prompt string) ([]float32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ollama request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)

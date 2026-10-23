@@ -129,10 +129,8 @@ func (e *EnrichmentEngine) Run(ctx context.Context, resolve ResolveAssetPath, cf
 
 	report := &EnrichmentCoverageReport{Uncovered: []string{}}
 	lastID := ""
-	for {
-		if cfg.Limit > 0 && report.AssetsProcessed+report.AssetsSkipped >= cfg.Limit {
-			break
-		}
+	for cfg.Limit <= 0 || report.AssetsProcessed+report.AssetsSkipped < cfg.Limit {
+
 		pageSize := cfg.BatchSize
 		if cfg.Limit > 0 && report.AssetsProcessed+report.AssetsSkipped+pageSize > cfg.Limit {
 			pageSize = cfg.Limit - report.AssetsProcessed - report.AssetsSkipped
@@ -151,12 +149,12 @@ func (e *EnrichmentEngine) Run(ctx context.Context, resolve ResolveAssetPath, cf
 		for rows.Next() {
 			var id string
 			if err := rows.Scan(&id); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return nil, fmt.Errorf("enrichment engine: scan asset id: %w", err)
 			}
 			page = append(page, id)
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			return nil, fmt.Errorf("enrichment engine: iterate assets: %w", err)
 		}

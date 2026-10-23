@@ -434,7 +434,7 @@ func (h *WorkersBrokerHandler) DownloadAsset(c *gin.Context) {
 		apiutil.InternalError(c, err)
 		return
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	if filename != "" {
 		c.Header("X-Filename", filename)
 		c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)

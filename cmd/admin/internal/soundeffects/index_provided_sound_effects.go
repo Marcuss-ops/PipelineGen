@@ -208,7 +208,7 @@ func RunIndexProvidedSoundEffects(args []string) error {
 	}
 	defer rootCleanup()
 	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil || root.Repos == nil || root.Repos.ClipsRepo == nil || root.Outbox == nil || root.Outbox.Dispatcher == nil || root.Outbox.EventsPool == nil || root.Outbox.EventsRepo == nil {
-		return fmt.Errorf("Drive, clips repository and outbox are required")
+		return fmt.Errorf("drive, clips repository and outbox are required")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)

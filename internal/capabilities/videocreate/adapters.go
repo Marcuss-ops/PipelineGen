@@ -157,7 +157,7 @@ func (a aggregatorSearch) Search(ctx context.Context, req MediaSearchRequest) ([
 		Sources:    req.Sources,
 		MediaTypes: []string{"video"},
 		Limit:      req.Limit,
-		Mode:       search.SearchModeHybrid,
+		Mode:       search.RetrievalModeHybrid,
 		Universe:   search.SearchCatalog,
 		Actor:      search.Actor{IsAdmin: true, IsSystem: true},
 	})

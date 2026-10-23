@@ -18,7 +18,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	storedrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 )
 
@@ -82,7 +81,9 @@ func (s *Service) Sync(ctx context.Context) (*Summary, error) {
 			s.rootFolderID, "Voiceover", folderMimeType, "", "",
 			"", s.rootFolderID, "", "voiceover", "",
 		)
-		s.assetTreeSvc.UpsertNode(ctx, rootNode)
+		if err := s.assetTreeSvc.UpsertNode(ctx, rootNode); err != nil {
+			s.log.Warn("failed to upsert voiceover root node", zap.Error(err))
+		}
 	}
 
 	synced, failed, err := s.syncFolderRecursive(ctx, s.rootFolderID, "")
@@ -122,7 +123,12 @@ func (s *Service) syncFolderRecursive(ctx context.Context, folderID, folderPath 
 					child.ID, child.Name, child.MimeType, child.WebViewLink, child.WebContentLink,
 					folderID, s.rootFolderID, folderPath, "voiceover", "",
 				)
-				s.assetTreeSvc.UpsertNode(ctx, node)
+				if err := s.assetTreeSvc.UpsertNode(ctx, node); err != nil {
+					s.log.Warn("failed to upsert voiceover folder node",
+						zap.String("folder_id", child.ID),
+						zap.Error(err),
+					)
+				}
 			}
 
 			subSynced, subFailed, err := s.syncFolderRecursive(ctx, child.ID, childPath)
@@ -157,7 +163,7 @@ func (s *Service) syncFile(ctx context.Context, file driveup.DriveFileInfo, file
 		link = strings.TrimSpace(file.WebContentLink)
 	}
 	if link == "" {
-		link = storedrive.FileURLFromID(file.ID)
+		link = driveup.FileURLFromID(file.ID)
 	}
 
 	// Extract language from filename or path (e.g., test_it.mp3 -> it)

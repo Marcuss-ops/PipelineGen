@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
@@ -220,7 +221,7 @@ func (s *Service) processLanguage(
 	}
 
 	jobID := ""
-	if val, ok := ctx.Value("script_job_id").(string); ok {
+	if val, ok := ctx.Value(scriptpkg.ContextKeyScriptJobID).(string); ok {
 		jobID = val
 	}
 	if jobID == "" {

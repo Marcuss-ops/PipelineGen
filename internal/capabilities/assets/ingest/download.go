@@ -61,7 +61,7 @@ func (s *Service) downloadToFile(ctx context.Context, remoteURL, dstPath string)
 	if err != nil {
 		return err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create destination dir: %w", err)
@@ -71,7 +71,7 @@ func (s *Service) downloadToFile(ctx context.Context, remoteURL, dstPath string)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	if _, err := io.Copy(out, body); err != nil {
 		return fmt.Errorf("failed to write downloaded file: %w", err)

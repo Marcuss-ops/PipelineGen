@@ -35,7 +35,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 	translationSkipped := stageSkipped(resumeIdx, StageTranslatingScenes) || len(req.Languages) == 0
 	if !translationSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageTranslatingScenes); err != nil {
-			r.failExecutionStep(ctx, exec, translationStep, err)
+			r.failExecutionStepBestEffort(ctx, exec, translationStep, err)
 			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
 			return false
 		}
@@ -130,7 +130,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 			}()
 		}
 		if err != nil {
-			r.failExecutionStep(ctx, exec, translationStep, err)
+			r.failExecutionStepBestEffort(ctx, exec, translationStep, err)
 			r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
 			return false
 		}
@@ -155,7 +155,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 				Language:    item.lang,
 				Status:      "COMPLETED",
 			}); err != nil {
-				r.failExecutionStep(ctx, exec, translationStep, err)
+				r.failExecutionStepBestEffort(ctx, exec, translationStep, err)
 				r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
 				return false
 			}
@@ -174,7 +174,7 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 			return false
 		}
 	} else if err := r.completeExecutionStep(ctx, exec, translationStep); err != nil {
-		r.failExecutionStep(ctx, exec, translationStep, err)
+		r.failExecutionStepBestEffort(ctx, exec, translationStep, err)
 		r.failRunWithRetry(ctx, runID, StageTranslatingScenes, err)
 		return false
 	}

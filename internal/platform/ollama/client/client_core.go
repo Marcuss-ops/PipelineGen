@@ -280,7 +280,7 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 		}
 		return ChatResult{}, &retry.TransientInfrastructureError{Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
@@ -362,7 +362,7 @@ func (c *Client) vllmChatRequest(ctx context.Context, model string, messages []t
 		}
 		return "", &retry.TransientInfrastructureError{Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		var errBody []byte
@@ -454,7 +454,7 @@ func (c *Client) nvidiaChatRequest(ctx context.Context, messages []types.Message
 		}
 		return "", &retry.TransientInfrastructureError{Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		var errBody []byte

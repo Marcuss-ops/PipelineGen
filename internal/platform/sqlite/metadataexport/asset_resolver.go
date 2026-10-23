@@ -92,7 +92,7 @@ func (r *sqliteAssetResolver) ResolveAssetIDs(ctx context.Context, jobID string,
 		// later if a real failure surfaces.
 		return nil, nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]string, 0, 16)
 	for rows.Next() {
 		var id string
@@ -173,7 +173,7 @@ func (r *sqliteAssetResolver) LoadDeliverySection(ctx context.Context, assetID s
 	if err != nil {
 		return []any{}, nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]any, 0, 16)
 	for rows.Next() {
 		var dID, ep, hsh, da, note string

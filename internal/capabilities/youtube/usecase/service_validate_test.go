@@ -97,7 +97,7 @@ func TestValidateServiceDeps_RejectsTypedNilVideoPipeline(t *testing.T) {
 
 func TestValidateServiceDeps_RejectsTypedNilMediaProcessor(t *testing.T) {
 	var nilProc *fakeMediaProcessor
-	var proc detail.Processor = nilProc // typed-nil
+	var proc detail.MediaProcessor = nilProc // typed-nil
 
 	core, asset, video, storage, adapter := validSubBundles()
 	asset.MediaProcessor = proc

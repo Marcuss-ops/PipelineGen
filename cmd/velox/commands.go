@@ -468,7 +468,10 @@ func cmdSearch(args []string) int {
 		return exitFailure
 	}
 	if cfg.json {
-		os.Stdout.Write(raw)
+		if _, err := os.Stdout.Write(raw); err != nil {
+			fmt.Fprintf(os.Stderr, "velox search: write output: %v\n", err)
+			return exitFailure
+		}
 		if len(raw) == 0 || raw[len(raw)-1] != '\n' {
 			fmt.Println()
 		}

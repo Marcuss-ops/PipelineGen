@@ -42,7 +42,7 @@ func RunBackfillPayloadHash(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	jobsDB := dbSet.Primary
 
 	reg, err := jobregistry.New(jobsDB.DB)

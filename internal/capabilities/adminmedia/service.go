@@ -79,7 +79,7 @@ func NormalizeDriveSoundEffects(ctx context.Context, rootFolder string, maxSecon
 	if err != nil {
 		return NormalizeReport{}, fmt.Errorf("create temporary directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	report := NormalizeReport{}
 	for _, item := range files {
@@ -151,7 +151,7 @@ func downloadFile(ctx context.Context, reader DriveAudioReader, fileID, destinat
 	if err != nil {
 		return err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	out, err := os.Create(destination)
 	if err != nil {
 		return err
@@ -241,7 +241,7 @@ func ExportSoundEffectsMetadata(ctx context.Context, source MetadataSource, uplo
 		return ExportReport{}, fmt.Errorf("create metadata temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 	encoder := json.NewEncoder(tmp)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(export); err != nil {

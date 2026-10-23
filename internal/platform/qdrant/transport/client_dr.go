@@ -71,7 +71,7 @@ func (c *Client) CreateSnapshot(ctx context.Context, collection string) (*schema
 	if err != nil {
 		return nil, fmt.Errorf("create snapshot %q: %w", collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, c.parseError(resp)
 	}
@@ -95,7 +95,7 @@ func (c *Client) ListSnapshots(ctx context.Context, collection string) ([]schema
 	if err != nil {
 		return nil, fmt.Errorf("list snapshots %q: %w", collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, c.parseError(resp)
 	}
@@ -121,7 +121,7 @@ func (c *Client) GetSnapshotURL(ctx context.Context, collection, snapshotName st
 	if err != nil {
 		return "", fmt.Errorf("get snapshot URL %q in %q: %w", snapshotName, collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return "", fmt.Errorf("qdrant.Client.GetSnapshotURL: snapshot %q not found in %q", snapshotName, collection)
 	}
@@ -157,7 +157,7 @@ func (c *Client) DeleteSnapshot(ctx context.Context, collection, snapshotName st
 	if err != nil {
 		return fmt.Errorf("delete snapshot %q from %q: %w", snapshotName, collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return nil // already gone — idempotent
 	}
@@ -195,7 +195,7 @@ func (c *Client) RestoreSnapshot(ctx context.Context, collection, snapshotURL st
 	if err != nil {
 		return fmt.Errorf("restore snapshot to %q from %q: %w", collection, snapshotURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)
 	}
@@ -226,7 +226,7 @@ func (c *Client) OverwritePayload(ctx context.Context, collection string, payloa
 	if err != nil {
 		return fmt.Errorf("overwrite payload on %q (%d points): %w", collection, len(payloads), err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)
 	}

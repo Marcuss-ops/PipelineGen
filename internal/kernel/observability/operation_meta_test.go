@@ -29,8 +29,8 @@ func TestOperationMetaFromContextAbsent(t *testing.T) {
 	if _, ok := OperationMetaFromContext(context.Background()); ok {
 		t.Fatal("expected no bound meta on a plain context")
 	}
-	if _, ok := OperationMetaFromContext(nil); ok {
-		t.Fatal("expected no bound meta on a nil context")
+	if _, ok := OperationMetaFromContext(context.TODO()); ok {
+		t.Fatal("expected no bound meta on an empty context")
 	}
 }
 

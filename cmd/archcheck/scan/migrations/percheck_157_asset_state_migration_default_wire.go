@@ -127,7 +127,7 @@ func ScanAssetStateMigration157DefaultWire(root string, _ *policy.Policy, r *rep
 		})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

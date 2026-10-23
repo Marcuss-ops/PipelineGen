@@ -379,3 +379,13 @@ func NewManifestV2() *ManifestV2 {
 func (m *ManifestV2) IsCanonicalMode() bool {
 	return m != nil && m.NoInlineAssets
 }
+
+// contextKey is an unexported type so context values cannot collide with
+// values written by another package using the same string. The constant is
+// exported for the producers and consumers that share this correlation id.
+type contextKey string
+
+// ContextKeyScriptJobID is the canonical context key for the script job id
+// used by the generation executor, the child-item handler and the voiceover
+// postprocessor. All writers and readers must use this value.
+const ContextKeyScriptJobID contextKey = "script_job_id"

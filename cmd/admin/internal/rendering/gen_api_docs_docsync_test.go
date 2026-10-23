@@ -40,7 +40,7 @@ func TestCommittedAPIDocsDescriptionsMatchGenerator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open committed API docs: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	rows := 0
 	scanner := bufio.NewScanner(f)

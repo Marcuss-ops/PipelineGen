@@ -44,7 +44,7 @@ func newJobsPlaneTestDB(t testing.TB) *sql.DB {
 	if err != nil {
 		t.Fatalf("open migrated jobs DB: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 
