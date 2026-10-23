@@ -54,6 +54,12 @@ type PlannerConfig struct {
 	// map-aware editorial budget. Zero keeps the certified default
 	// (MaxMapOverlaysPerScene); a positive value raises it per run.
 	RunLevelMapOverlayLimit int
+	// RunLevelImageOverlayLimit is the run-level image ceiling used by the
+	// editorial budget. Zero keeps the certified default
+	// (MaxImageOverlaysPerRun); a positive value raises it per run so an
+	// explicit payload max_image_overlays reaches the render plan instead of
+	// being truncated by the default budget.
+	RunLevelImageOverlayLimit int
 }
 
 // AllCandidatesPlannerConfig is the production generation policy: every

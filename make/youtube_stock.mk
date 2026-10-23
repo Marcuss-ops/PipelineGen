@@ -56,8 +56,9 @@ test-youtube-stock-resilience: test-stock-recovery test-stock-concurrency
 # ("purge 94% shell + 87% python dust"). A target whose only possible outcome is
 # "No such file or directory" is not a gate (see make/verify.mk for the
 # certification-driver rationale). The L1 → L3 StockRust boundary is currently
-# certified by the Go surfaces only: internal/platform/media/rustexec
-# (L2 adapter → Rust) and the Rust crate tests (L3 binary).
+# certified by the Go consumer surfaces and BrainRust release CI:
+# internal/platform/media/rustexec (L2 adapter → release binary) plus the
+# BrainRust-owned Rust workspace tests (L3 binary).
 
 # test-youtube-stock-release — Go-only release gate. The live leg was pruned on
 # 2026-09-13 with the retirement of test-youtube-stock-live.

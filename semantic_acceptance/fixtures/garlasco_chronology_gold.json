@@ -1,0 +1,22 @@
+{
+  "source": "gold for fixtures/garlasco_chronology_corrected.txt: the same 3,127-word script with only the trial years corrected to the documented timeline. It is a chronology expectation, not an independent entity annotation.",
+  "sequence": [
+    {"date": "2009", "outcome": "acquitted"},
+    {"date": "2011", "outcome": "acquittal_confirmed"},
+    {"date": "2013", "outcome": "annulled_with_remand"},
+    {"date": "2014", "outcome": "convicted"},
+    {"date": "2015", "outcome": "final"}
+  ],
+  "temporal_expressions": [
+    {"normalized": "2007-08-13", "min_count": 2},
+    {"normalized": "2007", "min_count": 3},
+    {"normalized": "2009", "min_count": 1},
+    {"normalized": "2011", "min_count": 1},
+    {"normalized": "2013", "min_count": 1},
+    {"normalized": "2014", "min_count": 1},
+    {"normalized": "2015", "min_count": 1},
+    {"normalized": "2025-05-24", "min_count": 1},
+    {"normalized": "2025", "min_count": 2}
+  ],
+  "unresolved_allowed": ["ventiquattro maggio"]
+}

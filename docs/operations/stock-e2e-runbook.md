@@ -135,13 +135,13 @@ or a running server.
 
 The render boundary is certified at three levels. **L1 and L3 are currently
 shellless**: their live scripts were deleted, so `STOCKRUST=CERTIFIED` is
-carried by the L2 Go battery plus the Rust crate tests.
+carried by the L2 Go battery plus BrainRust release CI and the Go real-binary e2e suites.
 
 | Layer | Former owner | Current owner |
 |---|---|---|
 | **L1** HTTP upstream (discovery → transcript selection → cut → persist → download) | `tests/operational/youtube_stock_live_e2e.sh` (deleted) | *none — reintroduce as a tracked driver before quoting L1* |
 | **L2** Go adapter → Rust | `internal/platform/media/rustexec/*_test.go` | unchanged (canonical owner) |
-| **L3** Rust binary (health, `render_stock` protocol, concat + full decode, concurrency, fail-closed, RTF) | `tests/operational/stockrust_live_e2e.sh` (deleted) | `cargo test --manifest-path rust/Cargo.toml` + the Go e2e suites in `rustexec` |
+| **L3** Rust binary (health, `render_stock` protocol, concat + full decode, concurrency, fail-closed, RTF) | `tests/operational/stockrust_live_e2e.sh` (deleted) | BrainRust workspace CI + Go real-binary e2e suites in `rustexec`, using the pinned release artifacts |
 
 **L2 canonical assertions** (the only complete coverage of these surfaces):
 `render.ValidateRenderPlan` + `ValidateManifestFiles` + `request.Validate()`
@@ -166,7 +166,7 @@ breakdown is measured by `stockrust_performance_e2e_test.go`:
 | `ffmpeg` | Rust binary | `metadata.ffmpeg_ms` (native, no external shim) |
 
 Invariant asserted by the test: `ffmpeg ≤ rust ≤ stock.render`. Canonical owner
-of the `ffmpeg_ms` wire field: `rust/pipelinegen-muscles/src/protocol.rs::MediaMetadata`
+of the `ffmpeg_ms` wire field: BrainRust `pipelinegen-muscles::protocol::MediaMetadata`
 + `internal/platform/media/rustexec/protocol.go::mediaMetadata.FFmpegMS`.
 
 Persistence: `wall_ms` lands in its dedicated column, `rtf` / `ffmpeg_ms` / the

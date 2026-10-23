@@ -4,7 +4,8 @@
 Subcommands:
   selftest                      check the harness itself on a built-in sample
   run   --worker BIN            full battery on the Garlasco fixture
-  custom --text-file F --worker BIN [--scene-words N]
+  custom --text-file F --worker BIN [--scene-words N] [--gold G]
+  charts --worker BIN           T05: digit/spelled comparisons and dates
 
 Verdicts: PASS, FAIL, NOT_IMPLEMENTED, NEEDS_REVIEW, NOT_RUN.
 Exit: 1 if any FAIL, 2 if any NOT_RUN/NEEDS_REVIEW, 0 otherwise.
@@ -144,13 +145,390 @@ def check_groups(results, manifest):
     check(results, "density_groups", "PASS" if groups else "NEEDS_REVIEW", "%d groups" % len(groups))
 
 
-def check_absent_contracts(results):
-    check(results, "story_graph", "NOT_IMPLEMENTED", "no cross-scene fact graph in semantic_manifest.v2")
-    check(results, "visual_coverage", "NOT_IMPLEMENTED", "no coverage report in semantic_manifest.v2")
-    check(results, "search_feedback", "NOT_IMPLEMENTED", "no feedback field for failed asset searches")
+def _scene_bytes(scenes):
+    return {s["scene_id"]: s["text"].encode("utf-8") for s in scenes}
 
 
-def evaluate(worker, text, scene_words, timeout):
+def check_story_graph(results, manifest, scenes):
+    """Every node and edge must resolve to a grounded source span."""
+    graph = manifest.get("story_graph") or {}
+    nodes = graph.get("nodes") or []
+    edges = graph.get("edges") or []
+    facts = sum(len(s.get("entity_facts", [])) for s in manifest["scenes"])
+    if not facts:
+        check(results, "story_graph", "NOT_RUN", "no grounded fact to link in this script")
+        return
+    if not nodes or not edges:
+        check(results, "story_graph", "FAIL", "manifest carries no story graph")
+        return
+    by_id = {node.get("id"): node for node in nodes}
+    raw = _scene_bytes(scenes)
+    bad = 0
+    for node in nodes:
+        text = raw.get(node.get("scene_id"))
+        if text is None:
+            bad += 1
+            continue
+        sliced = text[node.get("start_byte", 0):node.get("end_byte", 0)].decode("utf-8", "replace")
+        if sliced != node.get("evidence"):
+            bad += 1
+        for scene_id in node.get("scene_ids") or []:
+            if scene_id not in raw:
+                bad += 1
+    for edge in edges:
+        if edge.get("from_id") not in by_id or edge.get("to_id") not in by_id:
+            bad += 1
+    cross = sum(1 for edge in edges if edge.get("cross_scene"))
+    if cross == 0 and len(scenes) < 2:
+        check(results, "story_graph", "NOT_RUN",
+              "%d nodes, %d edges, one scene cannot cross" % (len(nodes), len(edges)))
+        return
+    if cross == 0:
+        check(results, "story_graph", "NEEDS_REVIEW",
+              "%d nodes, %d edges, none crossing a scene" % (len(nodes), len(edges)))
+        return
+    check(results, "story_graph", "PASS" if bad == 0 else "FAIL",
+          "%d nodes, %d edges (%d cross-scene), %d unresolved" % (len(nodes), len(edges), cross, bad))
+
+
+def check_visual_coverage(results, manifest, scenes):
+    """Coverage must reference real facts and agree with its own totals."""
+    coverage = manifest.get("visual_coverage") or {}
+    entries = coverage.get("scenes") or []
+    if len(entries) != len(scenes):
+        check(results, "visual_coverage", "FAIL",
+              "%d coverage entries for %d scenes" % (len(entries), len(scenes)))
+        return
+    fact_ids = {
+        s["scene_id"]: {f["id"] for f in s.get("entity_facts", [])}
+        for s in manifest["scenes"]
+    }
+    total = 0
+    covered = 0
+    bad = 0
+    for entry in entries:
+        known = fact_ids.get(entry.get("scene_id"), set())
+        for item in entry.get("facts") or []:
+            total += 1
+            status = item.get("status")
+            types = item.get("proposal_types") or []
+            if item.get("fact_id") not in known:
+                bad += 1
+            if (status == "covered") != bool(types):
+                bad += 1
+            if status not in ("covered", "uncovered"):
+                bad += 1
+            if status == "covered":
+                covered += 1
+    if coverage.get("total_facts") != total or coverage.get("covered_facts") != covered:
+        bad += 1
+    if total == 0:
+        check(results, "visual_coverage", "NEEDS_REVIEW", "no fact to cover")
+        return
+    check(results, "visual_coverage", "PASS" if bad == 0 else "FAIL",
+          "%d facts, %d covered, %d uncovered, %d bad" % (total, covered, total - covered, bad))
+
+
+def check_search_feedback(results, manifest, scenes):
+    """Every search rung is a source slice of the scene it belongs to."""
+    entries = (manifest.get("search_feedback") or {}).get("entries") or []
+    if not entries:
+        check(results, "search_feedback", "NOT_RUN",
+              "no image-backed proposal in this script")
+        return
+    raw = _scene_bytes(scenes)
+    proposal_ids = {
+        s["scene_id"]: {p["id"] for p in s.get("visual_proposals", [])}
+        for s in manifest["scenes"]
+    }
+    bad = 0
+    widest = 0
+    for entry in entries:
+        scene_id = entry.get("scene_id")
+        queries = entry.get("queries") or []
+        widest = max(widest, len(queries))
+        if entry.get("proposal_id") not in proposal_ids.get(scene_id, set()):
+            bad += 1
+        if not queries:
+            bad += 1
+        if entry.get("status") != "pending":
+            bad += 1
+        for query in queries:
+            text = raw.get(scene_id, b"")
+            if not query.get("text") or query["text"].encode("utf-8") not in text:
+                bad += 1
+    if widest < 2:
+        check(results, "search_feedback", "NEEDS_REVIEW",
+              "%d entries, widest ladder has %d rung(s)" % (len(entries), widest))
+        return
+    check(results, "search_feedback", "PASS" if bad == 0 else "FAIL",
+          "%d entries, widest ladder %d rungs, %d bad" % (len(entries), widest, bad))
+
+
+def check_chronology(results, manifest, scenes, gold):
+    """The emitted dated facts must match the documented sequence, in order.
+
+    This is the difference between `source_grounded` and `externally_verified`:
+    the engine is not asked to know history, only to reproduce the script's own
+    timeline. The gold states what the corrected script says.
+    """
+    expected = [(step["date"], step["outcome"]) for step in gold.get("sequence") or []]
+    if not expected:
+        check(results, "chronology_gold", "NOT_RUN", "gold carries no sequence")
+        return
+    dated = []
+    bad = 0
+    raw = _scene_bytes(scenes)
+    for scene_manifest, scene in zip(manifest["scenes"], scenes):
+        for fact in scene_manifest.get("entity_facts", []):
+            date = fact.get("normalized_date")
+            outcome = fact.get("normalized_value")
+            if not date or not outcome:
+                continue
+            start = fact["evidence_start_byte"]
+            end = fact["evidence_end_byte"]
+            if raw[scene["scene_id"]][start:end].decode("utf-8", "replace") != fact["evidence"]:
+                bad += 1
+            dated.append((date, outcome))
+    dated.sort()
+    actual = [(date[:4], outcome) for date, outcome in dated]
+    verdict = "PASS" if actual == expected and bad == 0 else "FAIL"
+    detail = "expected %s, got %s" % (expected, actual)
+    if bad:
+        detail += ", %d ungrounded evidence spans" % bad
+    check(results, "chronology_gold", verdict, detail)
+
+
+def check_temporal_recall(results, manifest, gold):
+    """Every temporal expression in the script must be recovered, even when no
+    entity fact is attached to it: five dated facts do not prove the 2007 and
+    2025 references were seen."""
+    expected = gold.get("temporal_expressions") or []
+    if not expected:
+        check(results, "temporal_recall", "NOT_RUN", "gold carries no temporal expressions")
+        return
+    counts = {}
+    unresolved = []
+    for scene_manifest in manifest["scenes"]:
+        for fact in scene_manifest.get("temporal_facts", []):
+            normalized = fact.get("normalized_date")
+            if normalized:
+                counts[normalized] = counts.get(normalized, 0) + 1
+            else:
+                unresolved.append(fact.get("surface") or "")
+    missing = []
+    for entry in expected:
+        normalized = entry["normalized"]
+        # A finer expression (2025-05-24) also proves the coarser year, never
+        # the opposite: a bare "2025" does not prove the day.
+        found = counts.get(normalized, 0)
+        if len(normalized) == 4:
+            found += sum(
+                count for value, count in counts.items()
+                if len(value) > 4 and value.startswith(normalized)
+            )
+        if found < entry.get("min_count", 1):
+            missing.append("%s (%d/%d)" % (normalized, found, entry.get("min_count", 1)))
+    allowed = set(gold.get("unresolved_allowed") or [])
+    bad_unresolved = [surface for surface in unresolved if surface not in allowed]
+    verdict = "PASS" if not missing and not bad_unresolved else "FAIL"
+    detail = "%d expressions checked, %d temporal facts" % (len(expected), len(counts))
+    if missing:
+        detail += ", missing: " + ", ".join(missing)
+    if bad_unresolved:
+        detail += ", unexpected unresolved: " + ", ".join(sorted(set(bad_unresolved)))
+    check(results, "temporal_recall", verdict, detail)
+
+
+NAMED_TYPES = {
+    "PERSON",
+    "ORGANIZATION",
+    "ORG",
+    "LOCATION",
+    "FACILITY",
+    "BRAND",
+    "PRODUCT",
+    "WORK",
+}
+MEASUREMENT_TYPES = {"NUMBER", "PERCENT", "MONEY", "DATE"}
+
+
+def is_heading_surface(text):
+    """Editorial headings ("NOME CHE TORNA", "RITROVAMENTO") are not names."""
+    words = [word for word in text.split() if any(ch.isalpha() for ch in word)]
+    if not words:
+        return False
+    letters = ["".join(ch for ch in word if ch.isalpha()) for word in words]
+    if not all(letter.isupper() for letter in letters if letter):
+        return False
+    return len(words) >= 2 or len(letters[0]) >= 6
+
+
+def scene_entity_types(manifest):
+    """(scene_id, lowercase surface) -> type for every grounded entity."""
+    types = {}
+    for scene in manifest["scenes"]:
+        for entity in scene.get("entities", []):
+            types[(scene["scene_id"], entity["text"].lower())] = entity["type"]
+    return types
+
+
+def check_entity_linking(results, manifest, scenes):
+    """T01: a name fragment is never a place, and a heading is never an entity."""
+    persons = [e for s in manifest["scenes"] for e in s.get("entities", []) if e["type"] == "PERSON"]
+    name_tokens = {
+        token.lower()
+        for person in persons
+        for token in person["text"].split()
+        if len(token) > 1
+    }
+    fragments = [
+        entity["text"]
+        for scene in manifest["scenes"]
+        for entity in scene.get("entities", [])
+        if entity["type"] == "LOCATION"
+        and " " not in entity["text"]
+        and entity["text"].lower() in name_tokens
+    ]
+    headings = [
+        entity["text"]
+        for scene in manifest["scenes"]
+        for entity in scene.get("entities", [])
+        if is_heading_surface(entity["text"])
+    ]
+    problems = []
+    if fragments:
+        problems.append("name fragments typed LOCATION: " + ", ".join(sorted(set(fragments))[:5]))
+    if headings:
+        problems.append("headings typed as entities: " + ", ".join(sorted(set(headings))[:5]))
+    verdict = "PASS" if not problems else "FAIL"
+    detail = "%d person names, %d locations" % (
+        len(persons),
+        sum(1 for s in manifest["scenes"] for e in s.get("entities", []) if e["type"] == "LOCATION"),
+    )
+    if problems:
+        detail += ", " + "; ".join(problems)
+    check(results, "entity_linking", verdict, detail)
+
+
+def check_comparison_precision(results, manifest):
+    """T02: a comparison is exactly two named subjects, never a noun list."""
+    types = scene_entity_types(manifest)
+    groups = [
+        (scene["scene_id"], group)
+        for scene in manifest["scenes"]
+        for group in scene.get("semantic_groups", [])
+        if group["group_type"] == "comparison"
+    ]
+    if not groups:
+        check(results, "comparison_precision", "NOT_RUN", "no comparison group in this script")
+        return
+    bad = []
+    for scene_id, group in groups:
+        members = group.get("members") or []
+        if len(members) != 2:
+            bad.append("%s: %d members" % (group["id"], len(members)))
+            continue
+        for member in members:
+            kind = types.get((scene_id, member["text"].lower()))
+            if member.get("scene_id"):
+                kind = types.get((member["scene_id"], member["text"].lower())) or kind
+            if kind not in NAMED_TYPES:
+                bad.append("%s: %r is %s, not a named subject" % (group["id"], member["text"], kind))
+    verdict = "PASS" if not bad else "FAIL"
+    detail = "%d comparisons" % len(groups)
+    if bad:
+        detail += ", " + "; ".join(bad[:4])
+    check(results, "comparison_precision", verdict, detail)
+
+
+def check_timeline_completeness(results, manifest):
+    """T03: one complete timeline, distinct events, and every dated fact covered."""
+    coverage = {
+        entry["scene_id"]: entry
+        for entry in (manifest.get("visual_coverage") or {}).get("scenes", [])
+    }
+    sequenced = []
+    bad = []
+    for scene in manifest["scenes"]:
+        groups = scene.get("semantic_groups", [])
+        sequences = [g for g in groups if g["group_type"] == "step_sequence"]
+        chronologies = [g for g in groups if g["group_type"] == "chronological"]
+        for group in sequences + chronologies:
+            dates = [m.get("normalized_date") for m in group.get("members") or [] if m.get("normalized_date")]
+            if len(dates) != len(set(dates)):
+                bad.append("%s: duplicate dates %s" % (group["id"], dates))
+            # Two outcomes can share one source sentence ("nel 2009 assolto,
+            # nel 2011 confermato"); two *identical members* cannot.
+            texts = [m.get("text") for m in group.get("members") or []]
+            if len(texts) != len(set(texts)):
+                bad.append("%s: duplicate events" % group["id"])
+        if not sequences:
+            continue
+        sequenced.append(scene["scene_id"])
+        timelines = [
+            p
+            for p in scene.get("visual_proposals", [])
+            if p["proposal_type"] == "timeline"
+        ]
+        if len(timelines) != 1:
+            bad.append("%s: %d timelines for one sequence" % (scene["scene_id"], len(timelines)))
+        facts = [
+            item
+            for item in coverage.get(scene["scene_id"], {}).get("facts", [])
+            if item.get("status") == "uncovered"
+        ]
+        if facts:
+            bad.append(
+                "%s: %d uncovered facts (%s)"
+                % (scene["scene_id"], len(facts), facts[0]["fact_id"])
+            )
+    if not sequenced:
+        check(results, "timeline_completeness", "NOT_RUN", "no dated sequence in this script")
+        return
+    verdict = "PASS" if not bad else "FAIL"
+    detail = "%d sequenced scenes" % len(sequenced)
+    if bad:
+        detail += ", " + "; ".join(bad[:4])
+    check(results, "timeline_completeness", verdict, detail)
+
+
+def check_keyword_quality(results, manifest):
+    """T04: every exact-mention query is a grounded visual entity, not noise."""
+    entries = (manifest.get("search_feedback") or {}).get("entries") or []
+    if not entries:
+        check(results, "keyword_quality", "NOT_RUN", "no search entry in this script")
+        return
+    types = scene_entity_types(manifest)
+    visual = {key for key, kind in types.items() if kind not in MEASUREMENT_TYPES}
+    bad = []
+    checked = 0
+    for entry in entries:
+        seen = set()
+        for query in entry.get("queries") or []:
+            text = query.get("text") or ""
+            if not text or text.lower() in seen:
+                bad.append("duplicate or empty query in %s" % entry["proposal_id"])
+                continue
+            seen.add(text.lower())
+            if query.get("kind") != "exact_mention":
+                continue
+            checked += 1
+            key = (entry.get("scene_id"), text.lower())
+            if key not in visual:
+                kind = types.get(key)
+                bad.append(
+                    "%r is %s, not a searchable visual entity"
+                    % (text, kind if kind else "not an entity")
+                )
+    verdict = "PASS" if not bad else "FAIL"
+    detail = "%d exact mentions of %d entries" % (checked, len(entries))
+    if bad:
+        detail += ", " + "; ".join(sorted(set(bad))[:4])
+    check(results, "keyword_quality", verdict, detail)
+
+
+def evaluate(worker, text, scene_words, timeout, gold=None):
     scenes_text = split_scenes(text, scene_words)
     manifest, scenes = call_worker(worker, scenes_text, timeout)
     results = []
@@ -161,8 +539,76 @@ def evaluate(worker, text, scene_words, timeout):
     check_charts(results, manifest, scenes)
     check_micro_summaries(results, manifest)
     check_groups(results, manifest)
-    check_absent_contracts(results)
+    check_story_graph(results, manifest, scenes)
+    check_visual_coverage(results, manifest, scenes)
+    check_search_feedback(results, manifest, scenes)
+    check_entity_linking(results, manifest, scenes)
+    check_comparison_precision(results, manifest)
+    check_timeline_completeness(results, manifest)
+    check_keyword_quality(results, manifest)
+    if gold:
+        check_chronology(results, manifest, scenes, gold)
+        check_temporal_recall(results, manifest, gold)
     return results, manifest
+
+
+CHART_FIXTURES = {
+    "digits": os.path.join(HERE, "fixtures", "charts_digits.txt"),
+    "spelled": os.path.join(HERE, "fixtures", "charts_spelled.txt"),
+    "dates": os.path.join(HERE, "fixtures", "charts_dates.txt"),
+}
+
+
+def chart_items_of(scene):
+    return [item for vp in scene.get("visual_proposals", []) for item in vp.get("chart_items") or []]
+
+
+def charts_case(worker, path, timeout):
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    manifest, scenes = call_worker(worker, [text], timeout)
+    return manifest["scenes"][0], scenes[0]
+
+
+def check_chart_fixtures(results, worker, timeout):
+    """T05: a stated comparison becomes a chart, a date never becomes a bar."""
+    expected = {"digits": "42%", "spelled": "quarantadue"}
+    for name, path in CHART_FIXTURES.items():
+        scene, sent = charts_case(worker, path, timeout)
+        items = chart_items_of(scene)
+        if name == "dates":
+            dates = scene.get("temporal_facts") or []
+            verdict = "PASS" if not items and dates else "FAIL"
+            check(
+                results,
+                "charts_dates_never_bars",
+                verdict,
+                "%d temporal facts, %d chart items" % (len(dates), len(items)),
+            )
+            continue
+        percents = [item for item in items if item["kind"] == "PERCENT"]
+        values = sorted(item["value"] for item in percents)
+        marker = expected[name]
+        spelled = any(ch.isalpha() for item in percents for ch in item["text"])
+        ok = values == [18.0, 42.0] and ((name == "spelled") == spelled)
+        check(
+            results,
+            "charts_%s" % name,
+            "PASS" if ok else "FAIL",
+            "values %s from %s" % (values, [item["text"] for item in percents]),
+        )
+        numeric = {(f["start_byte"], f["end_byte"]) for f in scene.get("numeric_facts") or []}
+        unbacked = [
+            item["text"]
+            for item in items
+            if (item["start_byte"], item["end_byte"]) not in numeric
+        ]
+        check(
+            results,
+            "charts_%s_grounded" % name,
+            "PASS" if not unbacked else "FAIL",
+            "%d items, %d unbacked (%s)" % (len(items), len(unbacked), marker),
+        )
 
 
 def write_report(name, results):
@@ -207,24 +653,42 @@ def cmd_run(args):
 def cmd_custom(args):
     with open(args.text_file, encoding="utf-8") as fh:
         text = fh.read()
-    results, _ = evaluate(args.worker, text, args.scene_words, args.timeout)
+    gold = None
+    if args.gold:
+        with open(args.gold, encoding="utf-8") as fh:
+            gold = json.load(fh)
+    results, _ = evaluate(args.worker, text, args.scene_words, args.timeout, gold)
     print_results(results)
     print("report:", write_report("custom.json", results))
+    return exit_code(results)
+
+
+def cmd_charts(args):
+    results = []
+    check_chart_fixtures(results, args.worker, args.timeout)
+    print_results(results)
+    print("report:", write_report("charts.json", results))
     return exit_code(results)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name in ("selftest", "run", "custom"):
+    for name in ("selftest", "run", "custom", "charts"):
         p = sub.add_parser(name)
         p.add_argument("--worker", required=True)
         p.add_argument("--timeout", type=int, default=480)
         if name == "custom":
             p.add_argument("--text-file", required=True)
             p.add_argument("--scene-words", type=int, default=220)
+            p.add_argument("--gold", help="chronology/temporal gold JSON for this script")
     args = parser.parse_args()
-    handler = {"selftest": cmd_selftest, "run": cmd_run, "custom": cmd_custom}[args.cmd]
+    handler = {
+        "selftest": cmd_selftest,
+        "run": cmd_run,
+        "custom": cmd_custom,
+        "charts": cmd_charts,
+    }[args.cmd]
     sys.exit(handler(args))
 
 

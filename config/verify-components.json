@@ -3,6 +3,7 @@
     "paths": [
       "internal/kernel/script/",
       "internal/capabilities/scripts/",
+      "scripts/bench/elon_phrase_impact.py",
       "scripts/with-velox-auth",
       "scripts/lib/dotenv.sh",
       "start_server.sh",
@@ -257,7 +258,9 @@
   },
   "timeline": {
     "paths": [
-      "internal/platform/media/"
+      "internal/platform/media/",
+      "testdata/mediaexec/",
+      "testdata/phrase-impact/"
     ],
     "go_packages": [
       "./internal/platform/media/..."
@@ -458,24 +461,6 @@
     "timeout_seconds": 300,
     "race_timeout_seconds": 900,
     "race_enabled": true,
-    "live_tests": [],
-    "cacheable": true,
-    "cache_scope": "content"
-  },
-  "rust-muscles": {
-    "utility": true,
-    "paths": [
-      "rust/",
-      "semantic_acceptance/",
-      "testdata/mediaexec/"
-    ],
-    "go_packages": [],
-    "node_tests": [],
-    "python_tests": [],
-    "dependencies": [],
-    "timeout_seconds": 300,
-    "race_timeout_seconds": 300,
-    "race_enabled": false,
     "live_tests": [],
     "cacheable": true,
     "cache_scope": "content"

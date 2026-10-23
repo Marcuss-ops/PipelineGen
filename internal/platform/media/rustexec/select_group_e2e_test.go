@@ -16,12 +16,12 @@ import (
 // cleanly.
 func resolveMediaSamplerBinary() string {
 	if fromEnv := os.Getenv("VELOX_RUST_MEDIASAMPLER_PATH"); fromEnv != "" {
-		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() {
+		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 			return fromEnv
 		}
 	}
-	candidate := filepath.Join("..", "..", "..", "..", "rust", "target", "release", "mediasampler")
-	if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+	candidate := filepath.Join("..", "..", "..", "..", "bin", "mediasampler")
+	if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 		return candidate
 	}
 	return ""
@@ -53,7 +53,7 @@ func e2eGroupCandidates(prefix string) []scriptpkg.SegmentAssetCandidate {
 func TestMediaSamplerSelectGroupRealBinaryDistinctRankedMembers(t *testing.T) {
 	binary := resolveMediaSamplerBinary()
 	if binary == "" {
-		t.Skip("mediasampler release binary not built; run cargo build --release -p mediasampler --bin mediasampler")
+		t.Skip("mediasampler release binary not installed; run make rust-fetch")
 	}
 	executor := newRealExecutor(t, binary, resolveFFmpegBinary())
 	adapter, err := NewMediaSamplerAdapter(executor)
@@ -92,7 +92,7 @@ func TestMediaSamplerSelectGroupRealBinaryDistinctRankedMembers(t *testing.T) {
 func TestMediaSamplerSelectGroupRealBinaryRefusesBoundAssets(t *testing.T) {
 	binary := resolveMediaSamplerBinary()
 	if binary == "" {
-		t.Skip("mediasampler release binary not built; run cargo build --release -p mediasampler --bin mediasampler")
+		t.Skip("mediasampler release binary not installed; run make rust-fetch")
 	}
 	executor := newRealExecutor(t, binary, resolveFFmpegBinary())
 	adapter, err := NewMediaSamplerAdapter(executor)

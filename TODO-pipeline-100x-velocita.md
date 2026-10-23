@@ -366,7 +366,7 @@ Tre gap di strumentazione dallo snapshot:
 - [ ] **E1. VisualNER in-process** (FFI link, no stdio spawn).
       *Guadagno:* 3,7s → <0,5s per scena.
 - [~] **E2. Frasi pesanti v2 (embedding)** — PARTE NLP IN PRODUZIONE 2026-10-05:
-      `rust/pipelinegen-muscles::phrase_impact` (TextRank/coseno; embedding E5 precomputati
+      BrainRust `phrase_impact` release worker (TextRank/coseno; embedding E5 precomputati
       oppure modalità lessicale deterministica) produce `summary` estrattivo,
       `bullet_points` e `heavy_sentences`. L'adapter
       `internal/platform/media/rustexec.PhraseImpactAnalyzer` li espone al runner
@@ -374,7 +374,7 @@ Tre gap di strumentazione dallo snapshot:
       `GenerateResult`/`GenerationResult` (`summary`/`bullet_points`/`heavy_sentences`);
       un worker rotto degrada senza far fallire il video. Wiring:
       `wirePhraseImpactAnalyzer` + `external.rust_phrase_impact_path`
-      (default `bin/phrase_impact`, installato da `make build-muscles`).
+      (default `bin/phrase_impact`, installato da `make rust-fetch`).
       Benchmark per titolo: `go test ./scripts/bench -run '^$' -bench BenchmarkPhraseImpactTitles`.
       Telemetria: il worker riporta il proprio stage breakdown e il runner lo pubblica
       in `script_phrase_impact_stage_seconds` (label `stage`: split|embedding|similarity|
@@ -529,3 +529,41 @@ Ogni tool si accetta solo con before/after sullo **stesso snapshot**
 (`ops/benchmarks/job-timing-*.json`): la metrica target è la riga dell'operazione
 interessata (es. `queue_wait_ms` per A1, `synthesize.duration_ms` per C1,
 `translate.duration_ms` per D1). Nessun "sembra più veloce".
+
+## 7. Candidati ad alto impatto emersi dalla review del 2026-10-23
+
+Questi candidati completano la roadmap esistente e restano **proposte da
+valutare**: non sono implementazioni autorizzate né risultati di benchmark.
+Il dettaglio del collo render è nel ticket
+[`TICKET-OVERLAY-THROUGHPUT-100-MIN.md`](docs/operations/TICKET-OVERLAY-THROUGHPUT-100-MIN.md).
+
+1. **Ridurre il lavoro per item prima di aumentare le lane.** La profilazione
+   golden riporta 2,4–2,75 s/item e circa 1,3 s/item in avvio, encoder,
+   validazione e receipt; la terza lane ha mostrato contesa. Valutare una
+   sessione render persistente per batch di item, mantenendo MP4 separati come
+   primo passo. Misurare sessione open/close, compile/prepare, frame e coda per
+   classe; non assumere scaling lineare del numero di lane.
+2. **Verificare una composizione senza MP4 autonomo per ogni overlay.** Il
+   rendering diretto dei layer nella timeline finale (o un artefatto per scena)
+   può eliminare mux, receipt, upload e stitch ripetuti. È un cambio di
+   contratto: prima di procedere servono parità pixel/audio, receipt e link
+   idempotenti, retry/resume e confronto contro il percorso attuale.
+3. **Portare il flusso sul critical path per scena.** Registrare
+   `ready_at/enqueued_at/started_at/completed_at` per testo, traduzione, NLP,
+   TTS, asset e audio; avviare ogni dipendenza appena la scena è pronta, solo
+   quando il contratto downstream lo consente. Calcolare il critical path dalla
+   trace, senza sommare work concorrente.
+4. **Completare il riuso cross-run già previsto dalla roadmap.** Dare priorità
+   alle cache content-addressed per voce (C3), Artlist (E3) e traduzione batch
+   locale (D1), più resume per singolo artefatto/checkpoint (I2). Vincolare le
+   cache a input, lingua, modello/versione e hash; verificare che un retry non
+   ripeta artefatti già certificati.
+5. **Valutare plate di mappa pre-renderizzati.** Tile cache con migliaia di hit
+   e zero download, ma mappe da 20–90 s/item, suggeriscono di separare il plate
+   deterministico dalla camera/testi animati. Accettare solo con identità
+   content-addressed, parità visiva e misure per classe.
+6. **Usare un gate misurabile e comparabile.** Sul medesimo payload immutabile e
+   revisione, fare tre run e riportare mediana/dispersione, risorse e throughput
+   per classe. Tenere distinti gli item richiesti, pianificati, renderizzati,
+   validati e pubblicati. Il target aggregato 100/min non sostituisce gli SLA
+   delle mappe e delle altre classi.

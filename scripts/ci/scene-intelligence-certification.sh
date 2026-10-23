@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PIPELINEGEN_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 WORKSPACE_ROOT="$(cd -- "${PIPELINEGEN_ROOT}/.." && pwd)"
-RUST_MANIFEST="${PIPELINEGEN_ROOT}/rust/pipelinegen-muscles/Cargo.toml"
 BENCH_OUTPUT="${PIPELINEGEN_ROOT}/.cache/scene-intelligence/rust_benchmark.json"
 REPORT_OUTPUT="${PIPELINEGEN_ROOT}/.cache/scene-intelligence/certification-report.json"
 CERT_RESULTS=()
@@ -19,8 +18,6 @@ run_group() {
 }
 
 cd "$PIPELINEGEN_ROOT"
-run_group 'Rust SI unit + worker suite' cargo +stable test --manifest-path "$RUST_MANIFEST" scene_intelligence --lib
-run_group 'Rust unseen Level-C smoke evaluation' cargo +stable test --manifest-path "$RUST_MANIFEST" --test si_level_c_unseen
 run_group 'PipelineGen SI / timeline / admission / RenderingGen bridge Go packages' go test -count=1 \
   ./internal/kernel/script/ \
   ./internal/capabilities/overlays/ \
@@ -38,29 +35,25 @@ cd "${WORKSPACE_ROOT}/RenderingGen/queue"
 run_group 'RenderingGen queue full Go suite' go test -count=1 ./...
 
 cd "$PIPELINEGEN_ROOT"
-run_group 'Rust SI lexical benchmark (1k/3k/10k)' env \
-  SCENE_INTELLIGENCE_BENCH_OUTPUT="$BENCH_OUTPUT" \
-  cargo +stable bench --manifest-path "$RUST_MANIFEST" --bench scene_intelligence
-
-printf '\n=== Benchmark artifact ===\n%s\n' "$BENCH_OUTPUT"
-python3 - "$BENCH_OUTPUT" <<'PY'
+if [[ -f "$BENCH_OUTPUT" ]]; then
+  printf '\n=== Existing BrainRust benchmark artifact ===\n%s\n' "$BENCH_OUTPUT"
+  python3 - "$BENCH_OUTPUT" <<'PY'
 import json
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
 report = json.loads(path.read_text())
-assert [row["words"] for row in report["sizes"]] == [1020, 3056, 10000], report["sizes"]
-assert all(row["sentences"] > 0 and row["measured_runs"] > 0 for row in report["sizes"])
-assert all(row["total_ms"]["p50_ms"] > 0 for row in report["sizes"])
-assert "no embeddings" in report["description"].lower()
+assert report.get("schema_version"), "benchmark artifact schema_version missing"
+assert report.get("sizes"), "benchmark artifact sizes missing"
 for row in report["sizes"]:
-    print(f"{row['words']} words: sentences={row['sentences']} p50={row['total_ms']['p50_ms']:.3f}ms "
-          f"p95={row['total_ms']['p95_ms']:.3f}ms p99={row['total_ms']['p99_ms']:.3f}ms "
-          f"sentences/s={row['sentences_per_second']:.0f}")
-print(f"peak_rss_mb={report['peak_rss_mb']} cpu_percent={report['process_cpu_percent']}")
+    assert row.get("words", 0) > 0 and row.get("sentences", 0) > 0, row
+    print(f"{row['words']} words: {row['sentences']} sentences")
 PY
-CERT_RESULTS+=("Rust SI lexical benchmark + JSON artifact validation")
+  CERT_RESULTS+=("Existing BrainRust benchmark artifact validation")
+else
+  printf '\nNo local Scene Intelligence benchmark artifact; benchmark runs in BrainRust CI.\n'
+fi
 python3 - "$REPORT_OUTPUT" "${CERT_RESULTS[@]}" <<'PY'
 import json
 import pathlib
@@ -85,4 +78,4 @@ path.write_text(json.dumps(result, indent=2) + "\n")
 print(f"\nCertification report written: {path}")
 print(f"Passed groups: {result['passed_count']}; external gates pending: {len(result['pending_external_gates'])}")
 PY
-printf '\nALL LOCAL CERTIFICATION GROUPS PASSED\n'
+printf '\nALL PIPELINEGEN CONSUMER CERTIFICATION GROUPS PASSED\n'

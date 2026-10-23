@@ -24,7 +24,7 @@
 # mapping is visible at-a-glance.
 .PHONY: \
 	help all \
-	go-version-guard go-version-check build build-muscles rust-fetch rust-models build-server clean rebuild run dev \
+	go-version-guard go-version-check build rust-fetch build-server clean rebuild run dev \
 	test test-all test-unit coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-overlay-model-alias \
@@ -79,7 +79,6 @@ help:
 	@echo "BUILD / RUN"
 	@echo "  make build            Build server, admin, worker + install the pinned BrainRust release"
 	@echo "  make rust-fetch       Install the checksum-verified BrainRust release binaries"
-	@echo "  make build-muscles    Fallback: build the Rust binaries from the submodule"
 	@echo "  make build-server     Build server binary"
 	@echo "  make run              Run server (HTTP + scheduler + maintenance via --mode all)"
 	@echo "  make rebuild          Clean + build (idempotent equivalent of clean && build)"

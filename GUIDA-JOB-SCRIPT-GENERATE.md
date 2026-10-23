@@ -352,7 +352,7 @@ browser. Aggiungere worker non accelera questa voce; serve cache per
 | Voce | Misura |
 |---|---|
 | `scene_analysis/nlp.extract` | 8.961 chiamate, 1,56 h; media **0,63 s** (max 305,6 s = anomalia) — estrattore conservativo CPU + knowledge base deterministica (PERSON/ORG/PRODUCT/LOCATION/GPE… con disambiguazione), nessun modello esterno |
-| Rust `phrase_impact` | worker Rust (`bin/phrase_impact`, `make build-muscles`): TextRank/coseno + embedding E5 precomputati o modalità lessicale deterministica; produce `summary` estrattivo, `bullet_points`, `heavy_sentences`. Metriche per stadio in `script_phrase_impact_stage_seconds` (split\|embedding\|similarity\|ranking\|summary\|bullet\|total). Un worker rotto **degrada senza far fallire il video** |
+| Rust `phrase_impact` | BrainRust release worker (`bin/phrase_impact`, installed by `make rust-fetch`): TextRank/coseno + embedding E5 precomputati o modalità lessicale deterministica; produce `summary` estrattivo, `bullet_points`, `heavy_sentences`. Metriche per stadio in `script_phrase_impact_stage_seconds` (split\|embedding\|similarity\|ranking\|summary\|bullet\|total). Un worker rotto **degrada senza far fallire il video** |
 | `audio_compile/rust.audio_render` | 683 chiamate, 4,51 h; media 23,8 s (max 610,9 s) — il mix Rust dell'intera timeline audio |
 
 Le schede entità renderizzate rientrano in `overlay_render` (non hanno voce

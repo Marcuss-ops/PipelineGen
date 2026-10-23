@@ -37,18 +37,12 @@ GO_BUILD_GOFLAGS ?= -p=$(GO_PARALLEL) $(GOFLAGS_EXTRA)
 GO_LINKER ?= mold
 GO_LINKER_FLAGS := $(shell if command -v $(GO_LINKER) >/dev/null 2>&1; then printf '%s' '-linkmode external -extldflags -fuse-ld=$(GO_LINKER)'; fi)
 
-# Rust execution plane: BrainRust owns the toolchain, ICU linkage and tests.
-# The default path consumes the checksum-verified release bundle; build-muscles
-# remains only as the explicit source fallback (offline/Docker/rollback).
+# Rust execution plane: BrainRust owns the toolchain, ICU linkage, tests and
+# release artifacts. PipelineGen consumes only checksum-verified binaries.
 RUST_VERSION ?= v0.1.0
 RUST_FETCH_BASE_URL ?= https://github.com/Marcuss-ops/BrainRust/releases/download
 RUST_BIN_DIR ?= $(CURDIR)/bin
-# The fallback honours BrainRust's rust-toolchain.toml once the submodule pin
-# contains it; before that (or on a checkout without it) use stable.
-RUST_TOOLCHAIN ?= $(shell sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml 2>/dev/null)
-RUST_CARGO ?= $(if $(RUST_TOOLCHAIN),rustup run $(RUST_TOOLCHAIN) cargo,rustup run stable cargo)
 ICU_MAJOR ?= $(shell pkg-config --modversion icu-i18n 2>/dev/null | cut -d. -f1)
-RUST_ICU_ENV = RUST_ICU_MAJOR_VERSION_NUMBER=$(ICU_MAJOR)
 
 # Canonical token-file SSOT (AGENTS.md "Authentication SSOT (Velox admin token)").
 # Agents normally load via scripts/with-velox-auth; exporting TOKEN_FILE here is a
@@ -97,8 +91,8 @@ go-version-check:
 #
 # Install the pinned BrainRust release: 4 binaries, 6 names in bin/.
 # ICU_MAJOR is the runtime major, so a 72-linked artifact is refused on a host
-# that only has ICU 70 (use build-muscles there). RUST_ARTIFACTS_DIR may point
-# at a local copy of the release assets for offline installs.
+# that only has ICU 70. RUST_ARTIFACTS_DIR may point at a local copy of the
+# release assets for offline installs; it is still a release bundle, not source.
 rust-fetch:
 	@test -n "$(ICU_MAJOR)" || (echo "ICU4C runtime libraries are required to validate the BrainRust artifact (pkg-config icu-i18n); override with ICU_MAJOR=<major>" >&2; exit 1)
 	@RUST_VERSION="$(RUST_VERSION)" \
@@ -106,33 +100,6 @@ rust-fetch:
 	 RUST_ICU_MAJOR="$(ICU_MAJOR)" \
 	 RUST_BIN_DIR="$(RUST_BIN_DIR)" \
 	 bash scripts/ci/rust-fetch.sh
-
-# build-muscles — explicit source fallback: compiles the pinned submodule with
-# its own rust-toolchain.toml. It is NOT part of `make build`; use it for
-# offline work, a host ICU that no release covers, or rollback.
-#
-# It also installs the unified semantic engine: ONE NDJSON service for the whole
-# script (entities, bullets, charts, dates, numbers, relations). It is a
-# separate binary so the semantic path does not share the media executor's
-# dispatcher or build.
-build-muscles:
-	@test -n "$(ICU_MAJOR)" || (echo "ICU4C development libraries are required (pkg-config icu-i18n)" >&2; exit 1)
-	@mkdir -p bin
-	$(RUST_ICU_ENV) $(RUST_CARGO) build --release --manifest-path rust/Cargo.toml
-	install -m 0755 rust/target/release/pipelinegen-muscles bin/pipelinegen-muscles
-	install -m 0755 rust/target/release/pipelinegen-muscles bin/phrase_impact
-	install -m 0755 rust/target/release/pipelinegen-muscles bin/scene_intelligence
-	install -m 0755 rust/target/release/visualner bin/visualner
-	install -m 0755 rust/target/release/semantic-engine bin/semantic-engine
-	install -m 0755 rust/target/release/mediasampler bin/mediasampler
-
-# Install the UDPipe models declared by rust/lexicon/language_profiles.json.
-# The Rust suite fails closed when a declared model is missing; CI caches the
-# destination directory. VISUALNER_MODEL_DIR defaults to the same path the
-# worker resolves from $HOME.
-VISUALNER_MODEL_DIR ?= $(HOME)/.local/share/visualner/models
-rust-models:
-	VISUALNER_MODEL_DIR="$(VISUALNER_MODEL_DIR)" ./rust/visualner/tools/install_udpipe_models.sh
 
 build: go-version-check rust-fetch
 	@mkdir -p bin

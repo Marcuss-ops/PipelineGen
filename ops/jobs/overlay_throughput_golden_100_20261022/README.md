@@ -24,7 +24,8 @@ scripts/submit-and-poll.sh \
 L'idempotency key è univoca per run (mai riusare una chiave consumata).
 Il servizio deve girare sul binario con la strumentazione
 (`prefetch/prepare/encode` delle mappe + `drive_publish` outbox) e col pool item
-a due lane (`overlayItemDeepWidth=2`):
+alla larghezza feed (`separate_item_render_workers=4`, cap `overlayItemMaxWidth=6`;
+retuned 2026-10-23 con il receipt fuori dalla lane):
 `make build && scripts/systemd/pipelinegenctl restart-verify`.
 
 Prerequisiti della macchina (verificati 22/10 2026):
@@ -33,8 +34,10 @@ Prerequisiti della macchina (verificati 22/10 2026):
   corrisponde a un oggetto L3 verificato (altrimenti il prefetch fallisce 422).
 - **Topologia lane dichiarata** (le run con lane diverse NON sono confrontabili):
   attuale = 2 lane render (`chronon3d.service` + `chronon3d-b.service`, worker
-  `chronon.socket_paths` = 2 socket, `gpu_lanes=2`, `overlayItemDeepWidth=2`,
-  `RENDERINGGEN_GPU_SLOTS=2`). Le run v1–v10 sono 1 lane; v11+ sono 2 lane.
+  `chronon.socket_paths` = 2 socket, `gpu_lanes=2`,
+  `separate_item_render_workers=4`, `RENDERINGGEN_GPU_SLOTS=2`). Le run v1–v10
+  sono 1 lane; v11–v12 sono 2 lane con il receipt dentro la lane; v13+ sono
+  2+ lane con il receipt di verifica fuori dalla lane (fix 1).
   Verificare il log di avvio worker: `lane/daemon parity: ... sockets=2 ...`.
 - Nessun altro carico pesante sulla macchina (i tempi non sono altrimenti
   confrontabili).

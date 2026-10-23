@@ -414,13 +414,13 @@ func TestPhraseImpactAnalyzerUsesCanonicalMultilingualE5ForSyntheticFixture(t *t
 	}
 	binary := os.Getenv("PHRASE_IMPACT_BIN")
 	if binary == "" {
-		t.Skip("set PHRASE_IMPACT_BIN to the Rust phrase-impact executable")
+		t.Skip("install the BrainRust phrase-impact release with make rust-fetch or set PHRASE_IMPACT_BIN")
 	}
 	serverURL := os.Getenv("EMBEDDING_SERVER_URL")
 	if serverURL == "" {
 		serverURL = "http://127.0.0.1:8001"
 	}
-	fixtureDir := filepath.Join("..", "..", "..", "..", "rust", "pipelinegen-muscles", "fixtures")
+	fixtureDir := filepath.Join("..", "..", "..", "..", "testdata", "phrase-impact")
 	transcriptBytes, err := os.ReadFile(filepath.Join(fixtureDir, "elon_musk_synthetic_transcript_it.txt"))
 	if err != nil {
 		t.Fatalf("read synthetic transcript fixture: %v", err)
@@ -544,7 +544,7 @@ func TestPhraseImpactAnalyzerRunsTheRealRustWorker(t *testing.T) {
 		}
 	}
 	if binary == "" {
-		t.Skip("phrase-impact Rust binary not available; set PHRASE_IMPACT_BIN to run this check")
+		t.Skip("phrase-impact release binary not installed; run make rust-fetch or set PHRASE_IMPACT_BIN")
 	}
 
 	analyzer := NewPhraseImpactAnalyzer(binary, nil, nil)

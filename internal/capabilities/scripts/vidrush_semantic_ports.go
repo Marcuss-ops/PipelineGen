@@ -5,8 +5,8 @@
 // Only interfaces, function types, the VisualEntity wire mirror and the PURE
 // helpers that operate on it live here; the implementations are in
 // vidrush_semantic_chain.go and the MetalCert barrier in
-// vidrush_mediacert_barrier.go. The Rust crates (rust/visualner,
-// rust/mediasampler) are reached through these interfaces so production can
+// vidrush_mediacert_barrier.go. BrainRust's VisualNER and MediaSampler release
+// workers are reached through these interfaces so production can
 // swap in the stdio-JSON FFI adapter without the coordinator knowing about
 // process spawning.
 //

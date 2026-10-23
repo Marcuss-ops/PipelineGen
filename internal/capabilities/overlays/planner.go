@@ -417,9 +417,9 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		if config.RunLevelShortPhraseLimit > 0 && config.RunLevelLongPhraseLimit > 0 {
 			// The bullet lane is an independent quota: chapter cards never spend
 			// a short/long phrase slot when the caller enables it.
-			plan.Items, _ = ApplyEditorialOverlayBudgetWithBulletLane(plan.Items, config.RunLevelPhraseOverlayLimit, 0, config.RunLevelMapOverlayLimit, false, config.RunLevelShortPhraseLimit, config.RunLevelLongPhraseLimit, config.RunLevelBulletOverlayLimit)
+			plan.Items, _ = ApplyEditorialOverlayBudgetWithBulletLane(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelImageOverlayLimit, config.RunLevelMapOverlayLimit, false, config.RunLevelShortPhraseLimit, config.RunLevelLongPhraseLimit, config.RunLevelBulletOverlayLimit)
 		} else {
-			plan.Items, _ = ApplyEditorialOverlayBudgetWithLimits(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelMapOverlayLimit)
+			plan.Items, _ = ApplyEditorialOverlayBudgetWithImageLimit(plan.Items, config.RunLevelPhraseOverlayLimit, config.RunLevelImageOverlayLimit, config.RunLevelMapOverlayLimit)
 		}
 	} else {
 		plan.Items, _ = ApplyPhraseOverlayBudgetWithLimit(plan.Items, config.RunLevelPhraseOverlayLimit)

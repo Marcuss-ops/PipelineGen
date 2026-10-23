@@ -19,7 +19,7 @@ func TestEffectivePhraseOverlayLimitAppliesDefaultAndHardMaximum(t *testing.T) {
 			t.Fatalf("EffectivePhraseOverlayLimit(%d) = %d, want the requested value", requested, got)
 		}
 	}
-	for _, requested := range []int{MaxPhraseOverlaysHardLimit + 1, 40, int(^uint(0) >> 1)} {
+	for _, requested := range []int{MaxPhraseOverlaysHardLimit + 1, MaxPhraseOverlaysHardLimit * 2, int(^uint(0) >> 1)} {
 		if got := EffectivePhraseOverlayLimit(requested); got != MaxPhraseOverlaysHardLimit {
 			t.Fatalf("EffectivePhraseOverlayLimit(%d) = %d, want hard maximum %d", requested, got, MaxPhraseOverlaysHardLimit)
 		}

@@ -221,13 +221,11 @@ jobs:
       timeout-minutes: 5
       run: make verify-no-secrets
 
-  # ── mediaexec.v1 contract (no cargo) ───────────────────────────────
-  #
-  # BrainRust owns the schema and the canonical goldens; this job checks the
-  # consumer copy byte-for-byte and runs the Go golden test against it. The
-  # submodule is pinned, so no Rust toolchain is needed.
+  # ── mediaexec.v1 consumer contract (no local Rust checkout) ───────
+  # BrainRust owns the schema and canonical goldens. The consumer gate fetches
+  # the contract at the same pinned release tag used by `make rust-fetch`.
   rust-contract:
-    name: mediaexec.v1 contract (schema + shared goldens)
+    name: mediaexec.v1 consumer contract (shared goldens)
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
@@ -235,27 +233,19 @@ jobs:
       with:
         submodules: false
 
-    - name: Check out the pinned Rust contract
-      run: git submodule update --init --depth 1 rust
-
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
         go-version: '1.25.x'
         cache: true
 
-    - name: Install the contract validator
-      run: |
-        python3 -m venv /tmp/contract-venv
-        /tmp/contract-venv/bin/pip install -q -r rust/contract/mediaexec.v1/requirements.txt
-
     - name: Verify the shared contract
-      run: PATH="/tmp/contract-venv/bin:$PATH" make verify-rust-contract
+      run: make verify-rust-contract
 
   # ── Rust workspace: owned by BrainRust CI ───────────────────────────
   #
-  # The cargo test/clippy job was removed with the artifact cutover: BrainRust
-  # CI runs the workspace suite on the pinned Debian Bookworm / ICU 72 ABI and
+  # Rust workspace test/clippy jobs moved to BrainRust: its CI runs the suite
+  # on the pinned Debian Bookworm / ICU 72 ABI and
   # publishes the binaries this repo consumes. PipelineGen certifies only the
   # consumer side (`make verify-rust-muscles`, `make verify-rust-fetch`), so no
   # job here needs cargo, rustup or a floating ICU major.

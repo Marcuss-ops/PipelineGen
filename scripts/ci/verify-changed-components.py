@@ -83,15 +83,6 @@ ALL_COMPONENT_PREFIXES = (
 # under out/ are supplied from the component registry at collection time.
 IGNORED_CHANGED_PREFIXES = ("artifacts/", "tmp/", "data/")
 IGNORED_GENERATED_OUT_PREFIX = "out/"
-# Paths that moved to a sibling repository keep their historical owner.  The
-# registry no longer lists them, but the deletion commit still carries the old
-# path in its diff; attribute that deletion instead of failing closed on an
-# unmapped file.  Keep this exact and small.
-MOVED_PATH_OWNERS = {
-    "RUST_SEMANTIC_ENGINE_TODO.md": "rust-muscles",
-}
-
-
 class ChangedComponentsError(RuntimeError):
     """The changed-file set or component verification cannot be trusted."""
 
@@ -313,10 +304,6 @@ def map_changed_files(
         # unknown path remains unmapped and fails closed.
         if not matches and _requires_all_components(raw_path):
             matches = [name for name, _ in component_items]
-        if not matches:
-            moved_owner = MOVED_PATH_OWNERS.get(raw_path)
-            if moved_owner:
-                matches = [moved_owner]
         if not matches:
             unmapped.append(raw_path)
             if run_all_when_unmapped:

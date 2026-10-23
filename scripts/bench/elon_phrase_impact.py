@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "rust/semantic-core/fixtures/elon_musk_synthetic_transcript_it.txt"
-GROUND_TRUTH = ROOT / "rust/semantic-core/fixtures/elon_musk_synthetic_ground_truth.json"
+FIXTURE = ROOT / "testdata/phrase-impact/elon_musk_synthetic_transcript_it.txt"
+GROUND_TRUTH = ROOT / "testdata/phrase-impact/elon_musk_synthetic_ground_truth.json"
 DEFAULT_BINARY = ROOT / "bin/phrase_impact"
 DEFAULT_REPORT = ROOT / ".cache/phrase-impact/elon_musk_phrase_impact.json"
 
@@ -179,7 +179,7 @@ def evaluate(binary: Path, embedding_server_url: str | None = None) -> dict[str,
         "gold_sentence_ids_found": len(sentence_gold),
         "heavy_sentence_count": len(heavy_ids),
         "ranking_metrics": metrics,
-        "ranking_engine": "canonical multilingual E5 sidecar" if embedding_server_url else "Rust lexical-only fallback",
+        "ranking_engine": "canonical multilingual E5 sidecar" if embedding_server_url else "BrainRust release lexical-only mode",
         "embedding_model": embedding_metadata,
         "ranking_targets": "not declared; report-only synthetic diagnostic",
         "ranking_targets_passed": None,
