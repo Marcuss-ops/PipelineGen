@@ -46,12 +46,25 @@ def run(worker, timeout):
         results.append({"check": "entity:" + ent["canonical"], "verdict": verdict, "detail": detail})
 
     facts = [f for s in manifest["scenes"] for f in s.get("entity_facts", [])]
+    # A bare date sentence ("13 agosto 2007.") names no subject, so it cannot
+    # become an entity fact; the canonical record of the occurrence is the
+    # scene's temporal_facts stream. Accept either, but never an unnormalized
+    # surface.
+    temporal_dates = {
+        f.get("normalized_date")
+        for s in manifest["scenes"]
+        for f in s.get("temporal_facts", [])
+    }
     for ev in gold["events"]:
         if "date" in ev:
-            hit = any(f.get("normalized_date") == ev["date"] for f in facts)
+            in_fact = any(f.get("normalized_date") == ev["date"] for f in facts)
+            in_temporal = ev["date"] in temporal_dates
+            hit = in_fact or in_temporal
+            source = "entity_fact" if in_fact else ("temporal_fact" if in_temporal else "")
             verdict = "PASS" if hit else "FAIL"
             results.append({"check": "event:" + ev["id"], "verdict": verdict,
-                            "detail": "date %s %s" % (ev["date"], "normalized" if hit else "not normalized")})
+                            "detail": "date %s %s" % (ev["date"],
+                                                      ("normalized in " + source) if hit else "not normalized")})
             continue
         present = mentions(text, ev["phrase"])
         if present == 0:
