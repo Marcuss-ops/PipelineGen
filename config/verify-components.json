@@ -465,7 +465,6 @@
   "rust-muscles": {
     "utility": true,
     "paths": [
-      "RUST_SEMANTIC_ENGINE_TODO.md",
       "rust/",
       "semantic_acceptance/",
       "testdata/mediaexec/"
