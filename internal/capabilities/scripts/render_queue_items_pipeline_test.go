@@ -210,11 +210,10 @@ func TestSeparateOverlayItemsPipelineMultipleRendersInFlight(t *testing.T) {
 	plan := overlayPlanWithPhrases(2)     // 5 renderable items, 1 background skipped
 	plan.RequireDriveBeforeReturn = false // ordinary generated overlay path
 	// The goal is the width this batch actually runs at, resolved by the SAME
-	// authority the enqueue path uses. It is deliberately not a literal: a
-	// 5-item batch is deeper than the back-pressure depth, so the certified
-	// width is the narrow one and a literal 4 would pin a contract the retune
-	// (2026-09-27) deliberately retired.
-	const inFlightGoal = overlayItemBackPressureWidth
+	// authority the enqueue path uses. It is deliberately not a literal: the
+	// certified width follows the feed-width retune (2026-10-23, receipt off
+	// the render lane) and a literal would pin a contract the retune owns.
+	const inFlightGoal = defaultSeparateItemRenderWorkers
 
 	t.Run("pooled enqueue reaches the in-flight goal", func(t *testing.T) {
 		client := newPipeliningRenderClient(inFlightGoal)
@@ -240,7 +239,7 @@ func TestSeparateOverlayItemsPipelineMultipleRendersInFlight(t *testing.T) {
 		if peak < inFlightGoal {
 			t.Fatalf("peak concurrent renders = %d, want >= %d: the enqueue is still serialising", peak, inFlightGoal)
 		}
-		if want := resolveOverlayItemWorkers(defaultSeparateItemRenderWorkers, 5); inFlightGoal != want {
+		if want := resolveOverlayItemWorkers(defaultSeparateItemRenderWorkers); inFlightGoal != want {
 			t.Fatalf("fixture goal = %d, want the resolved width %d (the fixture must track the certified policy)", inFlightGoal, want)
 		}
 		t.Logf("measured peak concurrent overlay renders = %d (sequential ceiling is 1)", peak)
@@ -359,8 +358,8 @@ func TestSeparateOverlayItemsFailureNamesTheItem(t *testing.T) {
 // measurement.
 func TestSeparateOverlayItemsExposeMeasuredPipeliningDepth(t *testing.T) {
 	// Same derivation as the pipeline test: the measured depth must be the width
-	// the batch really ran at (back-pressure included), not the configured one.
-	const goal = overlayItemBackPressureWidth
+	// the batch really ran at (policy cap included), not the configured one.
+	const goal = defaultSeparateItemRenderWorkers
 	plan := overlayPlanWithPhrases(2)
 	client := newPipeliningRenderClient(goal)
 	enqueuer, err := NewQueueRenderEnqueuer(client)
@@ -389,36 +388,35 @@ func TestSeparateOverlayItemsExposeMeasuredPipeliningDepth(t *testing.T) {
 	}
 }
 
-// TestOverlayItemBackPressureNarrowsDeepBatches pins the retuned back-pressure
-// policy itself, independently of any queue: a deep batch is clamped below the
-// configured width (the queue-wait audit measured 62% of wall in admission wait
-// at width 4 behind gpu_lanes=2), a shallow one is left alone, and the clamp
-// only ever narrows — it can never widen a pool the operator set below it.
-// The deep clamp is overlayItemDeepWidth = 2 (2026-10-22): one child render per
-// GPU lane of the dual-daemon topology, never below — a width-1 deep batch
-// starves the second lane and pins throughput at one serialized render service.
-func TestOverlayItemBackPressureNarrowsDeepBatches(t *testing.T) {
-	cases := []struct{ requested, candidates, want int }{
-		{4, 1, 4},
-		{4, 4, 4},
-		{4, 5, 2},
-		{4, 8, 2},
-		{4, 9, 2},
-		{3, 5, 2},
-		{2, 5, 2},
-		{1, 9, 1},
-		{2, 9, 2},
-		{8, 9, 2},
+// TestOverlayItemInFlightWidthIsCapped pins the retuned width policy itself,
+// independently of any queue: an oversized request is narrowed to the cap, a
+// request at or below the cap is untouched, and batch depth is deliberately
+// NOT an input. With the receipt verification off the render lane
+// (TICKET-OVERLAY-THROUGHPUT fix 1) one lane needs ≈1,6 in-flight children to
+// stay fed through the off-lane tail, so a depth-based clamp below the feed
+// width starves the lanes and pins throughput at one serialized render
+// service. The in-flight width — not the batch size — bounds RAM and queue
+// pressure.
+func TestOverlayItemInFlightWidthIsCapped(t *testing.T) {
+	cases := []struct{ requested, want int }{
+		{1, 1},
+		{2, 2},
+		{3, 3},
+		{defaultSeparateItemRenderWorkers, defaultSeparateItemRenderWorkers},
+		{overlayItemMaxWidth - 1, overlayItemMaxWidth - 1},
+		{overlayItemMaxWidth, overlayItemMaxWidth},
+		{overlayItemMaxWidth + 1, overlayItemMaxWidth},
+		{12, overlayItemMaxWidth},
 	}
 	for _, tc := range cases {
-		if got := resolveOverlayItemWorkers(tc.requested, tc.candidates); got != tc.want {
-			t.Errorf("resolveOverlayItemWorkers(%d, %d) = %d, want %d", tc.requested, tc.candidates, got, tc.want)
+		if got := resolveOverlayItemWorkers(tc.requested); got != tc.want {
+			t.Errorf("resolveOverlayItemWorkers(%d) = %d, want %d", tc.requested, got, tc.want)
 		}
 	}
-	// The production shape the audit measured: the configured default on a
-	// 5-item batch must resolve to the narrow, certified width.
-	if got := resolveOverlayItemWorkers(defaultSeparateItemRenderWorkers, 5); got != overlayItemBackPressureWidth {
-		t.Fatalf("default pool on a 5-item batch = %d, want the back-pressure width %d", got, overlayItemBackPressureWidth)
+	// The default is the feed width of the certified dual-lane topology and
+	// sits at or below the cap: the policy must never narrow it.
+	if got := resolveOverlayItemWorkers(defaultSeparateItemRenderWorkers); got != defaultSeparateItemRenderWorkers {
+		t.Fatalf("default pool = %d, want the feed width %d", got, defaultSeparateItemRenderWorkers)
 	}
 }
 

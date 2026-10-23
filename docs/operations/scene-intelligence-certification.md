@@ -23,29 +23,13 @@ not yet implemented** checks. A checklist label alone is never evidence.
 
 ## Local verification commands
 
-Run from the indicated repository roots. `+stable` selects the already
-installed Rust toolchain without changing the machine's global default.
+BrainRust owns Scene Intelligence implementation, tests and benchmark;
+PipelineGen verifies the consumer boundaries and integration suites without
+building local Rust source. BrainRust test/clippy/benchmark results are
+certified by its CI for the pinned release. PipelineGen's consumer gate is:
 
 ```bash
-cd refactored/rust/pipelinegen-muscles
-cargo +stable test scene_intelligence --lib
-cargo +stable test --test si_level_c_unseen
-SCENE_INTELLIGENCE_BENCH_OUTPUT=.cache/scene-intelligence/rust_benchmark.json \
-  cargo +stable bench --bench scene_intelligence
-
-# One-command full local suite and benchmark/report validation:
 cd refactored && scripts/ci/scene-intelligence-certification.sh
-
-cd refactored
-go test ./internal/kernel/script/ ./internal/capabilities/overlays/ \
-  ./internal/capabilities/scripts/ ./internal/capabilities/scripts/overlay/ \
-  ./internal/platform/media/rustexec/
-
-cd RenderingGen/renderinggen
-go test ./...
-
-cd RenderingGen/queue
-go test ./...
 ```
 
 The commands above are **how to reproduce checks**, not a claim that every
@@ -162,11 +146,12 @@ canonical narration order. Spoken recap generation remains out of scope.
 
 ## Benchmark status and method
 
-`cargo bench --bench scene_intelligence` measures the lexical Scene
-Intelligence Rust analyzer only, with 1k/3k/10k-word fixtures. It reports
-p50/p95/p99, sentence counts and throughput plus process CPU/RSS where
-`/proc` is available. It does not measure E5, because SI has no embedding
-path. The phrase-impact benchmark's “embedding active” fixtures use synthetic
+BrainRust's `scene_intelligence` benchmark measures the lexical Rust analyzer
+with 1k/3k/10k-word fixtures and reports p50/p95/p99, sentence counts and
+throughput plus process CPU/RSS where `/proc` is available. It does not measure
+E5 because SI has no embedding path. PipelineGen consumes the benchmark report
+as an artifact when locally available; it does not build or benchmark Rust
+source. The phrase-impact benchmark's “embedding active” fixtures use synthetic
 vectors; they do **not** include E5 model inference CPU/RAM/latency.
 
 No millisecond thresholds are asserted. Record the full JSON artifact at
@@ -198,8 +183,8 @@ notes are not claimed as measurements from this execution.
 
 ## Verification performed in this session
 
-- Rust SI unit + worker suite: **38 passed**; unseen Level-C smoke evaluation:
-  **3 passed**.
+- BrainRust CI owns Rust SI unit/worker suites and unseen Level-C evaluation;
+  PipelineGen does not rebuild or run Rust source tests locally.
 - PipelineGen targeted Go packages: **passed** after the current validator,
   recap boundary, and DE timeline test changes.
 - RenderingGen overlay/processor/workspace and queue suites: **passed**.
@@ -220,16 +205,10 @@ notes are not claimed as measurements from this execution.
   No E5 measurement exists for SI (there is no E5 mode in that module).
 - The benchmark artifact path is `.cache/scene-intelligence/rust_benchmark.json`
   (ignored local output, not a source-controlled certification fixture).
-- Rust has warnings for unused imports/mutability/dead helper; the SI checks
-  pass despite them. A full `cargo fmt --check` is red from existing formatting
-  drift across unrelated Rust modules, and a scoped formatter check reports
-  formatting differences in the touched SI source as well; no mass formatting
-  was applied to avoid unrelated files.
-- The certification runner is intended to run the SI, bridge, renderer-boundary,
-  queue, benchmark and JSON-report groups. A full invocation was attempted; it
-  stopped at the unrelated flaky renderer-module full suite before the  report artifact was emitted. Targeted SI/Go/RenderingGen gates and benchmark have
-  since been rerun individually; rerun the script to regenerate the aggregate
-  report after those changes.
+- The certification runner runs PipelineGen and RenderingGen consumer suites,
+  validates an existing BrainRust benchmark artifact when present, and writes a
+  local report. Rust source gates and benchmark execution remain BrainRust CI's
+  responsibility.
 
 ## Session 2026-10-11 — full certification re-verification (toolchain: cargo 1.98.1, go1.25.13)
 

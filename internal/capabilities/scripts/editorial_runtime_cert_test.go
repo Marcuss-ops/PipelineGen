@@ -19,10 +19,9 @@
 //	R15 worker unavailable => run continues, no valid editorial declared.
 //	R16 incompatible schema => manifest rejected, never valid.
 //
-// R07–R11 correctness of the Rust manifest (UTF-8 offsets, coherent/
+// R07–R11 correctness of the BrainRust manifest (UTF-8 offsets, coherent/
 // incoherent titles, extractive bullets, scene identity, two topics in one
-// scene) is certified natively in rust/pipelinegen-muscles
-// (cargo test phrase_impact — 56 tests green) and mirrored here with the
+// scene) is certified by BrainRust CI and mirrored here with the
 // Go-side byte-reconstruction gate from the spec.
 package scriptgeneration
 

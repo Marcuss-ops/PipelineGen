@@ -1,6 +1,6 @@
 # Ticket: portare la generazione degli overlay a 100/minuto
 
-Stato: **APERTO — baseline 27,2 overlay/min (mediana 3 run) → 37,8/min dopo la 2ª lane di render (2° daemon, v11, +39%); target 100/min non raggiunto, proiezione in «Ottimizzazione: seconda lane di render»**
+Stato: **APERTO — baseline 27,2 overlay/min (mediana 3 run) → 37,8/min dopo la 2ª lane di render (2° daemon, v11, +39%); target 100/min non raggiunto. 23/10: profilazione per-item (servizio seriale 2,75 s, di cui ~0,93 s di receipt dentro la reservation) e fix list; poi implementata la variante **Go-only** di fix 1+3 (senza toccare Chronon3d): il decode del receipt è spostato fuori dalla lane nel post pool di RenderingGen e Chronon è richiesto al tier `fast` sotto policy `normal`. Proiezione: servizio lane ~2,0 s/item → ~57–60/min a 2 lane, ~85–90/min a 3 lane. Per chiudere il gate a 2 lane restano le fix Chronon (2/4/5).**
 Priorità: **P1**  
 Ambito: generazione, refactoring e rendering degli overlay nei job video YouTube di PipelineGen / RenderingGen.
 
@@ -244,6 +244,189 @@ Riferimenti record: `results/overlay-only-v6` … `results/overlay-only-v10`, `r
 
 **Proiezione al target 100/min:** con servizio render medio ~3,0 s/item (v11) e un motore NVENC condiviso, la strada è (a) più lane via altri daemon — 2 lane danno 1,89×, ma oltre 2 istanze non c'è evidenza VRAM certificata (serve `vramprobe` dedicato) — e/o (b) ridurre il servizio per-item (~26 ms/frame oggi, frame pipeline/encode del renderer Chronon: è lavoro in Chronon3d, non in PipelineGen). Con 4 lane efficaci o servizio ~1,5 s/item si raggiungono ~75–100 item/min su questo mix. Il piano materializzato resta comunque 36–41 item (non 100): il gate del ticket va misurato come capacità della finestra, e il gap pianificatore (100 richiesti vs ~38 materializzati) resta un tema separato già dichiarato.
 
+### Profilazione per-item del servizio render — 23 ottobre 2026
+
+Fonte: le 38 righe `render_attempt_analytics` della run v12 più i 38 sidecar
+di timing (`chronon_timing_storage_key`, schema
+`chronon3d.render-telemetry-summary.v1`) recuperati dall'objectstore. La
+scomposizione media per item (ms):
+
+| Voce (media su 38 item) | ms | Natura del costo |
+| --- | ---: | --- |
+| **`render_ms` worker (servizio seriale per lane)** | **2.748** | è la finestra del ticket |
+| — job wall daemon (`chronon_job_job_wall_ms`) | 1.567 | |
+| ——— `render_loop` | 956 | lavoro reale (87 frame medi ≈ 11 ms/frame) |
+| ——— `prepare` | 311 | `font_preflight` 245 (max 944) + `pool_warmup` 65 |
+| ——— `process_startup` | 186 | `encoder_open_nvenc` 104 + `plan_decode_validate` 65 |
+| ——— `encode_close` | 155 | drain/finalize encoder |
+| — receipt verification | 933 | probe 296 + **decode 634** (policy `normal`) |
+| — residuo (IPC/marshal/materialize/hash/upload) | ~250 | |
+
+**Scoperte:**
+
+1. **Il receipt di verifica tiene occupata la lane.** `write_render_job_receipt`
+   (probe `ffprobe` + `sha256` + full decode `ffmpeg -f null -`) è chiamata dentro
+   `execute_render_job`, prima che la reservation del device venga rilasciata:
+   933 ms medi di verifica pura bloccano la lane render. È il pezzo grosso di
+   quella che prima era la "catena post-render 1,5 s".
+2. **Verifica doppia sullo stesso file.** `verify_output_contract`
+   (`pipe_export_finalize_encoder.cpp`) sonda e fa già l'hash dell'output appena
+   muxato (ffprobe ~15 ms + sha256 ~6 ms); `build_render_receipt` ripete poi
+   `ffprobe -show_streams -show_format` (~296 ms, dominato dallo spawn del
+   processo) e ricalcola lo sha256 sullo stesso file. ~300 ms/item di lavoro
+   identico.
+3. **Policy di verifica deployata ≠ default documentato.**
+   `/etc/renderinggen/renderinggen.yaml` usa `receipt_verify: normal` (full
+   decode, 634 ms/item); il codice (`receipt_verify.go`) documenta `fast` come
+   default di produzione e `certify` per CI/golden. La discrepanza va decisa e
+   documentata: o si passa a `fast` (meno garanzie di decode) o il decode resta
+   ma fuori dalla lane (fix 1).
+4. **`font_preflight_ms` misura in realtà tutta `runtime::prepare_render`**
+   (etichetta fuorviante): 245 ms medi, fino a 944 ms sugli item frase con molti
+   text-run. Nel daemon caldo, con font/MTSDF/pool già persistenti, questo
+   lavoro viene ripetuto per ogni item invece di essere riutilizzato.
+5. **Trappola di telemetria:** `vulkan_device_ms` (~300 ms in ogni sidecar) è
+   l'inizializzazione di processo riportata per job, non un costo per-item (lo
+   startup realmente attribuito ai job è 186 ms). Non va "ottimizzato" come se
+   lo fosse; va solo etichettato meglio.
+6. **Upload immagini GPU ~300 MB/item medi** (8 full-upload, 242 MB di immagini
+   per item): le immagini vengono caricate a risoluzione sorgente, non ridotte
+   al canvas.
+
+**Fix list (ordine per guadagno atteso, nessun cambio di correttezza):**
+
+| # | Fix | Guadagno atteso | Dove |
+| --- | --- | --- | --- |
+| 1 | Rilasciare la reservation **prima** di `build_render_receipt` (o receipt async): il reply al worker resta dopo il receipt, `RequiresStructuredReply` rispettato | −933 ms/item dal servizio seriale | Chronon3d `daemon_service_ipc_render_job.cpp` + `render_job_execute.cpp` — **variante Go-only FATTA (23/10), vedi «Fix 1+3 in variante Go-only»**: il decode (−634 ms) è fuori dalla lane senza toccare Chronon; resta in-lane il probe+sha256 del receipt (~300 ms, solo fix 2 lo toglie) |
+| 2 | Deduplicare la verifica: passare `MediaContract` + sha256 già calcolati da `verify_output_contract` a `build_render_receipt` | −~300 ms/item | Chronon3d `render_receipt.cpp` / `pipe_export_finalize_encoder.cpp` |
+| 3 | Decisione policy decode gate (`fast` vs `normal` vs `certify`) documentata per golden/produzione | fino a −634 ms se `fast` | **DECISA (23/10)**: `normal` resta la policy di produzione con la stessa garanzia (un decode completo per artefatto), ma il decode è eseguito dal worker nel post pool — vedi «Fix 1+3 in variante Go-only» |
+| 4 | Cache prepare/font tra item nel daemon caldo + pool warmup persistente | −~310 ms/item | Chronon3d `render_preparation` / `pipe_export_pipeline_setup.cpp` |
+| 5 | Overhead fissi: `encoder_open_nvenc` 104, `encode_close` 155, `plan_decode_validate` 65 | −~150–230 ms/item | Chronon3d |
+| 6 | Downscale immagini a canvas prima dell'upload GPU (300 MB/item → ~30 MB) | meno upload e pressione VMA | Chronon3d resource preparation |
+
+**Proiezione:** servizio per-item 2.748 → ~1.820 ms (fix 1) → ~1.510 ms
+(fix 4) → ~1.280 ms (fix 5): con le sole 2 lane già certificate **≈ 94
+item/min**; con i ritocchi al render loop (956 ms/item, 11 ms/frame) si chiude
+il gate 100/min **senza** superare i 2 daemon (evidenza VRAM certificata).
+Ogni fix va misurata con le regole già descritte: stesso payload immutabile,
+report prima/dopo, nessun conteggio di item non validati.
+
+### Fix 1+3 in variante Go-only — 23 ottobre 2026 (RenderingGen & PipelineGen, no Chronon3d)
+
+La fix 1 era iniziata lato Chronon3d (`daemon_service_ipc_render_job.cpp`,
+receipt deffered dopo il rilascio della reservation). Scelta operativa del
+23/10: **non procedere nel C++** e ottenere lo stesso effetto dai due servizi
+Go, spostando il decode del receipt fuori dalla lane senza cambiare la
+garanzia. Implementato e testato:
+
+- **RenderingGen `internal/processor/receipt_verify.go`**: la policy resta
+  l'unica autorità (`pipeline.receipt_verify`), ma è spezzata in due metà
+  esplicite — enforcement (cosa il worker esige dall'artefatto) e request (il
+  tier wire chiesto a Chronon, `chrononReceiptRequest()`). Sotto `normal` la
+  request è `fast`: Chronon non fa il decode in-daemon e la lane non paga più
+  i 634 ms/item di `ffmpeg -f null -`.
+- **Gate decode post-lane** (`enforceDecodableOutput`, chiamato da
+  `verifyArtifactReceipt` nel post pool di `FinalizeJob`): sotto
+  `normal`/`certify` è garantito **esattamente un decode completo per
+  artefatto** — quello di Chronon quando il receipt lo prova
+  (`resolved_policy` normal/certify o check `decode: pass`), altrimenti quello
+  del worker, prima che i byte siano pubblicati. Un decode che fallisce
+  rifiuta l'artefatto come un check del receipt fallito. `fast`/`strict` non
+  promettono decode e non ne pagano. `certify` continua a chiedere il tier
+  `certify` (decode in-daemon come evidenza indipendente per CI/golden);
+  `strict` ora chiede `fast` invece di leakare lo spelling non-wire.
+- **Metriche**: `worker_decode_us`/`worker_decode_ms` +
+  `worker_decode_verified` (chi ha decodificato l'output è rispondibile dal
+  solo ledger, insieme a `chronon_receipt_verification_policy`).
+- **RenderingGen `renderinggen/config.yaml`**: `receipt_verify: normal` resta
+  la policy di produzione — stessa garanzia di prima (un decode completo per
+  MP4 pubblicato), costo lane zero. La discrepanza deploy vs default
+  documentato dalla fix 3 è chiusa: `normal` è la scelta, non un accidente.
+- **PipelineGen `render_queue_items.go` / `config/scripts.go`**: pool per-item
+  ritoccato 4 (cap 6), senza clamp di profondità — la larghezza di
+  alimentazione serve a tenere le lane nutrite attraverso il tail post-lane
+  (~0,9 s/item), non alza il carico GPU (`worker.gpu_lanes` resta l'unica
+  autorità).
+
+**Proiezione Go-only (da misurare con il golden):** servizio lane per item
+2,75 s → **~2,05 s** (decode 634 ms fuori lane; restano in-lane render loop
+956 + prepare 311 + startup 186 + encode_close 155 + probe/receipt ~300).
+Con 2 lane ≈ **57–60 item/min** (da 37,8–41,7); con 3 lane ≈ **85–90 item/min**.
+Il gate 100/min a 2 lane resta fuori portata Go-only: servono fix 2/4/5 lato
+Chronon (→1,28 s/item ≈ 94/min) oppure la 3ª lane più il ritocco del render
+loop.
+
+**Contraddizione da sciogliere sulle lane:** `RenderingGen/renderinggen/config.yaml`
+dichiara `gpu_lanes: 3` (commento «certified three-lane admission contract») e
+il pool commenta «3 lane certificate», ma questo ticket registra l'evidenza
+VRAM certificata per **2** daemon (oltre serve `vramprobe`). Prima di
+pianificare la 3ª lane verificare quanti socket sono effettivamente montati
+(`chronon.socket_paths`) e la certificazione VRAM del 3° daemon.
+
+**Test:** `renderinggen` `go test ./...` verde (inclusi i nuovi
+`TestChrononReceiptRequestDefersTheDecodeUnderNormal`,
+`TestWorkerDecodeGateRunsWhenTheReceiptProvesNoDecode`,
+`TestWorkerDecodeGateSkipsADecodeTheReceiptProves`,
+`TestWorkerDecodeGateIsNotPromisedUnderFastOrStrict`,
+`TestWorkerDecodeFailureRejectsTheArtifact`,
+`TestWorkerDecodeGateDecodesARealArtifact` con ffmpeg reale); PipelineGen
+`go test ./internal/capabilities/scripts ./internal/platform/config` verde col
+pool ritoccato. **Resta da misurare:** rerun golden (3 run, mediana) per
+registrare il prima/dopo secondo il contratto di misura — non eseguibile da
+questo ambiente di sviluppo.
+
+### Run v13–v14 e stato corrente della misura — 23 ottobre 2026
+
+Le run v13 e v14 misurano rispettivamente la fix 1 (receipt di verifica fuori
+dalla lane) e la prima configurazione a 3 lane. Finestre lette da
+`job_steps.overlay_render` (lo stesso istante dei summary già registrati, il
+metodo coincide su v15–v18):
+
+| Run | Esito | Config | Item (piano/render/links) | Finestra render | Item/min | Note |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| v13 `job_1792749340415123677_53737c48` | **SUCCEEDED** | 2 lane + receipt off-lane (fix 1) | 40 / 40 / 40 | 69,2 s | **34,7** | `retry_count=0`. Prima run col decode del receipt fuori dalla lane. Mix: 20 frasi + 8 immagini + 9 entity card + 2 numeri + 1 mappa; `phrase_overlay_budget` 20/20, shortfall 0. |
+| v14 `job_1792750754970977625_9a4b7cec` | **SUCCEEDED** | 3 lane (prima run trilane) | 39 / 39 / 39 | 59,4 s | **39,4** | `retry_count=0`. Mix: 19 frasi + 8 immagini + 8 entity card + 2 numeri + 2 mappe; `phrase_overlay_budget` 19/20, shortfall 1. |
+
+**Stato corrente della misura (v15–v18, stessa giornata):**
+
+| Run | Esito | Config | Item (piano/render/links) | Finestra render | Item/min | Note |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| v15 `job_1792753818929537987_188b9312` | SUCCEEDED | 2 lane, build `efc944f6`, pool 4 | 40 / 40 / 40 | 49,9 s | **48,1** | Migliore misura 2 lane: proiezione Go-only (57–60/min) quasi centrata. |
+| v16 `job_1792755309238983955_f81ba9c8` | SUCCEEDED | 2 lane, build `efc944f6` | 39 / 39 / 15 | 105,2 s | 22,2 | Finestra degradata (lunga coda); links Drive parziali allo snapshot. |
+| v17 `job_1792755903866828770_faee264e` | SUCCEEDED | 2 lane, build `efc944f6` | 40 / 40 / 12 | 51,1 s | **47,0** | Replicazione di v15; links Drive asincroni non tutti conclusi allo snapshot. |
+| v18 `job_1792757495483683434_df8e374e` | SUCCEEDED | 3 lane (certificazione `vramprobe` 23/10) | 36 / 36 / 13 | 105,1 s | 20,6 | **Non confrontabile** con la baseline 2 lane; finestra degradata. |
+
+Riga di stato dei due contatori del ticket:
+
+- **Throughput finestra render:** 27,2/min (baseline 1 lane) → 37,8–41,7/min
+  (v11/v12, 2 lane) → **34,7–39,4/min (v13/v14)** → **47,0–48,1/min (v15/v17,
+  2 lane + pool 4)**. Le run v16/v18 (20,6–22,2/min) sono outlier da finestra
+  degradata e non vanno usate come mediana. Gate 100/min: **non raggiunto**;
+  la proiezione resta ~1,3 s/item di servizio seriale con fix 2/4/5 lato
+  Chronon, oppure la 3ª lane certificata (v18 iniziale ma non confrontabile).
+- **Item pianificati (il gap 100):** tutte le run v6–v18 materializzano
+  **36–41 item**, non 100. Causa radice individuata 23/10: erano i clamp del
+  pianificatore a tagliare il mix richiesto dal payload (che chiede esplicitamente
+  `max_phrase_overlays=50`, `max_image_overlays=30`, `max_map_overlays=10`,
+  `overlay_group_limits` 25+25 frasi / 30 immagini / 10 mappe):
+  `MaxPhraseOverlaysHardLimit` clampano le 50 frasi a 20;
+  `MaxMapOverlaysPerRun=3` e `MaxNumberOverlaysPerRun=5` tagliavano le lane data
+  e mappe; `effectiveMapOverlayCeiling` ignorava le richieste esplicite;
+  l'image limit richiesto non raggiungeva il primo pass di budget del planner.
+  **Fix applicato nel codice** (PipelineGen, `internal/capabilities/{overlays,scripts}`):
+  `MaxPhraseOverlaysHardLimit` 20→50, `MaxMapOverlaysPerRun` 3→10,
+  `MaxNumberOverlaysPerRun` 5→10, threading dell'image limit richiesto nel
+  planner, `effectiveMapOverlayCeiling` onora le richieste esplicite entro il
+  cap di run. **Test:** il mix golden è pinnato a **100 item materializzati**
+  (25 frasi brevi + 25 lunghe + 20 immagini + 10 entity card + 10 date +
+  10 mappe) sia al budget (`TestGoldenThroughputMixBudgetAdmitsOneHundredItems`)
+  sia end-to-end su `CompileOverlayPlan`
+  (`TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items`), con la
+  fornitura di candidati completa. **Non ancora misurato live**: la prossima
+  run golden con questa build è quella che chiude la voce «overlay effettivi»
+  del contratto di misura; il mix reale resterà comunque vincolato alla
+  fornitura di candidati groundati dal contenuto.
+
 ### Roadmap operativa del job
 
 ### Audit end-to-end del tempo perso — golden v6
@@ -295,6 +478,7 @@ Per ogni barriera annotare `ready_at`, `enqueued_at`, `started_at`, `completed_a
 - [x] Completare una run golden valida. Fatto: **quattro run SUCCEEDED** — v6 (37/37 overlay validati), v8 (41/41), v9 (41/41), v10 (36/36), tutte `retry_count=0` su tentativo pulito e con link Drive certificati. Entrambi gli asset corrotti (`b5b91ac5…`, `fda374e1…`) più altri 5 blob e 24 binding stale sono stati bonificati/idratati prima di v8 (sezione dedicata): 758/758 materializzazioni con oggetto L3 verificato.
 - [x] Eseguire il golden case sul codice corrente e registrare tempo totale, overlay/minuto, tempi di fase, overlay effettivi, errori, retry, parallelismo e risorse. Ripetere almeno tre volte e riportare mediana e dispersione. Fatto: 3 run confrontabili (v8/v9/v10) → mediana **27,2 overlay/min** sulla finestra render, range 25,4–29,5, mediana finestra 85 s; record completi con tutti i dettagli richiesti.
 - [x] Salvare input, output atteso, report e comando di ripetizione in una cartella versionata sotto `ops/jobs/`. Fatto: `ops/jobs/overlay_throughput_golden_100_20261022/` (payload immutabile + hash, README con comando di ripetizione) e `results/overlay-only-v6…v10/`.
+- [~] Applicare la fix list della profilazione per-item (23/10): receipt fuori dalla reservation, dedup verifica (probe+sha256), decisione policy decode gate, cache prepare/font tra item, overhead fissi (nvenc open / encode close / plan decode-validate), downscale immagini prima dell'upload GPU. Dettaglio in «Profilazione per-item del servizio render — 23 ottobre 2026»; ogni fix va misurata con rerun golden e report prima/dopo. **Stato 23/10:** fix 1 (nella variante Go-only, decode fuori dalla lane) e fix 3 (decisione policy) **fatti** in RenderingGen/PipelineGen, vedi «Fix 1+3 in variante Go-only»; **fix 2 (dedup probe+sha256) fatto lato Chronon3d** (working tree, non committato): `verify_output_contract` pubblica la propria osservazione (probe + sha256) e `build_render_receipt` la riusa invece di riesaminare gli stessi byte — uno probe, un digest per artefatto (nuovi test `render receipt consumes precomputed output facts (fix 2 dedup)` e `render receipt runs its own probe when HDR mastering must match`, più il threading lato piano/RenderJob; suite `chronon3d_media_video_tests` + `chronon3d_cli_tests` verdi sulle aree toccate). **fix 4 (cache prepare/font nel daemon caldo + pool warmup persistente) fatto lato Chronon3d** (working tree, non committato): (a) `preflight_fonts` consulta la prepared-run cache (`find(layout)` sulla fingerprint immutabile del layout, cache di runtime che nel daemon caldo sopravvive tra RenderJob) prima di rigenerare l'MTSDF — un item ripetuto con lo stesso layout è servito dalla cache invece di ricostruire i batch (contatori `gpu_text_prepared_batch_reuse_count`/`_build_count`); (b) il warmup del `FramebufferPool` passa da `preallocate` (creava + riclear/re-touchava le superfici ad ogni item, ~65 ms/item) a `ensure_preallocated` top-up-only: a pool caldo l'item non alloca né tocca nulla; (c) `runtime::prepare_render` registra il memo `prepared_composition` (`SoftwareRenderer::mark_prepared_composition`), così `render_compiled` non esegue una seconda preparazione completa per item sul percorso still/frames del daemon. Pinnato dai nuovi test `tests/runtime/test_render_preparation_warm_cache.cpp` (riuso prepared-run tra item + warmup top-up). Guadagno atteso ~310 ms/item (font_preflight ~245 + pool_warmup ~65) **da verificare con rerun golden**: confrontare `prepare_breakdown.font_preflight_ms` e i contatori warmup dei sidecar prima/dopo. Restano lato Chronon3d fix 5 (overhead fissi), fix 6 (downscale immagini) e la misura golden prima/dopo.
 - [x] Selezionare almeno un job storico rappresentativo, conservandone payload e riferimento ai risultati già disponibili. Fatto: il golden deriva da `08_fonti_media.generate.v11.json` (batch Garlasco `ops/jobs/garlasco_batch_10_20261019_sequential_v7/`, manifest e payload conservati); differenze dichiarate nel golden case v2 (stessi 20 segmenti e clip intro, progetto/correlazione dedicati, `final_job=false`).
 - [x] Dopo ogni modifica, ripetere il golden case sulla stessa macchina/configurazione e confrontare throughput, tempi di fase e qualità con il baseline. Regola permanente, applicata a tutte le modifiche del 22/10: strumentazione/idratazione → v8/v9/v10; ottimizzazione lane → v11/v12. Ogni confronto tiene conto del numero di overlay validati (38/38 COMPLETED + 38 link in v11/v12, nessun miglioramento da item mancanti).
 - [x] Applicare ottimizzazioni solo ai colli di bottiglia confermati, preservando l'ordine, il contenuto, il layout e il rendering richiesti. Applicato alla sola leva confermata dal dato per-item (servizio render seriale): la topologia dual-daemon è certificata artefatti-byte-identici, il pool non renumera gli item (test `TestSeparateOverlayItemsPreservePlanOrderAndIndices`), nessun cambio di contenuto/layout.
@@ -321,9 +505,155 @@ Per ogni run salvare almeno: `run_id`, input hash, revisione, configurazione e w
 - [x] Baseline iniziale del golden case registrata con almeno tre run confrontabili e conteggio degli overlay validi. **Mediana 27,2 overlay/min** (v8 29,5, v9 27,2, v10 25,4), 36–41 overlay validati per run, tutti con link Drive certificati.
 - [x] Almeno un job storico valutato: confronto documentato con fixture equivalente (golden derivato da `08_fonti_media` con differenze dichiarate; ricostruzione misurata della batch storica in «Evidenza storica»).
 - [x] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili. Scomposizione in «Baseline misurata e dove si perde tempo»; residuo dichiarato: `drive_publish` sincrono dei compositi final-job e micro-fasi non ancora proiettate.
-- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) — **gate NON raggiunto**, manca un fattore ~2,4–2,7. Proiezione documentata: ~4 lane efficaci o servizio render ~1,5 s/item (oggi ~3,0 s/item, ~26 ms/frame). Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon; oltre serve una nuova certificazione (`vramprobe`).
+- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4, 23/10) — **gate NON raggiunto**, manca un fattore ~2,1. Le run v13/v14 (34,7–39,4/min) misurano la fix 1 e la prima configurazione 3 lane; v16/v18 sono outlier da finestra degradata. La strada preferita resta il taglio del servizio seriale per-item (2,75 s → ~1,3 s con le fix 1-2-4-5) ≈ **94 item/min con le sole 2 lane certificate**; vedi «Profilazione per-item del servizio render — 23 ottobre 2026». Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon, con certificazione 3 lane (`vramprobe`) solo dal 23/10 (v18 non confrontabile).
 - [x] Report prima/dopo per ogni ottimizzazione, con condizioni di esecuzione comparabili e nessuna regressione nascosta da overlay falliti o non contati. Fatto per la prima ottimizzazione (2° daemon + pool 2): v8/v9/v10 (prima) vs v11 (dopo), 38/38 COMPLETED e 38 link Drive, vedi «Ottimizzazione: seconda lane di render». La baseline «prima» è registrata (v8/v9/v10); il report «dopo» si compila alla prima ottimizzazione applicata.
 
 ## Nota sul target
 
 100 overlay/minuto è il target richiesto, non una prestazione già dimostrata né una garanzia per job con dipendenze esterne o composizioni differenti. Il ticket deve riportare sia il risultato del golden case sia il throughput dei job reali per tipologia, così da rendere espliciti i limiti di confronto.
+
+---
+
+## 23/10 (sessione pomeridiana) — Stato fix list lato Chronon3d + idee di paradigma
+
+Sezione aggiunta come registro di una sessione di lavoro sul repo Chronon3d
+(working tree, non committato — stessa convenzione della fix 2). Le voci
+«Idee di paradigma» e «Sprechi/processi eliminabili» sono **proposte non
+approvate**, registrate qui per discussione su richiesta esplicita; nessuna
+viene trattata come decisione presa.
+
+### Stato fix list (repo Chronon3d, working tree)
+
+| Fix | Stato | Dettaglio |
+| --- | --- | --- |
+| 4 cache prepare/font tra item | **FATTO (parte raggiungibile)** | (a) Eliminata la seconda `runtime::prepare_render` per job: `warmup_pipe_renderer` richiamava l'intera preparation già eseguita dal setup sullo stesso (renderer, compiled) — preflight + resolve + decode + publish ripetuti per item — solo per ottenere `warmup_renderer=true`; ora chiama direttamente `runtime::warmup_renderer` (pool prealloc + touch + dummy frame), e il fail-fast della preparation passa a un gate esplicito (`PipeExportSession::preparation_ok` + diagnostic, consumato in `video_export_native`). La doppia accumulazione dei timings della preparation nel sidecar (prepare_timings contava due volte gli stessi eventi) è eliminata di conseguenza. (b) Attribuzione (finding #3/#6): `prepare_breakdown` espone ora `prepare_render_ms` (nome onesto del vecchio `font_preflight_ms`, che resta come alias legacy) più le sotto-fasi misurate `prepare_asset_preflight_ms`, `prepare_asset_resolve_ms`, `prepare_asset_decode_ms`, `prepare_image_decode_ms`, `prepare_image_upload_ms`, `prepare_font_load_ms`, `prepare_font_resolve_ms` (null = non misurato, mai 0 finto); `vulkan_device_ms` è marcato process-level (`vulkan_device_ms_scope: "process"`). Tool `tools/summarize_timing_sidecars.py` allineato. Test: nuovo caso in `tests/cli/test_timing_sidecar_schema.cpp`; verdi `chronon3d_cli_tests` 253/253 e `chronon3d_media_video_tests` 144/144. |
+| 5 overhead fissi per-item | **PARZIALE** | Rimossa una copia profonda ridondante del piano JSON in `prepare_render_plan`: `auto plan_json = root` copiava l'intero documento (due volte per gli envelope `renderinggen.job`) prima che `decode_render_plan` producesse la propria copia di variable-resolution; ora il piano è agganciato per riferimento. `plan_decode_validate` (61–65 ms) risulta decode+validazione tipizzata singola: nessun'altra ridondanza provata nel path. `encoder_open_nvenc` (104 ms) + `encode_close` (155 ms) sono il ciclo di vita della sessione encoder per item: l'eliminazione richiede il riuso sessione cross-item, cioè il paradigma «un piano = una sessione render» (v. sotto), non un micro-fix. |
+| 6 downscale immagini prima dell'upload GPU | **VALUTATO — non implementato (richiede misura di correttezza)** | Evidenza raccolta: (a) il bitmap caricato è RGBA32F a risoluzione sorgente (`CachedImage::gpu_rgba`; `SurfaceDesc.bytes = gpu_rgba.size()*sizeof(float)`) — nel golden ~8 upload e ~242 MB/item; (b) `GpuAssetCache::acquire` deduplica già per content key (nessun re-upload dimostrabile); (c) un downscale a canvas cambia i campioni di resampling → output pixel diverso ovunque l'immagine è ridotta, mentre le lane certificate impongono parità byte Vulkan↔software e i golden pixel-oracles andrebbero re-baselineati. **Exit condition**: implementarlo come cambio misurato insieme al re-baseline dei golden pixel e ai gate di parità aggiornati; la misura prima/dopo si legge già dal sidecar (`job.image.upload_ms`/`upload_count`). Non esiste variante byte-preserving del downscale; la stessa radice (decode+promozione immagini a risoluzione sorgente) è anche il costo reale che il profiling attribuiva a `font_preflight` (v. sotto). |
+
+**Ri-attribuzione del «prepare» (evidenza dal sidecar reale
+`docs/evidence/camera-authority-migration/T16/cam04-shared-plan-20261022/c3d_render150_timing.json`):**
+`font_preflight_ms` 1.862 ms = `asset_decode_ms` 1.823 ms (decode + promozione
+GPU immagini) + `asset_resolve_ms` 79 ms + `asset_preflight_ms` 0,2 ms; lavori
+font misurati ~0. La proiezione «cache prepare/font −310 ms/item» va quindi
+riletta: le cache per-runtime già servono gli asset ripetuti (hit/miss misurati
+nel sidecar); il residuo è **lavoro unico-per-item su immagini a risoluzione
+sorgente**, cioè la stessa radice del fix 6. Di conseguenza il percorso
+realistico a ~1,3 s/item passa per fix 6 + taglio render loop, non per una
+«cache prepare» aggiuntiva.
+
+### Idee di paradigma proposte — NON APPROVATE, da discutere
+
+Dieci cambi di modello (non micro-fix) che la sessione di analisi ha prodotto
+verso il gate 100/min. Ordine per (guadagno atteso × dipendenze).
+
+1. **Un piano = una sessione render** (al posto di un job per item). Ogni item
+   paga oggi startup (186 ms) + open/close encoder (259 ms) + decode piano +
+   prepare + receipt: ~1,3 s di overhead fisso su 2,75 s di servizio. Batchare
+   gli item (per scena o per piano) in una sessione con N segmenti: uno
+   startup, un encoder, un receipt. Proiezione: servizio/item → render loop +
+   marginali (~1,1 s) ⇒ **~110 item/min a 2 lane già certificate**. Elimina
+   alla radice le residue fix 4/5. È il cambiamento che chiude il gate senza
+   superare i 2 daemon.
+2. **Verifica content-addressed asincrona + certificazione per versione**.
+   Fix 1/2/3 vanno in questa direzione (un probe, un digest, decode fuori
+   lane): completare con il full-decode campionato per batch e per cambio
+   versione del renderer (il golden) invece che per artefatto. Garanzia:
+   hash+probe per artefatto + decode statistico con rifiuto idempotente.
+3. **Build cache content-addressed end-to-end** (render-once-reuse): estendere
+   `overlay_fingerprint` e l'ObjectStore L3 a voce (testo, lingua), artlist
+   (frase, lingua), mappe (plate): retry, rerun e secondi video con item
+   identici → ~0 s. Oggi il resume ricompila il piano e rirende artefatti già
+   certificati: il sistema non ha memoria e ogni fallimento la paga due volte.
+4. **Dataflow streaming per scena** al posto delle barriere globali: appena la
+   scena N è stabile partono NLP, TTS, resolve media e planning di N mentre
+   N+1 viene generata. Wall da somma(fasi) a max(fasi) (~7 min → ~2,5–3 min).
+   Richiede gli eventi per-scena già richiesti nell'audit end-to-end sopra
+   (`ready_at/enqueued_at/started_at/completed_at`).
+5. **LLM pianificatore una tantum + riempimento deterministico**: `generate`
+   (132,8 s medi, p90 97 s, max 40 min) è la voce più imprevedibile del wall;
+   una/few chiamate strutturate per lo scheletro del piano + derivazione
+   deterministica dei segmenti. Il batching N-scene-per-call era escluso per
+   contratto editoriale (QA per-segmento): rinegoziare quel contratto È il
+   cambio di paradigma.
+6. **Pipeline offline-deterministica** (rete solo a ingresso/consegna): TTS
+   locale GPU (40–100×), MT locale batch (20–50×), cache artlist, objectstore
+   L3 come SSOT degli intermedi con Drive solo delivery. Elimina anche le
+   classi di fallimento di rete (155 TTS falliti, rate limit). Voci già in
+   `TODO-pipeline-100x-velocita.md` (C1/D1/E3/H1).
+7. **Retry del singolo artefatto** al posto del retry del job: unità =
+   artefatto content-addressed idempotente (scena, VO, mappa, item), gate
+   deterministici pre-enqueue, resume per-checkpoint (I2 aperto). Regola già
+   nel ticket: il primo leva è non fare lavoro che fallirà (15 h/finestra).
+8. **Servizio di rendering con admission control** al posto di lane manuali e
+   consegna sequenziale: code per classe di risorsa (map-heavy/phrase/final),
+   anti-head-of-line esteso (la lane interattiva di script.generate: 40× sul
+   primo claim), prefetch profondo, N lane fino a saturazione NVENC, capacità
+   governata da `vramprobe` come prerequisito (contraddizione `gpu_lanes: 3`
+   vs evidenza 2 — ora sanata dalla certificazione 3 lane del 23/10).
+9. **Mappe come libreria di plate pre-renderizzati + camera in composizione**:
+   le mappe sono funzioni deterministiche di (luogo, stile, path camera) e
+   dominano la finestra pesante (v6: 109,8 s/127,9 s; 20–90 s/item; 396 s
+   bruciati in retry su 3 item; tile cache 4,5k hit/0 miss = contenuto
+   ripetitivo). Pre-renderizzare i plate all'ingestione e animare camera/testi
+   in composizione: la classe più pesante esce dalla finestra.
+10. **Gate unico misurato + sblocco dei blocker burocratici**: GitHub Actions
+    bloccati per billing (TICKET-MAIN-TRUTH P0) congelano certificazioni
+    same-SHA e demolizioni e costano sessioni intere di cerimonie locali.
+    Sbloccare il billing o derogare formalmente con CI locale firmato; un solo
+    gate automatico (golden 100/min + correttezza) al cambio di versione del
+    renderer, non a ogni run; chiudere o archiviare i ticket bloccati.
+
+### Sprechi/processi eliminabili — checklist (proposte, anche non approvate)
+
+1. Doppia verifica per artefatto (~300 ms/item) → fix 2 (fatto).
+2. Full decode del receipt in-lane (634 ms/item) → fix 1 (fatto, Go-only +
+   variante nativa in working tree).
+3. Re-preparation per item su daemon caldo → fix 4a (fatto, working tree).
+4. Upload immagini a risoluzione sorgente (~300 MB/item) → fix 6 (v. exit
+   condition sopra).
+5. Retry di errori deterministici invariati → parzialmente chiuso
+   (`retry.IsTransient`); resta I2 (retry per-checkpoint).
+6. Publish Google Docs: `docs.enabled` già default OFF — verificare che nessun
+   payload lo riattivi (1,1 h/sett + un giro parent→child→aggregator per
+   nulla).
+7. Publish Drive seriali del voiceover (~5,5 s/item sul wall end-to-end):
+   delegare al pool congiunto come fatto per gli overlay (non tocca la finestra
+   del gate; serve solo se l'obiettivo diventa il wall del job).
+8. Recertificazione URL-only all'avvio (`broken→fresh` senza validare digest):
+   corretto 22/10; tenere sotto controllo (era la causa dei 422).
+9. Telemetria ingannevole: `font_preflight_ms` (rinominato, fix 4b),
+   `vulkan_device_ms` (marcato process-level, fix 4b), `wall_ms=0` incoerenti
+   nell'API aggregata (ancora da correggere).
+10. Lavoro ripetuto cross-run (re-download, re-probe, re-translate, re-TTS):
+    mirror F1 e probe cache F3 attivi; mancano voice cache (C3), artlist cache
+    (E3), MT locale (D1) — v. paradigma 6.
+11. Non forzare la pulizia del codice: l'audit 23/10 (`AUDIT_PRUNING_CENSUS`)
+    ha verificato che quasi nulla è rimovibile oggi; le uniche candidate a zero
+    caller sono le superfici telemetriche orfane (`NodeStatsReporter`,
+    `stats_json_file`), di proprietà di ticket aperti.
+
+### Misura mancante (invariata)
+
+Le fix 4/5 del working tree vanno misurate con rerun golden (3 run, mediana,
+stesso payload immutabile) secondo il contratto di misura — non eseguibili da
+questo checkout di sviluppo. La fix 2 è già stata misurata dal workstream che
+l'ha portata sul binario (v13-v18).
+
+### Candidato architetturale aggiuntivo — overlay senza MP4 per item
+
+La review Freebuff del 23/10 propone un cambio più ampio rispetto alla sessione
+render persistente: valutare se gli overlay possano essere layer nella timeline
+finale, invece di produrre un MP4 autonomo per ogni item. Oggi ogni artefatto
+paga encoder, mux, receipt, pubblicazione Drive e successivo stitch; una
+composizione diretta o un batch per scena potrebbe rimuovere parte di questi
+passaggi. È una proposta da valutare, non una decisione né un guadagno misurato.
+Dipende dal contratto del final worker (oggi remoto e packet-copy) e
+dall'identità/link Drive richiesta per ogni overlay.
+
+Prima di sceglierla, confrontare due opzioni con lo stesso payload: (A) sessione
+persistente che conserva MP4 separati; (B) overlay compositati nel render finale
+o in artefatti per-scena. Accettazione: parità pixel e audio, link e receipt
+tracciabili, retry idempotenti, output per-classe invariati e wall misurato su tre
+run. Pubblicare throughput per classe (frase, immagine/entity, numero, mappa),
+oltre al totale: una mappa da decine di secondi non deve essere mediata con una
+frase breve per dichiarare raggiunto il gate.

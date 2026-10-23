@@ -13,7 +13,7 @@
 # Optional:
 #   RUST_FETCH_BASE_URL   default
 #                         https://github.com/Marcuss-ops/BrainRust/releases/download
-#   RUST_ARTIFACTS_DIR    local directory holding the same assets (offline/CI cache)
+#   RUST_ARTIFACTS_DIR    checksum-verified copy of the same release assets (offline/CI cache)
 #   RUST_BIN_DIR          default: bin
 set -euo pipefail
 
@@ -64,8 +64,7 @@ if [ -z "$src" ]; then
         if ! curl -fsSL --retry 3 --retry-delay 2 "$base/$asset" -o "$src/$asset"; then
             die "cannot download $base/$asset
   - publish the BrainRust release '$RUST_VERSION' (tag v* on BrainRust), or
-  - point RUST_ARTIFACTS_DIR at a local copy of the assets, or
-  - use the explicit source fallback: make build-muscles"
+  - point RUST_ARTIFACTS_DIR at a checksum-verifiable copy of the same release assets"
         fi
     done
 fi
@@ -89,7 +88,7 @@ done
 
 artifact_icu="$(tr -dc '0-9' < "$src/ICU_MAJOR")"
 [ -n "$artifact_icu" ] || die "ICU_MAJOR in the release assets is empty"
-[ "$artifact_icu" = "$RUST_ICU_MAJOR" ] || die "release links ICU $artifact_icu but this host expects ICU $RUST_ICU_MAJOR; rebuild on the matching host (make build-muscles) or install libicu$artifact_icu"
+[ "$artifact_icu" = "$RUST_ICU_MAJOR" ] || die "release links ICU $artifact_icu but this host expects ICU $RUST_ICU_MAJOR; install libicu$artifact_icu or consume a BrainRust release built for ICU $RUST_ICU_MAJOR"
 
 mkdir -p "$RUST_BIN_DIR"
 staging="$(mktemp -d "$RUST_BIN_DIR/.rust-fetch.XXXXXX")"

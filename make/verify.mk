@@ -10,25 +10,29 @@
 verify-no-secrets:
 	@bash scripts/ci/ci-no-secrets-audit.sh
 
-# The Rust workspace suite lives in BrainRust CI. This repo certifies the Go
-# consumer side of mediaexec.v1 against the shared goldens.
+# verify-rust-muscles — Go consumer DTO validation for mediaexec.v1. The
+# BrainRust workspace and semantic workers are tested in BrainRust CI.
 verify-rust-muscles:
-	@go test ./internal/platform/media/rustexec -run 'TestMediaexecV1SharedGoldens|TestRequestValidate' -count=1
+	@go test ./internal/platform/media/rustexec -run 'TestRequestValidate' -count=1
 
 # Self-test for the release-artifact consumer (synthetic local bundle, no network).
 verify-rust-fetch:
 	@bash scripts/ci/test-rust-fetch.sh
 
-# verify-rust-contract — mediaexec.v1 schema, canonical/consumer parity and the
-# Go golden test. RUST_CONTRACT_DIR can point at BrainRust directly while the
-# submodule pin is being bumped: make verify-rust-contract
-# RUST_CONTRACT_DIR=../BrainRust/contract/mediaexec.v1
-RUST_CONTRACT_DIR ?= rust/contract/mediaexec.v1
+# verify-rust-contract — check consumer goldens against the exact BrainRust
+# revision pinned in the gitlink, without initializing or building the submodule.
+RUST_CONTRACT_REPO ?= https://github.com/Marcuss-ops/BrainRust.git
+RUST_CONTRACT_COMMIT ?= $(shell git ls-tree HEAD rust | awk '{print $$3}')
 verify-rust-contract:
-	@test -d "$(RUST_CONTRACT_DIR)" || (echo "Rust contract not found at $(RUST_CONTRACT_DIR); run git submodule update --init rust" >&2; exit 1)
-	@bash "$(RUST_CONTRACT_DIR)/check_consumer_copy.sh" testdata/mediaexec/v1
-	@python3 "$(RUST_CONTRACT_DIR)/validate.py"
-	@go test ./internal/platform/media/rustexec -run 'TestMediaexecV1SharedGoldens' -count=1
+	@test -n "$(RUST_CONTRACT_COMMIT)" || (echo "Cannot resolve pinned BrainRust gitlink commit" >&2; exit 1)
+	@tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
+	 git clone --quiet --no-checkout --filter=blob:none "$(RUST_CONTRACT_REPO)" "$$tmp/brainrust" && \
+	 git -C "$$tmp/brainrust" checkout --quiet --detach "$(RUST_CONTRACT_COMMIT)" && \
+	 python3 -m venv "$$tmp/venv" && \
+	 "$$tmp/venv/bin/pip" install --quiet -r "$$tmp/brainrust/contract/mediaexec.v1/requirements.txt" && \
+	 "$$tmp/venv/bin/python" "$$tmp/brainrust/contract/mediaexec.v1/validate.py" && \
+	 bash "$$tmp/brainrust/contract/mediaexec.v1/check_consumer_copy.sh" testdata/mediaexec/v1 && \
+	 go test ./internal/platform/media/rustexec -run 'TestMediaexecV1SharedGoldens' -count=1
 
 # verify-repository-integrity — fail-closed repository metadata checks.
 # The canonical script validates every tracked mode-160000 gitlink against

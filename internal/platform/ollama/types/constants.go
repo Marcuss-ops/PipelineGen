@@ -16,27 +16,20 @@ const (
 	StreamBufferSize       = 100
 	DefaultTemperature     = 0.35
 	DefaultNumPredict      = 16384
-	// ProductionRunnerContext is the single resident Ollama runner used by
-	// script generation, and it must be the WIDEST bucket any production caller
-	// asks for. Ollama tears down and reloads a resident model whenever a
-	// request changes num_ctx, so a narrower value here re-opens the thrash it
-	// was introduced to prevent: research prompts and long scenes resolved to
-	// 16384 while the warm probe and short scenes pinned 8192, so ONE round trip
-	// paid TWO full reloads. Measured on the RTX A4000 (gemma4:e4b): 8192 ->
-	// 1.48 s, 8192 again (warm) -> 2.08 s, switch to 16384 -> 37.13 s, switch
-	// back to 8192 -> 97.73 s. Pinning the resident bucket at 16384 — the widest
-	// context any production prompt needs, matching DefaultNumCtx below — keeps
-	// ONE runner resident and removes the reload from the critical path.
-	ProductionRunnerContext = 16384
+	// ProductionRunnerContext is the normal resident Ollama runner. Keeping
+	// warmup and ordinary requests on the same 8192-token bucket avoids model
+	// reloads while using half the context memory of the previous 16384 setting.
+	// ResolveContextBudget can still select a larger bucket for unusually long
+	// prompts that need it.
+	ProductionRunnerContext = 8192
 	// DefaultNumCtx is the Ollama context window sent for script generation.
 	// Research-sourced prompts embed the full resolved source text twice
 	// (editorial "Source text:" block + the template's "REFERENCE INPUT"
 	// block), which can reach ~5k tokens — past Ollama's 4096 default. At
 	// 4096 the prompt eats the whole window and the model returns a single
-	// token (done_reason=length), failing the min_words gate. 16384 fits the
-	// worst research prompt with room for a full narration and is cheap for
-	// the quantized gemma4 models in use.
-	DefaultNumCtx         = 16384
+	// token (done_reason=length), failing the min_words gate. 8192 is the
+	// normal default; context budgeting may select a larger bucket when needed.
+	DefaultNumCtx         = 8192
 	DefaultTopP           = 0.9
 	SuggestionTemperature = 0.2
 	SuggestionNumPredict  = 128

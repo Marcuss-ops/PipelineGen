@@ -7,11 +7,8 @@ VIDRUSH_GO_PACKAGES := ./internal/capabilities/scripts ./internal/capabilities/s
 VIDRUSH_WORKER_PACKAGE := ./internal/capabilities/jobs/worker
 VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFailClosedCheck
 
-# certify-rust-migration was RETIRED on 2026-09-13 (see make/verify.mk for the
-# rationale): its driver scripts/ci/certify-rust-migration.sh was deleted by
-# commit 7e6965aab, so the target could only ever fail closed. The Rust
-# workspace suite now runs in BrainRust CI; here verify-rust-muscles certifies
-# the Go consumer contract.
+# The Rust workspace suite now runs in BrainRust CI; the checks below certify
+# only PipelineGen's Go adapters and policies around the binary boundaries.
 
 # verify-visualner — Go adapter contract for the VisualNER NDJSON boundary.
 # The extractor unit suite (NO EVIDENCE -> NO ENTITY, grounding, determinism)

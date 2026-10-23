@@ -36,9 +36,10 @@ const MaxEntityImageOverlaysPerRun = MaxImageOverlaysPerRun
 const MaxPhraseOverlaysPerRun = 5
 
 // MaxPhraseOverlaysHardLimit is the absolute phrase-overlay ceiling for one
-// run, even when a payload asks for more. Twenty is the acceptance ceiling;
-// the default editorial selection remains five phrases.
-const MaxPhraseOverlaysHardLimit = 20
+// run, even when a payload asks for more. Fifty is the acceptance ceiling
+// (25 short + 25 long, the golden throughput mix); the default editorial
+// selection remains five phrases.
+const MaxPhraseOverlaysHardLimit = 50
 
 // EffectivePhraseOverlayLimit resolves the effective run-level phrase ceiling.
 // A positive caller limit may lower or raise the default, but never exceeds the
@@ -71,12 +72,15 @@ const MaxMapOverlaysPerScene = 2
 
 // MaxMapOverlaysPerRun bounds the number of grounded map overlays admitted to
 // one run. Each map must still have a grounded location and a ready plate.
-const MaxMapOverlaysPerRun = 3
+// Ten matches the golden throughput mix; smaller explicit requests are
+// honored exactly (see effectiveMapOverlayCeiling).
+const MaxMapOverlaysPerRun = 10
 
 // MaxNumberOverlaysPerRun bounds value callouts independently so metrics,
 // money and dates can survive the editorial budget without displacing the
-// established image, phrase or map allowances.
-const MaxNumberOverlaysPerRun = 5
+// established image, phrase or map allowances. Ten matches the golden
+// throughput mix of documented dates and metrics.
+const MaxNumberOverlaysPerRun = 10
 
 // MaxBrandTextOverlaysPerRun independently bounds grounded brand-name cards
 // used when no verified logo asset is available.

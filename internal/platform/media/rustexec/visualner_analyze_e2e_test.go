@@ -12,12 +12,12 @@ import (
 // It returns "" when no binary is available so the test can skip cleanly.
 func resolveVisualNERBinary() string {
 	if fromEnv := os.Getenv("VELOX_RUST_VISUALNER_PATH"); fromEnv != "" {
-		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() {
+		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 			return fromEnv
 		}
 	}
-	candidate := filepath.Join("..", "..", "..", "..", "rust", "target", "release", "visualner")
-	if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+	candidate := filepath.Join("..", "..", "..", "..", "bin", "visualner")
+	if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 		return candidate
 	}
 	return ""
@@ -29,7 +29,7 @@ func resolveVisualNERBinary() string {
 func TestVisualNERAnalyzeRealBinaryProducesBulletsAndChartPoints(t *testing.T) {
 	binary := resolveVisualNERBinary()
 	if binary == "" {
-		t.Skip("visualner release binary not built; run cargo build --release -p visualner --bin visualner")
+		t.Skip("visualner release binary not installed; run make rust-fetch")
 	}
 	text := "Le vendite sono salite del 25% nel primo trimestre. Il budget è di 1.200 euro."
 	executor := newRealExecutor(t, binary, resolveFFmpegBinary())
@@ -87,7 +87,7 @@ func TestVisualNERAnalyzeRealBinaryProducesBulletsAndChartPoints(t *testing.T) {
 func TestVisualNERSemanticBundleRealBinaryGroundsCharts(t *testing.T) {
 	binary := resolveVisualNERBinary()
 	if binary == "" {
-		t.Skip("visualner release binary not built; run cargo build --release -p visualner --bin visualner")
+		t.Skip("visualner release binary not installed; run make rust-fetch")
 	}
 	text := "Le vendite sono salite del 25% nel primo trimestre."
 	executor := newRealExecutor(t, binary, resolveFFmpegBinary())

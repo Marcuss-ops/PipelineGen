@@ -47,7 +47,7 @@ func gateDSFX() []scriptpkg.SoundEffectIntent {
 func TestListenGateDifferentialABCD(t *testing.T) {
 	musclesPath := resolveMusclesBinary()
 	if musclesPath == "" {
-		t.Skip("pipelinegen-muscles binary not found (set VELOX_RUST_MUSCLES_PATH or build via make build-muscles)")
+		t.Skip("pipelinegen-muscles release binary not installed; run make rust-fetch")
 	}
 	ffmpegPath := resolveFFmpegBinary()
 	if ffmpegPath == "" {

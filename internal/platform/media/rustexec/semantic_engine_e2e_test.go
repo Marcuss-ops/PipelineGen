@@ -15,40 +15,26 @@ import (
 
 func resolveSemanticEngineBinary() string {
 	if fromEnv := os.Getenv("VELOX_RUST_SEMANTIC_ENGINE_PATH"); fromEnv != "" {
-		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() {
+		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 			return fromEnv
 		}
 	}
-	candidate := filepath.Join("..", "..", "..", "..", "rust", "target", "release", "semantic-engine")
-	if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
-		return candidate
+	path := filepath.Join("..", "..", "..", "..", "bin", "semantic-engine")
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+		return path
 	}
 	return ""
 }
 
-func resolvePhraseImpactParityBinary(t *testing.T) string {
-	t.Helper()
-	if configured := strings.TrimSpace(os.Getenv("PHRASE_IMPACT_BIN")); configured != "" {
-		if info, err := os.Stat(configured); err == nil && info.Mode().IsRegular() {
+func resolvePhraseImpactParityBinary() string {
+	if configured := strings.TrimSpace(os.Getenv("VELOX_RUST_PHRASE_IMPACT_PATH")); configured != "" {
+		if info, err := os.Stat(configured); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 			return configured
 		}
 	}
-	// The workspace package intentionally exposes one binary, whose argv[0]
-	// selects the dedicated compatibility worker. Give that binary the worker
-	// name in a temporary directory so the E2E exercises the current release.
-	packageBinary := filepath.Join("..", "..", "..", "..", "rust", "target", "release", "pipelinegen-muscles")
-	if info, err := os.Stat(packageBinary); err == nil && info.Mode().IsRegular() {
-		absolute, err := filepath.Abs(packageBinary)
-		if err == nil {
-			alias := filepath.Join(t.TempDir(), "phrase_impact")
-			if err := os.Symlink(absolute, alias); err == nil {
-				return alias
-			}
-		}
-	}
-	legacyBinary := filepath.Join("..", "..", "..", "..", "bin", "phrase_impact")
-	if info, err := os.Stat(legacyBinary); err == nil && info.Mode().IsRegular() {
-		return legacyBinary
+	path := filepath.Join("..", "..", "..", "..", "bin", "phrase_impact")
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+		return path
 	}
 	return ""
 }
@@ -60,7 +46,7 @@ func resolvePhraseImpactParityBinary(t *testing.T) string {
 func TestSemanticEngineRealBinaryAnalysesWholeScript(t *testing.T) {
 	binary := resolveSemanticEngineBinary()
 	if binary == "" {
-		t.Skip("semantic-engine release binary not built; run cargo build --release -p semantic-engine")
+		t.Skip("semantic-engine release binary not installed; run make rust-fetch")
 	}
 	first := "Il 42% dei tecnici ha segnalato il problema, contro il 18% del gruppo di controllo."
 	second := "Il 15 marzo 2008 è la data del delitto."
@@ -130,11 +116,11 @@ func TestSemanticEngineRealBinaryAnalysesWholeScript(t *testing.T) {
 func TestSemanticEngineRealBinaryMatchesPhraseImpactProducts(t *testing.T) {
 	semanticBinary := resolveSemanticEngineBinary()
 	if semanticBinary == "" {
-		t.Skip("semantic-engine release binary not built; run cargo build --release -p semantic-engine")
+		t.Skip("semantic-engine release binary not installed; run make rust-fetch")
 	}
-	phraseBinary := resolvePhraseImpactParityBinary(t)
+	phraseBinary := resolvePhraseImpactParityBinary()
 	if phraseBinary == "" {
-		t.Skip("pipelinegen-muscles release binary not built; needed for Phrase Impact parity")
+		t.Skip("phrase_impact release binary not installed; run make rust-fetch")
 	}
 	transcript := "Marco Rossi fonda la società nel 2018. La squadra inaugura il nuovo impianto dopo due anni di lavori. Nel 2020 i tecnici registrano la capienza e verificano tutte le tribune. Il progetto coinvolge i residenti e gli operatori locali. Infine il club pubblica i risultati e ringrazia ogni partecipante."
 	end := len(transcript)
@@ -174,11 +160,11 @@ func TestSemanticEngineRealBinaryMatchesPhraseImpactProducts(t *testing.T) {
 func TestSemanticEngineRealBinaryMatchesPhraseImpactWithSuppliedVectors(t *testing.T) {
 	semanticBinary := resolveSemanticEngineBinary()
 	if semanticBinary == "" {
-		t.Skip("semantic-engine release binary not built; run cargo build --release -p semantic-engine")
+		t.Skip("semantic-engine release binary not installed; run make rust-fetch")
 	}
-	phraseBinary := resolvePhraseImpactParityBinary(t)
+	phraseBinary := resolvePhraseImpactParityBinary()
 	if phraseBinary == "" {
-		t.Skip("pipelinegen-muscles release binary not built; needed for Phrase Impact parity")
+		t.Skip("phrase_impact release binary not installed; run make rust-fetch")
 	}
 	transcript := "La squadra prepara il progetto e controlla ogni passaggio. Gli operatori registrano i risultati e verificano tutte le procedure. La squadra completa il lavoro e pubblica il rapporto finale."
 	end := len(transcript)
@@ -237,7 +223,7 @@ func intPointer(value int) *int { return &value }
 func TestSemanticEngineRealBinaryProjectsCrossSceneGroupsAgainstMemberSources(t *testing.T) {
 	binary := resolveSemanticEngineBinary()
 	if binary == "" {
-		t.Skip("semantic-engine release binary not built; run cargo build --release -p semantic-engine")
+		t.Skip("semantic-engine release binary not installed; run make rust-fetch")
 	}
 	inputs := []scriptgen.SemanticSceneInput{
 		{SceneID: "compare-a", Text: "Lo Stadio Aurora è più capiente rispetto allo Stadio Olimpico."},

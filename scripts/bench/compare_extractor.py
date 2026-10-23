@@ -26,7 +26,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MODEL = ROOT / ".cache/ner-models/python/xx_ent_wiki_sm/xx_ent_wiki_sm-3.8.0"
-DEFAULT_VISUALNER = ROOT / "rust/target/debug/visualner"
+DEFAULT_VISUALNER = ROOT / "bin/visualner"
 OUTPUT = ROOT / ".cache/phrase-impact/elon_musk_extractor_comparison.json"
 
 # Verbatim benchmark sentences copied from the user's pasted synthetic corpus.

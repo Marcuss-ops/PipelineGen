@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -89,27 +88,16 @@ func newRealExecutor(t *testing.T, musclesPath, ffmpegPath string) *Executor {
 	return executor
 }
 
-// resolveMusclesBinary locates the pipelinegen-muscles binary for e2e tests.
-// Formerly owned by the deleted comedians_voiceover_certification_test.go;
-// kept because several *_e2e_test.go files still use it.
+// resolveMusclesBinary locates the installed BrainRust release executable.
 func resolveMusclesBinary() string {
 	if fromEnv := os.Getenv("VELOX_RUST_MUSCLES_PATH"); fromEnv != "" {
-		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() {
+		if info, err := os.Stat(fromEnv); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 			return fromEnv
 		}
 	}
-	_, source, _, ok := runtime.Caller(0)
-	if !ok {
-		return ""
-	}
-	root := filepath.Join(filepath.Dir(source), "..", "..", "..", "..")
-	for _, candidate := range []string{
-		filepath.Join(root, "bin", "pipelinegen-muscles"),
-		filepath.Join(root, "rust", "target", "release", "pipelinegen-muscles"),
-	} {
-		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
-			return candidate
-		}
+	path := filepath.Join("..", "..", "..", "..", "bin", "pipelinegen-muscles")
+	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+		return path
 	}
 	return ""
 }

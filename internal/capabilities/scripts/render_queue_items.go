@@ -15,50 +15,57 @@ import (
 )
 
 // defaultSeparateItemRenderWorkers is how many per-item overlay renders may be
-// in flight at once when the caller does not tune the pool. Tuned 4→2 after
-// live queue-wait audit (2026-09-27): with 5-14 overlays, queue wait was 62%
-// of wall (7484 ms avg, 18435 max) vs 38% render, driven by 4 concurrent
-// GPU jobs queuing behind gpu_lanes=2. Width 2 retains pipelining of the
-// per-item pre/post chain while halving queue contention; Depth>4 back-pressure
-// below further throttles when the queue is already saturated. The worker's
-// gpu_lanes (now 3) remains the sole GPU authority.
-const defaultSeparateItemRenderWorkers = 2
+// in flight at once when the caller does not tune the pool. 4 (was 2, tuned
+// 2026-09-27 from a live queue-wait audit): retuned 2026-10-23 together with
+// TICKET-OVERLAY-THROUGHPUT fix 1, which moved the receipt verification
+// (probe + sha256 + full-decode gate, ~0,9 s per item) OFF the render lane.
+// One lane then needs ≈1,6 in-flight children to stay fed through the
+// off-lane receipt+post tail (golden v12 mix: ~1,7 s of lane service + ~1,0 s
+// of tail per item), so the dual-lane topology needs 3,2 → 4. The worker's
+// gpu_lanes remains the sole GPU authority: this width pipelines the per-item
+// pre/post chain, it does not raise GPU load.
+const defaultSeparateItemRenderWorkers = 4
 
-// Overlay-batch back-pressure (retuned 2026-10-22). The rule is a pure
-// function of (requested width, batch depth) so it is testable without a queue
-// and cannot drift from what the enqueue path actually applies.
+// overlayItemMaxWidth caps an operator-tuned pool
+// (config.Scripts.SeparateItemRenderWorkers /
+// VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS). 6: the widest render topology
+// certified on this host is 3 lanes (≈5 children by the same 1,6 tail ratio),
+// and the in-flight width — not the batch depth — bounds RAM and queue
+// pressure.
+
+// overlayMapRenderWidth bounds how many COMPLEX map items may render at once.
+// 2 (was 1, retuned 2026-10-23 on the golden v14/v15 window audit): the two
+// maps of the golden mix are the window's critical path — measured 28,0 s +
+// 20,8 s of map-process wall serialized at width 1 stretched the overlay
+// window to 59–64 s while the three GPU lanes finished 20 s earlier. One map's
+// LOD raster pyramid peaks at ~787 MB of plates (14 plates, telemetry
+// `plates.bytes`); two concurrent pyramids are ~1,6 GB of RAM on a host with
+// >20 GB free, and the map frame pipeline's NVENC sessions sit inside the
+// certified multi-session baseline (3 render lanes). Width 2 is therefore
+// safe on the measured basis; a bigger host may raise it further, a smaller
+// one must drop back to 1.
+const overlayMapRenderWidth = 2
 //
-// 2026-09-27 history: a deep batch used to be clamped to width 1, because at
-// pool width 4 behind gpu_lanes=2 the queue-wait audit showed 62% of wall in
-// admission wait. The 2026-10-22 golden runs (v8/v9/v10) then showed the other
-// side of that trade: the overlay window is 100% RENDER SERVICE (v9: 41 items,
-// 91.7 s of render_ms vs a 90.5 s window; the whole post chain was 1.5 s), so a
-// width-1 deep batch starves the second GPU lane and pins throughput at one
-// render per serialized service time (measured 25-29 item/min). The topology
-// now declares TWO render lanes (two Chronon daemons — chronon3d.service +
-// chronon3d-b.service, one RENDER_JOB each — reached through the worker's
-// chronon.socket_paths), so the deep clamp must keep exactly two child renders
-// in flight: one per lane, no queue widening. The map class keeps its own
-// width-1 pool (LOD pyramid RAM/VRAM), unchanged.
-const (
-	overlayItemBackPressureDepth = 4
-	overlayItemBackPressureWidth = 2
-	overlayItemDeepDepth         = 8
-	overlayItemDeepWidth         = 2
-)
+// Batch depth no longer narrows the pool (retuned 2026-10-23). The 2026-09-27
+// depth clamp existed because child queue wait looked like waste at width 4
+// behind gpu_lanes=2; the 2026-10-22 golden runs corrected that attribution —
+// the overlay window is 100% render service and child queue wait is pipeline
+// slack, not waste. With the receipt verification off the lane (fix 1) a pool
+// below the feed width starves the lanes and pins throughput at one serialized
+// render service (measured 25-29 item/min at width 1; 37,8-41,7 at width 2
+// with the receipt still in-lane). The map class keeps its own pool
+// (overlayMapRenderWidth, one LOD raster pyramid per map), retuned 2026-10-23.
+const overlayItemMaxWidth = 6
 
-// resolveOverlayItemWorkers applies the certified back-pressure rule: a batch
-// deeper than overlayItemBackPressureDepth is clamped to
-// overlayItemBackPressureWidth, and a batch deeper than overlayItemDeepDepth to
-// overlayItemDeepWidth (the two-lane floor/ceiling of the dual-daemon
-// topology). A requested width already at or below the clamp is left
-// alone — the clamp only ever narrows, never widens.
-func resolveOverlayItemWorkers(requested, candidates int) int {
-	if candidates > overlayItemDeepDepth && requested > overlayItemDeepWidth {
-		return overlayItemDeepWidth
-	}
-	if candidates > overlayItemBackPressureDepth && requested > overlayItemBackPressureWidth {
-		return overlayItemBackPressureWidth
+// resolveOverlayItemWorkers applies the in-flight width policy: the pool never
+// exceeds the caller's requested width and never exceeds overlayItemMaxWidth.
+// Batch depth is deliberately not an input — only in-flight width feeds (or
+// starves) the render lanes. The rule stays a pure function of the request so
+// it is testable without a queue and cannot drift from what the enqueue path
+// applies.
+func resolveOverlayItemWorkers(requested int) int {
+	if requested > overlayItemMaxWidth {
+		return overlayItemMaxWidth
 	}
 	return requested
 }
@@ -119,14 +126,15 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 	// The bound is published before the work starts, so the pool an operator
 	// reads is the one this batch actually ran under (and not a later edit of
 	// the config).
-	// Back-pressure on queue depth (see resolveOverlayItemWorkers): this is
+	// In-flight width policy (see resolveOverlayItemWorkers): this is
 	// pipelining back-pressure, not GPU admission — gpu_lanes stays the sole
 	// GPU authority.
-	workers := resolveOverlayItemWorkers(e.itemRenderWorkers(), len(candidates))
-	// Classi di risorse distinte (§10): le mappe complesse restano seriali tra
-	// loro (una piramide raster LOD alla volta), testi/frasi e immagini/entità
-	// restano in pipeline alla larghezza configurata. Non serializzare più
-	// l'intero fan-out a 1 quando c'è una mappa: solo la classe mappe è a 1.
+	workers := resolveOverlayItemWorkers(e.itemRenderWorkers())
+	// Classi di risorse distinte (§10): le mappe complesse restano una classe
+	// separata con la propria larghezza (overlayMapRenderWidth, una piramide
+	// raster LOD alla volta PER MAPPA), testi/frasi e immagini/entità restano in
+	// pipeline alla larghezza configurata. Non serializzare più l'intero
+	// fan-out a 1 quando c'è una mappa: solo la classe mappe ha la sua width.
 	var mapCandidates, otherCandidates []overlayItemCandidate
 	for _, candidate := range candidates {
 		if candidate.source.Map != nil {
@@ -173,7 +181,8 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 	}
 	observability.OverlayItemRenderPoolSize.Set(float64(workers))
 	// Two concurrent pools joined at the end: non-map items at the configured
-	// width, map items serialised to 1 among themselves (LOD pyramid RAM/VRAM).
+	// width, map items at overlayMapRenderWidth (one LOD raster pyramid per
+	// map, two measured-fit pyramids at once — see the constant's note).
 	// The old barrier (all others, then maps) is removed; GPU admission
 	// (worker gpu_lanes) remains the final authority when both classes contend
 	// for a saturated GPU.
@@ -199,7 +208,7 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			mapResults, err := concurrent.Map(ctx, mapCandidates, 1, renderOne)
+			mapResults, err := concurrent.Map(ctx, mapCandidates, overlayMapRenderWidth, renderOne)
 			if err != nil {
 				errCh <- err
 				return

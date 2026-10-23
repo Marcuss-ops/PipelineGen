@@ -88,11 +88,12 @@ func TestEffectiveMapOverlayCeilingHonorsRequestAndHardCap(t *testing.T) {
 		limits    map[string]int
 		want      int
 	}{
-		{name: "default bounded to three", want: 3},
+		{name: "default bounded to the run ceiling", want: capabilityoverlay.MaxMapOverlaysPerRun},
 		{name: "request lowers ceiling", requested: 2, want: 2},
 		{name: "group lowers ceiling", limits: map[string]int{"maps": 1}, want: 1},
 		{name: "request and group choose lower", requested: 2, limits: map[string]int{"maps": 1}, want: 1},
-		{name: "oversized request remains bounded", requested: 20, limits: map[string]int{"maps": 20}, want: 3},
+		{name: "explicit ceiling is honored", requested: capabilityoverlay.MaxMapOverlaysPerRun, limits: map[string]int{"maps": capabilityoverlay.MaxMapOverlaysPerRun}, want: capabilityoverlay.MaxMapOverlaysPerRun},
+		{name: "oversized request remains bounded", requested: 20, limits: map[string]int{"maps": 20}, want: capabilityoverlay.MaxMapOverlaysPerRun},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := effectiveMapOverlayCeiling(tc.requested, tc.limits); got != tc.want {

@@ -297,6 +297,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// canvas because that is the run-level render context this function
 	// already receives.
 	plannerConfig.RunLevelPhraseOverlayLimit = phraseCeiling
+	// The image run budget is caller-selected too (request max_image_overlays /
+	// the images group cap): without threading it here the planner's first
+	// budget pass silently truncated a raised image request at the certified
+	// default before the second pass could honor it.
+	plannerConfig.RunLevelImageOverlayLimit = imageCeiling
 	shortPhraseCap, hasShortPhraseCap, longPhraseCap, hasLongPhraseCap := applyPhraseLaneCaps(&plannerConfig, canvas.OverlayGroupLimits)
 	// Keep the requested map group within the certified run ceiling while
 	// allowing the caller to select up to three scene-synced map animations.

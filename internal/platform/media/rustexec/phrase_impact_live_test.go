@@ -27,15 +27,15 @@ import (
 func liveBinaryPath(t *testing.T) string {
 	t.Helper()
 	if p := strings.TrimSpace(os.Getenv("VELOX_RUST_PHRASE_IMPACT_PATH")); p != "" {
-		if _, err := os.Stat(p); err == nil {
+		if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
 			return p
 		}
 		t.Skipf("VELOX_RUST_PHRASE_IMPACT_PATH=%q not found", p)
 	}
 	_, file, _, _ := runtime.Caller(0)
 	candidate := filepath.Join(filepath.Dir(file), "..", "..", "..", "..", "bin", "phrase_impact")
-	if _, err := os.Stat(candidate); err != nil {
-		t.Skipf("live Rust worker not found at %s", candidate)
+	if info, err := os.Stat(candidate); err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		t.Skipf("BrainRust phrase_impact release worker not installed at %s; run make rust-fetch", candidate)
 	}
 	return candidate
 }
@@ -256,7 +256,7 @@ func liveSentenceCloses(text string) bool {
 // NDJSON decoder and both Phrase Impact bullet projections.
 func TestLiveSemanticBulletsConstrainGlobalAndSceneRanking(t *testing.T) {
 	if strings.TrimSpace(os.Getenv("VELOX_RUST_PHRASE_IMPACT_PATH")) == "" {
-		t.Skip("set VELOX_RUST_PHRASE_IMPACT_PATH to a rebuilt phrase-impact worker to certify semantic bullet spans")
+		t.Skip("install the BrainRust phrase_impact release with make rust-fetch or set VELOX_RUST_PHRASE_IMPACT_PATH")
 	}
 	bin := liveBinaryPath(t)
 	first := "Germany lost one hundred thousand industrial jobs in a single year."

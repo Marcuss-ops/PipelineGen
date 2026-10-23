@@ -10,7 +10,7 @@ import (
 )
 
 // Candidate is one local or provider asset candidate under consideration
-// for a scene. It mirrors rust/mediasampler::Candidate so the Go
+// for a scene. It mirrors BrainRust MediaSampler Candidate so the Go
 // resolver and the Rust sampler pass candidates across the boundary
 // without translation.
 type Candidate struct {

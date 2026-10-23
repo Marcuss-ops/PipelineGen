@@ -94,7 +94,7 @@ func copyEligibleAsset(t *testing.T, ffprobe, audioPath string) audio.FinalAudio
 func TestMuxAudioCopyE2EVerifiesMatchingDurations(t *testing.T) {
 	musclesPath := resolveMusclesBinary()
 	if musclesPath == "" {
-		t.Skip("pipelinegen-muscles binary not found (set VELOX_RUST_MUSCLES_PATH or build via make build-muscles)")
+		t.Skip("pipelinegen-muscles release binary not installed; run make rust-fetch")
 	}
 	ffmpegPath := resolveFFmpegBinary()
 	if ffmpegPath == "" {
@@ -143,7 +143,7 @@ func TestMuxAudioCopyE2EVerifiesMatchingDurations(t *testing.T) {
 func TestMuxAudioCopyE2EFailsClosedOnDurationMismatch(t *testing.T) {
 	musclesPath := resolveMusclesBinary()
 	if musclesPath == "" {
-		t.Skip("pipelinegen-muscles binary not found (set VELOX_RUST_MUSCLES_PATH or build via make build-muscles)")
+		t.Skip("pipelinegen-muscles release binary not installed; run make rust-fetch")
 	}
 	ffmpegPath := resolveFFmpegBinary()
 	if ffmpegPath == "" {
@@ -183,7 +183,7 @@ func TestMuxAudioCopyE2EFailsClosedOnDurationMismatch(t *testing.T) {
 func TestMuxAudioCopyE2ERejectsNonContractAudio(t *testing.T) {
 	musclesPath := resolveMusclesBinary()
 	if musclesPath == "" {
-		t.Skip("pipelinegen-muscles binary not found (set VELOX_RUST_MUSCLES_PATH or build via make build-muscles)")
+		t.Skip("pipelinegen-muscles release binary not installed; run make rust-fetch")
 	}
 	ffmpegPath := resolveFFmpegBinary()
 	if ffmpegPath == "" {

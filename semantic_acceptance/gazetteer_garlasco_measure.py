@@ -13,8 +13,8 @@ script. The report is deterministic for a fixed corpus, lexicon and binaries.
 
 Usage:
   python3 gazetteer_garlasco_measure.py \
-      --visualner rust/target/release/visualner \
-      --worker rust/target/release/semantic-engine
+      --visualner bin/visualner \
+      --worker bin/semantic-engine
 """
 
 from __future__ import annotations

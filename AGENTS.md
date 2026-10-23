@@ -107,15 +107,16 @@ currently shellless**: `tests/operational/youtube_stock_live_e2e.sh` and
   (canonical `render_plan` validate/transport, tamper hash-drift fail-closed,
   `render_stock → mux_audio_copy` final audio copy, encoder policy). This is
   the complete live certification surface today.
-- **L3 Rust binary** — the BrainRust CI workspace suite (the pinned submodule
-  is tested there, never with `cargo` here) plus the Go e2e suites in
-  `rustexec` (health, `render_stock` protocol, concat + full decode, 4-job
-  concurrency, fail-closed, RTF).
+- **L3 Rust binary** — BrainRust CI tests and publishes the release artifacts;
+  PipelineGen verifies the installed release workers through the Go e2e suites
+  in `rustexec` (health, `render_stock` protocol, concat + full decode, 4-job
+  concurrency, fail-closed, RTF). PipelineGen does not build or test Rust
+  source locally.
 
 Honest limitation: L2 is the only surface that certifies the canonical
 `render_plan` path, the final audio copy and tamper hash-drift — and with L1/L3
-shellless, `STOCKRUST=CERTIFIED` currently means "L2 green + Rust crate tests
-green", not full three-level coverage. Canonical owner:
+shellless, `STOCKRUST=CERTIFIED` currently means "L2 green + BrainRust
+release CI and Go real-binary e2e green", not full three-level coverage. Canonical owner:
 `docs/operations/stock-e2e-runbook.md` (§4 StockRust certification boundary).
 
 Native stage timing + persistence: `render_stock` reports `metadata.ffmpeg_ms`
