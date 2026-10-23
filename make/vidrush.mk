@@ -9,17 +9,17 @@ VIDRUSH_LEASE_TESTS := TestRunLease_RenewalError_NoCompleteCall|TestPostRenewFai
 
 # certify-rust-migration was RETIRED on 2026-09-13 (see make/verify.mk for the
 # rationale): its driver scripts/ci/certify-rust-migration.sh was deleted by
-# commit 7e6965aab, so the target could only ever fail closed. Live substitute:
-# cargo test --workspace (rust/) + make verify-rust-muscles.
+# commit 7e6965aab, so the target could only ever fail closed. The Rust
+# workspace suite now runs in BrainRust CI; here verify-rust-muscles certifies
+# the Go consumer contract.
 
-# verify-visualner — Fase-3 deterministic VisualEntity extractor (Rust).
-# Runs the visualner crate unit tests covering: NO EVIDENCE → NO ENTITY
-# (Imagine the/ready rejected), exactly 3 entities returned, Greek salad
-# → feta cheese/tomatoes/olives, hummus → chickpeas/tahini/lemon juice/
-# olive oil, all source-grounded, and determinism (same winner 100/100).
+# verify-visualner — Go adapter contract for the VisualNER NDJSON boundary.
+# The extractor unit suite (NO EVIDENCE -> NO ENTITY, grounding, determinism)
+# runs in BrainRust CI. The fake-executor adapter tests always run here; the
+# real-binary e2e tests run when VELOX_RUST_VISUALNER_PATH points at a built
+# binary (e.g. bin/visualner from `make rust-fetch`).
 verify-visualner:
-	@test -n "$(ICU_MAJOR)" || (echo "ICU4C development libraries are required (pkg-config icu-i18n)" >&2; exit 1)
-	@CARGO_HOME="$${CARGO_HOME:-$$HOME/.cargo}" $(RUST_ICU_ENV) $(RUST_CARGO) test --manifest-path rust/Cargo.toml -p visualner
+	@go test ./internal/platform/media/rustexec -run 'TestVisualNER' -count=1
 	@echo "✅ verify-visualner passed"
 
 # MEDIACERT_BIN is the mediacert CLI binary built on demand from
@@ -30,13 +30,12 @@ VIDRUSH_SCENEIR_GO_PACKAGES := ./internal/kernel/sceneir
 VIDRUSH_SEMANTIC_FIXTURE := tests/fixtures/vidrush/mediterranean_top5.json
 VIDRUSH_SEMANTIC_SPEC := tests/fixtures/vidrush/mediterranean_top5_expected.json
 
-# verify-mediasampler — Fase-4 semantic MediaSampler (Rust).
-# Runs the mediasampler crate unit tests covering: subject mismatch
-# (boxing rejected for Greek Salad), cross-scene reuse rejection,
-# determinism (same winner 100/100), image fanout (one query per entity,
-# three images per scene).
+# verify-mediasampler — Go adapter/policy contract for the MediaSampler
+# boundary (wire shape, group ledger, fail-closed ranges). The Rust sampler
+# unit suite (subject mismatch, cross-scene rejection, determinism, fanout)
+# runs in BrainRust CI.
 verify-mediasampler:
-	@CARGO_HOME="$${CARGO_HOME:-$$HOME/.cargo}" $(RUST_CARGO) test --manifest-path rust/Cargo.toml -p mediasampler
+	@go test ./internal/platform/media/rustexec -run 'TestMediaSampler' -count=1
 	@echo "✅ verify-mediasampler passed"
 
 # verify-stockintelligence — Fase-5 local stock intelligence (Go).

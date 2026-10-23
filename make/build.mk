@@ -37,9 +37,16 @@ GO_BUILD_GOFLAGS ?= -p=$(GO_PARALLEL) $(GOFLAGS_EXTRA)
 GO_LINKER ?= mold
 GO_LINKER_FLAGS := $(shell if command -v $(GO_LINKER) >/dev/null 2>&1; then printf '%s' '-linkmode external -extldflags -fuse-ld=$(GO_LINKER)'; fi)
 
-# Rust execution-plane build. VisualNER uses rust_icu against system ICU4C;
-# keep the bindgen-free build mode and ICU ABI major explicit at build time.
-RUST_CARGO ?= rustup run stable cargo
+# Rust execution plane: BrainRust owns the toolchain, ICU linkage and tests.
+# The default path consumes the checksum-verified release bundle; build-muscles
+# remains only as the explicit source fallback (offline/Docker/rollback).
+RUST_VERSION ?= v0.1.0
+RUST_FETCH_BASE_URL ?= https://github.com/Marcuss-ops/BrainRust/releases/download
+RUST_BIN_DIR ?= $(CURDIR)/bin
+# The fallback honours BrainRust's rust-toolchain.toml once the submodule pin
+# contains it; before that (or on a checkout without it) use stable.
+RUST_TOOLCHAIN ?= $(shell sed -n 's/^channel = "\(.*\)"/\1/p' rust/rust-toolchain.toml 2>/dev/null)
+RUST_CARGO ?= $(if $(RUST_TOOLCHAIN),rustup run $(RUST_TOOLCHAIN) cargo,rustup run stable cargo)
 ICU_MAJOR ?= $(shell pkg-config --modversion icu-i18n 2>/dev/null | cut -d. -f1)
 RUST_ICU_ENV = RUST_ICU_MAJOR_VERSION_NUMBER=$(ICU_MAJOR)
 
@@ -88,10 +95,26 @@ go-version-check:
 #                       against an HTTP broker via VELOX_BROKER_URL for
 #                       users running the long-running worker on a
 #
-# build-muscles also installs the unified semantic engine: ONE NDJSON service
-# for the whole script (entities, bullets, charts, dates, numbers, relations).
-# It is a separate binary so the semantic path does not share the media
-# executor's dispatcher or build.
+# Install the pinned BrainRust release: 4 binaries, 6 names in bin/.
+# ICU_MAJOR is the runtime major, so a 72-linked artifact is refused on a host
+# that only has ICU 70 (use build-muscles there). RUST_ARTIFACTS_DIR may point
+# at a local copy of the release assets for offline installs.
+rust-fetch:
+	@test -n "$(ICU_MAJOR)" || (echo "ICU4C runtime libraries are required to validate the BrainRust artifact (pkg-config icu-i18n); override with ICU_MAJOR=<major>" >&2; exit 1)
+	@RUST_VERSION="$(RUST_VERSION)" \
+	 RUST_FETCH_BASE_URL="$(RUST_FETCH_BASE_URL)" \
+	 RUST_ICU_MAJOR="$(ICU_MAJOR)" \
+	 RUST_BIN_DIR="$(RUST_BIN_DIR)" \
+	 bash scripts/ci/rust-fetch.sh
+
+# build-muscles — explicit source fallback: compiles the pinned submodule with
+# its own rust-toolchain.toml. It is NOT part of `make build`; use it for
+# offline work, a host ICU that no release covers, or rollback.
+#
+# It also installs the unified semantic engine: ONE NDJSON service for the whole
+# script (entities, bullets, charts, dates, numbers, relations). It is a
+# separate binary so the semantic path does not share the media executor's
+# dispatcher or build.
 build-muscles:
 	@test -n "$(ICU_MAJOR)" || (echo "ICU4C development libraries are required (pkg-config icu-i18n)" >&2; exit 1)
 	@mkdir -p bin
@@ -111,7 +134,7 @@ VISUALNER_MODEL_DIR ?= $(HOME)/.local/share/visualner/models
 rust-models:
 	VISUALNER_MODEL_DIR="$(VISUALNER_MODEL_DIR)" ./rust/visualner/tools/install_udpipe_models.sh
 
-build: go-version-check build-muscles
+build: go-version-check rust-fetch
 	@mkdir -p bin
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen      ./cmd/server
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/admin            ./cmd/admin
@@ -120,7 +143,7 @@ build: go-version-check build-muscles
 
 # Build only the server binary. This is the canonical target for server
 # smoke checks and lightweight container builds.
-build-server: go-version-check build-muscles
+build-server: go-version-check rust-fetch
 	@mkdir -p bin
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen ./cmd/server
 

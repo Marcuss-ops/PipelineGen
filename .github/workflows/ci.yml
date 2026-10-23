@@ -221,14 +221,13 @@ jobs:
       timeout-minutes: 5
       run: make verify-no-secrets
 
-  # ── Rust workers (visualner needs system ICU at build time) ─────────
+  # ── mediaexec.v1 contract (no cargo) ───────────────────────────────
   #
-  # visualner links rust_icu_* against the installed ICU4C development
-  # package and pins generated symbols to its major via
-  # RUST_ICU_MAJOR_VERSION_NUMBER (see rust/README.md). The major is read
-  # from pkg-config here so the CI host and the build can never disagree.
-  rust:
-    name: Rust workers (test + clippy, ICU-pinned)
+  # BrainRust owns the schema and the canonical goldens; this job checks the
+  # consumer copy byte-for-byte and runs the Go golden test against it. The
+  # submodule is pinned, so no Rust toolchain is needed.
+  rust-contract:
+    name: mediaexec.v1 contract (schema + shared goldens)
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
@@ -236,39 +235,30 @@ jobs:
       with:
         submodules: false
 
-    # The Rust workspace lives in its own repository (BrainRust) and is
-    # mounted at rust/ as a submodule pinned to a released commit.
-    - name: Check out the Rust workspace
+    - name: Check out the pinned Rust contract
       run: git submodule update --init --depth 1 rust
 
-    - name: Install ICU4C development package
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libicu-dev pkg-config
-
-    - name: Export ICU major for rust_icu
-      run: |
-        ICU_MAJOR=$(pkg-config --modversion icu-i18n | cut -d. -f1)
-        echo "RUST_ICU_MAJOR_VERSION_NUMBER=$ICU_MAJOR" >> "$GITHUB_ENV"
-
-    # The suite fails closed when a language profile declares a UDPipe
-    # treebank but its model is absent (visualner/tests/language_profiles.rs).
-    # The 234 MB model set is a provisioned fixture, not repository content:
-    # cache it and let make/rust-models download only what is missing.
-    - name: Cache UDPipe models
-      uses: actions/cache@v4
+    - name: Set up Go
+      uses: actions/setup-go@v6
       with:
-        path: ~/.local/share/visualner/models
-        key: udpipe-models-2.5-191206-v1
+        go-version: '1.25.x'
+        cache: true
 
-    - name: Install UDPipe models
-      run: make rust-models
+    - name: Install the contract validator
+      run: |
+        python3 -m venv /tmp/contract-venv
+        /tmp/contract-venv/bin/pip install -q -r rust/contract/mediaexec.v1/requirements.txt
 
-    - name: cargo test (workspace)
-      run: cargo test --manifest-path rust/Cargo.toml --workspace
+    - name: Verify the shared contract
+      run: PATH="/tmp/contract-venv/bin:$PATH" make verify-rust-contract
 
-    - name: cargo clippy (workspace, warnings are errors)
-      run: cargo clippy --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
+  # ── Rust workspace: owned by BrainRust CI ───────────────────────────
+  #
+  # The cargo test/clippy job was removed with the artifact cutover: BrainRust
+  # CI runs the workspace suite on the pinned Debian Bookworm / ICU 72 ABI and
+  # publishes the binaries this repo consumes. PipelineGen certifies only the
+  # consumer side (`make verify-rust-muscles`, `make verify-rust-fetch`), so no
+  # job here needs cargo, rustup or a floating ICU major.
 
   # ── Black-box smoke jobs: RETIRED 2026-09-13 ─────────────────────────
   #

@@ -27,7 +27,7 @@ deliverables
 /.venv-whisper
 /.pytest_cache
 /.cache
-/rust/target
+/rust
 /bin
 /out
 /output

@@ -315,7 +315,7 @@ came back `READY` with Drive references.
 The seam is Go source: it only takes effect after a rebuild + restart of the service.
 
 ```bash
-make -o build-muscles build-server        # skip the Rust step when its toolchain is absent
+make -o rust-fetch -o build-muscles build-server   # Go-only; skip the Rust artifact install
 sudo -n /usr/bin/systemctl restart pipelinegen.service
 ```
 

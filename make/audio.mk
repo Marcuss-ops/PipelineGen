@@ -5,14 +5,14 @@ verify-audio-chunked:
 	go test ./internal/capabilities/scripts ./internal/capabilities/scripts/adapters ./internal/capabilities/scripts/usecase
 	@echo "✅ CHUNKED_VOICEOVER gate passed"
 
+# The Rust pipelinegen-muscles unit suite is owned by BrainRust CI; these
+# gates certify the Go consumer and the real-binary e2e paths.
 verify-audio-combined:
 	go test ./internal/capabilities/audio ./internal/capabilities/scripts ./internal/platform/media/rustexec
-	cargo test --manifest-path rust/pipelinegen-muscles/Cargo.toml
 	@echo "✅ COMBINED_TIMELINE gate passed"
 
 verify-audio-copy:
 	go test ./internal/platform/media/rustexec -run 'Test(MuxFinalAudioCopy|RequestValidate.*MuxAudioCopy)'
-	cargo test --manifest-path rust/pipelinegen-muscles/Cargo.toml
 	@echo "✅ FINAL_AUDIO_COPY gate passed"
 
 verify-audio-benchmark:

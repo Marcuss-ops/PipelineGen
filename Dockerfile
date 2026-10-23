@@ -68,29 +68,39 @@ RUN mkdir -p /out \
       -ldflags "-s -w -X ${BUILDINFO_PKG}.Version=${VERSION} -X ${BUILDINFO_PKG}.GitCommit=${COMMIT} -X ${BUILDINFO_PKG}.BuildTime=${BUILD_TIME}" \
       -o /out/admin ./cmd/admin
 
-# ─── rust-builder ────────────────────────────────────────────────
-# Keep ICU4C in its own build stage: VisualNER must be linked against the
-# exact Bookworm ICU ABI shipped in the runtime images.
-FROM debian:bookworm-slim AS rust-builder
+# ─── rust-artifacts ─────────────────────────────────────────────
+# The Rust binaries are built and released by BrainRust on Debian Bookworm
+# with ICU 72. This stage downloads the pinned release bundle and verifies its
+# checksums and ICU ABI; no cargo, rustup or submodule build runs in the image.
+# Override RUST_VERSION / RUST_FETCH_BASE_URL to consume a different release
+# or a mirror. The release tag must exist on BrainRust before building.
+FROM debian:bookworm-slim AS rust-artifacts
+ARG RUST_VERSION=v0.1.0
+ARG RUST_FETCH_BASE_URL=https://github.com/Marcuss-ops/BrainRust/releases/download
 ARG RUST_ICU_MAJOR_VERSION_NUMBER=72
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:${PATH}
+ARG TARGETARCH=amd64
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      build-essential \
       ca-certificates \
       curl \
-      libicu-dev \
- && rm -rf /var/lib/apt/lists/* \
- && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh \
- && sh /tmp/rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain stable \
- && rm -f /tmp/rustup-init.sh
-WORKDIR /src
-COPY rust/ ./rust/
-RUN RUST_ICU_MAJOR_VERSION_NUMBER=${RUST_ICU_MAJOR_VERSION_NUMBER} cargo build --release --locked --manifest-path rust/Cargo.toml \
- && mkdir -p /out \
- && cp rust/target/release/pipelinegen-muscles rust/target/release/visualner rust/target/release/mediasampler rust/target/release/semantic-engine /out/
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /out
+RUN set -eu; \
+    if [ "$TARGETARCH" != "amd64" ]; then \
+      echo "BrainRust releases are linux/amd64 only; TARGETARCH=$TARGETARCH is not supported" >&2; \
+      exit 1; \
+    fi; \
+    base="${RUST_FETCH_BASE_URL%/}/${RUST_VERSION}"; \
+    for asset in pipelinegen-muscles visualner mediasampler semantic-engine sha256sums.txt ICU_MAJOR TOOLCHAIN; do \
+      curl -fsSL --retry 3 --retry-delay 2 "$base/$asset" -o "$asset"; \
+    done; \
+    sha256sum --check --strict sha256sums.txt; \
+    major="$(tr -dc '0-9' < ICU_MAJOR)"; \
+    if [ "$major" != "$RUST_ICU_MAJOR_VERSION_NUMBER" ]; then \
+      echo "release links ICU $major, runtime expects ICU $RUST_ICU_MAJOR_VERSION_NUMBER" >&2; \
+      exit 1; \
+    fi; \
+    chmod 0755 pipelinegen-muscles visualner mediasampler semantic-engine
 
 # ─── server-runtime ───────────────────────────────────────────────
 FROM debian:bookworm-slim AS server-runtime
@@ -110,10 +120,10 @@ ENV VELOX_RUST_VISUALNER_PATH="/app/bin/visualner" \
 
 RUN mkdir -p /app/bin
 COPY --from=builder /out/pipelinegen /usr/local/bin/pipelinegen
-COPY --from=rust-builder /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
-COPY --from=rust-builder /out/visualner /app/bin/visualner
-COPY --from=rust-builder /out/mediasampler /app/bin/mediasampler
-COPY --from=rust-builder /out/semantic-engine /app/bin/semantic-engine
+COPY --from=rust-artifacts /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
+COPY --from=rust-artifacts /out/visualner /app/bin/visualner
+COPY --from=rust-artifacts /out/mediasampler /app/bin/mediasampler
+COPY --from=rust-artifacts /out/semantic-engine /app/bin/semantic-engine
 
 # Copy migrations and config so the server can run DB migrations at startup.
 COPY migrations/ /app/migrations/
@@ -187,10 +197,10 @@ RUN curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSI
  && chmod a+rx /usr/local/bin/yt-dlp
 
 COPY --from=builder /out/worker /usr/local/bin/pipelinegen-worker
-COPY --from=rust-builder /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
-COPY --from=rust-builder /out/visualner /app/bin/visualner
-COPY --from=rust-builder /out/mediasampler /app/bin/mediasampler
-COPY --from=rust-builder /out/semantic-engine /app/bin/semantic-engine
+COPY --from=rust-artifacts /out/pipelinegen-muscles /app/bin/pipelinegen-muscles
+COPY --from=rust-artifacts /out/visualner /app/bin/visualner
+COPY --from=rust-artifacts /out/mediasampler /app/bin/mediasampler
+COPY --from=rust-artifacts /out/semantic-engine /app/bin/semantic-engine
 
 # Copy Python scripts and config needed by the worker at runtime.
 COPY scripts/ /app/scripts/
