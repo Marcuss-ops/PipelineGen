@@ -61,6 +61,18 @@ type QueueRenderEnqueuer struct {
 	// recorder optionally persists one analytics row per completed attempt.
 	// Nil means analytics are not recorded (no-op, not a failure).
 	recorder RenderAttemptRecorder
+	// renderCache is the content-addressed index from a per-item RenderKey to
+	// the certified artifact it produced. Nil means the cache is not wired
+	// (or was killed by OverlayRenderCacheKillSwitch); every path then behaves
+	// exactly as before.
+	renderCache OverlayRenderCache
+	// renderCacheProber verifies a cached locator still resolves in the object
+	// store before it is served as a completed render. Nil trusts the index.
+	renderCacheProber OverlayArtifactProber
+	// renderCacheEpoch pins the deployment epoch mixed into cache keys. Empty
+	// falls back to OverlayRenderCacheEpoch() (env override, then build
+	// identity).
+	renderCacheEpoch string
 	// asyncPublication moves Drive publication and its dependent analytics out
 	// of the render caller. RenderingGen has already certified immutable bytes
 	// at this point; keeping this work on a bounded pool releases the render
@@ -393,40 +405,74 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		Assets:      assets,
 	}
 
+	// Content-addressed reuse: a per-item plan whose RenderKey already names a
+	// certified artifact skips submit + wait and flows through this run's
+	// publication step. A miss is the historical path, unchanged.
+	var cacheKey OverlayRenderCacheKey
+	cacheable := false
+	if e.renderCache != nil {
+		cacheKey, cacheable = overlayRenderCacheKeyForPlan(semanticPlan, e.renderCacheEpochValue())
+	}
+	cacheHit := false
 	submitStartedAt := time.Now()
-	submitErr := e.client.Submit(ctx, job)
-	if submitErr != nil {
-		if e.freshRender || !errors.Is(submitErr, ErrJobExists) {
-			message := "chronon queue render submit failed"
-			if e.freshRender {
-				message = "chronon queue fresh render submit failed"
-			}
-			recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
-			return RenderReference{}, errors.Join(fmt.Errorf("%s: %w", message, submitErr), recordErr)
-		}
-		// The re-arm decision is owned by RearmFailedRenderJob (the same
-		// helper the clip.render executor uses), and it fails closed when the
-		// job is FAILED and cannot be re-armed.
-		if rearmErr := RearmFailedRenderJob(ctx, e.client, plan.PlanID); rearmErr != nil {
-			recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
-			return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
+	submitAcceptedAt := time.Time{}
+	done := RenderQueueJob{ID: jobID, State: RenderQueueStateCompleted}
+	wait := RenderCompletionMetrics{}
+	if cacheable {
+		if cached, ok := e.lookupOverlayRenderCache(ctx, cacheKey); ok {
+			cacheHit = true
+			done.Artifact = cached
+			submitAcceptedAt = submitStartedAt
 		}
 	}
-	submitAcceptedAt := time.Now()
-	done, wait, err := e.waitForCompletion(ctx, jobID)
-	if err != nil {
-		observeCompletionWait(wait, renderOutcomeFailure)
-		recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, time.Time{}, "failure")
-		return RenderReference{}, errors.Join(err, recordErr)
+	if !cacheHit {
+		submitErr := e.client.Submit(ctx, job)
+		if submitErr != nil {
+			if e.freshRender || !errors.Is(submitErr, ErrJobExists) {
+				message := "chronon queue render submit failed"
+				if e.freshRender {
+					message = "chronon queue fresh render submit failed"
+				}
+				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
+				return RenderReference{}, errors.Join(fmt.Errorf("%s: %w", message, submitErr), recordErr)
+			}
+			// The re-arm decision is owned by RearmFailedRenderJob (the same
+			// helper the clip.render executor uses), and it fails closed when the
+			// job is FAILED and cannot be re-armed.
+			if rearmErr := RearmFailedRenderJob(ctx, e.client, plan.PlanID); rearmErr != nil {
+				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
+				return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
+			}
+		}
+		submitAcceptedAt = time.Now()
+		var err error
+		done, wait, err = e.waitForCompletion(ctx, jobID)
+		if err != nil {
+			observeCompletionWait(wait, renderOutcomeFailure)
+			recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, time.Time{}, "failure")
+			return RenderReference{}, errors.Join(err, recordErr)
+		}
+		// Store BEFORE publication: the render is already certified, and a Drive
+		// failure must not throw away the GPU work that produced it. Only a
+		// cacheable single-item plan owns a key; anything else (map folds,
+		// multi-item compositions) is not addressable and must not be counted
+		// as a store error.
+		if cacheable {
+			e.storeOverlayRenderCache(ctx, cacheKey, done.Artifact)
+		}
 	}
 	observeCompletionWait(wait, renderOutcomeSuccess)
 	artifactAvailableAt := time.Now()
+	attemptOutcome := renderOutcomeSuccess
+	if cacheHit {
+		attemptOutcome = renderOutcomeCacheHit
+	}
 	postRender := func(postCtx context.Context) (postErr error) {
 		defer func() {
 			if e.recorder == nil {
 				return
 			}
-			recordErr := e.recordQueueAttempt(postCtx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, artifactAvailableAt, renderOutcomeSuccess)
+			recordErr := e.recordQueueAttempt(postCtx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, artifactAvailableAt, attemptOutcome)
 			if recordErr != nil {
 				postErr = errors.Join(postErr, fmt.Errorf("record render attempt analytics: %w", recordErr))
 			}
@@ -477,6 +523,20 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			}
 		}
 		return nil
+	}
+	if cacheHit {
+		// A reused locator that fails the publication step is not trustworthy:
+		// dropping the row makes the next run re-render instead of looping on
+		// unverified bytes. Losing one cache entry is much cheaper than serving
+		// a poison entry to every subsequent run.
+		verifiedPostRender := postRender
+		postRender = func(postCtx context.Context) error {
+			if err := verifiedPostRender(postCtx); err != nil {
+				e.invalidateOverlayRenderCache(postCtx, cacheKey, "cached artifact failed its publication step: "+err.Error())
+				return err
+			}
+			return nil
+		}
 	}
 	if e.asyncPublication && !plan.RequireDriveBeforeReturn && (e.publisher != nil || e.recorder != nil) {
 		// The batch is resolved on the SUBMITTING goroutine: the publication

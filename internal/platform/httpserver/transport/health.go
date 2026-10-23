@@ -24,6 +24,7 @@ import (
 
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/rendercacheinfo"
 	"github.com/gin-gonic/gin"
 )
 
@@ -51,6 +52,12 @@ type HealthHandler struct {
 	// once and memoized, and a live accessor keeps the handler free of
 	// construction-order coupling.
 	build func() buildinfo.Identity
+	// renderCache, when set, publishes the overlay render cache's runtime
+	// status (enabled/wired/epoch/reason) on /health and /ready. A cache that
+	// silently failed to wire was previously only visible by grepping the
+	// startup log; one health poll now answers "is this process reusing
+	// certified overlay renders, under which epoch, and if not why?".
+	renderCache func() rendercacheinfo.Status
 }
 
 // NewHealthHandler constructs the handler. Both deps are required;
@@ -72,6 +79,23 @@ func (h *HealthHandler) SetWireRegistry(r *WireRegistry) {
 // root wires buildinfo.Current; tests may pass a fixed tuple.
 func (h *HealthHandler) SetBuildInfo(fn func() buildinfo.Identity) {
 	h.build = fn
+}
+
+// SetRenderCacheStatus installs the overlay render cache status accessor. The
+// composition root wires rendercacheinfo.Current; tests may pass a fixed
+// snapshot. nil keeps the historical payload shape for direct fixtures.
+func (h *HealthHandler) SetRenderCacheStatus(fn func() rendercacheinfo.Status) {
+	h.renderCache = fn
+}
+
+// renderCacheStatus returns a snapshot, or nil when unwired so the response
+// omits the field instead of publishing an invented state.
+func (h *HealthHandler) renderCacheStatus() *rendercacheinfo.Status {
+	if h.renderCache == nil {
+		return nil
+	}
+	status := h.renderCache()
+	return &status
 }
 
 // buildInfo returns the current build identity, or nil when unwired so the
@@ -99,6 +123,9 @@ func (h *HealthHandler) Health(c *gin.Context) {
 		unwired := gin.H{"ok": false, "status": "unhealthy", "error": "health service not initialized"}
 		if identity := h.buildInfo(); identity != nil {
 			unwired["build"] = identity
+		}
+		if status := h.renderCacheStatus(); status != nil {
+			unwired["render_cache"] = status
 		}
 		c.JSON(http.StatusServiceUnavailable, unwired)
 		return
@@ -154,6 +181,9 @@ func (h *HealthHandler) healthPayload(resp systemhealth.HealthResponse) gin.H {
 	if identity := h.buildInfo(); identity != nil {
 		payload["build"] = identity
 	}
+	if status := h.renderCacheStatus(); status != nil {
+		payload["render_cache"] = status
+	}
 	return payload
 }
 
@@ -178,6 +208,9 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 		if identity := h.buildInfo(); identity != nil {
 			unwired["build"] = identity
 		}
+		if status := h.renderCacheStatus(); status != nil {
+			unwired["render_cache"] = status
+		}
 		c.JSON(http.StatusServiceUnavailable, unwired)
 		return
 	}
@@ -199,6 +232,11 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 		// must travel with the readiness verdict: one poll answers both
 		// "is it up?" and "is it the code I deployed?".
 		payload["build"] = identity
+	}
+	if cache := h.renderCacheStatus(); cache != nil {
+		// A canary that waits on /ready also observes whether the render
+		// reuse plane is active in the process it just certified.
+		payload["render_cache"] = cache
 	}
 	c.JSON(status, payload)
 }

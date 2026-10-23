@@ -71,3 +71,11 @@ var ArtifactStagesDDL string
 //
 //go:embed 092_create_outbox_events.sql
 var OutboxEventsDDL string
+
+// OverlayRenderCacheDDL is the verbatim cache-plane DDL of
+// migrations/sqlite/278_overlay_render_cache.sql. The overlay render cache is
+// a rebuildable index (bytes stay in the object store), so its adapter tests
+// apply the canonical migration text instead of a hand-copied schema.
+//
+//go:embed 278_overlay_render_cache.sql
+var OverlayRenderCacheDDL string

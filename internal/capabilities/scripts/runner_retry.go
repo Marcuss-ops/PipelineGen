@@ -3,6 +3,8 @@ package scriptgeneration
 import (
 	"errors"
 	"strings"
+
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // ErrFinalAudioLocalArtifactMissing marks the one deterministic local-file
@@ -33,6 +35,12 @@ func deriveErrorCode(err error, stage Stage) string {
 	// otherwise classify the wrapped transport timeout as PROVIDER_TIMEOUT.
 	if errors.Is(err, ErrFinalJobPending) {
 		return "REMOTE_RENDER_PENDING"
+	}
+	// A producer that offers bytes which do not hash to the content address it
+	// named has violated its contract; retrying the same payload cannot repair
+	// it. The code is stable so a retry bot stops instead of re-rendering.
+	if errors.Is(err, kernelasset.ErrContentAddressMismatch) {
+		return "ASSET_CONTENT_MISMATCH"
 	}
 
 	// Check for known error patterns in the error message.

@@ -61,4 +61,13 @@ var (
 		Name: "overlay_item_render_in_flight",
 		Help: "Per-item overlay renders currently submitted and awaiting their terminal state.",
 	})
+
+	// OverlayRenderCacheTotal counts cache decisions for certified overlay
+	// renders. Labels are the bounded outcomes of the reuse contract:
+	// hit/miss, store/store_error, invalid, invalidate/invalidate_error,
+	// lookup_error, probe_error. A hit is a render the GPU lane did not run.
+	OverlayRenderCacheTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "overlay_render_cache_total",
+		Help: "Content-addressed overlay render cache decisions, by bounded outcome.",
+	}, []string{"outcome"})
 )

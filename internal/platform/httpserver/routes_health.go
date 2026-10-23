@@ -8,6 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/rendercacheinfo"
 )
 
 // registerHealthRoutes wires the unified health surface: /health with
@@ -45,6 +46,11 @@ func (r *Router) registerHealthRoutes(engine *gin.Engine, log *zap.Logger) *tran
 	// port owners. Wired unconditionally — identity is process-local state,
 	// not an optional capability.
 	healthHandler.SetBuildInfo(buildinfo.Current)
+	// Overlay render cache runtime status (enabled/wired/epoch/reason). The
+	// accessor is process-local state set by the composition root while wiring
+	// the script render runtime, so the health surface reflects the SAME cache
+	// instance the enqueuer uses instead of a re-derived guess.
+	healthHandler.SetRenderCacheStatus(rendercacheinfo.Current)
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
 

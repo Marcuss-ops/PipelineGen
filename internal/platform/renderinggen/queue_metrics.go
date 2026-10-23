@@ -44,14 +44,22 @@ func metricsFromChrononMetrics(n map[string]float64, frameCount int, durationUS 
 	// post-render probe cost". `chronon_job_ffprobe_ms` is the fallback: the
 	// source probe the engine performs inside the render.
 	set(&m.ProbeMS, "probe_ms", "chronon_exclusive_wall_timeline_ffprobe_ms", "chronon_job_ffprobe_ms")
-	// The renderer-side output finalize (hash + object-store upload + artifact
-	// ledger). Deliberately NOT mapped from RenderingGen's asset_materialize_ms
-	// or subtitle_burn_ms: those are phases of the RENDERINGGEN worker, i.e.
-	// they already live inside the worker-owned render wall, whereas
-	// AssetMaterializeMS/SubtitleCompileMS are counted as PipelineGen's own
-	// upstream work and would be double counted. Their PipelineGen values are
-	// carried on the resume document instead.
-	set(&m.RendererOutputFinalizeMS, "publish_ms")
+	// The renderer-side output finalize. One field, one documented precedence:
+	// the engine's own exclusive-wall `output_finalize_ms` (what the render
+	// process spent publishing the finished artifact) is authoritative when
+	// the sidecar reported it; the worker's `publish_ms` (hash + object-store
+	// upload + artifact ledger) is the fallback for runs without that
+	// sidecar. This used to be two competing `set` calls where the later one
+	// silently overwrote the earlier; the precedence below is the behavior
+	// they produced. Deliberately NOT mapped from RenderingGen's
+	// asset_materialize_ms or subtitle_burn_ms: those are phases of the
+	// RENDERINGGEN worker, i.e. they already live inside the worker-owned
+	// render wall, whereas AssetMaterializeMS/SubtitleCompileMS are counted
+	// as PipelineGen's own upstream work and would be double counted. Their
+	// PipelineGen values are carried on the resume document instead.
+	set(&m.RendererOutputFinalizeMS,
+		"chronon_exclusive_wall_timeline_output_finalize_ms",
+		"chronon_job_output_finalize_ms", "publish_ms")
 	// The Chronon process service wall: what the engine itself measured for
 	// this render (render_loop + encode drain + mux + validation), excluding
 	// the RenderingGen worker's own prepare/probe/publish around it.
@@ -73,7 +81,7 @@ func metricsFromChrononMetrics(n map[string]float64, frameCount int, durationUS 
 	set(&m.PrepareMS, "chronon_exclusive_wall_timeline_prepare_ms", "chronon_job_prepare_ms")
 	set(&m.RenderLoopMS, "chronon_exclusive_wall_timeline_render_loop_ms", "chronon_job_render_loop_wall_ms")
 	set(&m.MuxFinalizeMS, "chronon_exclusive_wall_timeline_mux_finalize_ms", "chronon_job_mux_finalize_ms")
-	set(&m.RendererOutputFinalizeMS, "chronon_exclusive_wall_timeline_output_finalize_ms", "chronon_job_output_finalize_ms")
+	// renderer_finalize_ms is mapped above with its documented precedence.
 	set(&m.ValidationMS, "chronon_exclusive_wall_timeline_validation_ms", "chronon_job_validation_ms")
 	// Render-loop wait diagnostics: the engine's accumulated waits across the
 	// loop, in milliseconds. The job block reports frame-slot and CUDA↔Vulkan

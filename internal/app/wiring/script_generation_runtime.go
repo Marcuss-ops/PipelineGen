@@ -30,9 +30,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/rendercacheinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	sqlitecheckpoint "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/checkpoint"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
+	overlayrendercache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/overlayrendercache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	"go.uber.org/zap"
@@ -291,6 +293,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
 	}
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	// Baseline status for the /health render_cache document. Overwritten below
+	// when the queue (and therefore the overlay render cache) is configured.
+	rendercacheinfo.SetRuntime(rendercacheinfo.Status{Reason: rendercacheinfo.ReasonNotConfigured})
 	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
 		queueClient := renderinggen.New(queueURL)
 		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
@@ -321,6 +326,40 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// concurrent GPU work, so this overlaps the per-item pre/post chain
 		// without oversubscribing the device.
 		renderEnqueuer.SetItemRenderPool(cfg.Scripts.SeparateItemRenderWorkers)
+		// Content-addressed reuse of certified per-item renders. The index lives
+		// in the rebuildable cache plane; the bytes stay in the object store and
+		// a HEAD verifies each hit before it is served. A cache outage is a
+		// miss, never a failed run, and the kill switch restores the old path.
+		if root.CacheDB != nil && root.CacheDB.DB != nil && scriptgen.OverlayRenderCacheEnabled() {
+			renderCache, cacheErr := overlayrendercache.New(root.CacheDB.DB)
+			if cacheErr != nil {
+				rendercacheinfo.SetRuntime(rendercacheinfo.Status{
+					Enabled: true, Wired: false, Reason: cacheErr.Error(),
+				})
+				log.Warn("overlay render cache not wired", zap.Error(cacheErr))
+			} else {
+				epoch := scriptgen.OverlayRenderCacheEpoch()
+				renderEnqueuer.SetOverlayRenderCache(renderCache, epoch)
+				renderEnqueuer.SetOverlayArtifactProber(renderinggen.NewOverlayArtifactProber())
+				rendercacheinfo.SetRuntime(rendercacheinfo.Status{
+					Enabled: true, Wired: true, Epoch: epoch, Table: rendercacheinfo.TableName,
+				})
+				log.Info("overlay render cache wired",
+					zap.String("epoch", epoch),
+					zap.String("table", rendercacheinfo.TableName))
+			}
+		} else {
+			reason := rendercacheinfo.ReasonNoCacheDB
+			if !scriptgen.OverlayRenderCacheEnabled() {
+				reason = rendercacheinfo.ReasonKillSwitch
+			}
+			rendercacheinfo.SetRuntime(rendercacheinfo.Status{
+				Enabled: scriptgen.OverlayRenderCacheEnabled(), Wired: false, Reason: reason,
+			})
+			log.Info("overlay render cache disabled",
+				zap.String("reason", reason),
+				zap.Bool("kill_switch", !scriptgen.OverlayRenderCacheEnabled()))
+		}
 		// Generated semantic overlays have their own canonical root. Docs and
 		// clip renders use separate routing contracts and must not influence
 		// this destination: <Overlay Chronon>/<JobID>/<language>/overlay.

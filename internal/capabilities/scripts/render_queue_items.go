@@ -45,7 +45,7 @@ const defaultSeparateItemRenderWorkers = 4
 // safe on the measured basis; a bigger host may raise it further, a smaller
 // one must drop back to 1.
 const overlayMapRenderWidth = 2
-//
+
 // Batch depth no longer narrows the pool (retuned 2026-10-23). The 2026-09-27
 // depth clamp existed because child queue wait looked like waste at width 4
 // behind gpu_lanes=2; the 2026-10-22 golden runs corrected that attribution —
