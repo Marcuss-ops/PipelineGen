@@ -10,8 +10,25 @@
 verify-no-secrets:
 	@bash scripts/ci/ci-no-secrets-audit.sh
 
+# The Rust workspace suite lives in BrainRust CI. This repo certifies the Go
+# consumer side of mediaexec.v1 against the shared goldens.
 verify-rust-muscles:
-	@cargo test --manifest-path rust/Cargo.toml -p pipelinegen-muscles
+	@go test ./internal/platform/media/rustexec -run 'TestMediaexecV1SharedGoldens|TestRequestValidate' -count=1
+
+# Self-test for the release-artifact consumer (synthetic local bundle, no network).
+verify-rust-fetch:
+	@bash scripts/ci/test-rust-fetch.sh
+
+# verify-rust-contract — mediaexec.v1 schema, canonical/consumer parity and the
+# Go golden test. RUST_CONTRACT_DIR can point at BrainRust directly while the
+# submodule pin is being bumped: make verify-rust-contract
+# RUST_CONTRACT_DIR=../BrainRust/contract/mediaexec.v1
+RUST_CONTRACT_DIR ?= rust/contract/mediaexec.v1
+verify-rust-contract:
+	@test -d "$(RUST_CONTRACT_DIR)" || (echo "Rust contract not found at $(RUST_CONTRACT_DIR); run git submodule update --init rust" >&2; exit 1)
+	@bash "$(RUST_CONTRACT_DIR)/check_consumer_copy.sh" testdata/mediaexec/v1
+	@python3 "$(RUST_CONTRACT_DIR)/validate.py"
+	@go test ./internal/platform/media/rustexec -run 'TestMediaexecV1SharedGoldens' -count=1
 
 # verify-repository-integrity — fail-closed repository metadata checks.
 # The canonical script validates every tracked mode-160000 gitlink against

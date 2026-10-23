@@ -24,12 +24,12 @@
 # mapping is visible at-a-glance.
 .PHONY: \
 	help all \
-	go-version-guard go-version-check build build-muscles build-server clean rebuild run dev \
+	go-version-guard go-version-check build build-muscles rust-fetch rust-models build-server clean rebuild run dev \
 	test test-all test-unit coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
 	verify-overlay-model-alias \
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
-	verify-rust-muscles verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
+	verify-rust-muscles verify-rust-fetch verify-rust-contract verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-integration verify-architecture \
 	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-kernel verify-main test-main-stock verify-main-clip verify-release \
 	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-kernel \
@@ -77,8 +77,9 @@ help:
 	@echo "PipelineGen Makefile - Command Cheat Sheet"
 	@echo ""
 	@echo "BUILD / RUN"
-	@echo "  make build            Build server, admin, and worker binaries"
-	@echo "  make build-muscles    Build the Rust media execution binary"
+	@echo "  make build            Build server, admin, worker + install the pinned BrainRust release"
+	@echo "  make rust-fetch       Install the checksum-verified BrainRust release binaries"
+	@echo "  make build-muscles    Fallback: build the Rust binaries from the submodule"
 	@echo "  make build-server     Build server binary"
 	@echo "  make run              Run server (HTTP + scheduler + maintenance via --mode all)"
 	@echo "  make rebuild          Clean + build (idempotent equivalent of clean && build)"
