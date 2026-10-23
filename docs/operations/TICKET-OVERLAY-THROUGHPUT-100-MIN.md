@@ -527,7 +527,10 @@ Metrica canonica introdotta (sostituisce gli summary ad-hoc a heredoc):
 - Tool: `go run ./cmd/goldensummary --job-full <job.full.json> --db
   data/media/media.db.sqlite` (repo PipelineGen), schema
   `pipelinegen.golden-overlay-summary.v1`. Codice puro testato in
-  `internal/platform/sqlite/rendermetrics/golden_summary.go`.
+  `internal/platform/sqlite/rendermetrics/golden_summary.go`. La scrittura di
+  `--out` passa da `pkg/atomicwrite.WriteFile` (gate enforcement
+  `TestNoTruncatingWritesUnderCmd`: nessun `os.WriteFile` diretto in `cmd/`,
+  un write interrotto non deve mai troncare l'artefatto generato).
 - Definizione del servizio per item: `render_ms` di
   `render_attempt_analytics` (durata render Chronon misurata dal worker), lo
   stesso campo che le summary storiche chiamavano
