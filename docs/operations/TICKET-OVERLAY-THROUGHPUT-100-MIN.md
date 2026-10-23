@@ -505,12 +505,93 @@ Per ogni run salvare almeno: `run_id`, input hash, revisione, configurazione e w
 - [x] Baseline iniziale del golden case registrata con almeno tre run confrontabili e conteggio degli overlay validi. **Mediana 27,2 overlay/min** (v8 29,5, v9 27,2, v10 25,4), 36–41 overlay validati per run, tutti con link Drive certificati.
 - [x] Almeno un job storico valutato: confronto documentato con fixture equivalente (golden derivato da `08_fonti_media` con differenze dichiarate; ricostruzione misurata della batch storica in «Evidenza storica»).
 - [x] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili. Scomposizione in «Baseline misurata e dove si perde tempo»; residuo dichiarato: `drive_publish` sincrono dei compositi final-job e micro-fasi non ancora proiettate.
-- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4, 23/10) — **gate NON raggiunto**, manca un fattore ~2,1. Le run v13/v14 (34,7–39,4/min) misurano la fix 1 e la prima configurazione 3 lane; v16/v18 sono outlier da finestra degradata. La strada preferita resta il taglio del servizio seriale per-item (2,75 s → ~1,3 s con le fix 1-2-4-5) ≈ **94 item/min con le sole 2 lane certificate**; vedi «Profilazione per-item del servizio render — 23 ottobre 2026». Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon, con certificazione 3 lane (`vramprobe`) solo dal 23/10 (v18 non confrontabile).
+- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4, 23/10) — **gate NON raggiunto**, manca un fattore ~2,1. Le run v13/v14 (34,7–39,4/min) misurano la fix 1 e la prima configurazione 3 lane; v16/v18 sono outlier da finestra degradata. La strada preferita resta il taglio del servizio seriale per-item (2,75 s → ~1,3 s con le fix 1-2-4-5) ≈ **94 item/min con le sole 2 lane certificate**; vedi «Profilazione per-item del servizio render — 23 ottobre 2026». Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon, con certificazione 3 lane (`vramprobe`) solo dal 23/10 (v18 non confrontabile). **Gate ridefinito 23/10 (metrica per classe):** vedi «Metrica per classe e ridefinizione del gate» sotto: il numero `item/min` da solo non è più un accettabile report di gate, perché dipende dal mix di classi del piano materializzato.
 - [x] Report prima/dopo per ogni ottimizzazione, con condizioni di esecuzione comparabili e nessuna regressione nascosta da overlay falliti o non contati. Fatto per la prima ottimizzazione (2° daemon + pool 2): v8/v9/v10 (prima) vs v11 (dopo), 38/38 COMPLETED e 38 link Drive, vedi «Ottimizzazione: seconda lane di render». La baseline «prima» è registrata (v8/v9/v10); il report «dopo» si compila alla prima ottimizzazione applicata.
 
 ## Nota sul target
 
 100 overlay/minuto è il target richiesto, non una prestazione già dimostrata né una garanzia per job con dipendenze esterne o composizioni differenti. Il ticket deve riportare sia il risultato del golden case sia il throughput dei job reali per tipologia, così da rendere espliciti i limiti di confronto.
+
+## Metrica per classe e ridefinizione del gate — 23/10 (sera)
+
+Problema misurato: `item/min` è una funzione del **mix di classi** del piano
+materializzato, non solo della velocità del renderer. Le mappe costano
+17–66 s/item contro 2–5 s di frasi/immagini (run v6: 3 mappe = 110 s dei
+127 s della finestra); confrontare run con mix diversi sul solo `item/min`
+confronta il pianificatore, non il rendering. Inoltre il golden materializza
+36–41 item, non 100: il gate era misurato su un piano che non produce gli
+item attesi.
+
+Metrica canonica introdotta (sostituisce gli summary ad-hoc a heredoc):
+
+- Tool: `go run ./cmd/goldensummary --job-full <job.full.json> --db
+  data/media/media.db.sqlite` (repo PipelineGen), schema
+  `pipelinegen.golden-overlay-summary.v1`. Codice puro testato in
+  `internal/platform/sqlite/rendermetrics/golden_summary.go`.
+- Definizione del servizio per item: `render_ms` di
+  `render_attempt_analytics` (durata render Chronon misurata dal worker), lo
+  stesso campo che le summary storiche chiamavano
+  `per_item_render_service_ms`. Popolazioni senza misure restano vuote, mai
+  stimate a 0.
+- Blocchi per classe: per ogni `kind` del piano semantico
+  (`text_phrase/entity_image/image/number/map/...`) conteggio item, servizio
+  avg/p50/min/max e **quota di servizio** (`service_share_pct`), più la
+  capacità della finestra (`overlay_window.items_per_min`) sempre riportata
+  accanto al mix (`plan_kinds`).
+
+Ridefinizione del gate (sostituisce la lettura del solo `item/min`):
+
+1. **Metrica primaria: secondi di servizio per classe su piano fisso.** Due
+   run sono confrontabili solo a parità di piano (stesso payload immutabile) e
+   il report deve sempre portare il blocco `per_class` accanto alla finestra.
+2. **Metrica derivata: capacità di finestra (item/min).** Si riporta solo con
+   il mix di classi accanto; un `item/min` senza `plan_kinds` non è evidenza.
+3. **Condizione del gate 100/min su 2 lane certificate:** piano golden a mix
+   dichiarato (riferimento v17: 20 `text_phrase`, 8 `entity_image`, 7 `image`,
+   4 `number`, 1 `map`), finestra ≥ 100 item/min ⇒ servizio medio per item ≤
+   1,2 s (60 s × 2 lane / 100 item). Stato a v17: servizio medio 2,509 s
+   (p50 2,309, max 5,362) ⇒ manca un fattore ~2,1, coerente con la proiezione
+   «servizio ~1,3 s/item ≈ 94 item/min» della profilazione per-item.
+4. **Gap pianificatore separato e dichiarato:** il piano materializzato porta
+   36–41 item contro il mix richiesto da 100; il gate sul piano non è il gate
+   sul pianificatore, e la voce resta aperta finché il planner non
+   materializza il mix pieno.
+
+## Zone confuse e da bonificare — censimento 23/10 (sera)
+
+1. **Summary golden ad-hoc via heredoc python** (i comandi vivono solo in
+   `debuggingchronon.md`): schema non riproducibile, campi ridefiniti a mano
+   ogni run. **SOSTITUITI** da `cmd/goldensummary` (schema
+   `pipelinegen.golden-overlay-summary.v1`); le summary storiche restano
+   evidenza ma non sono rigenerabili. Bonifica residua: rigenerare le summary
+   v13–v18 con lo schema v1 quando serviranno confronti.
+2. **Schema `render_attempt_analytics` triplicato con drift**: vivo in
+   `data/media/media.db.sqlite` (schema completo), copia vecchia in
+   `data/cache/cache.db.sqlite` (manca `item_id` e le fasi), 0 righe in
+   `data/observability/api_requests.db.sqlite`. Bonifica: un solo owner
+   dichiarato, le copie degradate vanno nominate o eliminate.
+3. **Debris di DB a 0 byte / 0 tabelle**: `data/jobs.db`,
+   `data/jobs.db.sqlite`, `data/jobs/jobs.sqlite`, `data/pipelinegen.db`,
+   `data/pipelinegen.db.sqlite`. Ogni analisi perde tempo a cercare «dov'è il
+   DB». Bonifica: rimuoverli o registrarli in un README dati.
+4. **Join analytics↔item via `job_id LIKE '%<run_id>%'`**: gli id item
+   (`<run>:item:<nnn>:<id>`) incorporano il run id; è fragile per costruzione
+   e impedisce query per run pulite. Bonifica: colonna `run_id` esplicita
+   nella tabella.
+5. **Stato fix duplicato su due ticket** (fix table qui + disposition nel
+   ticket Chronon3d `TICKET-PERFORMANCE-AUDIT`): allineati oggi, ma resta una
+   doppia authority. Bonifica: lo stato fix vive in un solo ticket.
+6. **Complessità tagliata in questa sessione**: feature vcpkg fantasma
+   `native-ffmpeg` (5 preset, warning a ogni configure; non esiste in
+   `vcpkg.json`) rimossa; doppia rappresentazione della finestra nella
+   summary (`window_from/window_to` + `overlay_window`) eliminata prima di
+   rilasciare lo schema v1.
+
+Verifica della metrica: il tool riproduce esattamente i numeri della summary
+storica v17 (`avg 2508,8`, `p50 2310`, 40 item, finestra 51,1 s, 47,0/min) e
+aggiunge il blocco per classe (v17: `image` 3,484 s avg = 24,3% del servizio su
+7 item; `text_phrase` 2,3 s avg su 20 item; `map` 2,781 s su 1 item con tile
+cache calda).
 
 ---
 

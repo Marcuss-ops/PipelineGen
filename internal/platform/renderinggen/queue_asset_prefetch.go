@@ -19,6 +19,7 @@ import (
 	"time"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	assetmaterializer "github.com/Marcuss-ops/PipelineGen/internal/platform/assets/materializer"
 	"golang.org/x/sync/errgroup"
 )
@@ -126,7 +127,7 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 				// verified download source instead.
 				if verifiedLocalPath(localPath, hash) != "" {
 					if err := streamPutFile(ctx, storeURL, hash, localPath); err != nil {
-						return fmt.Errorf("asset %s local stage: %w", hash, err)
+						return prefetchStageError(hash, "local:"+localPath, err)
 					}
 					return nil
 				}
@@ -150,7 +151,7 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 				err = streamPutReader(ctx, storeURL, hash, resp.Body, resp.ContentLength)
 				_ = resp.Body.Close()
 				if err != nil {
-					return fmt.Errorf("asset %s stage: %w", hash, err)
+					return prefetchStageError(hash, downloadURL, err)
 				}
 				return nil
 			})
@@ -240,6 +241,41 @@ func streamPutFile(ctx context.Context, store, key, path string) error {
 	return streamPutReader(ctx, store, key, file, info.Size())
 }
 
+// objectStorePutError preserves the store's response to an upload. The status
+// code is policy input, not decoration: a 422 means the store recomputed the
+// digest and refused to keep bytes that do not match the requested address,
+// which no retry can repair.
+type objectStorePutError struct {
+	StatusCode int
+	Detail     string
+}
+
+func (e *objectStorePutError) Error() string {
+	if e.Detail == "" {
+		return fmt.Sprintf("HTTP %d", e.StatusCode)
+	}
+	return fmt.Sprintf("HTTP %d: %s", e.StatusCode, e.Detail)
+}
+
+// prefetchStageError annotates a failed object-store upload with the content
+// address and the source the bytes came from, and types the one deterministic
+// case: the store verified the upload against the address and rejected it.
+// Without this type a content-address mismatch travels as an untyped HTTP
+// string, gets retried as if it were a transient store failure, and is only
+// recognised when the same asset is rejected again on the next attempt.
+func prefetchStageError(hash, source string, err error) error {
+	var putErr *objectStorePutError
+	if errors.As(err, &putErr) && putErr.StatusCode == http.StatusUnprocessableEntity {
+		detail := putErr.Detail
+		if detail == "" {
+			detail = "object store rejected the uploaded bytes for this content address"
+		}
+		return fmt.Errorf("asset %s from %q: %w (HTTP 422: %s)",
+			hash, source, kernelasset.ErrContentAddressMismatch, detail)
+	}
+	return fmt.Errorf("asset %s stage from %q: %w", hash, source, err)
+}
+
 // streamPutReader uploads a streaming reader to the object store.
 // When size >= 0 it is sent as ContentLength; otherwise chunked.
 func streamPutReader(ctx context.Context, store, key string, r io.Reader, size int64) error {
@@ -255,10 +291,16 @@ func streamPutReader(ctx context.Context, store, key string, r io.Reader, size i
 	if err != nil {
 		return err
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
-	_ = resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("HTTP %d", resp.StatusCode)
+		// The store explains a rejected address in the body; keep a bounded
+		// prefix so the operator sees which digest tripped the check.
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return &objectStorePutError{
+			StatusCode: resp.StatusCode,
+			Detail:     strings.TrimSpace(string(detail)),
+		}
 	}
+	_, _ = io.Copy(io.Discard, resp.Body)
 	return nil
 }

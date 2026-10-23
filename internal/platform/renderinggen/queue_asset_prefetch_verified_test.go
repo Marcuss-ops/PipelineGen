@@ -10,9 +10,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // objectStoreStub records the bytes a prefetch publishes for one address.
@@ -173,6 +175,87 @@ func TestVerifiedLocalPath(t *testing.T) {
 				t.Errorf("verifiedLocalPath(%q, %q) = %q, want %q", tc.path, tc.hash, got, tc.want)
 			}
 		})
+	}
+}
+
+// rejectingObjectStore returns a store that accepts HEAD (absent) and rejects
+// every PUT with 422, the response a content-address-verifying store emits when
+// the uploaded bytes do not hash to the requested key.
+func rejectingObjectStore(t *testing.T, hash string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+hash {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodHead:
+			http.NotFound(w, r)
+		case http.MethodPut:
+			_, _ = io.Copy(io.Discard, r.Body)
+			http.Error(w, "uploaded bytes do not hash to the requested address", http.StatusUnprocessableEntity)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+}
+
+// TestPrefetch_StoreRejectionIsTypedContentAddressMismatch pins the classification
+// boundary: an HTTP 422 from the store means the bytes do not hash to the
+// address, which is deterministic. The bridge must surface the shared sentinel
+// (and name both the address and the source), so the render runner reports
+// ASSET_CONTENT_MISMATCH instead of retrying the same payload.
+func TestPrefetch_StoreRejectionIsTypedContentAddressMismatch(t *testing.T) {
+	payload := []byte("bytes that claim to be something else")
+	hash := hashOf(payload)
+	localPath := writeTempFile(t, t.TempDir(), "claim.bin", payload)
+
+	srv := rejectingObjectStore(t, hash)
+	defer srv.Close()
+
+	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+		SHA256: hash, LocalPath: localPath,
+	}})
+	if err == nil {
+		t.Fatal("expected the rejected upload to fail the prefetch")
+	}
+	if !errors.Is(err, kernelasset.ErrContentAddressMismatch) {
+		t.Fatalf("error = %v, want ErrContentAddressMismatch", err)
+	}
+	if !strings.Contains(err.Error(), hash) {
+		t.Errorf("error must name the rejected content address %s: %v", hash, err)
+	}
+	if !strings.Contains(err.Error(), "422") {
+		t.Errorf("error must preserve the store status: %v", err)
+	}
+}
+
+// TestPrefetch_DownloadedMismatchIsTypedToo covers the other staging path: the
+// local hint is unusable, the fallback download succeeds at the transport level,
+// and the store rejects the fetched bytes. Both paths must reach the same typed
+// verdict.
+func TestPrefetch_DownloadedMismatchIsTypedToo(t *testing.T) {
+	hash := hashOf([]byte("the bytes the address names"))
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("a completely different payload"))
+	}))
+	defer origin.Close()
+
+	srv := rejectingObjectStore(t, hash)
+	defer srv.Close()
+
+	err := NewHTTPAssetPrefetcher(srv.URL).Prefetch(context.Background(), []scriptgen.RenderQueueAsset{{
+		SHA256: hash, SourceURL: origin.URL,
+	}})
+	if err == nil {
+		t.Fatal("expected the rejected download to fail the prefetch")
+	}
+	if !errors.Is(err, kernelasset.ErrContentAddressMismatch) {
+		t.Fatalf("error = %v, want ErrContentAddressMismatch", err)
+	}
+	if !strings.Contains(err.Error(), origin.URL) {
+		t.Errorf("error must name the source URL: %v", err)
 	}
 }
 

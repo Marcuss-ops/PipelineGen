@@ -114,9 +114,9 @@ func goldenMixResult(t *testing.T) (*GenerateResult, capabilityoverlay.PlateReso
 				WordStart: wordAt, WordEnd: wordAt,
 				LocalStartUS: int64(wordAt) * 100_000, LocalEndUS: int64(wordAt+1) * 100_000,
 				TimelineStartUS: startUS,
-				AudioStartUS:     startUS + int64(wordAt)*100_000,
-				AudioEndUS:       startUS + int64(wordAt+1)*100_000,
-				Confidence:       confidence,
+				AudioStartUS:    startUS + int64(wordAt)*100_000,
+				AudioEndUS:      startUS + int64(wordAt+1)*100_000,
+				Confidence:      confidence,
 			})
 		}
 

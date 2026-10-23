@@ -20,6 +20,10 @@ import (
 const (
 	renderOutcomeSuccess = "success"
 	renderOutcomeFailure = "failure"
+	// renderOutcomeCacheHit marks an attempt served from the content-addressed
+	// overlay render cache: no GPU service happened, so it is neither a normal
+	// success nor a failure and must be separable in analytics.
+	renderOutcomeCacheHit = "cache_hit"
 	// unknownChrononBackend labels an artifact whose worker reported no backend,
 	// so a backend label is never the empty string.
 	unknownChrononBackend = "unknown"

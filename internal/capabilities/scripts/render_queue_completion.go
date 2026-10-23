@@ -136,6 +136,24 @@ func (e *QueueRenderEnqueuer) SetSeparateItemRenders(on bool) {
 	}
 }
 
+// SetOverlayRenderCache wires the content-addressed reuse index for per-item
+// overlay renders. Passing nil (or leaving it unwired) keeps today's behaviour.
+// An empty epoch resolves at call time from OverlayRenderCacheEpoch().
+func (e *QueueRenderEnqueuer) SetOverlayRenderCache(cache OverlayRenderCache, epoch string) {
+	if e != nil {
+		e.renderCache = cache
+		e.renderCacheEpoch = strings.TrimSpace(epoch)
+	}
+}
+
+// SetOverlayArtifactProber wires the object-store presence check applied to a
+// cache hit. Nil means the index is trusted without verification.
+func (e *QueueRenderEnqueuer) SetOverlayArtifactProber(prober OverlayArtifactProber) {
+	if e != nil {
+		e.renderCacheProber = prober
+	}
+}
+
 func (e *QueueRenderEnqueuer) SetItemRenderPool(workers int) {
 	if e != nil {
 		e.itemRenderPool = workers
