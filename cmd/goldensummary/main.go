@@ -27,6 +27,8 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
+
 	rendermetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
 )
 
@@ -136,7 +138,7 @@ func main() {
 		os.Stdout.Write(encoded)
 		return
 	}
-	if err := os.WriteFile(*outPath, encoded, 0o644); err != nil {
+	if err := atomicwrite.WriteFile(*outPath, encoded, 0o644); err != nil {
 		fatalf("write summary: %v", err)
 	}
 }
