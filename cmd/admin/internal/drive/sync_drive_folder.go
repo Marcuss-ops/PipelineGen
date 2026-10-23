@@ -97,7 +97,7 @@ func RunSyncDriveFolder(args []string) error {
 	fmt.Printf("Drive folder sync completed: folder_id=%s source=%s media_type=%s requested=%d synced=%d failed=%d\n",
 		*folder, *source, *mediaType, summary.Requested, summary.Synced, summary.Failed)
 	if summary.Failed > 0 {
-		return fmt.Errorf("Drive folder sync completed with %d failed items", summary.Failed)
+		return fmt.Errorf("drive folder sync completed with %d failed items", summary.Failed)
 	}
 	return nil
 }

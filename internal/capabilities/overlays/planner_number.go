@@ -19,14 +19,15 @@ func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animation
 		}
 	}
 	params := map[string]any{"position": "center", "style": "stat", "priority": number.Score}
-	if templateID == "TIMELINE_DATE_CARD" {
+	switch templateID {
+	case "TIMELINE_DATE_CARD":
 		capUS := int64(0)
 		if len(dateWindowCapUS) > 0 {
 			capUS = dateWindowCapUS[0]
 		}
 		number = minimumDatePresentationDuration(number, capUS)
 		params["font_size_px"] = float64(SharedTextFontSizePX + PresentationTextFontIncreasePX)
-	} else if templateID == "METRIC_STAT_CARD" {
+	case "METRIC_STAT_CARD":
 		params["font_size_px"] = float64(SharedTextFontSizePX + PresentationTextFontIncreasePX)
 	}
 	return OverlayItem{

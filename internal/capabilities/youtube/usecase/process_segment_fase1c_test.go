@@ -202,7 +202,6 @@ var _ detail.TextTrackRepository = (*readyTrackRepo)(nil)
 // alwaysHitCache always returns a hit at Step 2. The
 // orchestrator short-circuits BEFORE the resolver.
 type alwaysHitCache struct {
-	stubClipCache
 	item *youtubetypes.ExtractItem
 }
 

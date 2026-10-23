@@ -159,7 +159,7 @@ func (r *SubtitleArtifactRepositorySQLite) ListByAsset(ctx context.Context, asse
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var list []detail.SubtitleArtifact
 	for rows.Next() {

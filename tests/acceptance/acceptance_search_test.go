@@ -162,5 +162,5 @@ func TestSearch_Localization_StaysTextualAcrossRounds(t *testing.T) {
 		}
 	}
 
-	var _ asset.MediaType = asset.MediaTypeImageVideo
+	var _ = asset.MediaTypeImageVideo
 }

@@ -254,10 +254,12 @@ func (e *executionRun) validateEnabledVidRushProviders(ctx context.Context) erro
 // owned by the caller so concurrent runs stay isolated.
 func (e *executionRun) beginVidRushPhase() bool {
 	var beginVidRushErr error
-	kernobs.MeasureStage(e.ctx, kernobs.StageBeginVidRush, func(stageCtx context.Context) error {
+	if err := kernobs.MeasureStage(e.ctx, kernobs.StageBeginVidRush, func(stageCtx context.Context) error {
 		e.coordinator, beginVidRushErr = e.r.beginVidRush(stageCtx, e.runID, e.req)
 		return beginVidRushErr
-	})
+	}); err != nil && beginVidRushErr == nil {
+		beginVidRushErr = err
+	}
 	if beginVidRushErr != nil {
 		return e.fail(StageNormalizing, beginVidRushErr)
 	}
@@ -469,11 +471,13 @@ func (e *executionRun) parallelFanOut() bool {
 	// so its start is never delayed by document rendering or audio prefetch.
 	var semanticOutcome vidRushPrepareOutcome
 	var assetsOutcome vidRushPrepareOutcome
-	kernobs.MeasureStage(e.ctx, "prepare_join", func(stageCtx context.Context) error {
+	if err := kernobs.MeasureStage(e.ctx, "prepare_join", func(stageCtx context.Context) error {
 		semanticOutcome = <-semanticDone
 		assetsOutcome = <-assetsDone
 		return semanticOutcome.err
-	})
+	}); err != nil && semanticOutcome.err == nil {
+		semanticOutcome.err = err
+	}
 	if semanticOutcome.err != nil {
 		return e.fail(StageGeneratingSceneText, semanticOutcome.err)
 	}

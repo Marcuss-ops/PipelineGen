@@ -55,20 +55,18 @@ func GetMigrationStatus(db *sql.DB, targetDir string) (*MigrateStatusReport, err
 // FormatMigrateStatus formats a MigrateStatusReport as a human-readable table.
 func FormatMigrateStatus(report *MigrateStatusReport) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%-7s  %-40s %s\n", "version", "filename", "status"))
+	fmt.Fprintf(&sb, "%-7s  %-40s %s\n", "version", "filename", "status")
 	sb.WriteString(strings.Repeat("-", 70) + "\n")
 
 	for _, m := range report.Applied {
-		sb.WriteString(fmt.Sprintf("%03d      %-40s applied\n", m.Version, m.Filename))
+		fmt.Fprintf(&sb, "%03d      %-40s applied\n", m.Version, m.Filename)
 	}
 	for _, m := range report.Pending {
-		sb.WriteString(fmt.Sprintf("%03d      %-40s pending\n", m.Version, m.Filename))
+		fmt.Fprintf(&sb, "%03d      %-40s pending\n", m.Version, m.Filename)
 	}
 
-	sb.WriteString(fmt.Sprintf(
-		"\n%d migration(s) total: %d applied, %d pending\n",
-		report.Total, report.AppliedN, report.PendingN,
-	))
+	fmt.Fprintf(&sb, "\n%d migration(s) total: %d applied, %d pending\n",
+		report.Total, report.AppliedN, report.PendingN)
 	return sb.String()
 }
 

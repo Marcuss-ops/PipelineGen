@@ -96,7 +96,7 @@ func outboxEmitterDB(t *testing.T) *sql.DB {
 	if _, err := db.Exec(outboxEventsSchema); err != nil {
 		t.Fatalf("apply outbox_events schema: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 

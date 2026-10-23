@@ -53,7 +53,7 @@ func (r *SQLiteRecorder) StartReport(ctx context.Context, p *kernobs.RunReport) 
 	if err != nil {
 		return r.fail(p.RunID, "start_begin", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `INSERT INTO job_attempts (attempt_id,job_id,run_id,attempt_number,worker_id,lease_id,status,started_at,lease_expires_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(attempt_id) DO NOTHING`, p.AttemptID, p.JobID, p.RunID, p.Counters.Retries+1, nullable(p.WorkerID), nullable(p.LeaseID), p.Status, timeValue(started), nullableTime(p.LeaseExpiresAt), timeValue(created), timeValue(now))
 	if err != nil {
 		return r.fail(p.RunID, "start_attempt", err)
@@ -212,7 +212,7 @@ func (r *SQLiteRecorder) SaveReport(ctx context.Context, p *kernobs.RunReport) e
 	if err != nil {
 		return r.fail(p.RunID, "save_begin", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	now := time.Now().UTC()
 	// active_ms closes the measured instrumentation gap (the timing snapshot
 	// reported "run_observability.active_ms is never populated"). By the
@@ -295,7 +295,7 @@ func (r *SQLiteRecorder) SaveResourceReport(ctx context.Context, p *kernobs.RunR
 	if err != nil {
 		return r.fail(normalized.RunID, "resource_report_begin", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var jobID, attemptID string
 	if err := tx.QueryRowContext(ctx, `SELECT job_id,attempt_id FROM run_observability WHERE run_id=?`, normalized.RunID).Scan(&jobID, &attemptID); err != nil {
@@ -320,7 +320,9 @@ func (r *SQLiteRecorder) SaveResourceReport(ctx context.Context, p *kernobs.RunR
 	if err != nil {
 		return r.fail(normalized.RunID, "resource_aggregate_marshal", err)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO run_resource_aggregates (run_id,job_id,attempt_id,schema_version,sample_count,first_observed_at,last_observed_at,aggregate_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET schema_version=excluded.schema_version,sample_count=excluded.sample_count,first_observed_at=excluded.first_observed_at,last_observed_at=excluded.last_observed_at,aggregate_json=excluded.aggregate_json,updated_at=excluded.updated_at`, normalized.RunID, normalized.JobID, normalized.AttemptID, aggregate.SchemaVersion, aggregate.SampleCount, nullableTime(aggregate.FirstObservedAt), nullableTime(aggregate.LastObservedAt), string(aggregateBody), timeValue(now), timeValue(now))
+	if _, err := tx.ExecContext(ctx, `INSERT INTO run_resource_aggregates (run_id,job_id,attempt_id,schema_version,sample_count,first_observed_at,last_observed_at,aggregate_json,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET schema_version=excluded.schema_version,sample_count=excluded.sample_count,first_observed_at=excluded.first_observed_at,last_observed_at=excluded.last_observed_at,aggregate_json=excluded.aggregate_json,updated_at=excluded.updated_at`, normalized.RunID, normalized.JobID, normalized.AttemptID, aggregate.SchemaVersion, aggregate.SampleCount, nullableTime(aggregate.FirstObservedAt), nullableTime(aggregate.LastObservedAt), string(aggregateBody), timeValue(now), timeValue(now)); err != nil {
+		return r.fail(normalized.RunID, "resource_aggregate_write", err)
+	}
 
 	for _, sample := range normalized.Samples {
 		sampleBody, err := json.Marshal(sample)
@@ -361,7 +363,7 @@ func (r *SQLiteRecorder) RecordChild(ctx context.Context, child *kernobs.RunRepo
 	if err != nil {
 		return r.fail(child.ParentRunID, "child_begin", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := upsertChildAndRefreshParent(ctx, tx, child); err != nil {
 		return r.fail(child.ParentRunID, "record_child", err)
 	}
@@ -439,7 +441,7 @@ func (r *SQLiteRecorder) RecoverAbandoned(ctx context.Context, now time.Time) (i
 	if err != nil {
 		return 0, r.fail("", "recover_begin", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx, `UPDATE run_observability SET status='ABANDONED',finished_at=?,error_code='WORKER_LOST',error=?,report_json=json_set(report_json,'$.status','ABANDONED','$.finished_at',?,'$.error_code','WORKER_LOST','$.error',?),updated_at=? WHERE status='RUNNING' AND lease_expires_at IS NOT NULL AND lease_expires_at<=?`, v, "worker lease expired before run finalization", v, "worker lease expired before run finalization", v, v)
 	if err != nil {
 		return 0, r.fail("", "recover_runs", err)

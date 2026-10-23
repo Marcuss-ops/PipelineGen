@@ -109,7 +109,7 @@ func (r *Registry) BackfillPayloadHashes(ctx context.Context, limit int) (int, e
 	if err != nil {
 		return 0, fmt.Errorf("job registry: scan empty payload_hash jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type candidate struct {
 		id      string
@@ -226,7 +226,7 @@ func (r *Registry) Stats(ctx context.Context, from, to string) (capregistry.Stat
 	if err != nil {
 		return stats, fmt.Errorf("job stats steps: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var s capregistry.StepSummary
 		if err := rows.Scan(&s.StepName, &s.Runs, &s.AvgDurationMS); err != nil {

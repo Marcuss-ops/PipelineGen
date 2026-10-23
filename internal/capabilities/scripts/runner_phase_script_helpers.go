@@ -183,11 +183,11 @@ func buildEditorialManifest(req GenerateRequest, inputs []scriptpkg.SceneAnalysi
 	for _, h := range res.SceneHighlights {
 		bullets := make([]scriptpkg.EditorialSceneBullet, len(h.Bullets))
 		for i, b := range h.Bullets {
-			bullets[i] = scriptpkg.EditorialSceneBullet{SentenceStart: b.SentenceStart, SentenceEnd: b.SentenceEnd, Text: b.Text}
+			bullets[i] = scriptpkg.EditorialSceneBullet(b)
 		}
 		hl := make([]scriptpkg.EditorialHighlight, len(h.Highlights))
 		for i, s := range h.Highlights {
-			hl[i] = scriptpkg.EditorialHighlight{SentenceIndex: s.SentenceIndex, StartByte: s.StartByte, EndByte: s.EndByte, Text: s.Text, Score: s.Score, VisualEligible: s.VisualEligible}
+			hl[i] = scriptpkg.EditorialHighlight(s)
 		}
 		scenes = append(scenes, scriptpkg.EditorialScene{
 			SceneID: h.SceneID, Title: h.Title, TitleStatus: h.TitleStatus,
@@ -404,7 +404,9 @@ func (r *Runner) runNormalizePhase(ctx context.Context, runID string, exec Execu
 			return false
 		}
 	} else if err := r.completeExecutionStep(ctx, exec, normalizeStep); err != nil {
-		r.failExecutionStep(ctx, exec, normalizeStep, err)
+		if stepErr := r.failExecutionStep(ctx, exec, normalizeStep, err); stepErr != nil {
+			r.log.Warn("failed to record execution step failure", zap.String("step", normalizeStep.Name), zap.Error(stepErr))
+		}
 		r.failRunWithRetry(ctx, runID, StageNormalizing, err)
 		return false
 	}
@@ -427,7 +429,9 @@ func (r *Runner) validateClipSceneOutput(ctx context.Context, runID string, req 
 				code = "SCRIPT_SCENE_TEXT_CONTAMINATED"
 			}
 			cause := fmt.Errorf("%s: scene=%d words=%d minimum=%d placeholder=%t", code, i, words, minimumClipSceneWords, lower == fmt.Sprintf("scene %d", i+1) || lower == "the")
-			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			if stepErr := r.failExecutionStep(ctx, exec, scriptStep, cause); stepErr != nil {
+				r.log.Warn("failed to record execution step failure", zap.String("step", scriptStep.Name), zap.Error(stepErr))
+			}
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return false
 		}

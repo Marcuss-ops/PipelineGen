@@ -25,8 +25,7 @@ import (
 
 // stubStrategy is a minimal Strategy impl used by registry tests.
 type stubStrategy struct {
-	name    string
-	concept MediaConcept
+	name string
 }
 
 func (s *stubStrategy) Name() string { return s.name }

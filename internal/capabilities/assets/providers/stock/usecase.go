@@ -17,10 +17,7 @@ import (
 	"errors"
 	"fmt"
 
-	"go.uber.org/zap"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Type aliases (SSOT preservation across the parent/child split) ──
@@ -90,51 +87,3 @@ func FromAPIRequest(req *StockSearchAndRunRequest) (*StockCommand, error) {
 	}
 	return cmd, nil
 }
-
-// ── SubmitStockPipelineUseCase ──────────────────────────────────────────
-
-// SubmitStockPipelineUseCase centralises stock-pipeline submission.
-// It owns the dispatch decision between async (broker pool, canonical
-// production path) and sync (test fixtures + partial deploys), and
-// returns the rich SubmitResult receipt on every code path.
-//
-// Concrete types (per S2a spec — `*stockpipeline.Service`,
-// `job.Service`) match the user spec exactly; tests can stub via
-// narrower interfaces if needed in a follow-up (the S2b pattern of
-// ServiceRunner / jobsEnqueuer narrowed interfaces is preserved
-// internally for composition but not exported here to avoid the
-// package needing to duplicate the same interface twice).
-type SubmitStockPipelineUseCase struct {
-	svc  *stockpipeline.Service
-	jobs job.Service
-	log  *zap.Logger
-}
-
-// NewSubmitStockPipelineUseCase constructs the canonical use case.
-// Pass nil for jobs only in test fixtures — production callers MUST
-// wire the concrete jobs service so Submit can route through the
-// broker pool. The log is never nil (falls back to zap.NewNop()).
-
-// ErrJobsServiceRequired is returned by Submit when async=true and no
-// jobs service is wired. Matches the S1b+S1c+S2b wording pattern
-// (fail loud, no in-process fallback). Callers convert it to a 503
-// at the api boundary.
-var ErrJobsServiceRequired = errors.New("stock: jobs service required for async submit (S2a/S2b removed the in-process sync fallback)")
-
-// Submit dispatches a stock pipeline run.
-//
-//	async=true  + jobs wired → enqueue a media.stock job; return
-//	             SubmitResult{JobID, Status: "enqueued"}.
-//	async=true  + jobs nil   → SubmitResult{Status: "rejected",
-//	             Error: "...jobs required..."}, ErrJobsServiceRequired.
-//	async=true  + enqueue FAILED → SubmitResult{Status: "error",
-//	             Error: err.Error()}, err.
-//	async=false             → run synchronously via svc.Run;
-//	             return SubmitResult projected from *PipelineResult,
-//	             or SubmitResult{Status: "error", Error: err.Error()}
-//	             on failure.
-//
-// Spec'd signature: `Submit(ctx, cmd, async) (*SubmitResult, error)`.
-// The returned error is non-nil on any non-success terminal state;
-// SubmitResult.Error is the human-readable mirror for cases where
-// the api layer prefers a soft-OK + inline error body.

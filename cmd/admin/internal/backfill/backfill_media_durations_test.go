@@ -68,7 +68,7 @@ func (s sqliteDurationBackfillSource) ListDurationBackfillCandidates(ctx context
 	if err != nil {
 		return nil, fmt.Errorf("select duration backfill assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var id string

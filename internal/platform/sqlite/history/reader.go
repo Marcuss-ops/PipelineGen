@@ -62,7 +62,7 @@ func (r *Reader) ListHistory(ctx context.Context, f appjobs.HistoryFilter) ([]ap
 	if err != nil {
 		return nil, fmt.Errorf("list history jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]appjobs.HistoryItem, 0, limit)
 	ids := make([]string, 0, limit)
 	for rows.Next() {

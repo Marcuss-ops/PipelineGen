@@ -90,7 +90,7 @@ func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB strin
 	if err != nil {
 		return fmt.Errorf("storage: open %s: %w", dbPath, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	return migrateAll(db, log, targetDir, targetDB)
 }
@@ -137,16 +137,17 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 	warnOnGaps(migrations, log)
 
 	// Load already-applied migrations for checksum validation
-	applied, err := loadAppliedMigrations(db)
-	if err != nil {
+	if _, err := loadAppliedMigrations(db); err != nil {
 		return fmt.Errorf("storage: load applied migrations: %w", err)
 	}
 	if err := reconcileHistoricalMigrationIdentities(db, migrations, targetDB, log); err != nil {
 		return fmt.Errorf("storage: reconcile historical migration identities: %w", err)
 	}
 	// The reconciliation may have moved a ledger row to its canonical
-	// version, so reload before validating gaps and out-of-scope entries.
-	if applied, err = loadAppliedMigrations(db); err != nil {
+	// version, so load the ledger after it before validating gaps and
+	// out-of-scope entries.
+	applied, err := loadAppliedMigrations(db)
+	if err != nil {
 		return fmt.Errorf("storage: reload applied migrations after reconciliation: %w", err)
 	}
 	if err := validateAppliedMigrationSet(db, applied, migrations, targetDB); err != nil {
@@ -351,7 +352,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 								"unexpected modify of 109 surfaces as a hard error "+
 								"instead of silently rewriting the ledger. To "+
 								"honour the legitimate scope-aware modification "+
-								"add the marker above the existing content and re-run.",
+								"add the marker above the existing content and re-run",
 							m.version, m.filename, shimMarker,
 						)
 					}

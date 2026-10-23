@@ -64,7 +64,7 @@ func (s *SoundEffectSource) ListSoundEffects(ctx context.Context) ([]adminmedia.
 	if err != nil {
 		return nil, fmt.Errorf("postgres sound-effect source: list: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make([]adminmedia.SoundEffectMetadata, 0, 64)
 	for rows.Next() {

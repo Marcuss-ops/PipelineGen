@@ -45,7 +45,7 @@ import (
 // scripts/ci-architectural-checks.sh bans them in
 // internal/application + internal/api paths.
 func (r *ClipsRepository) Upsert(ctx context.Context, m *asset.Asset) error {
-	return r.AssetStoreSQLite.Save(ctx, &asset.Details{Asset: m})
+	return r.Save(ctx, &asset.Details{Asset: m})
 }
 
 func (r *ClipsRepository) Get(ctx context.Context, id string) (*asset.Asset, error) {

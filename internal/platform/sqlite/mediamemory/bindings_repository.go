@@ -79,7 +79,7 @@ func (r *bindingsRepository) UpsertBindingTx(ctx context.Context, tx *sql.Tx, b 
 }
 
 func (r *bindingsRepository) upsertWithExec(ctx context.Context, exec queryExecer, b mediamemory.MediaBinding) (mediamemory.MediaBinding, error) {
-	if !media.IsKnownSlotKind(b.SlotKind) {
+	if !b.SlotKind.IsValid() {
 		return mediamemory.MediaBinding{}, fmt.Errorf(
 			"mediamemory: binding slot_kind=%q: %w",
 			string(b.SlotKind), mediamemory.ErrInvalidSlotKind,
@@ -147,7 +147,7 @@ func (r *bindingsRepository) FindByID(ctx context.Context, id string) (mediamemo
 // returned BEFORE the SQL round-trip (godlike/07).
 func (r *bindingsRepository) ListApprovedByConcept(ctx context.Context, conceptID string, slotKinds []media.SlotKind, limit int) ([]mediamemory.MediaBinding, error) {
 	for _, sk := range slotKinds {
-		if !media.IsKnownSlotKind(sk) {
+		if !sk.IsValid() {
 			return nil, fmt.Errorf(
 				"mediamemory: list approved slot_kind=%q: %w",
 				string(sk), mediamemory.ErrInvalidSlotKind,
@@ -175,7 +175,7 @@ func (r *bindingsRepository) ListApprovedByConcept(ctx context.Context, conceptI
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: list approved bindings (concept=%q): %w", conceptID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]mediamemory.MediaBinding, 0, 8)
 	for rows.Next() {
 		b, err := scanBindingRow(rows)
@@ -214,7 +214,7 @@ func (r *bindingsRepository) ListApprovedByConcept(ctx context.Context, conceptI
 // empty map, NOT nil.
 func (r *bindingsRepository) ListApprovedByConcepts(ctx context.Context, conceptIDs []string, slotKinds []media.SlotKind, limit int) (map[string][]mediamemory.MediaBinding, error) {
 	for _, sk := range slotKinds {
-		if !media.IsKnownSlotKind(sk) {
+		if !sk.IsValid() {
 			return nil, fmt.Errorf(
 				"mediamemory: list approved (batch) slot_kind=%q: %w",
 				string(sk), mediamemory.ErrInvalidSlotKind,
@@ -257,7 +257,7 @@ func (r *bindingsRepository) ListApprovedByConcepts(ctx context.Context, concept
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: list approved bindings batched (n=%d): %w", len(conceptIDs), err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make(map[string][]mediamemory.MediaBinding, len(conceptIDs))
 	for rows.Next() {
 		b, err := scanBindingRow(rows)
@@ -281,7 +281,7 @@ func (r *bindingsRepository) ListByAsset(ctx context.Context, assetID string) ([
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: list by asset %q: %w", assetID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]mediamemory.MediaBinding, 0, 4)
 	for rows.Next() {
 		b, err := scanBindingRow(rows)
@@ -310,7 +310,7 @@ func (r *bindingsRepository) ListByConcept(ctx context.Context, conceptID string
 	if err != nil {
 		return nil, fmt.Errorf("mediamemory: list by concept %q: %w", conceptID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]mediamemory.MediaBinding, 0, 8)
 	for rows.Next() {
 		b, err := scanBindingRow(rows)
@@ -375,7 +375,7 @@ func scanBindingRow(s rowScanner) (mediamemory.MediaBinding, error) {
 		return mediamemory.MediaBinding{}, err
 	}
 	b.SlotKind = media.SlotKind(slotKind)
-	if !media.IsKnownSlotKind(b.SlotKind) {
+	if !b.SlotKind.IsValid() {
 		return mediamemory.MediaBinding{}, fmt.Errorf(
 			"mediamemory: binding %q has unknown slot_kind %q",
 			b.ID, slotKind,

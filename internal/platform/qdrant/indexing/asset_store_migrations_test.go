@@ -30,7 +30,7 @@ func TestSQLiteAssetStore_FetchAssetAfterMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSQLiteDB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err = db.Exec(`
 		INSERT INTO media_assets (
@@ -126,7 +126,7 @@ func TestSQLiteAssetStore_ReindexableIDsSkipEmptyEmbeddings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSQLiteDB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	seed := func(id, embeddingJSON string) {
 		t.Helper()

@@ -148,7 +148,7 @@ func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trac
 	if err != nil {
 		return nil, fmt.Errorf("findCuesForTrackID: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var cues []detail.TimedCue // nil when no rows (matches domain port contract)
 	for rows.Next() {
@@ -242,7 +242,7 @@ func (r *TextTrackRepositorySQLite) ListReadyLanguages(ctx context.Context, asse
 	if err != nil {
 		return nil, fmt.Errorf("text_track_repository.ListReadyLanguages: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	languages := make([]string, 0)
 	for rows.Next() {
@@ -282,7 +282,7 @@ func (r *TextTrackRepositorySQLite) ListByAsset(ctx context.Context, assetID str
 	if err != nil {
 		return nil, fmt.Errorf("text_track_repository.ListByAsset: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	tracks := make([]detail.TextTrack, 0)
 	for rows.Next() {

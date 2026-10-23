@@ -153,7 +153,7 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	if err != nil {
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: request: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 		return capgeocoding.Result{}, fmt.Errorf("nominatim: search returned HTTP %d", response.StatusCode)
@@ -298,8 +298,8 @@ func selectCandidate(query string, ctx capgeocoding.Context, hits []searchHit) (
 		// city-level result may decide. Two equally specific namesakes with no
 		// context are refused.
 		if margin < ambiguityMargin &&
-			!(top.ctxDecided && !scoredHits[1].ctxDecided) &&
-			!(top.cityLevel && !scoredHits[1].cityLevel) {
+			(!top.ctxDecided || scoredHits[1].ctxDecided) &&
+			(!top.cityLevel || scoredHits[1].cityLevel) {
 			return searchHit{}, 0, "", false
 		}
 	}
@@ -432,7 +432,7 @@ func readCached(path string) (capgeocoding.Result, bool, bool, error) {
 	if err := json.Unmarshal(data, &entry); err != nil {
 		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: decode cache %q: %w", path, err)
 	}
-	if err := entry.Result.Validate(); err != nil {
+	if err := entry.Validate(); err != nil {
 		return capgeocoding.Result{}, false, false, fmt.Errorf("nominatim: invalid cached result: %w", err)
 	}
 	return entry.Result, entry.ScopeClassified, true, nil
@@ -463,7 +463,7 @@ func writeCached(path string, result capgeocoding.Result, ctx capgeocoding.Conte
 		return fmt.Errorf("nominatim: create cache temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("nominatim: write cache: %w", err)

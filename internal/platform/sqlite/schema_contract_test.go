@@ -69,7 +69,7 @@ func TestMigrations_SchemaContract_AllTables(t *testing.T) {
 
 			db, err := sql.Open("sqlite3", dbPath+"?_mode=ro")
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 
 			// For each expected table, verify the contract.
 			names := make([]string, 0, len(expected))
@@ -139,7 +139,7 @@ func TestMigrations_SchemaContract_JobsPlane(t *testing.T) {
 
 	db, err := sql.Open("sqlite3", dbPath+"?_mode=ro")
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	names := make([]string, 0, len(expected))
 	for k := range expected {
@@ -615,7 +615,7 @@ func readPRAGMATableInfo(t *testing.T, db *sql.DB, tbl string) ([]liveColumn, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []liveColumn
 	for rows.Next() {
 		var lc liveColumn

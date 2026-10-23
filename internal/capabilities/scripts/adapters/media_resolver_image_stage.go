@@ -306,6 +306,11 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 							if err := persistEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, cachedCandidates); err != nil {
 								return queryResult{}, err
 							}
+							filteredCandidates, filterErr := excludeUnavailableEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, cachedCandidates)
+							if filterErr != nil {
+								return queryResult{}, filterErr
+							}
+							cachedCandidates = filteredCandidates
 						}
 						return queryResult{candidates: append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...), query: query, fromCache: true}, nil
 					}
@@ -323,6 +328,10 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 					if catalogEligible {
 						persisted = filterPersonEntityImageCandidates(catalogIdentity, persisted)
 						if err := persistEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, persisted); err != nil {
+							return queryResult{}, err
+						}
+						persisted, err = excludeUnavailableEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, persisted)
+						if err != nil {
 							return queryResult{}, err
 						}
 					}
@@ -389,6 +398,11 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 					if catalogErr := persistEntityImageCatalogCandidatesMeasured(ctx, p.catalog, catalogIdentity, results, p.metrics); catalogErr != nil {
 						return queryResult{}, catalogErr
 					}
+					filteredResults, filterErr := excludeUnavailableEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, results)
+					if filterErr != nil {
+						return queryResult{}, filterErr
+					}
+					results = filteredResults
 				}
 				results = AppendProviderCandidatesUnique(catalogFallback, results)
 				// Empty results are durable-cached in L2 (TTL 48h) so a warm

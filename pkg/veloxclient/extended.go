@@ -88,7 +88,7 @@ func (c *Client) PostToWriter(ctx context.Context, path string, payload any, w i
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrServer, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		switch resp.StatusCode {

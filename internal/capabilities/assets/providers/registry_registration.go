@@ -29,7 +29,7 @@ func (r *Registry) Register(p Provider) error {
 	// calling a method on it would panic. The Kind==Ptr guard
 	// short-circuits non-pointer kinds where IsNil would itself
 	// panic.
-	if rv := reflect.ValueOf(p); rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv := reflect.ValueOf(p); rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return ErrNilProvider
 	}
 	name := p.Name()

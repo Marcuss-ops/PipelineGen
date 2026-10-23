@@ -60,7 +60,7 @@ func (ih *IngestHandler) UploadVideoClip(c *gin.Context) {
 		apiutil.BadRequest(c, "file field is required: "+err.Error())
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// 3. Parse metadata from form fields
 	name := strings.TrimSpace(c.PostForm("name"))

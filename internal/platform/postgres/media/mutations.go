@@ -321,7 +321,7 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Con
 	if err != nil {
 		return fmt.Errorf("asset committer: begin Drive delivery tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	preserveIdentity := strings.HasPrefix(mutation.Status, "delivery_failed:") && mutation.DriveFileID == "" && mutation.DriveLink == "" && mutation.DownloadLink == ""
 	var result sql.Result
 	if preserveIdentity {
@@ -368,7 +368,7 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByAssetID(ctx context.Contex
 	if err != nil {
 		return fmt.Errorf("asset committer: begin Drive delivery tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	preserveIdentity := strings.HasPrefix(mutation.Status, "delivery_failed:") && mutation.DriveFileID == "" && mutation.DriveLink == "" && mutation.DownloadLink == ""
 	var contentHash string
 	if preserveIdentity {

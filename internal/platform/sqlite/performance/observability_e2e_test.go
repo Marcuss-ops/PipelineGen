@@ -15,7 +15,7 @@ func TestObservabilityEndToEndPersistsAndReadsWithoutRawDuplicates(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for _, ddl := range []string{
 		`CREATE TABLE jobs (id TEXT PRIMARY KEY,type TEXT,status TEXT,worker_id TEXT,host TEXT,started_at TEXT,completed_at TEXT,duration_ms INTEGER,result_json TEXT)`,
 		`CREATE TABLE job_registry_metrics (metric_id TEXT PRIMARY KEY,job_id TEXT,metric_name TEXT,metric_value REAL,unit TEXT,created_at TEXT)`,

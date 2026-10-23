@@ -87,7 +87,7 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -140,7 +140,7 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	// ── Step 1: RunTag with the search term ──
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
@@ -235,7 +235,7 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -287,7 +287,7 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         searchTerm,
@@ -356,7 +356,7 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -400,7 +400,7 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	// Run the pipeline.
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{

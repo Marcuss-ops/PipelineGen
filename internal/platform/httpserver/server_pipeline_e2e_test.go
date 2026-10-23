@@ -502,7 +502,7 @@ func TestPipelineE2E(t *testing.T) {
 		// The handler forwarded the exact structured query downstream.
 		q := h.backend.lastQuery(t)
 		require.Equal(t, []string{"youtube"}, q.Sources)
-		require.Equal(t, search.SearchModeHybrid, q.Mode)
+		require.Equal(t, search.RetrievalModeHybrid, q.Mode)
 		require.Equal(t, search.SearchCatalog, q.EffectiveUniverse())
 		require.Equal(t, "video", q.Filters.MediaType)
 		require.Equal(t, 20, q.Limit)

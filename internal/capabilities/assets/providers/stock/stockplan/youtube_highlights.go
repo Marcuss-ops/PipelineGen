@@ -51,7 +51,7 @@ func ParseYouTubeURL(raw string) (YouTubeVideo, error) {
 		return YouTubeVideo{}, fmt.Errorf("%w: video id", ErrYouTubeURLInvalid)
 	}
 	for _, r := range id {
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_') {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != '_' {
 			return YouTubeVideo{}, fmt.Errorf("%w: video id", ErrYouTubeURLInvalid)
 		}
 	}

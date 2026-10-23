@@ -77,10 +77,10 @@ func TestCompose_TranscriptMultilingual_OriginalFirstThenLangASC(t *testing.T) {
 	if originalIdx < 0 || esIdx < 0 || itIdx < 0 {
 		t.Fatalf("multilingual transcript missing from DocumentText: %q", doc.DocumentText)
 	}
-	if !(originalIdx < esIdx && originalIdx < itIdx) {
+	if originalIdx >= esIdx || originalIdx >= itIdx {
 		t.Fatalf("original-language row must precede sequels: %q", doc.DocumentText)
 	}
-	if !(esIdx < itIdx) {
+	if esIdx >= itIdx {
 		t.Fatalf("sequels must be Lang-ASC (es before it): %q", doc.DocumentText)
 	}
 }

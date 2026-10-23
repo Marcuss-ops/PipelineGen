@@ -38,7 +38,7 @@ func HumanReport(r Report) string {
 		b.WriteByte('\n')
 	}
 	b.WriteByte('\n')
-	b.WriteString(fmt.Sprintf("CERTIFIED=%v\n", r.Certified))
+	fmt.Fprintf(&b, "CERTIFIED=%v\n", r.Certified)
 	var violations []Violation
 	for _, c := range r.Checks {
 		violations = append(violations, c.Violations...)
@@ -46,7 +46,7 @@ func HumanReport(r Report) string {
 	if len(violations) > 0 {
 		b.WriteString("\nVIOLATIONS\n")
 		for _, v := range violations {
-			b.WriteString(fmt.Sprintf("  - [%s] %s: %s\n", v.Rule, v.SegmentID, v.Detail))
+			fmt.Fprintf(&b, "  - [%s] %s: %s\n", v.Rule, v.SegmentID, v.Detail)
 		}
 	}
 	return b.String()

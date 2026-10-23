@@ -17,9 +17,10 @@ func TestSearchDDGWideUsesVQDAndImagesEndpoint(t *testing.T) {
 	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		requests = append(requests, req.Clone(req.Context()))
 		body := ""
-		if req.URL.Path == "/" {
+		switch req.URL.Path {
+		case "/":
 			body = `<html><script>vqd="12345-678"</script></html>`
-		} else if req.URL.Path == "/i.js" {
+		case "/i.js":
 			payload := struct {
 				Results []map[string]any `json:"results"`
 			}{Results: []map[string]any{{
@@ -32,7 +33,7 @@ func TestSearchDDGWideUsesVQDAndImagesEndpoint(t *testing.T) {
 				t.Fatalf("marshal DDG fixture: %v", err)
 			}
 			body = string(encoded)
-		} else {
+		default:
 			t.Fatalf("unexpected DDG path %q", req.URL.Path)
 		}
 		return &http.Response{

@@ -174,13 +174,13 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 		for rows.Next() {
 			var line string
 			if err := rows.Scan(&line); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				t.Fatalf("%s: scan plan line: %v", tc.label, err)
 			}
 			plan.WriteString(line)
 			plan.WriteString("\n")
 		}
-		rows.Close()
+		_ = rows.Close()
 		if err := rows.Err(); err != nil {
 			t.Fatalf("%s: iterate plan: %v", tc.label, err)
 		}

@@ -10,7 +10,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	voservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -69,7 +68,7 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter images.Ima
 
 var _ images.ImageListRepository = (*imageListRepoAdapter)(nil)
 
-func buildImageSearchResolver(imageSvc *imgservice.Service, imageRepo *imagesrepo.ImagesRepository, log *zap.Logger) (images.ImageSearchResolver, error) {
+func buildImageSearchResolver(imageSvc *images.Service, imageRepo *imagesrepo.ImagesRepository, log *zap.Logger) (images.ImageSearchResolver, error) {
 	if imageSvc == nil || imageSvc.RetrievalRegistry() == nil {
 		return nil, fmt.Errorf("images.NewImageSearchResolver: retrieval backend is nil — image service must be constructed first")
 	}

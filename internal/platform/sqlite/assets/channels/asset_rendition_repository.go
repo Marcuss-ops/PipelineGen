@@ -119,7 +119,7 @@ func (r *AssetRenditionRepository) scanRows(ctx context.Context, query string, v
 	if err != nil {
 		return nil, fmt.Errorf("asset_rendition_repository.scanRows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*detail.AssetRendition
 	for rows.Next() {

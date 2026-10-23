@@ -195,7 +195,7 @@ func TestGenerationGate_AcquireCancelledWhileWaiting(t *testing.T) {
 	// The gate must remain held by the original holder; releasing it must not
 	// panic or leak a pending waiter.
 	gate.Release()
-	gate.AcquireHigh(context.Background())
+	require.NoError(t, gate.AcquireHigh(context.Background()))
 	gate.Release()
 }
 

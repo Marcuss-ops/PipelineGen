@@ -150,6 +150,12 @@ func (s *RecertificationService) RunOnce(ctx context.Context) (RecertificationRe
 		if err == nil {
 			result.Success = true
 			result.FailureCount = 0
+			if candidate.Status == CandidateStatusBroken {
+				// A URL probe cannot certify an existing Drive/ObjectStore hash.
+				// Exhaust URL-only recertification for this broken materialization;
+				// only a successful new materialization can reset the state.
+				result.FailureCount = s.config.MaxAttempts
+			}
 		} else {
 			result.FailureCount = candidate.FailureCount + 1
 			result.Error = truncateValidationError(err)
@@ -249,7 +255,7 @@ func (v *HTTPImageCandidateValidator) Validate(ctx context.Context, sourceURL st
 	if err != nil {
 		return fmt.Errorf("download: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("download returned HTTP %d", resp.StatusCode)
 	}

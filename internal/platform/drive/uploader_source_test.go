@@ -47,7 +47,7 @@ func TestHTTPObjectSource_RangeReadsAndSequentialRead(t *testing.T) {
 	defer server.Close()
 
 	src := &httpObjectSource{ctx: context.Background(), url: server.URL, size: int64(len(payload))}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	buf := make([]byte, 5)
 	n, err := src.ReadAt(buf, 10)
@@ -81,7 +81,7 @@ func TestHTTPObjectSource_NonRangeServerFallback(t *testing.T) {
 	defer server.Close()
 
 	src := &httpObjectSource{ctx: context.Background(), url: server.URL, size: int64(len(payload))}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	buf := make([]byte, 5)
 	n, err := src.ReadAt(buf, 10)
@@ -109,7 +109,7 @@ func TestOpenUploadSource_FailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("openUploadSource(remote): %v", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	if size != 4096 {
 		t.Fatalf("remote source size = %d, want 4096", size)
 	}

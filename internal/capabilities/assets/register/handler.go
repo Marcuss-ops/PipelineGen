@@ -84,7 +84,7 @@ func NewHandler(svc *sourcing.Service, log *zap.Logger, idempotencyMiddleware gi
 	// has a consistent surface to probe. The error message names the
 	// "driveChecker not wired" condition so operators reading the 503
 	// response body understand the misconfiguration.
-	var dc func() error = func() error {
+	var dc = func() error {
 		return fmt.Errorf("driveChecker not wired (composition root must thread Dependencies.DriveChecker from build_bundles_drive.go::BuildDriveBundle; nil-fallback blocks folder_id traffic per PR-DRIVE-AVAILABILITY-GATE fail-closed contract)")
 	}
 	if driveChecker != nil {

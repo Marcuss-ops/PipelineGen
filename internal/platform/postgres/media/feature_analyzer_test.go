@@ -91,7 +91,7 @@ func writeSolidPNG(path string, c color.RGBA) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return png.Encode(f, img)
 }
 
@@ -208,7 +208,7 @@ func TestFeatureAnalyzer_ComputesAndStoresFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
 	box := pgmedia.NewOutboxRepository(db)
@@ -282,7 +282,7 @@ func TestFeatureAnalyzer_RunsWithoutAnyFaceDimension(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
 	box := pgmedia.NewOutboxRepository(db)

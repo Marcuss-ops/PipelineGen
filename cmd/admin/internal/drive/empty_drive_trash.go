@@ -49,7 +49,7 @@ func RunEmptyDriveTrash(args []string) error {
 	defer rootCleanup()
 
 	if root == nil || root.Drive == nil || root.Drive.Lifecycle == nil {
-		return fmt.Errorf("Drive lifecycle is required")
+		return fmt.Errorf("drive lifecycle is required")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)

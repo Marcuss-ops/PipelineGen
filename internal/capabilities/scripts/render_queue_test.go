@@ -312,7 +312,7 @@ func captureMapRenderPayload(t *testing.T, plan capoverlay.OverlayPlan) map[stri
 	if err != nil {
 		t.Fatalf("renderDynamicMapVideo: %v", err)
 	}
-	defer os.RemoveAll(filepath.Dir(path))
+	defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 	raw, err := os.ReadFile(path + ".input.json")
 	if err != nil {
 		t.Fatalf("read captured map payload: %v", err)
@@ -776,10 +776,11 @@ func TestDeterministicMapStyleIsStableInRangeAndMatchesCatalog(t *testing.T) {
 	for _, channel := range []string{"map_camera", "map_label", "map_basemap"} {
 		options := mapCameraAnimations
 		wantSingle := ""
-		if channel == "map_label" {
+		switch channel {
+		case "map_label":
 			options = []string{"none"}
 			wantSingle = "none"
-		} else if channel == "map_basemap" {
+		case "map_basemap":
 			options = mapBasemapStyles()
 			wantSingle = capoverlay.AnimationRegistryMapTypeDefault()
 		}
@@ -884,7 +885,7 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 			if err != nil {
 				t.Fatalf("renderDynamicMapVideo: %v", err)
 			}
-			defer os.RemoveAll(filepath.Dir(path))
+			defer func() { _ = os.RemoveAll(filepath.Dir(path)) }()
 			if data, err := os.ReadFile(path); err != nil || string(data) != "fake-mp4" {
 				t.Fatalf("rendered output = %q, %v", data, err)
 			}

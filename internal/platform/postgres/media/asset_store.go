@@ -121,7 +121,7 @@ func (s *PostgresAssetStore) List(ctx context.Context, filter asset.Filter) ([]*
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: list assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.Summary
 	for rows.Next() {
@@ -219,7 +219,7 @@ func (r *MediaClipAssetReader) List(ctx context.Context, filter asset.Filter) ([
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: list clip assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]*asset.Asset, 0)
 	for rows.Next() {

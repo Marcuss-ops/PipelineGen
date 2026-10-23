@@ -47,7 +47,7 @@ func applyMigration(db queryable, log *zap.Logger, version int, filename, checks
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	statements := splitSQLStatements(string(content))
 	for i, stmt := range statements {

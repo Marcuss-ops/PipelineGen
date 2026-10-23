@@ -251,11 +251,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("admin token is required when auth is enabled")
 	}
 
-	// Security: warn against real Drive folder IDs in production config (if committed)
-	if c.Drive.MediaRootFolder != "" && strings.HasPrefix(c.Drive.MediaRootFolder, "1") {
-		// Heuristic: real Google Drive IDs are 33 chars, but allow empty for dynamic resolution
-	}
-
 	// Placeholder rejection — Operational Readiness PR June 2026.
 	// Hard reject in CI/staging/production. Dev escape EXCLUSIVELY via
 	// VELOX_ALLOW_PLACEHOLDERS=true (governance contract: this flag is

@@ -81,7 +81,7 @@ func (r *ImagesRepository) ListImages(ctx context.Context, filter detail.Reposit
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]detail.RepositoryImageRow, 0, limit)
 	for rows.Next() {

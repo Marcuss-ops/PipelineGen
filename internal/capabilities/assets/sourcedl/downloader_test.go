@@ -168,7 +168,7 @@ func TestDownloadCacheHitSkipsNetwork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	got, _ := io.ReadAll(rc)
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("cache hit returned wrong bytes: %q", got)
@@ -192,7 +192,7 @@ func TestDownloadMissStreamsThroughCASAndRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	got, _ := io.ReadAll(rc)
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("downloaded bytes mismatch: %q", got)
@@ -234,7 +234,7 @@ func TestDownloadDuplicateBytesAcrossURLsDedup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second download: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	if content.putCalls != 2 {
 		t.Fatalf("want 2 put calls, got %d", content.putCalls)
 	}
@@ -313,7 +313,7 @@ func TestDownloadLookupErrorFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("identity lookup failure must NOT block the download: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	got, _ := io.ReadAll(rc)
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("fallback bytes mismatch: %q", got)
@@ -338,7 +338,7 @@ func TestDownloadNilIdentitiesSkipsLookupAndRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download with nil identities: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	got, _ := io.ReadAll(rc)
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("bytes mismatch: %q", got)
@@ -372,7 +372,7 @@ func TestDownloadRecordErrorNonFatal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record failure must NOT fail the download (bytes are stored): %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	got, _ := io.ReadAll(rc)
 	if !bytes.Equal(got, payload) {
 		t.Fatalf("bytes mismatch: %q", got)

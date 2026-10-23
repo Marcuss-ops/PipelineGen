@@ -14,7 +14,7 @@ import (
 func RenderText(r AggregatePerformanceReport) string {
 	var b strings.Builder
 	w := tabwriter.NewWriter(&b, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "phase\tmin\tmedian\tavg\tp95\tmax\t% wall\tjobs")
+	_, _ = fmt.Fprintln(w, "phase\tmin\tmedian\tavg\tp95\tmax\t% wall\tjobs")
 
 	rows := make([]PhaseStats, 0, len(r.Phases)+1)
 	rows = append(rows, r.Wall)
@@ -25,14 +25,14 @@ func RenderText(r AggregatePerformanceReport) string {
 			label = "wall"
 		}
 		if s.MeasuredJobs == 0 {
-			fmt.Fprintf(w, "%s\t-\t-\t-\t-\t-\t-\t0\n", label)
+			_, _ = fmt.Fprintf(w, "%s\t-\t-\t-\t-\t-\t-\t0\n", label)
 			continue
 		}
 		pct := s.PctWall
 		if label == "wall" {
 			pct = 100
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\n",
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\n",
 			label,
 			formatMS(float64(s.MinMS)),
 			formatMS(float64(s.MedianMS)),

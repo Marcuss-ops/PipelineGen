@@ -79,8 +79,8 @@ func TestStockComposeChunks_RendersWhenEffectsOrTransitionsAreRequired(t *testin
 	}
 
 	// The other non-canonical combination must also retain composition.
-	runner.fakeStepRunner.runInput = &RunInput{NoEffects: true, NoTransitions: false}
-	runner.fakeStepRunner.state.ComposedPaths = nil
+	runner.runInput = &RunInput{NoEffects: true, NoTransitions: false}
+	runner.state.ComposedPaths = nil
 	renderer.calls = 0
 	if err := (StockComposeChunksStep{}).Run(context.Background(), runner); err != nil {
 		t.Fatalf("StockComposeChunksStep.Run with transitions returned unexpected error: %v", err)

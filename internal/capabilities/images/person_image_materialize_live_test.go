@@ -140,8 +140,11 @@ func TestPersonImageMaterializeLive_9_10(t *testing.T) {
 		}
 		var sr searchAPIResponse
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		resp.Body.Close()
-		json.Unmarshal(body, &sr)
+		_ = resp.Body.Close()
+		if err := json.Unmarshal(body, &sr); err != nil {
+			t.Logf("  %-20s  FAIL: decode response: %v", person, err)
+			continue
+		}
 		searchMs := time.Since(t0).Milliseconds()
 
 		if len(sr.Results) > 0 {
@@ -189,7 +192,7 @@ func materializeOnePerson(ctx context.Context, client *http.Client, baseURL, tok
 
 	var sr searchAPIResponse
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err := json.Unmarshal(body, &sr); err != nil || len(sr.Results) == 0 {
 		result.Error = fmt.Sprintf("search empty (status=%d)", resp.StatusCode)
 		result.TotalMs = time.Since(t0).Milliseconds()
@@ -214,7 +217,7 @@ func materializeOnePerson(ctx context.Context, client *http.Client, baseURL, tok
 		return result
 	}
 	imgData, _ := io.ReadAll(io.LimitReader(imgResp.Body, 20<<20+1))
-	imgResp.Body.Close()
+	_ = imgResp.Body.Close()
 	result.DownloadMs = time.Since(dlStart).Milliseconds()
 	result.Bytes = len(imgData)
 

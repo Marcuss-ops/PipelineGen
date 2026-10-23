@@ -265,11 +265,8 @@ func (p *ScenePlanner) Plan(
 		return ScenePlan{Source: ScenePlanSourceNoop}
 	}
 
-	// Case 1 (no-evidence, no-clips-source branch): bail out.
-	if plan.ClipEvidence == nil && len(draft.Scenes) == 0 {
-		// Prose-only path: continue below to text/synthesizer path.
-	}
-
+	// Case 1 (no-evidence, no-clips-source branch): the prose-only path
+	// continues below to the text/synthesizer path.
 	// Clip-primary sources share one structural contract: accepted clips
 	// become one canonical scene each. This also applies to source.search
 	// after Qdrant selection; the renderer must not receive one opaque prose

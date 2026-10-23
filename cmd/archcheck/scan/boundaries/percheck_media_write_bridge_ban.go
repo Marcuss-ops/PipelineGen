@@ -387,7 +387,7 @@ func mediaWriteBridgeFindViolations(source []byte, fileSet *token.FileSet, file 
 func ScanMediaWriteBridgeBan(root string, _ *policy.Policy, r *report.Report) {
 	for _, scanRoot := range mediaWriteBridgeScanRoots {
 		absRoot := filepath.Join(root, scanRoot)
-		filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+		if err := filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -402,7 +402,9 @@ func ScanMediaWriteBridgeBan(root string, _ *policy.Policy, r *report.Report) {
 			}
 			inspectMediaWriteBridgeFile(root, path, r)
 			return nil
-		})
+		}); err != nil {
+			r.Warnings = append(r.Warnings, "media-write-bridge scan "+absRoot+": "+err.Error())
+		}
 	}
 }
 

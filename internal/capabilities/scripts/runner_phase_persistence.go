@@ -29,7 +29,7 @@ func (r *Runner) persistScript(ctx context.Context, runID string, req GenerateRe
 	}
 	if r.scriptPersistence == nil {
 		cause := fmt.Errorf("script persistence requested but canonical persistence port is not configured")
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 		return false
 	}
@@ -39,20 +39,20 @@ func (r *Runner) persistScript(ctx context.Context, runID string, req GenerateRe
 	})
 	if err != nil {
 		cause := fmt.Errorf("persist script: %w", err)
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 		return false
 	}
 	if scriptID <= 0 {
 		cause := fmt.Errorf("persist script returned invalid script_id=%d", scriptID)
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, cause)
 		return false
 	}
 	result.ScriptID = scriptID
 	r.checkpoint(ctx, runID, result)
 	if err := r.completeExecutionStep(ctx, exec, step); err != nil {
-		r.failExecutionStep(ctx, exec, step, err)
+		r.failExecutionStepBestEffort(ctx, exec, step, err)
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, err)
 		return false
 	}

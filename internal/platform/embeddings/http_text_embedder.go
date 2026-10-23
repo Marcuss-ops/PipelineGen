@@ -114,7 +114,7 @@ func (e *HTTPTextEmbedder) embedWithType(ctx context.Context, text, kind string)
 	if err != nil {
 		return coreasset.EmbeddingResult{}, fmt.Errorf("embedder request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
@@ -217,7 +217,7 @@ func (e *HTTPTextEmbedder) embedBatch(ctx context.Context, texts []string, kind 
 	if err != nil {
 		return nil, fmt.Errorf("batch embedder request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read batch embedder response: %w", err)

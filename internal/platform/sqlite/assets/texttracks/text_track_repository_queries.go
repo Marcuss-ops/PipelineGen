@@ -70,7 +70,7 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []de
 	if err != nil {
 		return fmt.Errorf("text_track_repository.UpsertBatch: prepare: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, t := range tracks {
 		if t.AssetID == "" {

@@ -152,13 +152,6 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 	// raw vector is reserved for diagnostic / bulk-from-csv so the
 	// live path never depends on the legacy fallback.
 	model := req.SparseModel
-	// inference is the canonical path. When the orchestrator supplies
-	// SparseText we project it through the inference model on the
-	// server (no client-side tokenizer); when SparseText is empty
-	// we fall through to the legacy raw-vector path so the diagnostic
-	// and bulk-from-csv callers can still send a pre-computed sparse
-	// vector. The model defaults to schema.DefaultSparseModel when empty.
-	model = req.SparseModel
 	if model == "" {
 		model = schema.DefaultSparseModel
 	}
@@ -380,7 +373,7 @@ func (c *Client) executeQuery(ctx context.Context, collection string, body map[s
 		filterJSON, _ := json.Marshal(body["filter"])
 		return nil, fmt.Errorf("query %q: %w (filter=%s)", collection, err, filterJSON)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	results, err := c.decodeSearchResults(resp)
 	if err != nil {
 		filterJSON, _ := json.Marshal(body["filter"])

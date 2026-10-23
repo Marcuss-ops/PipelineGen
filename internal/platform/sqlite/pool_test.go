@@ -63,7 +63,7 @@ func TestNewDualPool_WALModeApplied(t *testing.T) {
 
 	pool, err := NewDualPool(ctx, tmpFile, 2)
 	require.NoError(t, err)
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 	require.NotNil(t, pool.Writer)
 	require.NotNil(t, pool.Reader)
 
@@ -88,7 +88,7 @@ func TestNewDualPool_MaxOpenConns_PerPool(t *testing.T) {
 	const numReaders = 3
 	pool, err := NewDualPool(ctx, tmpFile, numReaders)
 	require.NoError(t, err)
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	assert.Equal(t, 1, pool.Writer.Stats().MaxOpenConnections,
 		"writer pool MaxOpenConnections MUST stay at 1 (canonical single-writer)")
@@ -101,11 +101,11 @@ func TestNewDualPool_MaxOpenConns_PerPool(t *testing.T) {
 func TestAttachDualPoolIsNotUsedForProductionReaderIsolation(t *testing.T) {
 	primary, err := NewSQLiteDB(t.TempDir(), "media.db.sqlite", zap.NewNop())
 	require.NoError(t, err)
-	defer primary.Close()
+	defer func() { _ = primary.Close() }()
 
 	pool, err := NewDualPool(context.Background(), primary.Path(), 2)
 	require.NoError(t, err)
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	assert.NotSame(t, primary.DB, pool.Reader,
 		"production dual pool reader must not alias DatabaseSet.Primary")
@@ -219,7 +219,7 @@ func TestInstrumentedTx_CommitObservesOkOutcome(t *testing.T) {
 
 	pool, err := NewDualPool(ctx, tmpFile, 2)
 	require.NoError(t, err)
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	preOK := collectHistogramSampleCount(observability.TxDurationSeconds.WithLabelValues("writer", "ok"))
 
@@ -245,7 +245,7 @@ func TestInstrumentedTx_RollbackObservesErrOutcome(t *testing.T) {
 
 	pool, err := NewDualPool(ctx, tmpFile, 2)
 	require.NoError(t, err)
-	defer pool.Close()
+	defer func() { _ = pool.Close() }()
 
 	preErr := collectHistogramSampleCount(observability.TxDurationSeconds.WithLabelValues("writer", "err"))
 

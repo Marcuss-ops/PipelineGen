@@ -136,7 +136,7 @@ func (l *Ledger) ListProjections(ctx context.Context) ([]capregistry.Projection,
 	if err != nil {
 		return nil, fmt.Errorf("list projections: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var projections []capregistry.Projection
 	for rows.Next() {
@@ -365,7 +365,7 @@ func (l *Ledger) SourcesForAsset(ctx context.Context, assetID string) ([]capregi
 	if err != nil {
 		return nil, fmt.Errorf("list asset sources for %q: %w", assetID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var sources []capregistry.AssetSource
 	for rows.Next() {
 		var (

@@ -217,7 +217,7 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body []byte,
 	if err != nil {
 		return nil, true, fmt.Errorf("%w: %v", ErrServer, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, true, fmt.Errorf("%w: read body: %v", ErrServer, err)

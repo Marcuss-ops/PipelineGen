@@ -296,7 +296,7 @@ func (a *Adapter) checkFetchWired() error {
 		return fmt.Errorf("youtube fetch: fetcher not wired")
 	}
 	rv := reflect.ValueOf(a.fetcher)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return fmt.Errorf("youtube fetch: fetcher not wired")
 	}
 	return nil
@@ -312,7 +312,7 @@ func (a *Adapter) checkWired() error {
 		return ErrSourceNotWired
 	}
 	rv := reflect.ValueOf(a.src)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return ErrSourceNotWired
 	}
 	return nil

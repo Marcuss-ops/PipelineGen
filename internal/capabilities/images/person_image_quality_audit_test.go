@@ -237,7 +237,7 @@ func inspectCatalogTables(t *testing.T, ctx context.Context, client *http.Client
 		entityCount++
 		t.Logf("  %-30s  name=%q  refresh=%s  last_refresh=%q", id, name, status, lastRefresh)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	t.Logf("")
 	t.Logf("── entity_image_catalog_candidates (Michael Jordan) ──")
@@ -265,7 +265,7 @@ func inspectCatalogTables(t *testing.T, ctx context.Context, client *http.Client
 		}
 		cands = append(cands, c)
 	}
-	cRows.Close()
+	_ = cRows.Close()
 
 	for _, c := range cands {
 		urlTrunc := c.url

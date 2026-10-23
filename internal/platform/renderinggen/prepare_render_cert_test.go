@@ -258,7 +258,7 @@ func pollBroker(t *testing.T, queueURL, jobID string, timeout time.Duration) (st
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil && resp.StatusCode == 200 {
 			body, _ := readAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			_ = json.Unmarshal(body, payload)
 			var raw map[string]any
 			if json.Unmarshal(body, &raw) == nil {
@@ -278,7 +278,7 @@ func pollBroker(t *testing.T, queueURL, jobID string, timeout time.Duration) (st
 			return payload.State, payload, rawArtifact
 		}
 		if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		if time.Now().After(deadline) {
 			return "", nil, nil

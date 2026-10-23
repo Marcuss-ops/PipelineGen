@@ -21,6 +21,7 @@ func projectSemanticBullets(source string, bullets []semanticEngineCandidate) []
 		}
 		out = append(out, scriptgen.BulletCandidate{
 			Text: bullet.Text, SentenceIndex: bullet.SentenceIndex, Start: bullet.StartByte, End: bullet.EndByte,
+			Score: bullet.Score,
 		})
 	}
 	return out
@@ -56,6 +57,9 @@ func projectSemanticEntityFacts(source string, facts []semanticEngineEntityFact)
 		if fact.Status != "asserted" && fact.Status != "negated" && fact.Status != "uncertain" {
 			return nil, fmt.Errorf("entity fact %q has invalid status %q", fact.ID, fact.Status)
 		}
+		if fact.Importance < 0 || fact.Importance > 1 {
+			return nil, fmt.Errorf("entity fact %q has importance %.3f outside [0,1]", fact.ID, fact.Importance)
+		}
 		entry := scriptgen.SemanticEntityFact{
 			ID: fact.ID, SubjectEntityID: fact.SubjectEntityID, Predicate: fact.Predicate,
 			Value: fact.Value, ValueType: fact.ValueType, Status: fact.Status,
@@ -74,6 +78,11 @@ func projectSemanticEntityFacts(source string, facts []semanticEngineEntityFact)
 		if fact.Operator != nil {
 			entry.Operator = *fact.Operator
 		}
+		if fact.NormalizedDate != nil {
+			entry.NormalizedDate = *fact.NormalizedDate
+		}
+		entry.Importance = fact.Importance
+		entry.VisualConceptIDs = append([]string(nil), fact.VisualConceptIDs...)
 		out = append(out, entry)
 	}
 	return out, nil
@@ -253,6 +262,45 @@ func projectSemanticGroups(currentSceneID string, texts map[string]string, group
 		out = append(out, projected)
 	}
 	return out, nil
+}
+
+// projectSemanticMicroSummaries carries the fact-backed phrases across the
+// worker boundary. The paraphrased Text is preserved for provenance, but the
+// span that planning may act on is always the verbatim Evidence sentence.
+func projectSemanticMicroSummaries(source string, summaries []semanticEngineMicroSummary) ([]scriptgen.SemanticMicroSummary, error) {
+	out := make([]scriptgen.SemanticMicroSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary.ID == "" || summary.Text == "" || summary.Evidence == "" ||
+			len(summary.EvidenceFactIDs) == 0 || !validMicroSummaryKind(summary.Kind) {
+			return nil, fmt.Errorf("micro summary %q has missing id, kind, text, evidence, or fact references", summary.ID)
+		}
+		if !groundedSpan(source, summary.StartByte, summary.EndByte, summary.Evidence) {
+			return nil, fmt.Errorf("micro summary %q evidence is not grounded in source_text", summary.ID)
+		}
+		entry := scriptgen.SemanticMicroSummary{
+			ID: summary.ID, Kind: summary.Kind, Text: summary.Text,
+			EvidenceFactIDs: append([]string(nil), summary.EvidenceFactIDs...),
+			SentenceIndex:   summary.SentenceIndex, Evidence: summary.Evidence,
+			Start: summary.StartByte, End: summary.EndByte, Score: summary.Score,
+		}
+		if summary.SubjectEntityID != nil {
+			entry.SubjectEntityID = *summary.SubjectEntityID
+		}
+		if summary.NormalizedDate != nil {
+			entry.NormalizedDate = *summary.NormalizedDate
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func validMicroSummaryKind(kind string) bool {
+	switch kind {
+	case "micro_summary", "fact_comparison", "step_sequence", "timeline_summary":
+		return true
+	default:
+		return false
+	}
 }
 
 func validSemanticGroupType(kind string) bool {

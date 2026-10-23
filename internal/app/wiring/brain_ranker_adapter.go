@@ -121,7 +121,7 @@ type scoredMediaCandidate struct {
 }
 
 func toFilteredCandidate(c brain.Candidate) mediamemory.FilteredCandidate {
-	materialization := mediamemory.MaterializationCold
+	var materialization mediamemory.MaterializationStatus
 	switch c.MaterializationState {
 	case "hot":
 		materialization = mediamemory.MaterializationHot

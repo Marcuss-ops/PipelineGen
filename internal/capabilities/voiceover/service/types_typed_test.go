@@ -65,7 +65,7 @@ func TestLanguage_TypedEnvelopeContract(t *testing.T) {
 		// The canonical typed enum literal: `Language("en")` is the
 		// SOLE assignment idiom (mirrors existing call sites in
 		// service_test.go + finalizer_invariants_test.go).
-		var lang Language = Language("en")
+		var lang = Language("en")
 		if string(lang) != "en" {
 			t.Fatalf("string(Language('en')) = %q; want 'en'", string(lang))
 		}
@@ -197,7 +197,7 @@ func TestLanguage_TypedEnvelopeContract(t *testing.T) {
 
 func TestStyleGroup_TypedEnvelopeContract(t *testing.T) {
 	t.Run("typed_literal_assignment_ok", func(t *testing.T) {
-		var sg StyleGroup = StyleGroup("cinematic")
+		var sg = StyleGroup("cinematic")
 		if string(sg) != "cinematic" {
 			t.Fatalf("string(StyleGroup('cinematic')) = %q; want 'cinematic'", string(sg))
 		}
@@ -293,7 +293,7 @@ func TestStyleGroup_TypedEnvelopeContract(t *testing.T) {
 
 func TestTextHash_TypedEnvelopeContract(t *testing.T) {
 	t.Run("typed_literal_assignment_ok", func(t *testing.T) {
-		var h TextHash = TextHash("0123456789abcdef")
+		var h = TextHash("0123456789abcdef")
 		if string(h) != "0123456789abcdef" {
 			t.Fatalf("string(TextHash('0123456789abcdef')) = %q; want verbatim", string(h))
 		}

@@ -333,7 +333,7 @@ func (m *Materializer) installFromFile(dest, source, address string) (int64, err
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		return 0, err
@@ -354,7 +354,7 @@ func (m *Materializer) installFromURL(ctx context.Context, dest, origin, address
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrSourceUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return 0, fmt.Errorf("%w: HTTP %d", ErrSourceUnavailable, resp.StatusCode)
 	}
@@ -376,7 +376,7 @@ func (m *Materializer) install(dest string, r io.Reader, address string, size in
 		return 0, err
 	}
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	hasher := digest.NewSHA256()
 	written, copyErr := io.Copy(io.MultiWriter(tmp, hasher), r)

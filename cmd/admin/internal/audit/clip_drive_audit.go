@@ -274,8 +274,8 @@ func clipDriveAudit(
 			DBFolderID:   r.dbFolderID,
 			DBFolderPath: r.dbFolderPath,
 		}
-		switch {
-		case r.driveFileID == "":
+		switch r.driveFileID {
+		case "":
 			d.Issues = []string{"no_drive_file_id"}
 			report.Summary.NoDriveFileID++
 		default:

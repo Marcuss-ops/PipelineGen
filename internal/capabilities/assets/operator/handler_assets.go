@@ -174,10 +174,12 @@ func (h *Handler) handlePreview(c *gin.Context) {
 		apiutil.InternalError(c, fmt.Errorf("open file: %w", err))
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	c.Status(http.StatusOK)
-	io.Copy(c.Writer, file)
+	if _, err := io.Copy(c.Writer, file); err != nil {
+		h.log.Warn("stream asset failed", zap.String("path", loc.URI), zap.Error(err))
+	}
 }
 
 // handleFacets returns server-driven facet counts derived from canonical

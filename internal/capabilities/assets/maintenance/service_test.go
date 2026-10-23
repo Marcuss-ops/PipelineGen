@@ -24,7 +24,7 @@ func TestMaintenancePruning(t *testing.T) {
 
 	// 1. Create in-memory DB with all needed schemas
 	db := drive.NewTestDB(t, &drive.TestDBOpts{InMemory: true})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Setup necessary schemas for assettree if repository creation performs checks
 	drive.MustExec(t, db, `
@@ -153,7 +153,7 @@ func TestMaintenancePruning(t *testing.T) {
 	// Verify that the remaining paths are /recent and /current
 	pathRows, err := db.Query("SELECT path FROM api_requests ORDER BY ts ASC")
 	require.NoError(t, err)
-	defer pathRows.Close()
+	defer func() { _ = pathRows.Close() }()
 
 	var paths []string
 	for pathRows.Next() {

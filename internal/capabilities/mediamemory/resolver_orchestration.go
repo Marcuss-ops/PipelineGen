@@ -165,7 +165,7 @@ func (r *VisualResolver) resolveScene(
 	// cache, secondary_image falls through to external), so
 	// per-slot orchestration is the canonical pattern.
 	for _, slot := range scene.Slots {
-		if !media.IsKnownSlotKind(slot) {
+		if !slot.IsValid() {
 			warnings = append(warnings, fmt.Sprintf(
 				"scene_id=%q: unknown slot_kind=%q (filtered)", scene.ID, slot,
 			))

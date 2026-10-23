@@ -105,7 +105,7 @@ func scanSourceStagerFile(root, path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	lineNum := 0
 	for sc.Scan() {

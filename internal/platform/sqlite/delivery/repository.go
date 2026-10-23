@@ -139,7 +139,7 @@ func (r *Repository) FindByDestination(ctx context.Context, destination string) 
 	if err != nil {
 		return nil, fmt.Errorf("delivery.catalog.FindByDestination(%q): %w", destination, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanEntries(rows)
 }
 
@@ -209,7 +209,7 @@ func (r *Repository) FindAll(ctx context.Context) ([]CatalogEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("delivery.catalog.FindAll: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanEntries(rows)
 }
 
@@ -229,7 +229,7 @@ func (r *Repository) FindByStatus(ctx context.Context, status string) ([]Catalog
 	if err != nil {
 		return nil, fmt.Errorf("delivery.catalog.FindByStatus(%q): %w", status, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanEntries(rows)
 }
 

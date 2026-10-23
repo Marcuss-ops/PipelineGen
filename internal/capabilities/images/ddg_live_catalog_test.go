@@ -116,7 +116,7 @@ func downloadAndDecodeOneLiveDDGURL(ctx context.Context, client *http.Client, ra
 		result.Error = "download: " + err.Error()
 		return result
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	result.StatusCode = resp.StatusCode
 	result.ContentType = resp.Header.Get("Content-Type")
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

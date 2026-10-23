@@ -139,7 +139,7 @@ func (c *Client) VisualTagImage(ctx context.Context, imageURL string) (*VisualTa
 	if err != nil {
 		return nil, fmt.Errorf("vlm request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("vlm returned %d", resp.StatusCode)
@@ -179,7 +179,7 @@ func (c *Client) ValidateScript(ctx context.Context, scriptText string, imageURL
 	if err != nil {
 		return nil, fmt.Errorf("vlm validate request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("vlm validate returned %d", resp.StatusCode)
@@ -216,7 +216,7 @@ func (c *Client) DedupCheck(ctx context.Context, imageURLs []string, threshold f
 	if err != nil {
 		return nil, fmt.Errorf("vlm dedup request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("vlm dedup returned %d", resp.StatusCode)
@@ -252,7 +252,7 @@ func (c *Client) AutoTagLocal(ctx context.Context, localPath, mediaType string) 
 	if err != nil {
 		return nil, "", fmt.Errorf("vlm autotag request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, "", fmt.Errorf("vlm autotag returned %d", resp.StatusCode)

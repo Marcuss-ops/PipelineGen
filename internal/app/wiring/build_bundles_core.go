@@ -18,7 +18,6 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
-	imgservice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
 	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
@@ -332,7 +331,7 @@ type buildImagesParams struct {
 	Dispatcher    *outbox.Dispatcher
 }
 
-func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic.MetadataWriterPort) {
+func buildImagesService(params buildImagesParams) (*images.Service, semantic.MetadataWriterPort) {
 	const destinationsYAMLPath = "config/image_destinations.yaml"
 	destResolver, err := images.NewYamlResolver(destinationsYAMLPath, params.Cfg.Drive.ImagesFolder())
 	if err != nil {
@@ -365,13 +364,13 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 			zap.String("stager_dir", stagerDir), zap.Error(stagerErr))
 		imageSourceStager = nil
 	}
-	imageService := imgservice.NewService(imgservice.ImagesDeps{
-		Core: imgservice.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
-		Storage: imgservice.ImagesStorageDeps{
+	imageService := images.NewService(images.ImagesDeps{
+		Core: images.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
+		Storage: images.ImagesStorageDeps{
 			ImageRepo: params.ImageRepo, DriveReader: newImagesDriveReaderAdapter(params.DriveUploader),
 			Publisher: params.Publisher, DestResolver: destResolver,
 		},
-		GenAI: imgservice.ImagesGenAIDeps{
+		GenAI: images.ImagesGenAIDeps{
 			MetaWriter: newImagesSemanticAdapter(params.VOMetaWriter), StyleRegistry: params.StyleRegistry,
 			// Image generation via Chrome/Google Slides is intentionally not
 			// wired. Scene/entity images come from the retrieved-image path
@@ -379,7 +378,7 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 			// Python worker. Keeping this nil also makes an accidental AI-image
 			// request fail closed instead of spawning an unrelated subprocess.
 			ImageGen: nil,
-		}, External: imgservice.ImagesExternalDeps{
+		}, External: images.ImagesExternalDeps{
 			IngestSvc:   params.IngestSvc,
 			RemoteFetch: httpclient.NewDefaultClient(10 * time.Minute),
 			Committer:   params.Committer,
@@ -394,7 +393,7 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 			// (godlike/07).
 			SourceStager: imageSourceStager,
 			VeloxBaseURL: params.Cfg.External.VeloxBaseURL,
-			GACfg: imgservice.GoogleAccountingConfig{
+			GACfg: images.GoogleAccountingConfig{
 				ServerURL: params.Cfg.GoogleAccounting.ServerURL, DownloadDir: params.Cfg.GoogleAccounting.DownloadDir,
 				VidsProjectID: params.Cfg.GoogleAccounting.VidsProjectID,
 			},

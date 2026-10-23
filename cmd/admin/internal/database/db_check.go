@@ -31,7 +31,9 @@ func RunDBCheck(ctx context.Context, args []string) error {
 	dataDir := fs.String("data-dir", "./data", "root data directory")
 	qdrantURL := fs.String("qdrant-url", "", "optional Qdrant base URL for connectivity probe (e.g. http://127.0.0.1:6333)")
 	topN := fs.Int("top-n-tables", 10, "show row counts for the top-N tables")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
 
 	fullCfg, err := config.Get()
 	if err != nil {
@@ -42,7 +44,7 @@ func RunDBCheck(ctx context.Context, args []string) error {
 	}
 	resolved := fullCfg.Storage.ToDatabaseStorageConfig()
 	log, _ := zap.NewProduction()
-	defer log.Sync()
+	defer func() { _ = log.Sync() }()
 
 	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
@@ -51,7 +53,7 @@ func RunDBCheck(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("open set: %w", err)
 	}
-	defer ds.Close()
+	defer func() { _ = ds.Close() }()
 
 	failures := 0
 	if err := checkOneDB(ctx, "primary", ds.Primary, *topN, &failures); err != nil {
@@ -210,7 +212,7 @@ func probeQdrant(baseURL string, timeout time.Duration) (bool, time.Duration, er
 	if err != nil {
 		return false, elapsed, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return false, elapsed, fmt.Errorf("status %d", resp.StatusCode)
 	}

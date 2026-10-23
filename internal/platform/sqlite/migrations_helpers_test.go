@@ -63,7 +63,7 @@ func openSmokeDB(t *testing.T, path string) *sql.DB {
 		t.Fatalf("open %s: %v", path, err)
 	}
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("ping %s: %v", path, err)
 	}
 	return db
@@ -103,7 +103,7 @@ func applyFreshSmokeDB(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("RunMigrationsOnDB failed — wrap chain names the failing migration filename + statement index: %v", err)
 	}
 	db := openSmokeDB(t, dbPath)
-	cleanup := func() { db.Close() }
+	cleanup := func() { _ = db.Close() }
 	return db, cleanup
 }
 
@@ -134,7 +134,7 @@ func scanColumnNames(t *testing.T, db *sql.DB, table string) map[string]struct{}
 	if err != nil {
 		t.Fatalf("PRAGMA table_info(%s): %v", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make(map[string]struct{}, 64)
 	for rows.Next() {
 		var cid, notnull, pk int

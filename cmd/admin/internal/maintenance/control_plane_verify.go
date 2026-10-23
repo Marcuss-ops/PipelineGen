@@ -30,7 +30,7 @@ func RunControlPlaneVerify(args []string) error {
 	if err != nil {
 		return fmt.Errorf("control-plane verify: open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 	db := dbSet.Primary
 	topology := []storage.ConfiguredDatabase{
 		{Name: "primary", Path: dbSet.PrimaryPath(), Role: storage.ControlPlaneRoleCanonical, Writable: true, ControlPlane: true},

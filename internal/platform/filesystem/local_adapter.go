@@ -65,9 +65,7 @@ func NewLocal() *LocalAdapter { return &LocalAdapter{} }
 //
 // Concurrency: safe (the underlying os.* calls are per-handle, and
 // rootDir is immutable after construction).
-type TempDirFS struct {
-	rootDir string
-}
+type TempDirFS struct{}
 
 // NewTempDirFS returns a TempDirFS scoped to rootDir. The caller is
 // responsible for creating and cleaning up the directory.

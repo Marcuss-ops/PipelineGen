@@ -41,7 +41,7 @@ func (r *Runner) runAudioFinalizePhase(ctx context.Context, runID string, exec E
 		// maintains a second independently calculated timeline.
 		if et, err := BuildEditingTimeline(result); err != nil {
 			cause := fmt.Errorf("editing timeline compilation failed: %w", err)
-			r.failExecutionStep(ctx, exec, state.Step, cause)
+			r.failExecutionStepBestEffort(ctx, exec, state.Step, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		} else if et != nil {
@@ -54,7 +54,7 @@ func (r *Runner) runAudioFinalizePhase(ctx context.Context, runID string, exec E
 	}
 	r.checkpoint(ctx, runID, result)
 	if err := r.completeExecutionStep(ctx, exec, state.Step); err != nil {
-		r.failExecutionStep(ctx, exec, state.Step, err)
+		r.failExecutionStepBestEffort(ctx, exec, state.Step, err)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
 		return false
 	}

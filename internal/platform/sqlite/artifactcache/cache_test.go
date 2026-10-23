@@ -39,7 +39,7 @@ func newTestCache(t *testing.T) (*Cache, *sql.DB) {
 		t.Fatal(err)
 	}
 	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(testSchema); err != nil {
 		t.Fatal(err)
 	}

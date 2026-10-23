@@ -157,7 +157,7 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertCandidate(ctx context.Context, c
 			width = excluded.width,
 			height = excluded.height,
 			status = CASE
-				WHEN entity_image_catalog_candidates.status = 'retired' THEN 'retired'
+				WHEN entity_image_catalog_candidates.status IN ('broken', 'retired') THEN entity_image_catalog_candidates.status
 				ELSE excluded.status
 			END,
 			semantic_status = excluded.semantic_status,
@@ -200,9 +200,13 @@ func (a *SQLiteEntityImageCatalogAdapter) SetCandidateStatus(ctx context.Context
 	result, err := a.db.ExecContext(ctx, `
 		UPDATE entity_image_catalog_candidates
 		SET status = ?, updated_at = CURRENT_TIMESTAMP,
-		    last_seen_at = CASE WHEN ? = 'fresh' THEN CURRENT_TIMESTAMP ELSE last_seen_at END
+		    last_seen_at = CASE WHEN ? = 'fresh' THEN CURRENT_TIMESTAMP ELSE last_seen_at END,
+		    validation_attempts = CASE WHEN ? = 'fresh' THEN 0 ELSE validation_attempts END,
+		    last_validation_at = CASE WHEN ? = 'fresh' THEN '' ELSE last_validation_at END,
+		    next_retry_at = CASE WHEN ? = 'fresh' THEN '' ELSE next_retry_at END,
+		    last_validation_error = CASE WHEN ? = 'fresh' THEN '' ELSE last_validation_error END
 		WHERE candidate_id = ?
-	`, status, status, candidateID)
+	`, status, status, status, status, status, status, candidateID)
 	if err != nil {
 		return fmt.Errorf("entity image catalog: set candidate status: %w", err)
 	}
@@ -243,7 +247,7 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidates(ctx context.Context, ca
 	if err != nil {
 		return nil, fmt.Errorf("entity image catalog: list candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]capentity.Candidate, 0, limit)
 	for rows.Next() {
 		var candidate capentity.Candidate
@@ -365,7 +369,7 @@ func (a *SQLiteEntityImageCatalogAdapter) ListCandidatesForRecertification(ctx c
 	if err != nil {
 		return nil, fmt.Errorf("entity image catalog: list recertification candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]capentity.RecertificationCandidate, 0, limit)
 	for rows.Next() {
 		var item capentity.RecertificationCandidate
@@ -406,11 +410,14 @@ func (a *SQLiteEntityImageCatalogAdapter) RecordCandidateValidation(ctx context.
 	if result.Success {
 		res, err := a.db.ExecContext(ctx, `
 			UPDATE entity_image_catalog_candidates
-			SET status = ?, last_seen_at = ?, updated_at = CURRENT_TIMESTAMP,
-			    validation_attempts = 0, last_validation_at = ?, next_retry_at = '',
+			SET status = CASE WHEN status = ? THEN ? ELSE ? END,
+			    last_seen_at = ?, updated_at = CURRENT_TIMESTAMP,
+			    validation_attempts = CASE WHEN status = ? THEN ? ELSE 0 END,
+			    last_validation_at = ?, next_retry_at = '',
 			    last_validation_error = ''
 			WHERE candidate_id = ?
-		`, capentity.CandidateStatusFresh, checkedAt, checkedAt, candidateID)
+		`, capentity.CandidateStatusBroken, capentity.CandidateStatusBroken, capentity.CandidateStatusFresh,
+			checkedAt, capentity.CandidateStatusBroken, result.FailureCount, checkedAt, candidateID)
 		if err != nil {
 			return fmt.Errorf("entity image catalog: record validation success: %w", err)
 		}

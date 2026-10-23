@@ -365,7 +365,6 @@ func (noopBatchRepository) FindIncompleteArtifacts(context.Context, string, int)
 var _ StockBatchRepository = noopBatchRepository{}
 
 func TestService_HandleJob_SuccessHydratesProjectedResult(t *testing.T) {
-	const sourceURL = "https://example.com/handle-job-source.mp4"
 	sourcePath := t.TempDir() + "/source.mp4"
 	if err := os.WriteFile(sourcePath, []byte("fixture-source"), 0o644); err != nil {
 		t.Fatalf("write source fixture: %v", err)

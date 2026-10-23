@@ -103,7 +103,7 @@ func (s *ConcurrencyStore) ConcurrencyReport(ctx context.Context, batchID string
 	if err != nil {
 		return kernobs.BatchReport{}, fmt.Errorf("concurrency store: read batch jobs %q: %w", batchID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	reports := make([]kernobs.RunReport, 0, 8)
 	for rows.Next() {
 		var runID string

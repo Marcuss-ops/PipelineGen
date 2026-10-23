@@ -32,7 +32,7 @@
 //     and advances directly to INDEX_DELETE_PENDING.
 //
 //   - Schema mismatch / empty asset_id / missing idempotency_key
-//     classified as TERMINAL via the driveLifecycleTerminalErr
+//     classified as TERMINAL via the errDriveLifecycleTerminal
 //     sentinel.
 package jobs
 
@@ -388,7 +388,7 @@ func TestDriveDeleteHandler_DriveTransientFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("transient Drive failure must return a non-nil error")
 	}
-	if errors.Is(err, driveLifecycleTerminalErr) {
+	if errors.Is(err, errDriveLifecycleTerminal) {
 		t.Fatalf("transient Drive error must NOT be classified as terminal: %v", err)
 	}
 	if !strings.Contains(err.Error(), "Drive API") {
@@ -504,7 +504,7 @@ func TestDriveDeleteHandler_SchemaMismatch_Terminal(t *testing.T) {
 	evt := outboxevents.Event{ID: 1, PayloadJSON: string(bad)}
 
 	err = h.Handle(context.Background(), evt)
-	if !errors.Is(err, driveLifecycleTerminalErr) {
+	if !errors.Is(err, errDriveLifecycleTerminal) {
 		t.Fatalf("schema mismatch must be terminal: %v", err)
 	}
 	if len(adv.calls) != 0 {

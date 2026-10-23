@@ -196,7 +196,7 @@ func (r *SearchTextRebuilder) loadReadyTranscripts(ctx context.Context, assetID 
 	if err != nil {
 		return nil, fmt.Errorf("search text rebuilder: load tracks for %q: %w", assetID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []readyTranscript
 	for rows.Next() {
 		var t readyTranscript

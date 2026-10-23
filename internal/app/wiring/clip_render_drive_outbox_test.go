@@ -143,10 +143,10 @@ func TestClipRenderDriveDeliveryHandler_DeliversSidecarBundle(t *testing.T) {
 	}
 	var videoReq, sidecarReq *delivery.PublishRequest
 	for i := range reqs {
-		switch {
-		case reqs[i].Filename == payload.Filename:
+		switch reqs[i].Filename {
+		case payload.Filename:
 			videoReq = &reqs[i]
-		case reqs[i].Filename == payload.Sidecar.Filename:
+		case payload.Sidecar.Filename:
 			sidecarReq = &reqs[i]
 		}
 	}

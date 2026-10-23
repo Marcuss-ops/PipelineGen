@@ -144,7 +144,7 @@ func (h *DriveCanaryHandler) CanaryUpload(c *gin.Context) {
 		apiutil.InternalError(c, err)
 		return
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	canaryPath := filepath.Join(tmpDir, "pipelinegen-canary.txt")
 	if err := os.WriteFile(canaryPath, []byte("PipelineGen Drive canary\n"), 0644); err != nil {

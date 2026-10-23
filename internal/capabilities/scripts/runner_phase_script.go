@@ -33,7 +33,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 	scriptSkipped := stageSkipped(resumeIdx, StageGeneratingSceneText)
 	if !scriptSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingSceneText); err != nil {
-			r.failExecutionStep(ctx, exec, scriptStep, err)
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, err)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 			return result, false
 		}
@@ -50,7 +50,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		segmentTopologyNeedsMaterialization := path.topologyNeedsMaterialization
 		if genErr != nil {
 			cause := fmt.Errorf("generate scene text failed: %w", genErr)
-			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
@@ -76,7 +76,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		if len(scenes) == 0 {
 			cause := fmt.Errorf("generate scene text returned zero scenes")
-			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
@@ -84,7 +84,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			scenes, streamTranslationMetrics, streamAudioMetrics, genErr = ready.wait(ctx, scenes)
 			if genErr != nil {
 				cause := fmt.Errorf("scene ready downstream failed: %w", genErr)
-				r.failExecutionStep(ctx, exec, scriptStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 				return result, false
 			}
@@ -101,7 +101,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		scenes, fixedErr = applyFixedSections(req, scenes)
 		if fixedErr != nil {
 			cause := fmt.Errorf("fixed section injection failed: %w", fixedErr)
-			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
@@ -121,7 +121,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		if gateErr := validateMinimumGeneratedOutput(req, output); gateErr != nil {
 			cause := fmt.Errorf("minimum generated text gate: %w", gateErr)
-			r.failExecutionStep(ctx, exec, scriptStep, cause)
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return nil, false
 		}
@@ -396,7 +396,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			}
 			renders.Wait()
 			if renderErr != nil {
-				r.failExecutionStep(ctx, exec, scriptStep, renderErr)
+				r.failExecutionStepBestEffort(ctx, exec, scriptStep, renderErr)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, renderErr)
 				return result, false
 			}
@@ -424,13 +424,13 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		r.checkpoint(ctx, runID, result)
 		if !streamed {
 			var emitErr error
-			kernobs.MeasureStage(ctx, "emit_scene_commits", func(stageCtx context.Context) error {
+			_ = kernobs.MeasureStage(ctx, "emit_scene_commits", func(stageCtx context.Context) error {
 				emitErr = r.emitSceneCommits(stageCtx, runID, req, exec, scenes)
 				return emitErr
 			})
 			if emitErr != nil {
 				cause := fmt.Errorf("emit scene commits: %w", emitErr)
-				r.failExecutionStep(ctx, exec, scriptStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 				return result, false
 			}
@@ -451,7 +451,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		if result != nil {
 			if err := r.emitSceneCommits(ctx, runID, req, exec, result.Scenes); err != nil {
 				cause := fmt.Errorf("replay scene commits from checkpoint: %w", err)
-				r.failExecutionStep(ctx, exec, scriptStep, cause)
+				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 				return result, false
 			}
@@ -464,7 +464,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		for _, scene := range result.Scenes {
 			if scene.Clip != nil {
 				if err := r.attachInputAsset(ctx, exec, scriptStep.StepID, scene.Clip.ID, ordinal); err != nil {
-					r.failExecutionStep(ctx, exec, scriptStep, err)
+					r.failExecutionStepBestEffort(ctx, exec, scriptStep, err)
 					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 					return result, false
 				}
@@ -478,7 +478,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			return result, false
 		}
 	} else if err := r.completeExecutionStep(ctx, exec, scriptStep); err != nil {
-		r.failExecutionStep(ctx, exec, scriptStep, err)
+		r.failExecutionStepBestEffort(ctx, exec, scriptStep, err)
 		r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
 		return result, false
 	}

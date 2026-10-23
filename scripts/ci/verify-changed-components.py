@@ -48,6 +48,7 @@ ALL_COMPONENT_EXACT_FILES = frozenset(
         ".gitignore",
         "go.mod",
         "go.sum",
+        ".gitmodules",
         ".env.example",
         "config.example.yaml",
         "config.production.example.yaml",

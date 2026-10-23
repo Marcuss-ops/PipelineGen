@@ -39,7 +39,7 @@ All comparisons use UTC and the application clock supplied to
 |---|---|---:|---|
 | `fresh` | Accepted observation age is `<= 7 * 24h` | Yes | No refresh solely because of age |
 | `stale` | Accepted observation age is `> 7 * 24h` | Yes, as fallback | Refresh is recommended, but only performed when the usable pool is insufficient or force refresh is requested |
-| `broken` | Acquire or verify failure for the URL | No | Excluded from normal pool; explicit provider refresh or successful validation may create/recover a candidate |
+| `broken` | Acquire, verify, or materialized-object failure | No | Excluded from normal pool; only successful re-materialization may recover it |
 | `retired` | Explicit manual retirement | No | Terminal; never selected automatically |
 | `active` | Legacy pre-migration value | Treated as `fresh`, then classified by timestamp | Read compatibility only; new writes use `fresh` |
 
@@ -82,11 +82,14 @@ The bounded events in `entitycatalog.TransitionCandidateStatus` are:
 Additional rules:
 
 - `stale` is not a failure and never becomes `broken` because of age alone.
-- `broken` is never used as fallback. It can recover only through an explicit
-  successful refresh/validation path.
+- `broken` is never used as fallback. Provider rediscovery or a successful
+  remote-URL probe does not prove that an existing ObjectStore/Drive
+  materialization is valid and cannot recover it; recovery requires a new
+  successful acquisition, verification, and materialization.
 - `retired` is terminal in the state machine; provider results must not revive
   it implicitly.
-- A successful candidate refresh writes `fresh` and updates `last_seen_at`.
+- A successful candidate refresh writes `fresh` and updates `last_seen_at` for
+  non-broken candidates. A URL probe alone never revives `broken`.
 - A failed acquire or verify writes `broken`; the candidate remains durable
   for audit and future explicit refresh decisions.
 

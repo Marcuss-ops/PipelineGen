@@ -189,7 +189,7 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	if err != nil {
 		return fmt.Errorf("failed to create job: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, query,
 		j.ID, j.Type, j.Status, j.Priority, j.Project, j.VideoName, j.ActiveKey,
 		j.CorrelationID,
@@ -240,7 +240,7 @@ func (r *SQLiteStore) PeekQueued(ctx context.Context, limit int) ([]job.Job, err
 	if err != nil {
 		return nil, fmt.Errorf("PeekQueued: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Drain and close the result set before hydrating payload/result. The
 	// production jobs DB is deliberately a single-writer connection; issuing
@@ -323,7 +323,7 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []job.Job
 	for rows.Next() {
@@ -421,7 +421,7 @@ LIMIT ?`
 	if err != nil {
 		return nil, fmt.Errorf("ListAwaitingAggregation: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []job.Job
 	for rows.Next() {

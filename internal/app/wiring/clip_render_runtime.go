@@ -61,9 +61,6 @@ func BuildClipRenderRuntime(cfg *config.Config, root *ComposeRoot, log *zap.Logg
 	if root.MediaExec == (mediaexec.ExecutionConfig{}) {
 		return nil, fmt.Errorf("clip render runtime: resolved media execution config is required")
 	}
-	if log == nil {
-		log = zap.NewNop()
-	}
 	queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL)
 	if queueURL == "" {
 		return nil, fmt.Errorf("clip render runtime: RENDERINGGEN_QUEUE_URL is required; clip rendering fails closed")

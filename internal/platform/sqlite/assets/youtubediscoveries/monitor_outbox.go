@@ -186,12 +186,12 @@ func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, l
 	for idRows.Next() {
 		var id int64
 		if scanErr := idRows.Scan(&id); scanErr != nil {
-			idRows.Close()
+			_ = idRows.Close()
 			return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: scan id: %w", scanErr)
 		}
 		ids = append(ids, id)
 	}
-	idRows.Close()
+	_ = idRows.Close()
 	if err := idRows.Err(); err != nil {
 		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: idRows: %w", err)
 	}
@@ -230,7 +230,7 @@ func (r *YoutubeDiscoveriesRepository) DrainPendingOutbox(ctx context.Context, l
 	if err != nil {
 		return nil, fmt.Errorf("monitor_outbox.DrainPendingOutbox: select rows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var entries []OutboxEntry
 	for rows.Next() {
@@ -290,12 +290,12 @@ func (r *YoutubeDiscoveriesRepository) DrainDispatched(ctx context.Context, limi
 	for idRows.Next() {
 		var id int64
 		if scanErr := idRows.Scan(&id); scanErr != nil {
-			idRows.Close()
+			_ = idRows.Close()
 			return nil, fmt.Errorf("monitor_outbox.DrainDispatched: scan id: %w", scanErr)
 		}
 		ids = append(ids, id)
 	}
-	idRows.Close()
+	_ = idRows.Close()
 	if err := idRows.Err(); err != nil {
 		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: idRows: %w", err)
 	}
@@ -333,7 +333,7 @@ func (r *YoutubeDiscoveriesRepository) DrainDispatched(ctx context.Context, limi
 	if err != nil {
 		return nil, fmt.Errorf("monitor_outbox.DrainDispatched: select rows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var entries []OutboxEntry
 	for rows.Next() {

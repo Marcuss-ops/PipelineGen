@@ -36,7 +36,7 @@ import (
 // count assertion.
 func TestIndexState_INDEXED_OnlyViaOutboxConsumer(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fx := newTestFinalizer(t, db)
 	ctx := context.Background()
@@ -50,7 +50,7 @@ func TestIndexState_INDEXED_OnlyViaOutboxConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	artifact := publishedArtifact("asset-indexed-only-via-outbox", "hash-ssot-1", "file-ssot-1")
 	_, events, err := fx.FinalizeAsset(ctx, WrapTx(tx), artifact)

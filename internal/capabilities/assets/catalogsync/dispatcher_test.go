@@ -38,7 +38,7 @@ func (testSourceReader) ListFiles(context.Context, string) ([]RemoteFile, error)
 func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	ctx := context.Background()
 	db := drive.NewMigratedTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
@@ -85,6 +85,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	}
 	clip.SetIsFolder(false)
 	clip.SetLegacyFileMD5("abc123")
+	clip.SetMetadataString("binary_sha256", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
 	clip.SetDriveLink("https://drive.google.com/file/d/abc")
 
 	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the indexer
@@ -99,7 +100,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 	require.NotNil(t, stored)
 	assert.Equal(t, asset.Source("youtube"), stored.Source)
 	assert.Equal(t, "Test clip", stored.Name)
-	assert.Equal(t, "abc123", stored.LegacyFileMD5())
+	assert.Equal(t, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", stored.GetMetadataString("legacy_file_md5"))
 	assert.Equal(t, "https://drive.google.com/file/d/abc", stored.DriveLink())
 
 	// outbox_events row must be present — this is what the dispatcher
@@ -117,7 +118,7 @@ func TestUpsertPreservingExisting_DispatcherPath(t *testing.T) {
 func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T) {
 	ctx := context.Background()
 	db := drive.NewMigratedTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 	outboxEventsRepo := outboxevents.NewRepository(db)
@@ -168,7 +169,7 @@ func TestUpsertPreservingExisting_DispatcherPath_FolderSkipsOutbox(t *testing.T)
 func TestUpsertPreservingExisting_NilDispatcherReturnsError(t *testing.T) {
 	ctx := context.Background()
 	db := drive.NewMigratedTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := imagesregistry.NewClipsRepository(db, zap.NewNop())
 

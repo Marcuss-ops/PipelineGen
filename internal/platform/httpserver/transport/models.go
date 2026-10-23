@@ -125,7 +125,7 @@ func (h *ModelsHandler) probeModel(ctx context.Context, endpoint, modelName, exp
 		result.DurationMs = time.Since(started).Milliseconds()
 		return result
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 65536))
 	if siglip501 && resp.StatusCode == http.StatusNotImplemented {

@@ -225,10 +225,8 @@ func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testin
 	// Scene 0's downstream fan-out (translate + TTS + render enqueue) must
 	// complete while generation is still blocked before scene 1.
 	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if len(enq.snapshot()) >= 2 { // scene-0/en + scene-0/es
-			break
-		}
+	for len(enq.snapshot()) < 2 {
+
 		if time.Now().After(deadline) {
 			t.Fatalf("scene-0 localized renders were not enqueued: %v", enq.snapshot())
 		}
@@ -302,10 +300,8 @@ func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
 	// Async render goroutines may still be in-flight after run completion;
 	// wait for all 6 to land.
 	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if len(enq.snapshot()) >= 6 {
-			break
-		}
+	for len(enq.snapshot()) < 6 {
+
 		if time.Now().After(deadline) {
 			break
 		}

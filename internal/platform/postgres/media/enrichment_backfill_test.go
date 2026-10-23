@@ -96,7 +96,7 @@ func TestEnrichmentEngine_BackfillCoverageConverges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	truncateMediaSurfaces(t, db)
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
@@ -169,7 +169,7 @@ func TestEnrichmentEngine_RecordsFailuresWithoutFabricating(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	truncateMediaSurfaces(t, db)
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)

@@ -39,7 +39,7 @@ func TestContentPriorityCanonicalTable(t *testing.T) {
 		t.Errorf("chart bar keeps the SHAPE structural priority = %d, want %d", got, PriorityStructural)
 	}
 	// Relative ordering the degradation relies on: phrase > word > image > effect.
-	if !(PriorityPhrase > PriorityWord && PriorityWord > PriorityImage && PriorityImage > PriorityEffect) {
+	if PriorityPhrase <= PriorityWord || PriorityWord <= PriorityImage || PriorityImage <= PriorityEffect {
 		t.Fatalf("priority ordering broken: phrase=%d word=%d image=%d effect=%d",
 			PriorityPhrase, PriorityWord, PriorityImage, PriorityEffect)
 	}

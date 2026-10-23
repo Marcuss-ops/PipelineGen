@@ -106,7 +106,7 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	if err != nil {
 		return nil, fmt.Errorf("media backfill: open sqlite: %w", err)
 	}
-	defer sqliteDB.Close()
+	defer func() { _ = sqliteDB.Close() }()
 	if err := sqliteDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("media backfill: ping sqlite: %w", err)
 	}
@@ -115,7 +115,7 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	if err != nil {
 		return nil, fmt.Errorf("media backfill: open postgres: %w", err)
 	}
-	defer pg.Close()
+	defer func() { _ = pg.Close() }()
 	if err := pg.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("media backfill: ping postgres: %w", err)
 	}
@@ -180,7 +180,7 @@ func sqliteColumns(ctx context.Context, db *sql.DB, table string) ([]string, err
 	if err != nil {
 		return nil, fmt.Errorf("media backfill: pragma table_info(%s): %w", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cols []string
 	for rows.Next() {
 		var cid int
@@ -206,7 +206,7 @@ func postgresColumns(ctx context.Context, db *sql.DB, table string) ([]string, m
 	if err != nil {
 		return nil, nil, fmt.Errorf("media backfill: information_schema(%s): %w", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cols []string
 	types := map[string]string{}
 	for rows.Next() {
@@ -337,10 +337,8 @@ func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAs
 	query := "SELECT id, " + strings.Join(quoted, ", ") + " FROM " + table + " WHERE id > ? ORDER BY id LIMIT ?"
 	copied, scanned := 0, 0
 	lastID := ""
-	for {
-		if limit > 0 && scanned >= limit {
-			break
-		}
+	for limit <= 0 || scanned < limit {
+
 		pageSize := batch
 		if limit > 0 && scanned+pageSize > limit {
 			pageSize = limit - scanned
@@ -358,7 +356,7 @@ func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAs
 			}
 			var id string
 			if err := rows.Scan(append([]any{&id}, ptrs...)...); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return copied, scanned, fmt.Errorf("media backfill: scan sqlite %s: %w", table, err)
 			}
 			// Legacy NULLs become the canonical zero values of the
@@ -373,10 +371,10 @@ func backfillAssets(ctx context.Context, sqliteDB *sql.DB, committer *PostgresAs
 			scanned++
 		}
 		if err := rows.Err(); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return copied, scanned, fmt.Errorf("media backfill: iterate sqlite %s: %w", table, err)
 		}
-		rows.Close()
+		_ = rows.Close()
 		if len(batchRows) == 0 {
 			break
 		}
@@ -420,7 +418,7 @@ func backfillLocations(ctx context.Context, sqliteDB, pg *sql.DB, table string, 
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("media backfill: select sqlite %s: %w", table, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	copied, scanned, skipped := 0, 0, 0
 	for rows.Next() {

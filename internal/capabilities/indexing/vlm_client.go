@@ -111,7 +111,7 @@ func (c *HTTPVLMClient) Infer(ctx context.Context, imagePath string) (*VLMInfere
 	if err != nil {
 		return nil, fmt.Errorf("vlm_client.Do(endpoint=%q): %w", c.endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf(

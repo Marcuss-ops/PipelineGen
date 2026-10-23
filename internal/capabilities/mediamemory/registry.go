@@ -133,7 +133,7 @@ func (r *StrategyRegistry) Register(s Strategy) error {
 	if s == nil {
 		return ErrNilStrategy
 	}
-	if rv := reflect.ValueOf(s); rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv := reflect.ValueOf(s); rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return ErrNilStrategy
 	}
 	name := s.Name()

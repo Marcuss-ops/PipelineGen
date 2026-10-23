@@ -176,7 +176,7 @@ func (s *AssetStoreSQLite) List(ctx context.Context, filter asset.Filter) ([]*as
 	if err != nil {
 		return nil, fmt.Errorf("assets.List: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.Summary
 	for rows.Next() {

@@ -261,13 +261,13 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
 		}
 		generatedMapVideo = videoPath
-		defer os.RemoveAll(filepath.Dir(generatedMapVideo))
+		defer func() { _ = os.RemoveAll(filepath.Dir(generatedMapVideo)) }()
 		sha, size, err := digest.SHA256File(videoPath)
 		if err != nil {
 			return RenderReference{}, fmt.Errorf("identify Chronon dynamic map video: %w", err)
 		}
 		if size == 0 {
-			return RenderReference{}, fmt.Errorf("Chronon dynamic map video is empty")
+			return RenderReference{}, fmt.Errorf("dynamic map video is empty")
 		}
 		assetRef := capoverlay.NewOverlayAssetRef(
 			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},

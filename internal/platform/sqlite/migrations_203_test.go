@@ -22,7 +22,7 @@ func TestMigrations_202_203_ControlPlaneSchemaAndChecksums(t *testing.T) {
 	}
 
 	db := openSmokeDB(t, dbPath)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for _, table := range []string{"registry_events", "registry_runs", "projection_registry", "backup_registry", "canonical_mutations"} {
 		var count int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&count); err != nil {

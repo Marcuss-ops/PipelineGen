@@ -39,7 +39,7 @@ func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSec
 	}
 	ext := filepath.Ext(inputPath)
 	tmpPath := inputPath + ".trim.tmp" + ext
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 	_, err := p.client.call(ctx, request{
 		Operation: "trim", SourcePath: inputPath, OutputPath: tmpPath,
 		MaxDurationSec: maxSeconds, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,

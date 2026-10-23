@@ -109,9 +109,6 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		})
 	}
 	recursive := payload.Recursive
-	if !recursive && payload.Concurrency > 0 {
-		// shallow scan requested explicitly; concurrency default handled below
-	}
 	concurrency := payload.Concurrency
 	if concurrency <= 0 {
 		concurrency = 2

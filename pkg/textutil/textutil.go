@@ -158,14 +158,24 @@ func ParseVTTTimestamp(ts string) float64 {
 	parts := strings.Split(ts, ":")
 	if len(parts) == 3 {
 		var h, m, s float64
-		fmt.Sscanf(parts[0], "%f", &h)
-		fmt.Sscanf(parts[1], "%f", &m)
-		fmt.Sscanf(parts[2], "%f", &s)
+		if _, err := fmt.Sscanf(parts[0], "%f", &h); err != nil {
+			return 0
+		}
+		if _, err := fmt.Sscanf(parts[1], "%f", &m); err != nil {
+			return 0
+		}
+		if _, err := fmt.Sscanf(parts[2], "%f", &s); err != nil {
+			return 0
+		}
 		return h*3600 + m*60 + s
 	} else if len(parts) == 2 {
 		var m, s float64
-		fmt.Sscanf(parts[0], "%f", &m)
-		fmt.Sscanf(parts[1], "%f", &s)
+		if _, err := fmt.Sscanf(parts[0], "%f", &m); err != nil {
+			return 0
+		}
+		if _, err := fmt.Sscanf(parts[1], "%f", &s); err != nil {
+			return 0
+		}
 		return m*60 + s
 	}
 	return 0
@@ -234,26 +244,7 @@ func ParseTimestamp(ts string) (int, error) {
 
 // ── Markdown / Voiceover Cleaning ───────────────────────────────────────
 
-var (
-	voReHeadingMarker    = regexp.MustCompile(`(?m)^#+\s+`)
-	voReTrailingHash     = regexp.MustCompile(`\s+#+\s+`)
-	voReHorizontalRule   = regexp.MustCompile(`(?m)^[\-\_\*\=]{3,}\s*$`)
-	voReBoldMarker       = regexp.MustCompile(`\*\*([^*]+)\*\*`)
-	voReItalicMarker     = regexp.MustCompile(`(?:^|\s)\*([^*\s][^*]*?)\*(?:\s|$|[.,;!?])`)
-	voReBracketArtifact  = regexp.MustCompile(`\[[^\]]*\]`)
-	voReBlockquoteMarker = regexp.MustCompile(`(?m)^>+\s*`)
-	voReChapterLabel     = regexp.MustCompile(`(?mi)^(?:Table\s+of\s+Contents|Item|Chapter|Parte|Capitolo|Chapitre|Capítulo|Kapitel)\s+\d+[\.:]?\s*`)
-	voReMultipleNewlines = regexp.MustCompile(`\n{3,}`)
-	voReMultipleSpaces   = regexp.MustCompile(` {2,}`)
-)
-
-// CleanForVoiceover strips markdown formatting artifacts and structural labels.
-
 // ── Script Sentence Splitting ───────────────────────────────────────────
-
-var scriptSentenceRe = regexp.MustCompile(`(?m)([^.!?]+[.!?]+|[^.!?]+$)`)
-
-// SplitScriptSentences splits script text into sentences for scene generation.
 
 // BuildSceneQuery builds the canonical query used for image matching and clip recommendation.
 

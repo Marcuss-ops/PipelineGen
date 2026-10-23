@@ -56,7 +56,7 @@ func (a *imageStoreAdapter) Get(ctx context.Context, id string) (*artifacts.Medi
 		return nil, err
 	}
 	// record is *detail.ImageAsset at this point; convert to MediaRecord
-	var img *detail.ImageAsset = record
+	var img = record
 	return imageAssetToMediaRecord(img, a.imagesDir), nil
 }
 
@@ -71,8 +71,8 @@ func (a *imageStoreAdapter) FindExisting(ctx context.Context, query assetop.Exis
 		}
 	}
 
-	if query.LegacyFileMD5 != "" {
-		img, err := a.repo.GetImageByHash(ctx, query.LegacyFileMD5)
+	if query.ContentSHA256 != "" {
+		img, err := a.repo.GetImageByHash(ctx, query.ContentSHA256)
 		if err != nil {
 			return nil, err
 		}

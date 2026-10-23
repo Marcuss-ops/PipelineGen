@@ -572,11 +572,11 @@ func TestBuildPayloadFromDocument_Transcripts_MultilingualSlice_OriginalFirstThe
 	if firstSequelIdx < 0 || secondSequelIdx < 0 {
 		t.Fatalf("sequel rows missing from embedding_text: %q", got)
 	}
-	if !(originalIdx < firstSequelIdx && originalIdx < secondSequelIdx) {
+	if originalIdx >= firstSequelIdx || originalIdx >= secondSequelIdx {
 		t.Fatalf("original-language row must precede sequels in embedding_text: %q", got)
 	}
 	// Lang-ASC alphabetical order for sequels: es < it.
-	if !(firstSequelIdx < secondSequelIdx) {
+	if firstSequelIdx >= secondSequelIdx {
 		t.Fatalf("sequels must be Lang-ASC (es before it) but got: %q", got)
 	}
 	// All three segments must appear verbatim.
@@ -654,7 +654,7 @@ func TestBuildPayloadFromDocument_Transcripts_CaseFoldedLanguageMatch(t *testing
 	if sequelIdx < 0 {
 		t.Fatalf("case-folded sequel missing: %q", v)
 	}
-	if !(bareIdx < sequelIdx) {
+	if bareIdx >= sequelIdx {
 		t.Fatalf("case-folded bare row must precede sequel: %q", v)
 	}
 }

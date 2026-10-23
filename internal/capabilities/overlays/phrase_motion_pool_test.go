@@ -696,7 +696,7 @@ func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
 	categories := map[string]bool{"entity_card_v1": true}
 	ids := map[string]bool{}
 	for _, definition := range document.Motions {
-		if !categories[definition.Category] || !(containsString(definition.Targets, "text") || containsString(definition.Targets, "entity")) {
+		if !categories[definition.Category] || (!containsString(definition.Targets, "text") && !containsString(definition.Targets, "entity")) {
 			continue
 		}
 		if containsString(definition.Targets, "important_phrase") &&

@@ -61,35 +61,35 @@ func (s *Service) UpdateManifestTXT(folder *detail.ClipFolder, manifest *detail.
 	var sb strings.Builder
 	sb.WriteString("📋 CLIP FOLDER MANIFEST\n")
 	sb.WriteString(strings.Repeat("=", 80) + "\n")
-	sb.WriteString(fmt.Sprintf("Folder ID:  %s\n", folder.ID))
-	sb.WriteString(fmt.Sprintf("Local:      %s\n", folder.LocalFolderPath))
-	sb.WriteString(fmt.Sprintf("Source:     %s\n", folder.SourceURL))
+	fmt.Fprintf(&sb, "Folder ID:  %s\n", folder.ID)
+	fmt.Fprintf(&sb, "Local:      %s\n", folder.LocalFolderPath)
+	fmt.Fprintf(&sb, "Source:     %s\n", folder.SourceURL)
 	if folder.VideoID != "" {
-		sb.WriteString(fmt.Sprintf("Video ID:   %s\n", folder.VideoID))
+		fmt.Fprintf(&sb, "Video ID:   %s\n", folder.VideoID)
 	}
 	if folder.FolderPath != "" {
-		sb.WriteString(fmt.Sprintf("Drive:      %s\n", folder.FolderPath))
+		fmt.Fprintf(&sb, "Drive:      %s\n", folder.FolderPath)
 	}
 	if folder.FolderID != "" {
-		sb.WriteString(fmt.Sprintf("Drive ID:   %s\n", folder.FolderID))
+		fmt.Fprintf(&sb, "Drive ID:   %s\n", folder.FolderID)
 	}
-	sb.WriteString(fmt.Sprintf("📊 Totale clip: %d (Processate: %d, Fallite: %d, Saltate: %d)\n",
-		manifest.Stats.ClipCount, manifest.Stats.ProcessedCount, manifest.Stats.FailedCount, manifest.Stats.SkippedCount))
-	sb.WriteString(fmt.Sprintf("Aggiornato: %s\n", time.Now().Format("2006-01-02 15:04:05")))
+	fmt.Fprintf(&sb, "📊 Totale clip: %d (Processate: %d, Fallite: %d, Saltate: %d)\n",
+		manifest.Stats.ClipCount, manifest.Stats.ProcessedCount, manifest.Stats.FailedCount, manifest.Stats.SkippedCount)
+	fmt.Fprintf(&sb, "Aggiornato: %s\n", time.Now().Format("2006-01-02 15:04:05"))
 	sb.WriteString("\n")
 
 	for i, item := range manifest.Clips {
-		sb.WriteString(fmt.Sprintf("%d. [%s]\n", i+1, item.Name))
-		sb.WriteString(fmt.Sprintf("   ⏱️  Tempo:  %s - %s (%ds)\n", item.Start, item.End, item.DurationSeconds))
-		sb.WriteString(fmt.Sprintf("   📊 Stato:  %s\n", item.Status))
+		fmt.Fprintf(&sb, "%d. [%s]\n", i+1, item.Name)
+		fmt.Fprintf(&sb, "   ⏱️  Tempo:  %s - %s (%ds)\n", item.Start, item.End, item.DurationSeconds)
+		fmt.Fprintf(&sb, "   📊 Stato:  %s\n", item.Status)
 		if item.DriveLink != "" {
-			sb.WriteString(fmt.Sprintf("   🔗 Drive:  %s\n", item.DriveLink))
+			fmt.Fprintf(&sb, "   🔗 Drive:  %s\n", item.DriveLink)
 		}
 		if item.LocalPath != "" {
-			sb.WriteString(fmt.Sprintf("   📁 File:   %s\n", filepath.Base(item.LocalPath)))
+			fmt.Fprintf(&sb, "   📁 File:   %s\n", filepath.Base(item.LocalPath))
 		}
 		if item.LegacyFileMD5 != "" {
-			sb.WriteString(fmt.Sprintf("   #  Hash:   %s\n", item.LegacyFileMD5))
+			fmt.Fprintf(&sb, "   #  Hash:   %s\n", item.LegacyFileMD5)
 		}
 		sb.WriteString("\n")
 	}

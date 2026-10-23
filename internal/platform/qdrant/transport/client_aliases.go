@@ -38,7 +38,7 @@ func (c *Client) GetAliasTarget(ctx context.Context, alias string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return "", &ErrCollectionNotFound{Name: alias}
@@ -107,7 +107,7 @@ func (c *Client) UpdateAliases(ctx context.Context, actions []map[string]any) er
 	if err != nil {
 		return fmt.Errorf("update aliases: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)

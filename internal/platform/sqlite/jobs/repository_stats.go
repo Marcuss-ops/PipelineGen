@@ -50,7 +50,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 				stats.Total += cnt
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	// 2. Count by type + status
@@ -71,7 +71,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 				stats.ByType[jt][js] = cnt
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 	}
 
 	// 3. Overall average duration for completed jobs
@@ -118,7 +118,7 @@ func (r *SQLiteStore) GetStats(ctx context.Context) (*JobStats, error) {
 				stats.DurationMs.ByType[jt] = entry
 			}
 		}
-		typeRow.Close()
+		_ = typeRow.Close()
 	}
 
 	// 5. Stale/zombie active jobs (status=leased or running but lease_expiry in past)
@@ -158,12 +158,12 @@ func (r *SQLiteStore) RefreshMetrics(ctx context.Context) error {
 	for activeTypes.Next() {
 		var jt string
 		if err := activeTypes.Scan(&jt); err != nil {
-			activeTypes.Close()
+			_ = activeTypes.Close()
 			return fmt.Errorf("active types scan: %w", err)
 		}
 		types[jt] = true
 	}
-	activeTypes.Close()
+	_ = activeTypes.Close()
 
 	// Set depth for currently-observed type × status combinations.
 	allStatuses := []job.Status{
@@ -181,13 +181,13 @@ func (r *SQLiteStore) RefreshMetrics(ctx context.Context) error {
 		var js job.Status
 		var cnt int
 		if err := rows.Scan(&jt, &js, &cnt); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("queue depth scan: %w", err)
 		}
 		metrics.JobQueueDepth.WithLabelValues(jt, string(js)).Set(float64(cnt))
 		depthSeen[jt+"|"+string(js)] = true
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	// Reset gauges for combos that disappeared this tick.
 	for jt := range types {
@@ -211,13 +211,13 @@ func (r *SQLiteStore) RefreshMetrics(ctx context.Context) error {
 		var jt string
 		var secs float64
 		if err := oldest.Scan(&jt, &secs); err != nil {
-			oldest.Close()
+			_ = oldest.Close()
 			return fmt.Errorf("oldest pending scan: %w", err)
 		}
 		metrics.JobOldestPendingSeconds.WithLabelValues(jt).Set(secs)
 		oldestSeen[jt] = true
 	}
-	oldest.Close()
+	_ = oldest.Close()
 	for jt := range types {
 		if !oldestSeen[jt] {
 			metrics.JobOldestPendingSeconds.WithLabelValues(jt).Set(0)

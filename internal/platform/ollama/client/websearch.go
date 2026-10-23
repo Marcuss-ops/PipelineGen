@@ -175,14 +175,15 @@ func (w *WebSearcher) Search(ctx context.Context, query string) ([]SearchResult,
 	if err != nil {
 		return nil, &SearchError{Code: SearchErrorUnreachable, Query: query, Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		code := SearchErrorInvalidResponse
-		if resp.StatusCode == http.StatusForbidden {
+		switch resp.StatusCode {
+		case http.StatusForbidden:
 			code = SearchErrorJSONDisabled
-		} else if resp.StatusCode == http.StatusTooManyRequests {
+		case http.StatusTooManyRequests:
 			code = SearchErrorRateLimited
 		}
 		return nil, &SearchError{Code: code, Query: query, StatusCode: resp.StatusCode, Err: fmt.Errorf("%s", strings.TrimSpace(string(body)))}
@@ -284,7 +285,7 @@ func FormatContext(results []SearchResult) string {
 		if len(snippet) > 300 {
 			snippet = snippet[:300] + "..."
 		}
-		b.WriteString(fmt.Sprintf("%d. %s\n   %s\n   Source: %s\n\n", i+1, title, snippet, r.URL))
+		fmt.Fprintf(&b, "%d. %s\n   %s\n   Source: %s\n\n", i+1, title, snippet, r.URL)
 	}
 
 	b.WriteString("</web_context>\n\n")

@@ -90,7 +90,7 @@ func TestSolarPanelSearch(t *testing.T) {
 	scraperDir := writeFakeSolarScraper(t)
 	tmpDir := t.TempDir()
 	db := drive.NewMigratedTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	repo := assets.NewClipsRepository(db, logger)
@@ -153,7 +153,7 @@ func TestSolarPanelSearch(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	ctx := context.Background()
 
@@ -199,11 +199,11 @@ func TestSolarPanelSearch(t *testing.T) {
 	fmt.Println("\n=== 5. Search Terms Index ===")
 	rows, err := db.Query("SELECT clip_id, term FROM clip_search_terms LIMIT 20")
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	count := 0
 	for rows.Next() {
 		var clipID, term string
-		rows.Scan(&clipID, &term)
+		require.NoError(t, rows.Scan(&clipID, &term))
 		fmt.Printf("    clip_id=%s term=%q\n", clipID, term)
 		count++
 	}

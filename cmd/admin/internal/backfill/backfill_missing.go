@@ -93,11 +93,11 @@ func RunBackfillMissing(args []string) error {
 		queryArgs = append(queryArgs, *limit)
 	}
 
-	rows, err := root.DB.DB.QueryContext(ctx, query, queryArgs...)
+	rows, err := root.DB.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to query missing embeddings: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type assetItem struct {
 		ID          string

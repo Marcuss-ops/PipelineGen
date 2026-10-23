@@ -13,7 +13,7 @@ func TestStoreLookupClientHashesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	_, err = db.Exec(`CREATE TABLE m2m_clients (client_id TEXT, secret_hash TEXT, scopes_json TEXT, enabled INTEGER)`)
 	if err != nil {
 		t.Fatal(err)

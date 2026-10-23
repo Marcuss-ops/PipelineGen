@@ -77,7 +77,7 @@ const slotStringsSSOTScanScope = "internal/"
 // string literal.
 func ScanSlotStringsBan(root string, _ *policy.Policy, r *report.Report) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -114,7 +114,9 @@ func ScanSlotStringsBan(root string, _ *policy.Policy, r *report.Report) {
 		}
 		scanSlotStringsBanFile(path, relSlash, r)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, "percheck_slot_strings_ban scan "+root+": "+err.Error())
+	}
 }
 
 func scanSlotStringsBanFile(path, relPath string, r *report.Report) {
@@ -122,7 +124,7 @@ func scanSlotStringsBanFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

@@ -192,7 +192,7 @@ func TestUploadVideoClip_SendsMultipart(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FormFile: %v", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		if hdr.Filename != "clip.mp4" {
 			t.Errorf("filename = %q", hdr.Filename)
 		}

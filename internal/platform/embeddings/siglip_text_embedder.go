@@ -197,7 +197,7 @@ func (s *SigLIPTextEmbedder) EmbedTextQuery(ctx context.Context, text string) ([
 		return nil, fmt.Errorf("siglip text embedder: HTTP %s: %w",
 			strings.TrimPrefix(SigLIPTextEndpoint, "/"), err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotImplemented {
 		// 501 = SigLIP model not loaded on the sidecar; channel unavailable.

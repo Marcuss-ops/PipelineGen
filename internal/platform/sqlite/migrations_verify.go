@@ -518,7 +518,7 @@ func liveTableNames(db queryable) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	names := map[string]bool{}
 	for rows.Next() {
 		var name string
@@ -538,7 +538,7 @@ func liveIndexOwners(db queryable) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	owners := map[string]string{}
 	for rows.Next() {
 		var name, table string

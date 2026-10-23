@@ -12,7 +12,6 @@ package script
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
@@ -23,7 +22,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
@@ -83,7 +81,7 @@ func (f *fakeSubmissionService) Submit(ctx context.Context, req opsapp.SubmitReq
 			if existing.Operation != nil && existing.Operation.RequestHash == req.RequestHash {
 				return &opsapp.SubmitResult{Operation: existing.Operation, IsIdempotencyHit: true}, nil
 			}
-			return nil, domainops.ErrIdempotencyConflict
+			return nil, opsapp.ErrIdempotencyConflict
 		}
 	}
 
@@ -96,13 +94,13 @@ func (f *fakeSubmissionService) Submit(ctx context.Context, req opsapp.SubmitReq
 	if opID == "" {
 		opID = fmt.Sprintf("op-fake-%d", f.nextJobIndex)
 	}
-	op := &domainops.Operation{
+	op := &opsapp.Operation{
 		OperationID:           opID,
 		Scope:                 req.Scope,
 		IdempotencyKey:        req.IdempotencyKey,
 		RequestHash:           req.RequestHash,
 		JobID:                 jobID,
-		State:                 domainops.StateQueued,
+		State:                 opsapp.StateQueued,
 		CreatedAt:             time.Unix(0, int64(f.nextJobIndex)),
 		UpdatedAt:             time.Unix(0, int64(f.nextJobIndex)),
 		SupersedesOperationID: "",
@@ -254,109 +252,3 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) (ScriptFlowDeps, *fakeSub
 	}
 	return deps, submitter
 }
-
-// newFASE2OperationsServiceForTest constructs a real
-// `*opsapp.Service` backed by an in-memory SQLite + the 3
-// canonical FASE 2 schemas. The test fixture is the canonical
-// SOLE owner of the in-memory test DB lifecycle (the helper
-// uses t.Cleanup to close the DB at test exit).
-//
-// godlike/06 SSOT: the 3 schemas are the SOLE canonical shapes
-// the Service touches. Drift between this schema and the
-// production migrations would surface as SQL errors at INSERT
-// time (NOT a silent mismatch).
-
-// dbTxManagerForTest wraps *sql.DB to satisfy the operations.TxManager
-// port. Mirrors the production sqlTxManager in
-// internal/app/build_bundles_operations.go but is inlined here to
-// avoid the test package importing the production composition root.
-type dbTxManagerForTest struct {
-	db *sql.DB
-}
-
-// schemasFASE2ForTest is the inline mirror of migrations/sqlite/092
-// (outbox_events), 145 (operations), and the canonical jobs
-// table from `internal/platform/sqlite/jobs`. Kept
-// in lockstep with the production migrations.
-const schemasFASE2ForTest = `
-CREATE TABLE operations (
-    operation_id            TEXT PRIMARY KEY,
-    scope                   TEXT NOT NULL,
-    idempotency_key         TEXT NOT NULL,
-    request_hash            TEXT NOT NULL,
-    job_id                  TEXT NOT NULL,
-    state                   TEXT NOT NULL,
-    created_at              TEXT NOT NULL,
-    updated_at              TEXT NOT NULL,
-    supersedes_operation_id TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX idx_operations_idem_lookup
-    ON operations(scope, idempotency_key, created_at DESC);
-
-CREATE TABLE jobs (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'QUEUED',
-    priority INTEGER NOT NULL DEFAULT 0,
-    project TEXT NOT NULL DEFAULT '',
-    video_name TEXT NOT NULL DEFAULT '',
-    active_key TEXT NOT NULL DEFAULT '',
-    correlation_id TEXT NOT NULL DEFAULT '',
-    payload_json TEXT NOT NULL DEFAULT '{}',
-    result_json TEXT NOT NULL DEFAULT '{}',
-    progress INTEGER NOT NULL DEFAULT 0,
-    error TEXT NOT NULL DEFAULT '',
-    retry_count INTEGER NOT NULL DEFAULT 0,
-    max_retries INTEGER NOT NULL DEFAULT 0,
-    worker_id TEXT NOT NULL DEFAULT '',
-    lease_id TEXT NOT NULL DEFAULT '',
-    lease_expiry TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    started_at TEXT,
-    completed_at TEXT,
-    cancelled_at TEXT,
-    revision INTEGER NOT NULL DEFAULT 1,
-    parent_state_typed TEXT NOT NULL DEFAULT ''
-);
-
-CREATE TABLE outbox_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_type TEXT NOT NULL,
-    aggregate_id TEXT NOT NULL DEFAULT '',
-    aggregate_type TEXT NOT NULL DEFAULT '',
-    payload_json TEXT NOT NULL DEFAULT '',
-    event_key TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'pending',
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 10,
-    last_error TEXT NOT NULL DEFAULT '',
-    next_attempt_at TEXT,
-    worker_id TEXT NOT NULL DEFAULT '',
-    lease_id TEXT NOT NULL DEFAULT '',
-    lease_expiry TEXT,
-    completed_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE UNIQUE INDEX ux_outbox_events_event_key
-    ON outbox_events(event_key);
-`
-
-// stubJobStatsReader satisfies appjobs.JobStatsReader with a
-// no-op GetStats. Used in test wiring where the stats reader
-// is required by the JobsHandler ctor signature (Issue 9 / P2
-// delegator pattern, June 2026) but the test only exercises
-// the Get/Events paths that don't touch stats. Production
-// wiring passes *appjobs.Service which satisfies BOTH
-// job.Service AND JobStatsReader structurally (see
-// internal/app/registry_public_modules.go::registerJobs).
-// Tests use this typed stub to avoid pulling a real SQLite
-// stats reader into the script package (which would otherwise
-// require a layered infrastructure import).
-type stubJobStatsReader struct{}
-
-// GetStats returns (nil, nil) so the JobsHandler ctor
-// accepts the stub. The Stats endpoint is the only consumer
-// of GetStats; tests that exercise the Stats endpoint pass
-// a real *appjobs.Service and bypass this stub.

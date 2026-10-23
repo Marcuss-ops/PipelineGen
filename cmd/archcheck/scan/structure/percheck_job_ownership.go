@@ -125,7 +125,7 @@ func loadOwnershipJobs(root string) ([]ownershipJob, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var jobs []ownershipJob
 	scanner := bufio.NewScanner(f)

@@ -86,7 +86,7 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 	if err != nil {
 		return nil, fmt.Errorf("synthesize request failed: %w: %w", err, ErrSynthesizeFailed)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

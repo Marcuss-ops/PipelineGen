@@ -375,7 +375,7 @@ func scanMediaIdentityFile(path string) []mediaIdentityOffense {
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []mediaIdentityOffense
 

@@ -65,7 +65,7 @@ func TestAssemble_OrdersByPriorityAndPublishes(t *testing.T) {
 	en := strings.Index(content, "English")
 	es := strings.Index(content, "Spanish")
 	it := strings.Index(content, "Italian")
-	if en < 0 || es < 0 || it < 0 || !(en < es && es < it) {
+	if en < 0 || es < 0 || it < 0 || (en >= es || es >= it) {
 		t.Fatalf("published content must order English < Spanish < Italian: %q", content)
 	}
 	if publisher.got.Title != "Localization" || publisher.got.FolderID != "folder-1" || publisher.got.IdempotencyKey != "localization:asset:1" {

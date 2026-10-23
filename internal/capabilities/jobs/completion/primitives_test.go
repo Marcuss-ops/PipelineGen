@@ -211,7 +211,7 @@ func TestPrimitives_AliasesResolve(t *testing.T) {
 	// AssetLocationEntry all diverged into separate struct types with
 	// different fields per GODOBJ-2026-07-03 wave — the compile-time
 	// identity assertions for those types were removed.
-	var _ IdempotencyCachePort = (IdempotencyCachePort)(nil)
+	var _ = (IdempotencyCachePort)(nil)
 
 	cases := []struct {
 		name string

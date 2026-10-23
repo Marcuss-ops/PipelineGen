@@ -66,12 +66,11 @@ func followingAdjectiveIT(text, surface string) string {
 		}
 		// In Italian the adjective directly follows the noun; stop at the
 		// first non-adjective token ("una mela rossa dall'albero").
-		for j := i + 1; j < len(tokens); j++ {
-			lower := strings.ToLower(strings.Trim(tokens[j], ".,;:!?\"'"))
+		if i+1 < len(tokens) {
+			lower := strings.ToLower(strings.Trim(tokens[i+1], ".,;:!?\"'"))
 			if adj, ok := itAdjectiveMap[lower]; ok {
 				return adj
 			}
-			break
 		}
 	}
 	return ""

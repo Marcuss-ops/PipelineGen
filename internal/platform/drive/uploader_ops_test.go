@@ -192,9 +192,9 @@ func newMockDriveAPIServer() *mockDriveAPIServer {
 // vs /upload/drive/v3/files variant).
 func (s *mockDriveAPIServer) attachMockService(t *testing.T) *driveapi.Service {
 	t.Helper()
-	mockURL, err := url.Parse(s.Server.URL)
+	mockURL, err := url.Parse(s.URL)
 	if err != nil {
-		t.Fatalf("mockDriveAPIServer.attachMockService: parse mock URL %q: %v", s.Server.URL, err)
+		t.Fatalf("mockDriveAPIServer.attachMockService: parse mock URL %q: %v", s.URL, err)
 	}
 	httpClient := &http.Client{
 		Transport: &urlRewritingTransport{
@@ -223,7 +223,7 @@ func (s *mockDriveAPIServer) attachMockService(t *testing.T) *driveapi.Service {
 // branches both succeeded against a transient-List backdrop.
 func TestUploader_GetOrCreateFolder_FailClosedOnTransientLookup(t *testing.T) {
 	srv := newMockDriveAPIServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 
 	// Simulate a transient Drive API error: HTTP 503 with the standard
 	// Google error envelope. The SDK wraps this in a *googleapi.Error
@@ -280,7 +280,7 @@ func TestUploader_GetOrCreateFolder_FailClosedOnTransientLookup(t *testing.T) {
 // finished result instead of each racing through Create.
 func TestUploader_GetOrCreateFolder_RaceSafetySingleflight(t *testing.T) {
 	srv := newMockDriveAPIServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 
 	// Under correct singleflight + Stage 3 cross-process second-lookup,
 	// the canonical algorithm consumes exactly TWO list responses
@@ -374,7 +374,7 @@ func TestUploader_GetOrCreateFolder_RaceSafetySingleflight(t *testing.T) {
 // eliminated by SafeFolderName.
 func TestUploader_GetOrCreateFolder_CanonicalNameExactMatch(t *testing.T) {
 	srv := newMockDriveAPIServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 
 	// First call returns empty (folder does not exist) → triggers Create.
 	srv.listResponses = []listResponse{{files: nil}}
@@ -441,7 +441,7 @@ func TestUploader_GetOrCreateFolder_CanonicalNameExactMatch(t *testing.T) {
 // blindly, leaving duplicates stranded on Drive.
 func TestUploader_GetOrCreateFolder_CrossProcessRaceReturnsOldest(t *testing.T) {
 	srv := newMockDriveAPIServer()
-	defer srv.Server.Close()
+	defer srv.Close()
 
 	// Mock sequence:
 	//  1. Files.List (Stage 1, exact-match pre-create): empty — folder

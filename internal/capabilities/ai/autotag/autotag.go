@@ -160,7 +160,7 @@ func (s *Service) tagVideoMultiFrame(ctx context.Context, a *asset.Asset) error 
 	if err != nil {
 		return fmt.Errorf("autotag: mkdir temp: %w", err)
 	}
-	defer os.RemoveAll(jobDir)
+	defer func() { _ = os.RemoveAll(jobDir) }()
 
 	start := time.Now()
 
@@ -458,7 +458,7 @@ func (s *Service) contentHashFor(a *asset.Asset) (string, error) {
 	if a == nil {
 		return "", fmt.Errorf("asset is nil")
 	}
-	if h := a.LegacyFileMD5(); h != "" {
+	if h := a.ContentAddress(); h != "" {
 		return h, nil
 	}
 	path := a.LocalPath()
@@ -469,7 +469,7 @@ func (s *Service) contentHashFor(a *asset.Asset) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s for content hash: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("hash %s: %w", path, err)

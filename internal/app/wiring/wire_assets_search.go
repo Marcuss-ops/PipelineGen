@@ -18,16 +18,15 @@ import (
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	assetresolver "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/resolver"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"go.uber.org/zap"
 )
 
-// buildSearchBundle constructs the canonical *assetsearch.SearchDescriptor.
+// buildSearchBundle constructs the canonical *search.SearchDescriptor.
 //
 // Blocco C1-Step 11 (June 2026): the Handler is constructed inside
 // Build and captured by the returned SearchDescriptor's Module closure.
-// The composition site type-asserts ONCE to *assetsearch.SearchDescriptor
+// The composition site type-asserts ONCE to *search.SearchDescriptor
 // (fail-closed) and reuses the concrete for the
 // assetsapi.NewModule(..., Search: sd, ...) call (the concrete
 // *SearchDescriptor satisfies api.Descriptor structurally). The search
@@ -44,8 +43,8 @@ func buildSearchBundle(
 	log *zap.Logger,
 	searchAggregator *search.Aggregator,
 	providerRegistry *providers.Registry,
-) (*assetsearch.SearchDescriptor, error) {
-	descriptor, err := assetsearch.Build(assetsearch.Dependencies{
+) (*search.SearchDescriptor, error) {
+	descriptor, err := search.Build(search.Dependencies{
 		Aggregator:  searchAggregator,
 		Resolver:    assetresolver.NewService(providerRegistry),
 		EnabledFunc: func() bool { return true }, // search is always on in production
@@ -55,8 +54,8 @@ func buildSearchBundle(
 	if err != nil {
 		return nil, err
 	}
-	desc, ok := descriptor.(*assetsearch.SearchDescriptor)
-	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: search (got %T, want *assetsearch.SearchDescriptor)", descriptor), !ok || desc == nil, DepRequired, log); err != nil {
+	desc, ok := descriptor.(*search.SearchDescriptor)
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: search (got %T, want *search.SearchDescriptor)", descriptor), !ok || desc == nil, DepRequired, log); err != nil {
 		return nil, err
 	}
 	return desc, nil

@@ -83,7 +83,7 @@ func RunTrimSoundEffects(args []string) error {
 		if duration <= time.Duration(*maxSeconds*float64(time.Second)) {
 			if clip.Duration != duration && !*dryRun {
 				clip.Duration = duration
-				if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.LegacyFileMD5()); err != nil {
+				if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, clip.ContentAddress()); err != nil {
 					return fmt.Errorf("refresh metadata for %s: %w", clip.Name, err)
 				}
 				metadataUpdated++

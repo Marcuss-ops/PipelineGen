@@ -10,7 +10,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
-	mediamemoryapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
@@ -44,7 +43,7 @@ func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *Compo
 
 	handler := mediamemoryapi.NewHandler(mediamemoryapi.WireParams{
 		Resolver:       resolver,
-		PolicyResolver: mediamemoryapp.NewResolutionPolicyResolver(),
+		PolicyResolver: mediamemoryapi.NewResolutionPolicyResolver(),
 		Bindings:       bindingSvc,
 		Log:            log,
 	})

@@ -87,7 +87,7 @@ func TestComputeNextAttempt_DivergentEventIDs_Desync(t *testing.T) {
 		// computeNextAttempt is now + jitter; we measure DELTA-from-now
 		// (i.e. the jitter component).
 		next := p.computeNextAttempt(int64(i+1), attempt)
-		delta := next.Sub(time.Now())
+		delta := time.Until(next)
 		// delta may be slightly negative due to monotonic-clock drift;
 		// we don't care about the absolute value, only the spread.
 		samples = append(samples, delta)
@@ -123,8 +123,8 @@ func TestComputeNextAttempt_SameEventIDAttempt_Deterministic(t *testing.T) {
 	// the FROM-time component; computeNextAttempt returns now+delta
 	// so the absolute timestamp differs. We compare the DELTA
 	// instead).
-	d1 := p.computeNextAttempt(42, 3).Sub(time.Now())
-	d2 := p.computeNextAttempt(42, 3).Sub(time.Now())
+	d1 := time.Until(p.computeNextAttempt(42, 3))
+	d2 := time.Until(p.computeNextAttempt(42, 3))
 
 	// Tolerate clock drift between the two time.Now() reads. The
 	// theoretical model is identical (same seed, same attempt,
@@ -178,7 +178,7 @@ func TestComputeNextAttempt_AttemptLadder_Monotonic(t *testing.T) {
 	for k := 1; k <= 10; k++ {
 		t.Run("attempt-"+itoa(k), func(t *testing.T) {
 			next := p.computeNextAttempt(1, k)
-			delta := next.Sub(time.Now())
+			delta := time.Until(next)
 			if k > 1 {
 				if k < capSaturationAttempt && delta < prev {
 					// Pre-cap: a strict-decrease regression is a real defect — a
@@ -215,7 +215,7 @@ func TestComputeNextAttempt_BackoffCapRespected(t *testing.T) {
 	for _, attempt := range []int{8, 10, 12, 14} {
 		t.Run("attempt-"+itoa(attempt), func(t *testing.T) {
 			next := p.computeNextAttempt(1, attempt)
-			delta := next.Sub(time.Now())
+			delta := time.Until(next)
 			// 30min cap + 20% jitter → max ≈ 36min, min ≈ 24min.
 			// sanity: delta > 0 and < 60min (overflow guard).
 			if delta <= 0 {

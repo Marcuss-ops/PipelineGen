@@ -177,7 +177,7 @@ func (a *ArgosServerTranslator) ensureStarted(ctx context.Context) error {
 	stderrPath := filepath.Join(os.TempDir(), "argos_server_stderr.log")
 	if stderrFile, ferr := os.Create(stderrPath); ferr == nil {
 		cmd.Stderr = stderrFile
-		defer stderrFile.Close()
+		defer func() { _ = stderrFile.Close() }()
 	} else {
 		cmd.Stderr = os.Stderr
 	}
@@ -309,7 +309,7 @@ func (a *ArgosServerTranslator) healthCheck(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("argos server /health returned %d", resp.StatusCode)
 	}
@@ -365,7 +365,7 @@ func (a *ArgosServerTranslator) Translate(ctx context.Context, cmd TranslationCo
 		a.invalidate("translate transport error: " + err.Error())
 		return TranslationResult{}, fmt.Errorf("argos: translate request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return TranslationResult{}, fmt.Errorf("argos: read response: %w", err)
@@ -416,7 +416,7 @@ func (a *ArgosServerTranslator) Stop() error {
 		if err == nil {
 			resp, _ := a.httpClient.Do(req)
 			if resp != nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		}
 		cancel()

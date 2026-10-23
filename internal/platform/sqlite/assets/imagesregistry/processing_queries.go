@@ -94,7 +94,7 @@ func (s *AssetStoreSQLite) GetProcessingRecordsByAssetID(ctx context.Context, as
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []asset.ProcessingRecord
 	for rows.Next() {
@@ -117,7 +117,7 @@ func (s *AssetStoreSQLite) GetFailedProcessingRecords(ctx context.Context) ([]as
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []asset.ProcessingRecord
 	for rows.Next() {

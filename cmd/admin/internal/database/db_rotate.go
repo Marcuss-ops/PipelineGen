@@ -33,7 +33,9 @@ func RunDBRotate(ctx context.Context, args []string) error {
 	dataDir := fs.String("data-dir", "./data", "root data directory")
 	maxAgeDays := fs.Int("max-age-days", 7, "retention cutoff (days); rows older than this are offloaded + purged")
 	backupDir := fs.String("backup-dir", "", "override backup directory (defaults to <DataDir>/backups)")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
 
 	fullCfg, err := config.Get()
 	if err != nil {
@@ -53,7 +55,7 @@ func RunDBRotate(ctx context.Context, args []string) error {
 	}
 
 	log, _ := zap.NewProduction()
-	defer log.Sync()
+	defer func() { _ = log.Sync() }()
 
 	ds, err := storage.OpenSet(storage.StorageConfig{
 		DataDir:             resolved.DataDir(),
@@ -62,7 +64,7 @@ func RunDBRotate(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("open set: %w", err)
 	}
-	defer ds.Close()
+	defer func() { _ = ds.Close() }()
 
 	// Use the canonical DatabaseSet.Observability handle. We need to
 	// close it manually here, OpenSet already keeps a reference.

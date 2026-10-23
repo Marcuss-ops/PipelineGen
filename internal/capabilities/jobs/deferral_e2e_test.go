@@ -63,7 +63,7 @@ func TestDeferredJobRunsThroughTheRealQueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open migrated jobs DB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
 
@@ -264,7 +264,7 @@ func TestDeferredRowSurvivesTheRetryBudgetBeingExhausted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open migrated jobs DB: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
 
 	reg := NewRegistry()

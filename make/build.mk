@@ -103,6 +103,14 @@ build-muscles:
 	install -m 0755 rust/target/release/semantic-engine bin/semantic-engine
 	install -m 0755 rust/target/release/mediasampler bin/mediasampler
 
+# Install the UDPipe models declared by rust/lexicon/language_profiles.json.
+# The Rust suite fails closed when a declared model is missing; CI caches the
+# destination directory. VISUALNER_MODEL_DIR defaults to the same path the
+# worker resolves from $HOME.
+VISUALNER_MODEL_DIR ?= $(HOME)/.local/share/visualner/models
+rust-models:
+	VISUALNER_MODEL_DIR="$(VISUALNER_MODEL_DIR)" ./rust/visualner/tools/install_udpipe_models.sh
+
 build: go-version-check build-muscles
 	@mkdir -p bin
 	GOFLAGS="$(GO_BUILD_GOFLAGS)" $(GO) build -ldflags "$(LDFLAGS) $(GO_LINKER_FLAGS)" -v -o bin/pipelinegen      ./cmd/server

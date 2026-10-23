@@ -72,7 +72,7 @@ func (r *MaintenanceRepositorySQLite) ScanLocalOrphans(ctx context.Context, batc
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var candidates []ports.LocalOrphanCandidate
 	for rows.Next() {
@@ -103,7 +103,7 @@ func (r *MaintenanceRepositorySQLite) ScanDriveOrphans(ctx context.Context, batc
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var candidates []ports.DriveOrphanCandidate
 	for rows.Next() {

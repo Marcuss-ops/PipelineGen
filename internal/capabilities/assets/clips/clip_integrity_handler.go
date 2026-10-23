@@ -93,7 +93,10 @@ func (oh *OpsHandler) Reconcile(c *gin.Context) {
 		apiutil.Error(c, http.StatusServiceUnavailable, "clip ops service not wired")
 		return
 	}
-	oh.clipOpsService.Reconcile(c.Request.Context(), source, req.FolderID)
+	if _, err := oh.clipOpsService.Reconcile(c.Request.Context(), source, req.FolderID); err != nil {
+		apiutil.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
 	apiutil.OK(c, gin.H{
 		"ok":      true,
 		"source":  source,

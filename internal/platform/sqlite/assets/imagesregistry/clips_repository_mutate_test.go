@@ -28,6 +28,7 @@
 package imagesregistry
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -121,7 +122,7 @@ func TestClipsRepository_Mutate_ExhaustiveEnumInvariant(t *testing.T) {
 	for _, tc := range tests {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			err := r.Mutate(nil, mutations.AssetMutationCommand{Action: tc.action})
+			err := r.Mutate(context.Background(), mutations.AssetMutationCommand{Action: tc.action})
 			if tc.expectErr && err == nil {
 				t.Fatalf("Mutate(%v) returned nil error; expected an error", tc.action)
 			}
@@ -175,7 +176,7 @@ func TestClipsRepository_Mutate_ErrorMessageTelemetry(t *testing.T) {
 	r := &ClipsRepository{}
 
 	t.Run("restore routs to dispatcher/txmutation telemetry", func(t *testing.T) {
-		err := r.Mutate(nil, mutations.AssetMutationCommand{Action: mutations.AssetMutationRestore})
+		err := r.Mutate(context.Background(), mutations.AssetMutationCommand{Action: mutations.AssetMutationRestore})
 		if err == nil {
 			t.Fatalf("expected error for AssetMutationRestore, got nil")
 		}
@@ -185,7 +186,7 @@ func TestClipsRepository_Mutate_ErrorMessageTelemetry(t *testing.T) {
 	})
 
 	t.Run("delete routes to dispatcher/txmutation telemetry", func(t *testing.T) {
-		err := r.Mutate(nil, mutations.AssetMutationCommand{Action: mutations.AssetMutationDelete})
+		err := r.Mutate(context.Background(), mutations.AssetMutationCommand{Action: mutations.AssetMutationDelete})
 		if err == nil {
 			t.Fatalf("expected error for AssetMutationDelete, got nil")
 		}
@@ -195,7 +196,7 @@ func TestClipsRepository_Mutate_ErrorMessageTelemetry(t *testing.T) {
 	})
 
 	t.Run("upsert nil-asset error mentions nil-Asset requirement", func(t *testing.T) {
-		err := r.Mutate(nil, mutations.AssetMutationCommand{Action: mutations.AssetMutationUpsert})
+		err := r.Mutate(context.Background(), mutations.AssetMutationCommand{Action: mutations.AssetMutationUpsert})
 		if err == nil {
 			t.Fatalf("expected error for AssetMutationUpsert+nil Asset, got nil")
 		}

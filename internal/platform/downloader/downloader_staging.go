@@ -72,14 +72,14 @@ func (d *YTDLPDownloader) downloadLocalFile(req *DownloadRequest, parsed *url.UR
 	if err != nil {
 		return fmt.Errorf("open source file %q: %w", sourcePath, err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := os.Create(finalPath)
 	if err != nil {
 		return fmt.Errorf("create output file %q: %w", finalPath, err)
 	}
 	if _, err := io.Copy(dst, src); err != nil {
-		dst.Close()
+		_ = dst.Close()
 		_ = os.Remove(finalPath)
 		return fmt.Errorf("copy source file %q to %q: %w", sourcePath, finalPath, err)
 	}

@@ -59,7 +59,7 @@ type ClipsCapabilityDeps struct {
 	Repositories       ClipsRepositoryDeps
 	ArtifactService    *artifacts.Service
 	AssetTreeService   *assettree.Service
-	MediaProcessor     detail.Processor
+	MediaProcessor     detail.MediaProcessor
 	Publisher          delivery.Publisher
 	ClipIndexerService *clipindexer.Service
 }

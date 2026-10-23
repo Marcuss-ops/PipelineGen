@@ -138,7 +138,7 @@ func (s *Source) loadSteps(ctx context.Context, jobID string) ([]scriptgeneratio
 	if err != nil {
 		return nil, fmt.Errorf("performance source: read steps %s: %w", jobID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	steps := make([]scriptgeneration.ExecutionStep, 0, 8)
 	for rows.Next() {

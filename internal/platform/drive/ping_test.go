@@ -113,8 +113,8 @@ func TestUploader_AdminInterface_TypedNilTrapGuard(t *testing.T) {
 	// assertion matches the spec rather than reflection's view.
 	var nilUploader *Uploader       // untyped nil pointer
 	var trapped Admin = nilUploader // TRAP: (dyn-type=*Uploader, dyn=nil)
-	require.True(t, trapped != nil, "typed-nil *Uploader wrapped in Admin interface MUST compare != nil per Go spec (the trap)")
-	require.False(t, trapped == Admin(nil), "typed-nil Admin interface MUST compare unequal to untyped-nil Admin(nil) per Go spec (same asymmetry, same trap)")
+	require.False(t, adminInterfaceIsNil(trapped), "typed-nil *Uploader wrapped in Admin interface MUST compare != nil per Go spec (the trap)")
+	require.False(t, adminInterfaceEqualsNil(trapped), "typed-nil Admin interface MUST compare unequal to untyped-nil Admin(nil) per Go spec (same asymmetry, same trap)")
 
 	// SAFE PATTERN — the build_bundles_drive.go guard. An
 	// uninitialised interface variable is true-nil; assigning into it
@@ -128,3 +128,8 @@ func TestUploader_AdminInterface_TypedNilTrapGuard(t *testing.T) {
 	require.True(t, safeAdmin == nil,
 		"safeAdmin MUST remain a true-nil interface when the source *Uploader is nil (build_bundles_drive.go guard contract)")
 }
+
+// The helpers keep the interface comparison inside a function boundary so
+// staticcheck does not fold the concrete typed-nil value into a constant.
+func adminInterfaceIsNil(v Admin) bool     { return v == nil }
+func adminInterfaceEqualsNil(v Admin) bool { return v == Admin(nil) }

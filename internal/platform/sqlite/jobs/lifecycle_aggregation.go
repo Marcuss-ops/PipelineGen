@@ -32,7 +32,7 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 	if err != nil {
 		return fmt.Errorf("scheduleRetry: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'RETRY_WAIT', error = ?,
@@ -80,7 +80,7 @@ func (r *SQLiteStore) exhaustRetry(ctx context.Context, j *job.Job) error {
 	if err != nil {
 		return fmt.Errorf("retry: exhaust begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'FAILED', error = ?, worker_id = '', lease_id = '',
 		 lease_expiry = NULL, revision = revision + 1, updated_at = ?
@@ -121,7 +121,7 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("cancel: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
 		`UPDATE jobs SET status = 'CANCELLED', cancelled_at = ?, worker_id = '',
 		 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
@@ -214,7 +214,7 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("retry: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	// deferred_until is cleared on the way out of RETRY_WAIT: the wait it
 	// recorded has ended, and a stale hint would otherwise sit on a QUEUED row
 	// and mis-report the job's state to an operator.

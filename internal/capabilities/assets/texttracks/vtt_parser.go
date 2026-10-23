@@ -52,7 +52,7 @@ func ParseSubtitleFile(path string) (string, []detail.TimedCue, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("texttracks.ParseSubtitleFile: open %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	format := "vtt"
 	if strings.HasSuffix(strings.ToLower(path), ".srt") {

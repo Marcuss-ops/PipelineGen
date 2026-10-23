@@ -311,10 +311,7 @@ func subjectCompatible(c *script.SegmentAssetCandidate, wantSubject string, seg 
 			return true
 		}
 	}
-	if strings.TrimSpace(winnerEntityLabel(c)) == "" {
-		return true
-	}
-	return false
+	return strings.TrimSpace(winnerEntityLabel(c)) == ""
 }
 
 // requiredConceptsFor returns the spec required concepts for a segment,

@@ -73,7 +73,7 @@ func MapEncodeVideoArgs(profile MapEncodeProfile) []string {
 // profile is rejected with both sides named — never silently accepted.
 func ValidateMapEncoderTelemetry(encoder string, gpu bool, profile MapEncodeProfile) error {
 	if strings.TrimSpace(encoder) != profile.Codec || gpu != profile.ExpectGPU {
-		return fmt.Errorf("Chronon map renderer used encoder=%q gpu=%t, but the declared execution profile requires encoder=%q gpu=%t",
+		return fmt.Errorf("dynamic map renderer used encoder=%q gpu=%t, but the declared execution profile requires encoder=%q gpu=%t",
 			encoder, gpu, profile.Codec, profile.ExpectGPU)
 	}
 	return nil

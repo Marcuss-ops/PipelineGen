@@ -3,7 +3,6 @@ package prompts
 import (
 	"bytes"
 	"fmt"
-	"sync"
 	"text/template"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
@@ -109,11 +108,7 @@ type MemorySection struct {
 	Items []string
 }
 
-var (
-	registry     *Config
-	registryOnce sync.Once
-	registryErr  error
-)
+var registry *Config
 
 // Load accepts either a regular YAML file or a split manifest with includes.
 func Load(path string) (*Config, error) {

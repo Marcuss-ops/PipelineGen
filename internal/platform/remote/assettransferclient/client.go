@@ -61,7 +61,7 @@ func (c *Client) Download(ctx context.Context, assetID string) (io.ReadCloser, s
 		return nil, "", fmt.Errorf("download request: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 		return nil, "", fmt.Errorf("download HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
@@ -94,7 +94,7 @@ func (c *Client) UploadFile(ctx context.Context, assetID, filePath string) error
 	if err != nil {
 		return fmt.Errorf("open file for upload: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	filename := filepath.Base(filePath)
 	// SECURITY: filename is interpolated into the URL query string.
@@ -118,7 +118,7 @@ func (c *Client) UploadFile(ctx context.Context, assetID, filePath string) error
 	if err != nil {
 		return fmt.Errorf("upload content: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("upload content HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -145,7 +145,7 @@ func (c *Client) doPost(ctx context.Context, path string, body io.Reader) ([]byt
 	if err != nil {
 		return nil, fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err

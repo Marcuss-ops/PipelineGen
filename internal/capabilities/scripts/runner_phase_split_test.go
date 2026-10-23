@@ -269,9 +269,10 @@ func TestAudioOverlayFailureAndCancellationDrainBothBranches(t *testing.T) {
 	for _, failure := range []string{"audio", "overlay", "cancel"} {
 		t.Run(failure, func(t *testing.T) {
 			e, repo, audio, overlay, _ := newAudioOverlapFixture(t)
-			if failure == "audio" {
+			switch failure {
+			case "audio":
 				audio.err = errors.New("primary audio failure")
-			} else if failure == "overlay" {
+			case "overlay":
 				overlay.err = errors.New("primary overlay failure")
 			}
 			ctx, cancel := context.WithCancel(e.ctx)

@@ -19,6 +19,12 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	registry := NewRegistry()
+	mustRegister := func(module Module) {
+		t.Helper()
+		if err := registry.Register(module); err != nil {
+			t.Fatalf("register module: %v", err)
+		}
+	}
 
 	// Create mock modules that simulate the FIXED behavior (creating sub-groups)
 	voiceoverModule := &mockModuleWithGroup{name: "voiceover", prefix: "/voiceover", enabled: true}
@@ -27,11 +33,11 @@ func TestRegistryRoutesKeepExpectedPrefixes(t *testing.T) {
 	mediaModule := &mockModuleWithGroup{name: "media", prefix: "/media", enabled: true}
 	stockModule := &mockModuleWithGroup{name: "stock-pipeline", prefix: "/stock-pipeline", enabled: true}
 
-	registry.Register(voiceoverModule)
-	registry.Register(youtubeModule)
-	registry.Register(jobsModule)
-	registry.Register(mediaModule)
-	registry.Register(stockModule)
+	mustRegister(voiceoverModule)
+	mustRegister(youtubeModule)
+	mustRegister(jobsModule)
+	mustRegister(mediaModule)
+	mustRegister(stockModule)
 
 	// Simulate what Router.Setup() does with registry
 	engine := gin.New()
@@ -112,7 +118,9 @@ func TestNoAPIPrefixedInternalRoutes(t *testing.T) {
 	registry := NewRegistry()
 	// Register a known module to verify the registry is working.
 	medMod := &mockModuleWithGroup{name: "media", prefix: "/media", enabled: true}
-	registry.Register(medMod)
+	if err := registry.Register(medMod); err != nil {
+		t.Fatalf("register media module: %v", err)
+	}
 	registry.Freeze()
 
 	router := NewRouter(&RouterConfig{

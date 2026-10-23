@@ -165,7 +165,7 @@ func upsertPointsSoleOwnerWarn(r *report.Report, label, msg string) {
 // len(r.Violations) == 0.
 func ScanUpsertPointsSoleOwner(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -208,7 +208,9 @@ func ScanUpsertPointsSoleOwner(root string, _ *policy.Policy, r *report.Report, 
 		}
 		scanUpsertPointsSoleOwnerFile(path, relSlash, r, productionOnly)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, upsertPointsSoleOwnerRule+" scan "+root+": "+err.Error())
+	}
 }
 
 // scanUpsertPointsSoleOwnerFile opens a single .go file and
@@ -221,7 +223,7 @@ func scanUpsertPointsSoleOwnerFile(path, relPath string, r *report.Report, produ
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

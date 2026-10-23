@@ -58,7 +58,7 @@ func TestWorker_RecoverAbandonedMarksRunJobRunAbandoned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	recoverTestObservabilitySchema(t, db)
 	recorder := obsmetrics.NewSQLiteRecorder(db)
 

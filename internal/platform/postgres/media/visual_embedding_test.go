@@ -102,7 +102,7 @@ func TestVisualPipeline_EmbedAndStoresPooledVector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	vectors := pgmedia.NewVectorSurfaceWriter(db)
 	if err := vectors.RegisterEmbeddingFamily(context.Background(), "visual", pgmedia.DefaultVisualModelID, pgmedia.DefaultVisualDim); err != nil {
@@ -163,7 +163,7 @@ func TestVisualPipeline_SidecarFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open media db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	for _, tc := range []struct {
 		name    string

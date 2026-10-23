@@ -103,7 +103,7 @@ func classifyGoogleAPIError(err error) (RetryDecision, bool) {
 	if gerr == nil {
 		return RetryDecision{}, false
 	}
-	kind, statusCode, retryAfter := classifyGoogleAPIErrorInfo(gerr)
+	statusCode, retryAfter, kind := classifyGoogleAPIErrorInfo(gerr)
 	class := retryClassFromGoogleAPIKind(kind)
 	// Body is truncated to 60 chars to bound audit-log cardinality
 	// (godlike/07 no-fake-availability: audit logs that grep by

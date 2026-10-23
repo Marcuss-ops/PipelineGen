@@ -131,7 +131,7 @@ func mediaAssetsWriterWarn(r *report.Report, label, msg string) {
 func ScanMediaAssetsWriterCanonical(root string, _ *policy.Policy, r *report.Report) {
 	for _, scanRoot := range mediaAssetsWriterScanRoots {
 		absRoot := filepath.Join(root, scanRoot)
-		filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+		if err := filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -150,7 +150,9 @@ func ScanMediaAssetsWriterCanonical(root string, _ *policy.Policy, r *report.Rep
 			}
 			inspectMediaAssetsWriterFile(root, path, r)
 			return nil
-		})
+		}); err != nil {
+			r.Warnings = append(r.Warnings, "percheck_media_assets_writer_canonical scan "+absRoot+": "+err.Error())
+		}
 	}
 }
 
@@ -190,7 +192,7 @@ func inspectMediaAssetsWriterFile(root, absPath string, r *report.Report) {
 		})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	source, err := os.ReadFile(absPath)
 	if err != nil {

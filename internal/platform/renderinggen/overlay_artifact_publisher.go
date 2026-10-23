@@ -105,7 +105,7 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 		return fmt.Errorf("create overlay publication staging file: %w", err)
 	}
 	path := file.Name()
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 
 	if err := downloadCertifiedArtifact(ctx, p.client, artifact.URL, file, artifact.SizeBytes, artifact.SHA256); err != nil {
 		_ = file.Close()
@@ -254,7 +254,7 @@ func downloadCertifiedArtifact(ctx context.Context, client *http.Client, rawURL 
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}

@@ -17,7 +17,7 @@ func TestOpenSetDerivesCanonicalPrimaryPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSet rejected canonical DataDir-derived path: %v", err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 	want := filepath.Join(root, "media", "media.db.sqlite")
 	if got := set.PrimaryPath(); got != want {
 		t.Fatalf("OpenSet primary path = %q, want %q", got, want)
@@ -45,12 +45,12 @@ func TestDatabaseSetValidateControlPlaneIdentityRequiresCanonicalPrimary(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer primary.Close()
+	defer func() { _ = primary.Close() }()
 	observability, err := OpenSQLiteDB(t.TempDir()+"/observability.sqlite", zaptest.NewLogger(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer observability.Close()
+	defer func() { _ = observability.Close() }()
 
 	if _, err := primary.Exec(`CREATE TABLE control_plane_meta (
 		database_id TEXT PRIMARY KEY,

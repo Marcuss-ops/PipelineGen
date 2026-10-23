@@ -461,7 +461,7 @@ func (r *ClipsRegistry) getAllWithDriveFileIDPG(ctx context.Context, pgDB *sql.D
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []*MediaRecord
 	for rows.Next() {
 		rec, scanErr := scanMediaRecordPG(rows)
@@ -503,10 +503,11 @@ func detailsToMediaRecord(details *asset.Details) *MediaRecord {
 	rec.ContentHash = details.Asset.BinarySHA256()
 
 	for _, loc := range details.Locations {
-		if loc.LocationKind == asset.LocationKindLocal {
+		switch loc.LocationKind {
+		case asset.LocationKindLocal:
 			rec.LocalPath = loc.URI
 			rec.LegacyFileMD5 = loc.LegacyFileMD5
-		} else if loc.LocationKind == asset.LocationKindDrive {
+		case asset.LocationKindDrive:
 			rec.DriveFileID = loc.ExternalID
 			rec.DriveLink = loc.AccessURL
 			rec.DownloadLink = loc.DownloadURL

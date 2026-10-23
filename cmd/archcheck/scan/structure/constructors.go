@@ -74,7 +74,7 @@ func ScanConstructors(root string, pol *policy.Policy, r *report.Report) {
 		if err != nil {
 			return nil
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		rel, _ := filepath.Rel(root, path)
 		relPath := filepath.ToSlash(rel)
 		sc := bufio.NewScanner(f)

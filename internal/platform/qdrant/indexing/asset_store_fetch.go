@@ -85,7 +85,7 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 	if err != nil {
 		return nil, fmt.Errorf("list asset IDs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []string
 	for rows.Next() {
@@ -127,7 +127,7 @@ func (s *SQLiteAssetStore) populateTranscripts(ctx context.Context, a *AssetData
 	if err != nil {
 		return // godlike/07 transition: missing schema is no crash
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var lang, text string
 		if err := rows.Scan(&lang, &text); err != nil {

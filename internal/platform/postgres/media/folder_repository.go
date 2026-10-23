@@ -132,7 +132,7 @@ func (r *FolderRepository) ListFolders(ctx context.Context, source string) ([]*d
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: list clip folders: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var folders []*detail.ClipFolder
 	for rows.Next() {

@@ -20,8 +20,6 @@ type FallbackEntityExtractor struct {
 	Fallback entityports.EntityExtractor
 }
 
-type batchEntityExtractor = entityports.BatchEntityExtractor
-
 type unavailableEntityExtractionAdapter struct{}
 
 func NewUnavailableEntityExtractionAdapter() entityports.EntityExtractor {

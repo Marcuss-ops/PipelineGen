@@ -36,14 +36,6 @@ type StockAssetUpsertRecord struct {
 	AssetID string
 }
 
-// stockAssetIndexUpserter is the narrow surface the stock pipeline
-// uses from *assetindex.Service. Only Upsert is invoked.
-//
-//nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
-type stockAssetIndexUpserter interface {
-	Upsert(ctx context.Context, rec *StockAssetUpsertRecord) error
-}
-
 // stockChunkDispatcher is the narrow surface the stock pipeline
 // uses from *outbox.Dispatcher. Only EnqueueAndIndex is invoked.
 //

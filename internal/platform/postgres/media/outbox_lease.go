@@ -175,7 +175,7 @@ func (r *Repository) ClaimBatch(ctx context.Context, workerID string, leaseTTL t
 	if err != nil {
 		return nil, fmt.Errorf("media outbox ClaimBatch: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var claims []*OutboxClaim
 	for rows.Next() {

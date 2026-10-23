@@ -133,7 +133,7 @@ func (r *ChannelsRepository) ListByCategory(ctx context.Context, category string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanRows(rows)
 }
@@ -148,7 +148,7 @@ func (r *ChannelsRepository) ListAll(ctx context.Context) ([]*asset.CategoryChan
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanRows(rows)
 }
@@ -163,7 +163,7 @@ func (r *ChannelsRepository) ListCategories(ctx context.Context) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var categories []string
 	for rows.Next() {
@@ -198,7 +198,7 @@ func (r *ChannelsRepository) ListEnabled(ctx context.Context) ([]*asset.Category
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return scanRows(rows)
 }
@@ -319,7 +319,7 @@ func (r *ChannelsRepository) ClaimDue(ctx context.Context, nowStr, workerID, lea
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id FROM category_channels
@@ -337,12 +337,12 @@ func (r *ChannelsRepository) ClaimDue(ctx context.Context, nowStr, workerID, lea
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		claimedIDs = append(claimedIDs, id)
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	nowFormatted := timeutil.FormatRFC3339(time.Now())
 	for _, id := range claimedIDs {

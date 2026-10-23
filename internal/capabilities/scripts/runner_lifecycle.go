@@ -262,7 +262,7 @@ func persistSemanticBundleSidecar(runID string, bundle any) error {
 		return fmt.Errorf("create semantic bundle temp: %w", err)
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if err := tmp.Chmod(0o644); err != nil {
 		_ = tmp.Close()
 		return err

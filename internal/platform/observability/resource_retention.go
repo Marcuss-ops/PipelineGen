@@ -45,7 +45,7 @@ func (r *SQLiteRecorder) ApplyResourceRetention(ctx context.Context, now time.Ti
 	if err != nil {
 		return 0, 0, err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	rawCutoff := now.Add(-policy.RawSampleAge).UTC().Format(time.RFC3339Nano)
 	aggCutoff := now.Add(-policy.AggregateAge).UTC().Format(time.RFC3339Nano)
 	res, err := tx.ExecContext(ctx, `DELETE FROM run_resource_samples WHERE observed_at < ?`, rawCutoff)

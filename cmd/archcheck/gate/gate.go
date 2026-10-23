@@ -114,7 +114,7 @@ func Walk(t testing.TB, cfg Config) {
 		if openErr != nil {
 			return openErr
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		lineNo := 0
 		scanner := bufio.NewScanner(f)

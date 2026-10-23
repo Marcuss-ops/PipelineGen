@@ -252,7 +252,7 @@ func syncDirBestEffort(dir string) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_ = f.Sync()
 }
 
@@ -270,7 +270,7 @@ func copyFile(src, dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cas: open %s for copy: %w", src, err)
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	tmp, err := os.CreateTemp(dir, ".cas-copy-*")
 	if err != nil {
 		return "", fmt.Errorf("cas: create copy tmp in %s: %w", dir, err)

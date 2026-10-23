@@ -56,7 +56,7 @@ func driftScenario(t *testing.T, migrationsRelPath, scope, declFile string) (str
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec("DROP TABLE " + table); err != nil {
 		t.Fatalf("simulate the drift (drop %s): %v", table, err)
 	}
@@ -80,7 +80,7 @@ func assertDriftIsReported(t *testing.T, dbPath, migrationsRelPath, scope, table
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	migrations, err := discoverMigrations(migrationsDir)
 	if err != nil {
@@ -199,7 +199,7 @@ func TestMigrationHistory_CleanDatabaseReportsNothing(t *testing.T) {
 			if err != nil {
 				t.Fatalf("open: %v", err)
 			}
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 
 			migrations, err := discoverMigrations(migrationsDir)
 			if err != nil {
@@ -282,7 +282,7 @@ func TestMigrationHistory_DroppedTablesAreNotReported(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	applied, err := loadAppliedMigrations(db)
 	if err != nil {
 		t.Fatalf("load applied: %v", err)

@@ -84,7 +84,7 @@ func (s *CASContinuationStore) GetResumeDocument(ctx context.Context, ref clipre
 	if err != nil {
 		return doc, fmt.Errorf("renderinggen continuation store: open resume document %s: %w", ref.SHA256, err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Read one byte past the declared size so an oversized object is detected
 	// without buffering it.

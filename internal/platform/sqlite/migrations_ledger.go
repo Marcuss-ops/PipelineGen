@@ -17,7 +17,7 @@ func ensureMigrationLedger(db queryable) error {
 	if err != nil {
 		return fmt.Errorf("begin schema_migrations expansion: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if err := ensureMigrationLedgerTx(tx); err != nil {
 		return err
 	}
@@ -66,24 +66,24 @@ func ensureMigrationLedgerTx(db ledgerQueryable) error {
 		var version int
 		var checksum, checksumSHA string
 		if err := checksumRows.Scan(&version, &checksum, &checksumSHA); err != nil {
-			checksumRows.Close()
+			_ = checksumRows.Close()
 			return fmt.Errorf("scan schema_migrations checksums: %w", err)
 		}
 		if checksum != checksumSHA || !digest.IsSHA256(checksumSHA) {
-			checksumRows.Close()
+			_ = checksumRows.Close()
 			return fmt.Errorf("schema_migrations checksum is not canonical: version=%d checksum=%q checksum_sha256=%q", version, checksum, checksumSHA)
 		}
 	}
 	if err := checksumRows.Err(); err != nil {
-		checksumRows.Close()
+		_ = checksumRows.Close()
 		return fmt.Errorf("iterate schema_migrations checksums: %w", err)
 	}
-	checksumRows.Close()
+	_ = checksumRows.Close()
 	rows, err := db.Query("SELECT version, migration_id FROM schema_migrations WHERE migration_id <> version")
 	if err != nil {
 		return fmt.Errorf("validate schema_migrations.migration_id: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if rows.Next() {
 		var version, migrationID int
 		if err := rows.Scan(&version, &migrationID); err != nil {
@@ -110,7 +110,7 @@ func schemaMigrationColumns(db ledgerQueryable) (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	columns := make(map[string]bool)
 	for rows.Next() {
 		var cid, notNull, primaryKey int
@@ -137,7 +137,7 @@ func loadAppliedMigrations(db queryable) (map[int]appliedRecord, error) {
 		}
 		return nil, fmt.Errorf("query schema_migrations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var v int

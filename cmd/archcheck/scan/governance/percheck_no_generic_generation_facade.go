@@ -150,7 +150,7 @@ func generationFacadeWarnBucket(r *report.Report, label, msg string) {
 // percheck_root_override.go + percheck_providers_searchaggregator_ban.go.
 func ScanNoGenericGenerationFacade(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -194,7 +194,9 @@ func ScanNoGenericGenerationFacade(root string, _ *policy.Policy, r *report.Repo
 		}
 		scanGenerationFacadeFile(path, relSlash, r, productionOnly)
 		return nil
-	})
+	}); walkErr != nil {
+		r.Warnings = append(r.Warnings, "no-generic-generation-facade scan "+root+": "+walkErr.Error())
+	}
 }
 
 // scanGenerationFacadeFile opens a single .go file and emits
@@ -209,7 +211,7 @@ func scanGenerationFacadeFile(path, relPath string, r *report.Report, production
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

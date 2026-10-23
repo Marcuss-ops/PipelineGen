@@ -135,10 +135,22 @@ func (h *YouTubeClipHandler) SearchCatalog(c *gin.Context) {
 		req.SortBy = c.Query("sort_by")
 		req.CreatedAfter = c.Query("created_after")
 		req.CreatedBefore = c.Query("created_before")
-		fmt.Sscanf(c.DefaultQuery("min_duration", "0"), "%d", &req.MinDuration)
-		fmt.Sscanf(c.DefaultQuery("max_duration", "0"), "%d", &req.MaxDuration)
-		fmt.Sscanf(c.DefaultQuery("limit", "50"), "%d", &req.Limit)
-		fmt.Sscanf(c.DefaultQuery("offset", "0"), "%d", &req.Offset)
+		if _, err := fmt.Sscanf(c.DefaultQuery("min_duration", "0"), "%d", &req.MinDuration); err != nil {
+			apiutil.BadRequest(c, "invalid min_duration")
+			return
+		}
+		if _, err := fmt.Sscanf(c.DefaultQuery("max_duration", "0"), "%d", &req.MaxDuration); err != nil {
+			apiutil.BadRequest(c, "invalid max_duration")
+			return
+		}
+		if _, err := fmt.Sscanf(c.DefaultQuery("limit", "50"), "%d", &req.Limit); err != nil {
+			apiutil.BadRequest(c, "invalid limit")
+			return
+		}
+		if _, err := fmt.Sscanf(c.DefaultQuery("offset", "0"), "%d", &req.Offset); err != nil {
+			apiutil.BadRequest(c, "invalid offset")
+			return
+		}
 		req.HasTranscript = c.Query("has_transcript") == "true"
 		req.HasDriveLink = c.Query("has_drive_link") == "true"
 		req.SortAsc = c.Query("sort_asc") == "true"

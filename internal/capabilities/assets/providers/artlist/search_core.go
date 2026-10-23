@@ -210,8 +210,8 @@ func (ss *SearchService) hydrateDiscoveredClip(ctx context.Context, originalTerm
 			if existing.LocalPath() != "" {
 				clip.SetLocalPath(existing.LocalPath())
 			}
-			if existing.LegacyFileMD5() != "" {
-				clip.SetLegacyFileMD5(existing.LegacyFileMD5())
+			if legacy := existing.LegacyFileMD5(); legacy != "" {
+				clip.SetLegacyFileMD5(legacy)
 			}
 			if existing.DriveLink() != "" {
 				clip.SetDriveLink(existing.DriveLink())

@@ -510,7 +510,7 @@ func (a *VoiceoverCacheAdapter) loadTimingArtifact(ctx context.Context, rec *per
 	if err != nil {
 		return nil, fmt.Errorf("download timing artifact %s: %w", fileID, err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	var artifact audio.SpeechTimingArtifact
 	if err := json.NewDecoder(io.LimitReader(reader, 8<<20)).Decode(&artifact); err != nil {
 		return nil, fmt.Errorf("decode timing artifact %s: %w", fileID, err)

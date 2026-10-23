@@ -344,8 +344,8 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 	if strings.Contains(strings.ToLower(strings.TrimSpace(styleID)), "center") {
 		alignment = 5 // true screen center, requested by the centered-subtitles preset.
 	}
-	sb.WriteString(fmt.Sprintf("Style: %s,%s,%d,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,%d,0,0,0,100,100,0,0,1,%.1f,%d,%d,10,10,%d,1\n\n",
-		styleID, preset.FontName, preset.FontSize, preset.Bold, preset.Outline, preset.Shadow, alignment, preset.MarginV))
+	fmt.Fprintf(&sb, "Style: %s,%s,%d,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,%d,0,0,0,100,100,0,0,1,%.1f,%d,%d,10,10,%d,1\n\n",
+		styleID, preset.FontName, preset.FontSize, preset.Bold, preset.Outline, preset.Shadow, alignment, preset.MarginV)
 
 	sb.WriteString("[Events]\n")
 	sb.WriteString("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
@@ -371,7 +371,7 @@ func CompileASSContent(cues []detail.TimedCue, styleID string) (string, error) {
 		// contract. ASS uses \\N for an explicit line break; the fixed style
 		// alignment/margin below keeps all lines anchored consistently.
 		text = wrapASSText(text, assWrapChars)
-		sb.WriteString(fmt.Sprintf("Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", startStr, endStr, styleID, text))
+		fmt.Fprintf(&sb, "Dialogue: 0,%s,%s,%s,,0,0,0,,%s\n", startStr, endStr, styleID, text)
 		lastEndMs = endMs
 	}
 
@@ -392,7 +392,6 @@ func wrapASSText(text string, maxRunes int) string {
 		if utf8.RuneCountInString(word) > maxRunes {
 			if line != "" {
 				lines = append(lines, line)
-				line = ""
 			}
 			runes := []rune(word)
 			for len(runes) > maxRunes {
@@ -471,7 +470,7 @@ func validateASSFile(path string, clipDurationMs int64) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	hasScriptInfo := false
 	hasStyles := false

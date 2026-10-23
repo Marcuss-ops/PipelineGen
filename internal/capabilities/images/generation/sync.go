@@ -66,7 +66,7 @@ func (g *GenerationService) ingestGeneratedImage(ctx context.Context, result *Ge
 		if err != nil {
 			return nil, fmt.Errorf("ingestGeneratedImage: failed to open output path %s: %w", result.OutputPath, err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		reader = f
 	}
 	if result.OutputPath == "" && len(result.Data) == 0 {

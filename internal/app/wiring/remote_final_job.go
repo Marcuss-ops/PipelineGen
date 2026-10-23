@@ -199,7 +199,7 @@ func (a *remoteFinalJobAdapter) resolveEditorialMusicAsset(ctx context.Context, 
 		if err != nil {
 			return nil, true, fmt.Errorf("open curated BGM %s: %w", editorial.Alias, err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		info, err := file.Stat()
 		if err != nil {
 			return nil, true, fmt.Errorf("stat curated BGM %s: %w", editorial.Alias, err)

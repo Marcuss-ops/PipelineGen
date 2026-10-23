@@ -97,7 +97,7 @@ const frameConceptWriterNote = "forbidden point write to a frame/concept project
 // concept collection outside the respective projection writer file.
 func ScanFrameConceptProjectionWriter(root string, _ *policy.Policy, r *report.Report, _ bool) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -127,7 +127,9 @@ func ScanFrameConceptProjectionWriter(root string, _ *policy.Policy, r *report.R
 		}
 		scanFrameConceptWriterFile(path, relSlash, r)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, frameConceptWriterRule+" scan "+root+": "+err.Error())
+	}
 }
 
 // scanFrameConceptWriterFile opens a single .go file and emits
@@ -141,7 +143,7 @@ func scanFrameConceptWriterFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

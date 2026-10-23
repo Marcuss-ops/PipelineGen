@@ -108,7 +108,7 @@ func testImageService(t *testing.T) *ImageStorageService {
 	if err != nil {
 		t.Fatalf("sql.Open: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	repo := imagesrepo.NewImagesRepository(db)
 

@@ -108,7 +108,7 @@ func (g *GPUGate) acquireFile(ctx context.Context) (*os.File, error) {
 			if err == nil {
 				return f, nil
 			}
-			f.Close()
+			_ = f.Close()
 			if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
 				return nil, err
 			}

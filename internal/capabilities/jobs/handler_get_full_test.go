@@ -492,7 +492,7 @@ func TestGetFull_TimingNullWithoutReport(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
 	assert.Nil(t, envelope.Timing, "timing must be null when no run report is available")
-	assert.Contains(t, string(rec.Body.Bytes()), `"timing":null`, "timing key must serialize as null")
+	assert.Contains(t, rec.Body.String(), `"timing":null`, "timing key must serialize as null")
 }
 
 // TestGetFull_BackwardCompat_ExistingFieldsPreserved locks the

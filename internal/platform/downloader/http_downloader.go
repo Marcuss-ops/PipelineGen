@@ -57,7 +57,7 @@ func (d *HTTPDownloader) Download(ctx context.Context, req *HTTPDownloadRequest)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	request, err := http.NewRequestWithContext(ctx, "GET", req.URL, nil)
 	if err != nil {
@@ -70,7 +70,7 @@ func (d *HTTPDownloader) Download(ctx context.Context, req *HTTPDownloadRequest)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
@@ -105,7 +105,7 @@ func (d *HTTPDownloader) DownloadWithProgress(ctx context.Context, req *HTTPDown
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
@@ -118,7 +118,7 @@ func (d *HTTPDownloader) DownloadWithProgress(ctx context.Context, req *HTTPDown
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	if progressFn != nil && resp.ContentLength > 0 {
 		_, err = io.Copy(out, &progressReader{r: resp.Body, total: resp.ContentLength, fn: progressFn})

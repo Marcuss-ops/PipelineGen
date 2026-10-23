@@ -36,7 +36,7 @@ func (r *SQLiteStore) ListPreparationWorkObservations(ctx context.Context, limit
 	if err != nil {
 		return nil, fmt.Errorf("list preparation work observations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := []job.WorkObservation{}
 	for rows.Next() {

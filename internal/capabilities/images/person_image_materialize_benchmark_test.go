@@ -62,9 +62,6 @@ func TestPersonImageMaterializeBenchmarkRounds_9_10(t *testing.T) {
 	defer cancel()
 
 	service := &ImageStorageService{client: client}
-	if service.log == nil {
-		// silence DDG logs
-	}
 	_ = service
 
 	// ── ROUND 9: cold download + decode + hash for 5 people ──────────
@@ -227,7 +224,7 @@ func downloadForMaterialize(ctx context.Context, client *http.Client, rawURL str
 	if err != nil {
 		return nil, "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}

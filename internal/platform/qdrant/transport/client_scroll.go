@@ -55,7 +55,7 @@ func (c *Client) scroll(ctx context.Context, collection string, offset string, l
 	if err != nil {
 		return nil, fmt.Errorf("scroll %q: %w", collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, &ErrCollectionNotFound{Name: collection}

@@ -139,7 +139,7 @@ func (r *SQLiteRepository) ListByJob(ctx context.Context, jobID string) ([]Artif
 	if err != nil {
 		return nil, fmt.Errorf("artifacts: list by job %s: %w", jobID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var artifacts []Artifact
 	for rows.Next() {
@@ -214,7 +214,7 @@ func (r *SQLiteRepository) ListJobArtifacts(ctx context.Context, jobID string) (
 	if err != nil {
 		return nil, fmt.Errorf("artifacts: list job artifacts %s: %w", jobID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var artifacts []JobArtifact
 	for rows.Next() {

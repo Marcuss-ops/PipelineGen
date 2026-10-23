@@ -187,7 +187,7 @@ LIMIT ` + fmt.Sprintf("$%d OFFSET $%d", len(pageArgs)-1, len(pageArgs))
 	if err != nil {
 		return operator.AssetInventoryPage{}, fmt.Errorf("operatorinventory.list query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items, err := scanOperatorItems(rows)
 	if err != nil {
@@ -347,7 +347,7 @@ WHERE m.id = $1 AND m.lifecycle_state <> 'DELETED'`
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items, err := scanOperatorItems(rows)
 	if err != nil {
@@ -374,7 +374,7 @@ func (r *OperatorInventoryReader) listLocations(ctx context.Context, assetID str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.Location
 	for rows.Next() {
@@ -409,7 +409,7 @@ func (r *OperatorInventoryReader) listProcessing(ctx context.Context, assetID st
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []asset.ProcessingRecord
 	for rows.Next() {
@@ -456,7 +456,7 @@ func (r *OperatorInventoryReader) listOutboxEvents(ctx context.Context, assetID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []operator.OutboxEventProjection
 	for rows.Next() {

@@ -182,7 +182,6 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 				zap.String("root_folder_id", resolved.RootFolderID),
 				zap.Error(err),
 			)
-			err = nil
 		} else {
 			return nil, err
 		}
@@ -295,7 +294,6 @@ func (p *Publisher) ResolveFolder(ctx context.Context, req delivery.PublishReque
 				zap.String("root_folder_id", resolved.RootFolderID),
 				zap.Error(err),
 			)
-			err = nil
 		} else {
 			return "", err
 		}

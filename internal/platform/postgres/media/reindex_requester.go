@@ -48,7 +48,7 @@ func (r *ReindexRequester) RequestIndex(ctx context.Context, assetID string) err
 	if err != nil {
 		return fmt.Errorf("postgres media reindex requester: begin: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var (
 		source, mediaType, assetKind, sourceVersion string

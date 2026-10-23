@@ -306,7 +306,7 @@ func certifyPlate(root string, entry manifestPlate) (Plate, error) {
 	if err != nil {
 		return Plate{}, fmt.Errorf("plate %q raster: %w", entry.ID, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	header := make([]byte, len(pngSignature))
 	if _, err := io.ReadFull(file, header); err != nil {
 		return Plate{}, fmt.Errorf("plate %q raster is not a PNG: %w", entry.ID, err)

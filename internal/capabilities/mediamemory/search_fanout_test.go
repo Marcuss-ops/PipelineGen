@@ -86,7 +86,7 @@ func TestSearchFanOutAdapterTranslatesQueryToCanonical(t *testing.T) {
 	assert.Equal(t, []string{"video", "image"}, got.MediaTypes)
 	assert.Equal(t, []string{"artlist"}, got.Sources)
 	assert.Equal(t, 25, got.Limit)
-	assert.Equal(t, search.SearchModeANN, got.Mode, "Phase 1.x default mode MUST be ANN")
+	assert.Equal(t, search.RetrievalModeANN, got.Mode, "Phase 1.x default mode MUST be ANN")
 }
 
 func TestSearchFanOutAdapterClampsOverMaxLimit(t *testing.T) {

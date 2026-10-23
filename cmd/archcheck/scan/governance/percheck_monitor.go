@@ -128,7 +128,7 @@ func scanMonitorInfraFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Read the entire file into a slice of lines so marker lookup
 	// is O(1) per candidate line. This mirrors the shell awk's

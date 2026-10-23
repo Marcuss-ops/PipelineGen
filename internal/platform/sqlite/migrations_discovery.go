@@ -362,7 +362,7 @@ func migrationTableExists(db queryable, name string) bool {
 	if err != nil {
 		return false
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return false
 	}

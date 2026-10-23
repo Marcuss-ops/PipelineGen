@@ -114,7 +114,7 @@ func (s *SQLiteRequestLogSink) FlushBatch(ctx context.Context, batch []appmw.Req
 		_ = tx.Rollback()
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, e := range batch {
 		_, err := stmt.ExecContext(ctx,

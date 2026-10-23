@@ -107,7 +107,7 @@ type Service struct {
 	detailFetcher DetailFetcher
 
 	// Cross-cutting domain services.
-	mediaProcessor    detail.Processor
+	mediaProcessor    detail.MediaProcessor
 	assetDestResolver asset.Resolver
 	jobsSvc           *appjobs.Service
 

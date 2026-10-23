@@ -146,6 +146,7 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 			}
 			chartsEnabled := req.EnableCharts && !req.DisableChartOverlays
 			impactRes.SceneHighlights = r.mergeSemanticCharts(sceneInputs, impactRes.SceneHighlights, semanticBundles, chartsEnabled)
+			impactRes.SceneHighlights = mergeSemanticMicroSummaries(sceneInputs, impactRes.SceneHighlights, semanticBundles)
 			if !chartsEnabled {
 				for i := range impactRes.SceneHighlights {
 					impactRes.SceneHighlights[i].ChartValues = nil
@@ -197,6 +198,7 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		chartsEnabled := req.EnableCharts && !req.DisableChartOverlays
 		if semanticReady {
 			impactRes.SceneHighlights = r.mergeSemanticCharts(sceneInputs, impactRes.SceneHighlights, semanticBundles, chartsEnabled)
+			impactRes.SceneHighlights = mergeSemanticMicroSummaries(sceneInputs, impactRes.SceneHighlights, semanticBundles)
 		}
 		if !chartsEnabled {
 			for i := range impactRes.SceneHighlights {

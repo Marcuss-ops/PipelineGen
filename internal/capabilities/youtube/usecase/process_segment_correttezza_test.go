@@ -53,7 +53,6 @@ import (
 
 // stubCacheRecorder records whether GetExisting was called.
 type stubCacheRecorder struct {
-	stubClipCache
 	calls int32
 }
 
@@ -208,9 +207,7 @@ func TestBuildClipFilename_DefaultsPolicyVersionWhenEmpty(t *testing.T) {
 // stubVideoPipelineEmptyPath is a stub that returns a VideoCutResult
 // with empty LocalPath. The use case's Step 5 should fail-closed
 // with FailureCodeEmptyLocalPath.
-type stubVideoPipelineEmptyPath struct {
-	stubVideoPipeline
-}
+type stubVideoPipelineEmptyPath struct{}
 
 func (stubVideoPipelineEmptyPath) DownloadAndCutYouTubeVideo(_ context.Context, _ youtubeports.VideoCutRequest) (*youtubeports.VideoCutResult, error) {
 	return &youtubeports.VideoCutResult{LocalPath: ""}, nil
@@ -240,7 +237,6 @@ func TestProcessSegment_FailsOnEmptyLocalPath(t *testing.T) {
 // but of size 0. The use case's Step 5 should fail-closed with
 // FailureCodeInvalidLocalArtifact.
 type stubVideoPipelineZeroSize struct {
-	stubVideoPipeline
 	path string
 }
 
@@ -311,7 +307,6 @@ func TestProcessSegment_FailsOnHashError(t *testing.T) {
 
 // stubVideoPipelineWithPath returns a VideoCutResult with a real path.
 type stubVideoPipelineWithPath struct {
-	stubVideoPipeline
 	path string
 }
 
@@ -326,7 +321,6 @@ func (s stubVideoPipelineWithPath) DownloadAndCutYouTubeVideo(_ context.Context,
 // is the localized super-tx (CommitClipTextAndIndexEvent), which is the
 // method the recording assertions rely on.
 type stubWriterAssetRecorder struct {
-	stubAtomicWriter
 	captured youtubetypes.ClipAsset
 	calls    int
 }
@@ -381,7 +375,7 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 		},
 	}
 	rec := &stubWriterAssetRecorder{}
-	rec.CommitClipAndIndexEvent(context.Background(), asset.ID, asset, youtubeports.IndexEventPayload{})
+	require.NoError(t, rec.CommitClipAndIndexEvent(context.Background(), asset.ID, asset, youtubeports.IndexEventPayload{}))
 
 	if rec.calls != 1 {
 		t.Fatalf("writer should have been called once, got %d", rec.calls)

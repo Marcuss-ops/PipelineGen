@@ -13,7 +13,7 @@ func TestSQLiteVidRushCacheRoundTripAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE vidrush_provider_cache (
 		namespace TEXT NOT NULL, cache_key TEXT NOT NULL, payload_json TEXT NOT NULL,
 		created_at TEXT NOT NULL, updated_at TEXT NOT NULL,

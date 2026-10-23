@@ -51,7 +51,7 @@ func RunUploadDriveFile(args []string) error {
 	defer rootCleanup()
 
 	if root == nil || root.Drive == nil || root.Drive.Publisher == nil {
-		return fmt.Errorf("Drive publisher is required for upload")
+		return fmt.Errorf("drive publisher is required for upload")
 	}
 	adminUpload, err := delivery.NewAdminUploadService(root.Drive.Publisher)
 	if err != nil {

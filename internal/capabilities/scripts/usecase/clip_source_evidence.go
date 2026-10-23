@@ -34,20 +34,20 @@ func canonicalClipDriveLink(clip *asset.Asset) string {
 // appendClipSourceText writes the legacy technical per-clip source
 // text block used for provenance and compatibility consumers.
 func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset, transcript, metadataText string) {
-	w.WriteString(fmt.Sprintf("CLIP %s: %s\n", id, clipDisplayName(clip, id)))
+	fmt.Fprintf(w, "CLIP %s: %s\n", id, clipDisplayName(clip, id))
 	if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
-		w.WriteString(fmt.Sprintf("  Description: %s\n", searchText))
+		fmt.Fprintf(w, "  Description: %s\n", searchText)
 	} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
-		w.WriteString(fmt.Sprintf("  Description: %s\n", desc))
+		fmt.Fprintf(w, "  Description: %s\n", desc)
 	} else if metadataText = strings.TrimSpace(metadataText); metadataText != "" {
-		w.WriteString(fmt.Sprintf("  Description: %s\n", metadataText))
+		fmt.Fprintf(w, "  Description: %s\n", metadataText)
 	}
 	if transcript != "" {
 		excerpt := truncateExcerpt(transcript, excerptMaxRunes)
-		w.WriteString(fmt.Sprintf("  Transcript: %s\n", excerpt))
+		fmt.Fprintf(w, "  Transcript: %s\n", excerpt)
 	}
 	if len(clip.Tags) > 0 {
-		w.WriteString(fmt.Sprintf("  Tags: %s\n", strings.Join(clip.Tags, ", ")))
+		fmt.Fprintf(w, "  Tags: %s\n", strings.Join(clip.Tags, ", "))
 	}
 	w.WriteString("\n")
 }
@@ -66,18 +66,18 @@ func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position
 		return
 	}
 	view := buildModelClipView(position, clip, transcript)
-	w.WriteString(fmt.Sprintf("NARRATIVE EVIDENCE %d\n", position+1))
-	w.WriteString(fmt.Sprintf("Ref: %s\n", view.Ref))
+	fmt.Fprintf(w, "NARRATIVE EVIDENCE %d\n", position+1)
+	fmt.Fprintf(w, "Ref: %s\n", view.Ref)
 	if title := strings.TrimSpace(view.VisualSummary); title != "" {
-		w.WriteString(fmt.Sprintf("VisualSummary: %s\n", title))
+		fmt.Fprintf(w, "VisualSummary: %s\n", title)
 	}
 	if desc := strings.TrimSpace(view.Description); desc != "" {
-		w.WriteString(fmt.Sprintf("Description: %s\n", desc))
+		fmt.Fprintf(w, "Description: %s\n", desc)
 	}
 	if transcript := strings.TrimSpace(view.Transcript); transcript != "" {
-		w.WriteString(fmt.Sprintf("Transcript: %s\n", transcript))
+		fmt.Fprintf(w, "Transcript: %s\n", transcript)
 	}
-	w.WriteString(fmt.Sprintf("DurationMs: %d\n", view.DurationMs))
+	fmt.Fprintf(w, "DurationMs: %d\n", view.DurationMs)
 	w.WriteString("\n")
 }
 

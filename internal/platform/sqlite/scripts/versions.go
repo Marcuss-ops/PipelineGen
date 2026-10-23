@@ -23,7 +23,7 @@ func (r *ScriptRepository) GetScriptVersions(ctx context.Context, scriptID int64
 	if err != nil {
 		return nil, fmt.Errorf("failed to query script versions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var versions []ScriptVersionRecord
 	for rows.Next() {

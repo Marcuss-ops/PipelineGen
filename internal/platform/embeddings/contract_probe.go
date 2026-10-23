@@ -50,7 +50,7 @@ func (p *ContractProbe) Fetch(ctx context.Context) (coreembedding.Contract, erro
 	if err != nil {
 		return coreembedding.Contract{}, fmt.Errorf("embedding contract probe: request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 65536))
 	if err != nil {
 		return coreembedding.Contract{}, fmt.Errorf("embedding contract probe: read response: %w", err)

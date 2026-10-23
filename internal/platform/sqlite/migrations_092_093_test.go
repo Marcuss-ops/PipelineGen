@@ -69,7 +69,7 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 
 				db, err := sql.Open("sqlite3", dbPath+"?_mode=ro")
 				require.NoError(t, err)
-				defer db.Close() // 1. Ledger: 092 + 093 must be in schema_migrations with non-empty
+				defer func() { _ = db.Close() }() // 1. Ledger: 092 + 093 must be in schema_migrations with non-empty
 				//    checksums. Baseline-aware: a fresh DB bootstrapped from the
 				//    consolidated 000_baseline_267.sql sentinel (version 0) has
 				//    no individual 1..267 rows — the historical window is then
@@ -216,7 +216,7 @@ func TestMigrations_092_093_FreshDB(t *testing.T) {
 				// Open a fresh RO handle for round-2 assertions to avoid racing
 				// on the in-scope round1RO connection.
 				round2RO := openReadOnly(t, dbPath)
-				defer round2RO.Close()
+				defer func() { _ = round2RO.Close() }()
 
 				// Ledger checksums MUST be byte-identical → the runner recognizes
 				// 092 + 093 as already-applied and does not re-apply or rewrite.
@@ -249,7 +249,7 @@ func mustReadColumnNames(t *testing.T, db *sql.DB, tbl string) []string {
 	t.Helper()
 	rows, err := db.Query("SELECT name FROM pragma_table_info(?)", tbl)
 	require.NoError(t, err, "PRAGMA table_info(%s)", tbl)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cols []string
 	for rows.Next() {
 		var name string
@@ -273,7 +273,7 @@ func mustReadIndexNames(t *testing.T, db *sql.DB, tbl string) []string {
 		tbl,
 	)
 	require.NoError(t, err, "read indexes for %s", tbl)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	seen := make(map[string]struct{}, 4)
 	out := make([]string, 0, 4)
 	for rows.Next() {

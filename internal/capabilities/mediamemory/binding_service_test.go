@@ -21,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/google/uuid"
 )
 
@@ -156,7 +155,7 @@ func (r *fakeBindingsRepo) Upsert(_ context.Context, b MediaBinding) (MediaBindi
 		r.failNextErr = nil
 		return MediaBinding{}, err
 	}
-	if !media.IsKnownSlotKind(b.SlotKind) {
+	if !b.SlotKind.IsValid() {
 		return MediaBinding{}, fmt.Errorf("mediamemory: binding slot_kind=%q: %w",
 			b.SlotKind, ErrInvalidSlotKind)
 	}
@@ -216,7 +215,7 @@ func (r *fakeBindingsRepo) FindByID(_ context.Context, id string) (MediaBinding,
 
 func (r *fakeBindingsRepo) ListApprovedByConcept(_ context.Context, conceptID string, slotKinds []SlotKind, limit int) ([]MediaBinding, error) {
 	for _, sk := range slotKinds {
-		if !media.IsKnownSlotKind(sk) {
+		if !sk.IsValid() {
 			return nil, fmt.Errorf("mediamemory: list approved slot_kind=%q: %w",
 				sk, ErrInvalidSlotKind)
 		}
@@ -253,7 +252,7 @@ func (r *fakeBindingsRepo) ListApprovedByConcept(_ context.Context, conceptID st
 
 func (r *fakeBindingsRepo) ListApprovedByConcepts(_ context.Context, conceptIDs []string, slotKinds []SlotKind, limit int) (map[string][]MediaBinding, error) {
 	for _, sk := range slotKinds {
-		if !media.IsKnownSlotKind(sk) {
+		if !sk.IsValid() {
 			return nil, fmt.Errorf("mediamemory: list approved (batch) slot_kind=%q: %w",
 				sk, ErrInvalidSlotKind)
 		}

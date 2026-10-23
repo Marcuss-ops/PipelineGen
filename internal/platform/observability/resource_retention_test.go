@@ -16,7 +16,7 @@ func TestSQLiteRecorder_PersistsAggregateAndAppliesSeparateRetention(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for _, ddl := range []string{
 		`CREATE TABLE run_observability (run_id TEXT PRIMARY KEY, job_id TEXT, attempt_id TEXT)`,
 		`CREATE TABLE run_resource_reports (run_id TEXT PRIMARY KEY, job_id TEXT, attempt_id TEXT, schema_version INTEGER, started_at TEXT, finished_at TEXT, sample_count INTEGER, report_json TEXT, created_at TEXT, updated_at TEXT)`,

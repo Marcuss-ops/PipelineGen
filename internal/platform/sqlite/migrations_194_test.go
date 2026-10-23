@@ -30,7 +30,7 @@ func TestMigrations_194_ContentObjectsTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read content_objects pk: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {

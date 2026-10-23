@@ -50,7 +50,7 @@ func RunPerformanceReport(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	src, err := perfstore.NewSource(dbSet.Primary.DB, dbSet.Observability.DB)
 	if err != nil {

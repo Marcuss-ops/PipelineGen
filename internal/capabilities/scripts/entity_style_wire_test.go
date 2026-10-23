@@ -56,7 +56,9 @@ func TestAssignEntityImageMotionsStampsTheStyleSelector(t *testing.T) {
 		{ID: "portrait", Kind: string(capabilityoverlay.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "ada"}}},
 		{ID: "silent", Kind: string(capabilityoverlay.KindEntityImage), AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "b"}}},
 	}
-	assignEntityImageMotions(items, 0, 1920, 1080, "")
+	if err := assignEntityImageMotions(items, 0, 1920, 1080, ""); err != nil {
+		t.Fatalf("assign entity image motions: %v", err)
+	}
 	if items[0].EntityStyleID != "" {
 		t.Fatalf("default portrait style = %q, want no implicit composition selector", items[0].EntityStyleID)
 	}
@@ -73,7 +75,9 @@ func TestAssignEntityImageMotionsKeepsAPinnedSelector(t *testing.T) {
 		items := []capabilityoverlay.OverlayItem{
 			{ID: "portrait", Kind: string(capabilityoverlay.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "ada"}}},
 		}
-		assignEntityImageMotions(items, 0, 1920, 1080, pinned)
+		if err := assignEntityImageMotions(items, 0, 1920, 1080, pinned); err != nil {
+			t.Fatalf("assign entity image motions (%s): %v", pinned, err)
+		}
 		if items[0].EntityStyleID != pinned {
 			t.Fatalf("pinned selector %q was clobbered to %q by the final stamp", pinned, items[0].EntityStyleID)
 		}

@@ -338,7 +338,7 @@ func (r *VoiceoversRepository) ListAll(ctx context.Context) ([]*Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var records []*Record
 	for rows.Next() {

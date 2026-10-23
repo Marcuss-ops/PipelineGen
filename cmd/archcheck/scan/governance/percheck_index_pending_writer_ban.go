@@ -58,7 +58,7 @@ const indexPendingWriterScanScope = "internal/"
 // exempt set references asset.StateIndexPending.
 func ScanIndexPendingWriterBan(root string, _ *policy.Policy, r *report.Report) {
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -95,7 +95,9 @@ func ScanIndexPendingWriterBan(root string, _ *policy.Policy, r *report.Report) 
 		}
 		scanIndexPendingWriterBanFile(path, relSlash, r)
 		return nil
-	})
+	}); walkErr != nil {
+		r.Warnings = append(r.Warnings, "index-pending-writer scan "+root+": "+walkErr.Error())
+	}
 }
 
 func scanIndexPendingWriterBanFile(path, relPath string, r *report.Report) {
@@ -103,7 +105,7 @@ func scanIndexPendingWriterBanFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

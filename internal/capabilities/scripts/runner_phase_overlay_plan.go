@@ -27,20 +27,20 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	}
 	if err := compileResultPhraseTimings(result, req.SourceLanguage, reportTimingSkip); err != nil {
 		cause := fmt.Errorf("phrase timing compilation failed: %w", err)
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 		return false
 	}
 	if err := compileResultEntityTimeline(result, req.SourceLanguage, reportTimingSkip); err != nil {
 		cause := fmt.Errorf("entity timeline compilation failed: %w", err)
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 		return false
 	}
 	background, bgErr := r.resolveOverlayBackground(ctx, req.OverlayBackground)
 	if bgErr != nil {
 		cause := fmt.Errorf("resolve overlay background failed: %w", bgErr)
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 		return false
 	}
@@ -119,21 +119,21 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	)
 	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 		return false
 	}
 	if req.RandomSFXOnImageOverlay {
 		if err := attachRandomOverlaySFXToPlan(result.OverlayPlan); err != nil {
 			cause := fmt.Errorf("attach random image-overlay SFX: %w", err)
-			r.failExecutionStep(ctx, exec, step, cause)
+			r.failExecutionStepBestEffort(ctx, exec, step, cause)
 			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 			return false
 		}
 		for _, plan := range result.LocalizedOverlayPlans {
 			if err := attachRandomOverlaySFXToPlan(plan); err != nil {
 				cause := fmt.Errorf("attach random localized image-overlay SFX: %w", err)
-				r.failExecutionStep(ctx, exec, step, cause)
+				r.failExecutionStepBestEffort(ctx, exec, step, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
 			}
@@ -159,7 +159,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 	}
 	if _, err := BuildEditingTimeline(result); err != nil {
 		cause := fmt.Errorf("editing timeline preflight failed: %w", err)
-		r.failExecutionStep(ctx, exec, step, cause)
+		r.failExecutionStepBestEffort(ctx, exec, step, cause)
 		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 		return false
 	}
@@ -192,7 +192,7 @@ func (e *executionRun) audioCompile() bool {
 		if step.StepID == "" {
 			step = state.Step
 		}
-		e.r.failExecutionStep(failCtx, e.exec, step, cause)
+		e.r.failExecutionStepBestEffort(failCtx, e.exec, step, cause)
 		e.r.failRunWithRetry(failCtx, e.runID, StageCompilingAudio, cause)
 		return false
 	}

@@ -250,10 +250,6 @@ func NewClipIngestPipeline(deps ClipIngestPipelineDeps) (*ClipIngestPipeline, er
 	if err := depsValidate(deps); err != nil {
 		return nil, err
 	}
-	log := deps.Log
-	if log == nil {
-		log = zap.NewNop()
-	}
 	return &ClipIngestPipeline{
 		Downloader:          deps.MediaProcessing.Downloader,
 		MediaNormalizer:     deps.MediaProcessing.MediaNormalizer,

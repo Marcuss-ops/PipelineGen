@@ -56,9 +56,9 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 		t.Cleanup(func() {
 			// Close the database before removing files (avoids "database is locked" on Windows)
 			if db != nil {
-				db.Close()
+				_ = db.Close()
 			}
-			os.RemoveAll(tmpDir)
+			_ = os.RemoveAll(tmpDir)
 		})
 
 		dbPath := filepath.Join(tmpDir, "test.db")
@@ -76,7 +76,7 @@ func NewTestDB(t *testing.T, opts *TestDBOpts) *sql.DB {
 
 	// Verify connection
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("failed to ping test db: %v", err)
 	}
 
@@ -112,7 +112,7 @@ func NewTestDBWithSchema(t *testing.T, schema string) *sql.DB {
 	db := NewTestDB(t, nil)
 	if schema != "" {
 		if _, err := db.Exec(schema); err != nil {
-			db.Close()
+			_ = db.Close()
 			t.Fatalf("failed to run test schema: %v\nSchema:\n%s", err, schema)
 		}
 	}
@@ -141,7 +141,7 @@ func NewMigratedTestDB(t *testing.T) *sql.DB {
 
 	db := NewTestDB(t, nil)
 	if err := migrateAll(db, zap.NewNop(), dbPath, "primary"); err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("NewMigratedTestDB: apply migrations: %v", err)
 	}
 	return db

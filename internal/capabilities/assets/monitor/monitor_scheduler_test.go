@@ -173,7 +173,6 @@ type stubJobEnqueuer struct {
 	lastCursorCmd    EnqueueExtractRequest
 
 	returnErr error // EnqueueExtract's terminal return (simulating enqueue failure)
-	cursorErr error // simulated cursor-update failure (best-effort: tolerated)
 
 	// collisions: videoIDs that should short-circuit EnqueueExtract as a
 	// no-op (ActiveKey collision semantics). The collision path does NOT

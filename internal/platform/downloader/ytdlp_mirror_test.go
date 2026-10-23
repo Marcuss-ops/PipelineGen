@@ -199,8 +199,7 @@ func TestMirror_ConcurrentSameKeySingleFlight(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			output := filepath.Join(workDir, fmt.Sprintf("job%d.%%28ext%%29s", i))
-			output = filepath.Join(workDir, fmt.Sprintf("job%d.%%(ext)s", i))
+			output := filepath.Join(workDir, fmt.Sprintf("job%d.%%(ext)s", i))
 			err := d.Download(context.Background(), &DownloadRequest{
 				URL:        "https://www.youtube.com/watch?v=sharedVideoID9",
 				OutputPath: output,

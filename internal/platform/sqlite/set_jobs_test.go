@@ -17,7 +17,7 @@ func TestOpenSetJobsSplitIsExplicitAndSideBySide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 
 	if set.Jobs == nil {
 		t.Fatal("explicit JobsDBPath must open the jobs database")
@@ -35,7 +35,7 @@ func TestOpenSetWithoutJobsSplitDoesNotCreateJobsHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 	if set.Jobs != nil {
 		t.Fatal("jobs handle must remain nil unless explicitly configured")
 	}
@@ -63,7 +63,7 @@ func TestDatabaseSetMigrateJobsPlane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 
 	if err := set.Migrate(zap.NewNop()); err != nil {
 		t.Fatalf("jobs-plane migration failed: %v", err)

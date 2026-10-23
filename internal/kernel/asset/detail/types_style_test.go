@@ -220,13 +220,13 @@ func TestGenerationStyle_AliasPointsTo_StyleDefinition(t *testing.T) {
 	}
 
 	// asset.StyleDefinition → asset.GenerationStyle (alias assignment, no copy).
-	var g asset.GenerationStyle = src
+	var g = src
 	if g.Name != src.Name || g.DisplayName != src.DisplayName || g.PromptSuffix != src.PromptSuffix {
 		t.Fatalf("asset.StyleDefinition → asset.GenerationStyle alias lost data: got %+v want %+v", g, src)
 	}
 
 	// asset.GenerationStyle → asset.StyleDefinition (reverse alias, also no copy).
-	var back asset.StyleDefinition = g
+	var back = g
 	if back.ID != src.ID || back.Name != src.Name || back.Enabled != src.Enabled {
 		t.Fatalf("asset.GenerationStyle → asset.StyleDefinition alias lost data: got %+v want %+v", back, src)
 	}

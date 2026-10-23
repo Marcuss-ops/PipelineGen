@@ -57,7 +57,7 @@ func TestSearchAdapter_Search_AdminIsSystem_PropagatesToFilter(t *testing.T) {
 		// WorkspaceID intentionally empty — admin/reconcile path.
 	}
 
-	defer func() { recover() }() // catch nil-schema panic (expected — proves filter compiled)
+	defer func() { _ = recover() }() // catch nil-schema panic (expected — proves filter compiled)
 
 	_, err := adapter.Search(context.Background(), req)
 	if err != nil && strings.Contains(err.Error(), "WorkspaceID is required") {
@@ -81,7 +81,7 @@ func TestSearchAdapter_HybridSearch_AdminIsSystem_PropagatesToFilter(t *testing.
 	}
 
 	defer func() {
-		recover() // catch nil-client panic (expected)
+		_ = recover() // catch nil-client panic (expected)
 	}()
 
 	_, err := adapter.HybridSearch(context.Background(), req)

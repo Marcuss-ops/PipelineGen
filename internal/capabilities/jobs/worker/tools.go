@@ -248,7 +248,7 @@ func (t *Tools) DownloadAsset(ctx context.Context, assetID string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	if filename == "" {
 		filename = assetID
 	}
@@ -260,7 +260,7 @@ func (t *Tools) DownloadAsset(ctx context.Context, assetID string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	if _, err := io.Copy(f, rc); err != nil {
 		return "", err
 	}

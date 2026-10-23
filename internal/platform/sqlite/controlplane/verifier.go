@@ -239,7 +239,7 @@ func (v *Verifier) VerifyDeep(ctx context.Context) (capcontrol.Report, error) {
 		add("migration_ledger_exact", "FAIL", queryErr.Error())
 		return r, nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var version int
 		if scanErr := rows.Scan(&version); scanErr != nil {

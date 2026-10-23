@@ -120,8 +120,12 @@ func TestPool_HandlerPanic_DoesNotKillWorker(t *testing.T) {
 		eventType: "test.ok",
 		handleFn:  func(_ context.Context, _ Event) error { return nil },
 	}
-	reg.Register(panicHandler)
-	reg.Register(okHandler)
+	if err := reg.Register(panicHandler); err != nil {
+		t.Fatalf("register panic handler: %v", err)
+	}
+	if err := reg.Register(okHandler); err != nil {
+		t.Fatalf("register ok handler: %v", err)
+	}
 
 	pool := NewPool("panic-test", nil, reg, zap.NewNop(), defaultTestConfig())
 	pool.finisher = fin
@@ -171,7 +175,9 @@ func TestPool_DeferredEventDoesNotConsumeRetry(t *testing.T) {
 			return NewDeferredError(fmt.Errorf("parent job is still running"), time.Minute)
 		},
 	}
-	reg.Register(handler)
+	if err := reg.Register(handler); err != nil {
+		t.Fatalf("register deferred handler: %v", err)
+	}
 	clock := NewFakeClock(time.Date(2026, 10, 22, 16, 0, 0, 0, time.UTC))
 	pool := NewPool("deferred-test", nil, reg, zap.NewNop(), defaultTestConfig())
 	pool.clock = clock
@@ -228,7 +234,9 @@ func TestPool_MarkCompletedFailure_ReprocessesIdempotently(t *testing.T) {
 		eventType: "test.idempotent",
 		handleFn:  func(_ context.Context, _ Event) error { return nil },
 	}
-	reg.Register(handler)
+	if err := reg.Register(handler); err != nil {
+		t.Fatalf("register idempotent handler: %v", err)
+	}
 
 	pool := NewPool("mark-completed-test", nil, reg, zap.NewNop(), defaultTestConfig())
 	pool.finisher = fin

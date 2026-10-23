@@ -185,7 +185,7 @@ func (sh *SearchHandler) ClipStatus(c *gin.Context) {
 	}
 
 	// Determine status based on available data
-	status := "unknown"
+	var status string
 	if clip.DriveLink() != "" || clip.DownloadLink() != "" {
 		status = "processed"
 	} else if clip.LocalPath() != "" {
@@ -224,7 +224,8 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 	ctx := c.Request.Context()
 	var allClips []*asset.Asset
 
-	if sourceLower == "voiceover" {
+	switch sourceLower {
+	case "voiceover":
 		if sh.voiceoverRepo == nil {
 			apiutil.BadRequest(c, "voiceover repo not available")
 			return
@@ -237,7 +238,7 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 		for _, rec := range records {
 			allClips = append(allClips, voiceoverDTOToClip(rec))
 		}
-	} else if sourceLower == "images" {
+	case "images":
 		if sh.imagesRepo == nil {
 			apiutil.BadRequest(c, "images repo not available")
 			return
@@ -250,7 +251,7 @@ func (sh *SearchHandler) ListClips(c *gin.Context) {
 		for _, img := range images {
 			allClips = append(allClips, appclips.ImageAssetToAsset(img))
 		}
-	} else {
+	default:
 		if sh.assetRepo == nil {
 			apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 			return

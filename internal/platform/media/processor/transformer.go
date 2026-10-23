@@ -61,7 +61,6 @@ func (p *Processor) Transform(ctx context.Context, input *detail.TransformInput)
 			result.Error = "master rendition missing after processing"
 			return result, fmt.Errorf("%s", result.Error)
 		}
-		processedPath = master.LocalPath
 		result.LegacyFileMD5 = master.LegacyFileMD5
 		result.LocalPath = master.LocalPath
 		result.Filename = master.Filename

@@ -352,10 +352,8 @@ func providerMaterializer(id ImageProvider, origin ImageOrigin) func(context.Con
 func canonicalMetadataMapper(id ImageProvider, origin ImageOrigin) func(raw Metadata) (Metadata, error) {
 	return func(raw Metadata) (Metadata, error) {
 		out := Metadata{}
-		if raw != nil {
-			for k, v := range raw {
-				out[k] = v
-			}
+		for k, v := range raw {
+			out[k] = v
 		}
 		out["provider"] = string(id)
 		out["origin"] = string(origin)

@@ -10,8 +10,6 @@ package assets
 
 import (
 	"context"
-
-	"go.uber.org/zap"
 )
 
 // RealtimeMatchRequest is a local type replacing the removed
@@ -48,10 +46,7 @@ type RealtimeMatcher interface {
 // Named with the "Realtime" prefix to avoid colliding with the other
 // *MatchHandler receivers elsewhere in the assets package
 // (e.g. voiceover/soundeffect asset matching).
-type RealtimeMatchHandler struct {
-	svc RealtimeMatcher
-	log *zap.Logger
-}
+type RealtimeMatchHandler struct{}
 
 // NewRealtimeMatchHandler creates a new realtime match handler.
 

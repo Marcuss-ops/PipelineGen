@@ -166,7 +166,7 @@ func TestExtractionIntent_JSONByteEquivalence(t *testing.T) {
 			// a future drift where one name diverges from the other
 			// (e.g. by dropping the alias and re-introducing a separate
 			// struct shape).
-			var alt EnqueueExtractRequest = EnqueueExtractRequest(tc.fields)
+			var alt = EnqueueExtractRequest(tc.fields)
 			requestJSON, errRequest := json.Marshal(alt)
 			if errRequest != nil {
 				t.Fatalf("json.Marshal(EnqueueExtractRequest{...}) failed: %v", errRequest)
@@ -329,13 +329,13 @@ func TestEnqueueExtractRequest_TypeAliasResolution(t *testing.T) {
 	t.Parallel()
 
 	// Bidirectional alias: ExtractionIntent → EnqueueExtractRequest.
-	var ei ExtractionIntent = ExtractionIntent{
+	var ei = ExtractionIntent{
 		VideoID: "alias_test_xyz",
 		Title:   "Alias Round-Trip Title",
 		URL:     "https://youtube.com/watch?v=alias_test_xyz",
 		Group:   "alias_round_trip_group",
 	}
-	var er EnqueueExtractRequest = ei
+	var er = ei
 	if er.VideoID != ei.VideoID ||
 		er.Title != ei.Title ||
 		er.URL != ei.URL ||
@@ -344,14 +344,14 @@ func TestEnqueueExtractRequest_TypeAliasResolution(t *testing.T) {
 	}
 
 	// Bidirectional alias: EnqueueExtractRequest → ExtractionIntent.
-	var er2 EnqueueExtractRequest = EnqueueExtractRequest{
+	var er2 = EnqueueExtractRequest{
 		VideoID:       "alias_test_abc",
 		Title:         "Reverse Alias Title",
 		URL:           "https://youtube.com/watch?v=alias_test_abc",
 		Group:         "reverse_alias_group",
 		DriveFolderID: "drive_folder_xyz",
 	}
-	var ei2 ExtractionIntent = er2
+	var ei2 = er2
 	if ei2.VideoID != er2.VideoID ||
 		ei2.Title != er2.Title ||
 		ei2.URL != er2.URL ||

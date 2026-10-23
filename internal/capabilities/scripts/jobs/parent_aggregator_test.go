@@ -70,7 +70,6 @@ import (
 type stubScriptAggregatorJobsService struct {
 	parentJob  *job.Job
 	childJobs  map[string]*job.Job // childID → *job.Job
-	completed  map[string]map[string]any
 	flipped    map[string]scriptFlipRecord
 	flippedErr error // CAS-rejection knob (ErrAggregateCASConflict / ErrAlreadyTerminalAggregate)
 	listErr    error

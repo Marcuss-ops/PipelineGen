@@ -63,7 +63,7 @@ func setupWorkerAssetsTest(t *testing.T) (*AssetTransferServiceImpl, *assetindex
 		t.Fatalf("setupWorkerAssetsTest: NewHTTPSourceStager: %v", stagerErr)
 	}
 	workerSvc.WithSourceStager(src)
-	return workerSvc, svc, func() { db.Close() }
+	return workerSvc, svc, func() { _ = db.Close() }
 }
 
 func TestDownloadStreamsLocalFile(t *testing.T) {
@@ -92,7 +92,7 @@ func TestDownloadStreamsLocalFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	if filename != "input.mp4" {
 		t.Fatalf("expected filename input.mp4, got %q", filename)
@@ -147,7 +147,7 @@ func TestDownloadFallsBackToRemoteURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	// The new contract: filename is the URL's last path component
 	// (or empty if the URL has no path). The Content-Disposition

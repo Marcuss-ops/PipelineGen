@@ -82,7 +82,7 @@ func (a *EmbedAssetTextAdapter) LoadAssetSearchTexts(ctx context.Context, assetI
 	if err != nil {
 		return nil, fmt.Errorf("load search_text for %d asset(s): %w", len(assetIDs), err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id, text string
 		if err := rows.Scan(&id, &text); err != nil {

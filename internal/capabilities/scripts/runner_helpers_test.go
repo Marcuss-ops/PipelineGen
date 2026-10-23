@@ -258,9 +258,7 @@ func (p *stubDocumentPublisher) UpsertDocument(ctx context.Context, input Docume
 // is never called (zero video jobs). err/failAfter retain fault injection for
 // the legacy enqueue-path scenarios.
 type stubRenderEnqueuer struct {
-	mu        sync.Mutex
 	ref       RenderReference
-	err       error
 	failAfter int
 	callCount int
 }

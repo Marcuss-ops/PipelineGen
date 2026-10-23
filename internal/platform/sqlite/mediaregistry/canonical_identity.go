@@ -58,7 +58,7 @@ func (r *CanonicalIdentityResolver) ResolveSource(ctx context.Context, sourceTyp
 	if err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver: resolve source (%s, %s): %w", sourceType, sourceRef, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var (
 		identity capregistry.CanonicalIdentity
@@ -109,7 +109,7 @@ func (r *CanonicalIdentityResolver) ResolveContent(ctx context.Context, contentS
 	if err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver: resolve content %q: %w", contentSHA256, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var assetIDs []string
 	for rows.Next() {
@@ -158,7 +158,7 @@ func (r *CanonicalIdentityResolver) backfill(ctx context.Context, apply bool) (c
 	if err != nil {
 		return capregistry.BackfillReport{}, fmt.Errorf("canonical identity backfill: scan assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	report := capregistry.BackfillReport{}
@@ -320,7 +320,7 @@ func (r *CanonicalIdentityResolver) BackfillTaxonomy(ctx context.Context, apply 
 	if err != nil {
 		return capregistry.TaxonomyBackfillReport{}, fmt.Errorf("taxonomy backfill: scan assets: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	report := capregistry.TaxonomyBackfillReport{}
 	type legacyRow struct{ id, source, mediaType, filename string }
 	var items []legacyRow
@@ -432,7 +432,7 @@ func sourceOwners(ctx context.Context, q identityQueryer, sourceType, sourceRef 
 	if err != nil {
 		return nil, fmt.Errorf("canonical identity backfill: check source ownership: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var owners []string
 	for rows.Next() {
 		var assetID string

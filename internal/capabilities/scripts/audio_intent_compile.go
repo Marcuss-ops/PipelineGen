@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -258,7 +257,7 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		}
 		intents := scene.AudioIntents
 		if len(intents) == 0 && scene.Audio.Mode != "" {
-			intents = []capabilityaudio.AudioIntent{scene.Audio}
+			intents = []audio.AudioIntent{scene.Audio}
 		}
 		// Ordinary scenes bound to an editorial clip must contribute that
 		// clip's source audio to the same canonical master as their narration.
@@ -271,8 +270,8 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		stockClipIDs := sceneStockClipIDs(*scene)
 		if !scene.ExecutionMode.IsFixedMedia() && scene.Stock == nil && scene.Clip != nil && !hasClipAudioIntent(intents, scene.Clip.ID) {
 			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(scene.Clip); ok {
-				intents = append(intents, capabilityaudio.AudioIntent{
-					Mode: capabilityaudio.AudioClip, ClipAssetID: scene.Clip.ID,
+				intents = append(intents, audio.AudioIntent{
+					Mode: audio.AudioClip, ClipAssetID: scene.Clip.ID,
 					SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
 					TimelineOffsetUS: 0, TimelineDurationUS: sourceDurationUS,
 					UseOriginalAudio: true, GainDB: kernelaudio.FinalJobRestoredClipGainDB,
@@ -288,18 +287,18 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 				continue
 			}
 			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(clip); ok {
-				intents = append(intents, capabilityaudio.AudioIntent{
-					Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID,
+				intents = append(intents, audio.AudioIntent{
+					Mode: audio.AudioClip, ClipAssetID: clip.ID,
 					SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
 					TimelineOffsetUS: 0, TimelineDurationUS: sourceDurationUS,
 					UseOriginalAudio: true, StockOriginalAudio: true, GainDB: 0,
 				})
 			}
 		}
-		filtered := make([]capabilityaudio.AudioIntent, 0, len(intents)+1)
+		filtered := make([]audio.AudioIntent, 0, len(intents)+1)
 		hasVoiceover := false
 		for _, intent := range intents {
-			if intent.Mode == capabilityaudio.AudioClip {
+			if intent.Mode == audio.AudioClip {
 				// The clip's original audio reaches the remote master: keep the
 				// intent and stamp the restored-mix gain. The mix policy still
 				// ducks it under speech; the compiler never touches an explicit
@@ -317,18 +316,18 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 				filtered = append(filtered, restored)
 				continue
 			}
-			if intent.Mode == capabilityaudio.AudioVoiceover {
+			if intent.Mode == audio.AudioVoiceover {
 				hasVoiceover = true
 			}
 			filtered = append(filtered, intent)
 		}
 		if !hasVoiceover {
 			if voiceover, ok := scene.Voiceover[language]; ok && voiceover.ID != "" {
-				filtered = append(filtered, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: voiceover.ID})
+				filtered = append(filtered, audio.AudioIntent{Mode: audio.AudioVoiceover, VoiceoverAssetID: voiceover.ID})
 			}
 		}
 		if len(filtered) == 0 {
-			filtered = append(filtered, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioSilence})
+			filtered = append(filtered, audio.AudioIntent{Mode: audio.AudioSilence})
 		}
 		scene.AudioIntents = filtered
 		scene.Audio = filtered[0]
@@ -336,9 +335,9 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 	return result
 }
 
-func hasClipAudioIntent(intents []capabilityaudio.AudioIntent, clipID string) bool {
+func hasClipAudioIntent(intents []audio.AudioIntent, clipID string) bool {
 	for _, intent := range intents {
-		if intent.Mode == capabilityaudio.AudioClip && intent.ClipAssetID == clipID {
+		if intent.Mode == audio.AudioClip && intent.ClipAssetID == clipID {
 			return true
 		}
 	}

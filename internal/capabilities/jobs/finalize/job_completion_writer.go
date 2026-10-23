@@ -208,7 +208,7 @@ func hasJobsColumn(ctx context.Context, tx *sql.Tx, wanted string) bool {
 	if err != nil {
 		return false
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var cid int
 	var name, columnType string
 	var notNull, primaryKey int

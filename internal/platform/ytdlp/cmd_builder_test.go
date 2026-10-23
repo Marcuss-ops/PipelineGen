@@ -247,6 +247,9 @@ func TestBaseArgs_ReturnsFreshlyAllocatedSlice_NoMutationBleed(t *testing.T) {
 	first := b.BaseArgs(youTubeURLA, true)
 	// Mutate first: append junk that should NOT bleed into second.
 	first = append(first, "--MUTATION-MARKER")
+	if !slices.Contains(first, "--MUTATION-MARKER") {
+		t.Fatalf("caller mutation was not applied to the returned slice: %v", first)
+	}
 
 	second := b.BaseArgs(youTubeURLA, true)
 	if slices.Contains(second, "--MUTATION-MARKER") {
@@ -337,6 +340,9 @@ func TestCommandBuilder_FallbackYouTubePlayerClients(t *testing.T) {
 		b := NewCommandBuilder(&config.Config{})
 		first := b.FallbackYouTubePlayerClients()
 		first = append(first, "--MUTATION-MARKER")
+		if !slices.Contains(first, "--MUTATION-MARKER") {
+			t.Fatalf("caller mutation was not applied to the returned slice: %v", first)
+		}
 		if slices.Contains(b.FallbackYouTubePlayerClients(), "--MUTATION-MARKER") {
 			t.Fatalf("fallback mutation leaked into the builder")
 		}

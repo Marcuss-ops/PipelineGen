@@ -19,7 +19,7 @@ func registerTextTrackEntries(r *Registry) {
 	//   - DefaultMaxRetries: 1 (transient ollama 5xx → retry once
 	//     before dead-letter; the materializer is idempotent at
 	//     the per-language level so a retry is safe).
-	r.Register(JobPolicy{
+	registerMediaPolicy(r, JobPolicy{
 		Completion: CompletionDeclaration{
 			JobType:              TypeAssetTextMaterialize,
 			ArtifactOwnership:    ArtifactOwnershipApplication,

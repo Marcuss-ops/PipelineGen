@@ -86,7 +86,7 @@ func hashOutput(path string) (int64, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || info.Size() == 0 {
 		if err == nil {

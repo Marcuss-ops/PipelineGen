@@ -45,7 +45,7 @@ func (d *MediaDownloader) Download(ctx context.Context, url string) (io.ReadClos
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("download failed (%d): %s", resp.StatusCode, string(body))
 	}
 

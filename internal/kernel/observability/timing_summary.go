@@ -143,7 +143,7 @@ func (s TimingSummary) FormatCriticalPath() string {
 		}
 		b.WriteString(st.Name)
 		b.WriteByte('(')
-		b.WriteString(fmt.Sprintf("%.1f%%", st.Percent))
+		fmt.Fprintf(&b, "%.1f%%", st.Percent)
 		b.WriteByte(')')
 	}
 	return b.String()

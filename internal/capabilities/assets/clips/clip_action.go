@@ -125,7 +125,7 @@ func (h *ActionHandler) DownloadClip(c *gin.Context) {
 			apiutil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", dlErr))
 			return
 		}
-		defer body.Close()
+		defer func() { _ = body.Close() }()
 
 		if contentType == "" || contentType == "application/octet-stream" {
 			contentType = "video/mp4"
@@ -242,7 +242,7 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
-	if clip.LegacyFileMD5() == "" {
+	if clip.ContentAddress() == "" {
 		apiutil.OK(c, gin.H{
 			"ok": true, "source": source, "clip_id": clipID,
 			"legacy_file_md5": "", "duplicates": []gin.H{},
@@ -255,7 +255,7 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 		return
 	}
 
-	matches, findErr := h.duplicateFinder.Find(c.Request.Context(), clip.LegacyFileMD5())
+	matches, findErr := h.duplicateFinder.Find(c.Request.Context(), clip.ContentAddress())
 	if findErr != nil {
 		apiutil.InternalError(c, fmt.Errorf("duplicateFinder.Find: %w", findErr))
 		return

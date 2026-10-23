@@ -231,23 +231,7 @@ func translateSegments(in []monitor.ExtractionSegment) []youtubetypes.Segment {
 	}
 	out := make([]youtubetypes.Segment, len(in))
 	for i, s := range in {
-		out[i] = youtubetypes.Segment{
-			Start:            s.Start,
-			End:              s.End,
-			Name:             s.Name,
-			Category:         s.Category,
-			SourceTitle:      s.SourceTitle,
-			SourceChannel:    s.SourceChannel,
-			Tags:             s.Tags,
-			Summary:          s.Summary,
-			Topics:           s.Topics,
-			Speakers:         s.Speakers,
-			MentionedPeople:  s.MentionedPeople,
-			Hook:             s.Hook,
-			QualityScore:     s.QualityScore,
-			SearchVisibility: s.SearchVisibility,
-			Texts:            s.Texts,
-		}
+		out[i] = youtubetypes.Segment(s)
 	}
 	return out
 }

@@ -18,10 +18,6 @@ type testAssetMutationCommitter struct {
 
 var _ persistence.AssetMutationCommitter = (*testAssetMutationCommitter)(nil)
 
-func newTestAssetMutationCommitter(db *sql.DB) persistence.AssetMutationCommitter {
-	return &testAssetMutationCommitter{db: db}
-}
-
 func (m *testAssetMutationCommitter) PersistEmbeddingJSON(ctx context.Context, assetID, channel string, embedding []float64, status string) error {
 	raw, err := json.Marshal(embedding)
 	if err != nil {

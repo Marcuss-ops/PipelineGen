@@ -170,7 +170,7 @@ func assetLocationsFromAsset(a *asset.Asset) []asset.LocationCommit {
 	if localPath := a.LocalPath(); localPath != "" {
 		locations = append(locations, asset.LocationCommit{
 			Kind: "local", Provider: "local", URI: localPath,
-			MimeType: string(a.MediaType), LegacyFileMD5: a.LegacyFileMD5(),
+			MimeType: string(a.MediaType), LegacyFileMD5: a.ContentAddress(),
 		})
 	}
 	if fileID, link := a.DriveFileID(), a.DriveLink(); fileID != "" || link != "" {
@@ -181,7 +181,7 @@ func assetLocationsFromAsset(a *asset.Asset) []asset.LocationCommit {
 		locations = append(locations, asset.LocationCommit{
 			Kind: "drive", Provider: "google_drive", ExternalID: fileID,
 			URI: uri, WebViewLink: link, DownloadURL: a.DownloadLink(),
-			MimeType: string(a.MediaType), LegacyFileMD5: a.LegacyFileMD5(), IsPrimary: true,
+			MimeType: string(a.MediaType), LegacyFileMD5: a.ContentAddress(), IsPrimary: true,
 		})
 	}
 	return locations

@@ -34,8 +34,8 @@ func testSourceDBs(t *testing.T) (jobs, obs *sql.DB) {
 
 func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 	jobs, obs := testSourceDBs(t)
-	defer jobs.Close()
-	defer obs.Close()
+	defer func() { _ = jobs.Close() }()
+	defer func() { _ = obs.Close() }()
 
 	jobID := "job-1"
 	report := kernobs.RunReport{
@@ -139,8 +139,8 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 
 func TestSourceLoadRequiresIdentityAndReportsMissingRun(t *testing.T) {
 	jobs, obs := testSourceDBs(t)
-	defer jobs.Close()
-	defer obs.Close()
+	defer func() { _ = jobs.Close() }()
+	defer func() { _ = obs.Close() }()
 
 	src, err := NewSource(jobs, obs)
 	if err != nil {
@@ -156,8 +156,8 @@ func TestSourceLoadRequiresIdentityAndReportsMissingRun(t *testing.T) {
 
 func TestSourceLoadHandlesEmptyAudioMetrics(t *testing.T) {
 	jobs, obs := testSourceDBs(t)
-	defer jobs.Close()
-	defer obs.Close()
+	defer func() { _ = jobs.Close() }()
+	defer func() { _ = obs.Close() }()
 
 	jobID := "job-nometric"
 	report := kernobs.RunReport{RunID: "run-nometric", JobID: jobID, JobType: "script.generate", Status: kernobs.StatusSucceeded, WallTimeMs: 10}

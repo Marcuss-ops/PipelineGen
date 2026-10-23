@@ -17,7 +17,7 @@ import (
 
 func TestDetectFKOrphans_NoOrphans(t *testing.T) {
 	db := testBrokenRefDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create a clean owner-child pair where all FKs resolve.
 	_, err := db.Exec(`CREATE TABLE test_owners (id TEXT PRIMARY KEY)`)
@@ -57,7 +57,7 @@ func TestDetectFKOrphans_NoOrphans(t *testing.T) {
 
 func TestDetectFKOrphans_HasOrphans(t *testing.T) {
 	db := testBrokenRefDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err := db.Exec(`CREATE TABLE test_owners (id TEXT PRIMARY KEY)`)
 	if err != nil {
@@ -101,7 +101,7 @@ func TestDetectFKOrphans_HasOrphans(t *testing.T) {
 
 func TestDetectFKOrphans_NoDetailSkipsSamples(t *testing.T) {
 	db := testBrokenRefDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err := db.Exec(`CREATE TABLE test_owners (id TEXT PRIMARY KEY)`)
 	if err != nil {
@@ -140,7 +140,7 @@ func TestDetectFKOrphans_NoDetailSkipsSamples(t *testing.T) {
 
 func TestDetectBrokenLocalPaths_FileNotFound(t *testing.T) {
 	db := testBrokenRefDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err := db.Exec(`CREATE TABLE test_local (id TEXT PRIMARY KEY, local_path TEXT)`)
 	if err != nil {
@@ -169,7 +169,7 @@ func TestDetectBrokenLocalPaths_FileNotFound(t *testing.T) {
 
 func TestDetectBrokenLocalPaths_FileExists(t *testing.T) {
 	db := testBrokenRefDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err := db.Exec(`CREATE TABLE test_local (id TEXT PRIMARY KEY, local_path TEXT)`)
 	if err != nil {
@@ -180,9 +180,9 @@ func TestDetectBrokenLocalPaths_FileExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	_ = f.Close()
 	path := f.Name()
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 
 	_, err = db.Exec(`INSERT INTO test_local VALUES ('a',?)`, path)
 	if err != nil {
@@ -246,7 +246,7 @@ func TestLoadDriveInventoryFromFile_Nonexistent(t *testing.T) {
 
 func TestTablesWithColumn(t *testing.T) {
 	db := testBrokenRefDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	_, err := db.Exec(`CREATE TABLE t_blobs (id TEXT PRIMARY KEY, drive_file_id TEXT)`)
 	if err != nil {

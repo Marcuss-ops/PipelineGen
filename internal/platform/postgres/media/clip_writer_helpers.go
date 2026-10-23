@@ -393,7 +393,7 @@ RETURNING id`
 	if err != nil {
 		return nil, fmt.Errorf("upsertTextTracksReturningIDsInTx: prepare: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, t := range tracks {
 		if t.AssetID == "" || t.LanguageCode == "" || t.TextKind == "" {
@@ -474,7 +474,7 @@ ON CONFLICT (track_id, sequence_no) DO UPDATE SET
 	if err != nil {
 		return fmt.Errorf("insertTextTrackSegmentsInTx: prepare: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, tt := range timedTracks {
 		key := textTrackKeyPG(tt.LanguageCode, tt.TextKind, tt.SourceType)

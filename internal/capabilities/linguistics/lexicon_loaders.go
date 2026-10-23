@@ -28,7 +28,7 @@ func loadWordSet(path string, dest map[string]struct{}) error {
 		}
 		return fmt.Errorf("lexicon registry: open %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -58,7 +58,7 @@ func loadStringList(path string) ([]string, error) {
 		}
 		return nil, fmt.Errorf("lexicon registry: open %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []string
 	scanner := bufio.NewScanner(f)
@@ -92,7 +92,7 @@ func loadPhrasePolicy(path string) (PhraseExtractionPolicy, bool, error) {
 		}
 		return PhraseExtractionPolicy{}, false, fmt.Errorf("lexicon registry: open %q: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	p := DefaultPhraseExtractionPolicy()
 	scanner := bufio.NewScanner(f)

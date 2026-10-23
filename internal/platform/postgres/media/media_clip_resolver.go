@@ -59,7 +59,7 @@ func (s *MediaSearcher) ResolveByYouTubeVideoID(ctx context.Context, videoID str
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: ResolveByYouTubeVideoID(%q): %w", trimmed, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]*asset.Asset, 0)
 	for rows.Next() {
 		rec, err := scanMediaAssetRecord(rows)
@@ -98,7 +98,7 @@ func (s *MediaSearcher) ResolveByExternalProviderID(ctx context.Context, provide
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: ResolveByExternalProviderID(%q, %q): %w", provider, externalID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]*asset.Asset, 0)
 	for rows.Next() {
 		rec, err := scanMediaAssetRecord(rows)
@@ -127,7 +127,7 @@ func (s *MediaSearcher) ResolveByDriveFileID(ctx context.Context, fileID string)
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: ResolveByDriveFileID(%q): %w", trimmed, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]*asset.Asset, 0)
 	for rows.Next() {
 		rec, err := scanMediaAssetRecord(rows)

@@ -112,7 +112,7 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Ensure outbox_events table exists (artlistTestSchema only includes
 	// media_assets + clip_search_terms; outbox_events lives in migration 092).
@@ -179,7 +179,7 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "outboxemit",
@@ -275,7 +275,7 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Ensure outbox_events table exists.
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS outbox_events (
@@ -341,7 +341,7 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "sourcecheck",
@@ -359,7 +359,7 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 		`SELECT aggregate_id, payload_json FROM outbox_events WHERE event_type = 'asset.index.requested' ORDER BY aggregate_id`,
 	)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var count int
 	for rows.Next() {
@@ -407,7 +407,7 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Ensure outbox_events table exists.
 	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS outbox_events (
@@ -449,7 +449,7 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	_, err = svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "nonexistent-term-no-outbox",

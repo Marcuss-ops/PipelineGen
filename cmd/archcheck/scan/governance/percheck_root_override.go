@@ -267,7 +267,7 @@ func scanRootOverrideFile(path, relPath string, r *report.Report, productionOnly
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

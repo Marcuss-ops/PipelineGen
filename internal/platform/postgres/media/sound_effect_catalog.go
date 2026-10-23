@@ -60,7 +60,7 @@ func (c *SoundEffectCatalog) ListIDs(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("postgres sound-effect catalog: list ids: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	ids := make([]string, 0, 64)
 	for rows.Next() {
@@ -97,7 +97,7 @@ func (c *SoundEffectCatalog) ListRows(ctx context.Context) ([]SoundEffectRow, er
 	if err != nil {
 		return nil, fmt.Errorf("postgres sound-effect catalog: list rows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]SoundEffectRow, 0, 64)
 	for rows.Next() {

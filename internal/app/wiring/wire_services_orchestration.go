@@ -54,7 +54,6 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	coreembedding "github.com/Marcuss-ops/PipelineGen/internal/kernel/embedding"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/models"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	middleware "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
@@ -65,7 +64,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	platformembeddings "github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
 
 	"github.com/gin-gonic/gin"
@@ -381,7 +380,7 @@ func newEmbeddingContractProbe(cfg *config.Config, cm *collections.CollectionMan
 }
 
 func verifyEmbeddingContract(ctx context.Context, sidecarURL, queryModelID string, cm *collections.CollectionManager) error {
-	sidecar, err := platformembeddings.NewContractProbe(sidecarURL).Fetch(ctx)
+	sidecar, err := embeddings.NewContractProbe(sidecarURL).Fetch(ctx)
 	if err != nil {
 		return fmt.Errorf("embedding contract handshake: %w", err)
 	}

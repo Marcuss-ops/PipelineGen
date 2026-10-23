@@ -316,10 +316,10 @@ func buildRegisterBundle(
 			return fmt.Errorf("cfg is nil at driveChecker invocation (composition root invariant violated; PR-DRIVE-AVAILABILITY-GATE fail-closed)")
 		}
 		if _, err := os.Stat(cfg.GetCredentialsPath()); err != nil {
-			return fmt.Errorf("Drive credentials missing at driveChecker invocation: %w (PR-DRIVE-AVAILABILITY-GATE fail-closed; rerun python3 scripts/generate_drive_token.py to fix)", err)
+			return fmt.Errorf("drive credentials missing at driveChecker invocation: %w (PR-DRIVE-AVAILABILITY-GATE fail-closed; rerun python3 scripts/generate_drive_token.py to fix)", err)
 		}
 		if _, err := os.Stat(cfg.GetTokenPath()); err != nil {
-			return fmt.Errorf("Drive token missing at driveChecker invocation: %w (PR-DRIVE-AVAILABILITY-GATE fail-closed; rerun python3 scripts/generate_drive_token.py to fix)", err)
+			return fmt.Errorf("drive token missing at driveChecker invocation: %w (PR-DRIVE-AVAILABILITY-GATE fail-closed; rerun python3 scripts/generate_drive_token.py to fix)", err)
 		}
 		return nil
 	}

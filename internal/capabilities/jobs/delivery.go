@@ -491,7 +491,7 @@ func (h *DeliveryHandler) deliverWebhook(ctx context.Context, evt outboxevents.E
 		}
 		return fmt.Errorf("delivery.requested POST %s: %w", req.Destination.DestinationID, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body, capped. A greedy receiver cannot OOM the worker.
 	responseBody, _ = io.ReadAll(io.LimitReader(resp.Body, maxDeliveryResponseBytes))

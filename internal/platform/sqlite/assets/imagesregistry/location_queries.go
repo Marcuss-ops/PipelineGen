@@ -84,7 +84,7 @@ func (s *AssetStoreSQLite) ListLocationsByAsset(ctx context.Context, assetID str
 	if err != nil {
 		return nil, fmt.Errorf("assets.ListLocationsByAsset(%s): %w", assetID, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []*asset.Location
 	for rows.Next() {
@@ -103,7 +103,7 @@ func (s *AssetStoreSQLite) SetPrimaryLocation(ctx context.Context, assetID strin
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	now := timeutil.FormatRFC3339(time.Now())
 

@@ -102,10 +102,6 @@ func (r *testVoiceoverRepo) Upsert(_ context.Context, _ *ClipVoiceoverRecordDTO)
 	return nil
 }
 
-type testImagesRepo struct{ images []*detail.ImageAsset }
-
-type testDriveUploader struct{ md5ByFileID map[string]string }
-
 type testJobsPort struct {
 	enqueued []JobsEnqueueRequest
 	nextID   string

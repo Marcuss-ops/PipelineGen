@@ -271,7 +271,7 @@ func TestResolveDestination_PathBuilderFailsNoOverride_ReturnsError(t *testing.T
 }
 
 func TestErrPathBuilderIncompleteForParent_Sentinel(t *testing.T) {
-	var _ error = ErrPathBuilderIncompleteForParent // compile-time pin
+	var _ = ErrPathBuilderIncompleteForParent // compile-time pin
 
 	// (a) Bare sentinel: errors.Is matches the error itself.
 	require.ErrorIs(t, ErrPathBuilderIncompleteForParent, ErrPathBuilderIncompleteForParent,

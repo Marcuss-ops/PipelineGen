@@ -79,7 +79,7 @@ func TestLocalStore_Stage_HappyPath_SHAComputedDuringWrite(t *testing.T) {
 	if openErr != nil {
 		t.Fatalf("os.Open: %v", openErr)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		t.Fatalf("rehash copy: %v", err)
@@ -101,7 +101,7 @@ func TestLocalStore_Stage_TmpFileInvisibleBeforeRename(t *testing.T) {
 	}
 
 	pr, pw := io.Pipe()
-	defer pr.Close()
+	defer func() { _ = pr.Close() }()
 	released := make(chan struct{})
 	stageDone := make(chan staging.StagedReceipt, 1)
 	stageErr := make(chan error, 1)

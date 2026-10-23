@@ -213,7 +213,7 @@ func (a *AdminAdapter) doReLookup(ctx context.Context, parent, name string) (cou
 // createdTime ascending. Returns (count, oldestID, nil).
 // P0-7 (July 2026): mirrors DriveFolderManagerAdapter.reLookupProduction.
 func (a *AdminAdapter) reLookupProduction(ctx context.Context, parent, name string) (count int, oldestID string, err error) {
-	if a.Uploader == nil || a.Uploader.Service == nil {
+	if a.Uploader == nil || a.Service == nil {
 		return 0, "", fmt.Errorf("admin adapter: drive service not configured")
 	}
 	query := buildFolderLookupQuery(parent, name)
@@ -258,7 +258,7 @@ func (a *AdminAdapter) findOrCreateFolder(ctx context.Context, parentID, name st
 	if parentID != "" {
 		folder.Parents = []string{parentID}
 	}
-	if a.Uploader == nil || a.Uploader.Service == nil {
+	if a.Uploader == nil || a.Service == nil {
 		return "", fmt.Errorf("admin adapter: drive service not configured (Create branch)")
 	}
 	created, err := a.Uploader.Service.Files.Create(folder).

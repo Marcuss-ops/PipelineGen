@@ -167,6 +167,7 @@
       "CONTRIBUTING.md",
       "CANONICAL.md",
       "TODO-pipeline-100x-velocita.md",
+      "GUIDA-JOB-SCRIPT-GENERATE.md",
       "scripts/README.md",
       "ops/benchmarks/",
       "testdata/workflows/"

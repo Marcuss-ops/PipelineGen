@@ -29,7 +29,7 @@ func newContentObjectStore(t *testing.T) *ContentObjectStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(contentObjectsSchema); err != nil {
 		t.Fatal(err)
 	}

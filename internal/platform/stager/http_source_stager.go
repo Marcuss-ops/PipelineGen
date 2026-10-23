@@ -153,7 +153,7 @@ func (s *HTTPSourceStager) stageSourceV2(ctx context.Context, ref assets.SourceR
 	if err != nil {
 		return nil, fmt.Errorf("stager.StageSourceV2: GET %q: %w", ref.URL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("stager.StageSourceV2: GET %q returned status %d", ref.URL, resp.StatusCode)
@@ -221,7 +221,7 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return digest.SHA256Reader(f)
 }
 

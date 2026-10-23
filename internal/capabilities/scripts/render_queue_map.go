@@ -14,9 +14,37 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 const mapRunStyleSlot = "run"
+
+// projectMapRendererPhases projects the dynamic-map renderer's OWN measured
+// phases from the chronon.dynamic-map-telemetry.v1 summary onto the run bound
+// to ctx as canonical operations under StageOverlayRender (prefetch ← tile
+// prefetch, prepare ← plate prepare, encode ← render+encode wall). The
+// renderer measured these phases and reported them in its summary; the kernel
+// records the owner-reported durations and never re-times the boundary. Until
+// this projection existed the map item cost (42–90 s/item on the golden case)
+// landed entirely in the unmeasured residual of the overlay stage. A phase
+// the summary did not measure (non-positive) is skipped — never a fake zero.
+// Units are normalized to milliseconds: the summary carries prefetch and
+// prepare in ms and the encode wall in seconds.
+func projectMapRendererPhases(ctx context.Context, tilePrefetchMS, platePrepareMS, renderEncodeWallS float64) {
+	record := func(op kernobs.OperationName, ms float64) {
+		if ms <= 0 {
+			return
+		}
+		kernobs.RecordOperation(ctx, kernobs.OperationInfo{
+			Stage:     StageOverlayRender,
+			Component: kernobs.ComponentChronon,
+			Operation: op,
+		}, int64(ms+0.5))
+	}
+	record(kernobs.OperationPrefetch, tilePrefetchMS)
+	record(kernobs.OperationPrepare, platePrepareMS)
+	record(kernobs.OperationEncode, renderEncodeWallS*1000)
+}
 
 // renderDynamicMapVideo delegates map motion to the same ChrononTemplate
 // camera/tile-pyramid renderer used by approved dynamic-map overlays. The
@@ -221,11 +249,11 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	renderStarted := time.Now()
 	if err := cmd.Run(); err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("Chronon map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
+		return "", fmt.Errorf("dynamic map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
 	}
 	if _, err := os.Stat(outputPath); err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("Chronon map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
+		return "", fmt.Errorf("dynamic map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
 	}
 	var summary struct {
 		Schema     string `json:"schema"`
@@ -279,7 +307,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		return "", fmt.Errorf("decode Chronon map telemetry summary: %w", err)
 	}
 	if summary.Schema != "chronon.dynamic-map-telemetry.v1" || summary.Frames < 2 || summary.OutputBytes <= 0 {
-		return "", fmt.Errorf("Chronon map telemetry summary violates schema/output invariants: schema=%q frames=%d bytes=%d",
+		return "", fmt.Errorf("dynamic map telemetry summary violates schema/output invariants: schema=%q frames=%d bytes=%d",
 			summary.Schema, summary.Frames, summary.OutputBytes)
 	}
 	if summary.Dimensions.Width <= 0 || summary.Dimensions.Height <= 0 || summary.FPS.Num <= 0 || summary.FPS.Den <= 0 ||
@@ -287,11 +315,11 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		summary.Plates.RequiredTiles == 0 || summary.Plates.PlateCount == 0 ||
 		summary.Plates.PrepareMS < 0 || summary.Plates.ComposeMS < 0 || summary.GateMS < 0 ||
 		summary.FramePipelineS <= 0 || summary.RenderEncodeWallS <= 0 || summary.OutputBytes <= 0 {
-		return "", fmt.Errorf("Chronon map telemetry summary is missing required telemetry field")
+		return "", fmt.Errorf("dynamic map telemetry summary is missing required telemetry field")
 	}
 	if summary.Dimensions.Width != renderWidth || summary.Dimensions.Height != renderHeight ||
 		summary.FPS.Num != plan.FPSNum || summary.FPS.Den != plan.FPSDen {
-		return "", fmt.Errorf("Chronon map telemetry media contract mismatch: dimensions=%dx%d fps=%d/%d, want %dx%d fps=%d/%d",
+		return "", fmt.Errorf("dynamic map telemetry media contract mismatch: dimensions=%dx%d fps=%d/%d, want %dx%d fps=%d/%d",
 			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
 			renderWidth, renderHeight, plan.FPSNum, plan.FPSDen)
 	}
@@ -320,19 +348,19 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		summary.Tile.Fallbacks < 0 ||
 		(summary.Tile.RenderedLocally > 0 && summary.Basemap != "chronon_editorial") ||
 		summary.Tile.DiskCacheMisses != summary.Tile.NetworkFetches+summary.Tile.Fallbacks+summary.Tile.RenderedLocally {
-		return "", fmt.Errorf("Chronon map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d rendered_locally=%d basemap=%q",
+		return "", fmt.Errorf("dynamic map telemetry cache/fetch counters do not balance: hits=%d misses=%d downloads=%d fallbacks=%d rendered_locally=%d basemap=%q",
 			summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses, summary.Tile.NetworkFetches, summary.Tile.Fallbacks,
 			summary.Tile.RenderedLocally, summary.Basemap)
 	}
 	if summary.Plates.RequiredTiles != summary.Plates.PrefetchFetched+summary.Plates.MemoryHits ||
 		summary.Tile.PrefetchTilesRequested != summary.Plates.RequiredTiles ||
 		summary.Tile.PrefetchTilesMemoryHits != summary.Plates.MemoryHits {
-		return "", fmt.Errorf("Chronon map telemetry prefetch coverage mismatch: required=%d fetched=%d plate_hits=%d requested=%d tile_hits=%d",
+		return "", fmt.Errorf("dynamic map telemetry prefetch coverage mismatch: required=%d fetched=%d plate_hits=%d requested=%d tile_hits=%d",
 			summary.Plates.RequiredTiles, summary.Plates.PrefetchFetched, summary.Plates.MemoryHits,
 			summary.Tile.PrefetchTilesRequested, summary.Tile.PrefetchTilesMemoryHits)
 	}
 	if summary.EngineFallbackFrames != 0 || summary.Tile.Fallbacks != 0 || summary.Tile.LateFetches != 0 {
-		return "", fmt.Errorf("Chronon map has unapproved fallback work: engine_frames=%d tile_fallbacks=%d late_fetches=%d",
+		return "", fmt.Errorf("dynamic map has unapproved fallback work: engine_frames=%d tile_fallbacks=%d late_fetches=%d",
 			summary.EngineFallbackFrames, summary.Tile.Fallbacks, summary.Tile.LateFetches)
 	}
 	log.Printf("Chronon dynamic map ready: frames=%d tiles(cache_hit=%d cache_miss=%d downloaded=%d fallback=%d late=%d fetch_ms=%.1f prefetch_ms=%.1f) plates(count=%d bytes=%d compose_ms=%.1f prepare_ms=%.1f required_tiles=%d prefetched=%d) frames_s=%.2f encode_wall_s=%.2f encode_tail_s=%.2f output_bytes=%d process_wall_s=%.2f",
@@ -355,8 +383,11 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	report.RecordPhase("tile_prefetch_ms", summary.Tile.PrefetchMS)
 	report.RecordPhase("plate_prepare_ms", summary.Plates.PrepareMS)
 	report.RecordPhase("plate_compose_ms", summary.Plates.ComposeMS)
-	encodedReport, err := report.JSON()
-	if err != nil {
+	// Same owner-measured phases, projected into the canonical operation
+	// telemetry so the map cost is joinable to the run instead of living only
+	// in the decision report and the worker log.
+	projectMapRendererPhases(ctx, summary.Tile.PrefetchMS, summary.Plates.PrepareMS, summary.RenderEncodeWallS)
+	if _, err := report.JSON(); err != nil {
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
 	// Pre-render admission already passed if we reached the renderer; mark
@@ -374,7 +405,8 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	}
 	report.RecordPhase("render_wall_s", time.Since(renderStarted).Seconds())
 	// Re-encode after state promotion so the log line reflects rendered.
-	if encodedReport, err = report.JSON(); err != nil {
+	encodedReport, err := report.JSON()
+	if err != nil {
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
 	log.Printf("map decision report: %s", encodedReport)

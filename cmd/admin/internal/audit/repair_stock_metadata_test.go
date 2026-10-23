@@ -53,7 +53,7 @@ func (s sqliteSearchTextBackfillSource) ListSearchTextBackfillCandidates(ctx con
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []pgmedia.SearchTextBackfillCandidate
 	for rows.Next() {
 		var rec pgmedia.SearchTextBackfillCandidate
@@ -74,7 +74,7 @@ func TestBackfillSearchText_ComposesOnlyMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
@@ -178,7 +178,7 @@ func TestBackfillSearchText_DryRunCountsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,

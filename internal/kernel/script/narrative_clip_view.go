@@ -176,7 +176,6 @@ func (v *NarrativeClipView) ValidateForModelView() error {
 	// Phase 1 — reflect the struct shape. Any forbidden tag is an
 	// immediate fail.
 	t := reflect.TypeOf(*v)
-	var structTags []string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		tag := f.Tag.Get("json")
@@ -184,7 +183,6 @@ func (v *NarrativeClipView) ValidateForModelView() error {
 			continue
 		}
 		name := strings.SplitN(tag, ",", 2)[0]
-		structTags = append(structTags, name)
 
 		if err := assertTagAllowed(name); err != nil {
 			return err

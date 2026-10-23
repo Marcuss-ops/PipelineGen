@@ -266,7 +266,7 @@ func (c *SQLiteAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Conte
 	if err != nil {
 		return fmt.Errorf("asset committer: begin Drive delivery tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	preserveIdentity := strings.HasPrefix(mutation.Status, "delivery_failed:") && mutation.DriveFileID == "" && mutation.DriveLink == "" && mutation.DownloadLink == ""
 	var result sql.Result
 	if preserveIdentity {

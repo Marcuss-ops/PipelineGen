@@ -1,10 +1,6 @@
 package detail
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
-import (
 	"fmt"
 	"path"
 	"sort"
@@ -12,9 +8,9 @@ import (
 )
 
 const (
-	SourceAIGenerated    asset.Source = "ai_generated"
-	AssetRoleStock                    = "stock"
-	NormalizedGroupStock              = "stock"
+	SourceAIGenerated    = "ai_generated"
+	AssetRoleStock       = "stock"
+	NormalizedGroupStock = "stock"
 )
 
 var AIStockLanguages = []string{"it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "en", "id"}

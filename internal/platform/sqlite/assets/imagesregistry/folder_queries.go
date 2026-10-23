@@ -128,7 +128,7 @@ func (s *AssetStoreSQLite) ListByFolderID(ctx context.Context, folderID string) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var clips []*asset.Asset
 	for rows.Next() {
@@ -149,7 +149,7 @@ func (s *AssetStoreSQLite) ListByFolderPath(ctx context.Context, folderPath stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var clips []*asset.Asset
 	for rows.Next() {
@@ -179,7 +179,7 @@ func (s *AssetStoreSQLite) ListFolders(ctx context.Context, source string) ([]*d
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var folders []*detail.ClipFolder
 	for rows.Next() {

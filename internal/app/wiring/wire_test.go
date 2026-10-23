@@ -20,7 +20,11 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 	if err := os.Chdir(projectRoot); err != nil {
 		t.Fatalf("failed to change to project root: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if chdirErr := os.Chdir(origDir); chdirErr != nil {
+			t.Errorf("restore working directory: %v", chdirErr)
+		}
+	}()
 
 	tmpDir := t.TempDir()
 	cfg := &config.Config{
@@ -57,7 +61,11 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 	if deps == nil {
 		t.Fatal("expected non-nil deps")
 	}
-	defer deps.Runtime.Lifecycle.Stop(context.Background())
+	defer func() {
+		if stopErr := deps.Runtime.Lifecycle.Stop(context.Background()); stopErr != nil {
+			t.Errorf("lifecycle stop: %v", stopErr)
+		}
+	}()
 }
 
 func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
@@ -70,7 +78,11 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 	if err := os.Chdir(projectRoot); err != nil {
 		t.Fatalf("failed to change to project root: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if chdirErr := os.Chdir(origDir); chdirErr != nil {
+			t.Errorf("restore working directory: %v", chdirErr)
+		}
+	}()
 
 	tmpDir := t.TempDir()
 	cfg := &config.Config{
@@ -105,10 +117,12 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 		t.Fatalf("WireServices failed: %v", err)
 	}
 
-	// Call Cleanup multiple times
-	deps.Runtime.Lifecycle.Stop(context.Background())
-	deps.Runtime.Lifecycle.Stop(context.Background())
-	deps.Runtime.Lifecycle.Stop(context.Background())
+	// Call Cleanup multiple times; every idempotent stop must succeed.
+	for attempt := 0; attempt < 3; attempt++ {
+		if stopErr := deps.Runtime.Lifecycle.Stop(context.Background()); stopErr != nil {
+			t.Fatalf("lifecycle stop %d: %v", attempt+1, stopErr)
+		}
+	}
 }
 
 func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
@@ -121,7 +135,11 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 	if err := os.Chdir(projectRoot); err != nil {
 		t.Fatalf("failed to change to project root: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if chdirErr := os.Chdir(origDir); chdirErr != nil {
+			t.Errorf("restore working directory: %v", chdirErr)
+		}
+	}()
 
 	tmpDir := t.TempDir()
 	cfg := &config.Config{
@@ -156,7 +174,11 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WireServices failed: %v", err)
 	}
-	defer deps.Runtime.Lifecycle.Stop(context.Background())
+	defer func() {
+		if stopErr := deps.Runtime.Lifecycle.Stop(context.Background()); stopErr != nil {
+			t.Errorf("lifecycle stop: %v", stopErr)
+		}
+	}()
 
 	if deps.Handlers.Registry == nil {
 		t.Fatal("expected non-nil Registry")
@@ -173,7 +195,11 @@ func TestStartupIntegration(t *testing.T) {
 	if err := os.Chdir(projectRoot); err != nil {
 		t.Fatalf("failed to change to project root: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if chdirErr := os.Chdir(origDir); chdirErr != nil {
+			t.Errorf("restore working directory: %v", chdirErr)
+		}
+	}()
 
 	tmpDir := t.TempDir()
 	cfg := &config.Config{
@@ -211,5 +237,9 @@ func TestStartupIntegration(t *testing.T) {
 	if deps == nil {
 		t.Fatal("expected non-nil deps")
 	}
-	defer deps.Runtime.Lifecycle.Stop(context.Background())
+	defer func() {
+		if stopErr := deps.Runtime.Lifecycle.Stop(context.Background()); stopErr != nil {
+			t.Errorf("lifecycle stop: %v", stopErr)
+		}
+	}()
 }

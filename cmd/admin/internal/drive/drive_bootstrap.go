@@ -119,7 +119,7 @@ func executeBootstrap(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 	if err != nil {
 		return fmt.Errorf("drive-bootstrap: open database set: %w", err)
 	}
-	defer dbSet.Close()
+	defer func() { _ = dbSet.Close() }()
 
 	catalogRepo := sqlitedelivery.NewRepository(dbSet.Primary.DB)
 

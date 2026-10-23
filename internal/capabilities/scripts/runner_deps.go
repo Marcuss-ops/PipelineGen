@@ -311,7 +311,9 @@ func (r *Runner) recordLocalizedRender(ctx context.Context, exec ExecutionContex
 	// fan-out joins. This makes a successful render/upload visible to resume
 	// after a process crash in a later sibling. Uses snapshot so no lock held.
 	if snapshot != nil {
-		r.repo.SavePartialResult(ctx, exec.JobID, snapshot)
+		if err := r.repo.SavePartialResult(ctx, exec.JobID, snapshot); err != nil {
+			return fmt.Errorf("localized render: checkpoint save: %w", err)
+		}
 	}
 	return nil
 }

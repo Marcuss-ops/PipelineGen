@@ -177,7 +177,7 @@ func (c *Client) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 	if err != nil {
 		return nil, fmt.Errorf("complete-with-artifacts: do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		rawBody, _ := io.ReadAll(resp.Body)
 		// Typed-error envelope decode (P1 #15, July 2026).
@@ -224,7 +224,7 @@ func (c *Client) IsCancelled(ctx context.Context, jobID, leaseID string) (bool, 
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("is-cancelled: HTTP %d", resp.StatusCode)
 	}
@@ -286,7 +286,7 @@ func (c *Client) do(ctx context.Context, method, path string, reqBody any, respB
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -406,7 +406,7 @@ func (c *Client) UploadArtifactFile(prepareCtx remote.PrepareContext, sessionID,
 	if err != nil {
 		return nil, fmt.Errorf("upload-artifact-file: open %s: %w", localPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	filename := path.Base(localPath)
 	// SECURITY: filename is interpolated into the URL query string.
@@ -437,7 +437,7 @@ func (c *Client) UploadArtifactFile(prepareCtx remote.PrepareContext, sessionID,
 	if err != nil {
 		return nil, fmt.Errorf("upload-artifact-file: do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("upload-artifact-file: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -509,7 +509,7 @@ func (c *Client) postJSON(ctx context.Context, url string, reqBody any, respBody
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))

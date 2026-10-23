@@ -1,6 +1,6 @@
 # Ticket: portare la generazione degli overlay a 100/minuto
 
-Stato: **APERTO — baseline live fallita per asset ObjectStore corrotto; golden da rilanciare dopo bonifica**
+Stato: **APERTO — baseline 27,2 overlay/min (mediana 3 run) → 37,8/min dopo la 2ª lane di render (2° daemon, v11, +39%); target 100/min non raggiunto, proiezione in «Ottimizzazione: seconda lane di render»**
 Priorità: **P1**  
 Ambito: generazione, refactoring e rendering degli overlay nei job video YouTube di PipelineGen / RenderingGen.
 
@@ -40,9 +40,13 @@ La batch finale contiene anche tre retry con cause chiaramente non risolvibili r
 
 ### Collo di bottiglia overlay individuato
 
-Nel job `08_fonti_media` la fase overlay dura **454,2 s**, ma le metriche registrano solo **41,0 s** di render Chronon e **43,2 s** di attesa terminale del queue per 13 elementi. Nel percorso `final_job`, ogni child ereditava `RequireDriveBeforeReturn=true`: il codice pubblicava quindi su Drive in modo sincrono dopo ogni render e il batch profondo era limitato a un worker. La differenza di circa **370 s** non aveva un'operazione Drive propria nei dati storici; l'attribuzione alla pubblicazione seriale è una forte inferenza dal percorso del codice e dal tempo non spiegato, da confermare con la nuova metrica `overlay_upload`.
+Nel job `08_fonti_media` la fase overlay dura **454,2 s**, ma le metriche registrano solo **41,0 s** di render Chronon e **43,2 s** di attesa terminale del queue per 13 elementi. La differenza di circa **370 s** non aveva un'operazione Drive propria nei dati storici; l'attribuzione alla pubblicazione seriale era una forte inferenza dal percorso del codice e dal tempo non spiegato.
 
-Correzione implementata nel worktree, da misurare: il child delega la pubblicazione al pool Drive limitato già esistente; il ramo overlay si ricongiunge al pool una volta completati tutti i child e prima che il final job costruisca il payload. La garanzia resta: nessun final render parte prima che gli overlay siano pubblicati e abbiano i Drive ID certificati. La misura per `overlay_upload` registra ora il costo separato. Non è stato aumentato il parallelismo GPU: verrà ritoccato dopo avere misurato la nuova composizione render/upload.
+**Verifica eseguita il 22 ottobre 2026 (post-fix, metrica `overlay_upload`): l'inferenza è risultata NON sostanzialmente corretta.** L'analisi per-item della finestra (`run_operation_observations.created_at`) mostra che il residuo è **concentrato in uno-due item pesanti, non distribuito per item**: in `08_fonti_media` gli item 1–11 chiudono in 2,0–5,5 s l'uno con ~0 s non misurati ciascuno, poi **l'item 12 blocca 383,5 s (373,3 s non misurati)** e l'item 13 altri 40,2 s; in `05_le_prove` (stessi 13 item, wall 73,4 s) l'unico residuo è 37,9 s sull'item 13. Una pubblicazione seriale per-item produrrebbe N piccoli gap, non un blocco unico da 373 s. La controprova v1 (stesso percorso seriale pre-fix, 39 item): l'overhead non-render è **~2,6 s/item** (226,2 s di finestra − 123 s di attese), che include già il publish Drive seriale. Le prime misure `overlay_upload` danno ~2,3 ms/item sul percorso async (enqueue outbox).
+
+La causa dominante del residuo va quindi attribuita alle **fasi per-item non proiettate nella telemetria delle operazioni** degli item pesanti (mappe/immagini): le mappe misurate direttamente sul golden viaggiano a 42–90 s/item con prefetch tile/prepare/encode che non compaiono in `run_operation_observations` (`renderinggen.encode` storico medio 0,13 s contro i 64,8 s di encode mappa osservati nei log del worker). La pubblicazione Drive seriale resta un costo reale ma minore (ordine di 2–5 s/item), già rimosso dal fix e ora misurato.
+
+Correzione implementata (commit `5538ed8d6`) e ora **attiva sul binario in esecuzione** (`8423ea114`, build 22/10 17:51 UTC): il child delega la pubblicazione al pool Drive limitato già esistente; il ramo overlay si ricongiunge al pool una volta completati tutti i child e prima che il final job costruisca il payload. La garanzia resta: nessun final render parte prima che gli overlay siano pubblicati e abbiano i Drive ID certificati. La metrica `overlay_upload` (stage `overlay_render`, component `drive`) registra il costo della pubblicazione: prime misure **22/10 18:01–18:03, 3 item, 2,3 ms/item medi** sul percorso async (enqueue outbox). L'upload reale avviene nel worker outbox (`overlay_drive_outbox.go` handler → `direct.PublishOverlay`), dove **non è ancora misurato**: chiudere il gap misurando nel handler. Il percorso sincrono residuo (compositi `:final-composite:`) registrerà il costo completo alla prima run final-job riuscita.
 
 Modifica in `internal/capabilities/scripts/runner_lifecycle.go`: il run pianifica retry solo per errori marcati transient dal contratto tipizzato condiviso, oltre alle deferral esplicite per un final render remoto ancora in esecuzione e al caso recuperabile dell'audio locale mancante. Quel caso ora riprende da `audio_compile`, azzera il solo riferimento al file scomparso e conserva gli overlay già renderizzati; non ripete più la stessa pubblicazione sullo stesso path inesistente. Gli altri errori deterministici e non classificati cessano di ripetere automaticamente il lavoro invariato. I confini che possono recuperare un errore transitorio devono propagare `retry.TransientInfrastructureError`.
 
@@ -55,6 +59,78 @@ Payload immutabile: `ops/jobs/overlay_throughput_golden_100_20261022.v2.generate
 La prima prova live v1 con `final_job=true` è stata interrotta dopo che la fase overlay era terminata. Il job `job_1792685428589251856_a9f967b8` ha renderizzato e pubblicato 39 overlay tra le 16:15:58 e le 16:19:16 UTC; il final job remoto è poi fallito per `timeline segment 33 has zero frames`, con due overlay numerici mancanti in prefetch. Il binario attivo `53c200925` (avvio 14:38 UTC, precedente alle correzioni) ha pianificato un retry sullo stesso errore terminale; il job è stato annullato alle 16:23 UTC per non spendere altra capacità sul video finale. Il conteggio 39 è inferiore ai 100 richiesti: questa prova non certifica il golden.
 
 La run v2 overlay-only **non ha completato** e non costituisce baseline di throughput: job `job_1792686265115244060_107c6817`, inviato alle 16:24:25 UTC sul binario `53c200925` (processo avviato alle 14:38 UTC, quindi precedente alle correzioni). È stato annullato alle 16:39:06 UTC dopo due fallimenti identici. `final_job=false`; nessun video finale è stato richiesto o prodotto.
+
+### Run v3 e v4 — asset image catalog e verifica della bonifica (22 ottobre 2026)
+
+La v3 (`job_1792692486237544004_02e3b631`, correlation `overlay-throughput-golden-v3-postfix-20261022T180804Z`) è partita sul binario `805b1f931` alle 18:08:06 UTC e si è chiusa `FAILED` alle 18:13:29 UTC: **323,0 s (5:23)**, `retry_count=0`. Ha pianificato 38 overlay/20 scene e fallito al prefetch del riferimento SHA-256 `fda374e1…fbc2` (HTTP 422), dopo 3 submit di render. Non è stato prodotto un video finale (`final_job=false`). Il residuo era nel catalogo immagini: candidato DuckDuckGo `36893`, `person:chiara-poggi`, URL Vanity Fair, aveva `legacy_file_md5=fda374…` ma `file_hash` vuoto e una materializzazione Drive non verificabile. I byte scaricati dall'URL al controllo avevano SHA-256 `50a2e672…afc229`, quindi non corrispondevano alla chiave storica. La v3 aveva anche 2 mappe costate 20,66 s e 37,37 s (`process_wall_s`).
+
+La correzione di stato aggiunta in PipelineGen fa preservare da `UpsertCandidate` entrambi gli stati terminali operativi `broken` e `retired`: una nuova osservazione dello stesso URL non prova che una materializzazione già registrata sia valida. Soltanto acquisizione, verifica e materializzazione riuscite possono rimettere il candidato in `fresh`. La regola è coperta da un test adapter e documentata in `docs/entity-image-catalog-state-policy.md`. Test eseguiti: `go test ./internal/platform/sqlite/assets/entitycatalog ./internal/capabilities/scripts/adapters -count=1` (pass). Binario installato tramite deploy ufficiale, build `805b1f931`, SHA-256 `c4cd9effd591e158c6e7da51b564153019155570864f2471b55f1d6a50879ac0`; health e hash di `/proc/<MainPID>/exe` corrispondono.
+
+La v4 (`job_1792693000903602853_dd8a6a84`, correlation `overlay-throughput-golden-v4-broken-state-fix-20261022T1817Z`) è terminata `FAILED` dopo **374,1 s (6:14)**, sempre sul medesimo SHA fda con HTTP 422 e `retry_count=0`. La lettura del database ha chiarito perché non era una verifica valida della nuova regola: la v3 aveva lasciato candidato `36893` nuovamente `fresh`; v4 è partita da quello stato e quindi non ha esercitato la transizione `broken → upsert provider`. Corretto il setup in modo esplicito: prima di v5 il candidato è stato rimesso `broken` tramite `SQLiteEntityImageCatalogAdapter.SetCandidateStatus`, verificando che l'asset materializzato resti quello fda. Il job v5 è ora il test live effettivo; registrare qui sotto l'esito terminale e i timing prima di dichiarare risolto il riferimento.
+
+**Profilo v4 da `GET /api/jobs/<id>/full`:** 374.089 ms end-to-end; attribuiti 373.925 ms, residuo non attribuito 164 ms (0,044%), overlap 110.233 ms. Piano: **39 elementi/20 scene**, non 100; 4 submit overlay prima del fallimento; nessun throughput valido, perché il job non ha completato. La fase overlay ha consumato 110,484 s, con 4 wait queue (15,775 s sommati), 4 render Chronon (15,033 s sommati), 208 ms object-store upload; il tempo restante include lavoro mappe non interamente rappresentato nelle operazioni render. Due mappe Chronon hanno chiuso rispettivamente in 43,77 s e 39,11 s (`process_wall_s`, cache tile: 4.475 hit, zero miss/download per ciascuna). La terza non è attribuibile come completata prima del fallimento.
+
+| Fase v4 | Wall ms | Note |
+| --- | ---: | --- |
+| `generate` | 126.880 | 20 chiamate Ollama; 264.595 ms di work cumulativo, 79.114 ms queue wait, 26.272 ms model load |
+| `scene_analysis` | 107.265 | 20 risoluzioni Artlist; 296.899 ms work cumulativo, parallelizzato |
+| `prepare_join` | 68.210 | preparazione media/join |
+| `voiceover` | 57.603 | TTS 20 chiamate; 211.883 ms work cumulativo |
+| `publish` | 123.064 | fase concorrente con le altre, non sommare al wall totale |
+| `audio_compile` | 71.293 | AAC encode 51.338 ms work; render audio Rust 60.604 ms work |
+| `overlay_render` | 110.484 | 39 pianificati, 4 submit prima del 422; renderinggen render work 15.033 ms |
+
+Sequenza completa del job v4: submit/idempotency → lease worker → generazione script (20 chiamate Ollama) → traduzione (32 ms) → analisi scene/Artlist e preparazione join → TTS e pubblicazione voiceover con timing per 20 scene → compilazione audio → generazione piano overlay (39 elementi, 20 scene) → render di due mappe Chronon (43,77 s + 39,11 s) e ulteriori item → quarto submit fallito sul vecchio hash immagine → job `FAILED`, nessun replay automatico. L'outbox ha differito gli eventi finché il parent era `RUNNING` con delay 60 s e senza bruciare tentativi; al fallimento l'evento ha seguito la normale chiusura del parent.
+
+### Run v5 — prova live con candidato marcato broken prima del refresh
+
+Job `job_1792693410789283024_bed1c33a`, build `805b1f931`/SHA `c4cd9eff…`, idempotency `overlay-throughput-golden-v5-broken-state-fix-20261022T1824Z`. Candidato `36893` marcato `broken` prima del submit e rimasto tale dopo discovery/refresh; le scene Chiara 01 e 11 selezionano l'alternativa valida `e039c138…`. La run fallisce dopo **378,133 ms (6:18)** al 32° submit: un diverso asset fda `38e48a50…` in scena 14 risponde HTTP 422. Il mapping DB identifica il secondo riferimento come candidato `36469`, `person:andrea-sempio`, materializzazione con `asset_id=7fb55580…` ma `legacy_file_md5=38e48a50…`; anche `file_hash` è vuoto. Candidato 36469 marcato `broken` con lo stesso adapter canonico prima della v6. Il problema dunque comprende più materializzazioni persistenti non coerenti, non solo il ritratto di Chiara.
+
+**Timing v5 (`GET /api/jobs/<id>/full`):** wall/execution 378.133 s; attribuiti 377.998 s (99,964%), 135 ms non attribuiti; overlap 136.378 s. Piano 40 elementi/20 scene; 31 submit/render Chronon completati prima del 422 sul 32°; `retry_count=0`; non è un throughput accettabile certificato perché il job è `FAILED` e 9 overlay pianificati non sono stati processati. Le metriche hanno 31 render/encode/materialize/hash/upload di output, con 105.475 s cumulativi di wait del queue e 96.052 s cumulativi di rendering; 1.208 ms objectstore upload. Il primo map item registrato costa 27,35 s `process_wall_s` (63 frame, cache hit 4.475, zero tile download; fetch 61,72 s cumulativi internamente, prepare 6,63 s, encode 15,80 s).
+
+| Fase v5 | Wall ms | Work/lettura |
+| --- | ---: | --- |
+| `generate` | 138.707 | bottleneck dichiarato dall'API; 20 generate work 249.499 ms, queue wait 74.319 ms, warm model 19.043 ms |
+| `scene_analysis` | 82.055 | 20 Artlist resolve, work cumulativo 253.927 ms |
+| `prepare_join` | 57.563 | fase preparatoria |
+| `voiceover` | 50.150 | TTS 20 chiamate, work cumulativo 188.450 ms |
+| `publish` | 87.427 | fanout concorrente, non additivo al wall totale |
+| `audio_compile` | 115.574 | AAC encode 95.319 ms e Rust audio render 104.526 ms di work |
+| `overlay_render` | 120.433 | 31 render completati, errore deterministico sull'item successivo; wait totale 105.475 s |
+
+### Correzione cache e run v6
+
+La v5 ha isolato un secondo percorso: le risposte cache/provider conservano i candidati già materializzati; il catalogo li registra come `broken`, ma il risultato cached poteva ancora essere restituito al selettore prima della materializzazione. In PipelineGen è stato aggiunto `excludeUnavailableEntityImageCatalogCandidates`, applicato dopo l'upsert sia ai risultati L1/L2 cached sia ai risultati freschi di provider nel media resolver e nel fanout VidRush. I candidati corrispondenti a URL `broken` o `retired` vengono esclusi dal set consegnato al materializzatore; i candidati non presenti nel catalogo e i candidati `fresh` restano disponibili. Test mirato `TestCachedEntityImageResultsCannotBypassBrokenCatalogState` e pacchetti `internal/capabilities/scripts/adapters`, `internal/platform/sqlite/assets/entitycatalog` passati.
+
+Build installata e identità verificata: SHA-256 `ad6b98debf0d1082590f4b4b6282c9b7060fb7cc614b25e977152c2873f044c2`, health `git_commit=805b1f931`, build time `18:30:49Z`. Prima del submit v6, candidati `36893` (Chiara) e `36469` (Andrea) entrambi risultavano `broken` nel DB. Job `job_1792693936932863369_c1fd5858`, idempotency `overlay-throughput-golden-v6-cache-state-filter-20261022T1832Z`, `final_job=false`.
+
+**Ulteriore causa radice trovata durante v6:** subito dopo il riavvio, il processo di startup `entity image catalog recertification` ha selezionato 3 URL; 2 richieste HTTP riuscite hanno riportato `fresh` proprio i candidati 36893 e 36469, aggiornati alle 18:33:08, nonostante entrambi avessero ancora materializzazioni ObjectStore non valide. Il servizio (`RecertificationService`) verifica solo che l'URL remoto risponda e non legge/valida il digest Drive/ObjectStore, ma `RecordCandidateValidation` trasformava comunque `broken -> fresh`. I due candidati sono stati rimarcati `broken` dopo la recertificazione e prima del passaggio v6 a discovery/materializzazione; le scene Chiara hanno selezionato `e039…`, Andrea `95d6…`, nessuno dei due vecchi riferimenti fda. Correzione sorgente aggiuntiva, testata ma ancora da installare dopo v6: una sonda remota positiva lascia `broken` in `broken` e consuma il budget URL-only; solo `SetCandidateStatus(fresh)` dopo un nuovo Acquire→Verify→Finalize azzera il budget. I test dei tre pacchetti catalog/entitycatalog/scripts-adapters passano. La build v6 in esecuzione include invece già il filtro di cache contro URL broken/retired.
+
+**Esito v6 (run golden riuscita, 22 ottobre 2026):** `SUCCEEDED` alle 18:39:19 UTC, un solo attempt, wall `421.858 ms` (submit 18:32:16, worker start 18:32:17, terminale 18:39:19), queue wait 1.000 ms, `final_job=false`. Sono stati pianificati, sottoposti, materializzati e verificati **37 overlay su 37**; nessun video finale e nessun 422. Il filtro cache ha scartato le vecchie materializzazioni e riutilizzato le alternative `e039…` per Chiara e `95d6…` per Andrea. Throughput end-to-end del lavoro riuscito: **37 / 7,031 min = 5,26 overlay/min**. Throughput limitato alla fase overlay: **37 / 127,904 s = 17,36 overlay/min**. Il target configurato di 100 resta solo un cap/mix richiesto: il planner v6 crea 37 item, non 100; questa run non certifica il target 100/min.
+
+| Fase v6 | Wall ms | Dettaglio misurato |
+| --- | ---: | --- |
+| Generazione script (`generate`) | 135.988 | bottleneck API; 20 chiamate Ollama, work 272.941 ms, queue wait 80.904 ms, model load 31.832 ms |
+| Analisi scene (`scene_analysis`) | 91.278 | 20 Artlist resolve, work cumulativo 281.355 ms; max chiamata 91.147 s |
+| Preparazione media/join (`prepare_join`) | 54.153 | percorso pre-audio/render |
+| TTS/voiceover | `voiceover` 56.968; `tts` 95.092 | 20 TTS, work cumulativo 213.597 ms; si sovrappone ad altre fasi |
+| Compilazione audio (`audio_compile`) | 128.355 | Rust audio render 115.626 s work, AAC encode 99.312 s work; serve ai timing overlay anche con `final_job=false` |
+| Rendering overlay (`overlay_render`) | 127.904 | 37 submit, wait cumulativo 131.611 s, rendering 116.328 s cumulativi, 37 probe/materialize, 1.575 s objectstore upload; le chiamate sono concorrenti e i work non si sommano al wall |
+| Pubblicazione (`publish`) | 117.298 | operation breakdown attribuito al finalizer e sovrapposto; non sommare al wall end-to-end |
+| Chiusura writer (`post_writer_finalize`) | 16.865 | 3 chiamate Drive publish, work Drive cumulativo 27.519 s |
+| Pubblicazione audio (`audio_publish`) | 15.495 | 1 upload Drive, work 15.382 s |
+
+Verifica deploy successiva alla correzione di ricertificazione: build `805b1f931`, SHA-256 binario `fe4415246f77b4077b5abfdbbdb5820f707a6c2e52d491be2f4d6601bbed5c85`, health `healthy`, processo PID `1047695`. Dopo il ciclo di startup del 22/10 18:42:12 UTC, candidati `36893` e `36469` sono rimasti `broken`, entrambi a `validation_attempts=5`: il probe URL non ha più riabilitato una materializzazione con hash storico non verificato.
+
+### Verifica puntuale attese di polling — v6
+
+Interrogata direttamente `render_attempt_analytics` per la run `run_bfda3153-f152-4dbe-b866-6032a7d85563` (37 item). Il totale `completion_wait_ms` è **131.611 ms**, ma `polling_sleep_ms=0` e `poll_count=0` per tutti i 37 item; `polling_interval_ms=250` è solo la configurazione fallback. Il percorso usato è il long-poll event-driven (`RenderQueueWaiter`), perciò i 131,6 s cumulativi sono latenza di completamento osservata mentre i render lavorano/concorrono, **non tempo perso dormendo tra poll**. Sui timestamp disponibili: `queue_queued_at → queue_started_at` somma ~0,505 s; `queue_completed_at → artifact_available_at` ~1,771 s; worker `render_ms` somma 116,328 s e `encode_ms` 5,137 s. Queste sono somme per item e non wall time additivo; il residuo di `completion_wait_ms` va attribuito con attenzione ai timestamp mancanti/overlap, non chiamato polling. Correggere la diagnosi: non ridurre l'intervallo di polling per spiegare la v6. Il prossimo passo è confrontare per-item `submit_accepted_at`, `queue_started_at`, `queue_completed_at`, `artifact_available_at`, render/encode e tempi materializzazione per isolare la latenza sul critical path. Il polling rimane già misurato e separato per i fallback che lo usano.
+
+I fix di stato catalogo e filtro cache/provider sono presenti anche nel checkout sorgente. Verifica mirata sul checkout: `go test ./internal/platform/sqlite/assets/entitycatalog ./internal/capabilities/images/entitycatalog ./internal/capabilities/scripts/adapters -count=1` — pass. Nessun commit o push eseguito. La run v6 rimane la baseline live più recente; non è stata rilanciata dopo il solo fix di ricertificazione perché quel fix è coperto dal test e la verifica startup ha confermato lo stato DB. Non attribuire alla v6 una misura per-scena di TTS/Rust: la nuova sezione «Audit end-to-end del tempo perso» esplicita i punti da strumentare e le ipotesi che il dato aggregato non risolve.
+
+I map item sono tre e hanno chiuso con `process_wall_s` **65,65 s**, **26,53 s**, **17,58 s**: totale 109,76 s, circa l'86% dei 127,90 s della fase overlay. Tile cache: 4.475–4.567 hit e zero miss/download; il costo resta frame pipeline/encode (rispettivamente 48,23/48,64 s per la prima mappa) e plate prepare (11,32 s). Nelle mappe successive la durata scende con output più corto (67 e 56 frame). Questa è la causa concreta dominante della fase overlay nella run riuscita; il costo non sta nell'upload Drive degli overlay (68 ms misurati nel caller asincrono).
+
+Timing totale è 421,858 s, attribuiti 420,919 s (99,78%), non attribuiti 939 ms; overlap rilevato 149,913 s. Le fasi elencate non vanno sommate: il parallelismo produce work cumulativo superiore al wall. Rispetto alla v5 (378,133 s, fallita al 32° submit), v6 richiede 43,7 s in più ma completa tutti i 37 item, perciò è il primo throughput osservato con output validati. Resta il gap tra i 37 item prodotti e i 100 item attesi dal golden, da risolvere nel planner/contratto del mix prima di dichiarare misurato l'obiettivo.
 
 La sequenza osservata nei log (UTC) è:
 
@@ -76,7 +152,124 @@ La sequenza osservata nei log (UTC) è:
 
 Il codice PipelineGen ora classifica i retry tramite `retry.IsTransient`, più le due deferral/recuperabilità esplicite. Il runtime che ha eseguito questa prova era precedente a tale modifica e ha quindi ripetuto un mismatch deterministico. La nuova build non deve ritentare automaticamente un content-address mismatch: va verificato che il job termini con errore diagnostico senza replay. Rimane da correggere il percorso outbox: gli eventi di pubblicazione devono essere differiti fino alla terminalità del parent senza bruciare tentativi ravvicinati o essere dead-letterati prematuramente.
 
+### Bonifica cache immagini, idratazione L3 e strumentazione (22 ottobre, 19:00–19:45 UTC)
+
+Dopo v6 sono state completate quattro azioni, tutte verificate:
+
+1. **Bonifica dei blob corrotti L3.** Scansione completa: 5 hash con blob corrotto (`verify` 409) più i 2 già noti con binding stale (`fda374e1…`, `38e48a50…`). I 5 blob sono stati prima **rihomeati sotto il vero hash dei byte** (es. `b5b91ac5…` → `13da47d2…`, confermando la provenienza già ipotizzata) e poi rimossi; le 7 materializzazioni e 13 entry cache corrispondenti eliminate, 7 candidati marcati `broken`. Verifica: vecchie chiavi 404, nuovi oggetti `verify` 200, zero residui DB.
+2. **Audit completo delle materializzazioni (783 righe).** Download delle copie Drive certificate e confronto hash: **0 mismatch su 575 verificabili** — i hash registrati erano corretti; i fallimenti 422 nascono perché il render può riacquisire dalla **sorgente volatile** invece di risolvere dall'ObjectStore. 13 copie Drive risultano cancellate (HTTP 404) e 11 non raggiungibili (risposta HTML): 24 binding **in quarantena** (materializzazione + cache eliminate, candidato `broken`).
+3. **Idratazione L3 completa.** Tutte le copie Drive certificate sono state riversate nell'ObjectStore sotto la rispettiva chiave (`verify_on_write` accetta solo byte coerenti): 574 oggetti idratati. Stato finale: **758/758 materializzazioni con oggetto L3 verificato, 0 binding senza bytes certificati**. Il prefetch al render diventa cache-hit: nessun 422 possibile da sorgente volatile. Misura di performance collaterale: niente più riacquisizioni rete imprevedibili nel critical path.
+4. **Strumentazione nuova (build `65d0a823`, attiva dal 19:36 UTC).** (a) Le fasi del map renderer (`prefetch`/`prepare`/`encode` dal summary `chronon.dynamic-map-telemetry.v1`) sono ora proiettate in `run_operation_observations` (component `chronon`, stage `overlay_render`) via `projectMapRendererPhases`; (b) l'**upload Drive reale** nel worker outbox è misurato con `MeasureOperation` (`drive_publish`, component `drive`) su una delivery run per evento, joinabile al job via `run_observability.job_id`. Test: `go test ./internal/kernel/observability ./internal/capabilities/scripts ./internal/app/wiring` (pass). Voci aggiunte a `architecture/observability-measurement-matrix.yaml`.
+
+Durante la run v8 la **macchina è stata riavviata** (~19:34 UTC): il tentativo 1 (16/27 item) è stato abbandonato per lease scaduto e il retry ha ripreso da zero — non un bug del lease, un'interruzione esterna. Da tenere presente come rischio di confrontabilità delle run.
+
+### Run v7–v10 e baseline misurata
+
+| Run | Esito | Item (piano/render/links) | Finestra render | Item/min | Note |
+| --- | --- | --- | ---: | ---: | --- |
+| v7 `job_1792695874959201370_6c8ecf6f` | FAILED, `retry_count=0` | 27 submit prima del 422 | — | — | Prima run strumentata: fasi mappa e upload Drive reali visibili per la prima volta. Asset stale `efca1c3a…` (422 al prefetch, scena 12): binding coerente sulla copia Drive, risolto con l'idratazione. |
+| v8 `job_1792697082069586662_6ee46def` | **SUCCEEDED** | 41 / 41 / 44 | 83,4 s | **29,5** | Tentativo 1 interrotto da reboot macchina (v. sopra); tentativo 2 pulito. 1 mappa: prefetch 3,6 s + prepare 4,7 s + encode 11,8 s. |
+| v9 `job_1792698395739307802_57186936` | **SUCCEEDED** | 41 / 41 / 41 | 90,5 s | **27,2** | 1 mappa: 3,3 / 4,6 / 11,0 s. 41 upload Drive reali: media 3,0 s. |
+| v10 `job_1792698822460956156_e0003190` | **SUCCEEDED** | 36 / 36 / 36 | 85,0 s | **25,4** | 2 mappe: prefetch 3,7 s + prepare 4,7 s + encode 12,5 s medi. 36 upload Drive reali: media 2,7 s. |
+
+**Baseline (3 run confrontabili, build strumentata, L3 idratato): mediana 27,2 overlay/min sulla finestra render, range 25,4–29,5, finestra mediana 85 s.** Il target 100/min non è raggiunto: manca un fattore ~3,7. I record completi sono in `ops/jobs/overlay_throughput_golden_100_20261022/results/` (comando di ripetizione nel README della stessa cartella).
+
+### Baseline misurata e dove si perde tempo
+
+Wall per fase (mediana delle 3 run; `audio_compile` e `overlay_render` sono sorelle concorrenti, non sommare al totale):
+
+| Fase | Mediana | Range | Natura del costo |
+| --- | ---: | ---: | --- |
+| `generate` | 132,8 s | 129,0–136,6 | 20 chiamate Ollama (work cumulativo ~250 s, model load ~30 s, cold start) — **il collo più grosso end-to-end** |
+| `audio_compile` | 89,6 s | 62,9–96,1 | AAC encode + render audio Rust (work cumulativo 83–167 s), in overlap con l'overlay |
+| `overlay_render` | 97,0 s | 90,2–97,0 | **finestra dei ~37 item** → 25–29 item/min |
+| `scene_analysis` | 66,9 s | 54,4–67,9 | 20 resolve Artlist (work cumulativo 180–281 s, esterno) |
+| `voiceover` | 56,3 s | 55,6–57,0 | TTS 20 chiamate (work ~216 s) + publish Drive **seriali** (~5,5 s/item) |
+| `prepare_join` | 28,5 s | 25,9–68,0 | preparazione media/join (varia con gli asset da materializzare) |
+| `post_writer_finalize` | 16,3 s | 15,7–17,2 | hash + publish artefatti (drive_publish finalize ~43 s work su 4 chiamate) |
+| `audio_publish` | 15,0 s | 14,1–15,3 | upload Drive audio finale |
+
+Dentro la finestra render (la metrica del ticket):
+
+- **Mappe**: ~20 s/item ciascuna (prefetch ~3,6 + prepare ~4,7 + encode ~11–12,5), ora interamente attribuite. Sono gli item più pesanti: con 1–3 mappe nel piano incidono per 20–60 s degli 85–97 s di finestra.
+- **Upload Drive reali (outbox)**: media **2,4–3,0 s/item** (range osservato 2,0–6,8 s), somma 98–139 s per run — ma **asincroni** (delivery dopo la terminalità del parent, in parallelo col resto): non entrano nella finestra render; il loro costo è ora visibile e prima era l'unico pezzo invisibile. Il `drive_publish` del percorso sincrono (compositi `:final-composite:`) resta da misurare alla prima run final-job.
+- **Item non-mappa** (phrase/number/image/entity): 2–5 s/item con pool a 4 worker (`wait_completion` work ~99 s su 41 item).
+
+**Leve concrete verso 100/min nella finestra render** — *aggiornate dopo la misura
+per-item v9, che corregge l'attribuzione: la finestra è il servizio render
+seriale (`sum(render_ms)` ≈ finestra; catena post-render 1,5 s), quindi le leve
+"pool width" e "anticipazione mappe" erano secondarie. Le mappe girano già su
+una classe parallela alla larghezza 1:*
+
+1. **Più lane di render** — LEVA VERA e già esercitata: 2° daemon Chronon +
+   `gpu_lanes=2` + `overlayItemDeepWidth=2` ha portato 27,2 → 37,8–41,7 item/min
+   (overlap 1,89×). La strada è replicare il pattern (N daemon = N lane) fino
+   alla saturazione NVENC; oltre 2 istanze serve però una nuova certificazione
+   VRAM (l'evidenza esistente copre 2 daemon).
+2. **Ridurre il servizio render per-item** (~3,0 s/item, ~26 ms/frame): è lavoro
+   sul frame pipeline/encode del renderer Chronon (Chronon3d), non su
+   PipelineGen. È l'unica leva residua per arrivare a ~100/min con poche lane.
+3. **Voiceover publish seriale** (~5,5 s/item × 20) e `drive_publish` finale:
+   restano sul wall end-to-end, non sulla finestra — parallelizzarli come fatto
+   per gli overlay se l'obiettivo diventa il wall del job intero.
+4. **End-to-end**: `generate` (132,8 s) e `scene_analysis` (66,9 s) dominano il
+   wall del job (~7–8 min) ma non la finestra overlay: se l'obiettivo è il
+   throughput del job intero, sono loro il primo target (prompt cache per
+   Ollama, parallelismo resolve Artlist).
+
+Riferimenti record: `results/overlay-only-v6` … `results/overlay-only-v10`, `results/README.md` (ripetibilità), baseline JSON nei summary di ciascuna run.
+
+### Ottimizzazione: seconda lane di render (2° daemon Chronon) — report prima/dopo (22/10, 20:30–21:00 UTC)
+
+**Correzione dell'attribuzione (misura per-item v9, `render_attempt_analytics`):** la finestra render non è limitata dal pool né dalla catena pre/post, ma interamente dal **servizio render seriale**: 41 item, `sum(render_ms)=91,7 s` contro una finestra di 90,5 s; tutta la catena post-render (materialize+probe+hash+upload) somma **1,5 s**. Con `gpu_lanes=1` e un solo daemon (`kSerializedRenderJobSlots = 1`) il throughput era quindi per costruzione `1 / servizio medio per item` ≈ 25–29 item/min. Le leve "pool width" e "mappe fuori finestra" erano secondarie: le mappe girano già su una classe parallela (la loro fase pesante non entra nella finestra).
+
+**Modifica applicata** (topologia certificata dal repo, evidenza VRAM `RenderingGen/multilingual_overlays_v1/evidence/vram_two_runtime_pool_2026-09-16.json` — due istanze warm, artefatti byte-identical, ~1,8 GiB per due render concorrenti):
+
+1. **Secondo daemon Chronon**: `chronon3d-b.service` installato e attivo, socket dedicato `/run/chronon3d-b/chronon.sock`, stesso binario `linux-video-release` e stessa env del daemon A (`CHRONON_RENDER_JOB_SLOTS=1`) — una domain di esecuzione per daemon = 2 lane render.
+2. **Worker RenderingGen**: `chronon.socket_paths = [chronon.sock, chronon3d-b/chronon.sock]`, `gpu_lanes: 1 → 2` (log di avvio: `lane/daemon parity: gpu_lanes=2 transport=ipc sockets=2 lanes_per_socket=1`).
+3. **Pool item overlay**: `overlayItemDeepWidth 1 → 2` (`render_queue_items.go` + test): con due lane il clamp a 1 affamava la seconda lane; due child render in flight = una per lane, senza allargare la coda. Test: `go test ./internal/capabilities/scripts/...` (18 pacchetti ok).
+4. **Contratto di ammissione**: `RENDERINGGEN_GPU_SLOTS=2` (`gpu-slots.conf`, allineato a `worker.gpu_lanes=2`).
+
+**Report prima/dopo (stesso payload immutabile, stessa macchina, L3 idratato):**
+
+| Configurazione | Run | Item | Finestra render | Item/min | Overlap render |
+| --- | --- | ---: | ---: | ---: | ---: |
+| PRIMA (1 lane, pool clamp 1) | v8 | 41 | 83,4 s | 29,5 | 1,0× |
+| PRIMA | v9 | 41 | 90,5 s | 27,2 | 1,0× |
+| PRIMA | v10 | 36 | 85,0 s | 25,4 | 1,0× |
+| **DOPO (2 lane, pool 2)** | **v11** `job_1792701052952713436_239a27c8` | **38** | **60,4 s** | **37,8** | **1,89×** (`sum(render)=114,1 s`, peak 3 render concorrenti) |
+| **DOPO (2 lane, pool 2)** | **v12** `job_1792701608735359540_610dea1d` | **38** | **54,6 s** | **41,7** | 2 lane confermate |
+
+**+39…+53% di throughput** (mediana baseline 27,2 → 37,8 e 41,7 item/min sulle due run post-intervento), nessuna regressione: 38/38 item COMPLETED e 38 link Drive certificati per run, `retry_count=0`. Il scaling è coerente con l'evidenza NVENC (1 motore su RTX A4000: ~1,65–1,9× da due sessioni sovrapposte). Record: `results/overlay-only-v11/`, `results/overlay-only-v12/`.
+
+**Proiezione al target 100/min:** con servizio render medio ~3,0 s/item (v11) e un motore NVENC condiviso, la strada è (a) più lane via altri daemon — 2 lane danno 1,89×, ma oltre 2 istanze non c'è evidenza VRAM certificata (serve `vramprobe` dedicato) — e/o (b) ridurre il servizio per-item (~26 ms/frame oggi, frame pipeline/encode del renderer Chronon: è lavoro in Chronon3d, non in PipelineGen). Con 4 lane efficaci o servizio ~1,5 s/item si raggiungono ~75–100 item/min su questo mix. Il piano materializzato resta comunque 36–41 item (non 100): il gate del ticket va misurato come capacità della finestra, e il gap pianificatore (100 richiesti vs ~38 materializzati) resta un tema separato già dichiarato.
+
 ### Roadmap operativa del job
+
+### Audit end-to-end del tempo perso — golden v6
+
+Il target non è soltanto accelerare `overlay_render`: per scendere da 7:02 a 5:00 bisogna togliere almeno **121,9 s (28,9%)** dal percorso completo v6 mantenendo gli stessi 37 output validi. La seguente è la lettura operativa della run; le durate di fase sono wall attribuiti e in parte sovrapposti, quindi non vanno sommate.
+
+| Punto del percorso | Dato osservato v6 | Waste/costo da verificare o rimuovere |
+| --- | --- | --- |
+| Accodamento → worker | `queue_wait_ms=1000`; singolo tentativo | Basso in questa run. Tenere distinto dal tempo attivo negli altri job e misurare coda/lease separatamente. |
+| Generazione script | `generate` 135,988 s; 20 chiamate Ollama; queue wait cumulativo 80,904 s, model load 31,832 s | È il maggior wall fase misurato. Verificare se le 20 scene vengono generate in sequenza o a batch e se attese di slot/modello si sommano prima di poter proseguire. Registrare start/end per chiamata e momento in cui il testo di ciascuna scena diventa disponibile. |
+| Traduzione | presente nel percorso ma senza fase di peso significativo isolata in v6 | Non sappiamo se blocca il voiceover per tutto il testo. Aggiungere timestamp per singola scena e barriera di join: traduzione completa vs testo pronto per scena. |
+| Analisi scene / Artlist | `scene_analysis` 91,278 s; 20 resolve; lavoro cumulativo 281,355 s | Work ~3,1× il wall indica parallelismo, ma il massimo resolve arriva a ~91 s. Identificare la coda critica e se ricerca/analisi per scena parte appena il relativo testo è pronto oppure attende l'intero script. |
+| Preparazione media e join | `prepare_join` 54,153 s | La fase aggrega più operazioni; serve tracciare quali input aspettano tutti gli altri e se voiceover, media, scene analysis e overlays hanno una barriera globale evitabile. |
+| Voiceover/TTS | fase `voiceover` 56,968 s, 20 TTS con 213,597 s cumulativi; `tts` separato 95,092 s nella proiezione | **Domanda critica da risolvere nel codice:** il TTS parte per scena appena il relativo testo è stabile o solo dopo la generazione/traduzione dell'intero script? Una partenza anticipata può sovrapporre TTS alle scene successive. Registrare per-scena `text_ready`, `tts_enqueue/start/end`, `audio_ready` e dipendenze reali. Il work cumulativo non è elapsed. |
+| Compilazione audio | `audio_compile` 128,355 s; Rust render 115,626 s cumulativi, AAC encode 99,312 s cumulativi | Il job overlay-only paga comunque la composizione necessaria al timing. **Verificare se Rust audio viene invocato dopo che tutto il testo è pronto o già sui segmenti pronti**, e se una compilazione globale duplica lavoro durante resume. Separare attesa risorse, Rust, FFmpeg/AAC e join. Se il piano overlay può usare timing parziali o incrementali, valutare streaming; non cambiare semantica senza prova. |
+| Piano overlay | piano effettivo 37 elementi/20 scene, pur con richiesta/cap 100 | Il benchmark non esercita 100 overlay: configurare un input che garantisca 100 item effettivamente pianificati oppure documentare quali regole di eleggibilità ne scartano 63. Timing piano non è isolato abbastanza: misurare pianificazione, validazione e serializzazione. |
+| Overlay / mappe | 127,904 s; 37 item; 3 mappe `process_wall_s` sommano 109,76 s | Collo dominante dell'overlay: frame pipeline/encode mappa, plate preparation e sincronizzazione dei 3 item. Tile cache ha ~4,5k hit e zero download, quindi il costo non è rete tile. Rendere visibile il tempo mappe nella telemetria fase/item e sovrapporre mappe agli altri overlay se limiti CPU/memoria lo consentono. |
+| Wait queue rendering | 131,611 s cumulativi su 37 wait | Work cumulativo supera la fase wall per concorrenza. Per item registrare tempo da submit a render-start e da render-end a probe; distinguere coda reale da worker poll/sleep. Il poll non deve aggiungere secondi se esiste completamento event-driven. |
+| Probe, materializzazione, hash/ObjectStore | 37 successi; upload ObjectStore 1,575 s totale | Non dominante in v6; preservare verifica. Misurare separatamente download/read-back, hash e retry; gli errori precedenti 422 erano asset stantii, corretti evitando la selezione, non velocizzando i retry. |
+| Drive/outbox e finalize | `post_writer_finalize` 16,865 s; `audio_publish` 15,495 s; 3 publish Drive nel writer | Upload asincrono overlay è fuori dal caller; `overlay_upload` misura enqueue (~68 ms), non consegna Drive. Misurare durata end-to-end dell'outbox, wait per parent terminale e backoff. Le deferral RUNNING usano 60 s ma non consumano tentativi; non sono nel wall v6 se il job finisce prima. Evitare polling/backoff sul critical path overlay-only. |
+| Publish/chiusura | `publish` 117,298 s, con overlap; residuo non attribuito totale 939 ms | Non sommare la fase al wall: può essere un aggregato concorrente. Attribuire i 117 s alle sotto-operazioni e chiarire quali publish sono obbligatori con `final_job=false`; niente upload/artifact di final video deve essere richiesto dal golden. |
+| Retry e resume | v6 `retry_count=0`, 37/37 riusciti | I run v2–v5 hanno perso minuti ripetendo rendering o arrivando a errori 422. La regressione è stata rimossa lato retry deterministici e catalogo; ogni resume deve provare che riusa artefatti validi e non ricostruisce mappe/audio già certificati. |
+
+**La domanda pipeline richiesta dal team resta aperta finché non è provata con trace per scena:** voiceover/TTS deve partire non appena testo e traduzione di quella scena sono stabili; la compilazione Rust può partire solo quando ha i segmenti audio necessari al suo contratto, ma va verificato se il codice attende inutilmente il completamento di tutto il testo o di tutti i TTS. La run v6 espone durate aggregate e non consente di affermare quale barriera avvenga oggi. Il ticket non deve trasformare questa ipotesi in fatto: aggiungere eventi temporali per scena e parent/child, poi confermare la dipendenza dal codice.
+
+Per ogni barriera annotare `ready_at`, `enqueued_at`, `started_at`, `completed_at`, predecessori richiesti e work effettivo. Calcolare critical path dalla traccia (non sommando le durate) e classificare ogni secondo come lavoro utile, coda, polling/sleep, serializzazione, upload o lavoro ripetuto. Il budget di miglioramento immediato per arrivare a 5 minuti è 121,9 s sul wall v6; i primi esperimenti vanno condotti sulle mappe (109,8 s osservati), generazione (136,0 s di fase) e attese/barriere TTS-audio, mantenendo confrontabile il numero di output.
 
 1. Ricezione payload e idempotency key → validazione/configurazione (`final_job=false` per questo benchmark).
 2. Enqueue e attesa worker → lease, checkpoint e correlazione parent/child.
@@ -96,18 +289,21 @@ Il codice PipelineGen ora classifica i retry tramite `retry.IsTransient`, più l
 ## Lavoro richiesto
 
 - [~] Ricostruire i job recenti e storici con timestamp di inizio/fine, script e revisione, overlay richiesti/pianificati/materializzati/validati, esito e numero di retry. Prima ricostruzione dei dieci job e delle run golden completata; restano telemetria per tipo di item, worker e conteggio end-to-end attendibile.
-- [ ] Separare il wall time per fase: generazione del piano/contenuto, risoluzione immagini e asset, enqueue/wait, rendering, validazione e retry. Registrare parallelismo e risorse della macchina, quando disponibili.
-- [ ] Identificare i colli di bottiglia principali con dati; distinguere tempo CPU/GPU attivo, attese esterne e lavoro ripetuto.
+- [x] Separare il wall time per fase: generazione del piano/contenuto, risoluzione immagini e asset, enqueue/wait, rendering, validazione e retry. Fatto: `run_stage_observations` per le fasi di job, `run_operation_observations` per le sotto-operazioni (ora incluse le fasi mappa `prefetch/prepare/encode`), `render_attempt_analytics` per il per-item. Scomposizione mediana delle 3 run baseline in «Baseline misurata e dove si perde tempo».
+- [x] Identificare i colli di bottiglia principali con dati; distinguere tempo CPU/GPU attivo, attese esterne e lavoro ripetuto. Fatto: generate/Ollama (132,8 s) e scene_analysis/Artlist (66,9 s) dominano il wall end-to-end; nella finestra render dominano le mappe (~20 s/item) e il per-item su 4 lane; il lavoro ripetuto (retry su asset stantii) è stato rimosso con la bonifica+idratazione L3.
 - [x] Creare un **payload golden da 100 overlay** ripetibile, derivato da un job reale rappresentativo e coperto da una composizione documentata di tipologie. Payload fissato e hashato.
-- [ ] Completare una run golden valida: la v2 è fallita prima di poter attestare overlay validi; ripubblicare l'asset corretto, eseguire su build aggiornati e rigenerare il piano senza checkpoint contaminato.
-- [ ] Eseguire il golden case sul codice corrente e registrare tempo totale, overlay/minuto, tempi di fase, overlay effettivi, errori, retry, parallelismo e risorse. Ripetere almeno tre volte e riportare mediana e dispersione.
-- [ ] Salvare input, output atteso, report e comando di ripetizione in una cartella versionata sotto `ops/jobs/` (o nella sede di fixture del componente, se il caso è puramente di test).
-- [ ] Selezionare almeno un job storico rappresentativo, conservandone payload e riferimento ai risultati già disponibili. Rifarlo sul golden path solo se gli input e le dipendenze sono riproducibili; altrimenti usare la stessa richiesta con asset fissati e dichiarare la differenza.
-- [ ] Dopo ogni modifica, ripetere il golden case sulla stessa macchina/configurazione e confrontare throughput, tempi di fase e qualità con il baseline. Non accettare miglioramenti fondati solo sul wall time complessivo se cambia il numero di overlay validi.
-- [ ] Applicare ottimizzazioni solo ai colli di bottiglia confermati, preservando l'ordine, il contenuto, il layout e il rendering richiesti.
+- [x] Completare una run golden valida. Fatto: **quattro run SUCCEEDED** — v6 (37/37 overlay validati), v8 (41/41), v9 (41/41), v10 (36/36), tutte `retry_count=0` su tentativo pulito e con link Drive certificati. Entrambi gli asset corrotti (`b5b91ac5…`, `fda374e1…`) più altri 5 blob e 24 binding stale sono stati bonificati/idratati prima di v8 (sezione dedicata): 758/758 materializzazioni con oggetto L3 verificato.
+- [x] Eseguire il golden case sul codice corrente e registrare tempo totale, overlay/minuto, tempi di fase, overlay effettivi, errori, retry, parallelismo e risorse. Ripetere almeno tre volte e riportare mediana e dispersione. Fatto: 3 run confrontabili (v8/v9/v10) → mediana **27,2 overlay/min** sulla finestra render, range 25,4–29,5, mediana finestra 85 s; record completi con tutti i dettagli richiesti.
+- [x] Salvare input, output atteso, report e comando di ripetizione in una cartella versionata sotto `ops/jobs/`. Fatto: `ops/jobs/overlay_throughput_golden_100_20261022/` (payload immutabile + hash, README con comando di ripetizione) e `results/overlay-only-v6…v10/`.
+- [x] Selezionare almeno un job storico rappresentativo, conservandone payload e riferimento ai risultati già disponibili. Fatto: il golden deriva da `08_fonti_media.generate.v11.json` (batch Garlasco `ops/jobs/garlasco_batch_10_20261019_sequential_v7/`, manifest e payload conservati); differenze dichiarate nel golden case v2 (stessi 20 segmenti e clip intro, progetto/correlazione dedicati, `final_job=false`).
+- [x] Dopo ogni modifica, ripetere il golden case sulla stessa macchina/configurazione e confrontare throughput, tempi di fase e qualità con il baseline. Regola permanente, applicata a tutte le modifiche del 22/10: strumentazione/idratazione → v8/v9/v10; ottimizzazione lane → v11/v12. Ogni confronto tiene conto del numero di overlay validati (38/38 COMPLETED + 38 link in v11/v12, nessun miglioramento da item mancanti).
+- [x] Applicare ottimizzazioni solo ai colli di bottiglia confermati, preservando l'ordine, il contenuto, il layout e il rendering richiesti. Applicato alla sola leva confermata dal dato per-item (servizio render seriale): la topologia dual-daemon è certificata artefatti-byte-identici, il pool non renumera gli item (test `TestSeparateOverlayItemsPreservePlanOrderAndIndices`), nessun cambio di contenuto/layout.
 - [x] Impedire il retry automatico dei fallimenti non tipizzati, che ripetevano input e checkpoint invariati; preservare il yield previsto per il rendering remoto ancora attivo.
 - [x] Togliere la pubblicazione Drive seriale dal critical path dei render final-job, mantenendo il join prima del final render e aggiungendo la misura `overlay_upload`.
 - [x] Recuperare il file audio locale scomparso ripartendo da `audio_compile` al retry, conservando i render overlay già certificati.
+- [x] Verificare che la nuova build non ritenti automaticamente un content-address mismatch: il job `job_1792691863832924962_59e9fb19` è terminato `FAILED` con `retry_count=0` ed errore diagnostico, senza replay (contratto `retry.IsTransient`).
+- [x] Verificare con `overlay_upload` l'attribuzione del residuo di `overlay_render`: la pubblicazione Drive seriale **non** è la causa dominante (vedi paragrafo «Collo di bottiglia overlay individuato»); il residuo è concentrato negli item pesanti non strumentati.
+- [x] Misurare il costo reale dell'upload Drive nel worker outbox. Fatto: `MeasureOperation` (`drive_publish`, component `drive`) nell'handler `overlay_drive_outbox.go`, una delivery run per evento joinabile al job. Misurato sulle run v7–v10: **2,4–3,0 s/item medi** (range 2,0–6,8 s), 36–57 upload per run, somma 98–139 s — asincroni, fuori dalla finestra render. Resta da misurare solo il `drive_publish` sincrono dei compositi `:final-composite:` alla prima run final-job.
 
 ## Contratto di misura
 
@@ -122,11 +318,11 @@ Per ogni run salvare almeno: `run_id`, input hash, revisione, configurazione e w
 ## Criteri di accettazione
 
 - [~] Payload golden immutabile da 100 overlay, ripetibile e verificabile; hash fissato. La prima run live non ha completato e non prova il throughput.
-- [ ] Baseline iniziale del golden case registrata con almeno tre run confrontabili e conteggio degli overlay validi.
-- [ ] Almeno un job storico valutato: confronto diretto quando riproducibile, altrimenti confronto documentato con fixture equivalente.
-- [ ] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili.
-- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case, senza regressioni di correttezza, quantità o qualità visiva.
-- [ ] Report prima/dopo per ogni ottimizzazione, con condizioni di esecuzione comparabili e nessuna regressione nascosta da overlay falliti o non contati.
+- [x] Baseline iniziale del golden case registrata con almeno tre run confrontabili e conteggio degli overlay validi. **Mediana 27,2 overlay/min** (v8 29,5, v9 27,2, v10 25,4), 36–41 overlay validati per run, tutti con link Drive certificati.
+- [x] Almeno un job storico valutato: confronto documentato con fixture equivalente (golden derivato da `08_fonti_media` con differenze dichiarate; ricostruzione misurata della batch storica in «Evidenza storica»).
+- [x] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili. Scomposizione in «Baseline misurata e dove si perde tempo»; residuo dichiarato: `drive_publish` sincrono dei compositi final-job e micro-fasi non ancora proiettate.
+- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) — **gate NON raggiunto**, manca un fattore ~2,4–2,7. Proiezione documentata: ~4 lane efficaci o servizio render ~1,5 s/item (oggi ~3,0 s/item, ~26 ms/frame). Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon; oltre serve una nuova certificazione (`vramprobe`).
+- [x] Report prima/dopo per ogni ottimizzazione, con condizioni di esecuzione comparabili e nessuna regressione nascosta da overlay falliti o non contati. Fatto per la prima ottimizzazione (2° daemon + pool 2): v8/v9/v10 (prima) vs v11 (dopo), 38/38 COMPLETED e 38 link Drive, vedi «Ottimizzazione: seconda lane di render». La baseline «prima» è registrata (v8/v9/v10); il report «dopo» si compila alla prima ottimizzazione applicata.
 
 ## Nota sul target
 

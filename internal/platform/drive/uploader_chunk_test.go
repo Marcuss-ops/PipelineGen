@@ -78,15 +78,15 @@ func newResumableChunkServer(t *testing.T, total int64, fileID, fileName, folder
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(fmt.Sprintf(
+			_, _ = fmt.Fprintf(w,
 				`{"id":%q,"name":%q,"webViewLink":"https://drive.google.com/file/d/%s/view"}`,
-				s.fileID, s.fileName, s.fileID)))
+				s.fileID, s.fileName, s.fileID)
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/drive/v3/files/"):
 			w.Header().Set("Content-Type", "application/json")
 			// size is a quoted string in the Drive wire contract (json ,string tag).
-			_, _ = w.Write([]byte(fmt.Sprintf(
+			_, _ = fmt.Fprintf(w,
 				`{"id":%q,"name":%q,"mimeType":"video/mp4","size":"%d","webViewLink":"https://drive.google.com/file/d/%s/view","parents":[%q],"trashed":false}`,
-				s.fileID, s.fileName, s.wantTotal, s.fileID, s.folderID)))
+				s.fileID, s.fileName, s.wantTotal, s.fileID, s.folderID)
 		default:
 			s.mu.Lock()
 			s.otherReqs = append(s.otherReqs, r.Method+" "+r.URL.String())

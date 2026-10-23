@@ -95,19 +95,19 @@ func NewSQLiteDB(dataDir, dbName string, log *zap.Logger) (*SQLiteDB, error) {
 	}
 
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("storage: ping %s: %w", dbName, err)
 	}
 
 	// Enable WAL mode explicitly (belt-and-suspenders with DSN param)
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("storage: enable WAL on %s: %w", dbName, err)
 	}
 
 	// Enable foreign keys explicitly
 	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("storage: enable foreign keys on %s: %w", dbName, err)
 	}
 

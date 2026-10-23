@@ -185,7 +185,9 @@ func TestTryReserve_ExpiredLease_ExactlyOneReclaimer(t *testing.T) {
 
 	// Verify initial attempt_count = 1.
 	var initialAttempt int
-	db.QueryRowContext(ctx, `SELECT attempt_count FROM youtube_discoveries WHERE channel_id=? AND video_id=?`, channelID, videoID).Scan(&initialAttempt)
+	if err := db.QueryRowContext(ctx, `SELECT attempt_count FROM youtube_discoveries WHERE channel_id=? AND video_id=?`, channelID, videoID).Scan(&initialAttempt); err != nil {
+		t.Fatalf("read initial attempt_count: %v", err)
+	}
 	if initialAttempt != 1 {
 		t.Fatalf("initial attempt_count should be 1, got %d", initialAttempt)
 	}

@@ -81,7 +81,7 @@ func isValidAudioFormat(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open audio file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Read first 12 bytes to cover both MP3 (2 bytes) and WAV (12 bytes).
 	buf := make([]byte, 12)

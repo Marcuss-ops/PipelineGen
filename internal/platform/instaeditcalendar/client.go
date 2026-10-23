@@ -155,7 +155,7 @@ func (c *Client) do(ctx context.Context, method, path string, data []byte) (json
 		resp, err := c.http.Do(req)
 		if err == nil {
 			out, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if readErr != nil {
 				err = readErr
 			} else if resp.StatusCode >= 200 && resp.StatusCode < 300 {

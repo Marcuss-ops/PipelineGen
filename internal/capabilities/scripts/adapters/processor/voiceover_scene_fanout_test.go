@@ -33,6 +33,7 @@ import (
 	"testing"
 
 	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // fakeItemExecutor records per-scene Execute calls and returns a
@@ -226,7 +227,7 @@ func TestSceneFanout_RequestIDStablePerBatch(t *testing.T) {
 		{SceneIndex: 1, Text: "Scene 1 text", Filename: "scene-1.mp3"},
 	}
 
-	ctx := context.WithValue(context.Background(), "script_job_id", "test-stable-request-id-42")
+	ctx := context.WithValue(context.Background(), scriptpkg.ContextKeyScriptJobID, "test-stable-request-id-42")
 	_ = RunVoiceoverSceneFanout(ctx, exec, "en", items, 4)
 
 	if len(exec.calls) < 2 {

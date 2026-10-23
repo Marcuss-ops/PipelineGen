@@ -126,9 +126,9 @@ func (c *Cache) Put(namespace, key, filename string, r io.Reader) (string, error
 		return "", err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := io.Copy(tmp, r); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return "", err
 	}
 	if err := tmp.Close(); err != nil {
@@ -145,7 +145,7 @@ func (c *Cache) PutFile(namespace, key, filename, source string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return c.Put(namespace, key, filename, f)
 }
 

@@ -51,7 +51,8 @@ const semanticFixture = `{
       "evidence":"Revenue grew 25% against 18% in 2024.","start_byte":32,"end_byte":69},
      {"proposal_type":"entity_card","entity_ids":["person_01"],"visual_query_suggestions":["Marco Rossi","Marco Rossi founded the studio."],"suggested_visual":"entity_card","status":"requires_semantic_validation","score":0.6,"chart_items":[],"temporal_surfaces":[],"evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31}
     ],
-    "semantic_groups": [{"id":"group_01","group_type":"enumeration","title":"Source points","members":[{"candidate_id":"bullet_01","sentence_index":0,"text":"Marco Rossi founded the studio.","evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31},{"candidate_id":"bullet_02","sentence_index":1,"text":"Revenue grew 25% against 18% in 2024.","evidence":"Revenue grew 25% against 18% in 2024.","start_byte":32,"end_byte":69}]}], "rejected_items": 0
+    "semantic_groups": [{"id":"group_01","group_type":"enumeration","title":"Source points","members":[{"candidate_id":"bullet_01","sentence_index":0,"text":"Marco Rossi founded the studio.","evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31},{"candidate_id":"bullet_02","sentence_index":1,"text":"Revenue grew 25% against 18% in 2024.","evidence":"Revenue grew 25% against 18% in 2024.","start_byte":32,"end_byte":69}]}],
+    "micro_summaries": [], "rejected_items": 0
    },
    {
     "scene_id": "scene_02", "status": "valid", "reason": null,
@@ -66,7 +67,7 @@ const semanticFixture = `{
     ],
     "short_phrases": [], "long_phrases": [], "quotes": [], "important_words": [],
     "visual_proposals": [],
-    "semantic_groups": [], "rejected_items": 0
+    "semantic_groups": [], "micro_summaries": [], "rejected_items": 0
    }
   ]
  }
@@ -164,6 +165,44 @@ func TestSemanticEnginePreservesGroundedEntityFacts(t *testing.T) {
 	facts := bundles["scene_01"].EntityFacts
 	if len(facts) != 1 || facts[0].SubjectEntityID != "person_01" || facts[0].Value != "Marco Rossi" || facts[0].EvidenceEnd != 31 {
 		t.Fatalf("entity facts were not preserved: %+v", facts)
+	}
+}
+
+func TestSemanticEnginePreservesFactBackedMicroSummaries(t *testing.T) {
+	fact := `"id":"person_01_founded_01","subject_entity_id":"person_01","predicate":"founded","value":"Marco Rossi","type":"PERSON","normalized_value":null,"normalized_date":null,"target_entity_id":null,"unit":null,"operator":null,"status":"asserted","sentence_index":0,"evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":11,"evidence_start_byte":0,"evidence_end_byte":31,"importance":0.9,"visual_concept_ids":["person_01"]`
+	summary := `"id":"micro_001","kind":"micro_summary","text":"Marco Rossi: studio founder","evidence_fact_ids":["person_01_founded_01"],"subject_entity_id":"person_01","sentence_index":0,"evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31,"score":0.8`
+	fixture := strings.Replace(semanticFixture, `"entity_facts": [],`, `"entity_facts": [{`+fact+`}],`, 1)
+	fixture = strings.Replace(fixture, `"micro_summaries": [],`, `"micro_summaries": [{`+summary+`}],`, 1)
+	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(fixture)}))
+	bundles, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := bundles["scene_01"]
+	if len(bundle.MicroSummaries) != 1 {
+		t.Fatalf("micro summaries: %+v", bundle.MicroSummaries)
+	}
+	sum := bundle.MicroSummaries[0]
+	if sum.ID != "micro_001" || sum.Kind != "micro_summary" || sum.Text != "Marco Rossi: studio founder" ||
+		sum.SubjectEntityID != "person_01" || sum.Evidence != "Marco Rossi founded the studio." ||
+		sum.Start != 0 || sum.End != 31 || sum.Score != 0.8 || len(sum.EvidenceFactIDs) != 1 {
+		t.Fatalf("micro summary lost provenance: %+v", sum)
+	}
+	if len(bundle.EntityFacts) != 1 || bundle.EntityFacts[0].Importance != 0.9 ||
+		len(bundle.EntityFacts[0].VisualConceptIDs) != 1 || bundle.EntityFacts[0].VisualConceptIDs[0] != "person_01" {
+		t.Fatalf("fact importance or visual concepts lost: %+v", bundle.EntityFacts)
+	}
+
+	dangling := strings.Replace(fixture, `"evidence_fact_ids":["person_01_founded_01"]`, `"evidence_fact_ids":["missing_fact"]`, 1)
+	adapter, _ = NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(dangling)}))
+	if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "unknown fact") {
+		t.Fatalf("expected dangling fact rejection, got %v", err)
+	}
+
+	ungrounded := strings.Replace(fixture, `"evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31,"score":0.8`, `"evidence":"invented claim","start_byte":0,"end_byte":31,"score":0.8`, 1)
+	adapter, _ = NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(ungrounded)}))
+	if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "not grounded") {
+		t.Fatalf("expected ungrounded micro summary rejection, got %v", err)
 	}
 }
 

@@ -68,11 +68,6 @@ func (stubAtomicWriter) CommitClipTextAndIndexEvent(_ context.Context, _ localiz
 
 var _ localized.LocalizedClipWriter = stubAtomicWriter{}
 
-// youtubetypes_clipAsset is a local alias for youtubetypes.ClipAsset
-// kept for legacy readers; the production alias `youtubetypes.ClipAsset`
-// is used inline above.
-type youtubetypes_clipAsset = youtubetypes.ClipAsset
-
 // stubClipCache satisfies ClipCachePort (single method). The hash-map
 // shape is intentionally bare — tests only exercise ctor panic.
 type stubClipCache struct{}

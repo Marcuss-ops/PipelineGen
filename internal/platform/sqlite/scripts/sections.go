@@ -63,7 +63,7 @@ func (r *ScriptRepository) SaveOutlineSections(ctx context.Context, scriptID int
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction for outline sections: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, sec := range sections {
 		_, err := tx.ExecContext(ctx, `
@@ -85,7 +85,7 @@ func (r *ScriptRepository) GetOutlineSections(ctx context.Context, scriptID int6
 	if err != nil {
 		return nil, fmt.Errorf("failed to query outline sections: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sections []scriptOutlineSectionRow
 	for rows.Next() {

@@ -57,10 +57,6 @@ func longPhraseFamilyBucketOf(id string) int {
 	return longFamilyClassicApple
 }
 
-var longPhraseFamilyLabels = [longFamilyCount]string{
-	"documentary", "text_3d", "brush", "modern_apple", "classic_apple",
-}
-
 // selectLongPhraseMotion keeps long copy inside the long-phrase motion family
 // and rotates across its visual families round-robin: each ordinal steps to
 // the next family (documentary highlighting → spatial 3D → brush accents →

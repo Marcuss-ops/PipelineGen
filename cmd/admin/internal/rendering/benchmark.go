@@ -88,7 +88,7 @@ func benchLoadQueries(path string) (*benchQueriesFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var qf benchQueriesFile
 	if err := json.NewDecoder(f).Decode(&qf); err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func benchSaveReport(r *benchReport, path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return json.NewEncoder(f).Encode(r)
 }
 
@@ -146,7 +146,9 @@ func RunBenchmark(args []string) error {
 	searchLimit := fs.Int("limit", 20, "Max results per query")
 	timeoutSec := fs.Int("timeout", 30, "HTTP request timeout in seconds")
 	authToken := fs.String("token", "", "Admin auth token (or set VELOX_ADMIN_TOKEN env var)")
-	fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parse flags: %w", err)
+	}
 
 	token := *authToken
 	if token == "" {
@@ -218,7 +220,7 @@ func httpSearchFunc(serverURL string, defaultLimit int, timeout time.Duration, a
 		if err != nil {
 			return nil, fmt.Errorf("HTTP request: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {

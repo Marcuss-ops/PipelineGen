@@ -11,7 +11,7 @@ func TestHealthByPlaneKeepsPlanesIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 
 	health := set.HealthByPlane(t.Context())
 	if !health["media"].Available || !health["observability"].Available || !health["cache"].Available {

@@ -65,7 +65,7 @@ func ScanOwnershipDoc(root string, pol *policy.Policy, r *report.Report) {
 		})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	required := []string{
 		"## Durable authority",
@@ -91,7 +91,7 @@ func ScanLegacyPolicyDoc(root string, pol *policy.Policy, r *report.Report) {
 		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "legacy_policy_doc", Rule: "legacy_policy_doc_missing", Severity: "warn"})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	scanDocSections(f, []string{"## Goal", "## What counts as legacy", "## Default rule", "## Temporary deprecation record", "## Forbidden compatibility techniques", "## Migration sequence", "## No fake availability", "## Historical information"}, docRel, "legacy_policy_doc", r)
 }
 
@@ -107,7 +107,7 @@ func ScanCIGatesDoc(root string, pol *policy.Policy, r *report.Report) {
 		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "ci_gates_doc", Rule: "ci_gates_doc_missing", Severity: "warn"})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	scanDocSections(f, []string{"## Purpose", "## Mandatory checks", "## Boundary checks", "## Registry checks", "## Legacy checks", "## Contract checks", "## Data checks", "## Complexity budgets", "## Generated output", "## Zero-baseline rule"}, docRel, "ci_gates_doc", r)
 }
 
@@ -123,7 +123,7 @@ func ScanAgentPlaybookDoc(root string, pol *policy.Policy, r *report.Report) {
 		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "agent_playbook_doc", Rule: "agent_playbook_doc_missing", Severity: "warn"})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	scanDocSections(f, []string{"## Preparation", "## Scope", "## Forbidden additions", "## Testing", "## Migration method", "## Final verification", "## Documentation"}, docRel, "agent_playbook_doc", r)
 }
 
@@ -139,7 +139,7 @@ func ScanRemovalDoc(root string, pol *policy.Policy, r *report.Report) {
 		r.Violations = append(r.Violations, report.Violation{File: docRel, MatchedRule: "removal_doc", Rule: "removal_doc_missing", Severity: "warn"})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	scanDocSections(f, []string{"## Purpose", "## Discovery", "## Runtime cut", "## Data handling", "## Code removal", "## Configuration and operations", "## Verification", "## Completion"}, docRel, "removal_doc", r)
 }
 
@@ -226,7 +226,7 @@ func ScanStaleProsePaths(root string, pol *policy.Policy, r *report.Report) {
 		if err != nil {
 			return nil
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		rel, _ := filepath.Rel(root, path)
 		relPath := filepath.ToSlash(rel)
 		sc := bufio.NewScanner(f)
@@ -327,7 +327,7 @@ func ScanCanonIndexDrift(root string, _ *policy.Policy, r *report.Report) {
 		})
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if !scanCanonIndexSSOTTable(f, indexRel, root, r) {
 		r.Violations = append(r.Violations, report.Violation{

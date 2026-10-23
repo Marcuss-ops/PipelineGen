@@ -246,7 +246,7 @@ func (m *manager) Download(ctx context.Context, ws *ManagedWorkspace, ref Remote
 	if err != nil {
 		return LocalInputRef{}, fmt.Errorf("workspace.Download: fetch %q: %w", ref.URL, err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	// Pre-flight size hint check (cheap fail-fast before any disk I/O)
 	if sizeHint > 0 && sizeHint != ref.SizeBytes {
@@ -288,7 +288,7 @@ func (m *manager) Download(ctx context.Context, ws *ManagedWorkspace, ref Remote
 	if err != nil {
 		return LocalInputRef{}, fmt.Errorf("workspace.Download: open target %q: %w", targetPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	written, err := io.Copy(io.MultiWriter(f, h), body)

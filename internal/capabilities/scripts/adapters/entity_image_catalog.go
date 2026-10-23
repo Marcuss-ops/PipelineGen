@@ -238,6 +238,37 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 	return repo.SetRefreshState(ctx, identity.CanonicalEntityID, entitycatalog.RefreshStatusSucceeded, nowUTC(), "")
 }
 
+// Exclude cached/provider URLs whose durable catalog state says they cannot
+// be materialized. A cached response must not bypass a broken/retired row.
+func excludeUnavailableEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Repository, identity entitycatalog.PersonIdentity, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if repo == nil || identity.CanonicalEntityID == "" || len(candidates) == 0 {
+		return candidates, nil
+	}
+	rows, err := repo.ListCandidates(ctx, identity.CanonicalEntityID, 1000)
+	if err != nil {
+		if errors.Is(err, entitycatalog.ErrEntityNotFound) {
+			return candidates, nil
+		}
+		return nil, fmt.Errorf("entity image catalog: list candidate states for %s: %w", identity.CanonicalEntityID, err)
+	}
+	blocked := make(map[string]struct{})
+	for _, row := range rows {
+		if row.Status == entitycatalog.CandidateStatusBroken || row.Status == entitycatalog.CandidateStatusRetired {
+			blocked[strings.ToLower(strings.TrimSpace(row.SourceURL))] = struct{}{}
+		}
+	}
+	if len(blocked) == 0 {
+		return candidates, nil
+	}
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, denied := blocked[strings.ToLower(strings.TrimSpace(candidate.SourceURL))]; !denied {
+			out = append(out, candidate)
+		}
+	}
+	return out, nil
+}
+
 // persistPersonImageVisualVerdicts writes the final pixel-level decision back
 // to the same PERSON catalog row that owns provider identity and URL quality.
 // This prevents an earlier metadata-only promotion from remaining usable after

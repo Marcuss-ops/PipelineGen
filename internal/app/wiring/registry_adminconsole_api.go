@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
-	adminconsoleapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminconsole"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
@@ -280,7 +279,7 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 	})
 
 	svc := adminconsole.NewService(reg, auditStore, versionStore)
-	desc := adminconsoleapi.Build(svc, log)
+	desc := adminconsole.Build(svc, log)
 
 	if err := tryRegisterModuleStrict(registry, log, desc, WithRegistrationPoint("register.AdminConsole")); err != nil {
 		return fmt.Errorf("wire registry: adminconsole-api module: %w", err)
@@ -331,7 +330,7 @@ func logAudit(ctx context.Context, audit adminconsole.AuditLogger, entityType, e
 	if audit == nil {
 		return
 	}
-	actor, requestID, idempotencyKey := adminconsoleapi.RequestMetadataFromContext(ctx)
+	actor, requestID, idempotencyKey := adminconsole.RequestMetadataFromContext(ctx)
 	_ = audit.Log(ctx, adminconsole.AuditEntry{
 		ID:             uuid.New().String(),
 		EntityType:     entityType,

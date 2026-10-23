@@ -35,8 +35,8 @@ func RunDeleteDriveImages(args []string) error {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("Drive reader and admin ports are required")
+	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Lifecycle == nil {
+		return fmt.Errorf("drive reader and lifecycle ports are required")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -52,7 +52,7 @@ func RunDeleteDriveImages(args []string) error {
 			continue
 		}
 		fmt.Printf("permanently delete image: %s (%s)\n", file.Name, file.ID)
-		if err := root.Drive.Admin.DeleteFile(ctx, file.ID); err != nil {
+		if err := root.Drive.Lifecycle.Delete(ctx, file.ID); err != nil {
 			return fmt.Errorf("permanently delete image %s (%s): %w", file.Name, file.ID, err)
 		}
 		deleted++

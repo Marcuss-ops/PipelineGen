@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"context"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -29,9 +28,7 @@ func TestFindLocalizedEntitySpanRequiresBoundaryForSingleLetterNameToken(t *test
 // carries the canonical word-level timing artifact (100ms per
 // whitespace-delimited word) so the runner can project the entity timeline
 // from REAL word boundaries.
-type entityTimelineVoiceoverGenerator struct {
-	mu sync.Mutex
-}
+type entityTimelineVoiceoverGenerator struct{}
 
 func (g *entityTimelineVoiceoverGenerator) Generate(_ context.Context, input VoiceoverInput) (AudioReference, error) {
 	words := strings.Fields(input.Text)

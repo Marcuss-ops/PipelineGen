@@ -206,8 +206,8 @@ func TestCommitAsset_AliasIdentity(t *testing.T) {
 	// Compile-time alias identity: AssetCommitRequest and CommitRequest
 	// MUST be the same type. A conversion between them MUST NOT
 	// require a constructor or a field-by-field copy.
-	var a AssetCommitRequest = CommitRequest{AssetID: "x"}
-	var b CommitRequest = AssetCommitRequest{AssetID: "x"}
+	var a = CommitRequest{AssetID: "x"}
+	var b = AssetCommitRequest{AssetID: "x"}
 	assert.Equal(t, "x", a.AssetID)
 	assert.Equal(t, "x", b.AssetID)
 }

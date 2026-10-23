@@ -192,9 +192,6 @@ func TestCompose_ServerSingleton_HoldsResolverType(t *testing.T) {
 		searchByTerritory: map[ImageSearchTerritory]ImageSearcher{},
 	}
 	var resolver ImageSearchResolver = mock
-	if resolver == nil {
-		t.Fatal("mock resolver must be assignable to ImageSearchResolver")
-	}
 	if _, err := resolver.Resolve(TerritoryAll); !errors.Is(err, ErrUnknownTerritory) {
 		t.Fatalf("expected ErrUnknownTerritory through resolver path, got %v", err)
 	}

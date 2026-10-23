@@ -146,7 +146,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		if scene.Entities == nil || scene.EntityFacts == nil || scene.Identities == nil || scene.Relations.CoMentions == nil ||
 			scene.Relations.AssertedRelations == nil || scene.NumericFacts == nil || scene.TemporalFacts == nil || scene.SemanticGroups == nil ||
 			scene.Bullets == nil || scene.ShortPhrases == nil || scene.LongPhrases == nil ||
-			scene.Quotes == nil || scene.ImportantWords == nil || scene.VisualProposals == nil {
+			scene.Quotes == nil || scene.ImportantWords == nil || scene.VisualProposals == nil || scene.MicroSummaries == nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q omits required manifest collections", scene.SceneID)
 		}
 		if scene.Status != "valid" {
@@ -184,6 +184,9 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		}
 		if bundle.Groups, err = projectSemanticGroups(scene.SceneID, texts, scene.SemanticGroups); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q groups: %w", scene.SceneID, err)
+		}
+		if bundle.MicroSummaries, err = projectSemanticMicroSummaries(source, scene.MicroSummaries); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q micro summaries: %w", scene.SceneID, err)
 		}
 		if err := validateSemanticReferences(bundle); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q references: %w", scene.SceneID, err)
@@ -311,6 +314,27 @@ func validateSemanticReferences(bundle *scriptgen.SemanticCandidateBundle) error
 		for _, id := range proposal.EntityIDs {
 			if !known(id) {
 				return fmt.Errorf("visual proposal references unknown identity %q", id)
+			}
+		}
+	}
+	facts := make(map[string]struct{}, len(bundle.EntityFacts))
+	for _, fact := range bundle.EntityFacts {
+		facts[fact.ID] = struct{}{}
+	}
+	for _, fact := range bundle.EntityFacts {
+		for _, id := range fact.VisualConceptIDs {
+			if !known(id) {
+				return fmt.Errorf("entity fact %q references unknown visual concept %q", fact.ID, id)
+			}
+		}
+	}
+	for _, summary := range bundle.MicroSummaries {
+		if summary.SubjectEntityID != "" && !known(summary.SubjectEntityID) {
+			return fmt.Errorf("micro summary %q references unknown subject %q", summary.ID, summary.SubjectEntityID)
+		}
+		for _, id := range summary.EvidenceFactIDs {
+			if _, ok := facts[id]; !ok {
+				return fmt.Errorf("micro summary %q references unknown fact %q", summary.ID, id)
 			}
 		}
 	}

@@ -39,7 +39,7 @@ const researchCacheSchema = `
 func newTestRepository(t *testing.T) *Repository {
 	t.Helper()
 	db := drive.NewTestDBWithSchema(t, researchCacheSchema)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return NewRepository(db)
 }
 

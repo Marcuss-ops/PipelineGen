@@ -98,7 +98,7 @@ func scanStopwordMapRuleFile(_ any, path, relPath string, r *report.Report, rule
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	raw, err := os.ReadFile(path)
 	if err != nil {

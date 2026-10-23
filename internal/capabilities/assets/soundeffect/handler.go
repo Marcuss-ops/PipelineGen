@@ -148,7 +148,7 @@ func (h *Handler) Generate(c *gin.Context) {
 		apiutil.InternalError(c, fmt.Errorf("python synth failed: %w, output: %s", err, result.Output))
 		return
 	}
-	defer os.Remove(tempWav)
+	defer func() { _ = os.Remove(tempWav) }()
 
 	result, err = h.processRunner.Run(ctx, "ffmpeg", []string{"-y", "-i", tempWav,
 		"-acodec", "libmp3lame", tempFile,
@@ -157,7 +157,7 @@ func (h *Handler) Generate(c *gin.Context) {
 		apiutil.InternalError(c, fmt.Errorf("ffmpeg conversion failed: %w, output: %s", err, result.Output))
 		return
 	}
-	defer os.Remove(tempFile)
+	defer func() { _ = os.Remove(tempFile) }()
 
 	// 2. Compute file hash. COMPAT-ONLY MD5 via the canonical checksum
 	// owner (internal/platform/checksum): the persisted file_hash column /

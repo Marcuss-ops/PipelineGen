@@ -115,8 +115,8 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 	}
 
 	// Check hash (read-only S1c path)
-	if clip.LegacyFileMD5() != "" {
-		report.Hash = clip.LegacyFileMD5()
+	if legacyHash := clip.LegacyFileMD5(); legacyHash != "" {
+		report.Hash = legacyHash
 		report.HasHash = true
 		if hasLocalFile {
 			report.HashVerified = false
@@ -151,7 +151,7 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 		report.FolderPath = clip.FolderPath()
 	}
 
-	status := "unknown"
+	var status string
 	if clip.DriveLink() != "" || clip.DownloadLink() != "" {
 		status = "processed"
 	} else if clip.LocalPath() != "" {

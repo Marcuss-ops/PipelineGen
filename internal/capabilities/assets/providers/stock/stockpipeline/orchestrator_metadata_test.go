@@ -1,6 +1,7 @@
 package stockpipeline
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -319,7 +320,7 @@ func TestBuildStockRunMetadata_EmptyProviderOmitempty(t *testing.T) {
 
 func TestDeterministicPlanner_InfersProviderAndVideoIDAtPlanBuildTime(t *testing.T) {
 	p := NewDeterministicPlanner()
-	plans, err := p.Plan(nil, VideoSource{URL: "https://www.youtube.com/watch?v=VID78abc"}, 60, 10, "v1")
+	plans, err := p.Plan(context.Background(), VideoSource{URL: "https://www.youtube.com/watch?v=VID78abc"}, 60, 10, "v1")
 	if err != nil {
 		t.Fatalf("plan.Plan returned err = %v, want nil", err)
 	}
@@ -341,7 +342,7 @@ func TestExplicitPlanner_InfersProviderAndVideoIDAtPlanBuildTime(t *testing.T) {
 		{URL: "https://www.youtube.com/watch?v=EXP99xyz", StartSec: 0, EndSec: 10, Title: "Clip A"},
 		{URL: "https://www.youtube.com/watch?v=EXP99xyz", StartSec: 10, EndSec: 20, Title: "Clip B"},
 	}
-	plans, err := NewExplicitPlanner(clips).Plan(nil, VideoSource{URL: clips[0].URL}, 0, 0, "v1")
+	plans, err := NewExplicitPlanner(clips).Plan(context.Background(), VideoSource{URL: clips[0].URL}, 0, 0, "v1")
 	if err != nil {
 		t.Fatalf("explicit.Plan returned err = %v, want nil", err)
 	}

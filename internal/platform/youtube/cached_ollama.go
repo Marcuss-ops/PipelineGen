@@ -86,7 +86,7 @@ func (c *CachedOllamaBuilder) readCached(ctx context.Context, entry *capcache.En
 	if err != nil {
 		return youtubetypes.CanonicalClipMetadata{}, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return youtubetypes.CanonicalClipMetadata{}, err

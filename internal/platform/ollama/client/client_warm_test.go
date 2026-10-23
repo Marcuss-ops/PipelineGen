@@ -28,7 +28,7 @@ func TestWarmModelLoadsOnceAndVerifiesResidency(t *testing.T) {
 			}
 			// Derived from the constant: when the resident bucket moves, the fake
 			// moves with it instead of pinning the residency check to a stale width.
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"models":[{"name":"gemma4:e4b@sha256:test","context_length":%d}]}`, types.ProductionRunnerContext)))
+			_, _ = fmt.Fprintf(w, `{"models":[{"name":"gemma4:e4b@sha256:test","context_length":%d}]}`, types.ProductionRunnerContext)
 		case "/api/chat":
 			chatCalls.Add(1)
 			if err := json.NewDecoder(r.Body).Decode(&chatBody); err != nil {
@@ -79,7 +79,7 @@ func TestWarmModelRecordsItsOwnMeasuredOperation(t *testing.T) {
 				_, _ = w.Write([]byte(`{"models":[]}`))
 				return
 			}
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"models":[{"name":"gemma4:e4b","context_length":%d}]}`, types.ProductionRunnerContext)))
+			_, _ = fmt.Fprintf(w, `{"models":[{"name":"gemma4:e4b","context_length":%d}]}`, types.ProductionRunnerContext)
 		case "/api/chat":
 			// A cold load (~45s) followed by a trivial probe inference.
 			_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":""},"done":true,"load_duration":45000000000,"prompt_eval_count":1,"prompt_eval_duration":1000000,"eval_count":1,"eval_duration":2000000,"total_duration":46000000000}`))
@@ -138,7 +138,7 @@ func TestWarmModelSkipsChatWhenAlreadyResident(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/api/ps" {
 			psCalls.Add(1)
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"models":[{"name":"gemma4:e4b","context_length":%d}]}`, types.ProductionRunnerContext)))
+			_, _ = fmt.Fprintf(w, `{"models":[{"name":"gemma4:e4b","context_length":%d}]}`, types.ProductionRunnerContext)
 			return
 		}
 		if r.URL.Path == "/api/chat" {
@@ -174,7 +174,7 @@ func TestWarmModelReloadsWhenResidentContextIsWrong(t *testing.T) {
 				_, _ = w.Write([]byte(`{"models":[{"name":"gemma4:e4b","context_length":2048}]}`))
 				return
 			}
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"models":[{"name":"gemma4:e4b","context_length":%d}]}`, types.ProductionRunnerContext)))
+			_, _ = fmt.Fprintf(w, `{"models":[{"name":"gemma4:e4b","context_length":%d}]}`, types.ProductionRunnerContext)
 		case "/api/chat":
 			chatCalls.Add(1)
 			_, _ = w.Write([]byte(`{"message":{"role":"assistant","content":""},"done":true}`))

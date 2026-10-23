@@ -166,7 +166,7 @@ func (r *CanonicalIdentityResolver) BackfillContentSHA256(ctx context.Context, a
 	if err != nil {
 		return report, fmt.Errorf("content sha256 backfill: scan candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type candidate struct{ id, fileHash string }
 	var items []candidate

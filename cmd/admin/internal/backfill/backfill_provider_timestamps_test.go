@@ -82,7 +82,7 @@ func (s sqliteProviderTimestampSource) ListProviderTimestampCandidates(ctx conte
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []pgmedia.ProviderTimestampCandidate
 	for rows.Next() {
 		var rec pgmedia.ProviderTimestampCandidate

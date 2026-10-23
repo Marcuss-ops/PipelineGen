@@ -43,7 +43,7 @@ func (s *MediaSearcher) SearchClipsByName(ctx context.Context, query string, lim
 	if err != nil {
 		return nil, fmt.Errorf("postgres media searcher: name search: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]ClipNameSearchResult, 0, limit)
 	for rows.Next() {

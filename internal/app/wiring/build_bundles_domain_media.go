@@ -28,7 +28,6 @@ import (
 	imagesregistry "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/texttracks"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
-	ytplatform "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 	"go.uber.org/zap"
@@ -381,7 +380,7 @@ func buildClipMetadataService(
 				model = "ollama/unknown"
 			}
 			version := "ollama/" + model
-			if decorated, dErr := ytplatform.NewCachedOllamaBuilder(ollamaBuilderInner, cache, version, log); dErr == nil {
+			if decorated, dErr := ytinfra.NewCachedOllamaBuilder(ollamaBuilderInner, cache, version, log); dErr == nil {
 				ollamaBuilder = decorated
 				log.Info("ollama artifact cache wired for youtube metadata", zap.String("processor_version", version))
 			} else {
@@ -526,7 +525,7 @@ func buildProcessYouTubeSegment(
 	processSegMedia := youtube.ProcessSegmentMediaDeps{
 		DriveFolderMgr:    youtubePubAdapter,
 		TextTrackResolver: textTrackResolver,
-		FFProbe:           ytplatform.NewFFProbeAdapter(clipProcessor),
+		FFProbe:           ytinfra.NewFFProbeAdapter(clipProcessor),
 		Stager:            youtubeSourceStager,
 		// Sept 2026 single-pass cut contract: the CutModeResolver compares
 		// probed source facts against this canonical profile to decide

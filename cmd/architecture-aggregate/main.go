@@ -56,23 +56,23 @@ func main() {
 
 	if *dryRun {
 		if err := dryRunCheck(*outPath); err != nil {
-			fmt.Fprintf(os.Stderr, "architecture-aggregate: %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "architecture-aggregate: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stdout, "architecture-aggregate: --dry-run OK (regenerated matches committed %s)\n", *outPath)
+		_, _ = fmt.Fprintf(os.Stdout, "architecture-aggregate: --dry-run OK (regenerated matches committed %s)\n", *outPath)
 		return
 	}
 
 	gen, err := aggregateOwnership()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "architecture-aggregate: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "architecture-aggregate: %v\n", err)
 		os.Exit(2)
 	}
 	if err := atomicwrite.WriteFile(*outPath, gen, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "architecture-aggregate: write %s: %v\n", *outPath, err)
+		_, _ = fmt.Fprintf(os.Stderr, "architecture-aggregate: write %s: %v\n", *outPath, err)
 		os.Exit(2)
 	}
-	fmt.Fprintf(os.Stdout, "architecture-aggregate: wrote %d bytes to %s\n", len(gen), *outPath)
+	_, _ = fmt.Fprintf(os.Stdout, "architecture-aggregate: wrote %d bytes to %s\n", len(gen), *outPath)
 }
 
 // aggregateOwnership reads the 6 split source files in canonical order

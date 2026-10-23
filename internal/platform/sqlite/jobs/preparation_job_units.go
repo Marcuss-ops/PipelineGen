@@ -59,7 +59,7 @@ func (r *SQLiteStore) ListPreparationJobUnits(ctx context.Context, jobID string)
 	if err != nil {
 		return nil, fmt.Errorf("list preparation job units: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := []job.PreparationJobUnit{}
 	for rows.Next() {

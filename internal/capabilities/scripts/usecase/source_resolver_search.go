@@ -232,10 +232,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		if _, ok := hydratedDetails[id]; !ok {
 			continue
 		}
-		detail := scriptpkg.ClipDetail{}
-		if hydratedDetails != nil {
-			detail = hydratedDetails[id]
-		}
+		detail := hydratedDetails[id]
 		visualSummary := strings.TrimSpace(result.VisualSummary)
 		if visualSummary == "" {
 			visualSummary = strings.TrimSpace(detail.Description)

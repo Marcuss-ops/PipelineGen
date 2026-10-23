@@ -33,7 +33,11 @@ func RunTestYouTube(args []string) error {
 		// root; deferred lifecycle.Stop drains pending work and must
 		// survive the deferred caller-cancel scope so all teardown
 		// work runs to completion.
-		defer deps.Runtime.Lifecycle.Stop(context.Background())
+		defer func() {
+			if err := deps.Runtime.Lifecycle.Stop(context.Background()); err != nil {
+				log.Warn("lifecycle stop during teardown", zap.Error(err))
+			}
+		}()
 	}
 	return nil
 }

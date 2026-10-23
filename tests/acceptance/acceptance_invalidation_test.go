@@ -120,7 +120,7 @@ func TestInvalidation_SemanticHashFingerprintChangesWithContent(t *testing.T) {
 		t.Fatalf("test invariant: distinct content must produce distinct SHA-256")
 	}
 
-	var _ asset.MediaType = asset.MediaTypeImageVideo
+	var _ = asset.MediaTypeImageVideo
 
 	type mediaAssetRow struct {
 		AssetID      string `json:"asset_id"`

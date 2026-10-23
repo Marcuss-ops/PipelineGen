@@ -102,7 +102,7 @@ func TestGate11_ScraperFailureReturnsClearError(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -127,7 +127,7 @@ func TestGate11_ScraperFailureReturnsClearError(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "boxing highlights",
@@ -190,7 +190,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 		}
 
 		db := createTestDB(t)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		logger := zap.NewNop()
 		artlistRepo := assets.NewClipsRepository(db, logger)
@@ -215,7 +215,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 			},
 		}))
 		require.NoError(t, err)
-		defer svc.Close()
+		defer func() { _ = svc.Close() }()
 
 		respA, errA := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 			Term:         "nonexistent-term-12345",
@@ -238,7 +238,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 		}
 
 		db := createTestDB(t)
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		logger := zap.NewNop()
 		artlistRepo := assets.NewClipsRepository(db, logger)
@@ -265,7 +265,7 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 			},
 		}))
 		require.NoError(t, err)
-		defer svc.Close()
+		defer func() { _ = svc.Close() }()
 
 		respB, errB := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 			Term:         "another-nonexistent-term-67890",
@@ -298,7 +298,7 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 	}
 
 	db := createTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
@@ -323,7 +323,7 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 		},
 	}))
 	require.NoError(t, err)
-	defer svc.Close()
+	defer func() { _ = svc.Close() }()
 
 	_, err = svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
 		Term:         "unreachable-term",

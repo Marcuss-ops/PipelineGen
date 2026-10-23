@@ -158,18 +158,18 @@ func FormatConcurrencyTable(reports []renderBenchReport) string {
 		if r.PeakRSSMB > 0 {
 			peakRSS = fmt.Sprintf("%d", r.PeakRSSMB)
 		}
-		b.WriteString(fmt.Sprintf("| %d | %d | %d | %d | %.2fx | %d | %d | %s |\n",
+		fmt.Fprintf(&b, "| %d | %d | %d | %d | %.2fx | %d | %d | %s |\n",
 			r.Concurrency, r.WallMS, r.WorkMS, avg, speedup,
-			r.Completed, r.Failed, peakRSS))
+			r.Completed, r.Failed, peakRSS)
 	}
 	b.WriteString("\n")
 	b.WriteString("| Concurrency | Samples | CPU avg/peak | FFmpeg CPU avg/peak | Child RSS peak (MB) | Disk write/read (MB) |\n")
 	b.WriteString("|------------|---------|--------------|---------------------|---------------------|----------------------|\n")
 	for _, r := range reports {
-		b.WriteString(fmt.Sprintf("| %d | %d | %.1f%% / %.1f%% | %.1f%% / %.1f%% | %d | %.1f / %.1f |\n",
+		fmt.Fprintf(&b, "| %d | %d | %.1f%% / %.1f%% | %.1f%% / %.1f%% | %d | %.1f / %.1f |\n",
 			r.Concurrency, r.Samples, r.CPUAvgPct, r.CPUPeakPct,
 			r.FFmpegCPUAvgPct, r.FFmpegCPUPeakPct, r.PeakChildRSSMB,
-			r.DiskWriteMB, r.DiskReadMB))
+			r.DiskWriteMB, r.DiskReadMB)
 	}
 	b.WriteString("\n")
 
@@ -197,8 +197,8 @@ func FormatConcurrencyTable(reports []renderBenchReport) string {
 			if r.WallMS > 0 {
 				ioPct = float64(r.IOWaitEstimateMS) / float64(r.WallMS) * 100
 			}
-			b.WriteString(fmt.Sprintf("| %d | %d | %.1f%% | %d | %.1f%% | %d | %.1f%% |\n",
-				r.Concurrency, r.FFmpegWaitMS, ffPct, r.DriveUploadMS, drPct, r.IOWaitEstimateMS, ioPct))
+			fmt.Fprintf(&b, "| %d | %d | %.1f%% | %d | %.1f%% | %d | %.1f%% |\n",
+				r.Concurrency, r.FFmpegWaitMS, ffPct, r.DriveUploadMS, drPct, r.IOWaitEstimateMS, ioPct)
 		}
 		b.WriteString("\n")
 	}
@@ -385,7 +385,7 @@ func runRealRenderBenchmarks(t *testing.T, runner *Runner, concurrency int, clip
 
 			renderStarted := time.Now()
 			outPath := filepath.Join(os.TempDir(), fmt.Sprintf("bench_out_%d_%d.mp4", concurrency, i))
-			defer os.Remove(outPath)
+			defer func() { _ = os.Remove(outPath) }()
 
 			cmd := exec.CommandContext(context.Background(), "ffmpeg", "-y",
 				"-i", clipPath,

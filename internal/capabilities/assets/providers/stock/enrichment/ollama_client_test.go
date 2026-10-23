@@ -51,17 +51,6 @@ import (
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
 )
 
-// cannedOllamaResponse is the canonical /api/chat response shape
-// per the ollama wire-format. The adapter parses
-// result.Message.Content as the LLM response text.
-type cannedOllamaResponse struct {
-	Message struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-	} `json:"message"`
-	Done bool `json:"done"`
-}
-
 // newOllamaTestServer returns an httptest.Server that emulates the
 // ollama /api/chat endpoint. The handler:
 //   - records the request body in lastRequestBody (for assertions)

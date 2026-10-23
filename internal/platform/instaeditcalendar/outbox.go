@@ -128,7 +128,7 @@ func (r *Reporter) EnqueueProgress(eventKey string, update Progress) error {
 	tmpName := tmp.Name()
 	ok := false
 	defer func() {
-		tmp.Close()
+		_ = tmp.Close()
 		if !ok {
 			_ = os.Remove(tmpName)
 		}
@@ -178,7 +178,7 @@ func (r *Reporter) EnqueueJobProgress(jobID string, update Progress) error {
 	tmpName := tmp.Name()
 	ok := false
 	defer func() {
-		tmp.Close()
+		_ = tmp.Close()
 		if !ok {
 			_ = os.Remove(tmpName)
 		}

@@ -26,7 +26,7 @@ import (
 // internal/app/registry_adapters.go::newMutationsDispatcherAdapter.
 type ReprocessUseCase struct {
 	assetRepo     AssetReader
-	processor     detail.Processor
+	processor     detail.MediaProcessor
 	dispatcher    mutations.AssetMutationDispatcher
 	clipsFolderID string
 	remoteReader  RemoteAssetReader
@@ -49,7 +49,7 @@ type RemoteAssetReader interface {
 // path. Composition-root pre-rejection lives in the wiring site
 // (internal/capabilities/assets/clips/handler.go NewHandler) which surfaces
 // a configure-time error if dispatcher is nil.
-func NewReprocessUseCase(repo AssetReader, proc detail.Processor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
+func NewReprocessUseCase(repo AssetReader, proc detail.MediaProcessor, dispatcher mutations.AssetMutationDispatcher, clipsFolderID string) *ReprocessUseCase {
 	return &ReprocessUseCase{assetRepo: repo, processor: proc, dispatcher: dispatcher, clipsFolderID: clipsFolderID}
 }
 
@@ -111,7 +111,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 			Source:        req.Source,
 			Status:        "processed",
 			LocalPath:     clip.LocalPath(),
-			LegacyFileMD5: clip.LegacyFileMD5(),
+			LegacyFileMD5: clip.ContentAddress(),
 			DriveLink:     clip.DriveLink(),
 			DownloadLink:  clip.DownloadLink(),
 			ProcessedAt:   timeutil.FormatRFC3339(clip.UpdatedAt),
@@ -171,7 +171,7 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 		if err != nil {
 			return nil, fmt.Errorf("download Drive clip %s: %w", req.ClipID, err)
 		}
-		defer body.Close()
+		defer func() { _ = body.Close() }()
 		ext := ".mp4"
 		if strings.Contains(strings.ToLower(contentType), "quicktime") {
 			ext = ".mov"
@@ -181,9 +181,9 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 			return nil, fmt.Errorf("create Drive staging file: %w", err)
 		}
 		stagedPath = file.Name()
-		defer os.Remove(stagedPath)
+		defer func() { _ = os.Remove(stagedPath) }()
 		if _, err := io.Copy(file, body); err != nil {
-			file.Close()
+			_ = file.Close()
 			return nil, fmt.Errorf("stage Drive clip %s: %w", req.ClipID, err)
 		}
 		if err := file.Close(); err != nil {
@@ -265,7 +265,7 @@ func (uc *ReprocessUseCase) hasExistingRendition(clip *asset.Asset) bool {
 	if clip == nil {
 		return false
 	}
-	if clip.LegacyFileMD5() == "" {
+	if clip.ContentAddress() == "" {
 		return false
 	}
 	local := clip.LocalPath()
@@ -355,7 +355,7 @@ func isAssetHashSuffix(value string) bool {
 		return false
 	}
 	for _, r := range value {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')) {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
 			return false
 		}
 	}

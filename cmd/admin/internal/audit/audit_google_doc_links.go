@@ -310,7 +310,7 @@ func parseDriveHref(raw string) (string, error) {
 		if idErr != nil {
 			return "", idErr
 		}
-		return id, errors.New("Drive URL points to a folder, not a file")
+		return id, errors.New("drive URL points to a folder, not a file")
 	}
 	if (host == "drive.google.com" || host == "www.drive.google.com") && (path == "/uc" || path == "/open") {
 		if id := strings.TrimSpace(parsed.Query().Get("id")); id != "" {
@@ -332,7 +332,7 @@ func validateDriveID(id string) (string, error) {
 		return "", errors.New("empty Drive file ID")
 	}
 	for _, r := range id {
-		if !(r == '-' || r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
+		if r != '-' && r != '_' && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
 			return "", errors.New("invalid Drive file ID")
 		}
 	}

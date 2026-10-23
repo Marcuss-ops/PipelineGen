@@ -327,9 +327,9 @@ func (h *Handler) extractActor(c *gin.Context) (search.Actor, bool) {
 func (h *Handler) parseMode(c *gin.Context, raw string) (search.SearchMode, bool) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "", "hybrid":
-		return search.SearchModeHybrid, true
+		return search.RetrievalModeHybrid, true
 	case "ann":
-		return search.SearchModeANN, true
+		return search.RetrievalModeANN, true
 	default:
 		apiutil.Error(c, http.StatusBadRequest,
 			"mode must be one of: hybrid, ann")

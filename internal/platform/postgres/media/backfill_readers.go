@@ -100,7 +100,7 @@ func (r *BackfillReader) ListSourceURLMetadataCandidates(ctx context.Context, li
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query source_url candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []SourceURLMetadataCandidate
 	for rows.Next() {
@@ -189,7 +189,7 @@ func (r *BackfillReader) ListProviderTimestampCandidates(ctx context.Context, ke
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query provider timestamp candidates (%s): %w", key, err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []ProviderTimestampCandidate
 	for rows.Next() {
@@ -266,7 +266,7 @@ func (r *BackfillReader) ListDurationBackfillCandidates(ctx context.Context, q D
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query duration candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []string
 	for rows.Next() {
@@ -317,7 +317,7 @@ func (r *BackfillReader) ListYouTubeClipFolderCandidates(ctx context.Context, li
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query clip folder candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []ClipFolderCandidate
 	for rows.Next() {
@@ -388,7 +388,7 @@ func (r *BackfillReader) ListEmbeddingContractToStamp(ctx context.Context, model
 	if err != nil {
 		return nil, fmt.Errorf("postgres media backfill: query embeddings to stamp: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []string
 	for rows.Next() {
@@ -498,7 +498,7 @@ func (r *SearchTextBackfillReader) ListSearchTextBackfillCandidates(ctx context.
 	if err != nil {
 		return nil, fmt.Errorf("postgres search_text backfill: query candidates: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []SearchTextBackfillCandidate
 	for rows.Next() {

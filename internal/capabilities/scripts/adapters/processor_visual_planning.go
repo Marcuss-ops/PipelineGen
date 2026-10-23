@@ -186,7 +186,7 @@ func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediadomain
 	seen := map[mediadomain.SlotKind]bool{}
 	add := func(raw string) {
 		slot := mediadomain.SlotKind(raw)
-		if mediadomain.IsKnownSlotKind(slot) {
+		if slot.IsValid() {
 			seen[slot] = true
 		}
 	}

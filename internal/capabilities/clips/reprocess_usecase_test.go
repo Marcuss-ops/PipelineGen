@@ -35,7 +35,7 @@ import (
 
 // ── Compile-time port assertions ──────────────────────────────────────
 var (
-	_ detail.Processor                  = (*fakeReprocessProcessor)(nil)
+	_ detail.MediaProcessor             = (*fakeReprocessProcessor)(nil)
 	_ mutations.AssetMutationDispatcher = (*fakeReprocessDispatcher)(nil)
 	_ RemoteAssetReader                 = (*fakeReprocessReader)(nil)
 )
@@ -167,7 +167,7 @@ func driveBackedClip(t *testing.T, id string) (*asset.Asset, string) {
 	a.SetDriveFileID("drive-file-1")
 	a.SetFolderID("folder-1")
 	a.SetLocalPath(rendition)
-	a.SetLegacyFileMD5("existing-hash")
+	a.SetLegacyFileMD5("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
 	// Canonical clip filename (yt_<videoID>_<start>_<end>_<policy>_<slug>.mp4)
 	// as persisted in media_assets.filename by the YouTube pipeline.
 	a.Filename = "yt_abc123_0_30_v1_" + id + ".mp4"
@@ -303,8 +303,8 @@ func TestReprocessExecute_ForceFalse_ReusesExistingRendition(t *testing.T) {
 	if disp.calledCount != 0 {
 		t.Errorf("dispatcher called %d times, want 0 (no re-persist on short-circuit)", disp.calledCount)
 	}
-	if res.Status != "processed" || res.LegacyFileMD5 != "existing-hash" {
-		t.Errorf("short-circuit result = {status:%q hash:%q}, want {processed, existing-hash}", res.Status, res.LegacyFileMD5)
+	if res.Status != "processed" || res.LegacyFileMD5 != "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
+		t.Errorf("short-circuit result = {status:%q hash:%q}, want {processed, 64-hex content address}", res.Status, res.LegacyFileMD5)
 	}
 	if res.LocalPath != clip.LocalPath() {
 		t.Errorf("short-circuit LocalPath = %q, want existing rendition %q", res.LocalPath, clip.LocalPath())

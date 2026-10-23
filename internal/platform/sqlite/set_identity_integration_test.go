@@ -17,7 +17,7 @@ func TestDatabaseSetMigrateEnforcesControlPlaneIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer set.Close()
+	defer func() { _ = set.Close() }()
 
 	if err := set.Migrate(zaptest.NewLogger(t)); err != nil {
 		t.Fatalf("canonical DatabaseSet migration rejected: %v", err)

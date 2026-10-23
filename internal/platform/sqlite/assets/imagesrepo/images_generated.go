@@ -64,7 +64,7 @@ func (r *ImagesRepository) ListImagesByOrigin(ctx context.Context, origin detail
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	images := make([]detail.ImageAsset, 0)
 	for rows.Next() {

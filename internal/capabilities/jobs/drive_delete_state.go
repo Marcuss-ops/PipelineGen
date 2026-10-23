@@ -53,7 +53,7 @@ func (h *DriveDeleteHandler) preflightDriveDelete(
 		)
 		return nil, false, terminalWrap(fmt.Errorf(
 			"%w: unexpected lifecycle_state %q for %s",
-			driveLifecycleTerminalErr,
+			errDriveLifecycleTerminal,
 			clip.LifecycleState,
 			req.AssetID,
 		))

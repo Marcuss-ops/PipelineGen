@@ -65,7 +65,7 @@ func ReadControlPlaneMeta(ctx context.Context, db *sql.DB) (ControlPlaneMeta, er
 	if err != nil {
 		return ControlPlaneMeta{}, fmt.Errorf("control plane identity: read metadata: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var meta ControlPlaneMeta
 	count := 0

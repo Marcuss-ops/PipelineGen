@@ -61,7 +61,7 @@ func SanitizeSubfolderSegment(name string) (string, error) {
 		return "", fmt.Errorf("invalid subfolder segment %q", name)
 	}
 	for _, r := range name {
-		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune(".-_ ", r)) {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(".-_ ", r) {
 			return "", fmt.Errorf("invalid character in subfolder segment %q", name)
 		}
 	}

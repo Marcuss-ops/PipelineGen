@@ -15,7 +15,6 @@ import (
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -79,7 +78,7 @@ func (f *SubmitRequestFactory) Build(cmd GenerateCommand) (opsapp.SubmitRequest,
 	}
 
 	return opsapp.SubmitRequest{
-		Scope:          domainops.ScopeScriptGenerate,
+		Scope:          opsapp.ScopeScriptGenerate,
 		IdempotencyKey: cmd.IdempotencyKey,
 		RequestHash:    requestHash,
 		ForceRefresh:   cmd.Envelope.ForceRefresh,

@@ -91,7 +91,7 @@ type ServiceAssetDeps struct {
 	AssetRepo         AssetWriter
 	AssetDestResolver asset.Resolver
 	LifecycleService  *lifecycle.Service
-	MediaProcessor    detail.Processor
+	MediaProcessor    detail.MediaProcessor
 }
 
 // ServiceVideoDeps is the video-pipeline cluster: the
@@ -145,7 +145,7 @@ type ServiceAdapterDeps struct {
 type Service struct {
 	cfg               youtubetypes.RuntimeConfig
 	log               *zap.Logger
-	mediaProcessor    detail.Processor
+	mediaProcessor    detail.MediaProcessor
 	videoPipeline     youtubeports.VideoPipelinePort
 	lifecycleService  *lifecycle.Service
 	assetDestResolver asset.Resolver

@@ -62,7 +62,7 @@ func (r *ReportReader) PerformanceReport(ctx context.Context, jobID string) (cap
 			Unit  string
 		}
 		if err := rows.Scan(&m.Name, &m.Value, &m.Unit); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return out, err
 		}
 		metrics = append(metrics, m)
@@ -138,7 +138,7 @@ func (r *ReportReader) OperationStats(ctx context.Context, jobID string) ([]capp
 	if err != nil {
 		return nil, fmt.Errorf("performance report: read operations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []capperformance.OperationStats
 	for rows.Next() {
 		var s capperformance.OperationStats

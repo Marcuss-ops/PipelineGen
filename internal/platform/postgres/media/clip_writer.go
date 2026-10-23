@@ -224,16 +224,16 @@ func (c *PostgresMediaCommitter) ReplaceTranscriptCues(ctx context.Context, asse
 		var id int64
 		var lang string
 		if err := rows.Scan(&id, &lang); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		ids[lang] = id
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return err
 	}
-	rows.Close()
+	_ = rows.Close()
 	if _, err = tx.ExecContext(ctx, `DELETE FROM asset_text_track_segments WHERE track_id IN (SELECT id FROM asset_text_tracks WHERE asset_id=$1 AND text_kind='transcript' AND status='READY' AND is_current=1)`, assetID); err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func (c *PostgresMediaCommitter) ReplaceTranscriptCues(ctx context.Context, asse
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	for _, lang := range langs {
 		id, ok := ids[lang]
 		if !ok {

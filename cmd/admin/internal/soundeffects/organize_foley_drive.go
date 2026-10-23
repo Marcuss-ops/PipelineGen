@@ -44,7 +44,7 @@ func RunOrganizeFoleyDrive(args []string) error {
 	}
 	defer rootCleanup()
 	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.Drive.Admin == nil {
-		return fmt.Errorf("Drive reader and admin are required")
+		return fmt.Errorf("drive reader and admin are required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()

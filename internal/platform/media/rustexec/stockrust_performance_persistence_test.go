@@ -58,7 +58,7 @@ func persistStockrustRun(t *testing.T, run capperformance.Run) {
 	if err != nil {
 		t.Fatalf("open STOCKRUST_PERF_DB_PATH %q: %v", dbPath, err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	reg, err := perfstore.New(db)
 	if err != nil {
 		t.Fatalf("performance registry for %q: %v", dbPath, err)
@@ -85,7 +85,7 @@ func TestStockRustPerformancePersistenceRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for _, ddl := range []string{
 		`CREATE TABLE performance_runs (run_id TEXT PRIMARY KEY, job_id TEXT NOT NULL DEFAULT '', root_job_id TEXT NOT NULL DEFAULT '', video_id TEXT NOT NULL DEFAULT '', workload_id TEXT NOT NULL DEFAULT '', workload_version TEXT NOT NULL DEFAULT '', git_sha TEXT NOT NULL DEFAULT '', worker_id TEXT NOT NULL DEFAULT '', host_id TEXT NOT NULL DEFAULT '', status TEXT NOT NULL CHECK (status IN ('RUNNING','SUCCEEDED','FAILED')), wall_ms INTEGER NOT NULL DEFAULT 0, cpu_user_ms INTEGER NOT NULL DEFAULT 0, cpu_system_ms INTEGER NOT NULL DEFAULT 0, peak_rss_bytes INTEGER NOT NULL DEFAULT 0, disk_read_bytes INTEGER NOT NULL DEFAULT 0, disk_write_bytes INTEGER NOT NULL DEFAULT 0, network_rx_bytes INTEGER NOT NULL DEFAULT 0, network_tx_bytes INTEGER NOT NULL DEFAULT 0, metadata_json TEXT NOT NULL DEFAULT '{}', started_at TEXT NOT NULL, completed_at TEXT)`,
 	} {

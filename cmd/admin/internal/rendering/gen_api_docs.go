@@ -18,7 +18,7 @@ import (
 
 func RunGenAPIDocs(args []string) error {
 	log, _ := zap.NewDevelopment()
-	defer log.Sync()
+	defer func() { _ = log.Sync() }()
 
 	// Media PostgreSQL handle for this run (see the feature-gate note
 	// below): read from the canonical env var so the generator composes
@@ -117,7 +117,7 @@ func RunGenAPIDocs(args []string) error {
 	if err != nil {
 		return fmt.Errorf("wire services: %w", err)
 	}
-	defer appDeps.Runtime.Lifecycle.Stop(context.Background())
+	defer func() { _ = appDeps.Runtime.Lifecycle.Stop(context.Background()) }()
 
 	// PG-006.1 (June 2026): inline genDocsSecurityAdapter was deleted —
 	// cfg.Security is now snapshotted into the canonical
@@ -369,7 +369,7 @@ func generateMarkdown(routes []gin.RouteInfo) (string, int) {
 			return rt[i].Path < rt[j].Path
 		})
 
-		sb.WriteString(fmt.Sprintf("## %s\n\n", group))
+		fmt.Fprintf(&sb, "## %s\n\n", group)
 		sb.WriteString("| Method | Path | Description |\n")
 		sb.WriteString("|--------|------|-------------|\n")
 		for _, r := range rt {
@@ -377,7 +377,7 @@ func generateMarkdown(routes []gin.RouteInfo) (string, int) {
 			if desc == descMissing {
 				missing++
 			}
-			sb.WriteString(fmt.Sprintf("| %s | `%s` | %s |\n", r.Method, r.Path, desc))
+			fmt.Fprintf(&sb, "| %s | `%s` | %s |\n", r.Method, r.Path, desc)
 		}
 		sb.WriteString("\n")
 	}

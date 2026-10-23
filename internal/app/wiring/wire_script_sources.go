@@ -20,7 +20,6 @@ import (
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	platformgeocoding "github.com/Marcuss-ops/PipelineGen/internal/platform/geocoding"
@@ -35,7 +34,7 @@ import (
 // Qdrant→SQLite validation/hydration leg.
 type postgresSemanticSearchPort struct {
 	searcher appsearch.VectorStorePort
-	embedder coreasset.Embedder
+	embedder asset.Embedder
 	log      *zap.Logger
 }
 
@@ -107,7 +106,7 @@ func (p *postgresSemanticSearchPort) SearchByText(ctx context.Context, query str
 // rejects Qdrant-only filter shapes instead of silently ignoring them.
 type postgresAssetSearchPort struct {
 	searcher appsearch.VectorStorePort
-	embedder coreasset.Embedder
+	embedder asset.Embedder
 }
 
 func (p *postgresAssetSearchPort) SearchAssets(ctx context.Context, q scriptports.AssetSearchQuery) ([]scriptports.AssetSearchHit, error) {

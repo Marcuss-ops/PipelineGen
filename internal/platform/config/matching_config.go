@@ -32,7 +32,4 @@ type MatchingConfig struct {
 		ReuseThreshold     int     `yaml:"reuse_threshold"`
 		ReusePenaltyPerUse float64 `yaml:"reuse_penalty_per_use"`
 	} `yaml:"clip_quality"`
-
-	shortTokensMap    map[string]bool
-	allowed4LetterMap map[string]bool
 }

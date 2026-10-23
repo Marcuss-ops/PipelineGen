@@ -44,7 +44,7 @@ func migratedDB(t *testing.T, rel, scope string) (*sql.DB, string, []migrationFi
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	migrations, err := discoverMigrations(migrationsDir)
 	if err != nil {
 		t.Fatalf("discover: %v", err)

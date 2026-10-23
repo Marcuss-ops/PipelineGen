@@ -109,7 +109,7 @@ func assetStateWarnShadow(r *report.Report, label, msg string) {
 // the canonical SOLE owner + the scanner's own package.
 // Test files (_test.go) are exempt.
 func ScanAssetStateNoShadowEnum(root string, _ *policy.Policy, r *report.Report) {
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -148,7 +148,9 @@ func ScanAssetStateNoShadowEnum(root string, _ *policy.Policy, r *report.Report)
 		}
 		scanAssetStateShadowFile(path, relSlash, r)
 		return nil
-	})
+	}); err != nil {
+		r.Warnings = append(r.Warnings, assetStateShadowRule+" scan "+root+": "+err.Error())
+	}
 }
 
 // scanAssetStateShadowFile opens a single .go file and emits
@@ -166,7 +168,7 @@ func scanAssetStateShadowFile(path, relPath string, r *report.Report) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)

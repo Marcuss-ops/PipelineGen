@@ -407,7 +407,7 @@ func (r *MemoryRepository) scanMemories(rows *sql.Rows, err error) ([]MemoryEntr
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var entries []MemoryEntry
 	for rows.Next() {
 		var e MemoryEntry
@@ -425,7 +425,7 @@ func (r *MemoryRepository) scanChunks(rows *sql.Rows, err error) ([]ScriptChunk,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var chunks []ScriptChunk
 	for rows.Next() {
 		var c ScriptChunk

@@ -47,6 +47,12 @@
 //     scanner is additive, not subtractive).
 package detail
 
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
 // MetadataKeySpec is the canonical schema for one allowed
 // Asset.Metadata key.
 type MetadataKeySpec struct {
@@ -147,3 +153,55 @@ var allowedMetadataKeys = []MetadataKeySpec{
 // lower-snake-case dot-separated. Namespaces are sorted
 // lowercase (`youtube.*`, `artlist.*`). Future namespaces
 // (e.g. `stock.*`) follow the same shape.
+func ValidateMetadataKeyShape(key string) error {
+	if key == "" {
+		return fmt.Errorf("metadata key is empty")
+	}
+	if strings.HasPrefix(key, ".") || strings.HasSuffix(key, ".") || strings.Contains(key, "..") {
+		return fmt.Errorf("metadata key %q has an empty namespace segment", key)
+	}
+	if strings.ContainsAny(key, " \t\r\n") {
+		return fmt.Errorf("metadata key %q contains whitespace", key)
+	}
+	if key != strings.ToLower(key) {
+		return fmt.Errorf("metadata key %q must be lowercase", key)
+	}
+	return nil
+}
+
+// AllowedMetadataKeys returns the canonical whitelist
+// sorted alphabetically by `Key` (deterministic). The
+// archcheck scanner consumes this returned slice and trips
+// on any name-spaced (`a.b.c`-containing)
+// `Asset.Metadata["…"]` literal or `Get/Set/Metadata[…]
+// ("…")` accessor whose key is NOT in the set.
+//
+// godlike/06 SSOT contract: this function is the SINGLE
+// public accessor for the registry. Internal callers
+// MUST use the function; the underlying `allowedMetadataKeys`
+// slice is unexported (the canonical SSOT surface).
+//
+// godlike/07 fail-closed: a zero-length canonical surface
+// emits a `registry_canonical_empty` CI violation rather
+// than a silent pass — an empty registry would convert
+// the FORWARD-PREVENTION gate into an unconditional
+// silent-pass which is a NO-FAKE-AVAILABILITY regression.
+// The positive surface is intentionally tiny (3 entries)
+// so PRs that add keys are visible at code-review time.
+func AllowedMetadataKeys() []MetadataKeySpec {
+	keys := append([]MetadataKeySpec(nil), allowedMetadataKeys...)
+	sort.Slice(keys, func(i, j int) bool { return keys[i].Key < keys[j].Key })
+	return keys
+}
+
+// HasMetadataKey reports whether key is an exact member of the canonical
+// whitelist. Used by archcheck `percheck_metadata_key_registry` for O(N)
+// lookups against the alphabet. Namespaced prefixes are never wildcard-matched.
+func HasMetadataKey(key string) bool {
+	for _, spec := range allowedMetadataKeys {
+		if spec.Key == key {
+			return true
+		}
+	}
+	return false
+}

@@ -157,12 +157,12 @@ func TestSegments_MIXED_SourceTextOptionalOrderPreserved(t *testing.T) {
 	if idx1 < 0 || idx2 < 0 || idx3 < 0 {
 		t.Fatalf("MIXED — missing one or more SEGMENT N markers; got:\n%s", got)
 	}
-	if !(idx1 < idx2 && idx2 < idx3) {
+	if idx1 >= idx2 || idx2 >= idx3 {
 		t.Fatalf("DoD #3: MIXED order broken (SEGMENT 1 < 2 < 3 required); idx1=%d idx2=%d idx3=%d got:\n%s", idx1, idx2, idx3, got)
 	}
 	// DoD #3: body SourceText MUST be inside SEGMENT 2 block (relative
 	// position: idx2 < idxBody < idx3).
-	if !(idx2 < idxBody && idxBody < idx3) {
+	if idx2 >= idxBody || idxBody >= idx3 {
 		t.Fatalf("DoD #3: body SourceText MUST be inside SEGMENT 2 block; idx2=%d idxBody=%d idx3=%d got:\n%s", idx2, idxBody, idx3, got)
 	}
 	// DoD #3: "Source text:\n" (with trailing newline) appears

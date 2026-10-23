@@ -33,11 +33,11 @@ func RunTrashDriveFiles(args []string) error {
 		return fmt.Errorf("initialize composition: %w", err)
 	}
 	defer rootCleanup()
-	if root == nil || root.Drive == nil || root.Drive.Admin == nil || root.Drive.Reader == nil {
-		return fmt.Errorf("Drive reader and admin are required")
+	if root == nil || root.Drive == nil || root.Drive.Reader == nil {
+		return fmt.Errorf("drive reader is required")
 	}
-	if permanent && root.Drive.Lifecycle == nil {
-		return fmt.Errorf("Drive lifecycle is required for permanent deletion")
+	if root.Drive.Lifecycle == nil {
+		return fmt.Errorf("drive lifecycle is required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -74,7 +74,7 @@ func RunTrashDriveFiles(args []string) error {
 			continue
 		}
 		fmt.Printf("trash: %s (%s)\n", meta.Name, id)
-		if err := root.Drive.Admin.TrashFile(ctx, id); err != nil {
+		if err := root.Drive.Lifecycle.Trash(ctx, id); err != nil {
 			return fmt.Errorf("trash Drive file %s: %w", id, err)
 		}
 	}

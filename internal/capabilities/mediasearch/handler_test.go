@@ -28,7 +28,7 @@ func TestHandlerPropagatesWorkspaceActor(t *testing.T) {
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "test query"},
-		search.SearchModeHybrid,
+		search.RetrievalModeHybrid,
 		20,
 		workspace,
 	)
@@ -58,7 +58,7 @@ func TestHandlerPropagatesAdminActor(t *testing.T) {
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "admin search"},
-		search.SearchModeANN,
+		search.RetrievalModeANN,
 		50,
 		workspace,
 	)
@@ -85,7 +85,7 @@ func TestSearchQueryFromRequest_ActorZeroValues(t *testing.T) {
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "anonymous"},
-		search.SearchModeHybrid,
+		search.RetrievalModeHybrid,
 		10,
 		workspace,
 	)
@@ -119,7 +119,7 @@ func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
 				DurationMsMin: 5000,
 			},
 		},
-		search.SearchModeHybrid,
+		search.RetrievalModeHybrid,
 		30,
 		workspace,
 	)
@@ -127,8 +127,8 @@ func TestSearchQueryFromRequest_ActorPreservesOtherFields(t *testing.T) {
 	if q.Text != "hello world" {
 		t.Errorf("Text = %q, want %q", q.Text, "hello world")
 	}
-	if q.Mode != search.SearchModeHybrid {
-		t.Errorf("Mode = %q, want %q", q.Mode, search.SearchModeHybrid)
+	if q.Mode != search.RetrievalModeHybrid {
+		t.Errorf("Mode = %q, want %q", q.Mode, search.RetrievalModeHybrid)
 	}
 	if q.Limit != 30 {
 		t.Errorf("Limit = %d, want 30", q.Limit)
@@ -169,7 +169,7 @@ func TestSearchQueryFromRequest_HandlesBuild(t *testing.T) {
 
 	q := searchQueryFromRequest(
 		searchRequest{Query: "prod"},
-		search.SearchModeHybrid,
+		search.RetrievalModeHybrid,
 		20,
 		workspace,
 	)
@@ -202,7 +202,7 @@ func TestHandler_StubAggregatorCapturesActor(t *testing.T) {
 	}
 
 	// Direct call to searchQueryFromRequest (the handler's function)
-	q := searchQueryFromRequest(req, search.SearchModeANN, 10, workspace)
+	q := searchQueryFromRequest(req, search.RetrievalModeANN, 10, workspace)
 
 	// Verify the search.Query has Actor populated
 	if q.Actor.WorkspaceID != "ws-e2e" {
@@ -243,7 +243,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "video",
 				},
 			},
-			search.SearchModeHybrid,
+			search.RetrievalModeHybrid,
 			20,
 			workspace,
 		)
@@ -265,7 +265,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 	t.Run("empty media_type leaves MediaTypes nil", func(t *testing.T) {
 		q := searchQueryFromRequest(
 			searchRequest{Query: "no filter"},
-			search.SearchModeHybrid,
+			search.RetrievalModeHybrid,
 			20,
 			workspace,
 		)
@@ -283,7 +283,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "   ",
 				},
 			},
-			search.SearchModeHybrid,
+			search.RetrievalModeHybrid,
 			20,
 			workspace,
 		)
@@ -304,7 +304,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "audio",
 				},
 			},
-			search.SearchModeANN,
+			search.RetrievalModeANN,
 			10,
 			workspace,
 		)
@@ -325,7 +325,7 @@ func TestHandlerMapsMediaTypeToQueryMediaTypes(t *testing.T) {
 					MediaType: "image",
 				},
 			},
-			search.SearchModeHybrid,
+			search.RetrievalModeHybrid,
 			15,
 			workspace,
 		)
@@ -488,7 +488,7 @@ func TestHandlerExposesPartialWithoutInternalPaths(t *testing.T) {
 		},
 	}
 
-	resp := resultToResponse(r, "sunset", search.SearchModeHybrid, search.SearchCatalog, "")
+	resp := resultToResponse(r, "sunset", search.RetrievalModeHybrid, search.SearchCatalog, "")
 
 	if !resp.OK {
 		t.Error("partial with items should have OK=true")
@@ -580,7 +580,7 @@ func TestMediaSearchResponse_DoesNotSerializeRawDriveLink(t *testing.T) {
 		PreviewURL: "https://signed.example.test/assets/asset-stale",
 	}}}
 
-	resp := resultToResponse(r, "stale", search.SearchModeANN, search.SearchCatalog, "")
+	resp := resultToResponse(r, "stale", search.RetrievalModeANN, search.SearchCatalog, "")
 	raw, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatalf("marshal search response: %v", err)
@@ -616,11 +616,6 @@ func TestHandlerReturns502WhenAllBackendsFail(t *testing.T) {
 	if w.Code != 502 {
 		t.Errorf("status = %d, want 502", w.Code)
 	}
-}
-
-// errorReturningAggregator is a stub that always returns a fixed error.
-type errorReturningAggregator struct {
-	err error
 }
 
 // errTestUnknown is a plain error not matching any sentinel.

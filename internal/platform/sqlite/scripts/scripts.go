@@ -51,7 +51,7 @@ func (r *ScriptRepository) SaveScript(ctx context.Context, script *ScriptRecord,
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	version := script.Version
 	if version == 0 {
@@ -116,7 +116,7 @@ func (r *ScriptRepository) GetScriptByID(id int64) (*ScriptRecord, []scriptSecti
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get sections: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var s scriptSectionRow
 		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status, &s.VoiceoverLink); err != nil {
@@ -130,7 +130,7 @@ func (r *ScriptRepository) GetScriptByID(id int64) (*ScriptRecord, []scriptSecti
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to get stock matches: %w", err)
 	}
-	defer mRows.Close()
+	defer func() { _ = mRows.Close() }()
 	for mRows.Next() {
 		var m scriptStockMatchRow
 		if err := mRows.Scan(&m.ID, &m.ScriptID, &m.SegmentIndex, &m.StockPath, &m.StockSource, &m.Score, &m.MatchedTerms); err != nil {
@@ -169,7 +169,7 @@ func (r *ScriptRepository) ListScripts(limit, offset int, language, template str
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to list scripts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var scripts []ScriptRecord
 	for rows.Next() {
@@ -240,7 +240,7 @@ func (r *ScriptRepository) FindByTopic(ctx context.Context, topic, language stri
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var s scriptSectionRow
 		if err := rows.Scan(&s.ID, &s.ScriptID, &s.SectionType, &s.SectionTitle, &s.Content, &s.SortOrder, &s.WordCount, &s.Status, &s.VoiceoverLink); err != nil {

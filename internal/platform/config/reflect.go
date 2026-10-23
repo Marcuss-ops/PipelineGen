@@ -43,7 +43,7 @@ func applyEnvVars(v any) {
 // for leaf fields it calls fn.
 func processFields(v any, fn func(reflect.Value, reflect.StructTag)) {
 	val := reflect.ValueOf(v)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 	if val.Kind() != reflect.Struct {

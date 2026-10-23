@@ -43,7 +43,7 @@ func TestResourceStorePersistsNullableObservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(resourceDDL); err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestResourceStorePersistsExtendedFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(resourceDDL); err != nil {
 		t.Fatal(err)
 	}

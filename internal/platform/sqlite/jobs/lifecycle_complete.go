@@ -51,7 +51,7 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 	if err != nil {
 		return fmt.Errorf("complete: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Validate ownership — also read the job type to gate artifact producers.
 	var status job.Status
@@ -135,7 +135,7 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 	if err != nil {
 		return fmt.Errorf("fail: begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var status job.Status
 	var curWorkerID, curLeaseID string

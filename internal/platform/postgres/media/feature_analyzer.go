@@ -189,7 +189,7 @@ func (a *MediaFeatureAnalyzer) Analyze(ctx context.Context, assetID, localPath s
 	if err != nil {
 		return nil, fmt.Errorf("feature analyzer: temp dir: %w", err)
 	}
-	defer os.RemoveAll(outDir)
+	defer func() { _ = os.RemoveAll(outDir) }()
 	frames, err := a.deps.Keyframes.ExtractPercentageFrames(ctx, localPath, percentages, outDir)
 	if err != nil {
 		return nil, fmt.Errorf("feature analyzer: keyframes %q: %w", localPath, err)

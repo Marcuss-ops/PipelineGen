@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -232,13 +235,13 @@ func RunReorganizeAndIndexSFX(args []string) error {
 
 		f, err := os.Create(localPath)
 		if err != nil {
-			body.Close()
+			_ = body.Close()
 			return fmt.Errorf("create local file: %w", err)
 		}
 
 		_, err = io.Copy(f, body)
-		f.Close()
-		body.Close()
+		_ = f.Close()
+		_ = body.Close()
 		if err != nil {
 			return fmt.Errorf("write local file: %w", err)
 		}
@@ -250,19 +253,20 @@ func RunReorganizeAndIndexSFX(args []string) error {
 
 		// 2. Upload to correct folder or rename in place
 		var targetFolderID string
-		if item.Subcategory == "sci_fi_ui" || item.Subcategory == "ui_notifications" {
+		switch item.Subcategory {
+		case "sci_fi_ui", "ui_notifications":
 			targetFolderID = uiDriveFolderID
-		} else if item.Subcategory == "cartoon_comedy" {
+		case "cartoon_comedy":
 			targetFolderID = cartoonSubfolderIDs["Cartoni"]
-		} else {
-			folderName := strings.Title(strings.ReplaceAll(item.Subcategory, "_", " "))
+		default:
+			folderName := cases.Title(language.Und).String(strings.ReplaceAll(item.Subcategory, "_", " "))
 			targetFolderID, err = root.Drive.Admin.GetOrCreateFolder(ctx, folderName, soundEffectsDriveFolderID)
 			if err != nil {
 				return fmt.Errorf("create sound effect subfolder: %w", err)
 			}
 		}
 
-		if err := root.Drive.Admin.RenameFile(ctx, item.DriveID, suggestedFilename); err != nil {
+		if err := root.Drive.Lifecycle.Rename(ctx, item.DriveID, suggestedFilename); err != nil {
 			fmt.Printf("Warning: rename drive file failed: %v\n", err)
 		}
 
@@ -326,12 +330,12 @@ func RunReorganizeAndIndexSFX(args []string) error {
 
 		f, err := os.Create(localPath)
 		if err != nil {
-			body.Close()
+			_ = body.Close()
 			return fmt.Errorf("create local file: %w", err)
 		}
 		_, err = io.Copy(f, body)
-		f.Close()
-		body.Close()
+		_ = f.Close()
+		_ = body.Close()
 		if err != nil {
 			return fmt.Errorf("write local file: %w", err)
 		}
@@ -342,7 +346,7 @@ func RunReorganizeAndIndexSFX(args []string) error {
 		}
 
 		// 2. Rename Drive file to suggested name
-		if err := root.Drive.Admin.RenameFile(ctx, item.DriveID, suggestedFilename); err != nil {
+		if err := root.Drive.Lifecycle.Rename(ctx, item.DriveID, suggestedFilename); err != nil {
 			fmt.Printf("Warning: rename drive file failed: %v\n", err)
 		}
 

@@ -26,13 +26,14 @@ func buildSystemPromptFallback(language, tone string) string {
 
 	prompt := basePrompt
 
-	if language == "it" {
+	switch language {
+	case "it":
 		prompt += " Write the ENTIRE script in ITALIAN. Write EXCLUSIVELY in Italian. Do NOT use English unless citing proper nouns or brand names."
-	} else if language == "es" {
+	case "es":
 		prompt += " Write the ENTIRE script in SPANISH. Write EXCLUSIVELY in Spanish. Do NOT use English unless citing proper nouns or brand names."
-	} else if language == "fr" {
+	case "fr":
 		prompt += " Write the ENTIRE script in FRENCH. Write EXCLUSIVELY in French. Do NOT use English unless citing proper nouns or brand names."
-	} else {
+	default:
 		prompt += " Write the ENTIRE script in ENGLISH. Write EXCLUSIVELY in English."
 	}
 

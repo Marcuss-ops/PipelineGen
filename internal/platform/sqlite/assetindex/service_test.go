@@ -40,7 +40,7 @@ func setupTestService(t *testing.T) (*Service, func()) {
 	db := drive.NewTestDBWithSchema(t, schema)
 	repo := NewRepository(db)
 	svc := NewService(repo)
-	return svc, func() { db.Close() }
+	return svc, func() { _ = db.Close() }
 }
 
 func TestAssetIndexStoresHash(t *testing.T) {

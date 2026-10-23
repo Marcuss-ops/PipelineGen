@@ -134,10 +134,10 @@ func FileIDFromDriveLink(rawLink string) (string, error) {
 	}
 
 	if strings.HasPrefix(parsed.Path, "/drive/folders/") {
-		return "", fmt.Errorf("Drive URL points to a folder, not a file: %q", rawLink)
+		return "", fmt.Errorf("drive URL points to a folder, not a file: %q", rawLink)
 	}
 
-	return "", fmt.Errorf("unrecognised Drive URL path: %q", parsed.Path)
+	return "", fmt.Errorf("unrecognised drive URL path: %q", parsed.Path)
 }
 
 // FolderIDFromDriveLink extracts the folder ID from a Google Drive folder

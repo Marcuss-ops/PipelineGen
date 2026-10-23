@@ -91,7 +91,7 @@ func readDebtCap(path string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("debt budget: read policy: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	inDebt := false
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

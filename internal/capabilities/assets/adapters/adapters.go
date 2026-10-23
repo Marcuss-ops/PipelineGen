@@ -81,8 +81,8 @@ func (a *DBHealthCheckerAdapter) Ping(ctx context.Context, dbPath string) ports.
 	if err != nil {
 		return ports.DBHealthCheckResult{Error: err.Error()}
 	}
-	defer db.Close()
-	if err := db.DB.Ping(); err != nil {
+	defer func() { _ = db.Close() }()
+	if err := db.Ping(); err != nil {
 		return ports.DBHealthCheckResult{Error: err.Error()}
 	}
 	return ports.DBHealthCheckResult{OK: true}

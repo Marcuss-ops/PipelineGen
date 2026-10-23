@@ -30,7 +30,7 @@ type ProcessQdrantBundle struct {
 // ProcessBundle holds the heavy media-processing adapters.
 type ProcessBundle struct {
 	ProcessQdrantBundle
-	MediaProcessor     detail.Processor
+	MediaProcessor     detail.MediaProcessor
 	ClipIndexerService *clipindexer.Service
 	VLMClient          *vlm.Client
 }

@@ -186,7 +186,7 @@ func (c *Client) Rerank(ctx context.Context, query string, candidates []Candidat
 	if err != nil {
 		return nil, fmt.Errorf("reranker request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("reranker returned %d", resp.StatusCode)

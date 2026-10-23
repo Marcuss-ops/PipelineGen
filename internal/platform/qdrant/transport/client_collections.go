@@ -33,7 +33,7 @@ func (c *Client) GetCollection(ctx context.Context, name string) (*schema.Collec
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, &ErrCollectionNotFound{Name: name}
@@ -68,7 +68,7 @@ func (c *Client) CreateCollection(ctx context.Context, name string, vectors map[
 	if err != nil {
 		return fmt.Errorf("create collection %q: %w", name, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusConflict {
 		// Idempotent: collection already exists (e.g. from a previous
@@ -89,7 +89,7 @@ func (c *Client) DeleteCollection(ctx context.Context, name string) error {
 	if err != nil {
 		return fmt.Errorf("delete collection %q: %w", name, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil // already gone
@@ -107,7 +107,7 @@ func (c *Client) ListCollections(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, c.parseError(resp)
@@ -148,7 +148,7 @@ func (c *Client) CreatePayloadIndex(ctx context.Context, collection, field, fiel
 	if err != nil {
 		return fmt.Errorf("create index %q on %q: %w", field, collection, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return c.parseError(resp)

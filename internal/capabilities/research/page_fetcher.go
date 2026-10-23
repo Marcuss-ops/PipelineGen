@@ -54,7 +54,7 @@ func (f *PageFetcher) Fetch(ctx context.Context, rawURL string, maxChars int) (s
 	if err != nil {
 		return scriptports.WebPage{}, fmt.Errorf("page fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return scriptports.WebPage{}, fmt.Errorf("page fetch returned status %d", resp.StatusCode)
 	}

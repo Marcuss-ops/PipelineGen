@@ -158,7 +158,7 @@ func ensureFixtureFiles(t *testing.T, jobID string, res *script.GenerationResult
 	}
 	// Clean up fixture files after the test to avoid /tmp pollution.
 	t.Cleanup(func() {
-		os.RemoveAll(filepath.Join(os.TempDir(), "pipelinegen", "jobs", jobID))
+		_ = os.RemoveAll(filepath.Join(os.TempDir(), "pipelinegen", "jobs", jobID))
 	})
 }
 

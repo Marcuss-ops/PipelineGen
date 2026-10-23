@@ -154,7 +154,7 @@ func TestExecute_HappyPath(t *testing.T) {
 
 	require.NotNil(t, dispatcher.clip)
 	assert.Equal(t, "underwater-sand-jumpscare-01", dispatcher.clip.ID)
-	assert.Equal(t, detail.SourceAIGenerated, dispatcher.clip.Source)
+	assert.Equal(t, asset.Source(detail.SourceAIGenerated), dispatcher.clip.Source)
 	assert.Equal(t, "Pesce predatore nascosto sotto la sabbia", dispatcher.clip.SearchText)
 	assert.Equal(t, "sha256-abc", dispatcher.hash)
 	require.NotNil(t, artifact.input)

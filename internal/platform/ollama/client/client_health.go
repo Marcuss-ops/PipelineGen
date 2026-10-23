@@ -27,7 +27,7 @@ func (c *Client) CheckHealth(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return resp.StatusCode == http.StatusOK
 }
@@ -43,7 +43,7 @@ func (c *Client) ListModels(ctx context.Context) ([]types.Model, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list models: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ollama returned status %d", resp.StatusCode)
@@ -68,7 +68,7 @@ func (c *Client) ListRunningModels(ctx context.Context) ([]types.RunningModel, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to list running models: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("ollama returned status %d from /api/ps", resp.StatusCode)
 	}

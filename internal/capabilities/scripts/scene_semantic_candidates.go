@@ -74,6 +74,7 @@ type SemanticCandidateBundle struct {
 	Numeric        []NumericFactCandidate
 	Proposals      []SemanticVisualProposal
 	Groups         []SemanticGroup
+	MicroSummaries []SemanticMicroSummary
 }
 
 type SemanticAnalyzerVersions struct {
@@ -84,8 +85,13 @@ type SemanticAnalyzerVersions struct {
 
 type SemanticEntityFact struct {
 	ID, SubjectEntityID, Predicate, Value, ValueType, NormalizedValue, TargetEntityID string
-	Unit, Operator, Status, Evidence                                                  string
+	Unit, Operator, NormalizedDate, Status, Evidence                                  string
 	SentenceIndex, Start, End, EvidenceStart, EvidenceEnd                             int
+	// Importance is the Rust engine's deterministic rule weight in [0, 1].
+	// VisualConceptIDs are the canonical identities a visual planner may bind
+	// to this fact (subject, and target when the fact links two entities).
+	Importance       float64
+	VisualConceptIDs []string
 }
 
 // SemanticTextCandidate preserves source-grounded phrase projections from the
@@ -153,6 +159,27 @@ type SemanticGroup struct {
 	TargetCount                   *int
 	Complete                      *bool
 	Members                       []SemanticGroupMember
+}
+
+// SemanticMicroSummary is a fact-backed short phrase produced by the Rust
+// engine. Text may paraphrase the source, so it is never displayed as a
+// transcript-locked overlay: Evidence is the verbatim sentence that carries
+// the claim, Start/End locate that sentence inside the scene text, and
+// EvidenceFactIDs name the atomic facts that justify every claim. The planner
+// uses the evidence span for timing and selection while the summary text stays
+// attached as provenance.
+type SemanticMicroSummary struct {
+	ID              string
+	Kind            string
+	Text            string
+	EvidenceFactIDs []string
+	SubjectEntityID string
+	NormalizedDate  string
+	SentenceIndex   int
+	Evidence        string
+	Start           int
+	End             int
+	Score           float64
 }
 
 // SceneSemanticInput is one scene in a batch analysis request.

@@ -34,7 +34,9 @@ func (h *NonOpsHandler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asse
 	if h.enrichUC == nil {
 		return
 	}
-	h.enrichUC.EnrichAndIndex(ctx, clip.ID)
+	if err := h.enrichUC.EnrichAndIndex(ctx, clip.ID); err != nil && h.log != nil {
+		h.log.Warn("enrich and index clip failed", zap.String("clip_id", clip.ID), zap.Error(err))
+	}
 }
 
 // EnrichMedia triggers semantic enrichment + embedding for any media

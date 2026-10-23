@@ -169,7 +169,7 @@ func TestFanOut_EnqueueMaterializeOne_Success(t *testing.T) {
 	if len(ps.TextKinds) != 1 || ps.TextKinds[0] != string(detail.TextTrackTranscript) {
 		t.Fatalf("TextKinds = %v, want [%q]", ps.TextKinds, detail.TextTrackTranscript)
 	}
-	if ps.TargetLanguages != nil && len(ps.TargetLanguages) > 0 {
+	if len(ps.TargetLanguages) > 0 {
 		// omitempty: nil target_languages is absent in the
 		// JSON wire form — the fanout MUST NOT pre-populate
 		// a target override from the helper.

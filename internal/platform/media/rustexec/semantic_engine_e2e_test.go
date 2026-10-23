@@ -154,7 +154,8 @@ func TestSemanticEngineRealBinaryMatchesPhraseImpactProducts(t *testing.T) {
 	var bulletSpans []scriptpkg.SemanticBulletSpan
 	for _, candidate := range semantic["s1"].Bullets {
 		if candidate.Start >= 0 && candidate.End > candidate.Start && candidate.End <= len(transcript) && transcript[candidate.Start:candidate.End] == candidate.Text {
-			bulletSpans = append(bulletSpans, scriptpkg.SemanticBulletSpan{StartByte: candidate.Start, EndByte: candidate.End, Text: candidate.Text})
+			score := candidate.Score
+			bulletSpans = append(bulletSpans, scriptpkg.SemanticBulletSpan{StartByte: candidate.Start, EndByte: candidate.End, Text: candidate.Text, Score: &score})
 		}
 	}
 	legacy, err := NewPhraseImpactAnalyzer(phraseBinary, nil, nil).AnalyzeScenesWithSemanticBullets(context.Background(), transcript, "it", scenes, bulletSpans)
@@ -204,7 +205,8 @@ func TestSemanticEngineRealBinaryMatchesPhraseImpactWithSuppliedVectors(t *testi
 	var bulletSpans []scriptpkg.SemanticBulletSpan
 	for _, candidate := range semanticBundles["s1"].Bullets {
 		if candidate.Start >= 0 && candidate.End > candidate.Start && candidate.End <= len(transcript) && transcript[candidate.Start:candidate.End] == candidate.Text {
-			bulletSpans = append(bulletSpans, scriptpkg.SemanticBulletSpan{StartByte: candidate.Start, EndByte: candidate.End, Text: candidate.Text})
+			score := candidate.Score
+			bulletSpans = append(bulletSpans, scriptpkg.SemanticBulletSpan{StartByte: candidate.Start, EndByte: candidate.End, Text: candidate.Text, Score: &score})
 		}
 	}
 	_, combined, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "it", scenes)

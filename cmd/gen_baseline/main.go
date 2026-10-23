@@ -38,12 +38,12 @@ func schemaFromDB(dbPath string) []string {
 	if err != nil {
 		panic(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	rows, err := db.Query(`SELECT type, sql FROM sqlite_master WHERE type IN ('table','index','trigger') AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migrations' AND sql NOT NULL AND sql NOT LIKE '%schema_migrations%' ORDER BY rowid`)
 	if err != nil {
 		panic(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var stmts []string
 	for rows.Next() {
 		var typ string
@@ -106,7 +106,7 @@ func main() {
 		_ = os.Remove(baselinePath)
 	}
 	tmpDir, _ := os.MkdirTemp("", "baseline-gen-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 	primaryPath := filepath.Join(tmpDir, "primary.db")
 	obsPath := filepath.Join(tmpDir, "obs.db")
 	mustRunMigrations(primaryPath, targetDir, "primary")

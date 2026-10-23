@@ -64,7 +64,7 @@ func LegacyMD5File(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return LegacyMD5Reader(f)
 }
 

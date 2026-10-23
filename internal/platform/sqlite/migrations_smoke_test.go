@@ -83,14 +83,14 @@ func TestMigrations_Smoke_Baseline(t *testing.T) {
 	// We open AFTER both apply passes so the schema_migrations
 	// ledger is already populated.
 	db := openSmokeDB(t, dbPath)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	t.Run("IntegrityCheck", func(t *testing.T) {
 		rows, err := db.Query("PRAGMA integrity_check")
 		if err != nil {
 			t.Fatalf("PRAGMA integrity_check: %v", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		var findings []string
 		for rows.Next() {
 			var s string
@@ -123,7 +123,7 @@ func TestMigrations_Smoke_Baseline(t *testing.T) {
 			t.Logf("[INFORMATIONAL/TODO] PRAGMA foreign_key_check query returned error: %v", err)
 			return
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		var violations []string
 		for rows.Next() {
 			var table string

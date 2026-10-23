@@ -97,12 +97,11 @@ func writeLexiconFingerprint(h hash.Hash, key string, p *LexiconProfile) {
 	}
 	writeWordSetsFingerprint(h, p.WordSets)
 	writePhraseSetsFingerprint(h, p.PhraseSets)
-	_, _ = h.Write([]byte(fmt.Sprintf("policy:%d,%d,%d,%t\n",
+	_, _ = fmt.Fprintf(h, "policy:%d,%d,%d,%t\n",
 		p.PhrasePolicy.MinWords,
 		p.PhrasePolicy.MaxWords,
 		p.PhrasePolicy.MaxResults,
-		p.PhrasePolicy.RejectVerbsWhenAll,
-	)))
+		p.PhrasePolicy.RejectVerbsWhenAll)
 }
 
 // writeSortedSetFingerprint appends a label + sorted-key enumeration

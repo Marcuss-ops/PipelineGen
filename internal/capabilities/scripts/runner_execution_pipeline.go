@@ -191,7 +191,7 @@ func (e *executionRun) joinStockPrefetchForConsumer() {
 	e.stockPrefetchDone = nil
 	started := time.Now()
 	var report *scriptports.StockPrefetchReport
-	kernobs.MeasureStage(e.ctx, "stock_prefetch_join", func(stageCtx context.Context) error {
+	measureErr := kernobs.MeasureStage(e.ctx, "stock_prefetch_join", func(stageCtx context.Context) error {
 		select {
 		case rep := <-done:
 			report = &rep
@@ -203,6 +203,9 @@ func (e *executionRun) joinStockPrefetchForConsumer() {
 		}
 	})
 	waitMS := time.Since(started).Milliseconds()
+	if measureErr != nil && e.r != nil && e.r.log != nil {
+		e.r.log.Warn("script.generate: stock prefetch join stage failed", zap.Error(measureErr))
+	}
 	if e.r != nil && e.r.log != nil {
 		fields := []zap.Field{zap.Int64("stock_prefetch_join_wait_ms", waitMS)}
 		if report != nil {

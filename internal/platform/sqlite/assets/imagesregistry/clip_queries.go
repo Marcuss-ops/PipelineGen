@@ -60,7 +60,7 @@ func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var clips []*asset.Asset
 	for rows.Next() {
@@ -81,7 +81,7 @@ func (s *AssetStoreSQLite) GetAllWithDriveFileID(ctx context.Context) ([]*asset.
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var clips []*asset.Asset
 	for rows.Next() {

@@ -57,7 +57,7 @@ type Cache struct {
 // cancellable when the parent (typically the app lifecycle context)
 // terminates. When parentCtx is nil, context.Background() is used.
 func NewCache(db *sql.DB, parentCtx ...context.Context) *Cache {
-	var parent context.Context = context.Background()
+	var parent = context.Background()
 	if len(parentCtx) > 0 && parentCtx[0] != nil {
 		parent = parentCtx[0]
 	}

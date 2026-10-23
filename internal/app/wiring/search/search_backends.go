@@ -32,8 +32,7 @@ import (
 	"go.uber.org/zap"
 
 	providers "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
 )
 
@@ -50,7 +49,7 @@ type RerankerClient interface {
 // not, so it cannot become a media semantic backend even if it remains wired
 // for legitimate non-media owners.
 type canonicalMediaSearchStore interface {
-	assetsearch.VectorStorePort
+	search.VectorStorePort
 	search.MediaReadRepository
 }
 
@@ -69,7 +68,7 @@ type SearchBackendBuildOpts struct {
 	ProviderReg *providers.Registry
 
 	Embeddings  search.EmbeddingChannelRegistry
-	VectorStore assetsearch.VectorStorePort
+	VectorStore search.VectorStorePort
 	MediaRepo   search.MediaReadRepository // compatibility input; not a semantic hydration fallback
 	Delivery    search.AssetDeliveryService
 	Reranker    RerankerClient

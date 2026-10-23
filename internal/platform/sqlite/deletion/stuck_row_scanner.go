@@ -94,7 +94,7 @@ func (s *Scanner) ListStuckRows(now time.Time, threshold time.Duration) ([]recon
 	if err != nil {
 		return nil, fmt.Errorf("deletion. Scanner.ListStuckRows: query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []reconciler.StuckRow
 	for rows.Next() {

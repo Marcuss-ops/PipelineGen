@@ -96,7 +96,7 @@ type ServiceDeps struct {
 	Assets             *detail.Service
 	AssetTreeService   *assettree.Service
 	AssetIndexService  *assetindex.Service
-	MediaProcessor     detail.Processor
+	MediaProcessor     detail.MediaProcessor
 	CatalogSyncService *catalogsync.Service
 	// P0.1 (June 2026): the concrete artifact blob service wired
 	// from BuildDomainBundle → DomainBundle → CoreDeps.

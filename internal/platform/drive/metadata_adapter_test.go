@@ -62,7 +62,7 @@ func newMetadataProbeServer(response metadataProbeResponse) *metadataProbeServer
 
 func (s *metadataProbeServer) driveService(t *testing.T) *driveapi.Service {
 	t.Helper()
-	parsed, err := url.Parse(s.Server.URL)
+	parsed, err := url.Parse(s.URL)
 	if err != nil {
 		t.Fatalf("parse metadata probe URL: %v", err)
 	}

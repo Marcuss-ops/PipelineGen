@@ -165,7 +165,7 @@ func ValidateClipEffects(effects []ClipEffectSpec, grid *ClipGridSpec) error {
 			return fmt.Errorf("grid.color must be #RRGGBB")
 		}
 		for _, c := range grid.Color[1:] {
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 				return fmt.Errorf("grid.color must be #RRGGBB")
 			}
 		}

@@ -58,7 +58,7 @@ func (s *AssetStoreSQLite) SearchByTerms(ctx context.Context, source string, key
 	if err != nil {
 		return nil, fmt.Errorf("clip_search_terms query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var clipIDs []string
 	for rows.Next() {
@@ -104,7 +104,7 @@ func (s *AssetStoreSQLite) fetchClipsByIDs(ctx context.Context, source string, c
 		if err != nil {
 			return nil, err
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		var results []*asset.Asset
 		for rows.Next() {
@@ -122,7 +122,7 @@ func (s *AssetStoreSQLite) fetchClipsByIDs(ctx context.Context, source string, c
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*asset.Asset
 	for rows.Next() {
@@ -173,7 +173,7 @@ func (s *AssetStoreSQLite) UpdateSearchTerms(ctx context.Context, clipID, source
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	_, err = tx.ExecContext(ctx, "DELETE FROM clip_search_terms WHERE clip_id = ?", clipID)
 	if err != nil {
@@ -184,7 +184,7 @@ func (s *AssetStoreSQLite) UpdateSearchTerms(ctx context.Context, clipID, source
 	if err != nil {
 		return fmt.Errorf("prepare insert: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for term := range termSet {
 		if _, err := stmt.ExecContext(ctx, term, clipID, source); err != nil {
