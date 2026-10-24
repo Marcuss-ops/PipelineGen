@@ -464,5 +464,22 @@
     "live_tests": [],
     "cacheable": true,
     "cache_scope": "content"
+  },
+  "rust": {
+    "paths": [
+      "rust"
+    ],
+    "go_packages": [
+      "./internal/platform/media/rustexec/..."
+    ],
+    "node_tests": [],
+    "python_tests": [],
+    "dependencies": [],
+    "timeout_seconds": 900,
+    "race_timeout_seconds": 900,
+    "race_enabled": false,
+    "live_tests": [],
+    "cacheable": false,
+    "cache_scope": "content"
   }
 }
