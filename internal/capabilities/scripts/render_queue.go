@@ -421,12 +421,16 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		cacheKey, cacheable = overlayRenderCacheKeyForPlan(semanticPlan, e.renderCacheEpochValue())
 	}
 	cacheHit := false
+	cacheTiming := overlayRenderCacheTiming{outcome: "not_applicable"}
 	submitStartedAt := time.Now()
 	submitAcceptedAt := time.Time{}
 	done := RenderQueueJob{ID: jobID, State: RenderQueueStateCompleted}
 	wait := RenderCompletionMetrics{}
 	if cacheable {
-		if cached, ok := e.lookupOverlayRenderCache(ctx, cacheKey); ok {
+		cached, ok, timing := e.lookupOverlayRenderCacheTimed(ctx, cacheKey)
+		cacheTiming = timing
+		applyOverlayRenderCacheTiming(&wait, cacheTiming)
+		if ok {
 			cacheHit = true
 			done.Artifact = cached
 			submitAcceptedAt = submitStartedAt
@@ -440,20 +444,21 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				if e.freshRender {
 					message = "chronon queue fresh render submit failed"
 				}
-				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
+				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
 				return RenderReference{}, errors.Join(fmt.Errorf("%s: %w", message, submitErr), recordErr)
 			}
 			// The re-arm decision is owned by RearmFailedRenderJob (the same
 			// helper the clip.render executor uses), and it fails closed when the
 			// job is FAILED and cannot be re-armed.
 			if rearmErr := RearmFailedRenderJob(ctx, e.client, jobID); rearmErr != nil {
-				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
+				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
 				return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
 			}
 		}
 		submitAcceptedAt = time.Now()
 		var err error
 		done, wait, err = e.waitForCompletion(ctx, jobID)
+		applyOverlayRenderCacheTiming(&wait, cacheTiming)
 		if err != nil {
 			observeCompletionWait(wait, renderOutcomeFailure)
 			recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, wait, submitStartedAt, submitAcceptedAt, &done, time.Time{}, "failure")
@@ -465,7 +470,15 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		// no semantic item after its video is installed as the background, so it
 		// is not addressable here and must not be counted as a store error.
 		if cacheable {
-			e.storeOverlayRenderCache(ctx, cacheKey, done.Artifact)
+			var storeOutcome string
+			cacheTiming.store, storeOutcome = e.storeOverlayRenderCacheTimed(ctx, cacheKey, done.Artifact)
+			switch cacheTiming.outcome {
+			case "miss":
+				cacheTiming.outcome = "miss_" + storeOutcome
+			case "lookup_error", "probe_error", "invalid":
+				cacheTiming.outcome += "_rerender_" + storeOutcome
+			}
+			applyOverlayRenderCacheTiming(&wait, cacheTiming)
 		}
 	}
 	observeCompletionWait(wait, renderOutcomeSuccess)

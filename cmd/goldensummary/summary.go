@@ -28,6 +28,7 @@ type envelope struct {
 	OverlayWindow        *windowBlock                       `json:"overlay_window,omitempty"`
 	PerItemRenderService rendermetrics.ServiceStat          `json:"per_item_render_service_ms"`
 	PerClass             map[string]rendermetrics.ClassStat `json:"per_class"`
+	CacheTiming          rendermetrics.CacheTimingSummary   `json:"cache_timing"`
 	TotalServiceMS       int64                              `json:"total_service_ms"`
 	UnknownClass         int                                `json:"unknown_class,omitempty"`
 	OverlayRenderBatches int                                `json:"overlay_render_batches"`
@@ -50,6 +51,10 @@ type batchBlock struct {
 	RenderMS           int64    `json:"render_ms,omitempty"`
 	EncodeMS           int64    `json:"encode_ms,omitempty"`
 	QueueMS            int64    `json:"queue_wait_ms,omitempty"`
+	CacheLookupUS      int64    `json:"cache_lookup_us,omitempty"`
+	CacheProbeUS       int64    `json:"cache_probe_us,omitempty"`
+	CacheStoreUS       int64    `json:"cache_store_us,omitempty"`
+	CacheOutcome       string   `json:"cache_outcome,omitempty"`
 	SHA256             string   `json:"sha256,omitempty"`
 	DriveID            string   `json:"drive_file_id,omitempty"`
 }
@@ -156,6 +161,7 @@ func loadSamples(dbPath, runID string, planItems, renderItems map[string]string)
 	defer func() { _ = db.Close() }()
 
 	query := `SELECT item_id, render_ms, encode_ms, completion_wait_ms,
+	                 cache_lookup_us, cache_probe_us, cache_store_us, cache_outcome,
 	                 queue_queued_at, queue_completed_at
 	          FROM render_attempt_analytics WHERE item_id <> '' AND item_id NOT LIKE 'batch:%'`
 	args := []any{}
@@ -171,21 +177,26 @@ func loadSamples(dbPath, runID string, planItems, renderItems map[string]string)
 
 	samples := []rendermetrics.ItemSample{}
 	for rows.Next() {
-		var itemID string
+		var itemID, cacheOutcome string
 		var renderMS, encodeMS, waitMS int64
+		var cacheLookupUS, cacheProbeUS, cacheStoreUS int64
 		var queuedAt, completedAt sql.NullString
-		if err := rows.Scan(&itemID, &renderMS, &encodeMS, &waitMS, &queuedAt, &completedAt); err != nil {
+		if err := rows.Scan(&itemID, &renderMS, &encodeMS, &waitMS, &cacheLookupUS, &cacheProbeUS, &cacheStoreUS, &cacheOutcome, &queuedAt, &completedAt); err != nil {
 			return nil, 0, err
 		}
 		samples = append(samples, rendermetrics.ItemSample{
-			ItemID:    itemID,
-			Class:     planItems[itemID],
-			Status:    renderItems[itemID],
-			RenderMS:  renderMS,
-			EncodeMS:  encodeMS,
-			QueuedMS:  waitMS,
-			StartedAt: parseMillis(queuedAt),
-			EndedAt:   parseMillis(completedAt),
+			ItemID:        itemID,
+			Class:         planItems[itemID],
+			Status:        renderItems[itemID],
+			RenderMS:      renderMS,
+			EncodeMS:      encodeMS,
+			QueuedMS:      waitMS,
+			CacheLookupUS: cacheLookupUS,
+			CacheProbeUS:  cacheProbeUS,
+			CacheStoreUS:  cacheStoreUS,
+			CacheOutcome:  cacheOutcome,
+			StartedAt:     parseMillis(queuedAt),
+			EndedAt:       parseMillis(completedAt),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -209,7 +220,9 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 	}
 	defer func() { _ = db.Close() }()
 	query := `SELECT item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us,
-	                 render_ms, encode_ms, completion_wait_ms, queue_queued_at, queue_completed_at
+	                 render_ms, encode_ms, completion_wait_ms,
+	                 cache_lookup_us, cache_probe_us, cache_store_us, cache_outcome,
+	                 queue_queued_at, queue_completed_at
 	          FROM render_attempt_analytics WHERE item_id LIKE 'batch:%'`
 	args := []any{}
 	if runID != "" {
@@ -223,11 +236,12 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 	defer func() { _ = rows.Close() }()
 	var samples []batchAttemptSample
 	for rows.Next() {
-		var itemID, batchID, itemIDsJSON string
+		var itemID, batchID, itemIDsJSON, cacheOutcome string
 		var startUS, endUS int64
 		var renderMS, encodeMS, waitMS int64
+		var cacheLookupUS, cacheProbeUS, cacheStoreUS int64
 		var queuedAt, completedAt sql.NullString
-		if err := rows.Scan(&itemID, &batchID, &itemIDsJSON, &startUS, &endUS, &renderMS, &encodeMS, &waitMS, &queuedAt, &completedAt); err != nil {
+		if err := rows.Scan(&itemID, &batchID, &itemIDsJSON, &startUS, &endUS, &renderMS, &encodeMS, &waitMS, &cacheLookupUS, &cacheProbeUS, &cacheStoreUS, &cacheOutcome, &queuedAt, &completedAt); err != nil {
 			return nil, err
 		}
 		if batchID == "" {
@@ -242,6 +256,8 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 			Attempt: rendermetrics.ItemSample{
 				ItemID: itemID, Class: "batch", Status: "COMPLETED",
 				RenderMS: renderMS, EncodeMS: encodeMS, QueuedMS: waitMS,
+				CacheLookupUS: cacheLookupUS, CacheProbeUS: cacheProbeUS,
+				CacheStoreUS: cacheStoreUS, CacheOutcome: cacheOutcome,
 				StartedAt: parseMillis(queuedAt), EndedAt: parseMillis(completedAt),
 			},
 		})
@@ -288,6 +304,10 @@ func overlayRenderBatches(result map[string]any, samples []batchAttemptSample) [
 		}
 		if sample, ok := sampleByID[batch.BatchID]; ok {
 			batch.RenderMS, batch.EncodeMS, batch.QueueMS = sample.Attempt.RenderMS, sample.Attempt.EncodeMS, sample.Attempt.QueuedMS
+			batch.CacheLookupUS = sample.Attempt.CacheLookupUS
+			batch.CacheProbeUS = sample.Attempt.CacheProbeUS
+			batch.CacheStoreUS = sample.Attempt.CacheStoreUS
+			batch.CacheOutcome = sample.Attempt.CacheOutcome
 			if len(batch.ItemIDs) == 0 {
 				batch.ItemIDs = append([]string(nil), sample.ItemIDs...)
 			}

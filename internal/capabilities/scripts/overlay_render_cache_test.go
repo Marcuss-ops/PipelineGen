@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
@@ -359,6 +360,26 @@ func TestOverlayRenderCacheMissStoresThenSecondRunHitsWithoutSubmit(t *testing.T
 	}
 }
 
+func TestOverlayRenderCacheTimedLookupSeparatesIndexAndObjectProbe(t *testing.T) {
+	t.Setenv(OverlayRenderCacheKillSwitch, "1")
+	cache := newFakeOverlayRenderCache()
+	enqueuer, _ := cacheTestEnqueuer(t, cache)
+	key := OverlayRenderCacheKey{RenderKey: cacheTestArtifactSHA, PlanContext: cacheTestArtifactSHA, Epoch: "test-epoch"}
+	if err := key.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cache.entries[key.Digest()] = certifiedOverlayArtifact()
+	enqueuer.SetOverlayArtifactProber(delayedPresentOverlayArtifactProber{})
+
+	artifact, hit, timing := enqueuer.lookupOverlayRenderCacheTimed(context.Background(), key)
+	if !hit || artifact == nil || timing.outcome != "hit" {
+		t.Fatalf("timed lookup = hit=%v artifact=%+v outcome=%q", hit, artifact, timing.outcome)
+	}
+	if timing.lookup <= 0 || timing.probe < time.Millisecond {
+		t.Fatalf("cache timings did not separate index and object probe: lookup=%s probe=%s", timing.lookup, timing.probe)
+	}
+}
+
 func TestOverlayRenderCacheReusesCertifiedFusedBatchOnRetry(t *testing.T) {
 	t.Setenv(OverlayRenderCacheKillSwitch, "1")
 	cache := newFakeOverlayRenderCache()
@@ -521,6 +542,13 @@ type missingOverlayArtifactProber struct{}
 
 func (missingOverlayArtifactProber) Present(context.Context, RenderArtifact) (bool, error) {
 	return false, nil
+}
+
+type delayedPresentOverlayArtifactProber struct{}
+
+func (delayedPresentOverlayArtifactProber) Present(context.Context, RenderArtifact) (bool, error) {
+	time.Sleep(2 * time.Millisecond)
+	return true, nil
 }
 
 func TestOverlayRenderCacheHitThatFailsPublicationIsInvalidated(t *testing.T) {

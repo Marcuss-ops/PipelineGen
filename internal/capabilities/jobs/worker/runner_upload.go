@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"go.uber.org/zap"
 
@@ -137,7 +136,7 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 		// still sees the artifact as delivered. A reference without a
 		// certified digest — or an unreferenced master — falls through to the
 		// generic path below.
-		if a.ReferencesPublishedAudio() && strings.TrimSpace(a.SHA256) != "" {
+		if a.ReferencesPublishedAudio() {
 			uploaded[a.ID] = job.RemoteAsset{RemoteAssetID: a.ID, SHA256: a.SHA256}
 			continue
 		}
@@ -176,7 +175,7 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 		}
 		// Same master-audio single-owner reference as the required loop: a
 		// referenced final_audio is never re-shipped over the asset transport.
-		if a.ReferencesPublishedAudio() && strings.TrimSpace(a.SHA256) != "" {
+		if a.ReferencesPublishedAudio() {
 			uploaded[a.ID] = job.RemoteAsset{RemoteAssetID: a.ID, SHA256: a.SHA256}
 			continue
 		}

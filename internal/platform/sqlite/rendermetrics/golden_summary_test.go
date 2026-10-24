@@ -96,3 +96,23 @@ func TestServiceStat_EvenMedianRounds(t *testing.T) {
 		t.Fatalf("avg = %d, want 4", stat.AvgMS)
 	}
 }
+
+func TestBuildGoldenSummary_CacheTimingsKeepMicrosecondsAndOutcomes(t *testing.T) {
+	summary := BuildGoldenSummary([]ItemSample{
+		{ItemID: "a", CacheLookupUS: 120, CacheProbeUS: 340, CacheStoreUS: 560, CacheOutcome: "miss_stored"},
+		{ItemID: "b", CacheLookupUS: 220, CacheProbeUS: 0, CacheStoreUS: 760, CacheOutcome: "hit"},
+		{ItemID: "c", CacheOutcome: "probe_error"},
+	})
+	if got := summary.CacheTiming.LookupUS; got.Count != 2 || got.AvgUS != 170 || got.P50US != 170 || got.MinUS != 120 || got.MaxUS != 220 {
+		t.Fatalf("lookup timing = %+v", got)
+	}
+	if got := summary.CacheTiming.ProbeUS; got.Count != 1 || got.AvgUS != 340 {
+		t.Fatalf("probe timing = %+v", got)
+	}
+	if got := summary.CacheTiming.StoreUS; got.Count != 2 || got.AvgUS != 660 || got.P50US != 660 {
+		t.Fatalf("store timing = %+v", got)
+	}
+	if summary.CacheTiming.Outcomes["miss_stored"] != 1 || summary.CacheTiming.Outcomes["hit"] != 1 || summary.CacheTiming.Outcomes["probe_error"] != 1 {
+		t.Fatalf("cache outcomes = %v", summary.CacheTiming.Outcomes)
+	}
+}

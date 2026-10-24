@@ -42,6 +42,10 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 		PollingSleep:   2 * time.Second,
 		PollInterval:   2 * time.Second,
 		PollCount:      2,
+		CacheLookup:    140 * time.Microsecond,
+		CacheProbe:     250 * time.Microsecond,
+		CacheStore:     310 * time.Microsecond,
+		CacheOutcome:   "miss_stored",
 	})
 
 	if got.AttemptID != "attempt-1" || got.JobID != "plan-1" {
@@ -52,6 +56,7 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 	}
 	if got.SHA256 != "abc" || got.RenderMS != 900 || got.EncodeMS != 300 ||
 		got.CompletionWaitMS != 2100 || got.PollingSleepMS != 2000 || got.PollingIntervalMS != 2000 || got.PollCount != 2 ||
+		got.CacheLookupUS != 140 || got.CacheProbeUS != 250 || got.CacheStoreUS != 310 || got.CacheOutcome != "miss_stored" ||
 		got.DriveFileID != "file-1" || got.DriveLink != "https://drive.google.com/file/d/file-1/view" ||
 		got.Width != 1280 || got.Height != 720 || got.FrameCount != 150 ||
 		got.DurationUS != 5_000_000 || got.SizeBytes != 1024 {
@@ -195,6 +200,10 @@ func TestQueueAttemptRecorderPreservesObservedAndMissingTimes(t *testing.T) {
 
 	if err := enqueuer.recordQueueAttempt(context.Background(), "queue-1", plan, &overlayItemPublicationMetadata{ItemID: "item-7"}, RenderCompletionMetrics{
 		CompletionWait: 3 * time.Second,
+		CacheLookup:    123 * time.Microsecond,
+		CacheProbe:     456 * time.Microsecond,
+		CacheStore:     789 * time.Microsecond,
+		CacheOutcome:   "miss_stored",
 		WaitStartedAt:  waitStarted,
 		WaitFinishedAt: waitFinished}, started, accepted, job, time.Time{}, "failure"); err != nil {
 		t.Fatal(err)
@@ -203,7 +212,7 @@ func TestQueueAttemptRecorderPreservesObservedAndMissingTimes(t *testing.T) {
 		t.Fatalf("record count=%d, want 1", len(recorder.recorded))
 	}
 	got := recorder.recorded[0]
-	if got.ItemID != "item-7" || got.Outcome != "failure" || got.SubmitStartedAt == nil || !got.SubmitStartedAt.Equal(started) ||
+	if got.ItemID != "item-7" || got.Outcome != "failure" || got.CacheLookupUS != 123 || got.CacheProbeUS != 456 || got.CacheStoreUS != 789 || got.CacheOutcome != "miss_stored" || got.SubmitStartedAt == nil || !got.SubmitStartedAt.Equal(started) ||
 		got.SubmitAcceptedAt == nil || !got.SubmitAcceptedAt.Equal(accepted) || got.WaitStartedAt == nil || !got.WaitStartedAt.Equal(waitStarted) ||
 		got.WaitFinishedAt == nil || !got.WaitFinishedAt.Equal(waitFinished) || got.QueueQueuedAt == nil || !got.QueueQueuedAt.Equal(queued) ||
 		got.QueueStartedAt == nil || !got.QueueStartedAt.Equal(queueStarted) || got.QueueCompletedAt == nil || !got.QueueCompletedAt.Equal(completed) ||

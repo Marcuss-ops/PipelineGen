@@ -16,26 +16,28 @@
 | `semantic_acceptance/reports/t05_charts_2026-10-24.json` | T05 chart fixtures (5/5 PASS) |
 
 > **Provenienza.** Il copione da 2.013 parole è ricostruito dai brief, non è il file originale perduto. Le annotazioni sono state scritte e congelate **prima** di eseguire il motore, ma non sono un gold umano indipendente. Il run è una baseline ripetibile, non una certificazione indipendente.
+>
+> **Ultimo aggiornamento.** I numeri sotto vengono dal worker release ricompilato il 2026-10-24 11:50 UTC e dalle batterie rilanciate sullo stesso binario; sostituiscono il run del mattino (worker debug, 12 type warning).
 
 ## T01 — risultato del gold da 2.013 parole
 
-Worker: `BrainRust/target/debug/semantic-engine` · fingerprint `9294f00793b985bb` · due run identici.
+Worker: `BrainRust/target/release/semantic-engine` · fingerprint `9294f00793b985bb` · due run identici.
 
 **27 PASS, 0 FAIL, 4 NEEDS_REVIEW** su 31 check.
 
 | Area | Esito |
 |---|---|
 | Span e contratto | 819 candidati, **0 offset errati**; schema v2; 15 scene |
-| Entità | recall **19/20**, typed recall **18/20**, precision **32/32**; 0 scambi PERSON↔LOCATION |
+| Entità | recall **19/20**, typed recall **18/20**, precision **43/43** menzioni nominate; 0 scambi PERSON↔LOCATION |
 | Entità mancanti | `Vigevano` non estratta; `RIS di Parma` senza un'occorrenza `ORG` |
-| Type warning | **12** surface valide con tipo diverso (`Chiara Poggi`, `Stasi`, `Sempio` come `VISUAL_CONCEPT`; `RIS` come `VISUAL_CONCEPT`) |
+| Type warning | **1** surface valida con tipo diverso (`RIS` come `VISUAL_CONCEPT`; gli alias `Stasi`, `Sempio` e `Chiara Poggi` ora sono `PERSON`) |
 | Date | **11/11**, inclusi `19` e `20 settembre 2007` nella lista coordinata |
 | Fatti Stasi | **5/5**: assoluzione 2009, conferma 2011, annullamento 2013, condanna 2014, definitività 2015 — tutti su Stasi |
 | Conflitti | **0**: `confermò l'assoluzione` non produce più anche `acquitted` |
 | Sempio | 0 fatti `convicted`/`final`; 3 `under_investigation` |
 | Eventi | **8/8** presenti in bullet/micro/evidence |
 | Concetti visuali | **15/15** core coperti da query |
-| Query | 0 non grounded; **1.081 entry, 72,1 per scena**, 1.094 exact (367 uniche), named share 0,14 |
+| Query | 0 non grounded; **1.085 entry, 72,3 per scena**, 1.102 exact (367 uniche), named share 0,14 |
 | Grafici | 0 proposte, 0 item (il gold non ne prevede) |
 | Timeline | `step_sequence` 2009→2011→2013→2014→2015, **5 membri** |
 | Confronti | 0 gruppi `comparison` oltre 2 membri |
@@ -43,6 +45,17 @@ Worker: `BrainRust/target/debug/semantic-engine` · fingerprint `9294f00793b985b
 | Coverage | **5/5** fatti Stasi coperti; 5/10 fatti totali coperti |
 | Micro | 9 summary; il finale dice **«Alberto Stasi: condanna definitiva nel 2015»** |
 | Riproducibilità | 2 run, stesso fingerprint e stesso manifest hash |
+
+## Batterie di accettazione (ultimo run, worker release)
+
+| Batteria | Esito |
+|---|---|
+| `selftest` | 0 FAIL; 1 NEEDS_REVIEW (`density_groups`); 4 NOT_RUN (`charts_grounded`, `story_graph`, `comparison_precision`, `timeline_completeness`) |
+| `run` (`garlasco_full`) | 0 FAIL; 3 NOT_RUN (`charts_grounded`, `comparison_precision`, `timeline_completeness`) |
+| `charts` | **5/5 PASS** (`charts_digits`, `charts_digits_grounded`, `charts_spelled`, `charts_spelled_grounded`, `charts_dates_never_bars`) |
+| 3K report | 0 LOCATION vietate, 0 `comparison` oltre 2 membri, 6 fatti, coverage 5/6 |
+| chronology corrected + gold | `chronology_gold` PASS, `timeline_completeness` PASS, coverage 5/6, 0 FAIL; 2 NOT_RUN |
+| comparison fixture | `comparison_precision` PASS (1 confronto), 0 FAIL |
 
 ## I tre difetti trovati e corretti
 
@@ -72,7 +85,7 @@ Fix in `BrainRust/semantic-core/src/dates.rs`: `coordinated_days_before` riconos
 
 - **136** test `semantic-core` passati;
 - **23** test lib `semantic-engine` passati;
-- **61** test di integrazione `semantic-engine` passati;
+- **62** test di integrazione `semantic-engine` passati;
 - **0 falliti**.
 
 La variabile ICU 70 è necessaria su questa macchina locale; la release canonica resta ICU 72 (Bookworm).
@@ -86,23 +99,24 @@ Fixture `sempio_chiara_poggi_youtube_3k.txt`: **3.127 parole, 14 scene**, finger
 | `RITROVAMENTO`, `Chiara`, `Poggi` come `LOCATION` | **0** |
 | Gruppo `comparison` da 5 membri | **0** gruppi oltre 2 membri |
 | `LOCATION` totali | 5: `Garlasco`, `Pavia` (più le occorrenze interne) |
-| Persone | 13 menzioni `PERSON`: `Chiara Poggi`, `Andrea Sempio`, `Alberto Stasi` |
-| Fatti | 5, tutti su `Alberto Stasi` |
-| Coverage | **5/5** fatti coperti da timeline |
-| Query | 1.349 entry, 1.352 exact (451 uniche) |
+| Persone | 24 menzioni `PERSON` su 6 superfici: `Chiara Poggi`, `Andrea Sempio`, `Sempio`, `Poggi`, `Alberto Stasi`, `Stasi` |
+| Fatti | 6: 5 su `Alberto Stasi` + 1 `under_investigation` su `Andrea Sempio` |
+| Coverage | **5/6** fatti coperti da timeline (scoperto: `under_investigation`) |
+| Query | 1.353 entry, 1.361 exact (451 uniche) |
+| Story graph | 11 nodi, 6 edge (6 cross-scene) |
 
 **Caveat:** gli anni 2014/2016/2017/2019/2020 sono nel testo della fixture, non sono un errore del motore. La sequenza documentata 2009–2015 è verificata dalla fixture separata `garlasco_chronology_corrected.txt`.
 
 ## Fixture storica da 2.797 parole
 
-La fixture `garlasco_full.txt` (12 scene) resta un controllo di contratto: 731 menzioni, 6 fatti, **4/6 fatti coperti** (2 non coperti), 1.365 entry di ricerca. Non è un gold: serve a verificare che il contratto regga anche sul copione storico più lungo.
+La fixture `garlasco_full.txt` (12 scene) resta un controllo di contratto: 731 menzioni, 7 fatti, **5/7 fatti coperti** (2 non coperti), 1.367 entry di ricerca; story graph 15 nodi/7 edge (5 cross-scene). Non è un gold: serve a verificare che il contratto regga anche sul copione storico più lungo.
 
 ## Chronology corrected — run di controllo
 
 `custom --text-file garlasco_chronology_corrected.txt --gold garlasco_chronology_gold.json`:
 
 - **PASS** `chronology_gold`: `[2009 acquitted, 2011 acquittal_confirmed, 2013 annulled_with_remand, 2014 convicted, 2015 final]`;
-- **PASS** `entity_linking`, `timeline_completeness`, `visual_coverage` 5/5, `story_graph` 10 nodi/5 edge;
+- **PASS** `entity_linking` (24 persone, 5 luoghi), `timeline_completeness`, `visual_coverage` 5/6, `story_graph` 11 nodi/6 edge, `search_feedback` 1.353 entry (ladder 4 rung);
 - **NOT_RUN** `charts_grounded` (nessuna proposta chart) e `comparison_precision` (nessun gruppo comparison).
 
 ## T05 — corpus score: cosa è eseguibile e cosa no
@@ -112,7 +126,7 @@ La fixture `garlasco_full.txt` (12 scene) resta un controllo di contratto: 731 m
 - `charts_digits`, `charts_spelled`, `charts_dates_never_bars`: **5/5 PASS**;
 - concetti visuali core sul gold 2.013: **15/15**;
 - query grounding: **0/4.358** non grounded;
-- corpus 3K: 1.349 entry, 1.352 exact (451 uniche), coverage **5/5**, 0 LOCATION vietate.
+- corpus 3K: 1.353 entry, 1.361 exact (451 uniche), coverage **5/6**, 0 LOCATION vietate.
 
 **Non eseguito:**
 
@@ -121,8 +135,8 @@ La fixture `garlasco_full.txt` (12 scene) resta un controllo di contratto: 731 m
 ## Cosa resta NEEDS_REVIEW
 
 1. **Provenienza**: il gold è ricostruito, non indipendente.
-2. **Type warning (12)**: le forme brevi `Stasi`/`Sempio` e alcune occorrenze di `Chiara Poggi` sono `VISUAL_CONCEPT` invece di `PERSON`; `RIS` è `VISUAL_CONCEPT` invece di `ORG`; `Vigevano` manca. Non sono scambi PERSON↔LOCATION.
-3. **Volume query**: 1.081 entry e 4.358 query per 2.013 parole, 72,1 per scena. Il grounding è perfetto, ma serve un budget/top-N o una deduplicazione per identità.
+2. **Type warning (1)**: `RIS` è `VISUAL_CONCEPT` invece di `ORG`; `Vigevano` manca. Gli alias `Stasi`/`Sempio` e le occorrenze di `Chiara Poggi` ora sono `PERSON` (12 → 1). Non sono scambi PERSON↔LOCATION.
+3. **Volume query**: 1.085 entry e 4.382 query per 2.013 parole, 72,3 per scena. Il grounding è perfetto, ma serve un budget/top-N o una deduplicazione per identità.
 4. **Named share 0,14**: solo il 14% delle exact mention uniche nomina un'entità/concetto del gold; i concetti visuali generici non sono annotati, quindi non è una precision umana.
 
 ## Distanza aggiornata
@@ -133,11 +147,11 @@ La fixture `garlasco_full.txt` (12 scene) resta un controllo di contratto: 731 m
 | **2. Fatti oltre legale/facility** | Invariato: il gold misura il dominio legale. I tre fix erano attribuzione/parsing, non generalità. |
 | **3. Loop fino al video** | Invariato: planner `failed/retry`, chart→video e certificazione del render non sono esercitati. |
 
-La frase secca: **il motore è più misurabile e ha tre difetti in meno; non è ancora più generale.** La baseline ora distingue chiaramente cosa è rotto (type consistency e budget query) da cosa è solo non ancora annotato (corpus indipendente).
+La frase secca: **il motore è più misurabile e ha tre difetti in meno; non è ancora più generale.** La baseline ora distingue chiaramente cosa resta aperto (un type warning e il budget query) da cosa è solo non ancora annotato (corpus indipendente).
 
 ## Prossimi passi
 
-1. **Coerenza di tipo**: alias persona (`Stasi`, `Sempio`) sempre `PERSON`; cue `RIS` come `ORG`; `Vigevano` come `LOCATION`.
+1. **Coerenza di tipo**: cue `RIS` come `ORG`; `Vigevano` come `LOCATION`. Gli alias persona sono già risolti.
 2. **Budget query**: top-N per scena o dedup per identità; misurare la pertinenza su un campione etichettato.
 3. **Corpus**: annotare altri 2–3 copioni per trasformare la baseline in un vero score T05.
 4. **Generalità**: schema evento/ruolo/predicato oltre i pack legali/facility.
@@ -147,22 +161,24 @@ La frase secca: **il motore è più misurabile e ha tre difetti in meno; non è 
 
 ```bash
 cd BrainRust
-RUST_ICU_MAJOR_VERSION_NUMBER=70 cargo test -p semantic-core -p semantic-engine
-RUST_ICU_MAJOR_VERSION_NUMBER=70 cargo build -p semantic-engine --bin semantic-engine
+RUST_ICU_MAJOR_VERSION_NUMBER=70 cargo test -p semantic-core -p semantic-engine --release
+RUST_ICU_MAJOR_VERSION_NUMBER=70 cargo build --release -p semantic-engine
 
 cd ../refactored
-python3 semantic_acceptance/garlasco_2013_gold_score.py \
-  --worker ../BrainRust/target/debug/semantic-engine --repeat 2
+W="../BrainRust/target/release/semantic-engine"
+python3 semantic_acceptance/garlasco_2013_gold_score.py --worker "$W" --repeat 2
+python3 semantic_acceptance/garlasco_3k_report.py --worker "$W"
 
-python3 semantic_acceptance/garlasco_3k_report.py \
-  --worker ../BrainRust/target/debug/semantic-engine
+python3 semantic_acceptance/semantic_today_acceptance.py selftest --worker "$W"
+python3 semantic_acceptance/semantic_today_acceptance.py run --worker "$W"
+python3 semantic_acceptance/semantic_today_acceptance.py charts --worker "$W"
 
-python3 semantic_acceptance/semantic_today_acceptance.py charts \
-  --worker ../BrainRust/target/debug/semantic-engine
-
-python3 semantic_acceptance/semantic_today_acceptance.py custom \
-  --worker ../BrainRust/target/debug/semantic-engine \
+python3 semantic_acceptance/semantic_today_acceptance.py custom --worker "$W" \
   --text-file semantic_acceptance/fixtures/garlasco_chronology_corrected.txt \
   --scene-words 220 \
   --gold semantic_acceptance/fixtures/garlasco_chronology_gold.json
+
+python3 semantic_acceptance/semantic_today_acceptance.py custom --worker "$W" \
+  --text-file semantic_acceptance/fixtures/comparison_precision.txt \
+  --scene-words 220
 ```

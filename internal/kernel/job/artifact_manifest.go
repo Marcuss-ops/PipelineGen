@@ -19,6 +19,7 @@
 package job
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -404,8 +405,9 @@ func (a Artifact) LocalPath() string {
 // publication owner. PersistGeneratedArtifacts stamps both the
 // publishFinalAudio-owned canonical asset identity (audio_asset_id) and the
 // provider's Drive file ID (drive_file_id). Both are required before any
-// generic publication path can safely skip; an asset identity alone does
-// not prove a remote file exists. Such an entry must never be re-shipped —
+// generic publication path can safely skip; the manifest ID must match the
+// canonical audio_asset_id, and the artifact must carry a certified digest
+// and positive byte size. Such an entry must never be re-shipped —
 // neither by the generic Drive publication nor by the worker-side
 // asset-transport upload: the manifest carries the certified identity
 // (id = canonical asset id, SHA256 certified at persist) and the Sender
@@ -422,7 +424,14 @@ func (a Artifact) ReferencesPublishedAudio() bool {
 	}
 	assetID, _ := a.ArtifactMetadata["audio_asset_id"].(string)
 	driveFileID, _ := a.ArtifactMetadata["drive_file_id"].(string)
-	return strings.TrimSpace(assetID) != "" && strings.TrimSpace(driveFileID) != ""
+	assetID = strings.TrimSpace(assetID)
+	driveFileID = strings.TrimSpace(driveFileID)
+	sha := strings.TrimSpace(a.SHA256)
+	if assetID == "" || assetID != strings.TrimSpace(a.ID) || driveFileID == "" || a.SizeBytes <= 0 || len(sha) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(sha)
+	return err == nil
 }
 
 // ToRemote is the canonical emit-side converter from local

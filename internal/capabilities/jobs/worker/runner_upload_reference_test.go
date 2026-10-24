@@ -62,7 +62,8 @@ func TestUploadManifest_ReferencedFinalAudioIsNotReshipped(t *testing.T) {
 				// byte access would fail the required-artifact file check.
 				ID: "asset-published", Kind: scriptpkg.ArtifactKindFinalAudio,
 				Path: filepath.Join(dir, "gone", "final_audio.m4a"), Filename: "final_audio.m4a",
-				MIMEType: "audio/mp4", SHA256: "sha-of-master", Required: true,
+				MIMEType: "audio/mp4", SizeBytes: 4096,
+				SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Required: true,
 				ArtifactMetadata: map[string]any{
 					"audio_asset_id": "asset-published",
 					"drive_file_id":  "drive-master",
@@ -115,7 +116,7 @@ func TestUploadManifest_ReferencedFinalAudioIsNotReshipped(t *testing.T) {
 func TestUploadManifest_UnreferencedFinalAudioStillFailsClosedOnMissingFile(t *testing.T) {
 	dir := t.TempDir()
 	for name, meta := range map[string]map[string]any{
-		"no reference at all":        nil,
+		"no reference at all":         nil,
 		"asset id only (no drive id)": {"audio_asset_id": "asset-x"},
 		"reference but no digest":     {"audio_asset_id": "asset-x", "drive_file_id": "drive-x"},
 	} {

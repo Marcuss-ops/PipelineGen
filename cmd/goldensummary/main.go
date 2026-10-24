@@ -82,6 +82,10 @@ func main() {
 	for _, sample := range batchSamples {
 		allSamples = append(allSamples, sample.Attempt)
 	}
+	// Cache timings are measured per queue attempt, including fused batches;
+	// keep them in the run-level timing block without counting a batch as an
+	// additional semantic overlay.
+	summary.CacheTiming = rendermetrics.BuildGoldenSummary(allSamples).CacheTiming
 	from, to := windowBounds(allSamples)
 	windowSeconds := sampleWindowSeconds(allSamples)
 	completedItems := completedOverlayItemCount(renderItems)
@@ -97,6 +101,7 @@ func main() {
 		OverlayLinksDrive:    links,
 		PerItemRenderService: summary.PerItemServiceMS,
 		PerClass:             summary.PerClass,
+		CacheTiming:          summary.CacheTiming,
 		TotalServiceMS:       summary.TotalServiceMS,
 		UnknownClass:         summary.UnknownClass,
 		OverlayRenderBatches: len(batches),

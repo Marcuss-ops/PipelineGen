@@ -251,7 +251,8 @@ func TestExtractStagedArtifacts_FinalAudioHasSinglePublicationOwner(t *testing.T
 		return job.Artifact{
 			ID: id, Kind: job.ArtifactKindFinalAudio,
 			Path: "/tmp/pipelinegen/jobs/job_master/output/final_audio.m4a", Filename: "final_audio.m4a",
-			MIMEType: "audio/mp4", SizeBytes: 4096, SHA256: "sha-of-master", Required: true,
+			MIMEType: "audio/mp4", SizeBytes: 4096,
+			SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Required: true,
 			ArtifactMetadata: meta,
 		}
 	}
