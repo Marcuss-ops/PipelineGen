@@ -378,14 +378,6 @@ func (e *QueueRenderEnqueuer) renderCacheEpochValue() string {
 	return OverlayRenderCacheEpoch()
 }
 
-// lookupOverlayRenderCache performs the hit path with its failure posture:
-// errors are metrics, never run failures. A cached artifact is sanitized so
-// this run never replays the producing run's worker phase timings as its own.
-func (e *QueueRenderEnqueuer) lookupOverlayRenderCache(ctx context.Context, key OverlayRenderCacheKey) (*RenderArtifact, bool) {
-	artifact, hit, _ := e.lookupOverlayRenderCacheTimed(ctx, key)
-	return artifact, hit
-}
-
 type overlayRenderCacheTiming struct {
 	lookup  time.Duration
 	probe   time.Duration
@@ -450,12 +442,6 @@ func (e *QueueRenderEnqueuer) lookupOverlayRenderCacheTimed(ctx context.Context,
 	timing.outcome = "hit"
 	observability.OverlayRenderCacheTotal.WithLabelValues("hit").Inc()
 	return artifact, true, timing
-}
-
-// storeOverlayRenderCache records a certified render. A storage error is
-// logged and counted; it never fails a render that already succeeded.
-func (e *QueueRenderEnqueuer) storeOverlayRenderCache(ctx context.Context, key OverlayRenderCacheKey, artifact *RenderArtifact) {
-	_, _ = e.storeOverlayRenderCacheTimed(ctx, key, artifact)
 }
 
 func (e *QueueRenderEnqueuer) storeOverlayRenderCacheTimed(ctx context.Context, key OverlayRenderCacheKey, artifact *RenderArtifact) (time.Duration, string) {
