@@ -2,8 +2,12 @@ package stockintelligence
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/stretchr/testify/require"
 )
 
@@ -272,6 +276,114 @@ func (c *countingLocal) SearchLocal(_ context.Context, _ string, _ int) ([]Candi
 
 func assetID(i int) string {
 	return "local-" + itoa(i)
+}
+
+// TestFallbackSkippedWhenProviderUnavailable pins the waste-cut guard: when
+// the provider fallback is STRUCTURALLY unavailable (no query can ever
+// answer), Resolve must skip the fallback and complete local-first with an
+// honest result (0 live requests + the skip recorded in FallbackReason)
+// instead of failing the segment on a doomed query.
+func TestFallbackSkippedWhenProviderUnavailable(t *testing.T) {
+	localCands := []Candidate{
+		{AssetID: "local-0", Label: "hummus", GenericSimilarity: 0.4, OwnerSegmentID: "seg-0"},
+		{AssetID: "local-1", Label: "hummus", GenericSimilarity: 0.5, OwnerSegmentID: "seg-0"},
+	}
+	provider := &stubProvider{err: fmt.Errorf("registry probe: %w", ErrProviderUnavailable)}
+	resolver, err := NewResolver(stubLocalSearch{cands: localCands}, stubHydrator{}, provider, stubSampler)
+	require.NoError(t, err)
+
+	res, err := resolver.Resolve(context.Background(), ResolveRequest{
+		SegmentID: "seg-0", Subject: "hummus", Query: "hummus",
+	})
+	require.NoError(t, err, "a structurally unavailable provider must not fail the resolve")
+	require.Equal(t, 0, res.ProviderLiveRequests)
+	require.Equal(t, 2, res.LocalCandidateCount, "local truth must survive the skipped fallback")
+	require.Contains(t, res.FallbackReason, "provider fallback skipped", "the skip must be recorded, never silent")
+	require.Equal(t, "local-1", res.WinnerAssetID, "the winner must be picked from the local set")
+	require.Equal(t, 1, provider.calls, "exactly one classified attempt; no retry of a doomed query")
+}
+
+// TestFallbackSkippedWhenProviderNotRegistered pins the classification of
+// the registry's own not-registered sentinel as structural unavailability,
+// even when it reaches the resolver wrapped by intermediate adapters.
+func TestFallbackSkippedWhenProviderNotRegistered(t *testing.T) {
+	provider := &stubProvider{err: fmt.Errorf("stockintelligence: provider search: %w", scriptports.ErrVidRushProviderNotFound)}
+	resolver, err := NewResolver(stubLocalSearch{}, stubHydrator{}, provider, stubSampler)
+	require.NoError(t, err)
+
+	res, err := resolver.Resolve(context.Background(), ResolveRequest{
+		SegmentID: "seg-0", Subject: "hummus", Query: "hummus",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 0, res.ProviderLiveRequests)
+	require.Contains(t, res.FallbackReason, "provider fallback skipped")
+	require.Empty(t, res.WinnerAssetID, "no candidates means no winner — never fabricated")
+}
+
+// TestTransientProviderFailureStillFailsClosed pins the boundary of the
+// guard: a REGULAR provider failure (network, rate limit) is not structural
+// unavailability and must keep failing the resolve closed.
+func TestTransientProviderFailureStillFailsClosed(t *testing.T) {
+	provider := &stubProvider{err: errors.New("artlist: network down")}
+	resolver, err := NewResolver(stubLocalSearch{}, stubHydrator{}, provider, stubSampler)
+	require.NoError(t, err)
+
+	_, err = resolver.Resolve(context.Background(), ResolveRequest{
+		SegmentID: "seg-0", Subject: "hummus", Query: "hummus",
+	})
+	require.Error(t, err, "a transient provider failure must stay fail-closed")
+	require.Contains(t, err.Error(), "provider search")
+}
+
+// availabilityRegistryStub is a RegistrySearch that also exposes the
+// optional Provider lookup: its Search must never be reached when the
+// provider is structurally unregistered.
+type availabilityRegistryStub struct {
+	providerErr error
+	searchCalls int
+}
+
+func (s *availabilityRegistryStub) Search(context.Context, string, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.searchCalls++
+	return nil, nil
+}
+
+func (s *availabilityRegistryStub) Provider(string) (scriptports.VidRushAssetProvider, error) {
+	return nil, s.providerErr
+}
+
+// registrySearchOnlyStub satisfies RegistrySearch alone (no availability
+// probe), pinning the legacy dispatch path for fakes and future adapters.
+type registrySearchOnlyStub struct{ searchCalls int }
+
+func (s *registrySearchOnlyStub) Search(context.Context, string, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.searchCalls++
+	return nil, nil
+}
+
+// TestRegistryProviderClientProbesAvailabilityBeforeQuery pins the quick
+// guard on the registry client: when the provider is not registered the
+// typed ErrProviderUnavailable comes back WITHOUT any query being issued.
+func TestRegistryProviderClientProbesAvailabilityBeforeQuery(t *testing.T) {
+	registry := &availabilityRegistryStub{providerErr: scriptports.ErrVidRushProviderNotFound}
+	client := RegistryProviderClient{Registry: registry}
+
+	_, err := client.SearchProvider(context.Background(), "hummus", 5)
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrProviderUnavailable)
+	require.Equal(t, 0, registry.searchCalls, "an unregistered provider must never receive a query")
+}
+
+// TestRegistryProviderClientWithoutProbeStillDispatches pins that a
+// RegistrySearch without the optional availability capability keeps the
+// legacy dispatch path (no behavior change for existing fakes/adapters).
+func TestRegistryProviderClientWithoutProbeStillDispatches(t *testing.T) {
+	registry := &registrySearchOnlyStub{}
+	client := RegistryProviderClient{Registry: registry}
+
+	_, err := client.SearchProvider(context.Background(), "hummus", 5)
+	require.NoError(t, err)
+	require.Equal(t, 1, registry.searchCalls)
 }
 
 func itoa(i int) string {

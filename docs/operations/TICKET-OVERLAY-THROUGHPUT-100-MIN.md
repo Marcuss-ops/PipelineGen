@@ -506,6 +506,223 @@ Per ogni run salvare almeno: `run_id`, input hash, revisione, configurazione e w
 - [x] Almeno un job storico valutato: confronto documentato con fixture equivalente (golden derivato da `08_fonti_media` con differenze dichiarate; ricostruzione misurata della batch storica in «Evidenza storica»).
 - [x] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili. Scomposizione in «Baseline misurata e dove si perde tempo»; residuo dichiarato: `drive_publish` sincrono dei compositi final-job e micro-fasi non ancora proiettate.
 - [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4, 23/10) — **gate NON raggiunto**, manca un fattore ~2,1. Le run v13/v14 (34,7–39,4/min) misurano la fix 1 e la prima configurazione 3 lane; v16/v18 sono outlier da finestra degradata. La strada preferita resta il taglio del servizio seriale per-item (2,75 s → ~1,3 s con le fix 1-2-4-5) ≈ **94 item/min con le sole 2 lane certificate**; vedi «Profilazione per-item del servizio render — 23 ottobre 2026». Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon, con certificazione 3 lane (`vramprobe`) solo dal 23/10 (v18 non confrontabile). **Gate ridefinito 23/10 (metrica per classe):** vedi «Metrica per classe e ridefinizione del gate» sotto: il numero `item/min` da solo non è più un accettabile report di gate, perché dipende dal mix di classi del piano materializzato.
+
+### Implementazione Go del batching — 24/10
+
+PipelineGen ora può pianificare finestre compatibili per scena e inviare una
+composizione multi-item alla coda RenderingGen esistente. Il risultato mantiene
+`item_id` per ogni overlay e aggiunge un riferimento batch con artefatto,
+finestra, scena e membri. La cache content-addressed include ordine e identità
+di tutti gli item; `goldensummary` conta i membri semantici e riporta a parte il
+costo osservato del render batch. Mappe e gruppi chain restano fuori dal fused
+path. L'handoff finale ricostruisce e valida identità, membership e finestra del
+batch, ma rifiuta di inviarlo in `mode=replace` senza un binding per-finestra
+al video base canonico. Un batch già consumato interamente come clip di una
+scena phrase-only resta ammesso; non genera una seconda sostituzione.
+
+La chiave dell'identità batch include anche il render key di ciascun membro:
+un edit che riusa `PlanID` e `item_id` produce un nuovo `BatchID` e non può
+collidere con il riferimento editoriale precedente. Quando il cache store e il
+prober sono configurati, ogni batch certificato viene registrato prima della
+pubblicazione; al resume il planner deterministico ricrea gli stessi gruppi,
+riusa i batch ancora validi e sottopone a rendering quelli senza artefatto
+certificato. Questo fornisce retry per batch sul percorso della cache esistente,
+ma non sostituisce un checkpoint parziale del risultato mentre il parent è
+ancora in esecuzione; inoltre un errore di storage/cache degrada al render
+normale e può quindi ripetere lavoro già completato.
+La prova `TestOverlayRenderCacheRetrySubmitsOnlyTheBatchThatFailed` copre il
+caso multi-batch: dopo aver certificato il primo batch e iniettato un errore di
+submit sul secondo, il resume riusa il primo artefatto e sottopone soltanto il
+batch senza artefatto certificato. Il comportamento dipende dalla disponibilità
+dell'indice cache e dal probe di presenza object-store già cablati in wiring.
+La stessa verifica `-race` ha trovato che i child phrase modificavano
+`MotionParams` condivisi con il piano padre durante la preparazione concorrente
+di batch differenti; `separateOverlayItemPlan` ora clona la mappa prima di
+impostare `enter_frames`. I due test di retry e handoff batch passano con
+`go test -race`.
+
+Nei piani `RequireDriveBeforeReturn` il grouping resta disattivato anche quando
+è presente un background video in loop: il campo `Background` non prova che
+quell'asset sia il clip canonico selezionato per la finestra. La selezione
+canonica dei clip oggi appartiene al payload finale e non viene anticipata nel
+piano overlay; inoltre `Source` non porta un source-time offset, quindi
+riusarlo in batch riavvierebbe il clip dal frame zero. Attivare il fused path
+senza il binding corretto potrebbe sostituire il footage con il canvas o con il
+tratto sbagliato. Il supporto di handoff batch è fail-closed anche al confine
+finale: una referenza ripristinata o costruita manualmente non può aggirare il
+blocco e sostituire il footage con un canvas non legato alla sorgente. Il
+percorso di produzione final-job richiede ancora il binding per finestra a
+monte. Il gate
+verifica ora anche che ogni membro del batch abbia una sola referenza semantica
+che punta allo stesso job/batch, senza un artefatto MP4 individuale concorrente;
+batch con riferimenti mancanti, duplicati o incoerenti vengono rifiutati prima
+di costruire il payload `mode=replace`. Prima di abilitare la fusione
+final-job, il piano condiviso deve congelare per finestra almeno `scene_id`,
+asset/base SHA-256 e source-in/source-out; renderer e Master devono consumare
+quella stessa selezione e lo stesso offset. L'artefatto da sostituire deve
+essere opaco e già composto con quel footage, oppure il Master deve accettare
+esplicitamente il base binding e comporre la finestra. Finché il contratto non
+è implementato e verificato, PipelineGen respinge i batch non consumati come
+clip phrase-only invece di inviarli in `mode=replace`.
+
+Le mappe restano singleton anche nel percorso ordinary: la generazione del
+video dinamico avviene prima della composizione RenderingGen. È stata aggiunta
+una cache filesystem content-addressed opzionale (`VELOX_MAP_VIDEO_CACHE_DIR`)
+per riusare proprio quel MP4 tra retry/rerun: chiave sul payload risolto,
+SHA-256 dello script, profilo encoder, dimensioni di output ed epoch (`VELOX_MAP_VIDEO_CACHE_EPOCH`);
+ogni hit verifica hash e dimensione e attraversa ancora i controlli del
+contratto telemetrico prima dell'handoff. Il cache root deve essere persistente
+per sopravvivere ai process restart; il pruning rimuove prima i video più
+vecchi e mantiene il totale entro 10 GiB per default
+(`VELOX_MAP_VIDEO_CACHE_MAX_BYTES`); l'epoch va cambiato quando cambiano
+dipendenze Python, ffmpeg o driver che non sono riflessi dallo script e dal
+profilo. La cache è best-effort e non ancora certificata su map golden;
+dimensionamento del limite e persistenza del volume restano prerequisiti
+operativi prima di abilitarla in produzione. Il riuso delle tile/plate resta
+distinto dal riuso dell'artefatto video.
+
+Canary GPU cartografici 24/10, scena editoriale offline `ed_saudi_base`, RTX
+A4000, OpenCV OpenCL + NVENC, 72 frame H.264 decodificabili, zero download di
+rete e zero fallback. Prima baseline a 1280×720: 6,25 s produzione frame
+(11,5 fps), 6,48 s render+encode, 12,76 s end-to-end; plate prepare 3,18 s.
+Modifiche locali: coda OpenCL 16 frame, memoryview senza seconda copia BGR,
+blur delle ombre ristretto al ROI (pixel-identico al full-frame) e upload dei
+testi/ombre soltanto nel loro ROI. La versione ottimizzata produce gli stessi
+72 frame pixel-per-pixel e scende a 3,43 s (21,0 fps), 3,63 s render+encode,
+6,09 s end-to-end. Test: `test_geo_documentary`, `test_geo_places` e
+`test_render_dynamic_map_payload`, 39 PASS. Profilo baseline: 55 blur Pillow
+full-frame costavano 2,60 s; dopo il ROI questo costo non domina più. Una
+prova 1080p/24 con cache tile calda completa 72 frame in 5,17 s (13,9 fps),
+render+encode 5,42 s, end-to-end 8,50 s; plate 0,98 s e 1.334 hit disco.
+Alzare il batch OpenCL da 16 a 32 è risultato più lento (13,6 fps) ed è stato
+scartato. Queste prove non sono confrontabili al golden 3 fps: risoluzione,
+scena, durata e carico differiscono. Il percorso resta Python/OpenCL con
+readback host; per superare il limite per-frame attuale serve il porting del
+sampler/compositor nel render graph C++ di Chronon3d.
+
+Rerun 720p del 24/10 dopo il ripristino del percorso ROI: 72 frame in 3,90 s
+(18,5 fps), render+encode 4,09 s, wall del renderer 6,72 s. La variabilità
+rispetto ai 3,43 s precedenti è visibile anche con lo stesso input e tile
+ricostruite localmente; non la tratto come regressione o guadagno senza più
+ripetizioni controllate. È stato provato anche l'accumulo CPU dei mask per
+ridurre i composite OpenCL: è sceso a 13,2 fps e la modifica è stata rimossa.
+Il RenderPlan Chronon esistente ammette layer immagine con keyframe di
+posizione, scala e opacità; la direzione implementativa è campionare plate
+persistenti come layer Vulkan animati dalla camera, poi portare pin, forme e
+testi nello stesso graph. Non è ancora collegato al render job PipelineGen,
+quindi il port nativo non è completato.
+
+Verifica cross-repository del 24/10: in PipelineGen passano i pacchetti
+`internal/capabilities/scripts/...`, `internal/platform/renderinggen`,
+`internal/app/wiring`, `internal/capabilities/assets/providers/artlist`,
+`internal/capabilities/scripts/adapters/processor`,
+`internal/capabilities/voiceover/service`, `internal/kernel/observability` e
+`internal/platform/audio`. In RenderingGen passano
+`renderinggen/internal/processor`, `renderinggen/internal/metricnames` e
+`renderinggen/internal/schemaval`; il test Postgres
+`TestArtifactPersistedOnComplete` passa. Il runtime Go è stato riallineato ai
+cataloghi condivisi: le cinque motion `phrase_highlight_*` usano le ricette
+documentarie canoniche; `classic_phrase` risolve il font Playfair regular
+incluso nel bundle; i cinque motion Apple V2 sono registrati (108 phrase, 47
+Apple V2). I gate di parità restano attivi. Verifiche mirate:
+`go test ./internal/motion ./internal/overlay ./internal/processor` PASS. Su
+RTX A4000, `TestClassicPhrasePresetExecutesOnStrictGPU` e il render GPU di
+`phrase_highlight_evidence_red` sono PASS con Vulkan/NVENC, 48 frame
+GPU-native, zero readback CPU e zero fallback software. La suite completa
+`go test ./...` è stata interrotta dopo oltre quattro minuti senza output
+aggiuntivo, mentre la workstation eseguiva altre suite e processi FFmpeg; non
+le attribuisco un esito. Queste verifiche non certificano throughput live a
+100/min, parità pixel/audio su golden né l'handoff Master con base-video.
+
+La stima del planner usa un fit sui dati v15 in `render_attempt_analytics`
+(parent run `run_da494991-1b8d-47c6-aaac-dd9ec0473a4a`): 39 item non-map,
+servizio `render_ms` contro `frame_count`, fit lineare setup **1.036 s** +
+**15,369 ms/frame** (R² 0,317; RMSE 558 ms). Il fit è una stima debole tra
+classi: il planner richiede almeno il 10% di risparmio modellato e limita
+item/window, ma serve ancora una run golden fused per misurare l'errore sul
+costo dei batch. Le finestre per item usano la normalizzazione di durata
+condivisa dal percorso single-item.
+Il flag `VELOX_SCRIPTS_OVERLAY_WINDOW_BATCHING` consente rollback. Non si deve
+attribuire a questa implementazione un guadagno di throughput prima di una run
+golden confrontabile. RenderingGen già supporta piani con più item nei suoi
+stadi `PrepareJob → RunGPU → FinalizeJob` e ora registra il numero degli item
+semantici e se il job contiene una composizione multi-item; non è stato
+introdotto un wire job parallelo. La certificazione richiede ancora di verificare sul risultato
+renderizzato che ogni item del piano sia visibile, insieme a audio, timestamp,
+codec, frame count, SHA-256 e comportamento del worker finale. Per gli asset
+condivisi, il worker già compila e materializza il piano batch in un solo
+`PrepareJob`: `mergeAssets` deduplica i riferimenti compilati per hash/percorso,
+il workspace usa il resolver content-addressed e `prefetchWarmAssets` seleziona
+gli asset del job con deduplica path e limiti globali (3 immagini + 6 video).
+Questo riusa il prefetch esistente per il batch senza aggiungere una seconda
+pipeline; i limiti restano quelli del worker attuale.
+Il conteggio semantico viene emesso dallo stesso passaggio di compilazione che
+abbassa gli item; non si rilegge il JSON del piano solo per telemetria. Gli
+import mappa `pipelinegen-map-v2` trasportano inoltre l'`item_id` nel contratto
+e nella provenienza persistita da RenderingGen; il worker mantiene il drain dei
+job `pipelinegen-map-v1` già in coda. La proiezione dell'artefatto in
+PipelineGen conserva la provenienza come JSON raw, senza ridefinirne lo schema.
+L'identità e la finestra del batch sono persistite anche in
+`render_attempt_analytics` da migration 279 (`batch_id`, membri JSON,
+`batch_start_us`, `batch_end_us`); `goldensummary` le usa come fallback se il
+risultato del parent non contiene il riferimento batch.
+Il gate dei
+100/min resta aperto e non misurato.
+
+### Tagli runtime e pipeline mappe — 24/10
+
+Sono stati chiusi anche i tagli Go richiesti per il percorso locale e audio:
+
+- Il rendering video resta locale se non è configurato un publisher Drive; un
+  piano che dichiara `RequireDriveBeforeReturn` continua a fallire chiuso se
+  il publisher non è disponibile. Il `DriveFolderID` resta escluso dal
+  fingerprint del render e dal wire verso RenderingGen, ma resta nel contesto
+  applicativo del publisher.
+- `PersistGeneratedArtifacts` verifica il digest certificato del master,
+  preferisce hard link e usa copia streaming quando necessario; il manifest
+  riutilizza quel digest, senza seconda lettura SHA-256 dell'output.
+- `publishFinalAudio` è l'unico proprietario della pubblicazione canonica del
+  master. Il manifest mantiene `audio_asset_id` e `drive_file_id` come
+  riferimento e il finalizer generico salta il master solo quando entrambi
+  sono presenti. Se un checkpoint storico contiene solo il link, il publisher
+  viene richiamato con la chiave idempotente per recuperare una referenza
+  completa.
+- Il master viene pubblicato appena l'audio è certificato, in parallelo alla
+  finestra di rendering; `audio_finalize` resta dopo il join perché proietta
+  il timeline con gli artefatti overlay definitivi.
+- L'Artlist query non viene costruita quando il provider non ha un consumer
+  disponibile. `script.json` resta il solo artefatto di delivery della
+  generazione: il final job e il builder Google Doc consumano `script_json`.
+  `scenes.json` era una copia di `script.json` → `output.scenes` e non aveva
+  lettori Go, Python o RenderingGen; la persistenza e il relativo upload sono
+  stati rimossi. Il test del manifest ora pinna un solo `script_json` anche
+  quando il risultato include scene e binding voiceover.
+
+Il percorso GPU delle mappe editoriali in ChrononTemplate ora accoda sedici UMat
+prima del readback ordinato, sovrapponendo il setup host delle pose al lavoro
+OpenCL. Il frame finito passa ancora dalla memoria host a FFmpeg: questo taglio
+riduce le sincronizzazioni, ma non è il passaggio zero-copy Vulkan/CUDA. La
+camera fly-to GPU di Chronon/RenderingGen resta il percorso nativo per mappe
+con plate e LOD certificati; le mappe dinamiche raster-deferred continuano a
+usare il renderer dinamico finché sampling, composizioni editoriali e timing
+per pin non hanno un contratto nativo equivalente. Nessun guadagno di FPS o di
+throughput è dichiarato senza una misura sul binario e sul carico distribuiti.
+
+Verifica GPU locale del 24/10: `geo_runtime.py --place Roma --shot-preset dive
+--strict-native` ha renderizzato 240 frame 1920×1080 H.264 a 30 fps in 13,10 s
+totali (18,32 fps end-to-end; 18,69 fps di produzione), con OpenCL NVIDIA,
+NVENC, zero frame di fallback e MP4 decodificabile. Prefetch: 5.054 tile in
+6,46 s, poi 866 tile mancanti in 1,79 s; campione visivo frame 120 corretto.
+È una verifica funzionale con cache fredda e poi calda, non un confronto prima/
+dopo né una certificazione del binario di produzione; quindi non chiude il gate
+100/min. La prova ha trovato e corretto il contratto mancante `wayback_release`
+tra wrapper e `DynamicTilePyramid` (release esplicita e namespace cache isolato).
+Il compositing route-glow ora riusa il buffer thread-local e limita clear/blend
+alla regione precedente/attuale; i 13 test documentali cartografici passano.
+L'integrazione del sampling dinamico nel graph nativo Chronon resta aperta: il
+render corrente attraversa ancora la memoria host per consegnare i frame a
+FFmpeg, mentre il percorso native FullGraph zero-copy non è ancora cablato a
+questo sampler editoriale.
 - [x] Report prima/dopo per ogni ottimizzazione, con condizioni di esecuzione comparabili e nessuna regressione nascosta da overlay falliti o non contati. Fatto per la prima ottimizzazione (2° daemon + pool 2): v8/v9/v10 (prima) vs v11 (dopo), 38/38 COMPLETED e 38 link Drive, vedi «Ottimizzazione: seconda lane di render». La baseline «prima» è registrata (v8/v9/v10); il report «dopo» si compila alla prima ottimizzazione applicata.
 
 ## Nota sul target
@@ -602,9 +819,11 @@ cache calda).
 
 Sezione aggiunta come registro di una sessione di lavoro sul repo Chronon3d
 (working tree, non committato — stessa convenzione della fix 2). Le voci
-«Idee di paradigma» e «Sprechi/processi eliminabili» sono **proposte non
-approvate**, registrate qui per discussione su richiesta esplicita; nessuna
-viene trattata come decisione presa.
+«Idee di paradigma» e «Sprechi/processi eliminabili» erano **proposte non
+approvate** al momento della registrazione; **le idee di paradigma sono state
+approvate dall'utente il 24/10/2026** (ticket aperti, vedi la sezione sopra),
+mentre la checklist «Sprechi/processi eliminabili» resta materiale di
+proposta.
 
 ### Stato fix list (repo Chronon3d, working tree)
 
@@ -625,10 +844,25 @@ sorgente**, cioè la stessa radice del fix 6. Di conseguenza il percorso
 realistico a ~1,3 s/item passa per fix 6 + taglio render loop, non per una
 «cache prepare» aggiuntiva.
 
-### Idee di paradigma proposte — NON APPROVATE, da discutere
+### Idee di paradigma proposte — APPROVATE 24/10/2026, ticket aperti
 
 Dieci cambi di modello (non micro-fix) che la sessione di analisi ha prodotto
 verso il gate 100/min. Ordine per (guadagno atteso × dipendenze).
+
+**Aggiornamento 24/10/2026:** l'utente ha approvato la serie di paradigmi e
+aperto i ticket operativi in `docs/operations/`:
+
+| Ticket | Paradigma | Gate principale |
+| --- | --- | --- |
+| `TICKET-STATIC-OVERLAY-DURATION-INVARIANT.md` (P1) | costo overlay statico O(1) nella durata | card 30 s ≤ 1,2× card 3 s, parità pixel golden |
+| `TICKET-RESIDENT-RENDER-ENGINE.md` (P2) | motore residente (unifica fix 4/5/6) | overhead fisso per-item ≤ 100 ms su 100 item |
+| `TICKET-RENDER-AHEAD-SPECULATIVE.md` (P3) | render-ahead con commit per hash | overlap generate×render ≥ 50% nelle trace per-scena |
+| `TICKET-BATCH-SUPERJOB.md` (P4) | un piano = una sessione render | costo batch-10 ≤ 40% del singolo; servizio ≤ 1,1 s/item |
+| `TICKET-MANIFEST-IDENTITY.md` (P5) | identità per manifest (fine MP4-per-item) | A/B parità pixel/audio prima della demolizione |
+| `Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md` (B2→B1→B3) | executor depth + overlay persistente + MTSDF single-pass | gate sidecar già nello spec |
+
+Ordine esecutivo: **B2 → P1 → P2 → misura golden live (chiude il gate
+100/min sulle sole 2 lane) → P3 → P4/P5**.
 
 1. **Un piano = una sessione render** (al posto di un job per item). Ogni item
    paga oggi startup (186 ms) + open/close encoder (259 ms) + decode piano +
@@ -741,3 +975,50 @@ tracciabili, retry idempotenti, output per-classe invariati e wall misurato su t
 run. Pubblicare throughput per classe (frase, immagine/entity, numero, mappa),
 oltre al totale: una mappa da decine di secondi non deve essere mediata con una
 frase breve per dichiarare raggiunto il gate.
+
+---
+
+## Verifica 24/10/2026 — criteri raggiungibili in questo checkout
+
+Questa sezione separa esplicitamente ciò che è stato **verificato qui** da ciò
+che richiede una run live, GPU o un altro repository. Il working tree non è
+committato: il binario in esecuzione (`fd489e5c8`, avviato 09:09 UTC) contiene
+planner 100 e render cache, ma **non** le modifiche successive (batching,
+local-only voiceover, taglio della copia audio finale). Per portarle in
+produzione serve ricostruire e riavviare; nessun numero live in questa sezione
+le attribuisce un guadagno non misurato.
+
+### Gate repository eseguiti (tutti verdi)
+
+| Gate | Comando | Esito |
+| --- | --- | --- |
+| Build completa | `go build ./...` | PASS |
+| Formattazione | `gofmt -l .` | nessun file |
+| Vet | `go vet ./...` | PASS |
+| Architettura strict | `go run ./cmd/archcheck --strict` | `passed=true`, `has_hard_gate_hits=false`, 0 violazioni, 75 warning (budget 77) |
+| Foundation | `make verify-foundation` | PASS (gitleaks: no leaks; submodule integrity; `go mod tidy` invariato) |
+| Static | `make verify-static` | PASS (alias overlay rigenerato, vet, build) |
+| Unit fast | `make verify-unit-fast` | 216 pacchetti `ok`, 0 `FAIL` |
+| Componenti cambiati | `make verify-changed-components` | PASS su 21 componenti |
+| Architettura aggregata | `make verify-architecture` | PASS (C2-C=0, C2-E=0) |
+
+### Criteri di accettazione: raggiungibile / non raggiungibile
+
+| Criterio | Raggiungibile ora | Evidenza |
+| --- | --- | --- |
+| Il planner materializza il mix da 100 item | **Sì** | `TestGoldenThroughputMixBudgetAdmitsOneHundredItems` PASS: 50 frasi, 30 immagini, 10 date, 10 mappe |
+| Render cache content-addressed cablata | **Sì** | 11 test `TestOverlayRenderCache*` PASS; `/health` del binario live 09:09: `enabled=true`, `wired=true`, tabella `overlay_render_cache_entries` |
+| Batching finestre deterministico e identità per item | **Sì (unit)** | 5 test `TestPlanOverlayBatchWork*`, `TestFinalJobRejectsBatchReplaceWithoutCanonicalBase`, `TestSeparateOverlayItemsPreservePlanOrderAndIndices` PASS; nessuna certificazione live |
+| Copia streaming dell'audio finale certificato | **Sì (unit)** | `TestCopyCertifiedAudioOverwritesDestinationAndPreservesBytes` PASS; hash sorgente già verificato a monte |
+| Nessuna query Artlist quando il provider è disabilitato | **Sì (unit)** | `TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief` asserisce `ArtlistQueries` vuoto |
+| Voiceover per-item local-only (niente upload Drive nel critical path) | **Sì (unit)** | test voiceover/service e jobs PASS; `timing.json` locale è la SSOT, nessun cleanup Drive senza file remoto |
+| Gate 100 overlay/min misurato su golden live, 3 run, stessa macchina | **No** | Richiede Chronon/RenderingGen, GPU e payload golden; non eseguibile in questo checkout. I numeri restano quelli v15–v18 (47–48/min) |
+| Parità pixel/audio su golden decodificato | **No** | Richiede decode dei golden e re-baseline dichiarato; i test unit non sostituiscono il confronto pixel |
+| P1 durata statica O(1) | **No** | Lavoro Chronon3d (C++), fuori dal working tree Go |
+| P2 motore residente, P4 batch-superjob, P5 manifest identity | **No** | C++ Chronon3d e contratto cross-team col final worker; ticket dedicati, nessuna implementazione in questo checkout |
+
+**Conclusione onesta:** i criteri Go raggiungibili sono chiusi e pinned dai
+gate sopra. Il gate 100/min resta **aperto e non misurato** in questa sessione:
+nessuna modifica di questo working tree deve essere presentata come un guadagno
+di throughput finché non viene ricostruita, riavviata e misurata con il
+contratto di misura (§ «Contratto di misura»).

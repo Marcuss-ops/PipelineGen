@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -49,6 +50,39 @@ func TestPersistGeneratedArtifactsRequiresAndPublishesCertifiedFinalAudio(t *tes
 	}
 	if result.FinalAudio.Path != final.Path || result.FinalAudio.FinalAudioSHA256 != final.SHA256 {
 		t.Fatalf("result final audio was not rebound to persisted artifact: %+v / %+v", result.FinalAudio, final)
+	}
+	if final.Path == source {
+		t.Fatal("final audio must be materialized in the artifact directory, not left at the source path")
+	}
+	copied, readErr := os.ReadFile(final.Path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(copied) != "certified-audio" {
+		t.Fatalf("persisted final audio bytes changed: %q", copied)
+	}
+}
+
+func TestCopyCertifiedAudioOverwritesDestinationAndPreservesBytes(t *testing.T) {
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.m4a")
+	destination := filepath.Join(dir, "final_audio.m4a")
+	payload := bytes.Repeat([]byte("certified-audio-"), 4096)
+	if err := os.WriteFile(source, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(destination, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyCertifiedAudio(source, destination); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("copied final audio differs from the certified source (%d vs %d bytes)", len(got), len(payload))
 	}
 }
 

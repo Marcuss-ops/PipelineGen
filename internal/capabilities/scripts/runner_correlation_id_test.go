@@ -121,7 +121,7 @@ func TestRunnerCorrelationID_RenderValidationFinalAudioDrive(t *testing.T) {
 	require.NoError(t, os.WriteFile(audioPath, []byte("audio"), 0o600))
 	runner.SetCombinedAudioRenderer(lineageAudioRenderer{path: audioPath}) // AssetID "final-audio"
 	runner.SetFinalAudioPublisher(&stubFinalAudioPublisher{result: FinalAudioPublishResult{
-		AssetID: "final-audio-published", DriveLink: "https://drive.google.com/file/d/final-audio",
+		AssetID: "final-audio-published", DriveFileID: "final-audio", DriveLink: "https://drive.google.com/file/d/final-audio",
 	}})
 
 	req := defaultTestRequest()

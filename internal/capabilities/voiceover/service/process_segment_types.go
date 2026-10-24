@@ -56,8 +56,14 @@ type ProcessSegmentCacheDeps struct {
 }
 
 type ProcessSegmentDeps struct {
-	TTSProvider         TTSProvider
-	AudioPostProcessor  AudioPostProcessor
+	TTSProvider        TTSProvider
+	AudioPostProcessor AudioPostProcessor
+	// Publisher is the OPTIONAL delivery port (Drive upload). When nil the
+	// pipeline is LOCAL-ONLY: per-scene audio + timing artifacts are
+	// certified and persisted next to the audio, and NOTHING is uploaded.
+	// The video pipeline wires no publisher (waste-cut 2026-10-24: per-scene
+	// TTS/timing are intermediates, not delivery products); the explicit
+	// delivery surfaces (batch GenerateBatch, UploadIntentUseCase) wire one.
 	Publisher           VoiceoverPublisher
 	VoiceoverRepository persistence.Repository
 	Finalizer           VoiceoverFinalizer
@@ -72,9 +78,6 @@ type ProcessSegmentUseCase struct{ deps ProcessSegmentDeps }
 func NewProcessSegmentUseCase(deps ProcessSegmentDeps) *ProcessSegmentUseCase {
 	if deps.TTSProvider == nil {
 		panic("voiceover.NewProcessSegmentUseCase: TTSProvider is required")
-	}
-	if deps.Publisher == nil {
-		panic("voiceover.NewProcessSegmentUseCase: Publisher is required")
 	}
 	if deps.VoiceoverRepository == nil {
 		panic("voiceover.NewProcessSegmentUseCase: VoiceoverRepository is required")

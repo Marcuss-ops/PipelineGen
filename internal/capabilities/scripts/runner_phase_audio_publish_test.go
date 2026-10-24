@@ -34,8 +34,9 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator(), newStubDocumentPublisher())
 	runner.SetLogger(zap.NewNop())
 	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{
-		AssetID:   "final-audio-canonical-01k",
-		DriveLink: "https://drive.google.com/file/d/abc",
+		AssetID:     "final-audio-canonical-01k",
+		DriveFileID: "abc",
+		DriveLink:   "https://drive.google.com/file/d/abc",
 	}}
 	runner.SetFinalAudioPublisher(publisher)
 
@@ -58,6 +59,7 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 	require.Equal(t, 1, publisher.calls)
 	require.Equal(t, "final-audio-canonical-01k", result.FinalAudio.AssetID, "audio_asset_id must be the canonical asset ID, not the local path")
 	require.Equal(t, "https://drive.google.com/file/d/abc", result.FinalAudio.DriveLink)
+	require.Equal(t, "abc", result.FinalAudio.DriveFileID)
 	require.Equal(t, localAudio, result.FinalAudio.Path, "local path must remain on the internal Path field")
 }
 
@@ -65,7 +67,7 @@ func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T)
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator(), newStubDocumentPublisher())
 	runner.SetLogger(zap.NewNop())
-	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{DriveLink: "https://drive.google.com/file/d/abc"}}
+	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{DriveFileID: "abc", DriveLink: "https://drive.google.com/file/d/abc"}}
 	runner.SetFinalAudioPublisher(publisher)
 
 	req := defaultTestRequest()
@@ -88,4 +90,26 @@ func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T)
 	run, err := repo.Get(context.Background(), "run-2")
 	require.NoError(t, err)
 	require.Equal(t, RunStatusFailed, run.Status, "run must be failed on empty canonical asset ID")
+}
+
+func TestRunnerPublishFinalAudioFailsClosedWithoutDriveFileID(t *testing.T) {
+	repo := newInMemRunRepository()
+	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator(), newStubDocumentPublisher())
+	runner.SetLogger(zap.NewNop())
+	runner.SetFinalAudioPublisher(&stubFinalAudioPublisher{result: FinalAudioPublishResult{
+		AssetID: "canonical-audio", DriveLink: "https://drive.google.com/file/d/abc",
+	}})
+	req := defaultTestRequest()
+	localAudio := filepath.Join(t.TempDir(), "final-audio.m4a")
+	require.NoError(t, os.WriteFile(localAudio, []byte("audio"), 0o600))
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: "run-no-drive-id", Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+	result := &GenerateResult{FinalAudio: &FinalAudioReference{
+		Path: localAudio, FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	}}
+
+	if runner.publishFinalAudio(context.Background(), "run-no-drive-id", req, testRoutingContext(), NewExecutionContext("run-no-drive-id", "corr-3"), result) {
+		t.Fatal("publisher result without DriveFileID must fail closed")
+	}
 }

@@ -49,7 +49,7 @@ func projectMapRendererPhases(ctx context.Context, tilePrefetchMS, platePrepareM
 // renderDynamicMapVideo delegates map motion to the same ChrononTemplate
 // camera/tile-pyramid renderer used by approved dynamic-map overlays. The
 // resulting MP4 enters normal content-addressed staging and publication.
-func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (string, error) {
+func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cacheDirs ...string) (string, error) {
 	if len(plan.Items) != 1 || plan.Items[0].Map == nil {
 		return "", fmt.Errorf("expected exactly one map item")
 	}
@@ -242,18 +242,37 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("write map render input: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, "--input", inputPath,
-		"--output", outputPath, "--summary-output", summaryPath)
-	var output boundedMapRenderOutput
-	cmd.Stdout, cmd.Stderr = &output, &output
-	renderStarted := time.Now()
-	if err := cmd.Run(); err != nil {
+	rendererFingerprint, err := dynamicMapRendererFingerprint(scriptPath, plateGenerator)
+	if err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("dynamic map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
+		return "", fmt.Errorf("identify dynamic map renderer dependencies: %w", err)
 	}
-	if _, err := os.Stat(outputPath); err != nil {
-		_ = os.RemoveAll(tmpDir)
-		return "", fmt.Errorf("dynamic map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
+	cacheKey := dynamicMapVideoCacheKey(encoded, rendererFingerprint, encodeProfile, plan.Width, plan.Height)
+	renderStarted := time.Now()
+	telemetryBytes, cacheHit := loadDynamicMapVideoCache(cacheKey, outputPath, cacheDirs...)
+	if !cacheHit {
+		cmd := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, "--input", inputPath,
+			"--output", outputPath, "--summary-output", summaryPath)
+		var output boundedMapRenderOutput
+		cmd.Stdout, cmd.Stderr = &output, &output
+		if err := cmd.Run(); err != nil {
+			_ = os.RemoveAll(tmpDir)
+			return "", fmt.Errorf("dynamic map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
+		}
+		if _, err := os.Stat(outputPath); err != nil {
+			_ = os.RemoveAll(tmpDir)
+			return "", fmt.Errorf("dynamic map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
+		}
+		telemetryBytes, err = os.ReadFile(summaryPath)
+		if err != nil {
+			return "", fmt.Errorf("read Chronon map telemetry summary: %w", err)
+		}
+	} else {
+		log.Printf("Chronon dynamic map cache hit: key=%s", cacheKey)
+		report.RecordPhase("artifact_cache_hit", 1)
+		if err := os.WriteFile(summaryPath, telemetryBytes, 0600); err != nil {
+			return "", fmt.Errorf("materialize cached Chronon map telemetry: %w", err)
+		}
 	}
 	var summary struct {
 		Schema     string `json:"schema"`
@@ -299,11 +318,7 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 			MemoryHits      int     `json:"prefetch_tiles_memory_hits"`
 		} `json:"plates"`
 	}
-	summaryBytes, err := os.ReadFile(summaryPath)
-	if err != nil {
-		return "", fmt.Errorf("read Chronon map telemetry summary: %w: %s", err, strings.TrimSpace(output.String()))
-	}
-	if err := json.Unmarshal(summaryBytes, &summary); err != nil {
+	if err := json.Unmarshal(telemetryBytes, &summary); err != nil {
 		return "", fmt.Errorf("decode Chronon map telemetry summary: %w", err)
 	}
 	if summary.Schema != "chronon.dynamic-map-telemetry.v1" || summary.Frames < 2 || summary.OutputBytes <= 0 {
@@ -363,7 +378,8 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 		return "", fmt.Errorf("dynamic map has unapproved fallback work: engine_frames=%d tile_fallbacks=%d late_fetches=%d",
 			summary.EngineFallbackFrames, summary.Tile.Fallbacks, summary.Tile.LateFetches)
 	}
-	log.Printf("Chronon dynamic map ready: frames=%d tiles(cache_hit=%d cache_miss=%d downloaded=%d fallback=%d late=%d fetch_ms=%.1f prefetch_ms=%.1f) plates(count=%d bytes=%d compose_ms=%.1f prepare_ms=%.1f required_tiles=%d prefetched=%d) frames_s=%.2f encode_wall_s=%.2f encode_tail_s=%.2f output_bytes=%d process_wall_s=%.2f",
+	log.Printf("Chronon dynamic map ready: cache_hit=%t frames=%d tiles(cache_hit=%d cache_miss=%d downloaded=%d fallback=%d late=%d fetch_ms=%.1f prefetch_ms=%.1f) plates(count=%d bytes=%d compose_ms=%.1f prepare_ms=%.1f required_tiles=%d prefetched=%d) frames_s=%.2f encode_wall_s=%.2f encode_tail_s=%.2f output_bytes=%d process_wall_s=%.2f",
+		cacheHit,
 		summary.Frames, summary.Tile.DiskCacheHits, summary.Tile.DiskCacheMisses,
 		summary.Tile.NetworkFetches, summary.Tile.Fallbacks, summary.Tile.LateFetches,
 		summary.Tile.FetchMS, summary.Tile.PrefetchMS, summary.Plates.PlateCount,
@@ -386,7 +402,9 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	// Same owner-measured phases, projected into the canonical operation
 	// telemetry so the map cost is joinable to the run instead of living only
 	// in the decision report and the worker log.
-	projectMapRendererPhases(ctx, summary.Tile.PrefetchMS, summary.Plates.PrepareMS, summary.RenderEncodeWallS)
+	if !cacheHit {
+		projectMapRendererPhases(ctx, summary.Tile.PrefetchMS, summary.Plates.PrepareMS, summary.RenderEncodeWallS)
+	}
 	if _, err := report.JSON(); err != nil {
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
@@ -416,6 +434,13 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (st
 	if reportDir := strings.TrimSpace(os.Getenv("PIPELINEGEN_MAP_REPORT_DIR")); reportDir != "" {
 		if _, err := scriptoverlay.WriteMapDecisionReport(reportDir, report); err != nil {
 			return "", fmt.Errorf("write map decision report: %w", err)
+		}
+	}
+	if !cacheHit {
+		if err := storeDynamicMapVideoCache(cacheKey, outputPath, telemetryBytes, cacheDirs...); err != nil {
+			// The cache is optional; a write failure must not discard a valid
+			// map artifact or turn a successful render into a failed job.
+			log.Printf("Chronon dynamic map cache store failed: key=%s err=%v", cacheKey, err)
 		}
 	}
 	return outputPath, nil

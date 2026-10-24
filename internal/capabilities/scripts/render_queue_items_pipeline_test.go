@@ -103,6 +103,25 @@ func (c *completingRenderQueueClient) Get(_ context.Context, id string) (RenderQ
 	return RenderQueueJob{ID: id, State: RenderQueueStateCompleted}, nil
 }
 
+type batchRecordingRenderClient struct {
+	mu   sync.Mutex
+	jobs []RenderQueueJob
+}
+
+func (c *batchRecordingRenderClient) Submit(_ context.Context, job RenderQueueJob) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.jobs = append(c.jobs, job)
+	return nil
+}
+
+func (c *batchRecordingRenderClient) Get(_ context.Context, id string) (RenderQueueJob, error) {
+	return RenderQueueJob{
+		ID: id, State: RenderQueueStateCompleted,
+		Artifact: &RenderArtifact{URL: "https://store.example/batch.mp4", SHA256: strings.Repeat("a", 64), SizeBytes: 100, FrameCount: 150},
+	}, nil
+}
+
 // overlayPlanWithPhrases returns the golden plan plus `extra` additional phrase
 // items, so a test can drive more items than the golden plan's three renderable
 // layers.
@@ -194,6 +213,51 @@ func TestMarshalRenderingGenOverlayPlanOmitsGeocodingScopeFromMapPins(t *testing
 	}
 	if len(wire.Items[0].Map.AreaGlowRadiusKM) != 0 {
 		t.Fatal("dynamic-map-only area glow is not supported by the shared semantic renderer contract")
+	}
+}
+
+func TestSeparateOverlayItemsPipelineEnqueuesFusedWindowAndKeepsItemIdentity(t *testing.T) {
+	plan := caprender.GoldenOverlayPlanV1()
+	plan.Items = []capoverlay.OverlayItem{
+		{ID: "phrase-a", SceneID: "scene-a", TemplateID: "IMPORTANT_PHRASE", Kind: "text_phrase", StartMs: 0, EndMs: 3000, Text: "FIRST PHRASE"},
+		{ID: "phrase-b", SceneID: "scene-a", TemplateID: "IMPORTANT_PHRASE", Kind: "text_phrase", StartMs: 2000, EndMs: 5000, Text: "SECOND PHRASE"},
+	}
+	client := &batchRecordingRenderClient{}
+	enqueuer, err := NewQueueRenderEnqueuer(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enqueuer.SetSeparateItemRenders(true)
+	enqueuer.SetOverlayWindowBatching(true)
+	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("enqueue fused overlay window: %v", err)
+	}
+	client.mu.Lock()
+	jobs := append([]RenderQueueJob(nil), client.jobs...)
+	client.mu.Unlock()
+	if len(jobs) != 1 {
+		t.Fatalf("submitted %d jobs, want one fused render", len(jobs))
+	}
+	var wire struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(jobs[0].OverlaySpec, &wire); err != nil {
+		t.Fatalf("decode fused worker plan: %v", err)
+	}
+	if len(wire.Items) != 2 || wire.Items[0].ID != "phrase-a" || wire.Items[1].ID != "phrase-b" {
+		t.Fatalf("worker plan lost semantic IDs/order: %+v", wire.Items)
+	}
+	if len(ref.Items) != 2 || ref.Items[0].ItemID != "phrase-a" || ref.Items[1].ItemID != "phrase-b" {
+		t.Fatalf("render refs lost semantic IDs/order: %+v", ref.Items)
+	}
+	if len(ref.Batches) != 1 || len(ref.Batches[0].ItemIDs) != 2 || ref.Batches[0].Artifact == nil {
+		t.Fatalf("render ref lacks certified batch lineage: %+v", ref.Batches)
+	}
+	if ref.Items[0].BatchID != ref.Batches[0].BatchID || ref.Items[0].Artifact != nil {
+		t.Fatalf("item reference is not linked to the batch artifact: %+v", ref.Items[0])
 	}
 }
 

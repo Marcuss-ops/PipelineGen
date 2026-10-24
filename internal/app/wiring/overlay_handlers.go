@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
@@ -20,6 +19,7 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
+	"golang.org/x/sync/singleflight"
 )
 
 type HandlerSet struct {
@@ -321,15 +321,17 @@ const (
 // zoom once into a durable local cache; the ordinary map compiler then checks
 // the raster window, draws pins/labels/attribution, and renders the camera move.
 type chrononTemplateMapPlateResolver struct {
-	generator string
-	cacheDir  string
-	mu        sync.Mutex
+	generator   string
+	cacheDir    string
+	deferRaster bool
+	flights     singleflight.Group
 }
 
-func newChrononTemplateMapPlateResolver(generator, cacheDir string) *chrononTemplateMapPlateResolver {
+func newChrononTemplateMapPlateResolver(generator, cacheDir string, deferRaster bool) *chrononTemplateMapPlateResolver {
 	return &chrononTemplateMapPlateResolver{
-		generator: strings.TrimSpace(generator),
-		cacheDir:  strings.TrimSpace(cacheDir),
+		generator:   strings.TrimSpace(generator),
+		cacheDir:    strings.TrimSpace(cacheDir),
+		deferRaster: deferRaster,
 	}
 }
 
@@ -389,6 +391,18 @@ func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capoverlay.Map
 	if len(covered) == 0 {
 		log.Printf("chronontemplate map resolver: no zoom covers route from=(%.6f,%.6f) to=(%.6f,%.6f) size=%dx%d", from.Latitude, from.Longitude, to.Latitude, to.Longitude, width, height)
 		return capoverlay.MapPlate{}, false
+	}
+	if r.deferRaster {
+		plates := make([]capoverlay.MapPlate, 0, len(covered))
+		for _, zoom := range covered {
+			plates = append(plates, r.plateDescriptor(center, zoom, plateWidth, plateHeight))
+		}
+		base := plates[0]
+		base.RasterDeferred = true
+		if len(plates) > 1 {
+			base.LODs = append([]capoverlay.MapPlate(nil), plates[1:]...)
+		}
+		return base, true
 	}
 
 	plates := make([]capoverlay.MapPlate, 0, len(covered))
@@ -473,17 +487,38 @@ func routeMapCenter(from, to capoverlay.MapCenter) capoverlay.MapCenter {
 }
 
 func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, zoom, width, height int) (capoverlay.MapPlate, bool) {
-	// Serialize identical jobs so concurrent script runs cannot write the same
-	// cache entry while the Python renderer is creating it.
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	// The raster is the declared window; keep the legacy 2x-split keys out of
 	// the same cache namespace so stale stretched plates cannot be reused.
 	key := fmt.Sprintf("%.6f_%.6f_z%d_%dx%d", center.Latitude, center.Longitude, zoom, width, height)
 	key = strings.NewReplacer("-", "m", ".", "p").Replace(key)
 	path := filepath.Join(r.cacheDir, "esri-world-imagery-v2", key+".png")
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	value, err, _ := r.flights.Do(key, func() (any, error) {
+		return r.generateCached(path, center, zoom, width, height, key)
+	})
+	if err != nil {
 		return capoverlay.MapPlate{}, false
+	}
+	plate, ok := value.(capoverlay.MapPlate)
+	return plate, ok
+}
+
+func (r *chrononTemplateMapPlateResolver) plateDescriptor(center capoverlay.MapCenter, zoom, width, height int) capoverlay.MapPlate {
+	key := fmt.Sprintf("%.6f_%.6f_z%d_%dx%d", center.Latitude, center.Longitude, zoom, width, height)
+	key = strings.NewReplacer("-", "m", ".", "p").Replace(key)
+	id := fmt.Sprintf("chronontemplate-esri-%s-z%d", key, zoom)
+	return capoverlay.MapPlate{
+		ID: id, License: chrononMapLicense, Attribution: chrononMapAttribution,
+		Center: center, Zoom: zoom, Width: width, Height: height,
+		Window: geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, width, height),
+	}
+}
+
+// generateCached owns only one cache key at a time: independent geographic
+// plates can be prepared concurrently, while duplicate requests share one
+// generator process and one verified cache artifact.
+func (r *chrononTemplateMapPlateResolver) generateCached(path string, center capoverlay.MapCenter, zoom, width, height int, key string) (capoverlay.MapPlate, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return capoverlay.MapPlate{}, err
 	}
 	if info, err := os.Stat(path); err != nil || info.Size() == 0 {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
@@ -493,30 +528,42 @@ func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, 
 		// required dependency of ChrononTemplate's tile compositor). Resolve
 		// this helper with the system interpreter so runtime PATH cannot select
 		// an incompatible environment.
+		tmp, err := os.CreateTemp(filepath.Dir(path), ".map-plate-*.png")
+		if err != nil {
+			return capoverlay.MapPlate{}, err
+		}
+		tmpPath := tmp.Name()
+		if err := tmp.Close(); err != nil {
+			_ = os.Remove(tmpPath)
+			return capoverlay.MapPlate{}, err
+		}
+		defer func() { _ = os.Remove(tmpPath) }()
 		cmd := exec.CommandContext(ctx, "/usr/bin/python3", r.generator,
 			"--latitude", fmt.Sprintf("%.8f", center.Latitude),
 			"--longitude", fmt.Sprintf("%.8f", center.Longitude),
 			"--zoom", fmt.Sprint(zoom),
 			"--width", fmt.Sprint(width), "--height", fmt.Sprint(height),
-			"--output", path,
+			"--output", tmpPath,
 		)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("chronontemplate map resolver: generator failed zoom=%d: %v: %s", zoom, err, strings.TrimSpace(string(output)))
-			_ = os.Remove(path)
-			return capoverlay.MapPlate{}, false
+			return capoverlay.MapPlate{}, err
 		} else if !strings.Contains(string(output), "MAP_PLATE_PASS") {
 			log.Printf("chronontemplate map resolver: generator did not certify zoom=%d: %s", zoom, strings.TrimSpace(string(output)))
-			_ = os.Remove(path)
-			return capoverlay.MapPlate{}, false
+			return capoverlay.MapPlate{}, fmt.Errorf("map plate generator did not certify output")
+		}
+		info, err := os.Stat(tmpPath)
+		if err != nil || info.Size() == 0 {
+			return capoverlay.MapPlate{}, fmt.Errorf("map plate generator produced no raster")
+		}
+		if err := os.Rename(tmpPath, path); err != nil {
+			return capoverlay.MapPlate{}, err
 		}
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil || len(raw) == 0 {
-		return capoverlay.MapPlate{}, false
+	assetDigest, _, err := digest.SHA256File(path)
+	if err != nil {
+		return capoverlay.MapPlate{}, err
 	}
-	// godlike/06 digest SSOT: content identity goes through kernel/digest,
-	// never a direct crypto/sha256 import.
-	assetDigest := digest.SHA256Bytes(raw)
 	id := fmt.Sprintf("chronontemplate-esri-%s-z%d", key, zoom)
 	return capoverlay.MapPlate{
 		ID: id, License: chrononMapLicense, Attribution: chrononMapAttribution,
@@ -525,7 +572,7 @@ func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, 
 		Asset: capoverlay.NewOverlayAssetRef(
 			asset.New(id, assetDigest, "image/png", 0), "", path,
 		),
-	}, true
+	}, nil
 }
 
 var _ capoverlay.PlateResolver = (*chrononTemplateMapPlateResolver)(nil)

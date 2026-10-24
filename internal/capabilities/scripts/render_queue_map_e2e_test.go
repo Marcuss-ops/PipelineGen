@@ -162,38 +162,45 @@ func TestMapSinglePlanEndToEndSubmitsCertifiedRender(t *testing.T) {
 		t.Fatalf("reference = %+v, want COMPLETED with artifact", ref)
 	}
 
-	submitted, ok := client.jobs["map-e2e-1"]
+	submitted, ok := client.jobs[ref.JobID]
 	if !ok {
-		t.Fatal("the folded map job was not submitted to the queue")
+		t.Fatalf("the folded map import job %q was not submitted to the queue", ref.JobID)
 	}
-	var doc struct {
-		SchemaVersion string `json:"schema_version"`
-		Items         []any  `json:"items"`
-		Background    *struct {
-			Kind      string `json:"kind"`
-			AssetRefs []struct {
-				SHA256 string `json:"sha256"`
-			} `json:"asset_refs"`
-		} `json:"background"`
-	}
+	var doc dynamicMapImportRequest
 	if err := json.Unmarshal(submitted.OverlaySpec, &doc); err != nil {
 		t.Fatalf("decode submitted spec: %v", err)
 	}
-	if doc.SchemaVersion != capoverlay.SchemaVersionPlan {
-		t.Fatalf("submitted schema = %q, want %q", doc.SchemaVersion, capoverlay.SchemaVersionPlan)
+	if doc.SchemaVersion != dynamicMapImportSchema {
+		t.Fatalf("submitted schema = %q, want %q", doc.SchemaVersion, dynamicMapImportSchema)
 	}
-	if len(doc.Items) != 0 {
-		t.Fatalf("folded single-map spec carries %d items, want none (background fold)", len(doc.Items))
+	if doc.Producer != "pipelinegen-map-v2" {
+		t.Fatalf("submitted producer = %q, want pipelinegen-map-v2", doc.Producer)
 	}
-	if doc.Background == nil || doc.Background.Kind != "video" || len(doc.Background.AssetRefs) != 1 {
-		t.Fatalf("folded spec background = %+v, want one video asset", doc.Background)
+	if doc.PlanID != "map-e2e-1" || doc.VideoID != "map-e2e-1" {
+		t.Fatalf("import identity = %q/%q, want map-e2e-1/map-e2e-1", doc.PlanID, doc.VideoID)
 	}
-	// Content-addressed identity crosses the boundary untouched: the queued
-	// background IS the locally rendered bytes.
+	if len(doc.ItemIDs) != 1 || doc.ItemIDs[0] != "map-1" {
+		t.Fatalf("import item identity = %v, want [map-1]", doc.ItemIDs)
+	}
+	// Content-addressed identity crosses the boundary untouched: the import
+	// attests the locally rendered bytes, not a re-derived or empty file.
 	wantSHA := sha256.Sum256([]byte("fake-mp4"))
-	if doc.Background.AssetRefs[0].SHA256 != hex.EncodeToString(wantSHA[:]) {
-		t.Fatalf("background sha = %q, want the rendered bytes %q",
-			doc.Background.AssetRefs[0].SHA256, hex.EncodeToString(wantSHA[:]))
+	if doc.SourceSHA256 != hex.EncodeToString(wantSHA[:]) {
+		t.Fatalf("import sha = %q, want the rendered bytes %q",
+			doc.SourceSHA256, hex.EncodeToString(wantSHA[:]))
+	}
+	if doc.SourceSizeBytes != int64(len("fake-mp4")) {
+		t.Fatalf("import size = %d, want %d", doc.SourceSizeBytes, len("fake-mp4"))
+	}
+	if doc.Width != plan.Width || doc.Height != plan.Height || doc.FPSNum != plan.FPSNum || doc.FPSDen != plan.FPSDen {
+		t.Fatalf("import media facts = %dx%d@%d/%d, want %dx%d@%d/%d",
+			doc.Width, doc.Height, doc.FPSNum, doc.FPSDen, plan.Width, plan.Height, plan.FPSNum, plan.FPSDen)
+	}
+	if doc.FrameCount != 120 || doc.DurationUS != 5_000_000 {
+		t.Fatalf("import timing = frames:%d duration:%dus, want 120/5s", doc.FrameCount, doc.DurationUS)
+	}
+	if len(doc.ProducerTelemetry) == 0 {
+		t.Fatal("import must carry the producer telemetry")
 	}
 	manifested := false
 	for _, asset := range submitted.Assets {

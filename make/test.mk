@@ -13,10 +13,13 @@ coverage: test-unit
 	$(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
+# The total row is anchored (a function named "...total..." must not leak into
+# the percentage) and the comparison is POSIX awk: /bin/sh is dash here, which
+# has no `(( ))` or `bc`, so the previous recipe reported a false pass.
 coverage-check: test-unit
-	@COVERAGE=$$($(GO) tool cover -func=coverage.out | grep total | awk '{print $$3}' | sed 's/%//'); \
+	@COVERAGE=$$($(GO) tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $$3); print $$3}'); \
 	echo "Total coverage: $$COVERAGE%"; \
-	if (( $$(echo "$$COVERAGE < 60" | bc -l) )); then \
+	if ! awk -v c="$$COVERAGE" 'BEGIN { exit !(c >= 60) }'; then \
 		echo "❌ Coverage $$COVERAGE% is below threshold of 60%"; \
 		exit 1; \
 	fi; \

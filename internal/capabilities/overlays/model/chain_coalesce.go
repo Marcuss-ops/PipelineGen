@@ -204,7 +204,7 @@ func chainable(item OverlayItem) bool {
 	if family == "image" && len(item.AssetRefs) == 0 && len(item.ImageLayers) == 0 {
 		return false
 	}
-	if family == "map" && (item.Map == nil || len(item.AssetRefs) == 0) {
+	if family == "map" && (item.Map == nil || (len(item.AssetRefs) == 0 && !item.Map.DynamicRendererOnly)) {
 		return false
 	}
 	// SFX currently lowers to the plan-level audio bus. Keep it standalone

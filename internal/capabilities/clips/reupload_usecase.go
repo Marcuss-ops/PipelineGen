@@ -328,7 +328,7 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 		Source:        req.Source,
 		ClipID:        req.ClipID,
 		DriveLink:     clip.DriveLink(),
-		LegacyFileMD5: clip.LegacyFileMD5(),
+		LegacyFileMD5: clip.GetMetadataString("legacy_file_md5"),
 		UploadedAt:    timeutil.FormatRFC3339(time.Now()),
 		// F2.9: PublishAction is NOT exposed on ReuploadResult (legacy
 		// handler shape preserves the 5 api-output keys verbatim).

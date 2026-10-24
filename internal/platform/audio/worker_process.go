@@ -272,7 +272,9 @@ func (p *Processor) Stop() error {
 		case <-time.After(5 * time.Second):
 			p.log.Warn("audio.Processor: TTS server did not exit within 5s — killing")
 			_ = p.cmd.Process.Kill()
-			<-done
+			if err := <-done; err != nil {
+				p.log.Debug("audio.Processor: TTS server wait after kill", zap.Error(err))
+			}
 		}
 	}
 

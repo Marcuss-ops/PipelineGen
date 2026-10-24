@@ -135,12 +135,27 @@ func TestOverlayRenderCacheKeyPinsEntityStyleSamplingToPlanIdentity(t *testing.T
 	}
 }
 
-func TestOverlayRenderCacheKeyRejectsMultiItemPlans(t *testing.T) {
+func TestOverlayRenderCacheKeyAddressesMultiItemCompositionDeterministically(t *testing.T) {
 	plan := cacheTestPlan()
-	plan.Items = append(plan.Items, plan.Items[0])
-	plan.Items[1].ID = "phrase-2"
-	if _, ok := overlayRenderCacheKeyForPlan(plan, "epoch-1"); ok {
-		t.Fatal("a multi-item composition is not addressable by a single RenderKey")
+	second := plan.Items[0]
+	second.ID = "phrase-2"
+	second.Text = "SECONDO"
+	second.StartMs, second.StartUS = 1000, 1_000_000
+	second.DurationUS, second.EndMs = 1_000_000, 2000
+	second.RenderKey = capoverlay.ComputeRenderKey(plan, second)
+	plan.Items = append(plan.Items, second)
+	key, ok := overlayRenderCacheKeyForPlan(plan, "epoch-1")
+	if !ok {
+		t.Fatal("a complete multi-item composition must be cacheable")
+	}
+	repeated, ok := overlayRenderCacheKeyForPlan(plan, "epoch-1")
+	if !ok || repeated.Digest() != key.Digest() {
+		t.Fatal("composition cache key must be deterministic")
+	}
+	plan.Items[0], plan.Items[1] = plan.Items[1], plan.Items[0]
+	reordered, ok := overlayRenderCacheKeyForPlan(plan, "epoch-1")
+	if !ok || reordered.Digest() == key.Digest() {
+		t.Fatal("item order must participate in the composition cache identity")
 	}
 }
 
@@ -273,10 +288,15 @@ func (c *fakeOverlayRenderCache) onlyStoredKey(t *testing.T) string {
 type countingRenderQueueClient struct {
 	submits  int
 	artifact RenderArtifact
+	failNext bool
 }
 
 func (c *countingRenderQueueClient) Submit(_ context.Context, _ RenderQueueJob) error {
 	c.submits++
+	if c.failNext {
+		c.failNext = false
+		return errors.New("injected transient submit failure")
+	}
 	return nil
 }
 
@@ -308,6 +328,8 @@ func TestOverlayRenderCacheMissStoresThenSecondRunHitsWithoutSubmit(t *testing.T
 	cache := newFakeOverlayRenderCache()
 	enqueuer, client := cacheTestEnqueuer(t, cache)
 	plan := cacheTestPlan()
+	plan.RequireDriveBeforeReturn = true
+	enqueuer.SetArtifactPublisher(&captureOverlayPublication{})
 
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
 		t.Fatalf("first render: %v", err)
@@ -337,6 +359,101 @@ func TestOverlayRenderCacheMissStoresThenSecondRunHitsWithoutSubmit(t *testing.T
 	}
 }
 
+func TestOverlayRenderCacheReusesCertifiedFusedBatchOnRetry(t *testing.T) {
+	t.Setenv(OverlayRenderCacheKillSwitch, "1")
+	cache := newFakeOverlayRenderCache()
+	enqueuer, client := cacheTestEnqueuer(t, cache)
+	enqueuer.SetOverlayWindowBatching(true)
+	plan := cacheTestPlan()
+	plan.Items[0].SceneID = "scene-1"
+	second := plan.Items[0]
+	second.ID = "phrase-2"
+	second.Text = "ALTRO TESTO"
+	second.StartUS = 1_000_000
+	second.DurationUS = 2_000_000
+	second.StartMs = 1000
+	second.EndMs = 3000
+	second.RenderKey = capoverlay.ComputeRenderKey(plan, second)
+	plan.Items = append(plan.Items, second)
+
+	firstRef, err := enqueuer.EnqueueChrononPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("first batch render: %v", err)
+	}
+	if len(firstRef.Batches) != 1 || len(firstRef.Batches[0].ItemIDs) != 2 {
+		t.Fatalf("first reference did not preserve both batch members: %+v", firstRef)
+	}
+	if client.submits != 1 || cache.storedCount() != 1 {
+		t.Fatalf("first render submits=%d stored=%d, want 1/1", client.submits, cache.storedCount())
+	}
+	secondRef, err := enqueuer.EnqueueChrononPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("retry batch render: %v", err)
+	}
+	if client.submits != 1 {
+		t.Fatalf("retry resubmitted a certified fused batch: submits=%d, want 1", client.submits)
+	}
+	if len(secondRef.Batches) != 1 || len(secondRef.Batches[0].ItemIDs) != 2 {
+		t.Fatalf("cached retry lost batch membership: %+v", secondRef)
+	}
+}
+
+func TestOverlayRenderCacheRetrySubmitsOnlyTheBatchThatFailed(t *testing.T) {
+	t.Setenv(OverlayRenderCacheKillSwitch, "1")
+	cache := newFakeOverlayRenderCache()
+	enqueuer, client := cacheTestEnqueuer(t, cache)
+	enqueuer.SetOverlayWindowBatching(true)
+	plan := cacheTestPlan()
+	plan.DurationMS = 50_000
+	plan.Items[0].SceneID = "scene-1"
+	plan.Items[0].RenderKey = capoverlay.ComputeRenderKey(plan, plan.Items[0])
+	makePhrase := func(id, scene, text string, startUS, durationUS int64) capoverlay.OverlayItem {
+		item := plan.Items[0]
+		item.ID, item.SceneID, item.Text = id, scene, text
+		item.StartUS, item.DurationUS = startUS, durationUS
+		item.StartMs, item.EndMs = startUS/1000, (startUS+durationUS)/1000
+		item.RenderKey = ""
+		item.RenderKey = capoverlay.ComputeRenderKey(plan, item)
+		return item
+	}
+	plan.Items = append(plan.Items,
+		makePhrase("phrase-2", "scene-1", "ANCORA UNO", 1_000_000, 2_000_000),
+	)
+	first, err := enqueuer.EnqueueChrononPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("seed first certified batch: %v", err)
+	}
+	if len(first.Batches) != 1 || cache.storedCount() != 1 || client.submits != 1 {
+		t.Fatalf("seed batch ref=%+v cache=%d submits=%d; want one certified batch", first.Batches, cache.storedCount(), client.submits)
+	}
+
+	plan.Items = append(plan.Items,
+		makePhrase("phrase-3", "scene-2", "ALTRO TRE", 40_000_000, 2_000_000),
+		makePhrase("phrase-4", "scene-2", "ALTRO QUATTRO", 41_000_000, 2_000_000),
+	)
+	client.failNext = true
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err == nil || !strings.Contains(err.Error(), "injected transient submit failure") {
+		t.Fatalf("first attempt with one failed batch error = %v", err)
+	}
+	if client.submits != 2 {
+		t.Fatalf("first failed attempt submitted %d jobs, want only the uncached batch", client.submits-1)
+	}
+
+	retried, err := enqueuer.EnqueueChrononPlan(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("retry after one batch failure: %v", err)
+	}
+	if client.submits != 3 {
+		t.Fatalf("resume submitted %d jobs total, want initial seed + failed batch + its retry", client.submits)
+	}
+	if len(retried.Batches) != 2 || cache.storedCount() != 2 {
+		t.Fatalf("retry did not reconstruct both certified batch references: batches=%d cache=%d", len(retried.Batches), cache.storedCount())
+	}
+	if got := plan.Items[0].MotionParams["enter_frames"]; got != 3 {
+		t.Fatalf("child-specific entrance mutated the parent/shared MotionParams map: got %v, want 3", got)
+	}
+}
+
 func TestOverlayRenderCacheKillSwitchForcesFreshRender(t *testing.T) {
 	cache := newFakeOverlayRenderCache()
 	enqueuer, client := cacheTestEnqueuer(t, cache)
@@ -363,6 +480,8 @@ func TestOverlayRenderCacheInvalidLocatorIsMissAndInvalidated(t *testing.T) {
 	cache := newFakeOverlayRenderCache()
 	enqueuer, client := cacheTestEnqueuer(t, cache)
 	plan := cacheTestPlan()
+	plan.RequireDriveBeforeReturn = true
+	enqueuer.SetArtifactPublisher(&captureOverlayPublication{})
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
 		t.Fatalf("seed render: %v", err)
 	}
@@ -409,6 +528,8 @@ func TestOverlayRenderCacheHitThatFailsPublicationIsInvalidated(t *testing.T) {
 	cache := newFakeOverlayRenderCache()
 	enqueuer, client := cacheTestEnqueuer(t, cache)
 	plan := cacheTestPlan()
+	plan.RequireDriveBeforeReturn = true
+	enqueuer.SetArtifactPublisher(&captureOverlayPublication{})
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
 		t.Fatalf("first render: %v", err)
 	}

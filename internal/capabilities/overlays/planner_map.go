@@ -54,6 +54,11 @@ type MapPlate struct {
 	Width, Height int
 	Asset         OverlayAssetRef
 	Window        geodesy.Window
+	// RasterDeferred means this map is planned for the dynamic map renderer,
+	// which fetches and certifies its own tiles. The descriptor still carries
+	// the exact projected windows used by route validation, but no PNG is
+	// generated or staged for this path.
+	RasterDeferred bool
 	// LODs are complete, independently licensed rasters covering one camera
 	// route. Empty means this remains a static single-plate map.
 	LODs []MapPlate
@@ -344,7 +349,10 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 		if !ok {
 			continue
 		}
-		mapAssets := []OverlayAssetRef{entry.plate.Asset}
+		mapAssets := make([]OverlayAssetRef, 0, len(entry.plate.LODs)+1)
+		if entry.plate.Asset.AssetID != "" {
+			mapAssets = append(mapAssets, entry.plate.Asset)
+		}
 		lods := []MapOverlayLOD{{
 			AssetID:       entry.plate.Asset.AssetID,
 			SourceID:      entry.plate.ID,
@@ -356,7 +364,9 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			Height:        entry.plate.Height,
 		}}
 		for _, lod := range entry.plate.LODs {
-			mapAssets = append(mapAssets, lod.Asset)
+			if lod.Asset.AssetID != "" {
+				mapAssets = append(mapAssets, lod.Asset)
+			}
 			lods = append(lods, MapOverlayLOD{
 				AssetID:       lod.Asset.AssetID,
 				SourceID:      lod.ID,
@@ -383,7 +393,8 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			// The selected motion is restricted to centered scale/opacity
 			// treatments, so the basemap and projected pins remain registered.
 			Attribution: entry.plate.Attribution, Pins: pins, MotionID: motionID,
-			AreaGlowRadiusKM: mapAreaGlowRadiusKM(pins),
+			AreaGlowRadiusKM:    mapAreaGlowRadiusKM(pins),
+			DynamicRendererOnly: entry.plate.RasterDeferred,
 		}
 		if len(lods) >= 2 {
 			mapOverlay.LODs = lods

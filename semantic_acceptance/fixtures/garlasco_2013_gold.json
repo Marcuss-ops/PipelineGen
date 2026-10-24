@@ -1,0 +1,124 @@
+{
+  "schema": "garlasco_gold.v1",
+  "provenance": {
+    "kind": "reconstructed",
+    "independent": false,
+    "source": "refactored commit 982f39e0f: 15 Garlasco segment briefs (deleted from the worktree)",
+    "script": "fixtures/garlasco_2013_reconstructed.txt",
+    "word_count": 2013,
+    "note": "The 2,013-word script was reassembled from the historical segment briefs. It is not the lost original file and these annotations are not an independent human gold. They are a frozen, engine-independent baseline: gold authored from the text before any engine run, so T01/T05 can be measured instead of remaining NOT RUN."
+  },
+  "entities": [
+    {"canonical": "Chiara Poggi", "type": "PERSON", "aliases": ["Chiara Poggi", "Poggi", "Chiara"], "min_mentions": 4, "core": true},
+    {"canonical": "Alberto Stasi", "type": "PERSON", "aliases": ["Alberto Stasi", "Stasi"], "min_mentions": 4, "core": true},
+    {"canonical": "Andrea Sempio", "type": "PERSON", "aliases": ["Andrea Sempio", "Sempio"], "min_mentions": 4, "core": true},
+    {"canonical": "Angela Taccia", "type": "PERSON", "aliases": ["Angela Taccia", "Taccia"], "min_mentions": 1, "core": false},
+    {"canonical": "Liborio Cataliotti", "type": "PERSON", "aliases": ["Liborio Cataliotti", "Cataliotti"], "min_mentions": 1, "core": false},
+    {"canonical": "Giada Bocellari", "type": "PERSON", "aliases": ["Giada Bocellari", "Bocellari"], "min_mentions": 1, "core": false},
+    {"canonical": "Antonio De Rensis", "type": "PERSON", "aliases": ["Antonio De Rensis", "De Rensis"], "min_mentions": 1, "core": false},
+    {"canonical": "Procura di Pavia", "type": "ORG", "aliases": ["Procura di Pavia", "Procura"], "min_mentions": 2, "core": true},
+    {"canonical": "Corte d'Appello di Milano", "type": "ORG", "aliases": ["Corte d'Appello di Milano", "Corte d'Appello"], "min_mentions": 1, "core": true},
+    {"canonical": "Corte d'Assise d'Appello di Milano", "type": "ORG", "aliases": ["Corte d'Assise d'Appello di Milano", "Corte d'Assise d'Appello"], "min_mentions": 1, "core": true},
+    {"canonical": "Cassazione", "type": "ORG", "aliases": ["Cassazione", "Corte di Cassazione"], "min_mentions": 2, "core": true},
+    {"canonical": "RIS di Parma", "type": "ORG", "aliases": ["RIS di Parma", "RIS"], "min_mentions": 2, "core": true},
+    {"canonical": "ANSA", "type": "ORG", "aliases": ["ANSA"], "min_mentions": 1, "core": true},
+    {"canonical": "GUP", "type": "ROLE", "aliases": ["GUP"], "min_mentions": 1, "core": false},
+    {"canonical": "Garlasco", "type": "LOCATION", "aliases": ["Garlasco"], "min_mentions": 2, "core": true},
+    {"canonical": "Pavia", "type": "LOCATION", "aliases": ["Pavia"], "min_mentions": 2, "core": true},
+    {"canonical": "Milano", "type": "LOCATION", "aliases": ["Milano"], "min_mentions": 3, "core": true},
+    {"canonical": "Vigevano", "type": "LOCATION", "aliases": ["Vigevano"], "min_mentions": 2, "core": false},
+    {"canonical": "Brescia", "type": "LOCATION", "aliases": ["Brescia"], "min_mentions": 2, "core": false},
+    {"canonical": "Parma", "type": "LOCATION", "aliases": ["Parma"], "min_mentions": 1, "core": false}
+  ],
+  "temporal_expressions": [
+    {"surface": "13 agosto 2007", "normalized": "2007-08-13", "min_count": 2, "core": true},
+    {"surface": "19 settembre 2007", "normalized": "2007-09-19", "min_count": 1, "core": true},
+    {"surface": "20 settembre 2007", "normalized": "2007-09-20", "min_count": 1, "core": true},
+    {"surface": "26 settembre 2007", "normalized": "2007-09-26", "min_count": 1, "core": true},
+    {"surface": "17 dicembre 2009", "normalized": "2009-12-17", "min_count": 1, "core": true},
+    {"surface": "6 dicembre 2011", "normalized": "2011-12-06", "min_count": 1, "core": true},
+    {"surface": "18 aprile 2013", "normalized": "2013-04-18", "min_count": 1, "core": true},
+    {"surface": "17 dicembre 2014", "normalized": "2014-12-17", "min_count": 1, "core": true},
+    {"surface": "12 dicembre 2015", "normalized": "2015-12-12", "min_count": 1, "core": true},
+    {"surface": "28 settembre 2026", "normalized": "2026-09-28", "min_count": 1, "core": true},
+    {"surface": "8 ottobre 2026", "normalized": "2026-10-08", "min_count": 1, "core": true}
+  ],
+  "facts": {
+    "stasi_outcomes": [
+      {"subject": "Alberto Stasi", "predicate": "legal_outcome", "normalized_value": "acquitted", "date": "2009-12-17"},
+      {"subject": "Alberto Stasi", "predicate": "legal_outcome", "normalized_value": "acquittal_confirmed", "date": "2011-12-06"},
+      {"subject": "Alberto Stasi", "predicate": "legal_outcome", "normalized_value": "annulled_with_remand", "date": "2013-04-18"},
+      {"subject": "Alberto Stasi", "predicate": "legal_outcome", "normalized_value": "convicted", "date": "2014-12-17"},
+      {"subject": "Alberto Stasi", "predicate": "legal_finality", "normalized_value": "final", "date": "2015-12-12"}
+    ],
+    "sempio_required": [
+      {"subject": "Andrea Sempio", "predicate": "investigation_status", "normalized_value": "under_investigation"}
+    ],
+    "sempio_forbidden": [
+      {"subject": "Andrea Sempio", "normalized_value": "convicted"},
+      {"subject": "Andrea Sempio", "normalized_value": "final"}
+    ]
+  },
+  "events": [
+    {"id": "E01", "date": "2007-08-13", "subject": "Chiara Poggi", "anchor": "fu uccisa", "label": "omicidio di Chiara Poggi"},
+    {"id": "E02", "date": "2009-12-17", "subject": "Alberto Stasi", "anchor": "assoluzione in primo grado", "label": "assoluzione in primo grado"},
+    {"id": "E03", "date": "2011-12-06", "subject": "Alberto Stasi", "anchor": "confermò l'assoluzione", "label": "conferma dell'assoluzione"},
+    {"id": "E04", "date": "2013-04-18", "subject": "Alberto Stasi", "anchor": "annullò con rinvio", "label": "annullamento con rinvio"},
+    {"id": "E05", "date": "2014-12-17", "subject": "Alberto Stasi", "anchor": "condanna a sedici anni", "label": "condanna a sedici anni"},
+    {"id": "E06", "date": "2015-12-12", "subject": "Alberto Stasi", "anchor": "divenne definitiva", "label": "condanna definitiva"},
+    {"id": "E07", "date": "2026-09-28", "subject": "Procura di Pavia", "anchor": "seconda chiusura delle indagini", "label": "chiusura delle indagini"},
+    {"id": "E08", "date": "2026-10-08", "subject": "ANSA", "anchor": "acquisizione di documenti", "label": "acquisizione di documenti"}
+  ],
+  "visual_concepts": [
+    {"id": "V01", "any_of": ["Garlasco"], "core": true},
+    {"id": "V02", "any_of": ["Chiara Poggi", "Poggi"], "core": true},
+    {"id": "V03", "any_of": ["Alberto Stasi", "Stasi"], "core": true},
+    {"id": "V04", "any_of": ["Andrea Sempio", "Sempio"], "core": true},
+    {"id": "V05", "any_of": ["Procura di Pavia", "Procura"], "core": true},
+    {"id": "V06", "any_of": ["Cassazione"], "core": true},
+    {"id": "V07", "any_of": ["Corte d'Appello di Milano", "Corte d'Appello"], "core": true},
+    {"id": "V08", "any_of": ["RIS di Parma", "RIS"], "core": true},
+    {"id": "V09", "any_of": ["impronta", "numero 33", "33"], "core": true},
+    {"id": "V10", "any_of": ["bicicletta"], "core": true},
+    {"id": "V11", "any_of": ["pedali"], "core": true},
+    {"id": "V12", "any_of": ["documenti"], "core": true},
+    {"id": "V13", "any_of": ["chiusura delle indagini", "seconda chiusura", "conclusione delle indagini"], "core": true},
+    {"id": "V14", "any_of": ["presunzione di innocenza", "presunzione", "innocenza"], "core": true},
+    {"id": "V15", "any_of": ["contraddittorio"], "core": true},
+    {"id": "V16", "any_of": ["sentenza definitiva", "sentenza"], "core": false},
+    {"id": "V17", "any_of": ["consulenze", "consulenti"], "core": false},
+    {"id": "V18", "any_of": ["Vigevano"], "core": false},
+    {"id": "V19", "any_of": ["Brescia"], "core": false}
+  ],
+  "expected": {
+    "charts": [],
+    "timeline": {
+      "group_type": "step_sequence",
+      "members": 5,
+      "normalized_years": ["2009", "2011", "2013", "2014", "2015"]
+    },
+    "comparison_max_members": 2,
+    "story_graph": {
+      "identity": "Alberto Stasi",
+      "min_facts": 5,
+      "min_chronological_edges": 0,
+      "final_subject": "Alberto Stasi",
+      "note": "The five trial steps live in one scene, so the contract covers them with the scene-local step_sequence group; story-graph chronological edges are only required when the dated facts span two or more scenes."
+    },
+    "coverage": {
+      "min_stasi_facts_covered": 5
+    },
+    "micro_summaries_min": 5,
+    "micro_final_subject": "Alberto Stasi"
+  },
+  "thresholds": {
+    "entity_recall": 0.90,
+    "entity_typed_recall": 0.85,
+    "temporal_recall": 0.90,
+    "fact_recall": 1.0,
+    "event_recall": 0.75,
+    "visual_concept_recall": 0.75,
+    "query_relevance": 0.0,
+    "micro_summaries_min": 5
+  }
+}

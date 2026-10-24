@@ -324,18 +324,10 @@ func overlaysFromPlan(result *GenerateResult) []EditingOverlaySpan {
 	overlays := make([]EditingOverlaySpan, 0, len(plan.Items))
 	for _, item := range plan.Items {
 		itemDriveLink, itemSHA256, itemRenderJobID := driveLink, sha256, renderJobID
-		if result.OverlayRender != nil {
-			for _, itemRef := range result.OverlayRender.Items {
-				if itemRef.ItemID != item.ID {
-					continue
-				}
-				itemRenderJobID = itemRef.JobID
-				if itemRef.Artifact != nil {
-					itemDriveLink = itemRef.Artifact.DriveLink
-					itemSHA256 = itemRef.Artifact.SHA256
-				}
-				break
-			}
+		if artifact, jobID, ok := overlayArtifactForItem(result.OverlayRender, item.ID); ok {
+			itemRenderJobID = jobID
+			itemDriveLink = artifact.DriveLink
+			itemSHA256 = artifact.SHA256
 		}
 		// Canonical integer-microsecond timing travels on the item; fall back
 		// to the millisecond projection for legacy (golden) plans.

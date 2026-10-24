@@ -273,6 +273,6 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 	}
 	apiutil.OK(c, gin.H{
 		"ok": true, "source": source, "clip_id": clipID,
-		"legacy_file_md5": clip.LegacyFileMD5(), "duplicates": duplicates,
+		"legacy_file_md5": clip.GetMetadataString("legacy_file_md5"), "duplicates": duplicates,
 	})
 }

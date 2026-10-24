@@ -73,7 +73,11 @@ type RenderArtifact struct {
 	// shape. A consumer that needs typed access unmarshals it into its own
 	// capability-local struct. Nil when the worker certified only the flat
 	// summary.
-	OutputFacts        json.RawMessage `json:"output_facts,omitempty"`
+	OutputFacts json.RawMessage `json:"output_facts,omitempty"`
+	// Provenance is RenderingGen's import attestation result, relayed verbatim
+	// so producer item identities survive the queue boundary and durable run
+	// checkpoint without duplicating the worker-owned schema.
+	Provenance         json.RawMessage `json:"provenance,omitempty"`
 	ClosedGOP          bool            `json:"closed_gop,omitempty"`
 	FirstFrameKeyframe bool            `json:"first_frame_keyframe,omitempty"`
 	Backend            string          `json:"backend,omitempty"`
@@ -292,8 +296,11 @@ type FinalAudioReference struct {
 	// Filename is the caller-facing output name used when publishing the
 	// certified master. It is derived from the payload title, never a generic
 	// final_audio name.
-	Filename             string `json:"filename,omitempty"`
-	Path                 string `json:"path,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	Path     string `json:"path,omitempty"`
+	// DriveFileID is an in-process publication fact; DriveLink remains the
+	// wire location so one fact has one owner (media-identity gate).
+	DriveFileID          string `json:"-"`
 	DriveLink            string `json:"drive_link,omitempty"`
 	Container            string `json:"container,omitempty"`
 	AudioContractVersion string `json:"audio_contract_version,omitempty"`
@@ -441,6 +448,13 @@ func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error)
 			var mapWire map[string]json.RawMessage
 			if err := json.Unmarshal(encodedMap, &mapWire); err != nil {
 				return nil, fmt.Errorf("decode item %d map: %w", i, err)
+			}
+			// A raster-deferred map has no basemap asset by design. It must be
+			// folded into the certified producer-video import before this wire
+			// mapper is reached; fail closed instead of silently dropping the
+			// routing marker and emitting an incomplete native map plan.
+			if _, deferred := mapWire["dynamic_renderer_only"]; deferred {
+				return nil, fmt.Errorf("item %d deferred map must use the certified producer import path", i)
 			}
 			// The geographic glow is consumed only by the dynamic single-map
 			// pre-render path. A map folded into a shared semantic scene is

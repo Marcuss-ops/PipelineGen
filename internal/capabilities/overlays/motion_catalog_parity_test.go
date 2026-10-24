@@ -254,7 +254,6 @@ func TestMotionPoolsAreCanonicalSubsets(t *testing.T) {
 	assertPoolInUniverse(t, universe, "phraseMotionCandidates", phraseMotionCandidates)
 	assertPoolInUniverse(t, universe, "classicAppleMotionCandidates", classicAppleMotionCandidates)
 	assertPoolInUniverse(t, universe, "modernAppleMotionCandidates", modernAppleMotionCandidates)
-	assertPoolInUniverse(t, universe, "brushPhraseMotionCandidates", brushPhraseMotionCandidates)
 	assertPoolInUniverse(t, universe, "text3DMotionCandidates", text3DMotionCandidates)
 	assertPoolInUniverse(t, universe, "phraseAppleCleanMotionCandidates", phraseAppleCleanMotionCandidates)
 	assertPoolInUniverse(t, universe, "longPhraseMotionCandidates", longPhraseMotionCandidates)

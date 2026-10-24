@@ -93,7 +93,7 @@ func DurableResultToDomain(in *GenerateResult) *domain.GenerationResult {
 	}
 	if in.FinalAudio != nil {
 		fa := in.FinalAudio
-		out.FinalAudio = &domain.FinalAudioArtifact{AssetID: fa.AssetID, Path: fa.Path, DriveLink: fa.DriveLink, Container: fa.Container,
+		out.FinalAudio = &domain.FinalAudioArtifact{AssetID: fa.AssetID, Path: fa.Path, DriveFileID: fa.DriveFileID, DriveLink: fa.DriveLink, Container: fa.Container,
 			AudioContractVersion: fa.AudioContractVersion, AudioPlanVersion: fa.AudioPlanVersion,
 			AudioPlanSHA256: fa.PlanSHA256, FinalAudioSHA256: fa.FinalAudioSHA256,
 			Codec: fa.Codec, Profile: fa.Profile, SampleRate: fa.SampleRate, Channels: fa.Channels,

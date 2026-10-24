@@ -232,7 +232,6 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 			},
 		},
 	}
-	pub := &stubProcessPublisher{fileID: "drive-123"}
 	finalizer := &stubProcessFinalizer{
 		cannedRes: &FinalizeResult{ID: "test-id", Reused: false},
 	}
@@ -242,7 +241,6 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  audioPost,
-			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
 		Finalize: ProcessVoiceoverFinalizeDeps{
@@ -306,7 +304,6 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}
 	audioPost := &stubProcessAudioPost{} // never called — verify 0 invocations
-	pub := &stubProcessPublisher{fileID: "drive-123"}
 	finalizer := &stubProcessFinalizer{
 		cannedRes: &FinalizeResult{ID: "test-id", Reused: false},
 	}
@@ -316,7 +313,6 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  audioPost,
-			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
 		Finalize: ProcessVoiceoverFinalizeDeps{
@@ -365,15 +361,12 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 //     in a typed *PipelineError with stage=tx_commit, retryable=true).
 //  2. result.Status == StatusFailed; result.Stage == StageTxCommit
 //     (set by the per-item path's prefix-based stage classification).
-//  3. result.DriveFileID is non-empty (Stage 3 succeeded).
+//  3. result.DriveFileID is empty: the per-item pipeline is local-only
+//     (waste-cut 2026-10-24) and never uploads, so there is no remote file.
 //  4. NO voiceovers row in SQLite (Finalize tx was rolled back).
-//  5. TxOutboxEnqueuer.cleanupEvents has exactly 1 entry — the FASE 4
-//     orphan-cleanup event for the orphaned Drive file (oldDriveFileID
-//     is the cleanup target; newDriveFileID is empty because no
-//     replacement row was finalized; oldLocalPaths contains the TTS
-//     local path).
-//  6. The cleanup tx is non-nil (proves the production code opens a
-//     FRESH BeginTx independent of the rolled-back Finalize tx).
+//  5. TxOutboxEnqueuer.cleanupEvents has exactly 0 entries — orphan cleanup
+//     is a Drive concern and this pipeline created no Drive file.
+//  6. The finalize failure still surfaces with a typed, retryable stage.
 //
 // This test is the per-item-path companion to
 // TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCleanup
@@ -399,7 +392,6 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-peritem"}
-	pub := &stubProcessPublisher{fileID: "drive-peritem-123"}
 	finalizer := &stubProcessFinalizer{
 		cannedErr: errors.New("simulated DB constraint failure on Step 3 InsertTx"),
 	}
@@ -410,7 +402,6 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  nil, // RemoveSilence=false so AudioPost is skipped
-			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
 		Recovery: ProcessVoiceoverRecoveryDeps{
@@ -448,9 +439,9 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 	assert.Equal(t, StageTxCommit, pe.Stage, "FASE 4: stage must be StageTxCommit for Finalize failure")
 	assert.True(t, pe.IsRetryable(), "FASE 4: tx_commit is retryable (SQLite busy / transient lock contention)")
 
-	// Assertion 3: result.DriveFileID is non-empty (Stage 3 succeeded).
-	assert.Equal(t, "drive-peritem-123", out.DriveFileID,
-		"FASE 4: DriveFileID must be populated — Stage 3 succeeded before Finalize failed")
+	// Assertion 3: local-only pipeline — no Drive file was created.
+	assert.Empty(t, out.DriveFileID,
+		"local-only per-item pipeline must not fabricate a DriveFileID")
 	assert.Contains(t, out.Error, "finalize_failed:",
 		"FASE 4: out.Error must carry the canonical finalize_failed prefix")
 
@@ -461,27 +452,14 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 	assert.Equal(t, 0, count,
 		"FASE 4: NO voiceovers row must be present — Finalize tx was rolled back by Execute's defer")
 
-	// Assertion 5: TxOutboxEnqueuer recorded exactly 1 cleanup event.
-	require.Len(t, outboxStub.cleanupEvents, 1,
-		"FASE 4: orphan-cleanup event MUST be enqueued when Stage 3 OK + Stage 4 FAIL")
-	ce := outboxStub.cleanupEvents[0]
-	assert.Equal(t, "drive-peritem-123", ce.oldDriveFileID,
-		"FASE 4: cleanup event's oldDriveFileID must match the publisher's orphaned fileID")
-	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/peritem-orphan.mp3",
-		"FASE 4: cleanup event's oldLocalPaths must contain the TTS local path")
-	assert.Empty(t, ce.newDriveFileID,
-		"FASE 4: cleanup event's newDriveFileID must be empty (per-item path — no replacement row was finalized)")
-
-	// Assertion 6: cleanup tx is non-nil (production code opens a FRESH BeginTx).
-	require.NotNil(t, ce.tx, "FASE 4: cleanup event must carry a non-nil tx (fresh BeginTx independent of Finalize)")
+	// Assertion 5: no remote file existed, so no Drive cleanup is enqueued.
+	assert.Len(t, outboxStub.cleanupEvents, 0,
+		"local-only per-item pipeline must not enqueue a Drive orphan cleanup")
 
 	// Index events must NOT have been emitted on the orphan-cleanup path.
 	assert.Len(t, outboxStub.indexEvents, 0,
 		"FASE 4: EnqueueIndexEvent must NOT be called on the orphan-cleanup path (Step 5 runs inside the rolled-back Finalize tx)")
 
-	// Publisher was called exactly once (Stage 3 succeeded BEFORE Finalize failed).
-	require.Len(t, pub.published, 1,
-		"FASE 4: Publisher must be called exactly once — Stage 3 succeeded before Stage 4 failed")
 }
 
 // TestNewProcessVoiceoverItemUseCase_WiresTxOutboxEnqueuer pins the
@@ -511,7 +489,6 @@ func TestNewProcessVoiceoverItemUseCase_WiresTxOutboxEnqueuer(t *testing.T) {
 			TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", LegacyFileMD5: "h"}},
 			DestinationResolver: &stubProcessDestResolver{folderID: "f"},
 			AudioPostProcessor:  nil,
-			Publisher:           &stubProcessPublisher{fileID: "drive-x"},
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
 		Recovery: ProcessVoiceoverRecoveryDeps{
@@ -557,7 +534,6 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-peritem-nil"}
-	pub := &stubProcessPublisher{fileID: "drive-peritem-nil-123"}
 	finalizer := &stubProcessFinalizer{
 		cannedErr: errors.New("simulated DB constraint failure (nil outbox path)"),
 	}
@@ -567,7 +543,6 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  nil, // RemoveSilence=false
-			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
 		Recovery: ProcessVoiceoverRecoveryDeps{
@@ -600,8 +575,8 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 	require.Error(t, err, "Finalize failure must surface as a non-nil error regardless of outbox wiring")
 	require.NotNil(t, out, "Execute must return a non-nil result even on failure (godlike/07 NO-FAKE-AVAILABILITY)")
 	assert.Equal(t, StatusFailed, out.Status, "Status must be StatusFailed when Finalize fails")
-	assert.Equal(t, "drive-peritem-nil-123", out.DriveFileID,
-		"DriveFileID must be populated — Stage 3 succeeded before Stage 4 failed")
+	assert.Empty(t, out.DriveFileID,
+		"local-only per-item pipeline must not fabricate a DriveFileID")
 
 	var pe *PipelineError
 	require.True(t, errors.As(err, &pe), "error must wrap a typed *PipelineError")
@@ -615,9 +590,6 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 	assert.Equal(t, 0, count,
 		"NO voiceovers row must be present — Finalize tx was rolled back by Execute's defer")
 
-	// Publisher was called exactly once.
-	require.Len(t, pub.published, 1,
-		"Publisher must be called exactly once even with nil outbox — Stage 3 runs unconditionally")
 }
 
 // TestRemoveSilence_TTSAlwaysReceivesFalse is a regression guard: even
@@ -635,7 +607,6 @@ func TestRemoveSilence_TTSAlwaysReceivesFalse(t *testing.T) {
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "folder-1"}
-	pub := &stubProcessPublisher{fileID: "drive-123"}
 	finalizer := &stubProcessFinalizer{
 		cannedRes: &FinalizeResult{ID: "test-id", Reused: false},
 	}
@@ -645,7 +616,6 @@ func TestRemoveSilence_TTSAlwaysReceivesFalse(t *testing.T) {
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  nil,
-			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
 		Finalize: ProcessVoiceoverFinalizeDeps{

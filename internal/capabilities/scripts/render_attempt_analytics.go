@@ -30,7 +30,11 @@ type RenderAttemptAnalytics struct {
 	// that this short video renders. Empty for the legacy full-timeline path
 	// (multiple items in one job) and non-empty for the production per-item
 	// path (one child plan per item, each with a fresh queue id).
-	ItemID string `json:"item_id,omitempty"`
+	ItemID       string   `json:"item_id,omitempty"`
+	BatchID      string   `json:"batch_id,omitempty"`
+	BatchItemIDs []string `json:"batch_item_ids,omitempty"`
+	BatchStartUS int64    `json:"batch_start_us,omitempty"`
+	BatchEndUS   int64    `json:"batch_end_us,omitempty"`
 
 	// Content census (from the semantic OverlayPlan, never the item list).
 	Content capoverlay.ContentCounts `json:"content"`

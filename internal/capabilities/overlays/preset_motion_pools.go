@@ -100,14 +100,15 @@ func phraseMotionFamilyCandidates(family string) []string {
 		pool = flattenShortPhraseMotionCandidates()
 	case "modern_apple":
 		pool = modernAppleMotionCandidates
-	case "brush_v1":
-		pool = brushPhraseMotionCandidates
 	case "documentary_highlighting_v1":
 		pool = documentaryHighlightMotionCandidates
 	case "text_3d_v1", "3d":
 		pool = text3DMotionCandidates
 	case "classic_apple":
 		pool = classicAppleMotionCandidates
+	// brush_v1 was retired 2026-10-24 with its two long-lane accents:
+	// requesting it now falls through to the default nil pool, which the
+	// planner rejects fail-closed ("has no certified motions").
 	// documentary_clean_v1 was retired 2026-10-15: requesting it now falls
 	// through to the default nil pool, which the planner rejects fail-closed
 	// ("has no certified motions"). Its four motions stay callable through

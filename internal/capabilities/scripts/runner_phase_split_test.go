@@ -3,6 +3,8 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -140,6 +142,7 @@ func TestAudioStageNamesAreDistinct(t *testing.T) {
 
 type barrierAudioRenderer struct {
 	started, release, drained chan struct{}
+	path                      string
 	err                       error
 	calls                     atomic.Int32
 }
@@ -157,8 +160,18 @@ func (r *barrierAudioRenderer) Render(ctx context.Context, plan capabilityaudio.
 		return FinalAudioReference{}, AudioPipelineMetrics{}, r.err
 	}
 	ref, metrics, err := (&stubCombinedAudioRenderer{}).Render(ctx, plan, assets)
+	if r.path != "" {
+		ref.Path = r.path
+	}
 	ref.DurationUS = plan.DurationUS
 	return ref, metrics, err
+}
+
+type observingFinalAudioPublisher struct{ called chan FinalAudioReference }
+
+func (p *observingFinalAudioPublisher) PublishFinalAudio(_ context.Context, _ string, _ Language, ref FinalAudioReference, _ string) (FinalAudioPublishResult, error) {
+	p.called <- ref
+	return FinalAudioPublishResult{AssetID: "audio-asset", DriveFileID: "drive-audio", DriveLink: "https://drive.google.com/file/d/drive-audio"}, nil
 }
 
 type barrierOverlayRenderer struct {
@@ -263,6 +276,40 @@ func TestAudioOverlayOverlapJoinsBeforeCheckpointAndResumes(t *testing.T) {
 			require.True(t, stage.Independent)
 		}
 	}
+}
+
+func TestFinalAudioPublishesBeforeOverlayJoinButFinalizesAfterJoin(t *testing.T) {
+	e, _, audio, overlay, _ := newAudioOverlapFixture(t)
+	audioPath := filepath.Join(t.TempDir(), "final-audio.m4a")
+	require.NoError(t, os.WriteFile(audioPath, []byte("certified audio"), 0o600))
+	audio.path = audioPath
+	publisher := &observingFinalAudioPublisher{called: make(chan FinalAudioReference, 1)}
+	e.r.SetFinalAudioPublisher(publisher)
+
+	finished := make(chan bool, 1)
+	go func() { finished <- e.audioCompile() }()
+	awaitAudioBarrier(t, audio.started)
+	awaitAudioBarrier(t, overlay.started)
+	close(audio.release)
+	awaitAudioBarrier(t, audio.drained)
+
+	select {
+	case published := <-publisher.called:
+		require.Equal(t, audioPath, published.Path)
+	case <-time.After(3 * time.Second):
+		t.Fatal("certified final audio was not published while overlay rendering was held")
+	}
+	require.Nil(t, e.result.EditingTimeline, "audio_finalize must wait for the overlay join")
+	select {
+	case <-finished:
+		t.Fatal("audio pipeline finished before the overlay sibling joined")
+	default:
+	}
+
+	close(overlay.release)
+	require.True(t, <-finished)
+	require.NotNil(t, e.result.EditingTimeline)
+	require.Equal(t, "drive-audio", e.result.FinalAudio.DriveFileID)
 }
 
 func TestAudioOverlayFailureAndCancellationDrainBothBranches(t *testing.T) {

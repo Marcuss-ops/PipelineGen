@@ -205,7 +205,7 @@ func (sh *SearchHandler) ClipStatus(c *gin.Context) {
 		"has_drive_link":  clip.DriveLink() != "" || clip.DownloadLink() != "",
 		"drive_link":      clip.DriveLink(),
 		"download_link":   clip.DownloadLink(),
-		"legacy_file_md5": clip.LegacyFileMD5(),
+		"legacy_file_md5": clip.GetMetadataString("legacy_file_md5"),
 		"folder_id":       clip.FolderID(),
 		"folder_path":     clip.FolderPath(),
 		"status":          status,

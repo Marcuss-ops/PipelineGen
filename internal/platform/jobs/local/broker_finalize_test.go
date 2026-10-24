@@ -512,7 +512,7 @@ func TestBroker_CompleteWithArtifacts_PreValidationFailsClosed(t *testing.T) {
 // TestVerifiedFromStagedRefDoesNotInventLanguage pins the P0 destination-bug
 // fix. Before it, an artifact with no language was defaulted to the hard-coded
 // literal "it", so every language-less (and every `en`) run published its
-// script.json / scenes.json into `<docs root>/<job>/it`. The hint now comes
+// script.json into `<docs root>/<job>/it`. The hint now comes
 // from the producer only; an artifact without one stays empty and the
 // language-scoped destinations fail closed downstream instead of guessing.
 func TestVerifiedFromStagedRefDoesNotInventLanguage(t *testing.T) {

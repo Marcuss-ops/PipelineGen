@@ -230,6 +230,87 @@ func TestExtractStagedArtifacts_OverlayManifestHasSinglePublicationOwner(t *test
 	}
 }
 
+// TestExtractStagedArtifacts_FinalAudioHasSinglePublicationOwner pins the
+// master-audio single-owner contract: a final_audio entry that REFERENCES the
+// master publishFinalAudio already published and registered (canonical
+// audio_asset_id stamped at persist time) stays in the certified manifest for
+// audit but is never re-staged — the generic finalizer must not upload a
+// second Drive copy of the same bytes. An entry WITHOUT the reference keeps
+// the generic staging path (the safety net for compositions that never ran
+// the audio publisher).
+func TestExtractStagedArtifacts_FinalAudioHasSinglePublicationOwner(t *testing.T) {
+	finalAudio := func(id, assetID string) job.Artifact {
+		meta := map[string]any{
+			"final_audio_sha256": "sha-of-master",
+			"audio_strategy":     "FINAL_AUDIO_COPY",
+		}
+		if assetID != "" {
+			meta["audio_asset_id"] = assetID
+			meta["drive_file_id"] = "drive-" + assetID
+		}
+		return job.Artifact{
+			ID: id, Kind: job.ArtifactKindFinalAudio,
+			Path: "/tmp/pipelinegen/jobs/job_master/output/final_audio.m4a", Filename: "final_audio.m4a",
+			MIMEType: "audio/mp4", SizeBytes: 4096, SHA256: "sha-of-master", Required: true,
+			ArtifactMetadata: meta,
+		}
+	}
+	script := job.Artifact{
+		ID: "job_master:script_json", Kind: job.ArtifactKindScriptJSON,
+		Path: "/tmp/pipelinegen/jobs/job_master/output/script.json", Filename: "script.json",
+		MIMEType: "application/json", SizeBytes: 42, SHA256: "abc", Required: true,
+	}
+
+	// Referenced master: staged list keeps ONLY the sidecar.
+	manifest := &job.ArtifactManifest{
+		SchemaVersion: job.SchemaVersionArtifactManifestV1,
+		JobID:         "job_master",
+		Artifacts:     []job.Artifact{script, finalAudio("asset-published", "asset-published")},
+	}
+	raw, err := extractStagedArtifacts(map[string]any{job.ManifestKey: manifestToRawJSON(t, manifest)}, "script.generate")
+	if err != nil {
+		t.Fatalf("extractStagedArtifacts: %v", err)
+	}
+	var artifacts remote.StagedArtifacts
+	if err := json.Unmarshal(raw, &artifacts); err != nil {
+		t.Fatalf("unmarshal staged artifacts: %v", err)
+	}
+	if len(artifacts) != 1 || artifacts[0].ArtifactID != "job_master:script_json" {
+		t.Fatalf("referenced master re-staged: %+v, want only script_json", artifacts)
+	}
+
+	// An asset ID without the provider file ID is not proof of publication;
+	// keep the generic staging path for incomplete/legacy references.
+	manifest.Artifacts = []job.Artifact{script, finalAudio("asset-only", "asset-only")}
+	delete(manifest.Artifacts[1].ArtifactMetadata, "drive_file_id")
+	raw, err = extractStagedArtifacts(map[string]any{job.ManifestKey: manifestToRawJSON(t, manifest)}, "script.generate")
+	if err != nil {
+		t.Fatalf("extractStagedArtifacts: %v", err)
+	}
+	if err := json.Unmarshal(raw, &artifacts); err != nil {
+		t.Fatalf("unmarshal staged artifacts: %v", err)
+	}
+	if len(artifacts) != 2 {
+		t.Fatalf("asset-only master reference must keep the staging safety net, got %+v", artifacts)
+	}
+
+	// Unreferenced master: the safety-net staging path is preserved.
+	manifest.Artifacts = []job.Artifact{script, finalAudio("job_master:final_audio", "")}
+	raw, err = extractStagedArtifacts(map[string]any{job.ManifestKey: manifestToRawJSON(t, manifest)}, "script.generate")
+	if err != nil {
+		t.Fatalf("extractStagedArtifacts: %v", err)
+	}
+	if err := json.Unmarshal(raw, &artifacts); err != nil {
+		t.Fatalf("unmarshal staged artifacts: %v", err)
+	}
+	if len(artifacts) != 2 {
+		t.Fatalf("unreferenced master must keep the staging safety net, got %+v", artifacts)
+	}
+	if artifacts[1].ArtifactID != "job_master:final_audio" || artifacts[1].Destination != "voiceover" {
+		t.Fatalf("unreferenced master staging = %+v, want destination voiceover", artifacts[1])
+	}
+}
+
 // TestExtractStagedArtifacts_LanguageRoutingPreserved pins the language half of
 // the same hop for the P0 destination-bug fix (Sept 2026): the language hint a
 // producer stamped on the artifact (Artifact.DriveLanguage + the `language`

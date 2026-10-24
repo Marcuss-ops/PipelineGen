@@ -28,7 +28,8 @@
     "paths": [
       "internal/capabilities/scripts/usecase/",
       "internal/platform/sqlite/scripts/",
-      "config/lexicons/"
+      "config/lexicons/",
+      "semantic_acceptance/"
     ],
     "go_packages": [
       "./internal/capabilities/scripts/usecase/...",

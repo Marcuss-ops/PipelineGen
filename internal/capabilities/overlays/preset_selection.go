@@ -35,7 +35,6 @@ var (
 	classicAppleMotionCandidates           = AnimationCandidates("phrase.classic_apple")
 	modernAppleMotionCandidates            = AnimationCandidates("phrase.modern_apple")
 	shortPhraseMotionCandidates            = registryShortPhraseGroups()
-	brushPhraseMotionCandidates            = AnimationCandidates("phrase.brush")
 	documentaryHighlightMotionCandidates   = AnimationCandidates("phrase.documentary")
 	text3DMotionCandidates                 = AnimationCandidates("phrase.3d")
 	phraseAppleCleanMotionCandidates       = AnimationCandidates("phrase.apple_clean")
@@ -44,7 +43,7 @@ var (
 	renderSafeTextMotions                  = phraseAppleCleanMotionCandidates
 	generatedPhraseMotions                 = phraseMotionCandidates
 	generatedTextMotions                   = phraseAppleCleanMotionCandidates
-	defaultPhraseMotionFamilies            = []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1", "documentary_highlighting_v1"}
+	defaultPhraseMotionFamilies            = []string{"classic_apple", "modern_apple", "text_3d_v1", "documentary_highlighting_v1"}
 )
 
 func firstAnimationCandidate(group string) string {

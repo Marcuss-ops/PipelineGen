@@ -71,27 +71,28 @@ func TestDocumentaryPhraseAliasesRotateAcrossAdaptiveFamilies(t *testing.T) {
 	}
 }
 
-func TestLongPhrasePoolKeepsOnlySoftBrushAccents(t *testing.T) {
-	soft := map[string]bool{
-		"brush_phrase_gold_marker":       true,
-		"brush_phrase_white_light_sweep": true,
-	}
-	for _, id := range brushPhraseMotionCandidates {
-		if !soft[id] {
-			t.Errorf("harsh Brush motion %q remains selectable", id)
-		}
-	}
-	if len(brushPhraseMotionCandidates) != len(soft) {
-		t.Fatalf("soft Brush pool has %d motions, want %d", len(brushPhraseMotionCandidates), len(soft))
-	}
+// TestRetiredBrushFamilyIsNotSelectable pins the 2026-10-24 removal: both
+// Brush long-lane accents are retired registry entries, the family has no
+// callable member left, and neither id may leak back into the long lane.
+func TestRetiredBrushFamilyIsNotSelectable(t *testing.T) {
 	for _, id := range []string{
+		"brush_phrase_gold_marker", "brush_phrase_white_light_sweep",
 		"brush_phrase_arrow_point", "brush_phrase_circle_focus", "brush_phrase_lower_rule",
 		"brush_phrase_red_brush_underline", "brush_phrase_red_endpoint_rule",
 		"brush_phrase_red_underline", "brush_phrase_signature_flourish",
 		"brush_phrase_white_double_underline", "brush_phrase_white_underline",
 	} {
-		if containsString(LongPhraseMotionCandidates(), id) {
-			t.Errorf("removed Brush motion %q remains in the long-phrase lane", id)
+		if !AnimationIsRetired(id) {
+			t.Errorf("Brush motion %q is not retired", id)
 		}
+		if AnimationSelectable(id, "phrase.long") || AnimationSelectable(id, "phrase.all") {
+			t.Errorf("retired Brush motion %q is still selectable", id)
+		}
+		if containsString(LongPhraseMotionCandidates(), id) {
+			t.Errorf("retired Brush motion %q remains in the long-phrase lane", id)
+		}
+	}
+	if members := AnimationCandidates("phrase.brush"); len(members) != 0 {
+		t.Errorf("retired Brush family still has candidates: %v", members)
 	}
 }

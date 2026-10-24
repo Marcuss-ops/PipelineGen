@@ -166,8 +166,11 @@ type GenerationTimings struct {
 }
 
 type FinalAudioArtifact struct {
-	AssetID              string `json:"audio_asset_id"`
-	Path                 string `json:"path"`
+	AssetID string `json:"audio_asset_id"`
+	Path    string `json:"path"`
+	// DriveFileID is an in-process publication fact; DriveLink remains the
+	// wire location so one fact has one owner (media-identity gate).
+	DriveFileID          string `json:"-"`
 	DriveLink            string `json:"drive_link,omitempty"`
 	Container            string `json:"container,omitempty"`
 	AudioContractVersion string `json:"audio_contract_version"`

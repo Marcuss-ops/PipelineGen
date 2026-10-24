@@ -126,8 +126,8 @@ var _ voiceover.VoiceoverFinalizer = (*e2eFinalizer)(nil)
 
 // newTimingJobHandler wires the REAL ProcessVoiceoverItemUseCase behind the
 // canonical child handler with stub ports, so the test exercises the full
-// TTS → publish → timing → finalize pipeline (not just handler mapping).
-func newTimingJobHandler(t *testing.T, tts voiceover.TTSProvider, pub *e2ePublisher) *GenerateItemJobHandler {
+// TTS → local persist → timing → finalize pipeline (not just handler mapping).
+func newTimingJobHandler(t *testing.T, tts voiceover.TTSProvider) *GenerateItemJobHandler {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
@@ -137,7 +137,6 @@ func newTimingJobHandler(t *testing.T, tts voiceover.TTSProvider, pub *e2ePublis
 		Pipeline: voiceover.ProcessVoiceoverPipelineDeps{
 			TTSProvider:         tts,
 			DestinationResolver: &e2eDestResolver{folderID: "folder-e2e", folderPath: t.TempDir()},
-			Publisher:           pub,
 			VoiceoverRepository: &e2eVoRepo{db: db},
 		},
 		Finalize: voiceover.ProcessVoiceoverFinalizeDeps{
@@ -176,8 +175,7 @@ func timingItemCmd(mode audio.TimingMode) *voiceover.GenerateVoiceoverItemComman
 // the typed VOICEOVER_TIMING_UNAVAILABLE code — never a fake SUCCEEDED.
 func TestTimingJob_Required_NoBoundaries_FailsJob(t *testing.T) {
 	tts := &noBoundaryTTS{dir: t.TempDir()}
-	pub := &e2ePublisher{fileID: "drive-e2e"}
-	h := newTimingJobHandler(t, tts, pub)
+	h := newTimingJobHandler(t, tts)
 
 	item := timingItemCmd(audio.TimingRequired)
 	j := &appjobs.Job{ID: "child-required-nb", Payload: marshalItemCmd(t, item)}
@@ -191,11 +189,12 @@ func TestTimingJob_Required_NoBoundaries_FailsJob(t *testing.T) {
 	assert.True(t, hasOK)
 	assert.False(t, ok, "required timing failure must surface ok=false")
 
-	// Exactly one synthesis, zero transcription passes. The audio upload
-	// already happened (Stage 3) before the timing bundle failed closed.
+	// Exactly one synthesis, zero transcription passes. The local audio is
+	// already on disk before the timing bundle fails closed; the pipeline is
+	// local-only (waste-cut 2026-10-24), so no Drive upload is involved.
 	assert.Equal(t, 1, tts.synth, "exactly one TTS synthesis; zero Whisper/transcription")
-	require.Len(t, pub.published, 1, "audio is uploaded before the timing failure")
-	assert.Equal(t, "timing_neg_it.mp3", pub.published[0].Filename)
+	_, statErr := os.Stat(filepath.Join(tts.dir, "audio.mp3"))
+	assert.NoError(t, statErr, "certified local audio must exist before the timing failure")
 }
 
 // TestTimingJob_BestEffort_NoBoundaries_SucceedsUnavailable pins the
@@ -204,8 +203,7 @@ func TestTimingJob_Required_NoBoundaries_FailsJob(t *testing.T) {
 // status=unavailable — never silently dropped, never fabricated.
 func TestTimingJob_BestEffort_NoBoundaries_SucceedsUnavailable(t *testing.T) {
 	tts := &noBoundaryTTS{dir: t.TempDir()}
-	pub := &e2ePublisher{fileID: "drive-e2e"}
-	h := newTimingJobHandler(t, tts, pub)
+	h := newTimingJobHandler(t, tts)
 
 	item := timingItemCmd(audio.TimingBestEffort)
 	j := &appjobs.Job{ID: "child-best-effort-nb", Payload: marshalItemCmd(t, item)}
@@ -222,9 +220,9 @@ func TestTimingJob_BestEffort_NoBoundaries_SucceedsUnavailable(t *testing.T) {
 	assert.Equal(t, "unavailable", timing["status"],
 		"best-effort + no boundaries must surface timing.status=unavailable, not completed")
 
-	// Exactly one synthesis, zero transcription passes; only the audio
-	// file is published (no timing.json/srt/vtt for zero boundaries).
+	// Exactly one synthesis, zero transcription passes; only the local audio
+	// exists (no timing.json/srt/vtt for zero boundaries, and no Drive upload).
 	assert.Equal(t, 1, tts.synth, "exactly one TTS synthesis; zero Whisper/transcription")
-	require.Len(t, pub.published, 1, "only the audio is published when no boundaries exist")
-	assert.Equal(t, "timing_neg_it.mp3", pub.published[0].Filename)
+	_, statErr := os.Stat(filepath.Join(tts.dir, "audio.mp3"))
+	assert.NoError(t, statErr, "certified local audio must exist")
 }

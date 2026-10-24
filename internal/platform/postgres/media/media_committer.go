@@ -481,9 +481,9 @@ func (c *PostgresMediaCommitter) discoveryCommitRequest(clip *asset.Asset, lifec
 	// MEDIA-IDENTITY (media-identity programme, Sept 2026): the commit's
 	// ContentHash is the BYTE identity, so it is resolved from the canonical
 	// content surfaces — and from legacy_file_md5 only while that column still
-	// carries a SHA-256. clip.LegacyFileMD5() is the compatibility accessor and
-	// is documented to be able to hold an MD5; an MD5 must never become the
-	// content address of a media row (see asset.ContentAddress).
+	// carries a SHA-256. The legacy_file_md5 metadata key is the compatibility
+	// accessor and may hold an MD5; an MD5 must never become the content
+	// address of a media row (see asset.ContentAddress).
 	contentHash := clip.ContentAddress()
 	return mediacommit.CommitMediaAssetRequest{
 		Asset: mediacommit.AssetDraft{

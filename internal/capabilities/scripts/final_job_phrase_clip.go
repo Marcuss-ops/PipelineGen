@@ -14,12 +14,6 @@ func finalJobPhraseOverlayClip(result *GenerateResult, sceneID string) (map[stri
 	if result == nil || result.OverlayPlan == nil || result.OverlayRender == nil {
 		return nil, 0, "", false, nil
 	}
-	artifacts := make(map[string]*RenderArtifact, len(result.OverlayRender.Items))
-	for _, rendered := range result.OverlayRender.Items {
-		if rendered.Artifact != nil {
-			artifacts[strings.TrimSpace(rendered.ItemID)] = rendered.Artifact
-		}
-	}
 	var phrase *capoverlay.OverlayItem
 	for i := range result.OverlayPlan.Items {
 		item := &result.OverlayPlan.Items[i]
@@ -33,8 +27,8 @@ func finalJobPhraseOverlayClip(result *GenerateResult, sceneID string) (map[stri
 	if phrase == nil {
 		return nil, 0, "", false, nil
 	}
-	artifact := artifacts[strings.TrimSpace(phrase.ID)]
-	if artifact == nil {
+	artifact, _, found := overlayArtifactForItem(result.OverlayRender, strings.TrimSpace(phrase.ID))
+	if !found || artifact == nil {
 		return nil, 0, "", false, fmt.Errorf("final_job phrase-only scene %q has no rendered phrase artifact", sceneID)
 	}
 	driveID := strings.TrimSpace(artifact.DriveFileID)

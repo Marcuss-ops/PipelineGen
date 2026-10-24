@@ -7,6 +7,7 @@ package rendermetrics
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -47,9 +48,17 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 	if attempt.AttemptID == "" {
 		return errors.New("render metrics registry: attempt_id is required")
 	}
+	batchItemIDsJSON := "[]"
+	if len(attempt.BatchItemIDs) > 0 {
+		encoded, err := json.Marshal(attempt.BatchItemIDs)
+		if err != nil {
+			return fmt.Errorf("render metrics registry: encode batch item ids: %w", err)
+		}
+		batchItemIDsJSON = string(encoded)
+	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO render_attempt_analytics (
-			attempt_id, job_id, item_id,
+			attempt_id, job_id, item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us,
 			submit_started_at, submit_accepted_at, wait_started_at, wait_finished_at,
 			queue_queued_at, queue_started_at, queue_completed_at, artifact_available_at, outcome,
 			phrase_count, word_count, number_count, image_count, leak_count,
@@ -62,10 +71,14 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 			metrics_json, chronon_telemetry,
 			chronon_timing_storage_key, chronon_timing_url, chronon_timing_sha256, chronon_timing_size_bytes, chronon_timing_content_type,
 			recorded_at
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			job_id = excluded.job_id,
 			item_id = excluded.item_id,
+			batch_id = excluded.batch_id,
+			batch_item_ids_json = excluded.batch_item_ids_json,
+			batch_start_us = excluded.batch_start_us,
+			batch_end_us = excluded.batch_end_us,
 			submit_started_at = excluded.submit_started_at,
 			submit_accepted_at = excluded.submit_accepted_at,
 			wait_started_at = excluded.wait_started_at,
@@ -120,6 +133,10 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 		attempt.AttemptID,
 		attempt.JobID,
 		attempt.ItemID,
+		attempt.BatchID,
+		batchItemIDsJSON,
+		attempt.BatchStartUS,
+		attempt.BatchEndUS,
 		formatOptionalTime(attempt.SubmitStartedAt),
 		formatOptionalTime(attempt.SubmitAcceptedAt),
 		formatOptionalTime(attempt.WaitStartedAt),

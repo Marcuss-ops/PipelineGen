@@ -2,15 +2,17 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
@@ -45,6 +47,9 @@ type QueueRenderEnqueuer struct {
 	// after nearby items have been fused into chain items. Ordinary overlay plans
 	// must not become a single full-duration video with sparse layers.
 	separateItemRenders bool
+	// overlayWindowBatching enables costed fusion of compatible same-scene
+	// windows inside the per-item path. Dynamic maps remain individual work.
+	overlayWindowBatching bool
 	// itemRenderPool bounds how many per-item overlay renders may be in
 	// flight at once. It exists because the per-item path used to submit a
 	// child plan and block on its terminal state before submitting the next
@@ -69,6 +74,9 @@ type QueueRenderEnqueuer struct {
 	// renderCacheProber verifies a cached locator still resolves in the object
 	// store before it is served as a completed render. Nil trusts the index.
 	renderCacheProber OverlayArtifactProber
+	// mapVideoCacheDir is the durable local cache for the certified dynamic-map
+	// MP4, rooted under the configured storage data directory.
+	mapVideoCacheDir string
 	// renderCacheEpoch pins the deployment epoch mixed into cache keys. Empty
 	// falls back to OverlayRenderCacheEpoch() (env override, then build
 	// identity).
@@ -105,100 +113,49 @@ type QueueRenderEnqueuer struct {
 // important: sending PipelineGen's old v1 concrete document makes the worker
 // validate it against the v2 schema and fail before Chronon starts.
 func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
-	// Nearby semantic items have already been coalesced into chain items by the
-	// planner. Render each resulting item/chain as its own short MP4. Rendering
-	// the entire plan here creates one sparse video spanning the full narration.
-	// Maps force the per-item route as well: each map item then folds its own
-	// dynamic render exactly like a single-map plan, so the backend and the
-	// presentation never depend on the plan's item count.
-	if e != nil && len(plan.Items) > 0 && (e.separateItemRenders || planNeedsPerItemMapRenders(plan)) {
+	switch resolveOverlayRenderMode(e, plan) {
+	case overlayRenderModeSingle, overlayRenderModeFused:
 		return e.enqueueSeparateOverlayItems(ctx, plan)
+	default:
+		return e.enqueueChrononPlan(ctx, plan, nil)
 	}
-	return e.enqueueChrononPlan(ctx, plan, nil)
 }
 
-// planMapBackend is one map item's render-boundary backend decision: the
-// capability-resolved backend plus the reason recorded for the map decision
-// report. resolvePlanMapBackends is the SINGLE owner of this decision — the
-// per-item routing predicate and the queue annotation below both consume its
-// output, so the route a map takes and the backend stamped on it can never
-// disagree (the P0 rule: one decision, made per map from its own
-// requirements, never from the plan's item count).
-type planMapBackend struct {
-	itemID  string
-	backend scriptoverlay.MapBackend
-	reason  string
-}
+type overlayRenderMode string
 
-// resolvePlanMapBackends resolves every map item's backend from its own real
-// render requirements. It fails closed on the first unresolvable item.
-func resolvePlanMapBackends(plan capoverlay.OverlayPlan) ([]planMapBackend, error) {
-	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
-	var decisions []planMapBackend
-	for i := range plan.Items {
-		if plan.Items[i].Map == nil {
+const (
+	overlayRenderModeScene  overlayRenderMode = "scene"
+	overlayRenderModeSingle overlayRenderMode = "single"
+	overlayRenderModeFused  overlayRenderMode = "fused"
+)
+
+// resolveOverlayRenderMode owns the scene/single/fused decision. Map backend
+// compatibility may force window rendering; otherwise the configured single
+// item policy selects it. The deterministic window planner then decides
+// whether any compatible window actually benefits from fusion.
+func resolveOverlayRenderMode(enqueuer *QueueRenderEnqueuer, plan capoverlay.OverlayPlan) overlayRenderMode {
+	if enqueuer == nil || len(plan.Items) == 0 {
+		return overlayRenderModeScene
+	}
+	if !enqueuer.separateItemRenders && !planNeedsPerItemMapRenders(plan) {
+		return overlayRenderModeScene
+	}
+	if !enqueuer.overlayWindowBatching {
+		return overlayRenderModeSingle
+	}
+	candidates := make([]overlayItemCandidate, 0, len(plan.Items))
+	for index, item := range plan.Items {
+		if strings.EqualFold(strings.TrimSpace(item.TemplateID), "BACKGROUND") || strings.EqualFold(strings.TrimSpace(item.TemplateID), "VIDEO_BACKGROUND") {
 			continue
 		}
-		backend, reason, err := scriptoverlay.ResolveMapItemBackend(plan.Items[i], nativeDiagnostic)
-		if err != nil {
-			return nil, fmt.Errorf("resolve map backend for item %q: %w", plan.Items[i].ID, err)
-		}
-		decisions = append(decisions, planMapBackend{itemID: plan.Items[i].ID, backend: backend, reason: reason})
+		candidates = append(candidates, overlayItemCandidate{index: index, source: item})
 	}
-	return decisions, nil
-}
-
-// annotatePlanMapBackends stamps the single backend decision onto every map
-// item, so the worker executes exactly the backend the capability resolution
-// chose. It is the second half of the single decision (resolve, then
-// annotate) — callers never re-resolve per item.
-func annotatePlanMapBackends(plan *capoverlay.OverlayPlan, decisions []planMapBackend) {
-	if plan == nil {
-		return
-	}
-	byItem := make(map[string]planMapBackend, len(decisions))
-	for _, decision := range decisions {
-		byItem[decision.itemID] = decision
-	}
-	for itemIndex := range plan.Items {
-		if plan.Items[itemIndex].Map == nil {
-			continue
-		}
-		decision, ok := byItem[plan.Items[itemIndex].ID]
-		if !ok {
-			continue
-		}
-		if plan.Items[itemIndex].Params == nil {
-			plan.Items[itemIndex].Params = map[string]any{}
-		}
-		plan.Items[itemIndex].Params["map_backend"] = string(decision.backend)
-		plan.Items[itemIndex].Params["map_backend_reason"] = decision.reason
-	}
-}
-
-// planNeedsPerItemMapRenders reports whether the plan holds map content that
-// must render through the dynamic per-item route: a python-backend map in a
-// plan that is not the single foldable map item. It consumes the single
-// backend decision above, so routing and annotation always agree.
-func planNeedsPerItemMapRenders(plan capoverlay.OverlayPlan) bool {
-	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
-	if nativeDiagnostic {
-		return false
-	}
-	decisions, err := resolvePlanMapBackends(plan)
-	if err != nil {
-		return true
-	}
-	pythonMaps := 0
-	for _, decision := range decisions {
-		if decision.backend == scriptoverlay.MapBackendPython {
-			pythonMaps++
+	for _, work := range planOverlayBatchWork(plan, candidates) {
+		if len(work.candidates) > 1 {
+			return overlayRenderModeFused
 		}
 	}
-	if pythonMaps > 0 && len(plan.Items) > 1 {
-		return true
-	}
-	return len(decisions) > 1
+	return overlayRenderModeSingle
 }
 
 // EnqueueFinalJobCompositePlan renders a complete opaque scene composition in
@@ -238,8 +195,20 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	if e == nil || e.client == nil {
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
+	if plan.RequireDriveBeforeReturn && e.publisher == nil {
+		return RenderReference{}, fmt.Errorf("render plan requires Drive delivery but no overlay publisher is configured")
+	}
 	semanticPlan := plan
+	// A dynamic-map import attests both PlanID and VideoID. Plans built by the
+	// single-item path already fall back to PlanID; apply the same stable
+	// identity here so a plan that predates VideoID stamping still produces a
+	// complete import attestation instead of failing at the worker boundary.
+	if strings.TrimSpace(semanticPlan.VideoID) == "" {
+		semanticPlan.VideoID = semanticPlan.PlanID
+	}
 	var generatedMapVideo string
+	var dynamicMapImportSpec []byte
+	var dynamicMapImportSHA string
 	// Map backend selection is a PER-MAP capability decision made at the render
 	// boundary (the P0 rule): every map item resolves its backend from its own
 	// render requirements, identically whether the plan holds one map or
@@ -268,7 +237,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		// path). Multi-map plans take the per-item route in
 		// EnqueueChrononPlan, so a map is rendered the same way regardless of
 		// how many maps the plan holds.
-		videoPath, err := renderDynamicMapVideo(ctx, semanticPlan)
+		videoPath, err := renderDynamicMapVideo(ctx, semanticPlan, e.mapVideoCacheDir)
 		if err != nil {
 			return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
 		}
@@ -281,12 +250,33 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		if size == 0 {
 			return RenderReference{}, fmt.Errorf("dynamic map video is empty")
 		}
+		dynamicMapImportSHA = sha
+		telemetry, err := os.ReadFile(filepath.Join(filepath.Dir(videoPath), "map.telemetry.json"))
+		if err != nil {
+			return RenderReference{}, fmt.Errorf("read dynamic map producer telemetry for import: %w", err)
+		}
+		var mapFacts struct {
+			Frames int `json:"frames"`
+		}
+		if err := json.Unmarshal(telemetry, &mapFacts); err != nil {
+			return RenderReference{}, fmt.Errorf("decode dynamic map producer telemetry for import: %w", err)
+		}
+		itemDurationUS := scriptoverlay.MapItemDurationMS(semanticPlan.Items[0], semanticPlan.DurationMS) * 1000
+		dynamicMapImportSpec, err = marshalDynamicMapImport(semanticPlan, sha, size, mapFacts.Frames, itemDurationUS, telemetry)
+		if err != nil {
+			return RenderReference{}, err
+		}
 		assetRef := capoverlay.NewOverlayAssetRef(
 			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},
 			"", videoPath,
 		)
 		semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}
 		semanticPlan.Items = nil
+	}
+	for _, item := range semanticPlan.Items {
+		if item.Map != nil && item.Map.DynamicRendererOnly {
+			return RenderReference{}, fmt.Errorf("dynamic-renderer-only map %q must be submitted as a one-item producer import", item.ID)
+		}
 	}
 	// Drive routing belongs to PipelineGen's publication boundary, not to
 	// RenderingGen's strict semantic overlay-plan wire contract. Keep it on
@@ -298,9 +288,14 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// Background block. The legacy "item with template BACKGROUND" spelling
 	// was removed — producers must set Background explicitly; the enqueue
 	// boundary no longer rewrites the plan's items.
-	spec, err := marshalRenderingGenOverlayPlan(wirePlan)
-	if err != nil {
-		return RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
+	var spec []byte
+	if len(dynamicMapImportSpec) > 0 {
+		spec = dynamicMapImportSpec
+	} else {
+		spec, err = marshalRenderingGenOverlayPlan(wirePlan)
+		if err != nil {
+			return RenderReference{}, fmt.Errorf("marshal semantic chronon plan: %w", err)
+		}
 	}
 	assets := make([]RenderQueueAsset, 0, len(plan.Items)+1)
 	seen := make(map[string]struct{})
@@ -336,7 +331,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			addAsset(ref)
 		}
 	}
-	if semanticPlan.Source != nil {
+	if semanticPlan.Source != nil && len(dynamicMapImportSpec) == 0 {
 		addAsset(capoverlay.OverlayAssetRef{
 			AssetID: semanticPlan.Source.AssetID, URL: semanticPlan.Source.Path,
 			LocalPath: semanticPlan.Source.LocalPath, SHA256: semanticPlan.Source.SHA256,
@@ -384,9 +379,21 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		return RenderReference{}, fmt.Errorf("stage selected runtime fonts: %w", err)
 	}
 	assets = append(assets, fontAssets...)
+	if len(dynamicMapImportSpec) > 0 && (len(assets) != 1 || assets[0].SHA256 != dynamicMapImportSHA) {
+		return RenderReference{}, fmt.Errorf("dynamic map import must stage exactly its producer MP4 asset")
+	}
 	jobID := plan.PlanID
+	jobType := capoverlay.JobTypeRender
+	if len(dynamicMapImportSpec) > 0 {
+		jobType = capoverlay.JobTypeImport
+		jobID = fmt.Sprintf("%s:map-import:%s", plan.PlanID, digest.SHA256String(string(dynamicMapImportSpec))[:16])
+	}
 	if e.freshRender {
-		jobID = fmt.Sprintf("%s:render:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), e.freshSeq.Add(1))
+		seq := e.freshSeq.Add(1)
+		jobID = fmt.Sprintf("%s:render:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), seq)
+		if jobType == capoverlay.JobTypeImport {
+			jobID = fmt.Sprintf("%s:map-import:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), seq)
+		}
 	}
 	// Keep the queue dispatch explicit. RenderingGen uses this discriminator to
 	// route the job through the overlay renderer (and to apply the overlay media
@@ -394,7 +401,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// render_segment path.
 	job := RenderQueueJob{
 		ID:      jobID,
-		JobType: capoverlay.JobTypeRender,
+		JobType: jobType,
 		// ParentJobID is the correlation id of the run that produced this
 		// render (pkg/corid). It is the ONLY join key between a master run
 		// and the remote queue entry: without it the queue record cannot be
@@ -405,9 +412,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		Assets:      assets,
 	}
 
-	// Content-addressed reuse: a per-item plan whose RenderKey already names a
-	// certified artifact skips submit + wait and flows through this run's
-	// publication step. A miss is the historical path, unchanged.
+	// Content-addressed reuse: a single-item or fused-batch plan whose render
+	// identity already names a certified artifact skips submit + wait and flows
+	// through this run's publication step. A miss is the historical path.
 	var cacheKey OverlayRenderCacheKey
 	cacheable := false
 	if e.renderCache != nil {
@@ -439,7 +446,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			// The re-arm decision is owned by RearmFailedRenderJob (the same
 			// helper the clip.render executor uses), and it fails closed when the
 			// job is FAILED and cannot be re-armed.
-			if rearmErr := RearmFailedRenderJob(ctx, e.client, plan.PlanID); rearmErr != nil {
+			if rearmErr := RearmFailedRenderJob(ctx, e.client, jobID); rearmErr != nil {
 				recordErr := e.recordQueueAttempt(ctx, jobID, plan, metadata, RenderCompletionMetrics{}, submitStartedAt, time.Time{}, nil, time.Time{}, "failure")
 				return RenderReference{}, errors.Join(fmt.Errorf("chronon queue render: %w", rearmErr), recordErr)
 			}
@@ -454,9 +461,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		}
 		// Store BEFORE publication: the render is already certified, and a Drive
 		// failure must not throw away the GPU work that produced it. Only a
-		// cacheable single-item plan owns a key; anything else (map folds,
-		// multi-item compositions) is not addressable and must not be counted
-		// as a store error.
+		// cacheable item or fused-batch plans own a key. A dynamic map fold has
+		// no semantic item after its video is installed as the background, so it
+		// is not addressable here and must not be counted as a store error.
 		if cacheable {
 			e.storeOverlayRenderCache(ctx, cacheKey, done.Artifact)
 		}
@@ -477,7 +484,13 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				postErr = errors.Join(postErr, fmt.Errorf("record render attempt analytics: %w", recordErr))
 			}
 		}()
-		if e.publisher != nil {
+		if plan.RequireDriveBeforeReturn && e.publisher == nil {
+			return fmt.Errorf("render job %s requires Drive delivery but no overlay publisher is configured", jobID)
+		}
+		// Certified ordinary video renders remain local/cacheable artifacts.
+		// Only a caller that consumes a remote Drive identity (the final-job
+		// delivery surface) explicitly opts into publication.
+		if plan.RequireDriveBeforeReturn && e.publisher != nil {
 			if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
 				return fmt.Errorf("render job %s completed without certified artifact", jobID)
 			}
@@ -513,6 +526,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				publication.SourceStartUS = metadata.SourceStartUS
 				publication.SourceEndUS = metadata.SourceEndUS
 				publication.TargetDurationUS = metadata.TargetDurationUS
+				publication.OverlayBatchID = metadata.BatchID
+				publication.OverlayBatchItemIDs = append([]string(nil), metadata.BatchItemIDs...)
+				publication.OverlayBatchEndUS = metadata.BatchEndUS
 			}
 			if err := kernobs.MeasureOperation(postCtx, kernobs.OperationInfo{
 				Stage: StageOverlayRender, Component: "drive", Operation: "overlay_upload", Provider: "drive",
@@ -538,7 +554,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			return nil
 		}
 	}
-	if e.asyncPublication && !plan.RequireDriveBeforeReturn && (e.publisher != nil || e.recorder != nil) {
+	if e.asyncPublication && (e.publisher != nil || e.recorder != nil) {
 		// The batch is resolved on the SUBMITTING goroutine: the publication
 		// must land in the batch of the run that asked for the render, not in
 		// whatever context happens to still be alive when it finishes.

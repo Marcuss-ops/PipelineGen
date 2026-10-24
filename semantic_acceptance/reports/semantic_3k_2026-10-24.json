@@ -1,0 +1,206 @@
+{
+  "fixture": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/sempio_chiara_poggi_youtube_3k.txt",
+  "words": 3127,
+  "scenes": 14,
+  "fingerprint": "ec4ca63f533aaf18",
+  "bad_locations": [],
+  "comparisons": [],
+  "facts": [
+    {
+      "scene": "s05",
+      "predicate": "legal_outcome",
+      "value": "acquitted",
+      "date": "2014",
+      "status": "asserted",
+      "evidence": "Nel duemilaquattordici il giudice di primo grado pronuncia una prima assoluzione, che nel duemilasedici viene confermata nel giudizio d'appello.",
+      "subject_id": "person_99",
+      "subject": "Alberto Stasi"
+    },
+    {
+      "scene": "s05",
+      "predicate": "legal_outcome",
+      "value": "acquittal_confirmed",
+      "date": "2016",
+      "status": "asserted",
+      "evidence": "Nel duemilaquattordici il giudice di primo grado pronuncia una prima assoluzione, che nel duemilasedici viene confermata nel giudizio d'appello.",
+      "subject_id": "person_99",
+      "subject": "Alberto Stasi"
+    },
+    {
+      "scene": "s05",
+      "predicate": "legal_outcome",
+      "value": "convicted",
+      "date": "2019",
+      "status": "asserted",
+      "evidence": "Nel duemiladiciassette la Cassazione interviene annullando con rinvio la sentenza, e il caso torna in aula con un nuovo giudizio d'appello che si conclude nel duemiladiciannove con una condanna a sedici anni di reclusione.",
+      "subject_id": "person_99",
+      "subject": "Alberto Stasi"
+    },
+    {
+      "scene": "s05",
+      "predicate": "legal_outcome",
+      "value": "annulled_with_remand",
+      "date": "2017",
+      "status": "asserted",
+      "evidence": "Nel duemiladiciassette la Cassazione interviene annullando con rinvio la sentenza, e il caso torna in aula con un nuovo giudizio d'appello che si conclude nel duemiladiciannove con una condanna a sedici anni di reclusione.",
+      "subject_id": "person_99",
+      "subject": "Alberto Stasi"
+    },
+    {
+      "scene": "s05",
+      "predicate": "legal_finality",
+      "value": "final",
+      "date": "2020",
+      "status": "asserted",
+      "evidence": "Nel duemilaventi questa condanna diventa definitiva.",
+      "subject_id": "person_99",
+      "subject": "Alberto Stasi"
+    },
+    {
+      "scene": "s06",
+      "predicate": "investigation_status",
+      "value": "under_investigation",
+      "date": null,
+      "status": "asserted",
+      "evidence": "In questo periodo Sempio è iscritto nel registro degli indagati, il che significa che il procedimento è aperto nei suoi confronti, ma non significa affatto che siano state accertate responsabilità.",
+      "subject_id": "person_02",
+      "subject": "Andrea Sempio"
+    }
+  ],
+  "micro_count": 6,
+  "timelines": [
+    {
+      "scene_id": "s01",
+      "id": "s01_visual_111",
+      "surfaces": [
+        "2007",
+        "2007-08-13"
+      ],
+      "evidence": "Il tredici agosto duemilasette è una data che segna l'inizio di un racconto complesso e doloroso, e per comprendere la vicenda di cui parleremo oggi è il punto esatto da cui partire. In quel periodo Garlasco è una cittadina tranquilla della provincia di Pavia, un luogo dove le famiglie si conoscono da generazioni e dove le estati trascorrono tra il fiume e le strade del centro. È qui che vive Chiara Poggi, una giovane donna il cui nome è destinato a diventare, suo malgrado, il centro di uno dei casi più discussi della cronaca italiana. La sua vita, i suoi progetti e le sue giornate sono documentati dai resoconti di quei giorni, e per noi il compito rimane quello di restare ancorati ai fatti accertati, senza aggiungere nulla che non sia verificabile. Questo è un racconto costruito su dati pubblici, su sentenze e su atti di indagine, perché quando si parla di una vita interrotta la precisione non è una scelta editoriale, ma un dovere. IL NOME CHE TORNA\n\nIn una storia come questa esiste sempre un nome che resta ai margini per molto tempo, prima di tornare improvvisamente al centro dell'attenzione. In questa vicenda quel nome è quello di Andrea Sempio. Nell'estate del duemilasette Sempio è un ragazzo del luogo, una persona che conosce quei quartieri e quelle persone, e il cui legame con l'abitazione della famiglia Poggi è un dettaglio che rimane a lungo in secondo piano."
+    },
+    {
+      "scene_id": "s05",
+      "id": "s05_visual_090",
+      "surfaces": [
+        "2014",
+        "2016",
+        "2017",
+        "2019",
+        "2020"
+      ],
+      "evidence": "Nel duemilaquattordici il giudice di primo grado pronuncia una prima assoluzione, che nel duemilasedici viene confermata nel giudizio d'appello. Per molti sembra la fine di una vicenda, ma non è così. Nel duemiladiciassette la Cassazione interviene annullando con rinvio la sentenza, e il caso torna in aula con un nuovo giudizio d'appello che si conclude nel duemiladiciannove con una condanna a sedici anni di reclusione. Nel duemilaventi questa condanna diventa definitiva."
+    },
+    {
+      "scene_id": "s11",
+      "id": "s11_visual_093",
+      "surfaces": [
+        "tredici agosto duemilasette"
+      ],
+      "evidence": "Sappiamo che il tredici agosto duemilasette una giovane donna è stata uccisa nella sua casa, e che quel fatto ha cambiato per sempre la vita di molte persone."
+    },
+    {
+      "scene_id": "s14",
+      "id": "s14_visual_043",
+      "surfaces": [
+        "duemilaventicinque",
+        "ventiquattro maggio"
+      ],
+      "evidence": "Nel duemilaventicinque le indagini sulla posizione di Sempio concludono la fase preliminare il ventiquattro maggio, con il deposito di cinque consulenze difensive."
+    }
+  ],
+  "query_stats": {
+    "entries": 1353,
+    "exact": 1361,
+    "unique_exact": 451,
+    "top": [
+      [
+        "persone",
+        16
+      ],
+      [
+        "nome",
+        14
+      ],
+      [
+        "indagini",
+        14
+      ],
+      [
+        "caso",
+        14
+      ],
+      [
+        "sempio",
+        13
+      ],
+      [
+        "vicenda",
+        12
+      ],
+      [
+        "tempo",
+        12
+      ],
+      [
+        "procedimento",
+        12
+      ],
+      [
+        "scienza",
+        12
+      ],
+      [
+        "andrea sempio",
+        11
+      ],
+      [
+        "atti",
+        10
+      ],
+      [
+        "persona",
+        10
+      ],
+      [
+        "dettaglio",
+        10
+      ],
+      [
+        "anni",
+        10
+      ],
+      [
+        "processo",
+        10
+      ],
+      [
+        "giudice",
+        10
+      ],
+      [
+        "chiara poggi",
+        9
+      ],
+      [
+        "stasi",
+        9
+      ],
+      [
+        "garlasco",
+        8
+      ],
+      [
+        "centro",
+        8
+      ]
+    ]
+  },
+  "entity_counts": {
+    "PERSON": 24,
+    "LOCATION": 5,
+    "NUMBER": 18,
+    "DATE": 17,
+    "VISUAL_CONCEPT": 641,
+    "ORG": 3
+  }
+}

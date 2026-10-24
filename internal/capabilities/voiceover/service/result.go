@@ -234,6 +234,16 @@ type VoiceoverTimingResult struct {
 	SRTLink  string `json:"srt_link,omitempty"`
 	VTTLink  string `json:"vtt_link,omitempty"`
 
+	// Local paths of the certified timing projections, persisted next to the
+	// audio. JSONPath is ALWAYS populated when timing completed (the local
+	// timing.json is the durable SSOT the cross-run cache rehydrates from);
+	// SRT/VTT paths exist only when the timing policy requested those
+	// formats. The Link fields above exist only when a Publisher delivered
+	// the same projections remotely.
+	JSONPath string `json:"json_path,omitempty"`
+	SRTPath  string `json:"srt_path,omitempty"`
+	VTTPath  string `json:"vtt_path,omitempty"`
+
 	BoundaryMode string `json:"boundary_mode,omitempty"`
 
 	WordCount  int   `json:"word_count,omitempty"`

@@ -41,6 +41,9 @@ type MapOverlay struct {
 	// native Chronon camera between the declared WGS84 endpoints.
 	LODs       []MapOverlayLOD `json:"lods,omitempty"`
 	CameraMove *MapCameraMove  `json:"camera_move,omitempty"`
+	// DynamicRendererOnly is PipelineGen planning state. It is stripped before
+	// a plan can reach RenderingGen; the dynamic renderer owns tile rasterization.
+	DynamicRendererOnly bool `json:"dynamic_renderer_only,omitempty"`
 }
 
 // MapOverlayLOD references one independently certified, locally supplied
@@ -76,13 +79,18 @@ func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []
 		if len(m.LODs) != 0 {
 			return fmt.Errorf("map LODs require camera_move")
 		}
-		if len(assets) != 1 {
+		if !m.DynamicRendererOnly && len(assets) != 1 {
 			return fmt.Errorf("map requires exactly one basemap asset")
+		}
+		if m.DynamicRendererOnly && len(assets) != 0 {
+			return fmt.Errorf("dynamic-renderer map must not carry unused basemap assets")
 		}
 		return nil
 	}
 	move := m.CameraMove
-	if len(m.LODs) < 2 || len(m.LODs) > 8 || len(m.LODs) != len(assets) {
+	if len(m.LODs) < 2 || len(m.LODs) > 8 ||
+		(!m.DynamicRendererOnly && len(m.LODs) != len(assets)) ||
+		(m.DynamicRendererOnly && len(assets) != 0) {
 		return fmt.Errorf("camera map requires 2..8 LODs and one matching asset per LOD")
 	}
 	for name, point := range map[string]MapCenter{"camera from": move.From, "camera to": move.To} {
@@ -112,7 +120,7 @@ func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []
 	seenAssets := make(map[string]struct{}, len(m.LODs))
 	seenZooms := make(map[int]struct{}, len(m.LODs))
 	for index, lod := range m.LODs {
-		if strings.TrimSpace(lod.AssetID) == "" || strings.TrimSpace(lod.SourceID) == "" ||
+		if (!m.DynamicRendererOnly && strings.TrimSpace(lod.AssetID) == "") || strings.TrimSpace(lod.SourceID) == "" ||
 			strings.TrimSpace(lod.SourceLicense) == "" || !isSingleLineVisibleText(lod.Attribution) ||
 			lod.SourceLicense != m.SourceLicense || lod.Attribution != m.Attribution {
 			return fmt.Errorf("map LOD[%d] requires source provenance and attribution matching the basemap", index)
@@ -123,19 +131,21 @@ func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []
 		if lod.Width < 1 || lod.Height < 1 || lod.Width > MaxMapRasterWidth || lod.Height > MaxMapRasterHeight {
 			return fmt.Errorf("map LOD[%d] raster %dx%d must be positive and stay within %dx%d", index, lod.Width, lod.Height, MaxMapRasterWidth, MaxMapRasterHeight)
 		}
-		if index >= len(assets) || assets[index].AssetID != lod.AssetID {
+		if !m.DynamicRendererOnly && (index >= len(assets) || assets[index].AssetID != lod.AssetID) {
 			return fmt.Errorf("map LOD[%d] asset must match asset_refs[%d]", index, index)
 		}
 		if index > 0 && lod.Zoom <= m.LODs[index-1].Zoom {
 			return fmt.Errorf("map LODs must be in strictly ascending zoom order")
 		}
-		if _, duplicate := seenAssets[lod.AssetID]; duplicate {
-			return fmt.Errorf("map LOD[%d] duplicates asset_id %q", index, lod.AssetID)
+		if !m.DynamicRendererOnly {
+			if _, duplicate := seenAssets[lod.AssetID]; duplicate {
+				return fmt.Errorf("map LOD[%d] duplicates asset_id %q", index, lod.AssetID)
+			}
+			seenAssets[lod.AssetID] = struct{}{}
 		}
 		if _, duplicate := seenZooms[lod.Zoom]; duplicate {
 			return fmt.Errorf("map LODs duplicate zoom %d", lod.Zoom)
 		}
-		seenAssets[lod.AssetID] = struct{}{}
 		seenZooms[lod.Zoom] = struct{}{}
 		if err := (geodesy.Point{Latitude: lod.Center.Latitude, Longitude: lod.Center.Longitude}).Validate(); err != nil {
 			return fmt.Errorf("map LOD[%d] center: %w", index, err)
@@ -152,6 +162,9 @@ func (m *MapOverlay) validateCameraMove(canvasWidth, canvasHeight int, assets []
 			if !lodWindow.Contains(pin.Latitude, pin.Longitude) {
 				return fmt.Errorf("map LOD[%d] does not cover pin[%d] %q", index, pinIndex, pin.ID)
 			}
+		}
+		if m.DynamicRendererOnly {
+			continue
 		}
 		assetFound := false
 		for _, asset := range assets {
@@ -332,29 +345,35 @@ func (m *MapOverlay) Validate(canvasWidth, canvasHeight int, assets []OverlayAss
 	if err := m.validateCameraMove(canvasWidth, canvasHeight, assets); err != nil {
 		return err
 	}
-	if len(assets) == 0 {
+	if m.DynamicRendererOnly && len(assets) != 0 {
+		return fmt.Errorf("dynamic-renderer map must not carry unused basemap assets")
+	}
+	if !m.DynamicRendererOnly && len(assets) == 0 {
 		return fmt.Errorf("map requires at least one basemap asset")
 	}
-	if m.CameraMove != nil && (len(m.LODs) == 0 || assets[0].AssetID != m.LODs[0].AssetID || m.Width != m.LODs[0].Width || m.Height != m.LODs[0].Height) {
+	if !m.DynamicRendererOnly && m.CameraMove != nil && (len(m.LODs) == 0 || assets[0].AssetID != m.LODs[0].AssetID || m.Width != m.LODs[0].Width || m.Height != m.LODs[0].Height) {
 		return fmt.Errorf("camera map base raster must match its first LOD")
 	}
-	asset := assets[0]
-	if strings.TrimSpace(asset.AssetID) == "" || len(strings.TrimSpace(asset.SHA256)) != 64 || strings.Trim(strings.TrimSpace(asset.SHA256), "0123456789abcdefABCDEF") != "" || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" {
-		return fmt.Errorf("map basemap requires a 64-hex content-addressed image/png asset")
+	if !m.DynamicRendererOnly {
+		asset := assets[0]
+		if strings.TrimSpace(asset.AssetID) == "" || len(strings.TrimSpace(asset.SHA256)) != 64 || strings.Trim(strings.TrimSpace(asset.SHA256), "0123456789abcdefABCDEF") != "" || strings.ToLower(strings.TrimSpace(strings.SplitN(asset.MediaType, ";", 2)[0])) != "image/png" {
+			return fmt.Errorf("map basemap requires a 64-hex content-addressed image/png asset")
+		}
+		if strings.TrimSpace(asset.LocalPath) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "https://") {
+			return fmt.Errorf("map basemap must be a verified local file; network references are forbidden")
+		}
+		actualHash, _, err := digest.SHA256File(asset.LocalPath)
+		if err != nil {
+			return fmt.Errorf("read local map raster: %w", err)
+		}
+		if !strings.EqualFold(actualHash, asset.SHA256) {
+			return fmt.Errorf("local map raster SHA-256 mismatch: declared %s, got %s", asset.SHA256, actualHash)
+		}
+		if err := verifyPNGRaster(asset.LocalPath); err != nil {
+			return fmt.Errorf("local map raster integrity: %w", err)
+		}
 	}
-	if strings.TrimSpace(asset.LocalPath) == "" || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "https://") {
-		return fmt.Errorf("map basemap must be a verified local file; network references are forbidden")
-	}
-	actualHash, _, err := digest.SHA256File(asset.LocalPath)
-	if err != nil {
-		return fmt.Errorf("read local map raster: %w", err)
-	}
-	if !strings.EqualFold(actualHash, asset.SHA256) {
-		return fmt.Errorf("local map raster SHA-256 mismatch: declared %s, got %s", asset.SHA256, actualHash)
-	}
-	if err := verifyPNGRaster(asset.LocalPath); err != nil {
-		return fmt.Errorf("local map raster integrity: %w", err)
-	}
+
 	if len(m.Pins) > maxMapPins {
 		return fmt.Errorf("map declares %d pins; the published contract allows at most %d", len(m.Pins), maxMapPins)
 	}

@@ -29,8 +29,21 @@ SELFTEST_TEXT = (
 
 
 def split_scenes(text, scene_words):
-    """Split text into scenes of roughly scene_words words, on sentence bounds."""
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    """Split text into scenes of roughly scene_words words, on sentence bounds.
+
+    An unpunctuated ASR passage can be thousands of words long. It is cut on
+    word boundaries at the scene budget instead of being sent as one sentence:
+    production segments by time, so a single multi-thousand-word "sentence" is
+    an artifact of the transcript, not a scene the planner ever sees.
+    """
+    sentences = []
+    for sentence in re.split(r"(?<=[.!?])\s+", text.strip()):
+        words = sentence.split()
+        if len(words) <= scene_words * 2:
+            sentences.append(sentence)
+            continue
+        for start in range(0, len(words), scene_words):
+            sentences.append(" ".join(words[start:start + scene_words]))
     scenes, current, count = [], [], 0
     for sentence in sentences:
         current.append(sentence)

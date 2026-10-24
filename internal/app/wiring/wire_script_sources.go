@@ -412,9 +412,11 @@ func wireScriptLocationSources(runner scriptLocationSourcesTarget, cfg *config.C
 			return fmt.Errorf("ChrononTemplate map plate generator %q is unavailable: %w", generatorPath, err)
 		}
 		cacheDir := filepath.Join(cfg.Storage.AbsDataDir(), "chronontemplate-map-plates")
-		runner.SetMapPlateResolver(newChrononTemplateMapPlateResolver(generatorPath, cacheDir))
-		log.Info("ChrononTemplate Web Mercator map plate generator wired",
-			zap.String("generator", generatorPath), zap.String("cache_dir", cacheDir))
+		deferRaster := strings.TrimSpace(cfg.External.RenderingGenQueueURL) != ""
+		runner.SetMapPlateResolver(newChrononTemplateMapPlateResolver(generatorPath, cacheDir, deferRaster))
+		log.Info("ChrononTemplate Web Mercator map source wired",
+			zap.String("generator", generatorPath), zap.String("cache_dir", cacheDir),
+			zap.Bool("defer_raster_to_dynamic_renderer", deferRaster))
 		return nil
 	}
 	if manifestPath != "" && !filepath.IsAbs(manifestPath) {

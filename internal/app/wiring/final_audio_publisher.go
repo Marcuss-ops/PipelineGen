@@ -134,10 +134,11 @@ func (p *finalAudioPublisherAdapter) PublishFinalAudio(ctx context.Context, runI
 	if link == "" {
 		link = strings.TrimSpace(published.Location.DownloadLink)
 	}
-	if link == "" {
-		return scriptgen.FinalAudioPublishResult{}, fmt.Errorf("published final audio has no canonical Drive link")
+	driveFileID := strings.TrimSpace(published.Location.FileID)
+	if link == "" || driveFileID == "" || !strings.EqualFold(strings.TrimSpace(published.Location.Provider), "drive") {
+		return scriptgen.FinalAudioPublishResult{}, fmt.Errorf("published final audio has no canonical Drive file ID and link")
 	}
-	return scriptgen.FinalAudioPublishResult{AssetID: artifactID, DriveLink: link}, nil
+	return scriptgen.FinalAudioPublishResult{AssetID: artifactID, DriveFileID: driveFileID, DriveLink: link}, nil
 }
 
 // prepareWithGate runs the Drive-upload half of PublishFinalAudio behind the

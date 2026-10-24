@@ -11,10 +11,9 @@
 // moved to the downstream document.generate job; the script
 // postprocessor chain no longer emits a document artifact):
 //   - script-json REQUIRED
-//   - scenes     OPTIONAL (when generated)
 //   - per-scene voiceovers INTENTIONALLY NOT emitted (Aug 2026 P0:
 //     the TTS pipeline already publishes them to Drive during
-//     generation — finalize publishes only script.json, scenes.json
+//     generation — finalize publishes only script.json
 //     and the certified final_audio.m4a, O(1) uploads)
 package jobs
 
@@ -145,7 +144,7 @@ func canonicalEmit(t *testing.T, jobID string, res *script.GenerationResult) (ma
 }
 
 // ensureFixtureFiles creates the job workspace output dir so
-// PersistGeneratedArtifacts can write script.json / scenes.json and
+// PersistGeneratedArtifacts can write script.json and
 // compute their SHA256. Per-scene voiceover files are no longer
 // needed on disk — PersistGeneratedArtifacts does not emit them
 // (Aug 2026 P0: the TTS pipeline publishes voiceovers during
@@ -162,7 +161,7 @@ func ensureFixtureFiles(t *testing.T, jobID string, res *script.GenerationResult
 	})
 }
 
-// TestPersistGeneratedArtifacts_HappyPath_TwoArtifacts is the
+// TestPersistGeneratedArtifacts_HappyPath_ScriptOnly is the
 // canonical C12 round-trip e2e (Sprint 1.0: document generation
 // retired from the script path; Aug 2026 P0: per-scene voiceovers
 // removed from the manifest). With a fully-populated GenerationResult
@@ -175,7 +174,7 @@ func ensureFixtureFiles(t *testing.T, jobID string, res *script.GenerationResult
 // Per-scene voiceovers must NOT appear: the TTS pipeline already
 // publishes them to Drive during generation and no downstream
 // consumer reads a finalize re-publication. Total: 2 manifest entries.
-func TestPersistGeneratedArtifacts_HappyPath_TwoArtifacts(t *testing.T) {
+func TestPersistGeneratedArtifacts_HappyPath_ScriptOnly(t *testing.T) {
 	res := validScriptResult("en")
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-happy", res)
 
@@ -194,12 +193,18 @@ func TestPersistGeneratedArtifacts_HappyPath_TwoArtifacts(t *testing.T) {
 
 	want := map[string]int{
 		job.ArtifactKindScriptJSON: 1,
-		job.ArtifactKindScenes:     1,
 	}
 	for k, wantv := range want {
 		if got := kindCount[k]; got != wantv {
-			t.Errorf("kind %q: got %d, want %d (manifest kinds do NOT match the 2-artifact spec)", k, got, wantv)
+			t.Errorf("kind %q: got %d, want %d (manifest kinds do NOT match the spec)", k, got, wantv)
 		}
+	}
+	// Consumer-audit cut 2026-10-24: scenes.json was a strict subset of
+	// script.json's `output.scenes` with ZERO machine readers — it must
+	// never come back as a manifest artifact (humans read the scenes
+	// inside script.json).
+	if got := kindCount[job.ArtifactKindScenes]; got != 0 {
+		t.Errorf("kind %q: got %d, want 0 (redundant scenes sidecar must stay removed)", job.ArtifactKindScenes, got)
 	}
 
 	removedKinds := []string{
@@ -217,11 +222,9 @@ func TestPersistGeneratedArtifacts_HappyPath_TwoArtifacts(t *testing.T) {
 
 	wantRequired := map[string]bool{
 		job.ArtifactKindScriptJSON: true,
-		job.ArtifactKindScenes:     false,
 	}
 	for _, k := range []string{
 		job.ArtifactKindScriptJSON,
-		job.ArtifactKindScenes,
 	} {
 		gotRequired := false
 		for _, a := range manifest.Artifacts {
@@ -243,6 +246,10 @@ func TestPersistGeneratedArtifacts_HappyPath_TwoArtifacts(t *testing.T) {
 	}
 }
 
+// TestPersistGeneratedArtifacts_NoScenes_OmitsScenes pins the consumer-audit
+// cut 2026-10-24: the scenes sidecar is NEVER emitted, even when the result
+// carries generated scenes. It duplicated script.json's `output.scenes`
+// subtree with zero machine readers.
 func TestPersistGeneratedArtifacts_NoScenes_OmitsScenes(t *testing.T) {
 	res := validScriptResult_NoScenes()
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-no-scenes", res)
@@ -250,7 +257,7 @@ func TestPersistGeneratedArtifacts_NoScenes_OmitsScenes(t *testing.T) {
 	manifest, _ := job.Decode(handlerResult)
 	for _, a := range manifest.Artifacts {
 		if a.Kind == job.ArtifactKindScenes {
-			t.Errorf("scenes slot present in manifest when SpecScene empty — §8.4 spec says emit only when generated")
+			t.Errorf("scenes slot present in manifest — the redundant scenes sidecar must never be emitted")
 		}
 	}
 }
@@ -260,7 +267,7 @@ func TestPersistGeneratedArtifacts_NoScenes_OmitsScenes(t *testing.T) {
 // binding, the manifest MUST NOT contain per-scene voiceover artifacts.
 // The TTS pipeline already publishes each scene file to Drive during
 // generation (links live in the scene bindings consumed by the
-// Google-Doc and scenes.json/script.json); finalize stays O(1) uploads.
+// Google-Doc and script.json); finalize stays O(1) uploads.
 func TestPersistGeneratedArtifacts_NoVoiceoverArtifacts(t *testing.T) {
 	res := validScriptResult_VoiceoverMultiLanguage()
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-multilang", res)
@@ -271,9 +278,10 @@ func TestPersistGeneratedArtifacts_NoVoiceoverArtifacts(t *testing.T) {
 			t.Errorf("per-scene voiceover artifact %q present in manifest — finalize must stay O(1) uploads (P0 Aug 2026)", a.ID)
 		}
 	}
-	// The manifest still carries the script-json + scenes pair.
-	if len(manifest.Artifacts) != 2 {
-		t.Errorf("manifest artifacts = %d, want 2 (script-json + scenes)", len(manifest.Artifacts))
+	// script.json is the sole script artifact; scenes.json duplicated its
+	// output.scenes subtree and has no machine consumer.
+	if len(manifest.Artifacts) != 1 || manifest.Artifacts[0].Kind != job.ArtifactKindScriptJSON {
+		t.Errorf("manifest artifacts = %+v, want only script_json", manifest.Artifacts)
 	}
 }
 
