@@ -621,6 +621,34 @@ persistenti come layer Vulkan animati dalla camera, poi portare pin, forme e
 testi nello stesso graph. Non è ancora collegato al render job PipelineGen,
 quindi il port nativo non è completato.
 
+**Riproduzione allineata alla mappa golden v6, 24/10:** l'item
+`static__garlasco__map__01` è stato ricreato direttamente con gli stessi
+parametri decisionali del piano: Garlasco, `slow_approach`, `region_zoom`,
+`chronon_editorial`, 1920×1080, 24 fps, 8 s/192 frame. La cache locale ha
+fornito gli stessi 4.475 tile (zero download). Con le nuove etichette ROI e
+sampler OpenCL: **8,99 s render+encode (21,4 fps), 16,21 s renderer wall**,
+inclusi 4,32 s di prepare e 0,16 s di gate. Un controllo sullo stesso input
+con sampler CPU ha impiegato 10,91 s render+encode (17,6 fps) e 17,19 s wall.
+La differenza fra GPU e CPU è quindi utile ma secondaria: il guadagno grande
+viene dalla rimozione delle allocazioni e dei blur PIL full-frame per ogni
+pin. Rispetto ai 65,65 s `process_wall_s` e 48,23 s frame/encode registrati
+per la stessa mappa nel v6, il renderer diretto è rispettivamente ~4,1× e
+~5,4× più rapido; il renderer diretto non include l'intero wrapper Go,
+pubblicazione e handoff, quindi non sostituisce ancora una misura end-to-end
+della fase overlay.
+
+Il test ROI contro l'implementazione precedente ha confrontato 12 casi (tre
+posizioni, inclusi i bordi, per quattro fasi dell'animazione): pixel raw
+identici. I due MP4 CPU/GPU hanno entrambi 192 frame; dopo la decodifica, la
+differenza media è 0,035/255 livelli e il massimo 10/255, perciò la variante
+GPU del sampler non viene dichiarata pixel-identica. `DYNAMIC_MAP_GPU_SAMPLER=0`
+mantiene il rollback CPU. L'OpenCL sampler è ora predefinito, con telemetria
+distinta dal compositor (che per queste tre composizioni rimane CPU).
+Il launcher `start_server.sh` esporta esplicitamente `DYNAMIC_MAP_GPU_SAMPLER=1`
+(override operativo `=0`); il servizio è stato riavviato sulla build locale
+`bin/pipelinegen` SHA-256 `4a530f8b6daa2201e4e01fab29350246d15e138dcc72a53e68606f484416f142`,
+PID `1187793`, ed `/ready` ha restituito HTTP 200.
+
 Verifica cross-repository del 24/10: in PipelineGen passano i pacchetti
 `internal/capabilities/scripts/...`, `internal/platform/renderinggen`,
 `internal/app/wiring`, `internal/capabilities/assets/providers/artlist`,
