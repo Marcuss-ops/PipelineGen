@@ -90,7 +90,7 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		LocalPath:     c.LocalPath(),
 		DriveLink:     c.DriveLink(),
 		DriveFileID:   c.DriveFileID(),
-		LegacyFileMD5: c.LegacyFileMD5(),
+		LegacyFileMD5: c.GetMetadataString("legacy_file_md5"),
 		// source_url convergence (godlike/06): the typed field is the
 		// canonical owner; the metadata key is a provenance mirror for
 		// legacy rows. Read field-first so a round-trip through the mapper

@@ -1,13 +1,14 @@
 package scriptgeneration
 
 // overlay_render_cache.go owns the CONTENT-ADDRESSED reuse contract for
-// per-item overlay renders.
+// per-item clips and fused batch compositions.
 //
 // A certified overlay clip is fully determined by its RenderKey (item content:
 // template, text, params, asset digests, timing, canvas) plus the plan-level
 // render context (background/source, animation policies, foreground scale,
-// media contract) and the renderer build that produced it. RenderingGen never
-// needs the producing run identity: the same key names the same pixels.
+// media contract) and the renderer build that produced it. A batch key hashes
+// each member's render key and z-order into the same context. RenderingGen
+// never needs the producing run identity: the same key names the same pixels.
 //
 // Before this file there was no index from RenderKey to the artifact it
 // produced, so every retry, every rerun and every incremental golden run
@@ -141,19 +142,34 @@ func OverlayRenderCacheEpoch() string {
 	return "v1"
 }
 
-// overlayRenderCacheKeyForPlan derives the cache key for a plan that renders
-// exactly ONE item. Multi-item plans are deliberately excluded: their artifact
-// is a composition whose identity is not a single RenderKey, and serving it
-// from a per-item cache would be a category error. ok=false means "do not
-// cache this render", never an error.
+// overlayRenderCacheKeyForPlan derives a content-addressed cache identity for
+// both individual items and fused compositions. A batch key includes every
+// ordered item identity/render key plus the shared plan context, so a cached
+// composition can never satisfy a different grouping or z-order.
 func overlayRenderCacheKeyForPlan(plan capoverlay.OverlayPlan, epoch string) (OverlayRenderCacheKey, bool) {
-	if len(plan.Items) != 1 {
+	if len(plan.Items) == 0 {
 		return OverlayRenderCacheKey{}, false
 	}
-	item := plan.Items[0]
-	renderKey := strings.ToLower(strings.TrimSpace(item.RenderKey))
-	if renderKey == "" {
-		renderKey = capoverlay.ComputeRenderKey(plan, item)
+	var renderKey string
+	if len(plan.Items) == 1 {
+		item := plan.Items[0]
+		renderKey = strings.ToLower(strings.TrimSpace(item.RenderKey))
+		if renderKey == "" {
+			renderKey = capoverlay.ComputeRenderKey(plan, item)
+		}
+	} else {
+		parts := []string{"overlay-render-batch/v1"}
+		for index, item := range plan.Items {
+			itemKey := strings.ToLower(strings.TrimSpace(item.RenderKey))
+			if itemKey == "" {
+				itemKey = capoverlay.ComputeRenderKey(plan, item)
+			}
+			if len(itemKey) != 64 || !isLowerHex(itemKey) {
+				return OverlayRenderCacheKey{}, false
+			}
+			parts = append(parts, fmt.Sprintf("%d:%s:%s", index, strings.TrimSpace(item.ID), itemKey))
+		}
+		renderKey = digest.SHA256String(strings.Join(parts, "\x00"))
 	}
 	if len(renderKey) != 64 || !isLowerHex(renderKey) {
 		return OverlayRenderCacheKey{}, false
@@ -193,21 +209,22 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		renderer = "chronon"
 	}
 	context := struct {
-		SchemaVersion   string          `json:"schema_version"`
-		Renderer        string          `json:"renderer"`
-		Width           int             `json:"width"`
-		Height          int             `json:"height"`
-		FPSNum          int             `json:"fps_num"`
-		FPSDen          int             `json:"fps_den"`
-		DurationMS      int64           `json:"duration_ms"`
-		ForegroundScale int             `json:"foreground_scale_percent"`
-		EntitySeed      string          `json:"entity_variation_seed"`
-		MediaContract   string          `json:"media_contract"`
-		Policies        string          `json:"animation_policies"`
-		SourceSHA256    string          `json:"source_sha256"`
-		Background      *overlayCacheBG `json:"background"`
-		ItemKind        string          `json:"item_kind"`
-		CameraMotionID  string          `json:"camera_motion_id"`
+		SchemaVersion   string                    `json:"schema_version"`
+		Renderer        string                    `json:"renderer"`
+		Width           int                       `json:"width"`
+		Height          int                       `json:"height"`
+		FPSNum          int                       `json:"fps_num"`
+		FPSDen          int                       `json:"fps_den"`
+		DurationMS      int64                     `json:"duration_ms"`
+		ForegroundScale int                       `json:"foreground_scale_percent"`
+		EntitySeed      string                    `json:"entity_variation_seed"`
+		MediaContract   string                    `json:"media_contract"`
+		Policies        string                    `json:"animation_policies"`
+		SourceSHA256    string                    `json:"source_sha256"`
+		Background      *overlayCacheBG           `json:"background"`
+		ItemKind        string                    `json:"item_kind"`
+		CameraMotionID  string                    `json:"camera_motion_id"`
+		Items           []overlayCacheItemContext `json:"items,omitempty"`
 		// MapBackend is the resolved dynamic-map backend. It is stamped onto
 		// the plan AFTER the item's RenderKey was computed, so it must be
 		// hashed here or a python-backend clip could satisfy a native-backend
@@ -250,12 +267,34 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 				strings.TrimSpace(plan.PlanID), strings.TrimSpace(plan.VideoID), strings.TrimSpace(item.ID),
 			}, "\x00")
 		}
+	} else if len(plan.Items) > 1 {
+		context.Items = make([]overlayCacheItemContext, 0, len(plan.Items))
+		for _, item := range plan.Items {
+			fact := overlayCacheItemContext{ID: strings.TrimSpace(item.ID), Kind: strings.TrimSpace(item.Kind), CameraMotionID: strings.TrimSpace(item.CameraMotionID)}
+			if backend, ok := item.Params["map_backend"].(string); ok {
+				fact.MapBackend = strings.TrimSpace(backend)
+			}
+			if strings.TrimSpace(item.EntityStyleID) != "" {
+				fact.SamplingIdentity = strings.Join([]string{
+					strings.TrimSpace(plan.PlanID), strings.TrimSpace(plan.VideoID), strings.TrimSpace(item.ID),
+				}, "\x00")
+			}
+			context.Items = append(context.Items, fact)
+		}
 	}
 	raw, err := json.Marshal(context)
 	if err != nil {
 		return ""
 	}
 	return digest.SHA256Bytes(raw)
+}
+
+type overlayCacheItemContext struct {
+	ID               string `json:"id"`
+	Kind             string `json:"kind,omitempty"`
+	CameraMotionID   string `json:"camera_motion_id,omitempty"`
+	MapBackend       string `json:"map_backend,omitempty"`
+	SamplingIdentity string `json:"sampling_identity,omitempty"`
 }
 
 // overlayCacheBG is the render-relevant projection of a background. Asset

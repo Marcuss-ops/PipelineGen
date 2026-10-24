@@ -91,6 +91,8 @@ func TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief(t *testing
 		"the narration must stay fenced from the canonical source")
 	require.Len(t, result.Insights.Entities, 3,
 		"narration-grounded entities must survive the projection")
+	require.Empty(t, result.Insights.ArtlistQueries,
+		"a plan with Artlist disabled must not build Artlist queries")
 }
 
 // TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration preserves the

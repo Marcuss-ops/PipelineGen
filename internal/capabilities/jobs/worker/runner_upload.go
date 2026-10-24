@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -126,6 +127,20 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 
 	// Required artefacts: fail closed on any issue.
 	for _, a := range manifest.RequiredArtifacts() {
+		// Master audio single-owner (waste-cut 2026-10-24): a referenced
+		// final_audio entry (see job.Artifact.ReferencesPublishedAudio) points
+		// at the master publishFinalAudio already uploaded to Drive and
+		// registered. Re-shipping it over the asset transport re-read,
+		// re-hashed and re-uploaded the same bytes to no consumer — the Sender
+		// resolves the canonical media_assets.id. Keep the certified reference
+		// (id + digest from the manifest) so the ToRemote required-precheck
+		// still sees the artifact as delivered. A reference without a
+		// certified digest — or an unreferenced master — falls through to the
+		// generic path below.
+		if a.ReferencesPublishedAudio() && strings.TrimSpace(a.SHA256) != "" {
+			uploaded[a.ID] = job.RemoteAsset{RemoteAssetID: a.ID, SHA256: a.SHA256}
+			continue
+		}
 		if _, statErr := os.Stat(a.Path); os.IsNotExist(statErr) {
 			return nil, fmt.Errorf("required artifact %q (%s): file not found on disk: %s", a.ID, a.Kind, a.Path)
 		}
@@ -158,6 +173,12 @@ func (r *Runner) uploadManifest(ctx context.Context, jobID string, handlerResult
 	for _, a := range manifest.Artifacts {
 		if a.Required {
 			continue // already handled above
+		}
+		// Same master-audio single-owner reference as the required loop: a
+		// referenced final_audio is never re-shipped over the asset transport.
+		if a.ReferencesPublishedAudio() && strings.TrimSpace(a.SHA256) != "" {
+			uploaded[a.ID] = job.RemoteAsset{RemoteAssetID: a.ID, SHA256: a.SHA256}
+			continue
 		}
 		if _, statErr := os.Stat(a.Path); os.IsNotExist(statErr) {
 			continue

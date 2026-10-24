@@ -315,17 +315,21 @@ type MediaPreflight interface {
 }
 
 // FinalAudioPublishResult is the canonical publication outcome: the canonical
-// MediaRegistry asset ID plus the public Drive link. It never carries a local
-// filesystem path.
+// MediaRegistry asset ID, provider-owned Drive file ID, and public Drive link.
+// It never carries a local filesystem path.
 type FinalAudioPublishResult struct {
-	AssetID   string `json:"audio_asset_id"`
-	DriveLink string `json:"drive_link"`
+	AssetID string `json:"audio_asset_id"`
+	// DriveFileID is an in-process publication fact: it never crosses the wire
+	// because DriveLink is the canonical location and AssetID is the identity
+	// (media-identity gate: one owner per fact).
+	DriveFileID string `json:"-"`
+	DriveLink   string `json:"drive_link"`
 }
 
 // FinalAudioPublisher publishes the already-certified combined master before
 // document publication and registers it as a canonical MediaRegistry asset.
-// It returns the canonical asset ID (never a local path) plus the public
-// Drive link. voiceoverFolderID is the caller-explicit Drive folder
+// It returns the canonical asset ID (never a local path), provider-owned
+// Drive file ID, and public Drive link. voiceoverFolderID is the caller-explicit Drive folder
 // (output.voiceover_folder_id); empty means "use the configured default".
 type FinalAudioPublisher interface {
 	PublishFinalAudio(context.Context, string, Language, FinalAudioReference, string) (FinalAudioPublishResult, error)

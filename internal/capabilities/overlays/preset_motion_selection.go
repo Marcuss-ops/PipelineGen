@@ -89,7 +89,7 @@ func selectShortPhraseMotionLimited(jobID, sceneID string, ordinal, wordCount in
 // explicit animation policies on short copy fail closed outside it, and the
 // exact C++ short-phrase recipes are added separately for the phrase's
 // authored word count by selectShortPhraseMotionLimited.
-// The documentary/brush/3D families stay LONG-lane only: the 2026-10-16 r44
+// The documentary/3D families stay LONG-lane only: the 2026-10-16 r44
 // run proved a modern-family id picked by the automatic short lane crashes
 // the render daemon, so short copy rotates the certified Visible set and
 // the exact-cardinality recipe groups instead.
@@ -262,13 +262,9 @@ func visiblePhraseEntrancePool(pool []string) []string {
 		// La lista dei verbi di entrance (slide/reveal/...) resta curatela
 		// editoriale esplicita, non classificazione tecnica derivata dal nome.
 		fams, _ := capanimreg.AnimationEntryFamilies(id)
-		isBrushFamily := false
 		isDocumentaryFamily := false
 		is3DFamily := false
 		for _, f := range fams {
-			if f == "phrase.brush" {
-				isBrushFamily = true
-			}
 			if f == "phrase.documentary" {
 				isDocumentaryFamily = true
 			}
@@ -276,7 +272,7 @@ func visiblePhraseEntrancePool(pool []string) []string {
 				is3DFamily = true
 			}
 		}
-		if isBrushFamily || isDocumentaryFamily || is3DFamily ||
+		if isDocumentaryFamily || is3DFamily ||
 			strings.Contains(id, "slide") || strings.Contains(id, "reveal") ||
 			strings.Contains(id, "stagger") || strings.Contains(id, "cascade") ||
 			strings.Contains(id, "expand") || strings.Contains(id, "lift") || strings.Contains(id, "fold") ||
@@ -426,7 +422,7 @@ func selectHeavyPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []s
 			if compatible := intersectMotionPool(longPhraseMotionCandidates, pool); len(compatible) > 0 {
 				compatible = excludeLongCopyCrashingMotions(compatible)
 				if len(compatible) > 0 {
-					pool = longPhraseFamilyWindow(compatible, limit, jobID)
+					pool = heavyPhraseFamilyWindow(compatible, limit, jobID)
 					return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
 				}
 			}
@@ -436,9 +432,55 @@ func selectHeavyPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []s
 		// Heavy phrases default to the long-copy-safe entrance pool. Applying
 		// the count limit to the flat phrase catalog can leave only Apple IDs
 		// in the pool, so the family rotator never gets a chance to select
-		// Documentary, Text 3D, or Brush treatments.
-		pool = longPhraseFamilyWindow(
+		// Documentary, Text 3D, or modern Apple treatments.
+		pool = heavyPhraseFamilyWindow(
 			excludeLongCopyCrashingMotions(longPhraseMotionCandidates), limit, jobID)
 	}
 	return selectHeavyPhraseMotion(jobID, sceneID, ordinal, pool)
+}
+
+// heavyPhraseFamilyWindow keeps the family-interleaved animation-count cap
+// while guaranteeing that every family the pool carries contributes at least
+// one visible entrance. Without the swap, a family whose earliest windowed
+// entries are all calm settles (for example modern Apple after the 2026-10-24
+// retirement of apple_expand_from_center) is silently dropped by
+// visiblePhraseEntrancePool even though the family has entrance-capable
+// members further down the pool. Replacing an uncovered family's own slot
+// keeps the window at the requested count.
+func heavyPhraseFamilyWindow(pool []string, limit int, jobID string) []string {
+	window := longPhraseFamilyWindow(pool, limit, jobID)
+	if limit <= 0 || len(window) == 0 {
+		return window
+	}
+	isEntrance := func(id string) bool {
+		return len(visiblePhraseEntrancePool([]string{id})) > 0
+	}
+	covered := make(map[int]bool, longFamilyCount)
+	for _, id := range window {
+		if isEntrance(id) {
+			covered[longPhraseFamilyBucketOf(id)] = true
+		}
+	}
+	uncovered := make(map[int]string, longFamilyCount)
+	for _, id := range pool {
+		bucket := longPhraseFamilyBucketOf(id)
+		if covered[bucket] {
+			continue
+		}
+		if _, ok := uncovered[bucket]; !ok && isEntrance(id) {
+			uncovered[bucket] = id
+		}
+	}
+	for i := len(window) - 1; i >= 0 && len(uncovered) > 0; i-- {
+		bucket := longPhraseFamilyBucketOf(window[i])
+		if covered[bucket] {
+			continue
+		}
+		if candidate, ok := uncovered[bucket]; ok {
+			window[i] = candidate
+			covered[bucket] = true
+			delete(uncovered, bucket)
+		}
+	}
+	return window
 }

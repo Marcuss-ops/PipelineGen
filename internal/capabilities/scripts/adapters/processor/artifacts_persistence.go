@@ -25,21 +25,29 @@
 //
 // godlike/07 honest-limitation: this file exceeds the 66-LoC
 // transitional cap (~150 LoC) because the §8.4 multi-artifact
-// shape comprises 3 inline writing paths (script.json / scenes.json /
+// shape comprises 3 inline writing paths (script.json /
 // workspace-mkdir / optional final audio) + SHA256 + manifest
 // assembly. Forward-pointer linked_issue (zero-baseline rule):
 // PR-GODOBJ-4c-PERSIST-ADAPTER-SLIM extracts per-kind writers into
 // per-kind helper functions (≤30 LoC each). Deadline 2026-08-15.
 //
-// JSON-shape invariant: §8.4 spec post-Sprint-1.0 lists exactly
-// 2 kinds in the manifest — script-json (REQUIRED), scenes (OPTIONAL
-// when generated) — plus the optional certified final_audio.m4a.
+// JSON-shape invariant: the manifest lists exactly 2 kinds —
+// script-json (REQUIRED) plus the optional certified final_audio.m4a.
+// The former OPTIONAL scenes sidecar is NOT emitted any more
+// (consumer-audit cut 2026-10-24): scenes.json was a strict subset of
+// script.json (its `output.scenes` subtree) with ZERO machine readers
+// anywhere in the tree — the final job resolves the script_json artifact,
+// and no Go/Python/RenderingGen code ever opened scenes.json. Its only
+// consumer class was humans browsing the delivery folder, who can read
+// the same scenes at script.json's `output.scenes`; keeping it cost one
+// extra hash + one extra sequential Drive upload per job in the finalize
+// bottleneck.
 // Per-scene voiceovers are INTENTIONALLY NOT emitted as manifest
 // artifacts (P0 finalize optimization, Aug 2026): the TTS pipeline
 // already publishes each scene file to Drive during generation
 // (voiceover.VoiceoverItemExecutor "TTS → publish → finalize") and
-// stores the DriveLink in the scene binding; the Google-Doc, scenes.json
-// and script.json consumers all read THAT link, and audio/render use
+// stores the DriveLink in the scene binding; the Google-Doc and
+// script.json consumers all read THAT link, and audio/render use
 // local paths. The finalize re-publication was a second upload of the
 // same bytes with no downstream consumer (Qdrant classifies audio as
 // REGISTERED-only). The files stay on disk (job workspace + voiceover
@@ -54,6 +62,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -102,13 +111,13 @@ func PersistGeneratedArtifacts(
 	// P0 destination-bug fix (Sept 2026): the persisted sidecars MUST carry
 	// the language they were generated in. Without it the pre-finalization
 	// publisher falls back to a hard-coded default ("it") and an `en` run's
-	// script.json / scenes.json / final_audio.m4a land in
+	// script.json / final_audio.m4a land in
 	// <docs root>/<job>/it — one wrong-language folder per run. The language
 	// is a routing HINT (never a folder id): the Drive resolver stays the only
 	// owner of folder topology.
 	language := strings.TrimSpace(result.Language)
 
-	artifacts := make([]job.Artifact, 0, 3 /* script, scenes, optional final audio */)
+	artifacts := make([]job.Artifact, 0, 2 /* script, optional final audio */)
 
 	// ── 1. script-json (REQUIRED) ──────────────────────────────────────
 	scriptJSONPath := filepath.Join(outDir, "script.json")
@@ -146,33 +155,17 @@ func PersistGeneratedArtifacts(
 		ArtifactMetadata: languageRoutingMetadata(language),
 	})
 
-	// ── 2. scenes (OPTIONAL when generated) ────────────────────────────
-	if len(result.Output.SpecScene.Scenes) > 0 {
-		scenesJSONPath := filepath.Join(outDir, "scenes.json")
-		scenesData, marErr := json.MarshalIndent(stripVoiceoverLocalPaths(result.Output.SpecScene), "", "  ")
-		if marErr != nil {
-			return nil, fmt.Errorf("artifacts_persistence: marshal scenes.json: %w", marErr)
-		}
-		if writeErr := os.WriteFile(scenesJSONPath, scenesData, 0o644); writeErr != nil {
-			return nil, fmt.Errorf("artifacts_persistence: write scenes.json: %w", writeErr)
-		}
-		scenesSHA, scenesSHAErr := job.ComputeSHA256(fs, scenesJSONPath)
-		if scenesSHAErr != nil {
-			return nil, fmt.Errorf("artifacts_persistence: sha256 scenes.json: %w", scenesSHAErr)
-		}
-		artifacts = append(artifacts, job.Artifact{
-			ID:               jobID + ":scenes",
-			Kind:             job.ArtifactKindScenes,
-			Path:             scenesJSONPath,
-			Filename:         "scenes.json",
-			MIMEType:         "application/json",
-			SizeBytes:        int64(len(scenesData)),
-			SHA256:           scenesSHA,
-			Required:         false,
-			DriveLanguage:    language,
-			ArtifactMetadata: languageRoutingMetadata(language),
-		})
-	}
+	// ── 2. scenes — INTENTIONALLY NOT emitted (consumer-audit cut
+	// 2026-10-24) ───────────────────────────────────────────────────
+	//
+	// scenes.json duplicated script.json's `output.scenes` subtree
+	// verbatim (same stripVoiceoverLocalPaths projection) and had zero
+	// machine readers: the final job resolves only the script_json
+	// artifact, and nothing in the tree opens scenes.json. Humans
+	// reviewing the delivery folder read the same scenes inside
+	// script.json. Emitting it cost one extra hash plus one extra
+	// sequential Drive upload per job inside the measured finalize
+	// bottleneck (~2.5s per artifact), with no consumer.
 
 	// ── 5. per-scene voiceovers — INTENTIONALLY NOT emitted ────────────
 	// (P0 finalize optimization, Aug 2026 — O(N) → O(1) Drive uploads.)
@@ -183,7 +176,7 @@ func PersistGeneratedArtifacts(
 	// media_assets projection + the scene binding DriveLink. All
 	// downstream consumers read THAT publication:
 	//   - Google Docs  → scene.Bindings.Voiceover.Link (TTS link)
-	//   - scenes.json / script.json → bindings (TTS links)
+	//   - script.json  → bindings (TTS links)
 	//   - audio compile / render → local paths + final_audio.m4a
 	//   - Qdrant index → audio is REGISTERED-only (skipped)
 	//
@@ -214,31 +207,32 @@ func PersistGeneratedArtifacts(
 		if result.FinalAudio.FinalAudioSHA256 == "" || result.FinalAudio.FinalAudioSHA256 != sourceSHA {
 			return nil, fmt.Errorf("artifacts_persistence: final audio hash mismatch")
 		}
-		source, err := os.ReadFile(result.FinalAudio.Path)
-		if err != nil {
-			return nil, fmt.Errorf("artifacts_persistence: open final audio: %w", err)
-		}
+		sourceSize := info.Size()
 		finalPath := filepath.Join(outDir, "final_audio.m4a")
-		if err := os.WriteFile(finalPath, source, 0o644); err != nil {
+		// Stream the certified master instead of materializing it in RAM. The
+		// source digest is already verified against FinalAudioSHA256 above, and
+		// the copy is byte-identical by construction; re-hashing the same bytes
+		// here only added a full read plus a second full-size buffer.
+		if err := copyCertifiedAudio(result.FinalAudio.Path, finalPath); err != nil {
 			return nil, fmt.Errorf("artifacts_persistence: copy final audio: %w", err)
 		}
 		info, err = os.Stat(finalPath)
 		if err != nil {
 			return nil, fmt.Errorf("artifacts_persistence: stat final audio: %w", err)
 		}
-		sha, err := job.ComputeSHA256(fs, finalPath)
-		if err != nil {
-			return nil, fmt.Errorf("artifacts_persistence: sha256 final audio: %w", err)
+		if info.Size() != sourceSize {
+			return nil, fmt.Errorf("artifacts_persistence: copied final audio size mismatch")
 		}
 		result.FinalAudio.Path = finalPath
 		result.FinalAudio.SizeBytes = info.Size()
-		result.FinalAudio.FinalAudioSHA256 = sha
+		result.FinalAudio.FinalAudioSHA256 = sourceSHA
 		// The certified master is an audio artifact and routes to the
 		// voiceover destination, which (like script) is project+language
 		// scoped: it must carry the same language hint as the sidecars or it
 		// re-introduces the wrong-language fallback for the audio tree.
 		finalAudioMetadata := map[string]any{
 			"audio_asset_id":         result.FinalAudio.AssetID,
+			"drive_file_id":          result.FinalAudio.DriveFileID,
 			"audio_contract_version": result.FinalAudio.AudioContractVersion,
 			"audio_plan_version":     result.FinalAudio.AudioPlanVersion,
 			"audio_plan_sha256":      result.FinalAudio.AudioPlanSHA256,
@@ -258,13 +252,42 @@ func PersistGeneratedArtifacts(
 		artifacts = append(artifacts, job.Artifact{
 			ID: result.FinalAudio.AssetID, Kind: job.ArtifactKindFinalAudio,
 			Path: finalPath, Filename: "final_audio.m4a", MIMEType: "audio/mp4",
-			SizeBytes: info.Size(), SHA256: sha, Required: true,
+			SizeBytes: info.Size(), SHA256: sourceSHA, Required: true,
 			DriveLanguage:    language,
 			ArtifactMetadata: finalAudioMetadata,
 		})
 	}
 
 	return artifacts, nil
+}
+
+// copyCertifiedAudio materializes a certified final master in the artifact
+// output directory without reading it whole into memory. os.Link is the
+// zero-copy path when source and destination share a filesystem; the fallback
+// streams the bytes. The caller has already verified the source digest, so the
+// destination does not need a second full read to re-prove the same bytes.
+func copyCertifiedAudio(sourcePath, destPath string) error {
+	if err := os.Remove(destPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Link(sourcePath, destPath); err == nil {
+		return nil
+	}
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = source.Close() }()
+	destination, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(destination, source)
+	closeErr := destination.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 // languageRoutingMetadata returns the artifact-metadata half of the language

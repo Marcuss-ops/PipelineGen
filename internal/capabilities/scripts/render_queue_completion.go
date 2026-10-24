@@ -94,6 +94,14 @@ func (e *QueueRenderEnqueuer) SetArtifactPublisher(p OverlayArtifactPublisher) {
 	}
 }
 
+// SetDynamicMapVideoCacheDir wires the durable cache root for dynamic-map MP4s.
+// VELOX_MAP_VIDEO_CACHE_DIR remains the operator override.
+func (e *QueueRenderEnqueuer) SetDynamicMapVideoCacheDir(dir string) {
+	if e != nil {
+		e.mapVideoCacheDir = strings.TrimSpace(dir)
+	}
+}
+
 func (e *QueueRenderEnqueuer) SetAsyncPublication(on bool) {
 	if e == nil {
 		return
@@ -136,8 +144,17 @@ func (e *QueueRenderEnqueuer) SetSeparateItemRenders(on bool) {
 	}
 }
 
-// SetOverlayRenderCache wires the content-addressed reuse index for per-item
-// overlay renders. Passing nil (or leaving it unwired) keeps today's behaviour.
+// SetOverlayWindowBatching enables the deterministic cost-based composition
+// of compatible same-scene render windows. It does not change worker GPU
+// admission; the queue worker remains the sole GPU lane authority.
+func (e *QueueRenderEnqueuer) SetOverlayWindowBatching(on bool) {
+	if e != nil {
+		e.overlayWindowBatching = on
+	}
+}
+
+// SetOverlayRenderCache wires the content-addressed reuse index for individual
+// clips and fused batch compositions. Passing nil keeps renders uncached.
 // An empty epoch resolves at call time from OverlayRenderCacheEpoch().
 func (e *QueueRenderEnqueuer) SetOverlayRenderCache(cache OverlayRenderCache, epoch string) {
 	if e != nil {
@@ -506,6 +523,12 @@ func (e *QueueRenderEnqueuer) recordQueueAttempt(
 	attempt := BuildRenderAttemptAnalyticsWithWait(jobID, plan, artifact, wait)
 	if metadata != nil && metadata.ItemID != "" {
 		attempt.ItemID = metadata.ItemID
+	}
+	if metadata != nil && metadata.BatchID != "" {
+		attempt.BatchID = metadata.BatchID
+		attempt.BatchItemIDs = append([]string(nil), metadata.BatchItemIDs...)
+		attempt.BatchStartUS = metadata.SourceStartUS
+		attempt.BatchEndUS = metadata.BatchEndUS
 	}
 	attempt.SubmitStartedAt = optionalTimePointer(submitStartedAt)
 	attempt.SubmitAcceptedAt = optionalTimePointer(submitAcceptedAt)

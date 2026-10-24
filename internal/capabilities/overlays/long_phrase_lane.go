@@ -13,7 +13,6 @@ import (
 const (
 	longFamilyDocumentary = iota
 	longFamily3D
-	longFamilyBrush
 	longFamilyModernApple
 	longFamilyClassicApple
 	longFamilyCount
@@ -24,8 +23,8 @@ const (
 //
 // The classification is registry data, not naming convention: the bucket of an
 // id is derived from its `families` metadata in animation_registry.v1.json
-// (phrase.documentary → documentary, phrase.3d → spatial, phrase.brush →
-// brush, phrase.modern_apple/phrase.apple_clean → modern Apple, and
+// (phrase.documentary → documentary, phrase.3d → spatial,
+// phrase.modern_apple/phrase.apple_clean → modern Apple, and
 // phrase.classic_apple → classic Apple).
 func longPhraseFamilyBucketOf(id string) int {
 	families, _ := capanimreg.AnimationEntryFamilies(id)
@@ -37,11 +36,6 @@ func longPhraseFamilyBucketOf(id string) int {
 	for _, family := range families {
 		if family == "phrase.3d" {
 			return longFamily3D
-		}
-	}
-	for _, family := range families {
-		if family == "phrase.brush" {
-			return longFamilyBrush
 		}
 	}
 	for _, family := range families {
@@ -59,7 +53,7 @@ func longPhraseFamilyBucketOf(id string) int {
 
 // selectLongPhraseMotion keeps long copy inside the long-phrase motion family
 // and rotates across its visual families round-robin: each ordinal steps to
-// the next family (documentary highlighting → spatial 3D → brush accents →
+// the next family (documentary highlighting → spatial 3D →
 // modern Apple-clean → classic Apple) and only same-family draws advance a
 // family's own walk. A flat seeded shuffle could fill an entire run with one
 // family even when the pool carried documentary and 3D entries; the rotation
@@ -173,7 +167,7 @@ func longPhraseFamilyWindow(pool []string, limit int, jobID string) []string {
 func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
 	// Apply the long-copy compatibility whitelist before the animation-count
 	// window. Sampling the full modern_product_v1 catalog first made a 15-motion
-	// window overwhelmingly Apple and could discard Brush and spatial 3D.
+	// window overwhelmingly Apple and could discard documentary and spatial 3D.
 	// A caller pool with no long-lane overlap stays authoritative: the channel
 	// bought that explicit vocabulary, so the whitelist must not substitute
 	// its own entries for long copy.

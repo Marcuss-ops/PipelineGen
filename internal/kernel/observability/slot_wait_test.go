@@ -30,8 +30,8 @@ func TestAcquireSlot_ContentionAcrossConcurrencyLevels(t *testing.T) {
 				blocked <- err
 			}()
 			select {
-			case <-blocked:
-				t.Fatal("contending acquisition completed before a slot was released")
+			case err := <-blocked:
+				t.Fatalf("contending acquisition completed before a slot was released (err=%v)", err)
 			case <-time.After(5 * time.Millisecond):
 			}
 			for _, release := range releases {

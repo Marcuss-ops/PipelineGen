@@ -9,8 +9,8 @@ import (
 )
 
 // wireOverlayRenderCache installs the content-addressed reuse index for
-// certified per-item overlay renders. The index lives in the rebuildable cache
-// plane; the bytes stay in the object store and a HEAD verifies each hit
+// certified individual and fused-batch overlay renders. The index lives in
+// the rebuildable cache plane; bytes stay in the object store and a HEAD checks each hit
 // before it is served. A cache outage is a miss, never a failed run, and the
 // kill switch restores the old path.
 //

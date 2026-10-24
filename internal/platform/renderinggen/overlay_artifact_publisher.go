@@ -207,6 +207,11 @@ func (p *DriveOverlayArtifactPublisher) PublishOverlay(ctx context.Context, spec
 	verified.ArtifactMetadata["source_start_us"] = spec.SourceStartUS
 	verified.ArtifactMetadata["source_end_us"] = spec.SourceEndUS
 	verified.ArtifactMetadata["target_duration_us"] = spec.TargetDurationUS
+	if strings.TrimSpace(spec.OverlayBatchID) != "" {
+		verified.ArtifactMetadata["overlay_batch_id"] = spec.OverlayBatchID
+		verified.ArtifactMetadata["overlay_batch_item_ids"] = append([]string(nil), spec.OverlayBatchItemIDs...)
+		verified.ArtifactMetadata["overlay_batch_end_us"] = spec.OverlayBatchEndUS
+	}
 	loc, err := p.publisher.Publish(ctx, verified)
 	if err != nil {
 		return fmt.Errorf("publish overlay video: %w", err)

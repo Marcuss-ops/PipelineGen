@@ -30,6 +30,10 @@ CREATE TABLE render_attempt_analytics (
     attempt_id      TEXT PRIMARY KEY,
     job_id          TEXT NOT NULL DEFAULT '',
     item_id         TEXT NOT NULL DEFAULT '',
+    batch_id        TEXT NOT NULL DEFAULT '',
+    batch_item_ids_json TEXT NOT NULL DEFAULT '[]',
+    batch_start_us  INTEGER NOT NULL DEFAULT 0,
+    batch_end_us    INTEGER NOT NULL DEFAULT 0,
     submit_started_at TEXT,
     submit_accepted_at TEXT,
     wait_started_at TEXT,
@@ -101,6 +105,10 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 		AttemptID:               "attempt-1",
 		JobID:                   "job-1",
 		ItemID:                  "phrase-hello",
+		BatchID:                 "batch-abc",
+		BatchItemIDs:            []string{"phrase-hello", "entity-world"},
+		BatchStartUS:            1_000_000,
+		BatchEndUS:              4_500_000,
 		SubmitStartedAt:         &started,
 		SubmitAcceptedAt:        &accepted,
 		QueueStartedAt:          &queueStart,
@@ -142,11 +150,16 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 	}
 	var gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey string
 	var gotSubmitStarted, gotSubmitAccepted, gotQueueStarted, gotOutcome string
+	var gotBatchID, gotBatchItemIDsJSON string
+	var gotBatchStartUS, gotBatchEndUS int64
 	var phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount int
 	var width, height, matMS, planMS int
-	if err := db.QueryRow(`SELECT sha256, item_id, backend, chronon_version, metrics_json, chronon_telemetry, chronon_timing_storage_key, submit_started_at, submit_accepted_at, queue_started_at, outcome, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count, width, height, materialize_ms, plan_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
-		Scan(&gotSHA, &gotItemID, &gotBackend, &gotChrononVersion, &gotMetrics, &gotTelemetry, &gotTimingKey, &gotSubmitStarted, &gotSubmitAccepted, &gotQueueStarted, &gotOutcome, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount, &width, &height, &matMS, &planMS); err != nil {
+	if err := db.QueryRow(`SELECT sha256, item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us, backend, chronon_version, metrics_json, chronon_telemetry, chronon_timing_storage_key, submit_started_at, submit_accepted_at, queue_started_at, outcome, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count, width, height, materialize_ms, plan_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
+		Scan(&gotSHA, &gotItemID, &gotBatchID, &gotBatchItemIDsJSON, &gotBatchStartUS, &gotBatchEndUS, &gotBackend, &gotChrononVersion, &gotMetrics, &gotTelemetry, &gotTimingKey, &gotSubmitStarted, &gotSubmitAccepted, &gotQueueStarted, &gotOutcome, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount, &width, &height, &matMS, &planMS); err != nil {
 		t.Fatal(err)
+	}
+	if gotBatchID != "batch-abc" || gotBatchItemIDsJSON != `["phrase-hello","entity-world"]` || gotBatchStartUS != 1_000_000 || gotBatchEndUS != 4_500_000 {
+		t.Fatalf("persisted batch identity = %q %q %d..%d", gotBatchID, gotBatchItemIDsJSON, gotBatchStartUS, gotBatchEndUS)
 	}
 	if gotSHA != "sha-2" || gotItemID != "phrase-hello" || gotBackend != "vulkan" || gotChrononVersion != "chronon-0.9.1" || gotMetrics != `{"gpu_lane_wait_ms":900}` || gotTelemetry != `{"job":{"plan_compile_ms":4.1}}` || gotTimingKey != "chronon/timing/abc.json" || gotSubmitStarted != started.Format(time.RFC3339Nano) || gotSubmitAccepted != accepted.Format(time.RFC3339Nano) || gotQueueStarted != queueStart.Format(time.RFC3339Nano) || gotOutcome != "success" ||
 		phrases != 1 || words != 2 || images != 3 || leaks != 4 || renderMS != 100 || encodeMS != 50 || completionWaitMS != 2100 || pollingSleepMS != 2000 || pollingIntervalMS != 2000 || pollCount != 2 ||

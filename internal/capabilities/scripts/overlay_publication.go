@@ -63,6 +63,9 @@ type OverlayPublicationSpec struct {
 	SourceStartUS       int64
 	SourceEndUS         int64
 	TargetDurationUS    int64
+	OverlayBatchID      string
+	OverlayBatchItemIDs []string
+	OverlayBatchEndUS   int64
 }
 
 // OverlayArtifactPublisher publishes a certified RenderingGen artifact after
@@ -202,15 +205,14 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 	if result == nil || result.OverlayPlan == nil || len(result.OverlayPlan.Items) == 0 {
 		return []any{}, nil
 	}
-	if result.OverlayRender == nil || len(result.OverlayRender.Items) == 0 {
+	if result.OverlayRender == nil || (len(result.OverlayRender.Items) == 0 && len(result.OverlayRender.Batches) == 0) {
 		return nil, fmt.Errorf("final_job has semantic overlays but no published overlay render artifacts")
 	}
-	byID := make(map[string]RenderArtifact, len(result.OverlayRender.Items))
-	for _, rendered := range result.OverlayRender.Items {
-		if rendered.Artifact != nil {
-			byID[strings.TrimSpace(rendered.ItemID)] = *rendered.Artifact
-		}
+	entries, byID, err := finalJobOverlayEntries(result, consumed)
+	if err != nil {
+		return nil, err
 	}
+	unboundBatchID := ""
 	// Charts are composed from one label card plus N bars on the SAME window.
 	// The Master replaces whole frames (mode=replace) and admits one overlay
 	// per frame interval, so a multi-item chart group cannot be handed off as
@@ -218,8 +220,14 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 	// without its bars, which is worse than not showing it. Refuse the split
 	// here, before any remote attempt, until the group is pre-composed into a
 	// single certified artifact.
-	if err := rejectSplitChartGroups(result.OverlayPlan.Items); err != nil {
-		return nil, err
+	var chartErr error
+	if len(result.OverlayRender.Batches) == 0 {
+		chartErr = rejectSplitChartGroups(result.OverlayPlan.Items)
+	} else {
+		chartErr = rejectSplitChartGroupsUnlessBatched(result.OverlayPlan.Items, result.OverlayRender.Batches)
+	}
+	if chartErr != nil {
+		return nil, chartErr
 	}
 	fpsNum, fpsDen := result.OverlayPlan.FPSNum, result.OverlayPlan.FPSDen
 	if fpsNum <= 0 || fpsDen <= 0 {
@@ -248,9 +256,16 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 	// rejection.
 	admittedContent := make(map[string]string, len(result.OverlayPlan.Items))
 	admittedFrames := make(map[string]finalJobFrameWindow, len(result.OverlayPlan.Items))
-	for index, item := range result.OverlayPlan.Items {
-		if _, usedAsSceneClip := consumed[strings.TrimSpace(item.ID)]; usedAsSceneClip {
-			continue
+	for _, entry := range entries {
+		index, item := entry.planIndex, entry.item
+		if item.Kind == "composite_batch" {
+			// The Master applies mode=replace to the selected scene's frames.
+			// A fused overlay MP4 has no source-clip identity/offset proving it
+			// contains those same frames underneath the graphics. The queue
+			// planner therefore keeps final-job fusion disabled; preserve that
+			// invariant at the last boundary too, so a restored or hand-built
+			// batch reference cannot replace footage with an unbound plate.
+			unboundBatchID = entry.renderID
 		}
 		if clipWindow, isIntermediateClip := clipWindows[item.SceneID]; isIntermediateClip {
 			// The Master only supports mode=replace. Full-frame phrase/image
@@ -278,9 +293,9 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 				item.EndMs = (endUS + 999) / 1000
 			}
 		}
-		artifact, ok := byID[strings.TrimSpace(item.ID)]
+		artifact, ok := byID[strings.TrimSpace(entry.renderID)]
 		if !ok {
-			return nil, fmt.Errorf("final_job overlay %q has no published render artifact", item.ID)
+			return nil, fmt.Errorf("final_job overlay %q has no published render artifact", entry.renderID)
 		}
 		driveID := strings.TrimSpace(artifact.DriveFileID)
 		sha := strings.TrimSpace(artifact.SHA256)
@@ -303,7 +318,10 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 		frameDenominator := int64(1_000_000 * fpsDen)
 		startFrame := (startUS*int64(fpsNum) + frameDenominator - 1) / frameDenominator
 		endFrame := (endUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
-		if artifact.FrameCount > 0 && endFrame-startFrame > int64(artifact.FrameCount) {
+		if item.Kind == "composite_batch" && artifact.FrameCount <= 0 {
+			return nil, fmt.Errorf("final_job batch %q has no certified frame count", item.ID)
+		}
+		if item.Kind != "composite_batch" && artifact.FrameCount > 0 && endFrame-startFrame > int64(artifact.FrameCount) {
 			endFrame = startFrame + int64(artifact.FrameCount)
 		}
 		if baseFrameCount > 0 {
@@ -313,6 +331,9 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 			if endFrame > baseFrameCount {
 				endFrame = baseFrameCount
 			}
+		}
+		if item.Kind == "composite_batch" && endFrame-startFrame > int64(artifact.FrameCount) {
+			return nil, fmt.Errorf("final_job batch %q has %d certified frames for a %d-frame replace window", item.ID, artifact.FrameCount, endFrame-startFrame)
 		}
 		if endFrame <= startFrame {
 			return nil, fmt.Errorf("final_job overlay %q has an empty frame interval", item.ID)
@@ -355,6 +376,9 @@ func finalJobOverlayAssetsExcluding(result *GenerateResult, consumed map[string]
 			"start_frame": startFrame, "end_frame": endFrame, "frame_count": endFrame - startFrame,
 			"mode": "replace", "z_index": index + 1, "audio_mode": "preserve_final_audio",
 		})
+	}
+	if unboundBatchID != "" {
+		return nil, fmt.Errorf("final_job batch %q cannot use mode=replace without a canonical per-window base-video binding", unboundBatchID)
 	}
 	return out, nil
 }

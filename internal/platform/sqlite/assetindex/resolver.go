@@ -184,7 +184,7 @@ func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 		GroupName:     clip.Group,
 		LocalPath:     clip.LocalPath(),
 		DriveLink:     clip.DriveLink(),
-		LegacyFileMD5: clip.LegacyFileMD5(),
+		LegacyFileMD5: clip.GetMetadataString("legacy_file_md5"),
 		Status:        "", // status migrated to asset_processing
 	}
 

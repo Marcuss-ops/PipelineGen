@@ -145,12 +145,15 @@ func TestDriveUploadGate_IsSharedAcrossPublisherSites(t *testing.T) {
 	require.Contains(t, composition, "DriveUploadGate:",
 		"composition root must cache the shared gate on ComposeRoot")
 
-	// The voiceover publisher must consume the threaded gate, not build its own.
+	// The per-item voiceover pipeline is local-only (waste-cut 2026-10-24):
+	// it must not construct a publisher at all, so it can neither bypass nor
+	// duplicate the process-wide Drive ceiling. Delivery surfaces keep the
+	// shared gate through their own publisher construction.
 	voiceoverBundle := read("build_bundles_voiceover.go")
-	require.Contains(t, voiceoverBundle, "NewRateLimitedPublisherWithGate(",
-		"voiceover publisher must acquire the process-wide gate (WithGate variant)")
 	require.NotContains(t, voiceoverBundle, "NewRateLimitedPublisher(",
-		"voiceover publisher must NOT build a self-owned gate")
+		"voiceover bundle must NOT build a self-owned gate")
+	require.NotContains(t, voiceoverBundle, "NewRateLimitedPublisherWithGate(",
+		"local-only per-item voiceover pipeline must not construct a publisher")
 
 	// The final-audio publisher (audio_publish) must reuse the same gate.
 	finalAudio := read("final_audio_publisher.go")

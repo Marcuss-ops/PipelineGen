@@ -7,7 +7,10 @@ package stockintelligence
 
 import (
 	"context"
+	"errors"
 	"fmt"
+
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 )
 
 // Default thresholds. When a ResolveRequest does not set them, the
@@ -129,6 +132,24 @@ func (r *Resolver) Resolve(ctx context.Context, req ResolveRequest) (ResolveResu
 	// 4. PROVIDER SECOND: exactly one live provider request.
 	reason := fmt.Sprintf("local_candidates=%d (threshold=%d), best_score=%.2f (min=%.2f)", len(localCands), threshold, bestLocal, minQuality)
 	providerCands, err := r.provider.SearchProvider(ctx, req.Query, limit)
+	if providerUnavailable(err) {
+		// The provider cannot serve in this composition at all (the Artlist
+		// registry path is not wired since the 2026-10-05 wiring removal).
+		// Issuing the fallback query is pure waste and its failure would kill
+		// an otherwise valid local resolve, so the fallback is skipped
+		// EXPLICITLY: the result keeps the local truth and records the skip in
+		// FallbackReason (never a silent empty success). Asset sufficiency
+		// stays fail-closed at the downstream certification gate.
+		result.Candidates = localCands
+		result.ProviderLiveRequests = 0
+		result.FallbackReason = reason + "; provider fallback skipped: provider unavailable"
+		winner, samplerErr := r.Sampler(localCands, req.SegmentID, req.Subject, req.VisualTerms)
+		if samplerErr != nil {
+			return ResolveResult{}, fmt.Errorf("stockintelligence: local sampler: %w", samplerErr)
+		}
+		result.WinnerAssetID = winner
+		return result, nil
+	}
 	if err != nil {
 		return ResolveResult{}, fmt.Errorf("stockintelligence: provider search: %w", err)
 	}
@@ -150,6 +171,15 @@ func (r *Resolver) Resolve(ctx context.Context, req ResolveRequest) (ResolveResu
 	}
 	result.WinnerAssetID = winner
 	return result, nil
+}
+
+// providerUnavailable reports the structural unavailability of the provider
+// fallback: the typed ErrProviderUnavailable from the registry client, or a
+// not-registered dispatch error surfaced through any wrapping. Transient
+// provider failures (network, rate limit) are NOT unavailable and keep the
+// fail-closed behavior.
+func providerUnavailable(err error) bool {
+	return errors.Is(err, ErrProviderUnavailable) || errors.Is(err, scriptports.ErrVidRushProviderNotFound)
 }
 
 // bestScore returns the highest generic similarity among the candidates,

@@ -67,7 +67,12 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	if cmd == nil {
 		return nil, fmt.Errorf("ProcessSegmentUseCase.Execute: nil input")
 	}
-	if cmd.Dest == nil || cmd.Dest.FolderID == "" {
+	// Stage 0: the destination carries the LOCAL output folder path always,
+	// and the Drive FolderID only for delivery runs. A publisher-less
+	// (local-only) run must not fail on a missing Drive folder — there is no
+	// upload to address. Delivery runs (Publisher wired) keep the historical
+	// fail-closed folder gate.
+	if cmd.Dest == nil || (u.deps.Publisher != nil && cmd.Dest.FolderID == "") {
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out := &VoiceoverItemResult{
 			Language:  cmd.Language,
@@ -269,7 +274,10 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// artifact (or the required-timing error) before it can build a plan.
 	// Async publish remains valid for audio-only callers, where no downstream
 	// consumer needs timing at this boundary.
-	if u.deps.Cache.AsyncPublish != nil && timingPolicy.Mode == audio.TimingDisabled {
+	// The async path exists ONLY to overlap a real Drive upload + DB commit
+	// with the next TTS. With no Publisher (local-only video pipeline) there
+	// is no upload to overlap, so the async branch adds no value.
+	if u.deps.Cache.AsyncPublish != nil && u.deps.Publisher != nil && timingPolicy.Mode == audio.TimingDisabled {
 		out.Status = StatusGenerated
 		setFinalStageProgress(out, string(cmd.Language), cmd.JobID)
 		observability.VoiceoverJobsTotal.WithLabelValues("generated").Inc()

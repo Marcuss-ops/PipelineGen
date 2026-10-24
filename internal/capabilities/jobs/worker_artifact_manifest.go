@@ -173,6 +173,22 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		if a.Kind == job.ArtifactKindOverlay {
 			continue
 		}
+		// Master audio single-owner (waste-cut 2026-10-24): a final_audio
+		// entry carrying the published reference (canonical audio_asset_id +
+		// drive_file_id, see job.Artifact.ReferencesPublishedAudio) points at
+		// the master publishFinalAudio already uploaded to Drive and
+		// registered (media_assets/asset_versions/asset_locations) during
+		// audio_publish.
+		// Staging it again made post_writer_finalize upload a second Drive
+		// copy of the same bytes (final_audio.m4a beside the certified
+		// «name» [lang].m4a) and re-write the same asset fact from a second
+		// writer. Keep the certified manifest entry for audit + downstream
+		// metadata consumers; the single publication owner owns the upload.
+		// An entry WITHOUT the reference (a composition that never ran the
+		// audio publisher) keeps the generic staging path below.
+		if a.ReferencesPublishedAudio() {
+			continue
+		}
 		staged = append(staged, &domainremote.StagedArtifactReference{
 			ArtifactID:       a.ID,
 			Destination:      destinationForArtifactKind(a.Kind, src),
@@ -209,9 +225,11 @@ func destinationForArtifactKind(kind, source string) string {
 	case job.ArtifactKindFinalAudio:
 		// The certified combined master is an audio artifact and must use
 		// the same canonical voiceover/audio Drive destination as the
-		// pre-document publication path. Keeping this mapping identical
-		// makes the later manifest publication idempotent instead of
-		// creating a second copy under the document destination.
+		// pre-document publication path. Only reached for a master WITHOUT
+		// a published reference (see job.Artifact.ReferencesPublishedAudio): the
+		// referenced case is never staged, so this mapping keeps the
+		// safety-net copy in the canonical audio tree, never under the
+		// document destination.
 		return "voiceover"
 	case job.ArtifactKindImage:
 		return "image"

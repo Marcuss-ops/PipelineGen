@@ -226,7 +226,7 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 				message = "local file missing"
 			}
 		}
-		if a.LegacyFileMD5() == "" {
+		if a.GetMetadataString("legacy_file_md5") == "" {
 			message = "asset has no legacy_file_md5"
 		}
 		return bulkChange{AssetID: id, Status: "success", Message: message, Before: before, After: after}

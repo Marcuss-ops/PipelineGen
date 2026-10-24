@@ -1553,6 +1553,7 @@ func TestQueueRenderEnqueuerCarriesJobDriveFolderToPublisherAndOmitsItFromWire(t
 
 	plan := caprender.GoldenOverlayPlanV1()
 	plan.DriveFolderID = "job-selected-root"
+	plan.RequireDriveBeforeReturn = true
 	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
 		t.Fatal(err)
 	}
@@ -1580,7 +1581,9 @@ func TestQueueRenderEnqueuerAsyncPublicationJoinsBeforeWait(t *testing.T) {
 	enqueuer.SetArtifactPublisher(publisher)
 	enqueuer.SetAsyncPublication(true)
 
-	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1())
+	plan := caprender.GoldenOverlayPlanV1()
+	plan.RequireDriveBeforeReturn = true
+	ref, err := enqueuer.EnqueueChrononPlan(context.Background(), plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2023,10 +2026,12 @@ func TestQueueRenderEnqueuerPublicationJoinIsRunScoped(t *testing.T) {
 	enqueuer.SetAsyncPublication(true)
 
 	// run-slow publishes first and is held open; run-fast publishes after it.
-	if _, err := enqueuer.EnqueueChrononPlan(ctxSlow, caprender.GoldenOverlayPlanV1()); err != nil {
+	plan := caprender.GoldenOverlayPlanV1()
+	plan.RequireDriveBeforeReturn = true
+	if _, err := enqueuer.EnqueueChrononPlan(ctxSlow, plan); err != nil {
 		t.Fatalf("enqueue for run-slow: %v", err)
 	}
-	if _, err := enqueuer.EnqueueChrononPlan(ctxFast, caprender.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(ctxFast, plan); err != nil {
 		t.Fatalf("enqueue for run-fast: %v", err)
 	}
 	publisher.waitStarted(t, "run-slow")
@@ -2055,7 +2060,7 @@ func TestQueueRenderEnqueuerPublicationJoinIsRunScoped(t *testing.T) {
 
 	// (3) a later run starts clean: the retired batch left nothing behind.
 	ctxLater := publicationRunCtx(t, observer, "run-later")
-	if _, err := enqueuer.EnqueueChrononPlan(ctxLater, caprender.GoldenOverlayPlanV1()); err != nil {
+	if _, err := enqueuer.EnqueueChrononPlan(ctxLater, plan); err != nil {
 		t.Fatalf("enqueue for run-later: %v", err)
 	}
 	if err := enqueuer.Wait(ctxLater); err != nil {
@@ -2081,7 +2086,9 @@ func TestQueueRenderEnqueuerUnboundPublicationJoinsAndClears(t *testing.T) {
 	enqueuer.SetArtifactPublisher(publisher)
 	enqueuer.SetAsyncPublication(true)
 
-	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), caprender.GoldenOverlayPlanV1()); err != nil {
+	plan := caprender.GoldenOverlayPlanV1()
+	plan.RequireDriveBeforeReturn = true
+	if _, err := enqueuer.EnqueueChrononPlan(context.Background(), plan); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
 	if err := enqueuer.Wait(context.Background()); !errors.Is(err, imposed) {

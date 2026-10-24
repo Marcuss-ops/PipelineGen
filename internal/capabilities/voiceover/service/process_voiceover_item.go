@@ -97,15 +97,19 @@ type ProcessVoiceoverItemDeps struct {
 	Logger   *zap.Logger // nil-safe via zap.NewNop()
 }
 
-// ProcessVoiceoverPipelineDeps groups the 5 canonical per-item
+// ProcessVoiceoverPipelineDeps groups the canonical per-item
 // pipeline ports (TTSProvider → DestinationResolver → AudioPostProcessor
-// → Publisher → Finalize) plus the optional cross-run cache and async
-// publish pool. Field count: 7.
+// → Finalize) plus the optional cross-run cache and async publish pool.
+//
+// There is deliberately NO Publisher port (waste-cut 2026-10-24): the
+// per-item path serves video generation, whose per-scene audio + timing
+// are certified LOCAL intermediates, not delivery products. Remote
+// delivery of voiceover files is owned by the explicit delivery surfaces
+// (batch GenerateBatch, UploadIntentUseCase), never by this pipeline.
 type ProcessVoiceoverPipelineDeps struct {
 	TTSProvider         TTSProvider
 	DestinationResolver DestinationResolver
 	AudioPostProcessor  AudioPostProcessor
-	Publisher           VoiceoverPublisher
 	VoiceoverRepository persistence.Repository
 	// VoiceoverCache is the OPTIONAL cross-run cache lookup. When
 	// wired, the per-item pipeline short-circuits TTS + upload +
@@ -203,9 +207,6 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 	if deps.Pipeline.DestinationResolver == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: Pipeline.DestinationResolver is required")
 	}
-	if deps.Pipeline.Publisher == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: Pipeline.Publisher is required (E1 cutover: drive-only upload)")
-	}
 	if deps.Pipeline.VoiceoverRepository == nil {
 		panic("voiceover.NewProcessVoiceoverItemUseCase: Pipeline.VoiceoverRepository is required")
 	}
@@ -220,7 +221,6 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 		processSeg: NewProcessSegmentUseCase(ProcessSegmentDeps{
 			TTSProvider:         deps.Pipeline.TTSProvider,
 			AudioPostProcessor:  deps.Pipeline.AudioPostProcessor,
-			Publisher:           deps.Pipeline.Publisher,
 			VoiceoverRepository: deps.Pipeline.VoiceoverRepository,
 			Finalizer:           deps.Finalize.Finalizer,
 			TxOutboxEnqueuer:    deps.Recovery.TxOutboxEnqueuer,
@@ -297,12 +297,16 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
 		return out, newPipelineError(StageDestinationResolve, false, err)
 	}
-	if dest == nil || dest.FolderID == "" {
+	// The destination is required for its LOCAL output folder path and its
+	// identity namespace; the Drive FolderID is NOT required any more because
+	// this pipeline never uploads (waste-cut 2026-10-24). A missing folder
+	// identity simply participates as empty in the row ID + fingerprint.
+	if dest == nil {
 		out := &VoiceoverItemResult{
 			Language:  item.Language,
 			Status:    StatusFailed,
 			ErrorCode: string(FailureMissingFolder),
-			Error:     "missing_folder_id: voiceover destination has no FolderID for upload",
+			Error:     "missing_folder_id: voiceover destination could not be resolved",
 		}
 		setFinalStageProgress(out, string(item.Language), item.ParentJobID)
 		return out, newPipelineErrorCode(StageDestinationResolve, false, FailureMissingFolder, fmt.Errorf("missing_folder_id"))

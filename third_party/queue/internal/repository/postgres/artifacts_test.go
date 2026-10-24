@@ -54,7 +54,7 @@ func TestArtifactPersistedOnComplete(t *testing.T) {
 		CodecProfile:       "high",
 		ClosedGOP:          true,
 		FirstFrameKeyframe: true,
-		Provenance:         &queueclient.ArtifactProvenance{SchemaVersion: "renderinggen.artifact-provenance.v1", Protocol: "renderinggen.overlay-import.v1", Producer: "pipelinegen-map", ImportJobID: "job-1", SourceSHA256: "abc123", SourceSizeBytes: 12345, IdentityVerified: true, StructureVerified: true, FullDecodeVerified: true},
+		Provenance:         &queueclient.ArtifactProvenance{SchemaVersion: "renderinggen.artifact-provenance.v1", Protocol: "renderinggen.overlay-import.v1", Producer: "pipelinegen-map-v2", ImportJobID: "job-1", ItemIDs: []string{"map-item-1"}, SourceSHA256: "abc123", SourceSizeBytes: 12345, IdentityVerified: true, StructureVerified: true, FullDecodeVerified: true},
 	}
 	if err := r.Complete(context.Background(), "job-1", "w1", art); err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestArtifactPersistedOnComplete(t *testing.T) {
 	if err := json.Unmarshal(provenanceRaw, &persisted); err != nil {
 		t.Fatalf("decode artifact provenance: %v", err)
 	}
-	if persisted.Protocol != "renderinggen.overlay-import.v1" || persisted.Producer != "pipelinegen-map" || !persisted.FullDecodeVerified {
+	if persisted.Protocol != "renderinggen.overlay-import.v1" || persisted.Producer != "pipelinegen-map-v2" || !persisted.FullDecodeVerified || len(persisted.ItemIDs) != 1 || persisted.ItemIDs[0] != "map-item-1" {
 		t.Fatalf("artifact provenance = %+v", persisted)
 	}
 

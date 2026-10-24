@@ -41,15 +41,24 @@ func buildCachedResult(cmd *ProcessSegmentCommand, hit *VoiceoverCacheHit, timin
 	if timingPolicy.Mode != audio.TimingDisabled && len(hit.MetaJSON) > 0 {
 		var meta map[string]any
 		if err := json.Unmarshal(hit.MetaJSON, &meta); err == nil {
-			if jsonLink, ok := meta["timing_json_link"].(string); ok && jsonLink != "" {
+			jsonLink, _ := meta["timing_json_link"].(string)
+			jsonPath, _ := meta["timing_json_path"].(string)
+			if jsonLink != "" || jsonPath != "" {
 				timingRes := &VoiceoverTimingResult{Status: TimingStatusCompleted}
 				timingRes.Artifact = hit.Artifact
 				timingRes.JSONLink = jsonLink
+				timingRes.JSONPath = jsonPath
 				if srtLink, _ := meta["timing_srt_link"].(string); srtLink != "" {
 					timingRes.SRTLink = srtLink
 				}
+				if srtPath, _ := meta["timing_srt_path"].(string); srtPath != "" {
+					timingRes.SRTPath = srtPath
+				}
 				if vttLink, _ := meta["timing_vtt_link"].(string); vttLink != "" {
 					timingRes.VTTLink = vttLink
+				}
+				if vttPath, _ := meta["timing_vtt_path"].(string); vttPath != "" {
+					timingRes.VTTPath = vttPath
 				}
 				if boundaryMode, _ := meta["timing_boundary_mode"].(string); boundaryMode != "" {
 					timingRes.BoundaryMode = boundaryMode

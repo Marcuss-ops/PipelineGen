@@ -19,11 +19,8 @@ var longPhraseFamilyRegistryParity = []struct {
 	id     string
 	bucket int
 }{
-	{"apple_expand_from_center", longFamilyModernApple},
 	{"apple_scale_settle", longFamilyModernApple},
 	{"apple_soft_scale", longFamilyModernApple},
-	{"brush_phrase_gold_marker", longFamilyBrush},
-	{"brush_phrase_white_light_sweep", longFamilyBrush},
 	{"cinematic_camera_push", longFamilyModernApple},
 	{"doc_01_yellow_marker_sweep", longFamilyDocumentary},
 	{"doc_02_multiline_stagger_highlight", longFamilyDocumentary},
@@ -40,9 +37,7 @@ var longPhraseFamilyRegistryParity = []struct {
 	{"doc_13_analog_scanner_highlight", longFamilyDocumentary},
 	{"doc_14_dual_highlight_sequence", longFamilyDocumentary},
 	{"doc_15_documentary_source_focus", longFamilyDocumentary},
-	{"counter_scroll_reveal", longFamilyClassicApple},
 	{"hero_scale_focus", longFamilyModernApple},
-	{"isometric_3d_fold", longFamilyClassicApple},
 	{"masked_upward_reveal", longFamilyClassicApple},
 	{"phrase_apple_clean_01_blur_soft_reveal", longFamilyModernApple},
 	{"phrase_apple_clean_02_blur_focus_snap", longFamilyModernApple},
@@ -56,9 +51,7 @@ var longPhraseFamilyRegistryParity = []struct {
 	{"phrase_apple_clean_25_opacity_soft_reveal", longFamilyModernApple},
 	{"phrase_apple_clean_26_opacity_depth_push", longFamilyModernApple},
 	{"phrase_apple_clean_27_opacity_parallax", longFamilyModernApple},
-	{"phrase_apple_clean_28_opacity_cinematic", longFamilyModernApple},
 	{"phrase_apple_clean_29_opacity_hero_settle", longFamilyModernApple},
-	{"phrase_apple_clean_30_opacity_clean_apple", longFamilyModernApple},
 	{"text_3d_camera_push", longFamily3D},
 	{"text_3d_double_axis_reveal", longFamily3D},
 	{"text_3d_orbit_lock", longFamily3D},

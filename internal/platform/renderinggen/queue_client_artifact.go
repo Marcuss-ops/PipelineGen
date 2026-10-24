@@ -40,6 +40,7 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		PixelFormat:        in.PixelFormat,
 		AudioStreams:       in.AudioStreams,
 		OutputFacts:        rawOutputFacts(in.OutputFacts),
+		Provenance:         rawArtifactProvenance(in.Provenance),
 		ClosedGOP:          in.ClosedGOP,
 		FirstFrameKeyframe: in.FirstFrameKeyframe,
 		RenderMS:           metricMillis(in.Metrics, "render_ms"),
@@ -63,6 +64,17 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		ChrononTimingSizeBytes:   in.ChrononTimingSizeBytes,
 		ChrononTimingContentType: in.ChrononTimingContentType,
 	}
+}
+
+func rawArtifactProvenance(provenance *queueclient.ArtifactProvenance) json.RawMessage {
+	if provenance == nil {
+		return nil
+	}
+	raw, err := json.Marshal(provenance)
+	if err != nil {
+		return nil
+	}
+	return raw
 }
 
 // rawOutputFacts relays the queue's complete structural certification verbatim.

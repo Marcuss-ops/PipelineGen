@@ -307,6 +307,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if err != nil {
 			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
 		}
+		renderEnqueuer.SetDynamicMapVideoCacheDir(cfg.Storage.FullPath("dynamic-map-video-cache"))
 		if cfg.External.RenderingGenPollIntervalMS > 0 {
 			renderEnqueuer.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 		}
@@ -316,6 +317,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// published repeatedly.
 		renderEnqueuer.SetFreshRender(false)
 		renderEnqueuer.SetSeparateItemRenders(true)
+		renderEnqueuer.SetOverlayWindowBatching(cfg.Scripts.OverlayWindowBatching)
 		// Pipelining depth for the per-item overlay renders. This is not a GPU
 		// bound: the worker's worker.gpu_lanes remains the only authority on
 		// concurrent GPU work, so this overlaps the per-item pre/post chain
@@ -326,10 +328,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// clip renders use separate routing contracts and must not influence
 		// this destination: <Overlay Chronon>/<JobID>/<language>/overlay.
 		overlayParentFolderID := cfg.Drive.OverlayRenderFolder()
-		if strings.TrimSpace(overlayParentFolderID) == "" {
-			return nil, fmt.Errorf("build overlay render runtime: overlay_render_root_folder is required")
-		}
-		if root.Drive != nil && root.Drive.Publisher != nil {
+		if root.Drive != nil && root.Drive.Publisher != nil && strings.TrimSpace(overlayParentFolderID) != "" {
 			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
 			overlayPublisher := renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher)
 			overlayPublisher.SetRootFolderID(overlayParentFolderID)
@@ -353,7 +352,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 				zap.String("child_folder", "overlay"),
 				zap.Bool("durable_outbox", publicationPublisher != overlayPublisher))
 		} else {
-			return nil, fmt.Errorf("build overlay render runtime: automatic Drive publisher is required")
+			// Ordinary certified video renders do not need a Drive copy. The
+			// queue fails closed if a final-job delivery explicitly requires one.
+			log.Info("overlay Drive publisher unavailable; local certified renders remain enabled")
 		}
 		var analyticsDB *sql.DB
 		if root.DB != nil {

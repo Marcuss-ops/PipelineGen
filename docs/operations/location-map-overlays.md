@@ -39,7 +39,7 @@ through environment variables:
 | `geocoding_user_agent` | `VELOX_GEOCODING_USER_AGENT` | Required identifying adapter User-Agent whenever the geocoder endpoint is configured. |
 | `geocoding_cache_dir` | `VELOX_GEOCODING_CACHE_DIR` | Optional durable cache override. Relative paths resolve under `storage.data_dir`; default is `<data_dir>/geocoding-cache`. |
 | `map_plate_manifest_path` | `VELOX_MAP_PLATE_MANIFEST_PATH` | Optional manifest. Relative paths resolve under `storage.data_dir`. |
-| `geo_map_plate_generator_path` | `VELOX_GEO_MAP_PLATE_GENERATOR_PATH` | Optional path to ChrononTemplate `tools/generate_map_plate.py`; generated plate PNGs are cached under `<data_dir>/chronontemplate-map-plates`. |
+| `geo_map_plate_generator_path` | `VELOX_GEO_MAP_PLATE_GENERATOR_PATH` | Optional path to ChrononTemplate `tools/generate_map_plate.py`; generated plate PNGs are cached under `<data_dir>/chronontemplate-map-plates` when the static certified-raster path consumes them. With RenderingGen queue enabled, the dynamic path defers raster generation to its own tile renderer. |
 
 Minimal example (replace the contact URL with one monitored by the operator):
 
@@ -96,9 +96,37 @@ point. Ordinary location text cards do not require a geocoder or plate.
 
 ## Latency and render-profile contract
 
-The current dynamic-map path has two distinct video passes; it is **not** a
-certified pass-through. This describes behavior verified in code, not an
-end-to-end latency or quality certification:
+The dynamic-map MP4 cache is wired by the runtime under
+`<storage.data_dir>/dynamic-map-video-cache`. Set
+`VELOX_MAP_VIDEO_CACHE_DIR` to override that directory and
+`VELOX_MAP_VIDEO_CACHE_EPOCH` to invalidate it when a runtime dependency or
+basemap source changes without a corresponding source-file change. The cache
+fingerprint includes the resolved map payload, renderer Python sources,
+cartography Python sources, map assets, output dimensions, and encoder profile.
+Cache hits still pass the ordinary media-contract and telemetry checks.
+
+When a RenderingGen queue is configured, PipelineGen plans generated map
+coverage from geospatial descriptors only. It does not launch the preliminary
+Python PNG plate generator for that path; the dynamic map renderer owns tile
+fetching, raster preparation, coverage checks, and its telemetry. Offline
+manifest plates retain their certified local-raster validation. This keeps
+geographic planning metadata distinct from renderable raster assets.
+
+The dynamic map video is submitted as `overlay.import`, using the existing
+versioned `renderinggen.overlay-import.v1` contract. RenderingGen independently
+materializes the one source MP4, verifies its byte count and SHA-256, probes the
+media contract and frame count, checks duration within one frame, fully decodes
+it, and records the source map `item_id` in the import provenance and artifact
+metrics. New producers identify themselves as `pipelinegen-map-v2`; the worker
+rejects that producer identity with missing, duplicate, or multiple item IDs,
+while draining already queued `pipelinegen-map-v1` imports. It stores and
+publishes those exact bytes without invoking Chronon or claiming a Chronon
+receipt. This removes the second encode for the single-map producer path; it
+does not remove the Python/FFmpeg map producer encode or establish a throughput
+gain by itself.
+
+This describes behavior wired in code, not an end-to-end latency or quality
+certification:
 
 - A targeted 5-second, 1920×1080@24 local render completed with 120 frames and
   zero engine fallback frames, tile fallbacks, or late tile fetches. This was a
@@ -109,14 +137,10 @@ end-to-end latency or quality certification:
 - No map fast/quality comparison, production latency improvement, or extra GPU
   concurrency is certified by those checks.
 
-**Still blocked:** eliminating the worker encode needs a versioned import path
-that accepts producer-rendered bytes and then performs trusted structural and
-full-decode checks, receipt/provenance accounting, content-store publication,
-and artifact-ledger completion without fabricating a Chronon render receipt.
-That is a cross-service contract change, not a safe local optimization. Keep
-`overlay.render` for maps until the import protocol and its end-to-end tests are
-implemented. GPU concurrency remains unchanged until the full calibration is
-run while safely isolated from active production rendering.
+The import path is implemented across PipelineGen and RenderingGen. Its
+production rollout still requires deploying compatible versions of both
+services together. GPU concurrency remains unchanged until the full
+calibration is run while safely isolated from active production rendering.
 
 Current encoder settings are implementation defaults, not user-selectable
 profiles:
@@ -124,7 +148,8 @@ profiles:
 - ChrononTemplate: libx264 `veryfast`, CRF 18, yuv420p.
 - RenderingGen: configured encoder backend/preset (e.g. native NVENC p1).
 
-These are separate stages and tuning one does not remove the second encode.
+The import path skips the RenderingGen/Chronon encode for dynamic map videos;
+other overlay jobs continue to use the normal Chronon render path.
 
 ## Verification
 

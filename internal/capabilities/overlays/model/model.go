@@ -12,6 +12,7 @@ const (
 	SchemaVersionResult = "renderinggen.overlay-result.v1"
 	JobTypePrepare      = "overlay.prepare"
 	JobTypeRender       = "overlay.render"
+	JobTypeImport       = "overlay.import"
 	// OverlayStatusReady is the canonical render-worker certification state.
 	// It is stamped only after the artifact has been rendered, probed,
 	// contract-validated and hashed — never from the renderer's exit code

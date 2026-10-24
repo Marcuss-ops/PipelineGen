@@ -399,6 +399,32 @@ func (a Artifact) LocalPath() string {
 	return a.Path
 }
 
+// ReferencesPublishedAudio reports whether a final_audio entry is a
+// REFERENCE to the master already published and registered by its single
+// publication owner. PersistGeneratedArtifacts stamps both the
+// publishFinalAudio-owned canonical asset identity (audio_asset_id) and the
+// provider's Drive file ID (drive_file_id). Both are required before any
+// generic publication path can safely skip; an asset identity alone does
+// not prove a remote file exists. Such an entry must never be re-shipped —
+// neither by the generic Drive publication nor by the worker-side
+// asset-transport upload: the manifest carries the certified identity
+// (id = canonical asset id, SHA256 certified at persist) and the Sender
+// resolves the media_assets.id. A final_audio entry WITHOUT the reference
+// (a composition that never ran the audio publisher) keeps the generic
+// publication path.
+//
+// godlike/06 SSOT: this is the ONE decision surface for "manifest entry
+// references an already-published artifact" — every staging/upload path
+// (worker_artifact_manifest.go, jobs/worker/runner_upload.go) asks here.
+func (a Artifact) ReferencesPublishedAudio() bool {
+	if a.Kind != ArtifactKindFinalAudio {
+		return false
+	}
+	assetID, _ := a.ArtifactMetadata["audio_asset_id"].(string)
+	driveFileID, _ := a.ArtifactMetadata["drive_file_id"].(string)
+	return strings.TrimSpace(assetID) != "" && strings.TrimSpace(driveFileID) != ""
+}
+
 // ToRemote is the canonical emit-side converter from local
 // ArtifactManifest to Sender-safe RemoteArtifactManifest. The dual
 // type vocabulary (Local ArtifactManifest + Remote RemoteArtifactManifest)

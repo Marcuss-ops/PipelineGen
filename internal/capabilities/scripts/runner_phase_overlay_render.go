@@ -261,12 +261,36 @@ func recordChrononArtifactMetrics(ref RenderReference) {
 // renderedArtifacts returns the artifacts to certify for ONE render reference,
 // preferring the per-item lineage over the duplicated first-item Artifact.
 func renderedArtifacts(ref RenderReference) []*RenderArtifact {
-	if len(ref.Items) > 0 {
-		out := make([]*RenderArtifact, 0, len(ref.Items))
-		for i := range ref.Items {
-			if ref.Items[i].Artifact != nil {
-				out = append(out, ref.Items[i].Artifact)
+	if len(ref.Batches) > 0 || len(ref.Items) > 0 {
+		out := make([]*RenderArtifact, 0, len(ref.Batches)+len(ref.Items))
+		seen := make(map[string]struct{}, len(ref.Batches)+len(ref.Items))
+		for i := range ref.Batches {
+			artifact := ref.Batches[i].Artifact
+			if artifact == nil {
+				continue
 			}
+			identity := strings.TrimSpace(artifact.SHA256)
+			if identity != "" {
+				if _, exists := seen[identity]; exists {
+					continue
+				}
+				seen[identity] = struct{}{}
+			}
+			out = append(out, artifact)
+		}
+		for i := range ref.Items {
+			item := ref.Items[i]
+			if item.Artifact == nil || item.BatchID != "" {
+				continue
+			}
+			identity := strings.TrimSpace(item.Artifact.SHA256)
+			if identity != "" {
+				if _, exists := seen[identity]; exists {
+					continue
+				}
+				seen[identity] = struct{}{}
+			}
+			out = append(out, item.Artifact)
 		}
 		return out
 	}

@@ -32,7 +32,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepo
 	incomingParentFolderID := clip.ParentFolderID()
 	incomingFolderPath := clip.FolderPath()
 	if existing, err := repo.GetClip(ctx, clip.ID); err == nil && existing != nil {
-		if legacy := existing.LegacyFileMD5(); legacy != "" {
+		if legacy := existing.GetMetadataString("legacy_file_md5"); legacy != "" {
 			clip.SetLegacyFileMD5(legacy)
 		}
 		if existing.LocalPath() != "" {

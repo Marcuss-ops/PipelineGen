@@ -507,6 +507,10 @@ type RenderReference struct {
 	// each semantic item as its own short video. Artifact remains the first
 	// item for backward-compatible document/publication consumers.
 	Items []OverlayItemRenderReference `json:"items,omitempty"`
+	// Batches records fused windows. Items retain their editorial identity and
+	// point back to one certified composite artifact when several items share a
+	// render.
+	Batches []OverlayBatchRenderReference `json:"batches,omitempty"`
 }
 
 // OverlayItemRenderReference binds one semantic overlay item to the queue job
@@ -515,5 +519,41 @@ type OverlayItemRenderReference struct {
 	ItemID   string          `json:"item_id"`
 	JobID    string          `json:"job_id"`
 	Status   string          `json:"status"`
+	BatchID  string          `json:"batch_id,omitempty"`
 	Artifact *RenderArtifact `json:"artifact,omitempty"`
+}
+
+// OverlayBatchRenderReference binds one certified artifact to the semantic
+// items and frame window it composites. Times use the plan's canonical
+// integer-microsecond clock.
+type OverlayBatchRenderReference struct {
+	BatchID  string          `json:"batch_id"`
+	SceneID  string          `json:"scene_id,omitempty"`
+	ItemIDs  []string        `json:"item_ids"`
+	StartUS  int64           `json:"start_us"`
+	EndUS    int64           `json:"end_us"`
+	JobID    string          `json:"job_id"`
+	Status   string          `json:"status"`
+	Artifact *RenderArtifact `json:"artifact,omitempty"`
+}
+
+// overlayArtifactForItem resolves the certified clip for a semantic item from
+// either the legacy per-item projection or a fused batch reference.
+func overlayArtifactForItem(ref *RenderReference, itemID string) (*RenderArtifact, string, bool) {
+	if ref == nil {
+		return nil, "", false
+	}
+	for _, item := range ref.Items {
+		if item.ItemID == itemID && item.Artifact != nil {
+			return item.Artifact, item.JobID, true
+		}
+	}
+	for _, batch := range ref.Batches {
+		for _, id := range batch.ItemIDs {
+			if id == itemID && batch.Artifact != nil {
+				return batch.Artifact, batch.JobID, true
+			}
+		}
+	}
+	return nil, "", false
 }

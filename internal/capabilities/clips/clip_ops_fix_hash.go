@@ -40,7 +40,7 @@ func (s *ClipOpsService) FixHash(ctx context.Context, source, clipID string) (*F
 	if err != nil {
 		return nil, fmt.Errorf("fix-hash: read clip %q: %w", clipID, err)
 	}
-	report.PreviousHash = clip.LegacyFileMD5()
+	report.PreviousHash = clip.GetMetadataString("legacy_file_md5")
 
 	driveLink := clip.DriveLink()
 	if driveLink == "" {

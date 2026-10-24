@@ -44,7 +44,7 @@ func assetContentHash(a *asset.Asset) string {
 	if hash := a.ContentHash(); hash != "" {
 		return hash
 	}
-	return a.LegacyFileMD5()
+	return a.GetMetadataString("legacy_file_md5")
 }
 
 // ProcessAsset runs the per-clip backfill pipeline:

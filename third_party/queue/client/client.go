@@ -249,6 +249,7 @@ type ArtifactProvenance struct {
 	Protocol           string          `json:"protocol"`
 	Producer           string          `json:"producer"`
 	ImportJobID        string          `json:"import_job_id"`
+	ItemIDs            []string        `json:"item_ids,omitempty"`
 	SourceSHA256       string          `json:"source_sha256"`
 	SourceSizeBytes    int64           `json:"source_size_bytes"`
 	IdentityVerified   bool            `json:"identity_verified"`

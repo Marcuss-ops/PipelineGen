@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -97,7 +98,9 @@ func TestPreparationCoordinator_DoesNotCaptureClaimSnapshots(t *testing.T) {
 		}
 	}
 	cancel()
-	<-done
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("coordinator stop: %v", err)
+	}
 	if snapshotter.calls.Load() != 0 {
 		t.Fatalf("coordinator captured %d claim snapshots during inspection; the worker claim path owns the snapshot", snapshotter.calls.Load())
 	}
@@ -145,7 +148,10 @@ func TestPreparationCoordinator_UsesNotifierInsteadOfPolling(t *testing.T) {
 	}
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("coordinator stop: %v", err)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("coordinator did not stop")
 	}

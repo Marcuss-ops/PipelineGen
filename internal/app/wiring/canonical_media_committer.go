@@ -374,7 +374,7 @@ func youTubeContentHash(a *asset.Asset) string {
 	if hash := strings.TrimSpace(a.BinarySHA256()); hash != "" {
 		return hash
 	}
-	return strings.TrimSpace(a.LegacyFileMD5())
+	return strings.TrimSpace(a.GetMetadataString("legacy_file_md5"))
 }
 
 // youTubeLifecycleState keeps the asset's canonical lifecycle state, defaulting

@@ -348,7 +348,7 @@ silently splitting a run's deliverables:
 | --- | --- | --- |
 | 1. clips **and** their script documents | `<documents root>/<job>/<language>` | `resolveRenderFolders` / `ResolveDocumentFolder` |
 | 2. subtitle artifacts (ASS) | `<subtitle root>/<clip id>` — one per clip, reused by every language | `resolveRenderFolders` |
-| 3. script JSON artifacts (`script.json`, `scenes.json`) | the same root as tree 1 (`DriveConfig.DocumentsFolder() == ScriptsFolder()`) | delivery registry (`DestinationScript` / `DestinationDocument`) |
+| 3. script JSON artifacts (`script.json`) | the same root as tree 1 (`DriveConfig.DocumentsFolder() == ScriptsFolder()`) | delivery registry (`DestinationScript` / `DestinationDocument`) |
 
 Gate: `TestLocalizedRenderEnqueuer_ThreeDriveTreesStaySeparate` derives all three
 from the same adapter/config the composition root builds. Mutating the subtitle

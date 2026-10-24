@@ -1,10 +1,11 @@
 // Package voiceover — process_segment_publish_test.go
 //
 // Publish-stage tests for the canonical timing bundle: publishTimingBundle
-// must apply the required/best-effort/disabled policy after the audio
-// upload, bind the artifact to the FINAL audio bytes via SHA-256, use
-// verified Publisher file IDs for every link, and clean up its local
-// staging files. required failures fail the segment with typed
+// must apply the required/best-effort/disabled policy, bind the artifact to
+// the FINAL audio bytes via SHA-256, persist the certified local projections
+// (they are the durable SSOT), and use verified Publisher file IDs for every
+// remote link when a publisher is wired. required failures fail the segment
+// with typed
 // PipelineErrors; best-effort failures degrade the timing status while
 // the audio stays completed; disabled preserves the legacy behavior.
 package voiceover
@@ -200,11 +201,14 @@ func TestPublishTimingBundle_HappyPath_PublishesJSONAndSRT(t *testing.T) {
 	assert.NotEqual(t, pub.published[0].IdempotencyKey, pub.published[1].IdempotencyKey,
 		"each timing projection must have its own idempotency key")
 
-	// Local staging files must be cleaned up after publish.
-	_, err = os.Stat(filepath.Join(dir, "scene-0-it-timing.json"))
-	assert.Error(t, err, "timing staging file must be removed after publish")
-	_, err = os.Stat(filepath.Join(dir, "scene-0-it.srt"))
-	assert.Error(t, err, "SRT staging file must be removed after publish")
+	// Certified local projections are durable: the local path is the SSOT
+	// that retries and the cross-run cache rehydrate from.
+	jsonPath := filepath.Join(dir, "scene-0-it-timing.json")
+	srtPath := filepath.Join(dir, "scene-0-it.srt")
+	assert.FileExists(t, jsonPath, "timing JSON SSOT must persist locally")
+	assert.FileExists(t, srtPath, "timing SRT projection must persist locally")
+	assert.Equal(t, jsonPath, res.JSONPath)
+	assert.Equal(t, srtPath, res.SRTPath)
 }
 
 func TestPublishTimingBundle_Required_PublishFailure_Fails(t *testing.T) {

@@ -114,6 +114,25 @@ func TestToScriptArtifactMapsCopyCertification(t *testing.T) {
 	}
 }
 
+func TestToScriptArtifactRelaysImportItemIdentity(t *testing.T) {
+	in := &queueclient.Artifact{
+		Provenance: &queueclient.ArtifactProvenance{
+			SchemaVersion: "renderinggen.artifact-provenance.v1",
+			Protocol:      "renderinggen.overlay-import.v1",
+			Producer:      "pipelinegen-map-v2",
+			ItemIDs:       []string{"map-item-1"},
+		},
+	}
+	got := toScriptArtifact(in)
+	var provenance queueclient.ArtifactProvenance
+	if err := json.Unmarshal(got.Provenance, &provenance); err != nil {
+		t.Fatalf("relayed provenance is invalid JSON: %v", err)
+	}
+	if provenance.Producer != "pipelinegen-map-v2" || len(provenance.ItemIDs) != 1 || provenance.ItemIDs[0] != "map-item-1" {
+		t.Fatalf("import item identity lost across queue projection: %+v", provenance)
+	}
+}
+
 func TestToScriptArtifactMapsAnalyticsFields(t *testing.T) {
 	in := &queueclient.Artifact{
 		ArtifactHash: "abc",

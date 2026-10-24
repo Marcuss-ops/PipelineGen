@@ -358,8 +358,6 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 				familyCounts["modern_apple"]++
 			case containsString(text3DMotionCandidates, id):
 				familyCounts["text_3d_v1"]++
-			case containsString(brushPhraseMotionCandidates, id):
-				familyCounts["brush_v1"]++
 			case containsString(documentaryHighlightMotionCandidates, id):
 				familyCounts["documentary_highlighting_v1"]++
 			default:
@@ -370,7 +368,7 @@ func TestGeneratedPhraseRotationCoversFifteenAndFits24FPSTiming(t *testing.T) {
 	if len(sequence) != callablePhraseMotionCount || len(seenAll) != callablePhraseMotionCount {
 		t.Fatalf("default phrase sequence covers %d motions, want all %d", len(seenAll), callablePhraseMotionCount)
 	}
-	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "brush_v1", "documentary_highlighting_v1"} {
+	for _, family := range []string{"classic_apple", "modern_apple", "text_3d_v1", "documentary_highlighting_v1"} {
 		if familyCounts[family] == 0 {
 			t.Fatalf("first 15 phrase motions do not include family %s", family)
 		}

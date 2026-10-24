@@ -73,11 +73,6 @@ func TestNewProcessSegmentUseCase_PanicsOnMandatoryDeps(t *testing.T) {
 			wantPanicRe: "TTSProvider is required",
 		},
 		{
-			name:        "nil Publisher",
-			mutate:      func(d *ProcessSegmentDeps) { d.Publisher = nil },
-			wantPanicRe: "Publisher is required",
-		},
-		{
 			name:        "nil VoiceoverRepository",
 			mutate:      func(d *ProcessSegmentDeps) { d.VoiceoverRepository = nil },
 			wantPanicRe: "VoiceoverRepository is required",

@@ -426,11 +426,16 @@ func (a *ArgosServerTranslator) Stop() error {
 		done := make(chan error, 1)
 		go func() { done <- a.cmd.Wait() }()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil {
+				a.log.Warn("argos: server exited with error", zap.Error(err))
+			}
 		case <-time.After(5 * time.Second):
 			a.log.Warn("argos: server did not exit within 5s — killing")
 			_ = a.cmd.Process.Kill()
-			<-done
+			if err := <-done; err != nil {
+				a.log.Debug("argos: server wait after kill", zap.Error(err))
+			}
 		}
 	}
 

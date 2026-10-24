@@ -65,7 +65,7 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	if result == nil || result.FinalAudio == nil || r.finalAudioPublisher == nil {
 		return true
 	}
-	if strings.TrimSpace(result.FinalAudio.DriveLink) != "" {
+	if strings.TrimSpace(result.FinalAudio.DriveLink) != "" && strings.TrimSpace(result.FinalAudio.DriveFileID) != "" {
 		return true
 	}
 	if _, err := os.Stat(result.FinalAudio.Path); errors.Is(err, os.ErrNotExist) {
@@ -90,9 +90,9 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	if run := kernobs.FromContext(ctx); run != nil {
 		uploadMS = kernobs.SummarizeOperations(run.Report(), string(StageAudioPublish), "upload").TotalMs
 	}
-	if err != nil || strings.TrimSpace(published.DriveLink) == "" || strings.TrimSpace(published.AssetID) == "" {
+	if err != nil || strings.TrimSpace(published.DriveLink) == "" || strings.TrimSpace(published.AssetID) == "" || strings.TrimSpace(published.DriveFileID) == "" {
 		if err == nil {
-			err = fmt.Errorf("publisher returned an empty Drive link or canonical asset ID")
+			err = fmt.Errorf("publisher returned an empty Drive file ID, Drive link, or canonical asset ID")
 		}
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("publish final audio: %w", err))
 		return false
@@ -101,6 +101,7 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 		result.AudioMetrics.UploadMS = uploadMS
 	}
 	result.FinalAudio.AssetID = strings.TrimSpace(published.AssetID)
+	result.FinalAudio.DriveFileID = strings.TrimSpace(published.DriveFileID)
 	result.FinalAudio.DriveLink = strings.TrimSpace(published.DriveLink)
 	// Drive correlation: the published final_audio asset is traceable to its
 	// upload via (language, asset_id) = (source language, published.AssetID).

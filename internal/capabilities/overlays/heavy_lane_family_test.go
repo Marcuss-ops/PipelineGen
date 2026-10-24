@@ -18,8 +18,6 @@ func TestHeavyLaneRotatesFamilies(t *testing.T) {
 			return "documentary"
 		case longFamily3D:
 			return "3d"
-		case longFamilyBrush:
-			return "brush"
 		case longFamilyModernApple:
 			return "modern_apple"
 		case longFamilyClassicApple:
@@ -37,14 +35,14 @@ func TestHeavyLaneRotatesFamilies(t *testing.T) {
 		}
 		seen[familyOf(motion)] = true
 	}
-	for _, family := range []string{"documentary", "3d", "brush", "modern_apple", "classic_apple"} {
+	for _, family := range []string{"documentary", "3d", "modern_apple", "classic_apple"} {
 		if !seen[family] {
 			t.Fatalf("heavy lane omitted %s across 10 ordinals: %v", family, seen)
 		}
 	}
 }
 
-func TestAutomaticHeavyLaneLimitKeepsAllFiveLongFamilies(t *testing.T) {
+func TestAutomaticHeavyLaneLimitKeepsAllLongFamilies(t *testing.T) {
 	seen := map[string]bool{}
 	for ordinal := 0; ordinal < 10; ordinal++ {
 		motion := selectHeavyPhraseMotionLimited("heavy-auto-family-probe", "run", ordinal, nil, 10)
@@ -56,15 +54,13 @@ func TestAutomaticHeavyLaneLimitKeepsAllFiveLongFamilies(t *testing.T) {
 			seen["documentary"] = true
 		case longFamily3D:
 			seen["text_3d"] = true
-		case longFamilyBrush:
-			seen["brush"] = true
 		case longFamilyModernApple:
 			seen["modern_apple"] = true
 		case longFamilyClassicApple:
 			seen["classic_apple"] = true
 		}
 	}
-	for _, family := range []string{"documentary", "text_3d", "brush", "modern_apple", "classic_apple"} {
+	for _, family := range []string{"documentary", "text_3d", "modern_apple", "classic_apple"} {
 		if !seen[family] {
 			t.Errorf("automatic heavy lane omitted %s under a 10-motion limit: %v", family, seen)
 		}
@@ -74,7 +70,7 @@ func TestAutomaticHeavyLaneLimitKeepsAllFiveLongFamilies(t *testing.T) {
 // TestHeavyLaneSmallPoolStaysVerbatim pins that small explicit caller pools
 // keep their order and are not forced through the family window.
 func TestHeavyLaneSmallPoolStaysVerbatim(t *testing.T) {
-	pool := []string{"apple_expand_from_center", "hero_scale_focus", "cinematic_camera_push"}
+	pool := []string{"phrase_apple_clean_07_slide_up_soft", "doc_06_red_keyword_punch", "text_3d_yaw_flip_in"}
 	first := selectHeavyPhraseMotionLimited("verbatim-probe", "run", 0, pool, 0)
 	found := false
 	for _, id := range pool {

@@ -104,6 +104,11 @@ type ScriptsConfig struct {
 	// back to the same default at the capability boundary.
 	SeparateItemRenderWorkers int `yaml:"separate_item_render_workers" env:"VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS" default:"4"`
 
+	// OverlayWindowBatching fuses compatible same-scene windows into one
+	// semantic RenderPlan when the measured cost model predicts a saving.
+	// Set false to roll back to one render per overlay item.
+	OverlayWindowBatching bool `yaml:"overlay_window_batching" env:"VELOX_SCRIPTS_OVERLAY_WINDOW_BATCHING" default:"true"`
+
 	// OverlayPublicationWorkers bounds concurrent Drive/analytics publication
 	// after a certified overlay render. This is an API-I/O budget, not a GPU
 	// budget, and is capped at eight by WithDefaults.

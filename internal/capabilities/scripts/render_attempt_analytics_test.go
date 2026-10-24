@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -73,7 +74,7 @@ func TestBuildRenderAttemptAnalyticsDeterministic(t *testing.T) {
 	art := &RenderArtifact{SHA256: "x", RenderMS: 1}
 	a := BuildRenderAttemptAnalytics("a", plan, art)
 	b := BuildRenderAttemptAnalytics("a", plan, art)
-	if a != b {
+	if !reflect.DeepEqual(a, b) {
 		t.Fatalf("builder is not deterministic: %+v vs %+v", a, b)
 	}
 }

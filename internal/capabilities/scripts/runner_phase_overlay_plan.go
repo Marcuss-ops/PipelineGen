@@ -245,6 +245,18 @@ func (e *executionRun) audioCompile() bool {
 	if !compiled {
 		cancel()
 	}
+	// The certified master is ready when audio_compile returns. Publish it
+	// while the already-started overlay branch is still rendering; the editing
+	// timeline itself remains in audio_finalize below, after both siblings join.
+	audioPublished := false
+	if compiled {
+		audioPublished = e.measure(StageAudioPublish, func(c context.Context) bool {
+			return e.r.publishFinalAudio(c, e.runID, e.req, e.routing, e.exec, e.result)
+		})
+		if !audioPublished {
+			cancel()
+		}
+	}
 	if done != nil {
 		outcome := <-done
 		if outcome.err != nil && (compiled || (!errors.Is(outcome.err, context.Canceled) && !errors.Is(outcome.err, context.DeadlineExceeded))) {
@@ -253,10 +265,16 @@ func (e *executionRun) audioCompile() bool {
 		if !compiled {
 			return failJoined(failure.cause)
 		}
+		if !audioPublished {
+			return false
+		}
 		e.r.applyOverlayRenderOutcomes(e.runID, e.result, outcome.outcomes)
 	} else {
 		if !compiled {
 			return failJoined(failure.cause)
+		}
+		if !audioPublished {
+			return false
 		}
 		if !e.measure(StageOverlayRender, func(c context.Context) bool {
 			return e.r.runOverlayRenderPhase(c, e.runID, e.req, e.exec, e.resumeIdx, state, e.result)
@@ -267,14 +285,15 @@ func (e *executionRun) audioCompile() bool {
 	if err := e.ctx.Err(); err != nil {
 		return failJoined(err)
 	}
+	if !audioPublished {
+		return false
+	}
 	if !e.measure(StageAudioFinalize, func(c context.Context) bool {
 		return e.r.runAudioFinalizePhase(c, e.runID, e.exec, state, e.result)
 	}) {
 		return false
 	}
-	return e.measure(StageAudioPublish, func(c context.Context) bool {
-		return e.r.publishFinalAudio(c, e.runID, e.req, e.routing, e.exec, e.result)
-	})
+	return true
 }
 
 // Map grounding helpers shared by the overlay-plan runner phase.

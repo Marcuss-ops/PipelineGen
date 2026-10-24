@@ -1,0 +1,87 @@
+[
+  {
+    "check": "schema_version",
+    "verdict": "PASS",
+    "detail": "semantic_manifest.v2"
+  },
+  {
+    "check": "scene_count",
+    "verdict": "PASS",
+    "detail": "12 scenes returned for 12 sent"
+  },
+  {
+    "check": "offsets_round_trip",
+    "verdict": "PASS",
+    "detail": "984 candidates, 0 bad offsets"
+  },
+  {
+    "check": "entities_extracted",
+    "verdict": "PASS",
+    "detail": "731 entity mentions"
+  },
+  {
+    "check": "entity_facts_present",
+    "verdict": "PASS",
+    "detail": "6 facts"
+  },
+  {
+    "check": "dates_normalized",
+    "verdict": "PASS",
+    "detail": "4 dated facts"
+  },
+  {
+    "check": "bullets_grounded",
+    "verdict": "PASS",
+    "detail": "125 bullets, 125 grounded, 12 scenes with bullets"
+  },
+  {
+    "check": "charts_grounded",
+    "verdict": "NOT_RUN",
+    "detail": "no chart proposals produced"
+  },
+  {
+    "check": "micro_summaries",
+    "verdict": "PASS",
+    "detail": "4 summaries, 4 linked to evidence"
+  },
+  {
+    "check": "density_groups",
+    "verdict": "PASS",
+    "detail": "3 groups"
+  },
+  {
+    "check": "story_graph",
+    "verdict": "PASS",
+    "detail": "14 nodes, 6 edges (3 cross-scene), 0 unresolved"
+  },
+  {
+    "check": "visual_coverage",
+    "verdict": "PASS",
+    "detail": "6 facts, 4 covered, 2 uncovered, 0 bad"
+  },
+  {
+    "check": "search_feedback",
+    "verdict": "PASS",
+    "detail": "1365 entries, widest ladder 3 rungs, 0 bad"
+  },
+  {
+    "check": "entity_linking",
+    "verdict": "PASS",
+    "detail": "7 person names, 3 locations"
+  },
+  {
+    "check": "comparison_precision",
+    "verdict": "NOT_RUN",
+    "detail": "no comparison group in this script"
+  },
+  {
+    "check": "timeline_completeness",
+    "verdict": "NOT_RUN",
+    "detail": "no dated sequence in this script"
+  },
+  {
+    "check": "keyword_quality",
+    "verdict": "PASS",
+    "detail": "1368 exact mentions of 1365 entries"
+  }
+]

@@ -17,17 +17,14 @@ import (
 // defaultSeparateItemRenderWorkers is how many per-item overlay renders may be
 // in flight at once when the caller does not tune the pool. 4 (was 2, tuned
 // 2026-09-27 from a live queue-wait audit): retuned 2026-10-23 together with
-// TICKET-OVERLAY-THROUGHPUT fix 1, which moved the receipt verification
-// (probe + sha256 + full-decode gate, ~0,9 s per item) OFF the render lane.
+// TICKET-OVERLAY-THROUGHPUT fix 1, which moved the receipt verification (probe + sha256 + full-decode gate, ~0,9 s per item) OFF the render lane.
 // One lane then needs ≈1,6 in-flight children to stay fed through the
 // off-lane receipt+post tail (golden v12 mix: ~1,7 s of lane service + ~1,0 s
 // of tail per item), so the dual-lane topology needs 3,2 → 4. The worker's
-// gpu_lanes remains the sole GPU authority: this width pipelines the per-item
-// pre/post chain, it does not raise GPU load.
+// gpu_lanes remains the sole GPU authority: this width pipelines the per-item pre/post chain, it does not raise GPU load.
 const defaultSeparateItemRenderWorkers = 4
 
-// overlayItemMaxWidth caps an operator-tuned pool
-// (config.Scripts.SeparateItemRenderWorkers /
+// overlayItemMaxWidth caps an operator-tuned pool (config.Scripts.SeparateItemRenderWorkers /
 // VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS). 6: the widest render topology
 // certified on this host is 3 lanes (≈5 children by the same 1,6 tail ratio),
 // and the in-flight width — not the batch depth — bounds RAM and queue
@@ -83,8 +80,11 @@ type overlayItemCandidate struct {
 // publishes in `Items` and the full RenderReference the first item returns for
 // backwards compatibility.
 type overlayItemRenderResult struct {
-	full RenderReference
-	item OverlayItemRenderReference
+	full            RenderReference
+	item            OverlayItemRenderReference
+	additionalItems []OverlayItemRenderReference
+	batch           *OverlayBatchRenderReference
+	order           int
 }
 
 // enqueueSeparateOverlayItems renders and publishes each semantic overlay as
@@ -166,17 +166,80 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 			return overlayItemRenderResult{}, fmt.Errorf("render overlay item %q: %w", candidate.source.ID, err)
 		}
 		return overlayItemRenderResult{
-			full: ref,
+			full:  ref,
+			order: candidate.index,
 			item: OverlayItemRenderReference{
 				ItemID: candidate.source.ID, JobID: ref.JobID, Status: ref.Status, Artifact: ref.Artifact,
 			},
+		}, nil
+	}
+	renderBatch := func(opCtx context.Context, work overlayBatchWork) (overlayItemRenderResult, error) {
+		observability.OverlayItemRenderInFlight.Inc()
+		defer observability.OverlayItemRenderInFlight.Dec()
+		child, err := fusedOverlayBatchPlan(plan, work)
+		if err != nil {
+			return overlayItemRenderResult{}, err
+		}
+		if child.RequireDriveBeforeReturn && e.asyncPublication && e.publisher != nil {
+			child.RequireDriveBeforeReturn = false
+		}
+		batchEndUS := work.startUS + child.DurationMS*1000
+		metadata := &overlayItemPublicationMetadata{
+			JobID:       textutil.FirstNonEmpty(plan.DriveJobID, plan.PlanID),
+			ResultJobID: textutil.FirstNonEmpty(plan.ResultJobID, plan.DriveJobID),
+			ItemID:      "batch:" + work.id, BatchID: work.id, ItemKind: "overlay_batch",
+			SourceStartUS: work.startUS, SourceEndUS: batchEndUS,
+			TargetDurationUS: batchEndUS - work.startUS, BatchEndUS: batchEndUS,
+		}
+		for _, candidate := range work.candidates {
+			metadata.BatchItemIDs = append(metadata.BatchItemIDs, candidate.source.ID)
+		}
+		ref, err := e.enqueueChrononPlan(opCtx, child, metadata)
+		if err != nil {
+			return overlayItemRenderResult{}, fmt.Errorf("render overlay batch %s: %w", work.id, err)
+		}
+		if ref.Artifact == nil {
+			return overlayItemRenderResult{}, fmt.Errorf("render overlay batch %s completed without a certified artifact", work.id)
+		}
+		batch := &OverlayBatchRenderReference{
+			BatchID: work.id, SceneID: work.sceneID, StartUS: work.startUS, EndUS: batchEndUS,
+			JobID: ref.JobID, Status: ref.Status, Artifact: ref.Artifact,
+			ItemIDs: make([]string, 0, len(work.candidates)),
+		}
+		itemRefs := make([]OverlayItemRenderReference, 0, len(work.candidates))
+		for _, candidate := range work.candidates {
+			batch.ItemIDs = append(batch.ItemIDs, candidate.source.ID)
+			itemRefs = append(itemRefs, OverlayItemRenderReference{
+				ItemID: candidate.source.ID, JobID: ref.JobID, Status: ref.Status, BatchID: work.id,
+			})
+		}
+		return overlayItemRenderResult{
+			full: ref, item: itemRefs[0], additionalItems: itemRefs[1:], batch: batch,
+			order: work.candidates[0].index,
 		}, nil
 	}
 	// OverlayTimelineAdmission before any expensive render: final frame windows
 	// after all duration extensions must not share even one frame (master uses
 	// mode=replace). Fail early instead of rendering artifacts the final job
 	// will reject. The final publication gate remains as defense-in-depth.
-	if err := capoverlay.AdmitOverlayTimeline(plan.Items, plan.FPSNum, plan.FPSDen); err != nil {
+	otherWorks := make([]overlayBatchWork, 0, len(otherCandidates))
+	if e.overlayWindowBatching {
+		otherWorks = planOverlayBatchWork(plan, otherCandidates)
+	} else {
+		for _, candidate := range otherCandidates {
+			start, end := overlayItemWindow(candidate.source)
+			otherWorks = append(otherWorks, overlayBatchWork{sceneID: candidate.source.SceneID, startUS: start, endUS: end, candidates: []overlayItemCandidate{candidate}})
+		}
+	}
+	admissionItems := make([]capoverlay.OverlayItem, 0, len(otherWorks)+len(mapCandidates))
+	for _, work := range otherWorks {
+		admissionItems = append(admissionItems, overlayBatchAdmissionItem(work))
+	}
+	for _, candidate := range mapCandidates {
+		start, end := overlayItemWindow(candidate.source)
+		admissionItems = append(admissionItems, capoverlay.OverlayItem{ID: candidate.source.ID, SceneID: candidate.source.SceneID, StartUS: start, DurationUS: end - start})
+	}
+	if err := capoverlay.AdmitOverlayTimeline(admissionItems, plan.FPSNum, plan.FPSDen); err != nil {
 		return RenderReference{}, err
 	}
 	observability.OverlayItemRenderPoolSize.Set(float64(workers))
@@ -194,7 +257,12 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			otherResults, err := concurrent.Map(ctx, otherCandidates, workers, renderOne)
+			otherResults, err := concurrent.Map(ctx, otherWorks, workers, func(opCtx context.Context, _ int, work overlayBatchWork) (overlayItemRenderResult, error) {
+				if len(work.candidates) == 1 {
+					return renderOne(opCtx, 0, work.candidates[0])
+				}
+				return renderBatch(opCtx, work)
+			})
 			if err != nil {
 				errCh <- err
 				return
@@ -227,26 +295,41 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 	}
 	// Ripristina l'ordine di piano (posizione originale), non alfabetico:
 	// l'identità child (<plan>:item:%03d:<id>) dipende dalla posizione.
-	order := make(map[string]int, len(candidates))
-	for pos, c := range candidates {
-		order[c.source.ID] = pos
-	}
-	sort.Slice(results, func(i, j int) bool {
-		return order[results[i].item.ItemID] < order[results[j].item.ItemID]
-	})
+	sort.Slice(results, func(i, j int) bool { return results[i].order < results[j].order })
 	items := make([]OverlayItemRenderReference, 0, len(results))
+	batches := make([]OverlayBatchRenderReference, 0)
 	for _, result := range results {
 		items = append(items, result.item)
+		items = append(items, result.additionalItems...)
+		if result.batch != nil {
+			batches = append(batches, *result.batch)
+		}
 	}
+	order := make(map[string]int, len(candidates))
+	for _, candidate := range candidates {
+		order[candidate.source.ID] = candidate.index
+	}
+	sort.Slice(items, func(i, j int) bool { return order[items[i].ItemID] < order[items[j].ItemID] })
 	first := results[0].full
 	first.Items = items
+	first.Batches = batches
 	return first, nil
+}
+
+func overlayBatchAdmissionItem(work overlayBatchWork) capoverlay.OverlayItem {
+	return capoverlay.OverlayItem{
+		ID: work.id, SceneID: work.sceneID, Kind: "overlay_batch",
+		StartUS: work.startUS, DurationUS: work.endUS - work.startUS,
+		StartMs: work.startUS / 1000, EndMs: (work.endUS + 999) / 1000,
+	}
 }
 
 type overlayItemPublicationMetadata struct {
 	JobID            string
 	ResultJobID      string
 	ItemID           string
+	BatchID          string
+	BatchItemIDs     []string
 	ItemKind         string
 	MotionID         string
 	EntityID         string
@@ -257,6 +340,7 @@ type overlayItemPublicationMetadata struct {
 	SourceStartUS    int64
 	SourceEndUS      int64
 	TargetDurationUS int64
+	BatchEndUS       int64
 }
 
 const (
@@ -385,9 +469,14 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 			targetUS = maxPhraseOverlayDurationUS
 		}
 		maxDurationUS = targetUS
-		if source.MotionParams == nil {
-			source.MotionParams = map[string]any{}
+		// Overlay items may share MotionParams after shallow copies in the
+		// semantic planner. Batch windows are prepared concurrently, so never
+		// write the child-specific entrance back into the parent/shared map.
+		motionParams := make(map[string]any, len(source.MotionParams)+1)
+		for key, value := range source.MotionParams {
+			motionParams[key] = value
 		}
+		source.MotionParams = motionParams
 		fpsNum, fpsDen := parent.FPSNum, parent.FPSDen
 		if fpsNum <= 0 || fpsDen <= 0 {
 			fpsNum, fpsDen = 24, 1
@@ -485,28 +574,6 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		metadata.EntityIDs, metadata.EntityLabels = mapEntityLineage(source.Map)
 	}
 	return child, metadata, nil
-}
-
-func mapEntityLineage(mapOverlay *capoverlay.MapOverlay) ([]string, []string) {
-	if mapOverlay == nil {
-		return nil, nil
-	}
-	ids := make([]string, 0, len(mapOverlay.Pins))
-	labels := make([]string, 0, len(mapOverlay.Pins))
-	seen := make(map[string]struct{}, len(mapOverlay.Pins))
-	for _, pin := range mapOverlay.Pins {
-		id, label := strings.TrimSpace(pin.ID), strings.TrimSpace(pin.Label)
-		if id != "" {
-			if _, exists := seen[id]; !exists {
-				seen[id] = struct{}{}
-				ids = append(ids, id)
-			}
-		}
-		if label != "" {
-			labels = append(labels, label)
-		}
-	}
-	return ids, labels
 }
 
 func overlayItemChildPlanID(parentPlanID string, index int, itemID string) string {

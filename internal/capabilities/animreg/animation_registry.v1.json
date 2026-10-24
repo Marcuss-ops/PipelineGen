@@ -288,7 +288,7 @@
       "lanes": [
         "long"
       ],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [
         "bullet",
@@ -830,7 +830,6 @@
     {
       "id": "brush_phrase_gold_marker",
       "families": [
-        "phrase.brush",
         "phrase.long",
         "phrase.all",
         "bullet"
@@ -838,7 +837,7 @@
       "lanes": [
         "long"
       ],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [
         "bullet",
@@ -848,7 +847,6 @@
       ],
       "chronontemplate_family": "brush_v1",
       "order": {
-        "phrase.brush": 0,
         "phrase.long": 20,
         "phrase.all": 89
       }
@@ -958,7 +956,6 @@
     {
       "id": "brush_phrase_white_light_sweep",
       "families": [
-        "phrase.brush",
         "phrase.long",
         "phrase.all",
         "bullet"
@@ -966,7 +963,7 @@
       "lanes": [
         "long"
       ],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [
         "bullet",
@@ -976,7 +973,6 @@
       ],
       "chronontemplate_family": "brush_v1",
       "order": {
-        "phrase.brush": 1,
         "phrase.long": 21,
         "phrase.all": 90
       }
@@ -1138,7 +1134,7 @@
       "lanes": [
         "long"
       ],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [
         "bullet",
@@ -3871,7 +3867,7 @@
       "lanes": [
         "long"
       ],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [
         "bullet",
@@ -6093,7 +6089,7 @@
       "lanes": [
         "long"
       ],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [
         "bullet",
@@ -6147,7 +6143,7 @@
       "lanes": [
         "long"
       ],
-      "status": "active",
+      "status": "retired",
       "renderer_supported": true,
       "targets": [
         "bullet",

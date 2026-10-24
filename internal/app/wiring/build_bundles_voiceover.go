@@ -254,7 +254,6 @@ func buildVoiceoverPipeline(
 	// independently built gates would double the configured capacity and
 	// leave cross-job contention (a starving job's upload queued behind
 	// another job's pipelined uploads) unfixed.
-	voPublisher := vowiring.NewRateLimitedPublisherWithGate(vowiring.NewUseCasePublisherAdapter(publisher, log), driveUploadGate, cfg.Voiceover, log)
 	// (June 2026 BLOC5.4 cutover — Step 8/12): the canonical per-item
 	// voiceover pipeline ProcessVoiceoverItemUseCase is constructed on
 	// top of the same adapter surface the legacy service consumes.
@@ -298,15 +297,11 @@ func buildVoiceoverPipeline(
 	// nopDestinationResolver fallback for stub-bootstrap helpers).
 	destResolverAdapter, defaultFolderResolver := vowiring.BuildVoiceoverDestResolvers(destResolver, cfg, voDir, log)
 
-	// Adapter (E1 cutover): VoiceoverPublisher port — wraps
-	// driveUploader.Admin() directly. The legacy AssetLifecycle
-	// adapter (useCaseLifecycleAdapter wrapping voLifecycle) is
-	// retired; Publisher does NOT write to SQLite, does NOT run a
-	// dedupe gate, does NOT touch media_assets (finalizeStage
-	// owns the per-item tx).
-	// FASE 8: wrapped with rate-limiting + retry (same instance
-	// as the batch path's voPublisher above — shared semaphore).
-	publisherAdapter := voPublisher
+	// No Publisher on the per-item pipeline (waste-cut 2026-10-24):
+	// per-scene audio + timing are certified LOCAL intermediates of the
+	// video composition, never delivery products. Explicit delivery
+	// surfaces (batch GenerateBatch, UploadIntentUseCase) still wire the
+	// rate-limited Drive publisher.
 
 	// Adapter: AudioPostProcessor port — silence-removal bridge
 	// built on the canonical media execution adapter. Nil-safe
@@ -321,7 +316,6 @@ func buildVoiceoverPipeline(
 			TTSProvider:         ttsProvider,
 			DestinationResolver: destResolverAdapter,
 			AudioPostProcessor:  audioAdapter,
-			Publisher:           publisherAdapter,
 			VoiceoverRepository: voRepoAdapter,
 			VoiceoverCache:      voCacheAdapter,
 			AsyncPublish:        publishPool,
