@@ -86,6 +86,25 @@ func TestCopyCertifiedAudioOverwritesDestinationAndPreservesBytes(t *testing.T) 
 	}
 }
 
+func TestCopyCertifiedAudioIsSafeWhenSourceAlreadyIsDestination(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "final_audio.m4a")
+	payload := []byte("already-persisted-certified-audio")
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyCertifiedAudio(path, path); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("same-path certified audio was changed: %q", got)
+	}
+}
+
 func TestPersistGeneratedArtifactsFailsClosedWhenCombinedAudioIsMissing(t *testing.T) {
 	_, err := PersistGeneratedArtifacts(context.Background(), "audio-missing-test", &script.GenerationResult{AudioMode: "COMBINED_TIMELINE"}, nil)
 	if err == nil {

@@ -54,6 +54,10 @@ CREATE TABLE render_attempt_analytics (
     polling_sleep_ms INTEGER NOT NULL DEFAULT 0,
     polling_interval_ms INTEGER NOT NULL DEFAULT 0,
     poll_count       INTEGER NOT NULL DEFAULT 0,
+    cache_lookup_us INTEGER NOT NULL DEFAULT 0,
+    cache_probe_us INTEGER NOT NULL DEFAULT 0,
+    cache_store_us INTEGER NOT NULL DEFAULT 0,
+    cache_outcome TEXT NOT NULL DEFAULT '',
     width           INTEGER NOT NULL DEFAULT 0,
     height          INTEGER NOT NULL DEFAULT 0,
     fps_num         INTEGER NOT NULL DEFAULT 0,
@@ -120,6 +124,10 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 		PollingSleepMS:          2000,
 		PollingIntervalMS:       2000,
 		PollCount:               2,
+		CacheLookupUS:           140,
+		CacheProbeUS:            230,
+		CacheStoreUS:            410,
+		CacheOutcome:            "miss_stored",
 		Width:                   1920,
 		Height:                  1080,
 		Backend:                 "vulkan",
@@ -148,14 +156,15 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("rows = %d, want 1 (upsert keyed by attempt_id)", count)
 	}
-	var gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey string
+	var gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey, cacheOutcome string
 	var gotSubmitStarted, gotSubmitAccepted, gotQueueStarted, gotOutcome string
 	var gotBatchID, gotBatchItemIDsJSON string
 	var gotBatchStartUS, gotBatchEndUS int64
 	var phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount int
+	var cacheLookupUS, cacheProbeUS, cacheStoreUS int64
 	var width, height, matMS, planMS int
-	if err := db.QueryRow(`SELECT sha256, item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us, backend, chronon_version, metrics_json, chronon_telemetry, chronon_timing_storage_key, submit_started_at, submit_accepted_at, queue_started_at, outcome, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count, width, height, materialize_ms, plan_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
-		Scan(&gotSHA, &gotItemID, &gotBatchID, &gotBatchItemIDsJSON, &gotBatchStartUS, &gotBatchEndUS, &gotBackend, &gotChrononVersion, &gotMetrics, &gotTelemetry, &gotTimingKey, &gotSubmitStarted, &gotSubmitAccepted, &gotQueueStarted, &gotOutcome, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount, &width, &height, &matMS, &planMS); err != nil {
+	if err := db.QueryRow(`SELECT sha256, item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us, backend, chronon_version, metrics_json, chronon_telemetry, chronon_timing_storage_key, submit_started_at, submit_accepted_at, queue_started_at, outcome, phrase_count, word_count, image_count, leak_count, render_ms, encode_ms, completion_wait_ms, polling_sleep_ms, polling_interval_ms, poll_count, cache_lookup_us, cache_probe_us, cache_store_us, cache_outcome, width, height, materialize_ms, plan_ms FROM render_attempt_analytics WHERE attempt_id='attempt-1'`).
+		Scan(&gotSHA, &gotItemID, &gotBatchID, &gotBatchItemIDsJSON, &gotBatchStartUS, &gotBatchEndUS, &gotBackend, &gotChrononVersion, &gotMetrics, &gotTelemetry, &gotTimingKey, &gotSubmitStarted, &gotSubmitAccepted, &gotQueueStarted, &gotOutcome, &phrases, &words, &images, &leaks, &renderMS, &encodeMS, &completionWaitMS, &pollingSleepMS, &pollingIntervalMS, &pollCount, &cacheLookupUS, &cacheProbeUS, &cacheStoreUS, &cacheOutcome, &width, &height, &matMS, &planMS); err != nil {
 		t.Fatal(err)
 	}
 	if gotBatchID != "batch-abc" || gotBatchItemIDsJSON != `["phrase-hello","entity-world"]` || gotBatchStartUS != 1_000_000 || gotBatchEndUS != 4_500_000 {
@@ -163,6 +172,7 @@ func TestRecordAttemptUpsertsIdempotently(t *testing.T) {
 	}
 	if gotSHA != "sha-2" || gotItemID != "phrase-hello" || gotBackend != "vulkan" || gotChrononVersion != "chronon-0.9.1" || gotMetrics != `{"gpu_lane_wait_ms":900}` || gotTelemetry != `{"job":{"plan_compile_ms":4.1}}` || gotTimingKey != "chronon/timing/abc.json" || gotSubmitStarted != started.Format(time.RFC3339Nano) || gotSubmitAccepted != accepted.Format(time.RFC3339Nano) || gotQueueStarted != queueStart.Format(time.RFC3339Nano) || gotOutcome != "success" ||
 		phrases != 1 || words != 2 || images != 3 || leaks != 4 || renderMS != 100 || encodeMS != 50 || completionWaitMS != 2100 || pollingSleepMS != 2000 || pollingIntervalMS != 2000 || pollCount != 2 ||
+		cacheLookupUS != 140 || cacheProbeUS != 230 || cacheStoreUS != 410 || cacheOutcome != "miss_stored" ||
 		width != 1920 || height != 1080 || matMS != 420 || planMS != 12 {
 		t.Fatalf("row = sha=%s item=%s backend=%s chronon=%s metrics=%s telemetry=%s timing=%s counts=%d/%d/%d/%d render=%d encode=%d completion_wait=%d polling_sleep=%d interval=%d polls=%d wh=%d/%d mat=%d plan=%d", gotSHA, gotItemID, gotBackend, gotChrononVersion, gotMetrics, gotTelemetry, gotTimingKey, phrases, words, images, leaks, renderMS, encodeMS, completionWaitMS, pollingSleepMS, pollingIntervalMS, pollCount, width, height, matMS, planMS)
 	}

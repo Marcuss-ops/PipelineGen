@@ -267,6 +267,15 @@ func PersistGeneratedArtifacts(
 // streams the bytes. The caller has already verified the source digest, so the
 // destination does not need a second full read to re-prove the same bytes.
 func copyCertifiedAudio(sourcePath, destPath string) error {
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+	if destinationInfo, statErr := os.Stat(destPath); statErr == nil && os.SameFile(sourceInfo, destinationInfo) {
+		// Resume may already point at the canonical output path; never unlink
+		// the certified source just to recreate the same directory entry.
+		return nil
+	}
 	if err := os.Remove(destPath); err != nil && !os.IsNotExist(err) {
 		return err
 	}

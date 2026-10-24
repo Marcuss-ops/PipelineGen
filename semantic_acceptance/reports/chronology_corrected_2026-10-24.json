@@ -22,7 +22,7 @@
   {
     "check": "entity_facts_present",
     "verdict": "PASS",
-    "detail": "5 facts"
+    "detail": "6 facts"
   },
   {
     "check": "dates_normalized",
@@ -42,7 +42,7 @@
   {
     "check": "micro_summaries",
     "verdict": "PASS",
-    "detail": "5 summaries, 5 linked to evidence"
+    "detail": "6 summaries, 6 linked to evidence"
   },
   {
     "check": "density_groups",
@@ -52,22 +52,22 @@
   {
     "check": "story_graph",
     "verdict": "PASS",
-    "detail": "10 nodes, 5 edges (5 cross-scene), 0 unresolved"
+    "detail": "11 nodes, 6 edges (6 cross-scene), 0 unresolved"
   },
   {
     "check": "visual_coverage",
     "verdict": "PASS",
-    "detail": "5 facts, 5 covered, 0 uncovered, 0 bad"
+    "detail": "6 facts, 5 covered, 1 uncovered, 0 bad"
   },
   {
     "check": "search_feedback",
     "verdict": "PASS",
-    "detail": "1349 entries, widest ladder 3 rungs, 0 bad"
+    "detail": "1353 entries, widest ladder 4 rungs, 0 bad"
   },
   {
     "check": "entity_linking",
     "verdict": "PASS",
-    "detail": "13 person names, 5 locations"
+    "detail": "24 person names, 5 locations"
   },
   {
     "check": "comparison_precision",
@@ -82,7 +82,7 @@
   {
     "check": "keyword_quality",
     "verdict": "PASS",
-    "detail": "1352 exact mentions of 1349 entries"
+    "detail": "1361 exact mentions of 1353 entries"
   },
   {
     "check": "chronology_gold",

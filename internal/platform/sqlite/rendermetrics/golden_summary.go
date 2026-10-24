@@ -24,14 +24,18 @@ import (
 // entity_image, number, ...); empty means the item could not be joined to a
 // plan entry and is counted under "unknown" rather than dropped.
 type ItemSample struct {
-	ItemID    string
-	Class     string
-	Status    string // overlay_render status: COMPLETED | FAILED | ...
-	RenderMS  int64  // worker-measured Chronon render service (per_item_render_service_ms)
-	EncodeMS  int64  // worker-measured encode service
-	QueuedMS  int64  // cumulative queue wait observed for the item (0 = unmeasured)
-	StartedAt int64  // unix millis when the item entered the render queue (0 = unknown)
-	EndedAt   int64  // unix millis when the item finished (0 = unknown)
+	ItemID        string
+	Class         string
+	Status        string // overlay_render status: COMPLETED | FAILED | ...
+	RenderMS      int64  // worker-measured Chronon render service (per_item_render_service_ms)
+	EncodeMS      int64  // worker-measured encode service
+	QueuedMS      int64  // cumulative queue wait observed for the item (0 = unmeasured)
+	CacheLookupUS int64
+	CacheProbeUS  int64
+	CacheStoreUS  int64
+	CacheOutcome  string
+	StartedAt     int64 // unix millis when the item entered the render queue (0 = unknown)
+	EndedAt       int64 // unix millis when the item finished (0 = unknown)
 }
 
 // ServiceStat is the sample distribution of one service-time population.
@@ -69,11 +73,30 @@ type Summary struct {
 	// PerItemServiceMS is the aggregate over ALL classes. It exists for
 	// continuity with the historical run summaries; per-class comparisons use
 	// PerClass.
-	PerItemServiceMS ServiceStat `json:"per_item_service_ms"`
-	TotalServiceMS   int64       `json:"total_service_ms"`
-	WindowSeconds    float64     `json:"window_seconds,omitempty"`
-	ItemsPerMin      float64     `json:"items_per_min,omitempty"`
-	UnknownClass     int         `json:"unknown_class,omitempty"`
+	PerItemServiceMS ServiceStat        `json:"per_item_service_ms"`
+	TotalServiceMS   int64              `json:"total_service_ms"`
+	WindowSeconds    float64            `json:"window_seconds,omitempty"`
+	ItemsPerMin      float64            `json:"items_per_min,omitempty"`
+	UnknownClass     int                `json:"unknown_class,omitempty"`
+	CacheTiming      CacheTimingSummary `json:"cache_timing"`
+}
+
+// DurationStatUS describes cache operation time in microseconds. These
+// operations are local and often much shorter than a millisecond, so the
+// analytics contract preserves microsecond precision.
+type DurationStatUS struct {
+	Count int   `json:"count"`
+	AvgUS int64 `json:"avg_us"`
+	P50US int64 `json:"p50_us"`
+	MinUS int64 `json:"min_us"`
+	MaxUS int64 `json:"max_us"`
+}
+
+type CacheTimingSummary struct {
+	LookupUS DurationStatUS `json:"lookup_us"`
+	ProbeUS  DurationStatUS `json:"probe_us"`
+	StoreUS  DurationStatUS `json:"store_us"`
+	Outcomes map[string]int `json:"outcomes,omitempty"`
 }
 
 const unknownClass = "unknown"
@@ -90,6 +113,8 @@ func BuildGoldenSummary(samples []ItemSample) Summary {
 	perClassMS := map[string][]int64{}
 	perClassDone := map[string]int{}
 	var allMS []int64
+	var cacheLookupUS, cacheProbeUS, cacheStoreUS []int64
+	cacheOutcomes := map[string]int{}
 	for _, s := range samples {
 		class := s.Class
 		if class == "" {
@@ -109,9 +134,27 @@ func BuildGoldenSummary(samples []ItemSample) Summary {
 			allMS = append(allMS, s.RenderMS)
 			perClassMS[class] = append(perClassMS[class], s.RenderMS)
 		}
+		if s.CacheLookupUS > 0 {
+			cacheLookupUS = append(cacheLookupUS, s.CacheLookupUS)
+		}
+		if s.CacheProbeUS > 0 {
+			cacheProbeUS = append(cacheProbeUS, s.CacheProbeUS)
+		}
+		if s.CacheStoreUS > 0 {
+			cacheStoreUS = append(cacheStoreUS, s.CacheStoreUS)
+		}
+		if s.CacheOutcome != "" {
+			cacheOutcomes[s.CacheOutcome]++
+		}
 	}
 	summary.PerItemServiceMS = serviceStat(allMS)
 	summary.TotalServiceMS = sum(allMS)
+	summary.CacheTiming = CacheTimingSummary{
+		LookupUS: durationStatUS(cacheLookupUS),
+		ProbeUS:  durationStatUS(cacheProbeUS),
+		StoreUS:  durationStatUS(cacheStoreUS),
+		Outcomes: cacheOutcomes,
+	}
 	for class, items := range summary.ClassCounts {
 		ms := perClassMS[class]
 		stat := ClassStat{
@@ -127,6 +170,23 @@ func BuildGoldenSummary(samples []ItemSample) Summary {
 	}
 	summary.WindowSeconds, summary.ItemsPerMin = windowOf(samples)
 	return summary
+}
+
+func durationStatUS(values []int64) DurationStatUS {
+	if len(values) == 0 {
+		return DurationStatUS{}
+	}
+	sorted := append([]int64(nil), values...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	var total int64
+	for _, value := range sorted {
+		total += value
+	}
+	p50 := sorted[len(sorted)/2]
+	if len(sorted)%2 == 0 {
+		p50 = (sorted[len(sorted)/2-1] + sorted[len(sorted)/2]) / 2
+	}
+	return DurationStatUS{Count: len(sorted), AvgUS: total / int64(len(sorted)), P50US: p50, MinUS: sorted[0], MaxUS: sorted[len(sorted)-1]}
 }
 
 // windowOf derives the observed render window from item timestamps: first

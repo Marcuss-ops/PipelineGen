@@ -289,6 +289,13 @@ type RenderCompletionMetrics struct {
 	PollCount      int
 	WaitStartedAt  time.Time
 	WaitFinishedAt time.Time
+	// Overlay cache timings belong to this queue attempt. They are kept in
+	// nanosecond-resolution durations here and persisted as microseconds so
+	// fast local cache hits do not collapse to a misleading zero millisecond.
+	CacheLookup  time.Duration
+	CacheProbe   time.Duration
+	CacheStore   time.Duration
+	CacheOutcome string
 }
 
 type FinalAudioReference struct {

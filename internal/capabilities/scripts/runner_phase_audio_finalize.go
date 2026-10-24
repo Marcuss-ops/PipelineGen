@@ -65,7 +65,7 @@ func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req Genera
 	if result == nil || result.FinalAudio == nil || r.finalAudioPublisher == nil {
 		return true
 	}
-	if strings.TrimSpace(result.FinalAudio.DriveLink) != "" && strings.TrimSpace(result.FinalAudio.DriveFileID) != "" {
+	if strings.TrimSpace(result.FinalAudio.AssetID) != "" && strings.TrimSpace(result.FinalAudio.DriveLink) != "" && strings.TrimSpace(result.FinalAudio.DriveFileID) != "" {
 		return true
 	}
 	if _, err := os.Stat(result.FinalAudio.Path); errors.Is(err, os.ErrNotExist) {

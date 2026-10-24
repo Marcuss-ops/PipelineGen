@@ -30,10 +30,10 @@ func (r *Runner) prepareSceneTextGeneration(ctx context.Context, runID string, r
 		path.streamable = false
 		path.topologyNeedsMaterialization = true
 	}
-	if req.Intro != nil || req.Outro != nil {
-		path.streamable = false
-		path.topologyNeedsMaterialization = true
-	}
+	// Fixed intro/outro sections are NOT a streaming gate: applyFixedSections
+	// injects them as pure post-processing AFTER ready.wait joins the per-scene
+	// downstream (translation/TTS/NLP), so generated scenes stream unchanged and
+	// the fixed sections never reach the scene-ready coordinator.
 	if req.ScriptParams.SourceTextVerbatim {
 		return path
 	}

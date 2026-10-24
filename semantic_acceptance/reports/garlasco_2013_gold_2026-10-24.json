@@ -5,7 +5,7 @@
   "gold": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/garlasco_2013_gold.json",
   "script": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/garlasco_2013_reconstructed.txt",
   "manifest_fingerprint": "9294f00793b985bb",
-  "manifest_sha256": "c2661284aab706525c11426b6b344287d483381fbf9cdcb226858bf5c30fcf11",
+  "manifest_sha256": "e917a6805c1ddabdddd2c6cc147573c346a68936ed8c0104ceb810aba5628005",
   "provenance": {
     "kind": "reconstructed",
     "independent": false,

@@ -541,6 +541,15 @@ di batch differenti; `separateOverlayItemPlan` ora clona la mappa prima di
 impostare `enter_frames`. I due test di retry e handoff batch passano con
 `go test -race`.
 
+Il contratto analytics ora persiste anche `cache_lookup_us`, `cache_probe_us`,
+`cache_store_us` e `cache_outcome` per ogni tentativo, inclusi i batch. La
+migrazione SQLite 280 aggiunge queste colonne; i microsecondi evitano che un
+lookup locale rapido appaia come zero millisecondi. `goldensummary` aggrega
+lookup/probe/store (count, media, p50, min, max) e gli esiti senza incrementare
+il conteggio semantico degli overlay per i tentativi batch. Il cache hit resta
+separato dal render worker: i timing del render originale continuano a essere
+sanitizzati e non vengono attribuiti al tentativo che riusa l'artefatto.
+
 Nei piani `RequireDriveBeforeReturn` il grouping resta disattivato anche quando
 è presente un background video in loop: il campo `Background` non prova che
 quell'asset sia il clip canonico selezionato per la finestra. La selezione
@@ -683,10 +692,12 @@ Sono stati chiusi anche i tagli Go richiesti per il percorso locale e audio:
   riutilizza quel digest, senza seconda lettura SHA-256 dell'output.
 - `publishFinalAudio` è l'unico proprietario della pubblicazione canonica del
   master. Il manifest mantiene `audio_asset_id` e `drive_file_id` come
-  riferimento e il finalizer generico salta il master solo quando entrambi
-  sono presenti. Se un checkpoint storico contiene solo il link, il publisher
-  viene richiamato con la chiave idempotente per recuperare una referenza
-  completa.
+  riferimento; il worker salta il re-upload solo se l'ID manifest coincide
+  con `audio_asset_id`, il `drive_file_id` è presente, SHA-256 è valido e la
+  dimensione è positiva. Riferimenti incompleti restano sullo staging/upload
+  generico. `publishFinalAudio` riusa un checkpoint solo quando conserva ID
+  canonico, Drive link e Drive file ID; altrimenti ripubblica idempotentemente
+  e ripristina la referenza completa.
 - Il master viene pubblicato appena l'audio è certificato, in parallelo alla
   finestra di rendering; `audio_finalize` resta dopo il join perché proietta
   il timeline con gli artefatti overlay definitivi.
@@ -697,6 +708,12 @@ Sono stati chiusi anche i tagli Go richiesti per il percorso locale e audio:
   lettori Go, Python o RenderingGen; la persistenza e il relativo upload sono
   stati rimossi. Il test del manifest ora pinna un solo `script_json` anche
   quando il risultato include scene e binding voiceover.
+
+La verifica del single-owner audio copre anche manifest corrotti o parziali:
+`ReferencesPublishedAudio` richiede ID canonico uguale all'ID manifest, SHA-256
+esadecimale valido, byte count positivo e Drive file ID. Il test copre il
+resume in cui `final_audio.m4a` è già sorgente e destinazione, per evitare che
+il percorso hardlink rimuova il master certificato.
 
 Il percorso GPU delle mappe editoriali in ChrononTemplate ora accoda sedici UMat
 prima del readback ordinato, sovrapponendo il setup host delle pose al lavoro
@@ -1001,6 +1018,8 @@ le attribuisce un guadagno non misurato.
 | Unit fast | `make verify-unit-fast` | 216 pacchetti `ok`, 0 `FAIL` |
 | Componenti cambiati | `make verify-changed-components` | PASS su 21 componenti |
 | Architettura aggregata | `make verify-architecture` | PASS (C2-C=0, C2-E=0) |
+| Cache/analytics dopo migration 280 | `go test -race ./internal/capabilities/scripts -run 'Test(OverlayRenderCache|PlanOverlayBatchWork|FinalJobRejectsBatchReplaceWithoutCanonicalBase|FinalAudioPublishesBeforeOverlayJoinButFinalizesAfterJoin|AudioOverlayFailureAndCancellationDrainBothBranches)$' -count=1`; package analytics/wiring test; SQLite `TestMigrations_280_RenderAttemptCacheTimingColumns` | PASS |
+| Pacchetti Go toccati nei due repository | PipelineGen scripts/jobs/worker/SQLite/goldensummary/wiring; RenderingGen processor/metricnames/schemaval/overlay; `RenderingGen/queue go test ./...` | PASS |
 
 ### Criteri di accettazione: raggiungibile / non raggiungibile
 
@@ -1008,6 +1027,7 @@ le attribuisce un guadagno non misurato.
 | --- | --- | --- |
 | Il planner materializza il mix da 100 item | **Sì** | `TestGoldenThroughputMixBudgetAdmitsOneHundredItems` PASS: 50 frasi, 30 immagini, 10 date, 10 mappe |
 | Render cache content-addressed cablata | **Sì** | 11 test `TestOverlayRenderCache*` PASS; `/health` del binario live 09:09: `enabled=true`, `wired=true`, tabella `overlay_render_cache_entries` |
+| Timing durevoli lookup/probe/store cache | **Sì (contratto Go/SQLite)** | Migrazione 280, test adapter/upsert, test timed cache lookup e aggregazione `goldensummary`; i tempi live richiedono una nuova run del binario migrato |
 | Batching finestre deterministico e identità per item | **Sì (unit)** | 5 test `TestPlanOverlayBatchWork*`, `TestFinalJobRejectsBatchReplaceWithoutCanonicalBase`, `TestSeparateOverlayItemsPreservePlanOrderAndIndices` PASS; nessuna certificazione live |
 | Copia streaming dell'audio finale certificato | **Sì (unit)** | `TestCopyCertifiedAudioOverwritesDestinationAndPreservesBytes` PASS; hash sorgente già verificato a monte |
 | Nessuna query Artlist quando il provider è disabilitato | **Sì (unit)** | `TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief` asserisce `ArtlistQueries` vuoto |

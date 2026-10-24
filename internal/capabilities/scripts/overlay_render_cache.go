@@ -30,6 +30,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -381,53 +382,93 @@ func (e *QueueRenderEnqueuer) renderCacheEpochValue() string {
 // errors are metrics, never run failures. A cached artifact is sanitized so
 // this run never replays the producing run's worker phase timings as its own.
 func (e *QueueRenderEnqueuer) lookupOverlayRenderCache(ctx context.Context, key OverlayRenderCacheKey) (*RenderArtifact, bool) {
-	if e == nil || e.renderCache == nil || !OverlayRenderCacheEnabled() {
-		return nil, false
+	artifact, hit, _ := e.lookupOverlayRenderCacheTimed(ctx, key)
+	return artifact, hit
+}
+
+type overlayRenderCacheTiming struct {
+	lookup  time.Duration
+	probe   time.Duration
+	store   time.Duration
+	outcome string
+}
+
+func applyOverlayRenderCacheTiming(wait *RenderCompletionMetrics, timing overlayRenderCacheTiming) {
+	if wait == nil {
+		return
 	}
+	wait.CacheLookup = timing.lookup
+	wait.CacheProbe = timing.probe
+	wait.CacheStore = timing.store
+	wait.CacheOutcome = timing.outcome
+}
+
+func (e *QueueRenderEnqueuer) lookupOverlayRenderCacheTimed(ctx context.Context, key OverlayRenderCacheKey) (*RenderArtifact, bool, overlayRenderCacheTiming) {
+	timing := overlayRenderCacheTiming{outcome: "miss"}
+	if e == nil || e.renderCache == nil || !OverlayRenderCacheEnabled() {
+		timing.outcome = "disabled"
+		return nil, false, timing
+	}
+	lookupStarted := time.Now()
 	artifact, hit, err := e.renderCache.Lookup(ctx, key)
+	timing.lookup = time.Since(lookupStarted)
 	if err != nil {
+		timing.outcome = "lookup_error"
 		observability.OverlayRenderCacheTotal.WithLabelValues("lookup_error").Inc()
-		return nil, false
+		return nil, false, timing
 	}
 	if !hit {
+		timing.outcome = "miss"
 		observability.OverlayRenderCacheTotal.WithLabelValues("miss").Inc()
-		return nil, false
+		return nil, false, timing
 	}
 	if !validCachedOverlayArtifact(artifact) {
+		timing.outcome = "invalid"
 		observability.OverlayRenderCacheTotal.WithLabelValues("invalid").Inc()
 		e.invalidateOverlayRenderCache(ctx, key, "cached locator failed certification")
-		return nil, false
+		return nil, false, timing
 	}
 	if e.renderCacheProber != nil {
+		probeStarted := time.Now()
 		present, probeErr := e.renderCacheProber.Present(ctx, *artifact)
+		timing.probe = time.Since(probeStarted)
 		if probeErr != nil {
+			timing.outcome = "probe_error"
 			// A probing outage must not turn a valid render into a failure:
 			// fall through to a normal render, which will overwrite the row.
 			observability.OverlayRenderCacheTotal.WithLabelValues("probe_error").Inc()
-			return nil, false
+			return nil, false, timing
 		}
 		if !present {
+			timing.outcome = "invalid"
 			observability.OverlayRenderCacheTotal.WithLabelValues("invalid").Inc()
 			e.invalidateOverlayRenderCache(ctx, key, "cached artifact is no longer in the object store")
-			return nil, false
+			return nil, false, timing
 		}
 	}
 	artifact = sanitizeCachedOverlayArtifact(artifact)
+	timing.outcome = "hit"
 	observability.OverlayRenderCacheTotal.WithLabelValues("hit").Inc()
-	return artifact, true
+	return artifact, true, timing
 }
 
 // storeOverlayRenderCache records a certified render. A storage error is
 // logged and counted; it never fails a render that already succeeded.
 func (e *QueueRenderEnqueuer) storeOverlayRenderCache(ctx context.Context, key OverlayRenderCacheKey, artifact *RenderArtifact) {
+	_, _ = e.storeOverlayRenderCacheTimed(ctx, key, artifact)
+}
+
+func (e *QueueRenderEnqueuer) storeOverlayRenderCacheTimed(ctx context.Context, key OverlayRenderCacheKey, artifact *RenderArtifact) (time.Duration, string) {
+	started := time.Now()
 	if e == nil || e.renderCache == nil || !OverlayRenderCacheEnabled() || !validCachedOverlayArtifact(artifact) {
-		return
+		return time.Since(started), "skipped"
 	}
 	if err := e.renderCache.Store(ctx, key, *artifact); err != nil {
 		observability.OverlayRenderCacheTotal.WithLabelValues("store_error").Inc()
-		return
+		return time.Since(started), "store_error"
 	}
 	observability.OverlayRenderCacheTotal.WithLabelValues("store").Inc()
+	return time.Since(started), "stored"
 }
 
 func (e *QueueRenderEnqueuer) invalidateOverlayRenderCache(ctx context.Context, key OverlayRenderCacheKey, reason string) {

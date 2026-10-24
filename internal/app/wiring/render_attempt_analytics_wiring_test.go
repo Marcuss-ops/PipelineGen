@@ -23,7 +23,7 @@ import (
 )
 
 // renderAttemptAnalyticsWiringSchema is the canonical render_attempt_analytics
-// DDL (migrations 215 + 227 + 271 + 275 + 276 + 279) needed by the SQLite recorder.
+// DDL (migrations 215 + 227 + 271 + 275 + 276 + 279 + 280) needed by the SQLite recorder.
 const renderAttemptAnalyticsWiringSchema = `
 CREATE TABLE render_attempt_analytics (
     attempt_id      TEXT PRIMARY KEY,
@@ -53,6 +53,10 @@ CREATE TABLE render_attempt_analytics (
     polling_sleep_ms INTEGER NOT NULL DEFAULT 0,
     polling_interval_ms INTEGER NOT NULL DEFAULT 0,
     poll_count       INTEGER NOT NULL DEFAULT 0,
+    cache_lookup_us INTEGER NOT NULL DEFAULT 0,
+    cache_probe_us INTEGER NOT NULL DEFAULT 0,
+    cache_store_us INTEGER NOT NULL DEFAULT 0,
+    cache_outcome TEXT NOT NULL DEFAULT '',
     width           INTEGER NOT NULL DEFAULT 0,
     height          INTEGER NOT NULL DEFAULT 0,
     fps_num         INTEGER NOT NULL DEFAULT 0,
@@ -113,19 +117,23 @@ func TestWireRenderAttemptRecorderPersistsCertifiedRow(t *testing.T) {
 	// render_ms/encode_ms come verbatim from the certified queue artifact
 	// (the worker-measured wall times).
 	attempt := scriptgen.RenderAttemptAnalytics{
-		AttemptID:  "attempt-parallel-1",
-		JobID:      "job-parallel-1",
-		Content:    capoverlay.ContentCounts{Phrases: 1, Words: 2, Images: 3, Leaks: 4},
-		RenderMS:   24971,
-		EncodeMS:   554,
-		Width:      1920,
-		Height:     1080,
-		FPSNum:     30,
-		FPSDen:     1,
-		FrameCount: 1350,
-		DurationUS: 45000000,
-		SizeBytes:  12345,
-		SHA256:     "sha-certified",
+		AttemptID:     "attempt-parallel-1",
+		JobID:         "job-parallel-1",
+		Content:       capoverlay.ContentCounts{Phrases: 1, Words: 2, Images: 3, Leaks: 4},
+		RenderMS:      24971,
+		EncodeMS:      554,
+		Width:         1920,
+		Height:        1080,
+		FPSNum:        30,
+		FPSDen:        1,
+		FrameCount:    1350,
+		DurationUS:    45000000,
+		SizeBytes:     12345,
+		SHA256:        "sha-certified",
+		CacheLookupUS: 125,
+		CacheProbeUS:  250,
+		CacheStoreUS:  375,
+		CacheOutcome:  "hit",
 	}
 	if err := recorder.RecordAttempt(context.Background(), attempt); err != nil {
 		t.Fatal(err)
@@ -144,5 +152,14 @@ func TestWireRenderAttemptRecorderPersistsCertifiedRow(t *testing.T) {
 	}
 	if renderMS != 24971 || encodeMS != 554 {
 		t.Fatalf("render_ms/encode_ms = %d/%d, want 24971/554", renderMS, encodeMS)
+	}
+	var cacheLookupUS, cacheProbeUS, cacheStoreUS int64
+	var cacheOutcome string
+	if err := db.QueryRow(`SELECT cache_lookup_us, cache_probe_us, cache_store_us, cache_outcome FROM render_attempt_analytics WHERE attempt_id='attempt-parallel-1'`).
+		Scan(&cacheLookupUS, &cacheProbeUS, &cacheStoreUS, &cacheOutcome); err != nil {
+		t.Fatal(err)
+	}
+	if cacheLookupUS != 125 || cacheProbeUS != 250 || cacheStoreUS != 375 || cacheOutcome != "hit" {
+		t.Fatalf("cache timing = %d/%d/%d %q, want 125/250/375 hit", cacheLookupUS, cacheProbeUS, cacheStoreUS, cacheOutcome)
 	}
 }

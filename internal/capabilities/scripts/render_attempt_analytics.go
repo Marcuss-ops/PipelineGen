@@ -65,10 +65,14 @@ type RenderAttemptAnalytics struct {
 	// queue's job-status long poll) there is no client-side sleep, so it stays
 	// 0 while CompletionWaitMS still measures the true end-to-end observation
 	// wait.
-	CompletionWaitMS  int64 `json:"completion_wait_ms,omitempty"`
-	PollingSleepMS    int64 `json:"polling_sleep_ms,omitempty"`
-	PollingIntervalMS int64 `json:"polling_interval_ms,omitempty"`
-	PollCount         int   `json:"poll_count,omitempty"`
+	CompletionWaitMS  int64  `json:"completion_wait_ms,omitempty"`
+	PollingSleepMS    int64  `json:"polling_sleep_ms,omitempty"`
+	PollingIntervalMS int64  `json:"polling_interval_ms,omitempty"`
+	PollCount         int    `json:"poll_count,omitempty"`
+	CacheLookupUS     int64  `json:"cache_lookup_us,omitempty"`
+	CacheProbeUS      int64  `json:"cache_probe_us,omitempty"`
+	CacheStoreUS      int64  `json:"cache_store_us,omitempty"`
+	CacheOutcome      string `json:"cache_outcome,omitempty"`
 
 	// Output metrics (certified artifact facts).
 	Width      int    `json:"width,omitempty"`
@@ -156,6 +160,10 @@ func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capoverlay.Overl
 		PollingSleepMS:    wait.PollingSleep.Milliseconds(),
 		PollingIntervalMS: wait.PollInterval.Milliseconds(),
 		PollCount:         wait.PollCount,
+		CacheLookupUS:     wait.CacheLookup.Microseconds(),
+		CacheProbeUS:      wait.CacheProbe.Microseconds(),
+		CacheStoreUS:      wait.CacheStore.Microseconds(),
+		CacheOutcome:      wait.CacheOutcome,
 	}
 	// Per-overlay correlation: when the plan carries exactly one item (the
 	// production separate-item path builds one child plan per semantic item),

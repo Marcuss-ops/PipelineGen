@@ -113,3 +113,33 @@ func TestRunnerPublishFinalAudioFailsClosedWithoutDriveFileID(t *testing.T) {
 		t.Fatal("publisher result without DriveFileID must fail closed")
 	}
 }
+
+func TestRunnerPublishFinalAudioDoesNotTreatDriveLocatorWithoutCanonicalAssetAsPublished(t *testing.T) {
+	repo := newInMemRunRepository()
+	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator(), newStubDocumentPublisher())
+	runner.SetLogger(zap.NewNop())
+	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{
+		AssetID: "canonical-audio", DriveFileID: "drive-audio", DriveLink: "https://drive.google.com/file/d/drive-audio",
+	}}
+	runner.SetFinalAudioPublisher(publisher)
+	req := defaultTestRequest()
+	localAudio := filepath.Join(t.TempDir(), "final-audio.m4a")
+	require.NoError(t, os.WriteFile(localAudio, []byte("audio"), 0o600))
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
+		ID: "run-missing-canonical-id", Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
+	}))
+	result := &GenerateResult{FinalAudio: &FinalAudioReference{
+		Path: localAudio, DriveFileID: "drive-audio", DriveLink: "https://drive.google.com/file/d/drive-audio",
+		FinalAudioSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	}}
+
+	if !runner.publishFinalAudio(context.Background(), "run-missing-canonical-id", req, testRoutingContext(), NewExecutionContext("run-missing-canonical-id", "corr-4"), result) {
+		t.Fatal("republishing the incomplete reference should succeed")
+	}
+	if publisher.calls != 1 {
+		t.Fatalf("publisher calls = %d, want 1 to restore the canonical asset identity", publisher.calls)
+	}
+	if result.FinalAudio.AssetID != "canonical-audio" {
+		t.Fatalf("canonical audio asset id = %q", result.FinalAudio.AssetID)
+	}
+}
