@@ -226,7 +226,7 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 				message = "local file missing"
 			}
 		}
-		if a.GetMetadataString("content_hash") == "" {
+		if a.ContentHash() == "" {
 			message = "asset has no content_sha256"
 		}
 		return bulkChange{AssetID: id, Status: "success", Message: message, Before: before, After: after}

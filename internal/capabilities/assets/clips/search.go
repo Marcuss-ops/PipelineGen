@@ -205,7 +205,7 @@ func (sh *SearchHandler) ClipStatus(c *gin.Context) {
 		"has_drive_link": clip.DriveLink() != "" || clip.DownloadLink() != "",
 		"drive_link":     clip.DriveLink(),
 		"download_link":  clip.DownloadLink(),
-		"content_sha256": clip.GetMetadataString("content_hash"),
+		"content_sha256": clip.ContentHash(),
 		"folder_id":      clip.FolderID(),
 		"folder_path":    clip.FolderPath(),
 		"status":         status,

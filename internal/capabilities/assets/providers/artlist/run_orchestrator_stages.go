@@ -93,7 +93,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			DriveLink:       defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
 			DriveFileID:     defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
 			LocalPath:       defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
-			ContentSHA256:   defaults.String(clip.GetMetadataString("content_hash"), clip.GetMetadataString("_file_hash")),
+			ContentSHA256:   defaults.String(clip.ContentHash(), clip.GetMetadataString("_file_hash")),
 			contentIdentity: runTagContentIdentity{sha256: clip.ContentAddress()},
 			Metadata:        cloneMetadata(clip.Metadata),
 		}

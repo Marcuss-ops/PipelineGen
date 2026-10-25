@@ -90,7 +90,7 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		LocalPath:     c.LocalPath(),
 		DriveLink:     c.DriveLink(),
 		DriveFileID:   c.DriveFileID(),
-		ContentSHA256: c.GetMetadataString("content_hash"),
+		ContentSHA256: c.ContentHash(),
 		// source_url convergence (godlike/06): the typed field is the
 		// canonical owner; the metadata key is a provenance mirror for
 		// legacy rows. Read field-first so a round-trip through the mapper
