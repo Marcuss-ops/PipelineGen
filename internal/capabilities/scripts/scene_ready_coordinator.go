@@ -399,6 +399,12 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		out.DurationMS = int64(outcomes[0].audioRef.Duration*1000 + 0.5)
 		out.DurationUS = int64(outcomes[0].audioRef.Duration*1_000_000 + 0.5)
 	}
+	if voiceoverCalls > 0 {
+		// All requested voiceover languages for this scene are final. The
+		// localized renders were dispatched above and remain asynchronous; this
+		// timestamp is the TTS boundary, not the render boundary.
+		out.TTSCompletedAt = time.Now().UTC()
+	}
 	c.mu.Lock()
 	c.ttsCalls += voiceoverCalls
 	c.mu.Unlock()

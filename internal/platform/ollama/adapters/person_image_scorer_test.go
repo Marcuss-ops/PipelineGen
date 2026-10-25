@@ -75,6 +75,68 @@ func TestOllamaPersonImageScorerRejectsCollageAndKeepsSinglePortrait(t *testing.
 	}
 }
 
+func TestOllamaPersonImageScorerSkipsDefinitiveVerdicts(t *testing.T) {
+	client := &personImageScorerFakeClient{}
+	scorer := NewOllamaPersonImageScorer(client)
+	downloads := 0
+	scorer.download = func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		downloads++
+		return testPersonScorerJPEG(t), "image/jpeg", nil
+	}
+	accepted := scriptpkg.SegmentAssetCandidate{
+		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
+		SourceURL: "https://images.example/chiara-poggi-portrait.jpg",
+		SemanticStatus: "accepted", SemanticScore: 0.94,
+		QualityReason: "Ollama visual verification confirmed one dominant subject",
+	}
+	rejected := scriptpkg.SegmentAssetCandidate{
+		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
+		SourceURL: "https://images.example/chiara-poggi-collage.jpg",
+		SemanticStatus: "rejected",
+		QualityReason: "Ollama visual verification detected a split panel or collage",
+	}
+
+	got, err := scorer.ScoreImageCandidates(context.Background(), "Chiara Poggi", []scriptpkg.SegmentAssetCandidate{accepted, rejected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if downloads != 0 || len(client.messages) != 0 {
+		t.Fatalf("downloads=%d vlm_calls=%d, want cached verdicts reused", downloads, len(client.messages))
+	}
+	if got[0].SemanticStatus != "accepted" || got[1].SemanticStatus != "rejected" {
+		t.Fatalf("cached verdicts were rewritten: %+v", got)
+	}
+}
+
+func TestOllamaPersonImageScorerRetriesTransientRejection(t *testing.T) {
+	client := &personImageScorerFakeClient{responses: []string{
+		`{"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.94}`,
+	}}
+	scorer := NewOllamaPersonImageScorer(client)
+	downloads := 0
+	scorer.download = func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		downloads++
+		return testPersonScorerJPEG(t), "image/jpeg", nil
+	}
+	transient := scriptpkg.SegmentAssetCandidate{
+		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
+		SourceURL: "https://images.example/chiara-poggi-transient.jpg",
+		SemanticStatus: "rejected",
+		QualityReason: "visual verification failed: context deadline exceeded",
+	}
+
+	got, err := scorer.ScoreImageCandidates(context.Background(), "Chiara Poggi", []scriptpkg.SegmentAssetCandidate{transient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if downloads != 1 || len(client.messages) != 1 {
+		t.Fatalf("downloads=%d vlm_calls=%d, want one retry for a transient rejection", downloads, len(client.messages))
+	}
+	if got[0].SemanticStatus != "accepted" || got[0].SemanticScore != 0.94 {
+		t.Fatalf("retried verdict = (%q, %v), want accepted at 0.94", got[0].SemanticStatus, got[0].SemanticScore)
+	}
+}
+
 func TestNormalizePersonImageForVisionConvertsPNGToJPEG(t *testing.T) {
 	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
 	for y := 0; y < 16; y++ {

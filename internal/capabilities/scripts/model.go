@@ -320,6 +320,10 @@ type Scene struct {
 	TextReadyAt          time.Time `json:"text_ready_at,omitempty"`
 	TranslationStartedAt time.Time `json:"translation_started_at,omitempty"`
 	TTSStartedAt         time.Time `json:"tts_started_at,omitempty"`
+	// TTSCompletedAt closes the per-scene voiceover boundary. With
+	// TTSStartedAt it makes the synthesis duration observable scene by scene;
+	// the batch path leaves both zero because it has no per-scene boundary.
+	TTSCompletedAt time.Time `json:"tts_completed_at,omitempty"`
 
 	Audio        capabilityaudio.AudioIntent   `json:"audio"`
 	AudioIntents []capabilityaudio.AudioIntent `json:"audio_intents,omitempty"`

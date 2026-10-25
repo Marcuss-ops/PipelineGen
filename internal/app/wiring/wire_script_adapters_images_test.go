@@ -218,6 +218,89 @@ func TestInternetImageSearchAdapter_DuckDuckGoRefusalStillUsesLicensedFallback(t
 	}
 }
 
+func TestInternetImageSearchAdapter_SharesOneProviderAnswerAcrossEntityQueryVariants(t *testing.T) {
+	fixture := &imageResolverFixture{providerRows: []images.ImageSearchResult{{
+		AssetID: "web-cena", Name: "John Cena", PreviewURL: "https://images.example/cena.jpg",
+	}}}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+
+	first, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{
+		Query: "John Cena", Entity: "John Cena", Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterFirst := fixture.searchCalls
+	second, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{
+		Query: "John Cena single-person portrait headshot photo", Entity: "John Cena", Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("cache variants = first:%+v second:%+v, want one candidate each", first, second)
+	}
+	if fixture.searchCalls != afterFirst {
+		t.Fatalf("provider search calls = %d after first, %d after variant; want the entity variant served from cache", afterFirst, fixture.searchCalls)
+	}
+}
+
+func TestInternetImageSearchAdapter_DoesNotCollapseDistinctContextQueries(t *testing.T) {
+	fixture := &imageResolverFixture{providerRows: []images.ImageSearchResult{{
+		AssetID: "pavia", Name: "Pavia", PreviewURL: "https://images.example/pavia.jpg",
+	}}}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+
+	if _, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{Query: "Pavia", Entity: "Pavia", Limit: 2}); err != nil {
+		t.Fatal(err)
+	}
+	afterFirst := fixture.searchCalls
+	if _, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{Query: "Pavia courthouse", Entity: "Pavia", Limit: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.searchCalls <= afterFirst {
+		t.Fatalf("provider search calls = %d after first, %d after context query; want distinct context queries to search separately", afterFirst, fixture.searchCalls)
+	}
+}
+
+func TestInternetImageSearchAdapter_ForceRefreshBypassesTheSharedCache(t *testing.T) {
+	fixture := &imageResolverFixture{providerRows: []images.ImageSearchResult{{
+		AssetID: "fresh", Name: "John Cena", PreviewURL: "https://images.example/fresh.jpg",
+	}}}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+
+	if _, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{
+		Query: "John Cena", Entity: "John Cena", Limit: 2, ForceRefresh: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	afterFirst := fixture.searchCalls
+	if _, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{
+		Query: "John Cena", Entity: "John Cena", Limit: 2, ForceRefresh: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.searchCalls <= afterFirst {
+		t.Fatalf("provider search calls = %d after first, %d after refresh; want ForceRefresh to bypass the cache", afterFirst, fixture.searchCalls)
+	}
+}
+
+func TestInternetImageSearchAdapter_DoesNotCacheEmptyProviderAnswers(t *testing.T) {
+	fixture := &imageResolverFixture{}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+
+	if _, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{Query: "x", Limit: 2}); err != nil {
+		t.Fatal(err)
+	}
+	afterFirst := fixture.searchCalls
+	if _, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{Query: "x", Limit: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.searchCalls <= afterFirst {
+		t.Fatalf("provider search calls = %d after first, %d after retry; want empty answers to remain retryable", afterFirst, fixture.searchCalls)
+	}
+}
+
 func TestInternetImageSearchAdapter_AddsSearXNGAlternativesForNonemptyContextSearch(t *testing.T) {
 	fixture := &imageResolverFixture{searchResponses: [][]images.ImageSearchResult{
 		{{AssetID: "ddg-thumb", PreviewURL: "https://images.example/thumb.jpg"}},

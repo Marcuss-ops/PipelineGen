@@ -152,16 +152,54 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 type internetImageSearchAdapter struct {
 	resolver imagesrouting.ImageSearchResolver
 	log      *zap.Logger
+	cache    *imageSearchCache
 }
 
 func newInternetImageSearchAdapter(resolver imagesrouting.ImageSearchResolver, log *zap.Logger) *internetImageSearchAdapter {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &internetImageSearchAdapter{resolver: resolver, log: log}
+	return &internetImageSearchAdapter{resolver: resolver, log: log, cache: newImageSearchCache()}
 }
 
+// SearchImages is the single entry point every consumer uses for internet
+// image discovery. Requests for the same canonical subject share one provider
+// answer inside the worker: the semantic planner, the VidRush fan-out and the
+// internet_images postprocessor no longer repeat the same search. ForceRefresh
+// deliberately bypasses the cache because the caller is re-validating bytes.
 func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapters.InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	if a == nil || a.resolver == nil {
+		return nil, fmt.Errorf("internetImageSearchAdapter: resolver not wired")
+	}
+	if req.ForceRefresh || a.cache == nil {
+		return a.searchImagesUncached(ctx, req)
+	}
+	key := imageSearchCacheKey(req)
+	if candidates, ok := a.cache.get(key); ok {
+		return candidates, nil
+	}
+	value, err, _ := a.cache.flight.Do(key, func() (any, error) {
+		if candidates, ok := a.cache.get(key); ok {
+			return candidates, nil
+		}
+		candidates, searchErr := a.searchImagesUncached(ctx, req)
+		if searchErr != nil {
+			return nil, searchErr
+		}
+		a.cache.put(key, candidates)
+		return cloneImageSearchCandidates(candidates), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	candidates, ok := value.([]scriptpkg.SegmentAssetCandidate)
+	if !ok {
+		return nil, fmt.Errorf("internetImageSearchAdapter: invalid cached result type")
+	}
+	return candidates, nil
+}
+
+func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, req adapters.InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	if a == nil || a.resolver == nil {
 		return nil, fmt.Errorf("internetImageSearchAdapter: resolver not wired")
 	}

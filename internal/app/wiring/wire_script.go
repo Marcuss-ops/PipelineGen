@@ -313,7 +313,14 @@ func vidrushInternetImageSearcher(root *ComposeRoot, log *zap.Logger) adapters.I
 	if root == nil || root.Domains == nil || root.Domains.ImageSearchResolver == nil {
 		return nil
 	}
-	return newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)
+	// The cache lives on the adapter, so every consumer must receive the SAME
+	// adapter instance. Before this singleton, the semantic planner, the
+	// VidRush fan-out and the internet_images postprocessor each built their
+	// own adapter (and cache), and the same person was searched three times.
+	root.imageSearchAdapterOnce.Do(func() {
+		root.imageSearchAdapter = newInternetImageSearchAdapter(root.Domains.ImageSearchResolver, log)
+	})
+	return root.imageSearchAdapter
 }
 
 const maxScriptStockPrefetchBindings = 50
