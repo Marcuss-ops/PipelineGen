@@ -8,18 +8,21 @@ prima di P2.
 
 ## Principio
 
-Il costo di render di un overlay statico è O(1) nella durata: se i pixel non
-cambiano per l'intero item, il sistema renderizza una volta e replica, senza
-pagare raster/composite/encode per ogni frame identico.
+Obiettivo architetturale: ridurre il costo marginale della durata quando
+l'overlay resta visivamente statico. Il gate attualmente certificato è la
+misura 30 s / 3 s e la parità pixel del preset dedicato; non dimostra da sola
+O(1) asintotico né una sola codifica per tutti i frame.
 
 ## Problema misurato
 
-- Una phrase card statica da 30 s produce 900 frame identici che oggi
-  vengono valutati/rasterizzati/compositi/encodati uno per uno: il servizio
-  scala linearmente con la durata anche quando `template_reuses = frames - 1`.
-- Nel golden v17 `text_phrase` è 20/40 item e **45,2% del servizio render**
-  (avg 2,266 s su clip brevi); item più lunghi (card da 20–30 s, mappe,
-  schede entità statiche) amplificano il costo lineare.
+- **Problema storico, pre-fast-path:** una phrase card statica da 30 s produceva
+  900 frame identici valutati/rasterizzati/compositi/encodati uno per uno; il
+  servizio scalava linearmente con la durata anche quando
+  `template_reuses = frames - 1`. La run conclusiva sotto misura il fast path
+  introdotto per il preset dedicato.
+- Nel golden v17 `text_phrase` era 20/40 item e **45,2% del servizio render**
+  (avg 2,266 s su clip brevi); dati pre-fix, non misura del preset certificato
+  corrente. Card lunghe, mappe e schede entità restano classi da validare.
 - **Baseline storica pre-fix:** `DirectYuvProgram` cacheava il
   `DirectYuvTemplate` su $[cue\_from, cue\_until)$, ma il loop emetteva comunque
   un frame renderizzato+encodato per tick. La run conclusiva sotto prova il
@@ -57,7 +60,13 @@ pagare raster/composite/encode per ogni frame identico.
 
 ## Dipendenze e rischi
 
-- Detection statica: già disponibile (B1).
+- Detection statica: disponibile (B1); l'affermazione assoluta sulla
+  ricomposizione per tick qui sopra descrive la baseline storica. Il fast path
+  finale è provato soltanto per il preset statico certificato.
+- L'implementazione live usa il fast path di packet duplicati/anchor; non
+  afferma che il segmento venga encoded una sola volta in modo O(1) assoluto.
+  Il gate certifica il rapporto di servizio misurato (30 s costa meno del 3 s)
+  e pixel parity sul caso, non una complessità asintotica per ogni input.
 - Variante (a): dipende dal contratto con il final worker (packet-copy stitch)
   — negoziare prima di adottare.
 - Interazione con `TextAnimators`/word-reveal: restano sul percorso per-frame
@@ -101,3 +110,51 @@ pagare raster/composite/encode per ogni frame identico.
   operativo Vulkan/NVENC. È superata dal run conclusivo sopra soltanto per il
   preset certificato; resta valida come diagnostica storica, non come stato
   corrente né come certificazione degli altri preset.
+
+#### Inventario copertura e riesecuzione locale — 25/10/2026
+
+- Inventario catalogo RenderingGen: **11 preset ufficiali** — tre text
+  (`static_text_smoke`, `phrase_default`, `classic_phrase`) e otto image. La
+  presenza in catalogo e i test di materializzazione non provano che preset
+  animati o image siano statici per la durata; oltre al preset smoke non è
+  stato trovato un secondo preset statico qualificato e certificato in questo
+  checkout.
+- Il test Chronon `P1 static run replicates the anchor packet with exact pixel
+  parity` esercita 24 frame constant-input con libx264 nel software pipe; il
+  test `ExecutionResolver preserves proven packet duplicates on NV12 output`
+  verifica il contratto di routing NV12. Sono regressioni deterministiche,
+  non misure di servizio, Vulkan/NVENC live o A/B 3 s/30 s.
+- In questo checkpoint il preset CMake `linux-video-test` è stato configurato
+  con successo, ma il build mirato è scaduto a 600 s senza produrre i binari
+  cache/render-graph/media-video. Pertanto i due test Chronon sopra non sono
+  stati rieseguiti ora (**NOT RUN**); i risultati della run live 25/10 alle
+  10:57 rimangono l'unica prova di durata e pixel parità per il backend
+  certificato.
+- Estendere la certificazione agli altri preset statici e ai backend/software
+  o NVIDIA aggiuntivi richiede fixture esplicite e prove equivalenti; non
+  generalizzare il PASS corrente.
+
+#### Drain CUDA prima del frame duplicato — 25/10/2026
+
+- Il golden `after-cpp-live-20261025T135536Z` ha esposto un race di sequenza:
+  `duplicate frame 30 breaks the presentation cursor 28`. Il writer aspettava
+  solo il primo frame CUDA pendente; gli altri potevano rimanere in flight.
+- La correzione locale ripete il drain sincrono fino a svuotare la coda CUDA,
+  prima di convalidare il cursore del frame duplicato.
+- Build `linux-video-release --target chronon3d_cli -j12` PASS; il test
+  `P1 static run replicates the anchor packet with exact pixel parity` passa
+  nel binario `linux-video-test` (1 caso, 60 assertion).
+- Il fix non è ancora caricato sui daemon e non è verificato su Vulkan/NVENC:
+  P1 resta certificato solo nello scope live precedente; la regressione CUDA
+  attende restart e rerun golden.
+
+#### Verifica del fix sul live golden — 25/10/2026
+
+- La build release con il fix è stata caricata sui tre daemon; SHA-256 del
+  binario attivo `0fb96618bc1c0cda80e1f26c96fd991381145b4ed378f3697fe33127f1255817`.
+- Il test software P1 passa ancora (1 caso, 60 assertion). Il golden NVENC
+  diagnostico e un rerun pulito hanno completato 74/74 overlay; la prima run
+  pulita, intermedia, si è fermata al batch item 010 con exit code 1 senza
+  causa Chronon specifica nel dettaglio IPC. Il fix passa quindi una run live
+  pulita, ma l'anomalia resta da chiarire prima di dichiarare affidabilità
+  ripetibile; non generalizzare la prova al mix completo da 100 item.

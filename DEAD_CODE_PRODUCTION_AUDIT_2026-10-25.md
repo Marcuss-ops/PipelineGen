@@ -39,6 +39,10 @@ Entry point considerati (sono quelli costruiti nel `Dockerfile`):
 | `pipelinegen-worker` | `cmd/worker` | `worker-runtime` |
 | `pipelinegen-admin` | `cmd/admin` | `admin-runtime` |
 
+Nota: l'analisi riflette il **working tree corrente**, che contiene modifiche
+preesistenti non committate (il checkout non è pulito). Se quelle modifiche
+cambiano i import/entrypoint, i risultati vanno riallineati dopo il commit.
+
 Comandi eseguiti:
 
 ```bash

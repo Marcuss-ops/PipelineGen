@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	scriptgeneration "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -60,13 +59,6 @@ func (m *tractorE2EMaterializer) Materialize(_ context.Context, _ *scriptpkg.Res
 	return segment, nil
 }
 
-type tractorE2ECatalog struct{ calls int }
-
-func (c *tractorE2ECatalog) SearchAssets(_ context.Context, q assetsearch.AssetSearchQuery) ([]assetsearch.AssetSearchHit, error) {
-	c.calls++
-	return []assetsearch.AssetSearchHit{{AssetID: "tractor-indexed-001", Source: "stock", Score: .97}}, nil
-}
-
 func TestTractorSegmentsEndToEndProfileQueriesAndIndexedReuse(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Quando sono stati inventati i trattori?", Language: "it", Model: "gemma3:1b", PromptVersion: "segment-v1", MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled}}}
 	coordinator := scriptgeneration.NewVidRushIncrementalCoordinator(tractorE2EEnricher{}, plan, 2)
@@ -86,12 +78,7 @@ func TestTractorSegmentsEndToEndProfileQueriesAndIndexedReuse(t *testing.T) {
 	require.Equal(t, 1, remote.calls)
 	require.Equal(t, 1, materializer.calls)
 
-	catalog := &tractorE2ECatalog{}
-	candidate, err := (VidRushSourceResolver{Canonical: catalog}).Resolve(context.Background(), SourceResolutionRequest{Plan: plan, Segment: scriptpkg.CanonicalSegment{ID: result.SegmentID, Text: result.Text}, Slot: mediadomain.SlotPrimaryVideo, Profile: scriptpkg.SegmentSemanticProfile{Topic: result.Insights.ImportantPhrases[0], Entities: result.Insights.Entities}})
-	require.NoError(t, err)
-	require.Equal(t, "canonical_stock", candidate.Stage)
-	require.Equal(t, "tractor-indexed-001", candidate.Source.AssetID)
-	require.Equal(t, 1, catalog.calls)
-	// The canonical catalog hit terminates resolution before any remote source.
-	require.Equal(t, 1, remote.calls)
+	// The canonical catalog resolution half is gone with VidRushSourceResolver;
+	// the coordinator fan-out/materialization assertions above remain the
+	// production surface.
 }

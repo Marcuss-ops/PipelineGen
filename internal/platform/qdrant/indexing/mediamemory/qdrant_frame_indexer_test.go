@@ -294,3 +294,16 @@ func keysOf(m map[string]any) []string {
 	}
 	return out
 }
+
+// collectionFromPath extracts the collection segment from a Qdrant REST path.
+func collectionFromPath(p string) string {
+	const prefix = "/collections/"
+	rest := p
+	if rest[:min(len(rest), len(prefix))] == prefix {
+		rest = rest[len(prefix):]
+	}
+	if i := strings.Index(rest, "/"); i >= 0 {
+		return rest[:i]
+	}
+	return rest
+}

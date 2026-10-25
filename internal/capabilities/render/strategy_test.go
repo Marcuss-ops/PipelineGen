@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
+
+// hash64 is the test-only SHA-256-shaped fixture used by the strategy tests.
+func hash64(c byte) string { return strings.Repeat(string(c), 64) }
 
 func validExecutionPolicy() *RenderExecutionPolicy {
 	return &RenderExecutionPolicy{

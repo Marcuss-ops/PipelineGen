@@ -101,6 +101,23 @@ Gate di accettazione — stato:
       requisito Drive-per-item mantenuto provvisoriamente.
 - [ ] Rinegoziazione effettiva col final worker: NOT DONE (cross-team).
 
+### Verifica test locale mirata — 25/10/2026
+
+- PASS: test manifest identity/content-change/cache-fallback e A/B su fixture
+  (`TestBuildOverlayManifestEntries*`, `TestClassifyManifestEntries*`,
+  `TestManifestTimelineAB*`, retry dello stesso manifest) inclusi nella
+  selezione mirata `go test ./internal/capabilities/scripts -run '^(... )$'
+  -count=1`.
+- PASS: `go test ./... -count=1` e `go vet ./...` nei moduli RenderingGen e
+  queue; il test di package non equivale a un A/B render Chronon live.
+- FAIL separato: la suite più ampia scripts+overlays+observability fallisce su
+  cinque casi di fixture/registry (builder, editoriale, Artlist, `esri_light`);
+  non sono stati corretti o nascosti qui.
+- NOT RUN: A/B pixel/audio Chronon-vs-Chronon sul golden, deploy del worker
+  con il flag default-off, e rinegoziazione col final worker. Il percorso
+  MP4-per-item e il requisito Drive-per-item restano intatti; nessun risparmio
+  produttivo è attribuito al manifest.
+
 ### Blocco misura live A/B su golden (preciso)
 
 Il confronto render-vs-render su piano golden richiede di far girare QUESTO

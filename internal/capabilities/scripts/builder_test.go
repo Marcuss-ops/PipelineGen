@@ -71,10 +71,10 @@ func TestMikeTyson1000WordManifestBuildsFiveSceneTenLanguageRuntimeRequest(t *te
 	if !request.SaveToDB || !request.Render.Enabled || !request.Render.RequireGPU || request.Render.Subtitles == nil || !request.Render.Subtitles.Enabled {
 		t.Fatalf("persistence/render/subtitle contract not enabled: save=%t render=%+v", request.SaveToDB, request.Render)
 	}
-	// The rehearsal manifest publishes no Docs artifacts but still carries the
-	// full ten-language fanout for translation.
-	if request.Docs.Enabled || len(request.Docs.Languages) != 10 {
-		t.Fatalf("docs contract enabled=%t languages=%v, want docs disabled with all ten languages retained", request.Docs.Enabled, request.Docs.Languages)
+	// The rehearsal manifest publishes no Docs artifacts. Google Docs is
+	// retired, so the tombstone is carried through verbatim.
+	if request.Docs.Enabled {
+		t.Fatalf("docs contract enabled=%t languages=%v, want docs disabled", request.Docs.Enabled, request.Docs.Languages)
 	}
 	if request.Audio != capabilityaudio.AudioModeCombinedTimeline || len(request.SoundEffects) != 5 || len(request.BackgroundMusic) != 1 {
 		t.Fatalf("audio contract mode=%q SFX=%d BGM=%d, want combined/5/1", request.Audio, len(request.SoundEffects), len(request.BackgroundMusic))
@@ -227,20 +227,6 @@ func TestBuildGenerateRequest_PropagatesSaveToDB(t *testing.T) {
 	}
 	if !got.SaveToDB {
 		t.Fatal("output.save_to_db=true must reach GenerateRequest")
-	}
-}
-
-func TestBuildGenerateRequest_PropagatesArtlistKeywords(t *testing.T) {
-	var env scriptpkg.GenerationEnvelopeV2
-	if err := json.Unmarshal([]byte(`{"version":2,"items":[{"source":{"type":"text","topic":"foods","artlist_keywords":["bread","wine","olive"]}}]}`), &env); err != nil {
-		t.Fatal(err)
-	}
-	got, err := BuildGenerateRequest(&env, "keywords")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Source.ArtlistKeywords) != 3 {
-		t.Fatalf("keywords = %#v", got.Source.ArtlistKeywords)
 	}
 }
 

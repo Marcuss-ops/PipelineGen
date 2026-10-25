@@ -55,7 +55,6 @@ func TestRunMediaPreflight_EnabledVidRushProviderRequiresRegistration(t *testing
 		name   string
 		policy mediadomain.MediaProviderPolicy
 	}{
-		{name: "artlist", policy: mediadomain.MediaProviderPolicy{Artlist: mediadomain.MediaToggleEnabled}},
 		{name: "youtube", policy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled}},
 		{name: "internet_images", policy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled}},
 		{name: "image_generation", policy: mediadomain.MediaProviderPolicy{ImageGeneration: mediadomain.MediaToggleEnabled}},

@@ -3,7 +3,6 @@
     "paths": [
       "internal/kernel/script/",
       "internal/capabilities/scripts/",
-      "scripts/bench/elon_phrase_impact.py",
       "scripts/with-velox-auth",
       "scripts/lib/dotenv.sh",
       "start_server.sh",

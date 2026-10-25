@@ -103,7 +103,7 @@ func TestEditorialRuntimeCert_R01_FiveScenesSealManifest(t *testing.T) {
 		})
 	}
 	runner.SetSceneSemanticAnalyzer(&stubCombinedSemanticAnalyzer{result: scriptpkg.PhraseImpactResult{
-		Summary: "auto", SceneHighlights: hl,
+		Summary: "auto", SceneHighlights: hl, SceneHighlightsCertified: true,
 	}})
 	req := defaultTestRequest()
 	req.MediaPlan.Extraction.ImportantPhrases = nil

@@ -130,12 +130,26 @@ pagato una volta per batch, non una volta per artefatto.
   verifica per-item. Il test ora esclude correttamente quel campo dal mapping
   probe e verifica a parte la proiezione delle facts batch. `GOMAXPROCS=2 go
   test ./... -count=1` passa su tutti i package RenderingGen.
-- **P4 resta LIVE PARTIAL:** i test locali dimostrano writer, MP4 multipli,
-  receipts e retry isolato; non dimostrano il percorso live con worker/queue
-  aggiornati, la parità per-segmento contro render indipendenti sul mix golden,
-  né il limite ≤1,1 s/item. La prova live disponibile misura un MP4 solo.
-  Nessun guadagno di throughput è attribuito al writer fino a una prova live
-  N-MP4 con receipt identity distinta e retry indotto.
+- **Riesecuzione locale — 25/10/2026:** `GOMAXPROCS=2 go test ./... -count=1`
+  PASS in `RenderingGen/renderinggen` e `RenderingGen/queue`; `GOMAXPROCS=2
+  go vet ./...` PASS in entrambi. In PipelineGen passa la selezione mirata
+  batching/order-layout/manifest/P3 trace (`go test
+  ./internal/capabilities/scripts -run '^(... )$' -count=1`). La suite larga
+  `scripts ./capabilities/overlays/... ./kernel/observability` FAIL su cinque
+  test fixture/registry: due builder (lingue/keywords), editorial manifest,
+  Artlist preflight e `esri_light` renderer source. Il build `linux-video-test`
+  configurato correttamente ma non ha prodotto i binari C++ mirati prima del
+  timeout di 600 s; i test locali Chronon citati in precedenza sono evidence
+  storica, non rieseguita in questo checkpoint. Nessun live P4 è stato
+  lanciato: la prova richiede worker/daemon aggiornati e una finestra di carico.
+- **P4 resta LIVE PARTIAL:** i test locali già registrati dimostrano writer,
+  MP4 multipli, receipts e retry isolato; il run corrente riconferma le suite Go
+  RenderingGen e i gate selezionati di pipeline, ma non i binari Chronon. Nulla
+  dimostra il percorso live con worker/queue aggiornati, la parità per-segmento
+  contro render indipendenti sul mix golden, né il limite ≤1,1 s/item. La prova
+  live disponibile misura un MP4 solo. Nessun guadagno di throughput è
+  attribuito al writer fino a una prova live N-MP4 con receipt identity distinta
+  e retry indotto.
 
 - Il contratto MP4-per-item con il final worker è preservato (ogni segmento
   resta un artefatto proprio); il cambiamento è solo nel ciclo di vita della

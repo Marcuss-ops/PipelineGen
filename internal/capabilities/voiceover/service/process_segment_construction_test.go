@@ -15,11 +15,11 @@
 //
 //  2. TestProcessSegmentUseCase_DRY_Wiring_SourceGrep — the source-grep
 //     inverse-regression guard pins the cross-file delegation invariant:
-//     BOTH usecase.go (batch) AND process_voiceover_item.go (per-item)
-//     delegate to the shared ProcessSegmentUseCase.Execute. A future
-//     refactor that inlines either body silently collapses the
-//     one-canonical-owner invariant; this test catches the regression
-//     at build-time by reading the source files for `processSeg.Execute(`.
+//     process_voiceover_item.go (per-item) delegates to the shared
+//     ProcessSegmentUseCase.Execute. A future refactor that inlines the
+//     body silently collapses the one-canonical-owner invariant; this test
+//     catches the regression at build-time by reading the source file for
+//     `processSeg.Execute(`.
 //
 // godlike/07 minimum-blast-radius: zero production code changes.
 // Construction tests do not exercise Execute — only the constructor
@@ -125,9 +125,10 @@ func TestNewProcessSegmentUseCase_PanicsOnMandatoryDeps(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────
 
 // TestProcessSegmentUseCase_DRY_Wiring_SourceGrep pins the godlike/06
-// one-canonical-owner invariant at the source level: BOTH the batch
-// use case (usecase.go) AND the per-item use case (process_voiceover_item.go)
-// MUST delegate to the shared ProcessSegmentUseCase via `processSeg.Execute(`.
+// one-canonical-owner invariant at the source level: the per-item use case
+// (process_voiceover_item.go) MUST delegate to the shared
+// ProcessSegmentUseCase via `processSeg.Execute(`. The legacy batch
+// use case (usecase.go) has been retired.
 //
 // A hermetic version of this test would construct both use cases with
 // the same shared deps and assert they produce equivalent results —
@@ -147,7 +148,6 @@ func TestProcessSegmentUseCase_DRY_Wiring_SourceGrep(t *testing.T) {
 		path    string
 		context string
 	}{
-		{"usecase.go", "batch use case (GenerateVoiceoversUseCase.processOneLanguage)"},
 		{"process_voiceover_item.go", "per-item use case (ProcessVoiceoverItemUseCase.Execute)"},
 	}
 

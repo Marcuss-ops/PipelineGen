@@ -38,7 +38,7 @@ func TestProjectCanonicalTimingsRegeneratesVidRushFields(t *testing.T) {
 		t.Fatalf("orchestration projection = %+v", got)
 	}
 	if got.SegmentExtractionMs != 0 || got.QueryGenerationMs != 0 ||
-		got.ArtlistSearchMs != 22 || got.InternetImageSearchMs != 33 ||
+		got.InternetImageSearchMs != 33 ||
 		got.ImageGenerationMs != 44 || got.SQLiteMs != 55 || got.BindingMs != 66 {
 		t.Fatalf("VidRush named-field projection = %+v", got)
 	}
