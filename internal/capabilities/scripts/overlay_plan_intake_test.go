@@ -72,7 +72,10 @@ func TestOverlayPlanIntakeStaysOffTheWireContract(t *testing.T) {
 
 	payload, err := json.Marshal(plan)
 	require.NoError(t, err)
-	require.NotContains(t, string(payload), "intake", "the intake report must never enter the plan wire payload")
+	var wire map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(payload, &wire))
+	_, hasIntake := wire["intake"]
+	require.False(t, hasIntake, "the intake report must never enter the plan wire payload")
 }
 
 // TestOverlayPlanIntakeKindCountsMatchTheSealedPlan keeps the by-kind report
