@@ -9879,5 +9879,352 @@
       "requires_3d": false,
       "catalog_version": 1
     }
+,
+    {
+      "id": "classic_playfair_baseline_rise",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 27,
+        "phrase.long": 47,
+        "phrase.all": 111
+      }
+    },
+    {
+      "id": "classic_playfair_tracking_close",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 28,
+        "phrase.long": 48,
+        "phrase.all": 112
+      }
+    },
+    {
+      "id": "classic_playfair_focus_resolve",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 29,
+        "phrase.long": 49,
+        "phrase.all": 113
+      }
+    },
+    {
+      "id": "classic_playfair_quiet_zoom",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 30,
+        "phrase.long": 50,
+        "phrase.all": 114
+      }
+    },
+    {
+      "id": "classic_playfair_glyph_curtain",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 31,
+        "phrase.long": 51,
+        "phrase.all": 115
+      }
+    }
+,
+    {
+      "id": "classic_playfair_word_lift",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 32,
+        "phrase.long": 52,
+        "phrase.all": 116
+      }
+    },
+    {
+      "id": "classic_playfair_line_float",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 33,
+        "phrase.long": 53,
+        "phrase.all": 117
+      }
+    },
+    {
+      "id": "classic_playfair_soft_push_in",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 34,
+        "phrase.long": 54,
+        "phrase.all": 118
+      }
+    },
+    {
+      "id": "classic_playfair_hero_settle",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 35,
+        "phrase.long": 55,
+        "phrase.all": 119
+      }
+    },
+    {
+      "id": "classic_playfair_depth_push",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 36,
+        "phrase.long": 56,
+        "phrase.all": 120
+      }
+    },
+    {
+      "id": "classic_playfair_tracking_open",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 37,
+        "phrase.long": 57,
+        "phrase.all": 121
+      }
+    },
+    {
+      "id": "classic_playfair_glyph_glide",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 38,
+        "phrase.long": 58,
+        "phrase.all": 122
+      }
+    },
+    {
+      "id": "classic_playfair_letter_tick",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 39,
+        "phrase.long": 59,
+        "phrase.all": 123
+      }
+    },
+    {
+      "id": "classic_playfair_breath_in",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 40,
+        "phrase.long": 60,
+        "phrase.all": 124
+      }
+    },
+    {
+      "id": "classic_playfair_quiet_dissolve",
+      "families": [
+        "phrase.classic_apple",
+        "phrase.long",
+        "phrase.all"
+      ],
+      "lanes": [
+        "long"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "phrase",
+        "text"
+      ],
+      "chronontemplate_family": "apple_v2",
+      "order": {
+        "phrase.classic_apple": 41,
+        "phrase.long": 61,
+        "phrase.all": 125
+      }
+    }
   ]
 }

@@ -3,8 +3,11 @@
 package script
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // VidRush providers are intentionally a closed set. The application layer
@@ -354,7 +357,7 @@ type SegmentAssetCandidate struct {
 	RightsStatus          string  `json:"rights_status,omitempty"`
 	SelectionReason       string  `json:"selection_reason,omitempty"`
 	CandidateSetHash      string  `json:"candidate_set_hash,omitempty"`
-	LegacyFileMD5         string  `json:"legacy_file_md5,omitempty"`
+	ContentSHA256         string  `json:"content_sha256,omitempty"`
 	MIMEType              string  `json:"mime_type,omitempty"`
 	LocalPath             string  `json:"local_path,omitempty"`
 	AcquisitionStatus     string  `json:"acquisition_status,omitempty"`
@@ -367,6 +370,23 @@ type SegmentAssetCandidate struct {
 	// candidate has been acquired and verified. It is a dedup aid only: it
 	// never replaces the content SHA-256 and is never used for identity.
 	PerceptualHash string `json:"perceptual_hash,omitempty"`
+}
+
+// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
+// the demolished "legacy_file_md5" key of payloads written before the 281
+// contract migration (job payloads, checkpoints). Only the canonical key is
+// written back.
+func (c *SegmentAssetCandidate) UnmarshalJSON(data []byte) error {
+	type wire SegmentAssetCandidate
+	var v wire
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*c = SegmentAssetCandidate(v)
+	if c.ContentSHA256 == "" {
+		c.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
+	}
+	return nil
 }
 
 // SegmentAssetSelection is the winning asset bundle for a segment.

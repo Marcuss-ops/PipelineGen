@@ -106,7 +106,7 @@ func buildClipAsset(
 		ID:            clipID,
 		VideoID:       cmd.VideoID,
 		LocalPath:     out.Item.LocalPath,
-		LegacyFileMD5: fileHash,
+		ContentSHA256: fileHash,
 		SearchText:    composeYouTubeClipSearchText(md, cmd.Segment.Hook),
 		PolicyVersion: policyVersion,
 		Drive: youtubetypes.ClipAssetDrive{

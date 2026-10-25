@@ -32,7 +32,7 @@
 //     "media_assets_projection: executed"
 //     is always appended on success.
 //   - Step 5 (index outbox):       REQUIRED — Outbox nil is a fatal
-//     wiring error. LegacyFileMD5=="" is a
+//     wiring error. ContentSHA256=="" is a
 //     guard-skip (data-state reason).
 //   - Step 6 (cleanup outbox):     REQUIRED — Outbox nil is a fatal
 //     wiring error. ShouldSwap==false OR
@@ -104,7 +104,7 @@ type FinalizeCommand struct {
 	// Audio Asset State
 	LocalPath       string
 	CleanedPath     string
-	LegacyFileMD5   string // Index outbox skipped when empty
+	ContentSHA256   string // Index outbox skipped when empty
 	DurationSeconds float64
 
 	// Destination & Drive State
@@ -183,7 +183,7 @@ type FinalizeResult struct {
 	//   StateExecuted     — "media_assets_projection: executed"
 	//                       "index_outbox: executed"
 	//                       "cleanup_outbox: executed"
-	//   StateGuarded      — "index_outbox: guarded (empty LegacyFileMD5)"
+	//   StateGuarded      — "index_outbox: guarded (empty ContentSHA256)"
 	//                       "cleanup_outbox: guarded (ShouldSwap=false)"
 	//                       "cleanup_outbox: guarded (no prior artefacts)"
 	//
@@ -269,7 +269,7 @@ type VoiceoverProjectionInput struct {
 	DriveFileID   string
 	DriveLink     string
 	DownloadLink  string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	// Language is the typed BCP-47 envelope (voiceover.Language)
 	// per PR-VO-TYPED-PRIMITIVES. The cross-package seam at
 	// internal/app/adapters_voiceover_use_case.go converts to
@@ -396,7 +396,7 @@ const (
 	// Execution-state markers appended to RequiredSteps on a
 	// successful Finalize. "executed" means the deps were wired AND
 	// the step ran. "guarded (...)" means the deps were wired BUT
-	// a data-state guard prevented execution (e.g. empty LegacyFileMD5,
+	// a data-state guard prevented execution (e.g. empty ContentSHA256,
 	// ShouldSwap=false). State markers are NOT surfaced on
 	// wire-format (JSON) consumers; callers parsing internal log
 	// lines or programmatic step-state assertions should treat

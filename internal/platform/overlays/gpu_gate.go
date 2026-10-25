@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -32,6 +35,42 @@ type GPUGate struct {
 	// number of lock files, so at most N holders exist in this process and each
 	// one holds a distinct file — the flock loop can never deadlock against it.
 	slots chan struct{}
+}
+
+const DefaultGPUGateSlots = 3
+
+// ResolveGPUGateSlots parses the shared RenderingGen GPU slot declaration.
+// Invalid or absent values use the same conservative repository default in
+// PipelineGen and RenderingGen.
+func ResolveGPUGateSlots(raw string) (slots int, explicit bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return DefaultGPUGateSlots, false
+	}
+	n, err := strconv.Atoi(trimmed)
+	if err != nil || n < 1 {
+		return DefaultGPUGateSlots, false
+	}
+	return n, true
+}
+
+// ConfiguredGPUGateConfig returns the one host-wide lock path and slot count
+// consumed by both the RenderingGen worker and PipelineGen's local map renderer.
+func ConfiguredGPUGateConfig() (path string, slots int) {
+	path = strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_LOCK"))
+	if path == "" {
+		path = filepath.Join(os.TempDir(), "pipelinegen", "gpu-0.lock")
+	}
+	slots, _ = ResolveGPUGateSlots(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
+	return path, slots
+}
+
+// NewConfiguredGPUGate builds a gate using the shared host-wide environment
+// contract, returning the resolved values for diagnostics and tests.
+func NewConfiguredGPUGate() (*GPUGate, string, int, error) {
+	path, slots := ConfiguredGPUGateConfig()
+	gate, err := NewGPUGateWithSlots(path, slots)
+	return gate, path, slots, err
 }
 
 // NewGPUGate preserves the historical single-slot constructor.

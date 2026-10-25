@@ -115,7 +115,7 @@ func TestClipLocationsRecordsLocalArtifactWhenNoDriveIdentity(t *testing.T) {
 	const localPath = "data/media/clips/general/yt_iHaK0M-207o/yt_iHaK0M-207o_60_70_v1_verify-local-only.mp4"
 	locs := clipLocations(youtubetypes.ClipAsset{
 		LocalPath:     localPath,
-		LegacyFileMD5: "437d7377a2a8adbe7f5be03a99aebff4ccb9f6edb8cf884da1ccc2c2e45de533",
+		ContentSHA256: "437d7377a2a8adbe7f5be03a99aebff4ccb9f6edb8cf884da1ccc2c2e45de533",
 		Drive:         youtubetypes.ClipAssetDrive{SizeBytes: artifactSize},
 	})
 	if len(locs) != 1 {
@@ -134,8 +134,8 @@ func TestClipLocationsRecordsLocalArtifactWhenNoDriveIdentity(t *testing.T) {
 	if loc.MimeType != clipDriveMimeType {
 		t.Errorf("MimeType = %q, want %q", loc.MimeType, clipDriveMimeType)
 	}
-	if loc.LegacyFileMD5 == "" {
-		t.Error("LegacyFileMD5 is empty: the local bytes are verifiable, so their content digest must travel with the location")
+	if loc.ContentSHA256 == "" {
+		t.Error("ContentSHA256 is empty: the local bytes are verifiable, so their content digest must travel with the location")
 	}
 	if !loc.IsPrimary {
 		t.Error("a local-only location must be primary: with no delivered copy it IS the asset's content")
@@ -202,7 +202,7 @@ func TestClipCommitWritesLocalLocationForDeliverylessClip(t *testing.T) {
 		ID:            assetID,
 		VideoID:       "iHaK0M-207o",
 		LocalPath:     localPath,
-		LegacyFileMD5: strings.Repeat("a", 64),
+		ContentSHA256: strings.Repeat("a", 64),
 		SearchText:    "Mike Tyson clips",
 		PolicyVersion: "v1",
 		Drive:         youtubetypes.ClipAssetDrive{SizeBytes: artifactSize},

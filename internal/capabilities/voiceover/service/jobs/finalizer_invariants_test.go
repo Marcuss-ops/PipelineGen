@@ -275,7 +275,7 @@ func (s *txRecordingVoiceoverRepo) InsertTx(_ context.Context, tx *sql.Tx, rec *
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice, rec.Filename,
 		rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath, rec.DriveFileID,
-		rec.DriveLink, rec.DownloadLink, rec.LegacyFileMD5, rec.Status, rec.Error, rec.Strategy,
+		rec.DriveLink, rec.DownloadLink, rec.ContentSHA256, rec.Status, rec.Error, rec.Strategy,
 		rec.Metadata, rec.IdempotencyKey, rec.JobID, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
@@ -425,11 +425,11 @@ func TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn(t *testing.T) {
 		DriveFileID:   "drive-atomicity",
 		DriveLink:     "https://drive.google.com/file/d/drive-atomicity/view",
 		DownloadLink:  "https://drive.google.com/uc?id=drive-atomicity",
-		LegacyFileMD5: "abc123",
+		ContentSHA256: "abc123",
 		FolderID:      "folder-atomicity",
 		FolderPath:    "/tmp/vo-atomicity",
 		// ShouldSwap=false → Step 6 (cleanup outbox) is guard-skipped.
-		// Step 5 (index outbox) executes because LegacyFileMD5="abc123".
+		// Step 5 (index outbox) executes because ContentSHA256="abc123".
 		ShouldSwap: false,
 	})
 	require.NoError(t, err, "Finalize must succeed with all required deps wired (no nil-receiver / wiring errors)")

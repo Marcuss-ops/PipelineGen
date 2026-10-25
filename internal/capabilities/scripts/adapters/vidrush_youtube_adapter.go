@@ -499,7 +499,7 @@ func candidatesToSelectedSegments(candidates []scriptpkg.SegmentAssetCandidate) 
 			DurationMs: candidate.DurationMs, RelevanceScore: candidate.RelevanceScore,
 			SelectionReason: candidate.SelectionReason, SelectionBasis: "transcript",
 			CacheKey: cacheKey, LocalPath: candidate.LocalPath, AssetID: candidate.AssetID,
-			LegacyFileMD5: candidate.LegacyFileMD5, DriveLink: candidate.DriveLink, Status: status,
+			ContentSHA256: candidate.ContentSHA256, DriveLink: candidate.DriveLink, Status: status,
 		})
 	}
 	return out

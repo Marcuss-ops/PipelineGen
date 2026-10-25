@@ -70,10 +70,10 @@ func TestVidRushSourcePerSegmentRankingCacheAndBinding(t *testing.T) {
 	cache := &vidRushMemoryCache{}
 	segments := []scriptpkg.VidRushSegmentResult{
 		{SegmentID: "segment-001", TextHash: "hash-001", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
-			{AssetID: "yt-1", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-1", SourceStartMs: 151000, SourceEndMs: 161000, DurationMs: 10000, Score: .95, RelevanceScore: .95, DriveLink: "https://drive.google.com/file/d/yt-1", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: "indexed", LegacyFileMD5: "hash-yt-1", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/yt-1.mp4", SourcePageURL: "https://www.youtube.com/watch?v=video-1"},
-			{AssetID: "yt-2", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-2", SourceStartMs: 1000, SourceEndMs: 11000, DurationMs: 10000, Score: .40, RelevanceScore: .40, DriveLink: "https://drive.google.com/file/d/yt-2", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, LegacyFileMD5: "hash-yt-2", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/yt-2.mp4"},
+			{AssetID: "yt-1", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-1", SourceStartMs: 151000, SourceEndMs: 161000, DurationMs: 10000, Score: .95, RelevanceScore: .95, DriveLink: "https://drive.google.com/file/d/yt-1", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: "indexed", ContentSHA256: "hash-yt-1", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/yt-1.mp4", SourcePageURL: "https://www.youtube.com/watch?v=video-1"},
+			{AssetID: "yt-2", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-2", SourceStartMs: 1000, SourceEndMs: 11000, DurationMs: 10000, Score: .40, RelevanceScore: .40, DriveLink: "https://drive.google.com/file/d/yt-2", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, ContentSHA256: "hash-yt-2", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/yt-2.mp4"},
 		}}},
-		{SegmentID: "segment-002", TextHash: "hash-002", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{AssetID: "wrong-segment", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-1", SourceStartMs: 151000, SourceEndMs: 161000, DurationMs: 10000, Score: .95, RelevanceScore: .95, DriveLink: "https://drive.google.com/file/d/wrong", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, LegacyFileMD5: "hash-wrong", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/wrong.mp4"}}}},
+		{SegmentID: "segment-002", TextHash: "hash-002", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{AssetID: "wrong-segment", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://www.youtube.com/watch?v=video-1", SourceStartMs: 151000, SourceEndMs: 161000, DurationMs: 10000, Score: .95, RelevanceScore: .95, DriveLink: "https://drive.google.com/file/d/wrong", RightsStatus: "verified", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, ContentSHA256: "hash-wrong", MIMEType: "video/mp4", Width: 1920, Height: 1080, LocalPath: "/tmp/wrong.mp4"}}}},
 	}
 	first := FinalizeVidRushBindingsWithCache(context.Background(), segments, false, cache)
 	if first[0].Assets.PrimaryVideo != nil || first[1].Assets.PrimaryVideo != nil {
@@ -97,7 +97,7 @@ func TestFinalizeVidRushBindings(t *testing.T) {
 		c.VerificationStatus = scriptpkg.VidRushStatusVerified
 		c.PersistenceStatus = scriptpkg.VidRushStatusPersisted
 		c.IndexStatus = scriptpkg.VidRushStatusIndexed
-		c.LegacyFileMD5 = "verified-hash-" + c.AssetID
+		c.ContentSHA256 = "verified-hash-" + c.AssetID
 		c.DriveLink = "https://drive.google.com/file/d/" + c.AssetID
 		c.RightsStatus = "verified"
 		return c
@@ -148,7 +148,7 @@ func TestFinalizeVidRushBindings_UsesDurableL2AcrossL1Restart(t *testing.T) {
 			AssetID: "durable-video", Provider: "artlist", SourceURL: "https://artlist.example/durable-video", Score: 1,
 			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
 			PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
-			LegacyFileMD5: "durable-hash", DriveLink: "https://drive.google.com/file/d/durable-video", RightsStatus: "verified",
+			ContentSHA256: "durable-hash", DriveLink: "https://drive.google.com/file/d/durable-video", RightsStatus: "verified",
 		}}},
 	}
 
@@ -176,7 +176,7 @@ func TestFinalizeVidRushBindings_ImageOnlyUsesDurableImagesAsBinding(t *testing.
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
 		IndexStatus:        scriptpkg.VidRushStatusIndexed,
-		LegacyFileMD5:      "hash-commons-image-1",
+		ContentSHA256:      "hash-commons-image-1",
 	}
 
 	got := FinalizeVidRushBindings([]scriptpkg.VidRushSegmentResult{{

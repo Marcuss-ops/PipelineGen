@@ -590,6 +590,16 @@ func (r *Runner) SetImageSearchResolver(resolver *capabilityimagesearch.Resolver
 	}
 }
 
+// SetSemanticSearchBatchPlanner wires the real-provider executor for the
+// semantic production plan. When set, every run with a consolidated plan
+// executes its exact-source ladder once, records hit/miss and latency, and
+// publishes the measured report on the result. Nil keeps planning offline.
+func (r *Runner) SetSemanticSearchBatchPlanner(planner *SemanticSearchBatchPlanner) {
+	if r != nil {
+		r.semanticSearchPlanner = planner
+	}
+}
+
 // beginVidRush builds and registers a fresh, run-scoped
 // VidRushIncrementalCoordinator when a VidRushPipeline is configured. It
 // resolves the per-run plan, constructs the coordinator, and registers it in

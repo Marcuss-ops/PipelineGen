@@ -1,9 +1,11 @@
 package voiceover
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
@@ -222,6 +224,22 @@ type BatchResponse struct {
 	ErrorCode string      `json:"error_code,omitempty"`
 }
 
+// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
+// the demolished "legacy_file_md5" key of payloads written before the 281
+// contract migration. Only the canonical key is written back.
+func (b *BatchItem) UnmarshalJSON(data []byte) error {
+	type wire BatchItem
+	var v wire
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*b = BatchItem(v)
+	if b.ContentSHA256 == "" {
+		b.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
+	}
+	return nil
+}
+
 type BatchItem struct {
 	ID            string `json:"id"`
 	Voice         string `json:"voice,omitempty"`
@@ -231,7 +249,7 @@ type BatchItem struct {
 	DriveLink     string `json:"drive_link,omitempty"`
 	DriveFileID   string `json:"drive_file_id,omitempty"`
 	DownloadLink  string `json:"download_link,omitempty"`
-	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
+	ContentSHA256 string `json:"content_sha256,omitempty"`
 	// Language is the typed BCP-47 envelope (voiceover.Language)
 	// per PR-VO-TYPED-PRIMITIVES (July 2026) — JSON wire shape is
 	// byte-equivalent with the pre-refactor string field.

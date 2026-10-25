@@ -148,7 +148,7 @@ func hasVerifiedBrandImage(name string, seg scriptpkg.VidRushSegmentResult) bool
 			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
 			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
-			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.LegacyFileMD5) == "" ||
+			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.ContentSHA256) == "" ||
 			strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), "failed") ||
 			strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
 			continue

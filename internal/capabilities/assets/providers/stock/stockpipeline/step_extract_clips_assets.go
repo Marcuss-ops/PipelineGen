@@ -128,7 +128,7 @@ func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, outputPath, hash
 		a.SetSlug(slug)
 	}
 	a.SetLocalPath(outputPath)
-	a.SetLegacyFileMD5(hash)
+	a.SetContentHash(hash)
 	// Keep the canonical SHA-256 projection and the legacy compatibility
 	// key in sync for downstream consumers that still read either name.
 	a.SetSha256(hash)

@@ -15,8 +15,8 @@ func TestResolveMapEncodeProfileDefaultsToProduction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("empty declaration must select production: %v", err)
 	}
-	if profile.Codec != MapProductionCodec || !profile.ExpectGPU {
-		t.Fatalf("default profile = %+v, want production NVENC with GPU", profile)
+	if profile.Codec != MapProductionCodec || !profile.ExpectGPU || profile.Preset != "p6" || profile.Quality != 15 {
+		t.Fatalf("default profile = %+v, want production NVENC p6/CQ15 with GPU", profile)
 	}
 	if profile.Codec != "h264_nvenc" {
 		t.Fatalf("production codec = %q, want h264_nvenc (existing jobs keep NVENC)", profile.Codec)
@@ -35,8 +35,8 @@ func TestResolveMapEncodeProfileCertifiesCPUOnlyOnExplicitOptIn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("explicit CPU codec must resolve: %v", err)
 	}
-	if profile.Codec != MapCPUCodec || profile.ExpectGPU {
-		t.Fatalf("CPU profile = %+v, want libx264 without GPU", profile)
+	if profile.Codec != MapCPUCodec || profile.ExpectGPU || profile.Preset != "veryfast" || profile.Quality != 23 {
+		t.Fatalf("CPU profile = %+v, want explicit libx264 veryfast/CRF23 without GPU", profile)
 	}
 	if _, err := ResolveMapEncodeProfile("hevc_nvenc"); err == nil {
 		t.Fatal("an uncertified encoder name must fail closed")
@@ -52,7 +52,7 @@ func TestResolveMapEncodeProfileCertifiesCPUOnlyOnExplicitOptIn(t *testing.T) {
 func TestMapEncodeVideoArgsCarryTheDeclaredCodec(t *testing.T) {
 	gpu := MapEncodeVideoArgs(DefaultMapEncodeProfile())
 	joined := strings.Join(gpu, " ")
-	for _, want := range []string{"-c:v h264_nvenc", "-preset p4", "-tune hq", "-rc vbr", "-cq 18"} {
+	for _, want := range []string{"-c:v h264_nvenc", "-gpu 0", "-preset p6", "-tune hq", "-rc vbr", "-cq 15", "-b:v 0"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("production args %q miss %q", joined, want)
 		}
@@ -63,8 +63,10 @@ func TestMapEncodeVideoArgsCarryTheDeclaredCodec(t *testing.T) {
 	}
 	cpuArgs := MapEncodeVideoArgs(cpu)
 	cpuJoined := strings.Join(cpuArgs, " ")
-	if !strings.Contains(cpuJoined, "-c:v libx264") {
-		t.Fatalf("CPU args %q must carry the declared codec", cpuJoined)
+	for _, want := range []string{"-c:v libx264", "-preset veryfast", "-crf 23"} {
+		if !strings.Contains(cpuJoined, want) {
+			t.Fatalf("CPU args %q miss declared option %q", cpuJoined, want)
+		}
 	}
 	for _, forbidden := range []string{"nvenc", "-gpu", "-tune hq", "-cq"} {
 		if strings.Contains(cpuJoined, forbidden) {
@@ -78,21 +80,27 @@ func TestMapEncodeVideoArgsCarryTheDeclaredCodec(t *testing.T) {
 // naming both sides — never a silent acceptance, never an auto-substitution.
 func TestValidateMapEncoderTelemetryRefusesAnotherProfile(t *testing.T) {
 	production := DefaultMapEncodeProfile()
-	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, production); err != nil {
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 15, production); err != nil {
 		t.Fatalf("matching production telemetry must certify: %v", err)
 	}
-	if err := ValidateMapEncoderTelemetry("libx264", false, production); err == nil {
+	if err := ValidateMapEncoderTelemetry("libx264", false, "veryfast", 23, production); err == nil {
 		t.Fatal("CPU telemetry under the production profile must fail (no silent NVENC→x264 swap)")
 	}
 	cpu, _ := ResolveMapEncodeProfile("libx264")
-	if err := ValidateMapEncoderTelemetry("libx264", false, cpu); err != nil {
+	if err := ValidateMapEncoderTelemetry("libx264", false, "veryfast", 23, cpu); err != nil {
 		t.Fatalf("matching CPU telemetry must certify: %v", err)
 	}
-	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, cpu); err == nil {
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 15, cpu); err == nil {
 		t.Fatal("NVENC telemetry under the CPU profile must fail")
 	}
-	if err := ValidateMapEncoderTelemetry("h264_nvenc", false, production); err == nil {
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", false, "p6", 15, production); err == nil {
 		t.Fatal("a GPU codec without the GPU flag must fail (flag and codec travel together)")
+	}
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p4", 15, production); err == nil {
+		t.Fatal("NVENC telemetry with a different preset must fail")
+	}
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 18, production); err == nil {
+		t.Fatal("NVENC telemetry with a different quality must fail")
 	}
 }
 

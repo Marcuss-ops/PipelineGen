@@ -65,6 +65,58 @@ func TestPlanOverlayBatchWorkFusesCompatibleWindowsDeterministically(t *testing.
 	}
 }
 
+func TestPlanOverlayBatchWorkKeepsAtMostOneCaptionBearingMember(t *testing.T) {
+	plan := batchTestPlan()
+	plan.Source = nil
+	first := batchTestCandidate("image-scale-reveal__alberto-stasi__entity_image__01", "scene-1", "entity_image", 0, 4_000_000)
+	first.source.EntityCaption = "Alberto Stasi"
+	second := batchTestCandidate("image-slide-left-reveal__chiara-poggi__entity_image__01", "scene-1", "entity_image", 2_000_000, 4_000_000)
+	second.source.EntityCaption = "Chiara Poggi"
+	phrase := batchTestCandidate("phrase__01", "scene-1", "text_phrase", 2_000_000, 3_000_000)
+	works := planOverlayBatchWork(plan, []overlayItemCandidate{first, second, phrase})
+
+	seen := map[string]int{}
+	for _, work := range works {
+		captionBearing := 0
+		for _, candidate := range work.candidates {
+			seen[candidate.source.ID]++
+			if overlayItemMayCompileLinkedCaption(candidate.source) {
+				captionBearing++
+			}
+		}
+		if captionBearing > 1 {
+			t.Fatalf("batch %q fused %d caption-bearing items (fitted captions can collide in the shared frame window): %+v", work.id, captionBearing, work.candidates)
+		}
+	}
+	for _, id := range []string{first.source.ID, second.source.ID, phrase.source.ID} {
+		if seen[id] != 1 {
+			t.Fatalf("item %q planned %d times, want exactly once: %+v", id, seen[id], works)
+		}
+	}
+	// The text-only member still fuses around a caption-bearing item: the
+	// collision class needs two linked captions, not one.
+	fused := false
+	for _, work := range works {
+		if len(work.candidates) > 1 {
+			fused = true
+		}
+	}
+	if !fused {
+		t.Fatalf("no batch fused a text phrase with a caption-bearing item: %+v", works)
+	}
+}
+
+func TestPlanOverlayBatchWorkFusesTwoCaptionlessImageItems(t *testing.T) {
+	plan := batchTestPlan()
+	plan.Source = nil
+	first := batchTestCandidate("image-a", "scene-1", "image", 0, 3_000_000)
+	second := batchTestCandidate("image-b", "scene-1", "image", 1_000_000, 3_000_000)
+	works := planOverlayBatchWork(plan, []overlayItemCandidate{first, second})
+	if len(works) != 1 || len(works[0].candidates) != 2 {
+		t.Fatalf("two plain image items must still fuse (no linked captions), got %+v", works)
+	}
+}
+
 func TestPlanOverlayBatchWorkPreservesSceneAndMapBoundaries(t *testing.T) {
 	plan := batchTestPlan()
 	plan.Source = nil

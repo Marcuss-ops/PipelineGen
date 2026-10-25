@@ -147,7 +147,7 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: canonical dependencies unavailable")
 	}
 	candidate := artifact.Candidate
-	if strings.TrimSpace(candidate.AssetID) == "" || strings.TrimSpace(artifact.LocalPath) == "" || strings.TrimSpace(artifact.LegacyFileMD5) == "" {
+	if strings.TrimSpace(candidate.AssetID) == "" || strings.TrimSpace(artifact.LocalPath) == "" || strings.TrimSpace(artifact.ContentSHA256) == "" {
 		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: artifact identity, local path and hash are required")
 	}
 	kind := finalization.KindImage
@@ -170,15 +170,15 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 		LocalPath: artifact.LocalPath, MIMEType: firstNonEmpty(artifact.MIMEType, "application/octet-stream"),
 		SizeBytes: artifact.SizeBytes,
 		// MEDIA-IDENTITY (Sept 2026): VerifiedArtifact.SHA256 is a content-address
-		// slot; the producer field is named LegacyFileMD5 for historical reasons,
+		// slot; the producer field is named ContentSHA256 for historical reasons,
 		// so it is RESOLVED through the canonical rule rather than forwarded
 		// verbatim (a legacy MD5 becomes "" = unknown). The idempotency key below
 		// keeps the raw digest on purpose: it is a per-artifact dedup LABEL, not an
 		// identity claim, and must keep matching previously written keys.
-		SHA256:         asset.ResolveContentAddress(artifact.LegacyFileMD5),
+		SHA256:         asset.ResolveContentAddress(artifact.ContentSHA256),
 		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementOptional,
-		IdempotencyKey: "vidrush:" + candidate.Provider + ":" + candidate.AssetID + ":" + artifact.LegacyFileMD5,
+		IdempotencyKey: "vidrush:" + candidate.Provider + ":" + candidate.AssetID + ":" + artifact.ContentSHA256,
 		Description:    candidate.Query, Source: candidate.Provider,
 	}
 	if strings.TrimSpace(artifact.OutputDriveFolderID) != "" {
@@ -226,7 +226,7 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 	if candidate.DriveLink == "" {
 		candidate.DriveLink = published.Location.DownloadLink
 	}
-	candidate.LegacyFileMD5, candidate.MIMEType = artifact.LegacyFileMD5, verified.MIMEType
+	candidate.ContentSHA256, candidate.MIMEType = artifact.ContentSHA256, verified.MIMEType
 	candidate.LocalPath = artifact.LocalPath
 	candidate.Width, candidate.Height, candidate.DurationMs = artifact.Width, artifact.Height, artifact.DurationMs
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
@@ -353,8 +353,8 @@ func (p *vidRushArtlistProvider) Acquire(ctx context.Context, candidate scriptpk
 	}
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	candidate.LocalPath = result.LocalPath
-	candidate.LegacyFileMD5 = hash
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: result.LocalPath, MIMEType: "video/mp4", SizeBytes: size, LegacyFileMD5: hash}, nil
+	candidate.ContentSHA256 = hash
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: result.LocalPath, MIMEType: "video/mp4", SizeBytes: size, ContentSHA256: hash}, nil
 }
 func (p *vidRushArtlistProvider) Verify(ctx context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	if p == nil || p.probe == nil {
@@ -373,7 +373,7 @@ func (p *vidRushArtlistProvider) Verify(ctx context.Context, artifact scriptport
 	candidate.RightsStatus = "verified"
 	candidate.RightsBasis = "artlist licensed-provider policy"
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, LegacyFileMD5: artifact.LegacyFileMD5, DurationMs: candidate.DurationMs, Width: info.Width, Height: info.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "ffprobe video stream validated"}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, DurationMs: candidate.DurationMs, Width: info.Width, Height: info.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "ffprobe video stream validated"}, nil
 }
 
 type vidRushInternetImageProvider struct {
@@ -411,9 +411,9 @@ func (p *vidRushImageGenerationProvider) Acquire(ctx context.Context, candidate 
 		return scriptports.LocalArtifact{}, err
 	}
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	candidate.LocalPath, candidate.LegacyFileMD5 = output.OutputPath, hash
+	candidate.LocalPath, candidate.ContentSHA256 = output.OutputPath, hash
 	candidate.MIMEType = firstNonEmpty(output.Result.Format, "image/png")
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: output.OutputPath, MIMEType: candidate.MIMEType, SizeBytes: size, LegacyFileMD5: hash, Manifest: output.Manifest}, nil
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: output.OutputPath, MIMEType: candidate.MIMEType, SizeBytes: size, ContentSHA256: hash, Manifest: output.Manifest}, nil
 }
 func (p *vidRushImageGenerationProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	verified, err := adapters.VerifyVidRushImageFile(artifact.Candidate, artifact.LocalPath, adapters.DefaultVidRushImagePolicy())
@@ -424,7 +424,7 @@ func (p *vidRushImageGenerationProvider) Verify(_ context.Context, artifact scri
 	candidate.RightsStatus = "verified"
 	candidate.RightsBasis = "image.generate.google provider manifest"
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: verified.MIMEType, SizeBytes: verified.SizeBytes, LegacyFileMD5: verified.LegacyFileMD5, Width: verified.Width, Height: verified.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "generated ArtifactManifest and image decode validated", Manifest: artifact.Manifest}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: verified.MIMEType, SizeBytes: verified.SizeBytes, ContentSHA256: verified.ContentSHA256, Width: verified.Width, Height: verified.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "generated ArtifactManifest and image decode validated", Manifest: artifact.Manifest}, nil
 }
 
 func (p *vidRushInternetImageProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
@@ -463,8 +463,8 @@ func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate sc
 	}
 	hash := digest.SHA256Bytes(data)
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	candidate.LocalPath, candidate.MIMEType, candidate.LegacyFileMD5 = path, mime, hash
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: path, MIMEType: mime, SizeBytes: int64(len(data)), LegacyFileMD5: hash}, nil
+	candidate.LocalPath, candidate.MIMEType, candidate.ContentSHA256 = path, mime, hash
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: path, MIMEType: mime, SizeBytes: int64(len(data)), ContentSHA256: hash}, nil
 }
 func (p *vidRushInternetImageProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	verified, err := adapters.VerifyVidRushImageFile(artifact.Candidate, artifact.LocalPath, adapters.DefaultVidRushImagePolicy())
@@ -484,7 +484,7 @@ func (p *vidRushInternetImageProvider) Verify(_ context.Context, artifact script
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	// Production binding remains verified-only; unknown_allowed is retained
 	// as a durable candidate but cannot become the scene winner.
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: verified.MIMEType, SizeBytes: verified.SizeBytes, LegacyFileMD5: verified.LegacyFileMD5, Width: verified.Width, Height: verified.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "image decoded and dimensions validated"}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: verified.MIMEType, SizeBytes: verified.SizeBytes, ContentSHA256: verified.ContentSHA256, Width: verified.Width, Height: verified.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "image decoded and dimensions validated"}, nil
 }
 
 // newCanonicalAssetCommitterBridge resolves the canonical media writer

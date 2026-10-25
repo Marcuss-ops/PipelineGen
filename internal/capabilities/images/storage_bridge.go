@@ -62,6 +62,13 @@ func (s *ImageStorageService) SearchDDGWide(ctx context.Context, query string) s
 	return s.searchDDGWide(ctx, query)
 }
 
+// DuckDuckGoChallenged reports whether the process-local anti-bot cooldown is
+// open. Providers use it to turn an empty answer into a typed refusal instead
+// of silently reporting that the subject has no images.
+func (s *ImageStorageService) DuckDuckGoChallenged() bool {
+	return s.ddgCooldown().Open()
+}
+
 func (s *ImageStorageService) SearchDDGWideMany(ctx context.Context, query string, limit int) []string {
 	if s == nil {
 		return nil

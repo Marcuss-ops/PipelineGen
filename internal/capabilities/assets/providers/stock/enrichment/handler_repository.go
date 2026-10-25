@@ -95,7 +95,7 @@ const pgMediaEnrichmentSelect = `
 	       COALESCE(source_provider, ''),
 	       COALESCE(drive_file_id, ''),
 	       COALESCE((COALESCE(NULLIF(metadata_json, ''), '{}')::jsonb ->> 'drive_path'), ''),
-	       COALESCE(legacy_file_md5, '')
+	       COALESCE(content_sha256, '')
 	FROM media_assets
 	WHERE id = $1`
 
@@ -119,7 +119,7 @@ func (r *PostgresAssetRepository) GetByID(ctx context.Context, id string) (*Asse
 	err := r.DB.QueryRowContext(ctx, pgMediaEnrichmentSelect, id).Scan(
 		&out.ID, &out.SourceURL, &out.Title, &out.Description,
 		&startMS, &endMS, &out.SourceProvider, &out.DriveFileID,
-		&out.DrivePath, &out.LegacyFileMD5,
+		&out.DrivePath, &out.ContentSHA256,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

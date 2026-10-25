@@ -219,12 +219,12 @@ func (h *ActionHandler) ReuploadClip(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":              result.OK,
-		"source":          result.Source,
-		"clip_id":         result.ClipID,
-		"drive_link":      result.DriveLink,
-		"legacy_file_md5": result.LegacyFileMD5,
-		"uploaded_at":     result.UploadedAt,
+		"ok":             result.OK,
+		"source":         result.Source,
+		"clip_id":        result.ClipID,
+		"drive_link":     result.DriveLink,
+		"content_sha256": result.ContentSHA256,
+		"uploaded_at":    result.UploadedAt,
 	})
 }
 
@@ -245,7 +245,7 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 	if clip.ContentAddress() == "" {
 		apiutil.OK(c, gin.H{
 			"ok": true, "source": source, "clip_id": clipID,
-			"legacy_file_md5": "", "duplicates": []gin.H{},
+			"content_sha256": "", "duplicates": []gin.H{},
 		})
 		return
 	}
@@ -273,6 +273,6 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 	}
 	apiutil.OK(c, gin.H{
 		"ok": true, "source": source, "clip_id": clipID,
-		"legacy_file_md5": clip.GetMetadataString("legacy_file_md5"), "duplicates": duplicates,
+		"content_sha256": clip.GetMetadataString("content_hash"), "duplicates": duplicates,
 	})
 }

@@ -133,7 +133,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 	// environment surfaces the actionable ErrDispatcherUnavailable signal
 	// before the per-call contract violation. Both checks fire before any
 	// asset-derivation so a nil rec cannot panic on rec.ID / rec.Source /
-	// rec.LegacyFileMD5. Strict fail-closed at the lifecycle adapter's error
+	// rec.ContentSHA256. Strict fail-closed at the lifecycle adapter's error
 	// propagation boundary.
 	//
 	// Rec == nil returns a contract violation error at runtime.
@@ -175,7 +175,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 	// INSERT in one tx) applies uniformly to ingest-driven write paths. The
 	// strict fail-closed nil dispatcher check fires at the top of this function
 	// (before asset-derivation) so the dispatcher surface is reached first.
-	if err := a.dispatcher.EnqueueAndIndex(ctx, m, rec.LegacyFileMD5); err != nil {
+	if err := a.dispatcher.EnqueueAndIndex(ctx, m, rec.ContentSHA256); err != nil {
 		return fmt.Errorf("dispatcher enqueue: %w", err)
 	}
 
@@ -187,7 +187,7 @@ func (a *clipStoreAdapter) Upsert(ctx context.Context, rec *artifacts.MediaRecor
 			AssetID:       rec.ID,
 			LocationKind:  asset.LocationKindLocal,
 			URI:           rec.LocalPath,
-			LegacyFileMD5: rec.LegacyFileMD5,
+			ContentSHA256: rec.ContentSHA256,
 			IsPrimary:     true,
 		}); err != nil {
 			return err
@@ -403,7 +403,7 @@ func detailsToMediaRecord(details *asset.Details) *artifacts.MediaRecord {
 		switch loc.LocationKind {
 		case asset.LocationKindLocal:
 			rec.LocalPath = loc.URI
-			rec.LegacyFileMD5 = loc.LegacyFileMD5
+			rec.ContentSHA256 = loc.ContentSHA256
 		case asset.LocationKindDrive:
 			rec.DriveFileID = loc.ExternalID
 			rec.DriveLink = loc.AccessURL

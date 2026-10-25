@@ -252,7 +252,10 @@ func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subj
 	// VidRush assets carry their provider as the canonical source. Keep their
 	// Drive layout deterministic and independent from stock/youtube run IDs.
 	switch strings.ToLower(strings.TrimSpace(artifact.Source)) {
-	case "artlist", "internet_images", "image_generation":
+	// duckduckgo/wikimedia_commons/searxng are the upstream retrieval
+	// providers an internet_images candidate is discovered through. They keep
+	// the same vidrush layout; the provider is provenance, not a new folder.
+	case "artlist", "internet_images", "image_generation", "duckduckgo", "wikimedia_commons", "searxng":
 		group = "vidrush"
 		subject = stockFolderLeafName(firstNonEmpty(artifact.PathLeafName, artifact.Filename))
 		return group, subject, strings.ToLower(strings.TrimSpace(artifact.Source))

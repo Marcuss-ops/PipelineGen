@@ -29,7 +29,7 @@ func (c *PostgresAssetCommitter) CommitIndexEventTx(ctx context.Context, tx *sql
 		// falls back to the stored fingerprint when the caller cannot
 		// supply one.
 		if err := tx.QueryRowContext(ctx,
-			`SELECT COALESCE(NULLIF(source_version,''), NULLIF(legacy_file_md5,'')) FROM media_assets WHERE id = $1`,
+			`SELECT COALESCE(NULLIF(source_version,''), NULLIF(content_sha256,'')) FROM media_assets WHERE id = $1`,
 			assetID).Scan(&sourceVersion); err != nil {
 			if err == sql.ErrNoRows {
 				return fmt.Errorf("asset committer: index event asset %q not found", assetID)

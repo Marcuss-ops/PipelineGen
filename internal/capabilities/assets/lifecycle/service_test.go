@@ -278,7 +278,7 @@ func TestProcessAsset_SkippedDuplicateDomainStatusReturnsNilError(t *testing.T) 
 		DriveLink:     "https://drive.test/existing",
 		DriveFileID:   "drive-existing",
 		DownloadLink:  "https://drive.test/download",
-		LegacyFileMD5: "hash",
+		ContentSHA256: "hash",
 		ContentHash:   contentHash,
 	}}
 	svc := NewService(ServiceDeps{Store: store}, Config{
@@ -466,7 +466,7 @@ func TestReconcile_ReconcilerMissingFailsClosed(t *testing.T) {
 // ─── the content address is the byte identity, and it is NOT the legacy MD5 ───
 //
 // ProcessAsset used to write the caller-supplied fileHash into BOTH
-// LegacyFileMD5 and ContentHash. The callers compute an MD5
+// ContentSHA256 and ContentHash. The callers compute an MD5
 // (ingest/service.go: checksum.LegacyMD5File), so the durable content address of
 // the media SSOT — the column every reader treats as a SHA-256 — was being
 // filled with an MD5. These tests pin the separation: the record keeps the MD5
@@ -510,10 +510,10 @@ func TestProcessAssetRecordsTheSha256OfTheBytesAsTheContentAddress(t *testing.T)
 		t.Errorf("record content address = %q, want the SHA-256 of the bytes %q (an MD5 here is not a content address)",
 			rec.ContentHash, wantContentHash)
 	}
-	if rec.LegacyFileMD5 != legacyMD5 {
-		t.Errorf("legacy digest = %q, want the caller's MD5 preserved verbatim in its compatibility field", rec.LegacyFileMD5)
+	if rec.ContentSHA256 != legacyMD5 {
+		t.Errorf("legacy digest = %q, want the caller's MD5 preserved verbatim in its compatibility field", rec.ContentSHA256)
 	}
-	if rec.ContentHash == rec.LegacyFileMD5 {
+	if rec.ContentHash == rec.ContentSHA256 {
 		t.Error("the content address and the legacy digest must be independent facts, not one value in two fields")
 	}
 }
@@ -536,8 +536,8 @@ func TestProcessAssetNeverStoresALegacyMD5AsTheContentAddress(t *testing.T) {
 			if rec.ContentHash != fileHash.want {
 				t.Errorf("content address = %q, want %q", rec.ContentHash, fileHash.want)
 			}
-			if fileHash.digest != "" && rec.LegacyFileMD5 != fileHash.digest {
-				t.Errorf("legacy digest = %q, want the caller's value preserved", rec.LegacyFileMD5)
+			if fileHash.digest != "" && rec.ContentSHA256 != fileHash.digest {
+				t.Errorf("legacy digest = %q, want the caller's value preserved", rec.ContentSHA256)
 			}
 		})
 	}

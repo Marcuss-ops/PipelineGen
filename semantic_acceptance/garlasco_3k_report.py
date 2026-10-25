@@ -129,6 +129,27 @@ def query_stats(manifest):
     }
 
 
+def consolidation_summary(manifest):
+    """The selective production view over the complete 3K inventory."""
+    consolidation = manifest.get("visual_consolidation") or {}
+    candidates = consolidation.get("production_candidates") or []
+    return {
+        "schema": consolidation.get("schema", ""),
+        "inventory": consolidation.get("inventory") or {},
+        "metrics": consolidation.get("metrics") or {},
+        "candidates": len(candidates),
+        "timelines": sum(1 for c in candidates if c.get("recipe") == "timeline"),
+        "cards": sum(1 for c in candidates if c.get("recipe") == "fact_card"),
+        "canonical_facts": len(consolidation.get("facts") or []),
+        "covered_facts": sum(1 for fact in consolidation.get("facts") or [] if fact.get("representation")),
+        "uncovered_facts": sum(
+            1
+            for fact in consolidation.get("facts") or []
+            if not fact.get("representation") and not (fact.get("uncovered_reason") or "").strip()
+        ),
+    }
+
+
 def build_report(manifest, scenes, worker, fixture, text):
     counts, samples = entity_type_counts(manifest)
     bad = bad_locations(manifest)
@@ -202,6 +223,40 @@ def build_report(manifest, scenes, worker, fixture, text):
         "- totale: %d/%d fatti coperti"
         % (manifest.get("visual_coverage", {}).get("covered_facts", 0), manifest.get("visual_coverage", {}).get("total_facts", 0))
     )
+    c = consolidation_summary(manifest)
+    inventory = c["inventory"]
+    metrics = c["metrics"]
+    lines.extend(["", "## Consolidamento semantico", ""])
+    lines.append(
+        "- schema `%s`: %d candidati di produzione da %d proposte raw"
+        % (c["schema"] or "assente", c["candidates"], inventory.get("proposals", 0))
+    )
+    lines.append(
+        "- fatti canonici: %d da %d; date canoniche: %d da %d; micro canoniche: %d da %d"
+        % (
+            inventory.get("canonical_facts", 0),
+            inventory.get("facts", 0),
+            inventory.get("canonical_dates", 0),
+            inventory.get("temporal_facts", 0),
+            inventory.get("canonical_micro_summaries", 0),
+            inventory.get("micro_summaries", 0),
+        )
+    )
+    lines.append(
+        "- job di ricerca: %d (da %d entry); query di produzione: %d (da %d); timeline: %d; fact card: %d"
+        % (
+            metrics.get("estimated_search_jobs", 0),
+            metrics.get("raw_search_entries", 0),
+            metrics.get("production_queries", 0),
+            inventory.get("queries", 0),
+            c["timelines"],
+            c["cards"],
+        )
+    )
+    lines.append(
+        "- copertura canonica: %d/%d fatti rappresentati; %d fatti senza rappresentazione né motivo"
+        % (c["covered_facts"], c["canonical_facts"], c["uncovered_facts"])
+    )
     lines.extend(["", "## Gruppi semantici", ""])
     if not groups:
         lines.append("- nessuno")
@@ -231,7 +286,7 @@ def build_report(manifest, scenes, worker, fixture, text):
             "- Il report vecchio elencava `RITROVAMENTO`, `Chiara` e `Poggi` come `LOCATION`: qui la verifica è esplicita e il risultato è sopra.",
             "- Il report vecchio mostrava un gruppo `comparison` da 5 membri: qui la verifica è esplicita e il risultato è sopra.",
             "- Gli anni 2014/2016/2017/2019/2020 restano quelli scritti nella fixture; per la sequenza corretta usare `garlasco_chronology_corrected.txt`.",
-            "- Il numero di query resta alto: è un problema di prodotto (budget del planner), non un errore di grounding.",
+            "- Il numero di query raw resta alto: è un problema di prodotto (budget del planner), non un errore di grounding. La consolidazione lo riduce a livello di produzione: vedi la sezione dedicata.",
             "",
         ]
     )
@@ -246,6 +301,7 @@ def build_report(manifest, scenes, worker, fixture, text):
         "micro_count": len(micro),
         "timelines": timelines,
         "query_stats": q,
+        "consolidation": c,
         "entity_counts": dict(counts),
     }
 

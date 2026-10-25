@@ -67,7 +67,7 @@ func TestScriptVoiceoverGenerator_CarriesTimingArtifact(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "e2e-content-hash",
+			ContentSHA256: "e2e-content-hash",
 			DriveLink:     "https://drive.google.com/file/d/vo-1/view",
 			LocalPath:     "/tmp/out/scene_1_en.mp3",
 			CleanedPath:   "",
@@ -105,7 +105,7 @@ func TestScriptVoiceoverGenerator_CarriesTimingBundle(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "e2e-content-hash",
+			ContentSHA256: "e2e-content-hash",
 			DriveLink:     "https://drive.google.com/file/d/vo-1/view",
 			LocalPath:     "/tmp/out/scene_1_en.mp3",
 			DurationMs:    1000,
@@ -151,7 +151,7 @@ func TestScriptVoiceoverGenerator_NoTimingLeavesNil(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "hash-no-timing",
+			ContentSHA256: "hash-no-timing",
 			LocalPath:     "/tmp/out/scene_1_en.mp3",
 			DurationMs:    800,
 		},
@@ -176,7 +176,7 @@ func TestScriptVoiceoverGenerator_CommandShape(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "hash",
+			ContentSHA256: "hash",
 			LocalPath:     "/tmp/out/scene_My_Scene_en.mp3",
 			DurationMs:    500,
 		},
@@ -210,7 +210,7 @@ func TestScriptVoiceoverGenerator_ForwardsProject(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "hash",
+			ContentSHA256: "hash",
 			LocalPath:     "/tmp/out/scene_1_en.mp3",
 			DurationMs:    500,
 		},
@@ -238,7 +238,7 @@ func TestScriptVoiceoverGenerator_JobUniqueFilename(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "hash",
+			ContentSHA256: "hash",
 			LocalPath:     "/tmp/out/scene_project_scene-0_it.mp3",
 			DurationMs:    500,
 		},
@@ -259,7 +259,7 @@ func TestScriptVoiceoverGenerator_JobUniqueFilename(t *testing.T) {
 
 func TestScriptVoiceoverGenerator_RetryUniqueFilename(t *testing.T) {
 	exec := &stubScriptVOExecutor{result: &voiceover.VoiceoverItemResult{
-		Status: voiceover.StatusCompleted, LegacyFileMD5: "hash",
+		Status: voiceover.StatusCompleted, ContentSHA256: "hash",
 		LocalPath: "/tmp/out/scene_run_17914750840333_project_scene-0_it.mp3", DurationMs: 500,
 	}}
 	gen := NewScriptVoiceoverGenerator(exec, "/tmp/out", nil)
@@ -285,7 +285,7 @@ func TestScriptVoiceoverGenerator_ForwardsExplicitDestination(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "hash",
+			ContentSHA256: "hash",
 			LocalPath:     "/tmp/out/scene_1_en.mp3",
 			DurationMs:    500,
 		},
@@ -316,7 +316,7 @@ func TestScriptVoiceoverGenerator_NilDestinationWithoutFolder(t *testing.T) {
 	exec := &stubScriptVOExecutor{
 		result: &voiceover.VoiceoverItemResult{
 			Status:        voiceover.StatusCompleted,
-			LegacyFileMD5: "hash",
+			ContentSHA256: "hash",
 			LocalPath:     "/tmp/out/scene_1_en.mp3",
 			DurationMs:    500,
 		},

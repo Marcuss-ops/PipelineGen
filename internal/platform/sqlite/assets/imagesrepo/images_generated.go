@@ -54,7 +54,7 @@ func (r *ImagesRepository) ListImagesByOrigin(ctx context.Context, origin detail
 		limit = ListImagesByOriginMaxLimit
 	}
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, legacy_file_md5, local_path, drive_file_id, drive_link, origin, provider
+		SELECT id, name, url, tags, metadata_json, created_at, content_sha256, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
 		WHERE source = 'image' AND origin = ?
 		ORDER BY created_at DESC

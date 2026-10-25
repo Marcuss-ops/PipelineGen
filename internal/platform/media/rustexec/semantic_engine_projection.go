@@ -164,12 +164,24 @@ func validRelationStatus(status string) bool {
 
 func projectSemanticProposals(source string, proposals []semanticEngineProposal) ([]scriptgen.SemanticVisualProposal, error) {
 	out := make([]scriptgen.SemanticVisualProposal, 0, len(proposals))
+	seenIDs := make(map[string]struct{}, len(proposals))
 	for _, proposal := range proposals {
 		if proposal.ProposalType == "" || proposal.Evidence == "" ||
 			!groundedSpan(source, proposal.StartByte, proposal.EndByte, proposal.Evidence) {
 			return nil, fmt.Errorf("visual proposal %q is not grounded in source_text", proposal.ProposalType)
 		}
+		// The id is the join key of the search-feedback handshake: a proposal
+		// without a stable unique id could never report its retrieval outcome.
+		id := strings.TrimSpace(proposal.ID)
+		if id == "" {
+			return nil, fmt.Errorf("visual proposal %q has no stable id", proposal.ProposalType)
+		}
+		if _, duplicate := seenIDs[id]; duplicate {
+			return nil, fmt.Errorf("visual proposal id %q is repeated", id)
+		}
+		seenIDs[id] = struct{}{}
 		projected := scriptgen.SemanticVisualProposal{
+			ID:   id,
 			Type: proposal.ProposalType, SuggestedVisual: proposal.SuggestedVisual,
 			Status: proposal.Status, Evidence: proposal.Evidence, EntityIDs: append([]string(nil), proposal.EntityIDs...),
 			TemporalSurfaces:       append([]string(nil), proposal.TemporalSurfaces...),
@@ -192,6 +204,24 @@ func projectSemanticProposals(source string, proposals []semanticEngineProposal)
 		out = append(out, projected)
 	}
 	return out, nil
+}
+
+// scriptGroundingText is the whole-script grounding surface. An
+// `exact_mention` query names an identity, and a composition anchored in one
+// scene may mention an identity the script introduces in another scene (the
+// engine's consolidation groups facts across scenes). Requiring the anchor
+// scene to contain the name rejects valid cross-scene compositions; requiring
+// the script to contain it still rejects invented surfaces.
+func scriptGroundingText(texts map[string]string) string {
+	if len(texts) == 0 {
+		return ""
+	}
+	builder := strings.Builder{}
+	for _, text := range texts {
+		builder.WriteString(text)
+		builder.WriteByte('\n')
+	}
+	return builder.String()
 }
 
 func groundedQuery(source, query string) bool {
@@ -235,9 +265,14 @@ func projectSemanticGroups(currentSceneID string, texts map[string]string, group
 			if !requested {
 				return nil, fmt.Errorf("group %q references unrequested scene %q", group.ID, sceneID)
 			}
-			if member.CandidateID == "" || member.Text == "" || member.Evidence != member.Text ||
+			if member.CandidateID == "" || member.Text == "" || member.Evidence == "" ||
 				!groundedSpan(source, member.StartByte, member.EndByte, member.Evidence) {
 				return nil, fmt.Errorf("group %q member %q is not grounded in source_text", group.ID, member.CandidateID)
+			}
+			// Fact-backed groups carry a paraphrased label plus the verbatim
+			// evidence sentence; source-derived groups must keep the two equal.
+			if member.Text != member.Evidence && group.GroupType != "step_sequence" && group.GroupType != "fact_comparison" {
+				return nil, fmt.Errorf("group %q member %q text is not the verbatim evidence", group.ID, member.CandidateID)
 			}
 			if member.Rank != nil {
 				if *member.Rank < 1 {
@@ -305,7 +340,7 @@ func validMicroSummaryKind(kind string) bool {
 
 func validSemanticGroupType(kind string) bool {
 	switch kind {
-	case "chronological", "process", "comparison", "enumeration", "cause_effect", "ranking":
+	case "chronological", "process", "comparison", "fact_comparison", "step_sequence", "enumeration", "cause_effect", "ranking":
 		return true
 	default:
 		return false

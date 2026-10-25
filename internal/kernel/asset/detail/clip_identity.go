@@ -120,7 +120,7 @@ const DefaultYouTubeClipPolicyVersion = "v1"
 //
 // The identity is a pure function of (videoID, window, policyVersion) and
 // deliberately does NOT include any content hash: the bytes are the CONTENT
-// identity (media_assets.legacy_file_md5 / content_hash + the supersede gate),
+// identity (media_assets.content_sha256 / content_hash + the supersede gate),
 // never the logical clip identity. A re-cut with different bytes keeps the same
 // asset id and is handled by the index-event supersede gate.
 //

@@ -13,6 +13,7 @@ package research
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/duckduckgo"
 	"go.uber.org/zap"
 )
 
@@ -46,6 +48,10 @@ type DuckDuckGoSearchProvider struct {
 	log         *zap.Logger
 	backoff     func(attempt int) time.Duration // delay before a transient-failure retry (injectable for tests)
 	maxAttempts int
+	// breaker is the process-local cooldown after an anti-bot challenge. A
+	// challenged IP cannot be retried into health, so the provider fails fast
+	// and lets the multi-provider coordinator use the next source.
+	breaker *duckduckgo.Breaker
 }
 
 // NewDuckDuckGoSearchProvider creates a DDG text search provider with a
@@ -60,6 +66,7 @@ func NewDuckDuckGoSearchProvider(log *zap.Logger) *DuckDuckGoSearchProvider {
 		log:         log,
 		backoff:     defaultDDGBackoff,
 		maxAttempts: ddgMaxAttempts,
+		breaker:     duckduckgo.NewBreaker(duckduckgo.DefaultCooldown),
 	}
 }
 
@@ -88,18 +95,22 @@ func isDDGAnomalyChallenge(status int) bool {
 
 // isDDGTransient reports whether a failed attempt is worth retrying:
 //   - status 0 with an error → network error / timeout before a response;
-//   - 202/403 → DDG anti-bot anomaly challenge (transient per-IP);
 //   - 5xx → DDG server error.
 //
-// A definitive 4xx (e.g. 400/404/410) is not transient and fails fast.
+// A challenge (202/403) is deliberately NOT transient: it is an IP-level
+// decision that outlives the request, so retrying only multiplies the refusal.
+// The same applies to definitive 4xx (e.g. 400/404/410).
 func isDDGTransient(status int, err error) bool {
 	if err == nil {
+		return false
+	}
+	if errors.Is(err, duckduckgo.ErrChallenged) {
 		return false
 	}
 	if status == 0 {
 		return true
 	}
-	return isDDGAnomalyChallenge(status) || status >= http.StatusInternalServerError
+	return status >= http.StatusInternalServerError
 }
 
 func (d *DuckDuckGoSearchProvider) Name() string { return "duckduckgo" }
@@ -115,6 +126,9 @@ func (d *DuckDuckGoSearchProvider) Search(ctx context.Context, query string, lim
 	maxAttempts := d.maxAttempts
 	if maxAttempts <= 0 {
 		maxAttempts = ddgMaxAttempts
+	}
+	if d.breaker != nil && d.breaker.Open() {
+		return nil, &duckduckgo.Challenge{Reason: "cooldown active"}
 	}
 
 	var lastErr error
@@ -132,9 +146,23 @@ func (d *DuckDuckGoSearchProvider) Search(ctx context.Context, query string, lim
 		}
 		lastErr, lastStatus = err, status
 
-		// Transient failures (timeout, network, 5xx, anomaly challenge) are
-		// retried with backoff. A definitive 4xx or the final attempt fails
-		// fast and lets the coordinator fall through to the next provider.
+		// A challenge is terminal for this run: open the cooldown so later
+		// queries fail fast, and let the coordinator fall through to the
+		// next provider without burning the retry budget.
+		var challenge *duckduckgo.Challenge
+		if errors.As(err, &challenge) {
+			if d.breaker != nil {
+				window := d.breaker.Trip(challenge)
+				d.log.Warn("ddg: anti-bot challenge; cooling down instead of retrying",
+					zap.String("reason", challenge.Reason), zap.Int("status", challenge.Status),
+					zap.Duration("cooldown", window))
+			}
+			break
+		}
+
+		// Transient failures (timeout, network, 5xx) are retried with
+		// backoff. A definitive 4xx or the final attempt fails fast and lets
+		// the coordinator fall through to the next provider.
 		if !isDDGTransient(status, err) || attempt == maxAttempts-1 {
 			break
 		}
@@ -187,12 +215,18 @@ func (d *DuckDuckGoSearchProvider) searchOnce(ctx context.Context, query string,
 		// The 202 challenge page is large; keep only the first 4KB in the
 		// error so logs are not flooded with anti-bot HTML.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if challenge := duckduckgo.AsChallenge(resp.StatusCode, body, 0); challenge != nil {
+			return nil, resp.StatusCode, challenge
+		}
 		return nil, resp.StatusCode, fmt.Errorf("ddg search: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("ddg search: read body: %w", err)
+	}
+	if reason, challenged := duckduckgo.DetectBody(body); challenged {
+		return nil, resp.StatusCode, &duckduckgo.Challenge{Status: resp.StatusCode, Body: body, Reason: reason}
 	}
 
 	hits := parseDDGHTML(string(body))

@@ -133,7 +133,7 @@ func testImageService(t *testing.T) *ImageStorageService {
 		`CREATE TABLE IF NOT EXISTS media_assets (
 			id TEXT PRIMARY KEY,
 			source TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			origin TEXT NOT NULL DEFAULT '',
 			provider TEXT NOT NULL DEFAULT '',
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

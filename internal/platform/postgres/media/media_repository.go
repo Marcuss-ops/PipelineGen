@@ -190,12 +190,12 @@ func (r *MediaAssetRecord) ensureMetadata() {
 // GetAsset / GetAssetsByIDs / FindByHash cannot drift in field coverage.
 //
 // SHA-256 resolution order mirrors the legacy registry precedence
-// (binary_sha256 → content_sha256 → legacy_file_md5) via a single COALESCE.
+// (binary_sha256 → content_sha256 → content_sha256) via a single COALESCE.
 const mediaAssetReadColumns = `
 	id, name, filename, title, source, media_type, category, tags,
 	lifecycle_state, index_state, duration_ms,
 	local_path, drive_file_id, drive_link, download_link,
-	COALESCE(NULLIF(binary_sha256, ''), NULLIF(content_sha256, ''), legacy_file_md5),
+	COALESCE(NULLIF(binary_sha256, ''), NULLIF(content_sha256, ''), content_sha256),
 	COALESCE(NULLIF(thumbnail_url, ''), thumb_url),
 	source_url, source_provider, source_video_id, youtube_video_id,
 	start_ms, end_ms, folder_id, parent_folder_id, folder_path, created_at, metadata_json,
@@ -289,8 +289,8 @@ func (s *MediaSearcher) FindByHash(ctx context.Context, hash string) (*MediaAsse
 	row := s.db.QueryRowContext(ctx, `
 		SELECT `+mediaAssetReadColumns+`
 		FROM media_assets
-		WHERE binary_sha256 = $1 OR content_sha256 = $1 OR legacy_file_md5 = $1
-		   OR binary_sha256 = $2 OR content_sha256 = $2 OR legacy_file_md5 = $2
+		WHERE binary_sha256 = $1 OR content_sha256 = $1 OR content_sha256 = $1
+		   OR binary_sha256 = $2 OR content_sha256 = $2 OR content_sha256 = $2
 		LIMIT 1
 	`, candidates[0], candidates[len(candidates)-1])
 	rec, err := scanMediaAssetRecord(row)

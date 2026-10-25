@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/duckduckgo"
 	"go.uber.org/zap"
 	nethttp "net/http"
 )
@@ -56,6 +57,11 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 		SearchDDGWideMany(context.Context, string, int) []string
 	}); ok {
 		urls := many.SearchDDGWideMany(ctx, query, 10)
+		if len(urls) == 0 {
+			if err := p.challengeError(); err != nil {
+				return nil, err
+			}
+		}
 		out := make([]RetrievalSearchResult, 0, len(urls))
 		for _, imgURL := range urls {
 			if strings.TrimSpace(imgURL) == "" {
@@ -70,6 +76,9 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 	}
 	imgURL := p.bridge.SearchDDGWide(ctx, query)
 	if imgURL == "" {
+		if err := p.challengeError(); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 	return []RetrievalSearchResult{{
@@ -80,6 +89,21 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 		License:    "Unknown",
 		Author:     "Unknown",
 	}}, nil
+}
+
+// challengeError turns an empty answer caused by an anti-bot cooldown into a
+// typed refusal. The retrieval registry folds provider errors into the union
+// and keeps its siblings, so the honest classification costs nothing and stops
+// a blocked provider from being reported as "no results".
+func (p *DuckDuckGoProvider) challengeError() error {
+	if p == nil || p.bridge == nil {
+		return nil
+	}
+	probe, ok := p.bridge.(interface{ DuckDuckGoChallenged() bool })
+	if !ok || !probe.DuckDuckGoChallenged() {
+		return nil
+	}
+	return &duckduckgo.Challenge{Reason: "cooldown active"}
 }
 
 // ID returns the canonical string ID of this provider.

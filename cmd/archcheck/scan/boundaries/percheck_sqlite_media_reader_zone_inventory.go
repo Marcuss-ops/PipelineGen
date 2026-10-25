@@ -105,7 +105,7 @@ package boundaries
 //     the free function any more (the cmd/admin producer computes the same
 //     projection inline in backfill_missing.go:67). The media-SSOT twin already
 //     exists in `pgmedia/index_event.go` (COALESCE over source_version /
-//     legacy_file_md5), so nothing had to be written: the file, its test, the
+//     content_sha256), so nothing had to be written: the file, its test, the
 //     wrapper method, the port and the pin were removed together.
 //
 //     `clips_index_state.go` left the inventory (but NOT the tree) once its

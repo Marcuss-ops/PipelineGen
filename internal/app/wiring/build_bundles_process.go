@@ -331,10 +331,15 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *Databases, 
 
 	// Derived performance projection: job.completed events → performance_runs/
 	// performance_steps. Best-effort (see registerPerformanceProjectionHandler).
+	// The overlayEvents repo is the split media plane's outbox (the same
+	// repository the durable overlay Drive publisher enqueues into): the
+	// job.completed handler uses it to wake the overlay-drive publications
+	// deferred during the run so they become due at the terminal commit
+	// instead of waiting out their own 60 s deferral cadence.
 	if dbs.Jobs != nil {
-		registerPerformanceProjectionHandler(jobsRegistry, dbs, dbs.Jobs, dbs.Main, log)
+		registerPerformanceProjectionHandler(jobsRegistry, dbs, dbs.Jobs, dbs.Main, log, outboxEventsRepo)
 	} else {
-		registerPerformanceProjectionHandler(eventsRegistry, dbs, dbs.Main, dbs.Main, log)
+		registerPerformanceProjectionHandler(eventsRegistry, dbs, dbs.Main, dbs.Main, log, outboxEventsRepo)
 	}
 
 	// ── Pool construction (post fail-closed). ─────────────────────

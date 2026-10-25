@@ -36,6 +36,20 @@ type ScriptsConfig struct {
 	// resolved after YAML and environment overrides during bootstrap.
 	Defaults ScriptDefaultsConfig `yaml:"defaults"`
 
+	// SemanticProductionSearch executes the semantic production plan's
+	// exact-source query ladder against the real image provider and records
+	// hit rate and latency. Enabled by default from 2026-10-24: the planner is
+	// the measured retrieval path (routing by query class, provider budget,
+	// durable plan cache) and the run reports every attempt. Set false to fall
+	// back to the per-segment media stage only.
+	SemanticProductionSearch bool `yaml:"semantic_production_search" env:"VELOX_SCRIPTS_SEMANTIC_PRODUCTION_SEARCH" default:"true"`
+
+	// SemanticPlanCacheTTLSeconds bounds how long one plan-cache answer stays
+	// reusable. It applies to the durable SQLite cache and to the process-local
+	// cache, so a warm run and a restarted process agree on staleness. 0 falls
+	// back to one hour (scriptgeneration default).
+	SemanticPlanCacheTTLSeconds int `yaml:"semantic_plan_cache_ttl_seconds" env:"VELOX_SCRIPTS_SEMANTIC_PLAN_CACHE_TTL_SECONDS" default:"3600"`
+
 	// BatchWebSearchConcurrency caps the parallel SearXNG searches in
 	// batch generation. Each search is a network call; 4 is a
 	// safe default for a single SearXNG instance. Raise for a clustered
@@ -375,6 +389,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.MaxSegmentRegenerationAttempts <= 0 {
 		s.MaxSegmentRegenerationAttempts = 1
+	}
+	if s.SemanticPlanCacheTTLSeconds <= 0 {
+		s.SemanticPlanCacheTTLSeconds = 3600
 	}
 	return s
 }

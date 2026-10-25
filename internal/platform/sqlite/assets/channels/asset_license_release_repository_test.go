@@ -43,7 +43,7 @@ func newLicenseReleaseTestDB(t *testing.T) *sql.DB {
 			drive_folder_id TEXT,
 			drive_link TEXT,
 			download_link TEXT,
-			legacy_file_md5 TEXT,
+			content_sha256 TEXT,
 			embedding_json TEXT,
 			metadata_json TEXT,
 			visual_embedding TEXT,

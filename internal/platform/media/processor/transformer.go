@@ -61,7 +61,7 @@ func (p *Processor) Transform(ctx context.Context, input *detail.TransformInput)
 			result.Error = "master rendition missing after processing"
 			return result, fmt.Errorf("%s", result.Error)
 		}
-		result.LegacyFileMD5 = master.LegacyFileMD5
+		result.ContentSHA256 = master.ContentSHA256
 		result.LocalPath = master.LocalPath
 		result.Filename = master.Filename
 	} else {
@@ -78,7 +78,7 @@ func (p *Processor) Transform(ctx context.Context, input *detail.TransformInput)
 			return result, err
 		}
 
-		result.LegacyFileMD5 = fileHash
+		result.ContentSHA256 = fileHash
 		result.LocalPath = processedPath
 		result.Filename = filepath.Base(processedPath)
 	}

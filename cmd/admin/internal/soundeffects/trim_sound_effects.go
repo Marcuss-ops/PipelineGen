@@ -114,7 +114,7 @@ func RunTrimSoundEffects(args []string) error {
 			return fmt.Errorf("hash %s: %w", localPath, err)
 		}
 		clip.Duration = newDuration
-		clip.SetLegacyFileMD5(hash)
+		clip.SetContentHash(hash)
 		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, hash); err != nil {
 			return fmt.Errorf("reindex trimmed effect %s: %w", clip.Name, err)
 		}

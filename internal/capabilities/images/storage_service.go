@@ -13,6 +13,7 @@ import (
 	retrieved "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/duckduckgo"
 )
 
 // ImageStorageService handles image storage, retrieval, Drive operations,
@@ -63,4 +64,21 @@ type ImageStorageService struct {
 	// silent-fake `extractSubjectAndTags` stub that violated godlike/07
 	// no-fake-availability. Concrete wiring is inline in service.go::NewService.
 	subjectTags SubjectTagsService
+
+	// ddgBreaker is the process-local cooldown after DuckDuckGo answers with
+	// an anti-bot challenge. Nil falls back to the package default, which is
+	// what production uses; tests inject their own to stay isolated.
+	ddgBreaker *duckduckgo.Breaker
 }
+
+// ddgCooldown returns the breaker this service must consult.
+func (s *ImageStorageService) ddgCooldown() *duckduckgo.Breaker {
+	if s != nil && s.ddgBreaker != nil {
+		return s.ddgBreaker
+	}
+	return defaultDDGBreaker
+}
+
+// defaultDDGBreaker is shared by every ImageStorageService in the process, so
+// one challenged IP does not pay the challenge latency once per service.
+var defaultDDGBreaker = duckduckgo.NewBreaker(duckduckgo.DefaultCooldown)

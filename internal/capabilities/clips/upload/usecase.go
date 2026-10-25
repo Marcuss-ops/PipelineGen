@@ -163,7 +163,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	// constructed clip below (parity with reupload_usecase.go::Execute per
 	// user F2.9 spec "DB has drive_file_id/drive_link/download_link/md5/
 	// publish_action populated"). Pre-F2.9 asymmetry: the upload path left
-	// LegacyFileMD5(pubRes.MD5Checksum) and publish_action unrecorded on the clip.
+	// ContentSHA256(pubRes.MD5Checksum) and publish_action unrecorded on the clip.
 	var publishMD5, publishAction string
 
 	if uc.publisher != nil && localPath != "" {
@@ -234,7 +234,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		UpdatedAt:      now,
 	}
 	clip.SetLocalPath(localPath)
-	clip.SetLegacyFileMD5(fileHash)
+	clip.SetContentHash(fileHash)
 	clip.SetFolderID(targetFolderID)
 	clip.SetFolderPath(cmd.Group)
 	if driveFileID != "" {
@@ -249,7 +249,9 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	// reupload must BOTH populate MD5 + publish_action so the dispatched
 	// clip + DB row carries the 5-field audit contract.
 	if publishMD5 != "" {
-		clip.SetLegacyFileMD5(publishMD5)
+		// The Publisher-returned MD5 is a Drive provider receipt: it lives in
+		// the google_drive_md5 slot, never in the content hash slot.
+		clip.SetDriveMD5(publishMD5)
 	}
 	if publishAction != "" {
 		clip.SetMetadataString("publish_action", publishAction)
@@ -267,7 +269,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		return nil, ErrDispatcherUnavailable
 	}
 	// MEDIA-IDENTITY (Sept 2026): the outbox/index content hash is the BYTE
-	// identity, resolved from the canonical content surfaces. LegacyFileMD5()
+	// identity, resolved from the canonical content surfaces. ContentSHA256()
 	// is the compatibility accessor and may hold an MD5, which must never be
 	// published as a content address.
 	contentHash := clip.ContentAddress()
@@ -319,7 +321,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 		Filename:      driveFilename,
 		DriveLink:     clip.DriveLink(),
 		DriveFileID:   clip.DriveFileID(),
-		LegacyFileMD5: fileHash,
+		ContentSHA256: fileHash,
 		Source:        cmd.Source,
 		Category:      cmd.Category,
 		Tags:          cmd.Tags,

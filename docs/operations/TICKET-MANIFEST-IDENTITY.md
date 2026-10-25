@@ -50,3 +50,118 @@ diventano una riga di manifest per item e un solo artefatto certificato.
   una card statica è una riga di manifest con una texture.
 - Non partire con la demolizione prima che l'A/B sia verde: è la ragione
   per cui la voce è P5 e non P1.
+
+## Stato implementazione — 24/10/2026 (checkout di sviluppo)
+
+Fatto (lato PipelineGen, dietro flag di rollback):
+
+- **Modello manifest** `pipelinegen.overlay-manifest.v1` —
+  `internal/capabilities/overlays/model/manifest.go`: `item_id → (track,
+  in_us, out_us, content_hash)`, validazione (un contenuto = un overlay,
+  finestre positive, hash canonici), serializzazione deterministica,
+  `Entry.RetryKey()` (item_id + content_hash) e `Manifest.Digest()`
+  (identità di composizione, esclude `timeline_sha256`). Test:
+  `manifest_test.go`.
+- **Retry idempotente per voce** —
+  `internal/capabilities/scripts/overlay_manifest_identity.go`: classificazione
+  per voce sulla cache content-addressed (stesso item_id + content_hash ⇒
+  clip certificata riusata, nessun secondo artefatto; guasto cache ⇒ degrado
+  a pending). Test: `overlay_manifest_identity_test.go`.
+- **Percorso manifest+timeline (opzione B)** —
+  `internal/capabilities/scripts/overlay_manifest_timeline.go`: un artefatto
+  certificato per timeline + manifest (single compositing, single encode),
+  ordine/z-order preservati, retry per digest del manifest (nessun lavoro
+  ripetuto), flag `VELOX_SCRIPTS_OVERLAY_MANIFEST_TIMELINE` **default off**
+  (il percorso per-item resta il default produttivo), fallback fail-closed al
+  percorso per-item per i piani non eleggibili (final-job, source, mappe,
+  chain, multi-scena, oltre un caption-bearing). Test:
+  `overlay_manifest_timeline_test.go`.
+- **Harness A/B** — `internal/capabilities/scripts/overlay_manifest_ab_test.go`:
+  parità pixel/audio su fixture reali ffmpeg a finestre letterali (round trip
+  lossless), parità z-order in sovrapposizione, accordo ordine/fenestra tra i
+  due percorsi sullo stesso piano.
+- **Contratto scritto** — `docs/operations/OVERLAY-MANIFEST-CONTRACT.md` +
+  wire tipizzato (`RenderReference.Manifest`): proiezione sui frame
+  allineata a `finalJobOverlayAssetsExcluding`, decisione documentata
+  **Drive-per-item PRESERVATO** fino a negoziazione, handoff fail-closed
+  invariato (test: `TestEnqueueChrononPlanFinalJobFailsClosedWithoutPublisher`).
+
+Gate di accettazione — stato:
+
+- [x] Retry idempotente per voce di manifest: **dimostrato** per test su cache
+      content-addressed (nessun lavoro ripetuto, nessun artefatto duplicato) e
+      a livello di composizione (retry dello stesso manifest ⇒ zero render).
+- [~] A/B parità pixel/audio: **parità di proiezione dimostrata** su fixture
+      reali (pixel/audio/z-order/ordine). La parità Chronon-vs-Chronon su
+      piano golden resta da misurare: vedi blocco qui sotto.
+- [x] Contratto col final worker **scritto** (OVERLAY-MANIFEST-CONTRACT.md);
+      requisito Drive-per-item **preservato come decisione documentata**.
+      La rinegoziazione vera e propria resta cross-team (fase 2).
+
+### Blocco misura live A/B su golden (preciso)
+
+Il confronto render-vs-render su piano golden richiede di far girare QUESTO
+working tree dentro il percorso di render: non è eseguibile senza impatto su
+produzione da questo checkout, perché:
+
+1. il binario in esecuzione (`bin/pipelinegen`, build 2026-10-24 13:22) è
+   **anteriore** a questo lavoro: il percorso manifest+timeline non esiste nel
+   processo attivo;
+2. eseguirlo richiede `make build && scripts/systemd/pipelinegenctl
+   restart-verify` = **deploy/riavvio dei servizi di produzione** (decisione
+   dell'operatore, non di un cambio codice);
+3. anche un caricamento laterale one-shot sulla coda RenderingGen condivisa
+   competerebbe coi daemon live (Chronon3d + pipelinegen-muscles + build C++
+   attive sulla macchina) e violerebbe il contratto di misura (README: nessun
+   altro carico pesante durante le misure), rendendo le medie a 3 run non
+   confrontabili.
+
+Quando l'operatore aprirà una finestra di misura (deploy esplicito + macchina
+libera), l'A/B si esegue golden `final_job=false` con e senza
+`VELOX_SCRIPTS_OVERLAY_MANIFEST_TIMELINE`, 3 run per percorso, mediana,
+secondo il contratto di misura del ticket di throughput.
+
+### Perimetro non demolito (come da portata del ticket)
+
+La demolizione del percorso MP4-per-item è subordinata a (a) parità A/B su
+golden certificata e (b) contratto rinegoziato col final worker. Entrambi
+restano aperti: il percorso per-item è intatto e resta il default produttivo.
+
+### Evidenza gate repository (24/10/2026)
+
+- `go build ./...`, `gofmt -l`, `go vet ./internal/... ./cmd/...`: **verdi**.
+- Test dei package toccati (`internal/capabilities/scripts`,
+  `internal/capabilities/overlays/...`): **tutti verdi**, incluse le suite
+  manifest/A/B sopra elencate.
+- `make verify-agent`: **verify-dev verde** (foundation: gitleaks 19,4 GB
+  senza leak, format, tidy, hook, submodule; static: facade alias in sync,
+  vet, build). `verify-changed`: 21 componenti — **19 PASS/CACHED_PASS incluso
+  il componente `script`** di questo lavoro; **2 FAIL (`timeline`, `rust`)**
+  entrambi sullo stesso test `TestSemanticEngineRealBinaryPlansPlannerVolumes`
+  in `internal/platform/media/rustexec` («candidate \"vc_0003\" query \"Alberto
+  Stasi\" is not grounded»), sui file `semantic_engine*.go` modificati e non
+  committati di un altro lavoro su questo working tree — non toccato da P5.
+  Report: `artifacts/verify/changed-components.json`.
+- `go run ./cmd/archcheck --strict`: **rosso per debito NON attribuibile a
+  questo lavoro** — nessuna violation riguarda i file P5 (i nuovi file sono
+  ben sotto il cap di 600). Dettaglio con attribuzione:
+
+  | Violation | File | Righe HEAD → ora | Attribuzione |
+  | --- | --- | --- | --- |
+  | max_lines_per_file_strict | `scripts/model_render.go` | 606 → 606 | preesistente a HEAD (fuori dal census allowlist del 2026-09-18) |
+  | max_lines_per_file_strict | `scripts/overlay_entity_cards.go` | 565 → 604 | lavoro non committato parallelo in corso |
+  | max_lines_per_file_strict | `scripts/render_queue.go` | 602 → 620 | preesistente a HEAD + lavoro parallelo + dispatch P5 (~6 righe) |
+  | max_lines_per_file_strict | `scripts/render_queue_map.go` | 592 → 692 | lavoro non committato parallelo in corso |
+  | max_lines_per_file_strict | `scripts/render_queue_map_composition.go` | 600 → 638 | lavoro non committato parallelo in corso |
+  | pkg_size (package_hotspot_growth) | `internal/capabilities/scripts` | 112 → 114 (budget 110) | già rosso prima di questo lavoro; +2 file manifest di questa sessione |
+  | warning_budget | globale | 84 residui vs budget 77 | residui comment-only preesistenti (es. `kernel/asset/rights_state.go`) |
+  | thin_command (warn) | `cmd/goldensummary/main.go` | 135 → 208 (cap 200) | lavoro non committato parallelo |
+
+  Le voci «lavoro parallelo» appartengono a modifiche non committate di
+  altri file attivamente in scrittura su questo working tree durante la
+  sessione: non sono state toccate per non distruggere lavoro in corso.
+  Percorsi sanzionati dalla governance per la chiusura: split dei file
+  («split proactively», `docs/migrations/max-lines-strict-allowlist.txt` come
+  escape hatch temporaneo con owner+deadline), riduzione del residuo warning,
+  e aggiornamento della registrazione hotspot per il budget file del package
+  (`architecture/policy.yaml`).

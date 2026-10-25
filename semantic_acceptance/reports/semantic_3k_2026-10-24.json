@@ -109,8 +109,8 @@
     }
   ],
   "query_stats": {
-    "entries": 1353,
-    "exact": 1361,
+    "entries": 1355,
+    "exact": 1363,
     "unique_exact": 451,
     "top": [
       [
@@ -166,6 +166,10 @@
         10
       ],
       [
+        "reperto",
+        10
+      ],
+      [
         "anni",
         10
       ],
@@ -188,19 +192,59 @@
       [
         "garlasco",
         8
-      ],
-      [
-        "centro",
-        8
       ]
     ]
+  },
+  "consolidation": {
+    "schema": "visual_consolidation.v1",
+    "inventory": {
+      "canonical_dates": 9,
+      "canonical_facts": 6,
+      "canonical_micro_summaries": 6,
+      "entity_mentions": 709,
+      "facts": 6,
+      "groups": 3,
+      "micro_summaries": 6,
+      "named_identities": 9,
+      "proposals": 1359,
+      "queries": 2717,
+      "search_entries": 1355,
+      "temporal_facts": 20,
+      "timelines": 1,
+      "unique_identities": 461
+    },
+    "metrics": {
+      "canonical_facts": 6,
+      "covered_facts": 6,
+      "duplicate_entity_mentions_collapsed": 248,
+      "duplicate_facts_merged": 0,
+      "duplicate_proposals_removed": 1329,
+      "duplicate_queries_removed": 2704,
+      "estimated_search_jobs": 13,
+      "production_candidates": 30,
+      "production_queries": 13,
+      "production_search_candidates": 13,
+      "raw_proposals": 1359,
+      "raw_queries": 2717,
+      "raw_search_entries": 1355,
+      "reference_numbers": 0,
+      "shared_asset_reuses": 9,
+      "uncovered_facts": 0
+    },
+    "candidates": 30,
+    "timelines": 1,
+    "cards": 1,
+    "canonical_facts": 6,
+    "covered_facts": 6,
+    "uncovered_facts": 0
   },
   "entity_counts": {
     "PERSON": 24,
     "LOCATION": 5,
     "NUMBER": 18,
     "DATE": 17,
-    "VISUAL_CONCEPT": 641,
-    "ORG": 3
+    "VISUAL_CONCEPT": 637,
+    "ORG": 3,
+    "OBJECT": 5
   }
 }

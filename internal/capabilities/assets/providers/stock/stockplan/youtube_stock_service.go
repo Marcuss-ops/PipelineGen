@@ -292,7 +292,7 @@ func (s *StockService) materializePlanned(ctx context.Context, req YouTubeStockR
 			segments[i].DriveLink = resp.Items[i].DriveLink
 			segments[i].Status = resp.Items[i].Status
 			segments[i].AssetID = resp.Items[i].ID
-			segments[i].LegacyFileMD5 = resp.Items[i].LegacyFileMD5
+			segments[i].ContentSHA256 = resp.Items[i].ContentSHA256
 		}
 		for i := range out.SelectedSegments {
 			if out.SelectedSegments[i].YouTubeVideoID != videoID {

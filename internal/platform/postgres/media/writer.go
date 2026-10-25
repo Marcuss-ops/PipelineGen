@@ -227,7 +227,7 @@ func resolveMutationIndexIdentity(ctx context.Context, tx *sql.Tx, patch persist
 	var storedSource, storedMediaType, storedVersion, contentHash string
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COALESCE(source,''), COALESCE(media_type,''),
-		       COALESCE(source_version,''), COALESCE(legacy_file_md5,'')
+		       COALESCE(source_version,''), COALESCE(content_sha256,'')
 		FROM media_assets WHERE id = $1`, patch.AssetID).
 		Scan(&storedSource, &storedMediaType, &storedVersion, &contentHash); err != nil {
 		if err == sql.ErrNoRows {
@@ -306,7 +306,7 @@ func (c *PostgresMediaCommitter) reconcileOneDriveLocation(ctx context.Context, 
 	var source, mediaType, sourceVersion, contentHash, existingFileID, existingLink, lifecycle string
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COALESCE(source,''), COALESCE(media_type,''), COALESCE(source_version,''),
-		       COALESCE(legacy_file_md5,''), COALESCE(drive_file_id,''),
+		       COALESCE(content_sha256,''), COALESCE(drive_file_id,''),
 		       COALESCE(drive_link,''), COALESCE(lifecycle_state,'ACTIVE')
 		FROM media_assets WHERE id = $1`, change.AssetID).
 		Scan(&source, &mediaType, &sourceVersion, &contentHash, &existingFileID, &existingLink, &lifecycle); err != nil {
@@ -381,7 +381,7 @@ func (c *PostgresMediaCommitter) reconcileOneDriveLocation(ctx context.Context, 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at,
+			 mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at,
 			 created_at_ts, updated_at_ts)
 		VALUES ($1, 'drive', $2, $3, $4, $5, $6, $7, '', $8, $9, $10,
 		        NULLIF($9, '')::timestamptz, NULLIF($10, '')::timestamptz)
@@ -446,7 +446,7 @@ func hasVerifiedAlternateLocation(ctx context.Context, tx *sql.Tx, assetID strin
 		SELECT COUNT(*) FROM asset_locations
 		WHERE asset_id = $1 AND location_kind IN ('local','object_storage')
 		  AND TRIM(COALESCE(uri,'')) <> ''
-		  AND TRIM(COALESCE(legacy_file_md5,'')) <> ''
+		  AND TRIM(COALESCE(content_sha256,'')) <> ''
 		  AND COALESCE(file_size_bytes,0) > 0`, assetID).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("asset mutator: inspect alternate locations %q: %w", assetID, err)

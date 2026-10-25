@@ -69,10 +69,10 @@ func liveTextPresenceExpr(assetAlias string) string {
 }
 
 // mediaContentHashExpr is the canonical content-hash fallback chain
-// (metadata content_hash → metadata file_hash → legacy_file_md5 → empty).
+// (metadata content_hash → metadata file_hash → content_sha256 → empty).
 func mediaContentHashExpr(alias string) string {
 	json := "COALESCE(NULLIF(" + alias + ".metadata_json, ''), '{}')::jsonb"
-	return "COALESCE(" + json + "->>'content_hash', " + json + "->>'file_hash', " + alias + ".legacy_file_md5, '')"
+	return "COALESCE(" + json + "->>'content_hash', " + json + "->>'file_hash', " + alias + ".content_sha256, '')"
 }
 
 // ListEmbeddingBackfillCandidates returns the searchable media assets the

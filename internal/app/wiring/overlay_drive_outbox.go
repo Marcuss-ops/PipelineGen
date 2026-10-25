@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	obsmetrics "github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -66,6 +68,46 @@ func firstNonEmptyOverlay(values ...string) string {
 		}
 	}
 	return "overlay"
+}
+
+// overlayDrivePublicationWake is the job.completed half that removes the
+// deferral wall from the click-to-delivered path. While the parent script job
+// is RUNNING, every overlay.drive.publication.requested.v1 event defers at a
+// one-minute cadence (parent-not-terminal is a scheduling precondition, not a
+// failed upload). The moment the parent result commits, job.completed fires on
+// the jobs outbox — this wake then pulls the deferred publications of THAT
+// parent forward to "due now", so the events pool claims them on its very next
+// poll instead of after the remaining defer delay (60 s per batch of items in
+// the golden runs).
+//
+// Scoped by the same contract as the publisher's enqueue: events keyed by
+// aggregate_id = parent job id (current code) match exactly; legacy
+// plan-composite aggregates (15/10 data) are NOT matched and keep their own
+// one-minute recovery cadence, unchanged.
+//
+// Crash-safe by construction: the wake only moves next_attempt_at forward on
+// rows that are still pending — the publication intent stays durable, and a
+// retried job.completed event re-runs the same idempotent UPDATE.
+type overlayDrivePublicationWake struct {
+	events *outboxevents.Repository
+	log    *zap.Logger
+}
+
+func (w *overlayDrivePublicationWake) Handle(ctx context.Context, jobID string) error {
+	if w == nil || w.events == nil {
+		return fmt.Errorf("overlay-drive deferral wake is not configured")
+	}
+	woken, err := w.events.WakeDeferred(ctx, renderinggen.EventOverlayDrivePublicationRequested, jobID)
+	if err != nil {
+		return fmt.Errorf("wake deferred overlay drive publications for parent %s: %w", jobID, err)
+	}
+	if woken > 0 {
+		w.log.Info("overlay-drive deferral wake: deferred publications made due at parent completion",
+			zap.String("job_id", jobID), zap.Int64("awakened_events", woken))
+	} else {
+		w.log.Debug("overlay-drive deferral wake: no deferred publications for parent", zap.String("job_id", jobID))
+	}
+	return nil
 }
 
 type overlayDrivePublicationHandler struct {

@@ -48,7 +48,7 @@ func TestClipRenderPGAssetResolver_ResolveAsset(t *testing.T) {
 	}
 	if ref.AssetID != "asset-1" || ref.Title != "fallback name" ||
 		ref.MediaType != "video" || ref.LocalPath != "/media/asset-1.mp4" ||
-		ref.DriveFileID != "drive-1" || ref.LegacyFileMD5 != "sha256:abc" || ref.DurationMS != 4321 {
+		ref.DriveFileID != "drive-1" || ref.ContentSHA256 != "sha256:abc" || ref.DurationMS != 4321 {
 		t.Fatalf("unexpected ref: %+v", ref)
 	}
 }

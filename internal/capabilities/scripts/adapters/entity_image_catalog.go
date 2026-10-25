@@ -361,12 +361,12 @@ func setEntityImageCatalogCandidateStatus(ctx context.Context, repo entitycatalo
 func applyEntityImageCatalogMaterialization(candidate scriptpkg.SegmentAssetCandidate, materialization *entitycatalog.Materialization) (scriptpkg.SegmentAssetCandidate, bool) {
 	if materialization == nil || materialization.Status != entitycatalog.MaterializationStatusMaterialized ||
 		strings.TrimSpace(materialization.AssetID) == "" || strings.TrimSpace(materialization.DriveLink) == "" ||
-		strings.TrimSpace(materialization.LegacyFileMD5) == "" {
+		strings.TrimSpace(materialization.ContentSHA256) == "" {
 		return candidate, false
 	}
 	candidate.AssetID = materialization.AssetID
 	candidate.DriveLink = materialization.DriveLink
-	candidate.LegacyFileMD5 = materialization.LegacyFileMD5
+	candidate.ContentSHA256 = materialization.ContentSHA256
 	// The catalog row deliberately carries no local path: a path is runtime
 	// state, and injecting a stale one here is what let a media row disagree
 	// with its own content address. Bytes are located by the canonical

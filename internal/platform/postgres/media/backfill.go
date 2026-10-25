@@ -13,7 +13,7 @@
 // side (legacy leftovers such as SQLite `error`, PG-only canonical columns)
 // are excluded automatically, so migration drift on either engine can never
 // silently corrupt the copy. The single explicit alias is
-// asset_locations.file_hash → legacy_file_md5 (the legacy md5-tier hash
+// asset_locations.file_hash → content_sha256 (the legacy md5-tier hash
 // keeps its priority position on both engines).
 //
 // Embeddings and derived features are deliberately NOT generated here —
@@ -83,7 +83,7 @@ const (
 // PostgreSQL names. This is the ONLY hand-written mapping in the engine;
 // everything else is derived from the live schemas.
 var locationColumnAliases = map[string]string{
-	"file_hash": "legacy_file_md5",
+	"file_hash": "content_sha256",
 }
 
 // RunMediaBackfill executes the FASE-3 backfill and the fail-closed parity

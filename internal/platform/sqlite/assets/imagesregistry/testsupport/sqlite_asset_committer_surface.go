@@ -53,7 +53,7 @@ func (c *SQLiteAssetCommitter) upsertLocations(ctx context.Context, tx *sql.Tx, 
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO asset_locations
 				(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-				 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
+				 mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(asset_id, location_kind) DO UPDATE SET
 				uri = excluded.uri,
@@ -62,11 +62,11 @@ func (c *SQLiteAssetCommitter) upsertLocations(ctx context.Context, tx *sql.Tx, 
 				download_url = excluded.download_url,
 				mime_type = excluded.mime_type,
 				file_size_bytes = excluded.file_size_bytes,
-				legacy_file_md5 = excluded.legacy_file_md5,
+				content_sha256 = excluded.content_sha256,
 				is_primary = excluded.is_primary,
 				updated_at = excluded.updated_at
 		`, assetID, loc.Kind, loc.URI, loc.ExternalID, loc.WebViewLink, loc.DownloadURL,
-			loc.MimeType, loc.FileSizeBytes, loc.LegacyFileMD5, boolToInt(loc.IsPrimary), nowStr, nowStr); err != nil {
+			loc.MimeType, loc.FileSizeBytes, loc.ContentSHA256, boolToInt(loc.IsPrimary), nowStr, nowStr); err != nil {
 			return fmt.Errorf("asset committer: upsert location %s: %w", loc.Kind, err)
 		}
 	}
@@ -270,9 +270,9 @@ func (c *SQLiteAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Conte
 	preserveIdentity := strings.HasPrefix(mutation.Status, "delivery_failed:") && mutation.DriveFileID == "" && mutation.DriveLink == "" && mutation.DownloadLink == ""
 	var result sql.Result
 	if preserveIdentity {
-		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?), updated_at = CURRENT_TIMESTAMP WHERE source = 'image' AND legacy_file_md5 = ?`, mutation.Status, hash)
+		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?), updated_at = CURRENT_TIMESTAMP WHERE source = 'image' AND content_sha256 = ?`, mutation.Status, hash)
 	} else {
-		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET drive_file_id = ?, drive_link = ?, download_link = ?, metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?), updated_at = CURRENT_TIMESTAMP WHERE source = 'image' AND legacy_file_md5 = ?`, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, mutation.Status, hash)
+		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET drive_file_id = ?, drive_link = ?, download_link = ?, metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.delivery_status', ?), updated_at = CURRENT_TIMESTAMP WHERE source = 'image' AND content_sha256 = ?`, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, mutation.Status, hash)
 	}
 	if err != nil {
 		return fmt.Errorf("asset committer: update Drive delivery: %w", err)
@@ -286,11 +286,11 @@ func (c *SQLiteAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Conte
 	}
 	if !preserveIdentity && mutation.DriveFileID != "" {
 		var assetID string
-		if err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE source = 'image' AND legacy_file_md5 = ?`, hash).Scan(&assetID); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE source = 'image' AND content_sha256 = ?`, hash).Scan(&assetID); err != nil {
 			return fmt.Errorf("asset committer: resolve Drive delivery asset: %w", err)
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at) VALUES (?, 'drive', ?, ?, ?, ?, '', 0, ?, 0, ?, ?) ON CONFLICT(asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, legacy_file_md5=excluded.legacy_file_md5, updated_at=excluded.updated_at`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, hash, now, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at) VALUES (?, 'drive', ?, ?, ?, ?, '', 0, ?, 0, ?, ?) ON CONFLICT(asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, content_sha256=excluded.content_sha256, updated_at=excluded.updated_at`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, hash, now, now); err != nil {
 			return fmt.Errorf("asset committer: upsert Drive location: %w", err)
 		}
 	}

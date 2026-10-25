@@ -43,7 +43,7 @@ func buildYouTubeCommitRequest(clipID string, clipAsset youtubetypes.ClipAsset) 
 	if policyVersion == "" {
 		policyVersion = derivePolicyVersion(clipID)
 	}
-	sourceVersion := deriveSourceVersion(clipID, clipAsset.LegacyFileMD5, policyVersion)
+	sourceVersion := deriveSourceVersion(clipID, clipAsset.ContentSHA256, policyVersion)
 
 	filename := deriveFilenameFromAsset(clipAsset)
 	if filename == "" {
@@ -68,13 +68,13 @@ func buildYouTubeCommitRequest(clipID string, clipAsset youtubetypes.ClipAsset) 
 		Category:   clipAsset.Metadata.Category,
 		DurationMs: int64(clipAsset.Metadata.ClipDurationSec * 1000),
 		// MEDIA-IDENTITY (Sept 2026): the commit's ContentHash is the BYTE
-		// identity. The DTO field is named LegacyFileMD5 for historical reasons,
+		// identity. The DTO field is named ContentSHA256 for historical reasons,
 		// so the value is resolved through the canonical rule rather than
 		// forwarded verbatim: a SHA-256 becomes the content address, an MD5 is
 		// dropped (asset.ResolveContentAddress). The same value still feeds the
 		// source_version label below, where it is a VERSION component rather than
 		// an identity claim.
-		ContentHash:    asset.ResolveContentAddress(clipAsset.LegacyFileMD5),
+		ContentHash:    asset.ResolveContentAddress(clipAsset.ContentSHA256),
 		SearchText:     clipAsset.SearchText,
 		Description:    clipAsset.Metadata.Description,
 		LifecycleState: "ACTIVE",
@@ -196,7 +196,7 @@ func clipLocalLocation(clipAsset youtubetypes.ClipAsset) []persistence.LocationC
 			URI:           localPath,
 			MimeType:      clipDriveMimeType,
 			FileSizeBytes: clipAsset.Drive.SizeBytes,
-			LegacyFileMD5: clipAsset.LegacyFileMD5,
+			ContentSHA256: clipAsset.ContentSHA256,
 			IsPrimary:     true,
 		},
 	}

@@ -70,7 +70,7 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 		nextStartUS := ((startUS / 1000) * 1000) + capabilityoverlay.MaxImageOverlayDurationMS*1000
 		for _, candidate := range candidates {
 			assetID := strings.TrimSpace(candidate.AssetID)
-			digest := strings.TrimSpace(candidate.LegacyFileMD5)
+			digest := strings.TrimSpace(candidate.ContentSHA256)
 			if _, duplicate := seen[assetID]; duplicate {
 				continue
 			}

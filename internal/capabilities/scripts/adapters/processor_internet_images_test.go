@@ -224,7 +224,7 @@ func readyImageCandidateForSelection(assetID, query string, score float64) scrip
 	return scriptpkg.SegmentAssetCandidate{
 		AssetID: assetID, Provider: scriptpkg.VidRushProviderInternetImages, Query: query, Score: score,
 		SourceURL: "https://images.example/" + assetID + ".jpg", DriveLink: "https://drive.example/" + assetID,
-		LegacyFileMD5: "hash-" + assetID, RightsStatus: "unknown_allowed",
+		ContentSHA256: "hash-" + assetID, RightsStatus: "unknown_allowed",
 		AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
 	}
@@ -385,7 +385,7 @@ func (s *entityImageSearcher) SearchImages(_ context.Context, req InternetImageS
 	return []scriptpkg.SegmentAssetCandidate{{
 		AssetID: "asset-mike", Provider: "internet_images", Entity: req.Query,
 		Query: req.Query, SourceURL: "https://images.example/mike.jpg", Score: 1,
-		DriveLink: "https://drive.google.com/file/d/asset-mike/view", LegacyFileMD5: "hash-mike",
+		DriveLink: "https://drive.google.com/file/d/asset-mike/view", ContentSHA256: "hash-mike",
 		RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 		IndexStatus: scriptpkg.VidRushStatusIndexed,

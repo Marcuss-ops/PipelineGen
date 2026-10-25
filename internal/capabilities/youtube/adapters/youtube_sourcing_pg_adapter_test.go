@@ -148,7 +148,7 @@ func TestSourcingClipStorePGAdapter_GetClip_MapsRecord(t *testing.T) {
 	if clip.Duration != 12500000000 {
 		t.Fatalf("duration = %v, want 12.5s", clip.Duration)
 	}
-	if clip.LegacyFileMD5 != "sha256:abc" || clip.DriveFileID != "drive-7" || clip.LocalPath != "/media/boxing.mp4" {
+	if clip.ContentSHA256 != "sha256:abc" || clip.DriveFileID != "drive-7" || clip.LocalPath != "/media/boxing.mp4" {
 		t.Fatalf("unexpected locators: %+v", clip)
 	}
 	if len(clip.Tags) != 2 || clip.Tags[0] != "boxing" {

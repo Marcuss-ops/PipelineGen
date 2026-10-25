@@ -44,6 +44,8 @@ type (
 	OverlayItemFrameShadow  = capmodel.OverlayItemFrameShadow
 	OverlayItemFrameStroke  = capmodel.OverlayItemFrameStroke
 	OverlayKind             = capmodel.OverlayKind
+	OverlayManifest         = capmodel.OverlayManifest
+	OverlayManifestEntry    = capmodel.OverlayManifestEntry
 	OverlayMediaContract    = capmodel.OverlayMediaContract
 	OverlayPlan             = capmodel.OverlayPlan
 	OverlayPlanIntake       = capmodel.OverlayPlanIntake
@@ -90,6 +92,7 @@ const (
 	OverlayDropUnmaterialized    = capmodel.OverlayDropUnmaterialized
 	OverlayIntentVersion         = capmodel.OverlayIntentVersion
 	OverlayStatusReady           = capmodel.OverlayStatusReady
+	SchemaVersionManifest        = capmodel.SchemaVersionManifest
 	SchemaVersionPlan            = capmodel.SchemaVersionPlan
 	SchemaVersionResult          = capmodel.SchemaVersionResult
 	TimingStateFrozen            = capmodel.TimingStateFrozen

@@ -71,12 +71,13 @@ func TestExtractVideoID_RetainsLegacyAliases(t *testing.T) {
 func TestBackfillContentHashAccessorPrecedence(t *testing.T) {
 	a := &asset.Asset{}
 	a.SetContentHash("canonical-content-hash")
-	a.SetLegacyFileMD5("legacy-file-hash")
 
 	require.Equal(t, "canonical-content-hash", assetContentHash(a))
 
+	// The compatibility fallback is demolished (migration 281): an empty
+	// canonical hash is honestly unknown, never filled from the old bucket.
 	a.SetContentHash("")
-	require.Equal(t, "legacy-file-hash", assetContentHash(a))
+	require.Equal(t, "", assetContentHash(a))
 }
 
 func TestExtractVideoID_RetainsLegacyURLAlias(t *testing.T) {

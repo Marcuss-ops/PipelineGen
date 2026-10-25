@@ -17,7 +17,7 @@ type AssetIndexRecord struct {
 	LocalPath     string
 	DriveLink     string
 	DownloadLink  string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	ContentHash   string
 	Status        string
 	Metadata      string

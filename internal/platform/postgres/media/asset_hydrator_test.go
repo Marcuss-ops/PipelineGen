@@ -50,8 +50,8 @@ func TestMediaAssetRecord_HydrateAsset(t *testing.T) {
 	if a.DownloadLink() != "https://dl/d1" || a.LocalPath() != "/tmp/clip.mp4" {
 		t.Fatalf("location projection lost: %q %q", a.DownloadLink(), a.LocalPath())
 	}
-	if a.ContentHash() != "deadbeef" || a.GetMetadataString("legacy_file_md5") != "deadbeef" {
-		t.Fatalf("hash projection lost: %q %q", a.ContentHash(), a.GetMetadataString("legacy_file_md5"))
+	if a.ContentHash() != "deadbeef" || a.GetMetadataString("content_hash") != "deadbeef" {
+		t.Fatalf("hash projection lost: %q %q", a.ContentHash(), a.GetMetadataString("content_hash"))
 	}
 	if a.GetMetadataString("index_state") != "INDEXED" {
 		t.Fatalf("index_state not projected: %q", a.GetMetadataString("index_state"))

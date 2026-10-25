@@ -127,7 +127,7 @@ func TestMediaFinalizerVerifiesDriveFile(t *testing.T) {
 		Name:          "Test Media",
 		DriveLink:     "https://drive.google.com/file/d/abc123/view",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: "hash123",
+		ContentSHA256: "hash123",
 		Status:        "processed",
 	}
 
@@ -194,7 +194,7 @@ func TestMediaFinalizerFailsWhenDriveFileMissing(t *testing.T) {
 		Name:          "Drive intent set, upload failed",
 		DriveLink:     "", // upload attempt failed → no link produced
 		LocalPath:     tmpFile,
-		LegacyFileMD5: "hash123",
+		ContentSHA256: "hash123",
 		Status:        "processed",
 	}
 
@@ -243,7 +243,7 @@ func TestMediaFinalizerRequiresLocalPath(t *testing.T) {
 		Name:      "Test No Local Path",
 		DriveLink: "https://drive.google.com/file/d/abc/view",
 		// LocalPath is empty
-		LegacyFileMD5: "hash123",
+		ContentSHA256: "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -284,7 +284,7 @@ func TestMediaFinalizerRequiresFileHash(t *testing.T) {
 		ID:        "test_media_004",
 		Name:      "Test No File Hash",
 		DriveLink: "https://drive.google.com/file/d/abc/view",
-		// LocalPath is empty, LegacyFileMD5 is empty
+		// LocalPath is empty, ContentSHA256 is empty
 	}
 
 	opts := FinalizeOptions{
@@ -325,7 +325,7 @@ func TestMediaFinalizerLocalFileNotExists(t *testing.T) {
 		Name:          "Test Non-existent File",
 		DriveLink:     "https://drive.google.com/file/d/abc/view",
 		LocalPath:     "/tmp/nonexistent_file_12345.mp4",
-		LegacyFileMD5: "hash123",
+		ContentSHA256: "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -365,7 +365,7 @@ func TestMediaFinalizerDBSaveFailure(t *testing.T) {
 		ID:            "test_media_006",
 		Name:          "Test DB Failure",
 		LocalPath:     "/tmp/test.mp4",
-		LegacyFileMD5: "hash123",
+		ContentSHA256: "hash123",
 	}
 
 	opts := FinalizeOptions{
@@ -450,7 +450,7 @@ func TestFinalizerWritesToAssetIndex(t *testing.T) {
 		ID:            "test_asset_001",
 		Name:          "Test Asset",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: "filehash123",
+		ContentSHA256: "filehash123",
 		ContentHash:   "contenthash123",
 		Source:        "artlist",
 		SourceID:      "clip-123",
@@ -517,7 +517,7 @@ func TestFinalizerKeepsOKWhenAssetIndexWriteFails(t *testing.T) {
 		ID:            "test_asset_002",
 		Name:          "Test Asset 2",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: "filehash456",
+		ContentSHA256: "filehash456",
 		ContentHash:   "contenthash456",
 		Status:        "processed",
 	}
@@ -588,7 +588,7 @@ func TestFinalize_DriveVerifyError_SurfaceError(t *testing.T) {
 		ID:            "test_verify_err_001",
 		Name:          "Drive link verify transport error",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: "hash_verify_err",
+		ContentSHA256: "hash_verify_err",
 		DriveLink:     "https://drive.google.com/file/d/abc123/view",
 		Status:        "processed",
 	}
@@ -656,7 +656,7 @@ const (
 // written is resolved through asset.ResolveContentAddress — the single owner of
 // "is this a 64-hex SHA-256?". A non-canonical digest (an MD5, an asset id, a
 // fabricated string) is REFUSED and the key stays honestly unknown: the previous
-// behaviour promoted rec.LegacyFileMD5 into content_hash, which let the
+// behaviour promoted rec.ContentSHA256 into content_hash, which let the
 // supersede gate compare a digest that is not the byte identity. That is why the
 // digests below are real 64-hex values, and why the last two cases assert a
 // 32-hex MD5 is never promoted.
@@ -686,7 +686,7 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:            "art-001",
 		Name:          "Boxing clip",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: metaLegacyMD5,
+		ContentSHA256: metaLegacyMD5,
 		ContentHash:   metaContentSHAv1,
 		Source:        "artlist",
 		MediaType:     "video",
@@ -713,8 +713,11 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		t.Errorf("metadata_json.content_hash = %v, want %q (Tier 1 supersede-gate fix)",
 			meta["content_hash"], metaContentSHAv1)
 	}
-	if meta["file_hash"] != metaLegacyMD5 {
-		t.Errorf("metadata_json.file_hash = %v, want %q (the compatibility bucket is preserved verbatim)", meta["file_hash"], metaLegacyMD5)
+	if _, ok := meta["file_hash"]; ok {
+		t.Errorf("metadata_json.file_hash = %v, want absent (the compatibility bucket is demolished — migration 281)", meta["file_hash"])
+	}
+	if _, ok := meta["legacy_file_md5"]; ok {
+		t.Errorf("metadata_json.legacy_file_md5 = %v, want absent (demolished wire key)", meta["legacy_file_md5"])
 	}
 
 	// Second finalize (republish): new hashes, content_hash MUST update
@@ -722,7 +725,7 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:            "art-001",
 		Name:          "Boxing clip republished",
 		LocalPath:     tmpFile,
-		LegacyFileMD5: metaLegacyMD5Republished,
+		ContentSHA256: metaLegacyMD5Republished,
 		ContentHash:   metaContentSHAv2,
 		Source:        "artlist",
 		MediaType:     "video",
@@ -747,8 +750,8 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		t.Errorf("metadata_json.content_hash after republish = %v, want %q (supersede gate would fire!)",
 			meta2["content_hash"], metaContentSHAv2)
 	}
-	if meta2["file_hash"] != metaLegacyMD5Republished {
-		t.Errorf("metadata_json.file_hash after republish = %v, want %q", meta2["file_hash"], metaLegacyMD5Republished)
+	if _, ok := meta2["file_hash"]; ok {
+		t.Errorf("metadata_json.file_hash after republish = %v, want absent (demolished bucket)", meta2["file_hash"])
 	}
 
 	// Migration window: an empty ContentHash whose LEGACY column already holds
@@ -758,7 +761,7 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:            "art-002",
 		Name:          "Legacy column carrying a SHA-256",
 		LocalPath:     newArtifact("clip3.mp4"),
-		LegacyFileMD5: metaLegacySHA,
+		ContentSHA256: metaLegacySHA,
 		Source:        "artlist",
 		MediaType:     "video",
 		Status:        "processed",
@@ -789,7 +792,7 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 		ID:            "art-003",
 		Name:          "Legacy MD5 must not become content_hash",
 		LocalPath:     newArtifact("clip4.mp4"),
-		LegacyFileMD5: metaLegacyMD5,
+		ContentSHA256: metaLegacyMD5,
 		ContentHash:   "ch-fabricated",
 		Source:        "artlist",
 		MediaType:     "video",
@@ -812,8 +815,12 @@ func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
 	if got, _ := meta4["content_hash"].(string); got != "" {
 		t.Errorf("metadata_json.content_hash = %q, want \"\" (unknown): an MD5 must never be promoted into the content address", got)
 	}
-	if meta4["file_hash"] != metaLegacyMD5 {
-		t.Errorf("metadata_json.file_hash = %v, want %q (the compatibility bucket stays readable for diagnostics)", meta4["file_hash"], metaLegacyMD5)
+	// The demolished bucket must not smuggle the MD5 back in under any key:
+	// neither the old alias nor the demolished name may appear.
+	for _, banned := range []string{"file_hash", "legacy_file_md5", "content_sha256"} {
+		if _, ok := meta4[banned]; ok {
+			t.Errorf("metadata_json.%s = %v, want absent (demolished bucket; an MD5 has no metadata home)", banned, meta4[banned])
+		}
 	}
 }
 

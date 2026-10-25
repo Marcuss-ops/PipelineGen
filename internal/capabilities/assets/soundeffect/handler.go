@@ -310,7 +310,7 @@ func (h *Handler) Generate(c *gin.Context) {
 	// supersede-gate dedup uses the ingest-time fingerprint (mirrors
 	// the contract pinned at
 	// internal/capabilities/assets/catalogsync/dispatcher_test.go::TestUpsertPreservingExisting_DispatcherPath).
-	clip.SetLegacyFileMD5(hashStr)
+	clip.SetContentHash(hashStr)
 
 	// PR 6 (June 2026, codex/qdrant-api-writers-fail-closed): the legacy
 	// `if h.clipsRepo != nil { Upsert }` path bypasses the outbox —

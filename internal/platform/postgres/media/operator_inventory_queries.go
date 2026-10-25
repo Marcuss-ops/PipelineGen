@@ -77,7 +77,7 @@ func operatorItemProjection() string {
     m.lifecycle_state,
     ` + operatorAssetStateProjectionSQL("m") + ` AS asset_state,
     m.index_state,
-    COALESCE(NULLIF(m.binary_sha256, ''), NULLIF(m.content_sha256, ''), m.legacy_file_md5) AS content_hash,
+    COALESCE(NULLIF(m.binary_sha256, ''), NULLIF(m.content_sha256, ''), m.content_sha256) AS content_hash,
     ` + operatorJSONText("m.metadata_json", "indexed_content_hash") + ` AS indexed_content_hash,
     ` + operatorJSONText("m.metadata_json", "embedding_model_version") + ` AS embedding_version,
     m.collection_version,
@@ -365,7 +365,7 @@ WHERE m.id = $1 AND m.lifecycle_state <> 'DELETED'`
 // shape), and the ordering keeps the primary location first for the Inspector.
 func (r *OperatorInventoryReader) listLocations(ctx context.Context, assetID string) ([]*asset.Location, error) {
 	const q = `SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url,
-	       mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at
+	       mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at
 	FROM asset_locations
 	WHERE asset_id = $1
 	ORDER BY is_primary DESC, location_kind`
@@ -384,7 +384,7 @@ func (r *OperatorInventoryReader) listLocations(ctx context.Context, assetID str
 		if err := rows.Scan(
 			&loc.ID, &loc.AssetID, &loc.LocationKind, &loc.URI, &loc.ExternalID,
 			&loc.AccessURL, &loc.DownloadURL, &loc.MimeType, &loc.FileSizeBytes,
-			&loc.LegacyFileMD5, &isPrimary, &createdAt, &updatedAt,
+			&loc.ContentSHA256, &isPrimary, &createdAt, &updatedAt,
 		); err != nil {
 			return nil, err
 		}

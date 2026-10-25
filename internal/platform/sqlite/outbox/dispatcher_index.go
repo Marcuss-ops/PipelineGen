@@ -37,7 +37,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	// still must be committed through the canonical AssetCommitter. Never
 	// bypass the committer with a direct clip-writer fallback.
 	if !clip.IsFolder() && contentHash == "" {
-		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set legacy_file_md5 before dispatching)", clip.ID)
+		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set content_sha256 before dispatching)", clip.ID)
 	}
 	// The dispatcher NEVER opens its own transaction for media: the canonical
 	// committer owns its engine-native transaction so media_assets and the
@@ -89,7 +89,7 @@ func buildPortableCommitRequest(clip *asset.Asset, contentHash string, emitIndex
 	if localPath := clip.LocalPath(); localPath != "" {
 		locations = append(locations, persistence.LocationCommit{
 			Kind: "local", Provider: "local", URI: localPath,
-			LegacyFileMD5: contentHash, IsPrimary: len(locations) == 0,
+			ContentSHA256: contentHash, IsPrimary: len(locations) == 0,
 		})
 	}
 	// Producer-declared taxonomy overrides are honoured so that a clip whose

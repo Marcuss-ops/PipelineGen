@@ -201,6 +201,10 @@ def grounded(raw, scene_id, start, end, text):
     return chunk[start:end].decode("utf-8", "replace") == text
 
 
+def grounded_query(scene_raw, text):
+    return bool(scene_raw) and bool(text) and text.encode("utf-8") in scene_raw
+
+
 def audit(manifest, scenes):
     """Return (hard_failures, observations, stats)."""
     hard = []
@@ -214,6 +218,11 @@ def audit(manifest, scenes):
         "queries": 0,
         "coverage_total": 0,
         "coverage_covered": 0,
+        "consolidation_candidates": 0,
+        "consolidation_search_jobs": 0,
+        "consolidation_queries": 0,
+        "consolidation_facts": 0,
+        "consolidation_covered": 0,
     }
     if manifest.get("schema_version") != "semantic_manifest.v2":
         hard.append("schema_version=%r" % manifest.get("schema_version"))
@@ -228,6 +237,7 @@ def audit(manifest, scenes):
     raw = scene_bytes(scenes)
     identity_ids = set()
     fact_ids = {}
+    group_ids = set()
     for scene_manifest in manifest["scenes"]:
         scene_id = scene_manifest["scene_id"]
         for identity in scene_manifest.get("identities") or []:
@@ -254,16 +264,21 @@ def audit(manifest, scenes):
                 hard.append("fact %s ungrounded evidence" % fact.get("id"))
         for group in scene_manifest.get("semantic_groups") or []:
             stats["groups"] += 1
+            group_ids.add(group.get("id"))
             for member in group.get("members") or []:
                 member_scene = member.get("scene_id") or scene_id
+                # Fact-backed groups carry a paraphrased label in `text`; the
+                # verbatim anchor is always `evidence`.
                 if not grounded(
                     raw,
                     member_scene,
                     member.get("start_byte"),
                     member.get("end_byte"),
-                    member.get("text"),
+                    member.get("evidence"),
                 ):
-                    hard.append("group %s member %r ungrounded" % (group.get("id"), member.get("text")))
+                    hard.append("group %s member %r ungrounded" % (group.get("id"), member.get("candidate_id")))
+                if group.get("group_type") not in {"step_sequence", "fact_comparison"} and member.get("text") != member.get("evidence"):
+                    hard.append("group %s member text is not verbatim evidence" % group.get("id"))
         for proposal in scene_manifest.get("visual_proposals") or []:
             stats["proposals"] += 1
             for suggestion in proposal.get("visual_query_suggestions") or []:
@@ -315,6 +330,109 @@ def audit(manifest, scenes):
             # no offsets for it, so containment is the exact check.
             if not query.get("text") or query["text"].encode("utf-8") not in raw.get(entry.get("scene_id"), b""):
                 hard.append("search rung ungrounded %r" % query.get("text"))
+    consolidation = manifest.get("visual_consolidation") or {}
+    if not consolidation:
+        hard.append("visual_consolidation missing")
+    else:
+        if consolidation.get("schema") != "visual_consolidation.v1":
+            hard.append("consolidation schema=%r" % consolidation.get("schema"))
+        raw_facts = sum(len(scene.get("entity_facts") or []) for scene in manifest["scenes"])
+        raw_proposals = sum(len(scene.get("visual_proposals") or []) for scene in manifest["scenes"])
+        raw_queries = sum(len(entry.get("queries") or []) for entry in feedback.get("entries") or [])
+        inventory = consolidation.get("inventory") or {}
+        if inventory.get("facts") != raw_facts:
+            hard.append("consolidation inventory facts=%r raw=%d" % (inventory.get("facts"), raw_facts))
+        if inventory.get("proposals") != raw_proposals:
+            hard.append("consolidation inventory proposals=%r raw=%d" % (inventory.get("proposals"), raw_proposals))
+        if inventory.get("queries") != raw_queries:
+            hard.append("consolidation inventory queries=%r raw=%d" % (inventory.get("queries"), raw_queries))
+        canonical = consolidation.get("facts") or []
+        canonical_ids = {fact.get("id") for fact in canonical}
+        candidates = consolidation.get("production_candidates") or []
+        candidate_by_id = {candidate.get("id"): candidate for candidate in candidates}
+        media_assets = set()
+        production_queries = 0
+        for candidate in candidates:
+            scene_id = candidate.get("scene_id")
+            scene_raw = raw.get(scene_id)
+            if scene_raw is None:
+                hard.append("consolidation candidate %s unknown scene" % candidate.get("id"))
+                continue
+            if not grounded(raw, scene_id, candidate.get("start_byte"), candidate.get("end_byte"), candidate.get("evidence")):
+                hard.append("consolidation candidate %s ungrounded evidence" % candidate.get("id"))
+            for entity_id in candidate.get("entity_ids") or []:
+                if entity_id not in identity_ids:
+                    hard.append("consolidation candidate %s unknown identity %s" % (candidate.get("id"), entity_id))
+            for group_id in candidate.get("group_ids") or []:
+                if group_id not in group_ids:
+                    hard.append("consolidation candidate %s unknown group %s" % (candidate.get("id"), group_id))
+            for fact_id in candidate.get("covered_fact_ids") or []:
+                if fact_id not in canonical_ids:
+                    hard.append("consolidation candidate %s unknown fact %s" % (candidate.get("id"), fact_id))
+            queries = candidate.get("queries") or []
+            production_queries += len(queries)
+            if candidate.get("requires_media") and not queries:
+                hard.append("consolidation media candidate %s has no query" % candidate.get("id"))
+            if not candidate.get("requires_media") and queries:
+                hard.append("consolidation non-media candidate %s carries queries" % candidate.get("id"))
+            if candidate.get("requires_media"):
+                media_assets.add(candidate.get("asset_key"))
+            for query in queries:
+                if not query.get("text") or not grounded_query(scene_raw, query.get("text")):
+                    hard.append("consolidation candidate %s ungrounded query" % candidate.get("id"))
+            for item in candidate.get("chart_items") or []:
+                if not grounded(raw, scene_id, item.get("start_byte"), item.get("end_byte"), item.get("text")):
+                    hard.append("consolidation candidate %s ungrounded chart item" % candidate.get("id"))
+        covered = 0
+        for fact in canonical:
+            if not fact.get("representation"):
+                if not (fact.get("uncovered_reason") or "").strip():
+                    hard.append("consolidation fact %s uncovered without reason" % fact.get("id"))
+                continue
+            covered += 1
+            representation = fact.get("representation") or {}
+            candidate = candidate_by_id.get(representation.get("candidate_id"))
+            if candidate is None:
+                hard.append("consolidation fact %s unknown representation" % fact.get("id"))
+                continue
+            if fact.get("id") not in (candidate.get("covered_fact_ids") or []):
+                hard.append("consolidation fact %s not declared by representation" % fact.get("id"))
+            grounded_fact = False
+            for scene_id in fact.get("scene_ids") or []:
+                if grounded(raw, scene_id, fact.get("evidence_start_byte"), fact.get("evidence_end_byte"), fact.get("evidence")):
+                    grounded_fact = True
+                    break
+            if not grounded_fact:
+                hard.append("consolidation fact %s ungrounded evidence" % fact.get("id"))
+        for reference in consolidation.get("reference_numbers") or []:
+            if not grounded(raw, reference.get("scene_id"), reference.get("start_byte"), reference.get("end_byte"), reference.get("surface")):
+                hard.append("consolidation reference %r ungrounded" % reference.get("surface"))
+        for link in consolidation.get("event_links") or []:
+            if not grounded(raw, link.get("scene_id"), link.get("start_byte"), link.get("end_byte"), link.get("evidence")):
+                hard.append("consolidation event link %s ungrounded" % link.get("id"))
+        for date in consolidation.get("dates") or []:
+            for span in date.get("spans") or []:
+                if not grounded(raw, span.get("scene_id"), span.get("start_byte"), span.get("end_byte"), span.get("surface")):
+                    hard.append("consolidation date span ungrounded")
+        metrics = consolidation.get("metrics") or {}
+        if metrics.get("production_candidates") != len(candidates):
+            hard.append("consolidation metrics candidate count mismatch")
+        if metrics.get("canonical_facts") != len(canonical):
+            hard.append("consolidation metrics fact count mismatch")
+        if metrics.get("covered_facts") != covered or metrics.get("uncovered_facts") != len(canonical) - covered:
+            hard.append("consolidation metrics coverage mismatch")
+        if metrics.get("production_queries") != production_queries:
+            hard.append("consolidation metrics query count mismatch")
+        if metrics.get("estimated_search_jobs") != len(media_assets):
+            hard.append("consolidation metrics search job count mismatch")
+        if metrics.get("raw_search_entries") != len(feedback.get("entries") or []):
+            hard.append("consolidation raw search entry count mismatch")
+        stats["consolidation_candidates"] = len(candidates)
+        stats["consolidation_search_jobs"] = len(media_assets)
+        stats["consolidation_queries"] = production_queries
+        stats["consolidation_facts"] = len(canonical)
+        stats["consolidation_covered"] = covered
+
     if stats["facts"] == 0:
         notes.append("no grounded fact")
     if not nodes:
@@ -513,6 +631,11 @@ def run(args):
         "years_missing": sum(len((result.get("recall") or {}).get("years_missing") or []) for result in results),
         "percents_checked": sum((result.get("recall") or {}).get("percents") or 0 for result in results),
         "percents_missing": sum(len((result.get("recall") or {}).get("percents_missing") or []) for result in results),
+        "consolidation_candidates": sum((result.get("stats") or {}).get("consolidation_candidates") or 0 for result in results),
+        "consolidation_search_jobs": sum((result.get("stats") or {}).get("consolidation_search_jobs") or 0 for result in results),
+        "consolidation_queries": sum((result.get("stats") or {}).get("consolidation_queries") or 0 for result in results),
+        "consolidation_facts": sum((result.get("stats") or {}).get("consolidation_facts") or 0 for result in results),
+        "consolidation_covered": sum((result.get("stats") or {}).get("consolidation_covered") or 0 for result in results),
         "seconds": round(time.time() - started, 1),
     }
     return results, totals
@@ -539,7 +662,11 @@ def write_report(results, totals, path, args):
         "| dated facts | %d |" % totals["dated_facts"],
         "| semantic groups | %d |" % totals["groups"],
         "| visual proposals | %d |" % totals["proposals"],
-        "| visual queries | %d |" % totals["queries"],
+        "| visual queries (raw) | %d |" % totals["queries"],
+        "| consolidation candidates | %d |" % totals["consolidation_candidates"],
+        "| consolidation search jobs | %d |" % totals["consolidation_search_jobs"],
+        "| consolidation queries | %d |" % totals["consolidation_queries"],
+        "| canonical facts covered | %d/%d |" % (totals["consolidation_covered"], totals["consolidation_facts"]),
         "| years recovered | %d/%d |" % (totals["years_checked"] - totals["years_missing"], totals["years_checked"]),
         "| percentages recovered | %d/%d |" % (totals["percents_checked"] - totals["percents_missing"], totals["percents_checked"]),
         "| wall clock | %ss |" % totals["seconds"],
@@ -551,8 +678,8 @@ def write_report(results, totals, path, args):
         "",
         "## Scripts",
         "",
-        "| script | lang | words | scenes | entities | facts | groups | years | % | verdict |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| script | lang | words | scenes | entities | facts | groups | prod | jobs | years | % | verdict |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for result in results:
         if "stats" not in result:
@@ -569,7 +696,7 @@ def write_report(results, totals, path, args):
             recall.get("percents", 0),
         )
         lines.append(
-            "| `%s` | %s | %d | %d | %d | %d | %d | %s | %s | %s |"
+            "| `%s` | %s | %d | %d | %d | %d | %d | %d | %d | %s | %s | %s |"
             % (
                 result.get("id"),
                 result.get("language"),
@@ -578,6 +705,8 @@ def write_report(results, totals, path, args):
                 result["stats"]["entities"],
                 result["stats"]["facts"],
                 result["stats"]["groups"],
+                result["stats"].get("consolidation_candidates") or 0,
+                result["stats"].get("consolidation_search_jobs") or 0,
                 years,
                 percent,
                 verdict,

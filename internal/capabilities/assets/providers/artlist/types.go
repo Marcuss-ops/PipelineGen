@@ -1,12 +1,14 @@
 package artlist
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/idempotency"
 )
 
@@ -144,7 +146,7 @@ type RunTagItem struct {
 	DriveFileID     string `json:"drive_file_id"`
 	DownloadLink    string `json:"download_link,omitempty"`
 	LocalPath       string `json:"local_path,omitempty"`
-	LegacyFileMD5   string `json:"legacy_file_md5,omitempty"`
+	ContentSHA256   string `json:"content_sha256,omitempty"`
 	contentIdentity runTagContentIdentity
 	Error           string `json:"error,omitempty"`
 	// Metadata carries provider provenance through processing into the
@@ -353,7 +355,7 @@ type ImportClipResponse struct {
 	DriveLink     string         `json:"drive_link,omitempty"`
 	DriveFileID   string         `json:"drive_file_id,omitempty"`
 	LocalPath     string         `json:"local_path,omitempty"`
-	LegacyFileMD5 string         `json:"legacy_file_md5,omitempty"`
+	ContentSHA256 string         `json:"content_sha256,omitempty"`
 	DownloadLink  string         `json:"download_link,omitempty"`
 	ClipPageURL   string         `json:"clip_page_url,omitempty"`
 	ThumbnailURL  string         `json:"thumbnail_url,omitempty"`
@@ -374,4 +376,20 @@ type SearchResponse struct {
 	Source string        `json:"source"`
 	Clips  []asset.Asset `json:"clips"`
 	Error  string        `json:"error,omitempty"`
+}
+
+// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
+// the demolished "legacy_file_md5" key of payloads written before the 281
+// contract migration. Only the canonical key is written back.
+func (r *RunTagItem) UnmarshalJSON(data []byte) error {
+	type wire RunTagItem
+	var v wire
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*r = RunTagItem(v)
+	if r.ContentSHA256 == "" {
+		r.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
+	}
+	return nil
 }

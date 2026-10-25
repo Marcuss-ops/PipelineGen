@@ -168,6 +168,14 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	var searcher imagesrouting.ImageSearcher
 	var err error
 	toCandidate := func(r imagesrouting.ImageSearchResult) scriptpkg.SegmentAssetCandidate {
+		// Preserve the provider that actually answered (duckduckgo,
+		// wikimedia_commons, searxng): the class-routing report and the durable
+		// plan cache invalidate per provider, so flattening every hit into the
+		// generic "internet_images" label would make both impossible.
+		provider := strings.TrimSpace(string(r.Provider))
+		if provider == "" {
+			provider = "internet_images"
+		}
 		assetID := strings.TrimSpace(r.AssetID)
 		if assetID == "" {
 			assetID = strings.TrimSpace(r.Name)
@@ -177,10 +185,10 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			assetID = sum
 		}
 		return scriptpkg.SegmentAssetCandidate{
-			AssetID: assetID, Provider: "internet_images", Query: strings.TrimSpace(req.Query),
+			AssetID: assetID, Provider: provider, Query: strings.TrimSpace(req.Query),
 			Entity: strings.TrimSpace(req.Entity), SourceURL: strings.TrimSpace(r.PreviewURL),
 			SourcePageURL: strings.TrimSpace(r.SourcePageURL), PreviewURL: strings.TrimSpace(r.PreviewURL),
-			DriveLink: strings.TrimSpace(r.DriveLink), LegacyFileMD5: strings.TrimSpace(r.LegacyFileMD5),
+			DriveLink: strings.TrimSpace(r.DriveLink), ContentSHA256: strings.TrimSpace(r.ContentSHA256),
 			Score: r.Score, Width: r.Width, Height: r.Height,
 			RightsStatus: retrievedImageRightsStatus(r.License), RightsBasis: retrievedImageRightsBasis(r.License, r.Author),
 		}
@@ -202,7 +210,7 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			rng.Shuffle(len(cached), func(i, j int) { cached[i], cached[j] = cached[j], cached[i] })
 			out := make([]scriptpkg.SegmentAssetCandidate, 0, len(cached))
 			for _, row := range cached {
-				if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.LegacyFileMD5) == "" {
+				if strings.TrimSpace(row.DriveLink) == "" || strings.TrimSpace(row.ContentSHA256) == "" {
 					continue
 				}
 				candidate := toCandidate(row)
@@ -218,19 +226,11 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 			}
 		}
 	}
-	// VidRush internet_images is explicitly backed by DuckDuckGo. Resolve it
-	// through the same routing/registry seam so provider selection remains
-	// centralized and candidate provenance is preserved downstream.
-	if explicit, ok := a.resolver.(interface {
-		ResolveProvider(string) (imagesrouting.ImageSearcher, error)
-	}); ok {
-		searcher, err = explicit.ResolveProvider("duckduckgo")
-	} else {
-		searcher, err = a.resolver.Resolve(imagesrouting.TerritoryRetrieved)
-	}
-	if err != nil {
-		return nil, err
-	}
+	// Query-class routing: an institution, place or object has a licensed
+	// encyclopedic asset, so Commons is asked first and a hit avoids the broad
+	// web provider entirely. A person is the opposite case: Commons returns
+	// nothing for proper names, so it is not asked at all. The empty class keeps
+	// the historical DDG-first cascade for every caller that does not route.
 	filter := imagesrouting.ImageFilter{
 		SubjectID: strings.TrimSpace(req.Query),
 		Limit:     req.Limit,
@@ -241,28 +241,69 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	// never consume that entire budget.
 	queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	results, err := searcher.Search(queryCtx, filter)
-	if err != nil {
-		a.log.Warn("VidRush internet image search failed", zap.String("query", req.Query), zap.Error(err))
-		return nil, err
+	class := strings.ToLower(strings.TrimSpace(req.QueryClass))
+	personRoute := class == "person"
+	editorialRoute := class == "organization" || class == "location" || class == "object"
+	var results []imagesrouting.ImageSearchResult
+	if editorialRoute {
+		if explicit, ok := a.resolver.(interface {
+			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+		}); ok {
+			if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
+				if commons, searchErr := commonsSearcher.Search(queryCtx, filter); searchErr == nil && len(commons) > 0 {
+					results = commons
+				}
+			}
+		}
+	}
+	if len(results) == 0 {
+		// VidRush internet_images is explicitly backed by DuckDuckGo. Resolve
+		// it through the same routing/registry seam so provider selection
+		// remains centralized and candidate provenance is preserved.
+		if explicit, ok := a.resolver.(interface {
+			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+		}); ok {
+			searcher, err = explicit.ResolveProvider("duckduckgo")
+		} else {
+			searcher, err = a.resolver.Resolve(imagesrouting.TerritoryRetrieved)
+		}
+		if err != nil {
+			return nil, err
+		}
+		var searchErr error
+		results, searchErr = searcher.Search(queryCtx, filter)
+		if searchErr != nil {
+			a.log.Warn("VidRush internet image search failed", zap.String("query", req.Query), zap.Error(searchErr))
+			// A provider refusal is not an empty result. The licensed fallbacks
+			// below (Commons, then SearXNG) are independent retrieval surfaces
+			// and must still run: returning here is what let a challenged
+			// DuckDuckGo IP starve every entity image in a run. Only a cancelled
+			// parent context makes the fallbacks meaningless.
+			if queryCtx.Err() != nil {
+				return nil, searchErr
+			}
+			results = nil
+		}
 	}
 	// Concise identity queries get an explicit-license Wikimedia fallback in
 	// addition to DuckDuckGo. DDG often returns hotlink-protected thumbnails;
 	// Commons supplies a durable, license-bearing original that can pass the
 	// same download/verify/finalize lifecycle. Long scene-text queries remain
 	// DDG-only and do not create needless external fan-out.
-	if strings.TrimSpace(req.Entity) != "" && len(strings.Fields(strings.TrimSpace(req.Query))) <= 4 {
-		if explicit, ok := a.resolver.(interface {
-			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
-		}); ok {
-			if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
-				commons, searchErr := commonsSearcher.Search(queryCtx, filter)
-				if searchErr != nil {
-					a.log.Warn("VidRush Wikimedia Commons fallback failed", zap.String("query", req.Query), zap.Error(searchErr))
-				} else if len(commons) > 0 && strings.EqualFold(strings.TrimSpace(commons[0].Provider), "wikimedia_commons") {
-					results = append(commons, results...)
-					if req.Limit > 0 && len(results) > req.Limit {
-						results = results[:req.Limit]
+	if !editorialRoute && strings.TrimSpace(req.Entity) != "" && len(strings.Fields(strings.TrimSpace(req.Query))) <= 4 {
+		if !personRoute {
+			if explicit, ok := a.resolver.(interface {
+				ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+			}); ok {
+				if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
+					commons, searchErr := commonsSearcher.Search(queryCtx, filter)
+					if searchErr != nil {
+						a.log.Warn("VidRush Wikimedia Commons fallback failed", zap.String("query", req.Query), zap.Error(searchErr))
+					} else if len(commons) > 0 && strings.EqualFold(strings.TrimSpace(commons[0].Provider), "wikimedia_commons") {
+						results = append(commons, results...)
+						if req.Limit > 0 && len(results) > req.Limit {
+							results = results[:req.Limit]
+						}
 					}
 				}
 			}
@@ -279,15 +320,17 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 		} else {
 			results = append(results, variantResults...)
 		}
-		if explicit, ok := a.resolver.(interface {
-			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
-		}); ok {
-			if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
-				commons, searchErr := commonsSearcher.Search(queryCtx, variantFilter)
-				if searchErr != nil {
-					a.log.Warn("VidRush Wikimedia Commons portrait search failed", zap.String("query", variant), zap.Error(searchErr))
-				} else {
-					results = append(commons, results...)
+		if !personRoute {
+			if explicit, ok := a.resolver.(interface {
+				ResolveProvider(string) (imagesrouting.ImageSearcher, error)
+			}); ok {
+				if commonsSearcher, commonsErr := explicit.ResolveProvider("wikimedia_commons"); commonsErr == nil {
+					commons, searchErr := commonsSearcher.Search(queryCtx, variantFilter)
+					if searchErr != nil {
+						a.log.Warn("VidRush Wikimedia Commons portrait search failed", zap.String("query", variant), zap.Error(searchErr))
+					} else {
+						results = append(commons, results...)
+					}
 				}
 			}
 		}
@@ -304,7 +347,9 @@ func (a *internetImageSearchAdapter) SearchImages(ctx context.Context, req adapt
 	// limited to genuinely long scene queries (or a query that is itself the
 	// entity), so a short "John Cena"-shaped search still hits the provider once.
 	longContextQuery := strings.EqualFold(strings.TrimSpace(req.Query), strings.TrimSpace(req.Entity)) || len(strings.Fields(strings.TrimSpace(req.Query))) > 4
-	if longContextQuery || len(results) == 0 {
+	// A routed editorial hit already carries a licensed asset from Commons;
+	// adding a broad-web provider would spend the budget the route just saved.
+	if len(results) == 0 || (!editorialRoute && longContextQuery) {
 		if explicit, ok := a.resolver.(interface {
 			ResolveProvider(string) (imagesrouting.ImageSearcher, error)
 		}); ok {

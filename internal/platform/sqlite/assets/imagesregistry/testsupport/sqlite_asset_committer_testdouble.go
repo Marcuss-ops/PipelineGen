@@ -398,7 +398,7 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
 			category, duration_ms, tags, tags_norm,
-			legacy_file_md5, drive_file_id, drive_link, download_link,
+			content_sha256, drive_file_id, drive_link, download_link,
 			local_path, folder_id, folder_path,
 			lifecycle_state, index_state, metadata_json,
 			search_text, source_version,
@@ -423,7 +423,7 @@ func (c *SQLiteAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence.T
 				category = excluded.category,			duration_ms = excluded.duration_ms,
 			tags = excluded.tags,
 			tags_norm = excluded.tags_norm,
-			legacy_file_md5 = excluded.legacy_file_md5,
+			content_sha256 = excluded.content_sha256,
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
 			download_link = excluded.download_link,

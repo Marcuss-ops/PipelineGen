@@ -52,7 +52,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")) {
 				group = vidRushCandidateIdentity(candidate)
 			} else if perSceneImageScope {
-				group = strings.ToLower(strings.TrimSpace(candidate.LegacyFileMD5))
+				group = strings.ToLower(strings.TrimSpace(candidate.ContentSHA256))
 				if group == "" {
 					group = strings.ToLower(strings.TrimSpace(candidate.AssetID))
 				}
@@ -77,7 +77,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: entity catalog lookup: %v", hydrationErr))
 			} else {
 				if catalogImage && !wasReady && readyVidRushCandidate(hydrated) &&
-					(strings.TrimSpace(hydrated.DriveLink) != "" || strings.TrimSpace(hydrated.LegacyFileMD5) != "") {
+					(strings.TrimSpace(hydrated.DriveLink) != "" || strings.TrimSpace(hydrated.ContentSHA256) != "") {
 					if catalogMetrics := entityImageCatalogMetricsFor(p.metrics); catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogDriveReuse()
 					}

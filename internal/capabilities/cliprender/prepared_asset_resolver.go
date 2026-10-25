@@ -35,7 +35,7 @@ func (r *PreparedAssetResolver) Materialize(ctx context.Context, ref AssetRef) (
 	if r == nil || r.Fallback == nil {
 		return nil, errors.New("prepared asset resolver is not wired")
 	}
-	expected := normalizeSHA256(ref.LegacyFileMD5)
+	expected := normalizeSHA256(ref.ContentSHA256)
 	if expected != "" {
 		path := filepath.Join(r.Root, expected, "source"+assetExtension(ref.MediaType))
 		if asset, ok := r.verifiedPreparedAsset(path, expected, ref); ok {

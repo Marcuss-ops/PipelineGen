@@ -27,7 +27,7 @@ type UploadClipResult struct {
 	Filename      string
 	DriveLink     string
 	DriveFileID   string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	Source        string
 	Category      string
 	Tags          []string

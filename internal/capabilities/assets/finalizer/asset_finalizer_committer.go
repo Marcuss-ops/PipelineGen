@@ -168,7 +168,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 			DownloadURL:   artifact.Location.DownloadLink,
 			MimeType:      artifact.MIMEType,
 			FileSizeBytes: artifact.SizeBytes,
-			LegacyFileMD5: artifact.SHA256,
+			ContentSHA256: artifact.SHA256,
 			IsPrimary:     true,
 		})
 	}

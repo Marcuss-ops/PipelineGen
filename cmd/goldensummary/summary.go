@@ -9,6 +9,11 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
+
+	// Register the canonical database/sql driver (AGENTS.md driver lock): the
+	// CLI opens render_attempt_analytics read-only via sql.Open("sqlite3", ...)
+	// and must not depend on a test-only import to have a registered driver.
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const summarySchema = "pipelinegen.golden-overlay-summary.v1"

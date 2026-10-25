@@ -38,7 +38,7 @@ func (c *PostgresAssetCommitter) CommitRenditionTx(
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at,
+			 mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at,
 			 created_at_ts, updated_at_ts)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11,
 		        NULLIF($10, '')::timestamptz, NULLIF($11, '')::timestamptz)
@@ -49,7 +49,7 @@ func (c *PostgresAssetCommitter) CommitRenditionTx(
 			download_url = excluded.download_url,
 			mime_type = excluded.mime_type,
 			file_size_bytes = excluded.file_size_bytes,
-			legacy_file_md5 = excluded.legacy_file_md5,
+			content_sha256 = excluded.content_sha256,
 			-- A rendition NEVER redefines which location is primary. The INSERT
 			-- hardcodes is_primary = 0, so copying excluded.is_primary here
 			-- DEMOTED the asset's existing primary locator whenever a rendition

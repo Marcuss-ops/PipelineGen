@@ -84,7 +84,7 @@ func (a *VoiceoverProjectionAdapter) UpsertVoiceoverProjectionTx(ctx context.Con
 		DriveFileID:   in.DriveFileID,
 		DriveLink:     in.DriveLink,
 		DownloadLink:  in.DownloadLink,
-		LegacyFileMD5: in.LegacyFileMD5,
+		ContentSHA256: in.ContentSHA256,
 		// PR-VO-TYPED-PRIMITIVES (July 2026): typed Language is
 		// converted to the raw string for the lifecycle package's
 		// wire shape (infrastructure layer stays un-typed per the

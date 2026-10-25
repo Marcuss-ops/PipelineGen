@@ -325,9 +325,9 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Con
 	preserveIdentity := strings.HasPrefix(mutation.Status, "delivery_failed:") && mutation.DriveFileID == "" && mutation.DriveLink == "" && mutation.DownloadLink == ""
 	var result sql.Result
 	if preserveIdentity {
-		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $1::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE source = 'image' AND legacy_file_md5 = $2`, mutation.Status, hash)
+		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $1::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE source = 'image' AND content_sha256 = $2`, mutation.Status, hash)
 	} else {
-		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET drive_file_id = $1, drive_link = $2, download_link = $3, metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $4::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE source = 'image' AND legacy_file_md5 = $5`, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, mutation.Status, hash)
+		result, err = tx.ExecContext(ctx, `UPDATE media_assets SET drive_file_id = $1, drive_link = $2, download_link = $3, metadata_json = (metadata_json::jsonb || jsonb_build_object('delivery_status', $4::text))::text, updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), updated_at_ts = now() WHERE source = 'image' AND content_sha256 = $5`, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, mutation.Status, hash)
 	}
 	if err != nil {
 		return fmt.Errorf("asset committer: update Drive delivery: %w", err)
@@ -341,11 +341,11 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByLegacyHash(ctx context.Con
 	}
 	if !preserveIdentity && mutation.DriveFileID != "" {
 		var assetID string
-		if err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE source = 'image' AND legacy_file_md5 = $1`, hash).Scan(&assetID); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM media_assets WHERE source = 'image' AND content_sha256 = $1`, hash).Scan(&assetID); err != nil {
 			return fmt.Errorf("asset committer: resolve Drive delivery asset: %w", err)
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at, created_at_ts, updated_at_ts) VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, $6, 0, $7, $8, NULLIF($7, '')::timestamptz, NULLIF($8, '')::timestamptz) ON CONFLICT (asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, legacy_file_md5=excluded.legacy_file_md5, updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, hash, now, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at, created_at_ts, updated_at_ts) VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, $6, 0, $7, $8, NULLIF($7, '')::timestamptz, NULLIF($8, '')::timestamptz) ON CONFLICT (asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, content_sha256=excluded.content_sha256, updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, hash, now, now); err != nil {
 			return fmt.Errorf("asset committer: upsert Drive location: %w", err)
 		}
 	}
@@ -384,7 +384,7 @@ func (c *PostgresAssetCommitter) UpdateDriveDeliveryByAssetID(ctx context.Contex
 	}
 	if !preserveIdentity && mutation.DriveFileID != "" {
 		now := time.Now().UTC().Format(time.RFC3339)
-		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at, created_at_ts, updated_at_ts) VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, '', 0, $6, $7, NULLIF($6, '')::timestamptz, NULLIF($7, '')::timestamptz) ON CONFLICT (asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, now, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO asset_locations (asset_id, location_kind, uri, external_id, web_view_link, download_url, mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at, created_at_ts, updated_at_ts) VALUES ($1, 'drive', $2, $3, $4, $5, '', 0, '', 0, $6, $7, NULLIF($6, '')::timestamptz, NULLIF($7, '')::timestamptz) ON CONFLICT (asset_id, location_kind) DO UPDATE SET uri=excluded.uri, external_id=excluded.external_id, web_view_link=excluded.web_view_link, download_url=excluded.download_url, updated_at=excluded.updated_at, updated_at_ts=excluded.updated_at_ts`, assetID, "drive://"+mutation.DriveFileID, mutation.DriveFileID, mutation.DriveLink, mutation.DownloadLink, now, now); err != nil {
 			return fmt.Errorf("asset committer: upsert Drive location: %w", err)
 		}
 	}

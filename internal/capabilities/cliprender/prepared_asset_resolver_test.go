@@ -35,7 +35,7 @@ func TestPreparedAssetResolver_HitAvoidsFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-1", MediaType: "video", LegacyFileMD5: sha})
+	got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-1", MediaType: "video", ContentSHA256: sha})
 	if err != nil || got.LocalPath != path || !got.FromCache || fallback.calls != 0 {
 		t.Fatalf("cache hit: got=%#v err=%v fallback_calls=%d", got, err, fallback.calls)
 	}
@@ -64,7 +64,7 @@ func TestPreparedAssetResolver_MemoizesVerificationAcrossRenders(t *testing.T) {
 	}
 	resolver.verifier = NewContentVerifier(counted.hash)
 	for i := 0; i < 3; i++ {
-		got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-4", MediaType: "video", LegacyFileMD5: sha})
+		got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-4", MediaType: "video", ContentSHA256: sha})
 		if err != nil || got.LocalPath != path || !got.FromCache || got.SHA256 != sha || got.SizeBytes != int64(len(content)) {
 			t.Fatalf("render %d: got=%#v err=%v", i, got, err)
 		}
@@ -83,7 +83,7 @@ func TestPreparedAssetResolver_MissFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-2", MediaType: "video", LegacyFileMD5: "unknown"})
+	got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-2", MediaType: "video", ContentSHA256: "unknown"})
 	if err != nil || got.LocalPath != "downloaded" || fallback.calls != 1 {
 		t.Fatalf("fallback: got=%#v err=%v fallback_calls=%d", got, err, fallback.calls)
 	}
@@ -104,7 +104,7 @@ func TestPreparedAssetResolver_CorruptCacheFallsBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-3", MediaType: "video", LegacyFileMD5: expected})
+	got, err := resolver.Materialize(context.Background(), AssetRef{AssetID: "asset-3", MediaType: "video", ContentSHA256: expected})
 	if err != nil || got.LocalPath != "fresh" || fallback.calls != 1 {
 		t.Fatalf("corrupt fallback: got=%#v err=%v fallback_calls=%d", got, err, fallback.calls)
 	}

@@ -18,7 +18,7 @@
 //   - sha256 of the downloaded file
 //   - Asset population: Name, Filename, Source, MediaType, Category,
 //     Group, Duration, Tags, SearchTerms, SearchText, LifecycleState,
-//     DriveFileID, DriveLink, DownloadLink, LocalPath, LegacyFileMD5,
+//     DriveFileID, DriveLink, DownloadLink, LocalPath, ContentSHA256,
 //     MetadataString (mime_type + free-form manifest.Metadata)
 //   - Dispatcher.EnqueueAndIndex(ctx, clip, hash) + waitForAssetIndexOutbox
 //
@@ -185,7 +185,7 @@ func RunIndexDriveClip(args []string) error {
 	clip.SetDriveLink("https://drive.google.com/file/d/" + driveID + "/view")
 	clip.SetDownloadLink("https://drive.google.com/uc?export=download&id=" + driveID)
 	clip.SetLocalPath(localPath)
-	clip.SetLegacyFileMD5(hash)
+	clip.SetContentHash(hash)
 	clip.SetMetadataString("mime_type", meta.MimeType)
 	// duration_source tags how the duration above was obtained:
 	//   "measured"           — ffprobe succeeded

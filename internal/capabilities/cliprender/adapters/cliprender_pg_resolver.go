@@ -95,7 +95,7 @@ func (r *ClipRenderPGAssetResolver) ResolveAsset(ctx context.Context, assetID st
 		MediaType:     rec.MediaType,
 		LocalPath:     rec.LocalPath,
 		DriveFileID:   rec.DriveFileID,
-		LegacyFileMD5: rec.SHA256,
+		ContentSHA256: rec.SHA256,
 		DurationMS:    rec.DurationMS,
 	}
 	r.log.Info("clip.render.asset_resolve.done",
@@ -105,7 +105,7 @@ func (r *ClipRenderPGAssetResolver) ResolveAsset(ctx context.Context, assetID st
 		zap.String("media_type", ref.MediaType),
 		zap.String("local_path", ref.LocalPath),
 		zap.String("drive_file_id", ref.DriveFileID),
-		zap.String("file_hash", ref.LegacyFileMD5),
+		zap.String("file_hash", ref.ContentSHA256),
 		zap.Int64("duration_ms", time.Since(t0).Milliseconds()),
 	)
 	return ref, nil

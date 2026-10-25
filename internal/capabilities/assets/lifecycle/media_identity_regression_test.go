@@ -326,7 +326,7 @@ func TestMediaIdentity_Case4_MatchingLegacyMD5NeverDeduplicatesWhenSHADiffers(t 
 	// asset-A carries the SAME legacy digest the caller hands us for asset-B.
 	// Pre-fix, that shared MD5 was the dedup key and asset-B was skipped.
 	store := &identityStoreStub{records: []*assetop.AssetRecord{{
-		ID: "asset-A", ContentHash: aSHA, LegacyFileMD5: regressionLegacyMD5,
+		ID: "asset-A", ContentHash: aSHA, ContentSHA256: regressionLegacyMD5,
 	}}}
 	finalizer := &identityFinalizerStub{}
 	publisher := &identityPublisherStub{}

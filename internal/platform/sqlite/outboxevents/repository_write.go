@@ -301,6 +301,38 @@ func (r *Repository) MarkDeferred(ctx context.Context, eventID int64, leaseID, r
 	return nil
 }
 
+// WakeDeferred makes already-deferred events due immediately instead of
+// letting them wait out their scheduling delay. Use this when a scheduling
+// precondition the deferral was waiting for has NOW happened: pulling the
+// row forward is safe (it is still pending, still claims-eligible), while
+// pushing anything later would widen the defer the wake exists to remove.
+//
+// Canonical consumer (28/10 ouverture): the job.completed handler wakes the
+// overlay.drive.publication.requested events the overlay Drive publisher
+// deferred while the parent script job was RUNNING — the deferral delay was
+// the 60 s wall added to every click-to-delivered item in the golden runs.
+//
+// Scoped strictly: ONLY rows of (event_type, aggregate_id) whose scheduling
+// state is 'pending' with a FUTURE next_attempt_at are touched. Rows that are
+// 'processing' carry a live lease, 'completed'/'dead_letter' are terminal and
+// past-due or null next_attempt_at rows are already claimable — the wake
+// must never claim ownership of any of them.
+func (r *Repository) WakeDeferred(ctx context.Context, eventType, aggregateID string) (int64, error) {
+	nowStr := timeutil.FormatRFC3339(time.Now())
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE outbox_events
+		SET next_attempt_at = ?, updated_at = ?
+		WHERE event_type = ? AND aggregate_id = ?
+		  AND status = 'pending'
+		  AND next_attempt_at IS NOT NULL AND next_attempt_at > ?
+	`, nowStr, nowStr, eventType, aggregateID, nowStr)
+	if err != nil {
+		return 0, fmt.Errorf("outboxevents.WakeDeferred(%s, %s): %w", eventType, aggregateID, err)
+	}
+	affected, _ := result.RowsAffected()
+	return affected, nil
+}
+
 // SupersedeStatus is the canonical outbox status for events
 // obsoleted by a newer version of the same aggregate. Distinct from
 // dead_letter so an operator dashboard distinguishes "the producer

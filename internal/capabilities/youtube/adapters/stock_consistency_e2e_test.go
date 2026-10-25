@@ -10,11 +10,11 @@ func TestYouTubeExtractionItemConsistencyAcrossCanonicalSurfaces(t *testing.T) {
 	item := youtubedto.ExtractItem{
 		ID: "asset-poland-1939", DriveFileID: "drive-poland-1939",
 		DriveLink: "https://drive.google.com/file/d/drive-poland-1939/view",
-		LocalPath: "/tmp/poland-1939.mp4", LegacyFileMD5: "md5-poland-1939",
+		LocalPath: "/tmp/poland-1939.mp4", ContentSHA256: "md5-poland-1939",
 		Status: "persisted", StartSeconds: 151, EndSeconds: 161, Duration: 10,
 	}
 
-	if item.ID == "" || item.DriveFileID == "" || item.DriveLink == "" || item.LocalPath == "" || item.LegacyFileMD5 == "" {
+	if item.ID == "" || item.DriveFileID == "" || item.DriveLink == "" || item.LocalPath == "" || item.ContentSHA256 == "" {
 		t.Fatal("canonical extraction item is missing a required Drive/asset identity")
 	}
 	if item.Status != "persisted" {
@@ -33,7 +33,7 @@ func TestYouTubeExtractionItemConsistencyAcrossCanonicalSurfaces(t *testing.T) {
 		t.Fatalf("invalid canonical response: %+v", response)
 	}
 	persisted := response.Items[0]
-	if persisted.ID != item.ID || persisted.DriveLink != item.DriveLink || persisted.LegacyFileMD5 != item.LegacyFileMD5 {
+	if persisted.ID != item.ID || persisted.DriveLink != item.DriveLink || persisted.ContentSHA256 != item.ContentSHA256 {
 		t.Fatalf("asset identity changed between extractor and persistence handoff: %+v", persisted)
 	}
 }

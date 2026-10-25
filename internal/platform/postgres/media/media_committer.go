@@ -480,8 +480,8 @@ func (c *PostgresMediaCommitter) discoveryCommitRequest(clip *asset.Asset, lifec
 	ref := firstNonEmpty(clip.MetadataSourceVideoID(), firstNonEmpty(clip.SourceURL, clip.ID))
 	// MEDIA-IDENTITY (media-identity programme, Sept 2026): the commit's
 	// ContentHash is the BYTE identity, so it is resolved from the canonical
-	// content surfaces — and from legacy_file_md5 only while that column still
-	// carries a SHA-256. The legacy_file_md5 metadata key is the compatibility
+	// content surfaces — and from content_sha256 only while that column still
+	// carries a SHA-256. The content_sha256 metadata key is the compatibility
 	// accessor and may hold an MD5; an MD5 must never become the content
 	// address of a media row (see asset.ContentAddress).
 	contentHash := clip.ContentAddress()

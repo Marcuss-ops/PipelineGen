@@ -261,28 +261,27 @@ func TestResolveContentAddressNeverPromotesALegacyMD5(t *testing.T) {
 	}
 }
 
-// TestAssetContentAddressPrecedence pins the surface order (content_sha256 →
-// binary_sha256 → content_hash → legacy_file_md5-if-canonical) and the
-// migration-window fallback.
+// TestAssetContentAddressPrecedence pins the surface order (binary_sha256 →
+// content_hash) after the legacy bucket demolition, and the rule that only a
+// canonical SHA-256 can ever be the resolution result.
 func TestAssetContentAddressPrecedence(t *testing.T) {
 	a := &asset.Asset{Metadata: asset.Metadata{}}
 	if got := a.ContentAddress(); got != "" {
 		t.Fatalf("zero-value ContentAddress = %q, want \"\"", got)
 	}
 
-	// The legacy column is a fallback ONLY while it already holds a SHA-256.
-	a.SetLegacyFileMD5(canonSHA)
+	// A compatibility value resolves ONLY while it already holds a SHA-256.
+	a.SetContentHash(canonSHA)
 	if got := a.ContentAddress(); got != canonSHA {
 		t.Errorf("legacy SHA-256 fallback = %q, want %q", got, canonSHA)
 	}
-	a.SetLegacyFileMD5(legacyMD5)
+	a.SetContentHash(legacyMD5)
 	if got := a.ContentAddress(); got != "" {
 		t.Errorf("legacy MD5 = %q, want \"\" (an MD5 is not a content address)", got)
 	}
 
-	// A dedicated content surface always wins, including over a legacy digest
+	// A dedicated content surface always wins, including over a second digest
 	// that happens to look like a SHA-256.
-	a.SetLegacyFileMD5(canonSHA)
 	a.SetContentHash(canonSHA)
 	other := strings.Repeat("a", 64)
 	a.SetMetadataString("binary_sha256", other)
@@ -293,7 +292,7 @@ func TestAssetContentAddressPrecedence(t *testing.T) {
 	// Uppercase is the same address, normalised (the persisted content columns
 	// are compared case-insensitively) — not a second identity.
 	b := &asset.Asset{}
-	b.SetMetadataString("content_sha256", strings.ToUpper(canonSHA))
+	b.SetMetadataString("content_hash", strings.ToUpper(canonSHA))
 	if got := b.ContentAddress(); got != canonSHA {
 		t.Errorf("uppercase address = %q, want the lower-cased canonical form %q", got, canonSHA)
 	}

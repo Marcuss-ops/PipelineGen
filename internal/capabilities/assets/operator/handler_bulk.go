@@ -226,8 +226,8 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 				message = "local file missing"
 			}
 		}
-		if a.GetMetadataString("legacy_file_md5") == "" {
-			message = "asset has no legacy_file_md5"
+		if a.GetMetadataString("content_hash") == "" {
+			message = "asset has no content_sha256"
 		}
 		return bulkChange{AssetID: id, Status: "success", Message: message, Before: before, After: after}
 
@@ -239,7 +239,7 @@ func (h *Handler) applyBulk(ctx context.Context, id string, action bulkAction, p
 // reindexAsset updates the asset row and enqueues an outbox reindex event.
 func (h *Handler) reindexAsset(ctx context.Context, a *asset.Asset, before, after map[string]any) bulkChange {
 	// MEDIA-IDENTITY (Sept 2026): the reindex commit carries the BYTE identity,
-	// resolved from the canonical content surfaces. LegacyFileMD5() is the
+	// resolved from the canonical content surfaces. ContentSHA256() is the
 	// compatibility accessor and may hold an MD5, which must never become the
 	// committed content address.
 	contentHash := a.ContentAddress()

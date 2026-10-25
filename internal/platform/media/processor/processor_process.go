@@ -529,10 +529,10 @@ func (p *Processor) buildRenditionOutput(ctx context.Context, kind detail.Rendit
 		p.log.Warn("rendition stat failed; size reported as zero",
 			zap.String("path", path), zap.String("kind", string(kind)), zap.Error(statErr))
 	}
-	out.LegacyFileMD5 = knownHash
-	if out.LegacyFileMD5 == "" {
+	out.ContentSHA256 = knownHash
+	if out.ContentSHA256 == "" {
 		if hash, _, err := digest.SHA256File(path); err == nil {
-			out.LegacyFileMD5 = hash
+			out.ContentSHA256 = hash
 		} else {
 			// A zero hash would silently weaken the Drive-side integrity check
 			// and the dedup/identity surface for this rendition.

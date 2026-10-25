@@ -5,7 +5,7 @@
 //
 // Why this is a gate and not a cleanup: the reported production failure was a
 // media record whose content address said one thing while its `local_path` (or
-// `drive_link`, or `legacy_file_md5`) said another. A record holding both has
+// `drive_link`, or `content_sha256`) said another. A record holding both has
 // two sources of truth for one fact, and it fails in the worst possible way —
 // every individual consumer looks correct, so the disagreement only becomes
 // visible much later, in a different process, as "the hash does not match the
@@ -16,12 +16,16 @@
 //	content address  → media_assets / asset_locations  (durable identity)
 //	location         → asset_locations                 (provider, file id, links)
 //	local path       → a runtime cache, valid for seconds in ONE process
-//	legacy_file_md5  → a read-only compatibility bucket, never a decision input
+//
+// The compatibility bucket this rule used to name ("legacy_file_md5", "never
+// a decision input") is DEMOLISHED — contract phase of migration 229/281,
+// 2026-10-24: the field, its column and its wire key are gone; valid values
+// were promoted into the canonical content surfaces.
 //
 // So the ban is exactly: within one struct declaration, a field whose name is a
 // canonical content address (AssetID, SHA256, ContentHash, …) may not coexist
 // with a location or producer-local value (LocalPath, DriveFileID, DriveLink,
-// DownloadLink, LegacyFileMD5) that is REACHABLE from outside the process.
+// DownloadLink) that is REACHABLE from outside the process.
 //
 // "Reachable" is decided by the struct tag, which is the only mechanism the
 // language gives for saying this: a location field explicitly typed `json:"-"`
@@ -105,16 +109,27 @@ const (
 // still bind a content address to a location. It is a RATCHET: it may only be
 // lowered, in the same change that removes the offending fields.
 //
-// Measured 2026-09-17 over internal/ and cmd/ (production .go files only):
-// 192 pairs across 92 files. Lower it as the demolition lands; never raise it
-// without an explicit, reviewed decision — raising it is the regression this
-// gate exists to catch.
+// History:
+//   - 2026-09-17: 192 pairs across 92 files (original measurement).
+//   - 2026-10-24: 265 pairs — EXPLICIT decision accompanying the legacy_file_md5
+//     demolition (contract phase, migration 281). The renamed field
+//     (LegacyFileMD5 → ContentSHA256) left the partner vocabulary and joined
+//     the content-address vocabulary, which UN-HID pairs that existed all
+//     along: 116 pairs now name the digest field as the content side that the
+//     lying name had classified as a location, while 43 old pairs disappeared
+//     with the demolished partner name (192 + 116 − 43 = 265). This is debt
+//     becoming visible, not new debt — but the honest count is the committed
+//     one, and from here it must only shrink. Named next demolition step:
+//     delete the twin ContentSHA256 fields of the dual-slot structs
+//     (artifacts.AssetIndexRecord/MediaRecord, assetop.AssetRecord,
+//     ingest.Result, lifecycle.FinalizeResult, detail.RenditionSet/
+//     SubtitleArtifact/TransformResult) — each deletion lowers this number.
 //
 // It is a variable rather than a constant so the hermetic test can set the
 // threshold it needs: a t.TempDir fixture always holds far fewer offenses than
 // the real tree, so the growth path is otherwise unreachable in a test. Wiring
 // it to a policy field later is a mechanical change.
-var mediaIdentityBaselineOffenses = 192
+var mediaIdentityBaselineOffenses = 265
 
 // mediaIdentityContentAddressFields are the field names that make a struct an
 // IDENTITY record: the canonical content-address vocabulary. Without one of
@@ -133,12 +148,15 @@ var mediaIdentityContentAddressFields = map[string]bool{
 // mediaIdentityLocationFields are the field names that must never share a
 // struct with a content address. See the package comment for why SourceURL and
 // StorageURL are deliberately absent.
+//
+// The demolished "LegacyFileMD5" partner name is gone from this set with the
+// field itself (contract phase, migration 281): the bucket it named no longer
+// exists and no field carries that name.
 var mediaIdentityLocationFields = map[string]bool{
-	"LocalPath":     true,
-	"DriveFileID":   true,
-	"DriveLink":     true,
-	"DownloadLink":  true,
-	"LegacyFileMD5": true,
+	"LocalPath":    true,
+	"DriveFileID":  true,
+	"DriveLink":    true,
+	"DownloadLink": true,
 }
 
 // mediaIdentityNoLocationExemptFiles are the canonical OWNERS of each fact,
@@ -250,7 +268,7 @@ func ScanMediaIdentityNoLocationFields(root string, _ *policy.Policy, r *report.
 				"must not also carry a location or producer-local field (godlike/06, one owner per fact). "+
 				"Keep the content address as the identity; move provider locations to asset_locations; keep a local "+
 				"path only as a short-lived runtime value from a materializer (type it `json:\"-\"` when it must cross "+
-				"a boundary); treat legacy_file_md5 as a read-only compatibility bucket no decision may read. "+
+				"a boundary); treat content_sha256 as a read-only compatibility bucket no decision may read. "+
 				"The excess is %d offense(s); this report also carries one residue warning per offense, naming every "+
 				"struct and field.",
 				mediaIdentityBaselineOffenses, len(offenses), len(offenses)-mediaIdentityBaselineOffenses),
@@ -308,7 +326,7 @@ func mediaIdentityOffenseFieldCounts(offenses []mediaIdentityOffense) string {
 		counts[offense.Location]++
 	}
 	parts := make([]string, 0, len(counts))
-	for _, field := range []string{"LocalPath", "DriveLink", "DriveFileID", "DownloadLink", "LegacyFileMD5"} {
+	for _, field := range []string{"LocalPath", "DriveLink", "DriveFileID", "DownloadLink", "ContentSHA256"} {
 		if n := counts[field]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%s=%d", field, n))
 		}

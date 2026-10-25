@@ -86,8 +86,8 @@ func TestCheckDuplicateSeparatesLogicalAndContentIdentity(t *testing.T) {
 		},
 		{
 			name:     "legacy digest does not establish identity",
-			record:   &AssetRecord{ID: "asset-a", LegacyFileMD5: "same-md5"},
-			query:    ExistingAssetQuery{ID: "asset-b", LegacyFileMD5: "same-md5"},
+			record:   &AssetRecord{ID: "asset-a", ContentSHA256: "same-md5"},
+			query:    ExistingAssetQuery{ID: "asset-b", ContentSHA256: "same-md5"},
 			wantKind: DuplicateNone,
 		},
 		{

@@ -99,6 +99,31 @@ type phraseImpactEnrichment struct {
 	highlights      []scriptpkg.SceneHighlight
 	editorial       *scriptpkg.EditorialManifest
 	timings         []PhraseImpactTimings
+	// Semantic planner views from the same worker batch. They are optional
+	// products: a worker without the consolidation projection leaves them nil.
+	consolidation  *SemanticVisualConsolidation
+	productionPlan *SemanticProductionPlan
+	searchFeedback *SemanticSearchFeedback
+}
+
+// adoptSemanticPlannerView records the consolidated view, its executable plan
+// and the planner-owned feedback. A planning error is logged and withholds the
+// plan instead of failing the run: the editorial products already computed from
+// the same batch stay valid.
+func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles map[string]*SemanticCandidateBundle) {
+	if len(bundles) == 0 {
+		return
+	}
+	consolidation, plan, feedback, err := PlanScriptProduction(bundles)
+	out.consolidation = consolidation
+	if err != nil {
+		if r.log != nil {
+			r.log.Warn("semantic production plan withheld", zap.Error(err))
+		}
+		return
+	}
+	out.productionPlan = plan
+	out.searchFeedback = feedback
 }
 
 func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript string, scenes []Scene, req GenerateRequest) (*phraseImpactEnrichment, error) {
@@ -137,6 +162,7 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		}
 		semanticBundles, impactRes, err := batch.AnalyzeSemanticEditorial(ctx, transcript, language, sceneInputs)
 		if err == nil {
+			r.adoptSemanticPlannerView(out, semanticBundles)
 			out.summary = impactRes.Summary
 			out.bullets = impactRes.BulletPoints
 			out.heavy = impactRes.HeavySentences
@@ -175,6 +201,7 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		if r.sceneSemanticAnalyzer != nil {
 			semanticBundles, semanticReady = r.analyzeSemanticBundles(ctx, language, sceneInputs)
 			if semanticReady {
+				r.adoptSemanticPlannerView(out, semanticBundles)
 				semanticBullets, semanticReady = semanticBulletSpans(transcript, sceneInputs, semanticBundles)
 			}
 		}

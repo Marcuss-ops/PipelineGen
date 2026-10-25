@@ -39,7 +39,7 @@ func setupWorkerAssetsTest(t *testing.T) (*AssetTransferServiceImpl, *assetindex
 		metadata_json TEXT NOT NULL DEFAULT '{}',
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL,
-		legacy_file_md5 TEXT NOT NULL DEFAULT ''
+		content_sha256 TEXT NOT NULL DEFAULT ''
 	);
 	`
 	db := database.NewTestDBWithSchema(t, schema)

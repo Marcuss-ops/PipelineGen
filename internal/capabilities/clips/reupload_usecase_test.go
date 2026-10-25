@@ -8,7 +8,7 @@
 //  1. DriveFileID   (= pubRes.FileID)
 //  2. DriveLink     (= pubRes.WebViewLink)
 //  3. DownloadLink  (= pubRes.DownloadLink, NO reconstruction per F2.7)
-//  4. LegacyFileMD5 (MD5)(= pubRes.MD5Checksum)
+//  4. ContentSHA256 (MD5)(= pubRes.MD5Checksum)
 //  5. publish_action (recorded on Asset.Metadata["publish_action"] = string(pubRes.Action))
 //
 // The Publisher-failure audit pin verifies that a publish error
@@ -230,9 +230,14 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 	if got := dispatchedClip.DownloadLink(); got != "https://drive.google.com/uc?id=drive-file-id-fake&export=download" {
 		t.Errorf("DownloadLink = %q, want canonical pubRes.DownloadLink (no reconstruction)", got)
 	}
-	// Audit pin #4: LegacyFileMD5 (MD5) = pubRes.MD5Checksum
-	if got := dispatchedClip.GetMetadataString("legacy_file_md5"); got != "md5-f29-fake" {
-		t.Errorf("LegacyFileMD5 (MD5) = %q, want %q (canonical pubRes.MD5Checksum)", got, "md5-f29-fake")
+	// Audit pin #4: the Drive MD5 receipt = pubRes.MD5Checksum, recorded in
+	// the provider-receipt slot (google_drive_md5) — never in the content
+	// hash slot (media-identity gate, godlike/06).
+	if got := dispatchedClip.DriveMD5(); got != "md5-f29-fake" {
+		t.Errorf("DriveMD5 receipt = %q, want %q (canonical pubRes.MD5Checksum)", got, "md5-f29-fake")
+	}
+	if got := dispatchedClip.GetMetadataString("content_hash"); got == "md5-f29-fake" {
+		t.Errorf("content_hash = %q: the MD5 receipt must never enter the content-address slot", got)
 	}
 	// Audit pin #5: publish_action recorded on Asset.Metadata
 	if got, ok := dispatchedClip.Metadata["publish_action"]; !ok {

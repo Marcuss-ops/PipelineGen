@@ -33,7 +33,7 @@ func TestProcessSegmentUseCase_Execute_FASE6_E2E_OrphanCleanup_RealFinalizer(t *
 			LocalPath:     "/tmp/vo/fase6-orphan.mp3",
 			CleanedPath:   "/tmp/vo/fase6-orphan-cleaned.mp3",
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "hash-fase6-001",
+			ContentSHA256: "hash-fase6-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase6-orphan"}

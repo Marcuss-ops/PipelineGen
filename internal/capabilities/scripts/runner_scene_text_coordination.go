@@ -96,8 +96,6 @@ func sceneTextPathReason(req GenerateRequest, streamed, topologyNeedsMaterializa
 		return "batch_source_text_verbatim"
 	case len(req.MediaPlan.Extraction.ImportantPhrases) > 0 && !importantPhraseHintOwnersAvailable(req):
 		return "batch_important_phrase_hints"
-	case req.Intro != nil || req.Outro != nil:
-		return "batch_intro_outro"
 	case topologyNeedsMaterialization:
 		return "batch_segment_topology"
 	case req.Source.Type == SourceClips && !SceneStreamingEligibility(req):

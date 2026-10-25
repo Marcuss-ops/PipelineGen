@@ -242,7 +242,7 @@ func (h *clipRenderDriveDeliveryHandler) deliverSidecar(ctx context.Context, req
 		LocalPath:     sidecar.LocalPath,
 		DriveFileID:   result.FileID,
 		DriveURL:      result.WebViewLink,
-		LegacyFileMD5: sidecar.SHA256,
+		ContentSHA256: sidecar.SHA256,
 		TextHash:      sidecar.TextHash,
 		StyleVersion:  sidecar.StyleVersion,
 		Status:        detail.SubtitleStatusReady,

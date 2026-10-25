@@ -74,7 +74,14 @@ func TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane(t *testing.T) {
 		t.Fatalf("the calm rotation changed for non-heavy phrases: %q vs %q",
 			calm["a light grounded phrase stays in the background"].MotionID, lightItem.MotionID)
 	}
-	if calm["the heaviest grounded phrase carries the main story"].MotionID == heavyItem.MotionID {
-		t.Fatalf("disabling the split did not restore the calm motion for the heavy phrase")
+	// Disabling the split must hand the phrase back to the calm long lane at
+	// its own ordinal. Comparing ids against the split motion was only a proxy:
+	// once the long pool carries several families the two rotations can land on
+	// the same id without the split leaking, so the expectation is computed
+	// from the calm selector itself.
+	calmSeed := input.PlanID + ":" + input.VideoID
+	wantCalm := selectLongPhraseMotionLimited(calmSeed, "run", 0, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
+	if got := calm["the heaviest grounded phrase carries the main story"].MotionID; got != wantCalm {
+		t.Fatalf("disabling the split did not restore the calm motion for the heavy phrase: got %q, want %q", got, wantCalm)
 	}
 }

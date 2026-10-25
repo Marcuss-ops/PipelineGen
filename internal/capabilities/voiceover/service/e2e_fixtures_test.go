@@ -183,7 +183,7 @@ func (a *e2eRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *persiste
 		DriveFileID:     rec.DriveFileID,
 		DriveLink:       rec.DriveLink,
 		DownloadLink:    rec.DownloadLink,
-		LegacyFileMD5:   rec.LegacyFileMD5,
+		ContentSHA256:   rec.ContentSHA256,
 		DurationSeconds: 0,
 		Status:          rec.Status,
 		Error:           rec.Error,
@@ -241,7 +241,7 @@ func (a *e2eRepoAdapter) PreReadByID(ctx context.Context, id string) (*persisten
 		DriveFileID:   r.DriveFileID,
 		DriveLink:     r.DriveLink,
 		DownloadLink:  r.DownloadLink,
-		LegacyFileMD5: r.LegacyFileMD5,
+		ContentSHA256: r.ContentSHA256,
 		Status:        r.Status,
 		Error:         r.Error,
 		Strategy:      r.Strategy,
@@ -266,7 +266,7 @@ func (s *e2eTTSProvider) Synthesize(_ context.Context, in TTSInput) (TTSOutput, 
 		LocalPath:     s.localPath,
 		CleanedPath:   "",
 		Voice:         in.Voice,
-		LegacyFileMD5: s.fileHash,
+		ContentSHA256: s.fileHash,
 	}, nil
 }
 

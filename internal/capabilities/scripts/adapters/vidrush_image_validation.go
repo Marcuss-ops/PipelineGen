@@ -306,7 +306,7 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 		return scriptports.VerifiedArtifact{}, ErrVidRushImageInvalid
 	}
 	sum := digest.SHA256Bytes(data)
-	candidate.LegacyFileMD5 = sum
+	candidate.ContentSHA256 = sum
 	candidate.MIMEType = mime
 	candidate.Width = config.Width
 	candidate.Height = config.Height
@@ -322,7 +322,7 @@ func VerifyVidRushImageBytes(candidate scriptpkg.SegmentAssetCandidate, data []b
 		Candidate:     candidate,
 		MIMEType:      mime,
 		SizeBytes:     int64(len(data)),
-		LegacyFileMD5: candidate.LegacyFileMD5,
+		ContentSHA256: candidate.ContentSHA256,
 		Width:         config.Width,
 		Height:        config.Height,
 		RightsStatus:  candidate.RightsStatus,

@@ -54,7 +54,7 @@ func seedOperatorFixture(t *testing.T, db *sql.DB) {
 		mustExecOperator(t, db, `
 			INSERT INTO media_assets
 				(id, name, filename, source, provider, media_type, lifecycle_state, index_state,
-				 legacy_file_md5, metadata_json, embedding_json, collection_version, created_at, updated_at)
+				 content_sha256, metadata_json, embedding_json, collection_version, created_at, updated_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'media_assets_v3',$12,$12)`,
 			a.id, a.name, a.filename, a.source, a.provider, a.mediaType, a.lifecycle, a.indexState,
 			a.contentHash, a.metadata, a.embedding, now)

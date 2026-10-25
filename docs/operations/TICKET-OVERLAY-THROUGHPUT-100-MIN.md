@@ -505,7 +505,7 @@ Per ogni run salvare almeno: `run_id`, input hash, revisione, configurazione e w
 - [x] Baseline iniziale del golden case registrata con almeno tre run confrontabili e conteggio degli overlay validi. **Mediana 27,2 overlay/min** (v8 29,5, v9 27,2, v10 25,4), 36–41 overlay validati per run, tutti con link Drive certificati.
 - [x] Almeno un job storico valutato: confronto documentato con fixture equivalente (golden derivato da `08_fonti_media` con differenze dichiarate; ricostruzione misurata della batch storica in «Evidenza storica»).
 - [x] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili. Scomposizione in «Baseline misurata e dove si perde tempo»; residuo dichiarato: `drive_publish` sincrono dei compositi final-job e micro-fasi non ancora proiettate.
-- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4, 23/10) — **gate NON raggiunto**, manca un fattore ~2,1. Le run v13/v14 (34,7–39,4/min) misurano la fix 1 e la prima configurazione 3 lane; v16/v18 sono outlier da finestra degradata. La strada preferita resta il taglio del servizio seriale per-item (2,75 s → ~1,3 s con le fix 1-2-4-5) ≈ **94 item/min con le sole 2 lane certificate**; vedi «Profilazione per-item del servizio render — 23 ottobre 2026». Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon, con certificazione 3 lane (`vramprobe`) solo dal 23/10 (v18 non confrontabile). **Gate ridefinito 23/10 (metrica per classe):** vedi «Metrica per classe e ridefinizione del gate» sotto: il numero `item/min` da solo non è più un accettabile report di gate, perché dipende dal mix di classi del piano materializzato.
+- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4, 23/10) → **78,9/min** (mediana v22–v24, 3 lane + fused batching, 24/10) → **74,4/min** (mediana v25–v27 post Fix 6) — **gate NON raggiunto, gap 1,27×**. Le run v13/v14 (34,7–39,4/min) misurano la fix 1 e la prima configurazione 3 lane; v16/v18 sono outlier da finestra degradata. La strada preferita resta il taglio del servizio seriale per-item (2,75 s → ~1,3 s con le fix 1-2-4-5) ≈ **94 item/min con le sole 2 lane certificate**; vedi «Profilazione per-item del servizio render — 23 ottobre 2026». Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon, con certificazione 3 lane (`vramprobe`) solo dal 23/10 (v18 non confrontabile). **Gate ridefinito 23/10 (metrica per classe):** vedi «Metrica per classe e ridefinizione del gate» sotto: il numero `item/min` da solo non è più un accettabile report di gate, perché dipende dal mix di classi del piano materializzato.
 
 ### Implementazione Go del batching — 24/10
 
@@ -769,6 +769,41 @@ render corrente attraversa ancora la memoria host per consegnare i frame a
 FFmpeg, mentre il percorso native FullGraph zero-copy non è ancora cablato a
 questo sampler editoriale.
 - [x] Report prima/dopo per ogni ottimizzazione, con condizioni di esecuzione comparabili e nessuna regressione nascosta da overlay falliti o non contati. Fatto per la prima ottimizzazione (2° daemon + pool 2): v8/v9/v10 (prima) vs v11 (dopo), 38/38 COMPLETED e 38 link Drive, vedi «Ottimizzazione: seconda lane di render». La baseline «prima» è registrata (v8/v9/v10); il report «dopo» si compila alla prima ottimizzazione applicata.
+
+### Streaming per-scena con fixed sections — 24/10 (taglio batch gate forcing)
+
+Taglio della voce P1 «batch gate forcing» dell'audit end-to-end: il gate
+`Intro/Outro != nil` in `prepareSceneTextGeneration` forzava il path batch anche
+quando il generator espone `SceneTextStreamer` — il golden stesso (3 clip intro)
+era batch per costruzione. Le fixed sections sono iniettate post-LLM
+(`applyFixedSections`, dopo il join `ready.wait`) e non toccano mai il testo
+generato, quindi non devono forzare il batch: il gate è rimosso e le scene
+generate scorrono in streaming con traduzione+TTS per-scena durante la
+generazione. Rimane attivo il fail-closed del preflight (`mediaPreflight` non
+cablato + fixed media ⇒ run fallisce prima della generazione).
+
+Restano volutamente attivi gli altri due gate citati dall'audit, perché
+proteggono invarianti reali verificate nel codice:
+
+- **phrase hints senza owner**: `ensureRequestedImportantPhrases` decide la
+  posizione di un hint mancante sull'intera narration (fallback cursor sulle
+  scene idonee); materializzarlo dopo il join muterebbe il testo DOPO il TTS
+  (audio/testo disallineati). Con owner univoci (`applyOwnedImportantPhraseHints`)
+  lo streaming resta attivo.
+- **topologia a budget di segmento** (`SegmentWords>0` senza `Segments`
+  espliciti): lo split deterministico del blocco opaco in scene body-safe
+  appartiene al materializer batch; anticiparlo cambierebbe il contenuto
+  generato.
+
+Prove: `TestSceneTextStreaming_FixedSectionsDoNotForceBatch` (con intro/outro il
+downstream per-scena parte mentre le scene successive sono ancora in
+generazione; il risultato porta `scene-intro`/`scene-outro` intorno al body
+intatto) e `TestSceneTextPathReasonNamesTheBlockingGate` (il reason di
+`scene_text_path` non nomina più `batch_intro_outro`; quando un run intro resta
+in batch nomina il vero gate). Risponde in parte alla «domanda aperta» di
+§ «Audit end-to-end del tempo perso — golden v6»: la dipendenza TTS←testo per
+scena è provata dal codice (commit per-scena `SceneTextReady`), ma le trace
+temporali per-scena live sul golden restano da misurare.
 
 ## Nota sul target
 
@@ -1060,13 +1095,326 @@ le attribuisce un guadagno non misurato.
 | Copia streaming dell'audio finale certificato | **Sì (unit)** | `TestCopyCertifiedAudioOverwritesDestinationAndPreservesBytes` PASS; hash sorgente già verificato a monte |
 | Nessuna query Artlist quando il provider è disabilitato | **Sì (unit)** | `TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief` asserisce `ArtlistQueries` vuoto |
 | Voiceover per-item local-only (niente upload Drive nel critical path) | **Sì (unit)** | test voiceover/service e jobs PASS; `timing.json` locale è la SSOT, nessun cleanup Drive senza file remoto |
-| Gate 100 overlay/min misurato su golden live, 3 run, stessa macchina | **No** | Richiede Chronon/RenderingGen, GPU e payload golden; non eseguibile in questo checkout. I numeri restano quelli v15–v18 (47–48/min) |
+| Streaming per-scena attivo anche con fixed sections intro/outro (batch gate forcing) | **Sì (unit)** | `TestSceneTextStreaming_FixedSectionsDoNotForceBatch` e `TestSceneTextPathReasonNamesTheBlockingGate` PASS; gate `batch_intro_outro` rimosso, hint/topologia restano per le invarianti dichiarate in «Streaming per-scena con fixed sections» |
+| Gate 100 overlay/min misurato su golden live, 3 run, stessa macchina | **Sì — misurato; target NON raggiunto** | 3 run baseline v22–v24 (mediana 78,9/min) + 3 run post Fix 6 v25–v27 (mediana 74,4/min), stessa macchina, payload immutabile. **Gate NON raggiunto: gap 1,27×.** Vedi «Verifica 24/10/2026 (sessione 3)» |
 | Parità pixel/audio su golden decodificato | **No** | Richiede decode dei golden e re-baseline dichiarato; i test unit non sostituiscono il confronto pixel |
-| P1 durata statica O(1) | **No** | Lavoro Chronon3d (C++), fuori dal working tree Go |
-| P2 motore residente, P4 batch-superjob, P5 manifest identity | **No** | C++ Chronon3d e contratto cross-team col final worker; ticket dedicati, nessuna implementazione in questo checkout |
+| P1 durata statica O(1) | **Misurato; gate NON raggiunto** | Slope `render_ms` vs durata +372 ms/s sulle card phrase (n=161): proiezione 30 s/3 s = 6,35× contro il gate 1,2×. Implementazione resta lavoro Chronon3d (C++); A/B dedicata con l'implementazione. Vedi «Verifica 24/10/2026 (sessione 3)» |
+| P2 motore residente, P4 batch-superjob | **No** | C++ Chronon3d; ticket dedicati, nessuna implementazione in questo checkout |
+| P5 manifest identity | **Parzialmente — lato Go fatto** | Modello manifest, retry idempotente per voce, percorso manifest+timeline dietro flag `VELOX_SCRIPTS_OVERLAY_MANIFEST_TIMELINE` (default off), harness A/B su fixture reali e contratto scritto con decisione Drive-per-item preservata: vedi «Stato implementazione» in `TICKET-MANIFEST-IDENTITY.md` e `OVERLAY-MANIFEST-CONTRACT.md`. Restano cross-team/operativi: parità A/B Chronon-vs-Chronon su golden live (blocco: il binario in esecuzione è anteriore al working tree; serve deploy esplicito + finestra di misura), rinegoziazione col final worker, demolizione del percorso per-item |
 
 **Conclusione onesta:** i criteri Go raggiungibili sono chiusi e pinned dai
 gate sopra. Il gate 100/min resta **aperto e non misurato** in questa sessione:
 nessuna modifica di questo working tree deve essere presentata come un guadagno
 di throughput finché non viene ricostruita, riavviata e misurata con il
 contratto di misura (§ «Contratto di misura»).
+
+---
+
+## Analisi 24/10 (sessione 2) — esito per-item di v16/v18, gate implementati e audit outbox
+
+### A.2 — Diagnosi data-driven delle finestre degradate v16 e v18: è un item mappa, non la coda
+
+Da `render_attempt_analytics` (media.db.sqlite, same DB usato dalle sezioni
+precedenti):
+
+| Run | Item ritardato | `queue_started` | Altri `queue_started` chiusi entro | Render dell'item |
+| --- | --- | --- | --- | --- |
+| v16 `1792755309260431873` | `item:029:static__milano__map__01` | 11:40:58 | 11:40:07 (52 s) | 2 027 ms |
+| v18 `c01f8ff7` (3 lane) | `item:025:static__qual__map__01` | 12:18:49,5 | 12:18:12,5 (63,7 s) | 2 822 ms |
+
+In entrambe le finestre "degradate" l'ultimo item è una **mappa statica** e il
+suo servizio di render è **piccolo** (2,0–2,8 s, nella media delle mappe).
+La congestione non è la coda né NVENC: è il **percorso di sottomissione**.
+Senza l'item mappa il wall corrisponde al ritmo di v15
+(v16: 52 s per 38 item → 43,8 item/min; v18: 63,7 s per 35 item). L'item mappa
+entra in coda 37–53 s dopo *tutti* gli altri: il wall dichiarato 105 s è
+52 s + attesa di sottomissione della mappa (v16) e 64 s + attesa mappa (v18).
+
+Inoltre nell'intervallo 11:40:07→11:40:58 le altre lane **restano inattive**
+in assenza di lavoro submittabile: il critical path è la preparazione in-lane
+dell'input mappa (plate/dyn-map prepare), non la lane render.
+
+Secondo esito, quantificato su per-item `render_ms`:
+
+| Classe | v16 (2 lane) media | v18 (3 lane) media | Inflazione |
+| --- | --- | --- | --- |
+| image/entity | 3 357 ms | 5 307 ms | +58% |
+| phrase | 2 112 ms | 3 943 ms | +87% |
+| mappa | 2 027 ms | 2 800 ms | +38% |
+
+Con 3 sessioni NVENC simultanee il servizio per item sale: la terza lane
+**non aggiunge ~50% di throughput ma ~30–35% effettivo** in v18. Conseguenza
+operativa: (a) la strada "3 lane" da sola non chiude il gate; (b) le
+interventi che abbassano il servizio (fix 2/4/5 e sessione persistente
+P4) restano l'unica leva strutturale; (c) le mappe vanno pre-materializzate
+fuori dal percorso di sottomissione (stessa direzione di P3, ma sul *prepare*,
+non solo sul decode).
+
+### C.7 — verificato già implementato nel working tree
+
+`compileAudioOverlayPlan` costruisce il piano timing-frozen PRIMA del render
+audio e `audioCompile` avvia il ramo overlay (`OnPlanReady`) su snapshot
+detachato mentre l'encode audio prosegue in un sibling misurato indipendente
+(`runner_phase_overlay_plan.go`, `runner_phase_audio.go`). La barriera
+audio→plan già tagliata: nessun nuovo codice necessario; resta solo la
+misura live.
+
+### C.8 — implementato: gate "skip audio_publish overlay-only"
+
+Nuovo predicate `publishFinalAudioNeeded(req, r)` in
+`runner_phase_audio_finalize.go` e chiamata nel percorso `audioCompile` in
+`runner_phase_overlay_plan.go`: se la run non ha né final_job né documenti
+attivi (predicate speculare a `documentSkipped` di `runDocumentPhase`),
+la pubblicazione Drive del master audio (~15,5 s di wall misurato in golden)
+viene saltata: nessun consumatore legge l'm4a. Test di pinning aggiunti:
+`runner_phase_audio_publish_gate_test.go` (5 casi: overlay-only skip,
+final-job, docs attivi, docs senza publisher, equivalence table con
+documentSkipped). Gate eseguiti: `go build ./...` PASS, `go vet` PASS,
+`go test -run 'TestOverlayRender|TestAudio|TestPublishFinalAudio|TestFinalJob'`
+PASS.
+
+### C.9 — chi consuma i link Drive per item + serializzazione outbox
+
+Consumatori reali del master audio pubblicato: (1) il payload `final_job`
+(`final_job_payload.go:383` e `buildRemoteJobPayload`) e (2) il catalogo
+documenti (`runner_phase_document.go`, `DocumentRenderOptions.FinalAudio`).
+Conclusione: C.8 è corretto solo con il gate a doppio consumatore;
+nessun altro path legge l'asset.
+
+Serializzazione reale (dati `outbox_events` 22/10, eventi
+`overlay.drive.publication.requested.v1`):
+
+- `attempt_count` 2–4 su quasi tutti gli eventi: ogni evento paga **un defer
+  di 60 s** (`MarkDeferred`, parent non terminale) + 2,4–3,0 s di upload reale.
+  Il wall "click-to-delivered" per run è quindi **dominato dal defer da 60 s**,
+  non dall'upload: il ticket prescriveva la misurazione end-to-end, la misura
+  identifica ora il defer come costo principale.
+- Completamenti a cluster di 4 entro 1–2 s (workers=4 from config): i 4
+  worker outbox **concorrono correttamente**; la serializzazione "1 upload per
+  volta" che i dati v6 sembravano mostrare non è confermata nella spanna 22/10.
+- Proposta (da ticket dedicato, non implementata qui): rimuovere il defer
+  post-retry enqueendo l'evento **dopo il commit del result** (il publisher
+  già conosce `ResultJobID`), oppure accorpare la pubblicazione nella stessa
+  transazione di chiusura del parent. Contract invariato: eventi restano
+  idempotenti per `event_key`.
+
+#### Implementazione della wake-on-commit (28/10) — defer 60 s eliminato
+
+La proposta sopra è implementata con una via diversa ma equivalente nel
+risultato: l'intento resta **enqueuato prima del commit** (durable, nessuna
+perdita nel crash mid-run) e viene **svegliato al commit** invece di aspettare
+il proprio defer:
+
+- `outboxevents.Repository.WakeDeferred` (`repository_write.go`): UPDATE
+  strettamente scoped su `(event_type, aggregate_id)` con `status='pending'`
+  e `next_attempt_at` FUTURO → `next_attempt_at = now`. Righe `'processing'`
+  (lease viva), `'completed'`/`'dead_letter'` (terminali) e past-due NON sono
+  toccate: la wake non sposta mai un evento avanti nel tempo e non allarga
+  nessun defer.
+- `overlayDrivePublicationWake` (`wiring/overlay_drive_outbox.go`): È la
+  metà "wake" dell'handler job.completed (`build_outbox_handlers.go`,
+  `registerPerformanceProjectionHandler` riceve l'`outboxEventsRepo` del
+  piano media). Il registry outbox tiene UN solo handler per event type, quindi
+  la wake vive dentro l'adapter `jobCompletedPerformanceAdapter`: al flip
+  terminale del parent le pubblicazioni deferred diventano immediate e la
+  pool le reclama al poll successivo (500 ms default) invece di attendere i
+  secondi di defer residui (60 s per batch nella spanna 22/10).
+- Fail-closed corretto: un errore di wake PROPAGA l'errore handler, così la
+  pool ritenta l'evento `job.completed` stesso (idempotente per costruzione:
+  la wake è un UPDATE, il rilancio risveglia le stesse righe).
+- Limiti della scope function: matcha solo `aggregate_id = jobID`. Eventi
+  legacy (15/10) con `aggregate_id` composite plan-based NON matchano e
+  mantengono il loro retry autonomo a 1 minuto — comportamento invariato,
+  retrocompatibile.
+- Test (tutto PASS, `wiring/overlay_drive_wake_test.go`): il ciclo di vita reale
+  Enqueue → ClaimNext → MarkDeferred(+60 s) → wake → `next_attempt_at` riportato
+  a "due now"; il claim è possibile al prossimo poll (idempotenza ×3); scope fences:
+  righe con lease viva o di un altro aggregate o past-due restano invariate.
+- Verifica che i compositi final-job NON debbano passare dalla wake (audit
+  28/10): il ramo sincrono del publisher durable
+  (`overlay_drive_outbox.go:43`, `spec.RequireDriveBeforeReturn ||
+  ":final-composite:"`) pubblica e MUTA l'artifact in-place con
+  l'identità Drive (`renderinggen/overlay_artifact_publisher.go:219-221`),
+  identità che l'immesso del final_job consuma PRIMA che il job parent diventi
+  terminale. Svegliare quel ramo sarebbe una inversione di dipendenza: la wake
+  scatta SOLO al commit terminale, che avviene DOPO il master render che quel
+  payload avvia. Inoltre la wake esiste per rimuovere il MarkDeferred da 60 s —
+  costo che nel ramo sincrono NON esiste (nessun evento outbox, nessuna claim
+  poll). Il non-flusso è quindi corretto, non un gap aperto.
+- Nota di allineamento: il marcatore `":final-composite:"` nel gate di wiring
+  è attualmente IRRAGGIUNGIBILE — nessun produttore costruisce un PlanID/jobID
+  con quel suffisso (il solo altro occorrente in Go è il contratto lato
+  lane GPU, `RenderingGen/renderinggen/internal/processor/gpu_policy.go`,
+  dove è pure un consumatore). Il selettore REALE del ramo sincrono è
+  `spec.RequireDriveBeforeReturn`, impostato per i piani final-job in
+  `runner_phase_overlay_render.go:165`; la riga PlanID resta come difesa
+  passiva. Documenti (righe 49/195/490 di questo ticket) devono leggere
+  "percorso sincrono = `RequireDriveBeforeReturn`".
+- Gate: `go build ./...` PASS, `go vet` PASS, `gofmt` pulito, suite complete
+  `wiring` / `outboxevents` / `jobs` / `asset` PASS.
+- Limiti dichiarati: la wake NON cambia né quando l'evento nasce né il suo
+  payload — un crash a metà run non perde l'intento, che resta pending e viene
+  svegliato solo al commit terminale del parent. La misura live su golden
+  richiede il rerun col contratto standard (stesso payload, mediana ×3).
+
+### A.1 — spread renderer least-loaded implementato (RenderingGen)
+
+`renderinggen/internal/chronon/socket_spread.go`: dispatch da round-robin
+cieco a **least-loaded** con claim CAS (lock-free); il cursore round-robin è
+stato tenuto come tie-break del piano idle (fairness invariata, test
+`TestSpreadAcrossLanesRoundRobinsInOrder` invariato e PASS). Motivazione:
+con tempi eterogenei (mappa decine di secondi, frase ~2 s), la rotazione
+cieca può parcheggiare due render lunghi sulla stessa lane mentre un'altra
+sta ferma — la dinamica delle finestre v16/v18. Test nuovo:
+`TestSpreadAvoidsBusyLanes` (lane occupata mai doppio-assegnata), 
+`TestSpreadEvenWhenIdle` (fairness). Nota onesta: il transport non ha un campo
+"classe" in `RenderRequest`, quindi il dispatch class-aware (mappa mai
+consecutiva sulla stessa lane col pool 2) NON è implementabile qui; resta da
+collegare a monte (nel worker che compone la richiesta) se la misura lo
+richiede. Gate: `go build ./...` PASS, `go test ./internal/chronon/` PASS.
+
+### Cosa NON fa questa sezione
+
+Nessuna delle modifiche sopra è misurata live su golden. I numeri restano:
+2 lane mediana 47–48 item/min (v15/v17); la previsione con fix working tree
+(88–100/min a 3 lane) e il superjob P4 restano proiezioni fino al rerun.
+
+---
+
+## Verifica 24/10/2026 (sessione 3) — run v25–v27, Fix 6 misurato, gate P1/P2/P4 quantificati
+
+### Run golden dopo Fix 6 (3 run, stessa macchina, build con Fix 6 deployata)
+
+| Run | Item/min | Finestra | Item | Servizio non-fused avg |
+| --- | ---: | ---: | ---: | ---: |
+| v25 | 74,4 | 60,5 s | 75 | 2 378 ms |
+| v26 | 77,9 | 55,5 s | 72 | 1 985 ms |
+| v27 | 68,6 | 66,5 s | 76 | 2 757 ms |
+
+**Mediana dopo Fix 6: 74,4 item/min** contro la baseline v22–v24 (mediana
+78,9, range 74,6–86,2): nessun guadagno di finestra attribuibile (le run
+girano su macchina con carico concorrente, condizione già dichiarata nelle
+run v20–v24). L'asse proprio del Fix 6 migliora invece chiaramente,
+misurato sugli item immagine (dove agisce il downscale display-bound):
+
+| Metrica (media per item immagine) | Baseline v22–v24 | Dopo Fix 6 v25–v27 |
+| --- | ---: | ---: |
+| `chronon_job_gpu_gpu_upload_bytes` | 465 MB | 237 MB (−49%) |
+| `prepare_image_decode_ms` (sidecar) | 411 ms | 169 ms (−59%) |
+
+**`prepare_image_upload_ms` è `null` in tutti i sidecar (mai misurato):** il
+tempo di upload immagine NON è strumentato — dichiarato. I proxy misurabili
+sono `chronon_job_gpu_gpu_upload_bytes`/`upload_count` (byte, non ms).
+Campioni piccoli (4–7 item immagine per run): il confronto è per direzione e
+ordine di grandezza, non un A/B stretto.
+
+### Stato binari di deploy (24/10 sessione 3) — job sempre sull'ultimo binario
+
+Contratto «commit → build → deploy = stesso SHA» verificato con gli strumenti
+canonici (`scripts/deploy/pipelinegen_deploy.sh` + `pipelinegen_deploy_status.sh`):
+
+| Componente | Build in esecuzione | Identità verificata |
+| --- | --- | --- |
+| pipelinegen.service | rebuildata e deployata più volte nella sessione (ultimi SHA `ddb0694d…`, `9c58651c…`) | gate `identity`: *running IS the built binary* (sha `/proc/<MainPID>/exe` = binario installato) |
+| renderinggen-worker | `make native-build` da sorgente corrente, installata 16:44, worker riavviato | sha `/proc/<pid>/exe` = `/usr/local/bin/renderinggen` (`fa4c79ba…`) |
+| chronon3d{,-b,-c} | `linux-video-release` ricostruito: ninja `no work to do` oltre gli edge già fatti → binario 15:11 è l'uscita più recente del build tree | daemon attivi sul binario di release corrente |
+
+Nota: il working tree è condiviso con altre sessioni attive (SHA che cambiano
+tra un deploy e l'ogni deploy ridefinisce "ultimo" come "albero corrente al
+momento del build" e lo prova con l'identity gate).
+
+### Blocco esterno (24/10 sessione 3): renderer mappe in refactor concorrente
+
+Le run golden di conferma sui binari nuovi (`deploy_golden_chain.sh`) sono
+**bloccate da un difetto nel toolchain mappe** in pieno sviluppo da un'altra
+sessione (file toccati mentre le run giravano):
+
+- Tentativo 1 (`v28-chain`): `render_dynamic_map_overlay.py` → `UnboundLocalError`
+  su `cv2` (validazione OpenCL inserita prima del blocco `import cv2` lazy).
+  Riparato (import locale nel blocco); il tool arriva ora al render.
+- Tentativi 2-3 (`v28-chain2`, `v28-chain3`): `RuntimeError: OpenCL map sample
+  has no prepared plate at zoom 9` da `Chronon3d/tools/cartography/fast_plate_sampler.py`
+  (`resize_level`/`sample_opencl`) — copertura piastre vs crop della camera
+  (caso per-anchor al zoom di blend), nonostante `plate_margin_factor` fosse
+  già stato alzato a 3.0 dalla sessione concorrente (17:17) e nonostante il
+  tool segnali «prepared zooms 5..18». Anche il test della sessione concorrente
+  (`test_fast_plate_sampler_prefetch.py`) non passa nell'ambiente di servizio.
+- Invariante storica: lo stesso item `static__pavia__map__01` renderizzava
+  correttamente alle 15:28–15:51 (v25/v26/v27): la regressione è nelle
+  modifiche non committate successive a quell'orario.
+
+**Decisione richiesta prima di proseguire sulle run** (il fix tocca le scelte
+di design del refactor in corso: copertura piastre per-anchor, clamp del crop,
+parità pixel certificata): vedere «Decisione attesa» sotto. Le run di conferma
+v28+ restano aperte finché il render mappa non è di nuovo affidabile.
+
+### Incidente run: SyntaxError nel renderer mappe (fixata)
+
+Il primo tentativo di v27 è abortito prima del render: `render_dynamic_map_overlay.py`
+(ChrononTemplate) aveva due statement fusi in una riga (SyntaxError alla linea
+di `frame_workers()`/`encode_with_pool`), che uccideva ogni render di mappa
+dinamica. Riparato (righe separate) e verificato `python3 -m py_compile` su
+tutti i tool mappa; la run ripetuta (v27) è SUCCEEDED. Log del tentativo
+abortito conservato in `results/overlay-only-v27-abort-map-syntax/`.
+
+### Gate P1 (durata statica O(1)) — misurato dai sidecar per-item v22–v27
+
+Gate: *card 30 s ≤ 1,2× la card 3 s*. Il piano golden non contiene card
+completamente statiche (72/72 item hanno `motion_id`), quindi la A/B diretta
+3 s vs 30 s non è riproducibile dal mix golden né dal path certificato
+`/api/script/generate` (`animation_counts` sono tetti, non quote). Le card
+animate hanno però reveal breve + hold (`template_reuses = frames − 1`): lo
+slope `render_ms` vs durata misura proprio il costo lineare che P1 deve
+eliminare. Fit per classe (item singoli, durate osservate 2,4–13,3 s):
+
+| Classe | Fit | Proiezione 3 s → 30 s | Ratio | Gate |
+| --- | --- | --- | ---: | --- |
+| phrase (n=161) | 762 + 371,7·dur ms | 1 877 → 11 913 ms | **6,35×** | **NON raggiunto** |
+| entity_image (n=30) | fit non affidabile (intercetta negativa, range stretto) | — | — | NON raggiunto |
+
+Il costo cresce linearmente con la durata (+372 ms per secondo di card):
+proiezione 6,35× contro il gate 1,2×. La A/B dedicata con card statiche vere
+va eseguita con l'implementazione P1 (harness deterministica lato Chronon,
+3 s vs 30 s, `render_attempt_analytics.render_ms`).
+
+### Gate P2 (overhead fisso per-item) — misurato dai sidecar deep v22–v27
+
+Gate: *startup + prepare non-asset + encoder open/close ≤ 100 ms*. Misurato
+su `startup_breakdown`/`prepare_breakdown`/`encode_close_ms` dei sidecar
+content-addressed (item singoli):
+
+| Run | n | Overhead fisso/item | di cui startup | enc_open (in startup) | enc_close |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| v22 | 33 | 603 ms | 322 ms | 239 ms | 217 ms |
+| v23 | 28 | 372 ms | 220 ms | 128 ms | 170 ms |
+| v24 | 36 | 420 ms | 210 ms | 133 ms | 186 ms |
+| v25 | 34 | 560 ms | 312 ms | 195 ms | 196 ms |
+| v26 | 38 | 429 ms | 196 ms | 123 ms | 183 ms |
+| v27 | 35 | 460 ms | 205 ms | 128 ms | 208 ms |
+
+**Media ~465 ms/item contro il gate 100 ms → NON raggiunto (4,6×).** I
+campioni con `prepare_non_asset` negativo derivano da sovrapposizione delle
+sotto-fasi (`prepare_render_ms` include `prepare_font_load_ms`); il totale
+fisso resta robusto. È esattamente il target di P2 (sessione encoder
+cross-item + startup residente).
+
+### Gate P4 (batch-superjob) — misurato dai sidecar batch v22–v27
+
+- **Gate B (servizio ≤ 1,1 s/item su piano golden):** 1 603–1 826 ms/item
+  fused (per-item sulle righe batch) → **NON raggiunto** (1,5–1,7×).
+- **Gate A (batch-10/10 ≤ 40% del singolo):** il golden non materializza
+  batch da 10 (fused max 2–5 item/batch) → **NON misurabile sul mix golden**.
+  Proxy misurato: servizio per-item fused = 0,66–0,92× il singolo (risparmio
+  8–34%), lontano dal target ≤ 0,40×. La A/B batch-10 richiede il superjob P4.
+
+### Decisione attesa: P2 (overlay-layer / motore residente) vs squeeze residuo
+
+Dati misurati oggi: gap 100/min = 1,27× sulla finestra; overhead fisso
+465 ms/item (P2 lo eliminerebbe quasi per intero); slope durata +372 ms/s
+(P1); fused risparmia solo 8–34% (P4 darebbe il salto strutturale). Le leve
+micro ancora disponibili senza cambio di paradigma (ritocchi prepare/font,
+dispatch) sono stimate in pochi punti percentuali — non chiudono 1,27× in
+modo robusto su mix diversi. **Decisione dell'utente richiesta** fra:
+(a) proseguire con l'implementazione dei ticket P1/P2/P4 approvati
+(raccomandato: P2+P4 coprono il gap con margine), (b) squeeze residuo
+solo micro-fix.

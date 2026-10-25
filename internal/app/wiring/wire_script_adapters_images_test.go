@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
@@ -48,7 +49,7 @@ func (s imageSearchFixture) Search(context.Context, images.ImageFilter) ([]image
 
 func TestInternetImageSearchAdapter_ReusesDurableDatabaseImageBeforeProvider(t *testing.T) {
 	fixture := &imageResolverFixture{cached: []images.ImageSearchResult{{
-		AssetID: "db-cena", Name: "John Cena", DriveLink: "https://drive.google.com/file/d/db-cena/view", LegacyFileMD5: "hash-cena",
+		AssetID: "db-cena", Name: "John Cena", DriveLink: "https://drive.google.com/file/d/db-cena/view", ContentSHA256: "hash-cena",
 		PreviewURL: "https://images.example/cena.jpg", License: "unknown",
 	}}}
 	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
@@ -77,7 +78,7 @@ func TestInternetImageSearchAdapter_ReusesDurableDatabaseImageBeforeProvider(t *
 func TestInternetImageSearchAdapter_ForceRefreshSkipsDurableDatabaseReuse(t *testing.T) {
 	fixture := &imageResolverFixture{
 		cached: []images.ImageSearchResult{{
-			AssetID: "db-stale", Name: "Chiara Poggi", DriveLink: "https://drive.google.com/file/d/db-stale/view", LegacyFileMD5: "stale-recorded-hash",
+			AssetID: "db-stale", Name: "Chiara Poggi", DriveLink: "https://drive.google.com/file/d/db-stale/view", ContentSHA256: "stale-recorded-hash",
 			PreviewURL: "https://images.example/stale.jpg", License: "unknown",
 		}},
 		providerRows: []images.ImageSearchResult{{AssetID: "web-fresh", Name: "Chiara Poggi", PreviewURL: "https://images.example/fresh.jpg"}},
@@ -134,6 +135,86 @@ func TestInternetImageSearchAdapter_FallsBackToSearXNGWhenDuckDuckGoIsEmpty(t *t
 	}
 	if fixture.searchCalls != 2 {
 		t.Fatalf("provider search calls = %d, want DDG then SearXNG", fixture.searchCalls)
+	}
+}
+
+// providerAwareFixture routes each provider name to its own behaviour. The
+// generic fixture above returns the same searcher for every name, so it cannot
+// express the case that matters here: DuckDuckGo refusing the request while an
+// independent licensed surface still answers.
+type providerAwareFixture struct {
+	ddgErr        error
+	ddgRows       []images.ImageSearchResult
+	commonsRows   []images.ImageSearchResult
+	ddgCalls      int
+	commonsCalls  int
+	searxngCalls  int
+	requestedName []string
+}
+
+func (f *providerAwareFixture) Resolve(images.ImageSearchTerritory) (images.ImageSearcher, error) {
+	return providerAwareSearcher{owner: f, name: "duckduckgo"}, nil
+}
+
+func (f *providerAwareFixture) ResolveProvider(name string) (images.ImageSearcher, error) {
+	f.requestedName = append(f.requestedName, name)
+	return providerAwareSearcher{owner: f, name: name}, nil
+}
+
+type providerAwareSearcher struct {
+	owner *providerAwareFixture
+	name  string
+}
+
+func (s providerAwareSearcher) Search(context.Context, images.ImageFilter) ([]images.ImageSearchResult, error) {
+	switch s.name {
+	case "duckduckgo":
+		s.owner.ddgCalls++
+		return s.owner.ddgRows, s.owner.ddgErr
+	case "wikimedia_commons":
+		s.owner.commonsCalls++
+		return s.owner.commonsRows, nil
+	case "searxng":
+		s.owner.searxngCalls++
+		return nil, nil
+	default:
+		return nil, nil
+	}
+}
+
+// TestInternetImageSearchAdapter_DuckDuckGoRefusalStillUsesLicensedFallback
+// pins the fix for the blocked-IP failure mode: a challenged DuckDuckGo must
+// not abort retrieval before Commons runs. Returning early is what made an
+// entire run look like "the subject has no images" while a licensed provider
+// was healthy.
+func TestInternetImageSearchAdapter_DuckDuckGoRefusalStillUsesLicensedFallback(t *testing.T) {
+	fixture := &providerAwareFixture{
+		ddgErr: errors.New("duckduckgo: anti-bot challenge (HTTP 202)"),
+		commonsRows: []images.ImageSearchResult{{
+			AssetID: "commons-garlasco", Name: "Alberto Garlasco",
+			PreviewURL: "https://upload.wikimedia.org/garlasco.jpg", SourcePageURL: "https://commons.wikimedia.org/wiki/File:Garlasco.jpg",
+			License: "CC BY-SA 4.0", Author: "Archive",
+		}},
+	}
+	adapter := newInternetImageSearchAdapter(fixture, zap.NewNop())
+
+	got, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{
+		Query: "Alberto Garlasco", Entity: "Alberto Garlasco", Limit: 4,
+	})
+	if err != nil {
+		t.Fatalf("DDG refusal must not fail the retrieval surface: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("no candidates returned although Commons answered; the DDG refusal aborted the fallback")
+	}
+	if got[0].SourceURL != "https://upload.wikimedia.org/garlasco.jpg" {
+		t.Fatalf("first candidate = %+v, want the Commons row", got[0])
+	}
+	if fixture.ddgCalls == 0 {
+		t.Fatal("DuckDuckGo was never attempted; the fallback test is not exercising the refusal")
+	}
+	if fixture.commonsCalls == 0 {
+		t.Fatal("Commons was never attempted after the DDG refusal")
 	}
 }
 

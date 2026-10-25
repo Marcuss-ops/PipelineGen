@@ -43,6 +43,45 @@ func entityCardKind(kind capabilityoverlay.OverlayKind) bool {
 	return false
 }
 
+// admitIdentityImagesByProductionPlan enforces the semantic production plan on
+// identity imagery: an entity card keeps its image only when the plan admitted
+// that canonical identity for media — that is the run-level decision that the
+// identity is worth an external search, not the mere existence of a binding.
+// Text-only cards are unaffected because they spend no search. A nil or empty
+// plan is a no-op, so deployments without the consolidated view keep producing
+// exactly the plans they produced before.
+func admitIdentityImagesByProductionPlan(items []capabilityoverlay.OverlayItem, plan *SemanticProductionPlan) []capabilityoverlay.OverlayItem {
+	if plan == nil || len(plan.Identity) == 0 || len(items) == 0 {
+		return items
+	}
+	admitted := plan.IdentitiesAdmittedForMedia()
+	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
+	for _, item := range items {
+		if len(item.AssetRefs) == 0 {
+			out = append(out, item)
+			continue
+		}
+		name := ""
+		if item.EntityRef != nil {
+			name = strings.TrimSpace(item.EntityRef.Name)
+		}
+		if name == "" {
+			name = strings.TrimSpace(item.EntityCaption)
+		}
+		if name == "" {
+			// The item cannot be attributed to an identity: keep it rather than
+			// silently dropping a composition the plan never judged.
+			out = append(out, item)
+			continue
+		}
+		if _, ok := admitted[normalizeIdentitySurface(name)]; !ok {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
 // entityCardMediaIndex builds the run-scoped, canonical_entity_id-keyed media
 // index from the result's OWN entity-image bindings: every entity-card-kind
 // annotation entity with a content-addressed binding (asset id + sha256 +

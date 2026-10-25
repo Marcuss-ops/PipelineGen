@@ -116,7 +116,7 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// environment surfaces the actionable ErrDispatcherUnavailable signal
 	// before the per-call contract violation. Both checks fire before any
 	// asset-derivation so a nil rec cannot panic on rec.ID / rec.Source /
-	// rec.LegacyFileMD5. Strict fail-closed at the lifecycle adapter's error
+	// rec.ContentSHA256. Strict fail-closed at the lifecycle adapter's error
 	// propagation boundary.
 	//
 	// Rec == nil returns a contract violation error at runtime.
@@ -143,14 +143,14 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	if rec.LocalPath != "" {
 		locations = append(locations, persistence.LocationCommit{
 			Kind: string(asset.LocationKindLocal), URI: rec.LocalPath,
-			LegacyFileMD5: rec.LegacyFileMD5, IsPrimary: true,
+			ContentSHA256: rec.ContentSHA256, IsPrimary: true,
 		})
 	}
 	if rec.DriveLink != "" || rec.DriveFileID != "" {
 		locations = append(locations, persistence.LocationCommit{
 			Kind: string(asset.LocationKindDrive), URI: "drive://" + rec.DriveFileID,
 			ExternalID: rec.DriveFileID, WebViewLink: rec.DriveLink, DownloadURL: rec.DownloadLink,
-			IsPrimary: rec.LocalPath == "", LegacyFileMD5: rec.LegacyFileMD5,
+			IsPrimary: rec.LocalPath == "", ContentSHA256: rec.ContentSHA256,
 		})
 	}
 	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): route the
@@ -161,9 +161,9 @@ func (r *ClipsRegistry) UpsertMedia(ctx context.Context, rec *MediaRecord) error
 	// MEDIA-IDENTITY (Sept 2026): the committer's ContentHash is the BYTE
 	// identity of the artifact, so it receives rec.ContentHash (the SHA-256 of
 	// the bytes, computed by the lifecycle's contentAddress). It previously
-	// received rec.LegacyFileMD5 — the caller's compatibility-only digest —
+	// received rec.ContentSHA256 — the caller's compatibility-only digest —
 	// which meant a path could compute the canonical SHA-256 and the very next
-	// boundary silently overwrite it with an MD5. LegacyFileMD5 still rides on
+	// boundary silently overwrite it with an MD5. ContentSHA256 still rides on
 	// the asset_locations rows below (read-only compatibility bucket); no
 	// decision reads it, and it must never be the durable content address.
 	if _, err := r.committer.CommitAndIndex(ctx, persistence.CommitRequest{
@@ -313,7 +313,7 @@ func (r *ClipsRegistry) FindByPHash(ctx context.Context, phash string) (string, 
 //
 // The argument is the SHA-256 hex digest of the BYTES (kernel/digest), and the
 // lookup matches only the canonical content columns (binary_sha256,
-// content_sha256). It deliberately does NOT fall back to legacy_file_md5: that
+// content_sha256). It deliberately does NOT fall back to content_sha256: that
 // column is a compatibility bucket that may hold an MD5, and matching it here
 // would make two assets look content-identical when they are not — the exact
 // conflation the media-identity programme removes (asset_id decides WHAT an
@@ -391,7 +391,7 @@ func (r *ClipsRegistry) pgDB() *sql.DB {
 //
 // MEDIA-IDENTITY (Sept 2026): the projection resolves the CONTENT ADDRESS
 // (SHA-256 byte identity) from `binary_sha256 → content_sha256` and only then
-// the compatibility digest from `legacy_file_md5`. The two are deliberately
+// the compatibility digest from `content_sha256`. The two are deliberately
 // separate columns of the MediaRecord: the content identity must NEVER fall
 // back to the legacy tier (a row whose content_sha256 is unknown is honestly
 // unknown, not an MD5 by another name), because the dedupe decision compares
@@ -405,7 +405,7 @@ const mediaRecordPGColumns = `
 		COALESCE(drive_file_id,''), COALESCE(drive_link,''),
 		COALESCE(download_link,''), COALESCE(local_path,''),
 		COALESCE(NULLIF(binary_sha256,''), NULLIF(content_sha256,'')),
-		COALESCE(legacy_file_md5,''), COALESCE(phash,'')`
+		COALESCE(content_sha256,''), COALESCE(phash,'')`
 
 // mediaRecordScanner is the common row surface of *sql.Row and *sql.Rows.
 type mediaRecordScanner interface {
@@ -429,7 +429,7 @@ func scanMediaRecordPG(scanner mediaRecordScanner) (*MediaRecord, error) {
 	rec := &MediaRecord{
 		ID: aID, Source: source, Name: name, Filename: filename,
 		MediaType: mediaType, Category: category, Group: groupName,
-		Metadata: metadataJSON, ContentHash: contentHash, LegacyFileMD5: legacyMD5, PHash: phash,
+		Metadata: metadataJSON, ContentHash: contentHash, ContentSHA256: legacyMD5, PHash: phash,
 		DriveFileID: driveFileID, DriveLink: driveLink, DownloadLink: downloadLink,
 		LocalPath: localPath, Status: "ACTIVE",
 	}
@@ -506,7 +506,7 @@ func detailsToMediaRecord(details *asset.Details) *MediaRecord {
 		switch loc.LocationKind {
 		case asset.LocationKindLocal:
 			rec.LocalPath = loc.URI
-			rec.LegacyFileMD5 = loc.LegacyFileMD5
+			rec.ContentSHA256 = loc.ContentSHA256
 		case asset.LocationKindDrive:
 			rec.DriveFileID = loc.ExternalID
 			rec.DriveLink = loc.AccessURL

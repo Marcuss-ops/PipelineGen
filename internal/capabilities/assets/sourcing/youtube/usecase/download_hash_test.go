@@ -65,8 +65,8 @@ func TestDownloadAndHashClip_HappyPath(t *testing.T) {
 	if result.LocalPath != "/tmp/downloads/dQw4w9WgXcQ.mp4" {
 		t.Errorf("expected LocalPath, got %q", result.LocalPath)
 	}
-	if result.LegacyFileMD5 != "a1b2c3d4e5f6a7b8" {
-		t.Errorf("expected LegacyFileMD5 a1b2c3d4e5f6a7b8, got %q", result.LegacyFileMD5)
+	if result.ContentSHA256 != "a1b2c3d4e5f6a7b8" {
+		t.Errorf("expected ContentSHA256 a1b2c3d4e5f6a7b8, got %q", result.ContentSHA256)
 	}
 	// The identity is the REQUEST WINDOW (10s..30s) + policy, NOT the file
 	// hash: the same clip re-cut with different bytes keeps this asset id and is
@@ -227,8 +227,8 @@ func TestDownloadAndHashClip_NilHasher_EmptyHashButClipIDDerived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error (nil hasher is allowed), got %v", err)
 	}
-	if result.LegacyFileMD5 != "" {
-		t.Errorf("expected empty LegacyFileMD5 when hasher is nil, got %q", result.LegacyFileMD5)
+	if result.ContentSHA256 != "" {
+		t.Errorf("expected empty ContentSHA256 when hasher is nil, got %q", result.ContentSHA256)
 	}
 	if want := "yt_test123_60_70_v1"; result.ClipID != want {
 		t.Errorf("expected ClipID %q, got %q", want, result.ClipID)

@@ -55,7 +55,7 @@ func (s *AssetStoreSQLite) GetClipByDriveFileID(ctx context.Context, fileID stri
 // FindClipsByHash returns all clips with the given file hash
 // (canonical column after migration 059).
 func (s *AssetStoreSQLite) FindClipsByHash(ctx context.Context, hash string) ([]*asset.Asset, error) {
-	query := buildMediaAssetQuery("") + " AND legacy_file_md5 = ?"
+	query := buildMediaAssetQuery("") + " AND content_sha256 = ?"
 	rows, err := s.db.QueryContext(ctx, query, hash)
 	if err != nil {
 		return nil, err

@@ -220,7 +220,7 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 			return result, fmt.Errorf("%s", result.Error)
 		}
 		processedPath = master.LocalPath
-		result.LegacyFileMD5 = master.LegacyFileMD5
+		result.ContentSHA256 = master.ContentSHA256
 		result.LocalPath = master.LocalPath
 		result.Filename = master.Filename
 
@@ -310,7 +310,7 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 			result.Error = fmt.Sprintf("hash failed: %v", err)
 			return result, err
 		}
-		result.LegacyFileMD5 = fileHash
+		result.ContentSHA256 = fileHash
 		result.LocalPath = processedPath
 		result.Filename = filepath.Base(processedPath)
 	}

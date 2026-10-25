@@ -32,7 +32,7 @@ func buildCachedResult(cmd *ProcessSegmentCommand, hit *VoiceoverCacheHit, timin
 		LocalPath:     hit.LocalPath,
 		CleanedPath:   hit.CleanedPath,
 		DurationMs:    hit.DurationMs,
-		LegacyFileMD5: hit.LegacyFileMD5,
+		ContentSHA256: hit.ContentSHA256,
 	}
 
 	// Reconstruct the timing result from persisted metadata when timing was
@@ -157,7 +157,7 @@ func (u *ProcessSegmentUseCase) runAsyncPublish(
 		MetaJSON:        pub.MetaJSON,
 		LocalPath:       out.LocalPath,
 		CleanedPath:     out.CleanedPath,
-		LegacyFileMD5:   out.LegacyFileMD5,
+		ContentSHA256:   out.ContentSHA256,
 		DurationSeconds: ttsOut.Duration.Seconds(),
 		FolderID:        cmd.Dest.FolderID,
 		FolderPath:      cmd.Dest.FolderPath,

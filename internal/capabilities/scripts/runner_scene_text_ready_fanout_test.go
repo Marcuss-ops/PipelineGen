@@ -319,9 +319,19 @@ func TestSceneTextPathReasonNamesTheBlockingGate(t *testing.T) {
 			want: "batch_important_phrase_hints",
 		},
 		{
-			name: "literal intro/outro are injected post-LLM",
-			req:  withIntro(), gen: streamGen,
-			want: "batch_intro_outro",
+			// Le fixed sections intro/outro sono iniettate post-LLM come
+			// post-processing (applyFixedSections dopo il join): non forzano più
+			// il batch, quindi un run intro streamabile riporta il path streaming.
+			name: "fixed intro/outro are injected post-LLM and no longer force batch",
+			req:  withIntro(), streamed: true, gen: streamGen,
+			want: "streamed",
+		},
+		{
+			// Se un run intro resta in batch, il reason deve nominare il vero
+			// gate: intro/outro non deve più mascherarlo.
+			name: "fixed intro/outro never mask the real blocking gate",
+			req:  withIntro(), gen: batchGen,
+			want: "batch_generator_not_streamable",
 		},
 		{
 			name: "a segment budget with no explicit segments needs whole-prose topology",

@@ -46,7 +46,7 @@ type ImageSearchResult struct {
 	Name              string  `json:"name,omitempty"`
 	PreviewURL        string  `json:"preview_url"`
 	DriveLink         string  `json:"drive_link,omitempty"`
-	LegacyFileMD5     string  `json:"legacy_file_md5,omitempty"`
+	ContentSHA256     string  `json:"content_sha256,omitempty"`
 	SourcePageURL     string  `json:"source_page_url,omitempty"`
 	Width             int     `json:"width,omitempty"`
 	Height            int     `json:"height,omitempty"`

@@ -301,13 +301,13 @@ func (materializationProviderStub) Search(context.Context, scriptports.VidRushSe
 }
 func (materializationProviderStub) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/clip.mp4", MIMEType: "video/mp4", SizeBytes: 10, LegacyFileMD5: "hash"}, nil
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/clip.mp4", MIMEType: "video/mp4", SizeBytes: 10, ContentSHA256: "hash"}, nil
 }
 func (materializationProviderStub) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	candidate := artifact.Candidate
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.RightsStatus = "verified"
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, LegacyFileMD5: artifact.LegacyFileMD5, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
 }
 
 type failingArtlistMaterializationProvider struct{}
@@ -346,7 +346,7 @@ func TestVidRushMaterializationMetadataOnlyPreservesCandidatesWithoutAcquisition
 
 func (materializationFinalizerStub) Finalize(_ context.Context, artifact scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
 	candidate := artifact.Candidate
-	candidate.LegacyFileMD5 = artifact.LegacyFileMD5
+	candidate.ContentSHA256 = artifact.ContentSHA256
 	candidate.Width = artifact.Width
 	candidate.Height = artifact.Height
 	candidate.DriveLink = "https://drive.google.com/file/d/" + candidate.AssetID
@@ -372,13 +372,13 @@ func (s *generationMaterializationProviderStub) Acquire(_ context.Context, candi
 		return scriptports.LocalArtifact{}, errors.New("generation unavailable")
 	}
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/generated.png", MIMEType: "image/png", SizeBytes: 10, LegacyFileMD5: candidate.AssetID}, nil
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/generated.png", MIMEType: "image/png", SizeBytes: 10, ContentSHA256: candidate.AssetID}, nil
 }
 func (s *generationMaterializationProviderStub) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	candidate := artifact.Candidate
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.RightsStatus = "verified"
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, LegacyFileMD5: artifact.LegacyFileMD5, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
 }
 
 type internetImageMaterializationProviderStub struct{}
@@ -391,13 +391,13 @@ func (internetImageMaterializationProviderStub) Search(context.Context, scriptpo
 }
 func (internetImageMaterializationProviderStub) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/image.jpg", MIMEType: "image/jpeg", SizeBytes: 10, LegacyFileMD5: "image-hash"}, nil
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/image.jpg", MIMEType: "image/jpeg", SizeBytes: 10, ContentSHA256: "image-hash"}, nil
 }
 func (internetImageMaterializationProviderStub) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	candidate := artifact.Candidate
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.RightsStatus = "verified"
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, LegacyFileMD5: artifact.LegacyFileMD5, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
 }
 
 func TestVidRushMaterializationGeneratesOnlyMissingImagesAndWarmsCache(t *testing.T) {
@@ -659,7 +659,7 @@ func (f *retryingMaterializationFinalizer) Finalize(_ context.Context, artifact 
 		return scriptpkg.SegmentAssetCandidate{}, errors.New("transient finalizer failure")
 	}
 	candidate := artifact.Candidate
-	candidate.LegacyFileMD5 = artifact.LegacyFileMD5
+	candidate.ContentSHA256 = artifact.ContentSHA256
 	candidate.Width = artifact.Width
 	candidate.Height = artifact.Height
 	candidate.DriveLink = "https://drive.google.com/file/d/" + candidate.AssetID
@@ -928,7 +928,7 @@ func TestVidRushMaterializationReusesCatalogedDriveImageWithoutAcquireOrFinalize
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID:    rows[0].ID,
 		AssetID:        "drive-asset-michael-jordan",
-		LegacyFileMD5:  "sha256-michael-jordan",
+		ContentSHA256:  "sha256-michael-jordan",
 		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
@@ -969,7 +969,7 @@ func TestVidRushMaterializationReusesCatalogedDriveImageWithoutAcquireOrFinalize
 		t.Fatalf("finalizer calls = %d, want 0 because Drive asset is already persisted", got)
 	}
 	images := result.VidRushSegments[0].Assets.SecondaryImages
-	if len(images) != 1 || images[0].AssetID != "drive-asset-michael-jordan" || images[0].DriveLink == "" || images[0].LegacyFileMD5 == "" {
+	if len(images) != 1 || images[0].AssetID != "drive-asset-michael-jordan" || images[0].DriveLink == "" || images[0].ContentSHA256 == "" {
 		t.Fatalf("reused images = %+v, want the cataloged Drive/hash candidate", images)
 	}
 }
@@ -987,13 +987,13 @@ func (p *refreshReacquireImageProvider) Search(context.Context, scriptports.VidR
 func (p *refreshReacquireImageProvider) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	p.acquireCalls.Add(1)
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/fresh-image.jpg", MIMEType: "image/jpeg", SizeBytes: 10, LegacyFileMD5: "fresh-download-hash"}, nil
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/fresh-image.jpg", MIMEType: "image/jpeg", SizeBytes: 10, ContentSHA256: "fresh-download-hash"}, nil
 }
 func (p *refreshReacquireImageProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	candidate := artifact.Candidate
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.RightsStatus = "verified"
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, LegacyFileMD5: artifact.LegacyFileMD5, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
 }
 
 type refreshReacquireFinalizer struct {
@@ -1004,7 +1004,7 @@ func (f *refreshReacquireFinalizer) Finalize(_ context.Context, artifact scriptp
 	f.finalizeCalls.Add(1)
 	candidate := artifact.Candidate
 	candidate.AssetID = "fresh-drive-asset-michael-jordan"
-	candidate.LegacyFileMD5 = artifact.LegacyFileMD5
+	candidate.ContentSHA256 = artifact.ContentSHA256
 	candidate.DriveLink = "https://drive.google.com/file/d/fresh-drive-asset-michael-jordan/view"
 	candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
 	candidate.IndexStatus = scriptpkg.VidRushStatusIndexed
@@ -1032,7 +1032,7 @@ func TestVidRushMaterializationForceRefreshReacquiresCatalogedDriveImage(t *test
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID:    rows[0].ID,
 		AssetID:        "drive-asset-michael-jordan",
-		LegacyFileMD5:  "stale-recorded-hash",
+		ContentSHA256:  "stale-recorded-hash",
 		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
@@ -1074,7 +1074,7 @@ func TestVidRushMaterializationForceRefreshReacquiresCatalogedDriveImage(t *test
 		t.Fatalf("finalizer calls = %d, want 1: force refresh must commit the fresh bytes", got)
 	}
 	images := result.VidRushSegments[0].Assets.SecondaryImages
-	if len(images) != 1 || images[0].AssetID != "fresh-drive-asset-michael-jordan" || images[0].LegacyFileMD5 != "fresh-download-hash" || images[0].DriveLink == "" {
+	if len(images) != 1 || images[0].AssetID != "fresh-drive-asset-michael-jordan" || images[0].ContentSHA256 != "fresh-download-hash" || images[0].DriveLink == "" {
 		t.Fatalf("refreshed images = %+v, want the freshly acquired/finalized candidate, never the stale catalog hash", images)
 	}
 }
@@ -1118,7 +1118,7 @@ func TestVidRushMaterializationForceRefreshStripsRecordedLifecycle(t *testing.T)
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID:    rows[0].ID,
 		AssetID:        "drive-asset-michael-jordan",
-		LegacyFileMD5:  "stale-recorded-hash",
+		ContentSHA256:  "stale-recorded-hash",
 		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
@@ -1159,12 +1159,12 @@ func TestVidRushMaterializationForceRefreshStripsRecordedLifecycle(t *testing.T)
 		if readyVidRushCandidate(c) {
 			t.Fatalf("candidate %+v stayed ready on refresh without an in-run download; recorded lifecycle must be stripped", c)
 		}
-		if c.LegacyFileMD5 == "stale-recorded-hash" && c.PersistenceStatus == scriptpkg.VidRushStatusPersisted {
+		if c.ContentSHA256 == "stale-recorded-hash" && c.PersistenceStatus == scriptpkg.VidRushStatusPersisted {
 			t.Fatalf("stale catalog hash still persisted on %+v; refresh must not reuse it", c)
 		}
 	}
 	for _, img := range result.VidRushSegments[0].Assets.SecondaryImages {
-		if img.LegacyFileMD5 == "stale-recorded-hash" {
+		if img.ContentSHA256 == "stale-recorded-hash" {
 			t.Fatalf("stale hash selected into secondary images %+v; unreachable sources must degrade, never bind", img)
 		}
 	}

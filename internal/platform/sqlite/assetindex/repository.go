@@ -29,8 +29,8 @@ func (r *Repository) Upsert(ctx context.Context, rec *AssetRecord) error {
         INSERT INTO asset_index (
             asset_id, asset_type, source, source_id, operation_key,
             group_name, subfolder, local_path, drive_link, download_link,
-            legacy_file_md5, content_hash, status, metadata_json, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            content_hash, status, metadata_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(asset_id) DO UPDATE SET
             asset_type = excluded.asset_type,
             source = excluded.source,
@@ -41,7 +41,6 @@ func (r *Repository) Upsert(ctx context.Context, rec *AssetRecord) error {
             local_path = excluded.local_path,
             drive_link = excluded.drive_link,
             download_link = excluded.download_link,
-            legacy_file_md5 = excluded.legacy_file_md5,
             content_hash = excluded.content_hash,
             status = excluded.status,
             metadata_json = excluded.metadata_json,
@@ -59,7 +58,6 @@ func (r *Repository) Upsert(ctx context.Context, rec *AssetRecord) error {
 		rec.LocalPath,
 		rec.DriveLink,
 		rec.DownloadLink,
-		rec.LegacyFileMD5,
 		rec.ContentHash,
 		rec.Status,
 		rec.Metadata,
@@ -74,7 +72,7 @@ func (r *Repository) FindByContentHash(ctx context.Context, hash string) (*Asset
 	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
-               legacy_file_md5, content_hash, status, metadata_json, created_at, updated_at
+               content_hash, status, metadata_json, created_at, updated_at
         FROM asset_index
         WHERE content_hash = ?
         LIMIT 1
@@ -93,7 +91,6 @@ func (r *Repository) FindByContentHash(ctx context.Context, hash string) (*Asset
 		&rec.LocalPath,
 		&rec.DriveLink,
 		&rec.DownloadLink,
-		&rec.LegacyFileMD5,
 		&rec.ContentHash,
 		&rec.Status,
 		&rec.Metadata,
@@ -134,7 +131,7 @@ func (r *Repository) FindReadyByGroup(ctx context.Context, group, subfolder stri
 	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
-               legacy_file_md5, content_hash, status, metadata_json, created_at, updated_at
+               content_hash, status, metadata_json, created_at, updated_at
         FROM asset_index
         WHERE ` + strings.Join(conditions, " AND ") + `
         ORDER BY created_at DESC
@@ -161,7 +158,6 @@ func (r *Repository) FindReadyByGroup(ctx context.Context, group, subfolder stri
 			&rec.LocalPath,
 			&rec.DriveLink,
 			&rec.DownloadLink,
-			&rec.LegacyFileMD5,
 			&rec.ContentHash,
 			&rec.Status,
 			&rec.Metadata,
@@ -183,7 +179,7 @@ func (r *Repository) FindBySource(ctx context.Context, source, sourceID string) 
 	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
-               legacy_file_md5, content_hash, status, metadata_json, created_at, updated_at
+               content_hash, status, metadata_json, created_at, updated_at
         FROM asset_index
         WHERE source = ? AND source_id = ?
         LIMIT 1
@@ -201,7 +197,6 @@ func (r *Repository) FindBySource(ctx context.Context, source, sourceID string) 
 		&rec.LocalPath,
 		&rec.DriveLink,
 		&rec.DownloadLink,
-		&rec.LegacyFileMD5,
 		&rec.ContentHash,
 		&rec.Status,
 		&rec.Metadata,
@@ -226,7 +221,7 @@ func (r *Repository) GetByID(ctx context.Context, assetID string) (*AssetRecord,
 	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
-               legacy_file_md5, content_hash, status, metadata_json, created_at, updated_at
+               content_hash, status, metadata_json, created_at, updated_at
         FROM asset_index
         WHERE asset_id = ?
         LIMIT 1
@@ -244,7 +239,6 @@ func (r *Repository) GetByID(ctx context.Context, assetID string) (*AssetRecord,
 		&rec.LocalPath,
 		&rec.DriveLink,
 		&rec.DownloadLink,
-		&rec.LegacyFileMD5,
 		&rec.ContentHash,
 		&rec.Status,
 		&rec.Metadata,
@@ -331,7 +325,7 @@ func (r *Repository) ListAll(ctx context.Context) ([]*AssetRecord, error) {
 	query := `
         SELECT asset_id, asset_type, source, source_id, operation_key,
                group_name, subfolder, local_path, drive_link, download_link,
-               legacy_file_md5, content_hash, status, metadata_json, created_at, updated_at
+               content_hash, status, metadata_json, created_at, updated_at
         FROM asset_index
     `
 
@@ -356,7 +350,6 @@ func (r *Repository) ListAll(ctx context.Context) ([]*AssetRecord, error) {
 			&rec.LocalPath,
 			&rec.DriveLink,
 			&rec.DownloadLink,
-			&rec.LegacyFileMD5,
 			&rec.ContentHash,
 			&rec.Status,
 			&rec.Metadata,

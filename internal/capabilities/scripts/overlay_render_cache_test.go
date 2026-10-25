@@ -286,13 +286,18 @@ func (c *fakeOverlayRenderCache) onlyStoredKey(t *testing.T) string {
 }
 
 // countingRenderQueueClient returns one certified artifact for every submit.
+// The mutex mirrors the real queue client's concurrency contract: the bounded
+// render pools submit from several goroutines at once.
 type countingRenderQueueClient struct {
+	mu       sync.Mutex
 	submits  int
 	artifact RenderArtifact
 	failNext bool
 }
 
 func (c *countingRenderQueueClient) Submit(_ context.Context, _ RenderQueueJob) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.submits++
 	if c.failNext {
 		c.failNext = false

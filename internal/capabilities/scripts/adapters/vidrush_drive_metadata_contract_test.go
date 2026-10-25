@@ -30,7 +30,7 @@ func TestVidRushDriveMetadataHashResolverIndexAndDeduplicationContract(t *testin
 	const driveLink = "https://drive.google.com/file/d/drive-file-michael-jordan-contract/view"
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID: rows[0].ID, AssetID: assetID,
-		LegacyFileMD5: fileHash, DriveFileID: driveFileID, DriveLink: driveLink,
+		ContentSHA256: fileHash, DriveFileID: driveFileID, DriveLink: driveLink,
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
 	}); err != nil {
@@ -76,8 +76,8 @@ func TestVidRushDriveMetadataHashResolverIndexAndDeduplicationContract(t *testin
 	if asset.LocalPath != "" {
 		t.Fatalf("catalog hydration must not inject a local path: got %q", asset.LocalPath)
 	}
-	if asset.LegacyFileMD5 != fileHash {
-		t.Fatalf("hash=%q want %q", asset.LegacyFileMD5, fileHash)
+	if asset.ContentSHA256 != fileHash {
+		t.Fatalf("hash=%q want %q", asset.ContentSHA256, fileHash)
 	}
 	if asset.PersistenceStatus != scriptpkg.VidRushStatusPersisted {
 		t.Fatalf("persistence status=%q", asset.PersistenceStatus)

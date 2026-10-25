@@ -20,7 +20,7 @@
 // in memory.
 //
 // The SEMANTICS of each hash field (content_sha256, semantic_hash,
-// embedding_contract_hash, legacy_file_md5) remain owned by
+// embedding_contract_hash, content_sha256) remain owned by
 // internal/capabilities/mediaregistry/hashes.go; this package supplies only
 // the primitive.
 package digest

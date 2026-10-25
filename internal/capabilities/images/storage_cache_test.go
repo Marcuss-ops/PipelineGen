@@ -55,7 +55,7 @@ func openImageCacheTestDB(t *testing.T) *sql.DB {
 			media_type TEXT NOT NULL DEFAULT 'image',
 			width INTEGER NOT NULL DEFAULT 0,
 			height INTEGER NOT NULL DEFAULT 0,
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			local_path TEXT NOT NULL DEFAULT '',
 			relative_path TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
@@ -102,7 +102,7 @@ func seedCachedImage(t *testing.T, db *sql.DB, id, hash, sourceQuery string, cre
 	metadata := `{"subject_id":"jaguar","source_query":"` + sourceQuery + `","resolved_query":"` + sourceQuery + `"}`
 	_, err := db.ExecContext(context.Background(), `
 		INSERT INTO media_assets (
-			id, source, name, url, tags, legacy_file_md5, local_path, relative_path,
+			id, source, name, url, tags, content_sha256, local_path, relative_path,
 			drive_file_id, drive_link, metadata_json, origin, provider, created_at, updated_at
 		) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'retrieved', ?, ?, ?)
 	`, id, "Image for "+sourceQuery, "https://example.invalid/"+id+".jpg", `["jaguar","animal"]`, hash,

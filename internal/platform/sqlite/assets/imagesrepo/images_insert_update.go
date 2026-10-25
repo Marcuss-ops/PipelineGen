@@ -187,8 +187,8 @@ func (r *ImagesRepository) assetIdentityByHash(ctx context.Context, hash string)
 	err := r.db.QueryRowContext(ctx, `
 		SELECT id, COALESCE(metadata_json,'{}')
 		FROM media_assets
-		WHERE source='image' AND (legacy_file_md5=? OR id=?)
-		ORDER BY CASE WHEN legacy_file_md5=? THEN 0 ELSE 1 END
+		WHERE source='image' AND (content_sha256=? OR id=?)
+		ORDER BY CASE WHEN content_sha256=? THEN 0 ELSE 1 END
 		LIMIT 1`, hash, hash, hash).
 		Scan(&assetID, &metadataJSON)
 	if err != nil {

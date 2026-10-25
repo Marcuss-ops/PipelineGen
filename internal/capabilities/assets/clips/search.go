@@ -195,20 +195,20 @@ func (sh *SearchHandler) ClipStatus(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":              true,
-		"source":          source,
-		"clip_id":         clipID,
-		"exists_db":       true,
-		"name":            clip.Name,
-		"has_local_file":  clip.LocalPath() != "",
-		"local_path":      clip.LocalPath(),
-		"has_drive_link":  clip.DriveLink() != "" || clip.DownloadLink() != "",
-		"drive_link":      clip.DriveLink(),
-		"download_link":   clip.DownloadLink(),
-		"legacy_file_md5": clip.GetMetadataString("legacy_file_md5"),
-		"folder_id":       clip.FolderID(),
-		"folder_path":     clip.FolderPath(),
-		"status":          status,
+		"ok":             true,
+		"source":         source,
+		"clip_id":        clipID,
+		"exists_db":      true,
+		"name":           clip.Name,
+		"has_local_file": clip.LocalPath() != "",
+		"local_path":     clip.LocalPath(),
+		"has_drive_link": clip.DriveLink() != "" || clip.DownloadLink() != "",
+		"drive_link":     clip.DriveLink(),
+		"download_link":  clip.DownloadLink(),
+		"content_sha256": clip.GetMetadataString("content_hash"),
+		"folder_id":      clip.FolderID(),
+		"folder_path":    clip.FolderPath(),
+		"status":         status,
 	})
 }
 
@@ -363,7 +363,7 @@ func voiceoverDTOToClip(rec *appclips.ClipVoiceoverRecordDTO) *asset.Asset {
 	clip.SetDriveLink(rec.DriveLink)
 	clip.SetDriveFileID(rec.DriveFileID)
 	clip.SetDownloadLink(rec.DownloadLink)
-	clip.SetLegacyFileMD5(rec.LegacyFileMD5)
+	clip.SetContentHash(rec.ContentSHA256)
 	clip.SetLocalPath(rec.LocalPath)
 	clip.SetMetadataJSON(rec.Metadata)
 	return clip

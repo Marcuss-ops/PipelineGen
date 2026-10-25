@@ -32,6 +32,13 @@ import (
 //
 // The wire contract it speaks (RenderQueueJob and the client capabilities) lives
 // in render_queue_contract.go, so this file describes only the adapter.
+// DynamicMapGPUAdmission is the cross-process GPU budget shared with
+// RenderingGen. PipelineGen depends only on this admission contract, not the
+// concrete lock implementation.
+type DynamicMapGPUAdmission interface {
+	Acquire(context.Context) (func(), error)
+}
+
 type QueueRenderEnqueuer struct {
 	client       RenderQueueClient
 	pollInterval time.Duration
@@ -77,6 +84,9 @@ type QueueRenderEnqueuer struct {
 	// mapVideoCacheDir is the durable local cache for the certified dynamic-map
 	// MP4, rooted under the configured storage data directory.
 	mapVideoCacheDir string
+	// mapGPUGate shares the cross-process RenderingGen GPU admission budget.
+	// It is acquired only for a GPU sampler render; cache hits need no GPU slot.
+	mapGPUGate DynamicMapGPUAdmission
 	// renderCacheEpoch pins the deployment epoch mixed into cache keys. Empty
 	// falls back to OverlayRenderCacheEpoch() (env override, then build
 	// identity).
@@ -113,6 +123,14 @@ type QueueRenderEnqueuer struct {
 // important: sending PipelineGen's old v1 concrete document makes the worker
 // validate it against the v2 schema and fail before Chronon starts.
 func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+	// Path (b) of the P5 A/B: one certified artifact per timeline + manifest.
+	// Explicit opt-in only; plans the composition cannot cover fall through to
+	// the per-item path unchanged (fail-closed rollback).
+	if overlayManifestTimelineEnabled() {
+		if eligible, _ := manifestTimelineEligible(plan); eligible {
+			return e.enqueueOverlayManifestTimeline(ctx, plan)
+		}
+	}
 	switch resolveOverlayRenderMode(e, plan) {
 	case overlayRenderModeSingle, overlayRenderModeFused:
 		return e.enqueueSeparateOverlayItems(ctx, plan)
@@ -145,7 +163,7 @@ func resolveOverlayRenderMode(enqueuer *QueueRenderEnqueuer, plan capoverlay.Ove
 	}
 	candidates := make([]overlayItemCandidate, 0, len(plan.Items))
 	for index, item := range plan.Items {
-		if strings.EqualFold(strings.TrimSpace(item.TemplateID), "BACKGROUND") || strings.EqualFold(strings.TrimSpace(item.TemplateID), "VIDEO_BACKGROUND") {
+		if isOverlayBackgroundTemplate(item.TemplateID) {
 			continue
 		}
 		candidates = append(candidates, overlayItemCandidate{index: index, source: item})
@@ -198,13 +216,15 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	if plan.RequireDriveBeforeReturn && e.publisher == nil {
 		return RenderReference{}, fmt.Errorf("render plan requires Drive delivery but no overlay publisher is configured")
 	}
-	semanticPlan := plan
 	// A dynamic-map import attests both PlanID and VideoID. Plans built by the
-	// single-item path already fall back to PlanID; apply the same stable
-	// identity here so a plan that predates VideoID stamping still produces a
-	// complete import attestation instead of failing at the worker boundary.
-	if strings.TrimSpace(semanticPlan.VideoID) == "" {
-		semanticPlan.VideoID = semanticPlan.PlanID
+	// single-item path already fall back to PlanID; normalizeDynamicMapFoldPlan
+	// applies the same stable identity here so a plan that predates VideoID
+	// stamping still produces a complete import attestation instead of failing
+	// at the worker boundary. The PREPARE phase normalizes identically
+	// (PreMaterializeDynamicMapVideo), so both sides resolve one cache key.
+	semanticPlan, decisions, err := normalizeDynamicMapFoldPlan(plan)
+	if err != nil {
+		return RenderReference{}, err
 	}
 	var generatedMapVideo string
 	var dynamicMapImportSpec []byte
@@ -218,10 +238,6 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// not an acceptable substitute for a cartographic fly-in. The native path
 	// remains an explicit diagnostic opt-in (PIPELINEGEN_MAP_NATIVE_RENDER=1)
 	// until it can produce equivalent motion.
-	decisions, err := resolvePlanMapBackends(semanticPlan)
-	if err != nil {
-		return RenderReference{}, err
-	}
 	mapItemCount := len(decisions)
 	pythonMapCount := 0
 	for _, decision := range decisions {
@@ -229,7 +245,6 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			pythonMapCount++
 		}
 	}
-	annotatePlanMapBackends(&semanticPlan, decisions)
 	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
 	if mapItemCount == 1 && pythonMapCount == 1 && len(semanticPlan.Items) == 1 && !nativeDiagnostic {
 		// The plan is ONE dynamic map: fold its rendered video into the
@@ -237,13 +252,13 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		// path). Multi-map plans take the per-item route in
 		// EnqueueChrononPlan, so a map is rendered the same way regardless of
 		// how many maps the plan holds.
-		videoPath, err := renderDynamicMapVideo(ctx, semanticPlan, e.mapVideoCacheDir)
+		videoPath, err := e.renderDynamicMapVideo(ctx, semanticPlan)
 		if err != nil {
 			return RenderReference{}, fmt.Errorf("render Chronon dynamic map: %w", err)
 		}
 		generatedMapVideo = videoPath
 		defer func() { _ = os.RemoveAll(filepath.Dir(generatedMapVideo)) }()
-		sha, size, err := digest.SHA256File(videoPath)
+		sha, size, err := dynamicMapVideoIdentity(videoPath)
 		if err != nil {
 			return RenderReference{}, fmt.Errorf("identify Chronon dynamic map video: %w", err)
 		}
@@ -267,7 +282,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			return RenderReference{}, err
 		}
 		assetRef := capoverlay.NewOverlayAssetRef(
-			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, MediaType: "video/mp4"},
+			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, SizeBytes: size, MediaType: "video/mp4"},
 			"", videoPath,
 		)
 		semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}

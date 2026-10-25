@@ -90,7 +90,7 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 		result.LocalExists = true
 	}
 
-	if rec.LegacyFileMD5 == "" && opts.RequireHash {
+	if rec.ContentSHA256 == "" && opts.RequireHash {
 		result.OK = false
 		result.Status = "failed"
 		result.Error = "missing file hash"
@@ -177,7 +177,7 @@ func (f *Finalizer) Finalize(ctx context.Context, rec *MediaRecord, opts Finaliz
 			LocalPath:     rec.LocalPath,
 			DriveLink:     rec.DriveLink,
 			DownloadLink:  rec.DownloadLink,
-			LegacyFileMD5: rec.LegacyFileMD5,
+			ContentSHA256: rec.ContentSHA256,
 			ContentHash:   rec.ContentHash,
 			Status:        assetIndexStatus(rec.PublishStatus),
 			Metadata:      rec.Metadata,
@@ -278,14 +278,14 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 	// is pgmedia/index_event.go.
 	//
 	// MEDIA-IDENTITY (Sept 2026): the fallback is RESOLVED through the canonical
-	// rule instead of copied. rec.LegacyFileMD5 is the compatibility bucket and
+	// rule instead of copied. rec.ContentSHA256 is the compatibility bucket and
 	// may hold an MD5 (32 hex); the previous `if contentHash == "" { contentHash
-	// = rec.LegacyFileMD5 }` promoted that MD5 into metadata_json's content_hash
+	// = rec.ContentSHA256 }` promoted that MD5 into metadata_json's content_hash
 	// — the Tier-1 key the supersede gate reads — so an asset could be recognised
 	// as "unchanged" by comparing a digest that is not the byte identity. A
 	// digest that is not a 64-hex SHA-256 now yields "" (unknown), which is the
 	// honest value: the byte identity simply is not known for this record.
-	contentHash := asset.ResolveContentAddress(rec.ContentHash, rec.LegacyFileMD5)
+	contentHash := asset.ResolveContentAddress(rec.ContentHash, rec.ContentSHA256)
 
 	metadata := f.metadata.BuildAssetMetadata(MetadataInput{
 		AssetID:             rec.ID,
@@ -322,8 +322,6 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 			"drive_link":      rec.DriveLink,
 			"drive_file_id":   rec.DriveFileID,
 			"download_link":   rec.DownloadLink,
-			"legacy_file_md5": rec.LegacyFileMD5,
-			"file_hash":       rec.LegacyFileMD5,
 			"content_hash":    contentHash,
 			"source_id":       rec.SourceID,
 			"subfolder":       rec.Subfolder,
@@ -491,7 +489,7 @@ func defaultConfidence(rec *MediaRecord) float64 {
 	if rec.PHash != "" || rec.VisualEmbeddingJSON != "" {
 		return 0.9
 	}
-	if strings.TrimSpace(rec.LegacyFileMD5) != "" {
+	if strings.TrimSpace(rec.ContentSHA256) != "" {
 		return 0.7
 	}
 	return 0.5

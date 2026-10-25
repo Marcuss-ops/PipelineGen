@@ -2,15 +2,20 @@ package retrieved
 
 import (
 	"context"
+	"errors"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/duckduckgo"
 	"go.uber.org/zap"
 	"testing"
 )
 
 type duckDuckGoBridgeStub struct {
-	url   string
-	calls int
+	url        string
+	calls      int
+	challenged bool
 }
+
+func (b *duckDuckGoBridgeStub) DuckDuckGoChallenged() bool { return b.challenged }
 
 func (b *duckDuckGoBridgeStub) SearchWikipedia(context.Context, string, string) (string, string) {
 	return "", ""
@@ -72,6 +77,17 @@ func TestDuckDuckGoProviderReturnsRetrievedCandidate(t *testing.T) {
 	}
 	if got.Provider == detail.ProviderGoogleSlides || got.Origin == detail.ImageOriginGenerated {
 		t.Fatal("DuckDuckGo candidate crossed into generated territory")
+	}
+}
+
+func TestDuckDuckGoProviderClassifiesCooldownAsRefusal(t *testing.T) {
+	provider := NewDuckDuckGoProvider(&duckDuckGoBridgeStub{challenged: true}, nil, zap.NewNop())
+	results, err := provider.Search(context.Background(), "valid query", RetrievalSearchOptions{})
+	if !errors.Is(err, duckduckgo.ErrChallenged) {
+		t.Fatalf("error = %v, want a typed challenge instead of an empty corpus", err)
+	}
+	if results != nil {
+		t.Fatalf("results = %v, want nil on refusal", results)
 	}
 }
 

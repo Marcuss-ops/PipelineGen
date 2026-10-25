@@ -105,7 +105,7 @@ func openLiveEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			candidate_id INTEGER PRIMARY KEY,
 			asset_id TEXT NOT NULL DEFAULT '',
 			file_hash TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
 			drive_link TEXT NOT NULL DEFAULT '',
 			local_path TEXT NOT NULL DEFAULT '',
