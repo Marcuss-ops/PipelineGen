@@ -125,8 +125,12 @@ type RunReport struct {
 	Children               *ChildrenSummary  `json:"children,omitempty"`
 	KPIs                   PipelineKPIs      `json:"kpis,omitempty"`
 	ClipTimeline           *ClipTimeline     `json:"clip_timeline,omitempty"`
-	ErrorCode              string            `json:"error_code,omitempty"`
-	Error                  string            `json:"error,omitempty"`
+	// SceneTimeline is the per-scene lifecycle trace (ready/enqueued/
+	// started/completed per stage); SceneTimeline.CriticalPath derives the
+	// gating chain from it without summing concurrent work (§7.3).
+	SceneTimeline *SceneTimeline `json:"scene_timeline,omitempty"`
+	ErrorCode     string         `json:"error_code,omitempty"`
+	Error         string         `json:"error,omitempty"`
 }
 
 type StageReport struct {
@@ -146,6 +150,10 @@ type StageReport struct {
 	ItemsCompleted int64     `json:"items_completed,omitempty"`
 	ItemsFailed    int64     `json:"items_failed,omitempty"`
 	BytesProcessed int64     `json:"bytes_processed,omitempty"`
+	// ErrorMessage is the failure cause verbatim. ErrorCode degrades to
+	// "error" for untyped errors; without the message a failed stage is an
+	// unattributable row (the scene_analysis/post_writer_finalize lesson).
+	ErrorMessage string `json:"error_message,omitempty"`
 }
 
 type OperationReport struct {
@@ -176,6 +184,7 @@ type OperationReport struct {
 	OutputCodec      string    `json:"output_codec,omitempty"`
 	CacheHit         bool      `json:"cache_hit,omitempty"`
 	Strategy         string    `json:"strategy,omitempty"`
+	ErrorMessage     string    `json:"error_message,omitempty"`
 	MetadataJSON     string    `json:"metadata_json,omitempty"`
 	WorkerID         string    `json:"worker_id,omitempty"`
 	QueuedAt         time.Time `json:"queued_at,omitempty"`
@@ -245,12 +254,6 @@ type PipelineKPIs struct {
 	// AudioCompileFinishedMs is the wall offset when the audio compile
 	// phase completed.
 	AudioCompileFinishedMs int64 `json:"audio_compile_finished_ms"`
-	// DocsPublishStartedMs is the wall offset when the document publish
-	// phase began.
-	DocsPublishStartedMs int64 `json:"docs_publish_started_ms"`
-	// DocsPublishFinishedMs is the wall offset when the document publish
-	// phase completed.
-	DocsPublishFinishedMs int64 `json:"docs_publish_finished_ms"`
 	// CoreReadyMs is the wall offset when the certified render, the published
 	// final audio and the canonical script row became durable, leaving only
 	// the post-processing legs. It is the measured distance between "the

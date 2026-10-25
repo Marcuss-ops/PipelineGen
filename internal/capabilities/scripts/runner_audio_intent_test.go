@@ -34,7 +34,7 @@ func intentRunnerSource() *fakeAudioAssetSource {
 // SFX is placed absolutely, and whose BGM ducking automation is present —
 // the renderer is handed a fully-resolved plan, never the raw intents.
 func TestRunnerAudioIntentsCompileLayeredPlan(t *testing.T) {
-	runner, repo, textGen, _, voiceoverGen, _, _ := newTestRunner()
+	runner, repo, textGen, _, voiceoverGen, _ := newTestRunner()
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetAudioAssetSource(intentRunnerSource())
 
@@ -109,7 +109,7 @@ func TestRunnerAudioIntentsCompileLayeredPlan(t *testing.T) {
 // carrying BGM/SFX intents with no wired asset resolver fails in the
 // audio-compile phase instead of silently dropping the intents.
 func TestRunnerAudioIntentsWithoutResolverFailsClosed(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
@@ -132,7 +132,7 @@ func TestRunnerAudioIntentsWithoutResolverFailsClosed(t *testing.T) {
 // of an intent block keeps the legacy primary-only compile path: no BGM/SFX
 // tracks are added and no resolver is required.
 func TestRunnerAudioIntentsWithoutIntentsKeepsLegacyPath(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()

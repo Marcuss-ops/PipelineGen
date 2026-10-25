@@ -102,12 +102,12 @@ Il job `asset.text.materialize` espande ora le 10 lingue IN PARALLELO dentro il 
   (traduzioni); il dominante script-generate (66% del wall, prefisso ~90% nel layout
   B3) ci guadagna.
 
-**ATTIVAZIONE IN PRODUZIONE #2 (2026-10-03 09:35 UTC, dopo SUCCEEDED del job
+**ATTIVAZIONE IN PRODUZIONE #2 (storico, 2026-10-03 09:35 UTC, dopo SUCCEEDED del job
 `job_1791019997722245926_8677626d`):** deploy del fix K2 (drain publish pool
 incondizionato, sezione K). `make build-server` (09:34:16Z) →
 `pipelinegenctl restart-verify` → **PASS**; nuovo PID 717995 (09:35:11Z).
-Evidenza: `runner_document_drain_test.go` RED→GREEN; verify-agent PASS.
-**VERIFICA IN PRODUZIONE (journal 10-03 09:36→10:00, PID 717995/758532):**
+Evidenza storica: `runner_document_drain_test.go` RED→GREEN; verify-agent PASS.
+**VERIFICA IN PRODUZIONE STORICA (journal 10-03 09:36→10:00, PID 717995/758532):**
 `voiceover publish pool drained` (runner_phase_document.go:227) appare ANCHE su
 run con `DOCUMENT=SKIPPED` (es. run_1791020540094845725, generated=7) — drain
 incondizionato attivo. VERIFICA K1 (job_steps + payload 10-01→10-03): 102 run
@@ -217,7 +217,7 @@ Snapshot di riferimento: `ops/benchmarks/job-timing-20261005T164155Z.json` (e `j
 - `prepare_join` PROPAGA l'errore del ramo semantic (`generation_handler` fail-closed); il fallimento avviene prima del join: `vidrush semantic certification failed: CERTIFIED=false (IMAGE FANOUT: images available = 0/1, expected at least 1/2/5; CROSS-SCENE REUSE: asset già bound ad altro segmento)`.
 - Schema osservato: fallimento certificazione → run attempt 1/3 → deferral 5s → attempt 2 → 3 → budget esaurito → il job muore con errore TERMINALE mascherato `read durable run result: context canceled` (Get(ctx) con ctx già annullato dal runner che ha finito di fallire). 62 dei 75+ messaggi CERTIFIED=false dal 10-04 sono "images available = 1, expected at least 2" = piani dual-image che ricevono 1 immagine.
 - La certificazione sta facendo il suo lavoro (rifiuta asset riutilizzati/fotteri); il DIFETTO era di osservabilità: il root cause editoriale era raggiungibile solo dai job_deferred (tentativi 1-2), mai dalla colonna error_code terminale. **FIX APPLICATO:** `deriveErrorCode` classifica `CERTIFIED=false` → `SEMANTIC_CERTIFICATION_FAILED` PRIMA delle euristiche generiche (il "render" nel messaggio lo mandava a ENQUEUE_FAILED). Pin: caso in `TestDeriveErrorCode`.
-- Residuo aperto: il `context canceled` terminale rimane fuorviante come MESSAGGIO (il codice ora parla). Proposta per la prossima ondata: in `incompleteRunError`, quando `updated.ErrorMessage != ""` non usare affatto il `getErr` (già fatto) E ritentare la Get con `context.WithoutCancel` nel handler per leggere l'esito reale; non fatto qui perché tocca il path di completamento handler (rischio fuori dal perimetro osservabilità di oggi).
+- Residuo chiuso (2026-10-25): il `context canceled` terminale non è più fuorviante. In `generation_handler.go` la Get post-esecuzione viene ritentata con `context.WithoutCancel` (bounded, `readRunOutcomeDetached`) quando il ctx dell'attempt è già morto, così il job instrada sull'esito reale del ledger (`incompleteRunError` con la vera `ErrorMessage`) invece che sul messaggio della lettrice. Contratto pinnato in `generation_handler_reread_test.go`.
 - Sui vidrush.verify/acquire "falliti" (1.167/660): rumore di polling (0,01-0,27s), non incidono sul wall; non azione.
 
 **Verifica in produzione (quando il binario viene ridistribuito):** nuova run brasiliana → `SELECT operation, component, duration_ms FROM run_operation_observations WHERE stage='overlay_render' AND run_id=...` deve mostrare submit/wait_completion/render/encode con created_at popolato; un fallimento certificazione deve esporre error_code=SEMANTIC_CERTIFICATION_FAILED su jobs.error.
@@ -274,7 +274,6 @@ Log sporco: il resource sampler fallisce `context deadline exceeded` ogni ~14s
 | aac_encode | 514 | 2,2h | 15,5s | 74s |
 | ollama.warm | 129 | 1,0h | 27,3s | 600s |
 | artlist.resolve | 2.183 | 1,9h | 3,1s | 113s |
-| google_docs.publish | 520 | 1,1h | 7,7s | 43s |
 | remote_final_job | 8 ok / 46 ko | 1,2h | 327s / 61s ko | 664,9s |
 
 Fallimenti per tipo: script.generate 94 job / 2,6h sprecate; youtube_clip.extract
@@ -395,9 +394,17 @@ Tre gap di strumentazione dallo snapshot:
 
 ### F. Ingestion — ~7,7h download + coda
 
-- [ ] **F1. Mirror locale per video-ID** — stesso YouTube mai riscaricato: 1 download
+- [x] **F1. Mirror locale per video-ID** — stesso YouTube mai riscaricato: 1 download
       + cut locali content-addressed (pattern già usato per i background).
       *Guadagno:* stock.youtube_download 5,5h → ~0; clip.extract −60%.
+      COMPLETA (2026-10-25): il full-source mirror (§0.3, `PIPELINEGEN_YTDLP_MIRROR_ROOT`)
+      è esteso ANCHE ai download per sezioni (`--download-sections`): una fetch full-source
+      per video (single-flighted, content-addressed) + cut locali NVENC/libx264
+      (`internal/platform/downloader/mirror_sections.go`, opt-out
+      `PIPELINEGEN_YTDLP_MIRROR_SECTIONS=off`). Fail-soft: parse/fetch/cut failure →
+      path rete per-sezione preesistente. *Prove:* `mirror_sections_test.go`
+      (one-fetch-N-cuts, fallback su sezione non parseabile, cookie policy, naming
+      identico al path rete, nessun re-encode delle sezioni, cleanup `.fetch-*`).
 - [~] **F2. Downloader segmentato** (PARZIALE: `--concurrent-fragments` nativo via
       env; aria2c già presente per i full-source). → `PIPELINEGEN_YTDLP_CONCURRENT_FRAGMENTS`.
 - [x] **F3. Probe cache** — ffprobe/storyboard per asset-hash, mai due volte.
@@ -418,8 +425,9 @@ Tre gap di strumentazione dallo snapshot:
 - [ ] **H1. Objectstore locale per gli intermedi** — clip/audio/timing al L3 interno
       (pattern RenderingGen), Drive solo delivery master.
       *Guadagno:* ~60% delle 7.700 chiamate Drive sparisce.
-- [ ] **H2. Docs publisher append-mode** — append sequenziali invece di render+publish.
-      *Guadagno:* 7,7s → ~2s.
+- [x] **H2. Docs publisher append-mode — SUPERATO (2026-10-25)**: l'integrazione
+      Google Docs è stata ritirata, quindi non esiste più un publisher da
+      ottimizzare.
 
 ### I. Fallimenti — 10,7h di worker.execution fallite
 
@@ -435,43 +443,12 @@ Tre gap di strumentazione dallo snapshot:
 
 ### K. Sprechi / tagli (verificati a codice, 2026-10-03)
 
-- [x] **K1. `docs.enabled=false` nei payload** — VERIFICATO SICURO per il final job:
-  il phase document è già gateato (`runDocumentPhase`: `documentSkipped = ... ||
-  !docsEnabled` → zero render HTML, zero publish Google Docs, zero child
-  `script.docs_publish`); il parent completa normalmente senza il child. La catena
-  overlay→Drive→payload worker 51 è INDIPENDENTE da Docs: gli overlay sono
-  pubblicati dal pool `overlayPublicationDrainer` in `complete()` (fuori dal ramo
-  docs) e `finalJobOverlayAssets` legge `result.OverlayRender` — nessun riferimento
-  ai documenti; `buildRemoteJobPayload`/`BuildFinalJobPayloads` non toccano docs.
-  Nessun gate di certificazione richiede il documento (i gate certificati sono
-  audio + overlay + preflight). *Costo attuale:* 17,1s inline sul final job Milton
-  (2,6% del wall 5m48s), 520 publish × 7,7s = 1,1h/sett, più un giro
-  parent→waiting_children→child→aggregator per nulla. *Azione:* zero codice —
-  `"docs": {"enabled": false}` nei prossimi payload (i 9 video brasiliani). I
-  documenti restano disponibili on-demand rilanciando la singola run con docs
-  abilitato (il re-entry è idempotente per run terminal). STATO 2026-10-03:
-  **il DEFAULT del codice È GIÀ `false` (opt-in)** — `builder.go` copia
-  `item.Docs.Enabled` verbatim dal payload (zero-value = OFF) e
-  `ResolveDocsConfig` è `req.Docs.Enabled || req.DocsEnabled`: un payload SENZA
-  blocco `docs` non publica documenti, e le `output.languages` restano per la
-  traduzione (non sono un trigger docs). VERIFICATO sui file: i payload pt-BR
-  10-01/10-02 (isabelle v7-v11, maps_only) GIÀ omettono il blocco → girano
-  senza Docs; solo i payload più vecchi (milton 09-29, mike tyson) lo
-  portavano esplicito. CONTRATTO PINNATO: `builder_docs_default_test.go`
-  (omesso→off, esplicito false→off, esplicito true→opt-in on-demand);
-  pin fixture esistente: manifest mike_tyson_1000w ("publishes no Docs
-  artifacts"). *Azione residua:* continuare a OMITTERE il blocco `docs` nei
-  prossimi payload — nessun codice da cambiare, nessun env da impostare.
-  AZIONE COLLAUDI EN (10-03): `docs.enabled` true→false nei payload collaudo EN
-  non-docs-dipendenti (celebrity ×2, dolly 13clips/preview/prefetch,
-  five_boxers, matt_damon_20clips, chronon-two-stop-map) — 8 file, fixture-test
-  intatti, verify-agent PASS. RESTANO con docs (asseriti): matt_damon_5_clips
-  (pin `Docs.Enabled` nel manifest test), elon_property (documents asserted),
-  elon_overlay_docs_entities + matt_damon_docs_true + dolly_docs_audio_en
-  (docs-dedicati), verify_1clip_10lang (pin docs+lingue),
-  person_overlay_drive_e2e.sh (e2e del percorso Docs: fallisce senza link
-  documento). I payload mappe paris/france/veneto/map-lod NON sono nel repo
-  (inviati inline): per i prossimi, omettere il blocco docs.
+- [x] **K1. Docs rimosso dal prodotto (2026-10-25)** — l'intera integrazione
+  Google Docs è stata ritirata: niente publisher, niente child
+  `script.docs_publish`, niente costo Docs da ottimizzare. I payload che
+  portano ancora `docs`/`docs_enabled=true` falliscono chiusi con
+  `ErrGoogleDocsRetired`; omettere il blocco (o `false`) è l'unico valore
+  accettato. Vedi `AGENTS.md` «Script document destinations (retired)».
 - [x] **K2. Drain del pool publish voiceover reso INCONDIZIONATO (IMPLEMENTATO 2026-10-03)** —
   CORREZIONE dell'ipotesi iniziale: i link Drive dei voiceover NON hanno il
   documento Google come unico consumatore — sono consumati anche dalla
@@ -487,7 +464,9 @@ Tre gap di strumentazione dallo snapshot:
   test: drain anche con docs off; la run NON può completare con un upload in
   flight) — RED sul codice vecchio ("run reached COMPLETED while a voiceover
   publish was still in flight"), GREEN dopo il fix; suite package +
-  verify-agent PASS. *Nota sull'ipotesi di risparmio:* le ~7.700 chiamate
+  verify-agent PASS. Dopo il ritiro di Docs (2026-10-25) il drain vive
+  incondizionatamente in `runner_execution.go` e il phase document non esiste
+  più. *Nota sull'ipotesi di risparmio:* le ~7.700 chiamate
   Drive/sett dei voiceover NON sono recuperabili da questo item (servono a
   cache/registry); il guadagno è correttezza (zero upload orfani/ri-lavorazione)
   e la quota Drive si taglia via K1.
@@ -498,10 +477,9 @@ Tre gap di strumentazione dallo snapshot:
   DEL JOB (manifest `__artifact_manifest`: script/scenes/final audio…),
   indipendenti da Docs; con K1 non sparisce nulla lì dentro. Nessun publish
   docs-dipendente nel spine.
-- [x] **K4. H2 (Docs append-mode) CHIUSA come moot** — con K1 come default
-  operativo sui payload (`docs.enabled=false`) il publisher Docs non è più sul
-  percorso dei video payload; append-mode (7,7s→2s) non va implementata. Resta
-  valida solo per run on-demand con docs abilitato, dove il costo è accettato.
+- [x] **K4. H2 (Docs append-mode) CHIUSA come moot** — l'integrazione Google
+  Docs è stata ritirata (2026-10-25), quindi non c'è alcun publisher da
+  ottimizzare nemmeno per run on-demand.
 
 ### J. Observability (affinché i numeri restino veri)
 

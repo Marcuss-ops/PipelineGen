@@ -124,7 +124,6 @@ const (
 // SceneImageOutcome is the EXPORTED typed outcome for one scene's
 // image-generation terminal state. Commit 6 introduction — a typed
 // surface that downstream consumers (operator dashboards, the
-// postprocessor pipeline's metrics adapter, the artlist search-
 // aggregator) can read directly without unmarshaling warning strings.
 //
 // Fields:

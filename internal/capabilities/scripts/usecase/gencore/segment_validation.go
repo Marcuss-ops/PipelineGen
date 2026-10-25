@@ -109,11 +109,19 @@ func (e *Engine) generateSegments(
 	// Optional production seam: warm the selected model once before the
 	// segment fan-out. The narrow interface keeps provider fakes and remote
 	// generators compatible while the Ollama adapter uses singleflight.
+	//
+	// BEST-EFFORT BY CONTRACT: warm is a latency optimization, never a
+	// correctness gate — the generate call itself surfaces a real model
+	// problem. Failing the generation here burned whole attempts on a warm
+	// timeout (measured on the live ledger: 125 failed `ollama.warm` ops,
+	// up to 600s each, each one killing a generation attempt before any
+	// segment was produced).
 	if warmer, ok := e.ollamaGen.(interface {
 		WarmModel(context.Context, string) error
 	}); ok {
-		if err := warmer.WarmModel(ctx, req.Model); err != nil {
-			return nil, fmt.Errorf("engine: warm model: %w", err)
+		if err := warmer.WarmModel(ctx, req.Model); err != nil && e.log != nil {
+			e.log.Warn("engine: warm model failed — continuing best-effort",
+				zap.String("model", req.Model), zap.Error(err))
 		}
 	}
 	// The Ollama generator owns the canonical ollama/generate measurement

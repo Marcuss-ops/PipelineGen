@@ -17,7 +17,6 @@
 // This type unifies the two source-of-truth representations so:
 //   - Qdrant PayloadMapper reads from ClipSemanticMetadata (via infra adapter)
 //   - SearchTextComposer's AsSearchTextInput() derives from ClipSemanticMetadata
-//   - Future pipelines (Artlist, Voiceover) adopt the same shape
 //
 // Adapters:
 //   - FromCanonicalClipMetadata (application layer, follow-up PR)

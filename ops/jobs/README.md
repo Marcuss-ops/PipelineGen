@@ -68,29 +68,27 @@ It is also the audio-prefetch stress payload: `audio.background_music` (bgm1),
 two `audio.sound_effects` (whoosh1/whop1) and
 `mix_policy: VOICEOVER_DUCKED_CLIP` give `PrefetchAudioAssets` real work
 (BGM/SFX resolution PLUS clip-audio materialization) while TTS runs.
-The manifest carries `docs.folder_id` and that field — not
-`output.render.drive_folder_id` / `drive_subfolder_name` — is what decides
-where the clips are published: a localized clip lands in
-`<resolved documents root>/<job id>/<language>`, and the clips-root spelling is
-read only by a run with NO resolvable documents root. Without `docs.folder_id`
-the destination falls back to the deployment default
-(`PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID`), which on the reference host points at the
-Overlay Chronon folder rather than at the scripts root.
+The manifest carries no `docs` block: Google Docs publication was retired on
+2026-10-25, and `docs` is now a fail-closed tombstone (see `AGENTS.md`). A
+localized clip publishes into
+`<clips root | output.render.drive_folder_id>[/<output.render.drive_subfolder_name>]/<language>`,
+where the clips root is `cfg.Drive.ClipsFolder()`
+(`drive.normal_clips_source_folder`).
 
 Run ids of record (2026-09-22): `job_1790091295751404561_e73027c5` —
 SUCCEEDED, 5/5 renders on the remote `renderinggen-host` worker
 (`chronon_vulkan`, `verification_passed: 1`); and
-`job_1790092276095209221_a55bdbb5` with an explicit
-`docs.folder_id = 1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K`, which published the same
-five certified artifacts (reused by render fingerprint, `wall_ms 20408`) into
+`job_1790092276095209221_a55bdbb5` (a pre-retirement run that still carried
+`docs.folder_id = 1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K`) published the same five
+certified artifacts (reused by render fingerprint, `wall_ms 20408`) into
 `<scripts root>/<job id>/en/`. Evidence and the observed Drive trees:
 `ops/benchmarks/dolly-wm-dualbg-20260922/`.
 
 `matt_damon_20_clips_profiling.generate.json` is the canonical source of
 truth for the Matt Damon 20-clip profiling job. Future submissions and
-Google Docs payload sections must be derived from this manifest, not from
-the legacy root-level `matt_damon.generate.json` or from a filename-only
-`body_file` reference.
+derived fixtures must be built from this manifest, not from the legacy
+root-level `matt_damon.generate.json` or from a filename-only `body_file`
+reference.
 
 The contract is permanent:
 
@@ -101,7 +99,7 @@ The contract is permanent:
 - the manifest is the complete `script.generate` item payload;
 - a rerun changes only the idempotency key (and keeps the same structure);
 - the complete payload remains an internal job/provenance surface and is not
-  rendered into the human-facing Google Doc.
+  rendered into any human-facing document.
 
 ## Sound effects
 

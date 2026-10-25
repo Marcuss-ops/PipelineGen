@@ -10,8 +10,6 @@ import (
 
 func TestPostProcessResult_JSONRoundTripExcludesInternalState(t *testing.T) {
 	original := PostProcessResult{
-		DocID:            "doc-1",
-		DocLink:          "https://docs.example/doc-1",
 		ScriptID:         42,
 		Changed:          true,
 		TranslatedText:   "testo tradotto",
@@ -24,7 +22,7 @@ func TestPostProcessResult_JSONRoundTripExcludesInternalState(t *testing.T) {
 		t.Fatalf("marshal PostProcessResult: %v", err)
 	}
 	wire := string(raw)
-	for _, key := range []string{`"DocID"`, `"DocLink"`, `"ScriptID"`, `"changed"`, `"translated_text"`, `"warnings"`} {
+	for _, key := range []string{`"ScriptID"`, `"changed"`, `"translated_text"`, `"warnings"`} {
 		if !strings.Contains(wire, key) {
 			t.Fatalf("expected JSON key %s in PostProcessResult: %s", key, wire)
 		}
@@ -37,7 +35,7 @@ func TestPostProcessResult_JSONRoundTripExcludesInternalState(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal PostProcessResult: %v", err)
 	}
-	if decoded.DocID != original.DocID || decoded.DocLink != original.DocLink || decoded.ScriptID != original.ScriptID ||
+	if decoded.ScriptID != original.ScriptID ||
 		decoded.Changed != original.Changed ||
 		decoded.TranslatedText != original.TranslatedText || len(decoded.Warnings) != 1 {
 		t.Fatalf("round-trip mismatch: original=%#v decoded=%#v", original, decoded)
@@ -49,7 +47,6 @@ func TestPostProcessResult_JSONRoundTripExcludesInternalState(t *testing.T) {
 
 func TestPipelineResult_JSONRoundTripExcludesInternalState(t *testing.T) {
 	original := PipelineResult{
-		DocID:             "doc-2",
 		ScriptID:          99,
 		TranslatedText:    "translated pipeline text",
 		EffectiveLanguage: "it",
@@ -62,7 +59,7 @@ func TestPipelineResult_JSONRoundTripExcludesInternalState(t *testing.T) {
 		t.Fatalf("marshal PipelineResult: %v", err)
 	}
 	wire := string(raw)
-	for _, key := range []string{`"DocID"`, `"ScriptID"`, `"translated_text"`, `"effective_language"`, `"warnings"`} {
+	for _, key := range []string{`"ScriptID"`, `"translated_text"`, `"effective_language"`, `"warnings"`} {
 		if !strings.Contains(wire, key) {
 			t.Fatalf("expected JSON key %s in PipelineResult: %s", key, wire)
 		}
@@ -75,7 +72,7 @@ func TestPipelineResult_JSONRoundTripExcludesInternalState(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal PipelineResult: %v", err)
 	}
-	if decoded.DocID != original.DocID || decoded.ScriptID != original.ScriptID ||
+	if decoded.ScriptID != original.ScriptID ||
 		decoded.TranslatedText != original.TranslatedText ||
 		decoded.EffectiveLanguage != original.EffectiveLanguage || len(decoded.Warnings) != 1 {
 		t.Fatalf("round-trip mismatch: original=%#v decoded=%#v", original, decoded)

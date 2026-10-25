@@ -44,7 +44,6 @@ func (t5Enricher) Enrich(_ context.Context, _ *scriptpkg.ResolvedGenerationPlan,
 			ImportantPhrases: []string{"Mars exploration"},
 			ImportantWords:   []string{"rover", "missions", "exploration"},
 			YouTubeQueries:   []string{"Mars rover Perseverance mission"},
-			ArtlistQueries:   []string{"Mars surface rover space technology"},
 			ImageQueries:     []string{"Mars rover Perseverance", "Mars surface"},
 		},
 	}, nil
@@ -56,7 +55,6 @@ func (r *t5Resolver) ResolveProviders(_ context.Context, _ *scriptpkg.ResolvedGe
 	r.calls++
 	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{
 		{AssetID: "mars-youtube", Provider: scriptpkg.VidRushProviderYouTube, Query: segment.Insights.YouTubeQueries[0], RelevanceScore: .94},
-		{AssetID: "mars-artlist", Provider: scriptpkg.VidRushProviderArtlist, Query: segment.Insights.ArtlistQueries[0], RelevanceScore: .88},
 		{AssetID: "mars-image", Provider: scriptpkg.VidRushProviderInternetImages, Query: segment.Insights.ImageQueries[0], RelevanceScore: .91},
 	}
 	return segment, nil
@@ -66,8 +64,7 @@ func TestVidRushGoldenT5ResearchNLPPlanningAndProviderResolution(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title: "Esplorazione di Marte", Language: "it", Model: "small-model", PromptVersion: "t5-v1",
 		MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{
-			YouTube: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleEnabled,
-			InternetImages: mediadomain.MediaToggleEnabled,
+			YouTube: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled,
 		}},
 	}
 	text := "Negli ultimi anni l'esplorazione di Marte è cambiata rapidamente grazie a nuove missioni, rover e aziende private."
@@ -98,20 +95,20 @@ func TestVidRushGoldenT5ResearchNLPPlanningAndProviderResolution(t *testing.T) {
 	if len(result.Insights.Entities) != 2 {
 		t.Fatalf("entities=%d, want Mars and Perseverance", len(result.Insights.Entities))
 	}
-	if len(result.Insights.YouTubeQueries) == 0 || len(result.Insights.ArtlistQueries) == 0 || len(result.Insights.ImageQueries) != 2 {
+	if len(result.Insights.YouTubeQueries) == 0 || len(result.Insights.ImageQueries) != 2 {
 		t.Fatalf("query plan missing provider-specific queries: %+v", result.Insights)
 	}
 	if resolver.calls != 1 {
 		t.Fatalf("provider resolver calls=%d, want 1", resolver.calls)
 	}
-	if len(result.Assets.Candidates) != 3 {
-		t.Fatalf("provider candidates=%d, want 3", len(result.Assets.Candidates))
+	if len(result.Assets.Candidates) != 2 {
+		t.Fatalf("provider candidates=%d, want 2", len(result.Assets.Candidates))
 	}
 	providers := map[string]bool{}
 	for _, candidate := range result.Assets.Candidates {
 		providers[candidate.Provider] = true
 	}
-	for _, provider := range []string{scriptpkg.VidRushProviderYouTube, scriptpkg.VidRushProviderArtlist, scriptpkg.VidRushProviderInternetImages} {
+	for _, provider := range []string{scriptpkg.VidRushProviderYouTube, scriptpkg.VidRushProviderInternetImages} {
 		if !providers[provider] {
 			t.Fatalf("provider %q missing from resolved candidates: %+v", provider, result.Assets.Candidates)
 		}

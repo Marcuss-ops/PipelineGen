@@ -48,12 +48,10 @@ type VidRushSourceResolver struct {
 	LocalStock    SourceResolutionProvider
 	Canonical     CanonicalAssetSearcher
 	YouTube       SourceResolutionProvider
-	Artlist       SourceResolutionProvider
 	ImageFallback SourceResolutionProvider
 }
 
 // Resolve returns the first available source according to the canonical order:
-// locked source, suggested AssetID, local stock, YouTube, Artlist, images.
 func (r VidRushSourceResolver) Resolve(ctx context.Context, req SourceResolutionRequest) (*SourceResolutionCandidate, error) {
 	if req.Plan == nil {
 		return nil, fmt.Errorf("source resolver: plan is required")
@@ -86,7 +84,6 @@ func (r VidRushSourceResolver) Resolve(ctx context.Context, req SourceResolution
 		// stock provider retained for callers that already have one.
 		{"local_stock", "local_stock", r.LocalStock},
 		{scriptpkg.VidRushProviderYouTube, "youtube", r.YouTube},
-		{scriptpkg.VidRushProviderArtlist, "artlist", r.Artlist},
 		{scriptpkg.VidRushProviderInternetImages, "image_fallback", r.ImageFallback},
 	}
 	for _, provider := range providers {
@@ -176,7 +173,7 @@ func providerEnabled(plan *scriptpkg.ResolvedGenerationPlan, provider string) bo
 		return true
 	}
 	switch provider {
-	case scriptpkg.VidRushProviderYouTube, scriptpkg.VidRushProviderArtlist, scriptpkg.VidRushProviderInternetImages, scriptpkg.VidRushProviderImageGeneration:
+	case scriptpkg.VidRushProviderYouTube, scriptpkg.VidRushProviderInternetImages, scriptpkg.VidRushProviderImageGeneration:
 		return providerEnabledForVidRush(plan, provider)
 	default:
 		return false

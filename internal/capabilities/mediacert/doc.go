@@ -23,7 +23,6 @@
 //     segment that emitted it (no cross-scene query drift).
 //   - ASSET OWNERSHIP         — every selected asset's provenance segment
 //     matches the segment it is bound to.
-//   - ARTLIST RELEVANCE       — the winner candidate's subject matches the
 //     segment subject (boxing REJECTED for Greek Salad).
 //   - CROSS-SCENE REUSE       — when the spec forbids reuse, no asset is
 //     bound to two segments.

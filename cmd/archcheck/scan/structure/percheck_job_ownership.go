@@ -42,7 +42,6 @@ type jobRuntimeEvidence struct {
 // ownershipJobRuntimeAliases is the only translation table between the
 // operator-facing ownership inventory and canonical runtime job types. Alias
 // rows are allowed to point at the same runtime type when they describe the
-// same consumable job from two operational views (artlist.run/media.artlist).
 var ownershipJobRuntimeAliases = map[string]string{
 	"script.generate_batch":    "script.generate",
 	"artlist.run":              "media.artlist",

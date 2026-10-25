@@ -129,7 +129,6 @@ type ScriptsConfig struct {
 	OverlayPublicationWorkers int `yaml:"overlay_publication_workers" env:"VELOX_SCRIPTS_OVERLAY_PUBLICATION_WORKERS" default:"6"`
 
 	// MaxInsightEntities caps the number of important words, important phrases,
-	// special names, and artlist phrases extracted per script. Default 12.
 	MaxInsightEntities int `yaml:"max_insight_entities" env:"VELOX_SCRIPTS_MAX_INSIGHT_ENTITIES" default:"12"`
 
 	// ── Default values for request fields ────────────────────────────────
@@ -224,14 +223,6 @@ type ScriptsConfig struct {
 	// MaxSegmentRegenerationAttempts bounds retries after the initial
 	// generation. Default 1 (at most two provider calls total).
 	MaxSegmentRegenerationAttempts int `yaml:"max_segment_regeneration_attempts" env:"VELOX_SCRIPTS_MAX_SEGMENT_REGENERATION_ATTEMPTS" default:"1"`
-
-	// ScriptDocsFolderID is the canonical default Google Drive folder for
-	// script documents (env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). Precedence:
-	// explicit payload docs.folder_id > this configured default > fail
-	// closed when docs.enabled=true and still empty (the folder must never
-	// be invented by an agent or worker). Empty default means "not
-	// configured" — resolve via the canonical script docs resolver.
-	ScriptDocsFolderID string `yaml:"script_docs_folder_id" env:"PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID" default:""`
 
 	// NLPConcurrency bounds concurrent SceneAnalysis (entity / important phrase
 	// / important word extraction) scenes in the incremental VidRush pipeline.

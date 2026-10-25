@@ -5,8 +5,6 @@
 // legacy `APIDriveVerifier` that lived in
 // internal/capabilities/assets/artifacts/verifier.go — PR2.7 moved it
 // here to break the App → Infra back-edge of the import cycle that the
-// drive <-> artlist cycle had historically introduced (folder_manager.go
-// once imported artlist for `[]artlist.DriveFileRef` return type on
 // ListByQuery). F2.11 + F3.14 (June 2026) closed that cycle by retiring
 // the wide DriveFolderManager port and its ListByQuery / Download /
 // Upload dead-code surface; this architectural split remains so future

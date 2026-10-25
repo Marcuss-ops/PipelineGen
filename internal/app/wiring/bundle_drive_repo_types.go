@@ -24,8 +24,6 @@ import (
 type DriveBundle struct {
 	Admin         drive.Admin
 	Reader        drive.Reader
-	DocClient     drive.DocClient
-	DocPublisher  delivery.DocPublisher
 	DriveDests    *DriveDestinations
 	DestResolver  asset.Resolver
 	StyleRegistry *imagestyles.StyleRegistry

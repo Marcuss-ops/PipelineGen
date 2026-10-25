@@ -17,11 +17,9 @@
 //
 // Reupload destination mapping (per req.Source):
 //   - "clips" / "youtube" / "" → delivery.DestinationYouTubeClip
-//   - "artlist"                → delivery.DestinationArtlist
 //   - "stock"                  → delivery.DestinationStock
 //   - other / unknown          → delivery.DestinationYouTubeClip
 //
-// Rationale: a clip may have originated from artlist/stock;
 // destination-aware routing lets the canonical PathBuilder pick
 // the right folder hierarchy instead of forcing a single bucket.
 //
@@ -136,7 +134,6 @@ type ReuploadUseCase struct {
 
 // NewReuploadUseCase constructs the canonical use case.
 // folderRoots is keyed by canonical source name (e.g. "clips",
-// "artlist", "stock"). A nil/empty map means dynamic folder
 // resolution is disabled for all sources.
 //
 // F2.9 signature change: `publisher delivery.Publisher` replaces
@@ -175,8 +172,12 @@ func NewReuploadUseCase(
 // destination routing (F2.9, June 2026); future source extensions
 // add a row here. Map lookup keeps the C2-C AST check deterministic.
 // switch-case detection (godlike/06 SSOT).
+// The retired "artlist" source keeps its row so a legacy clip still
+// re-publishes, but it now routes to the canonical stock destination that
+// inherited the Artlist assets (the dedicated Artlist Drive folder and
+// storage path no longer exist).
 var destinationBySource = map[string]delivery.DestinationKey{
-	"artlist": delivery.DestinationArtlist,
+	"artlist": delivery.DestinationStock,
 	"stock":   delivery.DestinationStock,
 	"clips":   delivery.DestinationYouTubeClip,
 	"youtube": delivery.DestinationYouTubeClip,

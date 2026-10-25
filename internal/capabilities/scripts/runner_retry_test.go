@@ -27,7 +27,7 @@ import (
 // first call → run fails → reset stub → second Execute succeeds
 // from the same checkpoint stage.
 func TestRunner_TextGeneratorFails_RetryResumesFromCheckpoint(t *testing.T) {
-	runner, repo, textGen, _, _, _, _ := newTestRunner()
+	runner, repo, textGen, _, _, _ := newTestRunner()
 	req := defaultTestRequest()
 
 	// Configure textGen to fail on the second call.
@@ -83,7 +83,7 @@ func TestRunner_TextGeneratorFails_RetryResumesFromCheckpoint(t *testing.T) {
 // StageTranslatingScenes and SKIPS scenes that already have the
 // target-language text (scene-level idempotency).
 func TestRunner_TranslatorFailsAtScene_RetrySkipsAlreadyTranslated(t *testing.T) {
-	runner, repo, _, translator, _, docPub, _ := newTestRunner()
+	runner, repo, _, translator, _, _ := newTestRunner()
 	req := defaultTestRequest()
 
 	// Configure translator to fail for scene-1.
@@ -125,9 +125,8 @@ func TestRunner_TranslatorFailsAtScene_RetrySkipsAlreadyTranslated(t *testing.T)
 		assert.NotEmpty(t, s.Text["es"], "scene %d should have ES text on retry", i)
 	}
 
-	// Verify voiceovers and docs exist despite the retry.
+	// Verify voiceovers exist despite the retry.
 	for i, s := range final.Result.Scenes {
 		assert.NotEmpty(t, s.Voiceover["en"].ID, "scene %d should have EN voiceover", i)
 	}
-	assert.Equal(t, 2, len(docPub.records), "docs should be upserted exactly 2 times total")
 }

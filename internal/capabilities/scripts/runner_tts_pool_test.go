@@ -48,7 +48,7 @@ func (g *barrierVoiceoverGenerator) Generate(ctx context.Context, input Voiceove
 // barrier generator that requires all 3 calls to start before any completes
 // still finishes. A serial voiceover phase would deadlock and time out.
 func TestVoiceoverPhase_FansOutTTSConcurrently(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.voiceoverGen = newBarrierVoiceoverGenerator(3)
 	runner.SetTTSConcurrency(3)
 
@@ -79,7 +79,7 @@ func TestVoiceoverPhase_FansOutTTSConcurrently(t *testing.T) {
 // TestSetTTSConcurrency_ZeroFallsBackToDefault pins the configurable pool's
 // fail-safe: a non-positive override restores the certified default.
 func TestSetTTSConcurrency_ZeroFallsBackToDefault(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	runner.SetTTSConcurrency(0)
 	require.Equal(t, DefaultTTSConcurrency, runner.ttsConcurrency)
 	runner.SetTTSConcurrency(7)
@@ -225,7 +225,7 @@ func (g *eagerStreamingTextGenerator) GenerateSceneTextStream(ctx context.Contex
 // so a second provider call here is a real cost/latency duplication, never an
 // accepted retry (which is observable separately as an error message).
 func TestVoiceover_SynthesizesEachSceneLanguageExactlyOnce(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.textGen = &eagerStreamingTextGenerator{scenes: defaultTestScenes()}
 	counter := newCountingVoiceoverGenerator()
 	runner.voiceoverGen = counter
@@ -263,7 +263,7 @@ func TestVoiceover_SynthesizesEachSceneLanguageExactlyOnce(t *testing.T) {
 // work it dispatched, so it must add to, never overwrite, the coordinator's
 // count.
 func TestVoiceover_DoesNotDuplicateFanOutForSingleLanguage(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	scenes := defaultTestScenes()
 	runner.textGen = &eagerStreamingTextGenerator{scenes: scenes}
 	counter := newCountingVoiceoverGenerator()
@@ -271,7 +271,6 @@ func TestVoiceover_DoesNotDuplicateFanOutForSingleLanguage(t *testing.T) {
 
 	req := defaultTestRequest()
 	req.Languages = []Language{"en"} // source language only → exactly len(scenes) syntheses
-	req.Docs.Languages = []Language{"en"}
 	runID := "run-tts-no-double-002"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,

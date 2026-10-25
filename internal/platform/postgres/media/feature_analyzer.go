@@ -12,7 +12,6 @@
 //	  ↓  VectorSurfaceWriter.UpsertAssetFeatures
 //
 // godlike/06 SSOT: feature PRODUCTION lives here and only here — never in
-// providers (Artlist/YouTube), never in the writer. The writer accepts the
 // computed record; this analyzer is the only production caller that
 // computes it.
 //

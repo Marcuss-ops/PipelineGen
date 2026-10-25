@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -281,6 +282,34 @@ func TestRun_StageFailureRecordsErrorCode(t *testing.T) {
 	st := run.Report().Stages[0]
 	if st.Status != StageStatusFailed || st.ErrorCode != "download_failed" {
 		t.Fatalf("stage = %q/%q", st.Status, st.ErrorCode)
+	}
+}
+
+// TestRun_FailureRecordsErrorMessage pins the attribution contract: a failed
+// stage/operation must carry its cause VERBATIM next to the code. ErrorCode
+// degrades to "error" for untyped errors, so without ErrorMessage the rows
+// that analytics reads (scene_analysis, post_writer_finalize) are failures
+// nobody can explain — measured on the live ledger: 2.882 failed
+// scene_analysis rows with an EMPTY cause.
+func TestRun_FailureRecordsErrorMessage(t *testing.T) {
+	obs := NewRunObserver(nil)
+	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-msg"})
+	cause := fmt.Errorf("vidrush scene %q enrichment: provider not registered", "sao-paulo")
+
+	if err := run.Stage(context.Background(), StageAcquire, func(context.Context) error { return cause }); err == nil {
+		t.Fatal("Stage must propagate the error")
+	}
+	if err := run.Operation(context.Background(), OperationInfo{Stage: StageAcquire, Component: "nlp", Operation: "extract"}, func(context.Context) error { return cause }); err == nil {
+		t.Fatal("Operation must propagate the error")
+	}
+
+	st := run.Report().Stages[0]
+	if st.ErrorMessage != cause.Error() {
+		t.Fatalf("stage error_message = %q, want %q", st.ErrorMessage, cause.Error())
+	}
+	op := run.Report().Operations[0]
+	if op.ErrorMessage != cause.Error() {
+		t.Fatalf("operation error_message = %q, want %q", op.ErrorMessage, cause.Error())
 	}
 }
 
@@ -685,7 +714,7 @@ func TestRun_RecordWaitUsesTypedUnion(t *testing.T) {
 	run := obs.StartRun(context.Background(), RunInfo{JobID: "j", AttemptID: "attempt-wait"})
 	start := time.Unix(100, 0)
 	run.RecordWait(WaitInfo{Kind: WaitSemaphore, Component: ComponentTTS, StartedAt: start, FinishedAt: start.Add(1500 * time.Millisecond)})
-	run.RecordWait(WaitInfo{Kind: WaitRateLimit, Component: ComponentArtlist, StartedAt: start.Add(500 * time.Millisecond), FinishedAt: start.Add(2 * time.Second)})
+	run.RecordWait(WaitInfo{Kind: WaitRateLimit, Component: ComponentYouTube, StartedAt: start.Add(500 * time.Millisecond), FinishedAt: start.Add(2 * time.Second)})
 	rep := run.Report()
 	if rep.BlockedMs != 2000 {
 		t.Fatalf("blocked_ms = %d, want 2000 (union of overlapping waits)", rep.BlockedMs)
@@ -820,11 +849,11 @@ func TestRun_ConcurrentCounters(t *testing.T) {
 // ── registry ─────────────────────────────────────────────────────────
 
 func TestRegistry_CanonicalNames(t *testing.T) {
-	if len(AllStages()) != 67 {
-		t.Fatalf("stages = %d, want 67", len(AllStages()))
+	if len(AllStages()) != 64 {
+		t.Fatalf("stages = %d, want 64", len(AllStages()))
 	}
-	if len(AllComponents()) != 15 {
-		t.Fatalf("components = %d, want 15", len(AllComponents()))
+	if len(AllComponents()) != 14 {
+		t.Fatalf("components = %d, want 14", len(AllComponents()))
 	}
 	if len(AllOperations()) != 41 {
 		t.Fatalf("operations = %d, want 41", len(AllOperations()))
@@ -860,7 +889,7 @@ func TestRegistry_StageFamiliesAreOwnedHere(t *testing.T) {
 		"source.resolve", "script.plan", "script.engine", "script.postprocess",
 		"scene_analysis", "overlay.prepare", "overlay_render",
 		"audio.pipeline", "audio_finalize", "audio_publish",
-		"audio_compile", "begin_vidrush", "document.prepare", "document.publish",
+		"audio_compile", "begin_vidrush",
 		"post_writer_finalize", "persistence.sqlite", "tts", "audio_post",
 		// "clip.render" is deliberately absent: its literal is the job type
 		// owned by internal/kernel/job (TypeClipRender) and is derived there.

@@ -59,7 +59,6 @@ const (
 	StageRunAudioCompile   StageName = "audio_compile"
 	StageRunPersistence    StageName = "persistence"
 	StageRunFinalJob       StageName = "remote_final_job"
-	StageRunDocument       StageName = "document"
 
 	// StageRunCoreReady is the CORE_READY milestone: a milestone, NOT a work
 	// phase — it is declared here so the name has one owner, and it is
@@ -76,7 +75,7 @@ const (
 	StageScriptEngine      StageName = "script.engine"
 	StageScriptPostprocess StageName = "script.postprocess"
 
-	// ── Scene / overlay / audio / document phases ─────────────────────
+	// ── Scene / overlay / audio phases ────────────────────────────────
 	// StageSceneAnalysis hosts per-scene entity/phrase/word extraction
 	// (nlp.extract operations).
 	StageSceneAnalysis StageName = "scene_analysis"
@@ -88,12 +87,10 @@ const (
 	// audio stages, never nested inside them: sequenced inside the audio phase
 	// it was charged to audio_compile and the render never reached the
 	// critical path.
-	StageOverlayRender   StageName = "overlay_render"
-	StageAudioPipeline   StageName = "audio.pipeline"
-	StageAudioFinalize   StageName = "audio_finalize"
-	StageAudioPublish    StageName = "audio_publish"
-	StageDocumentPrepare StageName = "document.prepare"
-	StageDocumentPublish StageName = "document.publish"
+	StageOverlayRender StageName = "overlay_render"
+	StageAudioPipeline StageName = "audio.pipeline"
+	StageAudioFinalize StageName = "audio_finalize"
+	StageAudioPublish  StageName = "audio_publish"
 	// StagePostWriterFinalize hosts the worker-side artifact/Drive
 	// finalization that runs AFTER the run returns (worker_execution.go).
 	StagePostWriterFinalize StageName = "post_writer_finalize"
@@ -171,7 +168,6 @@ var allStageRegistry = []StageName{
 	StageTTS, StageAudioPost, StageOverlayRender, StageRunAudioCompile,
 	StageAudioPipeline, StageAudioFinalize, StageAudioPublish,
 	StageRunPersistence, StageRunFinalJob, StagePersistenceSQLite, StageFinalize,
-	StageDocumentPrepare, StageDocumentPublish, StageRunDocument,
 	StagePostWriterFinalize,
 	// clip timeline
 	StageClipSubmitted, StageClipClaimed, StageClipPrepare,
@@ -200,18 +196,21 @@ func StageMilestones() []StageName {
 type ComponentName string
 
 const (
-	ComponentOllama         ComponentName = "ollama"
-	ComponentArtlist        ComponentName = "artlist"
-	ComponentYouTube        ComponentName = "youtube"
-	ComponentFFmpeg         ComponentName = "ffmpeg"
-	ComponentDrive          ComponentName = "drive"
-	ComponentSQLite         ComponentName = "sqlite"
-	ComponentQdrant         ComponentName = "qdrant"
-	ComponentNLP            ComponentName = "nlp"
-	ComponentTTS            ComponentName = "tts"
-	ComponentGoogleDocs     ComponentName = "google_docs"
-	ComponentInternetImages ComponentName = "internet_images"
-	ComponentRenderQueue    ComponentName = "render_queue"
+	ComponentOllama ComponentName = "ollama"
+	// ComponentProviderResolver is the provider fan-out boundary that
+	// resolves a segment's acquisition candidates across the mounted
+	// providers. It replaces the retired Artlist-shaped label: resolution
+	// is provider-agnostic, so no single provider owns the measurement.
+	ComponentProviderResolver ComponentName = "provider_resolver"
+	ComponentYouTube          ComponentName = "youtube"
+	ComponentFFmpeg           ComponentName = "ffmpeg"
+	ComponentDrive            ComponentName = "drive"
+	ComponentSQLite           ComponentName = "sqlite"
+	ComponentQdrant           ComponentName = "qdrant"
+	ComponentNLP              ComponentName = "nlp"
+	ComponentTTS              ComponentName = "tts"
+	ComponentInternetImages   ComponentName = "internet_images"
+	ComponentRenderQueue      ComponentName = "render_queue"
 	// ComponentRenderingGen is the RenderingGen render service (the
 	// Chronon overlay pipeline) whose worker-reported phase timings
 	// PipelineGen projects into canonical operations.
@@ -362,10 +361,10 @@ func AllOperations() []OperationName {
 // AllComponents returns the canonical component names in registry order.
 func AllComponents() []ComponentName {
 	return []ComponentName{
-		ComponentOllama, ComponentArtlist, ComponentYouTube,
+		ComponentOllama, ComponentProviderResolver, ComponentYouTube,
 		ComponentFFmpeg, ComponentDrive, ComponentSQLite,
 		ComponentQdrant, ComponentNLP, ComponentTTS,
-		ComponentGoogleDocs, ComponentInternetImages,
+		ComponentInternetImages,
 		ComponentRenderQueue, ComponentRenderingGen,
 		ComponentChronon, ComponentCUDA,
 	}

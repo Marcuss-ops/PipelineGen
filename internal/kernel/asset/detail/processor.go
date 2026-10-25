@@ -25,7 +25,6 @@
 // Backward compatibility (step 1, July 2026): the legacy `Processor`
 // interface is retained (deprecated) with the same `Process` method
 // signature so the ~50 existing callers in
-// `internal/capabilities/{youtube,clips,artlist,voiceover}` and
 // `internal/capabilities/assets/clips` continue to compile without churn.
 // The legacy DTOs `ProcessInput` and `ProcessResult` are Go type
 // aliases of `TransformSpec` and `RenditionSet` so a single struct
@@ -82,15 +81,12 @@ type TransformSpec struct {
 	FolderID  string // FORBIDDEN (Drive) — removed in step 2
 	// Destination (reprocess folder-alignment, August 2026) is the
 	// canonical delivery.DestinationKey string (e.g. "youtube_clip",
-	// "artlist"). Empty → the processor's legacy default
-	// (DestinationArtlist). When set, the processor lets the
 	// DestinationRegistry resolve the canonical root + path hierarchy
 	// (ParentFolderID override is dropped) so the upload lands in the
 	// clip's real folder instead of a possibly-stale FolderID.
 	Destination string
 	// Group is the logical group path segment (e.g. the YouTube
 	// channel / category name). Falls back to Term for backward
-	// compatibility with the artlist ingest pipeline.
 	Group string
 	// Subject is the logical subject path segment (e.g. the YouTube
 	// video ID). Empty is valid for destinations whose PathBuilder
@@ -200,7 +196,6 @@ type RenditionOutput struct {
 //
 // These aliases are the minimal-blast-radius bridge that lets the
 // ~50 existing callers in `internal/capabilities/{youtube,clips,
-// artlist,voiceover}` and `internal/capabilities/assets/clips` continue to
 // compile without churn while the new `MediaTransformer.Transform`
 // contract rolls out. The aliases point to the canonical renamed
 // types so a single struct serves both names:
@@ -238,7 +233,6 @@ type MediaProcessor interface {
 
 // Processor is the legacy god-service interface, retained (NOT removed)
 // for backward compatibility with the ~50 existing callers in
-// `internal/capabilities/{youtube,clips,artlist,voiceover}` and
 // `internal/capabilities/assets/clips`.
 //
 // Deprecated: use MediaTransformer instead. The Process method

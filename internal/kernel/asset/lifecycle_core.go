@@ -28,8 +28,7 @@ type SourceType string
 
 const (
 	// SourceStock indicates stock footage media.
-	SourceStock SourceType = "stock"
-	// SourceArtlist indicates media sourced from Artlist.
+	SourceStock   SourceType = "stock"
 	SourceArtlist SourceType = "artlist"
 	// SourceYoutubeClip indicates a clip from YouTube.
 	SourceYoutubeClip SourceType = "youtube_clip"
@@ -123,7 +122,6 @@ func NormalizeStrategy(strategy string, force bool) PipelineStrategy {
 // ── Monitored source ─────────────────────────────────────────────────
 
 // MonitoredSource represents a discovered external source (YouTube video,
-// Artlist asset, Drive file, etc.). The SQLite persistence shape (column
 // names, table name) lives in
 // internal/platform/sqlite/assets.MonitoredSourceRow; the
 // repository converts via FromMonitoredSourceDomain / row.ToDomain so the

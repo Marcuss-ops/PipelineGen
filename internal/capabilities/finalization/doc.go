@@ -1,7 +1,6 @@
 // Package finalization defines the canonical domain contracts for the
 // transactional job-finalization spine (Spina Dorsale, Fase 1, July 2026).
 //
-// Every pipeline capability (YouTube, stock, Artlist, images, voiceover,
 // sound effects, uploads) converges on the same spine:
 //
 //	Capability

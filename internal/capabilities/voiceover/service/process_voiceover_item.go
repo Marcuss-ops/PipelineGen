@@ -81,7 +81,6 @@ type voiceoverFingerprintLookup interface {
 // ProcessVoiceoverItemDeps itself carries 5 sub-bundle fields → 5
 // fields, well below the 8-field cap. The nesting follows the
 // canonical godlike/06 SSOT pattern established by
-// PR-NEST-FLAT-DEPS-ARLIST (internal/capabilities/assets/providers/artlist/
 // service.go: ServicePorts + ServiceDependencies{Infra, Ports, Domain,
 // Repos, Finalizer}).
 //

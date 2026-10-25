@@ -33,11 +33,9 @@ func TestDAGObservability_SeparatesPipelineBoundaries(t *testing.T) {
 	measure(kernobs.StageName(voiceoverStage), kernobs.ComponentTTS, kernobs.OperationSynthesize)
 	measure(StageSceneAnalysis, kernobs.ComponentNLP, kernobs.OperationExtract)
 	measure(StageSceneAnalysis, kernobs.ComponentNLP, kernobs.OperationSearch)
-	measure(StageSceneAnalysis, kernobs.ComponentArtlist, kernobs.OperationResolve)
+	measure(StageSceneAnalysis, kernobs.ComponentProviderResolver, kernobs.OperationResolve)
 	measure(StageOverlayPrepare, kernobs.ComponentRenderQueue, kernobs.OperationPlan)
 	measure(kernobs.StageName(audioCompileStage), kernobs.ComponentChronon, kernobs.OperationRender)
-	measure(StageDocumentPrepare, kernobs.ComponentGoogleDocs, kernobs.OperationRender)
-	measure(StageDocumentPublish, kernobs.ComponentGoogleDocs, kernobs.OperationPublish)
 	run.Finish()
 
 	report := run.Report()
@@ -54,9 +52,7 @@ func TestDAGObservability_SeparatesPipelineBoundaries(t *testing.T) {
 	mustHaveOperation(string(voiceoverStage), string(kernobs.ComponentTTS), string(kernobs.OperationSynthesize))
 	mustHaveOperation(string(StageSceneAnalysis), string(kernobs.ComponentNLP), string(kernobs.OperationExtract))
 	mustHaveOperation(string(StageSceneAnalysis), string(kernobs.ComponentNLP), string(kernobs.OperationSearch))
-	mustHaveOperation(string(StageSceneAnalysis), string(kernobs.ComponentArtlist), string(kernobs.OperationResolve))
+	mustHaveOperation(string(StageSceneAnalysis), string(kernobs.ComponentProviderResolver), string(kernobs.OperationResolve))
 	mustHaveOperation(string(StageOverlayPrepare), string(kernobs.ComponentRenderQueue), string(kernobs.OperationPlan))
 	mustHaveOperation(audioCompileStage, string(kernobs.ComponentChronon), string(kernobs.OperationRender))
-	mustHaveOperation(string(StageDocumentPrepare), string(kernobs.ComponentGoogleDocs), string(kernobs.OperationRender))
-	mustHaveOperation(string(StageDocumentPublish), string(kernobs.ComponentGoogleDocs), string(kernobs.OperationPublish))
 }

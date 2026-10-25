@@ -10,7 +10,6 @@
 //
 // Wave 1 of SEMANTIC-LOCATION-API-2026-07-06 places this file here as
 // the canonical foundation; future Wave 2..N migrations of the image /
-// stock / voiceover / youtube / books / lessons / artlist / sfx / register
 // endpoint families will consume this struct verbatim.
 package delivery
 
@@ -23,13 +22,11 @@ package delivery
 //
 //   - Category groups assets under a logical taxonomy (e.g. "Boxe",
 //     "Personaggi"). Required by Stock (StockPath category segment),
-//     Artlist (search-term segment), SoundEffect (category segment),
 //     optional by YouTube (channel-group), supported by Wave 1 for
 //     forward-compatible mapping.
 //
 //   - Subject identifies the subject within the group. Required by
 //     Image (Subject segment), YouTube (video_id segment), Stock
-//     (3rd segment), Artlist (asset_id segment), Document (asset_id slug).
 //
 //   - Name is an optional human-friendly alternative to Subject. The
 //     mapper prefers Subject over Name when both are non-empty (caller

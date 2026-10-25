@@ -38,7 +38,6 @@
 // keeps last_seen_at precisely so a future revalidation sweep can refresh
 // such rows; until then, content-immutable URLs get the full dedup benefit
 // while mutable URLs may serve stale bytes. Provider flows (Drive file ID,
-// Artlist asset ID) that CAN observe versions should record them via their
 // own source types.
 package sourcedl
 
@@ -309,7 +308,6 @@ func (d *SourceAwareDownloader) tryCacheHit(ctx context.Context, key string) (io
 
 // canonicalKey normalizes a URL into the identity-registry key. The trimmed
 // URL is the canonical key for the url source type (provider-issued IDs —
-// Drive file ID, Artlist asset ID — are recorded with their own source
 // types by the provider flows).
 func canonicalKey(url string) string {
 	return strings.TrimSpace(url)

@@ -9,7 +9,6 @@
 // composition-root bridge that projects the stack's admission budget onto the
 // canonical Prometheus collectors. That bridge lives here (not in its own
 // file) because it has exactly one caller — BuildAIBundle — exactly like the
-// Artlist downloader metrics adapter lives in its provider file; the metric
 // DEFINITIONS stay owned by internal/platform/observability
 // (policy.yaml::prometheus_boundary), and the ollama client package defines
 // the consumer-side port and never imports the telemetry package.

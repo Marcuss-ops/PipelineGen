@@ -45,7 +45,6 @@ func TestDropPerceptualDuplicatesIgnoresMalformedHashes(t *testing.T) {
 }
 
 func TestSelectExactVidRushImagesSkipsPerceptualDuplicates(t *testing.T) {
-	// Artlist is enabled, so this is NOT the Images-only grouping path: the
 	// selection is a straight prefix of the durable images, which makes the
 	// perceptual filter the only thing that can remove a candidate here.
 	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 3, MediaPlan: media.MediaPlanSpec{

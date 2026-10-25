@@ -479,9 +479,9 @@ func applySegmentEntityAnnotations(result *GenerateResult, language Language, se
 }
 
 // ProjectSegmentAnnotations applies the canonical NLP projection directly to
-// a SpecScene envelope. It is used by the batch postprocessor before document
-// publication so Docs, overlay planning and the final API all observe the
-// same entity/important-phrase surface.
+// a SpecScene envelope. It is used by the batch postprocessor before artifact
+// publication so overlay planning and the final API all observe the same
+// entity/important-phrase surface.
 func ProjectSegmentAnnotations(spec *scriptpkg.SpecSceneOutput, language Language, segments []scriptpkg.VidRushSegmentResult) {
 	if spec == nil {
 		return

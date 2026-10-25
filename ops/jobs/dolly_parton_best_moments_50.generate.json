@@ -538,9 +538,6 @@
         "generate_metadata": false,
         "extract_entities": "disabled",
         "voiceover_enabled": false
-      },
-      "docs": {
-        "enabled": false
       }
     }
   ]

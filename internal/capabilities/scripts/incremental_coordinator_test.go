@@ -45,7 +45,7 @@ func (f *fakeSegmentEnricher) Enrich(_ context.Context, _ *scriptpkg.ResolvedGen
 			SegmentID:      scene.ID,
 			TextHash:       SceneTextHash(scene.Text),
 			Entities:       []scriptpkg.ExtractedEntity{{Value: "subject", Type: "CONCEPT"}},
-			ArtlistQueries: []string{"subject visual"},
+			YouTubeQueries: []string{"subject visual"},
 			ImageQueries:   []string{"subject image"},
 		},
 	}, nil

@@ -34,7 +34,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -72,22 +71,17 @@ func (a *pgMediaAssetLookupAdapter) GetAsset(
 
 // registerScriptPostProcessors initialises and registers every
 // canonical postprocessor on the supplied registry. Each registration
-// is gated on its required infrastructure dependency (DocClient for
-// document, ImageService for images, VoiceoverService for voiceover,
-// QdrantSearcher + OllamaClient for clip_search). DocumentProcessor
-// is always registered with a typed unavailable publisher when Drive
-// is absent, so docs-enabled requests fail closed at runtime rather
-// than being silently skipped.
+// is gated on its required infrastructure dependency (VoiceoverService
+// for voiceover, QdrantSearcher + OllamaClient for clip_search).
 //
-// SCRIPTCONTRACT-2026-07-08 PR-1 canonical order (godlike/06 SSOT,
-// extended PR-TRANSLATE-SCRIPT-SPEC FP2 2026-08-08 with TranslationProcessor):
+// SCRIPTCONTRACT-2026-07-08 PR-1 canonical order (godlike/06 SSOT):
 //
-//	Persistence → Document → Image → Voiceover → Entities → Metadata →
-//	Translation → ClipBindings → VisualPlanning → ClipSearch
+//	Persistence → Voiceover → ClipBindings → StockBindings →
+//	NarrationSanitizer → AssetLocationReconciliation → VidRushMaterialization
 //
 // Persistence is FIRST so no Drive-write side effect runs before the
-// local SQLite row is locked. Pre-PR-1 order was Document →
-// Persistence → ... which caused RETRY_WAIT 90% on a Drive-write-
+// local SQLite row is locked. An earlier order ran the document leg
+// before Persistence and caused RETRY_WAIT 90% on a Drive-write-
 // success + DB-persist-failure cascade (job retries re-triggered
 // Drive writes on already-created artifacts; idempotency was only
 // event-outbox, not artifact-publish). TranslationProcessor slots
@@ -135,26 +129,6 @@ func registerScriptPostProcessors(
 			return fmt.Errorf("register persistence processor: composition bug or duplicate name")
 		}
 	}
-
-	// Documents are opt-in per request. Always register the processor so
-	// docs-enabled plans fail closed when Drive is unavailable instead of
-	// silently skipping document output at composition time.
-	var docClient drive.DocClient
-	if root != nil && root.Drive != nil {
-		docClient = root.Drive.DocClient
-	}
-	// The processor consumes the SAME canonical upsert publisher the durable
-	// runner uses (scriptgen.DocumentPublisher), so Google Docs publication
-	// has one owner. When Drive is unavailable the port stays nil and the
-	// processor fails closed for docs-enabled plans.
-	var docPublisher scriptgen.DocumentPublisher
-	if docClient != nil {
-		docPublisher = &scriptGenerationDocumentPublisher{client: docClient}
-	}
-	if !ppReg.Register(processor.NewDocumentsProcessor(docPublisher)) {
-		return fmt.Errorf("register document processor: composition bug or duplicate name")
-	}
-	log.Info("DocumentProcessor (Google Docs publishing) successfully registered")
 
 	// Fase 2 Spina Dorsale (July 2026) — re-enabled 2026-07-08:
 	// inline voiceover postprocessor coexists with the downstream
@@ -207,8 +181,7 @@ func registerScriptPostProcessors(
 
 	// PR 7 (June 2026): register ClipBindingsProcessor so the
 	// postprocessor walk produces ONE canonical set of scene-clip
-	// bindings consumed by both the Google Doc builder (via
-	// DocumentProcessor) AND the JSON response writer (via
+	// bindings consumed by the JSON response writer (via
 	// result.Output.SpecScene.Scenes). BestEffort policy.
 	if !ppReg.Register(processor.NewClipBindingsProcessor(log)) {
 		return fmt.Errorf("register clip_bindings processor: composition bug")

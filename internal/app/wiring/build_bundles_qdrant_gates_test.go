@@ -1,6 +1,5 @@
 // Package app — build_bundles_qdrant_gates_test.go: TDD coverage for the
 // PR-QDRANT-CONFIG-MISMATCH-GATE composition-root fail-closed helper
-// (mirror of ART-002 P0.1 validateArtlistScraperURL test surface —
 // godlike/06 SSOT).
 //
 // Scope (per architecture/current.yaml#QDRANT-CHAIN-VERIFY-2026-07-04.linked_issues[0]):
@@ -114,8 +113,6 @@ func TestValidateQdrantIndexerCompatibility_EmbeddingModelMismatchFailsClosed(t 
 // aborts loudly with an actionable fix hint naming both env-var escape
 // hatches.
 //
-// The assertion contract (5 substrings) mirrors PR-ARTLIST-LIVE-WIRE's
-// validateArtlistScraperURL test envelope — the same canonical pattern
 // for godlike/07 fail-closed composition gates. If a future refactor
 // weakens any of the substrings, this test fails and the regression is
 // caught at unit-test time rather than at first operator boot.

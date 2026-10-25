@@ -20,8 +20,7 @@ import (
 
 func shouldForceNoPlaylist(url string) bool {
 	return strings.Contains(url, "youtube.com") ||
-		strings.Contains(url, "youtu.be") ||
-		strings.Contains(url, "artlist")
+		strings.Contains(url, "youtu.be")
 }
 
 func (d *YTDLPDownloader) addExternalDownloaderArgs(args []string) []string {
@@ -114,22 +113,6 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		// is preserved; see DownloadRange and DownloadSections below.
 		if len(req.DownloadSections) == 0 {
 			args = d.addExternalDownloaderArgs(args)
-		}
-
-		// Add Artlist-specific args (cookies, headers, impersonation).
-		// July 2026 (PR-ARTLIST-COOKIES-CONFIG): the --cookies path is now
-		// config-driven (cfg.External.ArtlistCookiesPath, env ARTLIST_COOKIES_PATH).
-		// When empty (the godlike/07 fail-closed default), the --cookies flag is
-		// SKIPPED entirely so operators see a visible 403 from Artlist instead of
-		// a silent `--cookies /nonexistent/path` failure on a hardcoded path.
-		if strings.Contains(req.URL, "artlist") {
-			if d.artlistCookiesPath != "" {
-				args = append(args, "--cookies", d.artlistCookiesPath)
-			}
-			args = append(args, "--add-header", "Referer:https://artlist.io/")
-			args = append(args, "--add-header", "Origin:https://artlist.io/")
-			args = append(args, "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-			args = append(args, "--extractor-args", "generic:impersonate")
 		}
 
 		if req.Format != "" {

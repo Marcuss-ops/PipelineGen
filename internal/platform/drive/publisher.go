@@ -7,7 +7,6 @@
 //  2. Creates nested Drive folders via FolderManager.EnsureFolder.
 //  3. Uploads files via Uploader.PutFile (conflict-aware, P0 #1).
 //
-// All other code paths (YouTube, Books, Images, SFX, Clips, Artlist, Stock,
 // Voiceover, Script) MUST go through delivery.Publisher.Publish rather than
 // calling FolderManager or Uploader directly.
 //

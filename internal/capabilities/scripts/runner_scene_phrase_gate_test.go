@@ -5,9 +5,7 @@
 // Measured (2026-09-28, crime-case shape, RTX A4000 host): the run's critical
 // path is generate(21s) → scene_analysis(46s) strictly sequential because the
 // payload carries `media_plan.extraction.important_phrases`. With streaming the
-// provider fan-out (artlist resolve) for scene N starts while segment N+1 is
 // still generating, so up to ~(generation wall − first-segment wall) of the
-// artlist work would be hidden.
 //
 // Why the gate is CORRECT as written: ensureRequestedImportantPhrases appends
 // caller-owned hints to the generated narration AFTER generation and only when
@@ -37,7 +35,7 @@ import (
 // (gatedStreamingTextGenerator closes `emitted` only inside
 // GenerateSceneTextStream) while the run still completes.
 func TestSceneTextStreaming_ImportantPhraseHintsForceBatchPath(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	runner.textGen = streamer
 	observer := &recordingSceneCommitObserver{}

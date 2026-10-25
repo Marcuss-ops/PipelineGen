@@ -2,7 +2,7 @@
 // types of the pure domain model (ZERO I/O, ZERO external dependencies).
 //
 // Language, Source, ClipReference (+ its canonical duration resolution),
-// AudioReference and DocumentReference — the shapes the aggregates in model.go
+// AudioReference — the shape the aggregates in model.go
 // embed. The render/audio projections live in model_render.go.
 //
 // Extracted 2026-09-12 from model.go to keep every file under
@@ -24,9 +24,12 @@ type Language string
 
 // Source describes where the generation input comes from.
 type Source struct {
-	Type               SourceType                  `json:"type"`
-	Topic              string                      `json:"topic,omitempty"`
-	SourceText         string                      `json:"source_text,omitempty"`
+	Type       SourceType `json:"type"`
+	Topic      string     `json:"topic,omitempty"`
+	SourceText string     `json:"source_text,omitempty"`
+	// ArtlistKeywords is accepted for legacy v2 envelopes only. The provider
+	// is retired; the field is retained so old payloads decode and round-trip
+	// unchanged instead of losing data at the wire boundary.
 	ArtlistKeywords    []string                    `json:"artlist_keywords,omitempty"`
 	ClipIDs            []string                    `json:"clip_ids,omitempty"`
 	NumClips           int                         `json:"num_clips,omitempty"`
@@ -181,12 +184,6 @@ type AudioReference struct {
 	// finalize work were spent for this item. It is the runner-facing
 	// signal behind AudioMetrics.VoiceoverDBCacheHits.
 	Cached bool `json:"cached,omitempty"`
-}
-
-// DocumentReference identifies a published Google Doc.
-type DocumentReference struct {
-	ID   string `json:"id"`
-	Link string `json:"link"`
 }
 
 // ── Request clone helpers (merged from builder.go) ──

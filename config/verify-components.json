@@ -73,16 +73,12 @@
   "stock": {
     "paths": [
       "internal/capabilities/assets/providers/stock/",
-      "internal/capabilities/assets/providers/artlist/",
-      "internal/platform/artlist/",
       "tests/fixtures/stock/",
       "ops/jobs/",
       "tests/operational/pipeline_live_e2e.sh"
     ],
     "go_packages": [
-      "./internal/capabilities/assets/providers/stock/...",
-      "./internal/capabilities/assets/providers/artlist/...",
-      "./internal/platform/artlist/..."
+      "./internal/capabilities/assets/providers/stock/..."
     ],
     "node_tests": [],
     "python_tests": [],
@@ -421,29 +417,6 @@
       "drive"
     ],
     "timeout_seconds": 600,
-    "race_timeout_seconds": 1200,
-    "race_enabled": true,
-    "live_tests": [],
-    "cacheable": true,
-    "cache_scope": "content"
-  },
-  "artlist": {
-    "paths": [
-      "internal/capabilities/assets/providers/artlist/",
-      "internal/platform/artlist/",
-      "config/artlist_presets.yaml"
-    ],
-    "go_packages": [
-      "./internal/capabilities/assets/providers/artlist/...",
-      "./internal/platform/artlist/..."
-    ],
-    "node_tests": [],
-    "python_tests": [],
-    "dependencies": [
-      "database",
-      "drive"
-    ],
-    "timeout_seconds": 900,
     "race_timeout_seconds": 1200,
     "race_enabled": true,
     "live_tests": [],

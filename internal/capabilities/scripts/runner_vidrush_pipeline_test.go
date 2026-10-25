@@ -17,7 +17,7 @@ import (
 )
 
 func TestRunner_VidRushPipeline_EnrichesScenesIncrementally(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 
 	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
 	metrics := &recordingVidRushMetrics{}
@@ -53,7 +53,7 @@ func TestRunner_VidRushPipeline_EnrichesScenesIncrementally(t *testing.T) {
 }
 
 func TestRunner_VidRushPipeline_WithoutPipelineSkipsVidRush(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	// No SetVidRushPipeline call: the runner must complete normally without
 	// any incremental VidRush wiring.
 
@@ -73,7 +73,7 @@ func TestRunner_VidRushPipeline_WithoutPipelineSkipsVidRush(t *testing.T) {
 }
 
 func TestRunner_VidRushPipeline_PlanResolverErrorFailsRun(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 
 	runner.SetVidRushPipeline(&VidRushPipeline{
 		NERPort: segmentEnricherNER{enricher: &fakeSegmentEnricher{errs: map[string]error{}}},

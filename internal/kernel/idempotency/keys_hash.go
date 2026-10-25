@@ -14,13 +14,10 @@ import (
 // BuildKey constructs a run-level dedup key from a provider-type
 // discriminator + a canonical map of segments (FASE 5 Commit B
 // follow-up, July 2026). The canonical map shape is GENERAL — each
-// caller (artlist.RunDedupKey, future stock.RunDedupKey, future
 // youtube.RunDedupKey) builds its own canonical segment set
-// (term/folder_id/strategy/dry_run/limit for artlist; etc.).
 //
 // Return shape: a 64-character lowercase SHA-256 hex string of the
 // canonical map's JSON-marshaled bytes. This matches the bytes
-// produced by the legacy artlist.runDedupKey private helper (commit
 // 9 ship-gate trajectory) so in-flight jobs already queued with the
 // legacy hash key will MATCH across the migration — godlike/06 SSOT
 // keeps the storage-layer UNIQUE constraint on `jobs.active_key`
@@ -38,7 +35,6 @@ import (
 //     alphabetically — verified by Go stdlib spec). The SHA-256
 //     hash on top of that byte sequence is byte-stable across
 //     call sites and across runs.
-//   - The legacy artlist.runDedupKey used the EXACT same
 //     canonical-map + json.Marshal + sha256 pipeline; migrating
 //     to BuildKey preserves the legacy byte-stable output.
 //
@@ -57,14 +53,12 @@ import (
 //
 // godlike/06 SSOT rationale: BuildKey is the SINGLE canonical
 // surface for run-level dedup keys (provider-type discriminator +
-// canonical map → SHA-256 hex). Per-provider packages (artlist,
 // future stock, future youtube) MUST delegate to BuildKey via
 // `idempotency.BuildKey("<provider>-run", canonical)`. Ad-hoc
 // concatenation in the caller package would defeat the byte-stable
 // cross-package unification that lets the kernel job broker's
 // UNIQUE on `jobs.active_key` collapse distinct operator requests
 // across entry points (handler enqueue + orchestrator
-// DiscoverAndQueueRun). The legacy artlist.runDedupKey is REMOVED
 // in Commit B.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every validation step rejects
@@ -158,7 +152,6 @@ func BuildKey(provider string, canonical map[string]any) (string, error) {
 // upstream wiring bugs that pre-empt an outbox-key collision).
 //
 // godlike/06 SSOT rationale: per-package run-level key
-// constructors (artlist.RunDedupKey, stock.EnrichmentIdempotencyKey,
 // future youtube.RunDedupKey, etc.) MUST delegate to one of:
 //   - BuildKey (canonical-map form, JSON-marshaled bytes)
 //   - BuildKeyString (pre-joined string form, verbatim bytes)

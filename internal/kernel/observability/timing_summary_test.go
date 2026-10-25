@@ -47,9 +47,9 @@ func TestTimingSummary_WallAndBreakdown(t *testing.T) {
 	}
 }
 
-// TestTimingSummary_NestedStagesIncluded pins that nested boundaries
-// (persistence.sqlite / document.publish) still appear in the exhaustive
-// stages list even though they are excluded from top-level attribution.
+// TestTimingSummary_NestedStagesIncluded pins that nested persistence
+// boundaries still appear in the exhaustive stages list even though they are
+// excluded from top-level attribution.
 func TestTimingSummary_NestedStagesIncluded(t *testing.T) {
 	report := &RunReport{
 		WallTimeMs: 85000,
@@ -57,7 +57,6 @@ func TestTimingSummary_NestedStagesIncluded(t *testing.T) {
 			stageAt("script.postprocess", 82000, 85000),
 			stageAt("persistence", 82010, 82300),
 			stageAt("persistence.sqlite", 82020, 82290),
-			stageAt("document.publish", 83000, 84000),
 		},
 	}
 
@@ -69,9 +68,6 @@ func TestTimingSummary_NestedStagesIncluded(t *testing.T) {
 	}
 	if _, ok := names["persistence.sqlite"]; !ok {
 		t.Fatalf("stages list must include nested persistence.sqlite, got %+v", s.Stages)
-	}
-	if _, ok := names["document.publish"]; !ok {
-		t.Fatalf("stages list must include nested document.publish, got %+v", s.Stages)
 	}
 	// Nested stage durations are NOT part of top-level attribution.
 	wantAttributed := int64(3000) // only script.postprocess is top-level

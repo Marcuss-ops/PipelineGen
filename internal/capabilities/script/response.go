@@ -2,10 +2,10 @@
 // shape for POST /api/script/generate (PR-morti-sync, July 2026).
 //
 // godlike/07 NO-FAKE-AVAILABILITY: the response struct only carries
-// the 6 fields the async path actually populates. Any future sync
+// the fields the async path actually populates. Any future sync
 // helper (syncSingle, syncMulti, ...) would need to be deliberately
 // re-introduced with a wire-shape audit; response_test.go locks the
-// field count to exactly 6 as a forward-prevention gate.
+// field count as a forward-prevention gate.
 //
 // Wire shape produced by POST /api/script/generate (today):
 //
@@ -17,7 +17,6 @@
 //	  "current_stage": "NORMALIZING"
 //	}
 //
-// doc_title is included when non-empty; omitempty drops empty strings.
 // current_stage is populated by the pipeline-run creation step
 // (scriptgeneration.StartAndSubmit) so the client immediately knows
 // the workflow phase (verdetto § "La POST deve creare il run prima
@@ -37,7 +36,7 @@ import (
 // GenerateResponse is the canonical typed output shape that the
 // HTTP handler serialises to JSON for POST /api/script/generate.
 //
-// Six-field async wire shape (5 base async fields + current_stage).
+// Async wire shape (4 base async fields + current_stage).
 type GenerateResponse struct {
 	OK bool `json:"ok"`
 
@@ -51,7 +50,6 @@ type GenerateResponse struct {
 	JobID        primitives.JobID `json:"job_id,omitempty"`
 	Status       string           `json:"status,omitempty"`
 	StatusURL    string           `json:"status_url,omitempty"`
-	DocTitle     string           `json:"doc_title,omitempty"`
 	CurrentStage string           `json:"current_stage,omitempty"`
 }
 
@@ -60,19 +58,18 @@ type GenerateResponse struct {
 // MUST route through this helper rather than writing fields directly
 // so the wire-shape contract stays self-documenting (the helper
 // signature IS the contract — every field has exactly one source).
-func (r *GenerateResponse) async(jobID, status, statusURL, docTitle string) {
+func (r *GenerateResponse) async(jobID, status, statusURL string) {
 	r.OK = true
 	r.JobID = primitives.NewJobID(jobID)
 	r.Status = status
 	r.StatusURL = statusURL
-	r.DocTitle = docTitle
 }
 
 // asyncWithStage populates the response including the current pipeline
 // stage. Called when the handler creates a GenerationRun before
 // submission (verdetto § "Creare il pipeline_run prima di ogni
 // chiamata esterna"). Delegates to async() for the common fields.
-func (r *GenerateResponse) asyncWithStage(jobID, status, statusURL, docTitle, currentStage string) {
-	r.async(jobID, status, statusURL, docTitle)
+func (r *GenerateResponse) asyncWithStage(jobID, status, statusURL, currentStage string) {
+	r.async(jobID, status, statusURL)
 	r.CurrentStage = currentStage
 }

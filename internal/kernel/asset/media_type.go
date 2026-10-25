@@ -14,7 +14,7 @@ const (
 	MediaTypeImage MediaType = "image"
 	// MediaTypeAudio refers to an audio file (voiceover).
 	MediaTypeAudio MediaType = "audio"
-	// MediaTypeDocument refers to a document (Google Doc).
+	// MediaTypeDocument refers to a document artifact.
 	MediaTypeDocument MediaType = "document"
 	// MediaTypeImageVideo is for generated video files.
 	MediaTypeImageVideo MediaType = "image_video"

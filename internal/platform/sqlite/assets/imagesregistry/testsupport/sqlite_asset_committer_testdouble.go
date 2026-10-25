@@ -3,7 +3,6 @@
 // POSTGRES-MEDIA-CUTOVER demolition note: the production SQLite media
 // writer family was REMOVED (the canonical media writer is
 // PostgresMediaCommitter over PostgreSQL + pgvector). Legacy engine-level
-// test suites (finalizer, catalogsync, artlist integration, jobs, youtube
 // adapters) still exercise the AssetCommitter CONTRACT against a hermetic
 // SQLite engine. This package provides that test double, clearly marked
 // test-only: it is NEVER imported by production code.

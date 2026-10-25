@@ -75,7 +75,14 @@ func executeCuts(ctx context.Context, runner StepRunner, sourceID, sourcePath st
 	}
 
 	metric := startStockPhase(ctx, runner, "stock.extract")
-	result, cutErr := cutter.Cut(ctx, req)
+	// Sub-operation (PR-STOCK-SUB-OPERATIONS): one source group is one
+	// measured cut batch, so the extract wall splits per source.
+	var result CutBatchResult
+	cutErr := measureSourceCut(ctx, int64(len(jobs)), func(opCtx context.Context) error {
+		var err error
+		result, err = cutter.Cut(opCtx, req)
+		return err
+	})
 	if metric != nil {
 		successful := result.SuccessfulItems()
 		metric.SetItems(int64(len(jobs)), int64(len(successful)))

@@ -52,7 +52,6 @@ func RunGenAPIDocs(args []string) error {
 			// /api/stock-batches/* routes are mounted live with the
 			// production default (stock_pipeline_enabled: true) and are
 			// therefore part of the committed manifest. They ride the same
-			// media-PostgreSQL gate as Artlist/ClipRender because
 			// WireStockPipeline needs the media committer; without the DSN
 			// their description keys live in routeDescriptionsGated
 			// ("absence is gating, not drift"), WITH the DSN they are
@@ -215,10 +214,7 @@ var routeDescriptions = map[string]string{
 	// ── Root ──────────────────────────────────────────────────
 	"GET /": "API root (redirects or 404)",
 
-	// ── Artlist ───────────────────────────────────────────────
-
 	// ── Stock pipeline / stock batches ───────────────────────
-	// StockPipelineEnabled (same media-PostgreSQL gate as Artlist above;
 	// keys mirrored in routeDescriptionsGated).
 	"POST /api/stock-pipeline/run":            "Run the stock pipeline (search_queries / direct_urls / drive_urls / clips)",
 	"POST /api/stock-pipeline/search-and-run": "Search-and-run the stock pipeline (queries: [{q, limit}])",
@@ -291,7 +287,6 @@ var routeDescriptions = map[string]string{
 	"POST /api/media/register-from-youtube": "Register asset from YouTube URL",
 	"POST /api/media/register-batch":        "Batch register assets",
 
-	// ── Media — source-scoped (YouTube, stock, artlist) ──────
 	"GET /api/media/clips/:source/folders":               "List media folders by source",
 	"GET /api/media/clips/:source/folders/:id":           "Get media folder by ID",
 	"GET /api/media/clips/:source/folders/:id/children":  "List child folders",
@@ -482,12 +477,10 @@ var routeDescriptionsGated = map[string]bool{
 	"GET /api/clips/transcript":  true,
 	"GET /api/clips/diagnostics": true,
 	// clip.render (ClipRenderEnabled, same media PostgreSQL gate as
-	// Artlist above): mounted only when the docs snapshot has a media
 	// SSOT handle, otherwise gating not drift.
 	"POST /api/clips/render":       true,
 	"POST /api/clips/render/batch": true,
 	// stock-pipeline + stock-batches (StockPipelineEnabled, same
-	// media PostgreSQL gate as Artlist / clip.render above): mounted only
 	// when the docs snapshot has a media SSOT handle, otherwise gating
 	// not drift.
 	"POST /api/stock-pipeline/run":            true,

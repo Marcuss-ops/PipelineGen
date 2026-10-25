@@ -192,7 +192,6 @@ func (h *DriveHandler) CreateFolders(c *gin.Context) {
 }
 
 // Reconcile checks for mismatches between SQLite and Google Drive.
-// Body: { "source": "artlist", "root_folder_id": "xxx", "dry_run": true }
 func (h *DriveHandler) Reconcile(c *gin.Context) {
 	if h.reconciler == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, ErrReconcilerNotWired.Error())
@@ -221,7 +220,6 @@ func (h *DriveHandler) Reconcile(c *gin.Context) {
 }
 
 // Cleanup performs orphan removal.
-// Body: { "source": "artlist", "root_folder_id": "xxx" }
 func (h *DriveHandler) Cleanup(c *gin.Context) {
 	if h.reconciler == nil {
 		apiutil.Error(c, http.StatusServiceUnavailable, ErrReconcilerNotWired.Error())

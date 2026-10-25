@@ -170,14 +170,12 @@ func NewRuntime(cfg RuntimeConfig) (*QdrantRuntime, error) {
 	// Task 5 (July 2026): wire the canonical SearchTextBuilder
 	// registry into the mapper so each AssetToIndexDocument call
 	// routes BM25 search-text through per-source strategies
-	// (youtube, artlist, voiceover, image, generated_image). The
 	// admin reindex_qdrant CLI path uses NewPayloadMapper directly
 	// (without this wiring) and falls back to asset.SearchText —
 	// the SetSearchTextBuilder path enforces the production
 	// contract while keeping the CLI / tests / fixtures nil-tolerant.
 	// Wire the canonical SearchTextBuilder registry so each
 	// AssetToIndexDocument call routes BM25 search-text through
-	// per-source strategies (youtube, artlist, voiceover, image,
 	// generated_image). The mapper stays backwards-compatible for
 	// callers that bypass NewRuntime (admin reindex_qdrant CLI,
 	// unit tests, fixtures) — those callers see the legacy

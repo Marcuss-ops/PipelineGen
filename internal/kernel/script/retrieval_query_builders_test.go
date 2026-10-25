@@ -39,18 +39,6 @@ func TestBuildYouTubeQueries_UsesEntitiesAndTemporalContext(t *testing.T) {
 	}
 }
 
-func TestBuildArtlistQueries_IsVisualFirst(t *testing.T) {
-	queries := BuildArtlistQueries(queryProfile(), 5)
-	if len(queries) == 0 || queries[0] != "early gasoline tractor" {
-		t.Fatalf("Artlist queries = %v, want visual term first", queries)
-	}
-	for _, query := range queries {
-		if strings.Contains(strings.ToLower(query), "john froelich") {
-			t.Fatalf("Artlist query %q unexpectedly prioritizes person entity", query)
-		}
-	}
-}
-
 func TestBuildImageQueries_IsEntityFirstAndIncludesDate(t *testing.T) {
 	queries := BuildImageQueries(queryProfile(), 5)
 	if len(queries) == 0 || !strings.Contains(strings.ToLower(queries[0]), "john froelich") {
@@ -65,7 +53,7 @@ func TestQueryBuilders_AreDeterministicAndDeduplicated(t *testing.T) {
 	profile := queryProfile()
 	profile.VisualTerms = append(profile.VisualTerms, WeightedKeyword{Value: " early   gasoline tractor ", Confidence: .5})
 	for _, build := range []func(SegmentSemanticProfile, int) []string{
-		BuildYouTubeQueries, BuildArtlistQueries, BuildImageQueries,
+		BuildYouTubeQueries, BuildImageQueries,
 	} {
 		first := build(profile, 5)
 		second := build(profile, 5)
@@ -85,7 +73,7 @@ func TestQueryBuilders_AreDeterministicAndDeduplicated(t *testing.T) {
 
 func TestQueryBuilders_RespectLimit(t *testing.T) {
 	for _, build := range []func(SegmentSemanticProfile, int) []string{
-		BuildYouTubeQueries, BuildArtlistQueries, BuildImageQueries,
+		BuildYouTubeQueries, BuildImageQueries,
 	} {
 		if got := build(queryProfile(), 1); len(got) > 1 {
 			t.Fatalf("builder returned %d queries with limit 1: %v", len(got), got)

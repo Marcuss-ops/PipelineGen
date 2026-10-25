@@ -212,11 +212,9 @@ type FailRunInput struct {
 //
 // It is declared here, in the package that owns the RunRepository port, rather
 // than at every call site: the repository is the only component that can
-// decide a run is missing, and callers that must classify that outcome (the
-// `script.docs_publish` child, which cannot re-enter the post-core path
-// without the snapshot) re-export this one value instead of defining a second
-// one. Two sentinels for one fact is how a deterministic failure ends up
-// looking transient.
+// decide a run is missing, and callers that classify that outcome re-export
+// this one value instead of defining a second one. Two sentinels for one fact
+// is how a deterministic failure ends up looking transient.
 var ErrRunNotFound = errors.New("scriptgeneration: run not found")
 
 type RunRepository interface {

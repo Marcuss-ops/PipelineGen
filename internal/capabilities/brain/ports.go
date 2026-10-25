@@ -27,7 +27,6 @@ type Brain interface {
 // which the Brain consumes the MediaMemory cascade (exact memory,
 // normalized phrase, semantic lookup, local catalog and external
 // providers). The brain does not know any concrete backend
-// (Artlist, YouTube, Pexels, Qdrant, SQLite); it delegates every
 // candidate search to this single port.
 //
 // The concrete implementation is the MediaMemory VisualResolver.

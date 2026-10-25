@@ -61,7 +61,6 @@ func TestDefaultPolicy_CoversAllCanonicalProcessorNames(t *testing.T) {
 			adapterspkg.ProcessorVisualPlanning,
 			adapterspkg.ProcessorClipBindings,
 			adapterspkg.ProcessorTranslation,
-			adapterspkg.ProcessorDocument,
 			adapterspkg.ProcessorAssetLocationReconciliation:
 			want = adapterspkg.ProcessorBestEffort
 		case adapterspkg.ProcessorVidRushMaterialization:

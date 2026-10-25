@@ -7,7 +7,7 @@
 //
 //	internal/scriptgeneration/
 //	    model.go        — GenerateRequest, Scene, GenerateResult (aggregates)
-//	    model_values.go — Language, Source, Clip/Audio/DocumentReference
+//	    model_values.go — Language, Source, Clip/Audio references
 //	    model_render.go — RenderReference, RenderArtifact, audio projections
 //	    ports*.go       — Technology-independent interfaces
 //	    service.go      — Linear orchestrator (Start)
@@ -221,24 +221,23 @@ type GenerateRequest struct {
 	// can be validated on real traffic before it ever blocks.
 	EnforceClipIdentity bool `json:"enforce_clip_identity,omitempty"`
 
-	// Docs is the explicit document publishing config.
-	// Verdetto: document creation MUST be explicit (docs.enabled),
-	// NOT implicit based on whether drive_output_folder is present.
-	// One document per language is created, not one bilingual doc.
-	Docs DocumentsConfig `json:"docs"`
+	// Docs is the RETIRED Google Docs publication config. The capability has
+	// been demolished; the field survives ONLY as a fail-closed tombstone so a
+	// caller that still requests documents receives a typed error instead of a
+	// silent no-op (NO-FAKE-AVAILABILITY). It stays JSON-decodable so existing
+	// payloads are recognised, not ignored. The type is owned by
+	// kernel/script (DocumentsSpec) so the envelope and the request cannot
+	// drift into two tombstone contracts.
+	Docs scriptpkg.DocumentsSpec `json:"docs"`
 
 	// SaveToDB requests persistence of the generated script through the
 	// canonical SQLite script writer. It is deliberately carried on the
 	// durable capability request instead of being re-derived downstream.
 	SaveToDB bool `json:"save_to_db,omitempty"`
 
-	// DEPRECATED: use Docs.Enabled instead. Kept for backward compat.
-	// Remove after all callers migrate to the Docs config struct.
+	// DocsEnabled is the legacy (flat) tombstone of the retired Google Docs
+	// capability. A true value fails closed exactly like Docs.Enabled.
 	DocsEnabled bool `json:"docs_enabled,omitempty"`
-
-	// DEPRECATED: use Docs.FolderID instead. Kept for backward compat.
-	// Remove after all callers migrate to the Docs config struct.
-	DriveFolderID string `json:"drive_folder_id,omitempty"`
 
 	// Title is the output title (mirrors the caller's title).
 	Title string `json:"title,omitempty"`

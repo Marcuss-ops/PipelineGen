@@ -27,22 +27,3 @@ func TestNoCrossEngineJobFinalizer(t *testing.T) {
 		}
 	}
 }
-
-// TestArtlistPersistUsesCommitterEngineTx pins MEDIA-SSOT P0-3: the Artlist
-// persist path must not open the asset finalizer transaction on the operational
-// SQLite mainDB; it goes through Service.assetFinalizerDB() so the tx engine
-// matches the wired committer.
-func TestArtlistPersistUsesCommitterEngineTx(t *testing.T) {
-	const file = "../../capabilities/assets/providers/artlist/run_orchestrator_persist.go"
-	src, err := os.ReadFile(file)
-	if err != nil {
-		t.Fatalf("read %s: %v", file, err)
-	}
-	body := string(src)
-	if strings.Contains(body, "o.svc.mainDB.BeginTx") {
-		t.Errorf("%s: asset finalizer tx must not be opened on mainDB; use assetFinalizerDB() so the engine matches the committer (MEDIA-SSOT P0-3)", file)
-	}
-	if !strings.Contains(body, "assetFinalizerDB()") {
-		t.Errorf("%s: expected the persist path to select the committer-engine tx via assetFinalizerDB()", file)
-	}
-}

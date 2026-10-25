@@ -147,20 +147,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			result.ExpectedRenderCount = expectedUnits
 			result.RenderMetrics = &RenderMetrics{Expected: expectedUnits, Concurrency: req.Render.RenderConcurrency}
 		}
-		// P1-C (anti-muda): Scene Intelligence and Phrase Impact are
-		// independent optional enrichments over the same stable text. Run
-		// them in parallel and apply serially so GENERATE pays max(si,pi)
-		// instead of si+pi. Both compute VALUES only; the single writer
-		// below owns every result mutation.
-		siEnabled := r.sceneIntelligenceAnalyzer != nil && strings.TrimSpace(output.Text) != ""
+		// The unified Rust editorial enrichment computes VALUES only over the
+		// stable text; the single writer below owns every result mutation.
 		_, unifiedEditorialEnabled := r.sceneSemanticAnalyzer.(SceneSemanticEditorialBatchAnalyzer)
-		piEnabled := (r.phraseImpactAnalyzer != nil || unifiedEditorialEnabled) && strings.TrimSpace(output.Text) != ""
-		type siOutcome struct {
-			manifest *scriptpkg.SceneIntelligenceManifest
-			inputs   []scriptpkg.SISceneAnalysisInput
-			proj     []SISceneProjection
-			err      error
-		}
+		piEnabled := unifiedEditorialEnabled && strings.TrimSpace(output.Text) != ""
 		type piOutcome struct {
 			summary         string
 			bullets         []string
@@ -174,38 +164,12 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			searchFeedback  *SemanticSearchFeedback
 			err             error
 		}
-		var siOut siOutcome
 		var piOut piOutcome
-		var nlpWg sync.WaitGroup
-		if siEnabled {
-			nlpWg.Add(1)
-			go func() {
-				defer nlpWg.Done()
-				manifest, siInputs, err := r.analyzeSceneIntelligence(ctx, runID, output.Text, scenes, req)
-				if err != nil {
-					siOut.err = err
-					return
-				}
-				if manifest == nil {
-					return
-				}
-				siOut.manifest = manifest
-				siOut.inputs = append([]scriptpkg.SISceneAnalysisInput(nil), siInputs...)
-				siOut.proj = ProjectGroundedSceneIntelligence(manifest, SIProjectionConfig{Enabled: true}, siInputs, nil)
-			}()
-		}
 		if piEnabled {
-			nlpWg.Add(1)
-			go func() {
-				defer nlpWg.Done()
-				out, err := r.computePhraseImpactEnrichment(ctx, output.Text, scenes, req)
-				if err != nil {
-					piOut.err = err
-					return
-				}
-				if out == nil {
-					return
-				}
+			out, err := r.computePhraseImpactEnrichment(ctx, output.Text, scenes, req)
+			if err != nil {
+				piOut.err = err
+			} else if out != nil {
 				piOut.summary = out.summary
 				piOut.bullets = out.bullets
 				piOut.heavy = out.heavy
@@ -216,17 +180,6 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				piOut.consolidation = out.consolidation
 				piOut.productionPlan = out.productionPlan
 				piOut.searchFeedback = out.searchFeedback
-			}()
-		}
-		nlpWg.Wait()
-		if siEnabled {
-			if siOut.err != nil {
-				r.log.Warn("scene-intelligence analysis unavailable; continuing without scene signals",
-					zap.String("run_id", runID), zap.Error(siOut.err))
-			} else if siOut.manifest != nil {
-				result.SceneIntelligence = siOut.manifest
-				result.sceneIntelligenceInputs = siOut.inputs
-				result.SceneIntelligenceProjection = siOut.proj
 			}
 		}
 		if piEnabled {
@@ -303,7 +256,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 								renderStarted := time.Now()
 								if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 									RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
-									DocsFolderID: routing.DocsFolderID, JobID: exec.JobID,
+									JobID:    exec.JobID,
 									Language: lang, Text: text,
 									SourceLanguage: req.SourceLanguage, SourceText: sourceText,
 									ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
@@ -369,7 +322,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 							renderStarted := time.Now()
 							if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 								RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
-								DocsFolderID: routing.DocsFolderID, JobID: exec.JobID,
+								JobID:    exec.JobID,
 								Language: lang, Text: text,
 								SourceLanguage: req.SourceLanguage, SourceText: text,
 								ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,

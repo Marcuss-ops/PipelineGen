@@ -300,7 +300,6 @@ func betterCandidate(a, b MediaCandidate) bool {
 //
 // The §11 acquisition stage. Each selected candidate becomes ONE child
 // of the family that owns it (youtube_clip.extract for YouTube,
-// media.stock for stock/Artlist) with its derived per-scene key and the
 // family's REAL wire payload. The children own download / cut /
 // normalize / register; the workflow records only their durable
 // outputs (asset id, content hash, Drive identity, duration, media

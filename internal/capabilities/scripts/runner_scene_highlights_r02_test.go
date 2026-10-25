@@ -16,40 +16,18 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-type stubSceneHighlightAnalyzer struct {
-	stubPhraseImpactAnalyzer
-	highlights []scriptpkg.SceneHighlight
-}
-
-func (s *stubSceneHighlightAnalyzer) AnalyzeScenes(_ context.Context, _ string, _ string, _ []scriptpkg.SceneAnalysisInput) (scriptpkg.PhraseImpactResult, error) {
-	if s.err != nil {
-		return scriptpkg.PhraseImpactResult{}, s.err
-	}
-	return scriptpkg.PhraseImpactResult{
-		Summary:                  s.result.Summary,
-		BulletPoints:             s.result.BulletPoints,
-		HeavySentences:           s.result.HeavySentences,
-		ChapterManifest:          s.result.ChapterManifest,
-		SceneHighlights:          s.highlights,
-		SceneHighlightsCertified: true,
-		Timings:                  s.result.Timings,
-	}, nil
-}
-
 func TestRunnerRequestedPhrasesSurviveSceneHighlights_R02(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	title := "First Scene"
-	runner.SetPhraseImpactAnalyzer(&stubSceneHighlightAnalyzer{
-		stubPhraseImpactAnalyzer: stubPhraseImpactAnalyzer{
-			result: scriptpkg.PhraseImpactResult{Summary: "auto summary"},
-		},
-		highlights: []scriptpkg.SceneHighlight{{
+	runner.SetSceneSemanticAnalyzer(&stubCombinedSemanticAnalyzer{result: scriptpkg.PhraseImpactResult{
+		Summary: "auto summary",
+		SceneHighlights: []scriptpkg.SceneHighlight{{
 			SceneID: "scene-0", Title: &title, TitleStatus: "resolved",
 			TitleSource:     "topic_validated",
 			Bullets:         []scriptpkg.SceneBulletSpan{{SentenceStart: 0, SentenceEnd: 1, Text: "Automatic bullet"}},
 			GloballyIndexed: false,
 		}},
-	})
+	}})
 
 	req := defaultTestRequest()
 	req.MediaPlan.Extraction.ImportantPhrases = []string{" locus classicus "}

@@ -32,8 +32,6 @@ func stageForProcessor(name ProcessorName) job.StageName {
 		return job.StageOverlay
 	case ProcessorPersistence:
 		return job.StagePersistence
-	case ProcessorDocument:
-		return job.StageUpload
 	default:
 		return ""
 	}

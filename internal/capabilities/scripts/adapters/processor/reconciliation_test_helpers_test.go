@@ -124,7 +124,7 @@ type reconciliationDownstreamRecorder struct {
 }
 
 func (p *reconciliationDownstreamRecorder) Name() adapters.ProcessorName {
-	return adapters.ProcessorDocument
+	return adapters.ProcessorPersistence
 }
 
 func (p *reconciliationDownstreamRecorder) Policy(_ *scriptpkg.ResolvedGenerationPlan) adapters.ProcessorPolicy {

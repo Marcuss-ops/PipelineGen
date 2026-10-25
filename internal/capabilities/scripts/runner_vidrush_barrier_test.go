@@ -51,7 +51,7 @@ func (b *recordingVidRushBarrier) awaitedRunIDs() []string {
 }
 
 func TestRunner_AwaitsVidRushBarrierAfterSceneText(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	barrier := newRecordingVidRushBarrier()
 	runner.SetVidRushBarrier(barrier)
 
@@ -75,7 +75,7 @@ func TestRunner_AwaitsVidRushBarrierAfterSceneText(t *testing.T) {
 // entities, the completed run's result exposes the typed aggregate
 // (persons/places/concepts) on the durable surface.
 func TestRunner_BarrierEntitiesProjectedOntoResult(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	barrier := newRecordingVidRushBarrier()
 	barrier.resultErr = nil
 	runner.SetVidRushBarrier(barrier)
@@ -114,7 +114,7 @@ func TestRunner_BarrierEntitiesProjectedOntoResult(t *testing.T) {
 // matching segment keeps its entities; the empty case is explicit
 // (entities=[] + entity_overlay_required=false), never a fabricated entity.
 func TestRunner_BarrierProjectsPerSceneEntitiesOntoScenes(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.vidRushBarrier = barrierFunc(func(_ context.Context, runID string) ([]scriptpkg.VidRushSegmentResult, error) {
 		return []scriptpkg.VidRushSegmentResult{
 			{SceneID: "scene-0", Position: 0, Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
@@ -165,7 +165,7 @@ func (f barrierFunc) WaitForVidRush(ctx context.Context, runID string) ([]script
 }
 
 func TestRunner_BarrierErrorFailsRunClosed(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	barrier := newRecordingVidRushBarrier()
 	barrier.resultErr = assert.AnError
 	runner.SetVidRushBarrier(barrier)
@@ -185,7 +185,7 @@ func TestRunner_BarrierErrorFailsRunClosed(t *testing.T) {
 }
 
 func TestRunner_BarrierBlocksUntilEnrichmentDone(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	barrier := newRecordingVidRushBarrier()
 	barrier.block = make(chan struct{})
 	runner.SetVidRushBarrier(barrier)
@@ -212,7 +212,7 @@ func TestRunner_BarrierBlocksUntilEnrichmentDone(t *testing.T) {
 }
 
 func TestRunner_NoBarrierIsSafeNoOp(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	// No SetVidRushBarrier call.
 
 	req := defaultTestRequest()

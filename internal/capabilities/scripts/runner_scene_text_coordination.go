@@ -51,7 +51,7 @@ func (c *sceneReadyCoordinator) processFixedDisplayText(out Scene) (Scene, error
 		work = append(work, sceneLanguageWork{lang: lang, needsTranslation: true})
 	}
 	outcomes, err := concurrent.Map(c.ctx, work, c.translationSlots.Cap(), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
-		translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText)
+		translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText, out.TextReadyAt)
 		if err != nil {
 			return sceneLanguageOutcome{}, err
 		}

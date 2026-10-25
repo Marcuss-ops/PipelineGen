@@ -49,7 +49,6 @@
 //
 // The 8-sentinel taxonomy matches the canonical P0-typed-error
 // surface shipped across the project (PR-COMPLETE-WORKER-BROAD-FIX +
-// PR-VO-TYPED-PRIMITIVES + PR-ARTLIST-FAKE-AVAILABILITY precedent):
 // composition-time + chunk-lookup + LLM-unavailable + LLM-bad-response
 // + persist-failed.
 package enrichment

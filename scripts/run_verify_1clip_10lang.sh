@@ -2,11 +2,11 @@
 # Runs the 1 clip / 1 scene / 10 languages acceptance job: ONE source clip is
 # translated at runtime into every requested language and each language is
 # rendered with ITS OWN burned subtitles into ITS OWN Drive folder under the
-# run folder (<docs root>/<job>/<language>).
+# run folder (<clips root | drive_folder_id>[/<drive_subfolder_name>]/<language>).
 #
 # The destination is per language by contract; the payload's clips fields
-# (drive_folder_id / drive_subfolder_name) are only the fallback of a run with
-# no documents root at all, so a docs-enabled run publishes beside the script.
+# (drive_folder_id / drive_subfolder_name) select the run folder. Google Docs
+# was retired, so there is no documents tree and no docs block in the payload.
 #
 # Usage:  ./scripts/run_verify_1clip_10lang.sh
 # Requires: VELOX_ADMIN_TOKEN (or TOKEN_FILE), a running API on PIPELINEGEN_URL

@@ -30,6 +30,8 @@ type SegmentUnderstandingResult struct {
 	VisualConcepts   []string `json:"visual_concepts,omitempty"`
 	Retrieval        *struct {
 		YouTube []string `json:"youtube,omitempty"`
+		// Artlist is decoded for legacy understanding payloads only. The
+		// provider is retired: no query builder or acquisition path reads it.
 		Artlist []string `json:"artlist,omitempty"`
 		Images  []string `json:"images,omitempty"`
 	} `json:"retrieval,omitempty"`

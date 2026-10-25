@@ -46,7 +46,6 @@ func (a *ProfileSegmentUnderstandingModel) UnderstandProfile(ctx context.Context
 			profile.Retrieval = &scriptpkg.RetrievalIntent{}
 		}
 		profile.Retrieval.YouTube = appendUniqueSemantic(profile.Retrieval.YouTube, result.Retrieval.YouTube...)
-		profile.Retrieval.Artlist = appendUniqueSemantic(profile.Retrieval.Artlist, result.Retrieval.Artlist...)
 		profile.Retrieval.Images = appendUniqueSemantic(profile.Retrieval.Images, result.Retrieval.Images...)
 	}
 	if profile.Topic == "" {

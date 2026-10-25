@@ -1,7 +1,6 @@
 // cmd/admin/cleanup_delete_folders.go — hardcoded folder ID list deletion
 //
 // runDeleteSpecificFolders deletes a fixed list of Drive folder IDs
-// by first trying DeletionSvc (Artlist and Stock DB deletion) and
 // falling back to direct Drive admin deletion.
 package cleanup
 

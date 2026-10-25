@@ -116,7 +116,7 @@ func TestVisualPlanningLockedAssignmentSkipsResolverAndPlannerCannotInvent(t *te
 	}
 }
 
-func TestVisualPlanningArtlistDisabledSkipsImplicitPrimaryVideo(t *testing.T) {
+func TestVisualPlanningYouTubeDisabledSkipsImplicitPrimaryVideo(t *testing.T) {
 	resolver := &countingVisualResolver{}
 	proc := NewVisualPlanningProcessor(resolver, nil, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
@@ -125,7 +125,7 @@ func TestVisualPlanningArtlistDisabledSkipsImplicitPrimaryVideo(t *testing.T) {
 		MediaPlan: mediadomain.MediaPlanSpec{
 			Mode: mediadomain.MediaPlanModeHybrid,
 			ProviderPolicy: mediadomain.MediaProviderPolicy{
-				Artlist: mediadomain.MediaToggleDisabled,
+				YouTube: mediadomain.MediaToggleDisabled,
 			},
 		},
 	}
@@ -137,7 +137,7 @@ func TestVisualPlanningArtlistDisabledSkipsImplicitPrimaryVideo(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resolver.calls != 0 {
-		t.Fatalf("resolver calls=%d, want 0 when Artlist is explicitly disabled", resolver.calls)
+		t.Fatalf("resolver calls=%d, want 0 when YouTube is explicitly disabled", resolver.calls)
 	}
 	if result.Changed {
 		t.Fatalf("result changed unexpectedly: %+v", result)

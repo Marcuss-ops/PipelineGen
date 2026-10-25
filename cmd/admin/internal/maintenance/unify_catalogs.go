@@ -2,7 +2,6 @@
 // September 2026).
 //
 // RunUnifyCatalogs merged the legacy per-source SQLite catalogs
-// (data/stock/stock.db.sqlite, data/artlist/artlist.db.sqlite) INTO
 // media.db.sqlite `media_assets` with `INSERT OR IGNORE`.
 //
 // After the media cutover that write is a second, non-authoritative media

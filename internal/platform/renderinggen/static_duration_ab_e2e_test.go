@@ -56,15 +56,16 @@ func abPhraseText() string {
 	return "STATIC DURATION CERTIFIED CARD"
 }
 
-// abStaticPhraseItem is one provably static phrase card: template + preset +
-// text only, no MotionID, no camera motion, no animated params. Every frame
-// of its window is pixel-identical to the first one.
+// abStaticPhraseItem is one provably static important phrase. The explicit
+// static_text_smoke preset owns no motion; the phrase role must not add an
+// implicit entry envelope when it has no preset or item motion. Every frame
+// should be pixel-identical.
 func abStaticPhraseItem(id string, startMs, endMs int64) capoverlay.OverlayItem {
 	return capoverlay.OverlayItem{
 		ID:         id,
-		Kind:       "text_phrase",
+		Kind:       "important_phrase",
 		TemplateID: "IMPORTANT_PHRASE",
-		PresetID:   "classic_phrase",
+		PresetID:   "static_text_smoke",
 		Text:       abPhraseText(),
 		StartMs:    startMs,
 		EndMs:      endMs,
@@ -216,6 +217,7 @@ func TestStaticDurationInvariantAB(t *testing.T) {
 
 	var short3s, long30s []int64
 	var lastLongArtifact []byte
+	var lastLongSHA string
 	for rep := 1; rep <= 3; rep++ {
 		for _, tc := range []struct {
 			label    string
@@ -231,13 +233,23 @@ func TestStaticDurationInvariantAB(t *testing.T) {
 			})
 			ref := abEnqueue(t, ctx, queueURL, plan)
 			*tc.collect = append(*tc.collect, ref.Artifact.RenderMS)
-			t.Logf("[rep %d %s] render_ms=%d encode_ms=%d frames=%d size=%d",
+			t.Logf("[rep %d %s] render_ms=%d encode_ms=%d frames=%d size=%d backend=%s codec=%s profile=%s",
 				rep, tc.label, ref.Artifact.RenderMS, ref.Artifact.EncodeMS,
-				ref.Artifact.FrameCount, ref.Artifact.SizeBytes)
+				ref.Artifact.FrameCount, ref.Artifact.SizeBytes,
+				ref.Artifact.Backend, ref.Artifact.Codec, ref.Artifact.CodecProfile)
 			if tc.label == "30s" {
 				lastLongArtifact = abFetchArtifact(t, storeURL, ref.Artifact.SHA256)
-				abAssertAllFramesIdentical(t, lastLongArtifact,
-					abWidth, abHeight, 30*abFPS)
+				lastLongSHA = ref.Artifact.SHA256
+				if dumpDir := os.Getenv("PIPELINEGEN_E2E_DUMP_ARTIFACTS_DIR"); dumpDir != "" {
+					if err := os.MkdirAll(dumpDir, 0o700); err != nil {
+						t.Fatalf("create artifact dump dir: %v", err)
+					}
+					dumpPath := filepath.Join(dumpDir, planID+".mp4")
+					if err := os.WriteFile(dumpPath, lastLongArtifact, 0o600); err != nil {
+						t.Fatalf("dump certified artifact: %v", err)
+					}
+					t.Logf("certified artifact dumped: %s sha256=%s", dumpPath, ref.Artifact.SHA256)
+				}
 			}
 		}
 	}
@@ -251,7 +263,12 @@ func TestStaticDurationInvariantAB(t *testing.T) {
 	t.Logf("P1 gate: median 3s=%d ms (%v), median 30s=%d ms (%v), ratio=%.3f (gate ≤ 1.2)",
 		med3, short3s, med30, long30s, ratio)
 	if ratio > 1.2 {
-		t.Fatalf("P1 static-duration gate NOT met: 30 s card costs %.3f× the 3 s card (gate ≤ 1.2×)", ratio)
+		t.Errorf("P1 static-duration gate NOT met: 30 s card costs %.3f× the 3 s card (gate ≤ 1.2×)", ratio)
+	}
+	t.Logf("P1 pixel check artifact sha256=%s", lastLongSHA)
+	abAssertAllFramesIdentical(t, lastLongArtifact, abWidth, abHeight, 30*abFPS)
+	if ratio <= 1.2 {
+		t.Log("P1 render-duration gate PASS")
 	}
 }
 

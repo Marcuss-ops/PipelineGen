@@ -25,7 +25,6 @@ import "context"
 //	  - jobs/worker/runner.go               → assetClient.UploadFile (worker artifacts, different concern)
 //
 //	DestinationKey coverage (complete):
-//	  YouTubeClip, Artlist, Stock, Image, Voiceover, Book, Script, SoundEffect
 //
 // The concrete implementation lives in
 // internal/platform/drive/publisher.go.
@@ -40,6 +39,5 @@ type Publisher interface {
 
 	// ResolveFolder resolves the Drive folder for a destination without
 	// uploading a file. Used by capabilities that need folder-only
-	// resolution (Artlist, Script). Returns the resolved folder ID.
 	ResolveFolder(ctx context.Context, req PublishRequest) (string, error)
 }

@@ -129,7 +129,6 @@ type CompletionTxRunner interface {
 // invocationally separate; CompleteAsset is the canonical trailing
 // call after the state machine reaches terminal DELETED.
 type DeletionService struct {
-	artlistRepo   *assets.ClipsRepository
 	clipsRepo     *assets.ClipsRepository
 	stockRepo     *assets.ClipsRepository
 	voiceoverRepo *assets.VoiceoversRepository
@@ -176,21 +175,19 @@ type DeletionService struct {
 // gate. The struct now nests the 10 fields into 5 purpose-grouped
 // sub-bundles (each ≤5 fields, all ≤8):
 //
-//   - Repos       (5): ArtlistRepo, ClipsRepo, StockRepo, VoiceoverRepo,
-//     ImagesRepo — the 5 SQLite-backed repositories.
-//   - Index       (2): AssetTreeSvc, AssetIndexSvc — the tree + index
-//     service dependencies.
-//   - Dispatcher (1): Dispatcher — the outbox dispatcher port.
-//   - Finalize    (2): DriveGoneChecker, CompletionTxRunner — the
-//     CompleteAsset-side ports (PR-WAVE-1-DRIVE-SSOT
-//     July 2026 introduced both; nested here to keep
-//     the same struct_shape-id).
-//   - Log         (1): *zap.Logger.
+//	  ImagesRepo — the 5 SQLite-backed repositories.
+//	- Index       (2): AssetTreeSvc, AssetIndexSvc — the tree + index
+//	  service dependencies.
+//	- Dispatcher (1): Dispatcher — the outbox dispatcher port.
+//	- Finalize    (2): DriveGoneChecker, CompletionTxRunner — the
+//	  CompleteAsset-side ports (PR-WAVE-1-DRIVE-SSOT
+//	  July 2026 introduced both; nested here to keep
+//	  the same struct_shape-id).
+//	- Log         (1): *zap.Logger.
 //
 // DeletionServiceDeps itself carries 5 sub-bundle fields → 5 fields,
 // well below the 8-field cap. The nesting follows the canonical
 // godlike/06 SSOT pattern established by PR-NEST-FLAT-DEPS-ARLIST
-// (internal/capabilities/assets/providers/artlist/service.go:
 // ServicePorts + ServiceDependencies{Infra, Ports, Domain, Repos,
 // Finalizer}).
 //
@@ -208,10 +205,9 @@ type DeletionServiceDeps struct {
 	Log        *zap.Logger
 }
 
-// DeletionRepoDeps groups the 5 SQLite-backed repositories the
-// DeletionService indexes / mutates. Field count: 5 (≤8 cap).
+// DeletionRepoDeps groups the 4 SQLite-backed repositories the
+// DeletionService indexes / mutates. Field count: 4 (≤8 cap).
 type DeletionRepoDeps struct {
-	ArtlistRepo   *assets.ClipsRepository
 	ClipsRepo     *assets.ClipsRepository
 	StockRepo     *assets.ClipsRepository
 	VoiceoverRepo *assets.VoiceoversRepository
@@ -258,7 +254,6 @@ type DeletionFinalizeDeps struct {
 // PR-DRIVE-CLEANUP).
 func NewDeletionService(deps DeletionServiceDeps) *DeletionService {
 	return &DeletionService{
-		artlistRepo:        deps.Repos.ArtlistRepo,
 		clipsRepo:          deps.Repos.ClipsRepo,
 		stockRepo:          deps.Repos.StockRepo,
 		voiceoverRepo:      deps.Repos.VoiceoverRepo,

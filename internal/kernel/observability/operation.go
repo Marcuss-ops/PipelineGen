@@ -79,6 +79,7 @@ func (r *Run) Operation(ctx context.Context, info OperationInfo, fn func(context
 			if rec := recover(); rec != nil {
 				op.Status = StageStatusFailed
 				op.ErrorCode = errorCode(panicError(rec))
+				op.ErrorMessage = panicError(rec).Error()
 				op.FinishedAt = r.now()
 				op.DurationMs = nonNegative(op.FinishedAt.Sub(started).Milliseconds())
 				op.QueueWaitMs = nonNegative(started.Sub(queued).Milliseconds())
@@ -97,6 +98,7 @@ func (r *Run) Operation(ctx context.Context, info OperationInfo, fn func(context
 	if err != nil {
 		op.Status = StageStatusFailed
 		op.ErrorCode = errorCode(err)
+		op.ErrorMessage = err.Error()
 	} else {
 		op.Status = StageStatusCompleted
 	}

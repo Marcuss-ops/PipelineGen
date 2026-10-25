@@ -278,8 +278,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		ref.Timing = result.Timing.Artifact
 	}
 	// Carry the published timing bundle summary (timing.json SSOT + optional
-	// SRT/VTT links + hashes) so the document renderer can surface the
-	// original timing links. The word-level array stays in Timing.
+	// SRT/VTT links + hashes) alongside the word-level artifact in Timing.
 	if result.Timing != nil {
 		ref.TimingBundle = &scriptpkg.VoiceoverTimingBinding{
 			Status:       string(result.Timing.Status),

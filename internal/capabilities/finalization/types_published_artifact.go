@@ -115,7 +115,6 @@ type PublishedArtifact struct {
 	ArtifactMetadata map[string]any `json:"artifact_metadata,omitempty"`
 
 	// Source is the content source identity ("stock", "youtube",
-	// "artlist", "voiceover", etc.) written to media_assets.source.
 	// When empty, the AssetTxFinalizer falls back to the publish
 	// action string (Location.Action) for backward compat.
 	// PR-STOCK-SOURCE-FIX (July 2026): stock assets must NOT use

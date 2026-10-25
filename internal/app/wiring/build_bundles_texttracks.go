@@ -96,7 +96,6 @@ func (r *subtitleRootLayoutResolver) ResolveSubtitleLocation(_ context.Context, 
 // fan-out helper (Fase 4).
 //
 // Fase 4 (July 2026): FanOut is the canonical post-publish
-// enqueue helper that pipeline finalizers (YouTube, Artlist,
 // Stock, Voiceover) call to schedule asset.text.materialize
 // translation jobs AFTER their canonical asset.index.requested
 // outbox emission has committed. Exposing it on the bundle
@@ -404,7 +403,6 @@ func BuildTextTrackBundle(
 //
 // godlike/06 SSOT: this is the SOLE canonical wiring site
 // for the post-publish enqueue helper. The 5 pipeline
-// finalizers (YouTube, Artlist, Stock, Voiceover, plus the
 // canonical AssetFinalizerTx post-commit hook) all reach
 // FanOut via composition-root-threaded deps; no other site
 // constructs a MaterializeFanOut.

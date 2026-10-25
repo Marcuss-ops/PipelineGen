@@ -293,9 +293,7 @@ func TestRegistryEligibleSourcesAndMediaTypes(t *testing.T) {
 	}
 	reg.Freeze()
 
-	// Sources=[yt, artlist, clips] (clips is an alias that resolves
 	// to "local"). AND MediaTypes=[audio] — youtube filtered out by
-	// MediaTypes (only CapVideo); artlist kept; local kept.
 	got := reg.Eligible(Query{Sources: []string{"yt", "artlist", "clips"}, MediaTypes: []string{"audio"}})
 	gotNames := backendNames(got)
 	sort.Strings(gotNames)
@@ -304,9 +302,7 @@ func TestRegistryEligibleSourcesAndMediaTypes(t *testing.T) {
 		t.Fatalf("Eligible(sources+mediaTypes) want %v, got %v", want, gotNames)
 	}
 
-	// Sources=[yt, artlist] (NO clips alias → local filtered out by
 	// Sources filter even though it satisfies MediaTypes=audio) +
-	// MediaTypes=[audio] → only artlist remains. This proves the
 	// Sources filter is applied BEFORE MediaTypes (fail-fast on
 	// unknown alias).
 	got = reg.Eligible(Query{Sources: []string{"yt", "artlist"}, MediaTypes: []string{"audio"}})

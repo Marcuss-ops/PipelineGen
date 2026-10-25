@@ -145,7 +145,6 @@ type MediaDeps struct {
 //	YouTube                 — provider for metadata enrichment
 //	Jobs                    — async job tracker
 //
-// Pattern source: artlist.ServiceDeps (PR2.5, June 2026) — `ServiceDeps`
 // embeds `ServicePorts + ServiceDependencies` for terse construction;
 // RuntimeDeps groups the pure data / runtime knobs so Deps stays
 // under the archcheck 8-field cap.
@@ -186,7 +185,6 @@ type StockFolderCreator interface {
 }
 
 // here the sub-struct names carry semantic meaning rather than the
-// "ports vs dependencies" split at the artlist boundary (the stock
 // pipeline has fewer ports to lift out).
 //
 // PR-D: setter pattern (SetCutter, SetRenderer, SetClipsRepo,

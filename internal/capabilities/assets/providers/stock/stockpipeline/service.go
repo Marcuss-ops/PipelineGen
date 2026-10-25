@@ -183,7 +183,6 @@ func (s *Service) SourceDurationProbe() SourceDurationProbe {
 // Production wire-up lives in WireStockPipeline
 // (internal/app/module_sources.go::WireStockPipeline). The composition
 // root pre-rejects any nil dispatcher at the wire call-site (QDRANT-002
-// PR7 precedent on artlist.WireArtlist); the shared validation is the
 // second line of defence so accidental misuse still fails loud.
 func newService(deps Deps) (*Service, error) {
 	if deps.Runtime.Cfg == nil {

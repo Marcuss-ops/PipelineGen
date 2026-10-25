@@ -287,7 +287,7 @@ accumulated_operation_ms       ≈ 40,000
 
 ```text
 Drive, Qdrant, Ollama, TTS, Artlist, YouTube,
-Google Docs, image providers, transcription providers
+image providers, transcription providers
 ```
 
 It is an operation detail. A report may expose a derived run/attempt aggregate only as a projection of operation intervals; that aggregate is never added to `accumulated_operation_ms`, `active_ms`, or `wall_time_ms`. If provider wait is a sub-interval of an operation, it must not be added to the operation duration as a second independent total.

@@ -233,7 +233,6 @@ type TranslationResult struct {
 	// Empty when the provider returned an empty/error-prone result
 	// (callers surface it via TranslationStatus or a separate
 	// failure marker — see the scripts package's
-	// ScriptArtlistClipSuggestion.TranslationError).
 	TranslatedText string `json:"translated_text,omitempty"`
 
 	// Confidence is a 0..1 provider self-reported confidence.

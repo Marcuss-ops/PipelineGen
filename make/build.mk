@@ -3,7 +3,7 @@
 # Per AGENTS.md max_lines_per_file: 1000 plus the P2 directive,
 # the canonical build chain is split into 7 thematic includes.
 # This file holds only the build-bucket targets. Cross-bucket
-# dependencies (e.g. verify-artlist-live -> auth-check) resolve
+# dependencies (e.g. a -live target -> auth-check) resolve
 # naturally via Make's recursive target resolution.
 # Root Makefile contains include make/*.mk plus all: build.
 
@@ -139,7 +139,7 @@ rebuild: clean build
 run: build
 	./bin/pipelinegen --mode all
 
-# Run system doctor check. Port/port override same as artlist target.
+# Run system doctor check. Port override via VELOX_PORT, same as the doctor target.
 # Admin token is read from $VELOX_ADMIN_TOKEN (canonical SSOT). The forbidden
 # legacy `ADMIN_TOKEN ?= test-admin-token-12345` placeholder has been removed;
 dev:

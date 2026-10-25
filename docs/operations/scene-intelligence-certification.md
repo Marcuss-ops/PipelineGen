@@ -5,6 +5,15 @@ T01–T06, G01–G06, V01–V06, R01–R06, X01–X10. This document distinguish
 **implemented and locally verified** checks from **not yet executable or
 not yet implemented** checks. A checklist label alone is never evidence.
 
+> **Retired 2026-10-25.** The opt-in Scene Intelligence shadow worker and the
+> standalone Phrase Impact compatibility worker were removed from BrainRust
+> and PipelineGen after measured parity: SI temporal signals were 36/36
+> covered by the unified semantic engine, zero named-pair SI relations were
+> left uncovered, and the unified editorial products were `DeepEqual` to the
+> legacy Phrase Impact worker on the real binaries. The history below is kept
+> as the certification record of the retired path; the analysis it describes
+> is superseded by `semantic_manifest.v2`.
+
 ## Scope and architecture boundaries
 
 - Rust `scene_intelligence` is a deterministic lexical detector. It consumes

@@ -175,7 +175,6 @@ func TestPublisher_ResolveFolder_SuccessWhenSubpathProvided(t *testing.T) {
 func TestPublisher_SymmetricRequireSubpath_AcrossDestinations(t *testing.T) {
 	dests := []delivery.DestinationKey{
 		delivery.DestinationYouTubeClip,
-		delivery.DestinationArtlist,
 		delivery.DestinationStock,
 		delivery.DestinationImage,
 		delivery.DestinationVoiceover,

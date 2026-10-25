@@ -48,7 +48,6 @@ func (i *BatchItem) fail(code FailureCode, err error) BatchItem {
 //
 // This rewrite swaps the signature from `*BatchRequest -> *BatchRequest`
 // to `BatchRequest -> BatchRequest` (value semantics) — matching the
-// canonical RunTagRequest pattern at artlist/run_service.go and keeping
 // the migration honest: the function now returns the NORMALIZED value,
 // and callers receive the clone directly.
 //

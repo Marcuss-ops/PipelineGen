@@ -57,19 +57,15 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 	return nil
 }
 
-// validateDocs applies the canonical script docs fail-closed contract.
-// The normalizer resolves docs.folder_id once (caller override >
-// PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID); a docs.enabled=true item that still
-// has no folder is rejected here instead of letting the document publisher
-// invent a destination (godlike/07 NO-FAKE-AVAILABILITY).
+// validateDocs enforces the retirement of the Google Docs capability: an
+// explicit docs.enabled=true request fails closed instead of being accepted
+// and then silently producing no document (godlike/07 NO-FAKE-AVAILABILITY).
+// docs omitted or enabled=false is accepted and inert.
 func validateDocs(docs scriptpkg.DocumentsSpec, ref string) []string {
 	if !docs.Enabled {
 		return nil
 	}
-	if strings.TrimSpace(docs.FolderID) == "" {
-		return []string{ref + ": docs enabled but no script docs folder configured (set docs.folder_id or PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID)"}
-	}
-	return nil
+	return []string{ref + ": Google Docs publication has been retired; omit the docs block or set docs.enabled=false"}
 }
 
 // validateSourceHandlers dispatches per-SourceType semantic

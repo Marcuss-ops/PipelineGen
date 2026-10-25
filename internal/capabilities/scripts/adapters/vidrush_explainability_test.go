@@ -9,7 +9,7 @@ import (
 )
 
 func TestExplainVidRushSegment(t *testing.T) {
-	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleEnabled}}}
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled}}}
 	segment := scriptpkg.VidRushSegmentResult{SegmentID: "s", Assets: scriptpkg.SegmentAssetSelection{PrimaryVideo: &scriptpkg.SegmentAssetCandidate{Provider: "youtube", AssetID: "asset-1", Score: .93, SelectionReason: "direct historical footage", SourceURL: "https://youtube.test/v", SourceStartMs: 181000, SourceEndMs: 190000}}}
 	got := ExplainVidRushSegment(plan, segment, "video")
 	if got.SegmentID != "s" || got.Winner == nil || got.Winner.Provider != "youtube" || got.Winner.AssetID != "asset-1" || got.Winner.SourceURL != "https://youtube.test/v" || got.Winner.SourceStartMs != 181000 || got.Winner.SourceEndMs != 190000 || got.Winner.Score != .93 || got.Winner.Reason != "direct historical footage" {

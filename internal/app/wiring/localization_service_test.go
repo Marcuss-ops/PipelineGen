@@ -95,16 +95,6 @@ func (f *fakeServiceUploader) Upload(_ context.Context, in localization.DriveUpl
 	return &localization.DriveUploadResult{FileID: "drive-" + in.Language, Link: "https://drive/" + in.Language}, nil
 }
 
-// fakeServiceDocPublisher records the publish input and returns a doc ref.
-type fakeServiceDocPublisher struct {
-	got localization.DocPublishInput
-}
-
-func (f *fakeServiceDocPublisher) Publish(_ context.Context, in localization.DocPublishInput) (*localization.DocPublishResult, error) {
-	f.got = in
-	return &localization.DocPublishResult{ID: "doc-1", Link: "https://docs/doc-1"}, nil
-}
-
 func testServiceConfig() LocalizationConfig {
 	return LocalizationConfig{
 		SourceLanguage:    "en",
@@ -116,10 +106,9 @@ func testServiceConfig() LocalizationConfig {
 	}
 }
 
-func newTestLocalizationService(t *testing.T) (*LocalizationService, *fakeServiceUploader, *fakeServiceDocPublisher) {
+func newTestLocalizationService(t *testing.T) (*LocalizationService, *fakeServiceUploader) {
 	t.Helper()
 	uploader := &fakeServiceUploader{}
-	docs := &fakeServiceDocPublisher{}
 	svc, err := NewLocalizationService(LocalizationDeps{
 		Sources: fakeServiceSourceResolver{facts: localization.SourceFacts{
 			AssetID:    "source-asset-1",
@@ -133,12 +122,11 @@ func newTestLocalizationService(t *testing.T) (*LocalizationService, *fakeServic
 		SubtitleCompiler: fakeServiceSubtitleCompiler{},
 		Executor:         fakeServiceExecutor{},
 		Uploader:         uploader,
-		DocPublisher:     docs,
 	}, testServiceConfig())
 	if err != nil {
 		t.Fatalf("NewLocalizationService: %v", err)
 	}
-	return svc, uploader, docs
+	return svc, uploader
 }
 
 // ── NewLocalizationService (fail-closed wiring) ─────────────────────
@@ -152,7 +140,6 @@ func TestNewLocalizationService_FailsClosedOnMissingPorts(t *testing.T) {
 			SubtitleCompiler: fakeServiceSubtitleCompiler{},
 			Executor:         fakeServiceExecutor{},
 			Uploader:         &fakeServiceUploader{},
-			DocPublisher:     &fakeServiceDocPublisher{},
 		}
 	}
 	cases := map[string]func(*LocalizationDeps){
@@ -162,7 +149,6 @@ func TestNewLocalizationService_FailsClosedOnMissingPorts(t *testing.T) {
 		"nil subtitle compiler": func(d *LocalizationDeps) { d.SubtitleCompiler = nil },
 		"nil executor":          func(d *LocalizationDeps) { d.Executor = nil },
 		"nil uploader":          func(d *LocalizationDeps) { d.Uploader = nil },
-		"nil doc publisher":     func(d *LocalizationDeps) { d.DocPublisher = nil },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -186,17 +172,15 @@ func localizationRequestFor(langs ...string) localization.LocalizationRequest {
 }
 
 func TestLocalize_RunsFullFanOut(t *testing.T) {
-	svc, uploader, docs := newTestLocalizationService(t)
+	svc, uploader := newTestLocalizationService(t)
 
 	result, err := svc.Localize(context.Background(), LocalizeInput{
-		AssetID:     "source-asset-1",
-		JobID:       "job-1",
-		SceneID:     "scene-1",
-		ClipID:      "clip-1",
-		Request:     localizationRequestFor("en", "es"),
-		FolderID:    "folder-1",
-		DocTitle:    "Localization — clip-1",
-		DocFolderID: "docs-folder",
+		AssetID:  "source-asset-1",
+		JobID:    "job-1",
+		SceneID:  "scene-1",
+		ClipID:   "clip-1",
+		Request:  localizationRequestFor("en", "es"),
+		FolderID: "folder-1",
 	})
 	if err != nil {
 		t.Fatalf("Localize: %v", err)
@@ -214,9 +198,6 @@ func TestLocalize_RunsFullFanOut(t *testing.T) {
 	}
 	if len(result.Failures) != 0 {
 		t.Fatalf("failures: got %d, want 0", len(result.Failures))
-	}
-	if result.Ref == nil || result.Ref.ID != "doc-1" || len(result.Ref.Entries) != 2 {
-		t.Fatalf("doc ref = %+v", result.Ref)
 	}
 	// The uploader must receive the deterministic regenerated-artifact filename
 	// (clip + language + content digest) and the certified content hash.
@@ -239,14 +220,10 @@ func TestLocalize_RunsFullFanOut(t *testing.T) {
 			t.Fatalf("uploader content hash for %q = %q", lang, in.ContentHash)
 		}
 	}
-	// The doc publisher must receive the priority-ordered manifest.
-	if docs.got.Title != "Localization — clip-1" || !strings.Contains(docs.got.Content, "English") {
-		t.Fatalf("doc publish input title/content unexpected: %+v", docs.got)
-	}
 }
 
 func TestLocalize_RejectsInvalidRequest(t *testing.T) {
-	svc, _, _ := newTestLocalizationService(t)
+	svc, _ := newTestLocalizationService(t)
 	_, err := svc.Localize(context.Background(), LocalizeInput{
 		AssetID: "source-asset-1",
 		Request: localization.LocalizationRequest{}, // empty languages
@@ -256,27 +233,8 @@ func TestLocalize_RejectsInvalidRequest(t *testing.T) {
 	}
 }
 
-func TestLocalize_SkipDocumentOnlyUploadsClips(t *testing.T) {
-	svc, _, docs := newTestLocalizationService(t)
-	result, err := svc.Localize(context.Background(), LocalizeInput{
-		AssetID:      "source-asset-1",
-		Request:      localizationRequestFor("en"),
-		FolderID:     "clip-folder",
-		SkipDocument: true,
-	})
-	if err != nil {
-		t.Fatalf("Localize: %v", err)
-	}
-	if len(result.Artifacts) != 1 || result.Ref != nil {
-		t.Fatalf("clip-only localization result = %+v", result)
-	}
-	if docs.got.Title != "" {
-		t.Fatalf("clip localization must not publish a Google Doc: %+v", docs.got)
-	}
-}
-
 func TestLocalize_PropagatesSourceResolutionError(t *testing.T) {
-	svc, _, _ := newTestLocalizationService(t)
+	svc, _ := newTestLocalizationService(t)
 	svc.sources = fakeServiceSourceResolver{err: errors.New("asset not found")}
 	if _, err := svc.Localize(context.Background(), LocalizeInput{
 		AssetID: "missing",
@@ -287,7 +245,7 @@ func TestLocalize_PropagatesSourceResolutionError(t *testing.T) {
 }
 
 func TestLocalize_PropagatesPlanBuildError(t *testing.T) {
-	svc, _, _ := newTestLocalizationService(t)
+	svc, _ := newTestLocalizationService(t)
 	// The "missing" language has no READY track → plan build fails.
 	req := localizationRequestFor("en", "missing")
 	if _, err := svc.Localize(context.Background(), LocalizeInput{
@@ -299,7 +257,7 @@ func TestLocalize_PropagatesPlanBuildError(t *testing.T) {
 }
 
 func TestLocalize_SourceLanguageOverride(t *testing.T) {
-	svc, _, _ := newTestLocalizationService(t)
+	svc, _ := newTestLocalizationService(t)
 	// Source language override changes which language burns the transcript;
 	// the fan-out must still succeed (both languages resolve to tracks).
 	result, err := svc.Localize(context.Background(), LocalizeInput{

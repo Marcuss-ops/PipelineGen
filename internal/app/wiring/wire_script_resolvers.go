@@ -244,7 +244,6 @@ func buildScriptSourceResolvers(
 		LogSourceTextPreview:       cfg.Scripts.LogSourceTextPreview,
 		SourceTextPreviewChars:     cfg.Scripts.SourceTextPreviewChars,
 		WordsPerSecondClipEvidence: cfg.Scripts.WordsPerSecondClipEvidence,
-		ScriptDocsFolderID:         cfg.Scripts.ScriptDocsFolderID,
 	}
 
 	sourceReg := processor.NewSourceRegistry(log)

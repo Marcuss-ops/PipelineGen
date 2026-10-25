@@ -888,18 +888,6 @@ measurements:
     migration_adapter: "ObservedDrivePublisher wraps delivery.Publisher.Publish once and records provider wait, bytes, artifact reference, and status"
     removal_condition: "DRIVE_OBSERVED=PASS across every Publisher.Publish caller and static scan finds no local Drive timer outside the wrapper"
 
-  - current_symbol: "Google Docs DocClient.CreateDoc/UpdateDoc timing"
-    current_owner: "internal/platform/drive/doc_client.go and platform/delivery/doc_publisher.go"
-    current_writer: "DocClient and DocPublisher call sites; no direct timing writer found in the current search"
-    current_storage: "No canonical durable timing; document result structs/logs"
-    current_metric: "none consistently"
-    canonical_type: operation
-    canonical_stage: "publish/persist"
-    canonical_component: "google_docs"
-    canonical_operation: "create/update"
-    migration_adapter: "ObservedGoogleDocsPublisher records one operation around the DocClient boundary and links the resulting document ArtifactReport"
-    removal_condition: "Every document create/update is observed once and document consumers read canonical operation/artifact projections"
-
   - current_symbol: "TTSProvider.Synthesize timing"
     current_owner: "internal/capabilities/voiceover/service/ports_synthesis.go and voiceover use cases"
     current_writer: "ProcessSegmentUseCase/process_voiceover_item.go calls TTSProvider.Synthesize; VoiceoverStageDuration is stage-level only"

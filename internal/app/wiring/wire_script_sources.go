@@ -16,14 +16,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/maps"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/script"
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	platformgeocoding "github.com/Marcuss-ops/PipelineGen/internal/platform/geocoding"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"go.uber.org/zap"
 )
@@ -460,31 +458,4 @@ func wirePhraseImpactEmbedder(cfg *config.Config) *embeddings.HTTPTextEmbedder {
 		phraseEmbedder = embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()).(*embeddings.HTTPTextEmbedder)
 	}
 	return phraseEmbedder
-}
-
-// wireSceneIntelligenceAnalyzer wires the independently versioned Rust SI
-// worker only when its configured executable exists. Missing worker binaries
-// are a warning, never a reason to disable script generation.
-func wireSceneIntelligenceAnalyzer(runner *scriptgen.Runner, cfg *config.Config, log *zap.Logger) {
-	if runner == nil {
-		return
-	}
-	path := sceneIntelligenceShadowPath(cfg)
-	if path == "" {
-		return
-	}
-	if _, err := os.Stat(path); err != nil {
-		log.Warn("scene-intelligence Rust worker not found; shadow analysis disabled",
-			zap.String("path", path), zap.Error(err))
-		return
-	}
-	runner.SetSceneIntelligenceAnalyzer(rustexec.NewSIAnalyzer(path, nil))
-	log.Info("scene-intelligence Rust worker wired in shadow mode", zap.String("path", path))
-}
-
-func sceneIntelligenceShadowPath(cfg *config.Config) string {
-	if cfg == nil || !cfg.External.RustSceneIntelligenceShadowEnabled {
-		return ""
-	}
-	return strings.TrimSpace(cfg.External.RustSceneIntelligencePath)
 }

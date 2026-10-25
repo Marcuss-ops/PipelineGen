@@ -120,7 +120,6 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 		// retrieval surface: no stock-video or YouTube query may leak into an
 		// entity-only run. The caller can run those providers in a separate
 		// clip path, but they are not extracted here.
-		out[i].Insights.ArtlistQueries = nil
 		out[i].Insights.YouTubeQueries = nil
 		// The entity value is the only allowed image query at this boundary.
 		// Do not trust provider-generated/enriched queries: they can introduce

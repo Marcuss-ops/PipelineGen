@@ -26,7 +26,7 @@ import (
 // TTS while generation is still blocked, so scene 0's start timestamps must
 // precede scene 1's text-ready timestamp in the final durable result.
 func TestSceneTextStreaming_TranslationTTSStartBeforeNextSceneReady(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	translator := &readyProbeTranslator{started: make(chan struct{})}
 	voiceover := &readyProbeVoiceover{started: make(chan struct{})}

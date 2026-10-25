@@ -44,7 +44,6 @@
 //   - "md5": MD5 (Drive upload checksum; removed by step 2).
 //   - "publishaction": PublishAction (Drive action enum;
 //     removed by step 2).
-//   - "clippageurl": ClipPageURL (artlist provider URL;
 //     removed by step 2).
 //
 // Step 1 (July 2026): the god service is ONLY renamed. The

@@ -1,5 +1,4 @@
 // Package media_test — media_statistics_test.go pins the per-source
-// media_assets count the Artlist diagnostics surface reads
 // (MEDIA LEGACY READ-PLANE DEMOLITION, 2026-09-21).
 //
 // Two layers, deliberately separated:
@@ -76,7 +75,6 @@ func TestMediaStatisticsReader_Guards(t *testing.T) {
 	t.Run("empty term is a typed failure, never an all-rows aggregate", func(t *testing.T) {
 		// HARDENING, not a preserved semantic: the retired SQLite statement had no
 		// sentinel, so a forgotten term became `tags LIKE '%%'` and answered "the
-		// newest artlist row". The only production caller already guards this, so the
 		// sentinel closes the shape without changing any call in the tree.
 		got, err := reader.LastUpdatedAtForTerm(context.Background(), "   ")
 		require.ErrorIs(t, err, pgmedia.ErrEmptyTerm,
@@ -95,10 +93,8 @@ func TestMediaStatisticsReader_ClipAggregatesOnTheSSOT(t *testing.T) {
 	reader := pgmedia.NewMediaStatisticsReader(db)
 
 	// The fixture is built so each pin is falsifiable on its own:
-	//   - agg-artlist-del is the NEWEST artlist row (2026-09-18) and is soft-deleted,
 	//     so a lifecycle discount would move the answer down to 2026-09-17;
 	//   - agg-stock is the newest row OVERALL (2026-09-19) with the same tag, so a
-	//     port that dropped `source = 'artlist'` would return it;
 	//   - no tag contains the lower-case string "beluga", so a case-SENSITIVE LIKE
 	//     would find nothing at all.
 	const (
@@ -199,7 +195,6 @@ func TestMediaStatisticsReader_CountsPerSourceOnTheSSOT(t *testing.T) {
 	t.Run("soft-deleted rows are still counted", func(t *testing.T) {
 		// The DELETED row above is part of the 3. This is the retired helper's
 		// documented contract (an "indexed" metric, not an "online" one) and
-		// dropping it here would silently change the number /api/artlist/diagnostics
 		// reports.
 		artlist, err := reader.CountBySource(ctx, "artlist")
 		require.NoError(t, err)

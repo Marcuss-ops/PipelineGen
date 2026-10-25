@@ -42,11 +42,6 @@
           {"id":"scene-4","kind":"clip","topic":"Mark Ruffalo photobombing Paul Rudd","source_text":"Paul Rudd is doing a Comic-Con press interview when Mark Ruffalo sneaks up behind him for a playful photobomb.","clip_ids":["1lkmvsdJe6S0wFCEMJJJewrYlOfQ-xIpR"],"target_words":36}
         ]
       },
-      "docs": {
-        "enabled": false,
-        "languages": ["en"],
-        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
-      },
       "audio": {
         "mode": "COMBINED_TIMELINE",
         "timing": {

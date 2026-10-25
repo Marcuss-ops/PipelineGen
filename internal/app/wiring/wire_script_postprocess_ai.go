@@ -16,7 +16,6 @@
 //     NewUnavailable* constructors no longer called from this file — processors
 //     are skipped entirely when backend is absent)
 //   - internal/capabilities/scripts/usecase: NewTranslationUseCaseAdapter,
-//     NewTranslationReasonClassifierAdapter, SearchArtlistClips, ClipServices
 //   - internal/platform/ollama/adapters: metadata and visual-planning adapters,
 //     NewOllamaMetadataGeneratorAdapter
 //   - internal/platform/embeddings: NewOllamaEmbedderAdapter
@@ -36,7 +35,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
@@ -122,25 +120,6 @@ func registerAIBackedProcessors(
 		log.Info("TranslationProcessor wired (OllamaTranslator + Prometheus metrics adapter)")
 	} else {
 		log.Warn("TranslationProcessor: OllamaTranslator not available; postprocessor not registered (translation requests will produce warnings)")
-	}
-
-	// ── ClipSearch ───────────────────────────────────────────────────
-	// ClipSearchProcessor is available only through the canonical provider
-	// registry. If that registry is unavailable this postprocessor is skipped;
-	// the old ClipServices/Drive/Jobs/remote fallback is intentionally gone.
-	var clipSearchAdapter adapters.ArtlistClipSearcher
-	if vidRushProviders != nil {
-		if _, err := vidRushProviders.Provider(scriptpkg.VidRushProviderArtlist); err == nil {
-			clipSearchAdapter = &adapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
-			log.Info("ClipSearchProcessor wired through VidRushAssetProviderRegistry")
-		}
-	}
-	if clipSearchAdapter == nil {
-		log.Warn("ClipSearchProcessor: Artlist searcher not available; postprocessor not registered (clip_search will be skipped)")
-	} else {
-		if !ppReg.Register(adapters.NewClipSearchProcessorWithCache(clipSearchAdapter, vidRushCache, vidrushMetrics)) {
-			return fmt.Errorf("register clip_search processor: composition bug")
-		}
 	}
 
 	// Internet image discovery is the first half of the unified VidRush media

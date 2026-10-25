@@ -8,15 +8,15 @@
 //
 // godlike/06 SSOT invariants asserted:
 //
-//   - Service.Start rejects requests with empty idempotency_key,
-//     empty source.type, and docs.enabled=true with no languages
-//     configured.
+//   - Service.Start rejects requests with empty idempotency_key and
+//     empty source.type, and fails closed for a request that still asks
+//     for the retired Google Docs publication.
 //   - Service.Start happy path creates a run with id, status
 //     PENDING, stage NORMALIZING, and a status URL containing
 //     the run id; the background runner eventually drives the
 //     run to COMPLETED.
-//   - NewService panics on nil repo, nil textGen, nil translator,
-//     nil docPublisher (Required ports).
+//   - NewService panics on nil repo, nil textGen, nil translator
+//     (Required ports).
 //   - NewRunner panics on nil repo (RunRepository is required).
 //   - inMemRunRepository.GetByJobID returns the matched run for
 //     a known job id and (nil, nil) for unknown job ids.
@@ -36,10 +36,8 @@ func TestServiceStart_Validation(t *testing.T) {
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := newStubVoiceoverGenerator()
-	docPub := newStubDocumentPublisher()
 
-	svc := NewService(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
-	svc.SetScriptDocsFolderID("test-docs-folder")
+	svc := NewService(repo, textGen, translator, voiceoverGen)
 
 	t.Run("missing idempotency key", func(t *testing.T) {
 		req := defaultTestRequest()
@@ -55,21 +53,22 @@ func TestServiceStart_Validation(t *testing.T) {
 		assert.ErrorContains(t, err, "source.type")
 	})
 
-	t.Run("docs enabled without languages", func(t *testing.T) {
+	t.Run("retired docs block fails closed", func(t *testing.T) {
 		req := defaultTestRequest()
-		req.Docs = DocumentsConfig{Enabled: true, Languages: nil}
-		req.Languages = nil // no fallback available
+		req.Docs.Enabled = true
 		_, err := svc.Start(context.Background(), req)
-		assert.ErrorContains(t, err, "docs.enabled requires at least one language")
+		require.ErrorIs(t, err, ErrGoogleDocsRetired)
+	})
+
+	t.Run("retired legacy docs flag fails closed", func(t *testing.T) {
+		req := defaultTestRequest()
+		req.DocsEnabled = true
+		_, err := svc.Start(context.Background(), req)
+		require.ErrorIs(t, err, ErrGoogleDocsRetired)
 	})
 
 	t.Run("happy path start", func(t *testing.T) {
 		req := defaultTestRequest()
-		// The fixture publisher is intentionally a stub. Documents are
-		// opt-in, and docs.enabled=true now requires the real-provider
-		// preflight, so this service smoke test exercises the non-Docs path.
-		req.Docs.Enabled = false
-		req.Docs.Languages = nil
 		result, err := svc.Start(context.Background(), req)
 		require.NoError(t, err)
 		require.NotNil(t, result)
@@ -91,28 +90,23 @@ func TestNewService_PanicsOnNilRequiredPorts(t *testing.T) {
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
-	docPub := newStubDocumentPublisher()
 
 	assert.Panics(t, func() {
-		NewService(nil, textGen, translator, nil, docPub)
+		NewService(nil, textGen, translator, nil)
 	}, "nil repo should panic")
 
 	assert.Panics(t, func() {
-		NewService(repo, nil, translator, nil, docPub)
+		NewService(repo, nil, translator, nil)
 	}, "nil textGen should panic")
 
 	assert.Panics(t, func() {
-		NewService(repo, textGen, nil, nil, docPub)
+		NewService(repo, textGen, nil, nil)
 	}, "nil translator should panic")
-
-	assert.Panics(t, func() {
-		NewService(repo, textGen, translator, nil, nil)
-	}, "nil docPublisher should panic")
 }
 
 func TestNewRunner_PanicsOnNilRepo(t *testing.T) {
 	assert.Panics(t, func() {
-		NewRunner(nil, nil, nil, nil, nil)
+		NewRunner(nil, nil, nil, nil)
 	}, "nil repo should panic")
 }
 

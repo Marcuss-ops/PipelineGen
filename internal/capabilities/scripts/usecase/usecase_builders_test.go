@@ -25,7 +25,7 @@ import (
 // testDocsNormalizationConfig is the canonical NormalizationConfig for usecase
 // tests: production-shaped (docs folder resolvable) without external systems.
 func testDocsNormalizationConfig() processor.NormalizationConfig {
-	return processor.NormalizationConfig{ScriptDocsFolderID: "TEST_DOCS_FOLDER"}
+	return processor.NormalizationConfig{}
 }
 
 // noopAudioProcessor satisfies mediaexec.AudioProcessor for tests that do not

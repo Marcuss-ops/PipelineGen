@@ -15,9 +15,7 @@ import (
 // primitive repo-wide under cmd/.
 var canonicalArtifactGenerators = []string{
 	"cmd/architecture-aggregate/main.go",
-	"cmd/capability-inventory-aggregate/main.go",
 	"cmd/model-registry-gen/main.go",
-	"cmd/gen_baseline/main.go",
 	"cmd/admin/regen-current-yaml/main.go",
 	"cmd/admin/internal/rendering/gen_api_docs_manifest.go",
 }

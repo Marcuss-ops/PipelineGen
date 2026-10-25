@@ -10,7 +10,6 @@
 //     source_text; the stamped source_text_hash must still match a fresh
 //     hash of the current source_text.
 //   - ruleSemanticProfiles      — visual_profile must not be null 5/5.
-//   - ruleArtlistRelevance      — boxing REJECTED for Greek Salad.
 //   - ruleEntityGrounding       — every entity has source evidence;
 //     Imagine the / ready never become entities.
 //   - ruleImageFanout           — one image query per entity, N images
@@ -214,7 +213,6 @@ func segmentHasProfile(seg ResultSegment) bool {
 	return false
 }
 
-// ruleArtlistRelevance verifies each segment's winner asset's inferred
 // subject is compatible with the spec subject. This is the rule that
 // rejects a boxing clip bound to a Greek Salad segment.
 func ruleArtlistRelevance(spec Spec, result MediaResult) CheckResult {
@@ -427,16 +425,8 @@ func ruleQueryOwnership(spec Spec, result MediaResult) CheckResult {
 		for _, q := range seg.Insights.ImageQueries {
 			checkQuery(q, false)
 		}
-		// Artlist queries are an ownership contract only when the resolved
-		// media plan actually allows Artlist video. In image-only runs a model
-		// may still populate the optional legacy Artlist projection; treating
 		// those unused strings as globally unique would reject valid shared
 		// ingredient queries such as "olive oil".
-		if spec.VideoProvider == script.VidRushProviderArtlist {
-			for _, q := range seg.Insights.ArtlistQueries {
-				checkQuery(q, true)
-			}
-		}
 		if !drift {
 			pass++
 		}

@@ -35,7 +35,6 @@ import (
 //
 // Blocco C1-Step 10 hardening (June 2026): the diagnostics
 // capability Build contract (`diagnostics.Build(deps) (api.Descriptor,
-// error)`) is structurally complete and matches the artlist /
 // youtube / clips / stock / voiceover / soundeffect / register
 // precedent. This gate_test.go is the per-area parity fortification
 // — plus a comment refresh to document why the orchestrator

@@ -1,0 +1,1112 @@
+{
+  "schema": "garlasco_gold_report.v1",
+  "run": "2026-10-24",
+  "worker": "../BrainRust/target/release/semantic-engine",
+  "gold": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/garlasco_2013_gold.json",
+  "script": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/garlasco_2013_reconstructed.txt",
+  "manifest_fingerprint": "9294f00793b985bb",
+  "manifest_sha256": "0caaf3e13cf659476bf330dc0067933cfa01c337d6b3dc7e7df98ff595290a3e",
+  "provenance": {
+    "kind": "reconstructed",
+    "independent": false,
+    "source": "refactored commit 982f39e0f: 15 Garlasco segment briefs (deleted from the worktree)",
+    "script": "fixtures/garlasco_2013_reconstructed.txt",
+    "word_count": 2013,
+    "note": "The 2,013-word script was reassembled from the historical segment briefs. It is not the lost original file and these annotations are not an independent human gold. They are a frozen, engine-independent baseline: gold authored from the text before any engine run, so T01/T05 can be measured instead of remaining NOT RUN."
+  },
+  "results": [
+    {
+      "check": "gold_provenance",
+      "verdict": "NEEDS_REVIEW",
+      "detail": "reconstructed from historical briefs; not independent human annotation"
+    },
+    {
+      "check": "word_count",
+      "verdict": "PASS",
+      "detail": "2013 words (expected 2013)"
+    },
+    {
+      "check": "schema_version",
+      "verdict": "PASS",
+      "detail": "semantic_manifest.v2"
+    },
+    {
+      "check": "scene_count",
+      "verdict": "PASS",
+      "detail": "15 scenes returned for 15 sent"
+    },
+    {
+      "check": "offsets_round_trip",
+      "verdict": "PASS",
+      "detail": "823 candidates, 0 bad offsets"
+    },
+    {
+      "check": "entity_recall",
+      "verdict": "PASS",
+      "detail": "1.00 (20/20)"
+    },
+    {
+      "check": "entity_typed_recall",
+      "verdict": "PASS",
+      "detail": "1.00 (20/20)"
+    },
+    {
+      "check": "entity_linking_critical",
+      "verdict": "PASS",
+      "detail": "0 PERSON/LOCATION swaps"
+    },
+    {
+      "check": "entity_type_warnings",
+      "verdict": "PASS",
+      "detail": "0 non-critical type mismatches"
+    },
+    {
+      "check": "entity_precision",
+      "verdict": "PASS",
+      "detail": "1.00 (46/46 named mentions matched)"
+    },
+    {
+      "check": "temporal_recall",
+      "verdict": "PASS",
+      "detail": "1.00 (11/11)"
+    },
+    {
+      "check": "fact_recall",
+      "verdict": "PASS",
+      "detail": "1.00 (5/5 Stasi outcomes)"
+    },
+    {
+      "check": "fact_conflicts",
+      "verdict": "PASS",
+      "detail": "0 conflicting outcomes"
+    },
+    {
+      "check": "sempio_forbidden_outcomes",
+      "verdict": "PASS",
+      "detail": "0 forbidden Sempio outcomes"
+    },
+    {
+      "check": "sempio_under_investigation",
+      "verdict": "PASS",
+      "detail": "3 under_investigation facts"
+    },
+    {
+      "check": "event_recall",
+      "verdict": "PASS",
+      "detail": "1.00 (8/8)"
+    },
+    {
+      "check": "visual_concept_recall",
+      "verdict": "PASS",
+      "detail": "1.00 (15/15 core concepts)"
+    },
+    {
+      "check": "query_grounding",
+      "verdict": "PASS",
+      "detail": "0 invalid of 4424 queries; every valid query is an exact source slice"
+    },
+    {
+      "check": "query_volume",
+      "verdict": "NEEDS_REVIEW",
+      "detail": "1094 entries, 72.9 per scene; 1113 exact (369 unique); named share 0.15"
+    },
+    {
+      "check": "query_named_share",
+      "verdict": "NEEDS_REVIEW",
+      "detail": "0.15 of unique exact mentions name a gold entity/core concept; generic visual concepts are not counted and no independent relevance labels exist"
+    },
+    {
+      "check": "charts_absent",
+      "verdict": "PASS",
+      "detail": "0 chart proposals, 0 items (gold expects none)"
+    },
+    {
+      "check": "charts_grounded",
+      "verdict": "PASS",
+      "detail": "0 unbacked chart items"
+    },
+    {
+      "check": "timeline_group",
+      "verdict": "PASS",
+      "detail": "step_sequence [{'scene_id': 's11', 'members': 5, 'years': ['2009', '2011', '2013', '2014', '2015']}], expected 5 ['2009', '2011', '2013', '2014', '2015']"
+    },
+    {
+      "check": "comparison_members",
+      "verdict": "PASS",
+      "detail": "0 comparison groups over 2 members"
+    },
+    {
+      "check": "story_graph_identity",
+      "verdict": "PASS",
+      "detail": "identity=Alberto Stasi about_edges=5"
+    },
+    {
+      "check": "story_graph_chronology",
+      "verdict": "PASS",
+      "detail": "0 chronological edges (min 0)"
+    },
+    {
+      "check": "story_graph_final_subject",
+      "verdict": "PASS",
+      "detail": "final fact attached to Alberto Stasi"
+    },
+    {
+      "check": "coverage_stasi_outcomes",
+      "verdict": "PASS",
+      "detail": "5/5 Stasi outcomes have covered evidence (5/10 facts covered overall)"
+    },
+    {
+      "check": "micro_summaries_count",
+      "verdict": "PASS",
+      "detail": "9 micro summaries (min 5)"
+    },
+    {
+      "check": "micro_final_subject",
+      "verdict": "PASS",
+      "detail": "final micro text: Stasi: condanna definitiva nel 2015"
+    },
+    {
+      "check": "consolidation_contract",
+      "verdict": "PASS",
+      "detail": "schema=visual_consolidation.v1; 73 production candidates from 1097 raw proposals"
+    },
+    {
+      "check": "consolidation_inventory",
+      "verdict": "PASS",
+      "detail": "raw=10 facts/1097 proposals/2212 queries; canonical=8 facts/13 dates; no raw collection deleted"
+    },
+    {
+      "check": "consolidation_volume",
+      "verdict": "PASS",
+      "detail": "73 candidates (93.3% fewer), 31 search jobs vs 1094 raw entries, 31 queries vs 2212 raw"
+    },
+    {
+      "check": "consolidation_coverage",
+      "verdict": "PASS",
+      "detail": "8/8 canonical facts represented, 0 uncovered"
+    },
+    {
+      "check": "consolidation_grounding",
+      "verdict": "PASS",
+      "detail": "0 invalid candidate evidence, 0 invalid queries, 0 facts without representation or reason"
+    },
+    {
+      "check": "consolidation_timeline",
+      "verdict": "PASS",
+      "detail": "1 timeline candidate(s), 5 canonical facts covered by the timeline"
+    },
+    {
+      "check": "consolidation_fact_cards",
+      "verdict": "PASS",
+      "detail": "3 contextual cards, 3 for Sempio; no external media query"
+    },
+    {
+      "check": "consolidation_reference_number",
+      "verdict": "PASS",
+      "detail": "reference 33=True; 0 chart item(s) using a reference number"
+    },
+    {
+      "check": "consolidation_event_links",
+      "verdict": "PASS",
+      "detail": "4 precedes links, 0 not grounded"
+    },
+    {
+      "check": "determinism",
+      "verdict": "PASS",
+      "detail": "2 runs, fingerprint 9294f00793b985bb"
+    }
+  ],
+  "details": {
+    "entity_hits": [
+      {
+        "canonical": "Chiara Poggi",
+        "hit": true,
+        "count": 5
+      },
+      {
+        "canonical": "Alberto Stasi",
+        "hit": true,
+        "count": 9
+      },
+      {
+        "canonical": "Andrea Sempio",
+        "hit": true,
+        "count": 8
+      },
+      {
+        "canonical": "Angela Taccia",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Liborio Cataliotti",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Giada Bocellari",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Antonio De Rensis",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Procura di Pavia",
+        "hit": true,
+        "count": 3
+      },
+      {
+        "canonical": "Corte d'Appello di Milano",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Corte d'Assise d'Appello di Milano",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "Cassazione",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "RIS di Parma",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "ANSA",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "GUP",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Garlasco",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Pavia",
+        "hit": true,
+        "count": 4
+      },
+      {
+        "canonical": "Milano",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "Vigevano",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Brescia",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Parma",
+        "hit": true,
+        "count": 1
+      }
+    ],
+    "entity_typed_hits": [
+      {
+        "canonical": "Chiara Poggi",
+        "hit": true,
+        "count": 5
+      },
+      {
+        "canonical": "Alberto Stasi",
+        "hit": true,
+        "count": 9
+      },
+      {
+        "canonical": "Andrea Sempio",
+        "hit": true,
+        "count": 8
+      },
+      {
+        "canonical": "Angela Taccia",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Liborio Cataliotti",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Giada Bocellari",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Antonio De Rensis",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Procura di Pavia",
+        "hit": true,
+        "count": 3
+      },
+      {
+        "canonical": "Corte d'Appello di Milano",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Corte d'Assise d'Appello di Milano",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "Cassazione",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "RIS di Parma",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "ANSA",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "GUP",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Garlasco",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Pavia",
+        "hit": true,
+        "count": 4
+      },
+      {
+        "canonical": "Milano",
+        "hit": true,
+        "count": 2
+      },
+      {
+        "canonical": "Vigevano",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Brescia",
+        "hit": true,
+        "count": 1
+      },
+      {
+        "canonical": "Parma",
+        "hit": true,
+        "count": 1
+      }
+    ],
+    "entity_type_warnings": [],
+    "critical_type_errors": [],
+    "temporal_hits": [
+      {
+        "surface": "13 agosto 2007",
+        "normalized": "2007-08-13",
+        "hit": true
+      },
+      {
+        "surface": "19 settembre 2007",
+        "normalized": "2007-09-19",
+        "hit": true
+      },
+      {
+        "surface": "20 settembre 2007",
+        "normalized": "2007-09-20",
+        "hit": true
+      },
+      {
+        "surface": "26 settembre 2007",
+        "normalized": "2007-09-26",
+        "hit": true
+      },
+      {
+        "surface": "17 dicembre 2009",
+        "normalized": "2009-12-17",
+        "hit": true
+      },
+      {
+        "surface": "6 dicembre 2011",
+        "normalized": "2011-12-06",
+        "hit": true
+      },
+      {
+        "surface": "18 aprile 2013",
+        "normalized": "2013-04-18",
+        "hit": true
+      },
+      {
+        "surface": "17 dicembre 2014",
+        "normalized": "2014-12-17",
+        "hit": true
+      },
+      {
+        "surface": "12 dicembre 2015",
+        "normalized": "2015-12-12",
+        "hit": true
+      },
+      {
+        "surface": "28 settembre 2026",
+        "normalized": "2026-09-28",
+        "hit": true
+      },
+      {
+        "surface": "8 ottobre 2026",
+        "normalized": "2026-10-08",
+        "hit": true
+      }
+    ],
+    "fact_hits": [
+      {
+        "date": "2009-12-17",
+        "value": "acquitted",
+        "hit": true,
+        "actual_subject": "Alberto Stasi",
+        "actual_date": "2009-12-17"
+      },
+      {
+        "date": "2011-12-06",
+        "value": "acquittal_confirmed",
+        "hit": true,
+        "actual_subject": "Alberto Stasi",
+        "actual_date": "2011-12-06"
+      },
+      {
+        "date": "2013-04-18",
+        "value": "annulled_with_remand",
+        "hit": true,
+        "actual_subject": "Alberto Stasi",
+        "actual_date": "2013-04-18"
+      },
+      {
+        "date": "2014-12-17",
+        "value": "convicted",
+        "hit": true,
+        "actual_subject": "Alberto Stasi",
+        "actual_date": "2014-12-17"
+      },
+      {
+        "date": "2015-12-12",
+        "value": "final",
+        "hit": true,
+        "actual_subject": "Alberto Stasi",
+        "actual_date": "2015-12-12"
+      }
+    ],
+    "fact_conflicts": [],
+    "event_hits": [
+      {
+        "id": "E01",
+        "anchor": "fu uccisa",
+        "hit": true
+      },
+      {
+        "id": "E02",
+        "anchor": "assoluzione in primo grado",
+        "hit": true
+      },
+      {
+        "id": "E03",
+        "anchor": "confermò l'assoluzione",
+        "hit": true
+      },
+      {
+        "id": "E04",
+        "anchor": "annullò con rinvio",
+        "hit": true
+      },
+      {
+        "id": "E05",
+        "anchor": "condanna a sedici anni",
+        "hit": true
+      },
+      {
+        "id": "E06",
+        "anchor": "divenne definitiva",
+        "hit": true
+      },
+      {
+        "id": "E07",
+        "anchor": "seconda chiusura delle indagini",
+        "hit": true
+      },
+      {
+        "id": "E08",
+        "anchor": "acquisizione di documenti",
+        "hit": true
+      }
+    ],
+    "visual_hits": [
+      {
+        "id": "V01",
+        "any_of": [
+          "Garlasco"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V02",
+        "any_of": [
+          "Chiara Poggi",
+          "Poggi"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V03",
+        "any_of": [
+          "Alberto Stasi",
+          "Stasi"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V04",
+        "any_of": [
+          "Andrea Sempio",
+          "Sempio"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V05",
+        "any_of": [
+          "Procura di Pavia",
+          "Procura"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V06",
+        "any_of": [
+          "Cassazione"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V07",
+        "any_of": [
+          "Corte d'Appello di Milano",
+          "Corte d'Appello"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V08",
+        "any_of": [
+          "RIS di Parma",
+          "RIS"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V09",
+        "any_of": [
+          "impronta",
+          "numero 33",
+          "33"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V10",
+        "any_of": [
+          "bicicletta"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V11",
+        "any_of": [
+          "pedali"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V12",
+        "any_of": [
+          "documenti"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V13",
+        "any_of": [
+          "chiusura delle indagini",
+          "seconda chiusura",
+          "conclusione delle indagini"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V14",
+        "any_of": [
+          "presunzione di innocenza",
+          "presunzione",
+          "innocenza"
+        ],
+        "hit": true
+      },
+      {
+        "id": "V15",
+        "any_of": [
+          "contraddittorio"
+        ],
+        "hit": true
+      }
+    ],
+    "query_stats": {
+      "entries": 1094,
+      "scenes": 15,
+      "queries": 4424,
+      "feedback_queries": 2212,
+      "proposal_suggestions": 2212,
+      "exact": 1113,
+      "unique_exact": 369,
+      "invalid": 0,
+      "named": 163,
+      "named_share": 0.14645103324348607,
+      "top_duplicates": [
+        [
+          "atti",
+          20
+        ],
+        [
+          "racconto",
+          14
+        ],
+        [
+          "stasi",
+          14
+        ],
+        [
+          "procedimento",
+          14
+        ],
+        [
+          "chiara poggi",
+          13
+        ],
+        [
+          "passaggio",
+          12
+        ],
+        [
+          "pavia",
+          11
+        ],
+        [
+          "andrea sempio",
+          11
+        ],
+        [
+          "sempio",
+          11
+        ],
+        [
+          "indagini",
+          10
+        ]
+      ]
+    },
+    "chart_stats": {
+      "charts": 0,
+      "items": 0,
+      "unbacked": 0
+    },
+    "timeline": {
+      "step_sequences": [
+        {
+          "scene_id": "s11",
+          "members": 5,
+          "years": [
+            "2009",
+            "2011",
+            "2013",
+            "2014",
+            "2015"
+          ]
+        }
+      ],
+      "comparisons": []
+    },
+    "story": {
+      "identity": "Alberto Stasi",
+      "about_edges": 5,
+      "chronological_edges": 0,
+      "final_subject": "Alberto Stasi"
+    },
+    "coverage": {
+      "total_facts": 10,
+      "covered_facts": 5,
+      "hits": [
+        {
+          "date": "2009-12-17",
+          "surface": "17 dicembre 2009",
+          "hit": true
+        },
+        {
+          "date": "2011-12-06",
+          "surface": "6 dicembre 2011",
+          "hit": true
+        },
+        {
+          "date": "2013-04-18",
+          "surface": "18 aprile 2013",
+          "hit": true
+        },
+        {
+          "date": "2014-12-17",
+          "surface": "17 dicembre 2014",
+          "hit": true
+        },
+        {
+          "date": "2015-12-12",
+          "surface": "12 dicembre 2015",
+          "hit": true
+        }
+      ]
+    },
+    "micro": {
+      "count": 9,
+      "final_text": [
+        "Stasi: condanna definitiva nel 2015"
+      ],
+      "final_ok": true
+    },
+    "consolidation": {
+      "present": true,
+      "schema": "visual_consolidation.v1",
+      "inventory": {
+        "canonical_dates": 13,
+        "canonical_facts": 8,
+        "canonical_micro_summaries": 8,
+        "entity_mentions": 582,
+        "facts": 10,
+        "groups": 2,
+        "micro_summaries": 9,
+        "named_identities": 28,
+        "proposals": 1097,
+        "queries": 2212,
+        "search_entries": 1094,
+        "temporal_facts": 15,
+        "timelines": 1,
+        "unique_identities": 404
+      },
+      "metrics": {
+        "canonical_facts": 8,
+        "covered_facts": 8,
+        "duplicate_entity_mentions_collapsed": 178,
+        "duplicate_facts_merged": 2,
+        "duplicate_proposals_removed": 1024,
+        "duplicate_queries_removed": 2181,
+        "estimated_search_jobs": 31,
+        "production_candidates": 73,
+        "production_queries": 31,
+        "production_search_candidates": 31,
+        "raw_proposals": 1097,
+        "raw_queries": 2212,
+        "raw_search_entries": 1094,
+        "reference_numbers": 1,
+        "shared_asset_reuses": 28,
+        "uncovered_facts": 0
+      },
+      "candidates": 73,
+      "raw_facts": 10,
+      "raw_proposals": 1097,
+      "raw_queries": 2212,
+      "canonical_facts": 8,
+      "covered_facts": 8,
+      "unrepresented": [],
+      "timelines": [
+        {
+          "asset_key": "timeline:step_sequence_s11",
+          "covered_fact_ids": [
+            "cf_0003",
+            "cf_0004",
+            "cf_0005",
+            "cf_0006",
+            "cf_0007"
+          ],
+          "dedup_key": "timeline:cf_0003,cf_0004,cf_0005,cf_0006,cf_0007",
+          "end_byte": 150,
+          "entity_ids": [
+            "person_72"
+          ],
+          "evidence": "Il 17 dicembre 2009 il GUP pronunciò l'assoluzione in primo grado.",
+          "fact_ids": [
+            "cf_0003",
+            "cf_0004",
+            "cf_0005",
+            "cf_0006",
+            "cf_0007"
+          ],
+          "group_ids": [
+            "step_sequence_s11"
+          ],
+          "id": "vc_0012",
+          "priority": 0.9700000286102295,
+          "queries": [],
+          "rank": 12,
+          "rationale": [
+            "one step_sequence composition represents 5 canonical facts",
+            "duplicate or nested timelines over the same facts are suppressed"
+          ],
+          "recipe": "timeline",
+          "requires_media": false,
+          "scene_id": "s11",
+          "scene_ids": [
+            "s11"
+          ],
+          "start_byte": 83,
+          "suggested_visual": "timeline",
+          "title": "Sequenza: 5 tappe"
+        }
+      ],
+      "timeline_covered": 5,
+      "cards": [
+        {
+          "asset_key": "factcard:cf_0001",
+          "covered_fact_ids": [
+            "cf_0001"
+          ],
+          "dedup_key": "factcard:cf_0001",
+          "end_byte": 102,
+          "entity_ids": [
+            "person_73"
+          ],
+          "evidence": "Andrea Sempio è indagato nella nuova inchiesta della Procura di Pavia per l'omicidio di Chiara Poggi.",
+          "fact_ids": [
+            "cf_0001"
+          ],
+          "group_ids": [],
+          "id": "vc_0037",
+          "priority": 0.8349999785423279,
+          "queries": [],
+          "rank": 37,
+          "rationale": [
+            "one contextual card preserves this claim's evidence and status",
+            "recipe: investigation_status_card"
+          ],
+          "recipe": "fact_card",
+          "requires_media": false,
+          "scene_id": "s05",
+          "scene_ids": [
+            "s05",
+            "s07"
+          ],
+          "start_byte": 0,
+          "suggested_visual": "info_card",
+          "title": "Andrea Sempio — stato del procedimento"
+        },
+        {
+          "asset_key": "factcard:cf_0002",
+          "covered_fact_ids": [
+            "cf_0002"
+          ],
+          "dedup_key": "factcard:cf_0002",
+          "end_byte": 118,
+          "entity_ids": [
+            "person_73"
+          ],
+          "evidence": "Andrea Sempio respinge le accuse e ha dichiarato in televisione di non riconoscersi nelle ricostruzioni investigative.",
+          "fact_ids": [
+            "cf_0002"
+          ],
+          "group_ids": [],
+          "id": "vc_0038",
+          "priority": 0.8349999785423279,
+          "queries": [],
+          "rank": 38,
+          "rationale": [
+            "one contextual card preserves this claim's evidence and status",
+            "recipe: statement_card"
+          ],
+          "recipe": "fact_card",
+          "requires_media": false,
+          "scene_id": "s07",
+          "scene_ids": [
+            "s07"
+          ],
+          "start_byte": 0,
+          "suggested_visual": "info_card",
+          "title": "Andrea Sempio — dichiarazioni"
+        },
+        {
+          "asset_key": "factcard:cf_0008",
+          "covered_fact_ids": [
+            "cf_0008"
+          ],
+          "dedup_key": "factcard:cf_0008",
+          "end_byte": 711,
+          "entity_ids": [
+            "person_73"
+          ],
+          "evidence": "La posizione di Sempio, in questo procedimento, resta quella di una persona indagata che non è stata condannata.",
+          "fact_ids": [
+            "cf_0008"
+          ],
+          "group_ids": [],
+          "id": "vc_0054",
+          "priority": 0.7599999904632568,
+          "queries": [],
+          "rank": 54,
+          "rationale": [
+            "one contextual card preserves this claim's evidence and status",
+            "recipe: legal_outcome_card"
+          ],
+          "recipe": "fact_card",
+          "requires_media": false,
+          "scene_id": "s07",
+          "scene_ids": [
+            "s07"
+          ],
+          "start_byte": 598,
+          "suggested_visual": "info_card",
+          "title": "Andrea Sempio — esito giudiziario"
+        }
+      ],
+      "reference_33": [
+        {
+          "end_byte": 34,
+          "reason": "explicit reference number, not a quantitative value",
+          "scene_id": "s08",
+          "start_byte": 32,
+          "surface": "33"
+        }
+      ],
+      "reference_chart_items": [],
+      "event_links": 4,
+      "invalid_event_links": [],
+      "invalid_evidence": [],
+      "invalid_queries": [],
+      "sempio_cards": [
+        {
+          "asset_key": "factcard:cf_0001",
+          "covered_fact_ids": [
+            "cf_0001"
+          ],
+          "dedup_key": "factcard:cf_0001",
+          "end_byte": 102,
+          "entity_ids": [
+            "person_73"
+          ],
+          "evidence": "Andrea Sempio è indagato nella nuova inchiesta della Procura di Pavia per l'omicidio di Chiara Poggi.",
+          "fact_ids": [
+            "cf_0001"
+          ],
+          "group_ids": [],
+          "id": "vc_0037",
+          "priority": 0.8349999785423279,
+          "queries": [],
+          "rank": 37,
+          "rationale": [
+            "one contextual card preserves this claim's evidence and status",
+            "recipe: investigation_status_card"
+          ],
+          "recipe": "fact_card",
+          "requires_media": false,
+          "scene_id": "s05",
+          "scene_ids": [
+            "s05",
+            "s07"
+          ],
+          "start_byte": 0,
+          "suggested_visual": "info_card",
+          "title": "Andrea Sempio — stato del procedimento"
+        },
+        {
+          "asset_key": "factcard:cf_0002",
+          "covered_fact_ids": [
+            "cf_0002"
+          ],
+          "dedup_key": "factcard:cf_0002",
+          "end_byte": 118,
+          "entity_ids": [
+            "person_73"
+          ],
+          "evidence": "Andrea Sempio respinge le accuse e ha dichiarato in televisione di non riconoscersi nelle ricostruzioni investigative.",
+          "fact_ids": [
+            "cf_0002"
+          ],
+          "group_ids": [],
+          "id": "vc_0038",
+          "priority": 0.8349999785423279,
+          "queries": [],
+          "rank": 38,
+          "rationale": [
+            "one contextual card preserves this claim's evidence and status",
+            "recipe: statement_card"
+          ],
+          "recipe": "fact_card",
+          "requires_media": false,
+          "scene_id": "s07",
+          "scene_ids": [
+            "s07"
+          ],
+          "start_byte": 0,
+          "suggested_visual": "info_card",
+          "title": "Andrea Sempio — dichiarazioni"
+        },
+        {
+          "asset_key": "factcard:cf_0008",
+          "covered_fact_ids": [
+            "cf_0008"
+          ],
+          "dedup_key": "factcard:cf_0008",
+          "end_byte": 711,
+          "entity_ids": [
+            "person_73"
+          ],
+          "evidence": "La posizione di Sempio, in questo procedimento, resta quella di una persona indagata che non è stata condannata.",
+          "fact_ids": [
+            "cf_0008"
+          ],
+          "group_ids": [],
+          "id": "vc_0054",
+          "priority": 0.7599999904632568,
+          "queries": [],
+          "rank": 54,
+          "rationale": [
+            "one contextual card preserves this claim's evidence and status",
+            "recipe: legal_outcome_card"
+          ],
+          "recipe": "fact_card",
+          "requires_media": false,
+          "scene_id": "s07",
+          "scene_ids": [
+            "s07"
+          ],
+          "start_byte": 598,
+          "suggested_visual": "info_card",
+          "title": "Andrea Sempio — esito giudiziario"
+        }
+      ]
+    },
+    "deterministic": true
+  }
+}

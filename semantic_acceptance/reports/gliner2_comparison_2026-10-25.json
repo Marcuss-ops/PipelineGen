@@ -1,0 +1,129 @@
+{
+  "schema": "gliner2_comparison.v1",
+  "model": "fastino/gliner2-multi-v1",
+  "threshold": 0.5,
+  "provenance": "reconstructed Garlasco gold (not independent human annotation)",
+  "entities": {
+    "gliner2": {
+      "unique_recall": 19,
+      "unique_total": 20,
+      "typed_recall": 19,
+      "mention_recall": 37,
+      "mention_required": 38,
+      "named_mentions": 69,
+      "named_matched": 47,
+      "named_precision": 0.6812,
+      "false_positives": [
+        "avvocati",
+        "difensori",
+        "difesa",
+        "fidanzato",
+        "giudice",
+        "giudici",
+        "indagato",
+        "legali",
+        "magistrati",
+        "parti",
+        "periti",
+        "provincia di pavia",
+        "ufficio"
+      ]
+    },
+    "engine": {
+      "unique_recall": 20,
+      "unique_total": 20,
+      "typed_recall": 20,
+      "mention_recall": 34,
+      "mention_required": 38,
+      "named_mentions": 47,
+      "named_matched": 47,
+      "named_precision": 1.0,
+      "false_positives": []
+    }
+  },
+  "temporal": {
+    "gliner2": {
+      "unique_recall": 11,
+      "unique_total": 11,
+      "mention_recall": 12,
+      "mention_required": 12
+    },
+    "engine": {
+      "unique_recall": 11,
+      "unique_total": 11,
+      "mention_recall": 12,
+      "mention_required": 12
+    }
+  },
+  "relations_probe": {
+    "relation_types": [
+      "located in",
+      "legal outcome of"
+    ],
+    "pairs": 15,
+    "examples": [
+      {
+        "relation": "located in",
+        "head": "Garlasco",
+        "tail": "Pavia"
+      },
+      {
+        "relation": "legal outcome of",
+        "head": "13 agosto 2007",
+        "tail": "13 agosto 2007"
+      },
+      {
+        "relation": "located in",
+        "head": "Chiara Poggi",
+        "tail": "casa"
+      },
+      {
+        "relation": "located in",
+        "head": "rilievi",
+        "tail": "sulla scena"
+      },
+      {
+        "relation": "legal outcome of",
+        "head": "risposte",
+        "tail": "giudici"
+      },
+      {
+        "relation": "located in",
+        "head": "Procura di Pavia",
+        "tail": "Pavia"
+      },
+      {
+        "relation": "located in",
+        "head": "Pavia",
+        "tail": "Pavia"
+      },
+      {
+        "relation": "located in",
+        "head": "Andrea Sempio",
+        "tail": "televisione"
+      },
+      {
+        "relation": "located in",
+        "head": "scienza",
+        "tail": "aula"
+      },
+      {
+        "relation": "legal outcome of",
+        "head": "bicicletta",
+        "tail": "accertamento"
+      }
+    ],
+    "scored": false,
+    "reason": "GLiNER2 relations join two entity spans; the engine's legal facts are subject/predicate/value/date claims and the reconstructed gold annotates no relation set, so relation precision/recall cannot be compared 1:1."
+  },
+  "performance": {
+    "model_load_seconds": 14.52,
+    "scenes": 15,
+    "latency_p50_seconds": 4.41,
+    "latency_total_seconds": 72.05,
+    "process_cpu_seconds": 1643.91,
+    "peak_rss_mb": 3015.7,
+    "engine_wall_seconds": 17.39,
+    "note": "single CPU run on this host; engine includes worker start-up and model load"
+  }
+}

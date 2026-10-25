@@ -14,7 +14,6 @@ import (
 // owns the orchestration contract; infrastructure registers concrete
 // implementations at the composition root.
 const (
-	VidRushProviderArtlist         = "artlist"
 	VidRushProviderInternetImages  = "internet_images"
 	VidRushProviderImageGeneration = "image_generation"
 	VidRushProviderYouTube         = "youtube"
@@ -41,14 +40,13 @@ const (
 // to the visual/semantic pipeline. Position is zero-based and stable within
 // the canonical segment list.
 type CanonicalSegment struct {
-	ID              string   `json:"segment_id"`
-	SceneID         string   `json:"scene_id,omitempty"`
-	Position        int      `json:"position"`
-	Text            string   `json:"text"`
-	SourceText      string   `json:"source_text,omitempty"`
-	TextHash        string   `json:"text_hash"`
-	SourceTextHash  string   `json:"source_text_hash,omitempty"`
-	ArtlistKeywords []string `json:"artlist_keywords,omitempty"`
+	ID             string `json:"segment_id"`
+	SceneID        string `json:"scene_id,omitempty"`
+	Position       int    `json:"position"`
+	Text           string `json:"text"`
+	SourceText     string `json:"source_text,omitempty"`
+	TextHash       string `json:"text_hash"`
+	SourceTextHash string `json:"source_text_hash,omitempty"`
 	// ExecutionMode mirrors the canonical scene authorization boundary.
 	// Fixed-media segments are authoritative and must never enter semantic
 	// enrichment, provider search, ranking, fallback resolution or media
@@ -92,7 +90,6 @@ func NormalizeCanonicalSegment(segment CanonicalSegment) CanonicalSegment {
 	if segment.SourceTextHash == "" {
 		segment.SourceTextHash = ComputeCanonicalSegmentTextHash(segment.SourceText)
 	}
-	segment.ArtlistKeywords = append([]string(nil), segment.ArtlistKeywords...)
 	segment.ExecutionMode = segment.ExecutionMode.Normalize()
 	return segment
 }
@@ -305,9 +302,7 @@ type SegmentInsights struct {
 	ImportantWords           []string              `json:"important_words,omitempty"`
 	SpecialNames             []string              `json:"special_names,omitempty"`
 	NounChunks               []string              `json:"noun_chunks,omitempty"`
-	ArtlistQueries           []string              `json:"artlist_queries,omitempty"`
 	YouTubeQueries           []string              `json:"youtube_queries,omitempty"`
-	ArtlistIntentHash        string                `json:"artlist_intent_hash,omitempty"`
 	ImageQueries             []string              `json:"image_queries,omitempty"`
 	ImageSearchRequired      bool                  `json:"image_search_required,omitempty"`
 	ImageSearchNoImageReason string                `json:"image_search_no_image_reason,omitempty"`
@@ -402,7 +397,6 @@ type SegmentAssetSelection struct {
 // SegmentCacheState stores the per-segment cache status across the VidRush steps.
 type SegmentCacheState struct {
 	Extraction                     string `json:"extraction,omitempty"`
-	Artlist                        string `json:"artlist,omitempty"`
 	InternetImages                 string `json:"internet_images,omitempty"`
 	ImageGeneration                string `json:"image_generation,omitempty"`
 	YouTube                        string `json:"youtube,omitempty"`
@@ -479,7 +473,6 @@ func (s VidRushSegmentResult) CanonicalSemanticProfile() SegmentSemanticProfile 
 	profile.Terms = deriveSemanticTerms(profile)
 	profile.Retrieval = &RetrievalIntent{
 		YouTube: append([]string(nil), s.Insights.YouTubeQueries...),
-		Artlist: append([]string(nil), s.Insights.ArtlistQueries...),
 		Images:  append([]string(nil), s.Insights.ImageQueries...),
 	}
 	return profile

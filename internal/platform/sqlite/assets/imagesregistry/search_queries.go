@@ -139,7 +139,6 @@ func resolveSortDir(asc bool) string {
 //
 // (clip_list_queries.go held the count ops + LastUpdatedAtForTerm until
 // MEDIA LEGACY READ-PLANE DEMOLITION sub-wave B', 2026-09-21: both moved to the
-// media SSOT behind artlist.MediaStats and the file is deleted.)
 func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) ([]*asset.Asset, error) {
 	keywords := strings.Fields(tag)
 	if len(keywords) == 0 {

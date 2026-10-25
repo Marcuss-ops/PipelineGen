@@ -11,7 +11,6 @@ import (
 // FASE 9 Step 6 (June 2026): migrated from *Uploader to Admin (Pattern 0 port).
 // Only uses GetOrCreateFolder — fully covered by the Admin interface.
 //
-// This replaces duplicated GetOrCreateFolder loops in Artlist, Stock, Ingest,
 // and Google Accounting.
 func EnsureFolderPath(ctx context.Context, admin Admin, rootID string, segments ...string) (string, error) {
 	if admin == nil {

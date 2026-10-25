@@ -118,7 +118,7 @@ func TestYouTubeGate_LimitsConcurrencyForYouTube(t *testing.T) {
 	assert.Equal(t, 1, runner.Peak(), "gate width 1 must cap peak YouTube concurrency at 1")
 }
 
-func TestYouTubeGate_DoesNotGateArtlist(t *testing.T) {
+func TestYouTubeGate_DoesNotGateNonYouTube(t *testing.T) {
 	setupTestAllowlist(t)
 	runner := &gateTrackingRunner{
 		delay:  60 * time.Millisecond,
@@ -134,15 +134,14 @@ func TestYouTubeGate_DoesNotGateArtlist(t *testing.T) {
 		go func(out string) {
 			defer wg.Done()
 			_ = d.Download(context.Background(), &DownloadRequest{
-				URL:        "https://artlist.io/royalty-free-stock/boxing-knockout",
+				URL:        "https://example.com/video.mp4",
 				OutputPath: out,
 			})
 		}(output)
 	}
 	wg.Wait()
 	assert.Equal(t, int64(3), runner.calls.Load())
-	// Artlist URLs bypass the YouTube gate, so all 3 run concurrently.
-	assert.Equal(t, 3, runner.Peak(), "Artlist URLs must bypass the YouTube gate (peak = 3)")
+	assert.Equal(t, 3, runner.Peak(), "non-YouTube URLs must bypass the YouTube gate (peak = 3)")
 }
 
 func TestYouTubeGate_ArmsCooldownOn429(t *testing.T) {
@@ -253,7 +252,7 @@ func TestYouTubeGate_NilGateDoesNotPanic(t *testing.T) {
 	setupTestAllowlist(t)
 	// Direct struct literal has nil gate; runYouTube must bypass.
 	// Provide a canonical builder so GetVideoMetadata can build argv.
-	tmp, _ := newTestDownloader(t, "")
+	tmp, _ := newTestDownloader(t)
 	d := &YTDLPDownloader{
 		path:       "yt-dlp",
 		runner:     &captureRunner{result: &process.Result{ExitCode: 0, Stdout: `{"id":"abc","title":"t","duration":5}`}},

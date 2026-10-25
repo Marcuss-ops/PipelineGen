@@ -32,8 +32,6 @@
 //
 // What changed for production callers: the canonical handler-registration
 // idiom at every call site MUST now wrap the method value in
-// `appjobs.HandlerFunc(h.HandleJob)` (cf. artlist precedent at
-// internal/capabilities/assets/providers/artlist/job_core.go:247). The
 // type-switch accepts method values whose signature structurally matches
 // HandlerFunc (Go's structural subtyping auto-converts at the case
 // branch), but explicit casts are canonical for human-readability
@@ -76,7 +74,6 @@ const MaxJobsPerType = 16
 //
 //	jobsSvc.RegisterHandler(jobType, appjobs.HandlerFunc(h.HandleJob))
 //
-// This explicit cast is canonical (cf. artlist/job_core.go:247).
 // Method values without the cast are accepted by the type-switch
 // (structural subtyping), but explicit casts are preferred for
 // human-readability + future-proofing against signature drift.

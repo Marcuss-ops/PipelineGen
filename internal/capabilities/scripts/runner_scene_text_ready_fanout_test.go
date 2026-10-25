@@ -32,7 +32,7 @@ func voCallCount(v *stubVoiceoverGenerator) int {
 // translation + TTS. TTS therefore starts from the SceneTextReady boundary in
 // parallel with analysis instead of waiting for the VidRush barrier.
 func TestSceneTextReady_TTSDoesNotWaitForAnalysis(t *testing.T) {
-	runner, repo, _, _, voGen, _, _ := newTestRunner()
+	runner, repo, _, _, voGen, _ := newTestRunner()
 	timeline := &timelineRecorder{}
 	enricher := newE2EBlockingEnricher(timeline)
 	runner.SetVidRushPipeline(&VidRushPipeline{
@@ -89,9 +89,8 @@ func TestImportantPhraseHintsReachTTSBeforeSceneReadyConsumers(t *testing.T) {
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceover := newStubVoiceoverGenerator()
-	runner := NewRunner(repo, streamer, translator, voiceover, newStubDocumentPublisher(), canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, streamer, translator, voiceover)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 	req := defaultTestRequest()
 	req.Languages = []Language{"en"}
 	req.MediaPlan.Extraction.ImportantPhrases = []string{"The requested phrase is appended before synthesis"}
@@ -207,10 +206,8 @@ func (n *signalingTranslatedNER) Extract(_ context.Context, _ string, text strin
 func TestSceneTextReady_TranslatedNLPOverlapsTTS(t *testing.T) {
 	repo := newInMemRunRepository()
 	voGen := newBlockingVoiceoverGenerator()
-	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), voGen,
-		newStubDocumentPublisher(), canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), voGen)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 	ner := newSignalingTranslatedNER()
 	runner.SetVidRushPipeline(&VidRushPipeline{
 		NERPort: ner,

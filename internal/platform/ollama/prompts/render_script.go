@@ -66,18 +66,17 @@ func (c *Config) RenderEntityExtraction(text string, entityCount int) (string, e
 }
 
 // RenderTimelineRouting renders the timeline asset routing prompt.
-func (c *Config) RenderTimelineRouting(topic, opening, closing string, keywords, entities []string, stockFolders, artlistFolders string) (string, error) {
+func (c *Config) RenderTimelineRouting(topic, opening, closing string, keywords, entities []string, stockFolders string) (string, error) {
 	if c == nil {
 		return "", fmt.Errorf("prompts config not initialized")
 	}
 	return render(c.TimelineRouting, map[string]any{
-		"Topic":          topic,
-		"Opening":        opening,
-		"Closing":        closing,
-		"Keywords":       joinStrings(keywords),
-		"Entities":       joinStrings(entities),
-		"StockFolders":   stockFolders,
-		"ArtlistFolders": artlistFolders,
+		"Topic":        topic,
+		"Opening":      opening,
+		"Closing":      closing,
+		"Keywords":     joinStrings(keywords),
+		"Entities":     joinStrings(entities),
+		"StockFolders": stockFolders,
 	})
 }
 

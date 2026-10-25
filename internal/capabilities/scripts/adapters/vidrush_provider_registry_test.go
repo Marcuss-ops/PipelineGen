@@ -24,23 +24,23 @@ func (p registryProvider) Verify(context.Context, scriptports.LocalArtifact) (sc
 
 func TestVidRushAssetProviderRegistryIsClosedAndDeterministic(t *testing.T) {
 	r := NewVidRushAssetProviderRegistry()
-	if err := r.Register(registryProvider{name: "ARTLIST"}); err != nil {
+	if err := r.Register(registryProvider{name: "INTERNET_IMAGES"}); err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if err := r.Register(registryProvider{name: scriptpkg.VidRushProviderArtlist}); !errors.Is(err, scriptports.ErrVidRushProviderDuplicate) {
+	if err := r.Register(registryProvider{name: scriptpkg.VidRushProviderInternetImages}); !errors.Is(err, scriptports.ErrVidRushProviderDuplicate) {
 		t.Fatalf("duplicate error = %v", err)
 	}
 	if err := r.Register(registryProvider{name: "not-a-provider"}); !errors.Is(err, scriptports.ErrVidRushProviderNotFound) {
 		t.Fatalf("unknown provider error = %v", err)
 	}
 	r.Freeze()
-	if err := r.Register(registryProvider{name: scriptpkg.VidRushProviderInternetImages}); !errors.Is(err, scriptports.ErrVidRushProviderRegistryFrozen) {
+	if err := r.Register(registryProvider{name: scriptpkg.VidRushProviderYouTube}); !errors.Is(err, scriptports.ErrVidRushProviderRegistryFrozen) {
 		t.Fatalf("frozen error = %v", err)
 	}
-	if got := r.Names(); len(got) != 1 || got[0] != scriptpkg.VidRushProviderArtlist {
+	if got := r.Names(); len(got) != 1 || got[0] != scriptpkg.VidRushProviderInternetImages {
 		t.Fatalf("names = %v", got)
 	}
-	if _, err := r.Search(context.Background(), "internet_images", scriptports.VidRushSearchRequest{}); !errors.Is(err, scriptports.ErrVidRushProviderNotFound) {
+	if _, err := r.Search(context.Background(), "youtube", scriptports.VidRushSearchRequest{}); !errors.Is(err, scriptports.ErrVidRushProviderNotFound) {
 		t.Fatalf("missing provider search error = %v", err)
 	}
 }

@@ -213,8 +213,6 @@ report = {
                 "download_work_ms": sum(j["drive"].get("download_work_ms", 0) for j in jobs),
                 "upload_wall_ms": sum(j["drive"].get("upload_wall_ms", 0) for j in jobs),
                 "upload_work_ms": sum(j["drive"].get("upload_work_ms", 0) for j in jobs),
-                "google_doc_publish_wall_ms": sum(j["drive"].get("document_publish_wall_ms", 0) for j in jobs),
-                "google_doc_publish_work_ms": sum(j["drive"].get("document_publish_work_ms", 0) for j in jobs),
             },
             "source_materialize_ms": materialization_totals["source"]["wall_ms"],
             "watermark_materialize_ms": materialization_totals["watermark"]["wall_ms"],

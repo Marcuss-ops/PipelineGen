@@ -303,9 +303,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
@@ -313,7 +311,6 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-cert"
 	req.AnimationCounts = map[string]int{"chain_disabled": 1}
 
@@ -501,9 +498,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	// The canonical registry is wired the same way the composition root does.
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
@@ -513,7 +508,6 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-intent-cert"
 
 	runID := "run-overlay-intents-001"
@@ -588,10 +582,8 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
 	prepEnq := &fakeOverlayPrepareEnqueuer{}
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
@@ -601,7 +593,6 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-prepare-cert"
 
 	runID := "run-overlay-prepare-001"
@@ -657,9 +648,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
@@ -669,7 +658,6 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-prepare-fail"
 
 	runID := "run-overlay-prepare-fail"

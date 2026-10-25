@@ -8,7 +8,7 @@
 //
 // Zero I/O — no network, no database, no Google Drive. The builder
 // is demoted from the original ingress registry which called
-// TranslateScenes, RenderGoogleDocContent, and CreateGoogleDoc inline.
+// TranslateScenes inline.
 //
 // The canonical caller is the HTTP handler (HandlerGenerate) which
 // previously built a SubmitRequest directly from the envelope. After
@@ -17,7 +17,7 @@
 //	req, err := scriptgeneration.BuildGenerateRequest(env, idempotencyKey)
 //	// then: svc.Start(ctx, req)
 //
-// No Ollama, no Google Docs, no Drive. Pure field mapping only.
+// No Ollama, no Drive. Pure field mapping only.
 package scriptgeneration
 
 import (
@@ -29,7 +29,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/channelprofile"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // BuildGenerateRequest is the sole canonical builder for
@@ -38,8 +37,6 @@ import (
 //
 // Verdetto rules:
 //   - NO translation.TranslateScenes(ctx, ...)
-//   - NO translation.RenderGoogleDocContent(...)
-//   - NO docCreator.CreateGoogleDoc(...)
 //   - NO Ollama, NO database, NO Drive
 //   - Returns only struct-literal construction + field mapping
 //
@@ -93,7 +90,6 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		Type:               SourceType(item.Source.Type),
 		Topic:              item.Source.Topic,
 		SourceText:         item.Source.SourceText,
-		ArtlistKeywords:    copyStrings(item.Source.ArtlistKeywords),
 		Guidelines:         item.Source.Guidelines,
 		ClipIDs:            copyStrings(item.Source.ClipIDs),
 		NumClips:           item.Source.NumClips,
@@ -130,16 +126,13 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		sourceLang = "en"
 	}
 
-	// Documents are opt-in through the canonical docs object. The output
-	// languages remain available for translation and are not a docs trigger.
-	docsEnabled := item.Docs.Enabled
-	docsLanguages := item.Docs.Languages
-	docsFolderID := item.Docs.FolderID
+	// Google Docs is retired (see ErrGoogleDocsRetired): the tombstone in
+	// item.Docs is carried through verbatim so Start fails closed when a
+	// payload still asks for it.
 	// output.drive_folder_id is the job's explicit artifact root. Keep it
 	// connected to the render contract as well: the existing publisher then
 	// creates/reuses its deterministic <script>/<language>/overlay child.
-	// Docs.folder_id remains the canonical Docs destination when supplied.
-	artifactFolderID := textutil.FirstNonEmpty(item.Output.DriveFolderID, docsFolderID)
+	artifactFolderID := item.Output.DriveFolderID
 	if strings.TrimSpace(item.Output.Render.DriveFolderID) == "" {
 		item.Output.Render.DriveFolderID = artifactFolderID
 	}
@@ -306,17 +299,12 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		GenerateTimeline:              generateTimeline,
 		Timing:                        timing,
 		VoiceoverLanguages:            toLanguages(voiceoverLanguages),
-		Docs: DocumentsConfig{
-			Enabled:   docsEnabled,
-			Languages: toLanguages(docsLanguages),
-			FolderID:  docsFolderID,
-		},
-		DocsEnabled:   docsEnabled,
-		DriveFolderID: artifactFolderID,
-		SaveToDB:      item.Output.SaveToDB,
-		Title:         item.Title,
-		Intro:         scriptpkg.CloneFixedSection(item.Intro),
-		Outro:         scriptpkg.CloneFixedSection(item.Outro),
+		Docs:                          item.Docs,
+		DocsEnabled:                   item.Docs.Enabled,
+		SaveToDB:                      item.Output.SaveToDB,
+		Title:                         item.Title,
+		Intro:                         scriptpkg.CloneFixedSection(item.Intro),
+		Outro:                         scriptpkg.CloneFixedSection(item.Outro),
 		// Project is the canonical semantic project namespace for artifact
 		// routing, resolved ONCE here from the explicit generation input.
 		// Empty Project for a voiceover-enabled generation fails closed

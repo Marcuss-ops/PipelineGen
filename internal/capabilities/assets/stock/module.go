@@ -18,7 +18,6 @@
 //     via the symmetric publisher/finalizer gate at
 //     build_bundles_stock.go::BuildStockBundle.
 //
-// Pattern parity with the artlist / youtube / clips Blocco C1-Step
 // modules: Descriptor does NOT embed Module; the explicit field form
 // does not promote Name / Enabled / RegisterRoutes via embedding.
 package stock
@@ -67,7 +66,6 @@ type StockDescriptor struct {
 // ── Module satisfaction (api.Descriptor) ────────────────────────────
 // Descriptor does NOT embed Module. The explicit field form does not
 // promote Name / Enabled / RegisterRoutes via embedding, so we
-// forward them by hand. (Matches the Artlist / YouTube / Clips
 // precedent.)
 
 // Name returns the module name ("stock-pipeline"). Preserved verbatim

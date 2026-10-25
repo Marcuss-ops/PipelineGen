@@ -5,12 +5,50 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+type passageBatchEmbedder interface {
+	EmbedPassagesBatch(context.Context, []string) ([]coreasset.EmbeddingResult, error)
+}
+
+const (
+	phraseImpactEmbeddingBatchSize = 32
+)
+
+// phraseStopWords resolves the phrase stop-word set the Rust editorial core
+// must apply for a request's language, from the repository lexicon's
+// per-language profile (config/lexicons/<lang>/, unioned with the
+// cross-linguistic fallback for the languages the repository does not
+// enumerate).
+//
+// The worker holds no word lists of its own — keyphrase extraction there is one
+// language-independent algorithm whose only language-specific input is this
+// set — so this function is the single place where a language becomes
+// linguistic data. An uninstalled registry (low-level callers that never
+// bootstrapped linguistics) degrades to no filtering rather than to a silently
+// English-only extraction, and the result is sorted so the request payload is
+// deterministic.
+func phraseStopWords(language string) []string {
+	registry := linguistics.DefaultLexiconOrNil()
+	if registry == nil {
+		return nil
+	}
+	words := registry.PhraseStopWords(strings.TrimSpace(language))
+	out := make([]string, 0, len(words))
+	for word := range words {
+		out = append(out, word)
+	}
+	sort.Strings(out)
+	return out
+}
 
 var semanticEditorialChapterOptions = map[string]any{
 	"profile_version": "segmentation.v1", "min_sentences": 5, "max_sentences": 36,
@@ -19,8 +57,8 @@ var semanticEditorialChapterOptions = map[string]any{
 	"complexity_penalty": 1.0, "bullet_count": 3,
 }
 
-// SetPassageEmbedder supplies the same canonical E5 passage embedder used by
-// the legacy Phrase Impact adapter during the production cutover.
+// SetPassageEmbedder supplies the canonical E5 passage embedder the unified
+// semantic/editorial batch uses for its passage vectors.
 func (a *SemanticEngineAdapter) SetPassageEmbedder(embedder passageBatchEmbedder) {
 	if a != nil {
 		a.embedder = embedder
@@ -129,3 +167,50 @@ func (a *SemanticEngineAdapter) prepareEditorialRequest(
 }
 
 var _ scriptgen.SceneSemanticEditorialBatchAnalyzer = (*SemanticEngineAdapter)(nil)
+
+func validateSceneHighlights(transcript string, in []scriptpkg.SceneHighlight) ([]scriptpkg.SceneHighlight, bool) {
+	if len(in) == 0 {
+		return nil, true
+	}
+	seen := map[string]struct{}{}
+	out := make([]scriptpkg.SceneHighlight, 0, len(in))
+	for _, h := range in {
+		if strings.TrimSpace(h.SceneID) == "" {
+			return nil, false
+		}
+		if _, dup := seen[h.SceneID]; dup {
+			return nil, false
+		}
+		seen[h.SceneID] = struct{}{}
+		if h.TitleStatus != "resolved" && h.TitleStatus != "unavailable" {
+			return nil, false
+		}
+		if h.TitleStatus == "unavailable" && h.Title != nil {
+			return nil, false
+		}
+		validBullets := h.Bullets[:0]
+		for _, b := range h.Bullets {
+			if b.SentenceStart < 0 || b.SentenceEnd <= b.SentenceStart || strings.TrimSpace(b.Text) == "" {
+				continue
+			}
+			if !strings.Contains(transcript, b.Text) {
+				continue
+			}
+			validBullets = append(validBullets, b)
+		}
+		h.Bullets = validBullets
+		validHl := h.Highlights[:0]
+		for _, sp := range h.Highlights {
+			if sp.StartByte < 0 || sp.EndByte <= sp.StartByte || sp.EndByte > len(transcript) {
+				continue
+			}
+			if transcript[sp.StartByte:sp.EndByte] != sp.Text {
+				continue
+			}
+			validHl = append(validHl, sp)
+		}
+		h.Highlights = validHl
+		out = append(out, h)
+	}
+	return out, true
+}

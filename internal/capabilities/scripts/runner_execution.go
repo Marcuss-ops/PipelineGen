@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -51,23 +52,9 @@ type executionRun struct {
 	// result is the durable GenerateResult assembled across phases.
 	result *GenerateResult
 
-	// skeletons carries the per-language document skeletons rendered at
-	// SceneTextReady by the parallel fan-out (early DocsPrepare). Nil in
-	// serial mode / when the renderer does not implement the early/late split.
-	skeletons map[Language]string
-
 	// snapshot is the read-only scene-text projection taken before the
 	// concurrent TTS and VidRush-prepare branches start.
 	snapshot []sceneTextSnapshot
-
-	// docsDeferred is set by markCoreReady when the post-CORE_READY Docs leg
-	// was handed to the `script.docs_publish` child (TICKET-CORE-READY-
-	// DURABLE-DAG step 3). The pipeline consults it to skip the inline
-	// documents() phase and the terminal complete(): the run stays non-terminal
-	// at CORE_READY and the terminal flip is deferred to the parent aggregator
-	// once the child publishes. False on every path where the enqueuer is nil
-	// (pre-cutover inline behaviour, unchanged) or the core is not durable.
-	docsDeferred bool
 
 	// stockPrefetchDone carries the best-effort stock warm channel started at
 	// run start. It is joined ONLY at the first consumer that can use warmed
@@ -114,9 +101,8 @@ func (e *executionRun) start() bool {
 		zap.String("source_type", string(e.req.Source.Type)),
 	)
 
-	// Resolve the canonical artifact routing context ONCE. A docs.enabled=true
-	// run with no resolvable folder fails closed here, before any I/O.
-	routing, resolveErr := e.req.resolveArtifactRoutingContext(e.r.scriptDocsFolderID)
+	// Resolve the canonical artifact routing context once before any I/O.
+	routing, resolveErr := e.req.resolveArtifactRoutingContext()
 	if resolveErr != nil {
 		return e.fail(StagePublishingDocuments, resolveErr)
 	}
@@ -337,10 +323,8 @@ func (e *executionRun) parallelFanOut() bool {
 	nlpInput := localizedNLPSnapshot(e.result)
 	prepareCtx, cancelPrepare := context.WithCancel(e.ctx)
 	defer cancelPrepare()
-	// Start semantic enrichment first and independently. The old version put
-	// DocsPrepare + audio prefetch in front of runVidRushJoinAndPrepare inside
-	// one goroutine; a slow document skeleton therefore delayed NLP until after
-	// TTS, even though the outer fan-out was nominally parallel.
+	// Start semantic enrichment first and independently. Audio prefetch runs on
+	// its own branch so it overlaps both NLP and TTS.
 	semanticDone := make(chan vidRushPrepareOutcome, 1)
 	go func() {
 		res, err := e.r.runVidRushJoinAndPrepare(prepareCtx, e.runID, e.req, e.snapshot)
@@ -362,29 +346,10 @@ func (e *executionRun) parallelFanOut() bool {
 		semanticDone <- vidRushPrepareOutcome{result: res, localizedAnnotations: localized, nlpErr: nlpErr}
 	}()
 
-	// DocsPrepare and audio prefetch are independent of semantic enrichment;
-	// keep them on a second branch so they also overlap both NLP and TTS.
+	// Audio prefetch is independent of semantic enrichment; keep it on a
+	// second branch so it also overlaps both NLP and TTS.
 	assetsDone := make(chan vidRushPrepareOutcome, 1)
 	go func() {
-		// Early DocsPrepare: render the scene-text-only document skeleton
-		// first so CPU render overlaps both TTS and NLP.
-		// P0-B (anti-muda): when the deferred Docs leg is wired, the
-		// `script.docs_publish` child reloads the durable snapshot and
-		// runs a full RenderDocument without receiving these skeletons,
-		// so computing them here is pure waste. Skip the CPU work; the
-		// inline fallback (no enqueuer / docs disabled / core not
-		// completable) still renders full documents on demand.
-		var skel map[Language]string
-		if e.r == nil || e.r.docsPublishEnqueuer == nil {
-			skel = e.r.renderDocumentSkeletons(e.req, e.result)
-		} else {
-			docsEnabled, _, _ := e.req.ResolveDocsConfig()
-			if !docsEnabled {
-				skel = e.r.renderDocumentSkeletons(e.req, e.result)
-			}
-			// else: deferred child owns Docs — leave skel nil.
-		}
-
 		// ── P1.1 Audio prefetch ──────────────────────────────
 		// Resolve BGM/SFX assets and materialize original clip audio in
 		// parallel with TTS. Best-effort: skip when the source is nil.
@@ -453,7 +418,6 @@ func (e *executionRun) parallelFanOut() bool {
 			}
 		}
 		assetsDone <- vidRushPrepareOutcome{
-			skeletons:  skel,
 			prefetched: prefetched,
 		}
 	}()
@@ -488,7 +452,6 @@ func (e *executionRun) parallelFanOut() bool {
 	// Apply the translated annotations on THIS goroutine: the semantic branch
 	// only computed them, so the durable result has exactly one writer.
 	applyLocalizedAnnotations(e.result, semanticOutcome.localizedAnnotations)
-	e.skeletons = assetsOutcome.skeletons
 	// Store the prefetched audio assets so the audio-compile phase consumes
 	// them without blocking on I/O.
 	e.result.AudioPrefetch = assetsOutcome.prefetched
@@ -514,22 +477,26 @@ func (e *executionRun) persist() bool {
 	}) {
 		return false
 	}
-	// The core is durable from here: see markCoreReady.
-	e.markCoreReady()
 	return true
-}
-
-// documents runs the document (Docs) publishing phase with the pre-rendered
-// per-language skeletons.
-func (e *executionRun) documents() bool {
-	return e.measure(kernobs.StageName(stageDocument), func(c context.Context) bool {
-		return e.r.runDocumentPhase(c, e.runID, e.req, e.routing, e.exec, e.resumeIdx, e.result, e.skeletons)
-	})
 }
 
 // complete finalizes a successful run (render-set certification, critical-path
 // summary, pipeline invariants) and marks it COMPLETED.
 func (e *executionRun) complete() {
+	// Join the async voiceover publish pool on EVERY path, including runs
+	// with docs removed: the published links are consumed by the cross-run
+	// voiceover cache and the media registry, and a run that completes while
+	// its uploads are still in flight orphans them past its own lifecycle
+	// (K2). The uploads themselves are deliberately not gated on documents.
+	if e.r.voiceoverPublishDrainer != nil {
+		publishDrainStarted := time.Now()
+		e.r.voiceoverPublishDrainer.Wait()
+		voiceoverGenerated := 0
+		if e.result != nil && e.result.AudioMetrics != nil {
+			voiceoverGenerated = e.result.AudioMetrics.VoiceoverGenerated
+		}
+		kernobs.RecordStage(e.ctx, kernobs.StageInfo{Stage: "publish_pool_drain", ItemsInput: int64(voiceoverGenerated)}, publishDrainStarted, time.Now(), nil)
+	}
 	if e.r.overlayPublicationDrainer != nil {
 		// Run-scoped join: the pool is process-wide, so the drainer resolves
 		// this run's batch from the run context instead of joining whatever

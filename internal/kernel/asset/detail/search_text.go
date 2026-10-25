@@ -4,7 +4,6 @@
 // godlike/06 SSOT (one canonical owner per fact): this file is the
 // SOLE canonical owner of the SearchTextInput type + SearchTextComposer
 // interface + per-source Strategy function type + ComposerRegistry
-// dispatcher. Every pipeline (YouTube, Stock, Artlist, Voiceover, Image,
 // GeneratedImage) MUST compose search text through this registry instead
 // of inline ad-hoc concatenations.
 //
@@ -40,7 +39,6 @@ type SearchTextInput struct {
 	// AssetID is the canonical media_assets.id. Used for error messages.
 	AssetID string
 
-	// Source discriminates the strategy: "youtube", "artlist", "voiceover",
 	// "image", "generated_image", "stock". The registry dispatches on this
 	// field.
 	Source string
@@ -83,7 +81,6 @@ type SearchTextInput struct {
 	Tags []string
 
 	// Category is the asset category (media_assets.category). Used by
-	// Artlist, Image, Stock.
 	Category string
 
 	// Language is the BCP-47 language tag. Used by Voiceover.
@@ -163,7 +160,6 @@ type ComposerRegistry struct {
 }
 
 // NewComposerRegistry creates a ComposerRegistry with the six canonical
-// strategies pre-registered: youtube, artlist, voiceover, image,
 // generated_image, stock.
 func NewComposerRegistry() *ComposerRegistry {
 	return &ComposerRegistry{
@@ -248,9 +244,7 @@ func youtubeSearchTextStrategy(input SearchTextInput) string {
 	)
 }
 
-// artlistSearchTextStrategy builds search text from:
-//
-//	title + tags + category + description
+// title + tags + category + description
 func artlistSearchTextStrategy(input SearchTextInput) string {
 	return joinSearchTextNonEmpty(" ",
 		input.Title,

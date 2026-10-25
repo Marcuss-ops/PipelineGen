@@ -236,7 +236,6 @@ func seedClipRowWithDriveFileID(t *testing.T, db *sql.DB, id, lifecycleState, fi
 // the recording dispatcher mock. Fields that aren't exercised in the
 // routing test (voiceoverRepo, imagesRepo, assetTreeSvc, assetIndexSvc)
 // are nil; DeleteClip's branch-selection reaches the dispatcher path
-// for the "artlist" source where canonical is "clips" (ClipsRepository
 // branch).
 //
 // PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is REMOVED

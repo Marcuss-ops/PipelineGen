@@ -3,7 +3,6 @@
 // Package fixtures — synthetic asset integration tests (Task 8, July 2026).
 //
 // Tests against a real Qdrant instance (Docker-based) using 5 synthetic
-// assets covering all media sources: YouTube, Voiceover, Artlist, Image,
 // and AI-generated images. Each asset carries artificial vectors for every
 // dense channel schema.DefaultV3Schema defines (text/transcript = E5 768,
 // visual = SigLIP 1152; audio/CLAP is emitted only when the schema

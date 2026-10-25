@@ -128,7 +128,6 @@ func kindToDomainSentinel(kind remote.ErrorKind) error {
 		return remote.ErrRemoteArtifactStateNotFinalized
 	case remote.ErrorKindPublisherUnavailable:
 		// Canonical sentinel-of-sentinels for publisher_unavailable
-		// (the cross-package alias in artlist/ports.go for the
 		// same surface is reconciled via type-alias in the BACKFILL
 		// phase of P1 #15 — forward-pointer).
 		return remote.ErrCompletionPublisherUnavailable

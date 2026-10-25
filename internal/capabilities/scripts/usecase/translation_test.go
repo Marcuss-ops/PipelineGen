@@ -52,7 +52,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -362,39 +361,6 @@ func TestTranslateScriptSpec_PreservesClipBindings(t *testing.T) {
 	}
 }
 
-// ─── TEST 5: post-translation canonical Google Doc renders the SpecScene ───
-func TestTranslateScriptSpec_CreatesGoogleDocWithSceneMetadata(t *testing.T) {
-	in := makeThreeSceneSpecEN()
-	tr := &mockTranslatorSuffix{suffix: "IT"}
-
-	out, _, err := TranslateScriptSpec(context.Background(), in, evidenceFor3Scenes(), "it", tr.Translate)
-	require.NoError(t, err)
-
-	title := "Top 10 Momenti Incredibili di Jackie Chan"
-	html, err := scriptgen.RenderDocument(out, scriptgen.DocumentRenderOptions{Title: title})
-	require.NoError(t, err)
-	require.NotEmpty(t, html, "BuildSpecSceneDocumentHTML must produce HTML output")
-
-	assert.Contains(t, html, "<h2>Scene 1</h2>",
-		"HTML must contain the canonical human scene heading")
-	assert.Contains(t, html, "SpecScene JSON",
-		"HTML must include the full canonical SpecScene JSON payload")
-
-	// The canonical renderer preserves the translated scene text and links.
-	assert.Contains(t, html, "_IT",
-		"HTML must contain translated scene text (suffix _IT)")
-	for _, driveID := range []string{"abc1", "abc2", "abc3"} {
-		assert.Contains(t, html, "drive.google.com/file/d/"+driveID,
-			"HTML must contain drive_link for %s inside the SpecScene JSON (binding preserved)", driveID)
-	}
-
-	// The user-facing document keeps rendered scene metadata and the full
-	// canonical SpecScene JSON payload for downstream machine consumers.
-	assert.NotContains(t, html, `"clip_id"`)
-	assert.NotContains(t, html, `"drive_link"`)
-}
-
-// ─── TEST 6: long script — 10 scenes × ~4000 words, no scene loss, no truncation ───
 func TestTranslateScriptSpec_LongScript_NoSceneLossNoTruncation(t *testing.T) {
 	makeLongScene := func(idx, sentencesPerScene int) scriptpkg.SpecScene {
 		words := make([]string, sentencesPerScene*15)

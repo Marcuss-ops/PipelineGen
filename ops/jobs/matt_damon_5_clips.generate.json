@@ -77,11 +77,6 @@
           }
         ]
       },
-      "docs": {
-        "enabled": true,
-        "languages": ["it"],
-        "folder_id": "1ST6FxPuRaxwBOIz39MAN8Jj4gDv509-K"
-      },
       "audio": {
         "mode": "COMBINED_TIMELINE",
         "timing": {

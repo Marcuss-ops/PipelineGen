@@ -1,6 +1,6 @@
 # TICKET-RESIDENT-RENDER-ENGINE (P2)
 
-**Stato:** PARTIAL (25/10/2026) — downscale/cache immagini e test di identità presenti; la sessione encoder cross-item non è certificabile e resta disattivata.
+**Stato:** PARTIAL (25/10/2026) — fix locali di cache/prepare e downscale con test presenti; riuso encoder cross-job non implementato/attivo e non certificabile. Non confondere il writer multi-segmento P4 (sessione entro un piano, più MP4) con una sessione residente cross-job.
 **Origine:** idee di paradigma di `TICKET-OVERLAY-THROUGHPUT-100-MIN.md`,
 approvate dall'utente il 24/10/2026. Unifica le fix 4/5/6 della
 profilazione per-item (23/10) in un unico ciclo di vita residente.
@@ -42,33 +42,41 @@ immagini a risoluzione sorgente, non i font.
 
 ## Gate di accettazione
 
-- [ ] Overhead fisso per-item ≤ 100 ms su 100 item consecutivi (somma
-      startup + prepare non-asset + open/close encoder dal sidecar).
-- [ ] Parità pixel/audio con golden (le lane certificate impongono parità
-      byte Vulkan↔software; il downscale richiede re-baseline dei golden
-      pixel-oracle dichiarato e rivisto).
-- [ ] Picco VRAM dentro il budget certificato (evidenza oggi su 2 daemon;
-      `vramprobe` per 3 lane dal 23/10).
+- [ ] Overhead fisso per-item ≤ 100 ms su 100 item consecutivi, misurato sul
+      percorso residente cross-job. NOT RUN: i dati storici v22–v27 misurano
+      ~465 ms/item (oltre soglia), ma non esercitano il percorso residente;
+      non usarli come misura della nuova architettura.
+- [ ] Parità pixel/audio con golden sul percorso residente; downscale e
+      riuso encoder richiedono confronto sul golden e re-baseline dichiarato.
+- [ ] Picco VRAM entro il budget sul mix completo da 100 item e sul percorso
+      residente. L'evidenza di 2 daemon non costituisce questa misura.
 
 ## Dipendenze e rischi
 
 ### Verifica closeout 2026-10-25
 
-- **PASS locale (CTest mirato 25/10):** decode display-bounded, chiave
-  distinta per bounds e GPU content digest sono coperti da
-  `test_image_cache_display_bound_downscale.cpp`.
-- **PARTIAL / NOT RUN:** il test di riuso encoder ha riprodotto
-  `avcodec_send_frame: End of file` dopo la finalizzazione del primo MP4.
-  `avcodec_flush_buffers()` non riapre un encoder drenato. Per evitare artefatti
-  corrotti, `codec_session_reuse_enabled()` ora fallisce chiuso e i tre daemon
-  sono stati riavviati senza il drop-in che attivava il flag.
+- **PASS locale (25/10):** i quattro casi in
+  `test_image_cache_display_bound_downscale.cpp` passano nel binario test
+  corrente (**4/4 casi, 32/32 assertion**): decode ridotto ai bounds,
+  conservazione della media premultiplied-linear, nessun upscale e chiave/
+  digest GPU distinti per rappresentazione. È una prova del building block,
+  non del gate throughput/VRAM di P2.
+- **PASS locale, non certificazione P2:** la cache/prepare e il downscale
+  display-bound hanno i test indicati nel closeout; l'impatto byte/pixel e
+  VRAM sul mix golden non è misurato dal test unitario.
+- **NOT IMPLEMENTED / NOT RUN:** il riuso encoder cross-job non è attivo: dopo
+  EOF il codec è drenato e `avcodec_flush_buffers()` non lo riapre. Non
+  riattivare quel percorso senza un nuovo contratto e test dedicati.
+- **P4 separato:** il writer segmentato tiene un encoder non drenato entro un
+  singolo piano, invia EOF una volta e instrada packet in MP4 distinti. I test
+  P4 locali non dimostrano una sessione residente tra job, né un risparmio di
+  overhead P2.
 - **NOT RUN:** gate ≤100 ms su 100 item, picco VRAM sul golden completo e parità
-  pixel/audio su 100 item. Il codice di riuso non va riattivato finché il writer
-  batch non possiede un unico encoder non drenato e confini MP4 verificati.
+  pixel/audio su 100 item. Il writer batch non sostituisce questi gate; servono
+  misura e certificazione live sul mix golden.
 
 - Vincolo VRAM: è il limite che ha imposto la serializzazione dei job render.
-- Il downscale non è byte-preserving: serve il re-baseline dei golden con
-  gate di parità aggiornati (stessa exit condition del fix 6 nella
-  profilazione per-item).
+- Il downscale non è byte-preserving: serve un re-baseline dei golden con
+  gate di parità aggiornati prima di abilitarlo come percorso certificato.
 - Sessione encoder cross-item cambia il ciclo di vita del muxer: uscita da un
   item non deve invalidare gli artefatti già certificati.

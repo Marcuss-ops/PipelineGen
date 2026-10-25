@@ -71,7 +71,6 @@ type VidRushBackpressure struct {
 	// is the certified NLP concurrency (DefaultNLPConcurrency).
 	ExtractionLimit int
 	// ProviderSearchLimit bounds concurrent provider fan-out searches
-	// (Artlist, internet images) after entities are ready. Default 4.
 	ProviderSearchLimit int
 	// MaterializationLimit bounds concurrent acquire/verify/finalize work.
 	// Default 2.

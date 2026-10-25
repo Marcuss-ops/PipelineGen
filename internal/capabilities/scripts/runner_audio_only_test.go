@@ -29,7 +29,7 @@ func runAudioOnlyCombinedTimeline(t *testing.T, runner *Runner, repo *inMemRunRe
 
 func newAudioOnlyRunner(t *testing.T) (*Runner, *inMemRunRepository, *stubCombinedAudioRenderer, *stubRenderEnqueuer) {
 	t.Helper()
-	runner, repo, _, _, _, _, renderEnq := newTestRunner()
+	runner, repo, _, _, _, renderEnq := newTestRunner()
 	renderer := &stubCombinedAudioRenderer{}
 	runner.SetCombinedAudioRenderer(renderer)
 	return runner, repo, renderer, renderEnq
@@ -114,7 +114,7 @@ func TestRunner_AudioOnlyFinalAudioIsCertified(t *testing.T) {
 // VOICEOVER_DUCKED_CLIP with clip-audio events and ducking automation — the
 // original clip audio is audible in the master even without a video render.
 func TestRunner_AudioOnlyKeepsDuckedClipAudio(t *testing.T) {
-	runner, repo, textGen, _, _, _, renderEnq := newTestRunner()
+	runner, repo, textGen, _, _, renderEnq := newTestRunner()
 	renderer := &stubCombinedAudioRenderer{}
 	runner.SetCombinedAudioRenderer(renderer)
 	textGen.scenes = []Scene{

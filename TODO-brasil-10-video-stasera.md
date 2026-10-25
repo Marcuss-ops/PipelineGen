@@ -29,7 +29,7 @@
 
 ### C. Generare e chiudere
 
-- [x] Usare Milton come canary: 10 immagini (una per scena), 15 phrase overlay, `final_job: true`, TTS PT-BR di oltre 20 minuti e Google Docs attivo. Il render finale è già riuscito sul worker 51 ed è stato ispezionato.
+- [x] Usare Milton come canary: 10 immagini (una per scena), 15 phrase overlay, `final_job: true` e TTS PT-BR di oltre 20 minuti. Il render finale è riuscito sul worker 51 ed è stato ispezionato; Google Docs è stato ritirato il 2026-10-25.
 - [ ] Per gli altri nove video, attendere il gate sul payload/queue, poi inviarli al worker remoto senza avviare la pubblicazione pubblica YouTube.
 - [ ] Verificare tutti e 10 gli MP4 con probe codec/durata, audio, frame iniziali/centrali/finali, corretto nome/cartella Drive e corrispondenza canale.
 - [ ] Correggere e rigenerare ogni fallimento; chiudere la batch solo quando sono presenti 10 artefatti validi e tracciati.
@@ -52,5 +52,5 @@ La batch è chiusa quando ci sono 10 video PT-BR completi, tutti verificati dal 
 - [x] Validati nel risultato 10 overlay immagine + 15 phrase overlay; tre clip intro rimangono configurate nel payload.
 - [x] Script di 3.731 parole; audio finale 1.479.144 ms (~24m39s), quindi oltre i 20 minuti richiesti.
 - [x] `final_job` completato dal worker remoto: `job_79fa742e9d250fbd` — `SUCCEEDED` (`host_57_131_20_173`). Nessun publish pubblico YouTube richiesto.
-- [x] Google Docs child `job_1790707016403034260_34af3816` — `SUCCEEDED`.
+- [x] Storico: il job Google Docs `job_1790707016403034260_34af3816` risultò `SUCCEEDED` prima della ritirata del 2026-10-25.
 - [ ] QA visivo/ascolto e verifica della destinazione Drive sull’artefatto appena prodotto; poi passare ai nove video successivi.

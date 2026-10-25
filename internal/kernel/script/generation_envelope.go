@@ -258,7 +258,9 @@ type GenerationItemV2 struct {
 	// independently.
 	Audio AudioOutputConfig `json:"audio,omitempty"`
 
-	// Docs explicitly requests publication of one Google Doc per language.
+	// Docs is the RETIRED Google Docs publication request. It survives as a
+	// JSON-decoded tombstone so a stale envelope is recognised and rejected
+	// fail-closed instead of being silently ignored (NO-FAKE-AVAILABILITY).
 	// It is kept separate from Output so document creation is never inferred
 	// from unrelated output options.
 	Docs DocumentsSpec `json:"docs,omitempty"`
@@ -443,7 +445,7 @@ type FixedSection struct {
 	// non-empty sequence is allowed, so an intro/outro can span as many
 	// back-to-back clips as the caller needs.
 	ClipIDs []string `json:"clip_ids,omitempty"`
-	// Title is an optional human-readable title for the Docs scene.
+	// Title is an optional human-readable title for the fixed section.
 	Title string `json:"title,omitempty"`
 	// DisplayText is optional text shown alongside the fixed media. It is not
 	// narration and is never synthesized (no TTS) or sent to the LLM; it may be

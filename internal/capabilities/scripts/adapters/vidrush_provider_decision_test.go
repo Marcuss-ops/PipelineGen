@@ -10,7 +10,7 @@ import (
 func TestSegmentProviderDecisionUsesPlannerMetadataAndHardAllowlist(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
 		Planner:        mediadomain.MediaPlannerPolicy{Strategy: "small_model_rerank", Model: "qwen3:1.7b", Version: "v1", CandidateLimit: 8},
-		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleDisabled},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, ImageGeneration: mediadomain.MediaToggleDisabled},
 	}}
 	segment := scriptpkg.VidRushSegmentResult{SegmentID: "segment-1", Insights: scriptpkg.SegmentInsights{
 		Entities: []scriptpkg.ExtractedEntity{{Value: "Ada Lovelace", Type: "PERSON"}},
@@ -22,21 +22,21 @@ func TestSegmentProviderDecisionUsesPlannerMetadataAndHardAllowlist(t *testing.T
 	if !providerEnabledByHardPolicy(plan, scriptpkg.VidRushProviderYouTube) {
 		t.Fatal("enabled YouTube policy was rejected")
 	}
-	if providerEnabledByHardPolicy(plan, scriptpkg.VidRushProviderArtlist) {
-		t.Fatal("disabled Artlist policy was allowed")
+	if providerEnabledByHardPolicy(plan, scriptpkg.VidRushProviderImageGeneration) {
+		t.Fatal("disabled image-generation policy was allowed")
 	}
 }
 
 func TestEffectiveProviderEnabledRequiresDecisionAndPolicy(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
-		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleDisabled},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, ImageGeneration: mediadomain.MediaToggleDisabled},
 	}}
 	decision := SegmentProviderDecision{Preferences: []ProviderPreference{{Provider: scriptpkg.VidRushProviderYouTube}}}
 	if !effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderYouTube) {
 		t.Fatal("YouTube should be effective")
 	}
-	if effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderArtlist) {
-		t.Fatal("Artlist must remain blocked by hard allowlist")
+	if effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderImageGeneration) {
+		t.Fatal("image generation must remain blocked by hard allowlist")
 	}
 	if effectiveProviderEnabled(plan, SegmentProviderDecision{}, scriptpkg.VidRushProviderYouTube) {
 		t.Fatal("provider without decision must not start")

@@ -42,7 +42,6 @@
 //     violation). The first 3 entries ship with this
 //     commit (PR-METADATA-REGISTRY-FOUNDATION, July 2026):
 //     youtube.video_id, youtube.channel_id,
-//     artlist.clip_page_url. Future PRs ADD new entries via
 //     direct append (the alphabet grows monotonically; the
 //     scanner is additive, not subtractive).
 package detail
@@ -90,12 +89,6 @@ type MetadataKeySpec struct {
 // the percheck_metadata_key_registry regex can parse the
 // slice. See the conventions block at the top of this file.
 var allowedMetadataKeys = []MetadataKeySpec{
-	{
-		Key:   "artlist.clip_page_url",
-		Owner: "internal/capabilities/assets/providers/artlist/",
-		Type:  "string",
-		Doc:   "Artlist provider's source-of-truth clip page URL (the page that originated the canonical clip_id); distinct from Asset.ClipPageURL struct field (legacy single-output artifact URL \u2014 different lifecycle).",
-	},
 	{
 		Key:   "youtube.channel_id",
 		Owner: "internal/capabilities/youtube/",
@@ -151,7 +144,6 @@ var allowedMetadataKeys = []MetadataKeySpec{
 //
 // godlike/06 SSOT invariant: all canonical keys are
 // lower-snake-case dot-separated. Namespaces are sorted
-// lowercase (`youtube.*`, `artlist.*`). Future namespaces
 // (e.g. `stock.*`) follow the same shape.
 func ValidateMetadataKeyShape(key string) error {
 	if key == "" {

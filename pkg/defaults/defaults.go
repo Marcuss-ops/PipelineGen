@@ -48,7 +48,6 @@ func Float64(val, fallback float64) float64 {
 // duration default had to write the `if val > 0 { val } else {
 // fallback }` pattern inline; the duplicate copies across the
 // codebase were the drift class this helper targets (see e.g.
-// internal/infrastructure/artlist/cache/cache.go::TTLDuration
 // collapse for one concrete pre-Step-4 instance).
 func Duration(val, fallback time.Duration) time.Duration {
 	if val > 0 {

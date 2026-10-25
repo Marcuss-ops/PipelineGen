@@ -40,7 +40,6 @@ jq --arg id "$IDENTITY" '
   | .final_job = false
   | .items[0].id = $id
   | .items[0].output.render.enabled = false
-  | .items[0].output.docs.enabled = false
 ' "$PAYLOAD" > "$PLAN_PAYLOAD.tmp" || { rm -f "$PLAN_PAYLOAD.tmp"; echo "payload non valido: $PAYLOAD" >&2; exit 2; }
 mv "$PLAN_PAYLOAD.tmp" "$PLAN_PAYLOAD"
 

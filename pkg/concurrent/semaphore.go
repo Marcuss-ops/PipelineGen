@@ -22,7 +22,6 @@ import "context"
 // forever when the parent context is cancelled.
 //
 // Why a typed primitive vs `chan struct{}`: the bare-channel idiom
-// has leaked into 8+ files (artlist run_orchestrator_stages.go,
 // classifier.go, etc.) and the Acquire/Release semantics drift file
 // to file. The typed primitive locks the acquisition-release contract
 // in one place and lets a future CI gate (e.g. Check 47 — no bare

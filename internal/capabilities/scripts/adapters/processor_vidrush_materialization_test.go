@@ -119,7 +119,7 @@ func TestRouteClipToGenerationOutputIgnoresImages(t *testing.T) {
 func TestRouteClipToGenerationOutputFailsClosedWithoutDriveFolder(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Run", Language: "en"}
 	artifact := scriptports.VerifiedArtifact{Candidate: scriptpkg.SegmentAssetCandidate{
-		AssetID: "yt_clip", Provider: scriptpkg.VidRushProviderArtlist,
+		AssetID: "yt_clip", Provider: scriptpkg.VidRushProviderYouTube,
 	}}
 	got := routeClipToGenerationOutput(plan, artifact)
 	if got.OutputDriveFolderID != "" || len(got.OutputDriveSubpath) != 0 {
@@ -148,11 +148,6 @@ func TestRouteGenerationOutputToPlanBundleDispatchesByFamily(t *testing.T) {
 		{
 			name:      "youtube clip",
 			candidate: scriptpkg.SegmentAssetCandidate{AssetID: "yt_clip", Provider: scriptpkg.VidRushProviderYouTube},
-			wantPath:  []string{"Run", "it", "clips"},
-		},
-		{
-			name:      "artlist clip",
-			candidate: scriptpkg.SegmentAssetCandidate{AssetID: "artlist_clip", Provider: scriptpkg.VidRushProviderArtlist},
 			wantPath:  []string{"Run", "it", "clips"},
 		},
 	}
@@ -283,8 +278,8 @@ func TestMaterializationUsesCanonicalMediaSamplerWhenConfigured(t *testing.T) {
 	processor := (&VidRushMaterializationProcessor{sampler: sampler})
 	profile := scriptpkg.SegmentSemanticProfile{SegmentID: "seg-1", TextHash: "hash", Topic: "greek salad", VisualTerms: []scriptpkg.WeightedKeyword{{Value: "feta", Confidence: 1}}}
 	candidates := []scriptpkg.SegmentAssetCandidate{
-		{AssetID: "legacy-winner", Provider: scriptpkg.VidRushProviderArtlist, DriveLink: "/tmp/legacy.mp4", Query: "boxing"},
-		{AssetID: "sampler-winner", Provider: scriptpkg.VidRushProviderArtlist, DriveLink: "/tmp/sampler.mp4", Query: "greek salad"},
+		{AssetID: "legacy-winner", Provider: scriptpkg.VidRushProviderYouTube, DriveLink: "/tmp/legacy.mp4", Query: "boxing"},
+		{AssetID: "sampler-winner", Provider: scriptpkg.VidRushProviderYouTube, DriveLink: "/tmp/sampler.mp4", Query: "greek salad"},
 	}
 	got := processor.selectPrimaryWithMediaSampler(context.Background(), candidates, profile)
 	if got == nil || got.AssetID != "sampler-winner" {
@@ -295,7 +290,7 @@ func TestMaterializationUsesCanonicalMediaSamplerWhenConfigured(t *testing.T) {
 	}
 }
 
-func (materializationProviderStub) Name() string { return scriptpkg.VidRushProviderArtlist }
+func (materializationProviderStub) Name() string { return scriptpkg.VidRushProviderInternetImages }
 func (materializationProviderStub) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	return nil, nil
 }
@@ -310,16 +305,16 @@ func (materializationProviderStub) Verify(_ context.Context, artifact scriptport
 	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
 }
 
-type failingArtlistMaterializationProvider struct{}
+type failingMaterializationProvider struct{}
 
-func (failingArtlistMaterializationProvider) Name() string { return scriptpkg.VidRushProviderArtlist }
-func (failingArtlistMaterializationProvider) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+func (failingMaterializationProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
+func (failingMaterializationProvider) Search(context.Context, scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	return nil, nil
 }
-func (failingArtlistMaterializationProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
-	return scriptports.LocalArtifact{}, errors.New("Artlist download unavailable")
+func (failingMaterializationProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	return scriptports.LocalArtifact{}, errors.New("provider download unavailable")
 }
-func (failingArtlistMaterializationProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+func (failingMaterializationProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	return scriptports.VerifiedArtifact{}, errors.New("unreachable verifier")
 }
 
@@ -532,35 +527,42 @@ func TestVidRushMaterializationFailsClosedWhenEnabledProviderIsNotRegistered(t *
 	registry.Freeze()
 	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{}
-	plan.MediaPlan.ProviderPolicy.Artlist = "enabled"
+	plan.MediaPlan.ProviderPolicy.YouTube = "enabled"
 	_, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
-		SegmentID: "missing-artlist-provider",
+		SegmentID: "missing-provider",
 	}}})
 	if err == nil {
 		t.Fatal("expected an enabled but unregistered provider to fail closed")
 	}
 }
 
-func TestVidRushMaterializationArtlistOnlyFailsWhenPrimaryCannotBePersisted(t *testing.T) {
+func TestVidRushMaterializationStockOnlyFailsWhenPrimaryCannotBePersisted(t *testing.T) {
 	registry := NewVidRushAssetProviderRegistry()
-	if err := registry.Register(failingArtlistMaterializationProvider{}); err != nil {
+	if err := registry.Register(failingMaterializationProvider{}); err != nil {
 		t.Fatal(err)
 	}
 	registry.Freeze()
 	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
 	plan := &scriptpkg.ResolvedGenerationPlan{}
-	plan.MediaPlan.ProviderPolicy.Artlist = "enabled"
-	_, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
-		SegmentID: "artlist-only-required-primary",
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	result, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "stock-only-required-primary",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
-			AssetID:      "artlist-required",
-			Provider:     scriptpkg.VidRushProviderArtlist,
+			AssetID:      "stock-required",
+			Provider:     scriptpkg.VidRushProviderInternetImages,
 			SourceURL:    "https://cdn.example/required.mp4",
 			RightsStatus: "unknown",
 		}}},
 	}}})
-	if err == nil {
-		t.Fatal("Artlist-only materialization must fail when no persisted primary is available")
+	if err != nil {
+		t.Fatal(err)
+	}
+	segment := result.VidRushSegments[0]
+	if segment.Assets.PrimaryVideo != nil || len(segment.Assets.SecondaryImages) != 0 {
+		t.Fatalf("a failed acquisition must not bind any media: %+v", segment.Assets)
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatal("a failed required acquisition must surface a warning")
 	}
 }
 
@@ -598,17 +600,19 @@ func TestVidRushMaterializationVerifiesWebImagesBeforeGenerationFallback(t *test
 	}
 }
 
-func TestVidRushMaterializationRequiresPersistedCandidateForPrimary(t *testing.T) {
+func TestVidRushMaterializationRequiresPersistedCandidateForSecondaryImage(t *testing.T) {
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(materializationProviderStub{}); err != nil {
 		t.Fatal(err)
 	}
 	registry.Freeze()
 	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
-	result, err := processor.Process(context.Background(), nil, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	result, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "segment-1",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
-			AssetID: "artlist-1", Provider: scriptpkg.VidRushProviderArtlist, SourceURL: "https://cdn.example/clip", RightsStatus: "unknown",
+			AssetID: "stock-1", Provider: scriptpkg.VidRushProviderInternetImages, SourceURL: "https://cdn.example/clip", RightsStatus: "unknown",
 		}}},
 	}}})
 	if err != nil {
@@ -617,12 +621,16 @@ func TestVidRushMaterializationRequiresPersistedCandidateForPrimary(t *testing.T
 	if result == nil || len(result.VidRushSegments) != 1 {
 		t.Fatalf("expected one materialized segment, got %#v", result)
 	}
-	primary := result.VidRushSegments[0].Assets.PrimaryVideo
-	if primary == nil {
-		t.Fatal("expected persisted Artlist candidate to become primary")
+	images := result.VidRushSegments[0].Assets.SecondaryImages
+	if len(images) != 1 {
+		t.Fatalf("secondary images = %#v, want the persisted candidate", images)
 	}
-	if primary.DriveLink == "" || primary.PersistenceStatus != scriptpkg.VidRushStatusPersisted || primary.IndexStatus != scriptpkg.VidRushStatusIndexed {
-		t.Fatalf("primary is not durable: %#v", *primary)
+	image := images[0]
+	if image.DriveLink == "" || image.PersistenceStatus != scriptpkg.VidRushStatusPersisted || image.IndexStatus != scriptpkg.VidRushStatusIndexed {
+		t.Fatalf("secondary image is not durable: %#v", image)
+	}
+	if result.VidRushSegments[0].Assets.PrimaryVideo != nil {
+		t.Fatalf("an image candidate must not become the primary video: %+v", result.VidRushSegments[0].Assets.PrimaryVideo)
 	}
 }
 
@@ -633,10 +641,12 @@ func TestVidRushMaterializationDoesNotBindUnknownRightsImage(t *testing.T) {
 	}
 	registry.Freeze()
 	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
-	result, err := processor.Process(context.Background(), nil, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	result, err := processor.Process(context.Background(), plan, ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "segment-1",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
-			AssetID: "artlist-1", Provider: scriptpkg.VidRushProviderArtlist, SourceURL: "https://cdn.example/clip", RightsStatus: "unknown",
+			AssetID: "stock-1", Provider: scriptpkg.VidRushProviderInternetImages, SourceURL: "https://cdn.example/clip", RightsStatus: "unknown",
 		}}},
 	}}})
 	if err != nil {
@@ -644,8 +654,9 @@ func TestVidRushMaterializationDoesNotBindUnknownRightsImage(t *testing.T) {
 	}
 	// The provider explicitly verifies rights in this stub, so the test also
 	// pins that an unknown discovery status cannot leak into final binding.
-	if result.VidRushSegments[0].Assets.PrimaryVideo == nil || result.VidRushSegments[0].Assets.PrimaryVideo.RightsStatus != "verified" {
-		t.Fatalf("rights policy was not applied: %#v", result.VidRushSegments[0].Assets.PrimaryVideo)
+	images := result.VidRushSegments[0].Assets.SecondaryImages
+	if len(images) != 1 || images[0].RightsStatus != "verified" {
+		t.Fatalf("rights policy was not applied: %#v", images)
 	}
 }
 
@@ -679,27 +690,29 @@ func TestVidRushMaterializationRetriesAfterFinalizerFailure(t *testing.T) {
 	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "recovery-segment",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
-			AssetID: "recovery-asset", Provider: scriptpkg.VidRushProviderArtlist,
+			AssetID: "recovery-asset", Provider: scriptpkg.VidRushProviderInternetImages,
 			SourceURL: "https://cdn.example/recovery.mp4", RightsStatus: "unknown",
 		}}},
 	}}}
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
 
-	first, err := processor.Process(context.Background(), nil, input)
+	first, err := processor.Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.VidRushSegments[0].Assets.PrimaryVideo != nil {
-		t.Fatal("failed finalization must not bind a primary video")
+	if len(first.VidRushSegments[0].Assets.SecondaryImages) != 0 {
+		t.Fatal("failed finalization must not bind a secondary image")
 	}
-	second, err := processor.Process(context.Background(), nil, input)
+	second, err := processor.Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if finalizer.calls != 2 {
 		t.Fatalf("finalizer calls = %d, want 2", finalizer.calls)
 	}
-	if second.VidRushSegments[0].Assets.PrimaryVideo == nil {
-		t.Fatal("successful recovery should bind the persisted primary video")
+	if len(second.VidRushSegments[0].Assets.SecondaryImages) != 1 {
+		t.Fatal("successful recovery should bind the persisted secondary image")
 	}
 }
 
@@ -708,7 +721,7 @@ func TestVidRushProviderTimeoutsBoundRemoteOperations(t *testing.T) {
 		provider string
 		want     time.Duration
 	}{
-		{provider: scriptpkg.VidRushProviderArtlist, want: vidRushArtlistAcquireTimeout},
+		{provider: scriptpkg.VidRushProviderYouTube, want: vidRushImageAcquireTimeout},
 		{provider: scriptpkg.VidRushProviderInternetImages, want: vidRushImageAcquireTimeout},
 		{provider: scriptpkg.VidRushProviderImageGeneration, want: vidRushGenerationAcquireTimeout},
 	}
@@ -742,22 +755,24 @@ func TestVidRushMaterializationMaterializeReusesSingleSegmentBoundary(t *testing
 		Text:      "a mountain at sunrise",
 		TextHash:  "single-materialize-hash",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
-			AssetID:      "single-artlist",
-			Provider:     scriptpkg.VidRushProviderArtlist,
+			AssetID:      "single-stock",
+			Provider:     scriptpkg.VidRushProviderInternetImages,
 			SourceURL:    "https://cdn.example/single.mp4",
 			RightsStatus: "unknown",
 		}}},
 	}
 
-	result, err := processor.Materialize(context.Background(), nil, segment)
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	result, err := processor.Materialize(context.Background(), plan, segment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Assets.PrimaryVideo == nil {
-		t.Fatal("single-segment Materialize must persist and bind the primary video through the shared boundary")
+	if len(result.Assets.SecondaryImages) != 1 {
+		t.Fatalf("single-segment Materialize must persist and bind the image through the shared boundary: %#v", result.Assets)
 	}
-	if result.Assets.PrimaryVideo.DriveLink == "" {
-		t.Fatalf("primary video DriveLink = %q, want a persisted link", result.Assets.PrimaryVideo.DriveLink)
+	if result.Assets.SecondaryImages[0].DriveLink == "" {
+		t.Fatalf("secondary image DriveLink = %q, want a persisted link", result.Assets.SecondaryImages[0].DriveLink)
 	}
 }
 

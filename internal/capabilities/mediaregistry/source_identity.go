@@ -4,7 +4,6 @@
 // CAS design (August 2026): the acquisition flow asks "do we already know
 // what bytes this source resolves to?" BEFORE downloading. This registry
 // remembers the source -> content SHA-256 mapping so a repeat acquisition
-// of the same Drive file / Artlist asset / URL skips the download entirely
 // (CAS lookup before download). See migrations/sqlite/198_source_identity_registry.sql.
 //
 // Invariant: source identity is metadata used to avoid redundant

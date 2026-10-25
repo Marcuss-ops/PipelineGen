@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
@@ -201,13 +202,25 @@ func (r *JobRegistryRecorder) Finish(ctx context.Context, j *kernjob.Job, stepID
 	}
 	resultJSON := rawJSON(result)
 	completed := finished.Format(time.RFC3339Nano)
+	// A deferral is a WAIT, never a failure (finalizeJobDeferral documents the
+	// rule: "a wait that looks like an incident is how real incidents get
+	// ignored"). The step projection used to flatten it to FAILED anyway, so
+	// every re-poll of a long run inflated the failure counts (measured:
+	// 5.730 of 6.671 "failed" worker.execution rows were deferrals). The
+	// classification is by ERROR, not by final job status: a real failure whose
+	// retry is scheduled by finalizeJob still ends the row in RETRY_WAIT and
+	// must stay FAILED.
+	stepStatus := statusForStep(status)
+	if errors.Is(errValue, kernjob.ErrDeferred) {
+		stepStatus = statusDeferred
+	}
 	if err := r.registry.UpdateJob(ctx, capregistry.Job{JobID: j.ID, JobType: j.Type, Status: defaults.String(status, "FAILED"), CorrelationID: j.CorrelationID, ProjectID: j.Project, VideoID: j.VideoName, ParentJobID: parentJobID(j.Payload), RootJobID: rootJobID(j.Payload), PayloadJSON: rawJSON(j.Payload), PayloadHash: payloadHash(rawJSON(j.Payload)), ResultJSON: resultJSON, ErrorMessage: message, GitSHA: payloadString(j.Payload, "git_sha"), AppVersion: payloadString(j.Payload, "app_version"), WorkerID: workerID, Host: r.host, CreatedAt: formatTime(j.CreatedAt), StartedAt: formatTime(started), CompletedAt: completed, DurationMS: duration}); err != nil {
 		r.warn("record job terminal state", j.ID, err)
 	}
 	if stepID == "" {
 		stepID = executionStepID(j.ID, attemptID, j.Revision)
 	}
-	if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stepID, JobID: j.ID, StepName: "worker.execution", StepType: "worker", Status: statusForStep(status), StartedAt: formatTime(started), CompletedAt: completed, DurationMS: duration, MetricsJSON: reportJSON(report), CreatedAt: completed, ErrorMessage: message}); err != nil {
+	if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stepID, JobID: j.ID, StepName: "worker.execution", StepType: "worker", Status: stepStatus, StartedAt: formatTime(started), CompletedAt: completed, DurationMS: duration, MetricsJSON: reportJSON(report), CreatedAt: completed, ErrorMessage: message}); err != nil {
 		r.warn("record worker step terminal state", j.ID, err)
 	}
 	if report != nil {
@@ -259,7 +272,7 @@ func (r *JobRegistryRecorder) recordReport(ctx context.Context, jobID, jobType, 
 			continue
 		}
 		stageID := fmt.Sprintf("%s:stage:%d", stepID, i)
-		if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stageID, JobID: jobID, StepName: stage.Name, StepType: "stage", Status: statusForStep(stage.Status), StartedAt: formatTime(stage.StartedAt), CompletedAt: formatTime(stage.FinishedAt), DurationMS: stage.DurationMs, InputCount: stage.ItemsInput, OutputCount: stage.ItemsCompleted, InputBytes: stage.BytesProcessed, MetricsJSON: reportJSON(stage), CreatedAt: formatTime(stage.StartedAt), ErrorCode: stage.ErrorCode}); err != nil {
+		if err := r.registry.RecordStep(ctx, capregistry.Step{StepID: stageID, JobID: jobID, StepName: stage.Name, StepType: "stage", Status: statusForStep(stage.Status), StartedAt: formatTime(stage.StartedAt), CompletedAt: formatTime(stage.FinishedAt), DurationMS: stage.DurationMs, InputCount: stage.ItemsInput, OutputCount: stage.ItemsCompleted, InputBytes: stage.BytesProcessed, MetricsJSON: reportJSON(stage), CreatedAt: formatTime(stage.StartedAt), ErrorCode: stage.ErrorCode, ErrorMessage: stage.ErrorMessage}); err != nil {
 			r.warn("record runtime stage", jobID, err)
 		}
 		r.metric(ctx, capregistry.Metric{MetricID: metricID(jobID, stageID, "duration_ms"), JobID: jobID, StepID: stageID, Name: "duration_ms", Unit: "ms", Value: float64(stage.DurationMs)})
@@ -431,6 +444,13 @@ func payloadString(raw []byte, key string) string {
 	result, _ := value[key].(string)
 	return result
 }
+
+// statusDeferred is the step status of an attempt that ended in a WAIT
+// (kernel/job.ErrDeferred). It is deliberately NOT "FAILED" — the analytics
+// read step rows as failures, and a deferral storm around one long run must
+// not masquerade as an incident.
+const statusDeferred = "DEFERRED"
+
 func statusForStep(status string) string {
 	switch strings.ToUpper(status) {
 	case "SUCCEEDED", "COMPLETED", "SUCCESS":

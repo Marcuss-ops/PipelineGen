@@ -46,7 +46,6 @@
 //     fix): voiceover.finalizer does NOT write to asset_locations.
 //     The asset_locations table is written by AssetFinalizerTx
 //     (internal/application/assets/finalizer/asset_finalizer_tx.go)
-//     for artlist + stock pipelines; voiceover's canonical location
 //     surface is media_assets (Source='voiceover', MediaType='audio',
 //     DriveFileID, DriveLink, DownloadLink). This test is calibrated
 //     on path B (the chosen fix): the 3 tables the finalizer DOES
@@ -381,7 +380,6 @@ func openInvariantsTestDB(t *testing.T) *sql.DB {
 // voiceover.finalizer does NOT write to asset_locations. The
 // asset_locations table is written by AssetFinalizerTx
 // (internal/application/assets/finalizer/asset_finalizer_tx.go) for
-// artlist + stock pipelines; voiceover's canonical location surface
 // is media_assets (Source='voiceover', MediaType='audio', DriveFileID,
 // DriveLink, DownloadLink). Forward-pointer: PR-VO-ASSET-LOCATIONS-
 // CONSUMER-AUDIT (deadline TBD) decides between Strada A (adapt

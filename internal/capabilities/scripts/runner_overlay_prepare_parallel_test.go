@@ -51,12 +51,10 @@ func TestOverlayPrepare_EnqueuedWhileTTSBlocked(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
 	prepEnq := &countingPrepareEnqueuer{}
 	blockingVO := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
 
-	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO)
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
@@ -65,7 +63,6 @@ func TestOverlayPrepare_EnqueuedWhileTTSBlocked(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-prepare-parallel"
 
 	runID := "run-overlay-prepare-parallel"

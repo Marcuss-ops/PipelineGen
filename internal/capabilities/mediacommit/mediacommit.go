@@ -1,7 +1,6 @@
 // Package mediacommit defines the canonical MediaCommitter contract.
 //
 // MediaCommitter is the SINGLE transactional commit gate for media assets.
-// Every producer (YouTube, Artlist, Stock, Drive/Images, AI, Voiceover,
 // Audio, …) must converge on CommitMediaAsset instead of writing its own
 // slightly-different media_assets row. The commit runs the full canonical
 // sequence inside ONE SQLite transaction:

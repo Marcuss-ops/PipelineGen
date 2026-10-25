@@ -43,7 +43,6 @@ func TestCompositeScriptGenerateChecker_AllHealthy(t *testing.T) {
 		&fakeDriveFolderChecker{ok: true},
 		"folder123",
 		&fakePublisherChecker{wired: true},
-		func() bool { return true },
 		func(jobType string) bool { return jobType == "script.generate" },
 	)
 	checker.SetRouteMounted(func() bool { return true })
@@ -57,7 +56,6 @@ func TestCompositeScriptGenerateChecker_AllHealthy(t *testing.T) {
 	assert.NotNil(t, details["script_generate_handler"])
 	assert.NotNil(t, details["ollama"])
 	assert.NotNil(t, details["drive"])
-	assert.NotNil(t, details["document_service"])
 	assert.NotNil(t, details["route"])
 }
 
@@ -69,7 +67,6 @@ func TestCompositeScriptGenerateChecker_FailsWhenRouteNotMounted(t *testing.T) {
 		&fakeDriveFolderChecker{ok: true},
 		"folder123",
 		&fakePublisherChecker{wired: true},
-		func() bool { return true },
 		func(jobType string) bool { return jobType == "script.generate" },
 	)
 	checker.SetRouteMounted(func() bool { return false })
@@ -87,7 +84,6 @@ func TestCompositeScriptGenerateChecker_FailsWhenHandlerMissing(t *testing.T) {
 		&fakeDriveFolderChecker{ok: true},
 		"folder123",
 		&fakePublisherChecker{wired: true},
-		func() bool { return true },
 		func(jobType string) bool { return false },
 	)
 	checker.SetRouteMounted(func() bool { return true })
@@ -105,7 +101,6 @@ func TestCompositeScriptGenerateChecker_FailsWhenOllamaDown(t *testing.T) {
 		&fakeDriveFolderChecker{ok: true},
 		"folder123",
 		&fakePublisherChecker{wired: true},
-		func() bool { return true },
 		func(jobType string) bool { return jobType == "script.generate" },
 	)
 	checker.SetRouteMounted(func() bool { return true })
@@ -113,24 +108,6 @@ func TestCompositeScriptGenerateChecker_FailsWhenOllamaDown(t *testing.T) {
 	res := checker.CheckScriptGenerate(context.Background())
 	assert.False(t, res["ok"].(bool))
 	assert.Contains(t, res["error"], "ollama unreachable")
-}
-
-func TestCompositeScriptGenerateChecker_FailsWhenDocumentServiceUnavailable(t *testing.T) {
-	svc := fakeScriptGenerateDeps(true, true)
-	checker := NewScriptGenerateChecker(
-		svc,
-		&fakeOllamaChecker{ok: true},
-		&fakeDriveFolderChecker{ok: true},
-		"folder123",
-		&fakePublisherChecker{wired: true},
-		func() bool { return false },
-		func(jobType string) bool { return jobType == "script.generate" },
-	)
-	checker.SetRouteMounted(func() bool { return true })
-
-	res := checker.CheckScriptGenerate(context.Background())
-	assert.False(t, res["ok"].(bool))
-	assert.Contains(t, res["error"], "document service not available")
 }
 
 func TestCompositeScriptGenerateChecker_FailsWhenDriveFolderInaccessible(t *testing.T) {
@@ -141,7 +118,6 @@ func TestCompositeScriptGenerateChecker_FailsWhenDriveFolderInaccessible(t *test
 		&fakeDriveFolderChecker{ok: false, err: errors.New("forbidden")},
 		"folder123",
 		&fakePublisherChecker{wired: true},
-		func() bool { return true },
 		func(jobType string) bool { return jobType == "script.generate" },
 	)
 	checker.SetRouteMounted(func() bool { return true })
@@ -158,7 +134,6 @@ func TestCompositeScriptGenerateChecker_NilServiceFails(t *testing.T) {
 		&fakeDriveFolderChecker{ok: true},
 		"folder123",
 		&fakePublisherChecker{wired: true},
-		func() bool { return true },
 		func(jobType string) bool { return jobType == "script.generate" },
 	)
 	checker.SetRouteMounted(func() bool { return true })
@@ -175,7 +150,6 @@ func TestCompositeScriptGenerateChecker_NilOllamaFails(t *testing.T) {
 		&fakeDriveFolderChecker{ok: true},
 		"folder123",
 		&fakePublisherChecker{wired: true},
-		func() bool { return true },
 		func(jobType string) bool { return jobType == "script.generate" },
 	)
 	checker.SetRouteMounted(func() bool { return true })

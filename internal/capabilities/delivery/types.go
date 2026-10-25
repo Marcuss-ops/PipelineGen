@@ -51,12 +51,15 @@ const (
 	// so the new scheme lives under `<ClipsRootFolder>/youtube/...`
 	// rather than spilling into the legacy `clips/...` root.
 	DestinationYouTubeAsset DestinationKey = "youtube_asset"
-	DestinationArtlist      DestinationKey = "artlist"
-	DestinationStock        DestinationKey = "stock"
-	DestinationImage        DestinationKey = "image"
-	DestinationVoiceover    DestinationKey = "voiceover"
-	DestinationScript       DestinationKey = "script"
-	DestinationSoundEffect  DestinationKey = "sound_effect"
+	// DestinationStock is the canonical footage destination. It also owns
+	// the assets of the retired Artlist destination: the literal key
+	// "artlist" is folded into this one by CanonicalizeDestination (see
+	// retired_destinations.go) so persisted rows keep resolving.
+	DestinationStock       DestinationKey = "stock"
+	DestinationImage       DestinationKey = "image"
+	DestinationVoiceover   DestinationKey = "voiceover"
+	DestinationScript      DestinationKey = "script"
+	DestinationSoundEffect DestinationKey = "sound_effect"
 	// DestinationSoundEffectSidecar (PR-P12-SOUND-EFFECT-SIDECAR, July 2026):
 	// canonical destination for sound-effect metadata.json sidecars
 	// (tags, search_text, semantic metadata) co-located with the
@@ -188,12 +191,10 @@ type PublishRequest struct {
 	SizeBytes int64 `json:"size_bytes,omitempty"`
 
 	// Group is a logical grouping key (e.g. YouTube channel name,
-	// artlist search term). Used by PathBuilder to construct the
 	// folder hierarchy.
 	Group string `json:"group,omitempty"`
 
 	// Subject identifies the subject within the group (e.g. YouTube
-	// video ID, artlist asset ID). Used by PathBuilder.
 	Subject string `json:"subject,omitempty"`
 
 	// Style is an optional style tag (e.g. image generation style).
@@ -234,7 +235,6 @@ type PublishRequest struct {
 	//     sentinel) means "caller didn't pick a policy"; the publisher
 	//     consults DestinationRegistry's per-destination default (see
 	//     DestinationPolicy.ConflictPolicy). Per-key mapping: immutable
-	//     assets (YouTube clip, Artlist, Stock, Image, Voiceover,
 	//     SoundEffect) default to ConflictSkip; regenerable outputs
 	//     (Book, Script, Document) default to ConflictOverwrite.
 	//   - Explicit values (ConflictOverwrite / ConflictSkip /

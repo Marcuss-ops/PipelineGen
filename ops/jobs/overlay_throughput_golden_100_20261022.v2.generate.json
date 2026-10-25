@@ -79,9 +79,6 @@
             "mode": "none"
           }
         },
-        "docs": {
-          "enabled": false
-        },
         "drive_subfolder_name": "garlasco-batch-10-08-fonti-media-20261019-pipeline-v11-visual-intro",
         "stock_enabled": "enabled",
         "stock_bindings": [
@@ -398,9 +395,6 @@
             "vtt"
           ]
         }
-      },
-      "docs": {
-        "enabled": false
       },
       "overlay_background": {
         "kind": "color",

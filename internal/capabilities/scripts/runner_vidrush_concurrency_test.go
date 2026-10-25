@@ -42,7 +42,7 @@ func vidrushPipelineFixture(runner *Runner) (*fakeSegmentEnricher, *recordingVid
 // beginVidRush overwrote the shared observer, so run A's commit hit run B's
 // coordinator and errored with the run-mismatch guard.
 func TestRunner_VidRushWiring_IsPerRun(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	vidrushPipelineFixture(runner)
 
 	req := defaultTestRequest()
@@ -85,7 +85,7 @@ func TestRunner_VidRushWiring_IsPerRun(t *testing.T) {
 // once. Pre-registry, at least one run failed closed on the coordinator run
 // mismatch under this interleaving.
 func TestRunner_ConcurrentRuns_IsolateVidRushWiring(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enricher, _ := vidrushPipelineFixture(runner)
 
 	req := defaultTestRequest()

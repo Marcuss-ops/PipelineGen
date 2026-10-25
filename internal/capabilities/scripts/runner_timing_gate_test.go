@@ -77,16 +77,13 @@ func TestCanonicalTimeline_WaitsForTTS(t *testing.T) {
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
-	docPub := newStubDocumentPublisher()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 
 	runID := "run-canonical-waits-tts"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -180,10 +177,8 @@ func TestOverlayRender_WaitsForFrozenTimingNotPrepare(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
 	renderEnq := &recordingOverlayRenderEnqueuer{}
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetLocalizedRenderEnqueuer(&recordingLocalizedRenderEnqueuer{})
@@ -194,7 +189,6 @@ func TestOverlayRender_WaitsForFrozenTimingNotPrepare(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-render-frozen"
 	req.Render.Enabled = true
 
@@ -239,10 +233,8 @@ func TestOverlayRender_DisabledKeepsSemanticPlanWithoutEnqueue(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
 	renderEnq := &recordingOverlayRenderEnqueuer{}
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetOverlayRenderEnqueuer(renderEnq)
@@ -251,7 +243,6 @@ func TestOverlayRender_DisabledKeepsSemanticPlanWithoutEnqueue(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-render-disabled"
 	req.Render.Enabled = false
 

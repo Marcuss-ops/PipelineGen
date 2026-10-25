@@ -34,7 +34,6 @@ type VisualLayer struct {
 	// materialization this is the local media_assets.id.
 	AssetID string `json:"asset_id,omitempty"`
 
-	// Provider is the canonical source tag (drive, artlist, pexels,
 	// youtube, local, ...).
 	Provider string `json:"provider,omitempty"`
 

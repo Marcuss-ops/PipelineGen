@@ -117,7 +117,6 @@ type ProcessSegmentCoreDeps struct {
 // extraction path committed clip + transcript but never enqueued
 // `asset.text.materialize`, so a new clip produced exactly ONE language
 // (whatever the payload/subtitle chain supplied) and the other nine
-// configured languages were never generated. The Artlist/Stock/generic
 // paths reach the fan-out through their finalizers; YouTube commits through
 // LocalizedWriter directly, so it needs this explicit seam.
 //

@@ -37,8 +37,8 @@ verify-mediasampler:
 
 # verify-stockintelligence — Fase-5 local stock intelligence (Go).
 # Runs the stockintelligence package tests covering: LOCAL FIRST
-# success (50 local hummus videos → 0 Artlist requests + valid winner)
-# and fallback (0 local candidates → exactly 1 Artlist request).
+# success (50 local hummus videos → 0 provider requests + valid winner)
+# and fallback (0 local candidates → exactly 1 provider request).
 verify-stockintelligence:
 	@$(GO) test -count=1 ./internal/capabilities/stockintelligence/...
 	@echo "✅ verify-stockintelligence passed"
@@ -58,7 +58,7 @@ verify-media-architecture:
 	@test "$$(rg -n '^type EntityExtractor interface' internal/capabilities/entities/ports/extractor.go | wc -l | tr -d ' ')" = 1
 	@test "$$(rg -n '^type MediaSamplerPort interface' internal/capabilities/scripts/ports/media_sampler.go | wc -l | tr -d ' ')" = 1
 	@test "$$(rg -n '^type MediaSamplerPort interface' internal/capabilities/scripts --glob '*.go' | wc -l | tr -d ' ')" = 1
-	@test "$$(rg -n 'func Build(Artlist|Image)Queries\(' internal/kernel/script/retrieval_query_builders.go | wc -l | tr -d ' ')" = 2
+	@test "$$(rg -n 'func Build(YouTube|Image)Queries\(' internal/kernel/script/retrieval_query_builders.go | wc -l | tr -d ' ')" = 2
 	@test "$$(rg -n 'WithMediaSampler\(mediaSampler\)' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
 	@test "$$(rg -n 'CertifierPort:.*MediaCertifierFunc' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
 	@test "$$(rg -n 'CertSpecResolver:.*MediaCertSpecResolverFunc' internal/app/wiring/script_generation_runtime.go | wc -l | tr -d ' ')" = 1
@@ -72,7 +72,7 @@ verify-media-architecture:
 	@test ! -e internal/capabilities/scripts/adapters/compat_adapters.go
 	@test ! -e internal/capabilities/scripts/adapters/processor_entities.go
 	@test "$$(rg -n 'EntitiesProcessor|VidRushSegmentEnricher|NewEntitiesProcessor|NewVidRushSegmentEnricher' internal --glob '*.go' | wc -l | tr -d ' ')" = 0
-	@test "$$(rg -n '^type (ArtlistClipSearcher|InternetImageSearcher|MetadataGenerator) interface' internal/capabilities/scripts/adapters/media_ports.go | wc -l | tr -d ' ')" = 3
+	@test "$$(rg -n '^type (InternetImageSearcher|MetadataGenerator) interface' internal/capabilities/scripts/adapters/media_ports.go | wc -l | tr -d ' ')" = 2
 	@test "$$(rg -n 'VidRushWindowRanker|selectVidRushPrimaryVideoWithPolicy|ScoreVidRushCandidate|chooseVidRushPrimary' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
 	@test "$$(rg -n 'rankInternetImageCandidates|preRankYouTubeCandidates|deterministicYouTubeScore' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 0
 	@test "$$(rg -n '^type MediaResolver interface' internal/capabilities/scripts/adapters --glob '*.go' | wc -l | tr -d ' ')" = 1
@@ -118,7 +118,7 @@ vidrush-pre-final: verify-media-intelligence
 	@echo "source integrity          5/5 PASS"
 	@echo "semantic profiles         5/5 PASS"
 	@echo "visual intents            5/5 PASS"
-	@echo "Artlist candidates        5/5 PASS"
+	@echo "video candidates          5/5 PASS"
 	@echo "correct winners           5/5 PASS"
 	@echo "entities                 15/15 PASS"
 	@echo "source-grounded          15/15 PASS"
@@ -160,10 +160,7 @@ verify-vidrush-extraction:
 	@$(GO) test -count=1 ./internal/capabilities/scripts/adapters -run 'Entities|Segment|Extraction'
 
 verify-vidrush-query-planning:
-	@$(GO) test -count=1 ./internal/capabilities/scripts/adapters -run 'Query|Artlist|InternetImages'
-
-verify-vidrush-artlist-search verify-vidrush-artlist-download verify-vidrush-artlist-persist verify-vidrush-artlist-index:
-	@$(GO) test -count=1 ./internal/capabilities/scripts/adapters -run 'Artlist|ClipSearch'
+	@$(GO) test -count=1 ./internal/capabilities/scripts/adapters -run 'Query|InternetImages'
 
 verify-vidrush-image-search verify-vidrush-image-download verify-vidrush-image-validation verify-vidrush-image-persist verify-vidrush-image-index:
 	@$(GO) test -count=1 ./internal/capabilities/scripts/adapters -run 'InternetImages|VidRushImage'
@@ -190,7 +187,6 @@ verify-vidrush-fast:
 
 verify-vidrush-local:
 	@$(MAKE) verify-vidrush-fast
-	@$(MAKE) verify-vidrush-artlist-search
 	@$(MAKE) verify-vidrush-image-search
 	@$(MAKE) verify-vidrush-image-validation
 	@$(MAKE) verify-vidrush-dedupe

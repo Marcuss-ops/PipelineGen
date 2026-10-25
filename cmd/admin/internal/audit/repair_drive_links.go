@@ -5,15 +5,16 @@
 // SpecScene across all items, verifies every drive_link via the
 // canonical AssetLocationVerifier, and produces a detailed audit
 // report. With --remove-invalid, cleared/updated links are persisted
-// to SQLite (media_assets), SpecScene, and Manifest. With
-// --refresh-docs, existing Google Docs are refreshed with the
-// reconciled SpecScene.
+// to SQLite (media_assets), SpecScene, and Manifest.
+//
+// Google Docs was retired (2026-10-25): the --refresh-docs leg and every
+// DocClient dependency are gone with the capability.
 //
 // Usage:
 //
 //	admin repair-drive-links --job-id job_xxx
 //	admin repair-drive-links --job-id job_xxx --audit > report.json
-//	admin repair-drive-links --job-id job_xxx --remove-invalid --refresh-docs
+//	admin repair-drive-links --job-id job_xxx --remove-invalid
 package audit
 
 import (
@@ -39,7 +40,6 @@ func RunRepairDriveLinks(args []string) error {
 	fs.SetOutput(os.Stderr)
 	jobID := fs.String("job-id", "", "Job ID to repair (required)")
 	removeInvalid := fs.Bool("remove-invalid", false, "Clear broken links, update SQLite, and persist reconciled SpecScene")
-	refreshDocs := fs.Bool("refresh-docs", false, "Refresh existing Google Docs with reconciled SpecScene")
 	audit := fs.Bool("audit", false, "Output detailed JSON audit report to stdout")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -172,7 +172,6 @@ func RunRepairDriveLinks(args []string) error {
 			JobID:         *jobID,
 			ExecutedAt:    time.Now().UTC().Format(time.RFC3339),
 			RemoveInvalid: *removeInvalid,
-			RefreshDocs:   *refreshDocs,
 		}
 		report.NoOp = repairReportIsNoOp(report)
 		if *audit {
@@ -193,7 +192,6 @@ func RunRepairDriveLinks(args []string) error {
 			JobID:         *jobID,
 			ExecutedAt:    time.Now().UTC().Format(time.RFC3339),
 			RemoveInvalid: *removeInvalid,
-			RefreshDocs:   *refreshDocs,
 		}
 		locationChanges     = make(map[string]scriptpkg.AssetLocationChange)
 		locationConflictErr error
@@ -386,50 +384,6 @@ func RunRepairDriveLinks(args []string) error {
 		report.SQLiteUpdated = len(changes) > 0
 		// Projection processing remains asynchronous and is not claimed here.
 		report.QdrantEventsEmitted = len(changes)
-	}
-
-	// ── Step 7: Refresh Google Docs ───────────────────────────
-	if *refreshDocs && report.SpecSceneRepaired {
-		if root.Drive == nil || root.Drive.DocClient == nil {
-			return fmt.Errorf("repair requested Google Doc refresh but the document client is unavailable")
-		}
-		refreshed := 0
-		expectedDocs := 0
-		for i := range envelope.Items {
-			item := &envelope.Items[i]
-			if item.Result == nil || item.Result.Provenance == nil {
-				continue
-			}
-			docID := strings.TrimSpace(item.Result.Provenance.DocID)
-			if docID == "" {
-				return fmt.Errorf("repair requested Google Doc refresh but item %d has no provenance document ID", i)
-			}
-			expectedDocs++
-			title := item.Result.Title
-			if title == "" {
-				title = "Reconciled script"
-			}
-			model := &scriptpkg.ModelScriptOutputV1{
-				SchemaVersion: 1,
-				Text:          item.Result.Output.Text,
-				SpecScene:     item.Result.Output.SpecScene,
-				WordCount:     item.Result.Output.WordCount,
-			}
-			content := buildRepairHTML(model, title)
-			if err := root.Drive.DocClient.UpdateDoc(ctx, docID, title, content); err != nil {
-				report.Warnings = append(report.Warnings,
-					fmt.Sprintf("doc refresh failed for %s: %v", docID, err))
-			} else {
-				refreshed++
-			}
-		}
-		if expectedDocs == 0 {
-			return fmt.Errorf("repair requested Google Doc refresh but no provenance documents were found")
-		}
-		if refreshed != expectedDocs {
-			return fmt.Errorf("google-doc refresh incomplete: refreshed %d of %d", refreshed, expectedDocs)
-		}
-		report.DocumentsRefreshed = refreshed
 	}
 
 	// ── Output ────────────────────────────────────────────────

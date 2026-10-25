@@ -42,8 +42,8 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 	//    index 5; internet_images added at index 9; document added
 	//    at index 11; see file godoc above
 	//    for EXECUTION vs REGISTRATION order distinction).
-	if len(names) != 15 {
-		t.Fatalf("CanonicalProcessorNames() returned %d names, want 15: %v", len(names), names)
+	if len(names) != 14 {
+		t.Fatalf("CanonicalProcessorNames() returned %d names, want 14: %v", len(names), names)
 	}
 
 	// 2. Expected EXECUTION order (clip_search → metadata →
@@ -65,7 +65,6 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 		adapterspkg.ProcessorVidRushMaterialization,
 		adapterspkg.ProcessorAssetLocationReconciliation,
 		adapterspkg.ProcessorPersistence,
-		adapterspkg.ProcessorDocument,
 		adapterspkg.ProcessorNarrationSanitizer,
 	}
 	for i, name := range expected {
@@ -142,7 +141,6 @@ func TestCanonicalProcessorNames_IncludesClipSearch(t *testing.T) {
 	//    processor_names.go godoc. A drift to a different index
 	//    (e.g. moving clip_search to the tail) would silently
 	//    break the ordering invariant: clip_search must run AFTER
-	//    entities (reads Entities.ArtlistPhrases) and BEFORE
 	//    metadata (so the enriched SpecScene text is visible).
 	const wantIndex = 0
 	if foundIndex != wantIndex {

@@ -76,6 +76,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -368,9 +369,19 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	// but it is still on the worker critical path. Record it explicitly so
 	// SQLite contention, artifact publication, or finalizer retries cannot be
 	// misreported as unattributed wall time.
+	// The stage measures the publication spine's OWN wall. A deferral is a
+	// wait owned by the dispatch layer (finalizeJobDeferral), not a failed
+	// finalize: recording it here made every re-poll of a long run add a
+	// phantom "post_writer_finalize FAILED" row (measured: 6.628 rows, most
+	// on deferred/retried attempts). Real dispatch failures keep the typed
+	// error on the stage so the failure stays attributable.
+	finalizeStageErr := dispatchErr
+	if errors.Is(dispatchErr, job.ErrDeferred) {
+		finalizeStageErr = nil
+	}
 	kernobs.RecordStage(jobCtx, kernobs.StageInfo{
 		Stage: kernobs.StagePostWriterFinalize,
-	}, postWriterFinalizeStarted, time.Now().UTC(), dispatchErr)
+	}, postWriterFinalizeStarted, time.Now().UTC(), finalizeStageErr)
 	w.log.Info("worker: post-writer finalization complete",
 		zap.String("job_id", j.ID),
 		zap.String("job_type", j.Type),

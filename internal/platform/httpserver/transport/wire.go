@@ -176,7 +176,6 @@ func NewWireRegistryFromEngine(engine *gin.Engine) *WireRegistry {
 }
 
 // All returns the wire map for /ready. Keys are capability names
-// (e.g. "stock", "artlist"); values are the canonical wire literals:
 //
 //	"MOUNTED"      — at least one route matches the capability prefix
 //	"NOT_MOUNTED"  — no route matches the capability prefix

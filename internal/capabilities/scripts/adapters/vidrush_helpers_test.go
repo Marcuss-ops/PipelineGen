@@ -102,15 +102,21 @@ func TestFinalizeVidRushBindings(t *testing.T) {
 		c.RightsStatus = "verified"
 		return c
 	}
+	image := lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "image-1", Provider: "internet_images", Query: "factory", PreviewURL: "https://images.example/image-1", Score: 0.7})
+	duplicateImage := image
+	duplicateImage.Score = 0.6
 	segments := []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "segment-001",
 		TextHash:  "hash-1",
-		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
-			{AssetID: "bad", Provider: "artlist", Score: 0.99},
-			lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "video-1", Provider: "artlist", Query: "factory", SourceURL: "https://artlist.example/video-1", Score: 0.8}),
-			lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "image-1", Provider: "internet_images", Query: "factory", PreviewURL: "https://images.example/image-1", Score: 0.7}),
-			lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "image-1", Provider: "internet_images", Query: "factory", PreviewURL: "https://images.example/image-1", Score: 0.6}),
-		}},
+		Assets: scriptpkg.SegmentAssetSelection{
+			Candidates: []scriptpkg.SegmentAssetCandidate{
+				{AssetID: "bad", Provider: "youtube", Score: 0.99},
+				lifecycle(scriptpkg.SegmentAssetCandidate{AssetID: "video-1", Provider: "youtube", Query: "factory", SourceURL: "https://youtube.example/video-1", SourceStartMs: 0, SourceEndMs: 10000, Score: 0.8}),
+				image,
+				duplicateImage,
+			},
+			SecondaryImages: []scriptpkg.SegmentAssetCandidate{image},
+		},
 	}}
 
 	got := FinalizeVidRushBindings(segments, false)

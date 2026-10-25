@@ -16,7 +16,6 @@
 //     (the dedup-gate enabler).
 //  4. Provider-segment distinctness: same clipID with different
 //     providers MUST produce different event_keys (so a
-//     YouTube clip and an Artlist clip with the same string ID
 //     don't collide in the outbox).
 //
 // White-box (`package outbox`) so the test can call the
@@ -225,7 +224,6 @@ func TestOutboxKey_HashesShortAndLong(t *testing.T) {
 
 // TestOutboxKey_ProviderSegmentDistinctness pins the wire-in
 // contract: the provider segment of the event_key is part of
-// the dedup identity. A YouTube clip and an Artlist clip with
 // the same string clipID MUST produce different event_keys —
 // otherwise a cross-provider replay would collapse in the
 // outbox UNIQUE INDEX.

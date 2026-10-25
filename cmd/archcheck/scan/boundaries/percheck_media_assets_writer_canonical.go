@@ -7,7 +7,6 @@
 // persistence.AssetCommitter (implemented by PostgresMediaCommitter at
 // internal/platform/postgres/media/media_committer.go). Every code path
 // that durably creates, updates, or deletes a media_assets row MUST route
-// through this port — YouTube, Artlist, local clips, voiceover, images,
 // recovery.
 //
 // MEDIA DEMOLITION (September 2026, POSTGRES-MEDIA-CUTOVER): the SQLite

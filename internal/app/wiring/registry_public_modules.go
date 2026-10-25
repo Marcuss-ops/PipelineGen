@@ -3,7 +3,6 @@
 // PR4 mechanical split (June 2026): relocated from registry.go without
 // signature or behaviour changes. Each function in this file registers
 // a thin route module that exposes an /api/* surface. Bundle-driven
-// modules (Artlist, YouTubeClip, MediaIngest, Scraper,
 // StockPipeline) live in registry_internal_modules.go instead —
 // those have cross-step wiring dependencies that need a different
 // ordering surface.

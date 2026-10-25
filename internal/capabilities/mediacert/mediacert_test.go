@@ -17,7 +17,7 @@ func mediterraneanSpec() Spec {
 		Segments:                  5,
 		EntitiesPerSegment:        3,
 		ImagesPerSegment:          3,
-		VideoProvider:             script.VidRushProviderArtlist,
+		VideoProvider:             "artlist",
 		AllowCrossSceneAssetReuse: false,
 		SegmentsExpected: []SpecSegment{
 			{ID: "mediterranean-01-greek-salad", Subject: "greek salad", RequiredConcepts: []string{"greek salad", "feta", "tomatoes", "olives"}, WinnerSubjectMatch: "greek salad"},
@@ -44,7 +44,6 @@ func greekSaladSceneIR() sceneir.SceneIR {
 
 // TestMediaCertRejectsTechnicallySuccessfulButWrongRun is the central
 // MediaCert contract: a run with job.status=SUCCEEDED, 5 segments and 5
-// Artlist winners must still return CERTIFIED=false when Greek Salad is
 // bound to a boxing clip. This is the explicit rejection of the count-only
 // test that declared success at a semantically broken pipeline.
 func TestMediaCertRejectsTechnicallySuccessfulButWrongRun(t *testing.T) {
@@ -75,7 +74,7 @@ func TestMediaCertRejectsTechnicallySuccessfulButWrongRun(t *testing.T) {
 					PrimaryVideo: &script.SegmentAssetCandidate{
 						SegmentID: "mediterranean-01-greek-salad",
 						AssetID:   "artlist-boxing-001",
-						Provider:  script.VidRushProviderArtlist,
+						Provider:  "artlist",
 						Entity:    "woman boxing",
 						Query:     "woman boxing gloves",
 						Score:     0.72,
@@ -103,7 +102,6 @@ func TestMediaCertRejectsTechnicallySuccessfulButWrongRun(t *testing.T) {
 	require.Equal(t, "SUCCEEDED", report.JobStatus)
 	require.False(t, report.Certified, "a SUCCEEDED run with boxing for Greek Salad must NOT be certified")
 
-	// The ARTLIST RELEVANCE check must be the one that caught it.
 	var artlistCheck CheckResult
 	for _, c := range report.Checks {
 		if c.Name == CheckArtlistRelevance {
@@ -139,7 +137,6 @@ func TestMediaCertCertifiesACorrectMediterraneanRun(t *testing.T) {
 	require.True(t, report.Certified, "a fully correct Mediterranean run must be certified")
 }
 
-// TestMediaCertRejectsCrossSceneAssetReuse pins the same Artlist clip on
 // scene 0 and scene 4 failure: when the spec forbids reuse, the second
 // binding must be rejected.
 func TestMediaCertRejectsCrossSceneAssetReuse(t *testing.T) {
@@ -256,7 +253,7 @@ func correctMediterraneanSegment(id string, position int, subject, winnerEntity 
 			PrimaryVideo: &script.SegmentAssetCandidate{
 				SegmentID: id,
 				AssetID:   "artlist-" + id,
-				Provider:  script.VidRushProviderArtlist,
+				Provider:  "artlist",
 				Entity:    winnerEntity,
 				Query:     subject,
 				Score:     0.9,

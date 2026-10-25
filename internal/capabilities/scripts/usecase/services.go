@@ -43,14 +43,12 @@ type ClipServices struct {
 	HarvestSvc  HarvestService
 	Logger      *zap.Logger
 	// TranslationPort is the canonical Fase 9 step 2 surface. New
-	// consumers (e.g. flow_helpers_artlist.go::phraseTranslatorAdapter.Translate)
 	// call svc.TranslationPort.Translate(ctx, cmd) directly. Nil is
 	// tolerated by the caller (fail-closed: returns typed error per
 	// godlike/07 NO-FAKE-AVAILABILITY — never a silent fallback to the
 	// original phrase).
 	TranslationPort translation.TranslationPort
 	AssocSvc        AssocSearchService
-	ArtlistFolder   string
 	ImgSvc          ImageGenService
 }
 

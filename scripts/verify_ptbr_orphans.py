@@ -2,7 +2,7 @@
 """Verifica orfani voiceover per una run PipelineGen post-fix K2.
 Uso: python3 verify_ptbr_orphans.py <job_id>
 Verdetto: ✅ solo se (drain presente) E (zero publish Drive dopo il termine)
-          E (zero righe Google Docs) E (tutti gli step publish COMPLETED)."""
+          E (tutti gli step publish COMPLETED)."""
 import subprocess, sqlite3, sys, json, datetime
 
 jid = sys.argv[1]
@@ -33,7 +33,6 @@ for l in allwin:
         if m and job_epoch and m.group(1)[:8] == job_epoch:
             drain.append(l)
 pubs  = [l for l in win if ('delivery: file published' in l or 'artifact published' in l)]
-docs  = [l for l in win if ('docs.google' in l or 'UpsertDocument' in l or 'DocumentReference' in l)]
 # orfano = upload VOICEOVER >2s DOPO l'updated_at terminale (la TX di completamento
 # scrive updated_at ~1s dopo l'ultima riga nel journal). Gli upload overlay/
 # final-artifact post-run sono il contratto remote-render (lavoro downstream
@@ -48,7 +47,7 @@ other_pubs = [l for l in pubs if l not in vo_pubs]
 orphans = [l for l in vo_pubs if (d := _ts(l)) and d > Tdt + datetime.timedelta(seconds=2)]
 late_other = [l for l in other_pubs if (d := _ts(l)) and d > Tdt + datetime.timedelta(seconds=2)]
 
-steps = con.execute("SELECT step_name,status,duration_ms FROM job_steps WHERE job_id=? AND step_name IN ('DOCUMENT','post_writer_finalize','worker.execution') ORDER BY created_at", (jid,)).fetchall()
+steps = con.execute("SELECT step_name,status,duration_ms FROM job_steps WHERE job_id=? AND step_name IN ('post_writer_finalize','worker.execution') ORDER BY created_at", (jid,)).fetchall()
 pub = con.execute("SELECT count(*), sum(status='COMPLETED') FROM job_steps WHERE job_id=? AND step_name='publish'", (jid,)).fetchone()
 n_pub, n_ok = pub[0] or 0, pub[1] or 0
 
@@ -65,11 +64,10 @@ print(f"publish Drive     : {len(pubs)} (voiceover: {len(vo_pubs)}, altri: {len(
 print(f"ORFANI voiceover (upload dopo il termine): {len(orphans)}")
 if late_other:
     print(f"altri publish post-run (contratto remote-render, informativo): {len(late_other)}")
-print(f"righe Google Docs : {len(docs)}")
 print("steps:", '; '.join(f"{a}={b}/{c}ms" for a,b,c in steps))
 print(f"publish steps     : {n_pub} totali, {n_ok} COMPLETED")
 for l in orphans:
     print("ORFANO sospetto:", l[:200])
-verdict = len(drain) > 0 and len(orphans) == 0 and len(docs) == 0 and n_ok == n_pub
+verdict = len(drain) > 0 and len(orphans) == 0 and n_ok == n_pub
 print("VERDETTO:", "✅ ZERO ORFANI — drain dentro la run, nessun upload dopo il termine" if verdict else "⚠ VERIFICARE MANUALMENTE")
 sys.exit(0 if verdict else 1)

@@ -284,9 +284,6 @@ func (r *PostProcessorRegistry) run(
 	}
 	// Single-segment text plan with a populated Stock binding in
 	// SpecScene: ClipSearchProcessor may have emitted
-	// "clip_search: no matching Artlist clips found for segment X"
-	// / "clip_search: ArtlistClipSearcher not configured" soft
-	// warnings when the Artlist searcher returned no candidates
 	// (and the plan's ProviderPolicy did not opt in). Those
 	// warnings are spurious — StockBindingsProcessor landed a real
 	// binding in the post-walk SclipScene (Stock.DriveLink or
@@ -499,7 +496,6 @@ func filterBestEffortDocumentaryWarnings(w []string) []string {
 // when a Stock binding has legitimately populated the post-walk
 // SpecScene. The composite invokes this on the SingleScene + text
 // + Stock-present branch above; clip_search: prefixed lines are
-// signals ("no Artlist hits for segment X", "ArtlistClipSearcher
 // not configured") that lose relevance once a direct Stock binding
 // confirms downstream binding presence. Other warning lines (any
 // non-clip_search: prefix) pass through untouched so unrelated

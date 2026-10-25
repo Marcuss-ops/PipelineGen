@@ -254,7 +254,6 @@ func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AI
 		systemhealth.NewDriveFolderChecker(driveBundle.Publisher),
 		cfg.Drive.ScriptsGenFolder(),
 		systemhealth.NewPublisherChecker(driveBundle.Publisher),
-		func() bool { return driveBundle.DocClient != nil },
 		func(jobType string) bool { return jobs.Service != nil && jobs.Service.HasHandler(jobType) },
 	)
 	utility.ReadyChecker.WithScriptGenerateCheck(scriptChecker)
@@ -278,7 +277,6 @@ func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundl
 		textTracks.FanOut.SetDefaultSourceLanguage(ActiveMultilingualConfig(cfg).SourceLanguage)
 	}
 	// POSTGRES-MEDIA-CUTOVER follow-up (September 2026): give the direct
-	// YouTube extraction path the canonical post-commit fan-out. The Artlist /
 	// Stock / generic paths reach it through their finalizers; YouTube commits
 	// through LocalizedWriter directly, so without this late binding a freshly
 	// extracted clip produced only the languages the acquisition chain

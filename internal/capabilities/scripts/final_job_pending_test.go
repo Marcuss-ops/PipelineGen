@@ -397,7 +397,7 @@ func TestPendingRemoteRenderErrorCodeIsStable(t *testing.T) {
 // already started — without a second PREPARE.
 func TestDeferredRemoteRenderResumesThroughTheFullLadder(t *testing.T) {
 	const runID = "run-ladder-final-job"
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	req := defaultTestRequest()
 	req.GenerateTimeline = true
 	req.FinalJob = true

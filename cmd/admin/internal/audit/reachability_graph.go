@@ -222,7 +222,6 @@ var canonicalOwnershipModel = map[string]ownershipRelation{
 	// ── Gemma children ──
 	"gemma_script_chunks": {ChildTable: "gemma_script_chunks", ChildColumn: "generation_id", OwnerTable: "gemma_script_outputs", OwnerColumn: "id", Kind: "FK", RootType: "child"},
 
-	// ── Artlist QB children ──
 	"artlist_query_clips":      {ChildTable: "artlist_query_clips", ChildColumn: "query_id", OwnerTable: "artlist_queries", OwnerColumn: "query_id", Kind: "FK", RootType: "child"},
 	"artlist_query_clips_clip": {ChildTable: "artlist_query_clips", ChildColumn: "clip_id", OwnerTable: "artlist_clips", OwnerColumn: "clip_id", Kind: "FK", RootType: "child"},
 

@@ -1,7 +1,6 @@
 // Package stockintelligence — local_search.go declares the candidate +
 // request/result value types and the narrow ports the resolver consumes.
 // Ports keep the package testable in isolation: concrete Qdrant/SQLite/
-// Artlist adapters satisfy them at the composition root.
 package stockintelligence
 
 import (
@@ -97,7 +96,6 @@ type AssetHydratorPort interface {
 	Hydrate(ctx context.Context, assetIDs []string) (map[string]string, error)
 }
 
-// ProviderClientPort is the live Artlist/stock browser surface. The
 // resolver consults it ONLY when local-first did not satisfy the
 // thresholds (PROVIDER SECOND).
 type ProviderClientPort interface {

@@ -22,7 +22,6 @@
 // the returned Descriptor into `tryRegisterModuleStrict(registry, ...)`
 // (Module name "jobs" + prefix "/jobs" → final URL /api/jobs/*).
 //
-// Pattern parity with `artlist/module.go` (C1-Step 3),
 // `youtube/module.go` (C1-Step 4), `clips/module.go` (C1-Step 5),
 // `stock/module.go` (C1-Step 6), `voiceover/module.go` (C1-Step 7),
 // `soundeffect/module.go` (C1-Step 8), `register/module.go`

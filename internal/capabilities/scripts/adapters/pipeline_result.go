@@ -16,18 +16,12 @@ import (
 // generation_job.go writes to script/section rows via the
 // canonical artifacts contract.
 type PipelineResult struct {
-	DocID                   string
-	DocLink                 string
-	DocumentRenderer        string `json:"document_renderer,omitempty"`
-	DocumentSpecSceneSHA256 string `json:"document_specscene_sha256,omitempty"`
-	DocumentSceneCount      int    `json:"document_scene_count,omitempty"`
-	DocumentLanguage        string `json:"document_language,omitempty"`
-	VisualPlans             []mediamemory.SceneVisualPlan
-	VisualAssignments       []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
-	Entities                *scriptpkg.EntityResult
-	VidRushSegments         []scriptpkg.VidRushSegmentResult
-	VideoMetadata           []scriptpkg.VideoMetadata
-	Voiceovers              []SceneVoiceover
+	VisualPlans       []mediamemory.SceneVisualPlan
+	VisualAssignments []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
+	Entities          *scriptpkg.EntityResult
+	VidRushSegments   []scriptpkg.VidRushSegmentResult
+	VideoMetadata     []scriptpkg.VideoMetadata
+	Voiceovers        []SceneVoiceover
 	// TimingArtifacts retains the in-process word-level timing SSOT for the
 	// legacy/batch path until its Chronon overlay has been enqueued. It is
 	// never serialized into the job or Google Doc.
@@ -44,9 +38,6 @@ type PipelineResult struct {
 	// callers that did not opt into the heuristic.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
 	Warnings          []string              `json:"warnings,omitempty"`
-	// ArtlistClipSuggestions carries Artlist clip matches discovered by the
-	// canonical ClipSearch/QueryBuilder path. PR-CLIP-SEARCH-WIRING (July 2026).
-	ArtlistClipSuggestions []ArtlistClipMatch `json:"artlist_clip_suggestions,omitempty"`
 	// FinalSpecScene (Issue #1, June 2026) is the canonical
 	// post-walk SpecScene surface consumed by buildGenerationResult.
 	// Pre-fix: buildGenerationResult read from engineResult.Output

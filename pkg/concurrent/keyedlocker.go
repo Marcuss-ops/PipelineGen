@@ -21,7 +21,6 @@ import "sync"
 // keys seen over the process lifetime.
 //
 // Canonical shared primitive (godlike/06 one-owner-per-fact): per-key
-// locking previously existed as private copies (artlist's
 // acquireEnrichFolderLock registry); new callers should use KeyedLocker
 // instead of re-rolling the registry.
 type KeyedLocker struct {

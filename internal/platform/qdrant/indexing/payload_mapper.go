@@ -76,7 +76,6 @@ type TextTrackQuerier interface {
 // SetSearchTextBuilder wires the canonical SearchTextBuilder port. When
 // non-nil, assetToIndexDocumentNoValidate / AssetToIndexDocument delegate
 // BM25 search-text construction to the builder (per-source strategies:
-// youtube, artlist, voiceover, image, generated_image). When the builder
 // returns empty for an input, the mapper falls back to asset.SearchText
 // (the SQL column) for that asset. When the builder itself is nil, the
 // mapper uses asset.SearchText directly.

@@ -26,16 +26,16 @@ import (
 	"fmt"
 )
 
-// ── WorkflowState (closed enum, 6 values) ────────────────────────────────
+// ── WorkflowState (closed enum, 5 values) ────────────────────────────────
 
 // WorkflowState is the canonical state of a script.generate workflow.
-// The 6 values form a directed progression with FAILED and DEAD_LETTERED
+// The 5 values form a directed progression with FAILED and DEAD_LETTERED
 // as sticky-terminal sinks.
 //
 // Migration invariants:
 //   - String values are UPPERCASE (mirrors LifecycleState convention in
 //     internal/kernel/asset/asset_types.go).
-//   - The canonical list is locked at 6 values; adding a new value
+//   - The canonical list is locked at 5 values; adding a new value
 //     requires a godlike/07 4-phase migration.
 //   - Self-loops are idempotent (s.IsValidTransition(s) returns true).
 //   - FAILED and DEAD_LETTERED are sticky-terminal sinks (no transition
@@ -53,12 +53,9 @@ const (
 	StateImagesPending WorkflowState = "IMAGES_PENDING"
 
 	// StateImagesGenerated — all child image.generate jobs have
-	// completed successfully; images are staged in Drive.
+	// completed successfully; images are staged in Drive. It is the
+	// terminal success state now that Google Docs is retired.
 	StateImagesGenerated WorkflowState = "IMAGES_GENERATED"
-
-	// StateDocumentCreated — the Google Doc has been assembled from
-	// rendered scenes + finalized images; terminal success state.
-	StateDocumentCreated WorkflowState = "DOCUMENT_CREATED"
 
 	// StateFailed — workflow terminated with an unrecoverable error.
 	// Sticky-terminal: any further transitions are rejected.
@@ -82,7 +79,6 @@ func CanonicalWorkflowStateValues() []WorkflowState {
 		StateScriptReady,
 		StateImagesPending,
 		StateImagesGenerated,
-		StateDocumentCreated,
 		StateWorkflowFailed,
 		StateWorkflowDeadLettered,
 	}
@@ -94,7 +90,7 @@ func CanonicalWorkflowStateValues() []WorkflowState {
 func (s WorkflowState) Valid() bool {
 	switch s {
 	case StateScriptReady, StateImagesPending, StateImagesGenerated,
-		StateDocumentCreated, StateWorkflowFailed, StateWorkflowDeadLettered:
+		StateWorkflowFailed, StateWorkflowDeadLettered:
 		return true
 	}
 	return false
@@ -105,10 +101,10 @@ func (s WorkflowState) Valid() bool {
 //
 // Legal progression (forward chain):
 //
-//	SCRIPT_READY    → IMAGES_PENDING → IMAGES_GENERATED → DOCUMENT_CREATED
-//	   │                  │                 │                  │
-//	   ├──→ FAILED        ├──→ FAILED       ├──→ FAILED        ├──→ FAILED
-//	   └──→ DEAD_LETTERED └──→ DEAD_LETTERED└──→ DEAD_LETTERED └──→ DEAD_LETTERED
+//	SCRIPT_READY    → IMAGES_PENDING → IMAGES_GENERATED (terminal success)
+//	   │                  │                 │
+//	   ├──→ FAILED        ├──→ FAILED       ├──→ FAILED
+//	   └──→ DEAD_LETTERED └──→ DEAD_LETTERED└──→ DEAD_LETTERED
 //
 // Self-loops are IDEMPOTENT (s.IsValidTransition(s) returns true).
 //
@@ -139,8 +135,6 @@ func (s WorkflowState) IsValidTransition(to WorkflowState) bool {
 	case StateImagesPending:
 		return to == StateImagesGenerated
 	case StateImagesGenerated:
-		return to == StateDocumentCreated
-	case StateDocumentCreated:
 		// Terminal success — no forward progression.
 		return false
 	}

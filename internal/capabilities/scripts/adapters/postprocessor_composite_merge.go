@@ -35,7 +35,6 @@ import (
 // flat, ordered list of last-writer-wins steps rather than one deeply
 // nested function.
 func MergePostProcessResult(dst *PipelineResult, src *PostProcessResult, currentInput *ProcessInput) {
-	mergeScalarIdentity(dst, src)
 	mergeVisualPlans(dst, src)
 	mergeVisualAssignments(dst, src, currentInput)
 	mergeStageProgress(dst, src)
@@ -53,7 +52,6 @@ func MergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	mergeSceneImages(dst, src, currentInput)
 	mergeScriptID(dst, src)
 	mergeSynthesizedScenes(dst, src, currentInput)
-	mergeArtlistClipSuggestions(dst, src)
 	// Issue #1 (June 2026) FINAL SURFACE. Capture the post-walk
 	// SpecScene envelope so buildGenerationResult can read it instead
 	// of the pre-walk engineResult.Output.SpecScene. Set unconditionally
@@ -66,21 +64,6 @@ func MergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	mergeWarnings(dst, src)
 	mergeTranslated(dst, src, currentInput)
 	mergeEffectiveLanguage(dst, src, currentInput)
-}
-
-func mergeScalarIdentity(dst *PipelineResult, src *PostProcessResult) {
-	if strings.TrimSpace(src.DocID) != "" {
-		dst.DocID = src.DocID
-	}
-	if strings.TrimSpace(src.DocLink) != "" {
-		dst.DocLink = src.DocLink
-	}
-	if strings.TrimSpace(src.DocumentRenderer) != "" {
-		dst.DocumentRenderer = src.DocumentRenderer
-		dst.DocumentSpecSceneSHA256 = src.DocumentSpecSceneSHA256
-		dst.DocumentSceneCount = src.DocumentSceneCount
-		dst.DocumentLanguage = src.DocumentLanguage
-	}
 }
 
 func mergeVisualPlans(dst *PipelineResult, src *PostProcessResult) {
@@ -363,15 +346,6 @@ func carrySceneAnnotations(synthesized, previous []scriptpkg.SpecScene) {
 	}
 }
 
-func mergeArtlistClipSuggestions(dst *PipelineResult, src *PostProcessResult) {
-	// PR-CLIP-SEARCH-WIRING (July 2026): propagate Artlist clip
-	// search results from the ClipSearchProcessor into the aggregate
-	// pipeline result.
-	if len(src.ArtlistClipSuggestions) > 0 {
-		dst.ArtlistClipSuggestions = append(dst.ArtlistClipSuggestions, src.ArtlistClipSuggestions...)
-	}
-}
-
 func captureFinalSpecScene(dst *PipelineResult, currentInput *ProcessInput) {
 	if currentInput != nil {
 		dst.FinalSpecScene = currentInput.SpecScene
@@ -399,8 +373,8 @@ func mergeTranslated(dst *PipelineResult, src *PostProcessResult, currentInput *
 		dst.TranslatedText = src.TranslatedText
 		// PR-TRANSLATION-PIPELINE-2026-07-09 WRITE-BACK: propagate
 		// translated text into currentInput so downstream processors
-		// (VoiceoverProcessor, DocumentProcessor) read the translated
-		// content instead of the original.
+		// (VoiceoverProcessor) read the translated content instead of
+		// the original.
 		if currentInput != nil {
 			currentInput.Text = src.TranslatedText
 			currentInput.TranslatedText = src.TranslatedText

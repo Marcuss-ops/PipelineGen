@@ -226,10 +226,13 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		return nil, nil, fmt.Errorf("clips: aistock.NewUseCase: %w", err)
 	}
 
+	// The retired "artlist" source has no folder root of its own any more:
+	// its clips re-publish through the canonical stock destination (see
+	// clips.destinationBySource), so dynamic folder resolution simply
+	// returns "" for it and the registry root applies.
 	reuploadFolderRoots := map[string]appclips.ReuploadFolderRoot{
 		"clips":   {RootID: params.Cfg.Drive.ClipsFolder(), PathMarker: params.Cfg.Storage.YoutubeClipsPath()},
 		"youtube": {RootID: params.Cfg.Drive.ClipsFolder(), PathMarker: params.Cfg.Storage.YoutubeClipsPath()},
-		"artlist": {RootID: params.Cfg.Drive.ArtlistFolder(), PathMarker: params.Cfg.Storage.ArtlistPath()},
 		"stock":   {RootID: params.Cfg.Drive.StockFolder(), PathMarker: params.Cfg.Storage.FullPath("stock")},
 	}
 	reuploadUC := appclips.NewReuploadUseCase(

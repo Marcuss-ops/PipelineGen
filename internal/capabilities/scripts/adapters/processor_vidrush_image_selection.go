@@ -148,7 +148,6 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 	images := dropPerceptualDuplicates(durableVidRushImages(candidates))
 	imagesOnly := plan != nil &&
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) &&
-		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) &&
 		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderYouTube) &&
 		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)
 	if !imagesOnly {
@@ -189,7 +188,6 @@ func selectExactVidRushImages(candidates []scriptpkg.SegmentAssetCandidate, targ
 func prioritizeExactVidRushImageCandidates(candidates []scriptpkg.SegmentAssetCandidate, target int, plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SegmentAssetCandidate {
 	if target <= 0 || plan == nil ||
 		!providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderYouTube) ||
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration) {
 		return candidates

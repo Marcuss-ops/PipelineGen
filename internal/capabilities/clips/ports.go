@@ -187,7 +187,6 @@ type ImageRepositoryPort interface {
 // ClipDriveUploaderPort is the canonical narrow surface of
 // *drive.Uploader used by the clips handler. ListFiles propagates the
 // raw Drive query string (caller-side filtering keeps trashed entries
-// out, same pattern as artlist.DriveFolderManager.ListByQuery).
 //
 // DRIVE-008 CUTOVER (July 2026): UploadFile and UploadFileWithDescription
 // removed — migration to delivery.Publisher.Publish is complete.
@@ -227,7 +226,6 @@ type ClipMetaWriterPort interface {
 type ClipConfigPort interface {
 	ClipsDriveFolder() string
 	RootFolder() string
-	ArtlistDriveFolder() string
 	StockDriveFolder() string
 	MediaPath() string
 	TempPath() string

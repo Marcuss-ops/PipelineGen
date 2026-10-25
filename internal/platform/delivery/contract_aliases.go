@@ -10,8 +10,6 @@ type PublishResult = capdelivery.PublishResult
 
 type Publisher = capdelivery.Publisher
 
-type DocPublisher = capdelivery.DocPublisher
-
 type DestinationSpec = capdelivery.DestinationSpec
 type PublicationReceipt = capdelivery.PublicationReceipt
 
@@ -27,7 +25,6 @@ type Materializer = capdelivery.Materializer
 const (
 	DestinationYouTubeClip        = capdelivery.DestinationYouTubeClip
 	DestinationYouTubeAsset       = capdelivery.DestinationYouTubeAsset
-	DestinationArtlist            = capdelivery.DestinationArtlist
 	DestinationStock              = capdelivery.DestinationStock
 	DestinationImage              = capdelivery.DestinationImage
 	DestinationVoiceover          = capdelivery.DestinationVoiceover
@@ -58,6 +55,13 @@ const (
 )
 
 var ErrDestinationParentMismatch = capdelivery.ErrDestinationParentMismatch
+
+// CanonicalizeDestination folds a retired destination key into the
+// canonical destination that now owns its assets. Delegates to the
+// capability contract so every caller shares one retirement map.
+func CanonicalizeDestination(key DestinationKey) DestinationKey {
+	return capdelivery.CanonicalizeDestination(key)
+}
 
 func DeriveIdempotencyKey(destination DestinationKey, artifactID, contentHash string, sourceVersion int64) string {
 	return capdelivery.DeriveIdempotencyKey(destination, artifactID, contentHash, sourceVersion)

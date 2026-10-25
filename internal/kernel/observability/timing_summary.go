@@ -12,14 +12,13 @@ import (
 // the run's own clock — never a second timer. It is the single shape exposed
 // by timing diagnostics (e.g. /api/jobs/:id/full) so operators can answer
 // per-phase questions (wall, Qdrant, SQLite, plan, LLM, NLP, TTS, Rust,
-// persistence, docs) without recomputing anything by hand.
+// persistence) without recomputing anything by hand.
 //
 // The breakdown fields (attributed / unattributed / bottleneck) are computed
 // from TOP-LEVEL stages only, so nested stages are never double-counted into
 // wall attribution. The stages / operations lists are exhaustive (including
 // nested boundaries) so diagnostics can still surface `persistence.sqlite`
-// and `document.publish` even though they are nested under their processor
-// stage.
+// even though it is nested under its processor stage.
 type TimingSummary struct {
 	// WallMs and ExecutionWallMs are the same attempt-owned wall measurement;
 	// the latter is the canonical name for new consumers.
@@ -33,8 +32,8 @@ type TimingSummary struct {
 	// published final audio and the canonical script row became durable — the
 	// CORE_READY boundary. It is projected here so that a STORED run is
 	// auditable without a log grep: WallMs - CoreReadyMs is the
-	// post-processing tail (Docs + artifact finalization) that the boundary
-	// exists to expose. Zero means the boundary was not reached (no deferred
+	// post-processing tail (artifact publication + finalization) that the
+	// boundary exists to expose. Zero means the boundary was not reached (no deferred
 	// work, or the core contract did not hold).
 	CoreReadyMs int64 `json:"core_ready_ms,omitempty"`
 	// AttributedMs is the sum of top-level (exclusive/sequential) stage

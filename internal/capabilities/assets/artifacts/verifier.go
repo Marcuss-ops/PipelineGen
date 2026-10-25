@@ -10,12 +10,9 @@ package artifacts
 // and is wired in internal/app/lifecycle.go::NewLifecycleFromDeps.
 //
 // The cycle that PR2.7 broke (now historical only) was:
-//   artlist → assets/artifacts/verifier.go → drive → artlist
 // triggered historically by folder_manager.go (in drive pkg) importing
-// artlist for the []artlist.DriveFileRef return type on ListByQuery.
 // F3.14 (June 2026) retired both the wide-port ListByQuery method AND
 // the DriveFileRef type itself (zero remaining direct callers after
-// F2.11's brutal-override consolidation routed artlist callers through
 // drive.Reader / delivery.Publisher / drive.FileLifecycle per godlike/06
 // 'one owner per fact'). The architectural split here remains so future
 // port-widening cannot accidentally re-introduce the App->Infra

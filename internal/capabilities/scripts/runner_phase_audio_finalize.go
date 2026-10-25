@@ -62,21 +62,12 @@ func (r *Runner) runAudioFinalizePhase(ctx context.Context, runID string, exec E
 }
 
 // publishFinalAudioNeeded reports whether this run has any consumer of the
-// Drive-published master audio. The documents catalog renders the final audio
-// link into the published document (DocumentRenderOptions.FinalAudio and the
-// remote assembly payload), and the final_job payload references the asset ID
-// for the remote render. A run with neither consumer — overlay-only: documents
-// disabled and no final job — has no reader for the uploaded m4a, so the
-// measured Drive upload is pure wall loss and must be skipped. The predicate
-// mirrors the documentSkipped gate in runDocumentPhase so "we would have
-// skipped the docs" and "we skip the audio publish" are always the same
-// decision.
+// Drive-published master audio. Only the remote final-job payload references
+// the published asset ID; a non-final run consumes the local certified audio
+// during compile. A run without final_job has no reader for the uploaded m4a,
+// so the measured Drive upload is pure wall loss.
 func publishFinalAudioNeeded(req GenerateRequest, r *Runner) bool {
-	if req.FinalJob {
-		return true
-	}
-	docsEnabled, docsLangs, _ := req.ResolveDocsConfig()
-	return r.docPublisher != nil && docsEnabled && len(docsLangs) > 0
+	return req.FinalJob
 }
 
 func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, result *GenerateResult) bool {

@@ -63,7 +63,6 @@ var (
 	// term + folder + strategy + dry_run + limit, where
 	// each caller picks its own canonical segment set).
 	// The sentinel is per-provider-discovery so callers
-	// outside the artlist package can rely on it for OTHER
 	// run-level dedup keys (e.g. future stock-commodity
 	// "stock-run" or "youtube-run" BuildKey callers).
 	ErrInvalidRunForDedup = errors.New("idempotency: invalid run-level dedup input — provider must be non-empty, canonical map must carry at least one segment, and the canonical map must be JSON-marshalable (godlike/07 — no fake availability; see internal/kernel/idempotency.BuildKey)")

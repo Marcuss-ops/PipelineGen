@@ -85,75 +85,6 @@ func scriptGenerationTranslationPort(root *ComposeRoot) translation.TranslationP
 	return nil
 }
 
-// scriptGenerationDocumentPublisher adapts Drive's idempotent document
-// contract to the durable generation capability. Drive remains the concrete
-// provider; the capability sees only its typed port.
-type scriptGenerationDocumentPublisher struct {
-	client drive.DocClient
-}
-
-func (a *scriptGenerationDocumentPublisher) Preflight(_ context.Context, folderID string) error {
-	if a == nil || a.client == nil {
-		return scriptgen.ErrGoogleDocsUnavailable
-	}
-	if strings.TrimSpace(folderID) == "" {
-		return scriptgen.ErrGoogleDocsUnavailable
-	}
-	return nil
-}
-
-// scriptGenerationDocumentRenderer is the composition-root adapter from the
-// capability renderer port to the canonical capability renderer. The
-// capability runner owns the HTML formatting; this adapter only binds the
-// port so the runner cannot tell the difference between a stub and the
-// canonical renderer.
-type scriptGenerationDocumentRenderer struct{}
-
-func (scriptGenerationDocumentRenderer) DocumentRendererID() string {
-	return scriptgen.CanonicalDocumentRendererID
-}
-
-func (scriptGenerationDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts scriptgen.DocumentRenderOptions) (string, error) {
-	return scriptgen.RenderDocument(model, opts)
-}
-
-func (scriptGenerationDocumentRenderer) RenderDocumentSkeleton(in scriptgen.DocumentSkeletonInput) string {
-	return scriptgen.RenderDocumentSkeleton(in)
-}
-
-func (scriptGenerationDocumentRenderer) InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts scriptgen.DocumentRenderOptions) string {
-	return scriptgen.InjectDocumentLateBound(skeleton, model, opts)
-}
-
-func (a *scriptGenerationDocumentPublisher) UpsertDocument(ctx context.Context, input scriptgen.DocumentInput) (scriptgen.DocumentReference, error) {
-	if a == nil || a.client == nil {
-		return scriptgen.DocumentReference{}, fmt.Errorf("script generation document publisher is not configured")
-	}
-	// Key derivation is owned by the capability (scriptgen), never by this
-	// adapter: both the durable runner and the post-processor derive their
-	// Drive idempotency key through the canonical, deterministic helpers so
-	// a retry/resume/restart can never re-key an existing Google Doc.
-	key := scriptgen.ResolveDocumentIdempotencyKey(input)
-	doc, err := a.client.CreateDocIdempotent(ctx, input.Title, input.Content, input.FolderID, key, input.ForceRefresh)
-	ref := scriptgen.DocumentReference{}
-	if doc != nil {
-		ref = scriptgen.DocumentReference{ID: strings.TrimSpace(doc.ID), Link: strings.TrimSpace(doc.URL)}
-	}
-	if err != nil {
-		// The provider created/updated the doc but failed to tag it with the
-		// idempotency key. Keep the usable reference behind the canonical
-		// typed sentinel instead of losing the link.
-		if ref.ID != "" && ref.Link != "" && key != "" && strings.Contains(strings.ToLower(err.Error()), "idempotency") {
-			return ref, scriptgen.ErrDocumentReferencePreserved
-		}
-		return scriptgen.DocumentReference{}, err
-	}
-	if ref.ID == "" || ref.Link == "" {
-		return scriptgen.DocumentReference{}, fmt.Errorf("drive document publisher returned incomplete reference")
-	}
-	return ref, nil
-}
-
 func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo scriptgen.RunRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptgen.Runner, error) {
 	if cfg == nil || root == nil || runRepo == nil {
 		return nil, fmt.Errorf("script generation runtime requires config, composition root, and run repository")
@@ -180,17 +111,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	if err != nil {
 		return nil, fmt.Errorf("build combined audio renderer: %w", err)
 	}
-	var docPublisher scriptgen.DocumentPublisher
-	if root.Drive != nil && root.Drive.DocClient != nil {
-		docPublisher = &scriptGenerationDocumentPublisher{client: root.Drive.DocClient}
-	}
 	runner := scriptgen.NewRunner(
 		runRepo,
 		root.AI.SceneTextGenerator,
 		&scriptGenerationTranslator{port: scriptGenerationTranslationPort(root)},
 		root.AI.ScriptVoiceoverGenerator,
-		docPublisher,
-		scriptGenerationDocumentRenderer{},
 	)
 	// Bind the run logger BEFORE any other wiring: NewRunner defaults to
 	// zap.NewNop(), so without this call every runner decision (stage
@@ -210,7 +135,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	semanticAnalyzer.SetPassageEmbedder(phraseEmbedder)
 	runner.SetSceneSemanticAnalyzer(semanticAnalyzer)
-	wireSceneIntelligenceAnalyzer(runner, cfg, log)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer
 	// still gates all lookups and map planning on request-level geocoding opt-in.
@@ -329,9 +253,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// without oversubscribing the device.
 		renderEnqueuer.SetItemRenderPool(cfg.Scripts.SeparateItemRenderWorkers)
 		wireOverlayRenderCache(root, renderEnqueuer, log)
-		// Generated semantic overlays have their own canonical root. Docs and
-		// clip renders use separate routing contracts and must not influence
-		// this destination: <Overlay Chronon>/<JobID>/<language>/overlay.
+		// Generated semantic overlays have their own canonical root. Clip
+		// renders use a separate routing contract and must not influence this
+		// destination: <Overlay Chronon>/<JobID>/<language>/overlay.
 		overlayParentFolderID := cfg.Drive.OverlayRenderFolder()
 		if root.Drive != nil && root.Drive.Publisher != nil && strings.TrimSpace(overlayParentFolderID) != "" {
 			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
@@ -385,7 +309,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	} else {
 		log.Warn("script generation SQLite persistence is not wired")
 	}
-	runner.SetScriptDocsFolderID(cfg.Scripts.ScriptDocsFolderID)
 	if root.Jobs != nil && root.Jobs.JobLedger != nil {
 		runner.SetExecutionRecorder(scriptjobs.NewJobRegistryExecutionRecorder(root.Jobs.JobLedger))
 		log.Info("script generation execution recorder wired to Job Registry")
@@ -589,5 +512,3 @@ func wireRenderAttemptRecorder(db *sql.DB, log *zap.Logger) scriptgen.RenderAtte
 }
 
 var _ scriptgen.Translator = (*scriptGenerationTranslator)(nil)
-var _ scriptgen.DocumentPublisher = (*scriptGenerationDocumentPublisher)(nil)
-var _ scriptgen.DocumentPublisherPreflight = (*scriptGenerationDocumentPublisher)(nil)

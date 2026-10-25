@@ -58,8 +58,6 @@ const (
 //
 // Composition root: populate overrides via:
 //
-//	a.SetPerBackendTimeouts(map[string]time.Duration{"artlist": 7*time.Second})
-//
 // before exposing the Aggregator to handlers.
 func PerBackendTimeout(name string, overrides map[string]time.Duration) time.Duration {
 	if d, ok := overrides[name]; ok {

@@ -12,7 +12,7 @@ func TestResolveSegmentTimingBudget_Priority(t *testing.T) {
 		Text:      "one two three four five",
 		Assets: scriptpkg.SegmentAssetSelection{
 			PrimaryVideo: &scriptpkg.SegmentAssetCandidate{DurationMs: 9000},
-			Candidates:   []scriptpkg.SegmentAssetCandidate{{Provider: scriptpkg.VidRushProviderArtlist, DurationMs: 7000}},
+			Candidates:   []scriptpkg.SegmentAssetCandidate{{Provider: scriptpkg.VidRushProviderInternetImages, DurationMs: 7000}},
 		},
 	}
 	budget := ResolveSegmentTimingBudget(segment, nil)
@@ -26,7 +26,7 @@ func TestResolveSegmentTimingBudget_FallsBackToScene(t *testing.T) {
 		SegmentID: "segment-1",
 		Text:      "one two",
 		Assets: scriptpkg.SegmentAssetSelection{
-			Candidates: []scriptpkg.SegmentAssetCandidate{{Provider: scriptpkg.VidRushProviderArtlist, DurationMs: 7000}},
+			Candidates: []scriptpkg.SegmentAssetCandidate{{Provider: scriptpkg.VidRushProviderInternetImages, DurationMs: 7000}},
 		},
 	}
 	budget := ResolveSegmentTimingBudget(segment, nil)

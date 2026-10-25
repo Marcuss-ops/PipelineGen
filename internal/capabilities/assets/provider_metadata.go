@@ -29,7 +29,6 @@ var ValidTagSources = []TagSource{
 }
 
 // ProviderMetadata is the canonical domain representation of the
-// structured metadata returned by an external provider (Artlist,
 // Storyblocks, Pexels, Pixabay, etc.).
 type ProviderMetadata struct {
 	AssetID              string

@@ -438,7 +438,6 @@ func bidSuccessScore(b *MediaBinding) float64 {
 // binding.Provider (canonical column added in migration 170)
 // and returns the real provider tag so deriveLayerProvider can
 // distinguish ProviderLocal / ProviderSemanticIndex / the
-// translucent handoff tags (ProviderArtlist / ProviderYouTube
 // / ProviderPexels). godlike/07 NO-FAKE-AVAILABILITY: a nil
 // binding or empty Provider backfills ProviderLocal so the
 // SceneVisualPlan.Source classifier NEVER sees an empty

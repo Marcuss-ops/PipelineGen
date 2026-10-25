@@ -175,7 +175,6 @@ func PersistGeneratedArtifacts(
 	// to Drive during generation and hydrates the voiceovers row +
 	// media_assets projection + the scene binding DriveLink. All
 	// downstream consumers read THAT publication:
-	//   - Google Docs  → scene.Bindings.Voiceover.Link (TTS link)
 	//   - script.json  → bindings (TTS links)
 	//   - audio compile / render → local paths + final_audio.m4a
 	//   - Qdrant index → audio is REGISTERED-only (skipped)

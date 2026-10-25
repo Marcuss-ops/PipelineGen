@@ -132,7 +132,6 @@ func buildStartupPlan(cfg *config.Config, root *ComposeRoot, jobs *backgroundJob
 	//
 	// Prewarm synchronously, but keep the capability optional at global boot.
 	// Image generation is a per-job provider policy: an unavailable Google
-	// Slides backend must fail the generation job closed, while Artlist and
 	// internet_images remain usable. Making this step globally Required would
 	// incorrectly take unrelated VidRush providers offline.
 	// Falls into the canonical order:

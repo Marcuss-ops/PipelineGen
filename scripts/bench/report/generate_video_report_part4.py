@@ -204,9 +204,9 @@ print("  %-40s %s" % ("peak_rss_bytes max:", f"{total_peak_rss_bytes:,}" if tota
 print("  %-40s %s" % ("disk_read_bytes total:", f"{total_disk_read_bytes:,}" if total_disk_read_bytes else "-"))
 print("  %-40s %s" % ("disk_write_bytes total:", f"{total_disk_write_bytes:,}" if total_disk_write_bytes else "-"))
 print("")
-print("  ── Drive / Google Doc ──")
-print("  Download = Drive reads/materialization; Upload = clip artifacts; Document = Google Doc publication.")
-for label, key in (("drive download wall/work", "download"), ("drive upload wall/work", "upload"), ("google doc publish wall/work", "document_publish")):
+print("  ── Drive ──")
+print("  Download = Drive reads/materialization; Upload = clip artifacts.")
+for label, key in (("drive download wall/work", "download"), ("drive upload wall/work", "upload")):
     wall = sum(j["drive"].get(f"{key}_wall_ms", 0) for j in jobs)
     work = sum(j["drive"].get(f"{key}_work_ms", 0) for j in jobs)
     print("  %-40s %s" % (f"{label}:", f"{wall:,}/{work:,} ms"))

@@ -77,7 +77,6 @@ func TestResolveMapsCanonicalSources(t *testing.T) {
 	assertMeasured(PhaseProbe, 390)
 	assertMeasured(PhaseHash, 280)
 	assertMeasured(PhaseUpload, 3700)
-	assertMeasured(PhaseGoogleDoc, 1241)
 	assertMeasured(PhaseRenderEnqueue, 115)
 
 	tts := byPhase[PhaseEdgeTTS]
@@ -138,14 +137,14 @@ func TestResolveMarksMissingSourcesUnmeasured(t *testing.T) {
 
 func TestResolveIgnoresNonCompletedSteps(t *testing.T) {
 	steps := []scriptgeneration.ExecutionStep{
-		{Name: "DOCUMENT", Status: "FAILED", DurationMS: 999},
-		{Name: "DOCUMENT", Status: "COMPLETED", DurationMS: 1241},
+		{Name: "VELOX_ENQUEUE", Status: "FAILED", DurationMS: 999},
+		{Name: "VELOX_ENQUEUE", Status: "COMPLETED", DurationMS: 115},
 	}
 	got := DefaultPhaseResolver{}.Resolve(kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, steps)
 	for _, m := range got {
-		if m.Phase == PhaseGoogleDoc {
-			if m.DurationMS != 1241 || !m.Measured {
-				t.Errorf("google_doc = %+v, want the COMPLETED step (1241)", m)
+		if m.Phase == PhaseRenderEnqueue {
+			if m.DurationMS != 115 || !m.Measured {
+				t.Errorf("render_enqueue = %+v, want the COMPLETED step (115)", m)
 			}
 		}
 	}

@@ -43,7 +43,7 @@ func (p *readyProbeVoiceover) Generate(_ context.Context, in VoiceoverInput) (Au
 }
 
 func TestSceneTextStreaming_DownstreamStartsBeforeNextSceneReady(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	translator := &readyProbeTranslator{started: make(chan struct{})}
 	voiceover := &readyProbeVoiceover{started: make(chan struct{})}
@@ -90,7 +90,7 @@ func TestSceneTextStreaming_DownstreamStartsBeforeNextSceneReady(t *testing.T) {
 // have stable topology, so they must not be forced through the all-at-once
 // materialization path.
 func TestSceneTextStreaming_ExplicitSegmentsUseProductionPath(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	translator := &readyProbeTranslator{started: make(chan struct{})}
 	voiceover := &readyProbeVoiceover{started: make(chan struct{})}
@@ -186,7 +186,7 @@ func (g *gatedStreamingTextGenerator) GenerateSceneTextStream(ctx context.Contex
 // fan-out starts before the full script exists. After release, all scenes are
 // committed exactly once, in canonical order, and the run completes.
 func TestSceneTextStreaming_EmitsSceneTextReadyBeforeGenerationCompletes(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	runner.textGen = streamer
 	observer := &recordingSceneCommitObserver{}
@@ -238,7 +238,7 @@ func TestSceneTextStreaming_EmitsSceneTextReadyBeforeGenerationCompletes(t *test
 // of the streaming path: an observer error surfaced through the emit callback
 // must abort generation and fail the run (never silently skip a scene commit).
 func TestSceneTextStreaming_EmitErrorFailsRunClosed(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.textGen = newGatedStreamingTextGenerator(defaultTestScenes())
 	runner.SetSceneCommitObserver(&recordingSceneCommitObserver{err: errors.New("scene commit observer failure")})
 
@@ -277,7 +277,7 @@ func (passThroughMediaPreflight) Run(context.Context, GenerateRequest) Preflight
 // present — and the completed run carries the fixed sections around the
 // untouched generated body.
 func TestSceneTextStreaming_FixedSectionsDoNotForceBatch(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	translator := &readyProbeTranslator{started: make(chan struct{})}
 	voiceover := &readyProbeVoiceover{started: make(chan struct{})}

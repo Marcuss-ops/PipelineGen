@@ -32,7 +32,6 @@ func TestBreakdown_TopLevelStagesExcludeNested(t *testing.T) {
 			stageAt("script.postprocess", 82000, 85000),
 			stageAt("persistence", 82010, 82300),
 			stageAt("persistence.sqlite", 82020, 82290),
-			stageAt("document.publish", 83000, 84000),
 			stageAt("audio.pipeline", 85000, 86000),
 		},
 		Operations: []OperationReport{

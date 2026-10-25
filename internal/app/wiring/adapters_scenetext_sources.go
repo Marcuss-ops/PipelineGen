@@ -283,9 +283,9 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		ID:    req.IdempotencyKey,
 		Title: title,
 		// DriveFolderID is the run-scoped artifact root shared by entity-image
-		// materialization and overlay publication. Keep Docs.FolderID separate:
-		// when both are supplied, generated media belongs under the explicit
-		// render/artifact root, while the document stays in its Docs folder.
+		// materialization and overlay publication. Generated media belongs
+		// under this explicit render/artifact root, never under the script
+		// JSON tree.
 		DriveFolderID:     strings.TrimSpace(req.Render.DriveFolderID),
 		Project:           req.Project,
 		Model:             req.Model,
@@ -293,7 +293,6 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		Topic:             topic,
 		Language:          string(req.SourceLanguage),
 		SourceText:        req.Source.SourceText,
-		ArtlistKeywords:   append([]string(nil), req.Source.ArtlistKeywords...),
 		RenderedPrompt:    renderedPrompt,
 		Mode:              scriptpkg.ModeForSource(scriptpkg.SourceType(req.Source.Type)),
 		SaveToDB:          req.SaveToDB,
@@ -325,8 +324,8 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		ForceRefresh:        req.ForceRefresh || req.ScriptParams.ForceRefresh,
 		PromptProfile:       "default-v1",
 		// Postprocessors left empty — the engine generates raw
-		// narrative prose. Downstream phases handle translation,
-		// voiceover, and docs.
+		// narrative prose. Downstream phases handle translation
+		// and voiceover.
 	}
 
 	// Non-text sources require source resolution to populate clip

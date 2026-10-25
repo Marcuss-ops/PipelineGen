@@ -18,14 +18,13 @@ func (p *recordingScriptPersistence) Persist(_ context.Context, input ScriptPers
 }
 
 func TestRunner_SaveToDBPersistsAndExposesScriptID(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	persistence := &recordingScriptPersistence{}
 	runner.SetScriptPersistence(persistence)
 
 	req := defaultTestRequest()
 	req.Audio = "NONE"
 	req.Languages = nil
-	req.Docs = DocumentsConfig{}
 	req.SaveToDB = true
 	req.IdempotencyKey = "persist-script-id"
 	runID := "run-persist-script-id"
@@ -54,23 +53,19 @@ func TestRunner_SaveToDBPersistsAndExposesScriptID(t *testing.T) {
 	}
 }
 
-// TestRunner_SaveToDBAndDocsExposeDurableReferences protects the two
-// operator-visible outputs of POST /api/script/generate. A successful run
-// with save_to_db=true must expose the persisted script ID, and docs.enabled
-// must produce a non-empty Google Docs reference; a run that silently drops
-// either output is not accepted as completed.
-func TestRunner_SaveToDBAndDocsExposeDurableReferences(t *testing.T) {
-	runner, repo, _, _, _, docPub, _ := newTestRunner()
+// TestRunner_SaveToDBPersistsScriptReference verifies a successful run with
+// save_to_db=true exposes the durable script identifier.
+func TestRunner_SaveToDBPersistsScriptReference(t *testing.T) {
+	runner, repo, _, _, _, _ := newTestRunner()
 	persistence := &recordingScriptPersistence{}
 	runner.SetScriptPersistence(persistence)
 
 	req := defaultTestRequest()
 	req.Audio = "NONE"
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.SaveToDB = true
-	req.IdempotencyKey = "persist-script-and-docs"
-	runID := "run-persist-script-and-docs"
+	req.IdempotencyKey = "persist-script-reference"
+	runID := "run-persist-script-reference"
 	if err := repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
 	}); err != nil {
@@ -84,11 +79,5 @@ func TestRunner_SaveToDBAndDocsExposeDurableReferences(t *testing.T) {
 	}
 	if persistence.calls != 1 || final.Result == nil || final.Result.ScriptID <= 0 {
 		t.Fatalf("save_to_db output was not durable: calls=%d result=%+v", persistence.calls, final.Result)
-	}
-	if got, ok := final.Result.Documents[Language("en")]; !ok || got.ID == "" || got.Link == "" {
-		t.Fatalf("docs.enabled output was not durable: documents=%+v", final.Result.Documents)
-	}
-	if len(docPub.records) != 1 {
-		t.Fatalf("document publisher calls=%d, want 1", len(docPub.records))
 	}
 }

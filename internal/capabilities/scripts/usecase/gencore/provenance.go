@@ -12,8 +12,7 @@ import (
 
 // buildProvenance assembles the GenerationProvenance block from the
 // resolved plan, engine output, and mode info. It is called BEFORE
-// postprocessing so the document processor can fill DocID/DocLink after
-// creating or updating the Google Doc.
+// postprocessing.
 func buildProvenance(
 	plan scriptpkg.ResolvedGenerationPlan,
 	engineResult *EngineResult,

@@ -100,7 +100,6 @@ type VerifiedArtifact struct {
 	PathLeafName string `json:"path_leaf_name,omitempty"`
 
 	// Source is the content source identity ("stock", "youtube",
-	// "artlist", "voiceover", "document", etc.) carried through
 	// ArtifactPreparation.Prepare to PublishedArtifact.Source, which
 	// the AssetTxFinalizer writes to media_assets.source.
 	//

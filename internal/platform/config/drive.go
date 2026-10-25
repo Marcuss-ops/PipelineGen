@@ -50,15 +50,12 @@ type DriveConfig struct {
 	// recursive normal-clip indexing job. It is distinct from publish roots.
 	NormalClipsSourceFolder string `yaml:"normal_clips_source_folder" env:"VELOX_DRIVE_NORMAL_CLIPS_SOURCE" default:""`
 
-	// Clips (YouTube/Artlist) root folder
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
 	// YouTubeSubtitlesRootFolder is the dedicated root for subtitle sidecars.
 	// Each source video gets a child folder below this root.
 	YouTubeSubtitlesRootFolder string `yaml:"youtube_subtitles_root_folder" env:"VELOX_DRIVE_YOUTUBE_SUBTITLES_ROOT" default:""`
 	// Voiceover root folder
 	VoiceoverRootFolder string `yaml:"voiceover_root_folder" env:"VELOX_DRIVE_VOICEOVER_ROOT" default:""`
-	// Artlist assets root folder
-	ArtlistRootFolder string `yaml:"artlist_root_folder" env:"VELOX_DRIVE_ARTLIST_ROOT" default:""`
 	// Scripts/docs generation root folder. Generated overlay renders are
 	// kept here for document/script artifacts.
 	ScriptsRootFolder string `yaml:"scripts_root_folder" env:"VELOX_DRIVE_SCRIPTS_ROOT" default:""`
@@ -139,7 +136,6 @@ func (d DriveConfig) YouTubeSubtitlesFolder() string {
 	return d.ResolveFolder(d.YouTubeSubtitlesRootFolder)
 }
 func (d DriveConfig) VoiceoverFolder() string { return d.ResolveFolder(d.VoiceoverRootFolder) }
-func (d DriveConfig) ArtlistFolder() string   { return d.ResolveFolder(d.ArtlistRootFolder) }
 func (d DriveConfig) ScriptsFolder() string   { return d.ResolveFolder(d.ScriptsRootFolder) }
 func (d DriveConfig) OverlayRenderFolder() string {
 	if folder := strings.TrimSpace(d.OverlayRenderRootFolder); folder != "" {

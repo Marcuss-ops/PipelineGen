@@ -25,7 +25,7 @@ func hasCanonicalSourceForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 	return false
 }
 
-func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult, artlist ArtlistClipSearcher, images InternetImageSearcher, youtube scriptports.VidRushAssetProvider) vidRushFanoutPlan {
+func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult, images InternetImageSearcher, youtube scriptports.VidRushAssetProvider) vidRushFanoutPlan {
 	if segment.ExecutionMode.IsFixedMedia() {
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
@@ -36,7 +36,6 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		// boundary; no external provider should be queried for this segment.
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
-	artlistQueries := scriptpkg.QueriesForArtlist(profile, 5)
 	imageQueries := append([]string(nil), segment.Insights.ImageQueries...)
 	// Explicit media-plan searches are the caller's retrieval intent. Apply
 	// them at fanout planning too, so certification and the later materializer
@@ -162,10 +161,8 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	}
 	return vidRushFanoutPlan{
 		segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text,
-		title: plan.Title, artlistIntentHash: segment.Insights.ArtlistIntentHash,
-		artlistQueries: artlistQueries, imageQueries: imageQueries, firstEntity: firstEntity,
+		title: plan.Title, imageQueries: imageQueries, firstEntity: firstEntity,
 		youtubeSources: youtubeSourcesForSegment(plan, segment.SegmentID), perQueryLimit: limit,
-		artlistEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderArtlist) && artlist != nil && len(artlistQueries) > 0,
 		imagesEnabled:  effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderInternetImages) && images != nil && len(imageQueries) > 0,
 		youtubeEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderYouTube) && youtube != nil,
 	}

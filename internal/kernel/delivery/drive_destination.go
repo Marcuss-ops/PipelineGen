@@ -1,7 +1,6 @@
 // Package delivery — canonical Drive destination resolver (PR-CANONICAL-DRIVE-DESTINATION, July 2026).
 //
 // DriveDestinationInput is the unified semantic input that ALL pipelines
-// (YouTube, Stock, Voiceover, Artlist) pass to ResolveDriveDestination
 // instead of independently deriving RootFolderName + PathLeafName +
 // AssetLocationInput fields. The resolver is a pure function (no
 // database, network, or config dependencies) that maps raw pipeline
@@ -49,8 +48,6 @@ import (
 //     RunSubfolder, RunSearchQueries, RunDirectURLs, RunContextTime.
 //
 //   - Voiceover: Project, Language. Clip/Run fields typically empty.
-//
-//   - Artlist: Category, Subject (=search term). Provider = "artlist".
 //
 // godlike/07 NO-FAKE-AVAILABILITY: empty fields are NOT backfilled by
 // the resolver — each field's zero value propagates through so downstream

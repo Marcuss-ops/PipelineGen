@@ -5,13 +5,8 @@
 // availability check must still download.
 //
 // HISTORY (September 2026): IsDirectMediaURL / IsHLSURL previously lived in
-// internal/platform/artlist/downloader (resolver_url_helpers.go) and were the
-// canonical surface for the Artlist download routing. When the Artlist
 // capability was demolished they moved here, next to the generic HTTP/yt-dlp
 // downloaders that actually consume them — the media processor
-// (internal/platform/media/processor) is not an Artlist component and must not
-// depend on one. IsArtlistURL was deliberately NOT carried over: it existed
-// only to route Artlist clips and has no caller once that capability is gone.
 package downloader
 
 import "strings"

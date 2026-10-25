@@ -21,7 +21,6 @@ import (
 // or provider-specific stores.
 type Source interface {
 	// Name returns the canonical source identity (e.g. "local",
-	// "artlist", "youtube", "stock"). Must be unique within a
 	// Finder instance; empty names are rejected at registration.
 	Name() string
 

@@ -63,7 +63,6 @@ var ErrStagedArtifactReferenceMissingFields = errors.New(
 // canonical destination set is bounded by the application-layer
 // delivery.DestinationKey enum (internal/platform/delivery/
 // types.go); the wire layer accepts only the rendered 4-letter keys
-// (drive, doc, image, sound_effect, script, voiceover, artlist, etc.)
 // per the canonical 9-key directory in godlike/06 §SSOT.
 var ErrStagedArtifactReferenceInvalidDestination = errors.New(
 	"remote: StagedArtifactReference.Destination is not in the canonical 9-key directory (drive, doc, image, sound_effect, script, voiceover, artlist, etc.)",

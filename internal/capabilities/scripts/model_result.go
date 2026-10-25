@@ -3,7 +3,6 @@
 package scriptgeneration
 
 import (
-	"context"
 	"math"
 	"strconv"
 	"strings"
@@ -46,17 +45,6 @@ type GenerateResult struct {
 	// Global Summary/BulletPoints above stay untouched for compatibility.
 	SceneHighlights []scriptpkg.SceneHighlight   `json:"scene_highlights,omitempty"`
 	Editorial       *scriptpkg.EditorialManifest `json:"editorial,omitempty"`
-	// SceneIntelligence is an optional validated analysis manifest. Its
-	// signals remain advisory; only separately grounded/timed planner inputs
-	// are rendered.
-	SceneIntelligence *scriptpkg.SceneIntelligenceManifest `json:"scene_intelligence,omitempty"`
-	// SceneIntelligenceProjection is the deterministic, analysis-only view
-	// used to inspect existing per-scene planner eligibility.
-	SceneIntelligenceProjection []SISceneProjection `json:"scene_intelligence_projection,omitempty"`
-	// sceneIntelligenceInputs are validated runner-only source inputs used to
-	// ensure a returned manifest cannot add scenes or borrow another scene's
-	// playback windows.
-	sceneIntelligenceInputs []scriptpkg.SISceneAnalysisInput `json:"-"`
 
 	// Segments is the compatibility projection of the canonical VidRush
 	// enrichment results. Each entry preserves insights.entities for legacy
@@ -196,12 +184,6 @@ type GenerateResult struct {
 	// component maintains a second independently calculated timeline.
 	EditingTimeline *EditingTimelineV1 `json:"editing_timeline,omitempty"`
 
-	// Documents maps each language to the published Google Doc.
-	Documents               map[Language]DocumentReference `json:"documents,omitempty"`
-	DocumentRenderers       map[Language]string            `json:"document_renderers,omitempty"`
-	DocumentSpecSceneSHA256 map[Language]string            `json:"document_specscene_sha256,omitempty"`
-	DocumentSceneCounts     map[Language]int               `json:"document_scene_counts,omitempty"`
-
 	// Title is the output title (mirrors GenerateRequest.Title).
 	Title string `json:"title,omitempty"`
 	// SourceLanguage identifies which overlay/render projections use the
@@ -296,35 +278,6 @@ type PhraseImpactResult = scriptpkg.PhraseImpactResult
 // second divergent definition.
 type PhraseImpactTimings = scriptpkg.PhraseImpactTimings
 
-// PhraseImpactAnalyzer computes the extractive summary for a generated video.
-// Nil keeps a generation run available while explicitly omitting the optional
-// NLP data products.
-type PhraseImpactAnalyzer interface {
-	AnalyzeWithContext(context.Context, string, string, []string, []string) (scriptpkg.PhraseImpactResult, error)
-}
-
-// SceneHighlightAnalyzer is the optional per-scene extension (editorial.v1).
-// The Rust adapter implements it; other analyzers keep the legacy path.
-type SceneHighlightAnalyzer interface {
-	PhraseImpactAnalyzer
-	AnalyzeScenes(context.Context, string, string, []scriptpkg.SceneAnalysisInput) (scriptpkg.PhraseImpactResult, error)
-}
-
-// SemanticBulletCandidateAnalyzer lets the shared semantic pass provide
-// grounded candidate spans while Phrase Impact retains editorial ranking.
-type SemanticBulletCandidateAnalyzer interface {
-	AnalyzeScenesWithSemanticBullets(context.Context, string, string, []scriptpkg.SceneAnalysisInput, []scriptpkg.SemanticBulletSpan) (scriptpkg.PhraseImpactResult, error)
-}
-
-// SISceneRequest is the runner-facing scene payload accepted by the optional
-// Scene Intelligence analyzer. Video windows are required even though this
-// analysis does not place overlays; invalid/unresolved windows are skipped.
-// SceneIntelligenceAnalyzer produces the separately versioned SI manifest.
-// It is optional and independent from the phrase-impact editorial products.
-type SceneIntelligenceAnalyzer interface {
-	AnalyzeBatch(context.Context, []scriptpkg.SISceneAnalysisInput) (*scriptpkg.SceneIntelligenceManifest, error)
-}
-
 // ChartValueCandidate is a numeric label grounded as an exact source span by
 // the VisualNER worker. The scripts layer re-checks Text with the strict chart
 // parser before any value can authorize a chart.
@@ -353,22 +306,6 @@ type BulletCandidate struct {
 func (r *Runner) SetSceneSemanticAnalyzer(analyzer SceneSemanticAnalyzer) {
 	if r != nil {
 		r.sceneSemanticAnalyzer = analyzer
-	}
-}
-
-// SetSceneIntelligenceAnalyzer wires the optional shadow analyzer. Nil leaves
-// SI disabled and does not affect narration or visual planning.
-func (r *Runner) SetSceneIntelligenceAnalyzer(analyzer SceneIntelligenceAnalyzer) {
-	if r != nil {
-		r.sceneIntelligenceAnalyzer = analyzer
-	}
-}
-
-// SetPhraseImpactAnalyzer wires the extractive summary engine. Nil keeps a
-// generation run available while explicitly omitting optional NLP results.
-func (r *Runner) SetPhraseImpactAnalyzer(analyzer PhraseImpactAnalyzer) {
-	if r != nil {
-		r.phraseImpactAnalyzer = analyzer
 	}
 }
 

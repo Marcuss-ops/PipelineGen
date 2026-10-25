@@ -76,7 +76,12 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 		// reale: no full restart from scene 1).
 		var applyMu sync.Mutex
 		var checkpointDue checkpointGate
+		// §7.3 trace: the batch path has no per-scene ready boundary (every
+		// scene becomes ready at once), so ReadyAt stays zero; the queue wait is
+		// the real dispatch→start interval inside the translation pool.
+		enqueuedAt := time.Now().UTC()
 		_, err := concurrent.Map(ctx, work, workers, func(opCtx context.Context, _ int, item translationWork) (struct{}, error) {
+			startedAt := time.Now().UTC()
 			var value string
 			translateErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
 				Stage: "translation", Component: "translator", Operation: "translate", Provider: string(item.lang),
@@ -88,6 +93,9 @@ func (r *Runner) runTranslationPhase(ctx context.Context, runID string, req Gene
 				})
 				return err
 			})
+			recordSceneStage(opCtx, result.Scenes[item.sceneIndex].ID, kernobs.SceneStageTranslation, kernobs.SceneStageTimes{
+				EnqueuedAt: enqueuedAt, StartedAt: startedAt, CompletedAt: time.Now().UTC(),
+			}, string(item.lang), translateErr)
 			if translateErr != nil {
 				return struct{}{}, fmt.Errorf("translate scene %s to %s failed: %w", result.Scenes[item.sceneIndex].ID, item.lang, translateErr)
 			}

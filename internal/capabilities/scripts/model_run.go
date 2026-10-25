@@ -68,22 +68,17 @@ const (
 	StageTranslatingScenes    Stage = "TRANSLATING_SCENES"
 	StageGeneratingVoiceovers Stage = "GENERATING_VOICEOVERS"
 	StageCompilingAudio       Stage = "COMPILING_AUDIO"
-	StagePublishingDocuments  Stage = "PUBLISHING_DOCUMENTS"
-	StageCompleted            Stage = "COMPLETED"
-	StageFailed               Stage = "FAILED"
-	// StageCoreReady is the CORE_READY milestone: the certified render, the
-	// published final audio and the canonical script result are durable, and
-	// only the post-processing legs remain (Google Docs publication and the
-	// artifact/Drive finalization the worker performs after this run returns).
-	//
-	// It is deliberately NOT a member of stageOrder: it is a milestone with no
-	// work of its own, so StageIndex returns -1 for it exactly like the
-	// terminal stages. ResumeFrom maps it explicitly onto the first phase that
-	// still has work (StagePublishingDocuments) instead of restarting the run.
-	//
-	// It is also NOT a terminal state. SUCCEEDED/COMPLETED keeps its existing
-	// meaning — every requested artifact is published — so observing
-	// CORE_READY can never be mistaken for "the job is done".
+	// StagePublishingDocuments is the LEGACY publication stage. Document
+	// publication was removed with Google Docs; the stage value survives for
+	// persisted-run resume compatibility and as the failure stage the remote
+	// final-job/artifact publication path reports.
+	StagePublishingDocuments Stage = "PUBLISHING_DOCUMENTS"
+	StageCompleted           Stage = "COMPLETED"
+	StageFailed              Stage = "FAILED"
+	// StageCoreReady is the LEGACY CORE_READY milestone, kept only so a run
+	// persisted before the Google Docs demolition still resumes at the
+	// post-core publication stage instead of replaying from NORMALIZING.
+	// Nothing writes it any more.
 	StageCoreReady Stage = "CORE_READY"
 )
 
@@ -138,29 +133,19 @@ func (req GenerateRequest) NeedsSemanticEnrichment() bool {
 	return mediadomain.IsActiveMediaPlanMode(req.MediaPlan.Mode)
 }
 
-// ResolveDocsConfig resolves the effective document publishing config
-// from a GenerateRequest, applying backward-compat fallback from the
-// deprecated flat fields (DocsEnabled, DriveFolderID) to the canonical
-// DocumentsConfig struct (Docs).
-//
-// Returns (enabled, languages, folderID):
-//   - enabled: true when Docs.Enabled || DocsEnabled
-//   - languages: Docs.Languages, falling back to top-level Languages
-//   - folderID: Docs.FolderID, falling back to DriveFolderID
-//
-// Once all callers migrate to the Docs struct, this helper can be
-// removed and callers can read req.Docs directly.
-func (req GenerateRequest) ResolveDocsConfig() (enabled bool, languages []Language, folderID string) {
-	enabled = req.Docs.Enabled || req.DocsEnabled
-	languages = req.Docs.Languages
-	if len(languages) == 0 && enabled {
-		languages = req.Languages
-	}
-	folderID = req.Docs.FolderID
-	if folderID == "" {
-		folderID = req.DriveFolderID
-	}
-	return
+// ErrGoogleDocsRetired is the typed sentinel for a generate request that still
+// asks for Google Docs publication. The capability — document rendering, the
+// Google Docs client, the deferred `script.docs_publish` child job and the
+// localization document assembler — was removed completely. Keeping the
+// request fail-closed means a caller never believes a document was produced
+// when it was not (godlike/07 NO-FAKE-AVAILABILITY).
+var ErrGoogleDocsRetired = errors.New("scriptgeneration: Google Docs publication has been retired; omit the docs block or set docs.enabled=false")
+
+// DocsRequested reports whether the request still asks for the retired Google
+// Docs capability through the canonical (docs.enabled) or legacy
+// (docs_enabled) field.
+func (req GenerateRequest) DocsRequested() bool {
+	return req.Docs.Enabled || req.DocsEnabled
 }
 
 // IsTerminal returns true when the stage signals a terminal state.
@@ -172,69 +157,11 @@ func (s Stage) IsTerminal() bool {
 
 // IsCoreCompletable checks whether the CORE half of a run is durable.
 //
-// CORE contract (the part that must hold at the CORE_READY boundary):
-//
-//	scene normalizzate > 0
-//	ogni scena ha testo per ogni lingua richiesta
-//
-// It deliberately says NOTHING about Google Docs. The render, the certified
-// final audio and the script row are already durable by the time this is
-// evaluated — they are produced by the phases that precede the boundary
-// (audioCompile → persist) and are not re-derived here. What this predicate
-// answers is the question the boundary actually asks: "is the canonical
-// scene/text core present, so that the only thing left is post-processing?"
-//
-// NO-FAKE-AVAILABILITY: a caller must never advertise core readiness when
-// this returns false, so a run whose text is incomplete cannot look ready
-// while Docs/Drive are still pending.
-func IsCoreCompletable(result *GenerateResult, wantedLanguages []Language) bool {
-	if result == nil {
-		return false
-	}
-	if len(result.Scenes) == 0 {
-		return false
-	}
-
-	// Every scene must have text for every wanted language.
-	for _, scene := range result.Scenes {
-		for _, lang := range wantedLanguages {
-			if scene.Text[lang] == "" {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-// IsRunCompletable checks whether a run has satisfied all preconditions for
-// transitioning to COMPLETED. It is the CORE contract PLUS every requested
-// document, so the terminal state keeps its existing meaning: a run is only
-// COMPLETED once the post-processing legs have actually produced their
-// artifacts. The split exists so the interim CORE_READY boundary can be
-// asserted honestly (IsCoreCompletable) without weakening COMPLETED.
-//
-// Verdetto contract:
-//
-//	scene normalizzate > 0
-//	ogni scena ha testo per ogni lingua richiesta
-//	documento per ogni lingua richiesta ha id e link
-//	nessuna fase richiesta è PENDING
-func IsRunCompletable(result *GenerateResult, wantedLanguages []Language) bool {
-	if !IsCoreCompletable(result, wantedLanguages) {
-		return false
-	}
-
-	// Every wanted language must have a published document with ID and link.
-	for _, lang := range wantedLanguages {
-		doc, ok := result.Documents[lang]
-		if !ok || doc.ID == "" || doc.Link == "" {
-			return false
-		}
-	}
-
-	return true
-}
+// The retired completion predicates (IsCoreCompletable / IsRunCompletable)
+// were removed with the Google Docs capability. CORE_READY was only ever a
+// milestone for the deferred docs leg; a run now completes after the
+// non-document phases, and COMPLETED keeps its meaning (every requested
+// artifact is persisted).
 
 // ── Retry helpers ───────────────────────────────────────────────────
 

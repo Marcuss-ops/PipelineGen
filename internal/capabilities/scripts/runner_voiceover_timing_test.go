@@ -72,18 +72,15 @@ func TestRunner_ForwardsTimingPolicyToVoiceoverInput(t *testing.T) {
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := &recordingTimingPolicyGenerator{}
-	docPub := newStubDocumentPublisher()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Timing = requiredTiming()
 
 	runID := "run-forwards-timing"
@@ -110,18 +107,15 @@ func TestRunner_RequiredTimingFailureFailsRun(t *testing.T) {
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := &recordingTimingPolicyGenerator{failOnRequired: true}
-	docPub := newStubDocumentPublisher()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Timing = requiredTiming()
 
 	runID := "run-required-timing-fail"
@@ -143,18 +137,15 @@ func TestRunner_BestEffortTimingMissingDoesNotFailRun(t *testing.T) {
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := &recordingTimingPolicyGenerator{}
-	docPub := newStubDocumentPublisher()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	// Timing left nil → canonical defaults (best_effort). The generator
 	// returns audio WITHOUT timing, which must be a legitimate no-op.
 	req.Timing = nil

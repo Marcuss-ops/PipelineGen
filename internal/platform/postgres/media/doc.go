@@ -5,7 +5,6 @@
 // persistence.CanonicalAssetWriter. It mirrors SQLiteMediaCommitter
 // (internal/platform/sqlite/assets/imagesregistry) statement-for-statement
 // so the media-domain cutover (FASE 7 of the staged migration) is a
-// composition-root swap of the same port — producers (YouTube, Artlist,
 // Images, Voiceover, recovery) keep calling the identical
 // persistence.AssetCommitter surface.
 //

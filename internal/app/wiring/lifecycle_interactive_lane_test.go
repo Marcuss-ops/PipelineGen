@@ -64,27 +64,51 @@ func TestGeneralPoolJobTypesExcludesInteractiveFamily(t *testing.T) {
 	if !slices.IsSorted(scoped) {
 		t.Fatal("general pool types must be sorted (deterministic claim list)")
 	}
-	// The batch types that motivated the lane must still be claimed by the
-	// general pool: the lane must STARVE nothing except latency.
-	for _, must := range []string{"asset.text.materialize", "youtube_clip.extract", "system.cleanup", "clip.render"} {
+	// The batch types NO lane owns must still be claimed by the general pool:
+	// a lane must STARVE nothing except latency. (asset.text.materialize and
+	// youtube_clip.extract moved to the feeder lane — see feederJobTypes.)
+	for _, must := range []string{"system.cleanup", "clip.render"} {
 		if !slices.ContainsFunc(scoped, func(s string) bool { return strings.HasSuffix(s, must) }) {
 			t.Fatalf("general pool must still claim batch type %q, got %v", must, scoped)
 		}
 	}
 }
 
+// TestGeneralPoolJobTypesExcludesFeederFamily pins the feeder half of the
+// complement: once the feeder lane exists the general pool must NOT claim
+// youtube_clip.extract / asset.text.materialize — both pools racing for the
+// same jobs would void the starvation guarantee.
+func TestGeneralPoolJobTypesExcludesFeederFamily(t *testing.T) {
+	scoped := generalPoolJobTypes()
+	if len(scoped) == 0 {
+		t.Fatal("generalPoolJobTypes() = empty, want the non-lane complement")
+	}
+	for _, jt := range feederJobTypes() {
+		if slices.Contains(scoped, jt) {
+			t.Fatalf("general pool still claims feeder type %q — the dedicated lane cannot win", jt)
+		}
+	}
+}
+
 // TestInteractiveLaneDisabledRestoresUnfilteredGeneralPool pins the rollback:
-// with the lane disabled the general pool must keep claiming EVERYTHING
-// (unfiltered nil), exactly the pre-lane behaviour.
+// with the lane disabled the family must come BACK to the general complement
+// (claimed by the general pool), exactly the pre-lane behaviour. With both
+// lanes disabled the buildJobRunner gate keeps the historical unfiltered
+// claim (the gate reads the same budgets; the wiring constructor needs a full
+// root, so the pure decision inputs are what this test owns).
 func TestInteractiveLaneDisabledRestoresUnfilteredGeneralPool(t *testing.T) {
 	t.Setenv(EnvInteractiveWorkers, "0")
+	t.Setenv(EnvFeederWorkers, "0")
 	if got := interactiveWorkerBudget(); got != 0 {
 		t.Fatalf("budget = %d, want 0", got)
 	}
-	// The buildJobRunner gate reads the same budget: with 0 it must NOT scope
-	// the general pool. Pin the pure decision inputs (the wiring constructor
-	// needs a full root; the decision logic is what this test owns).
 	if scoped := generalPoolJobTypes(); scoped == nil {
 		t.Fatal("complement helper must still return the list; the DISABLE decision belongs to buildJobRunner's budget gate")
+	} else {
+		for _, jt := range append(interactiveJobTypes(), feederJobTypes()...) {
+			if !slices.Contains(scoped, jt) {
+				t.Fatalf("rolled-back family %q must return to the general complement, got %v", jt, scoped)
+			}
+		}
 	}
 }

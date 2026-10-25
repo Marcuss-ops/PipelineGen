@@ -159,8 +159,12 @@ def failure_cost(con: sqlite3.Connection) -> list[dict]:
 
 
 def step_breakdown(con: sqlite3.Connection) -> list[dict]:
+    # `jobs` (distinct) sits next to `count` (rows) on purpose: one job attempt
+    # is one row, so a retry/deferral storm multiplies rows per job. Reading
+    # rows as "failures" is how 5.730 deferral re-polls became "5.730 failed
+    # executions" in the 2026-10 analysis.
     sql = """
-    SELECT step_name, status, COUNT(*) AS n,
+    SELECT step_name, status, COUNT(*) AS n, COUNT(DISTINCT job_id) AS jobs,
            COALESCE(SUM(duration_ms), 0) AS total_ms,
            COALESCE(AVG(duration_ms), 0) AS avg_ms,
            COALESCE(MAX(duration_ms), 0) AS max_ms
@@ -172,12 +176,85 @@ def step_breakdown(con: sqlite3.Connection) -> list[dict]:
             "step": name,
             "status": status,
             "count": n,
+            "jobs": jobs,
             "total_hours": round(total_ms / 3_600_000.0, 3),
             "avg_s": round(avg_ms / 1000.0, 3),
             "max_s": round(max_ms / 1000.0, 1),
         }
-        for name, status, n, total_ms, avg_ms, max_ms in con.execute(sql)
+        for name, status, n, jobs, total_ms, avg_ms, max_ms in con.execute(sql)
     ]
+
+
+def execution_attempts(con: sqlite3.Connection) -> list[dict]:
+    """worker.execution rows grouped by job_type and status.
+
+    This is the attribution the 2026-10 review could not read: WHICH job type
+    owns the failed attempts, and how many rows each job multiplies into
+    (attempts_per_job_max). A job deferred/re-polled hundreds of times is a
+    churn amplifier, not hundreds of failed jobs.
+    """
+    sql = """
+    SELECT j.type, s.status, COUNT(*) AS rows, COUNT(DISTINCT s.job_id) AS jobs,
+           COALESCE(AVG(s.duration_ms), 0) AS avg_ms,
+           COALESCE(SUM(s.duration_ms), 0) AS total_ms,
+           COALESCE(MAX(per.cnt), 1) AS attempts_per_job_max
+    FROM job_steps s
+    JOIN jobs j ON j.id = s.job_id
+    LEFT JOIN (
+        SELECT job_id, COUNT(*) AS cnt FROM job_steps
+        WHERE step_name = 'worker.execution' GROUP BY job_id
+    ) per ON per.job_id = s.job_id
+    WHERE s.step_name = 'worker.execution'
+    GROUP BY j.type, s.status
+    ORDER BY SUM(s.duration_ms) DESC
+    """
+    return [
+        {
+            "job_type": jtype,
+            "status": status,
+            "rows": rows,
+            "jobs": jobs,
+            "avg_s": round(avg_ms / 1000.0, 2),
+            "total_hours": round(total_ms / 3_600_000.0, 2),
+            "attempts_per_job_max": attempts_max,
+        }
+        for jtype, status, rows, jobs, avg_ms, total_ms, attempts_max in con.execute(sql)
+    ]
+
+
+def step_error_families(con: sqlite3.Connection) -> list[dict]:
+    """Top failure causes per step, bucketed into families.
+
+    error_code alone is "error" for every untyped failure, so the family is
+    derived from the message prefix (the same classification the 2026-10
+    review ran by hand): deferral waits, canceled reads, semantic
+    certification, unattributed (empty), everything else.
+    """
+    sql = """
+    SELECT step_name, status,
+           CASE
+             WHEN error_message LIKE 'job deferred%' THEN 'deferral_wait'
+             WHEN error_message LIKE '%context canceled%' THEN 'context_canceled'
+             WHEN error_message LIKE '%CERTIFIED=false%' THEN 'semantic_certification'
+             WHEN error_message = '' OR error_message IS NULL THEN 'unattributed'
+             ELSE 'other'
+           END AS family,
+           COUNT(*) AS n,
+           SUBSTR(COALESCE(error_message, ''), 1, 120) AS sample
+    FROM job_steps
+    WHERE status IN ('FAILED', 'DEFERRED')
+    GROUP BY step_name, status, family
+    ORDER BY n DESC
+    LIMIT 60
+    """
+    out = []
+    seen: dict = {}
+    for step, status, family, n, sample in con.execute(sql):
+        key = (step, status, family)
+        if key not in seen:
+            seen[key] = True
+            out.append({"step": step, "status": status, "family": family, "count": n, "sample": sample})
+    return out
 
 
 def metric_breakdown(con: sqlite3.Connection) -> list[dict]:
@@ -590,10 +667,13 @@ def build(refactored: Path) -> dict:
         snap["jobs_window"] = {"first": row[0], "last": row[1]}
         snap["job_types"] = job_type_breakdown(con_jobs)
         snap["steps"] = step_breakdown(con_jobs)
+        snap["execution_attempts"] = execution_attempts(con_jobs)
+        snap["step_errors"] = step_error_families(con_jobs)
         snap["metrics"] = metric_breakdown(con_jobs)
         snap["failures"] = failure_cost(con_jobs)
     else:
         snap["job_types"], snap["steps"], snap["metrics"], snap["failures"] = [], [], [], []
+        snap["execution_attempts"], snap["step_errors"] = [], []
 
     snap["durable_registry"] = durable_registry(con_media) if con_media is not None else {}
     if con_obs is not None:

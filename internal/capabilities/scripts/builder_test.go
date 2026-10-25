@@ -843,9 +843,6 @@ func TestBuildGenerateRequest_ConnectsOutputDriveFolderToRender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.DriveFolderID != "drive-root" {
-		t.Fatalf("request drive folder = %q, want drive-root", got.DriveFolderID)
-	}
 	if got.Render.DriveFolderID != "drive-root" {
 		t.Fatalf("render drive folder = %q, want drive-root", got.Render.DriveFolderID)
 	}

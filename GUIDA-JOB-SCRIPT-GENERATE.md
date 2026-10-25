@@ -21,7 +21,7 @@ stock, impostazioni audio/render) in:
    mappe),
 4. l'**audio finale** mixato (voce + BGM con ducking),
 5. opzionalmente il **video finale** renderizzato su worker remoto
-   (`final_job=true`) e i **documenti** pubblicati.
+   (`final_job=true`) e gli artefatti finali pubblicati.
 
 ### Componenti del sistema coinvolti
 
@@ -48,7 +48,7 @@ POST submit (*.generate.json)
        esegue le fasi del §2 con checkpoint dopo ogni fase
   -> CORE_READY                      (milestone: risultato canonico durevole)
   -> remote_final_job (se final_job=true): payload certificato al worker remoto
-  -> document / complete_finalize
+  -> complete_finalize
   -> JobFinalizer: artefatti + manifest  (eventi: job_completed)
   -> post_writer_finalize (dopo il Runner): pubblicazione Drive residua
 ```
@@ -56,7 +56,8 @@ POST submit (*.generate.json)
 **Retry e resume** (`model_run.go`): `MaxRetries = 3` per run, backoff
 esponenziale `RetryDelay` 5 s → 10 s → 20 s … con tetto 120 s.
 `ResumeFrom` riparte dallo stage fallito; se il run è a `CORE_READY` riparte
-direttamente da `PUBLISHING_DOCUMENTS` senza rigenerare voce e overlay. I
+direttamente dallo stadio di pubblicazione post-core (`PUBLISHING_DOCUMENTS`,
+nome legacy) senza rigenerare voce e overlay. I
 fallimenti deterministici non tipizzati **non** vengono più ritentati
 automaticamente (correzione registrata in
 `ops/jobs/garlasco_batch_10_20261019_sequential_v7/CHANGELOG.md`).
@@ -117,9 +118,8 @@ Ordine garantito: `RunnerPhaseSequence()` in
 | 13 | `audio_finalize` / `audio_publish` | hash e upload Drive dell'audio master | `drive.upload` (avg 8,5 s) |
 | 14 | `persistence` (+ `persistence.sqlite`) | persistenza del risultato canonico | `vidrush.acquire/verify/finalize` |
 | 15 | `remote_final_job` | solo `final_job=true`: payload certificato al worker remoto (RenderingGen), attesa del render finale | esterno (115–302 s nei Garlasco; max osservato 5.172 s) |
-| 16 | `document` (+ `publish_pool_drain`) | pubblicazione documenti (child `script.docs_publish`, oppure inline) | `google_docs.publish` |
-| 17 | `complete_finalize` | chiusura del run | — (ms) |
-| 18 | `post_writer_finalize` | DOPO il Runner (worker): finalizzazione artefatti e Drive residui | `finalize.drive_publish` (avg 6,2 s), `artifact_prepare/hash`, `completion_tx` |
+| 16 | `complete_finalize` | chiusura del run | — (ms) |
+| 17 | `post_writer_finalize` | DOPO il Runner (worker): finalizzazione artefatti e Drive residui | `finalize.drive_publish` (avg 6,2 s), `artifact_prepare/hash`, `completion_tx` |
 
 Sotto-passi misurati dentro `voiceover`: `tts`, `publish`, `finalize`,
 `checkpoint` — compaiono come righe `run_stage_observations` separate ma sono
@@ -400,7 +400,6 @@ Per job Garlasco (20 scene, ~21 min di audio), da `audio_metrics` nei risultati:
 | Cold start modello | `ollama.warm` 25 chiamate, media 33,8 s (max 79,8 s) | già eliminato dal keep-alive (B1) |
 | Checkpoint | 10.662 righe, 0,07 h totali, max 74,2 s | quasi gratis; il picco è contesa SQLite |
 | Contesa SQLite / resource sampler | il sampler risorse fallisce `context deadline exceeded` ogni ~14 s | rumore di log + sintomo del single-writer SQLite (TODO §2, J1) |
-| Docs publish | `google_docs.publish` 145 chiamate, 0,26 h; media 6,5 s (max 185,3 s) | leve H2 (append-mode) |
 | Idratazione sorgente | `sqlite.hydrate` 900 chiamate 0,18 h; `qdrant.search` 30 chiamate 2,1 s | trascurabile |
 | Traduzione | **0** nei Garlasco (single-language); con più lingue `translator.translate` ~7,9 h/settimana, media 6,9 s | fan-out 10 già attivo (A2); leva D1 (MT locale) |
 | AAC master | `aac_encode` 55,9–87,5 s per ~21 min di audio (media op 16,3 s) | G1 chunked bloccato dalla QA sample-accurate |

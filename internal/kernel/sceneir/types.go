@@ -43,8 +43,7 @@ type SearchQuery struct {
 	// match the SceneIR.SegmentID the query was planned from. A mismatch is
 	// cross-scene contamination.
 	OwnerSegmentID string `json:"owner_segment_id"`
-	// Provider is the target provider ("artlist", "images", "youtube").
-	Provider string `json:"provider"`
+	Provider       string `json:"provider"`
 	// Query is the provider-facing query string.
 	Query string `json:"query"`
 	// EntityRef is the optional visual entity the query was derived from;
@@ -101,7 +100,6 @@ type SceneIR struct {
 	// Populated by the deterministic VisualNER stage (Rust) after the
 	// SceneIR is compiled; empty until that stage runs.
 	Entities []VisualEntity `json:"entities,omitempty"`
-	// VideoQueries are the video-provider (Artlist/YouTube) retrieval
 	// queries owned by this scene. Populated by the QueryPlanner stage.
 	VideoQueries []SearchQuery `json:"video_queries,omitempty"`
 	// ImageQueries are the image-provider retrieval queries owned by

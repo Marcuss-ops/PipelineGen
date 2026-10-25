@@ -395,20 +395,6 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		// provide MediaSampler before a primary can be bound.
 		updated.Assets.PrimaryVideo = nil
 	}
-	if vidRushArtlistOnlyPlan(plan) && updated.Assets.PrimaryVideo == nil {
-		diagnostics := vidRushArtlistDiagnostics(materialized)
-		if len(diagnostics) == 0 {
-			providers := make(map[string]int)
-			for _, candidate := range discoveredCandidates {
-				providers[candidate.Provider]++
-			}
-			diagnostics = append(diagnostics, fmt.Sprintf("discovered=%d providers=%v; no Artlist candidates reached materialization", len(discoveredCandidates), providers))
-		}
-		return vidRushMaterializedSegment{}, fmt.Errorf(
-			"vidrush materialization: required persisted Artlist primary unavailable for segment %s (%s)",
-			segment.SegmentID, strings.Join(diagnostics, "; "),
-		)
-	}
 	updated.Assets.CandidateSetHash = candidateSetHash(materialized)
 	// Numeric new-upload counter: 0 when the catalog Drive materialization is
 	// reused, 1 per freshly finalized internet_images candidate otherwise.

@@ -107,7 +107,6 @@ type uploadFakeConfig struct{}
 
 func (c *uploadFakeConfig) ClipsDriveFolder() string          { return "clips-root" }
 func (c *uploadFakeConfig) RootFolder() string                { return "root" }
-func (c *uploadFakeConfig) ArtlistDriveFolder() string        { return "artlist-root" }
 func (c *uploadFakeConfig) StockDriveFolder() string          { return "stock-root" }
 func (c *uploadFakeConfig) MediaPath() string                 { return "/tmp/media" }
 func (c *uploadFakeConfig) TempPath() string                  { return "/tmp" }

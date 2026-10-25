@@ -113,7 +113,6 @@ func TestRootForDestination_FallsBackToMediaRoot(t *testing.T) {
 		{delivery.DestinationYouTubeClip, "media-root"},
 		{delivery.DestinationVoiceover, "media-root"},
 		{delivery.DestinationScript, "media-root"},
-		{delivery.DestinationArtlist, "media-root"},
 		{delivery.DestinationSoundEffect, "media-root"},
 		{delivery.DestinationDocument, "media-root"},
 	}
@@ -171,7 +170,6 @@ func TestRootForDestination_PerDestinationSpecificRoot(t *testing.T) {
 		StockRootFolder:        "stock-root",
 		ClipsRootFolder:        "clips-root",
 		VoiceoverRootFolder:    "vo-root",
-		ArtlistRootFolder:      "artlist-root",
 		ScriptsRootFolder:      "scripts-root",
 		ImagesRootFolder:       "images-root",
 		SoundEffectsRootFolder: "sfx-root",
@@ -187,7 +185,6 @@ func TestRootForDestination_PerDestinationSpecificRoot(t *testing.T) {
 		{delivery.DestinationStock, "stock-root"},
 		{delivery.DestinationYouTubeClip, "clips-root"},
 		{delivery.DestinationVoiceover, "vo-root"},
-		{delivery.DestinationArtlist, "artlist-root"},
 		{delivery.DestinationScript, "scripts-root"},
 		{delivery.DestinationImage, "images-root"},
 		{delivery.DestinationSoundEffect, "sfx-root"},

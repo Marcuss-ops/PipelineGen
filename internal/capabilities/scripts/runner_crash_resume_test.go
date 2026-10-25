@@ -80,10 +80,9 @@ func fourSceneText() []Scene {
 // the fan-out must preserve scene-0 and scene-1, so the restart never
 // re-translates them.
 func TestRunner_TranslationCrashResume_ReusesCompletedScenes(t *testing.T) {
-	runner, repo, _, translator, _, _, _ := newTestRunner()
+	runner, repo, _, translator, _, _ := newTestRunner()
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{}
 	req.Languages = []Language{"en", "es"}
 	runner.textGen = newStubTextGenerator(fourSceneText())
 	// Deterministic order: scene-0 → scene-1 → scene-2 → scene-3.
@@ -145,7 +144,7 @@ func TestRunner_TranslationCrashResume_ReusesCompletedScenes(t *testing.T) {
 //	scene-2/en (first attempt)                       → RETRY (fails)
 //	scene-2/es                                       → CONTINUE
 func TestRunner_TTSCrashResume_ReusesCompletedScenes(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	commits := &recordingSceneCommitObserver{}
 	runner.SetSceneCommitObserver(commits)
 	req := defaultTestRequest()

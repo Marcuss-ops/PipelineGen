@@ -144,7 +144,6 @@ func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 // build is now buildClipOpsPorts(clipRepo, jobs) — strict 2-arg per
 // the user spec. The 5 port fields on clipsOpsPorts are the ONLY
 // ones ClipOpsService consumes; every other field on the legacy
-// bundle (Cfg + StockRepo + ArtlistRepo + MetaWriter + ClipIndexer +
 // HashSvc + TreeBuilderSvc) was either dead-weight on the bundle struct
 // or consumed inline at the wire_assets_clips.go::buildClipsBundle
 // call site. The RetiredSurfaceADT section below documents the
@@ -155,7 +154,6 @@ func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 // preserved for surgical-migration tracking):
 //   - clipsAdapterBundle.Cfg → unused on the bundle; clipOpsService
 //     untyped paths construct newClipsCfgAdapter inline.
-//   - clipsAdapterBundle.StockRepo / ArtlistRepo → NEVER USED (dead
 //     per PR-CLIPS-DAPTER-RESOLVER-RETIRE). The per-source discriminator
 //     moved to QUERY-layer filters on the canonical repos.
 //   - clipsAdapterBundle.MetaWriter / ClipIndexer / HashSvc /

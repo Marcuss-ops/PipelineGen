@@ -178,12 +178,6 @@
         },
         "mix_policy": "VOICEOVER_DUCKED_CLIP"
       },
-      "docs": {
-        "enabled": true,
-        "languages": [
-          "pt"
-        ]
-      },
       "media_plan": {
         "mode": "hybrid",
         "provider_policy": {

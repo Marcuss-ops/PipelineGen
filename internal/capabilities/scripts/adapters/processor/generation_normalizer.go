@@ -66,13 +66,6 @@ type NormalizationConfig struct {
 	// per second of resolved clip evidence duration. 0 disables the
 	// SOURCE_TEXT_EXCEEDS_CLIP_EVIDENCE check.
 	WordsPerSecondClipEvidence float64
-
-	// ScriptDocsFolderID is the canonical default Google Drive folder for
-	// script documents (PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). It is the
-	// configured default resolved when a payload omits docs.folder_id.
-	// Resolution uses the single canonical resolver (one owner per fact):
-	// caller override > this default > fail closed when docs.enabled=true.
-	ScriptDocsFolderID string
 }
 
 // NormalizeItem applies the precedence chain to a single
@@ -100,13 +93,12 @@ func NormalizeItem(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset, cf
 
 // applyPublicationDefaults keeps the standard generation contract complete
 // when callers omit optional publication settings. Explicit voiceover disable
-// remains authoritative; DocsSpec.Enabled is a plain bool, so Docs are enabled
-// by default for normalized generation requests.
+// remains authoritative. Google Docs is retired: nothing here may enable it,
+// so an omitted docs block stays disabled.
 func applyPublicationDefaults(item *scriptpkg.GenerationItemV2) {
 	if item == nil {
 		return
 	}
-	item.Docs.Enabled = true
 	if item.Output.VoiceoverEnabled != scriptpkg.ToggleDisabled {
 		item.Output.VoiceoverEnabled = scriptpkg.ToggleEnabled
 		mode := strings.TrimSpace(item.Audio.Mode)
@@ -258,19 +250,6 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		}
 	}
 
-	// Script docs destination — single canonical resolution. The folder ID
-	// follows: explicit docs.folder_id > PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID
-	// (configured default) > fail closed when docs.enabled=true. The
-	// resolver is the ONLY owner of this decision; downstream plan/plan
-	// builders, the document publisher, and handlers never re-derive it.
-	// The normalizer has no error channel, so an enabled request with no
-	// resolvable folder stays empty and is rejected by ValidateItem
-	// (docs enabled but no script docs folder configured).
-	if resolvedFolderID, _ := scriptpkg.ResolveScriptDocsFolderID(
-		item.Docs.Enabled, item.Docs.FolderID, cfg.ScriptDocsFolderID,
-	); resolvedFolderID != "" {
-		item.Docs.FolderID = resolvedFolderID
-	}
 }
 
 // ── Step 3 helpers ───────────────────────────────────────────────

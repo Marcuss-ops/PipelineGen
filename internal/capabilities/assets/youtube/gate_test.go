@@ -14,7 +14,6 @@ import (
 // precedent, catching regressions before they reach the allowlist.
 //
 // Blocco C1-Step 4 followup (June 2026, "stesso pattern di C1-Step 3
-// artlist precedent"): the capability now exposes the canonical
 // `ytsources.Build(deps Dependencies) (api.Descriptor, error)` entrypoint
 // (mirrors Blocco C1-Step 3), so any direct `api.Registry.Register`
 // call inside the package would bypass the composition root's
@@ -26,7 +25,6 @@ var prohibitedPatterns = []gate.Prohibition{
 	// would bypass the canonical ytsources.Build contract.
 	{Name: "no direct api.Registry.Register (Blocco C1-Step 4)", Pattern: "api.Registry.Register"},
 	// Per-area hard-fail rule that mirrors the channels + images +
-	// soundeffect + artlist precedent. Any reference to the
 	// infrastructure path fails the gate so future regressions
 	// surface before they reach the allowlist.
 	{Name: "no infrastructure imports", Pattern: "internal/infrastructure/"},

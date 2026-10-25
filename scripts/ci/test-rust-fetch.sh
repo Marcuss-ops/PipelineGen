@@ -6,7 +6,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FETCH="$ROOT/scripts/ci/rust-fetch.sh"
 ASSETS=(pipelinegen-muscles visualner mediasampler semantic-engine)
-ALIASES=(phrase_impact scene_intelligence)
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -42,18 +41,16 @@ expect_fail() {
     fi
 }
 
-# 1. Happy path: all six names installed, stamp written, aliases are copies.
+# 1. Happy path: every asset installed and the stamp written.
 release="$tmp/release-ok"
 make_release "$release" 72
 bin="$tmp/bin-ok"
 fetch "$release" "$bin" 72
-for name in "${ASSETS[@]}" "${ALIASES[@]}"; do
+for name in "${ASSETS[@]}"; do
     [ -x "$bin/$name" ] || fail "missing executable $name"
 done
 grep -qx 'version=v9.9.9' "$bin/.rust-release" || fail "stamp is missing the version"
 grep -qx 'icu_major=72' "$bin/.rust-release" || fail "stamp is missing the ICU major"
-cmp -s "$bin/pipelinegen-muscles" "$bin/phrase_impact" || fail "phrase_impact is not a copy"
-cmp -s "$bin/pipelinegen-muscles" "$bin/scene_intelligence" || fail "scene_intelligence is not a copy"
 
 # 2. Tampered binary: checksum failure must not install anything.
 release="$tmp/release-badsum"

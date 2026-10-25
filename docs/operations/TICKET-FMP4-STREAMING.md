@@ -1,14 +1,18 @@
 # TICKET-FMP4-STREAMING
 
-**Stato:** IMPLEMENTATO 24/10/2026 (fasi 1–3 + staging store/client); gate
-live residui elencati sotto. Default invariato: il MP4 classico resta il
-default, gli artefatti overlay silenziosi chiedono il frammentato.
+**Stato:** IMPLEMENTATO 24/10/2026 (fasi 1–3 + staging store/client + wiring
+tail-upload); restano i gate live e il deploy elencati sotto. Default
+invariato: il MP4 classico resta il default, gli artefatti overlay silenziosi
+chiedono il frammentato. Questo ticket copre gli overlay, non l'assembly o la
+delivery del master finale (vedi `TICKET-FULL-VIDEO-WORKER`).
 **Origine:** analisi Drive/formati del 24/10/2026: gli artefatti overlay sono
 intermedi "byte finali appena appesi" — il container frammentato toglie
 l'attesa del completamento file (moov backpatch) da hash, upload e receipt, e
 l'upload streaming li manda fuori mentre il mux scrive.
-**Ordine consigliato:** completare i gate live qui sotto, poi abilitare il
-percorso a stream (tail-upload) nel worker.
+**Ordine consigliato:** eseguire i gate live qui sotto e distribuire il
+worker aggiornato; il tail-upload è già cablato per gli overlay frammentati.
+Il master finale resta nel perimetro separato di
+`TICKET-FULL-VIDEO-WORKER`.
 
 ## Principio
 
@@ -141,6 +145,9 @@ canonico entra una volta sola nel master finale Rust `mux_audio_copy`).
 - `assemble_copy` accetta input frammentati via ffprobe/concat come prima;
   i confini di splice devono restare su keyframe (copy-certification
   invariata).
-- L'integrazione tail-upload nel render path è l'ultimo passo mancante per
-  il "sputati fuori senza aspettare il completamento del file"; lo staging
-  lato store/client è già pronto e testato.
+- Il tail-upload è già integrato nel render path degli artefatti overlay
+  frammentati e silenziosi (vedi gate wiring sopra); qui restano la misura
+  live dell'overlap e il deploy del binario aggiornato. Questo contratto
+  riguarda gli overlay intermedi: **non** implementa l'assembly locale né
+  l'upload del master finale, che restano in
+  `TICKET-FULL-VIDEO-WORKER`.

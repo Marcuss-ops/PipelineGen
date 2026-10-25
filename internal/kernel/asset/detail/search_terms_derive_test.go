@@ -232,7 +232,6 @@ func TestDeriveSearchTerms_AbbreviationSurvivesDotComma(t *testing.T) {
 func TestDeriveSearchTerms_SourceFieldDeliberatelyExcluded(t *testing.T) {
 	t.Parallel()
 
-	// Source ("youtube"/"artlist"/"stock"/"image") is a faceted
 	// discriminator and must NOT pollute the content-token column.
 	a := &asset.Asset{Name: "Tokyo Tower", Source: "youtube"}
 	got := DeriveSearchTerms(a)

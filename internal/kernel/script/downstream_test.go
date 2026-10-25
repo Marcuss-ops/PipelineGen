@@ -136,7 +136,7 @@ func TestNewDownstreamRequestImages_KindSubstructPairing(t *testing.T) {
 	i := NewImagesRequirements(4, "realistic")
 	require.NotNil(t, i)
 	env := NewDownstreamRequestImages("item-Y", false, i, OutputDestination{
-		Kind: "google_doc", FolderID: "F2", DocumentTitle: "Doc",
+		Kind: "drive_folder", FolderID: "F2",
 	})
 	require.NotNil(t, env)
 	assert.Equal(t, DownstreamImages, env.Kind,
@@ -175,9 +175,8 @@ func TestDownstreamRequest_JSONRoundTrip(t *testing.T) {
 			},
 		},
 		OutputDest: OutputDestination{
-			Kind:          "drive_folder",
-			FolderID:      "1aBcDeFgHiJkLmNoPq",
-			DocumentTitle: "",
+			Kind:     "drive_folder",
+			FolderID: "1aBcDeFgHiJkLmNoPq",
 		},
 	}
 	data, err := json.Marshal(orig)
@@ -206,9 +205,8 @@ func TestManifestV2_JSONRoundTrip(t *testing.T) {
 			},
 		},
 		OutputDest: OutputDestination{
-			Kind:          "google_doc",
-			FolderID:      "1xYzFolder",
-			DocumentTitle: "Maestri del cinema asiatico — doc",
+			Kind:     "drive_folder",
+			FolderID: "1xYzFolder",
 		},
 	})
 	orig.Items = append(orig.Items, DownstreamRequest{
@@ -253,13 +251,13 @@ func TestAssetRequirements_Omitempty_DropsNilPointers(t *testing.T) {
 		"empty AssetRequirements must marshal to {} (omitempty honour)")
 }
 
-// TestOutputDestination_DocumentTitle_Omitempty: empty DocumentTitle drops from JSON.
-func TestOutputDestination_DocumentTitle_Omitempty(t *testing.T) {
+// TestOutputDestination_Omitempty: an empty FolderID drops from JSON.
+func TestOutputDestination_Omitempty(t *testing.T) {
 	o := OutputDestination{Kind: "drive_folder", FolderID: "F1"}
 	data, err := json.Marshal(o)
 	require.NoError(t, err)
 	assert.Equal(t, `{"kind":"drive_folder","folder_id":"F1"}`, string(data),
-		"empty DocumentTitle must drop from JSON")
+		"the wire shape stays kind + folder_id")
 }
 
 // TestVoiceoverRequirements_Pace_and_StylePreset_Omitempty.

@@ -399,33 +399,6 @@ type TTSSSceneMetric struct {
 	OutputDurationMS int64    `json:"output_duration_ms,omitempty"`
 }
 
-// ── DocumentsConfig ──────────────────────────────────────────────────
-
-// DocumentsConfig is the explicit contract for Google Doc publishing.
-// Per the verdetto, document creation MUST NOT be implicit based on
-// whether drive_output_folder happens to be present — it must be
-// explicitly requested via this config.
-//
-// One document per language is created (e.g. "script_en", "script_es").
-// The identity is deterministic: (generation_run_id + language) drive
-// properties. On retry, UpsertDocument updates the same document.
-type DocumentsConfig struct {
-	// Enabled explicitly requests Google Doc publishing.
-	// When false, no documents are created even if Languages or
-	// FolderID are populated. Default false (opt-in).
-	Enabled bool `json:"enabled"`
-
-	// Languages lists the languages for which a document should be
-	// published. Each language gets its own document (one per language,
-	// NOT one bilingual document). Must be non-empty when Enabled is
-	// true.
-	Languages []Language `json:"languages,omitempty"`
-
-	// FolderID is the target Google Drive folder ID for documents.
-	// When empty, documents are created in the default Drive location.
-	FolderID string `json:"folder_id,omitempty"`
-}
-
 // marshalRenderingGenOverlayPlan converts a PipelineGen OverlayPlan into the
 // RenderingGen wire payload (millisecond item timing), and runtimeFontAssets
 // resolves the canonical font assets the queue job must carry. Both are wire-

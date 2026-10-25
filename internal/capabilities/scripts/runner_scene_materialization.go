@@ -462,34 +462,6 @@ func fixedMediaClipProjection(ids []string, playback scriptpkg.FixedPlaybackPoli
 	return clips, intents, durationUS
 }
 
-func (r *Runner) emitSceneCommits(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scenes []Scene) error {
-	for _, scene := range scenes {
-		if err := r.emitSceneCommit(ctx, runID, req, exec, scene); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// emitSceneCommit publishes the SceneCommitted event for a single stable
-// scene. It is the per-scene emission behind emitSceneCommits and the
-// SceneTextReady(N) boundary used by the streaming path: the commit fires as
-// soon as one scene's text is final, never waiting for the whole script.
-func (r *Runner) emitSceneCommit(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scene Scene) error {
-	observer := r.sceneCommitObserverFor(runID)
-	if observer == nil {
-		return nil
-	}
-	event := NewSceneCommitted(runID, scene, req.SourceLanguage, int64(exec.Attempt))
-	event.SourceText = committedSegmentSourceText(req, scene)
-	event.ExtractEntities = sceneExtractionToggle(req, scene)
-
-	if err := observer.OnSceneCommitted(ctx, event); err != nil {
-		return fmt.Errorf("scene %q commit: %w", scene.ID, err)
-	}
-	return nil
-}
-
 // committedSegmentSourceText resolves the immutable evidence belonging to a
 // committed scene. It intentionally never falls back to the generated
 // narration: a missing segment brief remains visible to the enricher as

@@ -29,25 +29,15 @@ func stockGateSpec() (scriptpkg.SpecSceneOutput, []scriptpkg.StockBindingInput) 
 func stockGateSegments() []scriptpkg.VidRushSegmentResult {
 	return []scriptpkg.VidRushSegmentResult{
 		{SegmentID: "scene-0", SceneID: "scene-0", Position: 0, TextHash: "hash-0",
-			Insights: scriptpkg.SegmentInsights{ArtlistQueries: []string{"clip query"}, ImageQueries: []string{"clip image query"}}},
+			Insights: scriptpkg.SegmentInsights{ImageQueries: []string{"clip image query"}}},
 		{SegmentID: "scene-1", SceneID: "scene-1", Position: 1, TextHash: "hash-1",
-			Insights: scriptpkg.SegmentInsights{ArtlistQueries: []string{"stock query"}, ImageQueries: []string{"stock image query"}}},
+			Insights: scriptpkg.SegmentInsights{ImageQueries: []string{"stock image query"}}},
 	}
 }
 
-// Recorders capture WHICH queries reached each provider, so the tests can
-// prove the stock query never searched while the generated scene keeps its
-// legitimate discovery.
-type stockGateArtlistSearcher struct{ queries []string }
-
-func (s *stockGateArtlistSearcher) SearchClips(_ context.Context, _ string, queries []string) ([]ArtlistClipMatch, error) {
-	s.queries = append(s.queries, queries...)
-	if len(queries) == 0 {
-		return nil, nil
-	}
-	return []ArtlistClipMatch{{Phrase: queries[0], ClipNames: []string{"n"}, ClipDriveLinks: []string{"https://cdn.example/n"}, Remote: true}}, nil
-}
-
+// stockGateImageSearcher records WHICH queries reached the image provider, so
+// the tests can prove the stock query never searched while the generated scene
+// keeps its legitimate discovery.
 type stockGateImageSearcher struct{ queries []string }
 
 func (s *stockGateImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -78,24 +68,13 @@ func TestSceneHasDirectStockBindingMatchesBothSurfaces(t *testing.T) {
 		"projected Bindings.Stock must mark the scene stock-bound")
 }
 
-func TestStockBoundScenesBypassArtlistAndImageSearch(t *testing.T) {
+func TestStockBoundScenesBypassImageSearch(t *testing.T) {
 	spec, bindings := stockGateSpec()
-	artlist := &stockGateArtlistSearcher{}
 	images := &stockGateImageSearcher{}
 	plan := &scriptpkg.ResolvedGenerationPlan{Title: "mixed", MediaPlan: mediadomain.MediaPlanSpec{
-		ProviderPolicy: mediadomain.MediaProviderPolicy{
-			Artlist: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled,
-		},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
 	}}
 	input := ProcessInput{SpecScene: spec, StockBindings: bindings, VidRushSegments: stockGateSegments()}
-
-	artlistResult, err := NewClipSearchProcessor(artlist).Process(context.Background(), plan, input)
-	require.NoError(t, err)
-	require.False(t, containsQuery(artlist.queries, "stock query"),
-		"the stock-bound segment's query must never reach the Artlist searcher (searched: %v)", artlist.queries)
-	require.True(t, containsQuery(artlist.queries, "clip query"),
-		"the generated clip scene keeps its legitimate search")
-	require.Equal(t, "BYPASSED", artlistResult.VidRushSegments[1].Cache.Artlist)
 
 	imageResult, err := NewMediaResolverImageStage(images).Process(context.Background(), plan, input)
 	require.NoError(t, err)

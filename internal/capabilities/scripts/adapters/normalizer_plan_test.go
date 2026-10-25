@@ -92,56 +92,6 @@ func TestNormalizeItemPrecedencePresetBeatsConfig(t *testing.T) {
 	}
 }
 
-// ── Docs folder resolution ─────────────────────────────────────────
-
-func TestNormalizeItemDocsFolderCallerOverrideWins(t *testing.T) {
-	cfg := defaultCfg()
-	cfg.ScriptDocsFolderID = "CONFIG_FOLDER"
-	item := textItem()
-	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}, FolderID: "PAYLOAD_FOLDER"}
-
-	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
-
-	if item.Docs.FolderID != "PAYLOAD_FOLDER" {
-		t.Errorf("caller docs.folder_id must win over the configured default: got %q", item.Docs.FolderID)
-	}
-}
-
-func TestNormalizeItemDefaultsGoogleDocsEnabledWhenOmitted(t *testing.T) {
-	item := textItem()
-	processor.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
-	if !item.Docs.Enabled {
-		t.Fatal("normalized text item without docs config must enable Google Docs")
-	}
-}
-
-func TestNormalizeItemDocsFolderConfiguredDefault(t *testing.T) {
-	cfg := defaultCfg()
-	cfg.ScriptDocsFolderID = "CONFIG_FOLDER"
-	item := textItem()
-	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}}
-
-	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
-
-	if item.Docs.FolderID != "CONFIG_FOLDER" {
-		t.Errorf("configured default must fill an empty docs.folder_id: got %q", item.Docs.FolderID)
-	}
-}
-
-func TestNormalizeItemDocsFolderStaysEmptyWhenUnresolvable(t *testing.T) {
-	cfg := defaultCfg() // no ScriptDocsFolderID configured
-	item := textItem()
-	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}}
-
-	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
-
-	// The normalizer has no error channel; the empty folder is rejected by
-	// ValidateItem (docs enabled but no script docs folder configured).
-	if item.Docs.FolderID != "" {
-		t.Errorf("unresolvable folder must stay empty for validation: got %q", item.Docs.FolderID)
-	}
-}
-
 // TestNormalizeItemPrecedenceConfigBeatsHardDefault pins the
 // parity invariant that the normalizer DOES set a non-empty
 // Language when both caller + config leave it unset. The
@@ -369,10 +319,6 @@ func TestNormalizeItemLegacyVoiceoverRoutingEnablesCapability(t *testing.T) {
 func TestValidateItemValidText(t *testing.T) {
 	item := textItem()
 	cfg := defaultCfg()
-	// Docs are enabled by default since applyPublicationDefaults; a valid
-	// deployment always carries a resolvable script docs folder (fail-closed
-	// otherwise, per routing_context.go).
-	cfg.ScriptDocsFolderID = "TEST_DOCS_FOLDER"
 	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if err := gencore.ValidateItem(item); err != nil {
@@ -383,7 +329,6 @@ func TestValidateItemValidText(t *testing.T) {
 func TestValidateItemValidClips(t *testing.T) {
 	item := clipsItem()
 	cfg := defaultCfg()
-	cfg.ScriptDocsFolderID = "TEST_DOCS_FOLDER"
 	processor.NormalizeItem(&item, scriptpkg.PresetCustom, cfg)
 
 	if err := gencore.ValidateItem(item); err != nil {

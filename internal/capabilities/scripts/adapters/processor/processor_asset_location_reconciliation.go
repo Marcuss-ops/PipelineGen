@@ -3,10 +3,10 @@
 // canonical AssetLocationVerifier before the document is published.
 //
 // The processor runs after clip_bindings and stock_bindings have
-// populated the per-scene bindings and before the document and
-// persistence processors consume them. It ensures:
+// populated the per-scene bindings and before the persistence processor
+// consumes them. It ensures:
 //
-//   - No broken link reaches the Google Doc renderer.
+//   - No broken link reaches a downstream consumer.
 //   - Stale links are replaced with the canonical webViewLink.
 //   - Missing/trashed/inaccessible links are cleared and flagged
 //     as warnings.

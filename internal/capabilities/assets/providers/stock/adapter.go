@@ -11,7 +11,6 @@
 // Search (metadata discovery) and Fetch (binary staging).
 //
 // Layout note (post-Agent-3 cleanup): stock lives at
-// providers/stock/adapter.go, parallel to artlist/adapter.go and
 // youtube/adapter.go. The historical nesting under
 // providers/adapters/<src>/ is removed.
 package stock

@@ -34,7 +34,6 @@ import (
 // text-bearing columns and metadata_json fields, intended to
 // backfill the `media_assets.search_terms` JSON column when callers
 // don't supply one. Today the only ingest path that DOES supply it
-// is the semantic_enricher (Artlist); YouTube / image / stock paths
 // left the column at the schema default '[]', which made LIKE-based
 // search visibility drop after the indexed companion table was
 // added.
@@ -121,7 +120,6 @@ func addNormalized(out []string, seen map[string]struct{}, token string) []strin
 // DeriveSearchTerms returns a normalized keyword slice from an
 // asset.Asset's text fields + metadata_json keys. Safe on nil asset.Asset.
 // Source is NOT derived — it's a faceted discriminator
-// (`youtube`/`artlist`/`stock`/`image`), not content; folding it in
 // would bloat every clip's column with non-semantic noise. Faceted
 // filtering on source lives in SearchClipsAdvanced (search_queries.go
 // in the local Wave C infra package).

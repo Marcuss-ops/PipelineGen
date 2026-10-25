@@ -8,7 +8,6 @@ import (
 
 // prohibitedPatterns is the per-area list for the top-level internal/api/assets/
 // package (handler_searchqueries.go lives here). Subpackages of assets/
-// (artlist, clips, soundeffect, youtube, …) carry their own dedicated
 // gates, so SkipDir prunes them out of this walk.
 //
 // Baseline only (bash Check 19 already enforces no infrastructure imports).

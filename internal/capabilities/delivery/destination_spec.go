@@ -51,7 +51,6 @@ var ErrDestinationParentMismatch = errors.New("delivery: uploaded file parent do
 // consumed by `delivery.Publisher.Publish`). Callers populate the
 // `LocalPath` from the `RenditionSet.LocalPath` (the canonical
 // mezzanine file) and the `Destination` key from the logical
-// destination (e.g. `delivery.DestinationArtlist`,
 // `delivery.DestinationYouTubeClip`).
 //
 // The `FolderID` / `DestinationFolderID` / `ParentFolderID`

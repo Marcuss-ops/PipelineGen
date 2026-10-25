@@ -100,7 +100,7 @@ func writeGenerateSubmitError(c *gin.Context, err error) {
 //     (fresh + replay both per FASE 2 close-out)
 //   - Otherwise                          → default status "PENDING"
 //   - When res.Operation.JobID is empty  → fail-closed 500 ("operations submission returned empty job_id")
-//   - Otherwise                          → 202 with GenerateResponse.async($jobID, $status, "/api/jobs/$jobID/full", "")
+//   - Otherwise                          → 202 with GenerateResponse.async($jobID, $status, "/api/jobs/$jobID/full")
 //
 // godlike/06 SSOT: GenerateResponse (defined in handler_generate_types.go)
 // is the canonical wire shape; this helper owns the production of a successful
@@ -117,7 +117,7 @@ func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult) {
 	}
 
 	resp := GenerateResponse{}
-	resp.async(jobID, status, "/api/jobs/"+jobID+"/full", "")
+	resp.async(jobID, status, "/api/jobs/"+jobID+"/full")
 	c.JSON(http.StatusAccepted, resp)
 }
 
@@ -143,7 +143,7 @@ func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, job
 	}
 
 	resp := GenerateResponse{}
-	resp.asyncWithStage(jobID, resolveJobStatus(res), "/api/jobs/"+jobID+"/full", "", string(run.CurrentStage))
+	resp.asyncWithStage(jobID, resolveJobStatus(res), "/api/jobs/"+jobID+"/full", string(run.CurrentStage))
 	c.JSON(http.StatusAccepted, resp)
 }
 

@@ -152,7 +152,6 @@ type ClipStorePort interface {
 	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B'): CountClips is
 	// DELETED from this port (and from ClipStoreAdapter). It had ZERO call sites
 	// anywhere in the tree — the only live consumer of the capability's count was
-	// the Artlist diagnostics surface, which reads its own port — and it kept a
 	// media_assets read (imagesregistry/clip_list_queries.go) alive on the
 	// operational store for a method nothing called.
 	SearchClipsAdvanced(ctx context.Context, req detail.AdvancedSearchRequest) (*detail.AdvancedSearchResult, error)

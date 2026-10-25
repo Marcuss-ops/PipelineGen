@@ -37,7 +37,7 @@ func (uc *GenerateOneUseCase) SetAudioProcessor(processor mediaexec.AudioProcess
 
 // SetOverlayRenderEnqueuer wires the same RenderingGen/Chronon queue used by
 // the durable runner into the batch child path. Without this boundary a
-// multi-language script could finish Docs/NLP/voiceover successfully while
+// multi-language script could finish NLP/voiceover successfully while
 // never producing its requested overlay artifact.
 func (uc *GenerateOneUseCase) SetOverlayRenderEnqueuer(enqueuer scriptgen.OverlayRenderEnqueuer) {
 	if uc != nil {

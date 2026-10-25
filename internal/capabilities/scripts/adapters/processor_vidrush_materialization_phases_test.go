@@ -31,7 +31,7 @@ func TestMaterializationDependencyPolicyFailsOnlyWhenRequested(t *testing.T) {
 	if err := materializationDependenciesError(plan, input, nil, nil); err != nil {
 		t.Fatalf("unrequested materialization should be a no-op: %v", err)
 	}
-	plan.MediaPlan.ProviderPolicy.Artlist = "enabled"
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
 	if err := materializationDependenciesError(plan, input, nil, nil); err == nil {
 		t.Fatal("requested materialization must fail without dependencies")
 	}

@@ -30,13 +30,12 @@ func clipIdentityGateScene() Scene {
 // report-only mode: a scene↔clip identity mismatch is recorded (metric +
 // warning) but must NOT fail the run, so existing runs are not surprised.
 func TestRunnerClipIdentityGateReportOnlyDoesNotBlock(t *testing.T) {
-	runner, repo, textGen, _, _, _, _ := newTestRunner()
+	runner, repo, textGen, _, _, _ := newTestRunner()
 	textGen.scenes = []Scene{clipIdentityGateScene()}
 
 	req := defaultTestRequest()
 	req.GenerateTimeline = true
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{Enabled: false}
 	// req.EnforceClipIdentity defaults to false → report-only.
 
 	runID := "run-clip-identity-report-001"
@@ -51,13 +50,12 @@ func TestRunnerClipIdentityGateReportOnlyDoesNotBlock(t *testing.T) {
 // fail-closed mode: with EnforceClipIdentity=true the same mismatch blocks the
 // run at the render-payload stage before any payload is built.
 func TestRunnerClipIdentityGateEnforceFailsClosed(t *testing.T) {
-	runner, repo, textGen, _, _, _, _ := newTestRunner()
+	runner, repo, textGen, _, _, _ := newTestRunner()
 	textGen.scenes = []Scene{clipIdentityGateScene()}
 
 	req := defaultTestRequest()
 	req.GenerateTimeline = true
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{Enabled: false}
 	req.EnforceClipIdentity = true
 
 	runID := "run-clip-identity-enforce-001"

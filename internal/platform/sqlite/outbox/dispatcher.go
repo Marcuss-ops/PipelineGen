@@ -48,7 +48,6 @@ type DiscoveryCommitAndIndexCommitter interface {
 // UPSERT + INSERT-IN-OUTBOX pattern AND the canonical DEL +
 // INSERT-IN-OUTBOX pattern.
 //
-// Every ingestion path (catalogsync, YouTube clip registration, Artlist
 // clip processing, stock pipeline, manual upload, transcript updates, …)
 // MUST funnel through Dispatcher.EnqueueAndIndex. Every deletion path
 // MUST funnel through Dispatcher.EnqueueAndDelete.

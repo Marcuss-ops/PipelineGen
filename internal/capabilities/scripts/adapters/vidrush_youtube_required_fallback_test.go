@@ -23,12 +23,6 @@ func (youtubeFailureProvider) Verify(context.Context, scriptports.LocalArtifact)
 	return scriptports.VerifiedArtifact{}, errors.New("not expected")
 }
 
-type fallbackArtlistSearcher struct{}
-
-func (fallbackArtlistSearcher) SearchClips(context.Context, string, []string) ([]ArtlistClipMatch, error) {
-	return []ArtlistClipMatch{{ClipNames: []string{"artlist-fallback"}, ClipDriveLinks: []string{"https://cdn.example/fallback.m3u8"}}}, nil
-}
-
 type fallbackImagesSearcher struct{}
 
 func (fallbackImagesSearcher) SearchImages(context.Context, InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -38,18 +32,20 @@ func (fallbackImagesSearcher) SearchImages(context.Context, InternetImageSearchR
 func fallbackPlan(mode string) *scriptpkg.ResolvedGenerationPlan {
 	return &scriptpkg.ResolvedGenerationPlan{
 		Title: "WWII fallback", Language: "en", Model: "test", PromptVersion: "test", MediaPlan: mediapkg.MediaPlanSpec{
-			ProviderPolicy: mediapkg.MediaProviderPolicy{Artlist: mediapkg.MediaToggleEnabled, YouTube: mediapkg.MediaToggleEnabled},
+			ProviderPolicy: mediapkg.MediaProviderPolicy{YouTube: mediapkg.MediaToggleEnabled},
 			Sources:        []mediapkg.SegmentMediaSource{{SegmentID: "segment-001", Provider: scriptpkg.VidRushProviderYouTube, SourceURL: "https://youtu.be/failing-video", Mode: mediapkg.SegmentMediaSourceMode(mode)}},
 		},
 	}
 }
 
 func fallbackSegment() scriptpkg.VidRushSegmentResult {
-	return scriptpkg.VidRushSegmentResult{SegmentID: "segment-001", Text: "German invasion of Poland", Insights: scriptpkg.SegmentInsights{ArtlistQueries: []string{"historical footage"}}}
+	return scriptpkg.VidRushSegmentResult{SegmentID: "segment-001", Text: "German invasion of Poland", Insights: scriptpkg.SegmentInsights{YouTubeQueries: []string{"historical footage"}}}
 }
 
-func TestYouTubeSuggestedFailureFallsBackToArtlist(t *testing.T) {
-	fanout := NewVidRushProviderFanoutWithYouTube(fallbackArtlistSearcher{}, fallbackImagesSearcher{}, youtubeFailureProvider{})
+// A suggested YouTube failure is best-effort: the fan-out records no candidates
+// but never turns the failed provider into a hard segment failure.
+func TestYouTubeSuggestedFailureDoesNotFailClosed(t *testing.T) {
+	fanout := NewVidRushProviderFanoutWithYouTube(fallbackImagesSearcher{}, youtubeFailureProvider{})
 	got, err := fanout.ResolveProviders(context.Background(), fallbackPlan("suggested"), fallbackSegment())
 	if err != nil {
 		t.Fatal(err)
@@ -57,13 +53,13 @@ func TestYouTubeSuggestedFailureFallsBackToArtlist(t *testing.T) {
 	if got.Assets.PrimaryVideo != nil {
 		t.Fatalf("provider fallback selected a primary: %+v", got.Assets.PrimaryVideo)
 	}
-	if len(got.Assets.Candidates) == 0 || got.Assets.Candidates[0].Provider != scriptpkg.VidRushProviderArtlist {
-		t.Fatalf("discovered candidates = %+v, want Artlist candidate", got.Assets.Candidates)
+	if len(got.Assets.Candidates) != 0 {
+		t.Fatalf("discovered candidates = %+v, want none from a failed YouTube source", got.Assets.Candidates)
 	}
 }
 
 func TestYouTubeRequiredFailureFailsClosed(t *testing.T) {
-	fanout := NewVidRushProviderFanoutWithYouTube(fallbackArtlistSearcher{}, fallbackImagesSearcher{}, youtubeFailureProvider{})
+	fanout := NewVidRushProviderFanoutWithYouTube(fallbackImagesSearcher{}, youtubeFailureProvider{})
 	_, err := fanout.ResolveProviders(context.Background(), fallbackPlan("required"), fallbackSegment())
 	if err == nil {
 		t.Fatal("required YouTube failure must fail closed")

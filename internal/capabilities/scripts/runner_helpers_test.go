@@ -17,14 +17,14 @@
 //     TestRunner_DocsEnabled_PublishesDocuments)
 //   - runner_unit_test.go         — TestDeriveErrorCode + TestBuildDocumentContent + TestContainsAny
 //   - runner_lifecycle_test.go    — IsRunCompletable + ResumeFrom + StageIndex +
-//     StageIsTerminal + RetryDelay + ShouldRetry + ResolveDocsConfig
+//     StageIsTerminal + RetryDelay + ShouldRetry
 //   - runner_service_test.go      — TestServiceStart_Validation +
 //     TestNewService_PanicsOnNilRequiredPorts +
 //     TestNewRunner_PanicsOnNilRepo + TestInMemRepo_GetByJobID
 //
-// godlike/06 SSOT: every stub returns ... نفس productions surface
-// ports (TextGenerator / Translator / VoiceoverGenerator /
-// DocumentPublisher) so the runner cannot tell
+// godlike/06 SSOT: every stub returns the production surface
+// ports (TextGenerator / Translator / VoiceoverGenerator) so the
+// runner cannot tell
 // the difference between a real provider and a stub. Fault
 // injection is parameterized via `err` + `failAfter` fields so
 // each scenario can configure the failure surface independently
@@ -219,41 +219,6 @@ func (v *stubVoiceoverGenerator) capturedInputs() []VoiceoverInput {
 	return append([]VoiceoverInput(nil), v.inputs...)
 }
 
-// stubDocumentPublisher implements DocumentPublisher with fault injection.
-type stubDocumentPublisher struct {
-	mu        sync.Mutex
-	ref       DocumentReference
-	err       error
-	failAfter int
-	callCount int
-	// records tracks the inputs received for assertion
-	records []DocumentInput
-}
-
-func newStubDocumentPublisher() *stubDocumentPublisher {
-	return &stubDocumentPublisher{
-		ref: DocumentReference{
-			ID:   "doc-abc-123",
-			Link: "https://docs.google.com/document/d/abc-123",
-		},
-		failAfter: -1,
-	}
-}
-
-func (p *stubDocumentPublisher) UpsertDocument(ctx context.Context, input DocumentInput) (DocumentReference, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.callCount++
-	p.records = append(p.records, input)
-	if p.failAfter >= 0 && p.callCount > p.failAfter {
-		return DocumentReference{}, p.err
-	}
-	if p.err != nil {
-		return DocumentReference{}, p.err
-	}
-	return p.ref, nil
-}
-
 // stubRenderEnqueuer is a render-enqueue sentinel: audio-only tests assert it
 // is never called (zero video jobs). err/failAfter retain fault injection for
 // the legacy enqueue-path scenarios.
@@ -382,7 +347,6 @@ func defaultTestRequest() GenerateRequest {
 		Languages:       []Language{"en", "es"},
 		Audio:           capabilityaudio.AudioModeChunkedVoiceover,
 		ExtractEntities: scriptpkg.ToggleEnabled,
-		Docs:            DocumentsConfig{Enabled: true, Languages: []Language{"en", "es"}},
 		// Project is the resolved semantic project namespace; voiceover-mode
 		// runs fail closed before TTS when it is empty (ErrProjectRequired).
 		Project: "test-project",
@@ -400,45 +364,16 @@ func defaultTestScenes() []Scene {
 
 // newTestRunner creates a Runner with in-memory repo and stub ports.
 // Each stub can be configured via the returned references.
-func newTestRunner() (*Runner, *inMemRunRepository, *stubTextGenerator, *stubTranslator, *stubVoiceoverGenerator, *stubDocumentPublisher, *stubRenderEnqueuer) {
+func newTestRunner() (*Runner, *inMemRunRepository, *stubTextGenerator, *stubTranslator, *stubVoiceoverGenerator, *stubRenderEnqueuer) {
 	repo := newInMemRunRepository()
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := newStubVoiceoverGenerator()
-	docPub := newStubDocumentPublisher()
 	renderEnq := newStubRenderEnqueuer()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetLogger(zap.NewNop())
-	// The default request enables docs; resolveArtifactRoutingContext fails
-	// closed at run start unless a docs destination is resolvable, so wire the
-	// configured default the same way the app composition root does.
-	runner.SetScriptDocsFolderID("test-docs-folder")
-	return runner, repo, textGen, translator, voiceoverGen, docPub, renderEnq
-}
-
-// canonicalTestDocumentRenderer uses the production renderer directly. The
-// runner tests therefore exercise the same HTML contract as the app wiring.
-type canonicalTestDocumentRenderer struct{}
-
-func (canonicalTestDocumentRenderer) DocumentRendererID() string {
-	return CanonicalDocumentRendererID
-}
-
-func (canonicalTestDocumentRenderer) RenderDocument(model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) (string, error) {
-	// The canonical capability renderer: full audio, canonical timeline,
-	// phrase timings and overlay all project verbatim.
-	return RenderDocument(model, opts)
-}
-
-// The canonical test renderer also implements the early/late split so runner
-// tests exercise the same SceneTextReady skeleton path as the app wiring.
-func (canonicalTestDocumentRenderer) RenderDocumentSkeleton(in DocumentSkeletonInput) string {
-	return RenderDocumentSkeleton(in)
-}
-
-func (canonicalTestDocumentRenderer) InjectDocumentLateBound(skeleton string, model *scriptpkg.ModelScriptOutputV1, opts DocumentRenderOptions) string {
-	return InjectDocumentLateBound(skeleton, model, opts)
+	return runner, repo, textGen, translator, voiceoverGen, renderEnq
 }
 
 // awaitCompletion polls the repo until the run reaches a terminal state

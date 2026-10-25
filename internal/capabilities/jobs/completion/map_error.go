@@ -95,11 +95,8 @@ func MapErrorToHTTP(c *gin.Context, err error) bool {
 		errors.Is(err, remote.ErrArtifactSessionNotFound):
 		// publisher_unavailable kind: covers the ArtifactUploader
 		// port UNCONFIGURED + session-not-found typed sentinels
-		// (canonical godlike/06 owners in domain/remote). The artlist
-		// delivery-publisher port (artlist/ports.go) sentinel for
 		// the same surface lives outside domain/remote; the canonical
 		// reconciliation is deferred to a future PR (forward-pointer:
-		// `ErrPublisherUnavailable` in artlist/ports.go will be
 		// collapsed into `ErrCompletionPublisherUnavailable` via
 		// type-alias during the BACKFILL phase of P1 #15).
 		return mapTo(c, remote.ErrorKindPublisherUnavailable, err, 0)

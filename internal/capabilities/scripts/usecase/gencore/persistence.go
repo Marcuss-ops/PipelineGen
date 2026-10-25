@@ -180,15 +180,6 @@ func buildGenerationResultWithCache(
 			)
 			result.Output.SpecScene = sanitizeSpecSceneOutputForResponse(specScene)
 		}
-		if strings.TrimSpace(postResult.DocID) != "" || strings.TrimSpace(postResult.DocLink) != "" {
-			result.Artifacts.Document = &scriptpkg.DocumentArtifact{
-				DocID: postResult.DocID, DocLink: postResult.DocLink,
-				Renderer:        postResult.DocumentRenderer,
-				SpecSceneSHA256: postResult.DocumentSpecSceneSHA256,
-				SceneCount:      postResult.DocumentSceneCount,
-				Language:        postResult.DocumentLanguage,
-			}
-		}
 		result.Artifacts.Entities = postResult.Entities
 		if postResult.Entities != nil {
 			if raw, err := SerializeEntityResultRoundTrip(postResult.Entities); err == nil {
@@ -308,9 +299,6 @@ func promoteCachedVidRushStates(segments []scriptpkg.VidRushSegmentResult) {
 	for i := range segments {
 		if segments[i].Cache.Extraction != "BYPASSED" {
 			segments[i].Cache.Extraction = "HIT_EXACT"
-		}
-		if segments[i].Cache.Artlist != "BYPASSED" {
-			segments[i].Cache.Artlist = "HIT_EXACT"
 		}
 		if segments[i].Cache.InternetImages != "BYPASSED" {
 			segments[i].Cache.InternetImages = "HIT_EXACT"

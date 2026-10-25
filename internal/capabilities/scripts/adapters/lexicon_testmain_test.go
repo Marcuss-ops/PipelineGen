@@ -9,7 +9,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 )
 
-// The Artlist isolation heuristic filters scene terms with the canonical
 // English stop/function-word set from config/lexicons/**. The test process
 // installs the repository registry, matching the composition root.
 func TestMain(m *testing.M) {

@@ -2,8 +2,8 @@ package wiring
 
 // localization_service.go is the localization composition root: it wires the
 // full fan-out — source resolution, plan building, the bounded render
-// scheduler, Drive upload, and Google Docs assembly — into one service with a
-// single Localize entry point.
+// scheduler, and Drive upload — into one service with a single Localize entry
+// point.
 //
 // Pipeline (per call):
 //
@@ -11,14 +11,14 @@ package wiring
 //	  → SourceResolver.ResolveSource       (verified SHA-256 + duration + fps)
 //	  → SourceInput
 //	  → PlanBuilder.Build                  ([]LocalizedClipPlan, fingerprinted)
-//	  → Service.Localize                   (render → upload → docs)
+//	  → Service.Localize                   (render → upload)
 //	  → LocalizeResult
 //
 // godlike/06 SSOT (one canonical owner per fact): this is the SINGLE wiring
 // of the localization capability. It composes the capability ports with the
 // already-wired concrete adapters (asset registry, text-track store, Drive
-// publisher, Doc client, RenderingGen/Chronon render boundary) — no second path, no direct
-// FFmpeg/ffprobe, no duplicated Drive/docs logic.
+// publisher, RenderingGen/Chronon render boundary) — no second path, no direct
+// FFmpeg/ffprobe, no duplicated Drive logic.
 
 import (
 	"context"
@@ -83,7 +83,6 @@ type LocalizationDeps struct {
 	SubtitleCompiler localization.SubtitleArtifactCompiler
 	Executor         localization.RenderPlanExecutor
 	Uploader         localization.DriveUploader
-	DocPublisher     localization.DocPublisher
 	// RenderReuse is the optional content-addressed reuse cache. Nil means
 	// "always render" (the pre-existing behaviour); it is never required.
 	RenderReuse localization.RenderReuseCache
@@ -112,10 +111,6 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	if err != nil {
 		return nil, fmt.Errorf("localization service: drive publisher: %w", err)
 	}
-	assembler, err := localization.NewDocumentAssembler(deps.DocPublisher)
-	if err != nil {
-		return nil, fmt.Errorf("localization service: document assembler: %w", err)
-	}
 	// Resolve the machine render bound ONCE. The gate width, the per-call clamp
 	// and the Localize warning must read the SAME number: an unset value used to
 	// mean 4 at the gate but 0 in the warning path, so a clamped request could go
@@ -128,7 +123,7 @@ func NewLocalizationService(deps LocalizationDeps, cfg LocalizationConfig) (*Loc
 	if uploadConcurrency < 1 {
 		uploadConcurrency = 4
 	}
-	svc, err := localization.NewServiceWithConcurrency(renderer, drivePublisher, assembler, renderConcurrency, uploadConcurrency)
+	svc, err := localization.NewServiceWithConcurrency(renderer, drivePublisher, renderConcurrency, uploadConcurrency)
 	if err != nil {
 		return nil, fmt.Errorf("localization service: service: %w", err)
 	}
@@ -163,11 +158,6 @@ type LocalizeInput struct {
 	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
 	OnRendered             func(localization.LocalizedClipArtifact) error
-	DocTitle               string
-	DocFolderID            string
-	DocIdempotencyKey      string
-	DocForce               bool
-	SkipDocument           bool
 }
 
 func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*localization.LocalizeResult, error) {
@@ -232,11 +222,6 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		FolderID:               in.FolderID,
 		SubtitleFolderID:       in.SubtitleFolderID,
 		UploadSubtitleArtifact: in.UploadSubtitleArtifact,
-		DocTitle:               in.DocTitle,
-		DocFolderID:            in.DocFolderID,
-		DocIdempotencyKey:      in.DocIdempotencyKey,
-		DocForce:               in.DocForce,
-		SkipDocument:           in.SkipDocument,
 		Plans:                  plans,
 	})
 }
@@ -278,9 +263,6 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	if root.Drive == nil || root.Drive.Publisher == nil {
 		return nil, fmt.Errorf("localization service: Drive publisher is required")
 	}
-	if root.Drive.DocClient == nil {
-		return nil, fmt.Errorf("localization service: Drive Doc client is required")
-	}
 	if root.Repos.TextTrackRepo == nil {
 		return nil, fmt.Errorf("localization service: text-track repository is required")
 	}
@@ -319,7 +301,6 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	executor := localizationadapters.NewRenderPlanExecutor(renderRuntime.RenderingGenExecutor, root.MediaExec.Profile, log)
 
 	uploader := localizationadapters.NewDriveUploader(root.Drive.Publisher)
-	docPublisher := localizationadapters.NewDocPublisher(root.Drive.DocClient)
 
 	svcCfg := LocalizationConfigFromConfig(cfg)
 
@@ -344,7 +325,6 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		SubtitleCompiler: subtitleCompiler,
 		Executor:         executor,
 		Uploader:         uploader,
-		DocPublisher:     docPublisher,
 		RenderReuse:      renderReuse,
 	}, svcCfg)
 	if err != nil {

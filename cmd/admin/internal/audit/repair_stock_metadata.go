@@ -1,5 +1,4 @@
 // cmd/admin/repair_stock_metadata.go — repair metadata of legacy
-// stock/YouTube/Artlist clips WITHOUT re-downloading (plan item #10,
 // August 2026).
 //
 // Pipeline per asset:
@@ -73,7 +72,6 @@ var defaultRepairSources = []string{"stock", "youtube", "artlist"}
 //
 //	--apply               actually write (default: dry-run)
 //	--json                machine-readable output
-//	--source=stock,youtube  restrict to these sources (default: stock,youtube,artlist)
 //	--limit=N             cap rows per phase
 //	--skip-taxonomy       skip the taxonomy repair phase
 //	--skip-search-text    skip the search_text repair phase

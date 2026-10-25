@@ -2,7 +2,6 @@
 //
 // ValidateSHA256 + SHA256IdempotencyKey are the canonical owners of
 // the "derive a stable, idempotent identifier from a SHA-256 digest"
-// fact for the assets domain. All stock/youtube/artlist Build
 // FinalizationRequest paths that previously did `id := prefix + ":" +
 // sha[:16]` now route through SHA256IdempotencyKey (which validates
 // first, slices only after) — retiring the verdict's P0 #3 panic
@@ -110,8 +109,6 @@ func sha256Violation(value string) string {
 // SHA256IdempotencyKey returns the canonical idempotency-key string
 //
 //	"<prefix>:" + sha[:16]   (where sha is the 64-char lowercase hex digest)
-//
-// for stock / youtube / artlist BuildFinalizationRequest paths.
 //
 // SAFETY: this function REJECTS non-canonical inputs (empty,
 // short, non-hex, uppercase) via ValidateSHA256 BEFORE slicing —

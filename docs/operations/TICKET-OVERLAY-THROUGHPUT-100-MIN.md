@@ -1,12 +1,32 @@
 # Ticket: portare la generazione degli overlay a 100/minuto
 
-Stato: **APERTO — baseline 27,2 overlay/min (mediana 3 run) → 37,8/min dopo la 2ª lane di render (2° daemon, v11, +39%); target 100/min non raggiunto. 23/10: profilazione per-item (servizio seriale 2,75 s, di cui ~0,93 s di receipt dentro la reservation) e fix list; poi implementata la variante **Go-only** di fix 1+3 (senza toccare Chronon3d): il decode del receipt è spostato fuori dalla lane nel post pool di RenderingGen e Chronon è richiesto al tier `fast` sotto policy `normal`. Proiezione: servizio lane ~2,0 s/item → ~57–60/min a 2 lane, ~85–90/min a 3 lane. Per chiudere il gate a 2 lane restano le fix Chronon (2/4/5).**
+Stato: **APERTO — target 100 overlay/min NON dimostrato.** Ultimo golden misurato e riportato nel closeout: mediana **74,4/min** (v25–v27; 75, 72 e 76 item validati nelle rispettive finestre); il cambio P4 a writer segmentato ha solo prove locali, nessun throughput live attribuibile. Le proiezioni (incluse ~94/min, ~110/min o stime a 3 lane) non sono risultati. La misura finale va ripetuta sullo stesso payload/mix, con conteggio di artefatti validati e stesso criterio temporale, dopo aver verificato build e topologia effettivamente in esecuzione.
 Priorità: **P1**  
 Ambito: generazione, refactoring e rendering degli overlay nei job video YouTube di PipelineGen / RenderingGen.
 
-## Obiettivo
+> **Stato dei ticket collegati al closeout 25/10/2026:** P1 passa soltanto
+> sul preset statico/backend certificato (0,684×, 720/720 pixel-identici).
+> P2 è PARTIAL: downscale/cache e test locali presenti, ma non esiste misura
+> cross-job residente su 100 item, parità golden o VRAM sul mix completo. P3
+> ha timestamp per-scena e prova locale di overlap generation×translation/TTS,
+> non scheduler speculative né overlap live generate×render ≥50%. P4 ha writer
+> segmentato, receipt e retry isolato verificati localmente; Gate A 0,291 è un
+> proxy live a singolo MP4 e non certifica N-MP4 o throughput. P5 è dietro flag
+> default-off, con A/B fixture locale ma senza A/B golden live o accordo effettivo
+> col worker. Il golden throughput più recente resta 74,4/min prima delle
+> modifiche Chronon correnti: **100/min è ancora aperto**.
 
-Passare dall'attuale velocità riferita di circa **6–7 overlay/minuto** a una capacità sostenibile di **100 overlay/minuto** per i job Cronon, variabile in funzione del numero di overlay richiesti. La metrica deve contare gli overlay effettivamente generati e validati, non quelli soltanto richiesti dal copione o pianificati.
+## Obiettivo e definizione del gate
+
+Obiettivo approvato: capacità sostenibile di **100 overlay/minuto** sul mix golden
+specificato sotto. Il valore iniziale **6–7/minuto** è una stima operativa
+riferita, non una baseline log verificata. La metrica ufficiale conta soltanto
+artefatti distinti effettivamente completati, verificati e con receipt/link
+atteso; item pianificati, submit, retry e output invalidi non contano.
+Riportare separatamente (a) tempo/finestra overlay, (b) throughput totale job,
+(c) conteggi pianificati/renderizzati/validati e (d) mix per classe. Non
+confrontare run con mix o finestra differenti e non chiamare capacità del
+sistema un risultato basato su meno item del golden richiesto.
 
 Il ticket deve identificare e ridurre il tempo speso nelle fasi di generazione, materializzazione, rendering, retry e attesa in coda, mantenendo qualità e correttezza degli overlay.
 
@@ -731,7 +751,7 @@ Sono stati chiusi anche i tagli Go richiesti per il percorso locale e audio:
   il timeline con gli artefatti overlay definitivi.
 - L'Artlist query non viene costruita quando il provider non ha un consumer
   disponibile. `script.json` resta il solo artefatto di delivery della
-  generazione: il final job e il builder Google Doc consumano `script_json`.
+  generazione: il final job consuma `script_json`.
   `scenes.json` era una copia di `script.json` → `output.scenes` e non aveva
   lettori Go, Python o RenderingGen; la persistenza e il relativo upload sono
   stati rimossi. Il test del manifest ora pinna un solo `script_json` anche
@@ -934,15 +954,16 @@ aperto i ticket operativi in `docs/operations/`:
 
 | Ticket | Paradigma | Gate principale |
 | --- | --- | --- |
-| `TICKET-STATIC-OVERLAY-DURATION-INVARIANT.md` (P1) | costo overlay statico O(1) nella durata | card 30 s ≤ 1,2× card 3 s, parità pixel golden |
-| `TICKET-RESIDENT-RENDER-ENGINE.md` (P2) | motore residente (unifica fix 4/5/6) | overhead fisso per-item ≤ 100 ms su 100 item |
-| `TICKET-RENDER-AHEAD-SPECULATIVE.md` (P3) | render-ahead con commit per hash | overlap generate×render ≥ 50% nelle trace per-scena |
-| `TICKET-BATCH-SUPERJOB.md` (P4) | un piano = una sessione render | costo batch-10 ≤ 40% del singolo; servizio ≤ 1,1 s/item |
-| `TICKET-MANIFEST-IDENTITY.md` (P5) | identità per manifest (fine MP4-per-item) | A/B parità pixel/audio prima della demolizione |
+| `TICKET-STATIC-OVERLAY-DURATION-INVARIANT.md` (P1) | riuso di frame per overlay statico | PASS limitato a `IMPORTANT_PHRASE` / `static_text_smoke`, Vulkan/NVENC; estensione ad altri preset aperta |
+| `TICKET-RESIDENT-RENDER-ENGINE.md` (P2) | risorse residenti e sessione encoder cross-job | PARTIAL; ≤100 ms/100 item, parità e VRAM golden NOT RUN |
+| `TICKET-RENDER-AHEAD-SPECULATIVE.md` (P3) | render-ahead con commit per hash | prerequisito trace locale presente; scheduler speculativo e overlap live ≥50% NOT RUN |
+| `TICKET-BATCH-SUPERJOB.md` (P4) | un piano = una sessione encoder, N MP4 distinti | implementazione/test locali PASS; live N-MP4, retry indotto e ≤1,1 s/item NOT RUN; Gate A è proxy single-MP4 |
+| `TICKET-MANIFEST-IDENTITY.md` (P5) | identità per manifest (proposta per ridurre MP4-per-item) | parziale, flag default-off; golden A/B live e negoziazione final worker NOT DONE |
 | `Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md` (B2→B1→B3) | executor depth + overlay persistente + MTSDF single-pass | gate sidecar già nello spec |
 
-Ordine esecutivo: **B2 → P1 → P2 → misura golden live (chiude il gate
-100/min sulle sole 2 lane) → P3 → P4/P5**.
+Ordine di lavoro storico (24/10), non certificazione né garanzia: B2 → P1 →
+P2 → misura golden live → P3 → P4/P5. La misura del golden non ha chiuso
+100/min e l'implementazione locale P4 non la sostituisce.
 
 1. **Un piano = una sessione render** (al posto di un job per item). Ogni item
    paga oggi startup (186 ms) + open/close encoder (259 ms) + decode piano +
@@ -1011,9 +1032,9 @@ Ordine esecutivo: **B2 → P1 → P2 → misura golden live (chiude il gate
    condition sopra).
 5. Retry di errori deterministici invariati → parzialmente chiuso
    (`retry.IsTransient`); resta I2 (retry per-checkpoint).
-6. Publish Google Docs: `docs.enabled` già default OFF — verificare che nessun
-   payload lo riattivi (1,1 h/sett + un giro parent→child→aggregator per
-   nulla).
+6. Publish Google Docs: CHIUSO il 2026-10-25 — l'intera integrazione Google
+   Docs è stata ritirata, quindi il publisher e il relativo costo (1,1 h/sett
+   più il giro parent→child→aggregator) non esistono più.
 7. Publish Drive seriali del voiceover (~5,5 s/item sul wall end-to-end):
    delegare al pool congiunto come fatto per gli overlay (non tocca la finestra
    del gate; serve solo se l'obiettivo diventa il wall del job).
@@ -1096,17 +1117,19 @@ le attribuisce un guadagno non misurato.
 | Nessuna query Artlist quando il provider è disabilitato | **Sì (unit)** | `TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief` asserisce `ArtlistQueries` vuoto |
 | Voiceover per-item local-only (niente upload Drive nel critical path) | **Sì (unit)** | test voiceover/service e jobs PASS; `timing.json` locale è la SSOT, nessun cleanup Drive senza file remoto |
 | Streaming per-scena attivo anche con fixed sections intro/outro (batch gate forcing) | **Sì (unit)** | `TestSceneTextStreaming_FixedSectionsDoNotForceBatch` e `TestSceneTextPathReasonNamesTheBlockingGate` PASS; gate `batch_intro_outro` rimosso, hint/topologia restano per le invarianti dichiarate in «Streaming per-scena con fixed sections» |
-| Gate 100 overlay/min misurato su golden live, 3 run, stessa macchina | **Sì — misurato; target NON raggiunto** | 3 run baseline v22–v24 (mediana 78,9/min) + 3 run post Fix 6 v25–v27 (mediana 74,4/min), stessa macchina, payload immutabile. **Gate NON raggiunto: gap 1,27×.** Vedi «Verifica 24/10/2026 (sessione 3)» |
+| Gate 100 overlay/min misurato su golden live, 3 run, stessa macchina | **Misurato, target NON raggiunto** | v22–v24: mediana 78,9/min; v25–v27 post Fix 6: mediana 74,4/min, con 75/72/76 item validati. È evidenza pre-modifiche Chronon correnti; gap rispetto a 100 = 25,6/min (25,6%). Nessuna run successiva dimostra il target. |
 | Parità pixel/audio su golden decodificato | **No** | Richiede decode dei golden e re-baseline dichiarato; i test unit non sostituiscono il confronto pixel |
-| P1 durata statica O(1) | **Misurato; gate NON raggiunto** | Slope `render_ms` vs durata +372 ms/s sulle card phrase (n=161): proiezione 30 s/3 s = 6,35× contro il gate 1,2×. Implementazione resta lavoro Chronon3d (C++); A/B dedicata con l'implementazione. Vedi «Verifica 24/10/2026 (sessione 3)» |
-| P2 motore residente, P4 batch-superjob | **No** | C++ Chronon3d; ticket dedicati, nessuna implementazione in questo checkout |
-| P5 manifest identity | **Parzialmente — lato Go fatto** | Modello manifest, retry idempotente per voce, percorso manifest+timeline dietro flag `VELOX_SCRIPTS_OVERLAY_MANIFEST_TIMELINE` (default off), harness A/B su fixture reali e contratto scritto con decisione Drive-per-item preservata: vedi «Stato implementazione» in `TICKET-MANIFEST-IDENTITY.md` e `OVERLAY-MANIFEST-CONTRACT.md`. Restano cross-team/operativi: parità A/B Chronon-vs-Chronon su golden live (blocco: il binario in esecuzione è anteriore al working tree; serve deploy esplicito + finestra di misura), rinegoziazione col final worker, demolizione del percorso per-item |
+| P1 durata statica O(1) | **PASS sul preset statico dedicato; non generalizzato** | Run live 25/10: rapporto 0,684×, 720/720 frame identici. La slope storica +372 ms/s su 161 phrase-card descrive il percorso precedente e non invalida il nuovo caso mirato; serve copertura per altri preset se si estende il claim. Vedi `TICKET-STATIC-OVERLAY-DURATION-INVARIANT.md` |
+| P2 motore residente | **PARTIAL** | Building block cache/downscale con test locali; cross-job encoder, gate 100 item, parità golden e VRAM mix completo non provati. Vedi ticket P2. |
+| P4 batch-superjob | **Implementazione locale PASS / live PARTIAL** | Writer/receipt/retry segmentati testati; live Gate A ratio 0,291 produce un solo MP4. Live N-MP4, retry indotto, parità per segmento e soglia ≤1,1 s/item non provati. Vedi ticket P4. |
+| P5 manifest identity | **Parzialmente — checkout locale, produzione default-off** | Modello e retry idempotente con test locali; flag manifest+timeline default-off; contratto preliminare scritto. A/B Chronon-vs-Chronon su golden live e rinegoziazione final worker non eseguite; percorso MP4-per-item resta default. Vedi ticket P5. |
 
 **Conclusione onesta:** i criteri Go raggiungibili sono chiusi e pinned dai
-gate sopra. Il gate 100/min resta **aperto e non misurato** in questa sessione:
-nessuna modifica di questo working tree deve essere presentata come un guadagno
-di throughput finché non viene ricostruita, riavviata e misurata con il
-contratto di misura (§ «Contratto di misura»).
+gate sopra. Il gate 100/min resta **aperto**: il dato golden più recente è
+74,4/min prima degli ultimi cambi Chronon, e in questa sessione non è stato
+rieseguito il golden. Non attribuire throughput ai cambi correnti senza
+ricostruzione, riavvio e misura con il contratto di misura (§ «Contratto di
+misura»).
 
 ---
 
@@ -1163,13 +1186,13 @@ misura live.
 
 Nuovo predicate `publishFinalAudioNeeded(req, r)` in
 `runner_phase_audio_finalize.go` e chiamata nel percorso `audioCompile` in
-`runner_phase_overlay_plan.go`: se la run non ha né final_job né documenti
-attivi (predicate speculare a `documentSkipped` di `runDocumentPhase`),
-la pubblicazione Drive del master audio (~15,5 s di wall misurato in golden)
-viene saltata: nessun consumatore legge l'm4a. Test di pinning aggiunti:
-`runner_phase_audio_publish_gate_test.go` (5 casi: overlay-only skip,
-final-job, docs attivi, docs senza publisher, equivalence table con
-documentSkipped). Gate eseguiti: `go build ./...` PASS, `go vet` PASS,
+`runner_phase_overlay_plan.go`: la pubblicazione Drive del master audio
+(~15,5 s di wall misurato in golden) avviene solo per una run `final_job=true`,
+l'unico consumatore dell'asset pubblicato. Google Docs, il vecchio consumatore
+di un master non-final, è stato ritirato il 2026-10-25: una run overlay-only
+salta l'upload perché nessuno legge l'm4a. Test di pinning:
+`runner_phase_audio_publish_gate_test.go` (final-job pubblica, overlay-only
+salta). Gate eseguiti: `go build ./...` PASS, `go vet` PASS,
 `go test -run 'TestOverlayRender|TestAudio|TestPublishFinalAudio|TestFinalJob'`
 PASS.
 

@@ -20,8 +20,6 @@ import (
 // Every artifact family that BELONGS TO THE RUN lands in its own child folder
 // so a run's clips can never mix with anything else:
 //
-//	<Title>/<Language>/clips   — provider clips the run actually used (youtube, artlist)
-//
 // Entity images (internet_images, image_generation) are deliberately NOT part
 // of the run bundle. They belong to the canonical image library
 //
@@ -171,7 +169,6 @@ func EntityImageDriveLeaf(candidate scriptpkg.SegmentAssetCandidate) string {
 
 // routeClipToGenerationOutput carries the generation destination for a CLIP
 // the run actually used. A source.type=clips job declares its clips by id and
-// the materialization loop resolves them through the youtube/artlist
 // providers; without this projection those clips were finalized only to their
 // own catalog location and never appeared under the run's folder, so an
 // operator could not see which clips a job consumed. Mirrors
@@ -209,12 +206,7 @@ func isEntityImageCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 // folder. Image providers are deliberately excluded so a still can never be
 // published into the clips family, and a clip can never land in images.
 func isGenerationClipCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
-	switch candidate.Provider {
-	case scriptpkg.VidRushProviderYouTube, scriptpkg.VidRushProviderArtlist:
-		return true
-	default:
-		return false
-	}
+	return candidate.Provider == scriptpkg.VidRushProviderYouTube
 }
 
 // selectGroupSecondaryImages re-selects the scene's secondary images through
@@ -270,7 +262,7 @@ func (p *VidRushMaterializationProcessor) selectGroupSecondaryImages(ctx context
 func (p *VidRushMaterializationProcessor) selectPrimaryWithMediaSampler(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate, profile scriptpkg.SegmentSemanticProfile) *scriptpkg.SegmentAssetCandidate {
 	eligible := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		if (candidate.Provider == scriptpkg.VidRushProviderArtlist || candidate.Provider == scriptpkg.VidRushProviderYouTube) && readyVidRushCandidate(candidate) {
+		if candidate.Provider == scriptpkg.VidRushProviderYouTube && readyVidRushCandidate(candidate) {
 			eligible = append(eligible, candidate)
 		}
 	}
@@ -293,8 +285,7 @@ func (p *VidRushMaterializationProcessor) selectPrimaryWithMediaSampler(ctx cont
 }
 
 func vidRushMaterializationRequested(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {
-	if plan != nil && (providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
+	if plan != nil && (providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)) {
 		return true
 	}
@@ -320,7 +311,6 @@ func requireVidRushEnabledProviders(plan *scriptpkg.ResolvedGenerationPlan, regi
 		name    string
 		enabled bool
 	}{
-		{name: scriptpkg.VidRushProviderArtlist, enabled: plan.MediaPlan.ProviderPolicy.Artlist.AsBool()},
 		{name: scriptpkg.VidRushProviderInternetImages, enabled: plan.MediaPlan.ProviderPolicy.InternetImages.AsBool()},
 		{name: scriptpkg.VidRushProviderImageGeneration, enabled: plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()},
 		{name: scriptpkg.VidRushProviderYouTube, enabled: plan.MediaPlan.ProviderPolicy.YouTube.AsBool()},

@@ -14,7 +14,6 @@ import (
 // Enabled() bakes the config check into the module at construction time so
 // the API layer never imports config.Config.
 type Module interface {
-	// Name returns the unique name of the module (e.g., "artlist", "clips")
 	Name() string
 
 	// Enabled returns true when the module should have its routes registered.

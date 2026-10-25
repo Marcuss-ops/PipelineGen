@@ -50,7 +50,7 @@ func (c *VidRushIncrementalCoordinator) searchProviders(ctx context.Context, res
 	defer c.release(c.providerSem)
 	var resolved scriptpkg.VidRushSegmentResult
 	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-		Stage: StageSceneAnalysis, Component: kernobs.ComponentArtlist, Operation: kernobs.OperationResolve,
+		Stage: StageSceneAnalysis, Component: kernobs.ComponentProviderResolver, Operation: kernobs.OperationResolve,
 	}, func(opCtx context.Context) error {
 		var resolveErr error
 		resolved, resolveErr = c.resolver.ResolveProviders(opCtx, c.plan, result)

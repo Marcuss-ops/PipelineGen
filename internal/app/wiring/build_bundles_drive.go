@@ -91,28 +91,6 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 
 	styleRegistry, _ := imagestyles.NewStyleRegistry("config/generation_styles.yaml")
 
-	docClient, err := drive.NewDocClient(ctx, cfg.GetCredentialsPath(), cfg.GetTokenPath())
-	if err != nil {
-		log.Warn("Docs client not initialized", zap.Error(err))
-	}
-
-	// P1-6 (July 2026): derive the canonical delivery.DocPublisher port
-	// from the concrete DocClient. Go cannot implicitly convert between
-	// two interface types with identical method-sets, so we type-assert.
-	// The assertion is safe because NewDocClient always returns
-	// *DocClientImpl, and the compile-time assertion at
-	// internal/platform/drive/doc_publisher_assert.go locks the
-	// conformance at build time. nil-safe: if docClient is nil (Drive
-	// not configured), DocPublisher stays nil.
-	var docPublisher delivery.DocPublisher
-	if docClient != nil {
-		var ok bool
-		docPublisher, ok = docClient.(delivery.DocPublisher)
-		if !ok {
-			return nil, nil, fmt.Errorf("compose drive: DocClient does not satisfy delivery.DocPublisher (P1-6 migration incomplete)")
-		}
-	}
-
 	driveClient, err := drive.NewDriveServiceFromFiles(ctx, cfg)
 	if err != nil {
 		log.Warn("Google Drive client not initialized", zap.Error(err))
@@ -272,7 +250,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 		// *gdrive.Service for the start-time FolderManager probe — that
 		// function is INTERNAL to the composition root and does NOT
 		// surface the raw SDK via the bundle). The 4 Pattern 0 ports
-		// above (Admin / Reader / DocClient / Lifecycle) are the ONLY
+		// above (Admin / Reader / Lifecycle) are the ONLY
 		// canonical Drive surface on the bundle per godlike/06 SSOT
 		// (one owner per fact). Deprecation record:
 		// architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
@@ -281,8 +259,6 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 		DestResolver:  destResolver,
 		StyleRegistry: styleRegistry,
 		Publisher:     publisher,
-		DocClient:     docClient,
-		DocPublisher:  docPublisher,
 		Lifecycle:     lifecycle,
 	}, startClosure, nil
 }
@@ -449,7 +425,7 @@ func startDriveBackgroundFolders(
 		cfg.Storage.DataDir, cfg.Storage.VoiceoversPath(), cfg.Storage.AssetsPath(),
 		cfg.Storage.DownloadsPath(), cfg.Storage.BackupsPath(), cfg.Storage.TempPath(),
 		cfg.Storage.AnimationsPath(), cfg.Storage.YoutubeClipsPath(),
-		cfg.Storage.ArtlistPath(), cfg.Storage.ImagesPath(),
+		cfg.Storage.ImagesPath(),
 	} {
 		if dir == "" {
 			continue

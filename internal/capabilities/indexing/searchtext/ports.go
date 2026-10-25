@@ -37,7 +37,6 @@ type SearchTextInput struct {
 	// AssetID is the canonical media_assets.id. Used for error messages.
 	AssetID string
 
-	// Source discriminates the strategy: "youtube", "artlist", "voiceover",
 	// "image", "generated_image". The registry dispatches on this field.
 	Source string
 
@@ -51,7 +50,6 @@ type SearchTextInput struct {
 	Title string
 
 	// Description is a longer prose description. Sources: metadata_json.description,
-	// metadata_json.caption, or clip summary. Used by YouTube, Artlist, Image.
 	Description string
 
 	// Transcript is the Whisper-derived transcript text. Used by YouTube,
@@ -69,7 +67,6 @@ type SearchTextInput struct {
 	// Tags are the canonical tag list (media_assets.tags). Used by every strategy.
 	Tags []string
 
-	// Category is the asset category (media_assets.category). Used by Artlist, Image.
 	Category string
 
 	// Language is the BCP-47 language tag. Used by Voiceover.

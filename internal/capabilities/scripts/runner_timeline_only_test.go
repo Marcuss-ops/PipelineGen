@@ -44,13 +44,12 @@ func driveOnlyClipScenes() []Scene {
 // Path and SHA-256), never produces a video render, never enqueues a render
 // job, and never generates voiceovers (audio NONE gate).
 func TestRunner_GenerateTimeline_DriveOnlyClipsDoesNotRequireLocalBinary(t *testing.T) {
-	runner, repo, textGen, _, voiceoverGen, _, renderEnq := newTestRunner()
+	runner, repo, textGen, _, voiceoverGen, renderEnq := newTestRunner()
 	textGen.scenes = driveOnlyClipScenes()
 
 	req := defaultTestRequest()
 	req.GenerateTimeline = true
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{Enabled: false}
 
 	runID := "run-timeline-driveonly-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -75,10 +74,9 @@ func TestRunner_GenerateTimeline_DriveOnlyClipsDoesNotRequireLocalBinary(t *test
 // voiceover stage entirely — zero TTS calls, zero staged/published
 // voiceover artifacts — while the rest of the pipeline still completes.
 func TestRunner_AudioModeNone_SkipsVoiceoverPhase(t *testing.T) {
-	runner, repo, _, _, voiceoverGen, _, _ := newTestRunner()
+	runner, repo, _, _, voiceoverGen, _ := newTestRunner()
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{Enabled: false}
 
 	runID := "run-none-vo-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -100,9 +98,8 @@ func TestRunner_AudioModeNone_SkipsVoiceoverPhase(t *testing.T) {
 // the gate: CHUNKED_VOICEOVER (the default test request) still generates
 // per-scene voiceovers.
 func TestRunner_ChunkedVoiceover_GeneratesVoiceovers(t *testing.T) {
-	runner, repo, _, _, voiceoverGen, _, _ := newTestRunner()
+	runner, repo, _, _, voiceoverGen, _ := newTestRunner()
 	req := defaultTestRequest()
-	req.Docs = DocumentsConfig{Enabled: false}
 
 	runID := "run-chunked-vo-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -124,11 +121,10 @@ func TestRunner_ChunkedVoiceover_GeneratesVoiceovers(t *testing.T) {
 // requested and audio is NONE, the audio compile phase stays skipped and no
 // canonical timeline is produced.
 func TestRunner_GenerateTimelineFalse_SkipsTimeline(t *testing.T) {
-	runner, repo, _, _, _, _, renderEnq := newTestRunner()
+	runner, repo, _, _, _, renderEnq := newTestRunner()
 	req := defaultTestRequest()
 	req.GenerateTimeline = false
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{Enabled: false}
 
 	runID := "run-notimeline-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{

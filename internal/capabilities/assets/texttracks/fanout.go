@@ -3,7 +3,6 @@
 // success seam.
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026): the
-// TextTrackMaterializer package is shared by YouTube / Artlist /
 // Stock / Script / Video pipelines. Before this helper, the
 // package's job handler was registered at composition time but
 // no pipeline actively emitted `asset.text.materialize` jobs.

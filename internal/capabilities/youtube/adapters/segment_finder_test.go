@@ -102,7 +102,6 @@ func TestBuildSubtitleArgs_DelegatesToBaseArgs(t *testing.T) {
 // TestBuildSubtitleArgs_PublicVideoSemantics verifies the useCookies=false
 // contract: the segment finder operates on PUBLIC videos for clip
 // segmentation, so it MUST NOT inject --cookies (which would slow down
-// the request and may trigger Artlist-style auth flows on public videos).
 //
 // This is the regression guard for the godlike/07 minimum-blast-radius
 // decision: useCookies is hardcoded to false because the segment finder

@@ -11,7 +11,6 @@
 //     ScriptEntityImage
 //   - flow_helpers_script.go    — script: ScriptDriveFolderSuggestion,
 //     EntityScriptExtractor
-//   - flow_helpers_voiceover.go — voiceover: ScriptArtlistClipSuggestion
 package usecase
 
 // ── Local type stubs for removed packages ───────────────────────────────────

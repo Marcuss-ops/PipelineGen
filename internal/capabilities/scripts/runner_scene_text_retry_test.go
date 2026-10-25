@@ -39,7 +39,7 @@ func retryTestScenes() []Scene {
 }
 
 func TestGenerateSceneTextRetriesTransientOnce(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	gen := &flakyBatchGenerator{
 		failFirst: &retry.TransientInfrastructureError{Err: errors.New("ollama: connection reset")},
 		scenes:    retryTestScenes(),
@@ -61,7 +61,7 @@ func TestGenerateSceneTextRetriesTransientOnce(t *testing.T) {
 }
 
 func TestGenerateSceneTextDoesNotRetryPermanent(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	gen := &flakyBatchGenerator{failAll: errors.New("generate scene text returned zero scenes")}
 	runner.textGen = gen
 	exec := ExecutionContext{RootJobID: "root-retry", JobID: "job-retry-2", ProjectID: "p1", VideoID: "v1", CorrelationID: "c2", Attempt: 1}

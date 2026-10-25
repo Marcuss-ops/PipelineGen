@@ -15,9 +15,7 @@ import (
 // at runtime when a Publish call panics.
 //
 // F3.14 (June 2026): the previous assertion referenced the
-// artlist.DriveFolderManager wide port retired in F2.11 — that
 // annotation compiled only because F2.11 left the tombstone comment
-// block in artlist/ports.go but did NOT keep the interface declaration
 // as a Go type. The PR was therefore masked behind the parallel-agent
 // `clip_metadata_writer.go` build breakage. This file replaces the
 // dead reference with the canonical narrow port assertion.

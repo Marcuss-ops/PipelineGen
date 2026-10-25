@@ -75,7 +75,6 @@ type SearchDocument struct {
 // NOT included (Qdrant does not version its payload; version is
 // tracked separately in infra indexer logs).
 //
-// Use this from IndexProjection producers (artlist/semantic_enricher,
 // images/metadata_service) so the write surface and read surface
 // agree byte-for-byte. The MediaSearch side reads payload via the
 // infra qdrant/payload_mapper.go's read path — never via this

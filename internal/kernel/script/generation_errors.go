@@ -110,7 +110,7 @@ var ErrQualityGateFailed = errors.New("generation: editorial quality gate failed
 //	400  payload or source.type not valid
 //	409  idempotency conflict with different payload
 //	422  scene formally valid but not processable
-//	502  Gemma or Docs invalid response
+//	502  Gemma invalid response
 //	503  provider not configured or temporarily unavailable
 //	504  timeout provider
 
@@ -121,7 +121,7 @@ var ErrQualityGateFailed = errors.New("generation: editorial quality gate failed
 var ErrUnprocessable = errors.New("generation: unprocessable entity")
 
 // ErrProviderBadResponse means an upstream provider (Ollama/Gemma,
-// Google Docs, Drive) returned an invalid or unexpected response.
+// Drive) returned an invalid or unexpected response.
 // Maps to HTTP 502 Bad Gateway.
 var ErrProviderBadResponse = errors.New("generation: provider returned invalid response")
 

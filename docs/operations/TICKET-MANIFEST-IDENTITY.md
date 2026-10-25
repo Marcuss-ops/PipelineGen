@@ -1,7 +1,6 @@
 # TICKET-MANIFEST-IDENTITY (P5)
 
-**Stato:** APPROVATO 24/10/2026 — primo step = A/B sul payload immutabile;
-demolizione del percorso MP4-per-item solo dopo negoziazione del contratto.
+**Stato:** IMPLEMENTAZIONE LOCALE PARZIALE / PRODUZIONE OFF (25/10/2026) — modello, retry idempotente, percorso manifest+timeline dietro flag default-off, fixture A/B e wire contract sono presenti nel working tree. A/B live su golden e negoziazione col final worker non eseguite; MP4-per-item resta il default e non è stato demolito.
 **Origine:** idee di paradigma di `TICKET-OVERLAY-THROUGHPUT-100-MIN.md`
 (candidato architetturale «overlay senza MP4 per item»), approvate
 dall'utente il 24/10/2026. Versione estrema del paradigma #5.
@@ -17,10 +16,11 @@ solo il render della timeline.
 
 ## Problema misurato
 
-Oggi ogni item paga: mux MP4, receipt, hash, link Drive proprio
-(**2,4–3,0 s/item di `drive_publish` asincrono**, 36–36 upload per run,
-98–139 s somma) più lo stitching nel final worker. Con P5 questi costi
-diventano una riga di manifest per item e un solo artefatto certificato.
+Nel percorso produttivo corrente ogni item mantiene MP4, receipt, hash e link
+Drive proprio (le misure storiche `drive_publish` sono 2,4–3,0 s/item
+asincroni, 36–57 upload/run nelle run citate sotto). Il percorso P5 proposto
+potrebbe ridurre tali costi, ma la misura e la parità live non sono ancora
+state eseguite; non attribuire oggi un risparmio al manifest.
 
 ## Cambio (fasi)
 
@@ -34,13 +34,15 @@ diventano una riga di manifest per item e un solo artefatto certificato.
 
 ## Gate di accettazione
 
-- [ ] A/B: parità pixel/audio tra i due percorsi su piano golden; nessuna
-      differenza accettata senza re-baseline dichiarato.
-- [ ] Retry idempotente per voce di manifest: stesso `item_id` + stesso
-      content-hash ⇒ nessun lavoro ripetuto, nessun artefatto duplicato.
-- [ ] Contratto col final worker rinegoziato e scritto prima della
-      demolizione; requisito Drive-per-item esplicitamente sostituito o
-      preservato come decisione documentata.
+- [ ] A/B live: parità pixel/audio tra MP4-per-item e manifest+timeline sul
+      piano golden. Le fixture locali verificano solo la proiezione/ordine,
+      non la parità dei due render reali.
+- [x] Retry idempotente locale: stessa entry/hash riusa l'artefatto
+      content-addressed; test unitari su voce e digest del manifest PASS.
+- [x] Contratto scritto: `OVERLAY-MANIFEST-CONTRACT.md` mantiene Drive-per-item
+      fino alla rinegoziazione. Nessuna demolizione autorizzata né eseguita.
+- [ ] Negoziazione effettiva col final worker e scelta esplicita del requisito
+      link/receipt per-item prima di cambiare il default.
 
 ## Dipendenze e rischi
 
@@ -51,7 +53,7 @@ diventano una riga di manifest per item e un solo artefatto certificato.
 - Non partire con la demolizione prima che l'A/B sia verde: è la ragione
   per cui la voce è P5 e non P1.
 
-## Stato implementazione — 24/10/2026 (checkout di sviluppo)
+## Stato implementazione — checkout di sviluppo (evidenza 24/10/2026)
 
 Fatto (lato PipelineGen, dietro flag di rollback):
 
@@ -80,11 +82,12 @@ Fatto (lato PipelineGen, dietro flag di rollback):
   parità pixel/audio su fixture reali ffmpeg a finestre letterali (round trip
   lossless), parità z-order in sovrapposizione, accordo ordine/fenestra tra i
   due percorsi sullo stesso piano.
-- **Contratto scritto** — `docs/operations/OVERLAY-MANIFEST-CONTRACT.md` +
-  wire tipizzato (`RenderReference.Manifest`): proiezione sui frame
-  allineata a `finalJobOverlayAssetsExcluding`, decisione documentata
-  **Drive-per-item PRESERVATO** fino a negoziazione, handoff fail-closed
-  invariato (test: `TestEnqueueChrononPlanFinalJobFailsClosedWithoutPublisher`).
+- **Contratto scritto, non negoziato col worker remoto** —
+  `docs/operations/OVERLAY-MANIFEST-CONTRACT.md` + wire tipizzato
+  (`RenderReference.Manifest`): proiezione sui frame allineata a
+  `finalJobOverlayAssetsExcluding`, decisione temporanea **Drive-per-item
+  PRESERVATO** fino a negoziazione, handoff fail-closed invariato (test:
+  `TestEnqueueChrononPlanFinalJobFailsClosedWithoutPublisher`).
 
 Gate di accettazione — stato:
 
@@ -94,9 +97,9 @@ Gate di accettazione — stato:
 - [~] A/B parità pixel/audio: **parità di proiezione dimostrata** su fixture
       reali (pixel/audio/z-order/ordine). La parità Chronon-vs-Chronon su
       piano golden resta da misurare: vedi blocco qui sotto.
-- [x] Contratto col final worker **scritto** (OVERLAY-MANIFEST-CONTRACT.md);
-      requisito Drive-per-item **preservato come decisione documentata**.
-      La rinegoziazione vera e propria resta cross-team (fase 2).
+- [x] Contratto preliminare scritto in `OVERLAY-MANIFEST-CONTRACT.md`;
+      requisito Drive-per-item mantenuto provvisoriamente.
+- [ ] Rinegoziazione effettiva col final worker: NOT DONE (cross-team).
 
 ### Blocco misura live A/B su golden (preciso)
 

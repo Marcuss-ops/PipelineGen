@@ -5,14 +5,14 @@
 // ALIASES of the canonical constants in internal/kernel/observability — the
 // registry is the single owner of every phase literal (see registry.go). The
 // external technical calls (qdrant.search, sqlite.hydrate, ollama.generate,
-// google_docs.publish, ...) are recorded separately as OperationReport
+// drive.upload, ...) are recorded separately as OperationReport
 // observations so a phase wall time is never confused with an accumulated
 // dependency time. Every stage below is measured with MeasureStageReport —
 // the single canonical clock owned by internal/kernel/observability — and
 // must never be re-measured with an ad-hoc time.Now().
 //
 // The file also owns the RUNNER PHASE aliases (generate, voiceover,
-// audio_compile, translation, persistence, document) and measurePhase, the one
+// audio_compile, translation, persistence) and measurePhase, the one
 // wrapper that records a phase on the canonical Run clock. The two sets are one
 // ownership surface: a stage a report joins against and the measurement that
 // writes it must never be declared in different files, or a renamed phase
@@ -70,13 +70,6 @@ const (
 	// not audio compilation, and merging the two made drive.upload the
 	// reported dominant operation of the audio stage.
 	StageAudioPublish = kernobs.StageAudioPublish
-	// StageDocumentPrepare is the stage under which the document HTML
-	// render (the prepare half of docs) is recorded, distinct from the
-	// document.publish google_docs.publish boundary.
-	StageDocumentPrepare = kernobs.StageDocumentPrepare
-	// StageDocumentPublish is the stage under which the rendered documents
-	// are uploaded to Google Docs (the publish half of docs).
-	StageDocumentPublish = kernobs.StageDocumentPublish
 )
 
 // Canonical-runner phase stage names. These are the pipeline business phases
@@ -97,7 +90,6 @@ const (
 	stageNormalize   kernobs.StageName = kernobs.StageRunNormalize
 	stageTranslation kernobs.StageName = kernobs.StageRunTranslation
 	stagePersistence kernobs.StageName = kernobs.StageRunPersistence
-	stageDocument    kernobs.StageName = kernobs.StageRunDocument
 )
 
 // errPhaseFailed marks a phase that returned false inside measurePhase so the

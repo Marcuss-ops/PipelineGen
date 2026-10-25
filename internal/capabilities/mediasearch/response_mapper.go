@@ -108,7 +108,6 @@ func searchQueryFromRequest(req searchRequest, mode search.SearchMode, limit int
 	source := strings.TrimSpace(req.Filters.Source)
 	// Propagate the source filter into Query.Sources (plural) so
 	// BackendRegistry.Eligible can route to the correct backend.
-	// Without this, source=artlist/youtube/stock silently routes to
 	// ALL backends (local/semantic included) and the Aggregator
 	// returns "no eligible backends" when those non-provider
 	// backends fail on the source-filtered query.

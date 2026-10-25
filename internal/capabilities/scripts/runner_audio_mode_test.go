@@ -16,7 +16,7 @@ func (s *stubCombinedAudioRenderer) Render(_ context.Context, plan capabilityaud
 }
 
 func TestRunnerCombinedTimelineRequiresCertifiedRenderer(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	runID := "run-combined-no-renderer"
@@ -31,7 +31,7 @@ func TestRunnerCombinedTimelineRequiresCertifiedRenderer(t *testing.T) {
 }
 
 func TestRunnerCombinedTimelinePersistsFinalAudioReference(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	renderer := &stubCombinedAudioRenderer{}
 	runner.SetCombinedAudioRenderer(renderer)
 	req := defaultTestRequest()
@@ -63,7 +63,7 @@ func TestRunnerCombinedTimelinePersistsFinalAudioReference(t *testing.T) {
 // the certified master is the one and only audio artifact. PipelineGen is
 // audio-only: there is no video render surface anymore.
 func TestRunnerFinalAudioTimelineAndAudioPlanShareOneAsset(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	renderer := &stubCombinedAudioRenderer{}
 	runner.SetCombinedAudioRenderer(renderer)
 	req := defaultTestRequest()
@@ -96,7 +96,7 @@ func TestRunnerFinalAudioTimelineAndAudioPlanShareOneAsset(t *testing.T) {
 // for mix/encode/probe/hash/upload/compile timings are done by the live
 // observability certification.
 func TestRunnerCombinedTimelineFeedsAudioMetrics(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline

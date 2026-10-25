@@ -26,7 +26,6 @@ type CompositeScriptGenerateChecker struct {
 	driveFolder   DriveFolderChecker
 	driveFolderID string
 	publisher     PublisherChecker
-	docAvailable  func() bool
 	hasHandler    func(string) bool
 	routeMounted  func() bool
 }
@@ -39,8 +38,6 @@ type CompositeScriptGenerateChecker struct {
 //   - driveFolder: Drive folder accessibility probe (nil → fails).
 //   - driveFolderID: target Drive folder ID (empty → fails).
 //   - publisher: Publisher wiring probe (nil → fails).
-//   - docAvailable: closure returning true when the Google Docs
-//     client / document service is wired.
 //   - hasHandler: closure returning true when a job handler is
 //     registered for the supplied job type.
 func NewScriptGenerateChecker(
@@ -49,7 +46,6 @@ func NewScriptGenerateChecker(
 	driveFolder DriveFolderChecker,
 	driveFolderID string,
 	publisher PublisherChecker,
-	docAvailable func() bool,
 	hasHandler func(string) bool,
 ) *CompositeScriptGenerateChecker {
 	return &CompositeScriptGenerateChecker{
@@ -58,7 +54,6 @@ func NewScriptGenerateChecker(
 		driveFolder:   driveFolder,
 		driveFolderID: driveFolderID,
 		publisher:     publisher,
-		docAvailable:  docAvailable,
 		hasHandler:    hasHandler,
 	}
 }
@@ -152,15 +147,7 @@ func (c *CompositeScriptGenerateChecker) CheckScriptGenerate(ctx context.Context
 		ok = false
 	}
 
-	// 6. Document service
-	docOK := c.docAvailable != nil && c.docAvailable()
-	details["document_service"] = map[string]any{"ok": docOK}
-	if !docOK {
-		ok = false
-		failures = append(failures, "document service not available")
-	}
-
-	// 7. Route mounted
+	// 6. Route mounted
 	routeMounted := c.routeMounted != nil && c.routeMounted()
 	details["route"] = map[string]any{"mounted": routeMounted}
 	if !routeMounted {

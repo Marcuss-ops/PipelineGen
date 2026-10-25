@@ -31,8 +31,7 @@ type ExistingAssetQuery struct {
 	DriveFileID string `json:"-"`
 	// Filename is the asset filename.
 	Filename string
-	// Source is the asset source (youtube, artlist, voiceover, etc.)
-	Source string
+	Source   string
 }
 
 // AssetRecord represents a common asset record for lifecycle management.

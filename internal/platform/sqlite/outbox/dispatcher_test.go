@@ -170,7 +170,6 @@ func TestDispatcher_MissingClipIDRejected(t *testing.T) {
 
 // TestDispatcher_EmptyContentHashRejected confirms that EnqueueAndIndex
 // rejects empty contentHash — the supersede gate dead-letters events with
-// source_version="" (PR-ARTLIST-SOURCE-VERSION-FIX).
 func TestDispatcher_EmptyContentHashRejected(t *testing.T) {
 	// Wire all deps non-nil so the contentHash guard fires (not a nil-dep guard).
 	d := NewDispatcher(

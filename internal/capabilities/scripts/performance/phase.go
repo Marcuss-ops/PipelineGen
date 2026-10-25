@@ -25,7 +25,6 @@ const (
 	PhaseProbe         PerformancePhase = "probe"
 	PhaseHash          PerformancePhase = "hash"
 	PhaseUpload        PerformancePhase = "upload"
-	PhaseGoogleDoc     PerformancePhase = "google_doc"
 	PhaseRenderEnqueue PerformancePhase = "render_enqueue"
 )
 
@@ -43,7 +42,6 @@ func Phases() []PerformancePhase {
 		PhaseProbe,
 		PhaseHash,
 		PhaseUpload,
-		PhaseGoogleDoc,
 		PhaseRenderEnqueue,
 	}
 }

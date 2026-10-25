@@ -1,6 +1,5 @@
 // Package providers defines the canonical Provider contract and the
 // IO types used at the boundary between the assets application layer
-// and the various source integrations (artlist, youtube, stock, ...).
 //
 // Spec: Agent 3 / PR 3E (consolidation + legacy elimination).
 // Replaces PR 3C/3D foundation (commit a05e6580) at the new home
@@ -76,7 +75,6 @@ const (
 // (architecture/current.yaml#id-30, PR-1 of VERDICT §6 follow-ups).
 // Provider adapters silently ignore filter fields their native API
 // does not support (the semantic of SearchFilters carries forward
-// unchanged for artlist/youtube — they only translate what their
 // API exposes; the canonical Aggregator fan-out never aborts the
 // per-backend search because of a filter mismatch, in line with
 // the "partial preferred" posture documented in
@@ -122,7 +120,6 @@ type SearchRequest struct {
 // SearchResult is the canonical reply to a Search.
 //
 // NextPageToken is the empty string when the underlying source has
-// no more results or lacks cursor support (artlist, youtube).
 // Providers that paginate set NextPageToken to an opaque string
 // echoed back via SearchRequest on the next call. The contract
 // is intentionally symmetric: callers treat "" as "last page".

@@ -81,7 +81,6 @@ timeline_routing: |
 
   Pick exactly one source:
   - "stock_drive" (only if a stock folder name clearly and directly matches the segment topic)
-  - "artlist_folder" (only if an Artlist folder name clearly and directly matches the segment topic)
   - "none" (if NO folder is relevant to the segment — this is the correct choice when folders don't match)
 
   TIMESTAMP POLICY:
@@ -105,9 +104,6 @@ timeline_routing: |
   ENTITIES: {{.Entities}}
   AVAILABLE STOCK FOLDERS:
   {{.StockFolders}}
-
-  AVAILABLE ARTLIST FOLDERS:
-  {{.ArtlistFolders}}
 
   JSON:
 

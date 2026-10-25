@@ -203,6 +203,10 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 			sourcing.ErrLocationResolverDestinationUnsupported,
 		)
 	}
+	// A retired destination (e.g. a persisted "artlist" row) resolves
+	// into the canonical destination that now owns its assets, so the
+	// root folder and segment shape come from the successor.
+	dest = delivery.CanonicalizeDestination(dest)
 
 	// DoD #5: resolve per-destination root folder BEFORE field
 	// validation (specific root > media_root + namespace > error).

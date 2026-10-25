@@ -36,7 +36,6 @@ import (
 //
 // Tuning notes:
 //   - 60s is conservative for the W1 spec; long-running handlers
-//     (media.artlist / extract / batch) routinely run multi-minute.
 //   - The HTTP broker round-trip is sub-second under steady state;
 //     TTL/2 = 30s gives ample room for a transient retry even on
 //     a degraded link.

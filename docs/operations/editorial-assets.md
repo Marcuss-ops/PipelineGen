@@ -98,21 +98,10 @@ gain/loop/duck and SFX gain defaults. Selection is deterministic (SHA-256 over
 a caller seed), and an empty pool, an unknown alias, a wrong-family asset or a
 positive gain fails closed.
 
-Two consumption points exist today:
-
-- **Remote assembler** — the policy is published in the sealed payload under
-  `remote_render.editing_assets_policy`, next to `background_catalog`,
-  `background_music_catalog` and `sound_effect_catalog`. This is additive: it
-  changes no generated selection.
-- **Google Doc** — the same policy is projected into the human document as the
-  `Editing Assets Policy JSON` block. Build parity is enforced, not assumed: the
-  doc block and the payload are produced by the SAME builder
-  (`remoteEditingAssetsPolicy`), and
-  `TestDocumentEditingAssetsPolicyHasBuildParityWithTheRemotePayload` fails if
-  the two documents ever differ.
-- **`scriptgeneration.ApplyEditingAssetPolicy`** — the in-process seam. It fills
+One consumption point exists today: `scriptgeneration.ApplyEditingAssetPolicy`
+— the in-process seam. It fills
   only blank selections (an explicit `mode: none` is preserved), injects BGM
-  only in `COMBINED_TIMELINE`, and is **not called implicitly** by anything.
+only in `COMBINED_TIMELINE`, and is **not called implicitly** by anything.
 
 ## Verification
 
@@ -122,9 +111,6 @@ go test ./internal/capabilities/mediaregistry/... -count=1
 
 # read-boundary fail-closed check for plates
 go test ./internal/capabilities/cliprender/adapters/... -count=1
-
-# published catalogs/policy in the remote payload + the Google Doc block
-go test ./internal/capabilities/scripts/ -run 'Remote|DocumentEditingAssetsPolicy' -count=1
 
 # the "no ungated editorial catalog" repository scan
 # (allow ~5s: it walks the repo)

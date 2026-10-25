@@ -36,7 +36,7 @@ func resolverRequest() SourceResolutionRequest {
 	return SourceResolutionRequest{
 		Plan: &scriptpkg.ResolvedGenerationPlan{
 			MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{
-				YouTube: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled,
+				YouTube: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled,
 			}},
 		},
 		Segment: scriptpkg.CanonicalSegment{ID: "segment-001"},
@@ -50,7 +50,6 @@ func TestVidRushSourceResolver_PriorityOrder(t *testing.T) {
 	r := VidRushSourceResolver{
 		LocalStock:    local,
 		YouTube:       &sourceResolverStub{stage: "youtube"},
-		Artlist:       &sourceResolverStub{stage: "artlist"},
 		ImageFallback: &sourceResolverStub{stage: "images"},
 	}
 	got, err := r.Resolve(context.Background(), resolverRequest())
@@ -119,14 +118,13 @@ func TestVidRushSourceResolver_SuggestedAssetIDPrecedesProviders(t *testing.T) {
 	}
 }
 
-func TestVidRushSourceResolver_FallsThroughYouTubeArtlistImages(t *testing.T) {
+func TestVidRushSourceResolver_FallsThroughRemoteProviders(t *testing.T) {
 	cases := []struct {
 		name  string
 		setup func(*VidRushSourceResolver)
 		stage string
 	}{
 		{"youtube", func(r *VidRushSourceResolver) { r.YouTube = &sourceResolverStub{stage: "youtube"} }, "youtube"},
-		{"artlist", func(r *VidRushSourceResolver) { r.Artlist = &sourceResolverStub{stage: "artlist"} }, "artlist"},
 		{"images", func(r *VidRushSourceResolver) { r.ImageFallback = &sourceResolverStub{stage: "images"} }, "image_fallback"},
 	}
 	for _, tc := range cases {
@@ -145,10 +143,10 @@ func TestVidRushSourceResolver_RespectsProviderPolicy(t *testing.T) {
 	req := resolverRequest()
 	req.Plan.MediaPlan.ProviderPolicy.YouTube = mediadomain.MediaToggleDisabled
 	youtube := &sourceResolverStub{stage: "youtube"}
-	artlist := &sourceResolverStub{stage: "artlist"}
-	got, err := (VidRushSourceResolver{YouTube: youtube, Artlist: artlist}).Resolve(context.Background(), req)
-	if err != nil || got.Stage != "artlist" {
-		t.Fatalf("got=%#v err=%v, want Artlist after disabled YouTube", got, err)
+	images := &sourceResolverStub{stage: "images"}
+	got, err := (VidRushSourceResolver{YouTube: youtube, ImageFallback: images}).Resolve(context.Background(), req)
+	if err != nil || got.Stage != "image_fallback" {
+		t.Fatalf("got=%#v err=%v, want image fallback after disabled YouTube", got, err)
 	}
 	if youtube.calls != 0 {
 		t.Fatal("disabled YouTube provider was called")

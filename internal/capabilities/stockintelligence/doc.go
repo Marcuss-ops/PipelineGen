@@ -9,7 +9,6 @@
 //
 // Pipeline:
 //
-//	Artlist discovery/acquisition
 //	        ↓
 //	AssetCommitter
 //	        ↓
@@ -34,7 +33,6 @@
 //	   ↓
 //	winner
 //
-// The provider (Artlist live browser) is consulted ONLY when:
 //
 //	local_candidates < threshold
 //
@@ -43,7 +41,6 @@
 //	best_score < minimum_quality
 //
 // So LOCAL FIRST, PROVIDER SECOND. The package depends only on the
-// mediasampler contract surface + stdlib; concrete Qdrant/SQLite/Artlist
 // adapters are wired at the composition root and satisfy the ports
 // declared here.
 package stockintelligence

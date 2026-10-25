@@ -211,7 +211,7 @@ func (r *audioJoinRepository) SavePartialResult(ctx context.Context, id string, 
 func newAudioOverlapFixture(t *testing.T) (*executionRun, *audioJoinRepository, *barrierAudioRenderer, *barrierOverlayRenderer, *kernobs.Run) {
 	t.Helper()
 	repo := &audioJoinRepository{inMemRunRepository: newInMemRunRepository()}
-	runner := NewRunner(repo, newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{}, newStubDocumentPublisher(), canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, newStubTextGenerator(nil), newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetLogger(zap.NewNop())
 	audio := &barrierAudioRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}
 	overlay := &barrierOverlayRenderer{started: make(chan struct{}), release: make(chan struct{}), drained: make(chan struct{})}
@@ -222,7 +222,6 @@ func newAudioOverlapFixture(t *testing.T) (*executionRun, *audioJoinRepository, 
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Languages = []Language{"en"}
 	req.Render.Enabled = true
-	req.Docs.Enabled = false
 	scene := Scene{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Growth matters more than ever."}, Annotations: overlayScene1Annotations(), Audio: capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover}}
 	vo, err := (&entityTimelineVoiceoverGenerator{}).Generate(context.Background(), VoiceoverInput{SceneID: scene.ID, Text: scene.Text["en"], Language: "en"})
 	require.NoError(t, err)

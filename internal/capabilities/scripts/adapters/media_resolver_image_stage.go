@@ -24,7 +24,6 @@ import (
 )
 
 // internetImageCachePayload stores only the image-provider delta so a cache
-// hit cannot replace Artlist candidates or other upstream segment state.
 type internetImageCachePayload struct {
 	Candidates []scriptpkg.SegmentAssetCandidate
 }

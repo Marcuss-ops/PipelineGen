@@ -46,7 +46,6 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *Databases, l
 	// outbox port per godlike/06 SSOT one-canonical-owner-per-fact).
 	deletionDeps := deletion.DeletionServiceDeps{
 		Repos: deletion.DeletionRepoDeps{
-			ArtlistRepo:   repos.ClipsRepo,
 			ClipsRepo:     repos.ClipsRepo,
 			StockRepo:     repos.ClipsRepo,
 			VoiceoverRepo: repos.VoiceoverRepo,

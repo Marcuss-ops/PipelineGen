@@ -48,7 +48,6 @@ invocation.
 | `make verify-api` | `api` | HTTP middleware and transport contracts |
 | `make verify-ollama` | `ollama` | Ollama client and structured-output adapters |
 | `make verify-youtube` | `youtube` | YouTube domain, sourcing, providers, API, and infrastructure |
-| `make verify-artlist` | `artlist` | Artlist provider, infrastructure, and API |
 | `make verify-kernel` | `kernel` | Kernel contracts (`internal/kernel/...`) |
 | `verify-component.py rust` (no Make alias) | `rust` | Go consumer suite of the Rust workers (`internal/platform/media/rustexec/...`) plus the ordering guard |
 

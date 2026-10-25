@@ -121,13 +121,12 @@ func TestRunMediaPreflight_EnabledVidRushProviderRequiresRegistration(t *testing
 // real media preflight prevents LLM work when an explicitly requested provider
 // is missing from the composed VidRush registry.
 func TestRunnerRejectsUnavailableImageGenerationBeforeTextGeneration(t *testing.T) {
-	runner, repo, textGen, _, voiceoverGen, _, _ := newTestRunner()
+	runner, repo, textGen, _, voiceoverGen, _ := newTestRunner()
 	runner.SetMediaPreflight(providerAvailabilityPreflight{
 		probe: &stubVidRushProviderAvailabilityProbe{available: map[string]bool{}},
 	})
 
 	req := defaultTestRequest()
-	req.Docs = DocumentsConfig{}
 	req.DocsEnabled = false
 	req.Languages = nil
 	req.Audio = "none"
@@ -153,12 +152,11 @@ func TestRunnerRejectsUnavailableImageGenerationBeforeTextGeneration(t *testing.
 }
 
 func TestRunnerRechecksUnavailableProviderOnResumeAfterPreflight(t *testing.T) {
-	runner, repo, textGen, _, voiceoverGen, _, _ := newTestRunner()
+	runner, repo, textGen, _, voiceoverGen, _ := newTestRunner()
 	probe := &stubVidRushProviderAvailabilityProbe{available: map[string]bool{}}
 	runner.SetMediaPreflight(providerAvailabilityPreflight{probe: probe})
 
 	req := defaultTestRequest()
-	req.Docs = DocumentsConfig{}
 	req.DocsEnabled = false
 	req.Languages = nil
 	req.Audio = "none"

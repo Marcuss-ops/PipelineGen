@@ -1,6 +1,5 @@
 // Package asset — clip_identity.go is the canonical domain-level SSOT
 // for the (asset_id, content_hash, index_event_key) triple that every
-// pipeline (YouTube, Stock, Artlist, Voiceover) needs to mint when
 // writing a new media asset row + outbox event.
 //
 // Problem this solves (July 2026):
@@ -310,7 +309,6 @@ func NewStockClipIdentity(
 // NewClipIdentity constructs a ClipIdentity for any source type when
 // the caller already has a pre-computed asset_id. This is the escape
 // hatch for sources that don't use the YouTube or Stock ID formats
-// (e.g. Artlist uses `artlist_{hash}`; Voiceover uses its own format).
 //
 // Parameters:
 //   - assetID: the pre-computed media_assets.id. Must be non-empty.
