@@ -314,7 +314,7 @@ func cannedYouTubeResult(payload json.RawMessage, sha string) json.RawMessage {
 			ID: "yt_" + sha[:12], Name: "scene-001",
 			Start: "00:00:00.000", End: "00:00:05.000",
 			StartSeconds: 0, EndSeconds: 5, Duration: 5,
-			LegacyFileMD5: sha, SizeBytes: 1024,
+			ContentSHA256: sha, SizeBytes: 1024,
 			LocalPath:   "/fake/materialized/yt_" + sha[:8] + ".mp4",
 			DriveFileID: "drive_" + sha[:10], DriveLink: "https://drive.test/" + sha[:10],
 			Status: "completed",

@@ -1,7 +1,7 @@
 # Test 3.127 parole — cosa ha trovato il semantic engine (2026-10-24)
 
 Fixture: `/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/sempio_chiara_poggi_youtube_3k.txt` (3127 parole, 14 scene da ~220 parole).
-Worker: `/home/pierone/src/go-master/projects/Pyt/VeloxEditing/BrainRust/target/release/semantic-engine`.
+Worker: `../BrainRust/target/release/semantic-engine`.
 Fingerprint: `ec4ca63f533aaf18`.
 
 > **Nota sulla cronologia.** Questa fixture contiene nel proprio testo gli anni 2014, 2016, 2017, 2019 e 2020. Il motore li estrae fedelmente: non sono un errore di normalizzazione. La fixture separata `garlasco_chronology_corrected.txt` è quella che verifica la sequenza documentata 2009–2015. Il vecchio report mescolava le due cose.
@@ -10,7 +10,7 @@ Fingerprint: `ec4ca63f533aaf18`.
 
 - LOCATION vietate (`RITROVAMENTO`, `Chiara`, `Poggi`): **0** — nessuna
 - Gruppi `comparison` con più di 2 membri: **0** []
-- Entità per tipo: DATE=17, LOCATION=5, NUMBER=18, ORG=3, PERSON=24, VISUAL_CONCEPT=641
+- Entità per tipo: DATE=17, LOCATION=5, NUMBER=18, OBJECT=5, ORG=3, PERSON=24, VISUAL_CONCEPT=637
 
 **Esito T01: i due sintomi del report 2026-10-23 non sono più presenti su questa fixture.**
 
@@ -53,6 +53,7 @@ In una storia come questa esiste sempre un nome che resta ai margini per molto t
 - `fact:s05:person_99_convicted_03` · fact · «duemiladiciannove» · scene ['s05'] · data 2019
 - `fact:s05:person_99_final_05` · fact · «duemilaventi» · scene ['s05'] · data 2020
 - `fact:s06:person_02_under_investigation_01` · fact · «indagati» · scene ['s06'] · data None
+- `identity:entity_134` · identity · «reperto» · scene ['s04', 's06', 's08', 's09', 's10'] · data None
 - `identity:location_03` · identity · «Garlasco» · scene ['s01', 's03', 's14'] · data None
 - `identity:location_04` · identity · «Pavia» · scene ['s01', 's06'] · data None
 - `identity:person_01` · identity · «Chiara Poggi» · scene ['s01', 's02', 's09', 's10', 's11', 's14'] · data None
@@ -75,6 +76,13 @@ In una storia come questa esiste sempre un nome che resta ai margini per molto t
 - s06 · `person_02_under_investigation_01` · **uncovered** · [] · importanza 0.90
 - totale: 5/6 fatti coperti
 
+## Consolidamento semantico
+
+- schema `visual_consolidation.v1`: 30 candidati di produzione da 1359 proposte raw
+- fatti canonici: 6 da 6; date canoniche: 9 da 20; micro canoniche: 6 da 6
+- job di ricerca: 13 (da 1355 entry); query di produzione: 13 (da 2717); timeline: 1; fact card: 1
+- copertura canonica: 6/6 fatti rappresentati; 0 fatti senza rappresentazione né motivo
+
 ## Gruppi semantici
 
 - s01 · chronological · «Cronologia» · 2 membri
@@ -93,11 +101,11 @@ In una storia come questa esiste sempre un nome che resta ai margini per molto t
 
 ## Keyword (`important_words`) più frequenti
 
-Andrea Sempio ×5, Sempio ×5, Chiara Poggi ×4, Alberto Stasi ×4, Garlasco ×3, Poggi ×3, caso giudiziario ×3, Stasi ×3, Pavia ×2, giovane donna ×2, cronaca italiana ×2, fatti accertati ×2, conseguenze reali ×2, sentenza definitiva ×2, passaggio tecnico ×2, nuova fase ×2, reperto conservato ×2, via definitiva ×2, persona coinvolta ×2, racconto complesso ×1, punto esatto ×1, cittadina tranquilla ×1, dati pubblici ×1, scelta editoriale ×1, secondo piano ×1, paese piccolo ×1, tinte forti ×1, percorso giudiziario ×1, famiglie intere ×1, regole precise ×1
+Andrea Sempio ×5, Sempio ×5, reperto ×5, Chiara Poggi ×4, Alberto Stasi ×4, Garlasco ×3, Poggi ×3, caso giudiziario ×3, Stasi ×3, Pavia ×2, giovane donna ×2, cronaca italiana ×2, fatti accertati ×2, conseguenze reali ×2, sentenza definitiva ×2, passaggio tecnico ×2, nuova fase ×2, reperto conservato ×2, via definitiva ×2, persona coinvolta ×2, racconto complesso ×1, punto esatto ×1, cittadina tranquilla ×1, dati pubblici ×1, scelta editoriale ×1, secondo piano ×1, paese piccolo ×1, tinte forti ×1, percorso giudiziario ×1, famiglie intere ×1
 
 ## Query
 
-- 1353 entry, 1361 exact_mention (451 uniche)
+- 1355 entry, 1363 exact_mention (451 uniche)
 - duplicati principali: `persone` ×16, `nome` ×14, `indagini` ×14, `caso` ×14, `sempio` ×13, `vicenda` ×12, `tempo` ×12, `procedimento` ×12, `scienza` ×12, `andrea sempio` ×11
 
 ## Entità per tipo (campione)
@@ -105,14 +113,15 @@ Andrea Sempio ×5, Sempio ×5, Chiara Poggi ×4, Alberto Stasi ×4, Garlasco ×3
 - **DATE** (17 menzioni): duemilasette, duemilaquattordici, duemilasedici, duemiladiciassette, duemiladiciannove, duemilaventi, duemilaventicinque
 - **LOCATION** (5 menzioni): Garlasco, Pavia
 - **NUMBER** (18 menzioni): tredici, due, sedici, ventiquattro, cinque, diciotto
+- **OBJECT** (5 menzioni): reperto
 - **ORG** (3 menzioni): tribunale, Cassazione, Procura di Pavia
 - **PERSON** (24 menzioni): Chiara Poggi, Andrea Sempio, Sempio, Poggi, Alberto Stasi, Stasi
-- **VISUAL_CONCEPT** (641 menzioni): racconto complesso, punto esatto, cittadina tranquilla, giovane donna, cronaca italiana, fatti accertati, dati pubblici, scelta editoriale, secondo piano, data, doloroso, vicenda, periodo, provincia, luogo, famiglie, generazioni, estati, fiume, strade
+- **VISUAL_CONCEPT** (637 menzioni): racconto complesso, punto esatto, cittadina tranquilla, giovane donna, cronaca italiana, fatti accertati, dati pubblici, scelta editoriale, secondo piano, data, doloroso, vicenda, periodo, provincia, luogo, famiglie, generazioni, estati, fiume, strade
 
 ## Cosa cambia rispetto al report 2026-10-23
 
 - Il report vecchio elencava `RITROVAMENTO`, `Chiara` e `Poggi` come `LOCATION`: qui la verifica è esplicita e il risultato è sopra.
 - Il report vecchio mostrava un gruppo `comparison` da 5 membri: qui la verifica è esplicita e il risultato è sopra.
 - Gli anni 2014/2016/2017/2019/2020 restano quelli scritti nella fixture; per la sequenza corretta usare `garlasco_chronology_corrected.txt`.
-- Il numero di query resta alto: è un problema di prodotto (budget del planner), non un errore di grounding.
+- Il numero di query raw resta alto: è un problema di prodotto (budget del planner), non un errore di grounding. La consolidazione lo riduce a livello di produzione: vedi la sezione dedicata.
 

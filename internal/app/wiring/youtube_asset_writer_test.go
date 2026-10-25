@@ -84,7 +84,7 @@ func TestYouTubeAssetWriter_Upsert_LegacyHashFallback(t *testing.T) {
 	writer := &youTubeAssetWriter{dispatcher: dispatcher}
 
 	a := &asset.Asset{ID: "clip-2"}
-	a.SetLegacyFileMD5("legacy-md5")
+	a.SetContentHash("legacy-md5")
 
 	if err := writer.Upsert(context.Background(), a); err != nil {
 		t.Fatalf("Upsert: %v", err)

@@ -17,7 +17,7 @@ func TestProcessSegmentUseCase_Execute_FASE4_NilOutboxEnqueuer_NoPanic(t *testin
 		cannedOut: TTSOutput{
 			LocalPath:     "/tmp/vo/fase4-nil.mp3",
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "hash-fase4-nil",
+			ContentSHA256: "hash-fase4-nil",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-nil"}
@@ -79,7 +79,7 @@ func TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupBeginTxFail_Warns(t *t
 			LocalPath:     "/tmp/vo/fase4-begintx-fail.mp3",
 			CleanedPath:   "/tmp/vo/fase4-begintx-fail-cleaned.mp3",
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "hash-fase4-begintx",
+			ContentSHA256: "hash-fase4-begintx",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-begintx"}
@@ -170,7 +170,7 @@ func TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupEnqueueFail_Warns(t *t
 			LocalPath:     "/tmp/vo/fase4-enqueue-fail.mp3",
 			CleanedPath:   "/tmp/vo/fase4-enqueue-fail-cleaned.mp3",
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "hash-fase4-enqueue",
+			ContentSHA256: "hash-fase4-enqueue",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-enqueue"}

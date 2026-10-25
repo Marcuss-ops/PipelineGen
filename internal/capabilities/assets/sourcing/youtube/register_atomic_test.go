@@ -238,9 +238,9 @@ func TestRegister_AtomicWriter_ContentHashIsNotIdentity(t *testing.T) {
 	if cmd.Clip.ID != "yt_dQw4w9WgXcQ_0_0_v1" {
 		t.Errorf("asset id must be the window-derived identity, got %q", cmd.Clip.ID)
 	}
-	// LegacyFileMD5 is the CONTENT fingerprint: it may be empty when the bytes
+	// ContentSHA256 is the CONTENT fingerprint: it may be empty when the bytes
 	// cannot be hashed, and it must never leak into the identity.
-	if len(cmd.Clip.ID) > 0 && cmd.Clip.ID == cmd.Clip.LegacyFileMD5 {
+	if len(cmd.Clip.ID) > 0 && cmd.Clip.ID == cmd.Clip.ContentSHA256 {
 		t.Error("the content hash must never be the asset identity")
 	}
 }

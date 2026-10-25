@@ -65,7 +65,7 @@ func openPersistentEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			candidate_id INTEGER PRIMARY KEY,
 			asset_id TEXT NOT NULL DEFAULT '',
 			file_hash TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
 			drive_link TEXT NOT NULL DEFAULT '',
 			local_path TEXT NOT NULL DEFAULT '',
@@ -289,7 +289,7 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 	materialization := entitycatalog.Materialization{
 		CandidateID:    candidateID,
 		AssetID:        "drive-michael-jordan",
-		LegacyFileMD5:  "sha256-michael-jordan",
+		ContentSHA256:  "sha256-michael-jordan",
 		DriveLink:      "https://drive.google.com/file/d/drive-michael-jordan/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(),
@@ -334,7 +334,7 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 		t.Fatalf("persistent Drive reuse new uploads = %d, want 0", got)
 	}
 	images := result.VidRushSegments[0].Assets.SecondaryImages
-	if len(images) != 1 || images[0].AssetID != "drive-michael-jordan" || images[0].DriveLink == "" || images[0].LegacyFileMD5 == "" {
+	if len(images) != 1 || images[0].AssetID != "drive-michael-jordan" || images[0].DriveLink == "" || images[0].ContentSHA256 == "" {
 		t.Fatalf("persistent Drive reuse result = %+v", images)
 	}
 }

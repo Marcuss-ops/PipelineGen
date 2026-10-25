@@ -74,7 +74,7 @@ func TestProjectEntityAnnotations_BrandFallbackAndVerifiedLogo(t *testing.T) {
 
 	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{{
 		AssetID: "openai-logo", Provider: scriptpkg.VidRushProviderInternetImages,
-		Entity: "OpenAI", DriveLink: "https://drive.google.com/file/d/logo/view", LegacyFileMD5: "logo-md5",
+		Entity: "OpenAI", DriveLink: "https://drive.google.com/file/d/logo/view", ContentSHA256: "logo-md5",
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
@@ -97,7 +97,7 @@ func TestProjectEntityAnnotations_BindsImageFromEntityIdentityWhenQueryIsGeneric
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
 			AssetID: "ada-portrait", Provider: scriptpkg.VidRushProviderInternetImages,
 			Entity: "Ada Lovelace", Query: "historical portrait",
-			DriveLink: "https://drive.google.com/file/d/ada/view", LegacyFileMD5: "ada-md5",
+			DriveLink: "https://drive.google.com/file/d/ada/view", ContentSHA256: "ada-md5",
 			LocalPath: "/tmp/ada-portrait.jpg",
 			MIMEType:  "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,

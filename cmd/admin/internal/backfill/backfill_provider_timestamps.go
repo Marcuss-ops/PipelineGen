@@ -17,8 +17,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// RunBackfillMediaAssetSources runs source, taxonomy, and content registry
-// backfills owned by the canonical media registry service.
+// RunBackfillMediaAssetSources runs source, taxonomy, and content-link
+// backfills owned by the canonical media registry service. (The byte-identity
+// promotion that used to run here is owned by migration 281 — the
+// legacy_file_md5 bucket it read from is demolished.)
 func RunBackfillMediaAssetSources(args []string) error {
 	flags := flag.NewFlagSet("backfill-media-asset-sources", flag.ContinueOnError)
 	apply := flags.Bool("apply", false, "write missing media_asset_sources rows")
@@ -41,7 +43,7 @@ func RunBackfillMediaAssetSources(args []string) error {
 		return err
 	}
 	ctx := cli.CmdContext()
-	var report, taxonomyReport, contentSHA256Report, contentLinkReport any
+	var report, taxonomyReport, contentLinkReport any
 	if *apply {
 		report, err = resolver.Backfill(ctx)
 	} else {
@@ -51,9 +53,6 @@ func RunBackfillMediaAssetSources(args []string) error {
 		return err
 	}
 	if taxonomyReport, err = resolver.BackfillTaxonomy(ctx, *apply); err != nil {
-		return err
-	}
-	if contentSHA256Report, err = resolver.BackfillContentSHA256(ctx, *apply); err != nil {
 		return err
 	}
 	if contentLinkReport, err = resolver.BackfillContentLinks(ctx, *apply); err != nil {
@@ -66,7 +65,7 @@ func RunBackfillMediaAssetSources(args []string) error {
 		}
 		encoded, marshalErr := json.Marshal(map[string]any{
 			"mode": mode, "source_report": report, "taxonomy_report": taxonomyReport,
-			"content_sha256_report": contentSHA256Report, "content_link_report": contentLinkReport,
+			"content_link_report": contentLinkReport,
 		})
 		if marshalErr != nil {
 			return marshalErr
@@ -74,7 +73,7 @@ func RunBackfillMediaAssetSources(args []string) error {
 		fmt.Println(string(encoded))
 		return nil
 	}
-	log.Info("canonical media asset source backfill complete", zap.Bool("apply", *apply), zap.Any("source_report", report), zap.Any("taxonomy_report", taxonomyReport), zap.Any("content_sha256_report", contentSHA256Report), zap.Any("content_link_report", contentLinkReport))
+	log.Info("canonical media asset source backfill complete", zap.Bool("apply", *apply), zap.Any("source_report", report), zap.Any("taxonomy_report", taxonomyReport), zap.Any("content_link_report", contentLinkReport))
 	return nil
 }
 

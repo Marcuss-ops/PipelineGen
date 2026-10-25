@@ -242,14 +242,14 @@ func (r *postgresCatalogRepository) DeleteFolder(ctx context.Context, id string)
 
 // catalogAssetFromRecord reconstructs the kernel asset the catalog-sync
 // preservation logic consumes. Typed columns are merged over the metadata_json
-// object so the legacy accessors (LocalPath/LegacyFileMD5/FolderID/…) resolve.
+// object so the legacy accessors (LocalPath/ContentSHA256/FolderID/…) resolve.
 func catalogAssetFromRecord(rec *pgmedia.MediaAssetRecord) *asset.Asset {
 	if rec == nil {
 		return nil
 	}
 	meta := rec.MetadataMap()
 	meta["local_path"] = rec.LocalPath
-	meta["legacy_file_md5"] = rec.SHA256
+	meta["content_hash"] = rec.SHA256
 	meta["drive_file_id"] = rec.DriveFileID
 	meta["folder_id"] = rec.FolderID
 	meta["parent_folder_id"] = rec.ParentFolderID

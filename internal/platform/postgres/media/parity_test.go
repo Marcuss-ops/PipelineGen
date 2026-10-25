@@ -269,10 +269,10 @@ func TestParity_CommitAndIndex_LocationsUpgradedAndIdempotent(t *testing.T) {
 	c, db := newPostgresCommitter(t)
 
 	locations := []persistence.LocationCommit{
-		{Kind: "local", Provider: "local", URI: "/data/clips/a.mp4", MimeType: "video", LegacyFileMD5: "sha256:loc"},
+		{Kind: "local", Provider: "local", URI: "/data/clips/a.mp4", MimeType: "video", ContentSHA256: "sha256:loc"},
 		{Kind: "drive", Provider: "drive", ExternalID: "drive-123", URI: "drive://drive-123",
 			WebViewLink: "https://drive.example/123", DownloadURL: "https://dl.example/123",
-			MimeType: "video/mp4", FileSizeBytes: 11078716, LegacyFileMD5: "sha256:loc", IsPrimary: true},
+			MimeType: "video/mp4", FileSizeBytes: 11078716, ContentSHA256: "sha256:loc", IsPrimary: true},
 	}
 	req := persistence.CommitRequest{
 		AssetID: "loc_asset_1", Source: "youtube", Name: "Located", Filename: "located.mp4",
@@ -534,7 +534,7 @@ func TestParity_UpdateDriveDeliveryByLegacyHash(t *testing.T) {
 	c, db := newPostgresCommitter(t)
 	ctx := context.Background()
 
-	// The Drive projection keys on source='image' + legacy_file_md5.
+	// The Drive projection keys on source='image' + content_sha256.
 	req := fullCommitRequest()
 	req.Asset.Source = "image"
 	req.Asset.Filename = "image.jpg"

@@ -378,7 +378,7 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 	var versionNum int
 	var versionHash string
 	err = db.QueryRowContext(ctx,
-		`SELECT version_number, legacy_file_md5 FROM asset_versions WHERE asset_id = ?`, "doc-job-001:pdf",
+		`SELECT version_number, content_sha256 FROM asset_versions WHERE asset_id = ?`, "doc-job-001:pdf",
 	).Scan(&versionNum, &versionHash)
 	if err != nil {
 		t.Fatalf("verify asset_versions: %v", err)
@@ -387,7 +387,7 @@ func TestFinalizerE2E_CompleteSpine(t *testing.T) {
 		t.Errorf("asset_versions.version_number = %d, want 1", versionNum)
 	}
 	if versionHash != "sha256-doc-hash-abc123" {
-		t.Errorf("asset_versions.legacy_file_md5 = %q", versionHash)
+		t.Errorf("asset_versions.content_sha256 = %q", versionHash)
 	}
 
 	// 7. Verify asset_locations → drive location.
@@ -539,7 +539,7 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 			name TEXT NOT NULL DEFAULT '',
 			filename TEXT NOT NULL DEFAULT '',
 			media_type TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
 			drive_link TEXT NOT NULL DEFAULT '',
 			download_link TEXT NOT NULL DEFAULT '',
@@ -583,7 +583,7 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
 			version_number INTEGER NOT NULL,
 			source_uri TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			file_size_bytes INTEGER NOT NULL DEFAULT 0,
 			mime_type TEXT NOT NULL DEFAULT '',
 			metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -600,7 +600,7 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 			download_url TEXT NOT NULL DEFAULT '',
 			mime_type TEXT NOT NULL DEFAULT '',
 			file_size_bytes INTEGER NOT NULL DEFAULT 0,
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			is_primary INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT '',

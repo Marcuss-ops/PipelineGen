@@ -14,8 +14,8 @@
 //     canal, not `delivery.Publisher.Publish`).
 //   - per-rendition filter select → THIS file (`shouldPublishRendition`,
 //     pure helper, hermetic unit-test coverage).
-//   - `RenditionOutput` → LegacyFileMD5 (SHA-256) threading → THIS file reads
-//     the canonical `RenditionOutput.LegacyFileMD5` (computed by
+//   - `RenditionOutput` → ContentSHA256 (SHA-256) threading → THIS file reads
+//     the canonical `RenditionOutput.ContentSHA256` (computed by
 //     processor.buildRenditionOutput via fileutil.HashFile(sha256.New())).
 //
 // GODLIKE/07 typed-error contract:
@@ -314,13 +314,13 @@ func PublishRenditionsToYouTubeAsset(
 			LocalPath: r.LocalPath,
 			Filename:  r.Filename,
 			AssetID:   assetID,
-			// MEDIA-IDENTITY (Sept 2026): the DTO field is named LegacyFileMD5 but
+			// MEDIA-IDENTITY (Sept 2026): the DTO field is named ContentSHA256 but
 			// carries the canonical SHA-256 (processor.buildRenditionOutput hashes
 			// the bytes with digest.SHA256File). It is resolved through the
 			// canonical rule instead of forwarded verbatim so that only a real
 			// 64-hex SHA-256 can become the publish's ExpectedSHA256 — the value
 			// that decides whether the uploader verifies the bytes at all.
-			ContentHash: asset.ResolveContentAddress(r.LegacyFileMD5),
+			ContentHash: asset.ResolveContentAddress(r.ContentSHA256),
 			SizeBytes:   r.SizeBytes,
 		})
 		if reqErr != nil {

@@ -35,16 +35,14 @@ import (
 
 // assetContentHash returns the canonical content fingerprint for
 // subtitle artifact identity. content_hash is the dispatcher-aware
-// Tier 1 value; file_hash remains the intentional legacy fallback for
-// rows written before content_hash was introduced.
+// Tier 1 value. The legacy fallback is demolished (migration 281): an
+// unknown content hash is honestly reported as unknown, never invented
+// from a compatibility bucket.
 func assetContentHash(a *asset.Asset) string {
 	if a == nil {
 		return ""
 	}
-	if hash := a.ContentHash(); hash != "" {
-		return hash
-	}
-	return a.GetMetadataString("legacy_file_md5")
+	return a.ContentHash()
 }
 
 // ProcessAsset runs the per-clip backfill pipeline:

@@ -79,12 +79,12 @@ func (s *AssetTxFinalizer) upsertRenditionLocation(
 		MimeType:    r.MimeType,
 		SizeBytes:   r.SizeBytes,
 		// MEDIA-IDENTITY (Sept 2026): the rendition commit's SHA256 is a
-		// content-address slot. The DTO field is named LegacyFileMD5 for
+		// content-address slot. The DTO field is named ContentSHA256 for
 		// historical reasons, so the value is RESOLVED through the canonical rule
 		// instead of forwarded verbatim: a 64-hex SHA-256 becomes the rendition's
 		// byte identity, anything else (a legacy MD5) becomes "" (unknown) rather
 		// than posing as one.
-		SHA256:    asset.ResolveContentAddress(r.LegacyFileMD5),
+		SHA256:    asset.ResolveContentAddress(r.ContentSHA256),
 		Width:     r.Width,
 		Height:    r.Height,
 		FPS:       r.FPS,

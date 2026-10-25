@@ -92,7 +92,7 @@ func TestVerifyVidRushImageBytesAddsHashDimensionsAndLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	if verified.LegacyFileMD5 == "" || verified.Width != 640 || verified.Height != 360 {
+	if verified.ContentSHA256 == "" || verified.Width != 640 || verified.Height != 360 {
 		t.Fatalf("verified artifact = %+v", verified)
 	}
 	if verified.Candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired || verified.Candidate.VerificationStatus != scriptpkg.VidRushStatusVerified {
@@ -140,7 +140,7 @@ func TestVerifyVidRushImageFileCanonicalizesTransparentPNG(t *testing.T) {
 func TestVidRushLifecycleDoesNotBindUnpersistedOrUnverifiedRights(t *testing.T) {
 	candidate := scriptpkg.SegmentAssetCandidate{
 		AssetID: "asset-1", Provider: scriptpkg.VidRushProviderInternetImages,
-		DriveLink: "https://drive.google.com/file/d/asset-1/view", LegacyFileMD5: "hash",
+		DriveLink: "https://drive.google.com/file/d/asset-1/view", ContentSHA256: "hash",
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,

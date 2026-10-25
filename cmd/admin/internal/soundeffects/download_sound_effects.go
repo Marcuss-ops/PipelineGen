@@ -107,7 +107,7 @@ func RunDownloadSoundEffects(args []string) error {
 			return fmt.Errorf("hash downloaded sound effect %s: %w", id, err)
 		}
 		clip.SetLocalPath(dest)
-		clip.SetLegacyFileMD5(hash)
+		clip.SetContentHash(hash)
 		if err := root.Outbox.Dispatcher.EnqueueAndIndex(ctx, clip, hash); err != nil {
 			return fmt.Errorf("persist local sound effect %s: %w", id, err)
 		}

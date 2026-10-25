@@ -38,7 +38,7 @@ type AudioInput struct {
 type AudioResult struct {
 	LocalPath     string
 	CleanedPath   string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	Duration      time.Duration
 	// DriveLink / DriveFileID: always zero from audioasset.Processor;
 	// Lifecycle fills. Deprecated for direct read on Processor output.

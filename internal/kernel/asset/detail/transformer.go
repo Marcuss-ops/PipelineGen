@@ -47,13 +47,13 @@ type TransformResult struct {
 	ID            string
 	Filename      string
 	LocalPath     string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	ContentHash   string
 	Status        string
 	Error         string
 	// Renditions lists the generated technical variants for this asset.
 	// Empty for processors that have not been updated to the rendition
 	// contract; callers must treat nil/empty as "only the canonical
-	// LocalPath/Filename/LegacyFileMD5 are available".
+	// LocalPath/Filename/ContentSHA256 are available".
 	Renditions []RenditionOutput
 }

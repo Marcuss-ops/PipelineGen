@@ -45,7 +45,7 @@ type VoiceoverCacheHit struct {
 	DownloadLink, LocalPath string
 	CleanedPath             string
 	DurationMs              int64
-	LegacyFileMD5           string
+	ContentSHA256           string
 	MetaJSON                []byte
 	Artifact                *audio.SpeechTimingArtifact
 }

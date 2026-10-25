@@ -431,6 +431,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			}
 			namedCardItems = append(namedCardItems, item)
 		}
+		// The semantic production plan owns run-level identity admission: an
+		// identity image survives only when the plan judged it worth producing.
+		namedCardItems = admitIdentityImagesByProductionPlan(namedCardItems, result.SemanticProductionPlan)
 		namedCards := capNamedEntityCardsPerScene(namedCardItems, maxNamedEntityCardsPerScene)
 		intake.addCandidates(len(namedCards))
 		items = append(items, namedCards...)

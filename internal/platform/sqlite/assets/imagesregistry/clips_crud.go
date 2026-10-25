@@ -26,7 +26,7 @@ import (
 // supersede gate it fed was retired with the IndexingHandler family on
 // 2026-09-12, so the narrow detail.SourceVersionQuerier port it implemented had
 // no consumer left, and the media-SSOT fingerprint read is owned by pgmedia
-// (index_event.go's COALESCE over source_version / legacy_file_md5). The
+// (index_event.go's COALESCE over source_version / content_sha256). The
 // cmd/admin producer path never called it either: backfill_missing.go computes
 // its own content-hash projection inline.
 // The receiver type + helpers + MediaAssetColumns live in clips_repository.go.

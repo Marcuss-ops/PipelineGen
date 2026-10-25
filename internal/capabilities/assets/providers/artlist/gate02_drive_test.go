@@ -1,7 +1,7 @@
 // Package artlist — Gate 02 + Gate 09 Drive Contract Tests (ARTLIST-DOD-2026-07-07).
 //
 // PR-ARTLIST-DOD-GATE-02-DRIVE-UPLOAD: verify every processed clip has
-// non-empty DriveFileID + DriveLink + DownloadLink + LegacyFileMD5 after
+// non-empty DriveFileID + DriveLink + DownloadLink + ContentSHA256 after
 // a successful run.
 //
 // PR-ARTLIST-DOD-GATE-09-DRIVE-FAILURE: verify the Drive-failure
@@ -52,7 +52,7 @@ func (f *driveFailureProcessor) Process(_ context.Context, input *detail.Process
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
-		LegacyFileMD5: "drivefail-hash-" + input.ID,
+		ContentSHA256: "drivefail-hash-" + input.ID,
 		// Drive fields intentionally left empty — simulates Drive upload failure
 		DriveLink:     "",
 		DriveFileID:   "",
@@ -81,7 +81,7 @@ func (f *partialDriveProcessor) Process(_ context.Context, input *detail.Process
 		ID:            input.ID,
 		Filename:      input.ID + "_processed.mp4",
 		LocalPath:     input.OutputDir + "/" + input.ID + "_processed.mp4",
-		LegacyFileMD5: "partial-hash-" + input.ID,
+		ContentSHA256: "partial-hash-" + input.ID,
 		ContentHash:   artlistContentHashForTest(input.ID),
 		DownloadLink:  input.SourceURL,
 		Status:        "processed",
@@ -106,7 +106,7 @@ var _ detail.MediaProcessor = (*partialDriveProcessor)(nil)
 
 // TestGate02_DriveFieldsPopulated verifies that every clip processed
 // through the happy-path pipeline has non-empty DriveFileID,
-// DriveLink, DownloadLink, and LegacyFileMD5. This is the canonical
+// DriveLink, DownloadLink, and ContentSHA256. This is the canonical
 // assertion for the "Drive upload succeeded → fields are present"
 // contract (Gate 02 of ARTLIST-DOD-2026-07-07).
 func TestGate02_DriveFieldsPopulated(t *testing.T) {
@@ -206,12 +206,12 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 	require.Len(t, resp.Items, 2)
 	for i, item := range resp.Items {
 		t.Logf("item[%d]: clip_id=%s drive_file_id=%s drive_link=%s download_link=%s file_hash=%s",
-			i, item.ClipID, item.DriveFileID, item.DriveLink, item.DownloadLink, item.LegacyFileMD5)
+			i, item.ClipID, item.DriveFileID, item.DriveLink, item.DownloadLink, item.ContentSHA256)
 
 		assert.NotEmpty(t, item.DriveFileID, "item[%d] %s: DriveFileID must be non-empty", i, item.ClipID)
 		assert.NotEmpty(t, item.DriveLink, "item[%d] %s: DriveLink must be non-empty", i, item.ClipID)
 		assert.NotEmpty(t, item.DownloadLink, "item[%d] %s: DownloadLink must be non-empty", i, item.ClipID)
-		assert.NotEmpty(t, item.LegacyFileMD5, "item[%d] %s: LegacyFileMD5 must be non-empty", i, item.ClipID)
+		assert.NotEmpty(t, item.ContentSHA256, "item[%d] %s: ContentSHA256 must be non-empty", i, item.ClipID)
 
 		// DriveLink must look like a valid Drive URL
 		assert.Contains(t, item.DriveLink, "drive.google.com", "item[%d] %s: DriveLink must be a Drive URL", i, item.ClipID)
@@ -229,13 +229,13 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 		var driveLink, fileHash, driveFileID string
 		err := db.QueryRow(`
 			SELECT COALESCE(drive_link, ''),
-			       COALESCE(legacy_file_md5, ''),
+			       COALESCE(content_sha256, ''),
 			       COALESCE(drive_file_id, '')
 			FROM media_assets WHERE id = ?
 		`, clipID).Scan(&driveLink, &fileHash, &driveFileID)
 		require.NoError(t, err, "clip %s should exist in media_assets", clipID)
 		assert.NotEmpty(t, driveLink, "SQLite: clip %s drive_link must be non-empty", clipID)
-		assert.NotEmpty(t, fileHash, "SQLite: clip %s legacy_file_md5 must be non-empty", clipID)
+		assert.NotEmpty(t, fileHash, "SQLite: clip %s content_sha256 must be non-empty", clipID)
 		assert.NotEmpty(t, driveFileID, "SQLite: clip %s drive_file_id must be non-empty", clipID)
 	}
 }
@@ -337,7 +337,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 	assert.Contains(t, resp.Items[0].Error, "missing Drive fields", "item Error should explain the failure")
 	assert.Empty(t, resp.Items[0].DriveFileID, "DriveFileID should be empty (Drive upload failed)")
 	assert.Empty(t, resp.Items[0].DriveLink, "DriveLink should be empty (Drive upload failed)")
-	assert.NotEmpty(t, resp.Items[0].LegacyFileMD5, "LegacyFileMD5 should be present (transcode succeeded)")
+	assert.NotEmpty(t, resp.Items[0].ContentSHA256, "ContentSHA256 should be present (transcode succeeded)")
 
 	// Processed MUST be 0 — the gate in stagePersistResults skipped it
 	assert.Equal(t, 0, resp.Processed, "Processed must be 0 when Drive fields are missing")
@@ -496,11 +496,11 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 // contract (Gate 05 of ARTLIST-DOD-2026-07-07):
 //
 //  1. The dispatcher is called exactly once per successfully processed clip
-//  2. Each dispatch carries the clip's LegacyFileMD5 as the content hash
-//  3. Dispatch only fires for clips with non-empty Drive fields AND LegacyFileMD5
+//  2. Each dispatch carries the clip's ContentSHA256 as the content hash
+//  3. Dispatch only fires for clips with non-empty Drive fields AND ContentSHA256
 //  4. Dispatch is NOT called for clips skipped by the Drive gate
 //
-// godlike/07 no-fake-availability: a clip with empty LegacyFileMD5 must NOT
+// godlike/07 no-fake-availability: a clip with empty ContentSHA256 must NOT
 // reach the dispatcher — the persist gate in stagePersistResults must
 // reject it before dispatch.
 func TestGate05_OutboxDispatchContract(t *testing.T) {
@@ -567,7 +567,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 		insertTestClip(t, db, a)
 	}
 
-	// successMediaProcessor returns unique LegacyFileMD5 per clip ID.
+	// successMediaProcessor returns unique ContentSHA256 per clip ID.
 	// The gate05-hash- prefix is the canonical pattern from
 	// successMediaProcessor.Process in gate01_happy_path_test.go.
 	processor := &successMediaProcessor{}

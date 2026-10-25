@@ -34,7 +34,7 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 				return mergeErr
 			}
 			img := &detail.ImageAsset{
-				Hash:         imageRecordHash(rec.ID, rec.LegacyFileMD5),
+				Hash:         imageRecordHash(rec.ID, rec.ContentSHA256),
 				SubjectID:    textutil.FirstNonEmpty(rec.Group, rec.SourceID, rec.Source),
 				SourceURL:    textutil.FirstNonEmpty(rec.ExternalURL, rec.DownloadLink),
 				Description:  rec.Name,
@@ -61,17 +61,17 @@ func NewRegistryAdapter(repo *imagesrepo.ImagesRepository, imagesDir string, log
 			m.SetDriveFileID(rec.DriveFileID)
 			m.SetDriveLink(rec.DriveLink)
 			m.SetDownloadLink(rec.DownloadLink)
-			m.SetLegacyFileMD5(rec.LegacyFileMD5)
+			m.SetContentHash(rec.ContentSHA256)
 			m.SetContentHash(rec.ContentHash)
 			// MEDIA-IDENTITY (Sept 2026): the commit's ContentHash is the BYTE
 			// identity. The record already carries it (rec.ContentHash); the legacy
 			// digest is only a migration-window fallback while it still holds a
-			// SHA-256. Forwarding rec.LegacyFileMD5 verbatim let an MD5 become the
+			// SHA-256. Forwarding rec.ContentSHA256 verbatim let an MD5 become the
 			// content address of the media row.
 			_, err := committer.CommitAndIndex(ctx, persistence.CommitRequest{
 				AssetID: m.ID, Source: string(m.Source), Name: m.Name, Filename: m.Filename,
 				MediaType:      string(m.MediaType),
-				ContentHash:    asset.ResolveContentAddress(rec.ContentHash, rec.LegacyFileMD5),
+				ContentHash:    asset.ResolveContentAddress(rec.ContentHash, rec.ContentSHA256),
 				LifecycleState: string(m.LifecycleState), EmitIndexEvent: true,
 			})
 			return err
@@ -128,7 +128,7 @@ func imageToMediaRecord(img *detail.ImageAsset, imagesDir string) *artifacts.Med
 		LocalPath:     imageFullPath(imagesDir, img.PathRel),
 		DriveFileID:   img.DriveFileID,
 		DriveLink:     imageMetadataString(img.MetadataJSON, "drive_link"),
-		LegacyFileMD5: img.Hash,
+		ContentSHA256: img.Hash,
 		Status:        img.Status,
 		Metadata:      img.MetadataJSON,
 		Tags:          append([]string(nil), img.Tags...),
@@ -177,8 +177,8 @@ func mergeImageMetadata(log *zap.Logger, meta string, rec *artifacts.MediaRecord
 		if rec.DownloadLink != "" {
 			payload["download_link"] = rec.DownloadLink
 		}
-		if rec.LegacyFileMD5 != "" {
-			payload["hash"] = rec.LegacyFileMD5
+		if rec.ContentSHA256 != "" {
+			payload["hash"] = rec.ContentSHA256
 		}
 		if rec.Status != "" {
 			payload["status"] = rec.Status

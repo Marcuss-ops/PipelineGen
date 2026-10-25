@@ -486,30 +486,44 @@ func registerPostgresDeleteSagaHandlers(
 // missing DB handle or a construction error logs a Warn and skips — the
 // performance-backfill admin command remains the recovery path. It never
 // aborts boot.
-func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, executionDB *storage.SQLiteDB, registryDB *storage.SQLiteDB, log *zap.Logger) {
+//
+// overlayEvents (optional) adds the overlay-drive wake half of job.completed:
+// every publication event the overlay Drive outbox deferred while the parent
+// script job was RUNNING is made due IMMEDIATELY at the terminal flip instead
+// of waiting out its own defer delay (60 s per event in the golden runs).
+// The registry holds ONE job.completed handler, so the wake lives inside the
+// same adapter; a nil overlayEvents simply drops the wake half (the deferral
+// delay then remains the event's own recovery cadence).
+func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRegistry, dbs *Databases, executionDB *storage.SQLiteDB, registryDB *storage.SQLiteDB, log *zap.Logger, overlayEvents *outboxevents.Repository) {
 	if eventsRegistry == nil {
 		return
 	}
-	if dbs == nil || dbs.Set == nil || executionDB == nil || executionDB.DB == nil || registryDB == nil || registryDB.DB == nil ||
-		dbs.Set.Observability == nil || dbs.Set.Observability.DB == nil {
+	var projection capperformance.ProjectionService
+	if dbs != nil && dbs.Set != nil && executionDB != nil && executionDB.DB != nil && registryDB != nil && registryDB.DB != nil &&
+		dbs.Set.Observability != nil && dbs.Set.Observability.DB != nil {
+		var performanceTable string
+		if err := registryDB.DB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='performance_runs'`).Scan(&performanceTable); err != nil || performanceTable == "" {
+			log.Warn("outbox job.completed performance handler skipped (performance registry table is unavailable)")
+		} else if proj, err := perfstore.NewSplitProjection(executionDB.DB, registryDB.DB, dbs.Set.Observability.DB); err != nil {
+			log.Warn("outbox job.completed performance handler NOT wired", zap.Error(err))
+		} else {
+			projection = proj
+		}
+	} else {
 		log.Warn("outbox job.completed performance handler NOT wired (execution/registry/observability DB missing)")
+	}
+	if projection == nil && overlayEvents == nil {
 		return
 	}
-	var performanceTable string
-	if err := registryDB.DB.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='performance_runs'`).Scan(&performanceTable); err != nil || performanceTable == "" {
-		log.Warn("outbox job.completed performance handler skipped (performance registry table is unavailable)")
-		return
+	adapter := jobCompletedPerformanceAdapter{projection: projection, log: log}
+	if overlayEvents != nil {
+		adapter.wake = &overlayDrivePublicationWake{events: overlayEvents, log: log}
 	}
-	proj, err := perfstore.NewSplitProjection(executionDB.DB, registryDB.DB, dbs.Set.Observability.DB)
-	if err != nil {
-		log.Warn("outbox job.completed performance handler NOT wired", zap.Error(err))
-		return
-	}
-	if err := eventsRegistry.Register(jobCompletedPerformanceAdapter{projection: proj, log: log}); err != nil {
+	if err := eventsRegistry.Register(adapter); err != nil {
 		log.Warn("outbox job.completed performance handler registration failed", zap.Error(err))
 		return
 	}
-	log.Info("outbox job.completed performance handler registered: job.completed → performance_runs/steps projection")
+	log.Info("outbox job.completed handler registered: performance_runs/steps projection + overlay-drive deferral wake")
 }
 
 // jobCompletedPerformanceAdapter keeps the SQLite outbox envelope at the
@@ -517,8 +531,12 @@ func registerPerformanceProjectionHandler(eventsRegistry *outboxevents.HandlerRe
 // performance capability owns only the ProjectionService port; this adapter
 // owns the concrete outboxevents.Handler contract and extracts the job id
 // from the event envelope before delegating to the projection.
+// The optional wake half makes the overlay Drive publications the parent's
+// render deferred (parent RUNNING) claimable at the commit that flips this
+// job terminal — the projection contract itself is unchanged.
 type jobCompletedPerformanceAdapter struct {
 	projection capperformance.ProjectionService
+	wake       *overlayDrivePublicationWake
 	log        *zap.Logger
 }
 
@@ -542,6 +560,22 @@ func (a jobCompletedPerformanceAdapter) Handle(ctx context.Context, evt outboxev
 	}
 	if jobID == "" {
 		return fmt.Errorf("job.completed performance handler: missing job id (aggregate_id=%q)", evt.AggregateID)
+	}
+	// Wake half FIRST: the terminal flip just committed the result the
+	// deferred overlay publications were waiting on. They will be claimed by
+	// the outbox-events pool on its very next poll, so their delivery lands
+	// at commit+poll instead of commit+defer-delay. A wake failure is a
+	// real infrastructure error: surface it so the pool retries the event.
+	if a.wake != nil {
+		if err := a.wake.Handle(ctx, jobID); err != nil {
+			return fmt.Errorf("overlay-drive deferral wake after job.completed: %w", err)
+		}
+	}
+	if a.projection == nil {
+		// Degraded wiring (no execution/registry/observability DB): the wake
+		// half still ran; there is no projection to delegate to.
+		a.log.Debug("job.completed wake handled without projection (projection unavailable)", zap.String("job_id", jobID))
+		return nil
 	}
 	if err := a.projection.ProjectCompletedJob(ctx, jobID); err != nil {
 		// Fire-and-forget: the job is already committed with its artifacts, so

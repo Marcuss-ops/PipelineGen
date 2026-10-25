@@ -56,7 +56,7 @@ func TestExecute_AsyncEnrichmentGate_EmitsEnrichmentIntent(t *testing.T) {
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_yt_async_enrich_0_10_v1.mp4",
 		Duration:      10,
-		LegacyFileMD5: "async-enrich-hash",
+		ContentSHA256: "async-enrich-hash",
 		DriveFileID:   "async-enrich-drive-file",
 	}}
 	metadata.LocalizedWriter = writer
@@ -95,7 +95,7 @@ func TestExecute_SyncEnrichmentDefault_NoEnrichmentIntent(t *testing.T) {
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_yt_sync_enrich_0_10_v1.mp4",
 		Duration:      10,
-		LegacyFileMD5: "sync-enrich-hash",
+		ContentSHA256: "sync-enrich-hash",
 		DriveFileID:   "sync-enrich-drive-file",
 	}}
 	metadata.LocalizedWriter = writer

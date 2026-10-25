@@ -46,7 +46,10 @@ func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledA
 	if plan.PlanSHA256 == "" {
 		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, fmt.Errorf("combined audio plan hash is missing")
 	}
-	output := filepath.Join(os.TempDir(), "pipelinegen-final-audio-"+plan.PlanSHA256+".m4a")
+	output, err := audio.FinalAudioOutputPath(plan.PlanSHA256)
+	if err != nil {
+		return scripts.FinalAudioReference{}, scripts.AudioPipelineMetrics{}, err
+	}
 	started := time.Now()
 	asset, stageMetrics, err := r.processor.RenderAudioPlanWithMetrics(ctx, plan, assets, output)
 	if err != nil {

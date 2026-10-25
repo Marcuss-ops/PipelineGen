@@ -55,7 +55,7 @@ func TestExecute_CacheHit_RunsMetadataEnrichment(t *testing.T) {
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_yt_cachehit_meta_0_10_v1.mp4",
 		Duration:      10,
-		LegacyFileMD5: "cache-hit-hash",
+		ContentSHA256: "cache-hit-hash",
 		DriveFileID:   "cache-hit-drive-file",
 	}}
 	metadata.MetadataService = svc
@@ -109,7 +109,7 @@ func TestExecute_CacheHit_RepairsMissingTranscript(t *testing.T) {
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_yt_cachehit_tx_0_10_v1.mp4",
 		Duration:      10,
-		LegacyFileMD5: "cache-hit-hash",
+		ContentSHA256: "cache-hit-hash",
 		DriveFileID:   "cache-hit-drive-file",
 		LocalPath:     realPath,
 	}}

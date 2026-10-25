@@ -79,7 +79,7 @@ func TestStagePersistResults_OpensFinalizerTxOnMediaDB(t *testing.T) {
 			Status:        "processed",
 			DriveFileID:   "drive-1",
 			DriveLink:     "https://drive.example/x",
-			LegacyFileMD5: "sha256:deadbeef",
+			ContentSHA256: "sha256:deadbeef",
 		}},
 	}
 

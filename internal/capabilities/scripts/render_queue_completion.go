@@ -102,6 +102,15 @@ func (e *QueueRenderEnqueuer) SetDynamicMapVideoCacheDir(dir string) {
 	}
 }
 
+// SetDynamicMapGPUGate wires the same host-wide admission gate used by
+// RenderingGen. A nil gate leaves only explicitly CPU-profile map rendering
+// available; GPU maps fail closed instead of bypassing shared admission.
+func (e *QueueRenderEnqueuer) SetDynamicMapGPUGate(gate DynamicMapGPUAdmission) {
+	if e != nil {
+		e.mapGPUGate = gate
+	}
+}
+
 func (e *QueueRenderEnqueuer) SetAsyncPublication(on bool) {
 	if e == nil {
 		return

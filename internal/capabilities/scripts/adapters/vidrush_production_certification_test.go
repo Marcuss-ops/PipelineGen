@@ -46,7 +46,7 @@ func (p *certificationArtlistProvider) Acquire(_ context.Context, c scriptpkg.Se
 		return scriptports.LocalArtifact{}, fmt.Errorf("download failed for %s", c.AssetID)
 	}
 	c.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: c, LocalPath: "/materialized/" + c.AssetID + ".mp4", MIMEType: "video/mp4", SizeBytes: 42, LegacyFileMD5: "sha-" + c.AssetID}, nil
+	return scriptports.LocalArtifact{Candidate: c, LocalPath: "/materialized/" + c.AssetID + ".mp4", MIMEType: "video/mp4", SizeBytes: 42, ContentSHA256: "sha-" + c.AssetID}, nil
 }
 func (p *certificationArtlistProvider) Verify(_ context.Context, a scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	p.mu.Lock()
@@ -58,7 +58,7 @@ func (p *certificationArtlistProvider) Verify(_ context.Context, a scriptports.L
 	c := a.Candidate
 	c.VerificationStatus = scriptpkg.VidRushStatusVerified
 	c.RightsStatus = "verified"
-	return scriptports.VerifiedArtifact{Candidate: c, LocalPath: a.LocalPath, MIMEType: a.MIMEType, SizeBytes: a.SizeBytes, LegacyFileMD5: a.LegacyFileMD5, DurationMs: 10000, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
+	return scriptports.VerifiedArtifact{Candidate: c, LocalPath: a.LocalPath, MIMEType: a.MIMEType, SizeBytes: a.SizeBytes, ContentSHA256: a.ContentSHA256, DurationMs: 10000, Width: 1920, Height: 1080, RightsStatus: "verified"}, nil
 }
 
 type certificationFinalizer struct {
@@ -79,7 +79,7 @@ func (f *certificationFinalizer) Finalize(_ context.Context, a scriptports.Verif
 	f.calls++
 	c := a.Candidate
 	c.AssetID = strings.TrimSpace(c.AssetID)
-	c.LegacyFileMD5 = a.LegacyFileMD5
+	c.ContentSHA256 = a.ContentSHA256
 	c.LocalPath, c.MIMEType = a.LocalPath, a.MIMEType
 	// SegmentAssetCandidate currently exposes the canonical Drive identity as
 	// DriveLink; DriveFileID is carried by the persistence-layer record.

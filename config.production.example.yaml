@@ -239,6 +239,11 @@ scripts:
     require_database: true
   batch_web_search_concurrency: 4
   batch_chapter_concurrency: 3
+  # Semantic production planner + durable plan cache (cache plane). The
+  # planner routes person → DuckDuckGo, institution/place/object → Wikimedia
+  # Commons before the web cascade, and records hit rate/latency per run.
+  semantic_production_search: true
+  semantic_plan_cache_ttl_seconds: 3600
   # Localized render lane (one Localize call per scene x language).
   # global = MACHINE bound shared by every concurrent Localize call; a wider
   # payload render_concurrency is clamped to it and logged as a WARN. Pipelining

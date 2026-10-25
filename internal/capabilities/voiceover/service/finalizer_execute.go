@@ -171,7 +171,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		DriveFileID:     cmd.DriveFileID,
 		DriveLink:       cmd.DriveLink,
 		DownloadLink:    cmd.DownloadLink,
-		LegacyFileMD5:   cmd.LegacyFileMD5,
+		ContentSHA256:   cmd.ContentSHA256,
 		DurationSeconds: cmd.DurationSeconds,
 		Status:          string(StatusGenerated),
 		Strategy:        cmd.Strategy,
@@ -202,7 +202,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// consumer of the outbox event.
 	//
 	// The canonical AssetCommitter owns the media_assets write even when the
-	// bytes are not materialized yet. Empty LegacyFileMD5 means REGISTERED-only:
+	// bytes are not materialized yet. Empty ContentSHA256 means REGISTERED-only:
 	// the committer persists the asset and deliberately suppresses the index event.
 	// The LifecycleService branch remains only as a migration compatibility
 	// seam for old compositions where the committer is not wired.
@@ -224,12 +224,12 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 			return nil, fmt.Errorf("voiceoverFinalizer: Committer.CommitTx (media_assets + outbox): %w", err)
 		}
 		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
-		// Empty LegacyFileMD5 is an explicit registered-only guard: no semantic
+		// Empty ContentSHA256 is an explicit registered-only guard: no semantic
 		// indexing event is emitted until content identity is known.
-		if cmd.LegacyFileMD5 != "" {
+		if cmd.ContentSHA256 != "" {
 			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
 		} else {
-			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty LegacyFileMD5"))
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty ContentSHA256"))
 		}
 	} else {
 		// ── Legacy pre-Cutover path (Step 4 + Step 5 separately) ──
@@ -248,7 +248,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 			DriveFileID:   cmd.DriveFileID,
 			DriveLink:     cmd.DriveLink,
 			DownloadLink:  cmd.DownloadLink,
-			LegacyFileMD5: cmd.LegacyFileMD5,
+			ContentSHA256: cmd.ContentSHA256,
 			Language:      cmd.Language,
 			Status:        string(StatusGenerated),
 			Metadata:      string(cmd.MetaJSON),
@@ -257,15 +257,15 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		}
 		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
 
-		// Audit P0 #2: Outbox nil is fatal (fail-fast above). LegacyFileMD5
+		// Audit P0 #2: Outbox nil is fatal (fail-fast above). ContentSHA256
 		// empty is a data-state guard-skip with execution marker.
-		if cmd.LegacyFileMD5 != "" {
-			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, "voiceover", cmd.LegacyFileMD5); err != nil {
+		if cmd.ContentSHA256 != "" {
+			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, "voiceover", cmd.ContentSHA256); err != nil {
 				return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
 			}
 			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
 		} else {
-			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty LegacyFileMD5"))
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty ContentSHA256"))
 		}
 	}
 
@@ -346,7 +346,7 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string, log *
 			URI:           cmd.DriveLink,
 			WebViewLink:   cmd.DriveLink,
 			DownloadURL:   cmd.DownloadLink,
-			LegacyFileMD5: cmd.LegacyFileMD5,
+			ContentSHA256: cmd.ContentSHA256,
 			IsPrimary:     true,
 		})
 	}
@@ -358,13 +358,13 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string, log *
 		Filename:  cmd.Filename,
 		MediaType: "audio",
 		// MEDIA-IDENTITY (Sept 2026): the commit's ContentHash is the BYTE
-		// identity (media_assets.content_sha256). cmd.LegacyFileMD5 carries the
+		// identity (media_assets.content_sha256). cmd.ContentSHA256 carries the
 		// SHA-256 of the generated audio on the modern path, but it is the
 		// compatibility accessor and a legacy record can hold an MD5 there, so the
 		// value is RESOLVED through the canonical rule: only a 64-hex SHA-256
 		// becomes the content address, anything else is unknown ("") — never an MD5
 		// posing as a SHA-256.
-		ContentHash:    asset.ResolveContentAddress(cmd.LegacyFileMD5),
+		ContentHash:    asset.ResolveContentAddress(cmd.ContentSHA256),
 		Description:    textPreview,
 		SearchText:     searchText,
 		LifecycleState: string(asset.StatePublished),
@@ -380,12 +380,12 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string, log *
 			// detector), not a content address: it deliberately keeps the raw
 			// digest so a legacy MD5 still marks "the bytes changed" for rows that
 			// predate content addressing. The byte identity rides in ContentHash
-			// above and in the location's legacy_file_md5 bucket.
-			SourceVersion: cmd.LegacyFileMD5,
+			// above and in the location's content_sha256 bucket.
+			SourceVersion: cmd.ContentSHA256,
 			Tags:          semanticMeta.Tags,
 			Extra:         extra,
 		},
 		Locations:      locations,
-		EmitIndexEvent: cmd.LegacyFileMD5 != "",
+		EmitIndexEvent: cmd.ContentSHA256 != "",
 	}
 }

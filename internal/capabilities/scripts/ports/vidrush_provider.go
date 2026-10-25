@@ -64,7 +64,7 @@ type LocalArtifact struct {
 	LocalPath     string
 	MIMEType      string
 	SizeBytes     int64
-	LegacyFileMD5 string
+	ContentSHA256 string
 	Manifest      *job.ArtifactManifest
 }
 
@@ -75,7 +75,7 @@ type VerifiedArtifact struct {
 	LocalPath        string
 	MIMEType         string
 	SizeBytes        int64
-	LegacyFileMD5    string
+	ContentSHA256    string
 	DurationMs       int64
 	Width            int
 	Height           int

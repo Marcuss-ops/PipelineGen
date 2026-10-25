@@ -541,6 +541,92 @@ def check_keyword_quality(results, manifest):
     check(results, "keyword_quality", verdict, detail)
 
 
+def check_consolidation(results, manifest, scenes):
+    """Semantic Consolidation v1: inventory, selectivity and coverage invariant."""
+    consolidation = manifest.get("visual_consolidation") or {}
+    if not consolidation:
+        check(results, "consolidation", "FAIL", "visual_consolidation missing")
+        return
+    texts = {scene["scene_id"]: scene["text"] for scene in scenes}
+    candidates = consolidation.get("production_candidates") or []
+    facts = consolidation.get("facts") or []
+    inventory = consolidation.get("inventory") or {}
+    metrics = consolidation.get("metrics") or {}
+    raw_facts = sum(len(scene.get("entity_facts") or []) for scene in manifest["scenes"])
+    raw_proposals = sum(len(scene.get("visual_proposals") or []) for scene in manifest["scenes"])
+    raw_queries = sum(len(entry.get("queries") or []) for entry in (manifest.get("search_feedback") or {}).get("entries", []))
+    bad = []
+    if consolidation.get("schema") != "visual_consolidation.v1":
+        bad.append("schema=%r" % consolidation.get("schema"))
+    if inventory.get("facts") != raw_facts or inventory.get("proposals") != raw_proposals or inventory.get("queries") != raw_queries:
+        bad.append("inventory does not match raw collections")
+    if inventory.get("canonical_facts") != len(facts):
+        bad.append("canonical fact inventory mismatch")
+    if metrics.get("production_candidates") != len(candidates):
+        bad.append("candidate metric mismatch")
+    if metrics.get("canonical_facts") != len(facts):
+        bad.append("fact metric mismatch")
+    covered = sum(1 for fact in facts if fact.get("representation"))
+    if metrics.get("covered_facts") != covered or metrics.get("uncovered_facts") != len(facts) - covered:
+        bad.append("coverage metric mismatch")
+    if metrics.get("covered_facts", 0) + metrics.get("uncovered_facts", 0) != len(facts):
+        bad.append("coverage totals disagree")
+    canonical_ids = {fact.get("id") for fact in facts}
+    candidate_ids = {candidate.get("id") for candidate in candidates}
+    seen_dedup = set()
+    production_queries = 0
+    for candidate in candidates:
+        scene_text = texts.get(candidate.get("scene_id"))
+        if scene_text is None:
+            bad.append("candidate %s unknown scene" % candidate.get("id"))
+            continue
+        if candidate.get("dedup_key") in seen_dedup:
+            bad.append("duplicate candidate %s" % candidate.get("id"))
+        seen_dedup.add(candidate.get("dedup_key"))
+        raw = scene_text.encode("utf-8")
+        start, end = candidate.get("start_byte"), candidate.get("end_byte")
+        if start is None or end is None or start > end or end > len(raw) or raw[start:end].decode("utf-8", "replace") != candidate.get("evidence"):
+            bad.append("candidate %s ungrounded evidence" % candidate.get("id"))
+        for fact_id in candidate.get("covered_fact_ids") or []:
+            if fact_id not in canonical_ids:
+                bad.append("candidate %s unknown fact %s" % (candidate.get("id"), fact_id))
+        production_queries += len(candidate.get("queries") or [])
+        for query in candidate.get("queries") or []:
+            text = query.get("text") or ""
+            if not text or text not in scene_text:
+                bad.append("candidate %s ungrounded query" % candidate.get("id"))
+    for fact in facts:
+        representation = fact.get("representation")
+        if not representation:
+            if not (fact.get("uncovered_reason") or "").strip():
+                bad.append("fact %s uncovered without reason" % fact.get("id"))
+            continue
+        candidate_id = representation.get("candidate_id")
+        if candidate_id not in candidate_ids:
+            bad.append("fact %s unknown representation" % fact.get("id"))
+    if metrics.get("production_queries") != production_queries:
+        bad.append("query metric mismatch")
+    verdict = "PASS" if not bad else "FAIL"
+    detail = "%d candidates from %d proposals; %d/%d canonical facts; %d queries from %d" % (
+        len(candidates), raw_proposals, covered, len(facts), production_queries, raw_queries)
+    if bad:
+        detail += "; " + "; ".join(bad[:4])
+    check(results, "consolidation", verdict, detail)
+    selective = (
+        len(candidates) <= raw_proposals
+        and metrics.get("estimated_search_jobs", 0) <= metrics.get("raw_search_entries", 0)
+        and metrics.get("production_queries", 0) <= raw_queries
+    )
+    check(
+        results,
+        "consolidation_selectivity",
+        "PASS" if selective else "FAIL",
+        "%d candidates, %d search jobs, %d queries (raw: %d proposals, %d entries, %d queries)"
+        % (len(candidates), metrics.get("estimated_search_jobs", 0), metrics.get("production_queries", 0),
+           raw_proposals, metrics.get("raw_search_entries", 0), raw_queries),
+    )
+
+
 def evaluate(worker, text, scene_words, timeout, gold=None):
     scenes_text = split_scenes(text, scene_words)
     manifest, scenes = call_worker(worker, scenes_text, timeout)
@@ -559,6 +645,7 @@ def evaluate(worker, text, scene_words, timeout, gold=None):
     check_comparison_precision(results, manifest)
     check_timeline_completeness(results, manifest)
     check_keyword_quality(results, manifest)
+    check_consolidation(results, manifest, scenes)
     if gold:
         check_chronology(results, manifest, scenes, gold)
         check_temporal_recall(results, manifest, gold)

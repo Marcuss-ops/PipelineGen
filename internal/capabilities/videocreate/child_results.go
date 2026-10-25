@@ -375,7 +375,7 @@ func decodeAcquireChildResult(jobType string, raw json.RawMessage) (AcquireChild
 			}
 			return AcquireChildResult{
 				AssetID:    item.ID,
-				ContentSHA: item.LegacyFileMD5,
+				ContentSHA: item.ContentSHA256,
 				DurationMS: int64(item.Duration) * 1000,
 				MediaType:  "video",
 				Source:     "youtube",

@@ -35,7 +35,7 @@ func TestStagePersistResults_BeginTxFailure_CountsItemAsFailed(t *testing.T) {
 		DriveFileID:   "drive-id-1",
 		DriveLink:     "https://drive.google.com/file/d/drive-id-1/view",
 		DownloadLink:  "https://cdn.example.invalid/drive-id-1.mp4",
-		LegacyFileMD5: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+		ContentSHA256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 		LocalPath:     filepath.Join(t.TempDir(), "failclosed-begintx-1.mp4"),
 	}}}
 

@@ -21,7 +21,7 @@ type AssetRef struct {
 	MediaType     string
 	LocalPath     string // registered local copy (may be absent)
 	DriveFileID   string // canonical Drive source (may be absent)
-	LegacyFileMD5 string // registry-persisted hash (may be absent)
+	ContentSHA256 string // registry-persisted hash (may be absent)
 	DurationMS    int64
 }
 

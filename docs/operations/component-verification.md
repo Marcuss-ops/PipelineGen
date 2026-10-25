@@ -49,6 +49,8 @@ invocation.
 | `make verify-ollama` | `ollama` | Ollama client and structured-output adapters |
 | `make verify-youtube` | `youtube` | YouTube domain, sourcing, providers, API, and infrastructure |
 | `make verify-artlist` | `artlist` | Artlist provider, infrastructure, and API |
+| `make verify-kernel` | `kernel` | Kernel contracts (`internal/kernel/...`) |
+| `verify-component.py rust` (no Make alias) | `rust` | Go consumer suite of the Rust workers (`internal/platform/media/rustexec/...`) plus the ordering guard |
 
 
 The registry also exposes aggregate component targets:
@@ -73,6 +75,20 @@ runner. An unmapped file fails closed when the script is called directly. The
 Make aggregate opts into `--run-all-when-unmapped`, which verifies every
 currently registered component while preserving the unmapped-file information
 in the report until registry coverage is expanded.
+
+### Overlapping suites must be ordered
+
+`rust` runs the Go consumer suite `./internal/platform/media/rustexec/...`,
+which `timeline` also runs through its `./internal/platform/media/...` scope.
+The registry therefore declares `timeline` → `rust`, so the runner serialises
+the two. `scripts/ci/test_verify_components_concurrency.py` (executed by the
+`rust` component) fails if that ordering edge disappears or a third component
+starts owning the rustexec package set without an order. Running both suites at
+once executed the same real-worker test binary twice and made
+`TestListenGateDifferentialABCD` fail with `ffprobe exited with exit status: 1`;
+the renderer now reserves a unique final-audio output per invocation, and
+`TestConcurrentSamePlanRendersUseDistinctMasters` pins that code-level
+regression.
 
 ## Modes and gates
 

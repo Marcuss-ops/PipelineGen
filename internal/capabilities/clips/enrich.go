@@ -171,7 +171,7 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clipID string) erro
 	// outbox event. Card 10 closed the legacy assetRepo fallback
 	// (the silent-success path that masked partial deployments);
 	// the canonical dispatcher is the SOLE writer here. A missing
-	// LegacyFileMD5 is a typed error (card 10 closed the warn-and-skip
+	// ContentSHA256 is a typed error (card 10 closed the warn-and-skip
 	// silent path that lost enrichment metadata in partial
 	// deployments).
 	// MEDIA-IDENTITY (Sept 2026): re-indexing keys on the BYTE identity. A

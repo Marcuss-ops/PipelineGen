@@ -280,6 +280,11 @@ func TestAudioOverlayOverlapJoinsBeforeCheckpointAndResumes(t *testing.T) {
 
 func TestFinalAudioPublishesBeforeOverlayJoinButFinalizesAfterJoin(t *testing.T) {
 	e, _, audio, overlay, _ := newAudioOverlapFixture(t)
+	// A run with neither documents nor a final job has no consumer of the
+	// master audio and the overlay-only gate skips the publish by design
+	// (covered by runner_phase_audio_publish_gate_test.go). This test pins
+	// the publish-before-join ordering, so it needs a real consumer.
+	e.req.FinalJob = true
 	audioPath := filepath.Join(t.TempDir(), "final-audio.m4a")
 	require.NoError(t, os.WriteFile(audioPath, []byte("certified audio"), 0o600))
 	audio.path = audioPath

@@ -119,7 +119,7 @@ func NewRepairAdapter(db *sql.DB, outboxRepo *outboxevents.Repository, schemaVer
 // assets.SourceVersionFor(...) helper this note used to name is deleted; the
 // admin producers compute the fingerprint in their own SQL
 // (backfill_missing.go's COALESCE over metadata_json.content_hash →
-// .file_hash → legacy_file_md5) and the media-SSOT read lives on pgmedia.
+// .file_hash → content_sha256) and the media-SSOT read lives on pgmedia.
 //
 // force (Card 7.1, July 2026): the admin reindex path passes
 // force=true. Production reconciler --apply also passes force=true

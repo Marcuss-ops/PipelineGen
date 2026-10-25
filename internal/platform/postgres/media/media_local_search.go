@@ -113,8 +113,8 @@ func (s *MediaSearcher) FindAllByHash(ctx context.Context, hash string, limit in
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+mediaAssetReadColumns+`
 		FROM media_assets
-		WHERE binary_sha256 = $1 OR content_sha256 = $1 OR legacy_file_md5 = $1
-		   OR binary_sha256 = $2 OR content_sha256 = $2 OR legacy_file_md5 = $2
+		WHERE binary_sha256 = $1 OR content_sha256 = $1 OR content_sha256 = $1
+		   OR binary_sha256 = $2 OR content_sha256 = $2 OR content_sha256 = $2
 		ORDER BY updated_at DESC, id ASC
 		LIMIT $3
 	`, candidates[0], candidates[len(candidates)-1], limit)

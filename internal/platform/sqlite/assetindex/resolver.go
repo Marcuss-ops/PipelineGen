@@ -177,15 +177,15 @@ func canonicalSource(source string) string {
 
 func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 	rec := &AssetRecord{
-		AssetID:       source + "_" + clip.ID,
-		AssetType:     getAssetTypeFromSource(source),
-		Source:        source,
-		SourceID:      clip.ID,
-		GroupName:     clip.Group,
-		LocalPath:     clip.LocalPath(),
-		DriveLink:     clip.DriveLink(),
-		LegacyFileMD5: clip.GetMetadataString("legacy_file_md5"),
-		Status:        "", // status migrated to asset_processing
+		AssetID:     source + "_" + clip.ID,
+		AssetType:   getAssetTypeFromSource(source),
+		Source:      source,
+		SourceID:    clip.ID,
+		GroupName:   clip.Group,
+		LocalPath:   clip.LocalPath(),
+		DriveLink:   clip.DriveLink(),
+		ContentHash: clip.ContentHash(),
+		Status:      "", // status migrated to asset_processing
 	}
 
 	if len(clip.Metadata) > 0 {
@@ -197,15 +197,15 @@ func clipToAssetRecord(source string, clip *asset.Asset) *AssetRecord {
 
 func voiceoverToAssetRecord(rec *imagesregistry.Record) *AssetRecord {
 	return &AssetRecord{
-		AssetID:       "voiceover_" + rec.ID,
-		AssetType:     "voiceover",
-		Source:        "voiceover",
-		SourceID:      rec.ID,
-		LocalPath:     rec.LocalPath,
-		DriveLink:     rec.DriveLink,
-		LegacyFileMD5: rec.LegacyFileMD5,
-		Status:        rec.Status,
-		Metadata:      rec.Metadata,
+		AssetID:     "voiceover_" + rec.ID,
+		AssetType:   "voiceover",
+		Source:      "voiceover",
+		SourceID:    rec.ID,
+		LocalPath:   rec.LocalPath,
+		DriveLink:   rec.DriveLink,
+		ContentHash: rec.ContentSHA256,
+		Status:      rec.Status,
+		Metadata:    rec.Metadata,
 	}
 }
 

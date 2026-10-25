@@ -154,7 +154,7 @@ func minimalMediaAssetsFixture(t *testing.T, db *sql.DB) {
 			drive_folder_id      TEXT NOT NULL DEFAULT '',
 			drive_link           TEXT NOT NULL DEFAULT '',
 			download_link        TEXT NOT NULL DEFAULT '',
-			legacy_file_md5            TEXT NOT NULL DEFAULT '',
+			content_sha256            TEXT NOT NULL DEFAULT '',
 			metadata_json        TEXT NOT NULL DEFAULT '{}',
 			visual_embedding     TEXT NOT NULL DEFAULT '[]',
 			transcript_embedding TEXT NOT NULL DEFAULT '[]',

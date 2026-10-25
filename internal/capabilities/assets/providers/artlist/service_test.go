@@ -286,7 +286,7 @@ func TestArtlistClipDriveLinkPersisted(t *testing.T) {
 	}
 	clip.SetDownloadLink("https://artlist.io/hls/drive.m3u8")
 	clip.SetDriveLink("https://drive.google.com/file/d/drivelink123/view")
-	clip.SetLegacyFileMD5("drivehash123")
+	clip.SetContentHash("drivehash123")
 	insertTestClip(t, db, clip)
 
 	// Verify drive link is persisted — drive_link is now a canonical
@@ -416,7 +416,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *detail.ProcessI
 		ID:            input.ID,
 		Filename:      input.Name + ".mp4",
 		LocalPath:     input.OutputDir + "/" + input.Name + ".mp4",
-		LegacyFileMD5: "hash-test",
+		ContentSHA256: "hash-test",
 		Status:        "processed",
 	}, nil
 }

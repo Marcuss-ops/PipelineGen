@@ -15,9 +15,68 @@ import (
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
 
 const mapRunStyleSlot = "run"
+
+func NewDynamicMapGPUAdmission() (DynamicMapGPUAdmission, error) {
+	gate, _, _, err := infraoverlays.NewConfiguredGPUGate()
+	return gate, err
+}
+
+func (e *QueueRenderEnqueuer) renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (string, error) {
+	if e == nil {
+		return "", fmt.Errorf("dynamic map renderer enqueuer is nil")
+	}
+	return renderDynamicMapVideoWithGate(ctx, plan, e.mapGPUGate, e.mapVideoCacheDir)
+}
+
+func dynamicMapSamplerForProfile(profile scriptoverlay.MapEncodeProfile) string {
+	if profile.ExpectGPU {
+		return "opencv_opencl"
+	}
+	if strings.TrimSpace(os.Getenv("DYNAMIC_MAP_GPU_SAMPLER")) == "1" {
+		return "opencv_opencl"
+	}
+	return "cpu"
+}
+
+func mapRenderRequiresGPU(profile scriptoverlay.MapEncodeProfile, sampler, composition string) bool {
+	return profile.ExpectGPU || sampler != "cpu" || strings.HasPrefix(composition, "ed_")
+}
+
+type dynamicMapVideoIdentityManifest struct {
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+func dynamicMapVideoIdentity(path string) (string, int64, error) {
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(path), "map.video.identity.json"))
+	if err != nil {
+		return "", 0, fmt.Errorf("read preverified dynamic map identity: %w", err)
+	}
+	var identity dynamicMapVideoIdentityManifest
+	if err := json.Unmarshal(raw, &identity); err != nil {
+		return "", 0, fmt.Errorf("decode preverified dynamic map identity: %w", err)
+	}
+	if len(identity.SHA256) != 64 || identity.SizeBytes <= 0 || strings.TrimSpace(identity.SHA256) != strings.ToLower(identity.SHA256) {
+		return "", 0, fmt.Errorf("preverified dynamic map identity is incomplete or non-canonical")
+	}
+	for _, ch := range identity.SHA256 {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+			return "", 0, fmt.Errorf("preverified dynamic map identity has an invalid SHA-256 digest")
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("stat preverified dynamic map video: %w", err)
+	}
+	if info.Size() != identity.SizeBytes {
+		return "", 0, fmt.Errorf("preverified dynamic map video size changed: got=%d want=%d", info.Size(), identity.SizeBytes)
+	}
+	return identity.SHA256, identity.SizeBytes, nil
+}
 
 // projectMapRendererPhases projects the dynamic-map renderer's OWN measured
 // phases from the chronon.dynamic-map-telemetry.v1 summary onto the run bound
@@ -50,6 +109,105 @@ func projectMapRendererPhases(ctx context.Context, tilePrefetchMS, platePrepareM
 // camera/tile-pyramid renderer used by approved dynamic-map overlays. The
 // resulting MP4 enters normal content-addressed staging and publication.
 func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cacheDirs ...string) (string, error) {
+	return renderDynamicMapVideoWithGate(ctx, plan, nil, cacheDirs...)
+}
+
+// PreMaterializeDynamicMapVideo renders the dynamic map video of EVERY map
+// item in the plan into the durable cache WITHOUT submitting anything to the
+// render queue (TICKET-OVERLAY-THROUGHPUT: «le mappe vanno pre-materializzate
+// fuori dal percorso di sottomissione (stessa direzione di P3, ma sul
+// prepare)»). The submission path (enqueueChrononPlan's background fold)
+// consumes the cache entry, so its boundary stays thin and the map prepare is
+// attributable to the prepare phase. Concurrent callers for the same map
+// share one render (joinDynamicMapVideoRender): an item whose prepare is
+// still running joins it instead of launching a second Chronon map render.
+//
+// Identity rule: a single-map plan is prepared under the exact plan identity
+// its fold resolves; a multi-map plan (or a map beside other items) is
+// prepared per map under the exact single-item child identity the per-item
+// route folds (separateOverlayItemPlan), so every prepared cache key is a key
+// the submission consumes — one Chronon map render per map whatever the
+// plan's shape. The render workspace is released here once the durable cache
+// entry is stored: the cache entry is the only deliverable (each fold
+// materializes its own private workspace from the cache).
+func (e *QueueRenderEnqueuer) PreMaterializeDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) error {
+	if e == nil {
+		return fmt.Errorf("queue render enqueuer is not configured")
+	}
+	if os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1" {
+		// The native diagnostic route renders on the worker: there is no
+		// local dynamic-map video to prepare.
+		return nil
+	}
+	// The SAME normalization the submission's fold applies, so both sides
+	// resolve the same durable cache key.
+	semanticPlan, decisions, err := normalizeDynamicMapFoldPlan(plan)
+	if err != nil {
+		return err
+	}
+	if len(decisions) == 0 {
+		return nil
+	}
+	if len(semanticPlan.Items) == 1 && len(decisions) == 1 {
+		return e.preMaterializeMapUnit(ctx, semanticPlan, decisions)
+	}
+	for index, item := range plan.Items {
+		if item.Map == nil {
+			continue
+		}
+		child, _, err := separateOverlayItemPlan(plan, item, index)
+		if err != nil {
+			return fmt.Errorf("prepare overlay map item %q: %w", item.ID, err)
+		}
+		childPlan, childDecisions, err := normalizeDynamicMapFoldPlan(child)
+		if err != nil {
+			return fmt.Errorf("prepare overlay map item %q: %w", item.ID, err)
+		}
+		if err := e.preMaterializeMapUnit(ctx, childPlan, childDecisions); err != nil {
+			return fmt.Errorf("prepare overlay map item %q: %w", item.ID, err)
+		}
+	}
+	return nil
+}
+
+// preMaterializeMapUnit prepares ONE single-map unit (already normalized)
+// into the durable cache and releases its render workspace. A native-backend
+// map renders on the worker and has no cache entry to prepare.
+func (e *QueueRenderEnqueuer) preMaterializeMapUnit(ctx context.Context, semanticPlan capoverlay.OverlayPlan, decisions []planMapBackend) error {
+	pythonMaps := 0
+	for _, decision := range decisions {
+		if decision.backend == scriptoverlay.MapBackendPython {
+			pythonMaps++
+		}
+	}
+	if pythonMaps != 1 {
+		return nil
+	}
+	path, err := e.renderDynamicMapVideo(ctx, semanticPlan)
+	if err != nil {
+		return err
+	}
+	// Workspace ownership: this prepare owns the workspace it received and
+	// releases it after the durable cache entry is stored (the store completes
+	// before the render returns). The fold later materializes its own private
+	// workspace from the cache, so nothing reads this one again.
+	_ = os.RemoveAll(filepath.Dir(path))
+	return nil
+}
+
+// renderDynamicMapVideoWithGate de-duplicates concurrent renders of the same
+// map video around renderDynamicMapVideoOnce (the render body).
+func renderDynamicMapVideoWithGate(ctx context.Context, plan capoverlay.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
+	return joinDynamicMapVideoRender(ctx, plan, func() (string, error) {
+		return renderDynamicMapVideoOnce(ctx, plan, gate, cacheDirs...)
+	})
+}
+
+func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
+	profile, err := scriptoverlay.ResolveMapEncodeProfile(os.Getenv(scriptoverlay.MapEncodeProfileEnv))
+	if err != nil {
+		return "", err
+	}
 	if len(plan.Items) != 1 || plan.Items[0].Map == nil {
 		return "", fmt.Errorf("expected exactly one map item")
 	}
@@ -57,10 +215,10 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 	// production NVENC by default, certified CPU only under an explicit
 	// operator opt-in. Telemetry and the upscale step below must both match
 	// this profile — never a silent substitution.
-	encodeProfile, err := scriptoverlay.ResolveMapEncodeProfile(os.Getenv(scriptoverlay.MapEncodeProfileEnv))
-	if err != nil {
-		return "", err
-	}
+	encodeProfile := profile
+	sampler := dynamicMapSamplerForProfile(encodeProfile)
+	mapAnimationForAdmission, _ := plan.Items[0].Params["map_animation"].(string)
+	needsGPUAdmission := mapRenderRequiresGPU(encodeProfile, sampler, mapAnimationForAdmission)
 	plateGenerator := strings.TrimSpace(os.Getenv("VELOX_GEO_MAP_PLATE_GENERATOR_PATH"))
 	if plateGenerator == "" {
 		return "", fmt.Errorf("VELOX_GEO_MAP_PLATE_GENERATOR_PATH is not configured")
@@ -73,6 +231,15 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 	if err != nil {
 		return "", fmt.Errorf("create map render workspace: %w", err)
 	}
+	// Workspace ownership: every error below releases the workspace, and the
+	// single success transfers it to the caller (the fold removes it after the
+	// import; the prepare releases it after storing the durable cache entry).
+	keepWorkspace := false
+	defer func() {
+		if !keepWorkspace {
+			_ = os.RemoveAll(tmpDir)
+		}
+	}()
 	inputPath := filepath.Join(tmpDir, "map.json")
 	outputPath := filepath.Join(tmpDir, "map.mp4")
 	encodedOutputPath := filepath.Join(tmpDir, "map-encoded.mp4")
@@ -166,9 +333,9 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 		return "", err
 	}
 	if cameraAnimation == "" || labelAnimation == "" || basemapStyle == "" {
-		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("dynamic map presentation catalog is empty")
 	}
+	needsGPUAdmission = needsGPUAdmission || mapRenderRequiresGPU(encodeProfile, sampler, mapAnimation)
 	// Map Decision Report: the ONE per-map record of every decision behind this
 	// render — places, exclusions, composition, seed, backend, fallback and
 	// phase timings — so an unexpected map is explainable without chasing logs
@@ -232,35 +399,45 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 		"map_animation":        mapAnimation,
 		"basemap":              basemapStyle,
 		"typography":           dynamicMapTypography(plan.Items[0].Params),
+		"encoder_profile": map[string]any{
+			"codec": encodeProfile.Codec, "gpu": encodeProfile.ExpectGPU,
+			"preset": encodeProfile.Preset, "quality": encodeProfile.Quality,
+		},
+		"sampler": sampler,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
-		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("encode map render input: %w", err)
 	}
 	if err := os.WriteFile(inputPath, encoded, 0600); err != nil {
-		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("write map render input: %w", err)
 	}
 	rendererFingerprint, err := dynamicMapRendererFingerprint(scriptPath, plateGenerator)
 	if err != nil {
-		_ = os.RemoveAll(tmpDir)
 		return "", fmt.Errorf("identify dynamic map renderer dependencies: %w", err)
 	}
-	cacheKey := dynamicMapVideoCacheKey(encoded, rendererFingerprint, encodeProfile, plan.Width, plan.Height)
+	cacheKey := dynamicMapVideoCacheKey(encoded, rendererFingerprint, encodeProfile, sampler, plan.Width, plan.Height)
 	renderStarted := time.Now()
-	telemetryBytes, cacheHit := loadDynamicMapVideoCache(cacheKey, outputPath, cacheDirs...)
+	telemetryBytes, videoSHA256, videoSize, cacheHit := loadDynamicMapVideoCacheVerified(cacheKey, outputPath, cacheDirs...)
+	if !cacheHit && needsGPUAdmission {
+		if gate == nil {
+			return "", fmt.Errorf("dynamic map GPU work requires the shared RenderingGen GPU gate")
+		}
+		release, gateErr := gate.Acquire(ctx)
+		if gateErr != nil {
+			return "", fmt.Errorf("acquire shared RenderingGen GPU admission for dynamic map: %w", gateErr)
+		}
+		defer release()
+	}
 	if !cacheHit {
 		cmd := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, "--input", inputPath,
 			"--output", outputPath, "--summary-output", summaryPath)
 		var output boundedMapRenderOutput
 		cmd.Stdout, cmd.Stderr = &output, &output
 		if err := cmd.Run(); err != nil {
-			_ = os.RemoveAll(tmpDir)
 			return "", fmt.Errorf("dynamic map renderer failed: %w: %s", err, strings.TrimSpace(output.String()))
 		}
 		if _, err := os.Stat(outputPath); err != nil {
-			_ = os.RemoveAll(tmpDir)
 			return "", fmt.Errorf("dynamic map renderer produced no video: %w: %s", err, strings.TrimSpace(output.String()))
 		}
 		telemetryBytes, err = os.ReadFile(summaryPath)
@@ -294,6 +471,9 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 		OutputBytes          int64   `json:"output_bytes"`
 		VideoEncoder         string  `json:"video_encoder"`
 		GPUEncoder           bool    `json:"gpu_encoder"`
+		GPUMapSampler        string  `json:"gpu_map_sampler"`
+		EncoderPreset        string  `json:"encoder_preset"`
+		EncoderQuality       int     `json:"encoder_quality"`
 		GateMS               float64 `json:"gate_ms"`
 		Tile                 struct {
 			DiskCacheHits           int     `json:"tile_disk_cache_hits"`
@@ -338,10 +518,13 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
 			renderWidth, renderHeight, plan.FPSNum, plan.FPSDen)
 	}
-	if err := scriptoverlay.ValidateMapEncoderTelemetry(summary.VideoEncoder, summary.GPUEncoder, encodeProfile); err != nil {
+	if err := scriptoverlay.ValidateMapEncoderTelemetry(summary.VideoEncoder, summary.GPUEncoder, summary.EncoderPreset, summary.EncoderQuality, encodeProfile); err != nil {
 		return "", err
 	}
-	if renderWidth != plan.Width || renderHeight != plan.Height {
+	if summary.GPUMapSampler != sampler {
+		return "", fmt.Errorf("dynamic map renderer used sampler=%q, but the declared render requires sampler=%q", summary.GPUMapSampler, sampler)
+	}
+	if !cacheHit && (renderWidth != plan.Width || renderHeight != plan.Height) {
 		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos", plan.Width, plan.Height)
 		upscaleArgs := []string{"/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
 			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen)}
@@ -408,8 +591,9 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 	if _, err := report.JSON(); err != nil {
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
-	// Pre-render admission already passed if we reached the renderer; mark
-	// scheduled pins and persist the durable report next to the artifact.
+	// The cache hit bypasses rendering and therefore has no GPU admission to
+	// consume; every miss completes under the shared gate when required.
+	// Mark scheduled pins and persist the durable report next to the artifact.
 	// The report is written beside the rendered MP4 (same tmp workspace that
 	// becomes the content-addressed artifact dir) AND to the operator dir when
 	// configured — never log-only, so a wrong map is traceable to its job.
@@ -437,12 +621,35 @@ func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cac
 		}
 	}
 	if !cacheHit {
-		if err := storeDynamicMapVideoCache(cacheKey, outputPath, telemetryBytes, cacheDirs...); err != nil {
+		var cacheErr error
+		videoSHA256, videoSize, cacheErr = storeDynamicMapVideoCacheVerified(cacheKey, outputPath, telemetryBytes, cacheDirs...)
+		if cacheErr != nil {
 			// The cache is optional; a write failure must not discard a valid
 			// map artifact or turn a successful render into a failed job.
-			log.Printf("Chronon dynamic map cache store failed: key=%s err=%v", cacheKey, err)
+			log.Printf("Chronon dynamic map cache store failed: key=%s err=%v", cacheKey, cacheErr)
+		}
+		// The cache helper hashes while streaming bytes into its atomic cache
+		// copy. When caching is disabled, or a cache write failed before source
+		// bytes were consumed, hash the final output once for the import attestation.
+		if videoSHA256 == "" || videoSize <= 0 {
+			var identityErr error
+			videoSHA256, videoSize, identityErr = hashDynamicMapVideo(outputPath)
+			if identityErr != nil {
+				return "", fmt.Errorf("identify rendered dynamic map video: %w", identityErr)
+			}
 		}
 	}
+	if videoSHA256 == "" || videoSize <= 0 {
+		return "", fmt.Errorf("dynamic map video identity is incomplete")
+	}
+	identityBytes, err := json.Marshal(dynamicMapVideoIdentityManifest{SHA256: videoSHA256, SizeBytes: videoSize})
+	if err != nil {
+		return "", fmt.Errorf("encode dynamic map video identity: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "map.video.identity.json"), identityBytes, 0o600); err != nil {
+		return "", fmt.Errorf("write dynamic map video identity: %w", err)
+	}
+	keepWorkspace = true
 	return outputPath, nil
 }
 

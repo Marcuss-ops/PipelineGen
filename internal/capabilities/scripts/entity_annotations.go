@@ -148,7 +148,7 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 	bestRank := 0
 	for _, candidate := range all {
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
-			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.LegacyFileMD5) == "" ||
+			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.ContentSHA256) == "" ||
 			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
 			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
@@ -186,7 +186,7 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 			MediaType: best.MIMEType,
 			Source:    best.Provider, License: best.RightsBasis,
 			// Resolve the verified SHA-256; legacy MD5 remains unknown here.
-			PreviewURL: entityImagePreviewURL(*best), SHA256: asset.ResolveContentAddress(best.LegacyFileMD5),
+			PreviewURL: entityImagePreviewURL(*best), SHA256: asset.ResolveContentAddress(best.ContentSHA256),
 		}
 	}
 	return nil

@@ -74,7 +74,7 @@ func (c *ClipRenderSubtitleCompiler) Compile(ctx context.Context, in cliprender.
 			if _, statErr := os.Stat(current.LocalPath); statErr == nil {
 				if validateErr := texttracks.ValidateASSFile(current.LocalPath, in.ClipDurationMS); validateErr == nil {
 					sha, _, hashErr := digest.SHA256File(current.LocalPath)
-					if hashErr == nil && sha == current.LegacyFileMD5 {
+					if hashErr == nil && sha == current.ContentSHA256 {
 						cliprender.RecordSubtitleCacheFacts(current.LocalPath, cliprender.SubtitleCacheFacts{ContentCacheHit: true, ArtifactCacheHit: true, Measured: true})
 						return &cliprender.SubtitleArtifact{LocalPath: current.LocalPath, SHA256: sha, Mode: in.Mode, StyleID: current.StyleVersion, DriveFileID: current.DriveFileID, DriveLink: current.DriveURL}, nil
 					}

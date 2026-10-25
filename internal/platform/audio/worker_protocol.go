@@ -162,7 +162,7 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 		if hash, hashErr := checksum.LegacyMD5File(result.LocalPath); hashErr != nil {
 			p.log.Warn("hash computation failed", zap.Error(hashErr))
 		} else {
-			result.LegacyFileMD5 = hash
+			result.ContentSHA256 = hash
 		}
 	}
 	if media, mediaErr := p.mediaExecutor(); mediaErr == nil {

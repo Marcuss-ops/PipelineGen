@@ -18,7 +18,7 @@ func TestMaterializationPipelineStages(t *testing.T) {
 	item = probeMedia(item, "image/jpeg", 0)
 	item = certifyContent(item, "sha256")
 	asset := buildCanonicalAsset(item)
-	if asset.LegacyFileMD5 != "sha256" || string(item.Bytes) != "bytes" || item.MediaType != "image/jpeg" {
+	if asset.ContentSHA256 != "sha256" || string(item.Bytes) != "bytes" || item.MediaType != "image/jpeg" {
 		t.Fatalf("pipeline item = %+v asset = %+v", item, asset)
 	}
 	committed := commitCanonicalAsset(nil, asset)

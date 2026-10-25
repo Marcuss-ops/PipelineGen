@@ -104,7 +104,7 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 			strings.EqualFold(candidate.IndexStatus, "pending") ||
 			strings.EqualFold(candidate.IndexStatus, "discovered") ||
 			strings.EqualFold(candidate.IndexStatus, "indexing_skipped_no_indexer")) &&
-		strings.TrimSpace(candidate.LegacyFileMD5) != "" &&
+		strings.TrimSpace(candidate.ContentSHA256) != "" &&
 		strings.TrimSpace(candidate.DriveLink) != "" {
 		return true
 	}
@@ -122,7 +122,7 @@ func readyVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 		candidate.ReadyForBinding() && strings.TrimSpace(candidate.DriveLink) != "" {
 		return true
 	}
-	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.LegacyFileMD5) != "" && strings.TrimSpace(candidate.DriveLink) != ""
+	return candidate.ReadyForBinding() && strings.TrimSpace(candidate.ContentSHA256) != "" && strings.TrimSpace(candidate.DriveLink) != ""
 }
 
 func preserveSelectedVidRushImages(selected, valid []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
@@ -179,7 +179,7 @@ func candidateSetHash(candidates []scriptpkg.SegmentAssetCandidate) string {
 	for _, candidate := range candidates {
 		parts = append(parts, strings.Join([]string{
 			candidate.AssetID, candidate.Provider, candidate.Query, candidate.SourceURL,
-			candidate.PreviewURL, candidate.LegacyFileMD5, candidate.DriveLink,
+			candidate.PreviewURL, candidate.ContentSHA256, candidate.DriveLink,
 			candidate.AcquisitionStatus, candidate.VerificationStatus,
 			candidate.PersistenceStatus, candidate.IndexStatus,
 		}, "\x00"))

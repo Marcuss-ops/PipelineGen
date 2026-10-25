@@ -290,7 +290,10 @@ func deriveSourceIdentity(source, sourceVideoID, driveFileID, sourceURL string, 
 			ref = fmt.Sprintf("%s#%d-%d", strings.TrimSpace(sourceVideoID), startMS, endMS)
 		}
 		return "stock", ref
-	case "internet_images":
+	// Upstream retrieval providers of an internet_images candidate are still
+	// URL-identified: the image is addressable by its source URL, not by a
+	// provider-local id.
+	case "internet_images", "duckduckgo", "wikimedia_commons", "searxng":
 		return capregistry.SourceIdentityURL, strings.TrimSpace(sourceURL)
 	case "created", "script", "document":
 		return "manual", strings.TrimSpace(driveFileID)

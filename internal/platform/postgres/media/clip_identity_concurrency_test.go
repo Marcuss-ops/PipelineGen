@@ -54,7 +54,7 @@ func clipIdentityCommand() localized.CommitLocalizedClipCommand {
 		VideoID:   identityVideoID,
 		LocalPath: "/tmp/yt_vLRjqTIiMjc_39_90_v1.mp4",
 		// Content fingerprint: deliberately NOT part of the identity.
-		LegacyFileMD5: strings.Repeat("ab", 32),
+		ContentSHA256: strings.Repeat("ab", 32),
 		SearchText:    text + " dolly parton interview conan",
 		Coordinates: youtubetypes.ClipAssetCoordinates{
 			StartSec: identityStart,

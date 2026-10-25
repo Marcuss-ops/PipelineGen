@@ -395,7 +395,7 @@ func (f *fakeMediaProcessor) Process(ctx context.Context, input *detail.ProcessI
 		ID:            input.ID,
 		Filename:      input.Name + ".mp4",
 		LocalPath:     input.OutputDir + "/" + input.Name + ".mp4",
-		LegacyFileMD5: "hash-test",
+		ContentSHA256: "hash-test",
 		Status:        "processed",
 	}, nil
 }

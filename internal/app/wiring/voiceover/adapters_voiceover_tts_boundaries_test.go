@@ -137,7 +137,7 @@ func (f *fakeTTSGenerator) Generate(_ context.Context, _ *audioasset.AudioInput)
 	f.calls++
 	res := &audioasset.AudioResult{
 		LocalPath:     "/tmp/stub.mp3",
-		LegacyFileMD5: "stub-hash",
+		ContentSHA256: "stub-hash",
 		Duration:      3 * time.Second,
 		Voice:         "it-IT-ElsaNeural",
 	}

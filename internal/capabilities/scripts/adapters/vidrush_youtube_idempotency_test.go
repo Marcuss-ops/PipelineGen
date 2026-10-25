@@ -38,7 +38,7 @@ func (f *idempotencyExtractor) Extract(_ context.Context, req *youtubedto.Extrac
 			ID: "asset-shared-poland-window", Status: "persisted",
 			LocalPath:     "/canonical/shared-poland.mp4",
 			DriveLink:     "https://drive.google.com/file/d/shared-poland",
-			LegacyFileMD5: "md5-shared-poland",
+			ContentSHA256: "md5-shared-poland",
 		}
 	}
 	return &youtubedto.ExtractResponse{OK: true, Items: items}, nil

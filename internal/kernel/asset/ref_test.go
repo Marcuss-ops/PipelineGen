@@ -31,7 +31,7 @@ func TestRefExposesIdentityFieldsOnly(t *testing.T) {
 	sort.Strings(want)
 
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Ref fields = %v, want %v; a location field (LocalPath/DriveLink/DriveFileID/DownloadLink) or a compatibility digest (LegacyFileMD5) must not live on the identity", got, want)
+		t.Fatalf("Ref fields = %v, want %v; a location field (LocalPath/DriveLink/DriveFileID/DownloadLink) or a compatibility digest (ContentSHA256) must not live on the identity", got, want)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestRefJSONContract(t *testing.T) {
 	}
 	// The wire form must never be able to describe a location, because there is
 	// no field to describe it with.
-	for _, forbidden := range []string{"local_path", "drive_link", "drive_file_id", "download_link", "legacy_file_md5"} {
+	for _, forbidden := range []string{"local_path", "drive_link", "drive_file_id", "download_link", "content_sha256"} {
 		if strings.Contains(string(raw), `"`+forbidden+`"`) {
 			t.Errorf("Ref JSON carries a location/compatibility key %q: %s", forbidden, raw)
 		}

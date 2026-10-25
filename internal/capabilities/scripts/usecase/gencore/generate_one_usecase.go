@@ -37,7 +37,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -178,7 +177,10 @@ func (uc *GenerateOneUseCase) renderCombinedAudio(ctx context.Context, item scri
 	if err != nil {
 		return err
 	}
-	output := filepath.Join(os.TempDir(), "pipelinegen-final-audio-"+plan.PlanSHA256+".m4a")
+	output, err := capabilityaudio.FinalAudioOutputPath(plan.PlanSHA256)
+	if err != nil {
+		return err
+	}
 	// rust.audio_render is the Rust media-plane boundary; it nests under the
 	// audio.pipeline STAGE and shares the canonical Run clock.
 	var asset capabilityaudio.FinalAudioAsset

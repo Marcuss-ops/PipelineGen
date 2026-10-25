@@ -247,7 +247,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 			input.SceneID, input.Language)
 	}
 
-	assetID := strings.TrimSpace(result.LegacyFileMD5)
+	assetID := strings.TrimSpace(result.ContentSHA256)
 	if assetID == "" {
 		// Some completed voiceover publishes return the canonical voiceover
 		// row ID without the legacy content hash. The script timeline still
@@ -299,7 +299,7 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		zap.String("language", string(input.Language)),
 		zap.String("file_path", filePath),
 		zap.String("asset_id", assetID),
-		zap.String("file_hash", result.LegacyFileMD5),
+		zap.String("file_hash", result.ContentSHA256),
 		zap.Bool("timing_captured", ref.Timing != nil),
 	)
 

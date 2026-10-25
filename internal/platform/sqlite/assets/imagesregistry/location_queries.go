@@ -32,7 +32,7 @@ func (s *AssetStoreSQLite) UpsertLocation(ctx context.Context, loc *asset.Locati
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
+			 mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(asset_id, location_kind) DO UPDATE SET
 			uri = excluded.uri,
@@ -41,12 +41,12 @@ func (s *AssetStoreSQLite) UpsertLocation(ctx context.Context, loc *asset.Locati
 			download_url = excluded.download_url,
 			mime_type = excluded.mime_type,
 			file_size_bytes = excluded.file_size_bytes,
-			legacy_file_md5 = excluded.legacy_file_md5,
+			content_sha256 = excluded.content_sha256,
 			is_primary = excluded.is_primary,
 			updated_at = excluded.updated_at
 	`, loc.AssetID, string(loc.LocationKind), loc.URI, loc.ExternalID,
 		loc.AccessURL, loc.DownloadURL,
-		loc.MimeType, loc.FileSizeBytes, loc.LegacyFileMD5, isPrimary, now, now)
+		loc.MimeType, loc.FileSizeBytes, loc.ContentSHA256, isPrimary, now, now)
 	if err != nil {
 		return fmt.Errorf("assets.UpsertLocation(%s, %s): %w", loc.AssetID, loc.LocationKind, err)
 	}
@@ -65,7 +65,7 @@ func (s *AssetStoreSQLite) UpsertLocation(ctx context.Context, loc *asset.Locati
 func (s *AssetStoreSQLite) GetPrimaryLocation(ctx context.Context, assetID string) (*asset.Location, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url,
-		       mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at
+		       mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at
 		FROM asset_locations
 		WHERE asset_id = ? AND is_primary = 1
 	`, assetID)
@@ -76,7 +76,7 @@ func (s *AssetStoreSQLite) GetPrimaryLocation(ctx context.Context, assetID strin
 func (s *AssetStoreSQLite) ListLocationsByAsset(ctx context.Context, assetID string) ([]*asset.Location, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, asset_id, location_kind, uri, external_id, web_view_link, download_url,
-		       mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at
+		       mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at
 		FROM asset_locations
 		WHERE asset_id = ?
 		ORDER BY is_primary DESC, location_kind
@@ -148,7 +148,7 @@ func scanLocation(scanner interface{ Scan(dest ...any) error }) (*asset.Location
 	err := scanner.Scan(
 		&loc.ID, &loc.AssetID, &loc.LocationKind, &loc.URI, &loc.ExternalID,
 		&loc.AccessURL, &loc.DownloadURL, &loc.MimeType, &loc.FileSizeBytes,
-		&loc.LegacyFileMD5, &isPrimary, &createdAtStr, &updatedAtStr,
+		&loc.ContentSHA256, &isPrimary, &createdAtStr, &updatedAtStr,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil

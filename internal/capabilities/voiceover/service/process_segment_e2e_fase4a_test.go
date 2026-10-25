@@ -16,7 +16,7 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyProject(t *testing.
 		cannedOut: TTSOutput{
 			LocalPath:     "/tmp/vo/stage3-empty-proj.mp3",
 			Voice:         "it-IT-ElsaNeural",
-			LegacyFileMD5: "hash-stage3-ep-001",
+			ContentSHA256: "hash-stage3-ep-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-stage3-empty-proj"}
@@ -84,7 +84,7 @@ func TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCle
 			LocalPath:     "/tmp/vo/fase4-orphan.mp3",
 			CleanedPath:   "/tmp/vo/fase4-orphan-cleaned.mp3",
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "hash-fase4-001",
+			ContentSHA256: "hash-fase4-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-fase4-orphan"}

@@ -15,7 +15,7 @@ func TestCompileOverlayPlanAddsPerSceneImageWithoutChangingEntityCardScope(t *te
 		SceneID: "scene-0",
 		Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{
 			AssetID: "logical-scene-image", Provider: scriptpkg.VidRushProviderInternetImages,
-			SourceURL: "https://images.example/context.jpg", LocalPath: "/tmp/context.jpg", LegacyFileMD5: sha,
+			SourceURL: "https://images.example/context.jpg", LocalPath: "/tmp/context.jpg", ContentSHA256: sha,
 			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 			IndexStatus: scriptpkg.VidRushStatusIndexed,
@@ -57,7 +57,7 @@ func TestSceneImageCandidateUsesMaterializedAssetAndSceneTiming(t *testing.T) {
 		SceneID: "scene-3",
 		Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{
 			AssetID: "logical-image-3", Provider: scriptpkg.VidRushProviderInternetImages,
-			SourceURL: "https://images.example/stj.jpg", LocalPath: "/tmp/stj.jpg", LegacyFileMD5: sha,
+			SourceURL: "https://images.example/stj.jpg", LocalPath: "/tmp/stj.jpg", ContentSHA256: sha,
 			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 			IndexStatus: scriptpkg.VidRushStatusIndexed,
@@ -82,7 +82,7 @@ func TestSceneImageCandidateChoosesNextDistinctMaterializedAsset(t *testing.T) {
 	ready := func(id, sha string) scriptpkg.SegmentAssetCandidate {
 		return scriptpkg.SegmentAssetCandidate{
 			AssetID: id, Provider: scriptpkg.VidRushProviderInternetImages,
-			SourceURL: "https://images.example/" + id + ".jpg", LocalPath: "/tmp/" + id + ".jpg", LegacyFileMD5: sha,
+			SourceURL: "https://images.example/" + id + ".jpg", LocalPath: "/tmp/" + id + ".jpg", ContentSHA256: sha,
 			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 			IndexStatus: scriptpkg.VidRushStatusIndexed,
@@ -107,7 +107,7 @@ func TestSceneImageCandidatesRunSequentiallyWithinScene(t *testing.T) {
 	ready := func(id, sha string) scriptpkg.SegmentAssetCandidate {
 		return scriptpkg.SegmentAssetCandidate{
 			AssetID: id, Provider: scriptpkg.VidRushProviderInternetImages,
-			SourceURL: "https://images.example/" + id + ".jpg", LocalPath: "/tmp/" + id + ".jpg", LegacyFileMD5: sha,
+			SourceURL: "https://images.example/" + id + ".jpg", LocalPath: "/tmp/" + id + ".jpg", ContentSHA256: sha,
 			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 			IndexStatus: scriptpkg.VidRushStatusIndexed,
@@ -132,7 +132,7 @@ func TestSceneImageCandidateRejectsNonContentAddressedSelection(t *testing.T) {
 	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{
 		SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{
 			AssetID: "bad-image", Provider: scriptpkg.VidRushProviderInternetImages,
-			SourceURL: "https://images.example/bad.jpg", LegacyFileMD5: "not-a-sha256",
+			SourceURL: "https://images.example/bad.jpg", ContentSHA256: "not-a-sha256",
 			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
 			PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
 		}}},
@@ -148,7 +148,7 @@ func TestSceneImageCandidateClampsToOwningSceneEnd(t *testing.T) {
 		SceneID: "scene-short",
 		Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{
 			AssetID: "short-image", Provider: scriptpkg.VidRushProviderInternetImages,
-			SourceURL: "https://images.example/short.jpg", LocalPath: "/tmp/short.jpg", LegacyFileMD5: sha,
+			SourceURL: "https://images.example/short.jpg", LocalPath: "/tmp/short.jpg", ContentSHA256: sha,
 			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 			IndexStatus: scriptpkg.VidRushStatusIndexed,

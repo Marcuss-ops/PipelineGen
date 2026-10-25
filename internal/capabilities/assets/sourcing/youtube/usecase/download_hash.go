@@ -16,7 +16,7 @@
 // format `yt_<videoID>_<startSec>_<endSec>_<policyVersion>` is owned by
 // kernel/asset/detail.YouTubeClipAssetID, the same builder the extraction
 // pipeline uses (2026-09-17 identity unification). The MD5 file hash stays the
-// CONTENT identity (media_assets.legacy_file_md5 + supersede gate), never the
+// CONTENT identity (media_assets.content_sha256 + supersede gate), never the
 // logical clip identity.
 package usecase
 
@@ -55,7 +55,7 @@ type DownloadAndHashResult struct {
 	Duration      time.Duration     // fetched video duration
 	Bytes         int64             // file size in bytes
 	Metadata      map[string]string // provider metadata (description, uploader, etc.)
-	LegacyFileMD5 string            // MD5 hex digest (empty when hasher is nil or fails)
+	ContentSHA256 string            // MD5 hex digest (empty when hasher is nil or fails)
 	ClipID        string            // canonical yt_<videoID>_<startSec>_<endSec>_<policyVersion> identifier
 }
 
@@ -149,7 +149,7 @@ func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher
 		Duration:      fetched.Duration,
 		Bytes:         fetched.Bytes,
 		Metadata:      fetched.Metadata,
-		LegacyFileMD5: fileHash,
+		ContentSHA256: fileHash,
 		ClipID:        clipID,
 	}, nil
 }

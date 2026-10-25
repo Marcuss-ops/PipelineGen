@@ -258,3 +258,85 @@ func TestSceneTextStreaming_EmitErrorFailsRunClosed(t *testing.T) {
 	require.Equal(t, RunStatusFailed, final.Status)
 	require.Equal(t, StageGeneratingSceneText, final.FailedStage)
 }
+
+// passThroughMediaPreflight satisfies the fail-closed "fixed media cannot be
+// certified before generation" gate for tests that exercise intro/outro
+// through Execute. It certifies nothing: fixed-section integrity is the
+// subject of media_preflight_*_test.go.
+type passThroughMediaPreflight struct{}
+
+func (passThroughMediaPreflight) Run(context.Context, GenerateRequest) PreflightResult {
+	return PreflightResult{}
+}
+
+// TestSceneTextStreaming_FixedSectionsDoNotForceBatch pins the batch-gate cut:
+// literal intro/outro are pure post-processing (applyFixedSections runs AFTER
+// the scene-ready join and never touches generated scene text), so they must
+// not force the batch scene-text path. The per-scene downstream (translation
+// and TTS) starts while later scenes are still generating — with intro/outro
+// present — and the completed run carries the fixed sections around the
+// untouched generated body.
+func TestSceneTextStreaming_FixedSectionsDoNotForceBatch(t *testing.T) {
+	runner, repo, _, _, _, _, _ := newTestRunner()
+	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
+	translator := &readyProbeTranslator{started: make(chan struct{})}
+	voiceover := &readyProbeVoiceover{started: make(chan struct{})}
+	runner.textGen = streamer
+	runner.translator = translator
+	runner.voiceoverGen = voiceover
+	runner.SetMediaPreflight(passThroughMediaPreflight{})
+
+	req := defaultTestRequest()
+	req.Intro = &scriptpkg.FixedSection{ClipIDs: []string{"intro-clip"}, DisplayText: "Welcome"}
+	req.Outro = &scriptpkg.FixedSection{ClipIDs: []string{"outro-clip"}, DisplayText: "See you next time"}
+
+	runID := "run-stream-fixed-sections-001"
+	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
+
+	done := make(chan struct{})
+	go func() { defer close(done); runner.Execute(context.Background(), runID, req) }()
+
+	select {
+	case <-streamer.emitted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 was not emitted")
+	}
+	select {
+	case <-translator.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 translation did not start while later scenes were still generating: intro/outro forced the batch path")
+	}
+	select {
+	case <-voiceover.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("scene 0 TTS did not start while later scenes were still generating: intro/outro forced the batch path")
+	}
+
+	close(streamer.release)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("fixed-section streaming run did not complete")
+	}
+	run := awaitCompletion(t, repo, runID, time.Second)
+	require.Equal(t, RunStatusCompleted, run.Status)
+	require.NotNil(t, run.Result)
+
+	// Le fixed sections sono iniettate post-join: aprono e chiudono la
+	// timeline senza toccare il testo generato.
+	scenes := run.Result.Scenes
+	require.Len(t, scenes, 5, "intro + 3 generated scenes + outro")
+	require.Equal(t, "scene-intro", scenes[0].ID)
+	require.Equal(t, scriptpkg.SceneRoleOpening, scenes[0].Role)
+	require.True(t, scenes[0].ExecutionMode.IsFixedMedia())
+	require.Equal(t, "Welcome", scenes[0].Text[req.SourceLanguage])
+	for i, want := range []string{"First scene text", "Second scene text", "Third scene text"} {
+		body := scenes[i+1]
+		require.False(t, body.ExecutionMode.IsFixedMedia(), "generated scene %d must stay generated", i)
+		require.Equal(t, want, body.Text["en"])
+	}
+	require.Equal(t, "scene-outro", scenes[4].ID)
+	require.Equal(t, scriptpkg.SceneRoleClosing, scenes[4].Role)
+	require.True(t, scenes[4].ExecutionMode.IsFixedMedia())
+	require.Equal(t, "See you next time", scenes[4].Text[req.SourceLanguage])
+}

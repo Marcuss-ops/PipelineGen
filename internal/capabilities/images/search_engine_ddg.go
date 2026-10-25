@@ -10,6 +10,7 @@ package images
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -18,6 +19,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/duckduckgo"
 	"github.com/Marcuss-ops/PipelineGen/pkg/httpjson"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
@@ -41,10 +43,29 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 	if limit <= 0 {
 		limit = 10
 	}
+	breaker := s.ddgCooldown()
+	// A tripped breaker means the upstream is challenging this IP. Querying it
+	// once per composition only multiplies the same refusal; fail fast and let
+	// the caller's licensed fallbacks (Commons, SearXNG) do the work.
+	if breaker.Open() {
+		if s.log != nil && breaker.Remaining() > 0 {
+			s.log.Debug("DDG image search skipped: anti-bot cooldown active",
+				zap.String("query", query), zap.Duration("remaining", breaker.Remaining()))
+		}
+		return nil
+	}
 	vqdURL := fmt.Sprintf("https://duckduckgo.com/?q=%s&iax=images&ia=images", url.QueryEscape(query))
 	body, err := httpjson.GetBytes(ctx, s.client, vqdURL, &httpjson.Options{UserAgent: userAgent})
 	if err != nil {
+		if challenge := ddgChallengeFromError(err); challenge != nil {
+			tripDDGBreaker(s.log, breaker, challenge)
+			return nil
+		}
 		s.log.Warn("DDG vqd extraction failed", zap.Error(err))
+		return nil
+	}
+	if reason, challenged := duckduckgo.DetectBody(body); challenged {
+		tripDDGBreaker(s.log, breaker, &duckduckgo.Challenge{Status: 200, Body: body, Reason: reason})
 		return nil
 	}
 	vqd := extractVQD(string(body))
@@ -67,10 +88,16 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 		// httpjson.GetBytes wraps transport / status / decode errors;
 		// ErrImageTransient shim makes retry.IsTransient recognise the
 		// retryable subset byte-stable with the pre-B4 substring-match.
+		// A challenge is not transient at this timescale: it trips the
+		// cooldown and stops the ladder immediately instead of paying two
+		// more round trips for the same refusal.
 		var body []byte
 		err := retry.Do(ctx, func() error {
 			gotBody, getErr := httpjson.GetBytes(ctx, s.client, apiURL, &httpjson.Options{UserAgent: userAgent})
 			if getErr != nil {
+				if challenge := ddgChallengeFromError(getErr); challenge != nil {
+					return challenge
+				}
 				return fmt.Errorf("%w: %v", ErrImageTransient, getErr)
 			}
 			body = gotBody
@@ -78,12 +105,22 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 		}, retry.Options{
 			MaxAttempts:    3,
 			InitialBackoff: 200 * time.Millisecond,
-			IsRetryable:    retry.IsTransient,
+			IsRetryable: func(err error) bool {
+				return !errors.Is(err, duckduckgo.ErrChallenged) && retry.IsTransient(err)
+			},
 		})
 		if err != nil {
+			var challenge *duckduckgo.Challenge
+			if errors.As(err, &challenge) {
+				tripDDGBreaker(s.log, breaker, challenge)
+			}
 			// Preserve results already collected. A transient failure on a
 			// later DDG page must not turn a valid first page into an empty
 			// search result.
+			break
+		}
+		if reason, challenged := duckduckgo.DetectBody(body); challenged {
+			tripDDGBreaker(s.log, breaker, &duckduckgo.Challenge{Status: 200, Body: body, Reason: reason})
 			break
 		}
 		var payload struct {
@@ -162,6 +199,27 @@ func normalizeDDGImageURL(raw string) string {
 		return "http://" + strings.TrimPrefix(trimmed, "http:/")
 	default:
 		return trimmed
+	}
+}
+
+// ddgChallengeFromError recovers the structured refusal from an httpjson
+// status error. Only 202/403 (or a body that carries the challenge envelope)
+// become a challenge; a 500 stays a retryable transport failure.
+func ddgChallengeFromError(err error) *duckduckgo.Challenge {
+	var statusErr *httpjson.StatusError
+	if !errors.As(err, &statusErr) {
+		return nil
+	}
+	return duckduckgo.AsChallenge(statusErr.StatusCode, statusErr.Body, statusErr.RetryAfterDuration())
+}
+
+// tripDDGBreaker opens the cooldown once per challenge and logs the window at
+// warn level, so an operator sees the provider was blocked rather than empty.
+func tripDDGBreaker(log *zap.Logger, breaker *duckduckgo.Breaker, challenge *duckduckgo.Challenge) {
+	window := breaker.Trip(challenge)
+	if log != nil {
+		log.Warn("DDG image search challenged; cooling down and deferring to licensed fallbacks",
+			zap.String("reason", challenge.Reason), zap.Int("status", challenge.Status), zap.Duration("cooldown", window))
 	}
 }
 

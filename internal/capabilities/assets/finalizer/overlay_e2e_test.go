@@ -242,7 +242,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	var source, fileHash, driveFileID, driveLink, folderPath string
 	var durationMs int64
 	if err := tx.QueryRowContext(ctx, `
-		SELECT source, legacy_file_md5, drive_file_id, drive_link, folder_path, duration_ms
+		SELECT source, content_sha256, drive_file_id, drive_link, folder_path, duration_ms
 		FROM media_assets WHERE id = ?`, a.ID).
 		Scan(&source, &fileHash, &driveFileID, &driveLink, &folderPath, &durationMs); err != nil {
 		t.Fatalf("verify overlay media_assets: %v", err)
@@ -269,7 +269,7 @@ func TestOverlayEndToEnd_PlanRenderPublishPersist(t *testing.T) {
 	// asset_locations carries the sha256 + Drive identity too.
 	var locKind, locExternalID, locWebView, locFileHash string
 	if err := tx.QueryRowContext(ctx, `
-		SELECT location_kind, external_id, web_view_link, legacy_file_md5
+		SELECT location_kind, external_id, web_view_link, content_sha256
 		FROM asset_locations WHERE asset_id = ?`, a.ID).
 		Scan(&locKind, &locExternalID, &locWebView, &locFileHash); err != nil {
 		t.Fatalf("verify overlay asset_locations: %v", err)
@@ -299,7 +299,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			name TEXT NOT NULL DEFAULT '',
 			filename TEXT NOT NULL DEFAULT '',
 			media_type TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
 			drive_link TEXT NOT NULL DEFAULT '',
 			download_link TEXT NOT NULL DEFAULT '',
@@ -343,7 +343,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
 			version_number INTEGER NOT NULL,
 			source_uri TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			file_size_bytes INTEGER NOT NULL DEFAULT 0,
 			mime_type TEXT NOT NULL DEFAULT '',
 			metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -360,7 +360,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			download_url TEXT NOT NULL DEFAULT '',
 			mime_type TEXT NOT NULL DEFAULT '',
 			file_size_bytes INTEGER NOT NULL DEFAULT 0,
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			is_primary INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT '',

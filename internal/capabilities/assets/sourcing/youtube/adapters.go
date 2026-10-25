@@ -135,7 +135,7 @@ func (a *clipIndexerAdapter) EnqueueAndIndex(ctx context.Context, clip usecase.C
 		Tags:            clip.Tags,
 		Duration:        clip.Duration,
 		LocalPath:       clip.LocalPath,
-		LegacyFileMD5:   clip.LegacyFileMD5,
+		ContentSHA256:   clip.ContentSHA256,
 		DriveLink:       clip.DriveLink,
 		DriveFileID:     clip.DriveFileID,
 		Summary:         clip.Summary,

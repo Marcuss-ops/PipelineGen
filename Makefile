@@ -55,7 +55,7 @@
 	benchmark-vidrush doctor-vidrush \
 	docker-build docker-build-worker docker-run docker-digest \
 	docker-verify-whisper \
-	deploy deploy-status deploy-wait deploy-dry-run deploy-selftest \
+	deploy deploy-status deploy-wait deploy-dry-run deploy-selftest deploy-golden \
 	verify-pipeline-e2e verify-pipeline-e2e-live \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	test-postgres test-postgres-down \
@@ -88,6 +88,7 @@ help:
 	@echo "  make deploy-status    On-disk vs /proc/<MainPID>/exe hash, uptime, health"
 	@echo "  make deploy-wait      Block until /health answers (no build, no restart)"
 	@echo "  make deploy-dry-run   Preflight + plan only"
+	@echo "  make deploy-golden    Deploy chain + golden run x3 + goldensummary median (GOLDEN_LABEL=<prefix>)"
 	@echo ""
 	@echo "TEST (unit, headless)"
 	@echo "  make test             Go unit tests with race detector (fast)"

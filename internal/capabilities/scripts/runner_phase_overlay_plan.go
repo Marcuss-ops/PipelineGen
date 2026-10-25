@@ -250,11 +250,24 @@ func (e *executionRun) audioCompile() bool {
 	// timeline itself remains in audio_finalize below, after both siblings join.
 	audioPublished := false
 	if compiled {
-		audioPublished = e.measure(StageAudioPublish, func(c context.Context) bool {
-			return e.r.publishFinalAudio(c, e.runID, e.req, e.routing, e.exec, e.result)
-		})
-		if !audioPublished {
-			cancel()
+		if !publishFinalAudioNeeded(e.req, e.r) {
+			// Overlay-only runs consume no published master audio: the documents
+			// catalog and the final_job payload are the only consumers of the
+			// Drive asset, and neither is active for this run. Skip the Drive
+			// upload entirely (golden measured it at ~15 s of wall) instead of
+			// paying it for an artifact nobody reads.
+			if e.r.log != nil {
+				e.r.log.Info("final audio Drive publish skipped: no documents and no final job consume it",
+					zap.String("run_id", e.runID))
+			}
+			audioPublished = true
+		} else {
+			audioPublished = e.measure(StageAudioPublish, func(c context.Context) bool {
+				return e.r.publishFinalAudio(c, e.runID, e.req, e.routing, e.exec, e.result)
+			})
+			if !audioPublished {
+				cancel()
+			}
 		}
 	}
 	if done != nil {

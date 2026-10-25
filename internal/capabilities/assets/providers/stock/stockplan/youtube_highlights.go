@@ -1,6 +1,7 @@
 package stockplan
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -217,6 +218,22 @@ func (r YouTubeStockRequest) Validate() error {
 	return nil
 }
 
+// UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,
+// the demolished "legacy_file_md5" key of plan payloads written before the
+// 281 contract migration. Only the canonical key is written back.
+func (s *SelectedSegment) UnmarshalJSON(data []byte) error {
+	type wire SelectedSegment
+	var v wire
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*s = SelectedSegment(v)
+	if s.ContentSHA256 == "" {
+		s.ContentSHA256 = digest.LegacyContentSHA256FromJSON(data)
+	}
+	return nil
+}
+
 type SelectedSegment struct {
 	YouTubeVideoID  string  `json:"youtube_video_id"`
 	SourceURL       string  `json:"source_url"`
@@ -231,7 +248,7 @@ type SelectedSegment struct {
 	CacheKey        string  `json:"cache_key"`
 	LocalPath       string  `json:"local_path,omitempty"`
 	AssetID         string  `json:"asset_id,omitempty"`
-	LegacyFileMD5   string  `json:"legacy_file_md5,omitempty"`
+	ContentSHA256   string  `json:"content_sha256,omitempty"`
 	DriveLink       string  `json:"drive_link,omitempty"`
 	QdrantPointID   string  `json:"qdrant_point_id,omitempty"`
 	Status          string  `json:"status"`

@@ -201,7 +201,7 @@ func (s *Service) syncFile(ctx context.Context, file driveup.DriveFileInfo, file
 		DriveFileID:   file.ID,
 		DriveLink:     link,
 		DownloadLink:  "https://drive.google.com/uc?id=" + file.ID,
-		LegacyFileMD5: "",
+		ContentSHA256: "",
 		Status:        "processed",
 		Strategy:      "sync",
 		CreatedAt:     now,
@@ -219,8 +219,8 @@ func (s *Service) syncFile(ctx context.Context, file driveup.DriveFileInfo, file
 		if existing.Voice != "" {
 			rec.Voice = existing.Voice
 		}
-		if existing.LegacyFileMD5 != "" {
-			rec.LegacyFileMD5 = existing.LegacyFileMD5
+		if existing.ContentSHA256 != "" {
+			rec.ContentSHA256 = existing.ContentSHA256
 		}
 		if !existing.CreatedAt.IsZero() {
 			rec.CreatedAt = existing.CreatedAt

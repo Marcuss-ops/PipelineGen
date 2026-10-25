@@ -146,7 +146,7 @@ func imageAssetToMediaRecord(img *detail.ImageAsset, imagesDir string) *artifact
 		ExternalURL:   img.SourceURL,
 		LocalPath:     imageFullPath(imagesDir, img.PathRel),
 		DriveFileID:   img.DriveFileID,
-		LegacyFileMD5: img.Hash,
+		ContentSHA256: img.Hash,
 		Status:        img.Status,
 		Metadata:      img.MetadataJSON,
 		Tags:          append([]string(nil), img.Tags...),
@@ -213,7 +213,7 @@ func mergeImageMetadataJSON(meta string, rec *artifacts.MediaRecord, relPath str
 		if rec.DownloadLink != "" {
 			payload["download_link"] = rec.DownloadLink
 		}
-		if rec.LegacyFileMD5 != "" {
+		if rec.ContentSHA256 != "" {
 			payload["hash"] = stripKindPrefix(rec.ID)
 		}
 		if rec.Status != "" {

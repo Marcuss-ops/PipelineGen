@@ -62,7 +62,10 @@ var ForbiddenNarrativeClipViewJSONFields = []string{
 	"clip_id",         // canonical media_assets.id fragment
 	"asset_id",        // exact same id under a different label
 	"drive_link",      // Google Drive URL — internal locator
-	"legacy_file_md5", // content_hash / source_version locator
+	"content_hash",    // content-address locator (canonical metadata key)
+	"content_sha256",  // content-address locator (wire/contract spelling)
+	"legacy_file_md5", // demolished bucket — pre-281 payloads still carry it
+	"file_hash",       // older alias of the same bucket
 	"local_path",      // filesystem-absolute path — internal locator
 	"source_url",      // origin URL (YouTube / Pexels / etc.)
 	"speaker",         // diarization label — speaker identity leak

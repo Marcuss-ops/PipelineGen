@@ -43,13 +43,13 @@ const semanticFixture = `{
     ],
     "short_phrases": [{"id":"phrase_01","text":"founded","type":"PHRASE","start_byte":12,"end_byte":19,"evidence":"founded","score":0.6,"provenance":"phrase_impact"}], "long_phrases": [], "quotes": [], "important_words": [],
     "visual_proposals": [
-     {"proposal_type":"chart","entity_ids":[],"suggested_visual":"bar_comparison","status":"requires_semantic_validation","score":0.9,
+     {"id":"scene_01_visual_001","proposal_type":"chart","entity_ids":[],"suggested_visual":"bar_comparison","status":"requires_semantic_validation","score":0.9,
       "chart_items":[
        {"label":"Revenue grew 25% against 18% in 2024.","text":"25%","kind":"PERCENT","value":25,"start_byte":45,"end_byte":48},
        {"label":"Revenue grew 25% against 18% in 2024.","text":"18%","kind":"PERCENT","value":18,"start_byte":57,"end_byte":60}
       ],
       "evidence":"Revenue grew 25% against 18% in 2024.","start_byte":32,"end_byte":69},
-     {"proposal_type":"entity_card","entity_ids":["person_01"],"visual_query_suggestions":["Marco Rossi","Marco Rossi founded the studio."],"suggested_visual":"entity_card","status":"requires_semantic_validation","score":0.6,"chart_items":[],"temporal_surfaces":[],"evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31}
+     {"id":"scene_01_visual_002","proposal_type":"entity_card","entity_ids":["person_01"],"visual_query_suggestions":["Marco Rossi","Marco Rossi founded the studio."],"suggested_visual":"entity_card","status":"requires_semantic_validation","score":0.6,"chart_items":[],"temporal_surfaces":[],"evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31}
     ],
     "semantic_groups": [{"id":"group_01","group_type":"enumeration","title":"Source points","members":[{"candidate_id":"bullet_01","sentence_index":0,"text":"Marco Rossi founded the studio.","evidence":"Marco Rossi founded the studio.","start_byte":0,"end_byte":31},{"candidate_id":"bullet_02","sentence_index":1,"text":"Revenue grew 25% against 18% in 2024.","evidence":"Revenue grew 25% against 18% in 2024.","start_byte":32,"end_byte":69}]}],
     "micro_summaries": [], "rejected_items": 0

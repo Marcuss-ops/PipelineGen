@@ -126,7 +126,7 @@ func existingClipFromRecord(rec *pgmedia.MediaAssetRecord) *sourcing.ExistingCli
 		LocalPath:       rec.LocalPath,
 		DriveLink:       rec.DriveLink,
 		DriveFileID:     rec.DriveFileID,
-		LegacyFileMD5:   rec.SHA256,
+		ContentSHA256:   rec.SHA256,
 		Summary:         rec.MetadataString("clip_summary"),
 		Topics:          rec.MetadataStringSlice("topics"),
 		Speakers:        rec.MetadataStringSlice("speakers"),

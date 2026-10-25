@@ -145,7 +145,7 @@ func (r *MediaAssetRecord) HydrateAsset() *asset.Asset {
 		out.SetLocalPath(r.LocalPath)
 	}
 	if r.SHA256 != "" {
-		out.SetLegacyFileMD5(r.SHA256)
+		out.SetContentHash(r.SHA256)
 		out.SetContentHash(r.SHA256)
 	}
 	if r.IndexState != "" {

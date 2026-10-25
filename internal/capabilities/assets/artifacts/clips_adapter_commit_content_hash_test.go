@@ -33,11 +33,11 @@ var _ persistence.AssetCommitter = (*commitRequestCapturingCommitter)(nil)
 // TestClipsRegistryUpsertMediaSendsTheContentAddressNotTheLegacyMD5 is the
 // boundary regression pin for the media-identity programme.
 //
-// The registry used to pass rec.LegacyFileMD5 as the committer's ContentHash, so
+// The registry used to pass rec.ContentSHA256 as the committer's ContentHash, so
 // a caller could compute the canonical SHA-256 of the bytes and have the very
 // next boundary silently replace it with the compatibility-only MD5. The
 // mutation this test forbids is exactly that single-field substitution: put
-// LegacyFileMD5 back in the CommitRequest and every assertion below fails.
+// ContentSHA256 back in the CommitRequest and every assertion below fails.
 func TestClipsRegistryUpsertMediaSendsTheContentAddressNotTheLegacyMD5(t *testing.T) {
 	// A real canonical SHA-256 (64 hex chars) and a real MD5 (32 hex chars), so
 	// the two are distinguishable by shape as well as by value.
@@ -59,7 +59,7 @@ func TestClipsRegistryUpsertMediaSendsTheContentAddressNotTheLegacyMD5(t *testin
 		Status:        "ACTIVE",
 		LocalPath:     "/tmp/clip.mp4",
 		ContentHash:   contentAddress,
-		LegacyFileMD5: legacyMD5,
+		ContentSHA256: legacyMD5,
 	})
 	if err != nil {
 		t.Fatalf("UpsertMedia: %v", err)
@@ -83,10 +83,10 @@ func TestClipsRegistryUpsertMediaSendsTheContentAddressNotTheLegacyMD5(t *testin
 	}
 	foundLegacy := false
 	for _, loc := range req.Locations {
-		if loc.LegacyFileMD5 == legacyMD5 {
+		if loc.ContentSHA256 == legacyMD5 {
 			foundLegacy = true
 		}
-		if loc.LegacyFileMD5 == contentAddress {
+		if loc.ContentSHA256 == contentAddress {
 			t.Errorf("location %q carries the content address as its legacy digest", loc.Kind)
 		}
 	}

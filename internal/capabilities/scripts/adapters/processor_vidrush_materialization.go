@@ -376,13 +376,13 @@ func (p *VidRushMaterializationProcessor) persistEntityCatalogMaterialization(ct
 	// A catalog-managed image is reusable only when its canonical materialization
 	// is durable. Do not allow a successful VidRush result to hide a missing
 	// reference-database row or incomplete Drive/hash identity.
-	if strings.TrimSpace(persisted.AssetID) == "" || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.LegacyFileMD5) == "" {
+	if strings.TrimSpace(persisted.AssetID) == "" || strings.TrimSpace(persisted.DriveLink) == "" || strings.TrimSpace(persisted.ContentSHA256) == "" {
 		outcome = scriptmetrics.EntityImageOutcomeFailure
-		return fmt.Errorf("entity image catalog: materialized candidate %d is missing asset_id, drive_link, or legacy_file_md5", candidateID)
+		return fmt.Errorf("entity image catalog: materialized candidate %d is missing asset_id, drive_link, or content_sha256", candidateID)
 	}
 	now := time.Now().UTC()
 	if err := p.catalog.UpsertMaterialization(ctx, entitycatalog.Materialization{
-		CandidateID: candidateID, AssetID: persisted.AssetID, LegacyFileMD5: persisted.LegacyFileMD5,
+		CandidateID: candidateID, AssetID: persisted.AssetID, ContentSHA256: persisted.ContentSHA256,
 		DriveLink: persisted.DriveLink,
 		Status:    entitycatalog.MaterializationStatusMaterialized,
 		// No local path is recorded: the row is durable media metadata, and a

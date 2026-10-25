@@ -6,7 +6,7 @@
 //
 //  1. A struct carrying a content address AND a location field is an offense.
 //  2. Every offense class is caught: LocalPath, DriveFileID, DriveLink,
-//     DownloadLink and the compatibility-only LegacyFileMD5.
+//     DownloadLink and the compatibility-only ContentSHA256.
 //  3. The gate is a RATCHET: one offense above the baseline is a hard error
 //     (this is the property that stops a future contributor from
 //     reintroducing the ambiguity), and it stays green AT the baseline.
@@ -105,7 +105,9 @@ type Record struct {
 }
 
 // TestScanMediaIdentity_EveryBannedFieldIsCaught pins the field vocabulary: a
-// provider location and the compatibility digest are as forbidden as a path.
+// provider location is as forbidden as a path. (The compatibility-digest
+// partner name was demolished with its bucket — migration 281 — so it is out
+// of the vocabulary entirely, not merely unbanned.)
 func TestScanMediaIdentity_EveryBannedFieldIsCaught(t *testing.T) {
 	cases := []struct {
 		field string
@@ -115,7 +117,6 @@ func TestScanMediaIdentity_EveryBannedFieldIsCaught(t *testing.T) {
 		{"DriveFileID", "DriveFileID   string `" + `json:"drive_file_id"` + "`"},
 		{"DriveLink", "DriveLink     string `" + `json:"drive_link"` + "`"},
 		{"DownloadLink", "DownloadLink  string `" + `json:"download_link"` + "`"},
-		{"LegacyFileMD5", "LegacyFileMD5 string `" + `json:"legacy_file_md5"` + "`"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.field, func(t *testing.T) {

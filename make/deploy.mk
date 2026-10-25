@@ -11,15 +11,21 @@
 #   make deploy-wait   block until /health answers (no build, no restart)
 #   make deploy-dry-run preflight + plan only (no build, no restart)
 #   make deploy-selftest hermetic: exercises restart/ready/identity against fakes
+#   make deploy-golden the golden-run leg as ONE command: deploy chain -> golden
+#                      x3 (same immutable payload) -> goldensummary median set.
+#                      Optional: GOLDEN_LABEL=<prefix> (default: timestamped).
 #
 # The restart uses scripts/systemd/pipelinegenctl (fail-closed `sudo -n`) and is
 # NEVER piped: the historical failure was `sudo -n install ... | tail` reporting
 # exit 0 while sudo had refused. Never reintroduce a pipe on a privileged step.
 
-.PHONY: deploy deploy-status deploy-wait deploy-dry-run deploy-selftest
+.PHONY: deploy deploy-status deploy-wait deploy-dry-run deploy-selftest deploy-golden
 
 deploy:
 	@bash scripts/deploy/pipelinegen_deploy.sh
+
+deploy-golden:
+	@bash scripts/deploy/deploy_golden_chain.sh $(GOLDEN_LABEL)
 
 deploy-status:
 	@bash scripts/deploy/pipelinegen_deploy_status.sh

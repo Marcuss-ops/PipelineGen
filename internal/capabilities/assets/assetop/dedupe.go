@@ -33,13 +33,6 @@ type ExistingAssetQuery struct {
 	Filename string
 	// Source is the asset source (youtube, artlist, voiceover, etc.)
 	Source string
-	// LegacyFileMD5 is the legacy MD5-tier digest.
-	//
-	// Deprecated: compatibility only — migration, diagnostics, and adapters
-	// that can only answer the legacy tier. NO decision may read it. An MD5 is
-	// not a content address: matching on it makes two different payloads look
-	// identical, which is how a "dedup" turns into an asset collapse.
-	LegacyFileMD5 string `json:"-"`
 }
 
 // AssetRecord represents a common asset record for lifecycle management.
@@ -56,8 +49,8 @@ type AssetRecord struct {
 	// ContentHash is the canonical content identity (SHA-256 of the bytes).
 	// Empty means UNKNOWN. This is the only hash field a decision may compare.
 	ContentHash string
-	// LegacyFileMD5 is the compatibility-only digest. No decision reads it.
-	LegacyFileMD5 string `json:"-"`
+	// ContentSHA256 is the compatibility-only digest. No decision reads it.
+	ContentSHA256 string `json:"-"`
 	LocalPath     string `json:"-"`
 	Status        string
 	Error         string

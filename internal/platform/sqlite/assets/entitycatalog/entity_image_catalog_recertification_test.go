@@ -30,7 +30,7 @@ func TestSQLiteEntityImageCatalogRecertificationPreservesDriveAsset(t *testing.T
 	}
 	if err := repo.UpsertMaterialization(ctx, capentity.Materialization{
 
-		CandidateID: candidateID, AssetID: "asset-mj", LegacyFileMD5: "sha-mj",
+		CandidateID: candidateID, AssetID: "asset-mj", ContentSHA256: "sha-mj",
 		DriveFileID: "drive-mj", DriveLink: "https://drive.google.com/file/d/drive-mj/view",
 		Status: capentity.MaterializationStatusMaterialized,
 	}); err != nil {

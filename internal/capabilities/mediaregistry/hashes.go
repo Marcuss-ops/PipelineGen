@@ -31,7 +31,7 @@
 //	                        semantic document version). See
 //	                        internal/kernel/embedding.Contract.Hash.
 //
-//	legacy_file_md5         compatibility-only MD5 (32 hex chars). NEVER
+//	content_sha256         compatibility-only MD5 (32 hex chars). NEVER
 //	                        identity, NEVER dedup. Retained only where an
 //	                        external system (Google Drive) already reports an
 //	                        MD5 and historical tooling needs it.
@@ -42,7 +42,7 @@
 //     file ID, URL, or provider ID.
 //   - binary_sha256 is a compatibility projection of content_sha256: the
 //     same bytes must yield the same digest in both surfaces.
-//   - MD5 (legacy_file_md5) is never used for identity or deduplication.
+//   - MD5 (content_sha256) is never used for identity or deduplication.
 //   - semantic_hash / semantic_document_hash / embedding_contract_hash are
 //     computed with Fingerprint (one canonical algorithm, one owner). The
 //     ALGORITHM lives in internal/kernel/digest (SSOT); this package owns
@@ -77,8 +77,6 @@ const (
 	IndexRevisionField = "index_revision"
 	// EmbeddingContractHashField names the model-contract fingerprint.
 	EmbeddingContractHashField = "embedding_contract_hash"
-	// LegacyFileMD5Field names the compatibility-only MD5 surface.
-	LegacyFileMD5Field = "legacy_file_md5"
 	// BinarySHA256Field names the compatibility SHA-256 projection.
 	BinarySHA256Field = "binary_sha256"
 )
@@ -117,7 +115,7 @@ func IsSHA256Hex(s string) bool {
 }
 
 // IsMD5Hex reports whether s is a 32-character hex string (the legacy MD5
-// digest shape). Used only to classify legacy_file_md5 — never to establish
+// digest shape). Used only to classify content_sha256 — never to establish
 // identity or deduplicate.
 func IsMD5Hex(s string) bool {
 	if len(s) != 32 {

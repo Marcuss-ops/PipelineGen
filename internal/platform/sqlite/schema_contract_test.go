@@ -385,7 +385,34 @@ func extractExpectedSchema(t *testing.T, migrationsDir, targetDB string) map[str
 			}
 		}
 
-		// 5. ALTER TABLE … DROP COLUMN entries. A migration that drops
+		// 5. ALTER TABLE … RENAME [COLUMN] old TO new; entries. A
+		//    migration that renames a column (281/282 rename the mixed
+		//    32/64-hex legacy_file_md5 bucket to content_sha256) keeps
+		//    the column's type; only the name changes. Rewrite the
+		//    expectation in place so the post-migrate fresh-DB schema is
+		//    compared under the FINAL column name.
+		for _, match := range renameColumnPattern.FindAllStringSubmatch(stripped, -1) {
+			tbl := match[1]
+			oldName := match[2]
+			newName := match[3]
+			exp, ok := schema[tbl]
+			if !ok {
+				continue
+			}
+			renamed := false
+			exp.CreateCols, renamed = renameExpectedColumn(exp.CreateCols, oldName, newName)
+			if !renamed {
+				exp.AddedCols, renamed = renameExpectedColumn(exp.AddedCols, oldName, newName)
+			}
+			if !renamed {
+				// Column born under the new name (or not modeled
+				// before): record the final name so the assertion
+				// loop sees it.
+				exp.AddedCols = append(exp.AddedCols, expectedColumn{Name: newName, Origin: filename})
+			}
+		}
+
+		// 6. ALTER TABLE … DROP COLUMN entries. A migration that drops
 		//    a column (e.g. 101 drops media_assets.status because
 		//    lifecycle_state is the new SSOT) makes that column
 		//    correctly absent from the post-migrate fresh-DB schema.
@@ -442,7 +469,29 @@ var (
 			`([a-zA-Z_][a-zA-Z0-9_]*)\s+DROP\s+(?:COLUMN\s+)?` +
 			`([a-zA-Z_][a-zA-Z0-9_]*)\s*;`,
 	)
+	// ALTER TABLE name RENAME [COLUMN] oldName TO newName;
+	// Note: does not match `ALTER TABLE x RENAME TO y` (table rename,
+	// handled above) — there the token after RENAME is the literal TO.
+	renameColumnPattern = regexp.MustCompile(
+		`(?i)\bALTER\s+TABLE\s+` +
+			`([a-zA-Z_][a-zA-Z0-9_]*)\s+RENAME\s+(?:COLUMN\s+)?` +
+			`([a-zA-Z_][a-zA-Z0-9_]*)\s+TO\s+` +
+			`([a-zA-Z_][a-zA-Z0-9_]*)\s*;`,
+	)
 )
+
+// renameExpectedColumn rewrites a column name in place, preserving its
+// type and origin. Returns the (possibly unchanged) slice and whether the
+// rename was applied.
+func renameExpectedColumn(cols []expectedColumn, oldName, newName string) ([]expectedColumn, bool) {
+	for i := range cols {
+		if cols[i].Name == oldName {
+			cols[i].Name = newName
+			return cols, true
+		}
+	}
+	return cols, false
+}
 
 // parseColumnList splits a CREATE TABLE body into per-column definitions
 // using a parenthesis-counting splitter so DEFAULT (datetime('now')) and

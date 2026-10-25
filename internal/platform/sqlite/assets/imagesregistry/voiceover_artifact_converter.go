@@ -31,7 +31,7 @@ func VoiceoverRecordToAsset(rec *Record) *asset.Asset {
 	clip.SetDriveLink(rec.DriveLink)
 	clip.SetDriveFileID(rec.DriveFileID)
 	clip.SetDownloadLink(rec.DownloadLink)
-	clip.SetLegacyFileMD5(rec.LegacyFileMD5)
+	clip.SetContentHash(rec.ContentSHA256)
 	clip.SetLocalPath(rec.LocalPath)
 	clip.SetMetadataJSON(rec.Metadata)
 	return clip

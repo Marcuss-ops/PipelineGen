@@ -193,6 +193,11 @@ type Runner struct {
 	// search decision surface is not wired (queries fall back to the legacy
 	// ad-hoc builders).
 	imageSearchResolver *capabilityimagesearch.Resolver
+	// semanticSearchPlanner executes the semantic production plan's exact
+	// source queries against the real retrieval provider and records the
+	// measured outcomes. Nil keeps planning offline: the plan and its
+	// feedback stay pending, no second provider call is issued.
+	semanticSearchPlanner *SemanticSearchBatchPlanner
 
 	log *zap.Logger
 }

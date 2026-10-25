@@ -77,6 +77,20 @@ func planOverlayBatchWork(plan capoverlay.OverlayPlan, candidates []overlayItemC
 			if candidate.source.Map != nil || capoverlay.IsChainItemKind(candidate.source.Kind) || strings.TrimSpace(candidate.source.SceneID) != strings.TrimSpace(work.sceneID) {
 				break
 			}
+			// A fused window forces its members into one shared frame timeline,
+			// where RenderingGen's fitted entity-caption gate compares every
+			// image-linked caption against every other. Two caption-bearing
+			// members whose captions fit into overlapping canvas bounds are
+			// rejected deterministically by the worker (golden v21, batch
+			// ef106785…), even though the same items render cleanly per item —
+			// per-item renders carry exactly one caption each and cannot collide.
+			// The planner cannot predict the fitted caption geometry (fitting
+			// runs on materialized aspect ratios inside the worker), so a batch
+			// admits at most one caption-bearing member; text-only members fuse
+			// freely around it.
+			if overlayItemMayCompileLinkedCaption(candidate.source) && batchHasCaptionBearing(work.candidates) {
+				break
+			}
 			nextStart, nextEnd := overlayCandidateRenderWindow(plan, candidate)
 			gap := nextStart - work.endUS
 			if gap < 0 {
@@ -143,6 +157,33 @@ func overlayItemWindow(item capoverlay.OverlayItem) (int64, int64) {
 
 // overlayCandidateRenderWindow shares the same duration/timing normalization
 // used by the single-item renderer, including phrase tails and composite spans.
+// overlayItemMayCompileLinkedCaption reports whether the item can compile a
+// caption layer linked to one of its images (the worker wire's
+// CaptionForImageID). RenderingGen compiles linked captions only from the
+// explicit caption fields — item.EntityCaption (semantic image caption) and
+// ImageLayers[].Caption (composite image children); an item without either
+// cannot join the collision class no matter its kind.
+func overlayItemMayCompileLinkedCaption(item capoverlay.OverlayItem) bool {
+	if strings.TrimSpace(item.EntityCaption) != "" {
+		return true
+	}
+	for _, layer := range item.ImageLayers {
+		if strings.TrimSpace(layer.Caption) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func batchHasCaptionBearing(candidates []overlayItemCandidate) bool {
+	for _, candidate := range candidates {
+		if overlayItemMayCompileLinkedCaption(candidate.source) {
+			return true
+		}
+	}
+	return false
+}
+
 func overlayCandidateRenderWindow(plan capoverlay.OverlayPlan, candidate overlayItemCandidate) (int64, int64) {
 	if _, metadata, err := separateOverlayItemPlan(plan, candidate.source, candidate.index); err == nil && metadata != nil && metadata.TargetDurationUS > 0 {
 		return metadata.SourceStartUS, metadata.SourceStartUS + metadata.TargetDurationUS
@@ -206,7 +247,14 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 		}
 		item := itemPlan.Items[0]
 		item.StartUS = metadata.SourceStartUS - work.startUS
-		item.DurationUS = metadata.TargetDurationUS
+		// P5/P4 window contract (OVERLAY-MANIFEST-CONTRACT.md §1): the item
+		// occupies exactly [in_us, out_us) = its LITERAL plan window, because
+		// the handoff projects that segment onto the artifact's frames (§3).
+		// TargetDurationUS is the padded standalone-clip target (entrance tail
+		// + settled hold, see separateOverlayItemPlan): using it here made
+		// fused items persist past their windows and overlap later items in
+		// the shared timeline (live A/B 2026-10-24: visible text stacking).
+		item.DurationUS = metadata.SourceEndUS - metadata.SourceStartUS
 		item.StartMs = item.StartUS / 1000
 		item.EndMs = (item.StartUS + item.DurationUS + 999) / 1000
 		item.RenderKey = ""

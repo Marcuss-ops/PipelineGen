@@ -202,7 +202,7 @@ func TestEntityImageCatalogMetricsCoverFullSQLiteDriveLifecycle(t *testing.T) {
 		}(), provider.acquireCalls.Load(), provider.verifyCalls.Load(), finalizer.calls.Load(), materialized.Warnings, materialized.VidRushSegments[0].Assets.Candidates)
 	}
 	asset := materialized.VidRushSegments[0].Assets.SecondaryImages[0]
-	if asset.PersistenceStatus != scriptpkg.VidRushStatusPersisted || asset.DriveLink == "" || asset.LegacyFileMD5 == "" {
+	if asset.PersistenceStatus != scriptpkg.VidRushStatusPersisted || asset.DriveLink == "" || asset.ContentSHA256 == "" {
 		t.Fatalf("published asset missing durable metadata: %+v", asset)
 	}
 	if provider.acquireCalls.Load() != 1 || provider.verifyCalls.Load() != 1 || finalizer.calls.Load() != 1 {
@@ -281,14 +281,14 @@ func (*lifecycleCatalogImageProvider) Search(context.Context, scriptports.VidRus
 func (p *lifecycleCatalogImageProvider) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	p.acquireCalls.Add(1)
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/entity-image.jpg", MIMEType: "image/jpeg", SizeBytes: 123, LegacyFileMD5: "entity-image-hash"}, nil
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/entity-image.jpg", MIMEType: "image/jpeg", SizeBytes: 123, ContentSHA256: "entity-image-hash"}, nil
 }
 func (p *lifecycleCatalogImageProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	p.verifyCalls.Add(1)
 	candidate := artifact.Candidate
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.RightsStatus = "verified"
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, LegacyFileMD5: artifact.LegacyFileMD5, Width: 1200, Height: 800, RightsStatus: "verified"}, nil
+	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, Width: 1200, Height: 800, RightsStatus: "verified"}, nil
 }
 
 type lifecycleCatalogFinalizer struct{ calls atomic.Int32 }
@@ -297,7 +297,7 @@ func (f *lifecycleCatalogFinalizer) Finalize(_ context.Context, artifact scriptp
 	f.calls.Add(1)
 	candidate := artifact.Candidate
 	candidate.AssetID = "published-michael-jordan"
-	candidate.LegacyFileMD5 = artifact.LegacyFileMD5
+	candidate.ContentSHA256 = artifact.ContentSHA256
 	candidate.DriveLink = "https://drive.google.com/file/d/published-michael-jordan/view"
 	candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
 	candidate.IndexStatus = scriptpkg.VidRushStatusIndexed
@@ -322,7 +322,7 @@ func TestEntityImageCatalogOperationalMetricsDriveReuseAndBrokenDownload(t *test
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID:    rows[0].ID,
 		AssetID:        "metrics-drive-asset",
-		LegacyFileMD5:  "metrics-drive-hash",
+		ContentSHA256:  "metrics-drive-hash",
 		DriveLink:      "https://drive.google.com/file/d/metrics-drive-asset/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(),

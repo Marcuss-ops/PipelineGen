@@ -22,8 +22,11 @@ import (
 
 // fakeRenderQueueClient implements RenderQueueClient in-memory for the
 // enqueuer tests. It lets a test pre-seed a job (to exercise the idempotent
-// ErrJobExists path) or advance the job state between polls.
+// ErrJobExists path) or advance the job state between polls. The mutex mirrors
+// the real queue client's concurrency contract: the bounded render pools
+// submit from several goroutines at once (e.g. the map class at width 2).
 type fakeRenderQueueClient struct {
+	mu    sync.Mutex
 	jobs  map[string]RenderQueueJob
 	calls int
 }
@@ -176,7 +179,7 @@ func TestBoundedMapRenderOutputRetainsOnlyRecentDiagnostics(t *testing.T) {
 
 // validDynamicMapTelemetry is the minimal summary the dynamic-map renderer must
 // emit to be certified. It is shared by the render-contract tests below.
-const validDynamicMapTelemetry = `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`
+const validDynamicMapTelemetry = `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"gpu_map_sampler":"opencv_opencl","encoder_preset":"p6","encoder_quality":15,"renderer_wall_s":9.0}`
 
 // TestMapBasemapStylesAreUniqueAndNonEmpty pins the deterministic basemap
 // candidate catalog: it must remain explicit, non-empty, duplicate-free, and
@@ -308,7 +311,7 @@ func captureMapRenderPayload(t *testing.T, plan capoverlay.OverlayPlan) map[stri
 		t.Fatal(err)
 	}
 	t.Setenv("VELOX_GEO_MAP_PLATE_GENERATOR_PATH", plate)
-	path, err := renderDynamicMapVideo(context.Background(), plan)
+	path, err := renderDynamicMapVideoWithGate(context.Background(), plan, &fakeDynamicMapGPUGate{})
 	if err != nil {
 		t.Fatalf("renderDynamicMapVideo: %v", err)
 	}
@@ -825,7 +828,7 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 	}{
 		{
 			name:    "valid summary",
-			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":7,"tile_disk_cache_misses":0,"tile_network_fetches":0,"tile_fallbacks":0,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`,
+			summary: validDynamicMapTelemetry,
 		},
 		{
 			name:    "missing counters",
@@ -834,21 +837,21 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 		},
 		{
 			name:    "valid vector local render",
-			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","basemap":"chronon_editorial","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":7,"tile_network_fetches":0,"tile_fallbacks":0,"tile_rendered_locally":7,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`,
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","basemap":"chronon_editorial","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":7,"tile_network_fetches":0,"tile_fallbacks":0,"tile_rendered_locally":7,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"gpu_map_sampler":"opencv_opencl","encoder_preset":"p6","encoder_quality":15,"renderer_wall_s":9.0}`,
 		},
 		{
 			name:    "local render claimed by raster basemap",
-			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","basemap":"esri_sat","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":7,"tile_network_fetches":0,"tile_fallbacks":0,"tile_rendered_locally":7,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`,
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","basemap":"esri_sat","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":7,"tile_network_fetches":0,"tile_fallbacks":0,"tile_rendered_locally":7,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"gpu_map_sampler":"opencv_opencl","encoder_preset":"p6","encoder_quality":15,"renderer_wall_s":9.0}`,
 			wantErr: "do not balance",
 		},
 		{
 			name:    "unaccounted vector misses",
-			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","basemap":"chronon_editorial","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":7,"tile_network_fetches":0,"tile_fallbacks":0,"tile_rendered_locally":6,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`,
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","basemap":"chronon_editorial","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":7,"tile_network_fetches":0,"tile_fallbacks":0,"tile_rendered_locally":6,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"gpu_map_sampler":"opencv_opencl","encoder_preset":"p6","encoder_quality":15,"renderer_wall_s":9.0}`,
 			wantErr: "do not balance",
 		},
 		{
 			name:    "fallback work",
-			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":1,"tile_network_fetches":0,"tile_fallbacks":1,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"renderer_wall_s":9.0}`,
+			summary: `{"schema":"chronon.dynamic-map-telemetry.v1","frames":120,"dimensions":{"width":1920,"height":1080},"fps":{"num":24,"den":1},"tile":{"tile_disk_cache_hits":0,"tile_disk_cache_misses":1,"tile_network_fetches":0,"tile_fallbacks":1,"tile_bytes_downloaded":0,"tile_fetch_ms":12.0,"prefetch_ms":3.0,"prefetch_tiles_requested":7,"prefetch_tiles_memory_hits":0,"late_tile_fetches":0},"plates":{"prepare_ms":4.0,"plate_compose_ms":1.0,"plate_count":11,"plate_bytes":42,"required_tile_count":7,"prefetch_tiles_fetched":7,"prefetch_tiles_memory_hits":0},"gate_ms":2.0,"frame_pipeline_s":3.0,"render_encode_wall_s":3.5,"post_frame_tail_s":0.5,"engine_fallback_frames":0,"output_bytes":8,"video_encoder":"h264_nvenc","gpu_encoder":true,"gpu_map_sampler":"opencv_opencl","encoder_preset":"p6","encoder_quality":15,"renderer_wall_s":9.0}`,
 			wantErr: "unapproved fallback work",
 		},
 	} {
@@ -875,7 +878,7 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 					ID: "place:rome", Label: "Rome", Latitude: 41.89, Longitude: 12.49,
 				}}}}},
 			}
-			path, err := renderDynamicMapVideo(context.Background(), plan)
+			path, err := renderDynamicMapVideoWithGate(context.Background(), plan, &fakeDynamicMapGPUGate{})
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Fatalf("renderDynamicMapVideo error = %v, want substring %q", err, tc.wantErr)
@@ -894,6 +897,8 @@ func TestRenderDynamicMapVideoRequiresCompleteCertifiedTelemetry(t *testing.T) {
 }
 
 func (f *fakeRenderQueueClient) Submit(_ context.Context, job RenderQueueJob) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	if _, ok := f.jobs[job.ID]; ok {
 		return ErrJobExists
@@ -903,6 +908,8 @@ func (f *fakeRenderQueueClient) Submit(_ context.Context, job RenderQueueJob) er
 }
 
 func (f *fakeRenderQueueClient) Get(_ context.Context, id string) (RenderQueueJob, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	job, ok := f.jobs[id]
 	if !ok {
 		return RenderQueueJob{}, errors.New("job not found")
@@ -1940,7 +1947,7 @@ func TestRenderQueueAssetRefCarriesNoLocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal identity: %v", err)
 	}
-	for _, forbidden := range []string{"local_path", "url", "source_url", "drive_link", "drive_file_id", "download_link", "legacy_file_md5"} {
+	for _, forbidden := range []string{"local_path", "url", "source_url", "drive_link", "drive_file_id", "download_link", "content_sha256"} {
 		if strings.Contains(string(raw), `"`+forbidden+`"`) {
 			t.Errorf("canonical identity carries location key %q: %s", forbidden, raw)
 		}

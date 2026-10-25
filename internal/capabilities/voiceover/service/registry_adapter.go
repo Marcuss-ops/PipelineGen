@@ -123,7 +123,7 @@ func mediaRecordToVoiceover(mediaRec *artifacts.MediaRecord) (*assets.Record, er
 		DriveFileID:   mediaRec.DriveFileID,
 		DriveLink:     mediaRec.DriveLink,
 		DownloadLink:  mediaRec.DownloadLink,
-		LegacyFileMD5: mediaRec.LegacyFileMD5,
+		ContentSHA256: mediaRec.ContentSHA256,
 		Status:        mediaRec.Status,
 		Error:         mediaRec.Error,
 		Strategy:      meta.Strategy,
@@ -156,7 +156,7 @@ func voiceoverToMediaRecord(rec *assets.Record) (*artifacts.MediaRecord, error) 
 		ID: rec.ID, Source: "voiceover", Name: rec.TextPreview, Filename: rec.Filename,
 		FolderID: rec.FolderID, FolderPath: rec.FolderPath, MediaType: "audio",
 		DriveFileID: rec.DriveFileID, DriveLink: rec.DriveLink, DownloadLink: rec.DownloadLink,
-		LegacyFileMD5: rec.LegacyFileMD5, LocalPath: rec.LocalPath, Status: rec.Status,
+		ContentSHA256: rec.ContentSHA256, LocalPath: rec.LocalPath, Status: rec.Status,
 		Error: rec.Error, Metadata: string(metaJSON),
 	}, nil
 }

@@ -48,7 +48,7 @@ func buildCanonicalAsset(item MaterializationPipelineItem) scriptpkg.SegmentAsse
 	candidate := item.Candidate
 	candidate.SourceURL = item.Source
 	if item.ContentSHA256 != "" {
-		candidate.LegacyFileMD5 = item.ContentSHA256
+		candidate.ContentSHA256 = item.ContentSHA256
 	}
 	return candidate
 }

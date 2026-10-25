@@ -29,7 +29,7 @@ func (e *recoveryExtractor) Extract(_ context.Context, req *youtubedto.ExtractRe
 			ID: "asset-recovery-window", Status: status,
 			LocalPath:     "/canonical/recovery-window.mp4",
 			DriveLink:     "https://drive.google.com/file/d/recovery-window",
-			LegacyFileMD5: "md5-recovery-window",
+			ContentSHA256: "md5-recovery-window",
 		}
 	}
 	return &youtubedto.ExtractResponse{OK: true, Items: items}, nil

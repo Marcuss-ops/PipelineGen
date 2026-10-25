@@ -153,7 +153,7 @@ type VoiceoverRecord struct {
 	DriveFileID     string
 	DriveLink       string
 	DownloadLink    string
-	LegacyFileMD5   string
+	ContentSHA256   string
 	DurationSeconds float64
 	Status          string
 	Error           string

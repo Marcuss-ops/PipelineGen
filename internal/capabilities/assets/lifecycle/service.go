@@ -117,7 +117,7 @@ func canonicalCallerHash(fileHash string) string {
 // already handed over a canonical SHA-256: an unknown identity is honest, a
 // wrong one is not.
 //
-// LegacyFileMD5 keeps the caller's value untouched: it is a read-only
+// ContentSHA256 keeps the caller's value untouched: it is a read-only
 // compatibility bucket and no decision may read it.
 
 // ProcessAsset makes the canonical SQLite-owned record before any Drive side
@@ -127,7 +127,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 	if input == nil {
 		return nil, fmt.Errorf("%w: input is required", ErrFinalizationFailed)
 	}
-	out := &FinalizeResult{LocalPath: input.LocalPath, DriveLink: input.DriveLink, DriveFileID: input.DriveFileID, DownloadLink: input.DownloadLink, LegacyFileMD5: fileHash}
+	out := &FinalizeResult{LocalPath: input.LocalPath, DriveLink: input.DriveLink, DriveFileID: input.DriveFileID, DownloadLink: input.DownloadLink, ContentSHA256: fileHash}
 
 	// BYTE IDENTITY (media-identity programme, Sept 2026). The content address
 	// is the SHA-256 of the artifact's bytes and the size is the exact byte
@@ -195,7 +195,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 		case match != nil && match.Kind == assetop.DuplicateSameAsset && match.SameContent && s.dedupe.Policy().SkipIfExists:
 			existing := match.Record
 			out.OK, out.Status, out.DeliveryStatus = true, "skipped_duplicate", asset.AssetPublishPublished
-			out.DriveLink, out.DriveFileID, out.DownloadLink, out.LegacyFileMD5 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.LegacyFileMD5
+			out.DriveLink, out.DriveFileID, out.DownloadLink, out.ContentSHA256 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.ContentSHA256
 			out.ContentHash = contentHash
 			return out, nil
 		case match != nil && match.Kind == assetop.DuplicateSameContent && match.Record != nil:
@@ -213,7 +213,7 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 
 	driveLink, driveFileID, downloadLink := input.DriveLink, input.DriveFileID, input.DownloadLink
 	publishStatus := asset.AssetPublishLocalOnly
-	rec := &artifacts.MediaRecord{ID: input.ID, Name: input.Name, Filename: input.Filename, Source: input.Source, MediaType: string(input.Kind), FolderID: input.FolderID, FolderPath: input.FolderPath, Group: input.Group, LocalPath: input.LocalPath, DriveLink: driveLink, DriveFileID: driveFileID, DownloadLink: downloadLink, LegacyFileMD5: fileHash, ContentHash: contentHash, Metadata: input.Metadata, Status: "delivery_pending", PublishStatus: asset.AssetPublishPending, Duration: input.Duration, SourceID: input.SourceID, Subfolder: input.Subfolder}
+	rec := &artifacts.MediaRecord{ID: input.ID, Name: input.Name, Filename: input.Filename, Source: input.Source, MediaType: string(input.Kind), FolderID: input.FolderID, FolderPath: input.FolderPath, Group: input.Group, LocalPath: input.LocalPath, DriveLink: driveLink, DriveFileID: driveFileID, DownloadLink: downloadLink, ContentSHA256: fileHash, ContentHash: contentHash, Metadata: input.Metadata, Status: "delivery_pending", PublishStatus: asset.AssetPublishPending, Duration: input.Duration, SourceID: input.SourceID, Subfolder: input.Subfolder}
 
 	if needsDelivery {
 		if _, err := s.commitRecord(ctx, rec, false); err != nil {
@@ -373,7 +373,7 @@ func (s *Service) CheckDuplicate(ctx context.Context, input *FinalizeInput, file
 	case match != nil && match.Kind == assetop.DuplicateSameAsset && match.SameContent && s.dedupe.Policy().SkipIfExists:
 		existing := match.Record
 		out.OK, out.Status = true, "would_skip_duplicate"
-		out.DriveLink, out.DriveFileID, out.DownloadLink, out.LegacyFileMD5 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.LegacyFileMD5
+		out.DriveLink, out.DriveFileID, out.DownloadLink, out.ContentSHA256 = existing.DriveLink, existing.DriveFileID, existing.DownloadLink, existing.ContentSHA256
 		return out, nil
 	case match != nil && match.Kind == assetop.DuplicateSameContent && match.Record != nil:
 		out.OK, out.Status = true, "would_reuse_storage"

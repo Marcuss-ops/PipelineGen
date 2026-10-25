@@ -129,7 +129,7 @@ func ImageAssetToAsset(item *detail.ImageAsset) *asset.Asset {
 	}
 	clip.SetDriveLink(item.SourceURL)
 	clip.SetDriveFileID(item.DriveFileID)
-	clip.SetLegacyFileMD5(item.Hash)
+	clip.SetContentHash(item.Hash)
 	clip.SetLocalPath(item.PathRel)
 	return clip
 }

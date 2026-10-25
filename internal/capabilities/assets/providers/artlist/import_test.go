@@ -158,7 +158,7 @@ func TestImportClip_DownloadPersistsMediaAsset(t *testing.T) {
 	assert.Equal(t, "346928", resp.ClipID)
 	assert.NotEmpty(t, resp.DriveFileID)
 	assert.NotEmpty(t, resp.DriveLink)
-	assert.NotEmpty(t, resp.LegacyFileMD5)
+	assert.NotEmpty(t, resp.ContentSHA256)
 
 	var rowCount int
 	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM media_assets WHERE id = ?`, "346928").Scan(&rowCount))
@@ -166,7 +166,7 @@ func TestImportClip_DownloadPersistsMediaAsset(t *testing.T) {
 
 	var source, driveFileID, driveLink, fileHash string
 	require.NoError(t, db.QueryRow(`
-		SELECT source, COALESCE(drive_file_id, ''), COALESCE(drive_link, ''), COALESCE(legacy_file_md5, '')
+		SELECT source, COALESCE(drive_file_id, ''), COALESCE(drive_link, ''), COALESCE(content_sha256, '')
 		FROM media_assets WHERE id = ?
 	`, "346928").Scan(&source, &driveFileID, &driveLink, &fileHash))
 	assert.Equal(t, "artlist", source)

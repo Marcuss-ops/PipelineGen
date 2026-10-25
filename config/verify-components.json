@@ -269,7 +269,8 @@
     "node_tests": [],
     "python_tests": [],
     "dependencies": [
-      "storage"
+      "storage",
+      "rust"
     ],
     "timeout_seconds": 900,
     "race_timeout_seconds": 1200,
@@ -474,7 +475,9 @@
       "./internal/platform/media/rustexec/..."
     ],
     "node_tests": [],
-    "python_tests": [],
+    "python_tests": [
+      "python3 scripts/ci/test_verify_components_concurrency.py"
+    ],
     "dependencies": [],
     "timeout_seconds": 900,
     "race_timeout_seconds": 900,

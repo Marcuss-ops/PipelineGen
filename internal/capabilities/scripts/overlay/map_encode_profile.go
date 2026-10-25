@@ -19,6 +19,10 @@ type MapEncodeProfile struct {
 	Codec string
 	// ExpectGPU is the required telemetry gpu_encoder flag.
 	ExpectGPU bool
+	// Preset and Quality are the declared encoder tuning values. Quality maps
+	// to NVENC CQ for GPU profiles and CRF for CPU profiles.
+	Preset  string
+	Quality int
 }
 
 const (
@@ -33,9 +37,9 @@ const (
 	MapEncodeProfileEnv = "PIPELINEGEN_MAP_CODEC"
 )
 
-// DefaultMapEncodeProfile is the production contract: GPU NVENC.
+// DefaultMapEncodeProfile is the production contract: GPU NVENC at preset p6/CQ 15.
 func DefaultMapEncodeProfile() MapEncodeProfile {
-	return MapEncodeProfile{Codec: MapProductionCodec, ExpectGPU: true}
+	return MapEncodeProfile{Codec: MapProductionCodec, ExpectGPU: true, Preset: "p6", Quality: 15}
 }
 
 // ResolveMapEncodeProfile declares the execution profile for one map render.
@@ -49,32 +53,32 @@ func ResolveMapEncodeProfile(explicit string) (MapEncodeProfile, error) {
 	case MapProductionCodec:
 		return DefaultMapEncodeProfile(), nil
 	case MapCPUCodec:
-		return MapEncodeProfile{Codec: MapCPUCodec, ExpectGPU: false}, nil
+		return MapEncodeProfile{Codec: MapCPUCodec, ExpectGPU: false, Preset: "veryfast", Quality: 23}, nil
 	default:
 		return MapEncodeProfile{}, fmt.Errorf("unsupported map encoder %q: declare %q (production) or %q (certified CPU)",
 			strings.TrimSpace(explicit), MapProductionCodec, MapCPUCodec)
 	}
 }
 
-// MapEncodeVideoArgs renders the profile as ffmpeg video-encoder arguments.
-// The GPU branch preserves the certified production NVENC shaping exactly;
-// the CPU branch is the explicit CPU policy (veryfast/CRF 23, matching the
-// platform VideoConfig defaults). The codec itself always comes from the
-// declared profile — callers never restate an encoder literal.
+// MapEncodeVideoArgs renders the declared profile as ffmpeg video-encoder
+// arguments. The codec, preset and quality are one contract shared with the
+// Python renderer and any later upscale; callers never restate encoder knobs.
 func MapEncodeVideoArgs(profile MapEncodeProfile) []string {
+	quality := fmt.Sprint(profile.Quality)
 	if profile.ExpectGPU {
-		return []string{"-c:v", profile.Codec, "-gpu", "0", "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", "18", "-b:v", "0"}
+		return []string{"-c:v", profile.Codec, "-gpu", "0", "-preset", profile.Preset, "-tune", "hq", "-rc", "vbr", "-cq", quality, "-b:v", "0"}
 	}
-	return []string{"-c:v", profile.Codec, "-preset", "veryfast", "-crf", "23"}
+	return []string{"-c:v", profile.Codec, "-preset", profile.Preset, "-crf", quality}
 }
 
 // ValidateMapEncoderTelemetry certifies that the renderer's observed encoder
 // matches the declared execution profile. A render produced under another
 // profile is rejected with both sides named — never silently accepted.
-func ValidateMapEncoderTelemetry(encoder string, gpu bool, profile MapEncodeProfile) error {
-	if strings.TrimSpace(encoder) != profile.Codec || gpu != profile.ExpectGPU {
-		return fmt.Errorf("dynamic map renderer used encoder=%q gpu=%t, but the declared execution profile requires encoder=%q gpu=%t",
-			encoder, gpu, profile.Codec, profile.ExpectGPU)
+func ValidateMapEncoderTelemetry(encoder string, gpu bool, preset string, quality int, profile MapEncodeProfile) error {
+	if strings.TrimSpace(encoder) != profile.Codec || gpu != profile.ExpectGPU ||
+		strings.TrimSpace(preset) != profile.Preset || quality != profile.Quality {
+		return fmt.Errorf("dynamic map renderer used encoder=%q gpu=%t preset=%q quality=%d, but the declared execution profile requires encoder=%q gpu=%t preset=%q quality=%d",
+			encoder, gpu, preset, quality, profile.Codec, profile.ExpectGPU, profile.Preset, profile.Quality)
 	}
 	return nil
 }

@@ -26,7 +26,7 @@ type RetrievalSearchResult struct {
 	SourcePageURL string
 	ThumbnailURL  string
 	DriveLink     string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	Title         string
 	Author        string
 	License       string

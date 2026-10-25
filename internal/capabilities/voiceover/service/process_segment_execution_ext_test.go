@@ -66,7 +66,7 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_ForwardsLanguageAndProje
 		cannedOut: TTSOutput{
 			LocalPath:     "/tmp/vo/stage3-lang-proj.mp3",
 			Voice:         "it-IT-ElsaNeural",
-			LegacyFileMD5: "hash-stage3-lp-001",
+			ContentSHA256: "hash-stage3-lp-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-stage3-lang-proj"}
@@ -228,7 +228,7 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyLanguage_Propagates
 		cannedOut: TTSOutput{
 			LocalPath:     "/tmp/vo/stage3-no-lang.mp3",
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "hash-stage3-nolang",
+			ContentSHA256: "hash-stage3-nolang",
 		},
 	}
 	pub := &stubFailingPublisher{
@@ -307,7 +307,7 @@ func TestProcessSegmentUseCase_ForwardsTimingPolicyToTTS(t *testing.T) {
 		cannedOut: TTSOutput{
 			LocalPath:     audioPath,
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "timing-forward-hash",
+			ContentSHA256: "timing-forward-hash",
 			Provider:      "edge_tts",
 			BoundaryMode:  audio.BoundaryWord,
 			Duration:      2500 * time.Millisecond,

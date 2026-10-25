@@ -203,6 +203,18 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		bundles[scene.SceneID] = bundle
 		a.cacheEntities(manifest.Language, source, bundle.Entities)
 	}
+	consolidation, err := projectSemanticConsolidation(texts, manifest.VisualConsolidation, bundles)
+	if err != nil {
+		return nil, nil, err
+	}
+	feedback, err := projectSemanticSearchFeedback(texts, manifest.SearchFeedback, bundles)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, bundle := range bundles {
+		bundle.Consolidation = consolidation
+		bundle.SearchFeedback = feedback
+	}
 	var editorialResult *scriptpkg.PhraseImpactResult
 	if editorial != nil {
 		if manifest.Editorial == nil {

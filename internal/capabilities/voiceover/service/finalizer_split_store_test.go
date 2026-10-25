@@ -52,7 +52,7 @@ func TestVoiceoverFinalizer_SplitStoreUsesSelfOwnedCommitterTransaction(t *testi
 		Text:          "Donald Trump",
 		Language:      "en",
 		Filename:      "vo-split-store.mp3",
-		LegacyFileMD5: "content-hash",
+		ContentSHA256: "content-hash",
 	})
 	require.NoError(t, err)
 	require.Equal(t, 0, committer.commitTxCalls)

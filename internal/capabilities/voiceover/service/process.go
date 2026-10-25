@@ -279,7 +279,7 @@ func (s *Service) processLanguage(
 	item.ErrorCode = out.ErrorCode
 	item.LocalPath = out.LocalPath
 	item.CleanedPath = out.CleanedPath
-	item.LegacyFileMD5 = out.LegacyFileMD5
+	item.ContentSHA256 = out.ContentSHA256
 	item.SearchText = out.SearchText
 	item.DriveLink = out.DriveLink
 	item.DriveFileID = out.DriveFileID

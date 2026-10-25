@@ -79,8 +79,14 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			if !allowed[normalizeAnnotationType(entity.Type)] {
 				continue
 			}
+			// A content-addressed binding written by the semantic production
+			// plan is a fallback the media stage must not erase when it has no
+			// candidate of its own: the hit was verified, it simply was not
+			// discovered by this segment's fan-out.
+			previousImage := entity.Image
 			entity.Image = &scriptpkg.EntityImageBinding{Status: "not_found"}
 			if seg == nil {
+				entity.Image = preservedPlanImageBinding(previousImage)
 				continue
 			}
 			variantSeed := strings.TrimSpace(out.Scenes[i].ID) + "|" + entityImageIdentity(*entity)
@@ -109,6 +115,7 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 					if len(resolvedEntityImages) >= capabilityoverlay.MaxEntityImageOverlaysPerRun {
 						// Keep the entity in the semantic result, but do not bind
 						// another image once the run-level render budget is full.
+						entity.Image = preservedPlanImageBinding(previousImage)
 						continue
 					}
 					resolvedEntityImages[bindingKey] = struct{}{}
@@ -126,17 +133,30 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 					// references).
 					//
 					// MEDIA-IDENTITY (Sept 2026): the candidate field is named
-					// LegacyFileMD5 for historical reasons, so it is RESOLVED through
+					// ContentSHA256 for historical reasons, so it is RESOLVED through
 					// the canonical rule rather than forwarded verbatim — only a 64-hex
 					// SHA-256 is a content address, and a legacy MD5 becomes "" so the
 					// binding stays a plain reference instead of claiming an identity
 					// it cannot prove.
-					SHA256: asset.ResolveContentAddress(candidate.LegacyFileMD5),
+					SHA256: asset.ResolveContentAddress(candidate.ContentSHA256),
 				}
+			} else {
+				entity.Image = preservedPlanImageBinding(previousImage)
 			}
 		}
 	}
 	return out
+}
+
+// preservedPlanImageBinding keeps a verified binding that the planner wrote
+// when the media stage has nothing to replace it with. Only a bound, hashed
+// image qualifies: an unhashed reference cannot become a card asset, and a
+// media-stage "resolved" binding follows its own re-projection rules.
+func preservedPlanImageBinding(binding *scriptpkg.EntityImageBinding) *scriptpkg.EntityImageBinding {
+	if binding != nil && strings.EqualFold(strings.TrimSpace(binding.Status), "bound") && strings.TrimSpace(binding.SHA256) != "" {
+		return binding
+	}
+	return &scriptpkg.EntityImageBinding{Status: "not_found"}
 }
 
 func entityImageIdentity(entity scriptpkg.AnnotatedEntity) string {

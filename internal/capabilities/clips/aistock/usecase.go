@@ -173,7 +173,7 @@ func (uc *UseCase) buildAsset(doc visualanalysis.Document, filename, fileID, loc
 	}
 
 	clip.SetLocalPath(localPath)
-	clip.SetLegacyFileMD5(sha256)
+	clip.SetContentHash(sha256)
 	clip.SetFolderPath(doc.Asset.FolderPath)
 	clip.SetDriveFileID(fileID)
 	clip.SetDriveLink(canonicalDriveWebURL(fileID))

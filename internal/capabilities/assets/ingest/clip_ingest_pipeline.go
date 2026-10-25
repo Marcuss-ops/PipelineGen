@@ -299,7 +299,7 @@ func (p *ClipIngestPipeline) Ingest(ctx context.Context, ref ports.SourceRef) (*
 
 	// Stage 4a — ArtifactStore (typed-narrow companion write).
 	if err := p.ArtifactStore.StoreArtifact(ctx, &artifacts.MediaRecord{
-		LegacyFileMD5: hash.ContentHash,
+		ContentSHA256: hash.ContentHash,
 		LocalPath:     normalized.LocalPath,
 	}); err != nil {
 		return nil, fmt.Errorf("clip_ingest_pipeline.ArtifactStore.StoreArtifact: %w", err)

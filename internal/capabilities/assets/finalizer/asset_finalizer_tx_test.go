@@ -29,7 +29,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			name TEXT NOT NULL DEFAULT '',
 			filename TEXT NOT NULL DEFAULT '',
 			media_type TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
 			drive_link TEXT NOT NULL DEFAULT '',
 			download_link TEXT NOT NULL DEFAULT '',
@@ -78,7 +78,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
 			version_number INTEGER NOT NULL,
 			source_uri TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			file_size_bytes INTEGER NOT NULL DEFAULT 0,
 			mime_type TEXT NOT NULL DEFAULT '',
 			metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -95,7 +95,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			download_url TEXT NOT NULL DEFAULT '',
 			mime_type TEXT NOT NULL DEFAULT '',
 			file_size_bytes INTEGER NOT NULL DEFAULT 0,
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			is_primary INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT '',
@@ -245,7 +245,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 		filename, mediaType, fileHash, driveFileID, lifecycleState string
 	)
 	err = tx.QueryRowContext(ctx,
-		`SELECT filename, media_type, legacy_file_md5, drive_file_id, lifecycle_state FROM media_assets WHERE id = ?`,
+		`SELECT filename, media_type, content_sha256, drive_file_id, lifecycle_state FROM media_assets WHERE id = ?`,
 		"asset-001",
 	).Scan(&filename, &mediaType, &fileHash, &driveFileID, &lifecycleState)
 	if err != nil {
@@ -258,7 +258,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 		t.Errorf("media_type = %q", mediaType)
 	}
 	if fileHash != "abc123" {
-		t.Errorf("legacy_file_md5 = %q", fileHash)
+		t.Errorf("content_sha256 = %q", fileHash)
 	}
 	if driveFileID != "drive-file-abc" {
 		t.Errorf("drive_file_id = %q", driveFileID)
@@ -283,7 +283,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	var versionNum int
 	var versionHash string
 	err = tx.QueryRowContext(ctx,
-		`SELECT version_number, legacy_file_md5 FROM asset_versions WHERE asset_id = ?`,
+		`SELECT version_number, content_sha256 FROM asset_versions WHERE asset_id = ?`,
 		"asset-001",
 	).Scan(&versionNum, &versionHash)
 	if err != nil {
@@ -293,7 +293,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 		t.Errorf("version_number = %d, want 1", versionNum)
 	}
 	if versionHash != "abc123" {
-		t.Errorf("legacy_file_md5 = %q", versionHash)
+		t.Errorf("content_sha256 = %q", versionHash)
 	}
 
 	// Verify asset_locations row exists.
@@ -321,7 +321,7 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 // of the probe→SHA256→manifest→publisher→persist flow: a published overlay
 // artifact (source=chronon + drive_subpath=[overlay] + probe sha256/size +
 // real duration_ms) must persist location (drive_file_id/drive_link) and
-// sha256 (legacy_file_md5) on media_assets — and the REAL duration, not the
+// sha256 (content_sha256) on media_assets — and the REAL duration, not the
 // SizeBytes/250000 fallback.
 func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 	db := setupTestDB(t)
@@ -370,7 +370,7 @@ func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 	var source, fileHash, driveFileID, driveLink string
 	var durationMs int64
 	err = tx.QueryRowContext(context.Background(), `
-		SELECT source, legacy_file_md5, drive_file_id, drive_link, duration_ms
+		SELECT source, content_sha256, drive_file_id, drive_link, duration_ms
 		FROM media_assets WHERE id = ?`, "job_overlay:overlay:001").
 		Scan(&source, &fileHash, &driveFileID, &driveLink, &durationMs)
 	if err != nil {
@@ -380,7 +380,7 @@ func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 		t.Errorf("source = %q, want chronon", source)
 	}
 	if fileHash != "overlay-sha-001" {
-		t.Errorf("legacy_file_md5 = %q, want overlay-sha-001", fileHash)
+		t.Errorf("content_sha256 = %q, want overlay-sha-001", fileHash)
 	}
 	if driveFileID != "overlay-drive-file-1" {
 		t.Errorf("drive_file_id = %q, want overlay-drive-file-1", driveFileID)
@@ -392,10 +392,10 @@ func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 		t.Errorf("duration_ms = %d, want 1000 (real duration, not SizeBytes/250000 fallback)", durationMs)
 	}
 
-	// asset_locations: sha256 (legacy_file_md5) + drive identity (external_id/web_view_link).
+	// asset_locations: sha256 (content_sha256) + drive identity (external_id/web_view_link).
 	var locKind, locExternalID, locWebView, locFileHash string
 	err = tx.QueryRowContext(context.Background(), `
-		SELECT location_kind, external_id, web_view_link, legacy_file_md5
+		SELECT location_kind, external_id, web_view_link, content_sha256
 		FROM asset_locations WHERE asset_id = ?`, "job_overlay:overlay:001").
 		Scan(&locKind, &locExternalID, &locWebView, &locFileHash)
 	if err != nil {
@@ -411,7 +411,7 @@ func TestAssetTxFinalizer_OverlayPersistsLocationAndSHA256(t *testing.T) {
 		t.Error("web_view_link is empty")
 	}
 	if locFileHash != "overlay-sha-001" {
-		t.Errorf("asset_locations.legacy_file_md5 = %q, want overlay-sha-001", locFileHash)
+		t.Errorf("asset_locations.content_sha256 = %q, want overlay-sha-001", locFileHash)
 	}
 }
 
@@ -425,7 +425,7 @@ func TestAssetTxFinalizer_RenditionUsesCanonicalLocationKind(t *testing.T) {
 		Provider:      "local",
 		URI:           "/tmp/asset-rendition.mp4",
 		MimeType:      "video/mp4",
-		LegacyFileMD5: "hash-rendition",
+		ContentSHA256: "hash-rendition",
 		Width:         1920,
 		Height:        1080,
 	}}
@@ -515,11 +515,11 @@ func TestAssetTxFinalizer_IdempotentVersionIncrement(t *testing.T) {
 
 	// Verify media_assets now reflects the latest hash.
 	var fileHash string
-	if err := db.QueryRowContext(ctx, `SELECT legacy_file_md5 FROM media_assets WHERE id = ?`, "asset-002").Scan(&fileHash); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT content_sha256 FROM media_assets WHERE id = ?`, "asset-002").Scan(&fileHash); err != nil {
 		t.Fatalf("read media asset hash: %v", err)
 	}
 	if fileHash != "hash-v2" {
-		t.Errorf("media_assets legacy_file_md5 = %q after second finalize, want hash-v2", fileHash)
+		t.Errorf("media_assets content_sha256 = %q after second finalize, want hash-v2", fileHash)
 	}
 }
 
@@ -642,7 +642,7 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	}
 
 	// Insert a conflicting asset_versions row manually.
-	if _, err := db.Exec(`INSERT INTO asset_versions (asset_id, version_number, legacy_file_md5, created_at)
+	if _, err := db.Exec(`INSERT INTO asset_versions (asset_id, version_number, content_sha256, created_at)
 		VALUES ('asset-rollback', 999, 'h999', '2024-01-01')`); err != nil {
 		t.Fatalf("insert conflicting asset version: %v", err)
 	}
@@ -755,8 +755,8 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 // fingerprint a supersede gate compares is stamped by the same write
 // boundary as the outbox event.
 //
-// Without this key, a republish that changes legacy_file_md5 would leave
-// metadata_json.$.legacy_file_md5 stale (from the previous ingest), so a
+// Without this key, a republish that changes content_sha256 would leave
+// metadata_json.$.content_sha256 stale (from the previous ingest), so a
 // gate reading the fingerprint would see the OLD hash and mark the NEW event
 // as superseded — the projection never updates.
 //
@@ -845,16 +845,16 @@ func TestAssetTxFinalizer_ContentHashInMetadataJson(t *testing.T) {
 	// now holds the NEW hash, so a supersede gate comparing Tier 1 would see the
 	// current identity. See the deleted-oracle note on the first ingest.
 
-	// Verify legacy_file_md5 column is also the new hash.
+	// Verify content_sha256 column is also the new hash.
 	var colHash string
 	if err := db.QueryRowContext(ctx,
-		`SELECT legacy_file_md5 FROM media_assets WHERE id = ?`,
+		`SELECT content_sha256 FROM media_assets WHERE id = ?`,
 		"asset-content-hash",
 	).Scan(&colHash); err != nil {
-		t.Fatalf("read legacy_file_md5 column: %v", err)
+		t.Fatalf("read content_sha256 column: %v", err)
 	}
 	if colHash != "new-hash" {
-		t.Errorf("legacy_file_md5 column = %q, want %q", colHash, "new-hash")
+		t.Errorf("content_sha256 column = %q, want %q", colHash, "new-hash")
 	}
 
 	// Verify the outbox event's source_version matches the metadata

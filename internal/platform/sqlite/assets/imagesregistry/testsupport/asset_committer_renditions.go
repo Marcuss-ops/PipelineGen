@@ -34,7 +34,7 @@ func (c *SQLiteAssetCommitter) CommitRenditionTx(
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at)
+			 mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
 		ON CONFLICT(asset_id, location_kind) DO UPDATE SET
 			uri = excluded.uri,
@@ -43,7 +43,7 @@ func (c *SQLiteAssetCommitter) CommitRenditionTx(
 			download_url = excluded.download_url,
 			mime_type = excluded.mime_type,
 			file_size_bytes = excluded.file_size_bytes,
-			legacy_file_md5 = excluded.legacy_file_md5,
+			content_sha256 = excluded.content_sha256,
 			is_primary = excluded.is_primary,
 			updated_at = excluded.updated_at
 	`, assetID, locationKind, r.URI, r.FileID, r.WebViewLink, r.DownloadURL,

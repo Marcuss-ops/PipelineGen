@@ -294,13 +294,13 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Cont
 	}
 	_, err := a.db.ExecContext(ctx, `
 		INSERT INTO entity_image_catalog_materializations (
-			candidate_id, asset_id, legacy_file_md5, drive_file_id, drive_link,
+			candidate_id, asset_id, content_sha256, drive_file_id, drive_link,
 			status, materialized_at, last_verified_at, last_error,
 			created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT(candidate_id) DO UPDATE SET
 			asset_id = excluded.asset_id,
-			legacy_file_md5 = excluded.legacy_file_md5,
+			content_sha256 = excluded.content_sha256,
 			drive_file_id = excluded.drive_file_id,
 			drive_link = excluded.drive_link,
 			status = excluded.status,
@@ -309,7 +309,7 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertMaterialization(ctx context.Cont
 			last_error = excluded.last_error,
 			updated_at = CURRENT_TIMESTAMP
 	`, materialization.CandidateID, strings.TrimSpace(materialization.AssetID),
-		strings.TrimSpace(materialization.LegacyFileMD5), strings.TrimSpace(materialization.DriveFileID),
+		strings.TrimSpace(materialization.ContentSHA256), strings.TrimSpace(materialization.DriveFileID),
 		strings.TrimSpace(materialization.DriveLink),
 		status, materializedAt, verifiedAt, materialization.LastError)
 	if err != nil {
@@ -457,7 +457,7 @@ func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context
 		return nil, capentity.ErrCandidateNotFound
 	}
 	row := a.db.QueryRowContext(ctx, `
-		SELECT candidate_id, asset_id, legacy_file_md5, drive_file_id, drive_link,
+		SELECT candidate_id, asset_id, content_sha256, drive_file_id, drive_link,
 		       status, materialized_at, last_verified_at, last_error,
 		       created_at, updated_at
 		FROM entity_image_catalog_materializations
@@ -466,7 +466,7 @@ func (a *SQLiteEntityImageCatalogAdapter) GetMaterialization(ctx context.Context
 	var out capentity.Materialization
 	var materializedAt, verifiedAt, createdAt, updatedAt string
 	if err := row.Scan(
-		&out.CandidateID, &out.AssetID, &out.LegacyFileMD5, &out.DriveFileID,
+		&out.CandidateID, &out.AssetID, &out.ContentSHA256, &out.DriveFileID,
 		&out.DriveLink, &out.Status, &materializedAt,
 		&verifiedAt, &out.LastError, &createdAt, &updatedAt,
 	); err != nil {

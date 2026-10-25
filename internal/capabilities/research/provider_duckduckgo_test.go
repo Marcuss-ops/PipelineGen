@@ -7,12 +7,14 @@ package research
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/duckduckgo"
 	"go.uber.org/zap"
 )
 
@@ -158,48 +160,67 @@ func TestDuckDuckGoSearchProvider_NilReceiver(t *testing.T) {
 	}
 }
 
-func TestDuckDuckGoSearchProvider_RetriesOnceOn202Challenge(t *testing.T) {
+func TestDuckDuckGoSearchProvider_FailsFastOn202Challenge(t *testing.T) {
 	p, calls := newDDGProviderScripted(t, http.StatusAccepted, http.StatusOK)
 	hits, err := p.Search(context.Background(), "floyd mayweather", 5)
-	if err != nil {
-		t.Fatalf("unexpected error after retry: %v", err)
+	if !errors.Is(err, duckduckgo.ErrChallenged) {
+		t.Fatalf("error = %v, want a typed anti-bot challenge", err)
 	}
-	if *calls != 2 {
-		t.Errorf("round trips = %d, want 2 (initial 202 + one retry)", *calls)
-	}
-	if len(hits) != 2 {
-		t.Errorf("hit count = %d, want 2 parsed from retried response", len(hits))
-	}
-}
-
-func TestDuckDuckGoSearchProvider_RetriesOnceOn403Challenge(t *testing.T) {
-	p, calls := newDDGProviderScripted(t, http.StatusForbidden, http.StatusOK)
-	hits, err := p.Search(context.Background(), "canelo alvarez", 5)
-	if err != nil {
-		t.Fatalf("unexpected error after retry: %v", err)
-	}
-	if *calls != 2 {
-		t.Errorf("round trips = %d, want 2 (initial 403 + one retry)", *calls)
-	}
-	if len(hits) != 2 {
-		t.Errorf("hit count = %d, want 2 parsed from retried response", len(hits))
-	}
-}
-
-func TestDuckDuckGoSearchProvider_AnomalyChallengePersists_ReturnsError(t *testing.T) {
-	p, calls := newDDGProviderScripted(t, http.StatusAccepted, http.StatusForbidden)
-	hits, err := p.Search(context.Background(), "roberto duran", 5)
-	if err == nil {
-		t.Fatalf("expected error when the challenge persists, got hits=%d", len(hits))
-	}
-	if !strings.Contains(err.Error(), "403") {
-		t.Errorf("error = %q, want the retried 403 status", err.Error())
-	}
-	if *calls != 3 {
-		t.Errorf("round trips = %d, want exactly 3 (two retries, then give up)", *calls)
+	if *calls != 1 {
+		t.Errorf("round trips = %d, want 1 (a challenge is not retried)", *calls)
 	}
 	if hits != nil {
-		t.Errorf("hits = %v, want nil on persistent challenge", hits)
+		t.Errorf("hits = %v, want nil on challenge", hits)
+	}
+	if !p.breaker.Open() {
+		t.Errorf("breaker is closed after a challenge; later queries would pay the same latency again")
+	}
+}
+
+func TestDuckDuckGoSearchProvider_FailsFastOn403Challenge(t *testing.T) {
+	p, calls := newDDGProviderScripted(t, http.StatusForbidden, http.StatusOK)
+	hits, err := p.Search(context.Background(), "canelo alvarez", 5)
+	if !errors.Is(err, duckduckgo.ErrChallenged) {
+		t.Fatalf("error = %v, want a typed anti-bot challenge", err)
+	}
+	if *calls != 1 {
+		t.Errorf("round trips = %d, want 1 (403 is a challenge, not a transient fault)", *calls)
+	}
+	if hits != nil {
+		t.Errorf("hits = %v, want nil on challenge", hits)
+	}
+}
+
+func TestDuckDuckGoSearchProvider_ChallengeCooldownSkipsSecondQuery(t *testing.T) {
+	p, calls := newDDGProviderScripted(t, http.StatusAccepted, http.StatusOK)
+	if _, err := p.Search(context.Background(), "roberto duran", 5); !errors.Is(err, duckduckgo.ErrChallenged) {
+		t.Fatalf("first query error = %v, want challenge", err)
+	}
+	if _, err := p.Search(context.Background(), "joe frazier", 5); !errors.Is(err, duckduckgo.ErrChallenged) {
+		t.Fatalf("second query error = %v, want the cooldown challenge", err)
+	}
+	if *calls != 1 {
+		t.Errorf("round trips = %d, want 1 (cooldown must short-circuit the second query)", *calls)
+	}
+}
+
+func TestDuckDuckGoSearchProvider_JSONChallengeEnvelopeIsDetected(t *testing.T) {
+	p := NewDuckDuckGoSearchProvider(zap.NewNop())
+	p.backoff = func(int) time.Duration { return 0 }
+	calls := 0
+	p.client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return ddgResponse(http.StatusOK, `{"challenge":{"cc":"sre","e":0}}`), nil
+	})
+	hits, err := p.Search(context.Background(), "tyson fury", 5)
+	if !errors.Is(err, duckduckgo.ErrChallenged) {
+		t.Fatalf("error = %v, want the JSON challenge to be detected", err)
+	}
+	if calls != 1 {
+		t.Errorf("round trips = %d, want 1", calls)
+	}
+	if hits != nil {
+		t.Errorf("hits = %v, want nil", hits)
 	}
 }
 
@@ -261,7 +282,7 @@ func TestDuckDuckGoSearchProvider_RetryBackoffRespectsContextCancel(t *testing.T
 	calls := 0
 	p.client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
-		return ddgResponse(http.StatusAccepted, "challenge"), nil
+		return ddgResponse(http.StatusInternalServerError, "upstream error"), nil
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

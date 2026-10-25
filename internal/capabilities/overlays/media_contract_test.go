@@ -363,7 +363,7 @@ func TestOverlayAssetRefProjectsOntoCanonicalIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal identity: %v", err)
 	}
-	for _, forbidden := range []string{"local_path", "url", "drive_link", "drive_file_id", "download_link", "legacy_file_md5"} {
+	for _, forbidden := range []string{"local_path", "url", "drive_link", "drive_file_id", "download_link", "content_sha256"} {
 		if strings.Contains(string(raw), `"`+forbidden+`"`) {
 			t.Errorf("canonical identity carries location key %q: %s", forbidden, raw)
 		}

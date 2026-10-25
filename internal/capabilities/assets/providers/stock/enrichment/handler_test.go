@@ -290,7 +290,7 @@ func TestEnrichmentHandler_HandleJob_ValidChunkID_InvokesLLMClient(t *testing.T)
 		StartSec:       120.5,
 		EndSec:         130.0,
 		SourceProvider: "pexels",
-		LegacyFileMD5:  validContentHash,
+		ContentSHA256:  validContentHash,
 		DriveFileID:    "drive-file-12345",
 		DrivePath:      "stock/Boxe/pexels/Manny-Pacquiao",
 	}}
@@ -456,7 +456,7 @@ func TestEnrichmentHandler_HandleJob_HappyPath_EmitsV1Envelope(t *testing.T) {
 		SourceURL:      "https://pexels.com/video/12345",
 		Title:          "Pacquiao Broner Round 9",
 		SourceProvider: "pexels",
-		LegacyFileMD5:  validContentHash,
+		ContentSHA256:  validContentHash,
 		DriveFileID:    "drive-file-12345",
 		DrivePath:      "stock/Boxe/pexels/Manny-Pacquiao",
 	}}
@@ -549,7 +549,7 @@ func TestEnrichmentHandler_HandleJob_IdempotencyKeyStable(t *testing.T) {
 	}
 	row := &AssetRow{
 		ID:             "stock:abc:chunk:0",
-		LegacyFileMD5:  validContentHash,
+		ContentSHA256:  validContentHash,
 		SourceProvider: "pexels",
 	}
 	// Run HandleJob twice with the same row + LLM response and
@@ -598,7 +598,7 @@ func TestEnrichmentHandler_HandleJob_EmitterError_ReturnsRetryableSentinel(t *te
 	}
 	repo := &fakeAssetRepo{row: &AssetRow{
 		ID:             "stock:abc:chunk:0",
-		LegacyFileMD5:  validContentHash,
+		ContentSHA256:  validContentHash,
 		SourceProvider: "pexels",
 	}}
 	emitter := &errorAssetPublishedEmitter{err: baseErr}

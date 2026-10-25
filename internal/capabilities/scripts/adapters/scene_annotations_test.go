@@ -84,7 +84,7 @@ func TestSceneAnnotations_BrandUsesTextFallbackUntilVerifiedAsset(t *testing.T) 
 
 	segment.Assets.Candidates = []scriptpkg.SegmentAssetCandidate{{
 		AssetID: "openai-logo", Provider: scriptpkg.VidRushProviderInternetImages,
-		Entity: "OpenAI", DriveLink: "https://drive.google.com/file/d/logo/view", LegacyFileMD5: "logo-md5",
+		Entity: "OpenAI", DriveLink: "https://drive.google.com/file/d/logo/view", ContentSHA256: "logo-md5",
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,

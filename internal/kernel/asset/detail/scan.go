@@ -118,7 +118,7 @@ func scanMediaAsset(s mediaAssetScanner) (*asset.Asset, error) {
 	a.SetDriveFileID(driveFileID)
 	a.SetDriveLink(driveLink)
 	a.SetDownloadLink(downloadLink)
-	a.SetLegacyFileMD5(fileHash)
+	a.SetContentHash(fileHash)
 	if embeddingJSON != "" {
 		a.SetEmbeddingJSON(embeddingJSON)
 	}

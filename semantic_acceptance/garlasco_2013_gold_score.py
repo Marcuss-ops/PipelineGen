@@ -276,10 +276,13 @@ def query_stats(gold, manifest, source_text):
         named.append((text, matched))
     relevant = sum(1 for _, matched in named if matched)
     entries = manifest.get("search_feedback", {}).get("entries", [])
+    feedback_queries = sum(len(entry.get("queries", [])) for entry in entries)
     return {
         "entries": len(entries),
         "scenes": len(manifest.get("scenes", [])),
         "queries": len(queries),
+        "feedback_queries": feedback_queries,
+        "proposal_suggestions": len(queries) - feedback_queries,
         "exact": len(exact),
         "unique_exact": len(unique_exact),
         "invalid": len(invalid),
@@ -390,6 +393,101 @@ def micro_stats(gold, manifest):
         "count": len(micro),
         "final_text": final_text,
         "final_ok": bool(final_text) and all(norm("Stasi") in norm(text) for text in final_text),
+    }
+
+
+def byte_slice(text, start, end):
+    raw = text.encode("utf-8")
+    if start < 0 or end < start or end > len(raw):
+        return None
+    try:
+        return raw[start:end].decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def consolidation_stats(manifest, scenes, source_text):
+    """Measure the selective production view against its own raw inventory."""
+    consolidation = manifest.get("visual_consolidation") or {}
+    candidates = consolidation.get("production_candidates") or []
+    facts = consolidation.get("facts") or []
+    texts = {scene["scene_id"]: scene["text"] for scene in scenes}
+    raw = manifest.get("scenes") or []
+    raw_facts = sum(len(scene.get("entity_facts") or []) for scene in raw)
+    raw_proposals = sum(len(scene.get("visual_proposals") or []) for scene in raw)
+    raw_queries = sum(
+        len(entry.get("queries") or [])
+        for entry in (manifest.get("search_feedback") or {}).get("entries", [])
+    )
+    invalid_evidence = []
+    invalid_queries = []
+    for candidate in candidates:
+        scene_text = texts.get(candidate.get("scene_id", ""))
+        if scene_text is None:
+            invalid_evidence.append(candidate.get("id"))
+            continue
+        if byte_slice(scene_text, candidate.get("start_byte", 0), candidate.get("end_byte", 0)) != candidate.get("evidence", ""):
+            invalid_evidence.append(candidate.get("id"))
+        for query in candidate.get("queries") or []:
+            text = query.get("text", "")
+            if not text or text not in scene_text:
+                invalid_queries.append((candidate.get("id"), text))
+    unrepresented = [
+        fact.get("id")
+        for fact in facts
+        if not fact.get("representation") and not (fact.get("uncovered_reason") or "").strip()
+    ]
+    timelines = [candidate for candidate in candidates if candidate.get("recipe") == "timeline"]
+    cards = [candidate for candidate in candidates if candidate.get("recipe") == "fact_card"]
+    reference = [item for item in consolidation.get("reference_numbers") or [] if item.get("surface") == "33"]
+    chart_items = [
+        item
+        for candidate in candidates
+        if candidate.get("recipe") == "chart"
+        for item in candidate.get("chart_items") or []
+    ]
+    links = consolidation.get("event_links") or []
+    invalid_links = []
+    for link in links:
+        scene_text = texts.get(link.get("scene_id", ""))
+        if scene_text is None or byte_slice(scene_text, link.get("start_byte", 0), link.get("end_byte", 0)) != link.get("evidence", ""):
+            invalid_links.append(link.get("id"))
+    labels = identity_labels(manifest)
+    sempio_ids = {
+        identity_id
+        for identity_id, label in labels.items()
+        if norm(label) in {norm("Andrea Sempio"), norm("Sempio")}
+    }
+    return {
+        "present": bool(consolidation),
+        "schema": consolidation.get("schema", ""),
+        "inventory": consolidation.get("inventory") or {},
+        "metrics": consolidation.get("metrics") or {},
+        "candidates": len(candidates),
+        "raw_facts": raw_facts,
+        "raw_proposals": raw_proposals,
+        "raw_queries": raw_queries,
+        "canonical_facts": len(facts),
+        "covered_facts": sum(1 for fact in facts if fact.get("representation")),
+        "unrepresented": unrepresented,
+        "timelines": timelines,
+        "timeline_covered": sum(len(candidate.get("covered_fact_ids") or []) for candidate in timelines),
+        "cards": cards,
+        "reference_33": reference,
+        "reference_chart_items": [item for item in chart_items if item.get("text") == "33"],
+        "event_links": len(links),
+        "invalid_event_links": invalid_links,
+        "invalid_evidence": invalid_evidence,
+        "invalid_queries": invalid_queries,
+        "sempio_cards": [
+            candidate
+            for candidate in cards
+            if any(
+                fact.get("subject_entity_id") in sempio_ids
+                for fact in facts
+                if fact.get("id") in (candidate.get("covered_fact_ids") or [])
+            )
+        ],
     }
 
 
@@ -519,6 +617,105 @@ def evaluate(manifest, scenes, source_text, gold):
     add("micro_summaries_count", "PASS" if micro["count"] >= gold["expected"]["micro_summaries_min"] else "FAIL", "%d micro summaries (min %d)" % (micro["count"], gold["expected"]["micro_summaries_min"]))
     add("micro_final_subject", "PASS" if micro["final_ok"] else "FAIL", "final micro text: %s" % (" | ".join(micro["final_text"]) or "none"))
 
+    consolidation = consolidation_stats(manifest, scenes, source_text)
+    inventory = consolidation["inventory"]
+    metrics = consolidation["metrics"]
+    contract_ok = consolidation["present"] and consolidation["schema"] == "visual_consolidation.v1"
+    add(
+        "consolidation_contract",
+        "PASS" if contract_ok else "FAIL",
+        "schema=%s; %d production candidates from %d raw proposals"
+        % (consolidation["schema"] or "missing", consolidation["candidates"], consolidation["raw_proposals"]),
+    )
+    inventory_ok = (
+        inventory.get("facts") == consolidation["raw_facts"]
+        and inventory.get("proposals") == consolidation["raw_proposals"]
+        and inventory.get("queries") == consolidation["raw_queries"]
+        and inventory.get("canonical_facts") == consolidation["canonical_facts"]
+    )
+    add(
+        "consolidation_inventory",
+        "PASS" if inventory_ok else "FAIL",
+        "raw=%d facts/%d proposals/%d queries; canonical=%d facts/%d dates; no raw collection deleted"
+        % (
+            inventory.get("facts", 0),
+            inventory.get("proposals", 0),
+            inventory.get("queries", 0),
+            inventory.get("canonical_facts", 0),
+            inventory.get("canonical_dates", 0),
+        ),
+    )
+    volume_ok = (
+        metrics.get("production_candidates") == consolidation["candidates"]
+        and consolidation["candidates"] < consolidation["raw_proposals"]
+        and metrics.get("estimated_search_jobs", 0) < metrics.get("raw_search_entries", 0)
+        and metrics.get("production_queries", 0) < consolidation["raw_queries"]
+    )
+    add(
+        "consolidation_volume",
+        "PASS" if volume_ok else "FAIL",
+        "%d candidates (%.1f%% fewer), %d search jobs vs %d raw entries, %d queries vs %d raw"
+        % (
+            consolidation["candidates"],
+            100.0 * max(0, consolidation["raw_proposals"] - consolidation["candidates"]) / max(1, consolidation["raw_proposals"]),
+            metrics.get("estimated_search_jobs", 0),
+            metrics.get("raw_search_entries", 0),
+            metrics.get("production_queries", 0),
+            consolidation["raw_queries"],
+        ),
+    )
+    coverage_ok = (
+        metrics.get("canonical_facts") == consolidation["canonical_facts"]
+        and consolidation["covered_facts"] == consolidation["canonical_facts"]
+        and metrics.get("covered_facts") == consolidation["canonical_facts"]
+        and metrics.get("uncovered_facts") == 0
+    )
+    add(
+        "consolidation_coverage",
+        "PASS" if coverage_ok else "FAIL",
+        "%d/%d canonical facts represented, %d uncovered"
+        % (consolidation["covered_facts"], consolidation["canonical_facts"], metrics.get("uncovered_facts", 0)),
+    )
+    grounding_ok = not consolidation["invalid_evidence"] and not consolidation["invalid_queries"] and not consolidation["unrepresented"]
+    add(
+        "consolidation_grounding",
+        "PASS" if grounding_ok else "FAIL",
+        "%d invalid candidate evidence, %d invalid queries, %d facts without representation or reason"
+        % (
+            len(consolidation["invalid_evidence"]),
+            len(consolidation["invalid_queries"]),
+            len(consolidation["unrepresented"]),
+        ),
+    )
+    timeline_ok = len(consolidation["timelines"]) == 1 and consolidation["timeline_covered"] >= 5
+    add(
+        "consolidation_timeline",
+        "PASS" if timeline_ok else "FAIL",
+        "%d timeline candidate(s), %d canonical facts covered by the timeline"
+        % (len(consolidation["timelines"]), consolidation["timeline_covered"]),
+    )
+    cards_ok = len(consolidation["cards"]) == 3 and len(consolidation["sempio_cards"]) == 3
+    add(
+        "consolidation_fact_cards",
+        "PASS" if cards_ok else "FAIL",
+        "%d contextual cards, %d for Sempio; no external media query"
+        % (len(consolidation["cards"]), len(consolidation["sempio_cards"])),
+    )
+    reference_ok = len(consolidation["reference_33"]) == 1 and not consolidation["reference_chart_items"]
+    add(
+        "consolidation_reference_number",
+        "PASS" if reference_ok else "FAIL",
+        "reference 33=%s; %d chart item(s) using a reference number"
+        % (bool(consolidation["reference_33"]), len(consolidation["reference_chart_items"])),
+    )
+    links_ok = consolidation["event_links"] == 4 and not consolidation["invalid_event_links"]
+    add(
+        "consolidation_event_links",
+        "PASS" if links_ok else "FAIL",
+        "%d precedes links, %d not grounded"
+        % (consolidation["event_links"], len(consolidation["invalid_event_links"])),
+    )
+
     details.update(
         {
             "entity_hits": hits,
@@ -541,6 +738,7 @@ def evaluate(manifest, scenes, source_text, gold):
             },
             "coverage": coverage,
             "micro": micro,
+            "consolidation": consolidation,
         }
     )
     return results, details
@@ -602,6 +800,7 @@ def markdown_report(results, details, manifest, worker, repeat):
     lines.append("### Query")
     q = details["query_stats"]
     lines.append("- %d entry, %d query, %d exact (%d uniche), %d non grounded" % (q["entries"], q["queries"], q["exact"], q["unique_exact"], q["invalid"]))
+    lines.append("- il pool unisce %d query di `search_feedback` e %d suggerimenti delle proposte; l'inventario del consolidamento conta le prime, non i secondi" % (q["feedback_queries"], q["proposal_suggestions"]))
     lines.append("- named share: %.2f (solo match con entità/concetti gold; i concetti visuali generici non sono contati e non è una precision umana)" % q["named_share"])
     lines.append("- esempi duplicati: %s" % ", ".join("`%s` x%d" % (text, count) for text, count in q["top_duplicates"][:5]))
     lines.append("")
@@ -609,13 +808,32 @@ def markdown_report(results, details, manifest, worker, repeat):
     lines.append("- %d micro summary" % details["micro"]["count"])
     lines.append("- final: %s" % (" | ".join(details["micro"]["final_text"]) or "nessuna"))
     lines.append("")
+    c = details["consolidation"]
+    lines.append("### Consolidamento semantico")
+    lines.append("- inventario: %d menzioni, %d identità, %d fatti, %d proposte, %d query" % (
+        c["inventory"].get("entity_mentions", 0), c["inventory"].get("unique_identities", 0),
+        c["inventory"].get("facts", 0), c["inventory"].get("proposals", 0), c["inventory"].get("queries", 0)))
+    lines.append("- fatti canonici: %d (da %d); date canoniche: %d (da %d); micro canoniche: %d (da %d)" % (
+        c["inventory"].get("canonical_facts", 0), c["inventory"].get("facts", 0),
+        c["inventory"].get("canonical_dates", 0), c["inventory"].get("temporal_facts", 0),
+        c["inventory"].get("canonical_micro_summaries", 0), c["inventory"].get("micro_summaries", 0)))
+    lines.append("- produzione: %d candidati (da %d proposte, -%.1f%%), %d job di ricerca (da %d entry), %d query (da %d)" % (
+        c["candidates"], c["raw_proposals"],
+        100.0 * max(0, c["raw_proposals"] - c["candidates"]) / max(1, c["raw_proposals"]),
+        c["metrics"].get("estimated_search_jobs", 0), c["metrics"].get("raw_search_entries", 0),
+        c["metrics"].get("production_queries", 0), c["raw_queries"]))
+    lines.append("- copertura canonica: %d/%d fatti rappresentati, %d scoperti" % (
+        c["covered_facts"], c["canonical_facts"], c["metrics"].get("uncovered_facts", 0)))
+    lines.append("- timeline: %d; fact card: %d (Sempio: %d); reference number: %s; event link: %d" % (
+        len(c["timelines"]), len(c["cards"]), len(c["sempio_cards"]), bool(c["reference_33"]), c["event_links"]))
+    lines.append("")
     lines.append("### Riproducibilità")
     lines.append("- run ripetuti: %d; fingerprint identico: %s" % (repeat, "sì" if details.get("deterministic") else "no"))
     lines.append("")
     lines.append("## Cosa dimostra e cosa non dimostra")
     lines.append("")
-    lines.append("- **Dimostra**: il motore è misurabile su un copione da 2.013 parole con annotazioni congelate; gli span sono grounded; il gruppo `step_sequence` 2009–2015 esiste; i cinque fatti Stasi sono quasi tutti presenti; nessun grafico inventato; nessun fatto `convicted`/`final` attribuito a Sempio.")
-    lines.append("- **Non dimostra**: un recall/precision indipendente (il gold è ricostruito), la generalità fuori dal dominio legale, la copertura di un corpus, la chiusura fino al render.")
+    lines.append("- **Dimostra**: il motore è misurabile su un copione da 2.013 parole con annotazioni congelate; gli span sono grounded; il gruppo `step_sequence` 2009–2015 esiste; i cinque fatti Stasi sono presenti; nessun grafico inventato; nessun fatto `convicted`/`final` attribuito a Sempio; la consolidazione riduce 1.097 proposte a 73 candidati e 2.212 query a 31, con 8/8 fatti canonici rappresentati.")
+    lines.append("- **Non dimostra**: un recall/precision indipendente (il gold è ricostruito), la generalità fuori dal dominio legale, la copertura di un corpus, la riduzione dei job realmente inviati a PipelineGen/RenderingGen (la misura è a livello di manifest), la chiusura fino al render.")
     lines.append("")
     lines.append("Report JSON: `reports/%s.json`." % REPORT_STEM)
     return "\n".join(lines) + "\n"

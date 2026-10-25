@@ -74,7 +74,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		// PR-ARTLIST-HASH-FIX (July 2026): reject assets without a real
 		// SHA-256. The legacy fallback (clipID:source) is retired per
 		// the hash-system refactor.
-		if item.LegacyFileMD5 == "" {
+		if item.ContentSHA256 == "" {
 			o.svc.log.Warn("stagePersistResults: skipping clip with missing SHA-256",
 				zap.String("clip_id", item.ClipID))
 			item.Status = "hash_missing"
@@ -212,7 +212,7 @@ func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finali
 		Filename:   item.Filename,
 		MIMEType:   "video/mp4",
 		SizeBytes:  fileSizeFromPath(item.LocalPath),
-		// The content address travels on its own field. LegacyFileMD5 remains
+		// The content address travels on its own field. ContentSHA256 remains
 		// compatibility metadata and must never be promoted into byte identity.
 		SHA256:      asset.ResolveContentAddress(item.contentIdentity.sha256),
 		Source:      "artlist",
@@ -235,7 +235,7 @@ func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finali
 			URI:           r.LocalPath,
 			MimeType:      r.MimeType,
 			SizeBytes:     r.SizeBytes,
-			LegacyFileMD5: r.LegacyFileMD5,
+			ContentSHA256: r.ContentSHA256,
 			Width:         r.Width,
 			Height:        r.Height,
 			FPS:           r.FPS,

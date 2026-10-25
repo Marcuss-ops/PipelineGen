@@ -58,7 +58,7 @@ type TTSOutput struct {
 	LocalPath     string
 	CleanedPath   string
 	Voice         string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	Duration      time.Duration
 
 	// Provider is the canonical provider identifier (e.g. "edge_tts")

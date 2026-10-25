@@ -66,7 +66,7 @@ func clipTagsNorm(tags []string) string {
 
 // deriveSourceVersion returns the canonical ingest-time content hash
 // fingerprint used as event.source_version. In priority order:
-//  1. asset.LegacyFileMD5 (the canonical MD5 of the local clip file).
+//  1. asset.ContentSHA256 (the canonical MD5 of the local clip file).
 //  2. fallback = MD5(clipID + ":" + policyVersion) — invariant under
 //     retries so ON CONFLICT(event_key) collapses into a single row.
 

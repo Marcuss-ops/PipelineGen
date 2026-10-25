@@ -36,7 +36,7 @@ func (e *happyPathExtractor) Extract(_ context.Context, request *youtubedto.Extr
 	e.request = request
 	return &youtubedto.ExtractResponse{OK: true, Items: []youtubedto.ExtractItem{{
 		ID: "asset-poland-1939", Status: "persisted", LocalPath: "/tmp/poland-1939.mp4",
-		DriveLink: "https://drive.google.com/file/d/poland-1939", LegacyFileMD5: "md5-poland-1939",
+		DriveLink: "https://drive.google.com/file/d/poland-1939", ContentSHA256: "md5-poland-1939",
 	}}}, nil
 }
 

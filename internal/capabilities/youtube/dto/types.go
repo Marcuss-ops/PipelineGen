@@ -238,10 +238,10 @@ type ExtractItem struct {
 	EndSeconds    int    `json:"end_seconds,omitempty"`
 	Duration      int    `json:"duration_seconds,omitempty"`
 	Filename      string `json:"filename,omitempty"`
-	LegacyFileMD5 string `json:"legacy_file_md5,omitempty"`
+	ContentSHA256 string `json:"content_sha256,omitempty"`
 	// SizeBytes is the byte size of the cut artifact, measured by the Step 5
 	// stat of the local file. It is the same byte stream whose SHA-256 is
-	// LegacyFileMD5 and the same artifact Step 8 uploads to Drive, so it is
+	// ContentSHA256 and the same artifact Step 8 uploads to Drive, so it is
 	// the canonical size of the Drive object (threaded into asset_locations).
 	SizeBytes       int64  `json:"size_bytes,omitempty"`
 	LocalPath       string `json:"local_path,omitempty"`
@@ -279,7 +279,7 @@ type ExtractItem struct {
 //
 // ProcessSegmentResult is the typed output. Item is the same ExtractItem the
 // existing handlers already serialize, so back-compat is preserved without
-// naming churn. The remaining fields (ID/LegacyFileMD5/DriveFileID/DriveLink/
+// naming churn. The remaining fields (ID/ContentSHA256/DriveFileID/DriveLink/
 // IndexedRequestID) pre-populate the most-promoted clip record fields for
 // callers that want to skip the Items deserialization.
 
@@ -341,7 +341,7 @@ type ProcessSegmentCommand struct {
 
 type ProcessSegmentResult struct {
 	ID               string
-	LegacyFileMD5    string
+	ContentSHA256    string
 	DriveFileID      string
 	DriveLink        string
 	IndexedRequestID string
@@ -467,7 +467,7 @@ type ClipAsset struct {
 	ID            string
 	VideoID       string
 	LocalPath     string
-	LegacyFileMD5 string
+	ContentSHA256 string
 	SearchText    string
 	Drive         ClipAssetDrive
 	Coordinates   ClipAssetCoordinates

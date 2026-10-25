@@ -419,7 +419,7 @@ func (c *PostgresMediaCommitter) RestoreIndexedAsset(ctx context.Context, assetI
 	var source, mediaType, sourceVersion, contentHash string
 	err = tx.QueryRowContext(ctx, `
 		SELECT COALESCE(source,''), COALESCE(media_type,''), COALESCE(source_version,''),
-		       COALESCE(NULLIF(binary_sha256,''), NULLIF(content_sha256,''), COALESCE(legacy_file_md5,''))
+		       COALESCE(NULLIF(binary_sha256,''), NULLIF(content_sha256,''), COALESCE(content_sha256,''))
 		FROM media_assets WHERE id = $1`, assetID).
 		Scan(&source, &mediaType, &sourceVersion, &contentHash)
 	if errors.Is(err, sql.ErrNoRows) {

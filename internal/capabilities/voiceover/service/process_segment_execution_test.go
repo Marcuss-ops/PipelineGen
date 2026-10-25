@@ -317,7 +317,7 @@ func TestProcessSegmentUseCase_Execute_SuccessFull4Stages(t *testing.T) {
 			LocalPath:     "/tmp/vo/run-pipeline-test.mp3",
 			CleanedPath:   "",
 			Voice:         "en-US-RogerNeural",
-			LegacyFileMD5: "vp-run-pipeline-test-aabbcc",
+			ContentSHA256: "vp-run-pipeline-test-aabbcc",
 		},
 	}
 	dest := &stubProcessDestResolver{folderID: "dest-folder-1"}
@@ -575,7 +575,7 @@ func TestProcessSegmentUseCase_Execute_Stage1_TTS_GeneratesNonEmptyOutput(t *tes
 		cannedOut: TTSOutput{
 			LocalPath:     "/tmp/vo/stage1-valid.mp3",
 			Voice:         "it-IT-ElsaNeural",
-			LegacyFileMD5: "hash-stage1-valid-001",
+			ContentSHA256: "hash-stage1-valid-001",
 		},
 	}
 	pub := &stubProcessPublisher{fileID: "drive-stage1-valid"}
@@ -614,7 +614,7 @@ func TestProcessSegmentUseCase_Execute_Stage1_TTS_GeneratesNonEmptyOutput(t *tes
 		"FASE 2 contract #1: TTS must produce a non-empty LocalPath")
 	assert.Equal(t, "/tmp/vo/stage1-valid.mp3", out.LocalPath)
 	assert.Equal(t, "it-IT-ElsaNeural", out.Voice)
-	assert.Equal(t, "hash-stage1-valid-001", out.LegacyFileMD5)
+	assert.Equal(t, "hash-stage1-valid-001", out.ContentSHA256)
 
 	// Stage 3 (Publish) must have been invoked exactly once.
 	require.Len(t, pub.published, 1,

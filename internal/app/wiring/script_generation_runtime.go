@@ -308,6 +308,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
 		}
 		renderEnqueuer.SetDynamicMapVideoCacheDir(cfg.Storage.FullPath("dynamic-map-video-cache"))
+		mapGPUGate, gateErr := scriptgen.NewDynamicMapGPUAdmission()
+		if gateErr != nil {
+			return nil, fmt.Errorf("build shared dynamic-map GPU admission gate: %w", gateErr)
+		}
+		renderEnqueuer.SetDynamicMapGPUGate(mapGPUGate)
 		if cfg.External.RenderingGenPollIntervalMS > 0 {
 			renderEnqueuer.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
 		}
@@ -399,6 +404,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
 	runner.SetImageSearchResolver(imageSearchResolver)
 	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
+	wireSemanticSearchPlanner(runner, cfg, root, log)
 
 	vidRushMetrics := observability.NewVidRushMetricsAdapter()
 	var vidRushFanout scriptgen.SegmentProviderResolver

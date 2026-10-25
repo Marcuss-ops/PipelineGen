@@ -169,6 +169,9 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			highlights      []scriptpkg.SceneHighlight
 			editorial       *scriptpkg.EditorialManifest
 			timings         []PhraseImpactTimings
+			consolidation   *SemanticVisualConsolidation
+			productionPlan  *SemanticProductionPlan
+			searchFeedback  *SemanticSearchFeedback
 			err             error
 		}
 		var siOut siOutcome
@@ -210,6 +213,9 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				piOut.highlights = out.highlights
 				piOut.editorial = out.editorial
 				piOut.timings = out.timings
+				piOut.consolidation = out.consolidation
+				piOut.productionPlan = out.productionPlan
+				piOut.searchFeedback = out.searchFeedback
 			}()
 		}
 		nlpWg.Wait()
@@ -241,7 +247,20 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				result.ChapterManifest = piOut.chapterManifest
 				result.SceneHighlights = piOut.highlights
 				result.Editorial = piOut.editorial
+				result.SemanticConsolidation = piOut.consolidation
+				result.SemanticProductionPlan = piOut.productionPlan
+				result.SemanticSearchFeedback = piOut.searchFeedback
 			}
+		}
+		// The plan is only useful if its exact-source ladder is executed
+		// against the real provider. This phase is optional: an unwired
+		// planner leaves the plan and its feedback pending, unchanged.
+		r.executeSemanticSearchBatch(ctx, req.SourceLanguage, result)
+		// Consume what the batch resolved. Only content-addressed hits bind,
+		// and only where the media stage has not already chosen an asset, so
+		// this can add coverage but can never overwrite verified media.
+		if bound := ApplySemanticResolvedImages(result); bound > 0 {
+			r.log.Info("semantic plan resolved images bound to scene entities", zap.Int("bindings", bound))
 		}
 		// Explicit clip workflows may request real video reconstruction without
 		// generating TTS. The historical fan-out was only entered after a

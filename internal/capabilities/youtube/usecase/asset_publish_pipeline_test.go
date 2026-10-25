@@ -83,19 +83,19 @@ func (s *stubRemoveFn) remove(localPath string) error {
 // renditionDigest builds the CANONICAL digest shape the producer actually
 // writes into this field: `processor.buildRenditionOutput` hashes the bytes with
 // digest.SHA256File, so the value is a 64-hex SHA-256 even though the DTO field
-// is named LegacyFileMD5 (the rename is tracked by
+// is named ContentSHA256 (the rename is tracked by
 // PR-MEDIATRANSFORMER-RENAME step 2). A fixture that is not 64-hex would not be
 // resolvable as a content address, and would therefore silently test nothing.
 func renditionDigest(c string) string { return strings.Repeat(c, 64) }
 
 func mkRenditions() []detail.RenditionOutput {
 	return []detail.RenditionOutput{
-		{Kind: detail.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", LegacyFileMD5: renditionDigest("a"), SizeBytes: 1024},
-		{Kind: detail.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", LegacyFileMD5: renditionDigest("b"), SizeBytes: 1024},
-		{Kind: detail.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", LegacyFileMD5: renditionDigest("c"), SizeBytes: 512},
-		{Kind: detail.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", LegacyFileMD5: renditionDigest("d"), SizeBytes: 64},
-		{Kind: detail.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", LegacyFileMD5: renditionDigest("e"), SizeBytes: 128},
-		{Kind: detail.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", LegacyFileMD5: renditionDigest("f"), SizeBytes: 256},
+		{Kind: detail.RenditionKindMaster, LocalPath: "/tmp/master.mp4", Filename: "master.mp4", ContentSHA256: renditionDigest("a"), SizeBytes: 1024},
+		{Kind: detail.RenditionKindMezzanine, LocalPath: "/tmp/mezz.mp4", Filename: "mezz.mp4", ContentSHA256: renditionDigest("b"), SizeBytes: 1024},
+		{Kind: detail.RenditionKindProxy, LocalPath: "/tmp/preview.mp4", Filename: "preview.mp4", ContentSHA256: renditionDigest("c"), SizeBytes: 512},
+		{Kind: detail.RenditionKindThumbnail, LocalPath: "/tmp/thumb.jpg", Filename: "thumb.jpg", ContentSHA256: renditionDigest("d"), SizeBytes: 64},
+		{Kind: detail.RenditionKindStoryboard, LocalPath: "/tmp/story.jpg", Filename: "story.jpg", ContentSHA256: renditionDigest("e"), SizeBytes: 128},
+		{Kind: detail.RenditionKindManifest, LocalPath: "/tmp/manifest.json", Filename: "manifest.json", ContentSHA256: renditionDigest("f"), SizeBytes: 256},
 	}
 }
 
@@ -232,7 +232,7 @@ func TestPublishRenditionsToYouTubeAsset_ThreadsSizeAndContentHash(t *testing.T)
 	}
 
 	// Build a per-Kind lookup so we can assert each call carried
-	// the canonical RenditionOutput.SizeBytes + LegacyFileMD5 + LocalPath
+	// the canonical RenditionOutput.SizeBytes + ContentSHA256 + LocalPath
 	// (the Step 9 thread).
 	byKind := map[detail.RenditionKind]delivery.PublishRequest{}
 	for _, c := range pub.calls {

@@ -64,7 +64,7 @@ func (a *voiceoverStoreAdapter) FindExisting(ctx context.Context, query assetop.
 			return nil, err
 		}
 		for _, rec := range recs {
-			if strings.EqualFold(strings.TrimSpace(rec.LegacyFileMD5), strings.TrimSpace(query.ContentSHA256)) {
+			if strings.EqualFold(strings.TrimSpace(rec.ContentSHA256), strings.TrimSpace(query.ContentSHA256)) {
 				return mediaRecordToAssetRecord(voiceoverToMediaRecord(rec)), nil
 			}
 		}
@@ -132,7 +132,7 @@ func voiceoverToMediaRecord(rec *vorepo.Record) *artifacts.MediaRecord {
 		DriveFileID:   rec.DriveFileID,
 		DriveLink:     rec.DriveLink,
 		DownloadLink:  rec.DownloadLink,
-		LegacyFileMD5: rec.LegacyFileMD5,
+		ContentSHA256: rec.ContentSHA256,
 		Status:        rec.Status,
 		Error:         rec.Error,
 		Metadata:      rec.Metadata,
@@ -175,7 +175,7 @@ func mediaRecordToVoiceover(rec *artifacts.MediaRecord) (*vorepo.Record, error) 
 		DriveFileID:   rec.DriveFileID,
 		DriveLink:     rec.DriveLink,
 		DownloadLink:  rec.DownloadLink,
-		LegacyFileMD5: rec.LegacyFileMD5,
+		ContentSHA256: rec.ContentSHA256,
 		Status:        rec.Status,
 		Error:         rec.Error,
 		Strategy:      strategy,

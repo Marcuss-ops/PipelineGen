@@ -113,6 +113,27 @@ type GenerateResult struct {
 	// scene carried both annotations and word timing.
 	EntityTimeline *capabilityentities.EntityTimeline `json:"entity_timeline,omitempty"`
 
+	// SemanticConsolidation is the script-level selective production view the
+	// unified semantic worker returned in the same batch: canonical facts,
+	// deduplicated compositions and explicit coverage reasons. It is the raw
+	// planner input, never a second extraction. Nil when the worker or the
+	// configuration predates the projection.
+	SemanticConsolidation *SemanticVisualConsolidation `json:"semantic_consolidation,omitempty"`
+	// SemanticProductionPlan is the executable projection of the consolidation:
+	// which compositions this run produces, which asset is searched once and
+	// reused, and which facts the run budget deferred. Nil when there was no
+	// consolidation or it did not validate.
+	SemanticProductionPlan *SemanticProductionPlan `json:"semantic_production_plan,omitempty"`
+	// SemanticSearchFeedback reports the planner's retrieval outcomes in the
+	// engine's handshake contract (`pending` / `satisfied` / `failed` plus a
+	// `broaden` / `drop_entity` / `skip_visual` retry). Nil without a plan.
+	SemanticSearchFeedback *SemanticSearchFeedback `json:"semantic_search_feedback,omitempty"`
+	// SemanticSearchReport is the measured result of executing the plan's
+	// queries against the real retrieval provider: every attempt with its
+	// hit/miss and latency, the aggregate hit rate and the p50/p95 latency.
+	// Nil when the batch planner is not wired or no composition searched.
+	SemanticSearchReport *SemanticSearchBatchReport `json:"semantic_search_report,omitempty"`
+
 	// OverlayPlan is the semantic overlay plan derived from the run's
 	// certified timing surfaces (phrase timings + entity timeline + scene
 	// annotations): IMPORTANT_PHRASE / IMPORTANT_WORD / IMAGE_OVERLAY /
@@ -511,6 +532,10 @@ type RenderReference struct {
 	// point back to one certified composite artifact when several items share a
 	// render.
 	Batches []OverlayBatchRenderReference `json:"batches,omitempty"`
+	// Manifest is the P5 overlay manifest (item_id → track/in_us/out_us/
+	// content-hash) that indexes a single certified timeline artifact. It is
+	// the manifest+timeline render path's identity document and receipt:	// non-nil only when this reference was produced by that path.
+	Manifest *capabilityoverlay.OverlayManifest `json:"manifest,omitempty"`
 }
 
 // OverlayItemRenderReference binds one semantic overlay item to the queue job

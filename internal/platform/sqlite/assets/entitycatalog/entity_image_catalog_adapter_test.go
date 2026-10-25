@@ -64,7 +64,7 @@ func openEntityImageCatalogTestDB(t *testing.T) *sql.DB {
 			candidate_id INTEGER PRIMARY KEY,
 			asset_id TEXT NOT NULL DEFAULT '',
 			file_hash TEXT NOT NULL DEFAULT '',
-			legacy_file_md5 TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
 			drive_file_id TEXT NOT NULL DEFAULT '',
 			drive_link TEXT NOT NULL DEFAULT '',
 			local_path TEXT NOT NULL DEFAULT '',
@@ -166,7 +166,7 @@ func TestSQLiteEntityImageCatalogRoundTripAndIdentitySeparation(t *testing.T) {
 	materializedAt := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	verifiedAt := materializedAt.Add(time.Minute)
 	if err := repo.UpsertMaterialization(ctx, capentity.Materialization{
-		CandidateID: firstID, AssetID: "asset-mj-1", LegacyFileMD5: "sha-mj-1",
+		CandidateID: firstID, AssetID: "asset-mj-1", ContentSHA256: "sha-mj-1",
 		DriveFileID: "drive-mj-1", DriveLink: "https://drive.google.com/file/d/drive-mj-1/view",
 		Status:         capentity.MaterializationStatusMaterialized,
 		MaterializedAt: materializedAt, LastVerifiedAt: verifiedAt,

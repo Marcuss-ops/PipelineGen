@@ -44,7 +44,7 @@ func (s *succeedMediaProcessor) Process(_ context.Context, input *detail.Process
 		ID:            input.ID,
 		Filename:      input.Name + ".mp4",
 		LocalPath:     input.OutputDir + "/" + input.Name + ".mp4",
-		LegacyFileMD5: "hash-test",
+		ContentSHA256: "hash-test",
 		Status:        "processed",
 	}, nil
 }

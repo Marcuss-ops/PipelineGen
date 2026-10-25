@@ -20,19 +20,17 @@ func (m *Asset) SetDownloadLink(v string) { m.SetMetadataString("download_link",
 func (m *Asset) LocalPath() string        { return m.GetMetadataString("local_path") }
 func (m *Asset) SetLocalPath(v string)    { m.SetMetadataString("local_path", v) }
 
-// LegacyFileMD5 returns the legacy file digest (stored under key "legacy_file_md5").
-//
-// Deprecated: MD5 is compatibility-only — it may hold an MD5 digest (from a
-// legacy YouTube extraction or Drive upload receipt) or a SHA-256 digest
-// (from an image ingest or a modern content-addressed path). Callers must use
-// one of the typed accessors instead:
+// DEMOLISHED 2026-10-24 (contract phase of migration 229/281): the
+// `content_sha256` compatibility bucket is gone. It held a mix of MD5
+// digests and SHA-256 digests and was "never a decision input"; every
+// surviving caller was cut to the typed accessors below:
 //
 //	ContentHash()     → canonical content_sha256 (byte identity, always SHA-256)
 //	BinarySHA256()    → binary_sha256 projection of content_sha256
 //	DriveMD5()        → google_drive_md5 (Drive provider receipt only, NOT identity)
-//	LegacyFileMD5()   → legacy_file_md5 (compatibility-only, never identity)
-func (m *Asset) LegacyFileMD5() string     { return m.GetMetadataString("legacy_file_md5") }
-func (m *Asset) SetLegacyFileMD5(v string) { m.SetMetadataString("legacy_file_md5", v) }
+//
+// The metadata key "legacy_file_md5" is unreadable by design; migration 281
+// moved every valid value to "content_hash" and removed the rest.
 
 // ContentHash returns the canonical content SHA-256 identity (key "content_hash"
 // and/or "content_sha256"). This is the primary byte-identity hash: two
@@ -58,6 +56,12 @@ func (m *Asset) BinarySHA256() string {
 // identity or deduplication. Empty when the asset was not uploaded via
 // Google Drive or when the receipt was not recorded.
 func (m *Asset) DriveMD5() string { return m.GetMetadataString("google_drive_md5") }
+
+// SetDriveMD5 records the Google Drive provider MD5 receipt (key
+// "google_drive_md5"). Provider receipts belong here, never in the content
+// hash slot: the media-identity gate exists because a Drive receipt and a
+// byte identity once disagreed inside one field.
+func (m *Asset) SetDriveMD5(v string) { m.SetMetadataString("google_drive_md5", v) }
 
 // ── Content address resolution (media-identity SSOT) ─────────────────────
 
@@ -101,37 +105,27 @@ func ResolveContentAddress(candidates ...string) string {
 // capabilities/mediaregistry/hashes.go and applied here to the asset's own
 // fields:
 //
-//	content_sha256  — byte identity (the durable column)
-//	binary_sha256   — its compatibility projection (same value by invariant)
-//	content_hash    — the metadata spelling used by older writers
-//	legacy_file_md5 — compatibility bucket, consulted LAST and ONLY when the
-//	                  value is already a canonical SHA-256 (the documented
-//	                  migration window in which that column carried the
-//	                  SHA-256; mediaregistry/content_link_backfill.go performs
-//	                  server-side the same promotion)
+//	binary_sha256   — the dedicated byte-identity projection (always SHA-256)
+//	content_hash    — the canonical metadata spelling of the content address
 //
-// An MD5-shaped value is NEVER promoted. An MD5 is not a content address, so
-// admitting one makes two different payloads look identical — the exact
-// conflation that asset_id-is-what / sha256-is-which-bytes / md5-decides-nothing
-// exists to remove. No location field is consulted either: an address must never
-// be derived from a Drive file id, a URL, or a path.
+// The demolished "legacy_file_md5" bucket is gone (contract phase, migration
+// 281): its valid values were promoted into "content_hash" and the rest were
+// removed. An MD5-shaped value is NEVER promoted. An MD5 is not a content
+// address, so admitting one makes two different payloads look identical — the
+// exact conflation that asset_id-is-what / sha256-is-which-bytes /
+// md5-decides-nothing exists to remove. No location field is consulted
+// either: an address must never be derived from a Drive file id, a URL, or a
+// path.
 func (m *Asset) ContentAddress() string {
 	if m == nil {
 		return ""
 	}
 	return ResolveContentAddress(
-		m.GetMetadataString("content_sha256"),
 		m.GetMetadataString("binary_sha256"),
 		m.GetMetadataString("content_hash"),
-		m.GetMetadataString("legacy_file_md5"),
 	)
 }
 
-// LegacyFileMD5 returns the legacy MD5 hash (key "legacy_file_md5") from
-// pre-SHA-256 code paths (e.g. old YouTube extractions). This exists for
-// compatibility only — it is NEVER used for identity or deduplication.
-//
-// Note: the first definition is at the top of the file (canonical block).
 func (m *Asset) FolderID() string           { return m.GetMetadataString("folder_id") }
 func (m *Asset) SetFolderID(v string)       { m.SetMetadataString("folder_id", v) }
 func (m *Asset) FolderPath() string         { return m.GetMetadataString("folder_path") }

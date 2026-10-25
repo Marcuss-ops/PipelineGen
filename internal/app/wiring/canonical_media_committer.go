@@ -365,7 +365,7 @@ func newYouTubeAssetWriter(outboxBundle *OutboxBundle, repos *RepoBundle, commit
 
 // youTubeContentHash resolves the canonical content fingerprint for the
 // commit-and-index path. BinarySHA256 (content_sha256) is the canonical byte
-// identity; legacy_file_md5 is the compatibility fallback the commit request
+// identity; content_sha256 is the compatibility fallback the commit request
 // field is named after.
 func youTubeContentHash(a *asset.Asset) string {
 	if a == nil {
@@ -374,7 +374,7 @@ func youTubeContentHash(a *asset.Asset) string {
 	if hash := strings.TrimSpace(a.BinarySHA256()); hash != "" {
 		return hash
 	}
-	return strings.TrimSpace(a.GetMetadataString("legacy_file_md5"))
+	return strings.TrimSpace(a.GetMetadataString("content_hash"))
 }
 
 // youTubeLifecycleState keeps the asset's canonical lifecycle state, defaulting

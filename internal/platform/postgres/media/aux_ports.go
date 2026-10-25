@@ -74,7 +74,7 @@ func (c *PostgresMediaCommitter) UpsertAssetLocation(ctx context.Context, loc *a
 	_, err := c.db.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
-			 mime_type, file_size_bytes, legacy_file_md5, is_primary, created_at, updated_at, created_at_ts, updated_at_ts)
+			 mime_type, file_size_bytes, content_sha256, is_primary, created_at, updated_at, created_at_ts, updated_at_ts)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NULLIF($11, '')::timestamptz, NULLIF($12, '')::timestamptz)
 		ON CONFLICT (asset_id, location_kind) DO UPDATE SET
 			uri = excluded.uri,
@@ -83,12 +83,12 @@ func (c *PostgresMediaCommitter) UpsertAssetLocation(ctx context.Context, loc *a
 			download_url = excluded.download_url,
 			mime_type = excluded.mime_type,
 			file_size_bytes = excluded.file_size_bytes,
-			legacy_file_md5 = excluded.legacy_file_md5,
+			content_sha256 = excluded.content_sha256,
 			is_primary = excluded.is_primary,
 			updated_at = excluded.updated_at,
 			updated_at_ts = excluded.updated_at_ts
 	`, loc.AssetID, string(loc.LocationKind), loc.URI, loc.ExternalID, loc.AccessURL, loc.DownloadURL,
-		loc.MimeType, loc.FileSizeBytes, loc.LegacyFileMD5, pgBoolInt(loc.IsPrimary), createdStr, updatedStr)
+		loc.MimeType, loc.FileSizeBytes, loc.ContentSHA256, pgBoolInt(loc.IsPrimary), createdStr, updatedStr)
 	if err != nil {
 		return fmt.Errorf("media committer: upsert asset location %s/%s: %w", loc.AssetID, loc.LocationKind, err)
 	}

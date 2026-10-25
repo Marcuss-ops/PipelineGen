@@ -232,7 +232,7 @@ func buildEnrichedMetadataEntry(existing *asset.Asset, term string) map[string]a
 		"source":               existing.Source,
 		"term":                 term,
 		"filename":             existing.Filename,
-		"legacy_file_md5":      existing.GetMetadataString("legacy_file_md5"),
+		"content_sha256":       existing.GetMetadataString("content_hash"),
 		"duration_sec":         existing.Duration.Seconds(),
 		"created_at":           existing.CreatedAt.Format(time.RFC3339),
 		"drive_file_id":        existing.DriveFileID(),

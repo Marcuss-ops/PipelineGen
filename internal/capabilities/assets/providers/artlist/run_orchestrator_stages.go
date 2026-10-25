@@ -93,7 +93,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			DriveLink:       defaults.String(clip.DriveLink(), clip.GetMetadataString("_drive_link")),
 			DriveFileID:     defaults.String(clip.DriveFileID(), clip.GetMetadataString("_drive_file_id")),
 			LocalPath:       defaults.String(clip.LocalPath(), clip.GetMetadataString("_local_path")),
-			LegacyFileMD5:   defaults.String(clip.GetMetadataString("legacy_file_md5"), clip.GetMetadataString("_file_hash")),
+			ContentSHA256:   defaults.String(clip.GetMetadataString("content_hash"), clip.GetMetadataString("_file_hash")),
 			contentIdentity: runTagContentIdentity{sha256: clip.ContentAddress()},
 			Metadata:        cloneMetadata(clip.Metadata),
 		}
@@ -113,7 +113,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 			decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
 				DriveFileID:   item.DriveFileID,
 				DriveLink:     item.DriveLink,
-				LegacyFileMD5: item.LegacyFileMD5,
+				ContentSHA256: item.ContentSHA256,
 			})
 			item.Status = "dry_run"
 			if decision.Skip {
@@ -129,7 +129,7 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 		decision := assetop.ResolveExistingAssetStrategy(req.Strategy, assetop.ExistingAssetEvidence{
 			DriveFileID:   item.DriveFileID,
 			DriveLink:     item.DriveLink,
-			LegacyFileMD5: item.LegacyFileMD5,
+			ContentSHA256: item.ContentSHA256,
 		})
 		if decision.Skip {
 			item.Status = "skipped_existing"
@@ -368,7 +368,7 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			arg.w.item.Status = defaults.String(result.Status, "processed")
 			arg.w.item.Filename = result.Filename
 			arg.w.item.LocalPath = result.LocalPath
-			arg.w.item.LegacyFileMD5 = result.LegacyFileMD5
+			arg.w.item.ContentSHA256 = result.ContentSHA256
 			arg.w.item.contentIdentity.sha256 = result.ContentHash
 			arg.w.item.DriveLink = result.DriveLink
 			arg.w.item.DriveFileID = result.DriveFileID

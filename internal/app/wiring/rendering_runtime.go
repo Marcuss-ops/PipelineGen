@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
@@ -37,27 +36,27 @@ import (
 // RENDERINGGEN_GPU_SLOTS value (see overlays.GPUGate). The shipped
 // systemd drop-in `scripts/systemd/pipelinegen.service.d/gpu-slots.conf`
 // pins RENDERINGGEN_GPU_SLOTS=3 to keep the contract byte-identical.
-const DefaultGPUGateSlots = 3
+const DefaultGPUGateSlots = infraoverlays.DefaultGPUGateSlots
 
 // resolveGPUGateSlots parses RENDERINGGEN_GPU_SLOTS. `explicit` reports whether
 // an operator actually configured a value, so the caller can distinguish "the
 // default applied" from "the operator chose one slot"; an unparsable or
-// out-of-range value falls back to the default and is reported as not explicit.
+// out-of-range value falls back to the shared default and is reported as not explicit.
 func resolveGPUGateSlots(raw string) (slots int, explicit bool) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return DefaultGPUGateSlots, false
-	}
-	n, err := strconv.Atoi(trimmed)
-	if err != nil || n < 1 {
-		return DefaultGPUGateSlots, false
-	}
-	return n, true
+	return infraoverlays.ResolveGPUGateSlots(raw)
 }
 
 // gpuGateSlots reads the overlay GPU slot count from the environment.
 func gpuGateSlots() (slots int, explicit bool) {
 	return resolveGPUGateSlots(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
+}
+
+func overlayGPUGateConfig() (path string, slots int) {
+	return infraoverlays.ConfiguredGPUGateConfig()
+}
+
+func newOverlayGPUGate() (*infraoverlays.GPUGate, string, int, error) {
+	return infraoverlays.NewConfiguredGPUGate()
 }
 
 // LocalOverlayRenderEnabled gate il percorso renderer locale GPU (P3-5, Fase 6).
@@ -104,12 +103,8 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 		rendererBinary = "/opt/chronon3d/bin/chronon3d_cli"
 	}
 	renderer := infraoverlays.NewCommandRenderer(rendererBinary)
-	lockPath := os.Getenv("RENDERINGGEN_GPU_LOCK")
-	if lockPath == "" {
-		lockPath = filepath.Join(os.TempDir(), "pipelinegen", "gpu-0.lock")
-	}
-	slots, explicitSlots := gpuGateSlots()
-	gate, err := infraoverlays.NewGPUGateWithSlots(lockPath, slots)
+	gate, lockPath, slots, err := newOverlayGPUGate()
+	explicitSlots := strings.TrimSpace(os.Getenv("RENDERINGGEN_GPU_SLOTS")) != ""
 	if err != nil {
 		return nil, nil, err
 	}

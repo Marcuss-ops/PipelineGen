@@ -88,7 +88,7 @@ func TestExecute_SchedulesMaterializeAfterCommitWithPersistedText(t *testing.T) 
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_fanout_0_10_v1.mp4",
 		Duration:      10,
-		LegacyFileMD5: "fanout-hash",
+		ContentSHA256: "fanout-hash",
 		DriveFileID:   "fanout-drive-file",
 		LocalPath:     realPath,
 	}}
@@ -147,7 +147,7 @@ func TestExecute_SchedulesAcquireWithoutTranscript(t *testing.T) {
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_fanout_none_0_10_v1.mp4",
 		Duration:      10,
-		LegacyFileMD5: "fanout-none-hash",
+		ContentSHA256: "fanout-none-hash",
 		DriveFileID:   "fanout-none-drive-file",
 		LocalPath:     realPath,
 	}}
@@ -181,7 +181,7 @@ func TestExecute_NoFanOutPortIsANoOp(t *testing.T) {
 	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename:      "yt_fanout_off_0_10_v1.mp4",
 		Duration:      10,
-		LegacyFileMD5: "fanout-off-hash",
+		ContentSHA256: "fanout-off-hash",
 		DriveFileID:   "fanout-off-drive-file",
 		LocalPath:     realPath,
 	}}

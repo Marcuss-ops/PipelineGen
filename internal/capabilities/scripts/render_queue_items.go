@@ -109,17 +109,11 @@ type overlayItemRenderResult struct {
 // remaining items, exactly as the sequential loop stopped at the first error
 // instead of submitting the rest.
 func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
-	candidates := make([]overlayItemCandidate, 0, len(plan.Items))
-	for index, source := range plan.Items {
-		// A background is a canvas primitive, not a user-facing overlay. It is
-		// copied into each child plan when the parent uses the first-class
-		// Background field; a legacy background item must never become its own
-		// Drive video.
-		if strings.EqualFold(strings.TrimSpace(source.TemplateID), "BACKGROUND") || strings.EqualFold(strings.TrimSpace(source.TemplateID), "VIDEO_BACKGROUND") {
-			continue
-		}
-		candidates = append(candidates, overlayItemCandidate{index: index, source: source})
-	}
+	// A background is a canvas primitive, not a user-facing overlay. It is
+	// copied into each child plan when the parent uses the first-class
+	// Background field; a legacy background item must never become its own
+	// Drive video.
+	candidates := overlayRenderableCandidates(plan)
 	if len(candidates) == 0 {
 		return RenderReference{}, nil
 	}
@@ -160,6 +154,18 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 		// final-job boundary before building the master payload.
 		if child.RequireDriveBeforeReturn && e.asyncPublication && e.publisher != nil {
 			child.RequireDriveBeforeReturn = false
+		}
+		if candidate.source.Map != nil {
+			// PREPARE (TICKET-OVERLAY-THROUGHPUT (c)): the dynamic map video is
+			// pre-materialized OUTSIDE the submission path — «le mappe vanno
+			// pre-materializzate fuori dal percorso di sottomissione (stessa
+			// direzione di P3, ma sul prepare)». The enqueue below consumes the
+			// durable cache entry through the background fold, so its boundary
+			// stays thin and the map prepare is attributable to this phase. A
+			// prepare already running for the same map is JOINED, never doubled.
+			if err := e.PreMaterializeDynamicMapVideo(opCtx, child); err != nil {
+				return overlayItemRenderResult{}, fmt.Errorf("prepare overlay map item %q: %w", candidate.source.ID, err)
+			}
 		}
 		ref, err := e.enqueueChrononPlan(opCtx, child, metadata)
 		if err != nil {
@@ -249,6 +255,29 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 	// The old barrier (all others, then maps) is removed; GPU admission
 	// (worker gpu_lanes) remains the final authority when both classes contend
 	// for a saturated GPU.
+	// PREPARE phase for the map class: every map video starts rendering HERE,
+	// ahead of its item's submission, at the class width. The map pool below
+	// joins each prepare (joinDynamicMapVideoRender) and then submits through a
+	// thin enqueue, so the Chronon map render — the submission path's measured
+	// congestion (TICKET-OVERLAY-THROUGHPUT A.2) — is paid by the prepare
+	// phase. Failures are not fatal here: the item's own prepare retries and
+	// attributes the error to the item.
+	if len(mapCandidates) > 0 {
+		go func() {
+			_, _ = concurrent.Map(ctx, mapCandidates, overlayMapRenderWidth,
+				func(opCtx context.Context, _ int, candidate overlayItemCandidate) (string, error) {
+					child, _, err := separateOverlayItemPlan(plan, candidate.source, candidate.index)
+					if err != nil {
+						return "", err
+					}
+					if child.RequireDriveBeforeReturn && e.asyncPublication && e.publisher != nil {
+						child.RequireDriveBeforeReturn = false
+					}
+					err = e.PreMaterializeDynamicMapVideo(opCtx, child)
+					return "", err
+				})
+		}()
+	}
 	var results []overlayItemRenderResult
 	var mu sync.Mutex
 	var wg sync.WaitGroup

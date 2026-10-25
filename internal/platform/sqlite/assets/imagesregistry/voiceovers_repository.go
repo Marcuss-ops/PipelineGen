@@ -30,7 +30,7 @@ type Record struct {
 	DriveFileID   string
 	DriveLink     string
 	DownloadLink  string
-	LegacyFileMD5 string
+	ContentSHA256 string
 
 	DurationSeconds float64
 	Status          string
@@ -240,7 +240,7 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 		`, rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language,
 			rec.Voice, rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID,
 			rec.FolderPath, rec.DriveFileID, rec.DriveLink, rec.DownloadLink,
-			rec.LegacyFileMD5, rec.DurationSeconds, rec.Status, rec.Error,
+			rec.ContentSHA256, rec.DurationSeconds, rec.Status, rec.Error,
 			rec.Strategy, rec.Metadata, rec.Fingerprint, rec.IdempotencyKey,
 			rec.JobID, timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt))
 		return err
@@ -257,7 +257,7 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language,
-		rec.Voice, rec.LegacyFileMD5, rec.DurationSeconds, rec.Status, rec.Error,
+		rec.Voice, rec.ContentSHA256, rec.DurationSeconds, rec.Status, rec.Error,
 		rec.Strategy, rec.Metadata, rec.Fingerprint, rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt),
 	)

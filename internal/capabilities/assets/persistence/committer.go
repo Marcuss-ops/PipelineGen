@@ -417,7 +417,7 @@ var (
 // class that actually shipped (a real digest in the wrong slot) without
 // turning a curated label into a boot-time failure.
 //
-// This does NOT ban MD5. `asset_locations.legacy_file_md5` is the
+// This does NOT ban MD5. `asset_locations.content_sha256` is the
 // compatibility bucket and keeps accepting an MD5 forever (see
 // mediaregistry's hash contract). What is banned is an MD5 in a slot that
 // claims BYTE IDENTITY.
@@ -430,7 +430,7 @@ func ValidateContentAddressSlot(value string) error {
 		return nil
 	}
 	if mediaregistry.IsMD5Hex(trimmed) {
-		return fmt.Errorf("%w: %q is a legacy MD5 digest — MD5 is a compatibility-only bucket (asset_locations.legacy_file_md5) and never a content identity; resolve the value with asset.ResolveContentAddress(...) / (*asset.Asset).ContentAddress() so an unknown identity stays empty (or UNKNOWN) instead of becoming an MD5", ErrAssetCommitContentAddressInvalid, trimmed)
+		return fmt.Errorf("%w: %q is a legacy MD5 digest — MD5 is a compatibility-only bucket (asset_locations.content_sha256) and never a content identity; resolve the value with asset.ResolveContentAddress(...) / (*asset.Asset).ContentAddress() so an unknown identity stays empty (or UNKNOWN) instead of becoming an MD5", ErrAssetCommitContentAddressInvalid, trimmed)
 	}
 	if isHexDigestShape(trimmed) {
 		return fmt.Errorf("%w: the %d-char hex digest %q is not a 64-hex SHA-256 (a SHA-1, SHA-512 or other digest-sized token): a digest in the content-address slot must BE the byte identity, never another algorithm's digest and never a truncated one", ErrAssetCommitContentAddressInvalid, len(trimmed), trimmed)

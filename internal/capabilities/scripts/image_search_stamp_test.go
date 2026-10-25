@@ -132,7 +132,7 @@ func TestProjectEntityAnnotations_LogoIsPrimary(t *testing.T) {
 		},
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
 			AssetID: "apple-logo", Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Apple",
-			DriveLink: "https://drive.google.com/file/d/apple-logo/view", LegacyFileMD5: "apple-md5",
+			DriveLink: "https://drive.google.com/file/d/apple-logo/view", ContentSHA256: "apple-md5",
 			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
 			PersistenceStatus: scriptpkg.VidRushStatusPersisted,
 			RightsStatus:      "unknown_allowed",
