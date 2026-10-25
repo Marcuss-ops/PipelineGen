@@ -1,6 +1,6 @@
 # TICKET-BATCH-SUPERJOB (P4)
 
-**Stato:** APPROVATO 24/10/2026 — da implementare.
+**Stato:** PARTIAL (25/10/2026) — harness e ordine del piano presenti; writer batch con più artefatti MP4 e sessione encoder unica non certificato.
 **Origine:** idee di paradigma di `TICKET-OVERLAY-THROUGHPUT-100-MIN.md`
 (paradigma #1 «un piano = una sessione render»), approvate dall'utente il
 24/10/2026. Complementare a `TICKET-RESIDENT-RENDER-ENGINE` (P2).
@@ -46,6 +46,23 @@ pagato una volta per batch, non una volta per artefatto.
       ripetere gli altri.
 
 ## Dipendenze e rischi
+
+### Verifica closeout 2026-10-25
+
+- **PARTIAL:** `TestBatchTenServiceCostAB` misura il servizio di un piano con
+  dieci overlay sequenziali rispetto a dieci piani singoli. Il test non prova
+  ancora il contratto richiesto di dieci artefatti MP4 distinti con retry
+  idempotente per segmento.
+- **Gate A live PASS, gate P4 completo ancora PARTIAL:** con prefix
+  `freebuff-closeout-20261025T1005Z`, il servizio mediano dei dieci job singoli
+  è 1075 ms; il piano da dieci item misura 3857 ms totali, 385 ms/item
+  (rapporto 0,358 contro soglia 0,40). Il test crea un solo MP4 da 30 s, perciò
+  non certifica dieci MP4 separati, parità per segmento né retry idempotente.
+- **BLOCCO tecnico riprodotto:** chiudere un MP4 invia EOF al codec; riaprire la
+  stessa sessione fallisce al primo frame. La modalità sperimentale è ora
+  fail-closed. Il passo necessario è un batch writer che controlli un solo
+  codec non drenato e finalizzi/splitti i container solo a confini di pacchetto
+  certificati.
 
 - Il contratto MP4-per-item con il final worker è preservato (ogni segmento
   resta un artefatto proprio); il cambiamento è solo nel ciclo di vita della

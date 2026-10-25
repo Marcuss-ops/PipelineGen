@@ -1,6 +1,6 @@
 # TICKET-STATIC-OVERLAY-DURATION-INVARIANT (P1)
 
-**Stato:** APPROVATO 24/10/2026 — da implementare.
+**Stato:** PARTIAL (25/10/2026) — percorso implementato e costo live promettente; gate pixel fallito, A/B completo da ripetere.
 **Origine:** idee di paradigma di `TICKET-OVERLAY-THROUGHPUT-100-MIN.md`
 (sezione «Idee di paradigma»), approvate dall'utente il 24/10/2026.
 **Ordine consigliato:** dopo B2 (`Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md`),
@@ -59,3 +59,14 @@ pagare raster/composite/encode per ogni frame identico.
   — negoziare prima di adottare.
 - Interazione con `TextAnimators`/word-reveal: restano sul percorso per-frame
   (genuinamente animati), come già previsto dalla wave B1.
+
+### Verifica closeout 2026-10-25
+
+- Build e regressione C++ mirata PASS; il test encoder conferma che il riuso
+  dopo finalizzazione MP4 resta disabilitato (EOF dal codec).
+- A/B live primo paio: 3 s `render_ms=7505`, 30 s `render_ms=4677` (rapporto
+  0,623), ma fallisce il contratto pixel: il frame decodificato 1 differisce
+  dal frame 0. La prova si è interrotta prima delle tre repliche, quindi il
+  rapporto non è un gate statistico superato. Serve chiarire se l'output ha
+  animazione implicita oppure se la replica del packet produce drift visivo,
+  poi ripetere il gate completo.
