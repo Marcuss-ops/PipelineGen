@@ -296,7 +296,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// max_phrase_overlays); zero keeps the certified default. It rides the
 	// canvas because that is the run-level render context this function
 	// already receives.
-	plannerConfig.RunLevelPhraseOverlayLimit = phraseCeiling
+	// Let the planner expose the full bounded candidate set so intake can
+	// attribute removals to the editorial budget below. The caller's ceiling
+	// remains authoritative at ApplyEditorialOverlayBudget*.
+	plannerConfig.RunLevelPhraseOverlayLimit = capabilityoverlay.MaxPhraseOverlaysHardLimit
 	// The image run budget is caller-selected too (request max_image_overlays /
 	// the images group cap): without threading it here the planner's first
 	// budget pass silently truncated a raised image request at the certified
