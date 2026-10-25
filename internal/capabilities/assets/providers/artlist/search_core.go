@@ -210,7 +210,7 @@ func (ss *SearchService) hydrateDiscoveredClip(ctx context.Context, originalTerm
 			if existing.LocalPath() != "" {
 				clip.SetLocalPath(existing.LocalPath())
 			}
-			if legacy := existing.GetMetadataString("content_hash"); legacy != "" {
+			if legacy := existing.ContentHash(); legacy != "" {
 				clip.SetContentHash(legacy)
 			}
 			if existing.DriveLink() != "" {

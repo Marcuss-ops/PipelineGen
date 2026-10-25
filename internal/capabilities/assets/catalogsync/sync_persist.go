@@ -32,7 +32,7 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo CatalogRepo
 	incomingParentFolderID := clip.ParentFolderID()
 	incomingFolderPath := clip.FolderPath()
 	if existing, err := repo.GetClip(ctx, clip.ID); err == nil && existing != nil {
-		if legacy := existing.GetMetadataString("content_hash"); legacy != "" {
+		if legacy := existing.ContentHash(); legacy != "" {
 			clip.SetContentHash(legacy)
 		}
 		if existing.LocalPath() != "" {

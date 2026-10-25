@@ -328,7 +328,7 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 		Source:        req.Source,
 		ClipID:        req.ClipID,
 		DriveLink:     clip.DriveLink(),
-		ContentSHA256: clip.GetMetadataString("content_hash"),
+		ContentSHA256: clip.ContentHash(),
 		UploadedAt:    timeutil.FormatRFC3339(time.Now()),
 		// F2.9: PublishAction is NOT exposed on ReuploadResult (legacy
 		// handler shape preserves the 5 api-output keys verbatim).

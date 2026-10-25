@@ -273,6 +273,6 @@ func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 	}
 	apiutil.OK(c, gin.H{
 		"ok": true, "source": source, "clip_id": clipID,
-		"content_sha256": clip.GetMetadataString("content_hash"), "duplicates": duplicates,
+		"content_sha256": clip.ContentHash(), "duplicates": duplicates,
 	})
 }

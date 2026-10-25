@@ -115,7 +115,7 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 	}
 
 	// Check hash (read-only S1c path)
-	if legacyHash := clip.GetMetadataString("content_hash"); legacyHash != "" {
+	if legacyHash := clip.ContentHash(); legacyHash != "" {
 		report.Hash = legacyHash
 		report.HasHash = true
 		if hasLocalFile {
