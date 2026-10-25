@@ -85,15 +85,15 @@ func TestOllamaPersonImageScorerSkipsDefinitiveVerdicts(t *testing.T) {
 	}
 	accepted := scriptpkg.SegmentAssetCandidate{
 		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
-		SourceURL: "https://images.example/chiara-poggi-portrait.jpg",
+		SourceURL:      "https://images.example/chiara-poggi-portrait.jpg",
 		SemanticStatus: "accepted", SemanticScore: 0.94,
 		QualityReason: "Ollama visual verification confirmed one dominant subject",
 	}
 	rejected := scriptpkg.SegmentAssetCandidate{
 		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
-		SourceURL: "https://images.example/chiara-poggi-collage.jpg",
+		SourceURL:      "https://images.example/chiara-poggi-collage.jpg",
 		SemanticStatus: "rejected",
-		QualityReason: "Ollama visual verification detected a split panel or collage",
+		QualityReason:  "Ollama visual verification detected a split panel or collage",
 	}
 
 	got, err := scorer.ScoreImageCandidates(context.Background(), "Chiara Poggi", []scriptpkg.SegmentAssetCandidate{accepted, rejected})
@@ -120,9 +120,9 @@ func TestOllamaPersonImageScorerRetriesTransientRejection(t *testing.T) {
 	}
 	transient := scriptpkg.SegmentAssetCandidate{
 		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
-		SourceURL: "https://images.example/chiara-poggi-transient.jpg",
+		SourceURL:      "https://images.example/chiara-poggi-transient.jpg",
 		SemanticStatus: "rejected",
-		QualityReason: "visual verification failed: context deadline exceeded",
+		QualityReason:  "visual verification failed: context deadline exceeded",
 	}
 
 	got, err := scorer.ScoreImageCandidates(context.Background(), "Chiara Poggi", []scriptpkg.SegmentAssetCandidate{transient})
