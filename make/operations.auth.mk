@@ -11,11 +11,8 @@ TERM ?= technology
 # Probes /api/system/doctor: an admin-authenticated route that is mounted by
 # the system module UNCONDITIONALLY.
 #
-# It formerly probed /api/artlist/job-consumer, which the canonical
-# config.yaml deliberately does not mount (`features.artlist_enabled: false` —
-# "YouTube is the only external acquisition provider. The Stock pipeline remains
-# enabled because its acquisition/search path is YouTube-backed; Artlist is
-# intentionally not mounted."). That made this gate report "Velox
+# It formerly probed a feature-gated endpoint that the canonical
+# config.yaml deliberately does not mount. That made this gate report "Velox
 # authentication failed: HTTP 404" on a perfectly healthy, intentionally
 # configured deployment, and it blocked every target that depends on it —
 # verify-pipeline-e2e-live could not start at all. An auth probe must assert

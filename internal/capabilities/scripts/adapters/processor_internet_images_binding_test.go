@@ -422,15 +422,15 @@ func TestInternetImages_NoResultDoesNotFabricateImage(t *testing.T) {
 func TestInternetImages_OnlyAllowedProviderCanBind(t *testing.T) {
 	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON"}
 
-	artlist := readyEntityImageCandidate("asset-artlist", "Dwayne Johnson", "Dwayne Johnson")
-	artlist.Provider = "artlist"
-	artlist.RightsStatus = "verified"
+	generation := readyEntityImageCandidate("asset-generation", "Dwayne Johnson", "Dwayne Johnson")
+	generation.Provider = scriptpkg.VidRushProviderImageGeneration
+	generation.RightsStatus = "verified"
 
 	youtube := readyEntityImageCandidate("asset-youtube", "Dwayne Johnson", "Dwayne Johnson")
-	youtube.Provider = "youtube"
+	youtube.Provider = scriptpkg.VidRushProviderYouTube
 	youtube.SourceURL = "https://youtube.com/watch?v=leaked"
 
-	for _, candidate := range []scriptpkg.SegmentAssetCandidate{artlist, youtube} {
+	for _, candidate := range []scriptpkg.SegmentAssetCandidate{generation, youtube} {
 		seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate}}}
 		if _, ok := findEntityImageCandidate(entity, seg); ok {
 			t.Fatalf("provider %q candidate was incorrectly bound as an entity image", candidate.Provider)
@@ -463,7 +463,7 @@ func TestValidateVidRushSegmentAssetBindings_RequiresCompleteProvenance(t *testi
 	candidate.EntityID = "entity:feta-cheese"
 	video := candidate
 	video.AssetID = "video-a"
-	video.Provider = scriptpkg.VidRushProviderArtlist
+	video.Provider = scriptpkg.VidRushProviderYouTube
 	video.Query = "greek salad preparation"
 	video.EntityID = "entity:greek-salad"
 	segment.Assets = scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{candidate, video}}

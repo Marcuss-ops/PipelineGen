@@ -195,7 +195,6 @@ func testRegistry() *platformdelivery.DestinationRegistry {
 		Drive: config.DriveConfig{
 			MediaRootFolder:        "media-root",
 			ClipsRootFolder:        "clips-root",
-			ArtlistRootFolder:      "artlist-root",
 			StockRootFolder:        "stock-root",
 			ImagesRootFolder:       "images-root",
 			VoiceoverRootFolder:    "vo-root",

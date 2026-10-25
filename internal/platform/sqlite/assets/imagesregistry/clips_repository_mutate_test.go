@@ -7,7 +7,6 @@
 // for this package; today the write-side behaviour of Upsert is
 // covered indirectly by integration tests in
 // internal/application/youtube/adapters/assetrepo_integration_test.go
-// and internal/capabilities/assets/providers/artlist/assetrepo_integration_test.go.
 //
 // The four contract pins asserted here:
 //

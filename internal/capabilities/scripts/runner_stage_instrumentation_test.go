@@ -1,7 +1,6 @@
 // Package scriptgeneration — runner_stage_instrumentation_test.go pins the
 // canonical wall timings for the three boundaries added to the durable
-// runner: scene_analysis (per-scene nlp.extract), overlay.prepare (enqueue),
-// and document.prepare (docs render, distinct from document.publish).
+// runner: scene_analysis (per-scene nlp.extract) and overlay.prepare (enqueue).
 package scriptgeneration
 
 import (
@@ -92,38 +91,6 @@ func TestOverlayPrepareEnqueueNoIntentsNoStage(t *testing.T) {
 	require.NoError(t, runner.enqueueOverlayPrepare(ctx, "run-001", defaultTestRequest(), nil))
 	run.Finish()
 	require.Empty(t, run.Report().Stages, "no intents must record no overlay.prepare stage")
-}
-
-// TestDocumentPrepareRecordsStage runs the full durable runner with docs
-// enabled under a bound Run and pins that the document HTML render is
-// recorded as a document.prepare stage, distinct from document.publish.
-func TestDocumentPrepareRecordsStage(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
-
-	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-docs-1", AttemptID: "attempt-1"})
-	runCtx := kernobs.WithRun(context.Background(), run)
-
-	req := defaultTestRequest()
-	runID := "run-docs-prepare-001"
-	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
-		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
-	}))
-
-	runner.Execute(runCtx, runID, req)
-	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, 5*time.Second).Status)
-	run.Finish()
-
-	var prepare, publish bool
-	for _, st := range run.Report().Stages {
-		switch st.Name {
-		case string(StageDocumentPrepare):
-			prepare = true
-		case string(StageDocumentPublish):
-			publish = true
-		}
-	}
-	require.True(t, prepare, "document.prepare stage must be recorded, got %+v", run.Report().Stages)
-	require.True(t, publish, "document.publish stage must be recorded, got %+v", run.Report().Stages)
 }
 
 // TestSceneAnalysisFanoutWallIsReported pins that the scene_analysis fan-out

@@ -15,19 +15,16 @@ type vidRushProviderOutcome struct {
 }
 
 type vidRushFanoutPlan struct {
-	segmentID         string
-	textHash          string
-	text              string
-	title             string
-	artlistIntentHash string
-	artlistQueries    []string
-	imageQueries      []string
-	firstEntity       string
-	youtubeSources    []scriptports.VidRushSourceHint
-	perQueryLimit     int
-	artlistEnabled    bool
-	imagesEnabled     bool
-	youtubeEnabled    bool
+	segmentID      string
+	textHash       string
+	text           string
+	title          string
+	imageQueries   []string
+	firstEntity    string
+	youtubeSources []scriptports.VidRushSourceHint
+	perQueryLimit  int
+	imagesEnabled  bool
+	youtubeEnabled bool
 }
 
 // VidRushProviderFanout construction (merged from
@@ -36,7 +33,6 @@ type vidRushFanoutPlan struct {
 // max_lines_per_file_strict=600. No behaviour change.
 
 type VidRushProviderFanout struct {
-	artlist        ArtlistClipSearcher
 	images         InternetImageSearcher
 	semanticScorer SemanticCandidateScorer
 	youtube        scriptports.VidRushAssetProvider
@@ -64,38 +60,37 @@ func (f *VidRushProviderFanout) WithLogger(log *zap.Logger) *VidRushProviderFano
 	return f
 }
 
-func NewVidRushProviderFanout(artlist ArtlistClipSearcher, images InternetImageSearcher, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	return NewVidRushProviderFanoutWithCatalog(artlist, images, nil, nil, metrics...)
+func NewVidRushProviderFanout(images InternetImageSearcher, metrics ...VidRushMetrics) *VidRushProviderFanout {
+	return NewVidRushProviderFanoutWithCatalog(images, nil, nil, metrics...)
 }
 
 // NewVidRushProviderFanoutWithYouTube adds the canonical YouTube provider to
 // the existing fan-out while preserving the legacy constructor.
-func NewVidRushProviderFanoutWithYouTube(artlist ArtlistClipSearcher, images InternetImageSearcher, youtube scriptports.VidRushAssetProvider, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	fanout := NewVidRushProviderFanout(artlist, images, metrics...)
+func NewVidRushProviderFanoutWithYouTube(images InternetImageSearcher, youtube scriptports.VidRushAssetProvider, metrics ...VidRushMetrics) *VidRushProviderFanout {
+	fanout := NewVidRushProviderFanout(images, metrics...)
 	fanout.youtube = youtube
 	return fanout
 }
 
-func NewVidRushProviderFanoutWithCache(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	return NewVidRushProviderFanoutWithCatalog(artlist, images, cache, nil, metrics...)
+func NewVidRushProviderFanoutWithCache(images InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *VidRushProviderFanout {
+	return NewVidRushProviderFanoutWithCatalog(images, cache, nil, metrics...)
 }
 
-func NewVidRushProviderFanoutWithCatalog(artlist ArtlistClipSearcher, images InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *VidRushProviderFanout {
+func NewVidRushProviderFanoutWithCatalog(images InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *VidRushProviderFanout {
 	var m VidRushMetrics
 	if len(metrics) > 0 {
 		m = metrics[0]
 	}
-	return &VidRushProviderFanout{artlist: artlist, images: images, cache: cache, catalog: catalog, metrics: m}
+	return &VidRushProviderFanout{images: images, cache: cache, catalog: catalog, metrics: m}
 }
 
 // MediaResolver is the unified provider discovery boundary used by the
 // production fan-out. A resolver may expose several provider queries, but it
 // never owns acquisition or winner selection.
 type MediaResolver interface {
-	ArtlistClipSearcher
 	InternetImageSearcher
 }
 
 func NewVidRushProviderFanoutWithResolver(resolver MediaResolver, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *VidRushProviderFanout {
-	return NewVidRushProviderFanoutWithCatalog(resolver, resolver, cache, catalog, metrics...)
+	return NewVidRushProviderFanoutWithCatalog(resolver, cache, catalog, metrics...)
 }

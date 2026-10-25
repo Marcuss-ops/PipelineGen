@@ -58,7 +58,7 @@ func normalizeVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate, segmen
 }
 
 func firstSegmentAssetQuery(segment scriptpkg.VidRushSegmentResult) string {
-	for _, query := range [][]string{segment.Insights.ImageQueries, segment.Insights.ArtlistQueries, segment.Insights.YouTubeQueries} {
+	for _, query := range [][]string{segment.Insights.ImageQueries, segment.Insights.YouTubeQueries} {
 		for _, value := range query {
 			if value = strings.TrimSpace(value); value != "" {
 				return value

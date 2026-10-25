@@ -8,47 +8,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func filterArtlistCandidatesForSegment(candidates []scriptpkg.SegmentAssetCandidate, segment scriptpkg.VidRushSegmentResult, allSegments []scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
-	segments := allSegments
-	if len(segments) == 0 {
-		segments = []scriptpkg.VidRushSegmentResult{segment}
-	}
-	ctx, err := newArtlistIsolationContext(segments)
-	if err != nil {
-		return nil
-	}
-	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if err := validateArtlistCandidateForContext(ctx, candidate, segment); err == nil {
-			out = append(out, candidate)
-		}
-	}
-	return out
-}
-
-func filterArtlistMatchesForSegment(matches []ArtlistClipMatch, segment scriptpkg.VidRushSegmentResult, allSegments []scriptpkg.VidRushSegmentResult) []ArtlistClipMatch {
-	segments := allSegments
-	if len(segments) == 0 {
-		segments = []scriptpkg.VidRushSegmentResult{segment}
-	}
-	ctx, err := newArtlistIsolationContext(segments)
-	if err != nil {
-		return nil
-	}
-	out := make([]ArtlistClipMatch, 0, len(matches))
-	for _, match := range matches {
-		probe := scriptpkg.SegmentAssetCandidate{
-			SegmentID: segment.SegmentID, Position: segment.Position, TextHash: segment.TextHash,
-			EntityID: "entity:artlist-query", AssetID: "artlist-query-probe",
-			Provider: scriptpkg.VidRushProviderArtlist, Query: match.Phrase,
-		}
-		if err := validateArtlistCandidateForContext(ctx, probe, segment); err == nil {
-			out = append(out, cloneArtlistMatch(match))
-		}
-	}
-	return out
-}
-
 // ValidateVidRushSegmentAssetBindings is the fail-closed provenance gate for
 // the final asset surface. It verifies all required identity fields and rejects
 // an asset id appearing under more than one segment.
@@ -127,7 +86,6 @@ func CloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	out.Insights.ImportantPhrases = append([]string(nil), in.Insights.ImportantPhrases...)
 	out.Insights.ImportantWords = append([]string(nil), in.Insights.ImportantWords...)
 	out.Insights.SpecialNames = append([]string(nil), in.Insights.SpecialNames...)
-	out.Insights.ArtlistQueries = append([]string(nil), in.Insights.ArtlistQueries...)
 	out.Insights.YouTubeQueries = append([]string(nil), in.Insights.YouTubeQueries...)
 	out.Insights.ImageQueries = append([]string(nil), in.Insights.ImageQueries...)
 	out.Insights.ResearchSources = append([]scriptpkg.ResearchWebSource(nil), in.Insights.ResearchSources...)
@@ -147,17 +105,6 @@ func CloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 	}
 	normalizeVidRushSegmentAssets(&out)
 	return out
-}
-
-// vidRushArtlistOnlyPlan identifies the strict V1 contract. Hybrid plans must
-// keep Artlist best-effort so verified image or generation fallbacks can still
-// complete the scene when Artlist is unavailable.
-func vidRushArtlistOnlyPlan(plan *scriptpkg.ResolvedGenerationPlan) bool {
-	if plan == nil || !plan.MediaPlan.ProviderPolicy.Artlist.AsBool() {
-		return false
-	}
-	return !plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() &&
-		!plan.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
 }
 
 // FinalizeVidRushBindings is the single binding finalization step for the

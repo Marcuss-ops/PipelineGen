@@ -131,18 +131,3 @@ func hasImageSearchSegments(plan *scriptpkg.ResolvedGenerationPlan, input Proces
 	}
 	return false
 }
-
-func markArtlistBypassed(input []scriptpkg.VidRushSegmentResult) *PostProcessResult {
-	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(input))
-	for _, segment := range input {
-		cloned := CloneVidRushSegmentResult(segment)
-		if cloned.ExecutionMode.IsFixedMedia() {
-			cloned.Cache.Artlist = "BYPASSED"
-		}
-		segments = append(segments, cloned)
-	}
-	if len(segments) == 0 {
-		return &PostProcessResult{}
-	}
-	return &PostProcessResult{VidRushSegments: segments, Changed: true}
-}

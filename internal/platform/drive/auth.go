@@ -110,7 +110,7 @@ func NewGoogleHTTPClient(ctx context.Context, credentialsPath, tokenPath string,
 	return httpClient, nil
 }
 
-// newGoogleTransport returns the tuned transport shared by Drive and Docs.
+// newGoogleTransport returns the tuned transport shared by the Google APIs.
 // ResponseHeaderTimeout bounds a provider stall after the request has been
 // sent without imposing a size-independent deadline on the upload body.
 func newGoogleTransport() *http.Transport {

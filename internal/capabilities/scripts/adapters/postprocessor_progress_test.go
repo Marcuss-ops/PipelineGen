@@ -54,7 +54,6 @@ func TestStageForProcessorCoversTheWorkStages(t *testing.T) {
 		job.StageTranslation: ProcessorTranslation,
 		job.StageVoiceover:   ProcessorVoiceover,
 		job.StageOverlay:     ProcessorVisualSlots,
-		job.StageUpload:      ProcessorDocument,
 		job.StagePersistence: ProcessorPersistence,
 	}
 	for stage, producer := range want {

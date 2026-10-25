@@ -11,17 +11,17 @@
 // same sources the same way.
 //
 // Correctness contract:
-//   - YouTube-only. Artlist and generic URLs keep the exact download path
-//     (cookies, impersonation, and per-source licensing differ).
-//   - The cache key includes the format signature, so a request with a
-//     different format/merge policy can never be served another format's
-//     bytes.
-//   - Only FULL-source downloads are mirrored. Sectioned downloads
-//     (DownloadSections / DownloadRange) keep their yt-dlp/ffmpeg path.
-//   - A cache hit is still verified with the same VerifyFile gate as a
-//     fresh download; a corrupted entry is evicted and the download reruns.
-//   - Same-key in-flight downloads are single-flighted: concurrent jobs
-//     asking for one video wait for one download instead of racing YouTube.
+//
+//	  (cookies, impersonation, and per-source licensing differ).
+//	- The cache key includes the format signature, so a request with a
+//	  different format/merge policy can never be served another format's
+//	  bytes.
+//	- Only FULL-source downloads are mirrored. Sectioned downloads
+//	  (DownloadSections / DownloadRange) keep their yt-dlp/ffmpeg path.
+//	- A cache hit is still verified with the same VerifyFile gate as a
+//	  fresh download; a corrupted entry is evicted and the download reruns.
+//	- Same-key in-flight downloads are single-flighted: concurrent jobs
+//	  asking for one video wait for one download instead of racing YouTube.
 package downloader
 
 import (

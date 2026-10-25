@@ -54,6 +54,7 @@ const (
 	jobRunnerPoolGeneral     = "general"
 	jobRunnerPoolSettle      = "clip-render-settle"
 	jobRunnerPoolInteractive = "interactive"
+	jobRunnerPoolFeeder      = "feeder"
 )
 
 // EnvInteractiveWorkers is the operator override for the dedicated interactive
@@ -94,6 +95,48 @@ func interactiveWorkerBudget() int {
 	return budget
 }
 
+// EnvFeederWorkers is the operator override for the dedicated feeder lane
+// width (PIPELINEGEN_FEEDER_WORKERS). "0" disables the lane and hands the
+// feeder family back to the general pool (the documented rollback switch,
+// mirroring EnvInteractiveWorkers).
+const EnvFeederWorkers = "PIPELINEGEN_FEEDER_WORKERS"
+
+// defaultFeederWorkers is the feeder lane width. The feeder family produces
+// what user-visible work CONSUMES (youtube_clip.extract → the clips,
+// asset.text.materialize → the text tracks), so a general backlog of
+// cleanup/batch work starves not just the feeders but every generation waiting
+// on their output. The timing snapshot measured exactly that starvation:
+// asset.text.materialize sat 13.26x its own work in the queue (44.3h queue /
+// 3.3h work). Dedicated workers are the only guarantee this codebase has:
+// claim-order aging cannot help when every general worker is occupied.
+const defaultFeederWorkers = 2
+
+// feederJobTypes returns the feeder family the feeder lane owns. The types
+// are the canonical kernel/job constants (the wire-literal owner), re-exported
+// by the capabilities that enqueue them.
+func feederJobTypes() []string {
+	return []string{job.TypeYouTubeClipExtract, job.TypeAssetTextMaterialize}
+}
+
+// feederWorkerBudget resolves the lane width from the env override: default 2,
+// clamped to 0..8, where 0 disables the lane entirely (the documented
+// rollback switch: the general pool re-claims the family via its complement).
+func feederWorkerBudget() int {
+	budget := defaultFeederWorkers
+	if raw := strings.TrimSpace(os.Getenv(EnvFeederWorkers)); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			budget = parsed
+		}
+	}
+	if budget < 0 {
+		budget = 0
+	}
+	if budget > 8 {
+		budget = 8
+	}
+	return budget
+}
+
 // generalPoolJobTypes returns the POSITIVE type list the general pool claims
 // once the interactive lane exists: every registered type EXCEPT the
 // interactive family. The kernel claim contract is a positive `types IN`
@@ -105,18 +148,30 @@ func interactiveWorkerBudget() int {
 // A nil return keeps the historical unfiltered claim: an empty registry (test
 // fakes) or a degenerate complement must fail OPEN to the pre-lane behaviour,
 // never silently stop claiming work.
+//
+// A family is excluded ONLY while its lane is ENABLED: a rolled-back lane
+// (budget 0) must hand its family back to the general pool, otherwise the
+// jobs would be claimed by NOBODY — a dark lane with no error. That is why
+// the budgets are read here instead of only at the build gate.
 func generalPoolJobTypes() []string {
 	all := appjobs.Compose().AllTypes()
 	if len(all) == 0 {
 		return nil
 	}
-	interactive := make(map[string]bool, 2)
-	for _, t := range interactiveJobTypes() {
-		interactive[t] = true
+	excluded := make(map[string]bool, 4)
+	if interactiveWorkerBudget() > 0 {
+		for _, t := range interactiveJobTypes() {
+			excluded[t] = true
+		}
+	}
+	if feederWorkerBudget() > 0 {
+		for _, t := range feederJobTypes() {
+			excluded[t] = true
+		}
 	}
 	out := make([]string, 0, len(all))
 	for _, t := range all {
-		if !interactive[t] {
+		if !excluded[t] {
 			out = append(out, t)
 		}
 	}
@@ -359,10 +414,10 @@ func buildJobRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Rep
 		return nil, nil
 	}
 	cfg := jobRunnerBaseConfig(deps)
-	if interactiveWorkerBudget() > 0 {
+	if interactiveWorkerBudget() > 0 || feederWorkerBudget() > 0 {
 		if scoped := generalPoolJobTypes(); scoped != nil {
 			cfg.JobTypes = scoped
-			deps.log.Info("general pool scoped away from the interactive family",
+			deps.log.Info("general pool scoped away from the dedicated lanes",
 				zap.String("pool", jobRunnerPoolGeneral),
 				zap.Int("claimed_types", len(scoped)))
 		}
@@ -400,6 +455,28 @@ func buildInteractiveRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcale
 		zap.Strings("job_types", cfg.JobTypes),
 		zap.String("excluded_from", jobRunnerPoolGeneral))
 	return newJobRunnerPool(deps, jobRunnerPoolInteractive, cfg)
+}
+
+// buildFeederRunner constructs the DEDICATED feeder lane for the family that
+// feeds user-visible work (youtube_clip.extract + asset.text.materialize), or
+// nil when the lane is disabled (budget 0 — the documented rollback switch).
+// It claims ONLY its family, so a general backlog of cleanup/batch work can
+// starve neither the feeders nor the generation waiting on their output (the
+// measured 13.26x materialize starvation this lane exists to prevent).
+func buildFeederRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Reporter) {
+	budget := feederWorkerBudget()
+	if budget <= 0 || !jobRunnerRootReady(deps) {
+		return nil, nil
+	}
+	cfg := jobRunnerBaseConfig(deps)
+	cfg.Workers = budget
+	cfg.JobTypes = feederJobTypes()
+	deps.log.Info("feeder pool created",
+		zap.String("pool", jobRunnerPoolFeeder),
+		zap.Int("workers", budget),
+		zap.Strings("job_types", cfg.JobTypes),
+		zap.String("excluded_from", jobRunnerPoolGeneral))
+	return newJobRunnerPool(deps, jobRunnerPoolFeeder, cfg)
 }
 
 // buildClipRenderSettleRunner constructs the DEDICATED clip.render settle pool,
@@ -475,6 +552,14 @@ func buildJobRunnerStep(deps jobRunnerDeps) *StartupStep {
 			runner:   interactive,
 			workers:  interactiveWorkerBudget(),
 			reporter: interactiveReporter,
+		})
+	}
+	if feeder, feederReporter := buildFeederRunner(deps); feeder != nil {
+		pools = append(pools, jobRunnerPool{
+			name:     jobRunnerPoolFeeder,
+			runner:   feeder,
+			workers:  feederWorkerBudget(),
+			reporter: feederReporter,
 		})
 	}
 	if settle, settleReporter := buildClipRenderSettleRunner(deps); settle != nil {

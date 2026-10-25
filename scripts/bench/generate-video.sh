@@ -64,7 +64,6 @@ DRIVE_FOLDER_ID="${BENCH_DRIVE_FOLDER_ID:-}"
 # empty means unknown (report shows "-" and no utilization).
 WORKER_SLOTS="${BENCH_WORKER_SLOTS:-}"
 VOICEOVER="${BENCH_VOICEOVER:-0}"
-DOCS_FOLDER_ID="${BENCH_DOCS_FOLDER_ID:-}"
 
 # Arrays for --clip-id accumulation
 CLIP_IDS=()
@@ -82,7 +81,6 @@ Modes (at least one required):
 Options:
   --clips N           Number of clips to generate from topic (default: 5)
   --voiceover         Enable real TTS with COMBINED_TIMELINE for generated jobs
-  --docs-folder ID    Google Drive folder ID for generated documents
   --output FILE       Output JSON report file (default: out/benchmark-<ts>.json)
   --base-url URL      PipelineGen server URL (default: http://127.0.0.1:8000)
   --watermark ID      Watermark asset ID to apply during render
@@ -124,7 +122,6 @@ while [[ $# -gt 0 ]]; do
         --clip-id)      CLIP_IDS+=("$2"); shift 2 ;;
         --clips)        CLIPS="$2"; shift 2 ;;
         --voiceover)    VOICEOVER=1; shift ;;
-        --docs-folder)  DOCS_FOLDER_ID="$2"; shift 2 ;;
         --output)       OUTPUT_FILE="$2"; shift 2 ;;
         --base-url)     BASE_URL="$2"; shift 2 ;;
         --watermark)    WATERMARK_ASSET_ID="$2"; shift 2 ;;

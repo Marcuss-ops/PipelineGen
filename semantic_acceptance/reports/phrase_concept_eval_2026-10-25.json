@@ -1,0 +1,56 @@
+{
+  "schema": "phrase_concept_eval.v1",
+  "fixture": "fixtures/garlasco_2013_reconstructed.txt",
+  "provenance": "The 2,013-word script was reassembled from the historical segment briefs. It is not the lost original file and these annotations are not an independent human gold. They are a frozen, engine-independent baseline: gold authored from the text before any engine run, so T01/T05 can be measured instead of remaining NOT RUN.",
+  "results": [
+    {
+      "check": "visual_concept_recall_all",
+      "verdict": "PASS",
+      "detail": "19/19 gold concepts matched"
+    },
+    {
+      "check": "visual_concept_recall_core",
+      "verdict": "PASS",
+      "detail": "15/15 core concepts matched (threshold 0.75)"
+    },
+    {
+      "check": "keyword_named_share",
+      "verdict": "PASS",
+      "detail": "28/136 unique important words name a gold entity/concept (0.21); generic visual words are outside the gold by design"
+    },
+    {
+      "check": "phrases_grounded",
+      "verdict": "PASS",
+      "detail": "121 phrase candidates, 0 ungrounded"
+    },
+    {
+      "check": "phrases_dedup",
+      "verdict": "PASS",
+      "detail": "0 duplicate phrase texts inside their scene"
+    },
+    {
+      "check": "objects_annotated",
+      "verdict": "NOT_RUN",
+      "detail": "7 OBJECT mentions emitted (bicicletta, campioni, documenti, documento, fascicolo, pedali, reperto); the reconstructed gold annotates no objects, so object precision/recall needs an object-annotated corpus"
+    },
+    {
+      "check": "phrases_annotated",
+      "verdict": "NOT_RUN",
+      "detail": "121 phrase candidates are grounded; the reconstructed gold annotates no important phrases, so phrase precision/recall needs phrase annotations"
+    },
+    {
+      "check": "queries_grounded",
+      "verdict": "PASS",
+      "detail": "2212 query rungs, 0 not verbatim source slices"
+    }
+  ],
+  "measurements": {
+    "gold_concepts": 19,
+    "gold_core_concepts": 15,
+    "emitted_entities": 405,
+    "emitted_important_words": 136,
+    "phrase_candidates": 121,
+    "query_rungs": 2212,
+    "keyword_named_share": 0.2059
+  }
+}

@@ -44,7 +44,7 @@ func (t *recordingFixedTranslator) recorded() []TranslationInput {
 // this suite exercises is the translator.
 func fixedDisplayTextCoordinator(t *testing.T, req GenerateRequest) (*sceneReadyCoordinator, *recordingFixedTranslator) {
 	t.Helper()
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	translator := &recordingFixedTranslator{}
 	runner.translator = translator
 	return newSceneReadyCoordinator(

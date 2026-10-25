@@ -51,7 +51,6 @@ func (VidRushProviderSelector) Select(plan *scriptpkg.ResolvedGenerationPlan, se
 	preferences := make([]ProviderPreference, 0, 4)
 	for _, provider := range []string{
 		scriptpkg.VidRushProviderYouTube,
-		scriptpkg.VidRushProviderArtlist,
 		scriptpkg.VidRushProviderInternetImages,
 		scriptpkg.VidRushProviderImageGeneration,
 	} {
@@ -75,9 +74,6 @@ func existingSegmentAsset(plan *scriptpkg.ResolvedGenerationPlan, segmentID, con
 		}
 		if strings.TrimSpace(assignment.Asset.AssetID) != "" || strings.TrimSpace(assignment.Asset.Provider) != "" {
 			asset := assignment.Asset
-			if asset.Provider == "" {
-				asset.Provider = scriptpkg.VidRushProviderArtlist
-			}
 			return &asset
 		}
 	}
@@ -105,8 +101,6 @@ func providerAllowed(policy mediadomain.MediaProviderPolicy, provider string) bo
 	switch provider {
 	case scriptpkg.VidRushProviderYouTube:
 		return policy.YouTube.AsBool()
-	case scriptpkg.VidRushProviderArtlist:
-		return policy.Artlist.AsBool()
 	case scriptpkg.VidRushProviderInternetImages:
 		return policy.InternetImages.AsBool()
 	case scriptpkg.VidRushProviderImageGeneration:
@@ -133,13 +127,6 @@ func providerScore(provider string, profile scriptpkg.SegmentSemanticProfile, co
 		} else if hasTopic {
 			score += 0.25
 			reason = "topic can be resolved through documentary footage"
-		}
-	case scriptpkg.VidRushProviderArtlist:
-		if hasVisualTerms || typeName == "video" {
-			score += 0.55
-			reason = "generic filmable visual favors stock footage"
-		} else {
-			score += 0.20
 		}
 	case scriptpkg.VidRushProviderInternetImages:
 		if strings.Contains(typeName, "image") {

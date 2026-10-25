@@ -2,13 +2,10 @@
 // transport for the unified media search surface.
 //
 // Blocco A2 consolidation (June 2026): all independent search endpoints
-// (Artlist /search + /search/live, YouTube /search, clips /search/advanced,
 // scraper /search, /api/assets/search) are absorbed into a single
 // POST /api/media/search endpoint. The handler delegates to the canonical
 // Aggregator. Response envelope is the canonical Result
 // projection (items, next_cursor, partial, provider_errors).
-//
-// Body: { "query": "text", "sources": ["youtube","artlist"], "mode": "hybrid",
 //
 //	"filters": { "source": "...", "media_type": "video", ... }, "limit": 20 }
 package search
@@ -96,7 +93,6 @@ func (h *Handler) Resolve(c *gin.Context) {
 //
 // Field semantics (Blocco A2):
 //   - query     — Text field for canonical Query
-//   - sources   — Source filter (empty=all: artlist,youtube,stock,clips,sound_effect)
 //   - mode      — "hybrid" (default) or "ann" for semantic backend
 //   - filters   — Structured filters; YouTube discovery accepts sort=relevance|newest|oldest|longest|shortest|views and published_after as an RFC3339 inclusive date floor.
 //   - min_score — Optional inclusive score floor in [0,1], forwarded to capable catalog backends and applied uniformly to merged results.

@@ -17,7 +17,6 @@ def build_job(full, i):
     audio_work = 0
     drive_work = 0
     drive_download_ms = drive_download_work = drive_upload_ms = drive_upload_work = 0
-    doc_publish_ms = doc_publish_work = 0
     # publish_wall is assigned by the clip.render envelope branch; default it
     # so a job with no render facts (missing result file, e.g.) never crashes
     # the report at the drive dict.
@@ -37,14 +36,11 @@ def build_job(full, i):
             audio_work += w
         elif comp == "audio" and opname in ("audio_plan_compile", "mix", "aac_encode", "probe", "hash"):
             audio_work += w
-        elif comp in ("drive", "google_docs") or opname in ("upload", "publish"):
+        elif comp == "drive" or opname in ("upload", "publish"):
             drive_work += w
             if opname in ("download", "fetch", "materialize"):
                 drive_download_ms += ms(op.get("duration_ms"))
                 drive_download_work += w
-            elif comp == "google_docs" or opname in ("document.publish", "doc_publish"):
-                doc_publish_ms += ms(op.get("duration_ms"))
-                doc_publish_work += w
             else:
                 drive_upload_ms += ms(op.get("duration_ms"))
                 drive_upload_work += w
@@ -232,9 +228,7 @@ def build_job(full, i):
                 "download_work_ms": drive_download_work,
                 "upload_wall_ms": drive_upload_ms,
                 "upload_work_ms": drive_upload_work,
-                "document_publish_wall_ms": doc_publish_ms,
                 "renderer_finalize_ms": publish_wall,
-                "document_publish_work_ms": doc_publish_work,
             },
             "llm": llm, "result": result, "timing": timing}
 

@@ -66,12 +66,11 @@ func driveOnlyClip(id string, seconds int64) *ClipReference {
 // 1 clip = 1 scene = 1 timeline segment: the canonical binding (asset_id)
 // survives planning. The timeline compiles metadata, not a render payload.
 func TestGenerateTimeline_DriveOnlyClipPreservesCanonicalBinding(t *testing.T) {
-	runner, repo, textGen, _, _, _, _ := newTestRunner()
+	runner, repo, textGen, _, _, _ := newTestRunner()
 	textGen.scenes = driveOnlyScenesFor([]*ClipReference{driveOnlyClip("clip-drive-1", 45), driveOnlyClip("clip-drive-2", 12)})
 
 	req := defaultTestRequest()
 	req.GenerateTimeline = true
-	req.Docs = DocumentsConfig{Enabled: false}
 
 	runID := "run-timeline-binding-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
@@ -92,7 +91,7 @@ func TestGenerateTimeline_DriveOnlyClipPreservesCanonicalBinding(t *testing.T) {
 // Drive-only clips with ready transcripts must complete with a canonical
 // timeline and zero render work.
 func TestRegression_GenerateTimelineDriveOnlyClipDoesNotFailWithAssetHasNoLocalPath(t *testing.T) {
-	runner, repo, textGen, _, _, _, renderEnq := newTestRunner()
+	runner, repo, textGen, _, _, renderEnq := newTestRunner()
 	textGen.scenes = driveOnlyScenesFor([]*ClipReference{
 		driveOnlyClip("clip-love-001", 45),
 		driveOnlyClip("clip-love-002", 38),
@@ -101,7 +100,6 @@ func TestRegression_GenerateTimelineDriveOnlyClipDoesNotFailWithAssetHasNoLocalP
 
 	req := defaultTestRequest()
 	req.GenerateTimeline = true
-	req.Docs = DocumentsConfig{Enabled: false}
 
 	runID := "run-regression-46-love-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))

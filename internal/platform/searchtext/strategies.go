@@ -102,8 +102,6 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 	)
 }
 
-// artlistStrategy builds search text from:
-//
 //	title + tags + category + description
 //
 // Tags are joined with spaces. Follows the MergeMetadataSearchText

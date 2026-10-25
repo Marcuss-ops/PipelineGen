@@ -317,7 +317,6 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, jobsDB *storag
 //
 // PR-YAGNI-IMAGES-WIRING (July 2026): replaces the 14 positional arguments
 // of buildImagesService with a single struct. The previous signature carried
-// two unused parameters (ctx, artlistRepo) that are now removed entirely.
 type buildImagesParams struct {
 	Cfg           *config.Config
 	Log           *zap.Logger

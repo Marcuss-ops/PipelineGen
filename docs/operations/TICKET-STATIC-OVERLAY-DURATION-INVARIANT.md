@@ -1,6 +1,6 @@
 # TICKET-STATIC-OVERLAY-DURATION-INVARIANT (P1)
 
-**Stato:** PARTIAL (25/10/2026) — percorso implementato e costo live promettente; gate pixel fallito, A/B completo da ripetere.
+**Stato:** PASS LIMITATO (25/10/2026) — nel preset statico `IMPORTANT_PHRASE` / `static_text_smoke`, backend Vulkan/NVENC, la run finale ha rapporto live 0,684× e parità pixel 720/720. Non certifica altri preset, classi di overlay o backend; il ticket è chiuso solo per questo scope.
 **Origine:** idee di paradigma di `TICKET-OVERLAY-THROUGHPUT-100-MIN.md`
 (sezione «Idee di paradigma»), approvate dall'utente il 24/10/2026.
 **Ordine consigliato:** dopo B2 (`Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md`),
@@ -20,10 +20,11 @@ pagare raster/composite/encode per ogni frame identico.
 - Nel golden v17 `text_phrase` è 20/40 item e **45,2% del servizio render**
   (avg 2,266 s su clip brevi); item più lunghi (card da 20–30 s, mappe,
   schede entità statiche) amplificano il costo lineare.
-- La detection degli intervalli statici esiste già: `DirectYuvProgram` cachea
-  il `DirectYuvTemplate` su $[cue\_from, cue\_until)$ (wave B1, LAND
-  DirectYUV) — ma il loop emette comunque un frame renderizzato+encodato per
-  ogni tick.
+- **Baseline storica pre-fix:** `DirectYuvProgram` cacheava il
+  `DirectYuvTemplate` su $[cue\_from, cue\_until)$, ma il loop emetteva comunque
+  un frame renderizzato+encodato per tick. La run conclusiva sotto prova il
+  fast path solo per il preset statico indicato; non estendere la conclusione
+  a tutti i template o backend.
 
 ## Cambio
 
@@ -45,12 +46,14 @@ pagare raster/composite/encode per ogni frame identico.
 
 ## Gate di accettazione
 
-- [ ] Phrase card da 30 s costa ≤ 1,2× la stessa card da 3 s (servizio render
-      misurato su `render_attempt_analytics.render_ms`).
-- [ ] Parità pixel con golden: frame decodificati confrontati, nessuna
-      differenza accettata senza re-baseline dichiarato.
-- [ ] Nessuna regressione sui golden test esistenti né sul contratto media
-      (dimensions/codec/duration esatti).
+- [x] Sul preset statico certificato `IMPORTANT_PHRASE` / `static_text_smoke`,
+      la run live misura 30 s / 3 s = 0,684× (soglia ≤1,2×).
+- [x] Parità pixel sul caso certificato: 720/720 frame decodificati uguali;
+      tre output ripetuti byte-identici.
+- [x] Contratto media verificato sul caso certificato: MP4 H.264, durata e
+      numero frame attesi; non equivale a copertura di tutti i preset.
+- [ ] Estendere la certificazione agli altri preset statici e ai backend non
+      coperti prima di fare un claim generale O(1) per la durata.
 
 ## Dipendenze e rischi
 
@@ -62,11 +65,39 @@ pagare raster/composite/encode per ogni frame identico.
 
 ### Verifica closeout 2026-10-25
 
+#### Run conclusiva dopo anchor packet fix
+
+- Build Chronon3d release aggiornata PASS; test mirato
+  `ExecutionResolver preserves proven packet duplicates on NV12 output` PASS
+  (1 caso, 6 assertion).
+- Test live sul worker RenderingGen aggiornato, preset statico e prefisso
+  `freebuff-p1keyrun-20261025T1057Z`: mediane `render_ms` 3 s
+  **1810 ms** e 30 s **1238 ms**, rapporto **0,684×** (limite ≤1,2×).
+- Parità pixel: **720/720 frame** decodificati uguali. Tre MP4 da 30 s
+  ripetute byte-identiche, SHA-256
+  `bbc4b21e572637e1ae1a0302e73545e93bfe3058793e793d88b6669c3f3fa2f2`.
+- Sidecar: 719 frame riusati via fast path, un frame NVENC, 720 timestamp.
+  Il gate P1 è quindi PASS sul preset e sul percorso Vulkan/NVENC misurati.
+  Le prove fallite precedenti sotto riportate restano storia diagnostica e sono
+  superate da questo run; non estendono la certificazione ad altri preset.
+
+#### Prove diagnostiche precedenti (superate dal run conclusivo sopra)
+
 - Build e regressione C++ mirata PASS; il test encoder conferma che il riuso
   dopo finalizzazione MP4 resta disabilitato (EOF dal codec).
-- A/B live primo paio: 3 s `render_ms=7505`, 30 s `render_ms=4677` (rapporto
-  0,623), ma fallisce il contratto pixel: il frame decodificato 1 differisce
-  dal frame 0. La prova si è interrotta prima delle tre repliche, quindi il
-  rapporto non è un gate statistico superato. Serve chiarire se l'output ha
-  animazione implicita oppure se la replica del packet produce drift visivo,
-  poi ripetere il gate completo.
+- Il primo canary era mal configurato: `classic_phrase` dichiara un moto
+  `classic_playfair_baseline_rise` di 72 frame. Il canary corretto usa
+  `IMPORTANT_PHRASE` + `static_text_smoke`, senza `MotionID` né parametri animati.
+- A/B live corretto, tre repliche, backend `vulkan`, codec H.264: mediana 3 s
+  **1083 ms** ([1173, 1083, 1029]); mediana 30 s **3715 ms**
+  ([3750, 3674, 3715]); rapporto **3,430×**, quindi sopra la soglia 1,2×.
+- Parità pixel FAIL: frame decodificato 1 diverso dal frame 0. I tre artefatti
+  da 30 s sono byte-identici tra loro, SHA-256
+  `31846992021f6657dc4ff19c9ef9b375e2a718286c14973573028c3699b36adf`.
+  `ffprobe` mostra il frame 0 come I e il frame 1 come P; il comportamento live
+  non corrisponde all'anchor intra atteso. Anche col worker aggiornato (entry/exit
+  disabilitato per il preset statico) il rapporto live è 3,279× e il pixel frame
+  1 differisce: quella prova era FAIL e lasciava P1 aperto sul percorso
+  operativo Vulkan/NVENC. È superata dal run conclusivo sopra soltanto per il
+  preset certificato; resta valida come diagnostica storica, non come stato
+  corrente né come certificazione degli altri preset.

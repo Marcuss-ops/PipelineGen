@@ -27,19 +27,6 @@ func resolveSemanticEngineBinary() string {
 	return ""
 }
 
-func resolvePhraseImpactParityBinary() string {
-	if configured := strings.TrimSpace(os.Getenv("VELOX_RUST_PHRASE_IMPACT_PATH")); configured != "" {
-		if info, err := os.Stat(configured); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
-			return configured
-		}
-	}
-	path := filepath.Join("..", "..", "..", "..", "bin", "phrase_impact")
-	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
-		return path
-	}
-	return ""
-}
-
 // TestSemanticEngineRealBinaryAnalysesWholeScript walks the real
 // `semantic-engine` binary through the Go adapter: one NDJSON request for two
 // scenes returns grounded bullets, a comparable chart, the date and every
@@ -414,111 +401,6 @@ func feedbackMediaIdentities(plan *scriptgen.SemanticProductionPlan) int {
 		}
 	}
 	return count
-}
-
-func TestSemanticEngineRealBinaryMatchesPhraseImpactProducts(t *testing.T) {
-	semanticBinary := resolveSemanticEngineBinary()
-	if semanticBinary == "" {
-		t.Skip("semantic-engine release binary not installed; run make rust-fetch")
-	}
-	phraseBinary := resolvePhraseImpactParityBinary()
-	if phraseBinary == "" {
-		t.Skip("phrase_impact release binary not installed; run make rust-fetch")
-	}
-	transcript := "Marco Rossi fonda la società nel 2018. La squadra inaugura il nuovo impianto dopo due anni di lavori. Nel 2020 i tecnici registrano la capienza e verificano tutte le tribune. Il progetto coinvolge i residenti e gli operatori locali. Infine il club pubblica i risultati e ringrazia ogni partecipante."
-	end := len(transcript)
-	scenes := []scriptpkg.SceneAnalysisInput{{SceneID: "s1", Text: transcript, StartByte: intPointer(0), EndByte: &end}}
-	semanticScenes := []scriptgen.SemanticSceneInput{{SceneID: "s1", Text: transcript}}
-	adapter, err := NewSemanticEngineAdapter(NewSemanticEngineExecutor(semanticBinary, resolveFFmpegBinary(), zap.NewNop()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	semantic, editorial, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "it", scenes)
-	if err != nil {
-		t.Fatalf("combined semantic/editorial analysis failed: %v", err)
-	}
-	if len(semantic) != len(semanticScenes) || editorial.Summary == "" {
-		t.Fatalf("combined manifest is incomplete: scenes=%d editorial=%+v", len(semantic), editorial)
-	}
-	var bulletSpans []scriptpkg.SemanticBulletSpan
-	for _, candidate := range semantic["s1"].Bullets {
-		if candidate.Start >= 0 && candidate.End > candidate.Start && candidate.End <= len(transcript) && transcript[candidate.Start:candidate.End] == candidate.Text {
-			score := candidate.Score
-			bulletSpans = append(bulletSpans, scriptpkg.SemanticBulletSpan{StartByte: candidate.Start, EndByte: candidate.End, Text: candidate.Text, Score: &score})
-		}
-	}
-	legacy, err := NewPhraseImpactAnalyzer(phraseBinary, nil, nil).AnalyzeScenesWithSemanticBullets(context.Background(), transcript, "it", scenes, bulletSpans)
-	if err != nil {
-		t.Fatalf("legacy Phrase Impact parity analysis failed: %v", err)
-	}
-	if !reflect.DeepEqual(editorial.Summary, legacy.Summary) ||
-		!reflect.DeepEqual(editorial.BulletPoints, legacy.BulletPoints) ||
-		!reflect.DeepEqual(editorial.HeavySentences, legacy.HeavySentences) ||
-		!reflect.DeepEqual(editorial.ChapterManifest, legacy.ChapterManifest) ||
-		!reflect.DeepEqual(editorial.SceneHighlights, legacy.SceneHighlights) {
-		t.Fatalf("same Rust Phrase Impact core diverged: combined=%+v legacy=%+v", editorial, legacy)
-	}
-}
-
-func TestSemanticEngineRealBinaryMatchesPhraseImpactWithSuppliedVectors(t *testing.T) {
-	semanticBinary := resolveSemanticEngineBinary()
-	if semanticBinary == "" {
-		t.Skip("semantic-engine release binary not installed; run make rust-fetch")
-	}
-	phraseBinary := resolvePhraseImpactParityBinary()
-	if phraseBinary == "" {
-		t.Skip("phrase_impact release binary not installed; run make rust-fetch")
-	}
-	transcript := "La squadra prepara il progetto e controlla ogni passaggio. Gli operatori registrano i risultati e verificano tutte le procedure. La squadra completa il lavoro e pubblica il rapporto finale."
-	end := len(transcript)
-	scenes := []scriptpkg.SceneAnalysisInput{{SceneID: "s1", Text: transcript, StartByte: intPointer(0), EndByte: &end}}
-	makeEmbedder := func() *phraseImpactFakeEmbedder {
-		return &phraseImpactFakeEmbedder{batchResponse: func(texts []string) [][]float32 {
-			vectors := make([][]float32, len(texts))
-			for index, text := range texts {
-				vectors[index] = []float32{float32(len(text) + 1), float32(strings.Count(text, "a") + 1)}
-			}
-			return vectors
-		}}
-	}
-	adapter, err := NewSemanticEngineAdapter(NewSemanticEngineExecutor(semanticBinary, resolveFFmpegBinary(), zap.NewNop()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	combinedEmbedder := makeEmbedder()
-	adapter.SetPassageEmbedder(combinedEmbedder)
-	semanticBundles, err := adapter.SemanticBundles(context.Background(), "it", []scriptgen.SemanticSceneInput{{SceneID: "s1", Text: transcript}})
-	if err != nil {
-		t.Fatalf("semantic bullet source analysis failed: %v", err)
-	}
-	var bulletSpans []scriptpkg.SemanticBulletSpan
-	for _, candidate := range semanticBundles["s1"].Bullets {
-		if candidate.Start >= 0 && candidate.End > candidate.Start && candidate.End <= len(transcript) && transcript[candidate.Start:candidate.End] == candidate.Text {
-			score := candidate.Score
-			bulletSpans = append(bulletSpans, scriptpkg.SemanticBulletSpan{StartByte: candidate.Start, EndByte: candidate.End, Text: candidate.Text, Score: &score})
-		}
-	}
-	_, combined, err := adapter.AnalyzeSemanticEditorial(context.Background(), transcript, "it", scenes)
-	if err != nil {
-		t.Fatalf("combined E5-shaped analysis failed: %v", err)
-	}
-	legacyEmbedder := makeEmbedder()
-	legacy, err := NewPhraseImpactAnalyzer(phraseBinary, nil, legacyEmbedder).AnalyzeScenesWithSemanticBullets(
-		context.Background(), transcript, "it", scenes, bulletSpans,
-	)
-	if err != nil {
-		t.Fatalf("legacy E5-shaped parity analysis failed: %v", err)
-	}
-	if !reflect.DeepEqual(combined.Summary, legacy.Summary) ||
-		!reflect.DeepEqual(combined.BulletPoints, legacy.BulletPoints) ||
-		!reflect.DeepEqual(combined.HeavySentences, legacy.HeavySentences) ||
-		!reflect.DeepEqual(combined.ChapterManifest, legacy.ChapterManifest) ||
-		!reflect.DeepEqual(combined.SceneHighlights, legacy.SceneHighlights) {
-		t.Fatalf("supplied-vector results diverged: combined=%+v legacy=%+v", combined, legacy)
-	}
-	if len(combinedEmbedder.calls) == 0 || len(legacyEmbedder.calls) == 0 {
-		t.Fatalf("embedding preparation was skipped: combined=%v legacy=%v", combinedEmbedder.calls, legacyEmbedder.calls)
-	}
 }
 
 func intPointer(value int) *int { return &value }

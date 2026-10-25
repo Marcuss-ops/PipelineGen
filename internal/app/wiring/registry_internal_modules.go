@@ -186,7 +186,6 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	}
 
 	// Fase 4.1: native Pexels image search provider. Registered
-	// alongside Artlist + YouTube so the canonical SearchFanOut
 	if err := registerYouTubeClip(registry, log, cfg, root, regWiring, searchAgg, searchFanOut, idemHandler); err != nil {
 		return registryCrossStepState{}, err
 	}

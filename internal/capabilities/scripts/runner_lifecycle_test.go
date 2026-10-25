@@ -38,71 +38,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
-func TestIsRunCompletable(t *testing.T) {
-	validResult := &GenerateResult{
-		Scenes: []Scene{
-			{Text: map[Language]string{"en": "text1", "es": "texto1"}},
-			{Text: map[Language]string{"en": "text2", "es": "texto2"}},
-		},
-		Documents: map[Language]DocumentReference{
-			"en": {ID: "doc-en", Link: "https://doc-en"},
-			"es": {ID: "doc-es", Link: "https://doc-es"},
-		},
-	}
-
-	t.Run("nil result", func(t *testing.T) {
-		assert.False(t, IsRunCompletable(nil, []Language{"en"}))
-	})
-
-	t.Run("empty scenes", func(t *testing.T) {
-		assert.False(t, IsRunCompletable(&GenerateResult{}, []Language{"en"}))
-	})
-
-	t.Run("missing translation", func(t *testing.T) {
-		r := &GenerateResult{
-			Scenes: []Scene{
-				{Text: map[Language]string{"en": "text1"}},
-			},
-			Documents: map[Language]DocumentReference{
-				"en": {ID: "doc-en", Link: "https://doc-en"},
-				"es": {ID: "doc-es", Link: "https://doc-es"},
-			},
-		}
-		assert.False(t, IsRunCompletable(r, []Language{"en", "es"}),
-			"missing ES translation should be incompletable")
-	})
-
-	t.Run("missing document", func(t *testing.T) {
-		r := &GenerateResult{
-			Scenes: []Scene{
-				{Text: map[Language]string{"en": "text1", "es": "texto1"}},
-			},
-			Documents: map[Language]DocumentReference{
-				"en": {ID: "doc-en", Link: "https://doc-en"},
-			},
-		}
-		assert.False(t, IsRunCompletable(r, []Language{"en", "es"}),
-			"missing ES doc should be incompletable")
-	})
-
-	t.Run("valid complete result", func(t *testing.T) {
-		assert.True(t, IsRunCompletable(validResult, []Language{"en", "es"}))
-	})
-
-	t.Run("single language complete", func(t *testing.T) {
-		r := &GenerateResult{
-			Scenes: []Scene{
-				{Text: map[Language]string{"en": "text1"}},
-			},
-			Documents: map[Language]DocumentReference{
-				"en": {ID: "doc-en", Link: "https://doc-en"},
-			},
-		}
-		assert.True(t, IsRunCompletable(r, []Language{"en"}),
-			"should be completable with scenes and documents present")
-	})
-}
-
 func TestResumeFrom(t *testing.T) {
 	t.Run("nil run", func(t *testing.T) {
 		assert.Equal(t, StageNormalizing, ResumeFrom(nil))
@@ -184,7 +119,7 @@ func TestShouldRetry(t *testing.T) {
 		result := PreflightResult{Failures: []PreflightFailure{{
 			Category: "vidrush_provider", AssetID: "image_generation", Detail: "provider not registered",
 		}}}
-		runner, repo, _, _, _, _, _ := newTestRunner()
+		runner, repo, _, _, _, _ := newTestRunner()
 		runID := "run-permanent-provider-preflight"
 		require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 			ID: runID, Status: RunStatusRunning, CurrentStage: StagePreflight,
@@ -253,57 +188,6 @@ func TestShouldRetry(t *testing.T) {
 			AttemptCount: 1,
 		}
 		assert.True(t, ShouldRetry(run), "RUNNING status with retries left should allow retry")
-	})
-}
-
-func TestResolveDocsConfig(t *testing.T) {
-	t.Run("docs struct takes priority", func(t *testing.T) {
-		req := GenerateRequest{
-			Docs: DocumentsConfig{
-				Enabled:   true,
-				Languages: []Language{"en", "es"},
-				FolderID:  "folder-new",
-			},
-			DocsEnabled:   false,
-			DriveFolderID: "folder-old",
-			Languages:     []Language{"fr", "de"},
-		}
-		enabled, langs, folderID := req.ResolveDocsConfig()
-		assert.True(t, enabled)
-		assert.Equal(t, []Language{"en", "es"}, langs)
-		assert.Equal(t, "folder-new", folderID)
-	})
-
-	t.Run("fallback to deprecated fields", func(t *testing.T) {
-		req := GenerateRequest{
-			Docs:          DocumentsConfig{}, // Enabled false, Languages empty
-			DocsEnabled:   true,
-			DriveFolderID: "folder-old",
-			Languages:     []Language{"en", "es"},
-		}
-		enabled, langs, folderID := req.ResolveDocsConfig()
-		assert.True(t, enabled, "DocsEnabled should enable docs")
-		assert.Equal(t, []Language{"en", "es"}, langs, "should fallback to top-level Languages")
-		assert.Equal(t, "folder-old", folderID, "should fallback to DriveFolderID")
-	})
-
-	t.Run("disabled by default", func(t *testing.T) {
-		req := GenerateRequest{
-			Languages: []Language{"en"},
-		}
-		enabled, langs, _ := req.ResolveDocsConfig()
-		assert.False(t, enabled, "docs should be disabled by default")
-		assert.Empty(t, langs, "langs should be empty when docs are disabled")
-	})
-
-	t.Run("empty languages when enabled", func(t *testing.T) {
-		req := GenerateRequest{
-			Docs:      DocumentsConfig{Enabled: true},
-			Languages: nil,
-		}
-		enabled, langs, _ := req.ResolveDocsConfig()
-		assert.True(t, enabled)
-		assert.Empty(t, langs, "langs should be empty when no languages configured")
 	})
 }
 

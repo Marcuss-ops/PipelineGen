@@ -11,21 +11,15 @@ import (
 
 // PostProcessResult carries the output of a single processor.
 type PostProcessResult struct {
-	DocID                   string
-	DocLink                 string
-	DocumentRenderer        string `json:"document_renderer,omitempty"`
-	DocumentSpecSceneSHA256 string `json:"document_specscene_sha256,omitempty"`
-	DocumentSceneCount      int    `json:"document_scene_count,omitempty"`
-	DocumentLanguage        string `json:"document_language,omitempty"`
-	VisualPlans             []mediamemory.SceneVisualPlan
-	VisualAssignments       []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
-	Entities                *scriptpkg.EntityResult
-	VidRushSegments         []scriptpkg.VidRushSegmentResult
-	Metadata                []scriptpkg.VideoMetadata
-	Voiceovers              []SceneVoiceover
-	SceneImages             []SceneImage
-	ScriptID                int64
-	AlreadyPersisted        bool
+	VisualPlans       []mediamemory.SceneVisualPlan
+	VisualAssignments []mediadomain.VisualAssignment `json:"visual_assignments,omitempty"`
+	Entities          *scriptpkg.EntityResult
+	VidRushSegments   []scriptpkg.VidRushSegmentResult
+	Metadata          []scriptpkg.VideoMetadata
+	Voiceovers        []SceneVoiceover
+	SceneImages       []SceneImage
+	ScriptID          int64
+	AlreadyPersisted  bool
 	// Changed is set by mutative processors (e.g. ClipBindingsProcessor)
 	// that modify input state but don't produce canonical output fields.
 	// When true, IsEmpty() returns false even if all output fields
@@ -45,9 +39,6 @@ type PostProcessResult struct {
 	// not see a serialisation diff.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
 	Warnings          []string              `json:"warnings,omitempty"`
-	// ArtlistClipSuggestions carries Artlist clip matches discovered
-	// by the ClipSearchProcessor. PR-CLIP-SEARCH-WIRING (July 2026).
-	ArtlistClipSuggestions []ArtlistClipMatch `json:"artlist_clip_suggestions,omitempty"`
 	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09): the canonical
 	// pipeline-level surface for translated text + translated
 	// SpecScene. The TranslationProcessor populates both in
@@ -73,11 +64,6 @@ type PostProcessResult struct {
 func (r *PostProcessResult) IsEmpty() bool {
 	if r == nil {
 		return true
-	}
-	// A published document is observable output even when it does not
-	// mutate the SpecScene or populate another artifact collection.
-	if strings.TrimSpace(r.DocID) != "" || strings.TrimSpace(r.DocLink) != "" {
-		return false
 	}
 	// P1 #10 (June 2026): Changed flag lets mutative processors
 	// (e.g. ClipBindingsProcessor) signal "I did real work" without
@@ -117,11 +103,6 @@ func (r *PostProcessResult) IsEmpty() bool {
 		return false
 	}
 	if len(r.UpdatedSpecScene.Scenes) > 0 {
-		return false
-	}
-	// PR-CLIP-SEARCH-WIRING (July 2026): clip search results count
-	// as observable work.
-	if len(r.ArtlistClipSuggestions) > 0 {
 		return false
 	}
 	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09): translated text +

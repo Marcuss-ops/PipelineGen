@@ -51,8 +51,7 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		EditorPromptVersion: item.ScriptParams.EditorPromptVersion,
 		QAPromptVersion:     item.ScriptParams.QAPromptVersion, UseMemory: item.ScriptParams.UseMemory,
 		ForceRefresh: item.ScriptParams.ForceRefresh, DriveFolderID: item.Output.DriveFolderID,
-		DocsEnabled: item.Docs.Enabled, DocsLanguages: append([]string(nil), item.Docs.Languages...),
-		DocsFolderID: item.Docs.FolderID, VoiceoverEnabled: item.Output.VoiceoverEnabled,
+		VoiceoverEnabled:  item.Output.VoiceoverEnabled,
 		VoiceoverGroup:    item.Output.VoiceoverGroup,
 		VoiceoverFolderID: item.Output.VoiceoverFolderID, MaxChars: item.Output.MaxChars,
 		OutputFmt: item.Output.OutputFmt, SaveToDB: item.Output.SaveToDB,
@@ -173,9 +172,6 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 		out.GenerateMetadata = scriptpkg.ToggleEnabled
 	}
 	processors := buildPostprocessorList(out)
-	if item.Docs.Enabled {
-		processors = append(processors, adapters.ProcessorDocument)
-	}
 	if mediaPlanRequested(item) {
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualSlots)
 		processors = insertProcessorAfterClipBindings(processors, adapters.ProcessorVisualPlanning)
@@ -192,14 +188,12 @@ func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.P
 
 func ensureAssetLocationReconciliation(processors []adapters.ProcessorName) []adapters.ProcessorName {
 	result := make([]adapters.ProcessorName, 0, len(processors)+1)
-	needsPersistence, needsDocument := false, false
+	needsPersistence := false
 	for _, processor := range processors {
 		switch processor {
 		case adapters.ProcessorAssetLocationReconciliation:
 		case adapters.ProcessorPersistence:
 			needsPersistence = true
-		case adapters.ProcessorDocument:
-			needsDocument = true
 		default:
 			result = append(result, processor)
 		}
@@ -207,9 +201,6 @@ func ensureAssetLocationReconciliation(processors []adapters.ProcessorName) []ad
 	result = append(result, adapters.ProcessorAssetLocationReconciliation)
 	if needsPersistence {
 		result = append(result, adapters.ProcessorPersistence)
-	}
-	if needsDocument {
-		result = append(result, adapters.ProcessorDocument)
 	}
 	return result
 }
@@ -289,7 +280,7 @@ func ensureInlineClipArtifactsWithoutVoiceover(processors []adapters.ProcessorNa
 
 func buildEditorialPrompt(item scriptpkg.GenerationItemV2) string {
 	var parts []string
-	cleanSourceText, _ := scriptpkg.ParseArtlistDirectives(item.Source.SourceText)
+	cleanSourceText := strings.TrimSpace(item.Source.SourceText)
 	if item.Source.Topic != "" {
 		parts = append(parts, "Topic: "+item.Source.Topic)
 	}

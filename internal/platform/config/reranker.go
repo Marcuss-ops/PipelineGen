@@ -10,7 +10,6 @@ import (
 
 // RerankerConfig holds settings for the CrossEncoder reranking service.
 // The reranker is a post-Qdrant precision layer that improves semantic
-// relevance for all media types (clips, stock, artlist, images, voiceover).
 //
 // Enabled defaults to true (canonical recipe: Qdrant top_k window → BGE
 // re-score → top 5 results). Operators disable it explicitly with

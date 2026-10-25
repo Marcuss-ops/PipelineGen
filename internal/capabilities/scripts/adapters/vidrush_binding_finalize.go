@@ -17,7 +17,6 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 	out := make([]scriptpkg.VidRushSegmentResult, 0, len(segments))
 	segmentIndex := make(map[string]int, len(segments))
 	boundAssetOwners := make(map[string]string)
-	artlistContext, artlistContextErr := newArtlistIsolationContext(segments)
 	for _, original := range segments {
 		seg := CloneVidRushSegmentResult(original)
 		normalizeVidRushSegmentAssets(&seg)
@@ -29,10 +28,6 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 		}
 		valid := make([]scriptpkg.SegmentAssetCandidate, 0, len(seg.Assets.Candidates))
 		seen := make(map[string]struct{}, len(seg.Assets.Candidates))
-		artlistSegmentValid := artlistContextErr == nil
-		if artlistSegmentValid {
-			artlistSegmentValid = validateArtlistQueriesForSegment(artlistContext, seg) == nil
-		}
 		for _, candidate := range seg.Assets.Candidates {
 			if !validVidRushCandidate(candidate) || !readyVidRushCandidate(candidate) {
 				continue
@@ -46,14 +41,6 @@ func FinalizeVidRushBindingsWithCache(ctx context.Context, segments []scriptpkg.
 			if candidate.Position != seg.Position ||
 				(strings.TrimSpace(candidate.TextHash) != "" && strings.TrimSpace(candidate.TextHash) != strings.TrimSpace(seg.TextHash)) {
 				continue
-			}
-			if strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderArtlist) {
-				if !artlistSegmentValid || validateArtlistCandidateForContext(artlistContext, candidate, seg) != nil {
-					// A contaminated Artlist candidate is never eligible for
-					// ranking or winner selection, even if it is otherwise
-					// technically durable.
-					continue
-				}
 			}
 			key := strings.ToLower(strings.TrimSpace(candidate.AssetID))
 			if owner, exists := boundAssetOwners[key]; exists && owner != seg.SegmentID {

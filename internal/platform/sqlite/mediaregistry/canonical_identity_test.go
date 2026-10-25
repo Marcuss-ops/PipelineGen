@@ -149,7 +149,6 @@ func TestBackfill_ReconstructsSourcesFailClosed(t *testing.T) {
 	r, db := newCanonicalIdentityResolver(t)
 	// youtube asset with a source_video_id → backfilled.
 	// drive asset with a drive_file_id → backfilled.
-	// artlist asset with no derivable ref → UNKNOWN.
 	// youtube asset without source_video_id → UNKNOWN.
 	if _, err := db.Exec(`
 		INSERT INTO media_assets (id, source, media_type, lifecycle_state, source_video_id, drive_file_id, content_sha256) VALUES

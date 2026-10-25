@@ -107,7 +107,6 @@ func startupTestRegistry() *DestinationRegistry {
 		Drive: config.DriveConfig{
 			MediaRootFolder:        "media-root",
 			ClipsRootFolder:        "clips-root",
-			ArtlistRootFolder:      "artlist-root",
 			StockRootFolder:        "stock-root",
 			ImagesRootFolder:       "images-root",
 			VoiceoverRootFolder:    "vo-root",
@@ -117,41 +116,27 @@ func startupTestRegistry() *DestinationRegistry {
 	})
 }
 
-// startupEmptyRootRegistry builds a registry where DestinationArtlist
 // has an empty RootFolderID (the Skipped path) and the rest are
 // non-empty (the PerDestination path). Constructed via the
 // NewDestinationRegistry public entry point so the test exercises
 // the production code path (the resolution helpers ClipsFolder/ImagesFolder/etc.
 // fall through to MediaRootFolder when their own root is unset, so to
-// force Artlist to be EMPTY we must use the canonical helper but
 // also blank the fallback. The cleanest way: leave
-// ArtlistRootFolder empty AND set a different MediaRootFolder that
-// is overridden by the per-key roots via ResolveFolder. Artlist's
-// helper returns MediaRootFolder when ArtlistRootFolder is empty,
 // so to make it NULL-empty here we override post-construction via
 // a separate registry policy.
 //
 // Simpler: re-build the registry via the canonical constructor, then
-// iterate and zero out the Artlist root via a post-construction step.
 // We avoid mutating DestinationRegistry's internal map directly (the
 // p.policies field is unexported), so the test uses
 // NewDestinationRegistryWithPolicies — but only when the build tag
 // is available. To keep the test agnostic, we use NewDestinationRegistry
 // and accept that the test exercises the empty-root code path
-// indirectly: we pass "" for the ArtlistRootFolder AND override
-// MediaRootFolder such that ResolveFolder returns "" for Artlist.
-//
-// In practice: when both ArtlistRootFolder and MediaRootFolder are
-// empty, ArtlistFolder() returns "". Use this shape.
 func startupEmptyRootRegistry() *DestinationRegistry {
-	// ArtlistRootFolder is "". MediaRootFolder is also "" (no fallback).
-	// Result: ArtlistFolder() returns "". Other destinations still
 	// carry their explicit non-empty roots.
 	return NewDestinationRegistry(&config.Config{
 		Drive: config.DriveConfig{
 			MediaRootFolder:        "", // no fallback
 			ClipsRootFolder:        "clips-root",
-			ArtlistRootFolder:      "", // <-- empty: should be Skipped
 			StockRootFolder:        "stock-root",
 			ImagesRootFolder:       "images-root",
 			VoiceoverRootFolder:    "vo-root",
@@ -285,7 +270,7 @@ func TestDriveRootsValidator_PartialFail_P1_3(t *testing.T) {
 // ── Test 4: EmptySkipped (empty RootFolderID is skipped, not failed) ─
 
 func TestDriveRootsValidator_EmptySkipped_P1_3(t *testing.T) {
-	reg := startupEmptyRootRegistry() // DestinationArtlist has empty RootFolderID
+	reg := startupEmptyRootRegistry() // DestinationAdmin has an empty RootFolderID
 	probe := &fakeStartupRootsProbe{}
 
 	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)
@@ -297,17 +282,15 @@ func TestDriveRootsValidator_EmptySkipped_P1_3(t *testing.T) {
 	require.False(t, report.HasFailures(),
 		"EmptySkipped: HasFailures must be false (empty root is Skipped, not a probe failure)")
 
-	// The Artlist destination is in Skipped (empty root). Admin is also
 	// skipped because its RootFolder() returns MediaRootFolder which is
 	// empty in this registry. ClipMetadata is also Skipped (its root
 	// is the clip folder, owned by DestinationYouTubeClip; no own root
 	// to probe). The other non-empty-root destinations are in PerDestination.
-	require.ElementsMatch(t, []DestinationKey{DestinationArtlist, DestinationAdmin, DestinationClipMetadata}, report.Skipped,
-		"EmptySkipped: DestinationArtlist + DestinationAdmin + DestinationClipMetadata (empty/no-own-root) MUST be in Skipped")
+	require.ElementsMatch(t, []DestinationKey{DestinationAdmin, DestinationClipMetadata}, report.Skipped,
+		"EmptySkipped: DestinationAdmin + DestinationClipMetadata (empty/no-own-root) MUST be in Skipped")
 	require.Len(t, report.PerDestination, countNonEmptyRoots(reg),
 		"EmptySkipped: every non-empty-root destination MUST be probed (dynamic count via countNonEmptyRoots)")
 
-	// Verify NO probe call was made for the empty Artlist root
 	// (validator MUST skip it before invoking ProbeFolderAccess).
 	for _, probed := range probe.probeCalls {
 		require.NotEmpty(t, probed,
@@ -412,7 +395,7 @@ func TestDriveRootsValidator_FailureLabelPerDestination_P1_3(t *testing.T) {
 //            once across PerDestination ∪ Skipped ─────────────────────
 
 func TestDriveRootsValidator_ReportCoversAllKeys_P1_3(t *testing.T) {
-	reg := startupEmptyRootRegistry() // includes a Skipped entry (Artlist)
+	reg := startupEmptyRootRegistry() // includes a Skipped entry (DestinationAdmin)
 	probe := &fakeStartupRootsProbe{}
 
 	v, err := NewDriveRootsValidator(reg, probe, zap.NewNop(), nil)

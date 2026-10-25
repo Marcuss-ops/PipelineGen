@@ -24,7 +24,6 @@
 // the Router.SetInternalMediaHandler binding for the QDRANT-001
 // server-to-server surface at /internal/v1/media/sync.
 //
-// Pattern parity with `artlist/module.go` (C1-Step 3),
 // `youtube/module.go` (C1-Step 4), `clips/module.go` (C1-Step 5),
 // `stock/module.go` (C1-Step 6), `voiceover/module.go` (C1-Step 7),
 // `soundeffect/module.go` (C1-Step 8), `register/module.go` (C1-Step 9).

@@ -2,20 +2,14 @@ package adapters
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
-// The Artlist search gate (env override, process-wide gate channel, retry
-// helpers) lives in vidrush_artlist_isolation.go — same provider family, and
 // this file sat past the godlike/08 strict line cap with the gate inline.
 
 // VidRushRegistryMediaResolver is the single provider-registry discovery
@@ -23,76 +17,6 @@ import (
 // never acquires, scores, ranks or selects a winner.
 type VidRushRegistryMediaResolver struct {
 	Registry *VidRushAssetProviderRegistry
-}
-
-func (s *VidRushRegistryMediaResolver) SearchClips(ctx context.Context, title string, phrases []string) ([]ArtlistClipMatch, error) {
-	if s == nil || s.Registry == nil {
-		return nil, scriptports.ErrVidRushProviderNotFound
-	}
-	type queryResult struct {
-		match ArtlistClipMatch
-		err   error
-	}
-	results, mapErr := concurrent.Map(ctx, phrases, 3, func(ctx context.Context, _ int, rawPhrase string) (queryResult, error) {
-		phrase := strings.TrimSpace(rawPhrase)
-		if phrase == "" {
-			return queryResult{}, nil
-		}
-		if err := acquireVidRushArtlistSearch(ctx); err != nil {
-			return queryResult{err: fmt.Errorf("artlist query %q: acquire search slot: %w", phrase, err)}, nil
-		}
-		defer releaseVidRushArtlistSearch()
-		var candidates []scriptpkg.SegmentAssetCandidate
-		// Shared retry engine (2026-09-12 audit F6c; replaces the
-		// hand-rolled `attempt < 3` loop): 3 attempts, 1s→2s backoff,
-		// retrying ONLY on Artlist rate-limit errors.
-		candidates, searchErr := retry.DoWithValue(ctx, func() ([]scriptpkg.SegmentAssetCandidate, error) {
-			queryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-			defer cancel()
-			return s.Registry.Search(queryCtx, scriptpkg.VidRushProviderArtlist, scriptports.VidRushSearchRequest{SceneID: title, Text: title, Query: phrase, Limit: 10})
-		}, retry.Options{
-			MaxAttempts:    3,
-			InitialBackoff: 1 * time.Second,
-			MaxBackoff:     2 * time.Second,
-			BackoffFactor:  2.0,
-			DisableJitter:  true,
-			IsRetryable:    isArtlistRateLimited,
-		})
-		err := searchErr
-		if err != nil {
-			return queryResult{err: fmt.Errorf("artlist query %q: %w", phrase, err)}, nil
-		}
-		match := ArtlistClipMatch{Phrase: phrase, Remote: true}
-		for _, candidate := range candidates {
-			link := strings.TrimSpace(candidate.SourceURL)
-			if !isM3U8URL(link) {
-				link = strings.TrimSpace(candidate.PreviewURL)
-			}
-			if !isM3U8URL(link) {
-				continue
-			}
-			match.ClipNames = append(match.ClipNames, candidate.AssetID)
-			match.ClipDriveLinks = append(match.ClipDriveLinks, link)
-			if match.FolderLink == "" {
-				match.FolderLink = candidate.SourcePageURL
-			}
-		}
-		return queryResult{match: match}, nil
-	})
-	if mapErr != nil {
-		return nil, mapErr
-	}
-	out := make([]ArtlistClipMatch, 0, len(results))
-	var firstErr error
-	for _, result := range results {
-		if result.err != nil && firstErr == nil {
-			firstErr = result.err
-		}
-		if len(result.match.ClipDriveLinks) > 0 {
-			out = append(out, result.match)
-		}
-	}
-	return out, firstErr
 }
 
 func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -162,7 +86,6 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 // provider registry). It owns only the concurrency and the candidate merge; the
 // provider-specific search, rate limiting and retry stay in the searchers, so
 // no provider orchestration is duplicated for the incremental path.
-// ResolveProviders runs Artlist and internet-image discovery concurrently for
 // one segment and merges the winning candidates back into an immutable result.
 // Required providers fail closed; best-effort providers never turn an
 // unavailable backend into a silent successful empty result (the searchers
@@ -176,7 +99,6 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		// Fixed media is authoritative. Preserve its existing binding and do
 		// not invoke any provider, catalog, query builder or ranker.
 		updated.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
-		updated.Cache.Artlist = "BYPASSED"
 		updated.Cache.InternetImages = "BYPASSED"
 		updated.Cache.YouTube = "BYPASSED"
 		return updated, nil
@@ -186,7 +108,6 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		// policy may still fetch verified portrait overlays; keep every video
 		// provider disabled on this sidecar path.
 		if !stockBoundEntityImageMaterializationEnabled(plan) {
-			updated.Cache.Artlist = "BYPASSED"
 			updated.Cache.InternetImages = "BYPASSED"
 			updated.Cache.YouTube = "BYPASSED"
 			updated.Cache.Binding = "STOCK_BOUND"
@@ -194,10 +115,8 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		}
 		imagePlan := *plan
 		imagePlan.MediaPlan = plan.MediaPlan.Clone()
-		imagePlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
 		imagePlan.MediaPlan.ProviderPolicy.YouTube = mediadomain.MediaToggleDisabled
 		plan = &imagePlan
-		updated.Cache.Artlist = "BYPASSED"
 		updated.Cache.YouTube = "BYPASSED"
 		updated.Cache.Binding = "STOCK_BOUND"
 	}
@@ -205,8 +124,7 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	// by the caller, keeping concurrent providers away from shared state.
 
 	profile := updated.CanonicalSemanticProfile()
-	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.artlist, f.images, f.youtube)
-	artlistEnabled := fanoutPlan.artlistEnabled
+	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.images, f.youtube)
 	imagesEnabled := fanoutPlan.imagesEnabled
 	youtubeEnabled := fanoutPlan.youtubeEnabled
 	outcomes := make(chan vidRushProviderOutcome, 3)
@@ -216,24 +134,12 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	segmentID := fanoutPlan.segmentID
 	youtubeSources := fanoutPlan.youtubeSources
 	workerInput := CloneVidRushSegmentResult(updated)
-	// Keep the complete canonical identity when converting Artlist matches.
-	// Using only SegmentID would silently reset Position/TextHash and make a
-	// valid candidate indistinguishable from a foreign-segment binding.
-	artlistIdentity := workerInput
 
 	if youtubeEnabled && len(youtubeSources) > 0 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			f.resolveYouTubeCandidates(ctx, plan, fanoutPlan, workerInput, outcomes)
-		}()
-	}
-
-	if artlistEnabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			f.resolveArtlistCandidates(ctx, plan, fanoutPlan, artlistIdentity, outcomes)
 		}()
 	}
 
@@ -272,92 +178,6 @@ func (f *VidRushProviderFanout) resolveYouTubeCandidates(ctx context.Context, pl
 		return
 	}
 	outcomes <- vidRushProviderOutcome{provider: scriptpkg.VidRushProviderYouTube, candidates: candidates}
-}
-
-func (f *VidRushProviderFanout) resolveArtlistCandidates(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, fanoutPlan vidRushFanoutPlan, artlistIdentity scriptpkg.VidRushSegmentResult, outcomes chan<- vidRushProviderOutcome) {
-	cacheKey := vidRushFanoutArtlistCacheKey(&fanoutPlan, plan)
-	artlistQueries := fanoutPlan.artlistQueries
-	if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
-		if cached, ok := cacheLoad(vidrushArtlistCache, cacheKey); ok {
-			if payload, ok := cached.(artlistSegmentCachePayload); ok {
-				candidates := append([]scriptpkg.SegmentAssetCandidate(nil), payload.Candidates...)
-				if f.metrics != nil {
-					f.metrics.IncAssetCache("artlist", true)
-				}
-				outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates, allCacheHits: true}
-				return
-			}
-		}
-		var persisted artlistSegmentCachePayload
-		if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "artlist", cacheKey, &persisted); err != nil {
-			outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
-			return
-		} else if hit {
-			persisted = cloneArtlistSegmentCachePayload(persisted)
-			if len(persisted.Candidates) > 0 {
-				cacheStore(vidrushArtlistCache, cacheKey, persisted)
-			}
-			if f.metrics != nil {
-				f.metrics.IncAssetCache("artlist", true)
-			}
-			outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: persisted.Candidates, allCacheHits: true}
-			return
-		}
-	}
-	if f.metrics != nil {
-		f.metrics.IncAssetCache("artlist", false)
-	}
-	// P6a (anti-muda): query-set dedup across segments. The segment cache
-	// above keys on segment identity, so N segments about the same entities
-	// pay N identical provider searches. Raw matches carry no segment
-	// identity — share them, then convert per owning segment below.
-	querysetKey := vidRushArtlistQuerySetKey(plan.Title, plan.Language, artlistQueries)
-	matches, querysetHit := artlistQuerySetLoad(querysetKey)
-	if !querysetHit && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
-		var persisted artlistQuerySetPayload
-		if hit, err := loadVidRushPersistentJSON(ctx, f.cache, "artlist-queryset", querysetKey, &persisted); err != nil {
-			outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
-			return
-		} else if hit {
-			matches, querysetHit = cloneArtlistMatches(persisted.Matches), true
-			artlistQuerySetStore(querysetKey, matches)
-		}
-	}
-	if !querysetHit {
-		if f.metrics != nil {
-			f.metrics.IncProviderRequest("artlist")
-		}
-		var err error
-		matches, err = f.artlist.SearchClips(ctx, plan.Title, artlistQueries)
-		if err != nil {
-			if f.metrics != nil {
-				f.metrics.IncProviderFailure("artlist")
-			}
-			outcomes <- vidRushProviderOutcome{provider: "artlist", err: err}
-			return
-		}
-		matches = dedupeArtlistMatches(matches)
-		artlistQuerySetStore(querysetKey, matches)
-		// Best-effort L2: a store failure must not turn a successful
-		// search into an error outcome (the segment store below owns
-		// the fail-closed path).
-		if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
-			_ = storeVidRushPersistentJSON(ctx, f.cache, "artlist-queryset", querysetKey, artlistQuerySetPayload{Matches: matches})
-		}
-	} else if f.metrics != nil {
-		f.metrics.IncAssetCache("artlist", true)
-	}
-	candidates := artlistMatchesToCandidates(artlistIdentity, dedupeArtlistMatches(matches))
-	payload := artlistSegmentCachePayload{
-		Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...),
-		Matches:    cloneArtlistMatches(dedupeArtlistMatches(matches)),
-	}
-	cacheStore(vidrushArtlistCache, cacheKey, payload)
-	if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "artlist", cacheKey, payload); cacheErr != nil {
-		outcomes <- vidRushProviderOutcome{provider: "artlist", err: cacheErr}
-		return
-	}
-	outcomes <- vidRushProviderOutcome{provider: "artlist", candidates: candidates}
 }
 
 func (f *VidRushProviderFanout) verifySegmentImageCandidates(ctx context.Context, segment scriptpkg.VidRushSegmentResult, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {

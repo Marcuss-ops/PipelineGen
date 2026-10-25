@@ -135,7 +135,7 @@ func entitySwitchPipeline(enricher VisualNERPort) *VidRushPipeline {
 // gate site: a disabled request builds no coordinator, while an explicit
 // entity request still builds one.
 func TestRunner_BeginVidRushSkippedWhenEntityExtractionDisabled(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	runner.SetVidRushPipeline(entitySwitchPipeline(&entitySwitchEnricher{}))
 
 	disabled := defaultTestRequest()
@@ -155,7 +155,7 @@ func TestRunner_BeginVidRushSkippedWhenEntityExtractionDisabled(t *testing.T) {
 // end-to-end contract: a run with extract_entities=disabled completes without
 // a durable entity aggregate, per-scene entities, or any enricher invocation.
 func TestRunner_ExtractEntitiesDisabledLeavesResultWithoutEntities(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enricher := &entitySwitchEnricher{}
 	runner.SetVidRushPipeline(entitySwitchPipeline(enricher))
 
@@ -182,7 +182,7 @@ func TestRunner_ExtractEntitiesDisabledLeavesResultWithoutEntities(t *testing.T)
 // an explicit entity consumer runs the enricher exactly once per committed
 // scene and persists the aggregate.
 func TestRunner_SegmentOverridesControlEnrichmentAndProjection(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enricher := &entitySwitchEnricher{}
 	runner.SetVidRushPipeline(entitySwitchPipeline(enricher))
 
@@ -217,7 +217,7 @@ func TestRunner_SegmentOverridesControlEnrichmentAndProjection(t *testing.T) {
 }
 
 func TestRunner_ExplicitExtractEntitiesStillRunsVidRush(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enricher := &entitySwitchEnricher{}
 	runner.SetVidRushPipeline(entitySwitchPipeline(enricher))
 

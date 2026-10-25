@@ -47,7 +47,7 @@ func fixedMediaSegment() scriptpkg.VidRushSegmentResult {
 		SegmentID: "intro-segment", SceneID: "intro", Position: 0,
 		Text: "authoritative intro", TextHash: "intro-hash",
 		ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
-		Insights:      scriptpkg.SegmentInsights{ArtlistQueries: []string{"must not search"}, ImageQueries: []string{"must not search"}},
+		Insights:      scriptpkg.SegmentInsights{ImageQueries: []string{"must not search"}},
 		Assets:        scriptpkg.SegmentAssetSelection{PrimaryVideo: &scriptpkg.SegmentAssetCandidate{AssetID: "intro-clip", Provider: "youtube"}},
 	}
 }
@@ -70,23 +70,12 @@ func TestFixedMediaDoesNotEnterVisualPlanning(t *testing.T) {
 	// that owns it: adapters/processor fixed_media_guard_test.go
 }
 
-func TestFixedMediaSkipsArtlistAndInternetImageSearch(t *testing.T) {
-	artlist := &countingArtlistSearcher{}
+func TestFixedMediaSkipsInternetImageSearch(t *testing.T) {
 	images := &countingImageSearcher{}
 	plan := &scriptpkg.ResolvedGenerationPlan{Title: "fixed", MediaPlan: mediadomain.MediaPlanSpec{
-		ProviderPolicy: mediadomain.MediaProviderPolicy{
-			Artlist: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled,
-		},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
 	}}
 	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{fixedMediaScene()}}, VidRushSegments: []scriptpkg.VidRushSegmentResult{fixedMediaSegment()}}
-
-	artlistResult, err := NewClipSearchProcessor(artlist).Process(context.Background(), plan, input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if artlist.calls != 0 || artlistResult.VidRushSegments[0].Cache.Artlist != "BYPASSED" {
-		t.Fatalf("fixed scene entered Artlist search: calls=%d result=%+v", artlist.calls, artlistResult)
-	}
 
 	imageResult, err := NewMediaResolverImageStage(images).Process(context.Background(), plan, input)
 	if err != nil {
@@ -98,19 +87,18 @@ func TestFixedMediaSkipsArtlistAndInternetImageSearch(t *testing.T) {
 }
 
 func TestFixedMediaBlocksIncrementalFanoutAndSourceFallback(t *testing.T) {
-	artlist := &countingArtlistSearcher{}
 	images := &countingImageSearcher{}
-	fanout := NewVidRushProviderFanout(artlist, images)
+	fanout := NewVidRushProviderFanout(images)
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{
-		Artlist: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled,
+		InternetImages: mediadomain.MediaToggleEnabled,
 	}}}
 	segment := fixedMediaSegment()
 	got, err := fanout.ResolveProviders(context.Background(), plan, segment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if artlist.calls != 0 || images.calls != 0 || got.Assets.PrimaryVideo == nil || got.Assets.PrimaryVideo.AssetID != "intro-clip" {
-		t.Fatalf("fixed fanout changed authoritative media: artlist=%d images=%d result=%+v", artlist.calls, images.calls, got)
+	if images.calls != 0 || got.Assets.PrimaryVideo == nil || got.Assets.PrimaryVideo.AssetID != "intro-clip" {
+		t.Fatalf("fixed fanout changed authoritative media: images=%d result=%+v", images.calls, got)
 	}
 
 	fallback := &sourceResolverStub{stage: "fallback"}

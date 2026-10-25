@@ -124,7 +124,6 @@ func TestMirror_FormatSignatureIsolatesEntries(t *testing.T) {
 	}
 }
 
-// TestMirror_NonYouTubeURLNeverMirrored pins the URL scoping: Artlist and
 // generic sources keep the exact download path on every call.
 func TestMirror_NonYouTubeURLNeverMirrored(t *testing.T) {
 	t.Setenv(EnvYTDLPMirrorRoot, filepath.Join(t.TempDir(), "mirror"))
@@ -139,11 +138,11 @@ func TestMirror_NonYouTubeURLNeverMirrored(t *testing.T) {
 	}
 	for i := 0; i < 2; i++ {
 		if err := d.Download(ctx, &DownloadRequest{
-			URL:        "https://www.artlist.io/video/example-source",
-			OutputPath: filepath.Join(workDir, "art.%(ext)s"),
+			URL:        "https://example.com/video/example-source",
+			OutputPath: filepath.Join(workDir, "generic.%(ext)s"),
 			NoPlaylist: true,
 		}); err != nil {
-			t.Fatalf("artlist download %d: %v", i+1, err)
+			t.Fatalf("generic download %d: %v", i+1, err)
 		}
 	}
 	if got := downloadCount(t, countFile); got != 2 {
@@ -226,7 +225,6 @@ func youtubeVideoIDContractChecks() error {
 		"https://www.youtube.com/shorts/dQw4w9WgXcQ":             "dQw4w9WgXcQ",
 		"https://www.youtube.com/embed/dQw4w9WgXcQ":              "dQw4w9WgXcQ",
 		"https://www.youtube.com/live/dQw4w9WgXcQ?feature=share": "dQw4w9WgXcQ",
-		"https://www.artlist.io/video/x":                         "",
 		"https://example.com/?v=":                                "",
 	}
 	for url, want := range cases {

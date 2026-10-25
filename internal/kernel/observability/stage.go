@@ -71,6 +71,7 @@ func (r *Run) StageWithReport(ctx context.Context, info StageInfo, fn func(conte
 			if rec := recover(); rec != nil {
 				st.Status = StageStatusFailed
 				st.ErrorCode = errorCode(panicError(rec))
+				st.ErrorMessage = panicError(rec).Error()
 				st.FinishedAt = r.now()
 				st.DurationMs = nonNegative(st.FinishedAt.Sub(start).Milliseconds())
 				r.recordStage(st)
@@ -84,6 +85,7 @@ func (r *Run) StageWithReport(ctx context.Context, info StageInfo, fn func(conte
 	if err != nil {
 		st.Status = StageStatusFailed
 		st.ErrorCode = errorCode(err)
+		st.ErrorMessage = err.Error()
 	} else {
 		st.Status = StageStatusCompleted
 	}
@@ -160,6 +162,7 @@ func (r *Run) RecordStage(info StageInfo, startedAt, finishedAt time.Time, err e
 	if err != nil {
 		st.Status = StageStatusFailed
 		st.ErrorCode = errorCode(err)
+		st.ErrorMessage = err.Error()
 	}
 	r.recordStage(st)
 }

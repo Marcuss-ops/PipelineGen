@@ -156,7 +156,7 @@ func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader) {
 }
 
 // ConfigureSubtitleArtifactRepository wires the canonical READY ASS lookup
-// used to enrich clip evidence before the Google Doc is rendered.
+// used to enrich clip evidence before generation.
 func (c *ClipSourceBuilder) ConfigureSubtitleArtifactRepository(r detail.SubtitleArtifactRepository) {
 	c.subtitleArtifacts = r
 }

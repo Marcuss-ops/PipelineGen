@@ -216,11 +216,11 @@ func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediadomain
 // visualSlotsForPolicy applies the provider policy to implicit visual slots.
 // A hybrid plan with no explicit searches historically synthesized a
 // primary_video slot, which caused the generic MediaMemory resolver to fan out
-// to Artlist even when the caller explicitly disabled Artlist. Explicit locked
+// even when the caller explicitly disabled the video provider. Explicit locked
 // assignments remain authoritative and are handled separately by Process.
 func visualSlotsForPolicy(plan mediadomain.MediaPlanSpec, segmentID string) []mediadomain.SlotKind {
 	slots := visualSlots(plan, segmentID)
-	if plan.ProviderPolicy.Artlist != mediadomain.MediaToggleDisabled {
+	if plan.ProviderPolicy.YouTube != mediadomain.MediaToggleDisabled {
 		return slots
 	}
 	filtered := make([]mediadomain.SlotKind, 0, len(slots))

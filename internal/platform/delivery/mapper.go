@@ -62,7 +62,6 @@ var (
 
 	// ErrAssetPublishNameCannotReplaceSubject surfaces when both
 	// Location.Subject and Location.Name are empty AND the destination
-	// requires a Subject (image / youtube / stock / artlist / document).
 	// Distinct from IncompleteForDestination per godlike/07 typed-error
 	// clarity: "name-soft-fallback exhausted" is a different failure mode.
 	ErrAssetPublishNameCannotReplaceSubject = errors.New(
@@ -150,7 +149,6 @@ type AssetPublishInput struct {
 //   - DestinationImage:        req.Style = loc.Style;         req.Subject = loc.SubjectOrName()
 //   - DestinationStock:        req.Group  = loc.Category;      req.Subject  = loc.SubjectOrName(); req.Provider = loc.Provider
 //   - DestinationYouTubeClip:  req.Group  = loc.Category;      req.Subject  = loc.SubjectOrName()
-//   - DestinationArtlist:      req.Group  = loc.Category;      req.Subject  = loc.SubjectOrName()
 //   - DestinationVoiceover:    req.ProjectID = loc.Project;    req.Language = loc.Language
 //   - DestinationScript:       req.ProjectID = loc.Project;    req.Language = loc.Language
 //   - DestinationSoundEffect:  req.Group     = loc.Category
@@ -165,6 +163,12 @@ type AssetPublishInput struct {
 // PathBuilder functions (StockPath, ImagePath, etc.) are the SOLE owner
 // of the segment-shape reduction. Two layers; no overlap.
 func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
+	// ── 0. Fold a retired destination into its canonical successor ────
+	// A replayed payload can still carry a retired key (e.g. "artlist").
+	// Folding here means the successor's mandatory-field rules and path
+	// builder apply, instead of the retired key failing as unknown.
+	input.Destination = CanonicalizeDestination(input.Destination)
+
 	// ── 1. Destination must be set and registered ────────────────────
 	if input.Destination == "" {
 		return PublishRequest{}, fmt.Errorf("%w: %q", ErrAssetPublishDestinationUnknown, input.Destination)
@@ -298,23 +302,6 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 		req.Subject = subject
 		req.AssetID = input.AssetID
 		req.SizeBytes = input.SizeBytes
-
-	case DestinationArtlist:
-		if loc.Category == "" {
-			return PublishRequest{}, fmt.Errorf(
-				"%w %q: missing %q", ErrAssetPublishLocationIncompleteForDestination,
-				input.Destination, "category",
-			)
-		}
-		subject := loc.SubjectOrName()
-		if subject == "" {
-			return PublishRequest{}, fmt.Errorf(
-				"%w %q: %w", ErrAssetPublishLocationIncompleteForDestination,
-				input.Destination, ErrAssetPublishNameCannotReplaceSubject,
-			)
-		}
-		req.Group = loc.Category
-		req.Subject = subject
 
 	case DestinationVoiceover:
 		if loc.Project == "" {

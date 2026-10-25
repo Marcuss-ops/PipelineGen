@@ -8,7 +8,6 @@ import (
 
 // vidRushForbiddenProviders lists provider values that MUST be rejected
 // regardless of provenance. This gate enforces the VidRush provider separation
-// contract (internet_images for images, artlist for video, zero YouTube/GAI).
 var vidRushForbiddenProviders = map[string]bool{
 	"youtube":             true,
 	"generated_images":    true,
@@ -51,9 +50,6 @@ func validVidRushCandidate(candidate scriptpkg.SegmentAssetCandidate) bool {
 				return false
 			}
 		}
-	}
-	if provider == "artlist" {
-		return strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.DriveLink) != ""
 	}
 	return strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != ""
 }
@@ -131,7 +127,7 @@ func preserveSelectedVidRushImages(selected, valid []scriptpkg.SegmentAssetCandi
 	}
 	validByIdentity := make(map[string]scriptpkg.SegmentAssetCandidate, len(valid))
 	for _, candidate := range valid {
-		if candidate.Provider == scriptpkg.VidRushProviderArtlist || candidate.Provider == scriptpkg.VidRushProviderImageGeneration {
+		if candidate.Provider == scriptpkg.VidRushProviderImageGeneration {
 			continue
 		}
 		validByIdentity[vidRushCandidateIdentity(candidate)] = candidate
@@ -157,7 +153,7 @@ func preserveSelectedVidRushImages(selected, valid []scriptpkg.SegmentAssetCandi
 func filterVidRushImages(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.Provider != "artlist" && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
+		if candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
 			out = append(out, candidate)
 		}
 	}

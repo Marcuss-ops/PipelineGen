@@ -282,6 +282,7 @@ func cloneReport(in *RunReport) *RunReport {
 	out.Artifacts = append([]ArtifactReport(nil), in.Artifacts...)
 	out.Waits = append([]WaitReport(nil), in.Waits...)
 	out.ClipTimeline = cloneClipTimeline(in.ClipTimeline)
+	out.SceneTimeline = cloneSceneTimeline(in.SceneTimeline)
 	if in.Children != nil {
 		c := *in.Children
 		out.Children = &c
@@ -399,10 +400,6 @@ func (r *Run) RecordKPIMilestone(field string, offsetMs int64) {
 		r.report.KPIs.AudioCompileStartedMs = offsetMs
 	case "audio_compile_finished_ms":
 		r.report.KPIs.AudioCompileFinishedMs = offsetMs
-	case "docs_publish_started_ms":
-		r.report.KPIs.DocsPublishStartedMs = offsetMs
-	case "docs_publish_finished_ms":
-		r.report.KPIs.DocsPublishFinishedMs = offsetMs
 	case "core_ready_ms":
 		r.report.KPIs.CoreReadyMs = offsetMs
 	}

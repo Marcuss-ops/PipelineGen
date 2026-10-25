@@ -20,7 +20,6 @@
 // Descriptor into `assetsapi.Dependencies.Voiceover` (route module
 // that mounts /media/voiceover).
 //
-// Pattern parity with `artlist/module.go` (C1-Step 3),
 // `youtube/module.go` (C1-Step 4), `clips/module.go` (C1-Step 5),
 // `stock/module.go` (C1-Step 6).
 //
@@ -102,7 +101,6 @@ type Dependencies struct {
 // from api.Module) and forwarder methods.
 //
 // UNIQUE TO VOICEOVER: the Descriptor does NOT expose the handler
-// (matches the artlist / stock precedent of dropping the explicit
 // Handler field). There is no non-HTTP consumer of the voiceover
 // handler in the codebase — /generate is the entire public surface,
 // reachable only via HTTP. The handler stays the internal worker
@@ -118,7 +116,6 @@ type VoiceoverDescriptor struct {
 // ── Module satisfaction (api.Descriptor) ────────────────────────────
 // Descriptor does NOT embed Module. The explicit field form does not
 // promote Name / Enabled / RegisterRoutes via embedding, so we
-// forward them by hand. (Matches the Artlist / YouTube / Clips /
 // Stock precedent.)
 
 // Name returns the module name ("voiceover"). Preserved verbatim

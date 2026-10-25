@@ -23,8 +23,7 @@ func TestCollectDriveRoots_DedupeAndSort(t *testing.T) {
 		MediaRootFolder:         "root-1",
 		StockRootFolder:         "stock-1",
 		NormalClipsSourceFolder: "clips-src",
-		// ArtlistRootFolder intentionally empty -> dropped.
-		SoundEffectsRootFolder: "sfx-1",
+		SoundEffectsRootFolder:  "sfx-1",
 		// ClipsRootFolder repeats MediaRootFolder -> collapsed.
 		ClipsRootFolder: "root-1",
 	}

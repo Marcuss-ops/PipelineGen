@@ -1,0 +1,27 @@
+[
+  {
+    "check": "charts_digits",
+    "verdict": "PASS",
+    "detail": "values [18.0, 42.0] from ['42%', '18%']"
+  },
+  {
+    "check": "charts_digits_grounded",
+    "verdict": "PASS",
+    "detail": "2 items, 0 unbacked (42%)"
+  },
+  {
+    "check": "charts_spelled",
+    "verdict": "PASS",
+    "detail": "values [18.0, 42.0] from ['quarantadue per cento', 'diciotto per cento']"
+  },
+  {
+    "check": "charts_spelled_grounded",
+    "verdict": "PASS",
+    "detail": "2 items, 0 unbacked (quarantadue)"
+  },
+  {
+    "check": "charts_dates_never_bars",
+    "verdict": "PASS",
+    "detail": "2 temporal facts, 0 chart items"
+  }
+]

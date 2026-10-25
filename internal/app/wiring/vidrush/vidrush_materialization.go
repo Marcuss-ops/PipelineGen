@@ -18,7 +18,6 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providerassets"
-	artlistpkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist"
 	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	imagesapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
@@ -28,7 +27,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -61,7 +59,6 @@ type VidRushDeliveryPorts struct {
 	Publisher      delivery.Publisher
 	EventsRepo     *outboxevents.Repository
 	ProviderAssets *providerassets.Registry
-	Downloader     artlistpkg.Downloader
 }
 
 // VidRushMaterializationDeps carries the composed surfaces the VidRush
@@ -106,15 +103,6 @@ func BuildVidRushMaterialization(cfg *config.Config, deps VidRushMaterialization
 	finalizer := &vidRushArtifactFinalizer{mediaDB: deps.MediaPG, preparation: preparation, assetTx: assetTx, imagesRootFolderID: imagesRootFolderID}
 
 	registry := adapters.NewVidRushAssetProviderRegistry()
-	if deps.Delivery.Downloader != nil {
-		if cfg == nil {
-			return nil, nil
-		}
-		if deps.MediaExec == (mediaexec.ExecutionConfig{}) {
-			return nil, nil
-		}
-		_ = registry.Register(&vidRushArtlistProvider{search: deps.Delivery.ProviderAssets, downloader: deps.Delivery.Downloader, probe: rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, deps.MediaExec.Policy, deps.MediaExec.Profile, log)})
-	}
 	if deps.ImageSearcher != nil {
 		_ = registry.Register(&vidRushInternetImageProvider{searcher: deps.ImageSearcher, log: log})
 	}
@@ -151,14 +139,9 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 		return scriptpkg.SegmentAssetCandidate{}, fmt.Errorf("vidrush finalizer: artifact identity, local path and hash are required")
 	}
 	kind := finalization.KindImage
-	if candidate.Provider == scriptpkg.VidRushProviderArtlist {
-		kind = finalization.KindVideo
-	}
 	ext := filepath.Ext(artifact.LocalPath)
 	if ext == "" {
-		if kind == finalization.KindVideo {
-			ext = ".mp4"
-		} else if strings.EqualFold(artifact.MIMEType, "image/png") {
+		if strings.EqualFold(artifact.MIMEType, "image/png") {
 			ext = ".png"
 		} else {
 			ext = ".jpg"
@@ -300,80 +283,6 @@ func waitForVidRushIndex(ctx context.Context, db *sql.DB, assetID string, maxWai
 		case <-ticker.C:
 		}
 	}
-}
-
-type vidRushArtlistProvider struct {
-	search     *providerassets.Registry
-	downloader artlistpkg.Downloader
-	probe      interface {
-		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
-	}
-}
-
-func (p *vidRushArtlistProvider) Name() string { return scriptpkg.VidRushProviderArtlist }
-func (p *vidRushArtlistProvider) Search(ctx context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
-	if p.search == nil {
-		return nil, fmt.Errorf("vidrush artlist: search registry unavailable")
-	}
-	result, err := p.search.Search(ctx, "artlist", providerassets.SearchRequest{Query: req.Query, Limit: req.Limit})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(result.Assets))
-	for _, a := range result.Assets {
-		assetID := firstNonEmpty(a.ID, a.ExternalID)
-		// Artlist discovery returns a stable provider identity in SourceRef,
-		// but acquisition requires the canonical clip page so the browser
-		// scraper can resolve the authenticated HLS stream. Keep the identity
-		// in AssetID and make the page URL the primary retrieval reference.
-		pageURL := strings.TrimSpace(a.PageURL)
-		sourceURL := firstNonEmpty(pageURL, a.SourceRef, a.PreviewURL)
-		out = append(out, scriptpkg.SegmentAssetCandidate{SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, EntityID: "entity:" + provenanceSlugWiring(req.Query), AssetID: assetID, Provider: p.Name(), Query: req.Query, SourceURL: sourceURL, SourcePageURL: pageURL, PreviewURL: firstNonEmpty(a.PreviewURL, pageURL), Score: a.Score, RightsStatus: "unknown", AcquisitionStatus: scriptpkg.VidRushStatusCandidateFound})
-	}
-	return out, nil
-}
-func (p *vidRushArtlistProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
-	if p == nil || p.downloader == nil {
-		return scriptports.LocalArtifact{}, fmt.Errorf("vidrush artlist: downloader unavailable")
-	}
-	// Prefer the page URL: Artlist page references are resolved by the
-	// browser-backed downloader. SourceURL may intentionally be only the
-	// provider identity when discovery came through the shared registry.
-	source := firstNonEmpty(candidate.SourcePageURL, candidate.SourceURL, candidate.PreviewURL)
-	result, err := p.downloader.Download(ctx, artlistpkg.DownloadRequest{SourceRef: source, DestinationID: os.TempDir(), Filename: safeArtifactFilename(candidate.AssetID, ".mp4"), ClipPageURL: candidate.SourcePageURL})
-	if err != nil {
-		return scriptports.LocalArtifact{}, err
-	}
-	if result == nil || result.LocalPath == "" || result.Bytes <= 0 {
-		return scriptports.LocalArtifact{}, fmt.Errorf("vidrush artlist: empty download")
-	}
-	hash, size, err := hashFile(result.LocalPath)
-	if err != nil {
-		return scriptports.LocalArtifact{}, err
-	}
-	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	candidate.LocalPath = result.LocalPath
-	candidate.ContentSHA256 = hash
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: result.LocalPath, MIMEType: "video/mp4", SizeBytes: size, ContentSHA256: hash}, nil
-}
-func (p *vidRushArtlistProvider) Verify(ctx context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
-	if p == nil || p.probe == nil {
-		return scriptports.VerifiedArtifact{}, fmt.Errorf("vidrush artlist: ffprobe unavailable")
-	}
-	info, err := p.probe.Probe(ctx, artifact.LocalPath)
-	if err != nil || info == nil || !info.HasVideo || info.Duration <= 0 || info.Width <= 0 || info.Height <= 0 {
-		if err == nil {
-			err = fmt.Errorf("invalid video stream")
-		}
-		return scriptports.VerifiedArtifact{}, err
-	}
-	candidate := artifact.Candidate
-	candidate.Width, candidate.Height = info.Width, info.Height
-	candidate.DurationMs = info.Duration.Milliseconds()
-	candidate.RightsStatus = "verified"
-	candidate.RightsBasis = "artlist licensed-provider policy"
-	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
-	return scriptports.VerifiedArtifact{Candidate: candidate, LocalPath: artifact.LocalPath, MIMEType: artifact.MIMEType, SizeBytes: artifact.SizeBytes, ContentSHA256: artifact.ContentSHA256, DurationMs: candidate.DurationMs, Width: info.Width, Height: info.Height, RightsStatus: candidate.RightsStatus, VerificationNote: "ffprobe video stream validated"}, nil
 }
 
 type vidRushInternetImageProvider struct {
@@ -540,6 +449,5 @@ func provenanceSlugWiring(value string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-var _ scriptports.VidRushAssetProvider = (*vidRushArtlistProvider)(nil)
 var _ scriptports.VidRushAssetProvider = (*vidRushInternetImageProvider)(nil)
 var _ scriptports.VidRushArtifactFinalizer = (*vidRushArtifactFinalizer)(nil)

@@ -51,7 +51,6 @@ import (
 )
 
 // PipelineState is the canonical per-item state machine for the
-// artlist clip ingest-to-index journey (Fase 4, July 2026).
 // 12 values, all UPPERCASE. The state machine tracks the per-item
 // journey from discovery through indexing, plus two failure-state
 // exits.

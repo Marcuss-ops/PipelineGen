@@ -42,8 +42,7 @@
 //     gate ("spec_aliases_test.go" ≠ "spec_aliases.go"). No
 //     explicit suffix check is needed.
 //
-// Unlike percheck_player_client / percheck_script_docs_route,
-// this scanner works at the FILENAME level (not the file-content
+// Unlike percheck_player_client, this scanner works at the FILENAME level (not the file-content
 // level), so there are no comment-only warnings. The check is
 // an exact basename match on "spec_aliases.go".
 //

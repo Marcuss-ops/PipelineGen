@@ -98,10 +98,9 @@ type ResearchPolicy struct {
 type SourceSpec struct {
 	Type SourceType `json:"type"`
 
-	Topic           string   `json:"topic,omitempty"`
-	SourceText      string   `json:"source_text,omitempty"`
-	Guidelines      string   `json:"guidelines,omitempty"`
-	ArtlistKeywords []string `json:"artlist_keywords,omitempty"`
+	Topic      string `json:"topic,omitempty"`
+	SourceText string `json:"source_text,omitempty"`
+	Guidelines string `json:"guidelines,omitempty"`
 
 	ClipIDs []string `json:"clip_ids,omitempty"`
 	// IntroClipIDs is a poison-pill field: the source.intro_clip_ids contract

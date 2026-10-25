@@ -134,7 +134,6 @@ func TestDriveValidatorMetrics_NilReceiverNoOp_P1_4(t *testing.T) {
 // ── Test 4: validator integration under fake probe ──────────────
 //
 // Drives a Validator where one destination succeeds, one fails,
-// and one is skipped (Artlist has empty root in startupEmptyRootRegistry).
 // Asserts every label transition gets reflected in the counter +
 // histogram, and that the run-summary gauges latch with the correct
 // success indicator.
@@ -146,7 +145,6 @@ func TestDriveValidatorMetrics_NilReceiverNoOp_P1_4(t *testing.T) {
 // for the cardinality rationale.
 
 func TestDriveRootsValidator_MetricsIntegration_P1_4(t *testing.T) {
-	// startupEmptyRootRegistry has ArtlistRootFolder="" so Artlist
 	// surfaces in the Skipped path — exercising both success and
 	// failure AND skipped outcomes side-by-side.
 	reg := startupEmptyRootRegistry()
@@ -162,7 +160,6 @@ func TestDriveRootsValidator_MetricsIntegration_P1_4(t *testing.T) {
 		},
 	}
 	//   - image     → "images-root" → success
-	//   - artlist   → empty RootFolderID → skipped (counter emits!)
 	//   - voiceover → "vo-root" + probeErrFn → failure
 	//   - the remaining 6 → success
 	metrics := newTestMetrics()
@@ -208,8 +205,10 @@ func TestDriveRootsValidator_MetricsIntegration_P1_4(t *testing.T) {
 	// Skipped rows DO enter the counter (validator emits
 	// v.metrics.observeProbe(destKey, "skipped", 0)) — pin here so a
 	// future drift that drops the emit is caught at test time.
-	if got := testutil.ToFloat64(metrics.Probes.WithLabelValues("artlist", "skipped")); got != 1 {
-		t.Errorf("Probes{artlist,skipped} = %v, want 1 (skipped rows DO enter the counter per validator impl)", got)
+	// DestinationAdmin is the empty-root destination in this registry
+	// (its root IS MediaRootFolder, which is blank here).
+	if got := testutil.ToFloat64(metrics.Probes.WithLabelValues("admin", "skipped")); got != 1 {
+		t.Errorf("Probes{admin,skipped} = %v, want 1 (skipped rows DO enter the counter per validator impl)", got)
 	}
 
 	// Run-summary gauges latch as "failure" because voiceover failed.

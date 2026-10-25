@@ -186,69 +186,10 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		if r.log != nil {
 			r.log.Warn("combined Rust semantic/editorial batch failed", zap.Error(err))
 		}
-		// Production uses this unified adapter. Do not silently launch the
-		// retired Phrase Impact worker as a second analysis path on failure.
+		// Production uses this unified adapter; a failure keeps the optional
+		// editorial fields empty instead of launching a second analysis path.
 		return out, nil
 	}
-	if r.phraseImpactAnalyzer == nil {
-		return out, nil
-	}
-	var rawImpact interface{} = r.phraseImpactAnalyzer
-	if sceneAnalyzer, ok := rawImpact.(SceneHighlightAnalyzer); ok && len(sceneInputs) > 0 {
-		var semanticBundles map[string]*SemanticCandidateBundle
-		var semanticReady bool
-		var semanticBullets []scriptpkg.SemanticBulletSpan
-		if r.sceneSemanticAnalyzer != nil {
-			semanticBundles, semanticReady = r.analyzeSemanticBundles(ctx, language, sceneInputs)
-			if semanticReady {
-				r.adoptSemanticPlannerView(out, semanticBundles)
-				semanticBullets, semanticReady = semanticBulletSpans(transcript, sceneInputs, semanticBundles)
-			}
-		}
-		var impactRes scriptpkg.PhraseImpactResult
-		var err error
-		if candidateAnalyzer, ok := rawImpact.(SemanticBulletCandidateAnalyzer); ok && semanticReady {
-			impactRes, err = candidateAnalyzer.AnalyzeScenesWithSemanticBullets(ctx, transcript, language, sceneInputs, semanticBullets)
-		} else {
-			impactRes, err = sceneAnalyzer.AnalyzeScenes(ctx, transcript, language, sceneInputs)
-		}
-		if err != nil {
-			return nil, err
-		}
-		out.summary = impactRes.Summary
-		out.bullets = impactRes.BulletPoints
-		out.heavy = impactRes.HeavySentences
-		if impactRes.ChapterManifest.SchemaVersion != "" {
-			manifest := impactRes.ChapterManifest
-			out.chapterManifest = &manifest
-		}
-		chartsEnabled := req.EnableCharts && !req.DisableChartOverlays
-		if semanticReady {
-			impactRes.SceneHighlights = r.mergeSemanticCharts(sceneInputs, impactRes.SceneHighlights, semanticBundles, chartsEnabled)
-			impactRes.SceneHighlights = mergeSemanticMicroSummaries(sceneInputs, impactRes.SceneHighlights, semanticBundles)
-		}
-		if !chartsEnabled {
-			for i := range impactRes.SceneHighlights {
-				impactRes.SceneHighlights[i].ChartValues = nil
-			}
-		}
-		out.highlights = impactRes.SceneHighlights
-		out.editorial = buildEditorialManifest(req, sceneInputs, impactRes)
-		out.timings = append(out.timings, impactRes.Timings)
-		return out, nil
-	}
-	legacy, err := r.phraseImpactAnalyzer.AnalyzeWithContext(ctx, transcript, language, chapterScenes, chapterTopics)
-	if err != nil {
-		return nil, err
-	}
-	out.summary = legacy.Summary
-	out.bullets = legacy.BulletPoints
-	out.heavy = legacy.HeavySentences
-	if legacy.ChapterManifest.SchemaVersion != "" {
-		manifest := legacy.ChapterManifest
-		out.chapterManifest = &manifest
-	}
-	out.timings = append(out.timings, legacy.Timings)
 	return out, nil
 }
 

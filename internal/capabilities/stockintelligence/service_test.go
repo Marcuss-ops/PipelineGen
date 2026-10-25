@@ -96,7 +96,6 @@ func indexOf(hay, needle string) int {
 
 // TestLocalFirstServesValidWinnerWithZeroProviderRequests pins the
 // canonical LOCAL FIRST success: a local catalog with 50 relevant hummus
-// videos serves the winner with 0 Artlist browser requests. The provider
 // stub asserts its call counter stays at 0.
 func TestLocalFirstServesValidWinnerWithZeroProviderRequests(t *testing.T) {
 	// 50 local hummus candidates, each with a strong similarity.
@@ -132,7 +131,6 @@ func TestLocalFirstServesValidWinnerWithZeroProviderRequests(t *testing.T) {
 
 // TestFallbackMakesExactlyOneProviderRequest pins the fallback path:
 // when the local catalog returns 0 candidates, the resolver makes exactly
-// 1 Artlist browser request. The provider stub asserts its call counter
 // is exactly 1.
 func TestFallbackMakesExactlyOneProviderRequest(t *testing.T) {
 	provider := &stubProvider{

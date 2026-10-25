@@ -88,9 +88,6 @@ verify-ollama:
 verify-youtube:
 	@$(VERIFY_COMPONENT_RUNNER) youtube $(VERIFY_COMPONENT_FLAGS)
 
-verify-artlist:
-	@$(VERIFY_COMPONENT_RUNNER) artlist $(VERIFY_COMPONENT_FLAGS)
-
 verify-kernel:
 	@$(VERIFY_COMPONENT_RUNNER) kernel $(VERIFY_COMPONENT_FLAGS)
 
@@ -149,9 +146,6 @@ verify-race-ollama:
 
 verify-race-youtube:
 	@$(VERIFY_COMPONENT_RUNNER) youtube --race $(VERIFY_COMPONENT_FLAGS)
-
-verify-race-artlist:
-	@$(VERIFY_COMPONENT_RUNNER) artlist --race $(VERIFY_COMPONENT_FLAGS)
 
 verify-race-kernel:
 	@$(VERIFY_COMPONENT_RUNNER) kernel --race $(VERIFY_COMPONENT_FLAGS)

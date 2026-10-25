@@ -58,7 +58,7 @@ func (p *concurrentYouTubeProvider) Verify(context.Context, scriptports.LocalArt
 
 func TestVidRushYouTubeConcurrencyFiveSegmentsThreeSourcesDeterministicOrder(t *testing.T) {
 	provider := &concurrentYouTubeProvider{}
-	fanout := NewVidRushProviderFanoutWithYouTube(nil, nil, provider)
+	fanout := NewVidRushProviderFanoutWithYouTube(nil, provider)
 	plan := &scriptpkg.ResolvedGenerationPlan{Title: "WWII", MediaPlan: mediadomain.MediaPlanSpec{
 		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled},
 	}}

@@ -403,7 +403,7 @@ func (r *Runner) launchFixedMediaRenders(
 				defer wg.Done()
 				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 					RunID: runID, ParentJobID: exec.JobID,
-					DocsFolderID: routing.DocsFolderID, JobID: exec.JobID,
+					JobID:   exec.JobID,
 					SceneID: scene.ID, SceneIndex: scene.Index,
 					Language: lang, Text: text,
 					SourceLanguage: req.SourceLanguage, SourceText: sourceText,

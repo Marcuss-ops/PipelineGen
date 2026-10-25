@@ -198,7 +198,7 @@ func TestIncrementalCoordinator_RunTimings_NoOverlapWhenSequential(t *testing.T)
 }
 
 func TestRunner_ReportsGenerationWindowToTimingRecorder(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	rec := &recordingTimingRecorder{}
 	runner.SetVidRushTimingRecorder(rec)
 

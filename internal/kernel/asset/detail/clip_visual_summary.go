@@ -43,7 +43,6 @@ import (
 //
 //   - AssetID                       -> canonical media_assets.id; the table's
 //     PRIMARY KEY. Format varies by source
-//     (yt_, planner:, artlist_, vo_/voiceover_).
 //
 //   - VisualSummaryText             -> aggregated caption from the VLM
 //     pass over the sampled frames. Empty

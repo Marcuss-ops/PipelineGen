@@ -167,15 +167,13 @@ func (a *localizedRenderEnqueuerAdapter) resolveBackground(ctx context.Context, 
 // resolveRenderFolders resolves the Drive destination of ONE localized render
 // and the folder of its subtitle artifact:
 //
-//	<documents root>/<job>/<language>
+//	<clips root>/<job>/<language>
 //	subtitles: <subtitle root>/<clip id>
 //
-// The clip publishes into the SAME per-language folder as the script document
-// it was rendered from: a language's deliverable is its script PLUS the clips
-// that script describes, and an operator reads it as one folder. Publishing the
-// renders anywhere else splits that deliverable across two unrelated Drive
-// trees (documents under the documents root, renders under the clips root) and
-// leaves the clips findable only by knowing their filenames.
+// The language is a folder level, not only a filename component. A run renders
+// the SAME clip once per language, so a flat destination leaves each language's
+// MP4 distinguishable only by filename; the per-language level makes the
+// layout state the language it holds.
 //
 // The language is a folder level, not only a filename component. A run renders
 // the SAME clip once per language, so a flat destination left every language's
@@ -205,9 +203,9 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderFolders(ctx context.Contex
 	if err != nil {
 		return "", "", err
 	}
-	// The language nests INSIDE the job folder, so the document and the clips
-	// of one language stay grouped. The key reuses the RESOLVED parent id, so
-	// two runs that share a job id still get one language folder each per parent.
+	// The language nests INSIDE the job folder so every clip of one language
+	// stays grouped. The key reuses the RESOLVED parent id, so two runs that
+	// share a job id still get one language folder each per parent.
 	if lang := strings.TrimSpace(language); lang != "" {
 		destination, err = a.resolveFolder(ctx, destination+"\x00"+lang, lang, destination)
 		if err != nil {
@@ -218,47 +216,10 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderFolders(ctx context.Contex
 }
 
 // resolveClipDestination resolves the folder a produced localized clip publishes
-// into: the run folder of this run's script documents, <documents root>/<job>.
-//
-// The documents root is the RESOLVED routing fact of the run
-// (ArtifactRoutingContext.DocsFolderID: the payload's docs.folder_id, else the
-// configured default) and the job level is the job whose documents the script
-// phase published. Deriving the clip folder from those two facts — instead of
-// from the clips root plus the payload's drive_subfolder_name — is what keeps a
-// clip beside its script; a second, independent routing decision is exactly how
-// the two drifted into separate trees.
-//
-// A run with no resolvable documents root at all (documents disabled, or a
-// hermetic composition without documents wiring) keeps the historical clips-root
-// destination: there is no documents folder to publish beside, and failing a
-// render over a layout preference would trade a working fan-out for nothing.
-//
-// A documents root WITHOUT a job is fail-closed: with no job level the clip
-// would land one level above its script — in the folder holding every run's
-// folders — silently, and visible only as a clip that is nowhere to be found.
+// into: the canonical clips root (or the payload's explicit drive_folder_id) with
+// the payload's drive_subfolder_name. Google Docs was retired, so this clips
+// root is the only destination; there is no documents tree any more.
 func (a *localizedRenderEnqueuerAdapter) resolveClipDestination(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (string, error) {
-	documentsRoot := strings.TrimSpace(in.DocsFolderID)
-	if documentsRoot == "" {
-		documentsRoot = strings.TrimSpace(a.cfg.DocFolderID)
-	}
-	if documentsRoot == "" {
-		return a.clipsRootDestination(ctx, in)
-	}
-	job := strings.TrimSpace(in.JobID)
-	if job == "" {
-		return "", fmt.Errorf("localized render: documents root %q is resolved but the job is unknown; refusing to publish a clip outside its run folder", documentsRoot)
-	}
-	resolved, err := a.resolveFolder(ctx, documentsRoot+"\x00"+job, job, documentsRoot)
-	if err != nil {
-		return "", fmt.Errorf("localized render: ensure Drive documents run folder %q: %w", job, err)
-	}
-	return resolved, nil
-}
-
-// clipsRootDestination resolves the pre-documents-tree destination,
-// <clips root | payload drive_folder_id>[/<payload drive_subfolder_name>]. It
-// serves only runs that carry no documents root at all.
-func (a *localizedRenderEnqueuerAdapter) clipsRootDestination(ctx context.Context, in scriptgeneration.LocalizedRenderInput) (string, error) {
 	destination := strings.TrimSpace(a.cfg.FolderID)
 	if value := strings.TrimSpace(in.Render.DriveFolderID); value != "" {
 		destination = value
@@ -272,39 +233,6 @@ func (a *localizedRenderEnqueuerAdapter) clipsRootDestination(ctx context.Contex
 		return "", fmt.Errorf("localized render: ensure Drive subfolder %q: %w", subfolder, err)
 	}
 	return resolved, nil
-}
-
-// ResolveDocumentFolder resolves the folder a language's script document
-// publishes into: the per-language run folder of its clips,
-// <documents root>/<job>/<language>.
-//
-// It is the SAME resolution the clip destination performs — same FolderAdmin,
-// same cache keys, same names and parents — so the document and the clip of one
-// language converge on one folder per (documents root, job, language) instead
-// of racing to create two. This adapter is the folder authority for the clip
-// lane, so the document lane borrows it rather than opening a second one.
-func (a *localizedRenderEnqueuerAdapter) ResolveDocumentFolder(ctx context.Context, documentsRoot, job, language string) (string, error) {
-	root := strings.TrimSpace(documentsRoot)
-	if root == "" {
-		return "", fmt.Errorf("document folder: documents root is empty")
-	}
-	runFolder := strings.TrimSpace(job)
-	if runFolder == "" {
-		return "", fmt.Errorf("document folder: documents root %q is resolved but the job is unknown", root)
-	}
-	lang := strings.TrimSpace(language)
-	if lang == "" {
-		return "", fmt.Errorf("document folder: language is required")
-	}
-	folder, err := a.resolveFolder(ctx, root+"\x00"+runFolder, runFolder, root)
-	if err != nil {
-		return "", fmt.Errorf("document folder: ensure Drive run folder %q: %w", runFolder, err)
-	}
-	folder, err = a.resolveFolder(ctx, folder+"\x00"+lang, lang, folder)
-	if err != nil {
-		return "", fmt.Errorf("document folder: ensure Drive language folder %q: %w", lang, err)
-	}
-	return folder, nil
 }
 
 func (a *localizedRenderEnqueuerAdapter) resolveFolder(ctx context.Context, key, name, parent string) (string, error) {
@@ -330,9 +258,7 @@ func (a *localizedRenderEnqueuerAdapter) localizeInput(in scriptgeneration.Local
 		ClipID: built.identity.clipID, SourceLanguage: built.identity.sourceLang,
 		Request: built.request, FolderID: built.destinationFolder, SubtitleFolderID: built.subtitleFolder,
 		UploadSubtitleArtifact: built.generatedSubtitles,
-		DocTitle:               fmt.Sprintf("Localized — %s (%s)", built.identity.clipID, built.identity.targetLang),
-		DocFolderID:            a.cfg.DocFolderID, DocIdempotencyKey: in.RunID + ":" + in.SceneID + ":" + built.identity.targetLang,
-		SkipDocument: true, Watermark: built.watermark, WatermarkSpec: built.watermarkSpec,
+		Watermark:              built.watermark, WatermarkSpec: built.watermarkSpec,
 		Background: built.background, BackgroundMode: built.backgroundMode, BackgroundKind: built.backgroundKind,
 		Overlays:               built.overlays,
 		ForegroundScalePercent: in.Render.ForegroundScalePercent,

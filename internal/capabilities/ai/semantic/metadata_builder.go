@@ -53,7 +53,6 @@ func MetadataMapToJSON(meta map[string]any) string {
 // inputs produce "" (never a fabricated token). Used by the
 // (now-disabled) MetadataWriter.GeneratePayload + WriteRequest
 // wrappers; preserved here as a fallback for callers that still
-// build search-text offline (some legacy artlist search code paths
 // invoke this directly without going through the disabled stub).
 func MergeMetadataSearchText(parts ...string) string {
 	result := ""

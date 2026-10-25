@@ -19,7 +19,6 @@ set -euo pipefail
 
 ASSETS=(pipelinegen-muscles visualner mediasampler semantic-engine)
 METADATA=(sha256sums.txt ICU_MAJOR TOOLCHAIN)
-ALIASES=(phrase_impact scene_intelligence)
 
 die() { echo "rust-fetch: $*" >&2; exit 1; }
 
@@ -37,7 +36,7 @@ if [ -f "$stamp" ] \
     && grep -qx "version=$RUST_VERSION" "$stamp" \
     && grep -qx "icu_major=$RUST_ICU_MAJOR" "$stamp"; then
     installed=1
-    for name in "${ASSETS[@]}" "${ALIASES[@]}"; do
+    for name in "${ASSETS[@]}"; do
         [ -x "$RUST_BIN_DIR/$name" ] || { installed=0; break; }
     done
     if [ "$installed" = 1 ]; then
@@ -95,9 +94,6 @@ staging="$(mktemp -d "$RUST_BIN_DIR/.rust-fetch.XXXXXX")"
 for asset in "${ASSETS[@]}"; do
     install -m 0755 "$src/$asset" "$staging/$asset"
 done
-for alias in "${ALIASES[@]}"; do
-    install -m 0755 "$src/pipelinegen-muscles" "$staging/$alias"
-done
 {
     printf 'version=%s\n' "$RUST_VERSION"
     printf 'icu_major=%s\n' "$artifact_icu"
@@ -105,7 +101,7 @@ done
 } > "$staging/.rust-release"
 
 # Install only after every check and every staged file succeeded.
-for file in "${ASSETS[@]}" "${ALIASES[@]}" ".rust-release"; do
+for file in "${ASSETS[@]}" ".rust-release"; do
     mv -f "$staging/$file" "$RUST_BIN_DIR/$file"
 done
 rmdir "$staging"

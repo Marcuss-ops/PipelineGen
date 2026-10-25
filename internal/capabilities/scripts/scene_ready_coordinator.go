@@ -107,11 +107,18 @@ func (c *sceneReadyCoordinator) languageWorkers(needsTTS bool) int {
 // translateLanguage runs one measured target-language translation under the
 // coordinator's translation pool. The slot is released before the caller moves
 // on to TTS, so a task never holds two pools at once and no cycle can form.
-func (c *sceneReadyCoordinator) translateLanguage(ctx context.Context, itemIdx int, sceneID string, lang Language, sourceText string) (string, error) {
+//
+// §7.3 trace: the four instants are the real pool lifecycle — readyAt (the
+// scene's text-ready boundary, supplied by the caller), enqueued (task
+// dispatch), started (slot acquired), completed (translation returned) — so
+// the recorded queue wait is the pool contention, never a guess.
+func (c *sceneReadyCoordinator) translateLanguage(ctx context.Context, itemIdx int, sceneID string, lang Language, sourceText string, readyAt time.Time) (string, error) {
+	enqueuedAt := time.Now().UTC()
 	if err := c.translationSlots.AcquireCtx(ctx); err != nil {
 		return "", err
 	}
 	defer c.translationSlots.Release()
+	startedAt := time.Now().UTC()
 
 	var value string
 	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
@@ -122,6 +129,9 @@ func (c *sceneReadyCoordinator) translateLanguage(ctx context.Context, itemIdx i
 		value, err = c.runner.translator.Translate(measureCtx, TranslationInput{SceneID: sceneID, SourceLanguage: c.req.SourceLanguage, TargetLanguage: lang, SourceText: sourceText})
 		return err
 	})
+	recordSceneStage(ctx, sceneID, kernobs.SceneStageTranslation, kernobs.SceneStageTimes{
+		ReadyAt: readyAt, EnqueuedAt: enqueuedAt, StartedAt: startedAt, CompletedAt: time.Now().UTC(),
+	}, string(lang), err)
 	if err != nil {
 		return "", fmt.Errorf("translate ready scene %s to %s: %w", sceneID, lang, err)
 	}
@@ -131,11 +141,17 @@ func (c *sceneReadyCoordinator) translateLanguage(ctx context.Context, itemIdx i
 // synthesizeLanguage runs one measured voiceover synthesis under the
 // coordinator's TTS pool. The text is the value produced for THIS language
 // (translated or already present), never a shared map read.
-func (c *sceneReadyCoordinator) synthesizeLanguage(ctx context.Context, itemIdx int, sceneID string, lang Language, text string) (AudioReference, error) {
+//
+// §7.3 trace: readyAt is the instant THIS language's text became final (its
+// translation for target languages, the scene text-ready boundary for the
+// source language) — the TTS lane chains to it in the critical path.
+func (c *sceneReadyCoordinator) synthesizeLanguage(ctx context.Context, itemIdx int, sceneID string, lang Language, text string, readyAt time.Time) (AudioReference, error) {
+	enqueuedAt := time.Now().UTC()
 	if err := c.ttsSlots.AcquireCtx(ctx); err != nil {
 		return AudioReference{}, err
 	}
 	defer c.ttsSlots.Release()
+	startedAt := time.Now().UTC()
 
 	var audioRef AudioReference
 	err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
@@ -146,6 +162,9 @@ func (c *sceneReadyCoordinator) synthesizeLanguage(ctx context.Context, itemIdx 
 		audioRef, err = c.runner.voiceoverGen.Generate(measureCtx, VoiceoverInput{RunID: c.runID, SceneID: sceneID, Language: lang, Text: text, Project: c.routing.Project, VoiceoverFolderID: c.routing.VoiceoverFolderID, Timing: c.req.Timing, ForceSynthesis: c.req.ForceRefresh})
 		return err
 	})
+	recordSceneStage(ctx, sceneID, kernobs.SceneStageTTS, kernobs.SceneStageTimes{
+		ReadyAt: readyAt, EnqueuedAt: enqueuedAt, StartedAt: startedAt, CompletedAt: time.Now().UTC(),
+	}, string(lang), err)
 	return audioRef, err
 }
 
@@ -236,17 +255,23 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	// certified widths are unchanged.
 	outcomes, err := concurrent.Map(c.ctx, work, c.languageWorkers(needsTTS), func(ctx context.Context, itemIdx int, item sceneLanguageWork) (sceneLanguageOutcome, error) {
 		res := sceneLanguageOutcome{lang: item.lang, text: out.Text[item.lang]}
+		// textFinalAt is this language's real text boundary: the scene's
+		// text-ready instant for the source language, the translation
+		// completion for a target language. The TTS trace entry is chained
+		// to it instead of to the scene-wide anchor.
+		textFinalAt := out.TextReadyAt
 		if item.lang != c.req.SourceLanguage {
-			translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText)
+			translated, err := c.translateLanguage(ctx, itemIdx, out.ID, item.lang, sourceText, out.TextReadyAt)
 			if err != nil {
 				return sceneLanguageOutcome{}, err
 			}
 			res.text = translated
 			res.translated = true
+			textFinalAt = time.Now().UTC()
 		}
 		c.launchLocalizedNLP(out, item.lang, res.text)
 		if needsTTS && voiceoverFilter.allows(item.lang) {
-			audioRef, err := c.synthesizeLanguage(ctx, itemIdx, out.ID, item.lang, res.text)
+			audioRef, err := c.synthesizeLanguage(ctx, itemIdx, out.ID, item.lang, res.text, textFinalAt)
 			if err != nil {
 				return sceneLanguageOutcome{}, fmt.Errorf("TTS ready scene %s: %w", out.ID, err)
 			}
@@ -257,6 +282,9 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 	if err != nil {
 		return Scene{}, err
 	}
+	// The language fan-out returned: the scene's audio assembly (its join)
+	// starts here, on the coordinator goroutine, and ends at the seal below.
+	joinStartedAt := time.Now().UTC()
 
 	// Apply from the coordinator goroutine: the scene's Text/Voiceover maps
 	// have exactly one writer, and the durable artifacts are recorded in
@@ -338,7 +366,6 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 				if err := c.runner.enqueueLocalizedRender(c.ctx, LocalizedRenderInput{
 					RunID:          c.runID,
 					ParentJobID:    c.exec.JobID,
-					DocsFolderID:   c.routing.DocsFolderID,
 					JobID:          c.exec.JobID,
 					SceneID:        sceneID,
 					SceneIndex:     sceneIndex,
@@ -404,6 +431,14 @@ func (c *sceneReadyCoordinator) process(scene Scene) (Scene, error) {
 		// localized renders were dispatched above and remain asynchronous; this
 		// timestamp is the TTS boundary, not the render boundary.
 		out.TTSCompletedAt = time.Now().UTC()
+		// §7.3 trace: the audio stage is the scene's join — it begins when the
+		// language fan-out joined and completes when its audio intents and
+		// duration were sealed above. It is recorded only when the scene
+		// actually produced narration; a scene without voiceover has no audio
+		// seal on this path and is deliberately left out of the trace.
+		recordSceneStage(c.ctx, out.ID, kernobs.SceneStageAudio, kernobs.SceneStageTimes{
+			StartedAt: joinStartedAt, CompletedAt: out.TTSCompletedAt,
+		}, string(c.req.SourceLanguage), nil)
 	}
 	c.mu.Lock()
 	c.ttsCalls += voiceoverCalls

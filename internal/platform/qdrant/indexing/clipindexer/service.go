@@ -20,12 +20,11 @@ import (
 
 // Config holds clipindexer configuration
 type Config struct {
-	Enabled               bool   `yaml:"enabled"`
-	ServerURL             string `yaml:"server_url"`
-	ScriptPath            string `yaml:"script_path"`
-	PythonBin             string `yaml:"python_bin"`
-	DBPath                string `yaml:"db_path"`
-	AutoIndexAfterArtlist bool   `yaml:"auto_index_after_artlist"`
+	Enabled    bool   `yaml:"enabled"`
+	ServerURL  string `yaml:"server_url"`
+	ScriptPath string `yaml:"script_path"`
+	PythonBin  string `yaml:"python_bin"`
+	DBPath     string `yaml:"db_path"`
 	// MaxConcurrentIndexing limits parallel Python subprocesses for clip indexing.
 	MaxConcurrentIndexing int `yaml:"max_concurrent_indexing"`
 }
@@ -37,7 +36,6 @@ func DefaultConfig() *Config {
 		ServerURL:             "http://127.0.0.1:8001",
 		ScriptPath:            "scripts/start_embedding_server.sh",
 		PythonBin:             "python3",
-		AutoIndexAfterArtlist: true,
 		MaxConcurrentIndexing: 10,
 	}
 }

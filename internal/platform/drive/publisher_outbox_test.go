@@ -16,7 +16,6 @@ func TestPublisher_AllDestinationsRegistered(t *testing.T) {
 
 	expected := []delivery.DestinationKey{
 		delivery.DestinationYouTubeClip,
-		delivery.DestinationArtlist,
 		delivery.DestinationStock,
 		delivery.DestinationImage,
 		delivery.DestinationVoiceover,
@@ -30,11 +29,7 @@ func TestPublisher_AllDestinationsRegistered(t *testing.T) {
 		require.NoError(t, err, "Resolve(%q) failed", dest)
 		require.NotEmpty(t, policy.RootFolderID, "RootFolderID empty for %q", dest)
 		require.NotNil(t, policy.PathBuilder, "PathBuilder nil for %q", dest)
-		if dest == delivery.DestinationArtlist {
-			require.False(t, policy.RequireSubpath, "Artlist permits root-level curated uploads")
-		} else {
-			require.True(t, policy.RequireSubpath, "RequireSubpath must be true for %q", dest)
-		}
+		require.True(t, policy.RequireSubpath, "RequireSubpath must be true for %q", dest)
 	}
 }
 
@@ -232,7 +227,6 @@ func TestRegistry_ConflictPolicyPerDestination_P1_1(t *testing.T) {
 
 	skipDestinations := []delivery.DestinationKey{
 		delivery.DestinationYouTubeClip,
-		delivery.DestinationArtlist,
 		delivery.DestinationStock,
 		delivery.DestinationVoiceover,
 		delivery.DestinationSoundEffect,

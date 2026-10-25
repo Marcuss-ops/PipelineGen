@@ -20,7 +20,6 @@
 // already live in folder_manager.go; admin.go reuses them verbatim —
 // no parallel types, no shared-with-different-name constants, no second
 // isRetryable predicate that would drift over time. The two narrow
-// adapters (artlist DriveFolderManager + drive Admin) share one seam
 // shape because their contract is the same: a single retry-aware
 // "does it exist?" decision that propagates err without falling through
 // to Create.

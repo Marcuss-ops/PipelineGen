@@ -576,8 +576,6 @@ func TestGenerator_Generate_LookupPrimaryBinding_WiresToRepository(t *testing.T)
 // ── Test 18: deriveLayerProvider returns real binding.Provider ──
 
 func TestGenerator_Generate_DeriveLayerProviderReturnsRealTag(t *testing.T) {
-	// A binding with Provider=ProviderArtlist surfaces on
-	// the resulting Layer as "artlist", not "local". This
 	// enables the SceneVisualPlan.Source="mixed" branch
 	// the Fase 4.2 forward-pin promised.
 	gen := NewDefaultSceneVisualPlanGenerator(noopBindingRepository{}, NoopLogger(), nil)

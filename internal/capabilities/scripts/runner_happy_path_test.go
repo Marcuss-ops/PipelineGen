@@ -11,8 +11,6 @@
 //   - StageCompleted is the final CurrentStage
 //   - Scene-level translation (ES) and voiceover (EN, ES) are
 //     both present after a single happy-path run
-//   - DocumentPublisher UpsertDocument called exactly len(Docs.Languages)
-//     times (here 2: EN + ES)
 //   - Output.Text and WordCount are projected from the ordered scenes
 package scriptgeneration
 
@@ -29,7 +27,7 @@ import (
 // for the durable generation workflow. Pre-Fase 5 it lived in
 // runner_test.go as the longest single test in the package.
 func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
-	runner, repo, _, _, _, docPub, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	req := defaultTestRequest()
 	// Compile the canonical audio timeline alongside the chunked voiceovers so
 	// the happy path exercises the timeline projection (audio/timeline-only).
@@ -71,23 +69,6 @@ func TestRunner_HappyPath_AllStagesComplete(t *testing.T) {
 	for i, s := range final.Result.Scenes {
 		assert.NotEmpty(t, s.Voiceover["en"].ID, "scene %d should have EN voiceover", i)
 		assert.NotEmpty(t, s.Voiceover["es"].ID, "scene %d should have ES voiceover", i)
-	}
-
-	// Assert documents published.
-	require.NotNil(t, final.Result.Documents, "documents should be published")
-	assert.Equal(t, 2, len(docPub.records), "should have 2 doc upsert calls (EN + ES)")
-	for _, record := range docPub.records {
-		assert.Contains(t, record.Content, "<h2>Scene 1</h2>")
-		assert.NotContains(t, record.Content, "<h2>Remote Job Payload JSON</h2>")
-		assert.Contains(t, record.Content, "<h2>SpecScene JSON</h2>")
-		if record.Language == "en" {
-			assert.Contains(t, record.Content, "First scene text")
-			assert.NotContains(t, record.Content, "[TRANSLATED]")
-		}
-		if record.Language == "es" {
-			assert.Contains(t, record.Content, "[TRANSLATED] First scene text")
-			assert.NotContains(t, record.Content, "Voiceover: https://drive.google.com/VOICE-EN")
-		}
 	}
 
 	// Assert the canonical timeline is persisted (audio/timeline-only).

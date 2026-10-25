@@ -81,7 +81,6 @@ func TestSHA256IdempotencyKey_HappyPath_ComposesPrefixColonHex16(t *testing.T) {
 }
 
 func TestSHA256IdempotencyKey_HappyPath_PreservesPrefixVerbatim(t *testing.T) {
-	// Multiple prefixes (stock, youtube, artlist, drive, doc, ...) MUST
 	// compose without modification — the helper is a typed composition,
 	// not a prefix-canonicaliser. Pin the per-prefix round-trip so
 	// future prefix-whitespace-trim regressions are caught.

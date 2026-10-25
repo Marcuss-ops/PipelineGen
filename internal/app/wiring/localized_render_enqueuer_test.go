@@ -20,7 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	platformconfig "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	infradrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
 
@@ -160,7 +159,6 @@ var _ localizedLocalizer = (*recordingLocalizer)(nil)
 func testEnqueuerInput() scriptgeneration.LocalizedRenderInput {
 	return scriptgeneration.LocalizedRenderInput{
 		RunID:          "run-1",
-		DocsFolderID:   "docs-1",
 		JobID:          "job-1",
 		SceneID:        "scene-1",
 		SceneIndex:     0,
@@ -201,7 +199,6 @@ func newTestEnqueuerAdapterWithAdmin(l *recordingLocalizer, t *recordingTrackRep
 		SourceLanguage: "en",
 		FolderID:       "folder-1",
 		FolderAdmin:    admin,
-		DocFolderID:    "docs-1",
 	}, zap.NewNop(), nil, nil, nil, nil, committer)
 }
 
@@ -327,13 +324,10 @@ func TestLocalizedRenderEnqueuer_MapsToSingleLanguageLocalize(t *testing.T) {
 	if len(in.Request.Languages) != 1 || in.Request.Languages[0].Language != "es" {
 		t.Fatalf("languages = %+v, want single es", in.Request.Languages)
 	}
-	// The render destination is the language folder of the SCRIPT DOCUMENTS
-	// tree: <documents root>/<job>/<language>, never the clips root.
-	if in.FolderID != "docs-1/job-1/es" || in.DocFolderID != "docs-1" {
-		t.Fatalf("folders = %q/%q", in.FolderID, in.DocFolderID)
-	}
-	if !strings.Contains(in.DocIdempotencyKey, "scene-1") || !strings.Contains(in.DocIdempotencyKey, "es") {
-		t.Fatalf("DocIdempotencyKey = %q", in.DocIdempotencyKey)
+	// The render destination is the language folder under the clips root:
+	// <clips root>/<language>.
+	if in.FolderID != "folder-1/es" {
+		t.Fatalf("folder = %q", in.FolderID)
 	}
 }
 
@@ -837,15 +831,9 @@ func TestLocalizedRenderEnqueuer_BlurSourceBackgroundCarriesNoAsset(t *testing.T
 
 // TestLocalizedRenderEnqueuer_LanguageIsAFolderLevelUnderTheJobFolder pins the
 // resolution ORDER of the levels: the language nests INSIDE the job folder of
-// the run's script documents, so one language's document and its clips stay
-// grouped in one place.
-//
-// It also pins what does NOT route a clip any more: the payload's explicit
-// clips destination (drive_folder_id / drive_subfolder_name). Those used to be
-// the clip's own routing decision, which is how the renders ended up in a Drive
-// tree unrelated to the documents; the documents tree is now the single
-// destination and the clips fields cannot divert it.
-func TestLocalizedRenderEnqueuer_LanguageIsAFolderLevelUnderTheJobFolder(t *testing.T) {
+// the run's clips destination, so one language's clips stay grouped in one
+// place. Google Docs was retired, so there is no documents tree above it.
+func TestLocalizedRenderEnqueuer_LanguageIsAFolderLevelUnderTheClipsRoot(t *testing.T) {
 	l := &recordingLocalizer{}
 	admin := &localizedRenderFolderAdmin{}
 	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
@@ -857,73 +845,20 @@ func TestLocalizedRenderEnqueuer_LanguageIsAFolderLevelUnderTheJobFolder(t *test
 	}
 
 	got := l.snapshot()
-	if len(got) != 1 || got[0].FolderID != "docs-1/job-1/es" {
-		t.Fatalf("destination = %v, want the language nested under the documents job folder", folderIDs(got))
+	if len(got) != 1 || got[0].FolderID != "clips-root/Dolly Parton/es" {
+		t.Fatalf("destination = %v, want the language nested under the clips subfolder", folderIDs(got))
 	}
 	calls := admin.snapshot()
-	if len(calls) != 2 || calls[0].name != "job-1" || calls[0].parentID != "docs-1" ||
-		calls[1].name != "es" || calls[1].parentID != "docs-1/job-1" {
-		t.Fatalf("folder levels = %+v, want [job-1 under docs-1, es under the job folder]", calls)
+	if len(calls) != 2 || calls[0].name != "Dolly Parton" || calls[0].parentID != "clips-root" ||
+		calls[1].name != "es" || calls[1].parentID != "clips-root/Dolly Parton" {
+		t.Fatalf("folder levels = %+v, want [Dolly Parton under clips-root, es under the subfolder]", calls)
 	}
 }
 
-// TestLocalizedRenderEnqueuer_ClipPublishesBesideItsScript pins the actual
-// complaint this layout fixes: the clip and the document of the same language
-// must resolve to the SAME folder, and the payload's clips destination must not
-// pull the clip into a second tree.
-func TestLocalizedRenderEnqueuer_ClipPublishesBesideItsScript(t *testing.T) {
-	l := &recordingLocalizer{}
-	admin := &localizedRenderFolderAdmin{}
-	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
-
-	// A payload that asks for the clips to go to their own tree: the render
-	// destination must ignore it and follow the documents.
-	in := testEnqueuerInput()
-	in.Render = scriptpkg.VideoRenderSpec{Enabled: true, DriveFolderID: "1ll2RlTaActors", DriveSubfolderName: "verify-2lang-EN-IT"}
-	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
-		t.Fatalf("EnqueueLocalizedRender: %v", err)
-	}
-
-	got := l.snapshot()
-	if len(got) != 1 {
-		t.Fatalf("Localize calls: got %d, want 1", len(got))
-	}
-	if got[0].FolderID != "docs-1/job-1/es" {
-		t.Fatalf("clip destination = %q, want the same folder as the es document", got[0].FolderID)
-	}
-	for _, call := range admin.snapshot() {
-		if call.parentID == "1ll2RlTaActors" {
-			t.Fatalf("clip was routed into the payload clips destination: %+v", call)
-		}
-	}
-}
-
-// TestLocalizedRenderEnqueuer_ResolvedDocsRootWinsOverConfiguredDefault pins
-// that the clip follows the run's RESOLVED documents root (a payload
-// docs.folder_id), not the deployment default: a run that publishes its
-// documents under an explicit folder must have its clips there too.
-func TestLocalizedRenderEnqueuer_ResolvedDocsRootWinsOverConfiguredDefault(t *testing.T) {
-	l := &recordingLocalizer{}
-	admin := &localizedRenderFolderAdmin{}
-	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
-
-	in := testEnqueuerInput()
-	in.DocsFolderID = "payload-docs"
-	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
-		t.Fatalf("EnqueueLocalizedRender: %v", err)
-	}
-
-	got := folderIDs(l.snapshot())
-	if len(got) != 1 || got[0] != "payload-docs/job-1/es" {
-		t.Fatalf("destinations = %v, want the payload documents root", got)
-	}
-}
-
-// TestLocalizedRenderEnqueuer_NoDocumentsRootKeepsTheClipsDestination pins the
-// fallback: with no resolvable documents root (documents disabled, or a
-// hermetic composition) the historical clips-root layout is still used, because
-// there is no documents folder for the clip to sit beside.
-func TestLocalizedRenderEnqueuer_NoDocumentsRootKeepsTheClipsDestination(t *testing.T) {
+// TestLocalizedRenderEnqueuer_PayloadSubfolderKeepsTheClipsDestination pins the
+// canonical clips layout: <clips root | payload drive_folder_id>[/<payload
+// drive_subfolder_name>]/<language>.
+func TestLocalizedRenderEnqueuer_PayloadSubfolderKeepsTheClipsDestination(t *testing.T) {
 	l := &recordingLocalizer{}
 	admin := &localizedRenderFolderAdmin{}
 	tracks := &recordingTrackRepo{ready: map[string][]detail.TimedCue{
@@ -937,7 +872,6 @@ func TestLocalizedRenderEnqueuer_NoDocumentsRootKeepsTheClipsDestination(t *test
 	}, zap.NewNop(), nil, nil, nil, nil, nil)
 
 	in := testEnqueuerInput()
-	in.DocsFolderID = ""
 	in.JobID = ""
 	in.Render = scriptpkg.VideoRenderSpec{Enabled: true, DriveFolderID: "clips-1", DriveSubfolderName: "Dolly Parton"}
 	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
@@ -947,27 +881,6 @@ func TestLocalizedRenderEnqueuer_NoDocumentsRootKeepsTheClipsDestination(t *test
 	got := folderIDs(l.snapshot())
 	if len(got) != 1 || got[0] != "clips-1/Dolly Parton/es" {
 		t.Fatalf("destinations = %v, want the historical clips-root layout", got)
-	}
-}
-
-// TestLocalizedRenderEnqueuer_DocumentsRootWithoutJobFailsClosed pins that a
-// resolved documents root with no job is never silently downgraded: publishing
-// one level up would drop the clip in the folder that holds every run's
-// folders, where an operator would not look for it.
-func TestLocalizedRenderEnqueuer_DocumentsRootWithoutJobFailsClosed(t *testing.T) {
-	l := &recordingLocalizer{}
-	admin := &localizedRenderFolderAdmin{}
-	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
-
-	in := testEnqueuerInput()
-	in.JobID = ""
-	if err := a.EnqueueLocalizedRender(context.Background(), in); err == nil {
-		t.Fatal("a documents root without a job must fail closed")
-	} else if !strings.Contains(err.Error(), "job is unknown") {
-		t.Fatalf("error must name the missing job, got %v", err)
-	}
-	if len(l.snapshot()) != 0 {
-		t.Fatal("no render may run when its destination cannot be resolved")
 	}
 }
 
@@ -988,14 +901,13 @@ func TestLocalizedRenderEnqueuer_EachLanguageGetsItsOwnFolder(t *testing.T) {
 	}
 
 	got := folderIDs(l.snapshot())
-	if len(got) != 3 || got[0] != "docs-1/job-1/es" || got[1] != "docs-1/job-1/it" || got[2] != "docs-1/job-1/es" {
+	if len(got) != 3 || got[0] != "folder-1/es" || got[1] != "folder-1/it" || got[2] != "folder-1/es" {
 		t.Fatalf("destinations = %v, want each language in its own folder", got)
 	}
 	// The repeated `es` must be served from the per-(parent, name) cache: one
-	// create call per distinct level, never a duplicate Drive folder. The job
-	// level is created once for the whole fan-out, not once per language.
-	if names := admin.names(); len(names) != 3 || names[0] != "job-1" || names[1] != "es" || names[2] != "it" {
-		t.Fatalf("folder create calls = %v, want the job level once plus one per language", names)
+	// create call per distinct language level, never a duplicate Drive folder.
+	if names := admin.names(); len(names) != 2 || names[0] != "es" || names[1] != "it" {
+		t.Fatalf("folder create calls = %v, want one per language", names)
 	}
 }
 
@@ -1029,11 +941,10 @@ func TestLocalizedRenderEnqueuer_OneClipTenLanguagesLandInTenPerLanguageFolders(
 		SourceLanguage: "en",
 		FolderID:       "folder-1",
 		FolderAdmin:    admin,
-		DocFolderID:    "docs-1",
 	}, zap.NewNop(), nil, nil, nil, nil, nil)
 
 	for _, lang := range canonicalLocalizedRenderLanguages {
-		in := testEnqueuerInput() // one clip (clip-1), one scene (scene-1), docs-1/job-1
+		in := testEnqueuerInput() // one clip (clip-1), one scene (scene-1)
 		in.Language = scriptgeneration.Language(lang)
 		in.Text = "Narration " + lang
 		if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
@@ -1049,7 +960,7 @@ func TestLocalizedRenderEnqueuer_OneClipTenLanguagesLandInTenPerLanguageFolders(
 	seen := make(map[string]string, len(calls))
 	for i, call := range calls {
 		lang := canonicalLocalizedRenderLanguages[i]
-		wantFolder := "docs-1/job-1/" + lang
+		wantFolder := "folder-1/" + lang
 		if call.FolderID != wantFolder {
 			t.Fatalf("language %s published into %q, want %q (one folder per language, beside its script)", lang, call.FolderID, wantFolder)
 		}
@@ -1064,15 +975,14 @@ func TestLocalizedRenderEnqueuer_OneClipTenLanguagesLandInTenPerLanguageFolders(
 		}
 	}
 
-	// One create call per level: the run folder once for the whole fan-out, then
-	// one per language — never a duplicate Drive folder per language.
+	// One create call per language — never a duplicate Drive folder per language.
 	names := admin.names()
-	if len(names) != len(canonicalLocalizedRenderLanguages)+1 || names[0] != "job-1" {
-		t.Fatalf("folder create calls = %v, want the job level once plus one per language", names)
+	if len(names) != len(canonicalLocalizedRenderLanguages) {
+		t.Fatalf("folder create calls = %v, want one per language", names)
 	}
-	for i, call := range admin.snapshot()[1:] {
-		if call.name != canonicalLocalizedRenderLanguages[i] || call.parentID != "docs-1/job-1" {
-			t.Fatalf("language folder call %d = %+v, want %s under the run folder", i, call, canonicalLocalizedRenderLanguages[i])
+	for i, call := range admin.snapshot() {
+		if call.name != canonicalLocalizedRenderLanguages[i] || call.parentID != "folder-1" {
+			t.Fatalf("language folder call %d = %+v, want %s under the clips root", i, call, canonicalLocalizedRenderLanguages[i])
 		}
 	}
 }
@@ -1089,25 +999,6 @@ func TestLocalizedRenderEnqueuer_LanguageFolderFailureFailsClosed(t *testing.T) 
 		t.Fatal("an unresolvable language folder must fail closed")
 	} else if !strings.Contains(err.Error(), "language folder") {
 		t.Fatalf("error must name the language folder, got %v", err)
-	}
-	if len(l.snapshot()) != 0 {
-		t.Fatal("no render may run when its destination cannot be resolved")
-	}
-}
-
-// TestLocalizedRenderEnqueuer_RunFolderFailureFailsClosed pins the same rule for
-// the JOB level: a clip whose run folder cannot be resolved must not fall back
-// to publishing in the documents root, where it would sit beside every other
-// run's folder instead of inside its own.
-func TestLocalizedRenderEnqueuer_RunFolderFailureFailsClosed(t *testing.T) {
-	l := &recordingLocalizer{}
-	admin := &localizedRenderFolderAdmin{failName: "job-1"}
-	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
-
-	if err := a.EnqueueLocalizedRender(context.Background(), testEnqueuerInput()); err == nil {
-		t.Fatal("an unresolvable run folder must fail closed")
-	} else if !strings.Contains(err.Error(), "documents run folder") {
-		t.Fatalf("error must name the documents run folder, got %v", err)
 	}
 	if len(l.snapshot()) != 0 {
 		t.Fatal("no render may run when its destination cannot be resolved")
@@ -1151,189 +1042,14 @@ func TestLocalizedRenderEnqueuer_RecoveryUploadsIntoTheLanguageFolder(t *testing
 	if len(recoveryFolders) != 1 || len(renderFolders) != 1 || recoveryFolders[0] != renderFolders[0] {
 		t.Fatalf("recovery folder %v must equal the render folder %v", recoveryFolders, renderFolders)
 	}
-	if recoveryFolders[0] != "docs-1/job-1/es" {
-		t.Fatalf("recovery destination = %q, want the per-language folder beside the script", recoveryFolders[0])
+	if recoveryFolders[0] != "folder-1/es" {
+		t.Fatalf("recovery destination = %q, want the per-language folder under the clips root", recoveryFolders[0])
 	}
 	if projected.DriveFileID == "" {
 		t.Fatal("recovery must project the published artifact back to the runner")
 	}
 	if projected.DriveFolderID != recoveryFolders[0] {
 		t.Fatalf("recovered folder = %q, want the per-language destination %q", projected.DriveFolderID, recoveryFolders[0])
-	}
-}
-
-// TestLocalizedRenderEnqueuer_DocumentLandsInTheLanguageFolderOfItsClips pins
-// the documents destination: a language's script document publishes into the
-// SAME <documents root>/<job>/<language> folder as that language's clips,
-// resolved through the same folder authority. A document is the editorial
-// description of the video beside it, so a second routing decision (the flat
-// documents root) is exactly how the two drifted into unrelated Drive trees.
-//
-// The clip lane's own resolution is called here, not a copy of it: the test
-// fails if the two lanes ever stop converging.
-func TestLocalizedRenderEnqueuer_DocumentLandsInTheLanguageFolderOfItsClips(t *testing.T) {
-	t.Parallel()
-	admin := &localizedRenderFolderAdmin{}
-	a := newLocalizedRenderEnqueuerAdapter(nil, nil, nil, LocalizedRenderEnqueuerConfig{
-		SourceLanguage: "en", FolderID: "clips-1", DocFolderID: "docs-1", FolderAdmin: admin,
-	}, zap.NewNop(), nil, nil, nil, nil, nil)
-
-	ctx := context.Background()
-	docFolder, err := a.ResolveDocumentFolder(ctx, "docs-1", "job-1", "it")
-	if err != nil {
-		t.Fatalf("ResolveDocumentFolder: %v", err)
-	}
-	if want := "docs-1/job-1/it"; docFolder != want {
-		t.Fatalf("document folder = %q, want %q", docFolder, want)
-	}
-
-	clipFolder, _, err := a.resolveRenderFolders(ctx, scriptgeneration.LocalizedRenderInput{
-		DocsFolderID: "docs-1", JobID: "job-1", Language: "it",
-	}, "clip-1", "it")
-	if err != nil {
-		t.Fatalf("resolveRenderFolders: %v", err)
-	}
-	if clipFolder != docFolder {
-		t.Fatalf("clip folder = %q, document folder = %q; a document must publish beside its clip", clipFolder, docFolder)
-	}
-
-	// One create per LEVEL, shared by both lanes: the clip resolution reuses the
-	// document resolution's job and language folders instead of racing to mint
-	// a second pair.
-	if names := admin.names(); len(names) != 2 || names[0] != "job-1" || names[1] != "it" {
-		t.Fatalf("folder levels = %v, want [job-1 it]", names)
-	}
-
-	// A second language shares the job level and gets its own folder.
-	ruFolder, err := a.ResolveDocumentFolder(ctx, "docs-1", "job-1", "ru")
-	if err != nil {
-		t.Fatalf("ResolveDocumentFolder(ru): %v", err)
-	}
-	if ruFolder == docFolder {
-		t.Fatalf("two languages share the document folder %q", ruFolder)
-	}
-	if names := admin.names(); len(names) != 3 || names[2] != "ru" {
-		t.Fatalf("folder levels after the second language = %v, want [job-1 it ru]", names)
-	}
-}
-
-func TestResolveDocumentFolderFailsClosedWithoutARootOrAJob(t *testing.T) {
-	t.Parallel()
-	a := newLocalizedRenderEnqueuerAdapter(nil, nil, nil, LocalizedRenderEnqueuerConfig{
-		SourceLanguage: "en", FolderID: "clips-1", DocFolderID: "docs-1", FolderAdmin: &localizedRenderFolderAdmin{},
-	}, zap.NewNop(), nil, nil, nil, nil, nil)
-
-	ctx := context.Background()
-	for _, tc := range []struct {
-		name     string
-		root     string
-		job      string
-		language string
-	}{
-		{"no documents root", "", "job-1", "it"},
-		{"no job", "docs-1", "", "it"},
-		{"no language", "docs-1", "job-1", ""},
-	} {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			if _, err := a.ResolveDocumentFolder(ctx, tc.root, tc.job, tc.language); err == nil {
-				t.Fatalf("ResolveDocumentFolder(%q, %q, %q) = nil error; want fail-closed", tc.root, tc.job, tc.language)
-			}
-		})
-	}
-}
-
-// TestLocalizedRenderEnqueuer_ThreeDriveTreesStaySeparate pins the Drive layout
-// contract of a clip-sourced run. The three destinations used to be implicit —
-// each lane resolved its own — which is exactly how the clip of a language ended
-// up published in a different tree from the script document it was rendered
-// from. The contract is:
-//
-//  1. clips AND their script documents -> <documents root>/<job>/<language>
-//  2. subtitle artifacts               -> <subtitle root>/<clip id>
-//  3. script JSON artifacts            -> the SAME root as (1), because the
-//     documents tree IS the scripts root
-//
-// Tree 2 is deliberately NOT under the documents tree: subtitles are keyed per
-// CLIP (one clip, N languages, one ASS per language), not per run/language, so
-// two languages of one clip share that folder while their clips and documents
-// do not. Every assertion is derived from the same adapter/config the production
-// composition builds, so moving one tree alone breaks this test instead of
-// silently splitting a run's deliverables.
-func TestLocalizedRenderEnqueuer_ThreeDriveTreesStaySeparate(t *testing.T) {
-	t.Parallel()
-
-	l := &recordingLocalizer{}
-	admin := &localizedRenderFolderAdmin{}
-	a := newTestEnqueuerAdapterWithAdmin(l, &recordingTrackRepo{}, &recordingCueWriter{}, nil, admin)
-	// The subtitle root is a deployment setting the default test wiring leaves
-	// unset (the config carries "" when no subtitle folder is configured).
-	a.cfg.SubtitleFolderID = "subs-1"
-
-	in := testEnqueuerInput() // language es, clip-1
-	in.Render = scriptpkg.VideoRenderSpec{Enabled: true, DriveFolderID: "clips-root", DriveSubfolderName: "Dolly Parton"}
-	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
-		t.Fatalf("EnqueueLocalizedRender: %v", err)
-	}
-
-	got := l.snapshot()
-	if len(got) != 1 {
-		t.Fatalf("Localize calls: got %d, want 1", len(got))
-	}
-	ctx := context.Background()
-
-	// Tree 1 — the clip lands in its language folder under the run's
-	// documents root, never in the payload's clips destination.
-	if want := "docs-1/job-1/es"; got[0].FolderID != want {
-		t.Errorf("clip destination = %q, want %q", got[0].FolderID, want)
-	}
-	docFolder, err := a.ResolveDocumentFolder(ctx, "docs-1", "job-1", "es")
-	if err != nil {
-		t.Fatalf("ResolveDocumentFolder: %v", err)
-	}
-	if docFolder != got[0].FolderID {
-		t.Errorf("document folder = %q, clip folder = %q; the two deliverables of one language must share a folder", docFolder, got[0].FolderID)
-	}
-
-	// Tree 2 — subtitles beside nothing: keyed by clip, in their own root.
-	if want := "subs-1/clip-1"; got[0].SubtitleFolderID != want {
-		t.Errorf("subtitle destination = %q, want %q", got[0].SubtitleFolderID, want)
-	}
-	if strings.HasPrefix(got[0].SubtitleFolderID, "docs-1") {
-		t.Errorf("subtitle artifacts resolved INSIDE the run/documents tree: %q", got[0].SubtitleFolderID)
-	}
-	// Same clip, another language: the subtitle folder is a per-clip fact, so a
-	// new language must not mint a new one (only the document/clip tree gains a
-	// language level).
-	itFolder, _, err := a.resolveRenderFolders(ctx, scriptgeneration.LocalizedRenderInput{
-		DocsFolderID: "docs-1", JobID: "job-1", Language: "it",
-	}, "clip-1", "it")
-	if err != nil {
-		t.Fatalf("resolveRenderFolders(it): %v", err)
-	}
-	if itFolder == got[0].FolderID {
-		t.Errorf("two languages share the clip folder %q", itFolder)
-	}
-	subtitleCalls := 0
-	for _, call := range admin.snapshot() {
-		if call.parentID == "subs-1" && call.name == "clip-1" {
-			subtitleCalls++
-		}
-	}
-	if subtitleCalls != 1 {
-		t.Errorf("subtitle folder creations = %d, want 1 (one per clip, reused by every language)", subtitleCalls)
-	}
-
-	// Tree 3 — the machine-readable artifacts of the run share tree 1's root:
-	// the documents tree IS the scripts root, which is the only way the clips,
-	// the documents and the JSON artifacts of one run describe one run.
-	drive := platformconfig.DriveConfig{ScriptsRootFolder: "docs-1"}
-	if drive.DocumentsFolder() != drive.ScriptsFolder() {
-		t.Errorf("documents tree root = %q, scripts tree root = %q; they must be one root", drive.DocumentsFolder(), drive.ScriptsFolder())
-	}
-	if drive.DocumentsFolder() != "docs-1" {
-		t.Errorf("documents tree root = %q, want the configured scripts root", drive.DocumentsFolder())
 	}
 }
 

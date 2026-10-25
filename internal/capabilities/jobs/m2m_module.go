@@ -100,7 +100,6 @@ func (m *M2MJobsModule) RegisterRoutes(rg *gin.RouterGroup) {
 
 // Compile-time assertion: M2MJobsModule satisfies the minimal
 // route-module interface the composition root expects (the same
-// interface admin/artlist/youtube modules satisfy via api.Module).
 // Kept local so the m2m package stays free of the api package import.
 var _ interface {
 	Name() string

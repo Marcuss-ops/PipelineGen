@@ -40,7 +40,7 @@ func (o *recordingSceneCommitObserver) committed() []SceneCommitted {
 }
 
 func TestSceneCommitted_EmittedOncePerSceneInCanonicalOrder(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	observer := &recordingSceneCommitObserver{}
 	runner.SetSceneCommitObserver(observer)
 	req := defaultTestRequest()
@@ -86,7 +86,7 @@ func TestSceneTextHashUsesCanonicalUnicodeNormalization(t *testing.T) {
 }
 
 func TestSceneCommitted_ObserverErrorFailsRunClosed(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runner.SetSceneCommitObserver(&recordingSceneCommitObserver{err: errors.New("scene commit observer failure")})
 	req := defaultTestRequest()
 

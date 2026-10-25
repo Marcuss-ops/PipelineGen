@@ -13,7 +13,6 @@ func TestVidRushFanoutPlanPreservesProviderPolicyAndInputs(t *testing.T) {
 		MediaPlan: mediadomain.MediaPlanSpec{
 			Planner: mediadomain.MediaPlannerPolicy{CandidateLimit: 75},
 			ProviderPolicy: mediadomain.MediaProviderPolicy{
-				Artlist:        mediadomain.MediaToggleEnabled,
 				InternetImages: mediadomain.MediaToggleEnabled,
 			},
 		},
@@ -21,18 +20,18 @@ func TestVidRushFanoutPlanPreservesProviderPolicyAndInputs(t *testing.T) {
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "segment-1", TextHash: "hash-1", Text: "scene",
 		Insights: scriptpkg.SegmentInsights{
-			ArtlistQueries: []string{" artlist "}, ImageQueries: []string{" image "},
+			ImageQueries: []string{" image "},
 		},
 	}
-	fanout := buildVidRushFanoutPlan(plan, segment, &gatedArtlistSearcher{}, &gatedImageSearcher{}, nil)
-	if !fanout.artlistEnabled || !fanout.imagesEnabled {
-		t.Fatalf("provider enablement = artlist:%v images:%v", fanout.artlistEnabled, fanout.imagesEnabled)
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
+	if !fanout.imagesEnabled {
+		t.Fatalf("provider enablement = images:%v", fanout.imagesEnabled)
 	}
 	if fanout.perQueryLimit != 50 {
 		t.Fatalf("per-query limit = %d, want capped at 50", fanout.perQueryLimit)
 	}
-	if len(fanout.artlistQueries) != 1 || fanout.artlistQueries[0] != "artlist" {
-		t.Fatalf("artlist queries = %#v, want normalized canonical query", fanout.artlistQueries)
+	if len(fanout.imageQueries) == 0 {
+		t.Fatalf("image queries = %#v, want the scene's canonical query", fanout.imageQueries)
 	}
 }
 
@@ -54,7 +53,7 @@ func TestVidRushFanoutPlanEntityImagesExcludeVisualConceptQueries(t *testing.T) 
 			ImageEntityCanonicalIDs: map[string]string{"donald trump's": "person:donald-trump"},
 		},
 	}
-	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
 	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Donald Trump's" || fanout.imageQueries[1] != "Donald Trump’s" {
 		t.Fatalf("entity image queries = %#v, want both PERSON surfaces", fanout.imageQueries)
 	}
@@ -72,7 +71,7 @@ func TestVidRushFanoutPlanIncludesBrandImageQueries(t *testing.T) {
 			ImageQueries: []string{"Apple", "25%"},
 		},
 	}
-	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
 	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Apple" {
 		t.Fatalf("brand image queries = %#v, want only Apple", fanout.imageQueries)
 	}
@@ -93,11 +92,11 @@ func TestVidRushFanoutPlanPerSceneImagesUsesCanonicalEntityQuery(t *testing.T) {
 		SourceText: "A operação Vectura Corrupta cumpriu dezesseis mandados e prendeu Milton Leite.",
 		Insights:   scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON"}}, ImageQueries: []string{"Milton Leite"}},
 	}
-	first := buildVidRushFanoutPlan(plan, base, nil, &gatedImageSearcher{}, nil)
+	first := buildVidRushFanoutPlan(plan, base, &gatedImageSearcher{}, nil)
 	base.SegmentID, base.TextHash = "scene-3", "hash-3"
 	base.Text = "Milton Leite contestou a decisão do Superior Tribunal de Justiça."
 	base.SourceText = "A defesa questionou a prisão temporária e contestou os fundamentos da decisão."
-	second := buildVidRushFanoutPlan(plan, base, nil, &gatedImageSearcher{}, nil)
+	second := buildVidRushFanoutPlan(plan, base, &gatedImageSearcher{}, nil)
 	if len(first.imageQueries) != 1 || len(second.imageQueries) != 1 || first.imageQueries[0] != "Milton Leite" || second.imageQueries[0] != "Milton Leite" {
 		t.Fatalf("per-scene image queries must use the canonical entity identity: first=%q second=%q", first.imageQueries, second.imageQueries)
 	}
@@ -118,7 +117,7 @@ func TestVidRushFanoutPlanPerSceneImagesKeepsBothPeople(t *testing.T) {
 			ImageQueries: []string{"Alberto Stasi", "Giada Bocellari"},
 		},
 	}
-	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
 	if len(fanout.imageQueries) != 2 || fanout.imageQueries[0] != "Alberto Stasi" || fanout.imageQueries[1] != "Giada Bocellari" {
 		t.Fatalf("per-scene image queries = %#v, want one query per person", fanout.imageQueries)
 	}
@@ -136,7 +135,7 @@ func TestVidRushFanoutPlanPerSceneImageQueryIgnoresNarrativeSuffix(t *testing.T)
 			ImageQueries: []string{"Chiara Poggi Presenta Chiara Poggi, ventiseienne uccisa"},
 		},
 	}
-	fanout := buildVidRushFanoutPlan(plan, segment, nil, &gatedImageSearcher{}, nil)
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
 	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Chiara Poggi" {
 		t.Fatalf("entity image query = %q, want canonical identity only", fanout.imageQueries)
 	}
@@ -147,9 +146,9 @@ func TestVidRushFanoutMergeKeepsCandidatesWithoutSelectingWinner(t *testing.T) {
 	updated := scriptpkg.VidRushSegmentResult{SegmentID: "segment-1"}
 	profile := updated.CanonicalSemanticProfile()
 	outcome := vidRushProviderOutcome{
-		provider: scriptpkg.VidRushProviderArtlist,
+		provider: scriptpkg.VidRushProviderYouTube,
 		candidates: []scriptpkg.SegmentAssetCandidate{{
-			AssetID: "clip-1", Provider: scriptpkg.VidRushProviderArtlist,
+			AssetID: "clip-1", Provider: scriptpkg.VidRushProviderYouTube,
 			SourceURL: "https://cdn.example/clip-1.m3u8", RelevanceScore: 0.9,
 		}},
 	}

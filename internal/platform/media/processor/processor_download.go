@@ -18,10 +18,6 @@ import (
 // shape predicates, so they belong next to the generic downloaders rather than
 // to any one provider.
 //
-// ARTIST-DEMOLITION (September 2026): the Artlist-clip branch (the injected
-// ArtlistDownloader + the IsArtlistURL / numeric-ID routing) is RETIRED with the
-// Artlist capability. A source that is neither a direct media file nor an HLS
-// playlist now always falls through to yt-dlp, which is what the Artlist clips
 // already did whenever the injected resolver was absent.
 //
 // Ladder:

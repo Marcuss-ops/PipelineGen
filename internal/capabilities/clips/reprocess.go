@@ -148,7 +148,6 @@ func (uc *ReprocessUseCase) Execute(ctx context.Context, req ReprocessRequest) (
 		// Folder alignment (August 2026): route YouTube clip uploads
 		// through the canonical DestinationYouTubeClip registry policy
 		// so the file lands in clips/{group}/{video_id} (the clip's real
-		// folder) instead of the Artlist destination + stale ParentFolderID
 		// that orphaned every folder-mismatch reprocess.
 		Destination: string(delivery.DestinationYouTubeClip),
 		Group:       reprocessGroup(clip),

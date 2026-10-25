@@ -118,7 +118,6 @@ var dualModeSyncAllowlistRelative = map[string]bool{
 //   - vendor: vendored deps (if present)
 //   - node_modules: npm-installed deps (node-scraper / future
 //     frontend)
-//   - node-scraper: the Node.js artlist scraper
 //     (archcheck is a Go-only gate; .js files would never
 //     match the probe substrings but directory-level skip is
 //     cheaper + matches user expectations)

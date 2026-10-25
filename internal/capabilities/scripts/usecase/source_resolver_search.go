@@ -174,7 +174,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	for _, id := range searchIDs {
 		// Qdrant carries the semantic summary used by the sampler. Pass it
 		// through the per-clip hydration options so a Drive-only asset does
-		// not need a local transcript row to qualify for a Docs-only job.
+		// not need a local transcript row to qualify for a non-render job.
 		hydrateOpts := *searchClipOpts
 		for _, result := range results {
 			if strings.TrimSpace(result.ClipID) == id {
@@ -213,7 +213,7 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			continue
 		}
 		if !resCtx.RequireLocalMedia && strings.TrimSpace(detail.DriveLink) == "" {
-			// A Docs-only job deliberately does not require local media,
+			// A non-render job deliberately does not require local media,
 			// but it must still have the canonical Drive locator.
 			continue
 		}

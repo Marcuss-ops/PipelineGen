@@ -4,7 +4,7 @@
 // delegates execution to the runner.
 //
 // Verdetto invariants:
-//   - The run is created BEFORE any external I/O (Ollama, Google Docs, etc.).
+//   - The run is created BEFORE any external I/O (Ollama, Drive, etc.).
 //   - Start returns immediately after creating the run and registering
 //     the execution command. The runner continues in the background.
 //   - The HTTP handler calls Start and returns 202 Accepted with the
@@ -23,16 +23,11 @@ package scriptgeneration
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	kernelscript "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/google/uuid"
 )
-
-var ErrGoogleDocsUnavailable = errors.New("GOOGLE_DOCS_UNAVAILABLE")
 
 // Service is the single linear orchestrator for script generation.
 // It is NOT an abstract plugin system or phase registry — it is a
@@ -53,8 +48,6 @@ func NewService(
 	textGen TextGenerator,
 	translator Translator,
 	voiceoverGen VoiceoverGenerator,
-	docPublisher DocumentPublisher,
-	documentRenderers ...DocumentRenderer,
 ) *Service {
 	if repo == nil {
 		panic("scriptgeneration: RunRepository is required")
@@ -64,9 +57,6 @@ func NewService(
 	}
 	if translator == nil {
 		panic("scriptgeneration: Translator is required")
-	}
-	if docPublisher == nil {
-		panic("scriptgeneration: DocumentPublisher is required")
 	}
 	// VoiceoverGenerator is conditionally required — the runner fail-closes
 	// on a nil generator when a voiceover-producing mode is active.
@@ -78,19 +68,7 @@ func NewService(
 			textGen,
 			translator,
 			voiceoverGen,
-			docPublisher,
-			documentRenderers...,
 		),
-	}
-}
-
-// SetScriptDocsFolderID wires the configured default script documents
-// destination (PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). A docs.enabled=true run
-// fails closed at run start when neither the request nor this default
-// resolves a destination folder.
-func (s *Service) SetScriptDocsFolderID(folderID string) {
-	if s != nil && s.runner != nil {
-		s.runner.SetScriptDocsFolderID(folderID)
 	}
 }
 
@@ -124,25 +102,12 @@ func (s *Service) Start(ctx context.Context, req GenerateRequest) (*StartResult,
 		return nil, fmt.Errorf("scriptgeneration: source.type is required")
 	}
 
-	// Validate document publishing config.
-	// Uses ResolveDocsConfig for backward-compat with deprecated flat fields.
-	docsEnabled, docsLangs, _ := req.ResolveDocsConfig()
-	if docsEnabled && len(docsLangs) == 0 {
-		return nil, fmt.Errorf("scriptgeneration: docs.enabled requires at least one language")
-	}
-	if docsEnabled {
-		publisher, ok := s.runner.docPublisher.(DocumentPublisherPreflight)
-		if !ok {
-			return nil, fmt.Errorf("%w: real document publisher is not configured", ErrGoogleDocsUnavailable)
-		}
-		_, _, callerFolderID := req.ResolveDocsConfig()
-		folderID, err := kernelscript.ResolveScriptDocsFolderID(true, callerFolderID, s.runner.scriptDocsFolderID)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrGoogleDocsUnavailable, err)
-		}
-		if err := publisher.Preflight(ctx, strings.TrimSpace(folderID)); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrGoogleDocsUnavailable, err)
-		}
+	// Google Docs publication was removed completely. A request that still
+	// asks for it MUST fail closed instead of producing a run without the
+	// requested document (NO-FAKE-AVAILABILITY). `docs` omitted or
+	// docs.enabled=false keeps working unchanged.
+	if req.DocsRequested() {
+		return nil, ErrGoogleDocsRetired
 	}
 
 	// Create the run BEFORE any external I/O.

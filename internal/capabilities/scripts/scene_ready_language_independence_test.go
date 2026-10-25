@@ -68,7 +68,7 @@ func (g *languageRecordingVoiceover) recorded() []Language {
 // language's voiceover must already be synthesized. A regression to the
 // translation→TTS barrier makes this test time out, not merely reorder.
 func TestSceneReadyCoordinator_SourceTTSDoesNotWaitForTargetTranslation(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	translator := &blockingTargetTranslator{started: make(chan struct{}), release: make(chan struct{})}
 	voiceover := &languageRecordingVoiceover{first: make(chan Language, 1)}

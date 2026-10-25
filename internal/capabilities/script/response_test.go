@@ -2,13 +2,11 @@
 // wire shape of POST /api/script/generate (PR-morti-sync, July 2026).
 //
 // godlike/07 forward-prevention gates:
-//   - Field count must remain EXACTLY 6 (NO re-introduction of dead
+//   - Field count must remain EXACTLY 5 (NO re-introduction of dead
 //     sync fields like Script/WordCount/Title/Language/Model/CacheStatus/
 //     CacheHit/Count/Total/Results/EntitiesJSON/DocLink/DocID/Warnings).
 //   - JSON-keys MUST be the canonical async set (ok + job_id + status +
-//     status_url + doc_title + current_stage).
-//   - Empty doc_title MUST be omitted (production call site passes ""
-//     and operators read the wire shape verbatim via chrome tests).
+//     status_url + current_stage).
 //   - Zero value MUST serialize as far as omitempty permits (ok:false
 //     emits; everything else drops).
 //
@@ -26,7 +24,7 @@ import (
 )
 
 // TestGenerateResponse_FieldCountLock pins the field count to exactly
-// 6. godlike/07 forward-prevention gate: a future re-introduction of
+// 5. godlike/07 forward-prevention gate: a future re-introduction of
 // dead sync fields (Script / WordCount / Title / Language / Model /
 // CacheStatus / CacheHit / Count / Total / Results / EntitiesJSON /
 // DocLink / DocID) would surface as a test failure, requiring a
@@ -34,7 +32,7 @@ import (
 func TestGenerateResponse_FieldCountLock(t *testing.T) {
 	t.Parallel()
 
-	const wantCount = 6
+	const wantCount = 5
 	got := reflect.TypeOf(GenerateResponse{}).NumField()
 	if got != wantCount {
 		t.Fatalf("GenerateResponse field count = %d, want %d (forward-prevention lock).\nField names: %v",
@@ -48,7 +46,7 @@ func TestGenerateResponse_FieldCountLock(t *testing.T) {
 func TestGenerateResponse_FieldNamesCanonical(t *testing.T) {
 	t.Parallel()
 
-	const want = "ok job_id status status_url doc_title current_stage"
+	const want = "ok job_id status status_url current_stage"
 	got := fieldNamesCanonical()
 	if got != want {
 		t.Fatalf("GenerateResponse JSON-keys = %q\n  want   = %q", got, want)
@@ -79,36 +77,14 @@ func TestGenerateResponse_AsyncHelper_PopulatedAllFields(t *testing.T) {
 	t.Parallel()
 
 	resp := GenerateResponse{}
-	resp.async("job-abc-123", "PENDING", "/api/jobs/job-abc-123/full", "Document Title")
+	resp.async("job-abc-123", "PENDING", "/api/jobs/job-abc-123/full")
 	got, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatalf("json.Marshal err: %v", err)
 	}
-	want := `{"ok":true,"job_id":"job-abc-123","status":"PENDING","status_url":"/api/jobs/job-abc-123/full","doc_title":"Document Title"}`
+	want := `{"ok":true,"job_id":"job-abc-123","status":"PENDING","status_url":"/api/jobs/job-abc-123/full"}`
 	if string(got) != want {
 		t.Fatalf("async JSON\n  got  = %s\n  want = %s", string(got), want)
-	}
-}
-
-// TestGenerateResponse_AsyncHelper_DocTitleEmpty_OmitsKey verifies
-// the empty doc_title path drops the key (this is the production
-// call site in handler_enqueue.go — empty doc_title string).
-func TestGenerateResponse_AsyncHelper_DocTitleEmpty_OmitsKey(t *testing.T) {
-	t.Parallel()
-
-	resp := GenerateResponse{}
-	resp.async("job-abc-123", "PENDING", "/api/jobs/job-abc-123/full", "")
-
-	body, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("json.Marshal err: %v", err)
-	}
-	if strings.Contains(string(body), "doc_title") {
-		t.Fatalf("doc_title should be omitted on empty value; got %s", string(body))
-	}
-	want := `{"ok":true,"job_id":"job-abc-123","status":"PENDING","status_url":"/api/jobs/job-abc-123/full"}`
-	if string(body) != want {
-		t.Fatalf("async JSON (empty doc_title)\n  got  = %s\n  want = %s", string(body), want)
 	}
 }
 
@@ -122,7 +98,7 @@ func TestGenerateResponse_NoLegacySyncKeys(t *testing.T) {
 	t.Parallel()
 
 	resp := GenerateResponse{}
-	resp.async("job-id-99", "PENDING", "/api/jobs/job-id-99/full", "Doc-Title")
+	resp.async("job-id-99", "PENDING", "/api/jobs/job-id-99/full")
 	body, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatalf("json.Marshal err: %v", err)
@@ -169,7 +145,7 @@ func TestGenerateResponse_AsyncHelper_ValuesReceiver_NoNilPanic(t *testing.T) {
 	// auto-takes the address. The test confirms no panic and OK=true
 	// gets set on the receiver.
 	resp := GenerateResponse{}
-	resp.async("job-z", "PENDING", "/api/jobs/job-z/full", "")
+	resp.async("job-z", "PENDING", "/api/jobs/job-z/full")
 	if !resp.OK {
 		t.Fatalf("async() should set OK=true; resp.OK=%v", resp.OK)
 	}

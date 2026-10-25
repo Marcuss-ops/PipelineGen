@@ -303,25 +303,10 @@ func (c *VidRushIncrementalCoordinator) OnSceneCommitted(ctx context.Context, ev
 		}
 		start := time.Now()
 
-		// Stage 1 — entity extraction. Single-slot by default (local Ollama),
-		// and low-priority against the generation gate so scene generation is
-		// never starved when both share the same model.
-		result, err := c.enrichSegment(enrichCtx, scene)
-		if err == nil {
-			// Stage 1b — canonical identity stamping: the Image Search Intent
-			// resolver's canonical_entity_id choices travel with the segment
-			// (never re-derived downstream by the annotation projection).
-			result, err = c.stampImageSearchDecision(enrichCtx, result, scene.Text, event.Language)
-		}
-		if err == nil {
-			result, err = c.researchSegment(enrichCtx, result)
-		}
-		if err == nil {
-			result, err = c.searchProviders(enrichCtx, result)
-		}
-		if err == nil {
-			result, err = c.materializeSegment(enrichCtx, result)
-		}
+		// The full stage chain (extraction → stamping → research → provider
+		// fan-out → materialize) lives in incremental_coordinator_enrich.go,
+		// where it also records the scene's nlp and asset trace stages.
+		result, err := c.enrichAndMaterialize(enrichCtx, event, scene)
 		if err == nil {
 			err = validateVidRushResultIdentity(event, result)
 		}
@@ -363,17 +348,36 @@ func validateVidRushResultIdentity(event SceneCommitted, result scriptpkg.VidRus
 
 // enrichSegment runs the entity-extraction stage under its own bounded
 // semaphore, with low priority against the shared generation gate.
+//
+// Both acquisitions are QUEUE WAIT, not work: before this instrumentation the
+// time spent queued behind the shared generation gate or the extraction slot
+// was charged to the nlp.extract call that follows it — the unattributed
+// scene_analysis queue wait. Each blocked interval is now recorded as a typed
+// wait on the Run (RunReport.Waits → blocked_ms → active_ms = wall − blocked),
+// so the queue wait is finally separable from extraction work.
 func (c *VidRushIncrementalCoordinator) enrichSegment(ctx context.Context, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
 	if c.gate != nil {
-		if err := c.gate.AcquireLow(ctx); err != nil {
-			return scriptpkg.VidRushSegmentResult{}, err
+		// The shared generation gate is a RESOURCE LOCK on the local model
+		// (single-slot, priority-ordered): a low-priority enrichment queued
+		// behind generation is waiting on that resource.
+		gateStart := time.Now().UTC()
+		gateErr := c.gate.AcquireLow(ctx)
+		kernobs.RecordWait(ctx, kernobs.WaitInfo{
+			Kind:       kernobs.WaitResourceLock,
+			Component:  kernobs.ComponentOllama,
+			StartedAt:  gateStart,
+			FinishedAt: time.Now().UTC(),
+		})
+		if gateErr != nil {
+			return scriptpkg.VidRushSegmentResult{}, gateErr
 		}
 		defer c.gate.Release()
 	}
-	if err := c.acquire(ctx, c.extractSem); err != nil {
+	releaseExtract, err := kernobs.AcquireSlot(ctx, c.extractSem, kernobs.ComponentNLP, kernobs.WaitSemaphore)
+	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err
 	}
-	defer c.release(c.extractSem)
+	defer releaseExtract()
 	// scene_analysis is the per-scene entity/phrase/word extraction
 	// boundary. Each enrichment is recorded as an nlp.extract operation on
 	// the canonical Run clock, so fan-out reports expose calls / accumulated

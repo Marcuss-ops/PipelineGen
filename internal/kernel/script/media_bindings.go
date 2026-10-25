@@ -96,7 +96,6 @@ type StockBinding struct {
 	// Name is the human-readable name of the stock asset.
 	Name string `json:"name,omitempty"`
 
-	// Source identifies the provider (artlist|youtube|stock).
 	Source string `json:"source,omitempty"`
 
 	// DriveLink is the Google Drive URL of the stock asset.

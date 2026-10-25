@@ -10,7 +10,6 @@
 // FASE 3 (Piano d'Azione §3, July 2026) REMOVED the silent auto-cast to
 // KindDocument (the pre-FASE-3 code mapped ANY unknown destination to
 // KindDocument, producing mis-routed media_assets media_type=document
-// rows for YouTube clips, voiceover audio, stock videos, and artlist
 // clips). The user-spec line — "rimuovi la conversione
 // VerifiedArtifact→stato guidata da dest sconosciute (non più
 // auto-cast a 'document')" — is the canonical fix codified here as a
@@ -43,7 +42,6 @@ import (
 // per-destination mapping in a single tabular test: every canonical
 // 9-key destination MUST map to its OWN declared Kind — NOT a uniform
 // KindDocument fallback (the pre-FASE-3 anti-pattern that mis-routed
-// YouTube clips, voiceover audio, stock videos, and artlist clips).
 //
 // The 9 mappings canonically declared in the production switch:
 //
@@ -54,7 +52,6 @@ import (
 //	document      → KindDocument      (only one true document destination)
 //	book          → KindDocument      (text content; canonical mapping per FASE 3)
 //	stock         → KindVideo         (cutover away from KindDocument)
-//	artlist       → KindVideo         (cutover away from KindDocument)
 //	sound_effect  → KindSoundEffect   (cutover away from KindDocument)
 //
 // The table also asserts errors.Is compatibility for all 9 (no error

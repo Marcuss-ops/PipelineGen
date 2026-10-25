@@ -37,13 +37,12 @@ func (g *trackingTranslationGenerator) maximum() int {
 }
 
 func TestTranslationPhaseFansOutSceneLanguageCalls(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	tracker := &trackingTranslationGenerator{}
 	runner.translator = tracker
 	runner.SetTranslationConcurrency(MaxTranslationConcurrency + 4)
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{}
 	req.Project = ""
 	runID := "run-translation-pool"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))

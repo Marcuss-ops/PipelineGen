@@ -263,7 +263,6 @@ func TestKeys_DistinctShapes(t *testing.T) {
 	// first segment is different (provider vs event_type).
 	// A collision would require provider == event_type, which
 	// is structurally improbable (providers are short tokens
-	// like "artlist"; event_types are long dotted paths like
 	// "asset.index.requested.v1"). Pin the no-collision
 	// invariant with a representative case.
 	assert.NotEqual(t, a, c, "AssetKey and OutboxKey for the same asset MUST differ (different first segment)")
@@ -471,9 +470,7 @@ func TestErrInvalidSegment_SentinelIdentity(t *testing.T) {
 
 // TestBuildKey_HappyPath pins the canonical 64-character lowercase
 // SHA-256 hex output shape. The map content is the canonical
-// artlist run-level dedup input (term + folder_id + strategy +
 // dry_run + limit). The byte-stable output is critical: in-flight
-// jobs queued with the legacy artlist.runDedupKey hash must MATCH
 // across the migration (godlike/06 SSOT byte-stable).
 func TestBuildKey_HappyPath(t *testing.T) {
 	canonical := map[string]any{
@@ -491,7 +488,6 @@ func TestBuildKey_HappyPath(t *testing.T) {
 
 	// Byte-stability fixture (Commit B follow-up, July 2026): the
 	// NEW BuildKey output MUST produce the EXACT 64-char hex the
-	// legacy artlist.runDedupKey did for this canonical input.
 	// Otherwise in-flight jobs queued under the legacy hash would
 	// miss-dedup at the kernel job broker's UNIQUE on
 	// `jobs.active_key`. The expected hex is derived off-line via
@@ -523,12 +519,10 @@ func TestBuildKey_HappyPath(t *testing.T) {
 // The provider parameter is the VALIDATION discriminator
 // (rejects empty provider + ':' in provider via typed sentinels)
 // but is NOT part of the hash input. Two callers with different
-// provider discriminators ("artlist-run" vs "stock-run") and
 // IDENTICAL canonical content produce IDENTICAL SHA-256 hex
 // keys.
 //
 // Why: the design verdict REQUIRED byte-stability with the legacy
-// artlist.runDedupKey to avoid breaking in-flight jobs queued
 // under the legacy hash. The legacy runDedupKey did NOT include
 // the provider discriminator in its canonical map — only the
 // 5 dedup segments (term + root_folder_id + strategy + dry_run

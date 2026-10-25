@@ -42,8 +42,7 @@ import (
 // writeFixtureSpecAliases writes a synthetic file at the given
 // repo-relative path inside root, creating parent directories
 // as needed. Returns the absolute file path. Mirrors the
-// writeFixture pattern from percheck_player_client_test.go +
-// percheck_script_docs_route_test.go.
+// writeFixture pattern from percheck_player_client_test.go.
 func writeFixtureSpecAliases(t *testing.T, root, relPath, content string) string {
 	t.Helper()
 	abs := filepath.Join(root, relPath)

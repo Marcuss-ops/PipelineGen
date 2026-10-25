@@ -56,29 +56,16 @@ func storeVidRushPersistentJSON(ctx context.Context, cache scriptports.VidRushCa
 // replay with identical HIT_EXACT semantics, so bounding memory never
 // changes results.
 const (
-	vidrushArtlistL1Capacity      = 2048
 	vidrushImageL1Capacity        = 4096
 	vidrushBindingL1Capacity      = 4096
 	vidrushMaterializedL1Capacity = 1024
 )
 
 var (
-	vidrushArtlistCache      = cacheutil.NewLRU(vidrushArtlistL1Capacity)
 	vidrushImageCache        = cacheutil.NewLRU(vidrushImageL1Capacity)
 	vidrushBindingCache      = cacheutil.NewLRU(vidrushBindingL1Capacity)
 	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
 )
-
-// artlistSegmentCacheKey makes explicit Artlist intent the stable identity of
-// a tagged search. Generated prose can vary slightly across model retries;
-// explicit keywords must still replay the same provider result. Untagged
-// searches retain the text-hash identity used by the legacy path.
-func artlistSegmentCacheKey(segmentID, textHash, intentHash, language, model, promptVersion string) string {
-	if strings.TrimSpace(intentHash) != "" {
-		textHash = ""
-	}
-	return versionedSegmentCacheKey("artlist-assets", scriptports.CacheVersion("artlist-v3"), segmentID, textHash, intentHash, language, model, promptVersion)
-}
 
 func buildCanonicalSegments(plan *scriptpkg.ResolvedGenerationPlan, scenes []scriptpkg.SpecScene, text string) []scriptpkg.CanonicalSegment {
 	if plan == nil {

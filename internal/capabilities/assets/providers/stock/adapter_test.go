@@ -77,7 +77,6 @@ func TestAdapter_CapabilitiesAdvertisesSearchFetchAndVideo(t *testing.T) {
 }
 
 // TestAdapter_ImplementsSearchProvider is a structural guard mirroring
-// artlist/youtube. Type assertion on `any` checks the underlying type,
 // not the runtime value (so a typed-nil pointer is sufficient to
 // validate).
 func TestAdapter_ImplementsSearchProvider(t *testing.T) {
@@ -88,7 +87,6 @@ func TestAdapter_ImplementsSearchProvider(t *testing.T) {
 }
 
 // TestFetch_NilRunnerReturnsErrSourceNotWired protects against
-// production-wired nil pointers. Same contract as artlist/youtube.
 func TestFetch_NilRunnerReturnsErrSourceNotWired(t *testing.T) {
 	a := NewAdapter(nil)
 	_, err := a.Fetch(context.Background(), providers.FetchRequest{

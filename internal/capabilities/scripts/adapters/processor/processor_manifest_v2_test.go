@@ -21,9 +21,8 @@
 //
 //  4. TestBuildManifestV2_AllCapabilities emits 2
 //     DownstreamRequests (voiceover + images) when
-//     all 3 processors are registered. Each item is keyed to
-//     plan.ID. The Image request's Count=1 and the document
-//     request's OutputDest.Kind="google_doc".
+//     both processors are registered. Each item is keyed to
+//     plan.ID. The Image request's Count=1.
 //
 //  5. TestBuildManifestV2_JSONRoundTrip asserts the manifest
 //     marshals to the canonical wire shape (NoInlineAssets=true
@@ -125,12 +124,11 @@ func TestBuildManifestV2_VoiceoverOnly(t *testing.T) {
 	assert.Nil(t, item.AssetRequirements.Images, "voiceover-only envelope MUST NOT carry Images")
 }
 
-// TestBuildManifestV2_AllCapabilities asserts that registering all
-// 3 production postprocessors (voiceover + images + document)
-// emits exactly 3 DownstreamRequests in the canonical order. The
-// image request's Count=1 (canonical default) and the document
-// request's OutputDest.Kind="google_doc" are load-bearing for the
-// Step 11B dispatcher's per-kind routing.
+// TestBuildManifestV2_AllCapabilities asserts that registering the
+// voiceover + images postprocessors emits exactly 2 DownstreamRequests
+// in the canonical order. The image request's Count=1 (canonical
+// default) is load-bearing for the Step 11B dispatcher's per-kind
+// routing.
 func TestBuildManifestV2_AllCapabilities(t *testing.T) {
 	t.Parallel()
 	plan := planWithPostprocessors(basePlanForIdem(), adapters.ProcessorVoiceover, adapters.ProcessorImages)

@@ -131,7 +131,6 @@ func applyDefaults(b *MediaBinding, clock Clock) {
 		// contract): manual dashboard edits land with
 		// ProviderLocal (the canonical "human-curated" tag).
 		// Auto-linker writes set Provider explicitly to the
-		// SearchFanOut-translated value (artlist, youtube,
 		// pexels, mediamemory.semantic, ...).
 		b.Provider = ProviderLocal
 	}

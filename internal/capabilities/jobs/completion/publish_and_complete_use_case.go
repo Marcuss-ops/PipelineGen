@@ -94,7 +94,6 @@ var ErrPublishAndCompleteUseCasePrepareFailed = errors.New(
 
 // ErrUnmappedCompletionDestination is the typed sentinel returned when a
 // StagedArtifactReference.Destination is not in the canonical 9-key set
-// (image, youtube_clip, voiceover, script, document, book, stock, artlist,
 // sound_effect) AND therefore cannot be projected to a typed VerifiedArtifact
 // .Kind / .Source pair. FASE 3 of the audit (July 2026) explicitly
 // forbids any destination->Kind/Source auto-cast — unknown destination
@@ -414,11 +413,9 @@ func firstNonEmpty(value, fallback string) string {
 //	document      → KindDocument     (only ONE true document destination)
 //	book          → KindDocument     (text content; canonical mapping per FASE 3)
 //	stock         → KindVideo        (default video kind; per-stock.kind override is a forward-pointer)
-//	artlist       → KindVideo        (catalog clips; Audiolist video kind, FASE 3)
 //	sound_effect   → KindSoundEffect  (was previously mis-routed to KindDocument)
 //
 // Pre-FASE-3 behavior was `default: return KindDocument` which silently
-// mis-routed YouTube clips, voiceover audio, stock videos, and artlist
 // clips into the media_assets media_type=document column. The user-spec
 // line "rimuovi la conversione VerifiedArtifact→stato guidata da dest
 // sconosciute (non più auto-cast a \"document\")" is the canonical fix:
@@ -465,7 +462,6 @@ func KindFromDestination(dest string) (finalization.ArtifactKind, error) {
 // are a HARD error. Pre-FASE-3 behavior was `default: return dest` which
 // propagated the destination string verbatim into media_assets.source
 // (stash for an unrecognised destination), bypassing the canonical
-// source enum (voiceover|image|youtube|script|document|book|stock|artlist|
 // sound_effect). The IndexingHandler's Qdrant payload builder reads
 // media_assets.source as the semantic `origin` slot — a stash value
 // like "drives" produces off-spec downstream behaviour.

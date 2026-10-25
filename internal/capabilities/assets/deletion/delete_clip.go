@@ -73,7 +73,6 @@ type DeletionLookupDeps struct {
 // DeleteAsset deletes a canonical media_assets asset by its ID.
 //
 // This is the asset-centric deletion entry point. It accepts ANY
-// canonical asset (clip, stock, artlist, script, document, voiceover,
 // image, final_audio, rendered_video, ...) — the only questions that
 // matter are:
 //

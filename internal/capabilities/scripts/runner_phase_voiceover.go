@@ -108,8 +108,7 @@ func (r *Runner) runVoiceoverPhase(ctx context.Context, runID string, req Genera
 	}
 	needsVoiceover := mode == capabilityaudio.AudioModeChunkedVoiceover || mode == capabilityaudio.AudioModeCombinedTimeline
 	// On retry, scenes that already have a voiceover for a language
-	// are skipped. The Upsert-style DocumentPublisher ensures docs
-	// are not duplicated either.
+	// are skipped, so a retry never duplicates TTS work.
 	voiceoverSkipped := stageSkipped(resumeIdx, StageGeneratingVoiceovers) || r.voiceoverGen == nil || !needsVoiceover
 	if !voiceoverSkipped {
 		if err := r.updateStage(ctx, runID, RunStatusRunning, StageGeneratingVoiceovers); err != nil {
@@ -256,6 +255,9 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 	var applyMu sync.Mutex
 	var checkpointDue checkpointGate
 	var ttsStartedOnce, renderStartedOnce sync.Once
+	// §7.3 trace: the batch path has no per-scene ready boundary, so the TTS
+	// entry carries the dispatch→start interval as its real queue wait.
+	enqueuedAt := time.Now().UTC()
 	results, err := concurrent.Map(ctx, work, r.ttsConcurrency, func(opCtx context.Context, idx int, item voiceoverWork) (voiceoverResult, error) {
 		// ── Pipeline KPI: first TTS dispatch ───────────────
 		ttsStartedOnce.Do(func() {
@@ -263,6 +265,7 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 				kernobs.RecordKPIMilestone(opCtx, "tts_first_started_ms", run.ElapsedMs())
 			}
 		})
+		startedAt := time.Now().UTC()
 		var audioRef AudioReference
 		ttsErr := kernobs.MeasureOperation(opCtx, kernobs.OperationInfo{
 			Stage: "voiceover", Component: kernobs.ComponentTTS, Operation: kernobs.OperationSynthesize,
@@ -299,6 +302,9 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 			})
 			return err
 		})
+		recordSceneStage(opCtx, item.sceneID, kernobs.SceneStageTTS, kernobs.SceneStageTimes{
+			EnqueuedAt: enqueuedAt, StartedAt: startedAt, CompletedAt: time.Now().UTC(),
+		}, string(item.lang), ttsErr)
 		if ttsErr != nil {
 			return voiceoverResult{}, fmt.Errorf("scene %s lang %s: %w", item.sceneID, item.lang, ttsErr)
 		}
@@ -317,6 +323,8 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		// workers that no stage timer covered.
 		waitStarted := time.Now()
 		var snapshot *GenerateResult
+		audioSealStarted := time.Now().UTC()
+		audioSealedAt := time.Time{}
 		applyMu.Lock()
 		observeCheckpointWait(waitStarted)
 		if item.scene.Voiceover == nil {
@@ -326,6 +334,8 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 		if item.lang == req.SourceLanguage && item.scene.Clip == nil && !item.scene.ExecutionMode.IsFixedMedia() {
 			item.scene.Audio = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: audioRef.ID}
 			item.scene.AudioIntents = []capabilityaudio.AudioIntent{item.scene.Audio}
+			// §7.3 trace: this clip-less scene's audio intents are final here.
+			audioSealedAt = time.Now().UTC()
 		}
 		if (mode == capabilityaudio.AudioModeCombinedTimeline || item.scene.Clip == nil) && audioRef.Duration > 0 {
 			item.scene.DurationMS = int64(audioRef.Duration*1000 + 0.5)
@@ -366,6 +376,11 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 			}
 		}
 		applyMu.Unlock()
+		if !audioSealedAt.IsZero() {
+			recordSceneStage(opCtx, item.sceneID, kernobs.SceneStageAudio, kernobs.SceneStageTimes{
+				StartedAt: audioSealStarted, CompletedAt: audioSealedAt,
+			}, string(item.lang), nil)
+		}
 		// Persist the immutable copy after releasing applyMu. Other TTS
 		// workers can now apply their audio refs while SQLite performs
 		// the full-result write.
@@ -395,7 +410,6 @@ func (r *Runner) synthesizeVoiceoverWork(ctx context.Context, runID string, req 
 				if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
 					RunID:          runID,
 					ParentJobID:    exec.JobID,
-					DocsFolderID:   routing.DocsFolderID,
 					JobID:          exec.JobID,
 					SceneID:        item.sceneID,
 					SceneIndex:     sceneIndex,

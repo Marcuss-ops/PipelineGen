@@ -67,27 +67,29 @@ PipelineGen has exactly one canonical source for admin credentials. New code and
 - **Rotation**: the historical helper `scripts/rotate_token.sh` does not exist in the tree (deleted by commit `7e6965aab`); `scripts/regenerate_token.sh` regenerates the *Google Drive* `token.json`, not the admin credential. Rotate manually, in this order: read the current PID environment, generate a fresh 64-hex value, replace `VELOX_ADMIN_TOKEN=` in `/etc/pipelinegen/pipelinegen.env` (keeping `0640 root:pipelinegen-agents`), restart the service so the systemd `EnvironmentFile` reloads, then confirm the new value is visible in the restarted PID environment and that `make auth-check` passes. Never echo the value.
 - **One-off setup** (run once on the deploy host with `sudo`): `groupadd -f pipelinegen-agents`, add the running user to it, then `chown root:pipelinegen-agents /etc/pipelinegen/pipelinegen.env && chmod 0640 /etc/pipelinegen/pipelinegen.env`. Never use `0644`.
 
-## Script Google Docs destination
+## Script document destinations (retired)
 
-All Google Docs produced by script generation use the canonical
-script documents destination.
+Google Docs publication was retired on 2026-10-25: the publisher, the
+`script.docs_publish` child job, the `DOCUMENT` runner phase, the document
+localization assembler and `PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID` no longer exist.
+`docs` / `docs_enabled` survive ONLY as JSON tombstones so a stale payload is
+rejected fail-closed with `ErrGoogleDocsRetired` instead of silently completing
+without the documents it asked for. Omitting the block or setting
+`docs.enabled=false` are the only accepted values; there is no document
+destination to configure.
 
-Canonical configuration:
+The Drive destinations script generation still owns:
 
-PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID
+- localized renders: the clips root (`cfg.Drive.ClipsFolder()`, or the
+  payload's `output.drive_folder_id`) plus `output.drive_subfolder_name`, with
+  the language nested inside;
+- script JSON/scenes: `VELOX_DRIVE_SCRIPTS_ROOT`;
+- subtitle artifacts: the configured subtitles root.
 
-Current production folder:
-
-1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4
-
-Rules:
-
-- Do not invent new Drive folders for script documents.
-- Do not hardcode alternative folder IDs in agents or workers.
-- `docs.folder_id` is an explicit caller override only.
-- When `docs.enabled=true` and `docs.folder_id` is omitted,
-  PipelineGen MUST resolve PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID.
-- Folder resolution must have one canonical owner.
+Do not reintroduce a documents tree, a script-docs folder env var, or a second
+folder-resolution authority. A human-readable document destination, if it is
+ever required again, must be a separately registered capability with one owner
+— not a side effect of script generation.
 
 ## StockRust certification boundary (three levels)
 

@@ -1,9 +1,9 @@
 package localization
 
 // service.go owns the canonical localization orchestration: the single seam
-// that ties the render step, the parallel scheduler, the Drive upload, and the
-// Docs assembly into one fan-out. It is the composition-root entry point a
-// service/CLI calls to "localize this source into these languages".
+// that ties the render step, the parallel scheduler, and the Drive upload into
+// one fan-out. It is the composition-root entry point a service/CLI calls to
+// "localize this source into these languages".
 //
 // Pipeline (per source):
 //
@@ -11,13 +11,11 @@ package localization
 //	  → Scheduler (bounded concurrency)
 //	     → LocalizedClipRenderer.Render   (RenderPlan → Rust → RENDERED)
 //	     → DrivePublisher.Publish          (→ UPLOADED)
-//	  → []LocalizedDocumentEntry (priority-ordered)
-//	  → DocumentAssembler.Assemble (→ LocalizedDocumentRef)
 //
 // godlike/06 SSOT (one canonical owner per fact): this is the SINGLE fan-out
-// orchestrator. The renderer, scheduler, uploader, and assembler each own their
-// step; the service owns only the ordering between them and the projection
-// from certified artifacts into document entries.
+// orchestrator. The renderer, scheduler, and uploader each own their step; the
+// service owns only the ordering between them.
+//
 
 import (
 	"context"
@@ -47,26 +45,14 @@ type LocalizeInput struct {
 	// SubtitleFolderID is the per-clip Drive folder for the compiled ASS.
 	SubtitleFolderID       string
 	UploadSubtitleArtifact bool
-	// DocTitle / DocFolderID / DocIdempotencyKey / DocForce configure the
-	// localization manifest Google Doc.
-	DocTitle          string
-	DocFolderID       string
-	DocIdempotencyKey string
-	DocForce          bool
-	// SkipDocument disables the per-localized-clip manifest. Script
-	// generation owns the single final Google Doc; clip localization must
-	// only render/upload the MP4 and never create a Doc as a side effect.
-	SkipDocument bool
-
 	// Plans are the fingerprinted plans, in priority (editorial) order.
 	Plans []LocalizedClipPlan
 }
 
-// LocalizeResult is the certified outcome of one fan-out: the published doc,
-// the UPLOADED artifacts (priority order), and the per-language failures (a
-// failed language never aborts the others).
+// LocalizeResult is the certified outcome of one fan-out: the UPLOADED
+// artifacts (priority order) and the per-language failures (a failed language
+// never aborts the others).
 type LocalizeResult struct {
-	Ref       *LocalizedDocumentRef
 	Artifacts []LocalizedClipArtifact
 	Failures  []TaskResult
 }
@@ -76,7 +62,6 @@ type LocalizeResult struct {
 type Service struct {
 	renderer   *LocalizedClipRenderer
 	uploader   *DrivePublisher
-	assembler  *DocumentAssembler
 	renderGate chan struct{}
 	uploadGate chan struct{}
 }
@@ -142,15 +127,12 @@ func RenderWidth(machineBound, requested int) (effective int, cramped bool) {
 // NewServiceWithConcurrency builds the orchestrator with separate bounded
 // resource pools. Render slots cover only the renderer; upload slots cover
 // only Drive I/O.
-func NewServiceWithConcurrency(renderer *LocalizedClipRenderer, uploader *DrivePublisher, assembler *DocumentAssembler, renderConcurrency, uploadConcurrency int) (*Service, error) {
+func NewServiceWithConcurrency(renderer *LocalizedClipRenderer, uploader *DrivePublisher, renderConcurrency, uploadConcurrency int) (*Service, error) {
 	if renderer == nil {
 		return nil, fmt.Errorf("localization.NewService: renderer is required")
 	}
 	if uploader == nil {
 		return nil, fmt.Errorf("localization.NewService: drive publisher is required")
-	}
-	if assembler == nil {
-		return nil, fmt.Errorf("localization.NewService: document assembler is required")
 	}
 	if renderConcurrency < 1 {
 		renderConcurrency = defaultGlobalRenderConcurrency
@@ -159,19 +141,17 @@ func NewServiceWithConcurrency(renderer *LocalizedClipRenderer, uploader *DriveP
 		uploadConcurrency = defaultUploadConcurrency
 	}
 	return &Service{
-		renderer: renderer, uploader: uploader, assembler: assembler,
+		renderer: renderer, uploader: uploader,
 		renderGate: make(chan struct{}, renderConcurrency),
 		uploadGate: make(chan struct{}, uploadConcurrency),
 	}, nil
 }
 
 // Localize runs the full fan-out: render + upload each plan with bounded
-// concurrency, project the UPLOADED artifacts into document entries, and
-// assemble the manifest doc. Per-language failures are recorded (never fatal
-// to the others); the doc assembly failure is returned as an error while the
-// ordered entries survive on the ref.
+// concurrency. Per-language failures are recorded (never fatal to the
+// others).
 func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResult, error) {
-	if s == nil || s.renderer == nil || s.uploader == nil || s.assembler == nil {
+	if s == nil || s.renderer == nil || s.uploader == nil {
 		return nil, fmt.Errorf("localization: service is not initialized")
 	}
 	if len(in.Plans) == 0 {
@@ -255,59 +235,16 @@ func (s *Service) Localize(ctx context.Context, in LocalizeInput) (*LocalizeResu
 	}
 	pipelineWG.Wait()
 
-	// ── Document entries require UPLOADED artifacts ──────────────────────
-	// The manifest IS the set of uploaded Drive links: LocalizedDocumentEntry
-	// carries DriveFileID / DriveLink, and docs.go renders "no link" when they
-	// are absent. So this projection deliberately runs AFTER every upload has
-	// settled, and a plan whose upload failed is excluded from the doc rather
-	// than listed without its link. Two tempting reorderings are therefore
-	// forbidden, not merely untried: (a) populating entries from the RENDERED
-	// artifact (OnRendered fires before Drive publication, so the link is not
-	// known yet) and (b) assembling the doc in parallel with the remaining
-	// uploads. Either publishes a manifest that lists clips with blank links
-	// (godlike/07 no-fake-availability) while making the run look faster. The
-	// ordering is a correctness contract pinned by
-	// TestService_DocumentAssemblyRequiresUploadedLinks.
 	artifacts := make([]LocalizedClipArtifact, 0, len(results))
-	entries := make([]LocalizedDocumentEntry, 0, len(results))
 	failures := make([]TaskResult, 0)
-	for i, r := range results {
+	for _, r := range results {
 		if r.Err != nil {
 			failures = append(failures, r)
 			continue
 		}
 		artifacts = append(artifacts, r.Artifact)
-		// TextTrackID is the plan's subtitle-track reference — the artifact
-		// carries the rendered bytes, not the text-track identity.
-		entries = append(entries, LocalizedDocumentEntry{
-			SceneID:      r.Artifact.SceneID,
-			ClipID:       r.Artifact.ClipID,
-			Language:     r.Artifact.Language,
-			Priority:     r.Priority,
-			TextTrackID:  in.Plans[i].SubtitleTrackID,
-			VideoAssetID: r.Artifact.AssetID,
-			DriveFileID:  r.Artifact.DriveFileID,
-			DriveLink:    r.Artifact.DriveLink,
-			DurationMS:   r.Artifact.DurationMS,
-			SHA256:       r.Artifact.SHA256,
-		})
 	}
-
-	if in.SkipDocument {
-		return &LocalizeResult{Artifacts: artifacts, Failures: failures}, nil
-	}
-
-	ref, err := s.assembler.Assemble(ctx, AssembleInput{
-		Title:          in.DocTitle,
-		FolderID:       in.DocFolderID,
-		IdempotencyKey: in.DocIdempotencyKey,
-		Force:          in.DocForce,
-		Entries:        entries,
-	})
-	if err != nil {
-		return &LocalizeResult{Ref: ref, Artifacts: artifacts, Failures: failures}, fmt.Errorf("localization: localize: assemble doc: %w", err)
-	}
-	return &LocalizeResult{Ref: ref, Artifacts: artifacts, Failures: failures}, nil
+	return &LocalizeResult{Artifacts: artifacts, Failures: failures}, nil
 }
 
 // longestFirstLaunchOrder returns the plan indices ordered by estimated render

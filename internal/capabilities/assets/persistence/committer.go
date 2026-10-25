@@ -13,7 +13,6 @@
 //   - Caller-owned-tx mode (CommitTx) for orchestrators like JobFinalizer
 //     that already manage a transaction.
 //   - Self-owned-tx mode (CommitAndIndex) for standalone producers like
-//     the YouTube and Artlist atomic writers.
 //
 // godlike/06 SSOT: after cutover, no other package is allowed to
 // INSERT/UPSERT into media_assets, asset_locations, or outbox_events

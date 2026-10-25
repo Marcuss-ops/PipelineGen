@@ -179,6 +179,11 @@ against that language’s scene minimum.
 The example shows the schema only; do not use it as a substitute for the full
 human-adjudicated corpus.
 
+> **REMOVED 2026-10-25**: `cmd/ner-eval` no longer exists in the tree (the
+> evaluator source and a stray 33 MB compiled binary in the repository root
+> were both deleted as unused; recover the tool from git history if a corpus
+> evaluation is needed). The commands below document the intended invocation
+> contract only.
 
 ```bash
 go run ./cmd/ner-eval --backend rust --corpus /path/to/annotated-corpus.json --iterations 3
@@ -207,7 +212,8 @@ require live services/hardware; statistical NER quality additionally requires
 a separate human-annotated, representative multilingual corpus:
 
 1. **Real NER backend quality** — fixture `Raw` entities are simulated; they
-   are not predictions or independently verified human gold. Run `cmd/ner-eval`
+   are not predictions or independently verified human gold. Run the NER
+   evaluator (`cmd/ner-eval`, removed 2026-10-25 — see the note above)
    against a separate, manually annotated `ner-corpus.v1` covering the six
    supported languages before reporting model precision/recall or promoting a
    challenger. Generated narration uses Edge TTS word timing; Whisper applies

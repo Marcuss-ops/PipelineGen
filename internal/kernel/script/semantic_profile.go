@@ -2,7 +2,6 @@
 // the per-segment semantic understanding contract (SegmentSemanticProfile).
 //
 // Segment understanding produces exactly one profile per segment; every
-// media provider (YouTube, Artlist, images, existing stock) consumes it to
 // build its own queries. The profile is the canonical point where the
 // deterministic NLP entities and the small-LLM semantics merge before
 // provider fanout. The architectural rule it encodes:
@@ -64,15 +63,11 @@ type SemanticTerm struct {
 // deterministically from one segment profile. Each provider keeps its own
 // query language while sharing the same semantic understanding. The small
 // LLM produces understanding; the query builders produce these provider-specific
-// queries. YouTube leans on entities+keywords, Artlist on visual terms,
 // images on entity-first phrasing.
 type RetrievalIntent struct {
 	// YouTube holds search queries for the YouTube provider
 	// (e.g. "John Froelich first gasoline tractor 1892").
 	YouTube []string `json:"youtube,omitempty"`
-	// Artlist holds visual-first queries for the Artlist provider
-	// (e.g. "vintage tractor farm field").
-	Artlist []string `json:"artlist,omitempty"`
 	// Images holds entity-first queries for the internet/generated
 	// image providers (e.g. "John Froelich 1892 gasoline tractor").
 	Images []string `json:"images,omitempty"`
@@ -218,7 +213,6 @@ func (p SegmentSemanticProfile) Clone() SegmentSemanticProfile {
 	if p.Retrieval != nil {
 		intent := *p.Retrieval
 		intent.YouTube = append([]string(nil), p.Retrieval.YouTube...)
-		intent.Artlist = append([]string(nil), p.Retrieval.Artlist...)
 		intent.Images = append([]string(nil), p.Retrieval.Images...)
 		clone.Retrieval = &intent
 	}

@@ -8,7 +8,6 @@
 //
 //   - source identity: (source_type, source_ref) → asset_id, stored durably
 //     in media_asset_sources. The same bytes discovered on YouTube, Drive and
-//     Artlist carry three provenance sources but share ONE content object.
 //   - content identity: content_sha256 → content object → the assets that
 //     reference those bytes (media_assets.content_sha256).
 //
@@ -51,7 +50,6 @@ var (
 type CanonicalIdentityResolver interface {
 	// ResolveSource returns the canonical asset for (sourceType, sourceRef).
 	// sourceRef is the provider external reference (YouTube video id, Drive
-	// file id, Artlist asset id, …) — it maps to media_asset_sources.source_uri.
 	ResolveSource(ctx context.Context, sourceType, sourceRef string) (CanonicalIdentity, error)
 
 	// ResolveContent returns the canonical identity for contentSHA256. When

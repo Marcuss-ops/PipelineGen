@@ -1,7 +1,5 @@
 // Package downloader provides YouTube/social media download capabilities via yt-dlp.
 //
-// STATUS: ACTIVE - This package is actively used by mediaasset.Processor, mediapipeline, and artlist service.
-//
 // File layout (split by responsibility, July 2026):
 //
 //	downloader.go          core: struct, ProcessRunner port, constructor, request types
@@ -28,11 +26,10 @@ import (
 
 // YTDLPDownloader handles YouTube/social media downloads via yt-dlp.
 type YTDLPDownloader struct {
-	path               string
-	cookiesPath        string
-	artlistCookiesPath string // July 2026 (PR-ARTLIST-COOKIES-CONFIG): empty = skip --cookies flag (godlike/07 fail-closed)
-	cmdBuilder         *ytdlp.CommandBuilder
-	verifier           *ytdlp.OutputVerifier
+	path        string
+	cookiesPath string
+	cmdBuilder  *ytdlp.CommandBuilder
+	verifier    *ytdlp.OutputVerifier
 	// ytMinSleepSeconds / ytMaxSleepSeconds pace YouTube downloads
 	// (August 2026 rate-limit recovery). Production defaults 2/5; zero keeps
 	// the legacy disabled path for manually-assembled test configs.
@@ -268,7 +265,6 @@ func NewYTDLP(cfg *config.Config) *YTDLPDownloader {
 	return &YTDLPDownloader{
 		path:               path,
 		cookiesPath:        cookiesPath,
-		artlistCookiesPath: cfg.External.ArtlistCookiesPath,
 		cmdBuilder:         ytdlp.NewCommandBuilder(cfg),
 		verifier:           &ytdlp.OutputVerifier{},
 		videoPolicy:        cfg.Video.EncoderPolicy(),

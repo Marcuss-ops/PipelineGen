@@ -57,13 +57,11 @@ type MediaReindexPayload struct {
 	Source  string `json:"source,omitempty"`
 }
 
-// ArtlistRunPayload is sent with JobTypeArtlistRun.
 type ArtlistRunPayload struct {
 	Query string `json:"query"`
 	Count int    `json:"count"`
 }
 
-// ArtlistCacheRefreshPayload is sent with TypeArtlistCacheRefresh.
 type ArtlistCacheRefreshPayload struct {
 	Term         string `json:"term"`
 	Limit        int    `json:"limit,omitempty"`

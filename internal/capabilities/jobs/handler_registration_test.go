@@ -90,7 +90,6 @@ func newServiceForTestHandlerRegistration() *Service {
 // (struct method wrapped via explicit cast) returns no error and
 // populates the dispatcher's handler map. This is the canonical
 // post-refactor path every production caller MUST follow per
-// godlike/06 SSOT + artlist/job_core.go:247 precedent.
 func TestRegisterHandler_HappyPath(t *testing.T) {
 	s := newServiceForTestHandlerRegistration()
 	fixture := &handlerTestFixture{}

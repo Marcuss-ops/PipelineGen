@@ -33,10 +33,7 @@ import (
 // Drive-side JSON manifest was a parallel-struct anti-pattern that has
 // no analogue after the Wave-C consolidation.
 //
-// ARTIST-DEMOLITION (September 2026): the optional ArtlistDownloader
-// field + its SetArtlistDownloader setter are RETIRED with the Artlist
 // capability. A source that is not a direct media file or an HLS playlist
-// falls through to yt-dlp, which is what the nil-ArtlistDownloader path
 // already did.
 type Processor struct {
 	dl       YTDLP
@@ -46,8 +43,6 @@ type Processor struct {
 	dataDir  string
 	tempDir  string
 	videoCfg mediaexec.NormalizeOptions
-	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): scraperURL field REMOVED.
-	// ARTIST-DEMOLITION (September 2026): the ArtlistDownloader field is
 	// REMOVED too; the media processor no longer names any provider.
 	embeddingURL  string
 	registry      artifacts.Registry
@@ -70,10 +65,9 @@ func (p *Processor) SetArtifactCache(cache capcache.Cache) *Processor {
 
 // ProcessorConfig holds the constructor dependencies for Processor.
 type ProcessorConfig struct {
-	DataDir  string
-	TempDir  string
-	VideoCfg mediaexec.NormalizeOptions
-	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): ScraperServerURL REMOVED.
+	DataDir            string
+	TempDir            string
+	VideoCfg           mediaexec.NormalizeOptions
 	EmbeddingServerURL string // Python embedding/phash server (e.g. http://127.0.0.1:8001)
 }
 
@@ -96,7 +90,6 @@ func NewProcessor(
 	if publisher == nil {
 		panic("processor.NewProcessor: publisher is required (composition root must inject delivery.Publisher from DriveBundle.Publisher)")
 	}
-	// PR-ARTLIST-SCRAPER-RETIRE (July 2026): scraperURL init REMOVED.
 	embeddingURL := cfg.EmbeddingServerURL
 	if embeddingURL == "" {
 		embeddingURL = "http://127.0.0.1:8001"
@@ -332,15 +325,12 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 	// DestinationKey defaulting: input has no Destination field today
 	// (detail.ProcessInput is the canonical DTO and is owned by the
 	// domain layer — adding Destination is a follow-up wave when a
-	// non-artlist caller emerges). The processor's canonical caller
-	// is the artlist ingest pipeline, so DestinationArtlist is the
 	// correct default.
 	//
 	// ConflictPolicy (August 2026, reprocess certification fix):
 	// explicitly ConflictOverwrite. The processor's outputs are
 	// regenerable renditions — a reprocess MUST replace the previous
 	// rendition on Drive. Leaving the policy unset consults the
-	// registry, whose DestinationArtlist default is ConflictSkip
 	// (P1.1, July 2026: "immutable curated assets") — that silently
 	// kept Drive pinned to the FIRST rendition forever (every
 	// re-render logged publish_action=skipped with the stale md5).
@@ -358,7 +348,6 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 	// the Publisher derive uniqueness from PublisherRequest alone
 	// per the canonical resolution rules (Publisher must handle
 	// empty Subject). A real caller that knows a meaningful Subject
-	// (artlist asset UUID, YouTube video ID) populates it explicitly
 	// via a follow-up F2.9 field plumb (tracked in
 	// architecture/current.yaml).
 	//
@@ -399,7 +388,7 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 			Filename:       result.Filename,
 			Description:    fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
 			AssetID:        input.ID,
-			Group:          group, // artlist search term (legacy) or explicit group path segment
+			Group:          group, // legacy search term or explicit group path segment
 			Subject:        strings.TrimSpace(input.Subject),
 			ParentFolderID: parentFolderID,
 			// Regenerable output: the latest rendition always wins on
@@ -459,8 +448,6 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 // resolvePublishDestination maps a TransformSpec.Destination into the
 // delivery.DestinationKey + ParentFolderID for the canonical publish.
 //
-// Legacy path (Destination empty): the artlist ingest pipeline is the
-// canonical caller, so DestinationArtlist is the default and
 // ParentFolderID = input.FolderID (the legacy explicit-folder escape
 // hatch) is preserved for backward compatibility.
 //
@@ -470,12 +457,23 @@ func (p *Processor) Process(ctx context.Context, input *detail.ProcessInput) (*d
 // FolderID from drifting a reprocess upload into the wrong Drive folder
 // (reprocess folder-alignment, August 2026) — the clip's real folder is
 // resolved from the registry PathBuilder instead.
+//
+// Artlist retirement: the implicit default used to be the Artlist
+// destination, whose path builder accepted a group alone. The assets now
+// belong to DestinationStock, whose builder also needs a Subject, so an
+// implicit caller with a ParentFolderID keeps uploading straight into that
+// folder (the publisher's documented direct-to-root fallback) while a
+// caller with neither Subject nor folder fails closed instead of landing
+// in root.
 func (p *Processor) resolvePublishDestination(input *detail.ProcessInput) (delivery.DestinationKey, string) {
 	dest := strings.TrimSpace(input.Destination)
 	if dest == "" {
-		return delivery.DestinationArtlist, input.FolderID
+		// The legacy default used to be the Artlist destination, whose
+		// dedicated Drive folder is retired. Its assets belong to the
+		// canonical stock destination, so the default resolves there now.
+		return delivery.DestinationStock, input.FolderID
 	}
-	return delivery.DestinationKey(dest), ""
+	return delivery.CanonicalizeDestination(delivery.DestinationKey(dest)), ""
 }
 
 // findRendition returns the first rendition with the given kind, or nil.

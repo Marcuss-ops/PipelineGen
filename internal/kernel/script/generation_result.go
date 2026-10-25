@@ -157,7 +157,6 @@ type GenerationTimings struct {
 	PostprocessMs         map[string]int64 `json:"postprocess_ms,omitempty"`
 	SegmentExtractionMs   int64            `json:"segment_extraction_ms,omitempty"`
 	QueryGenerationMs     int64            `json:"query_generation_ms,omitempty"`
-	ArtlistSearchMs       int64            `json:"artlist_search_ms,omitempty"`
 	InternetImageSearchMs int64            `json:"internet_image_search_ms,omitempty"`
 	ImageGenerationMs     int64            `json:"image_generation_ms,omitempty"`
 	SQLiteMs              int64            `json:"sqlite_ms,omitempty"`
@@ -189,17 +188,6 @@ type FinalAudioArtifact struct {
 	SizeBytes            int64  `json:"size_bytes"`
 	FinalMix             bool   `json:"final_mix"`
 	CopyEligible         bool   `json:"copy_eligible"`
-}
-
-// DocumentAudioRef is the already-published, language-scoped final audio
-// reference projected into a document. It contains no local path and is
-// intentionally independent from the audio compiler.
-type DocumentAudioRef struct {
-	AssetID    string `json:"audio_asset_id"`
-	Language   string `json:"language"`
-	DriveLink  string `json:"drive_link"`
-	DurationMS int64  `json:"duration_ms"`
-	SHA256     string `json:"sha256,omitempty"`
 }
 
 // DocumentOverlayRef is the already-published reference to a completed render
@@ -250,12 +238,6 @@ type GenerationModeInfo struct {
 // GenerationProvenance records the complete provenance metadata for
 // a single generation item and the document it produced.
 type GenerationProvenance struct {
-	// DocID is the Google Doc document ID.
-	DocID string `json:"doc_id,omitempty"`
-
-	// DocLink is the Google Doc edit URL.
-	DocLink string `json:"doc_link,omitempty"`
-
 	// SourceType is the canonical source type ("text", "clips",
 	// "catalog", "search", "curate").
 	SourceType string `json:"source_type,omitempty"`
@@ -376,8 +358,6 @@ type ArtifactResult struct {
 	// Voiceovers groups the published Drive links by language. Local
 	// filesystem paths are intentionally excluded from this public surface.
 	Voiceovers []VoiceoverLanguageArtifact `json:"voiceovers,omitempty"`
-	// Document is the idempotently published Google Doc for this script.
-	Document *DocumentArtifact `json:"document,omitempty"`
 	// Metadata holds YouTube-style metadata.
 	Metadata []VideoMetadata `json:"metadata,omitempty"`
 	// Entities is the canonical typed V1 entity output (PR 3).
@@ -408,16 +388,6 @@ type VoiceoverLanguageArtifact struct {
 	Language   string   `json:"language"`
 	Status     string   `json:"status"`
 	DriveLinks []string `json:"drive_links,omitempty"`
-}
-
-// DocumentArtifact is the stable result surface for a published Google Doc.
-type DocumentArtifact struct {
-	DocID           string `json:"doc_id"`
-	DocLink         string `json:"doc_link"`
-	Renderer        string `json:"renderer,omitempty"`
-	SpecSceneSHA256 string `json:"specscene_sha256,omitempty"`
-	SceneCount      int    `json:"scene_count,omitempty"`
-	Language        string `json:"language,omitempty"`
 }
 
 // GenerationEnvelopeResult is the canonical typed envelope

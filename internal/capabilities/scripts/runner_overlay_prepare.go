@@ -78,10 +78,7 @@ type vidRushPrepareResult struct {
 }
 
 // vidRushPrepareOutcome is the channel payload the prepare branch sends back
-// to the main goroutine. skeletons carries the per-language document
-// skeletons rendered at SceneTextReady (the early DocsPrepare pass) for the
-// late-bound injection in the document phase; it is nil when the renderer
-// does not implement the early/late split.
+// to the main goroutine.
 //
 // err and nlpErr are kept SEPARATE because they are different facts reported
 // against different stages: err is the VidRush prepare/join failure
@@ -90,7 +87,6 @@ type vidRushPrepareResult struct {
 // Folding them into one field would mislabel the failed stage.
 type vidRushPrepareOutcome struct {
 	result     vidRushPrepareResult
-	skeletons  map[Language]string
 	prefetched *AudioPrefetchResult
 	err        error
 	// localizedAnnotations is the translated-NLP output COMPUTED on the

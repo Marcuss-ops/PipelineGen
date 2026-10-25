@@ -28,7 +28,6 @@ type SourceCatalog struct {
 }
 
 // NewSourceCatalog builds the registry from canonical repository ports in the
-// fixed order artlist, clips, stock, voiceover, images. The sound_effect
 // source is an alias of clips. Missing ports fail closed at composition time.
 func NewSourceCatalog(repos ...SourceRepo) (*SourceCatalog, error) {
 	if len(repos) != 5 {

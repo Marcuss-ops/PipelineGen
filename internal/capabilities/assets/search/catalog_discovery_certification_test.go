@@ -17,7 +17,6 @@ package search
 //	   present in the catalog appears exactly ONCE in the merged result.
 //
 // The certification uses counting backends: catalog backends (semantic) stand
-// in for the Qdrant read path and discovery backends (artlist) for the live
 // provider path, so the assertion is about the ROUTING + DEDUP invariants, not
 // a specific transport.
 
@@ -58,7 +57,6 @@ func (b *countingBackend) Search(_ context.Context, _ Query) ([]Candidate, error
 	return b.results, nil
 }
 
-// fakeCanonicalResolver maps artlist|123 → the canonical asset already present
 // in the catalog (asset-A). It simulates the provider backend resolving an
 // ExternalCandidate through CanonicalIdentityResolver before fan-in.
 type fakeCanonicalResolver struct{}
@@ -170,7 +168,6 @@ func TestCatalogDiscoverySeparationCertification(t *testing.T) {
 	}
 
 	// ── 3. BLENDED dedup via CanonicalIdentityResolver ──────────────────
-	// The provider's source_type|source_ref (artlist|123) resolves to the
 	// canonical asset-A already served by the catalog backend. After
 	// resolution the provider candidate carries AssetID=asset-A, so the
 	// 4-key merge dedups it against the catalog hit: asset-A appears once.

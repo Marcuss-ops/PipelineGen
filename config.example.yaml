@@ -6,7 +6,7 @@ server:
   # Canonical port 8000 (Operational Readiness PR, June 2026).
   # Override at runtime via VELOX_PORT; `ServerConfig` in
   # internal/platform/config/types.go is the single source of truth. Makefile
-  # `doctor`/`artlist` targets and scripts/velox_client.py read $VELOX_PORT
+  # `doctor` target and scripts/velox_client.py read $VELOX_PORT
   # with a 8000 fallback so the whole stack stays consistent without editing
   # every recipe.
   port: 8000
@@ -91,21 +91,6 @@ external:
   pixabay_base_url: "https://pixabay.com/api"
   pexels_api_key: ""
   pexels_base_url: "https://api.pexels.com/v1"
-  # Artlist scraper optimizations
-  artlist_live_search_cache_ttl_hours: 24    # Level 1: in-memory cache TTL (0=disabled)
-  # Artlist provider configuration (PR-CONFIG-SPLIT, July 2026).
-  # acquisition_mode controls HOW assets are discovered + how the
-  # pipeline talks to Artlist (manual_import | authorized_api).
-  # auto_download is an ORTHOGONAL policy: whether successful searches
-  # trigger automatic downloads. An operator can keep authorized_api
-  # for search but set auto_download.enabled=false to enforce manual
-  # curation. The two are now separate keys so the policy is explicit.
-  artlist:
-    acquisition_mode: "authorized_api"   # "" -> manual_import per Normalize()
-    auto_download:
-      enabled: false                      # OFF by default for safe local bootstrap
-      daily_limit: 10                     # 10/day cap aligns with non-Enterprise quota
-  # artlist_skip_transcription: false         # operator opt-in escape hatch for environments without `whisper` binary; default false (mandatory transcription preserved); see internal/platform/config/types_external.go::ArtlistSkipTranscription
   # RenderingGen completion is event-driven by default: the queue client
   # long-polls GET /jobs/{id}/wait and observes the terminal transition
   # directly. This key only tunes the polling FALLBACK used by a queue
@@ -136,7 +121,9 @@ drive:
   clips_root_folder: ""
   youtube_subtitles_root_folder: ""
   voiceover_root_folder: ""
-  artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"  # canonical Drive root for Artlist output (FOLLOWUP-ARTLIST-ROOT, July 2026)
+  # artlist_root_folder is RETIRED (no dedicated Artlist Drive root / local
+  # media/artlist path any more). Legacy Artlist assets are moved into the
+  # stock root once with `go run ./cmd/admin migrate-artlist-assets`.
   # Images: per-image SubFolder layout under the dedicated root.
   # Root 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY; each image in
   # <root>/<SafeFolderName(subject)>/<file>, downloaded once at
@@ -339,11 +326,6 @@ scripts:
   # so it is NOT the knob for widening rendering (raising it changes the
   # certified voiceover fan-out).
   # localized_render_concurrency: 4        # VELOX_SCRIPTS_LOCALIZED_RENDER_CONCURRENCY
-  # Canonical default Google Drive folder for script documents.
-  # Canonical config: env PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID (this yaml value
-  # is overridden by the env var). Leave empty unless a docs.enabled=true
-  # request must fail closed when docs.folder_id is omitted.
-  script_docs_folder_id: ""
 
 concurrency:
   max_concurrent_video_extracts: 5

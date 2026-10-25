@@ -24,7 +24,6 @@ type SpecSegment struct {
 	RequiredConcepts []string `json:"required_concepts"`
 	// WinnerSubjectMatch is the subject the winner asset's inferred
 	// subject must be compatible with. When empty, the spec's Subject is
-	// used. Used by the ARTLIST RELEVANCE check to reject a boxing clip
 	// bound to a Greek Salad segment.
 	WinnerSubjectMatch string `json:"winner_subject_match,omitempty"`
 	// StockBound marks a segment whose visual source is a caller-supplied
@@ -116,6 +115,10 @@ const (
 	CheckSceneIdentity      CheckName = "SCENE IDENTITY"
 	CheckSourceImmutability CheckName = "SOURCE IMMUTABILITY"
 	CheckSemanticProfiles   CheckName = "SEMANTIC PROFILES"
+	// CheckArtlistRelevance is the legacy, provider-agnostic winner/subject
+	// relevance check. The name is part of the persisted certification report
+	// contract (artifacts and fixtures key on "ARTLIST RELEVANCE"), so it is
+	// kept verbatim even though the Artlist provider is retired.
 	CheckArtlistRelevance   CheckName = "ARTLIST RELEVANCE"
 	CheckEntityGrounding    CheckName = "ENTITY GROUNDING"
 	CheckImageFanout        CheckName = "IMAGE FANOUT"

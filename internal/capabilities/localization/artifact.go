@@ -3,12 +3,12 @@ package localization
 // artifact.go owns LocalizedClipArtifact — the certified per-language output
 // of a localized render. It is the single shape the render boundary returns
 // (never a bare path like "/tmp/es.mp4") and that the Drive uploader and the
-// Docs writer consume.
+// run-result projection consume.
 //
 // godlike/06 SSOT (one canonical owner per fact): the artifact is the ONE
 // object that carries a localized clip's identity, provenance (plan
 // fingerprint), bytes (sha256 / size / duration), codecs, Drive location, and
-// lifecycle status. The Docs writer receives this object verbatim instead of
+// lifecycle status. Consumers receive this object verbatim instead of
 // inferring "which link belongs to which language" from ad-hoc strings.
 //
 // godlike/07 no-fake-availability: DriveFileID / DriveLink / LocalPath are
@@ -68,7 +68,7 @@ type LocalizedClipArtifact struct {
 
 	// ── Language + provenance ────────────────────────────────────
 	// Language is the BCP-47 language this artifact renders into (e.g.
-	// "es"). It is the key Docs uses to associate a link to a language.
+	// "es"). It is the key consumers use to associate a link to a language.
 	Language string `json:"language"`
 	// PlanFingerprint is the canonical LocalizedClipPlan.Fingerprint of the
 	// plan that produced this artifact — provenance, not recomputed here.
@@ -89,7 +89,7 @@ type LocalizedClipArtifact struct {
 
 	// ── Bytes ────────────────────────────────────────────────────
 	// LocalPath is the local filesystem path of the rendered file. Omitted
-	// once the bytes are no longer staged locally (uploaded / Docs-only).
+	// once the bytes are no longer staged locally (already uploaded).
 	LocalPath        string `json:"local_path,omitempty"`
 	SubtitlePath     string `json:"subtitle_path,omitempty"`
 	SubtitleSHA256   string `json:"subtitle_sha256,omitempty"`

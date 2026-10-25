@@ -270,7 +270,6 @@ func VidRushTimingFields(stageDurations map[string]int64) scriptpkg.GenerationTi
 	// postprocessor walk; there is no legacy entities stage to time here.
 	t.SegmentExtractionMs = 0
 	t.QueryGenerationMs = t.SegmentExtractionMs
-	t.ArtlistSearchMs = stageDurations[string(adapters.ProcessorClipSearch)]
 	t.InternetImageSearchMs = stageDurations[string(adapters.ProcessorInternetImages)]
 	t.ImageGenerationMs = stageDurations[string(adapters.ProcessorImages)]
 	t.SQLiteMs = stageDurations[string(adapters.ProcessorPersistence)]

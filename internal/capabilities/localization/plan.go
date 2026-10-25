@@ -4,7 +4,7 @@
 //
 //	ResolvedTextBundle → TextTrack original → Translation Resolver
 //	  → TextTrack (target) → LocalizedClipPlan → Fingerprint → queue
-//	  → RenderPlan → Rust → LocalizedClipArtifact → Drive → Docs
+//	  → RenderPlan → Rust → LocalizedClipArtifact → Drive
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - LocalizedClipPlan is the SINGLE contract for a localized render. There

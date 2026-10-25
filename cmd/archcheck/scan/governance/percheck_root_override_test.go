@@ -523,7 +523,7 @@ func upload() {
 
 func TestScanRootOverrideBan_ParentFolderIDTransitionalAllowlist(t *testing.T) {
 	root := t.TempDir()
-	writeFixture(t, root, "internal/capabilities/assets/providers/artlist/destination_service.go", `package artlist
+	writeFixture(t, root, "internal/capabilities/assets/providers/stock/stockpipeline/step_publish.go", `package stockpipeline
 
 func resolve() {
 	_ = struct{ ParentFolderID string }{ParentFolderID: "x"}

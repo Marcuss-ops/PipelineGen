@@ -48,15 +48,11 @@ const (
 	TypeExtract = "media.extract"
 
 	// TypeStock is the canonical job type for the stock-pipeline
-	// orchestration (Artlist + Drive upload + indexing).
 	TypeStock = "media.stock"
 
-	// TypeArtlistRun is the canonical job type for an Artlist
 	// stock-pipeline run (download + cut + Drive upload).
 	TypeArtlistRun = "media.artlist"
 
-	// TypeArtlistCacheRefresh is the canonical job type for refreshing
-	// a stale Artlist live-search cache entry. The HTTP search path only
 	// enqueues this durable job; the worker performs the provider request
 	// and cache write.
 	TypeArtlistCacheRefresh = "media.artlist_cache_refresh"

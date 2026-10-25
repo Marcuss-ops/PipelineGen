@@ -29,7 +29,6 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			StockRootFolder:     "stock",
 			ClipsRootFolder:     "clips",
 			VoiceoverRootFolder: "voiceover",
-			ArtlistRootFolder:   "artlist",
 			ScriptsRootFolder:   "scripts",
 			ImagesRootFolder:    "images",
 
@@ -40,7 +39,6 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 			"StockFolder":        d.StockFolder(),
 			"ClipsFolder":        d.ClipsFolder(),
 			"VoiceoverFolder":    d.VoiceoverFolder(),
-			"ArtlistFolder":      d.ArtlistFolder(),
 			"ScriptsFolder":      d.ScriptsFolder(),
 			"ImagesFolder":       d.ImagesFolder(),
 			"CopertineFolder":    d.CopertineFolder(),
@@ -56,8 +54,6 @@ func TestDriveConfigResolveFolder(t *testing.T) {
 				expected = "clips"
 			case "Voiceover":
 				expected = "voiceover"
-			case "Artlist":
-				expected = "artlist"
 			case "Books":
 				expected = "books"
 			case "Scripts":

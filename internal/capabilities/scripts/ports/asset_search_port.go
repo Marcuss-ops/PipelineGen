@@ -84,7 +84,6 @@ type AssetSearchPort interface {
 type AssetSearchQuery struct {
 	// Query is the search text (will be embedded by the adapter).
 	Query string
-	// Source restricts to a single source family (artlist|youtube|stock).
 	// Empty = any. The stock path uses Source="stock" (legacy
 	// behaviour); the clip path uses Source="" (no source filter,
 	// lets the runtime filter resolve per Qdrant payload).
@@ -182,9 +181,8 @@ type AssetSearchHit struct {
 	// Name is the asset's human-readable name (log/debug only).
 	Name string `json:"name"`
 	// Score is the cosine similarity from the Qdrant search.
-	Score float64 `json:"score"`
-	// Source is the source family (artlist|youtube|stock).
-	Source string `json:"source"`
+	Score  float64 `json:"score"`
+	Source string  `json:"source"`
 	// DriveLink is the Google Drive WebViewLink. Stock path
 	// populates this from the Qdrant payload's "drive_link" (or
 	// legacy "drive_url") field. Clip path leaves it empty —

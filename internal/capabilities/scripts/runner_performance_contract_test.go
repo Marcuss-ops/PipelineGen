@@ -96,7 +96,7 @@ func (g *concurrencyTrackingVoiceoverGenerator) maxConcurrent() int {
 // blockingVidRushRunner wires a runner with a blocking NLP enricher so tests
 // can hold the SceneAnalysis branch open while observing the TTS branch.
 func blockingVidRushRunner() (*Runner, *inMemRunRepository, *stubVoiceoverGenerator, *e2eBlockingEnricher) {
-	runner, repo, _, _, voGen, _, _ := newTestRunner()
+	runner, repo, _, _, voGen, _ := newTestRunner()
 	timeline := &timelineRecorder{}
 	enricher := newE2EBlockingEnricher(timeline)
 	runner.SetVidRushPipeline(&VidRushPipeline{
@@ -117,7 +117,6 @@ func TestSceneTextReady_FansOutNLPAndTTS(t *testing.T) {
 	runner, repo, voGen, enricher := blockingVidRushRunner()
 	req := defaultTestRequest()
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 
 	runID := "run-fanout-nlp-tts"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -156,7 +155,6 @@ func TestNLPAndTTS_StartWithoutWaitingForEachOther(t *testing.T) {
 	runner, repo, voGen, enricher := blockingVidRushRunner()
 	req := defaultTestRequest()
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 
 	runID := "run-nlp-tts-independent"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -203,12 +201,10 @@ func TestOverlayPrepare_StartsBeforeTTSCompletes(t *testing.T) {
 		Annotations: overlayScene0Annotations(),
 		Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 	}})
-	docPub := newStubDocumentPublisher()
 	prepEnq := &countingPrepareEnqueuer{}
 	blockingVO := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
 
-	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO)
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
@@ -216,7 +212,6 @@ func TestOverlayPrepare_StartsBeforeTTSCompletes(t *testing.T) {
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "overlay-prepare-before-tts"
 
 	runID := "run-overlay-prepare-before-tts"
@@ -247,45 +242,6 @@ func TestOverlayPrepare_StartsBeforeTTSCompletes(t *testing.T) {
 		t.Fatal("run did not complete after TTS released")
 	}
 	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
-}
-
-// TestDocsPrepare_DoesNotBlockTTS pins the docs-phase placement: document
-// preparation (document.prepare) starts only after the voiceover stage has
-// finished, so docs work can never block TTS (or NLP or audio).
-func TestDocsPrepare_DoesNotBlockTTS(t *testing.T) {
-	runner, repo, _, _, voGen, _, _ := newTestRunner()
-
-	run := kernobs.NewRunObserver(nil).StartRun(context.Background(), kernobs.RunInfo{JobID: "job-docs-noblock", AttemptID: "attempt-1"})
-	runCtx := kernobs.WithRun(context.Background(), run)
-
-	req := defaultTestRequest()
-	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
-	runID := "run-docs-does-not-block-tts"
-	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
-		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
-	}))
-
-	runner.Execute(runCtx, runID, req)
-	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, 5*time.Second).Status)
-	run.Finish()
-
-	// Every scene has its voiceover: TTS fully completed.
-	require.Equal(t, len(defaultTestScenes()), voCallCount(voGen), "TTS must produce one voiceover per scene")
-
-	var voiceoverFinished, docPrepareStarted time.Time
-	for _, st := range run.Report().Stages {
-		switch st.Name {
-		case string(voiceoverStage):
-			voiceoverFinished = st.FinishedAt
-		case string(StageDocumentPrepare):
-			docPrepareStarted = st.StartedAt
-		}
-	}
-	require.False(t, voiceoverFinished.IsZero(), "voiceover stage must be recorded")
-	require.False(t, docPrepareStarted.IsZero(), "document.prepare stage must be recorded")
-	require.False(t, voiceoverFinished.After(docPrepareStarted),
-		"document.prepare must start after voiceover finishes, never before")
 }
 
 // TestParallelFanout_WallTimeIsNotAccumulatedWork pins the fan-out metric
@@ -357,7 +313,7 @@ func TestConcurrencyBound_NLP(t *testing.T) {
 // fan-out larger than the pool capacity must never run more than
 // DefaultTTSConcurrency synthesis calls concurrently.
 func TestConcurrencyBound_TTS(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	tracker := &concurrencyTrackingVoiceoverGenerator{}
 	runner.voiceoverGen = tracker
 
@@ -385,7 +341,6 @@ func TestPipeline_NoArtificialBarrierBetweenScriptAndNLPVoiceover(t *testing.T) 
 
 	req := defaultTestRequest()
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 
 	runID := "run-no-artificial-barrier"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{

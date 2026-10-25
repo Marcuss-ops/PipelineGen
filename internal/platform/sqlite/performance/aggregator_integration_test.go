@@ -79,7 +79,6 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 		id, name string
 		dur      int64
 	}{
-		{"step-doc", "DOCUMENT", 1241},
 		{"step-enq", "VELOX_ENQUEUE", 115},
 	} {
 		if _, err := jobs.Exec(`INSERT INTO job_steps (step_id,job_id,step_name,step_type,status,started_at,completed_at,duration_ms,input_count,output_count,input_bytes,output_bytes,metrics_json,error_code,error_message,created_at) VALUES (?,?,?,?,?,?,?,?,0,0,0,0,'{}','','',?)`,
@@ -122,7 +121,6 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 		perf.PhaseProbe:         281,
 		perf.PhaseHash:          144,
 		perf.PhaseUpload:        2380,
-		perf.PhaseGoogleDoc:     1241,
 		perf.PhaseRenderEnqueue: 115,
 	}
 	for _, m := range got.Phases {

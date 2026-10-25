@@ -9,7 +9,6 @@ import (
 func TestVidRushProviderPolicyCentralizesTimeoutAndBudget(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 2}
 	for _, provider := range []string{
-		scriptpkg.VidRushProviderArtlist,
 		scriptpkg.VidRushProviderInternetImages,
 		scriptpkg.VidRushProviderImageGeneration,
 		scriptpkg.VidRushProviderYouTube,
@@ -21,9 +20,6 @@ func TestVidRushProviderPolicyCentralizesTimeoutAndBudget(t *testing.T) {
 		if vidRushProviderTimeout(provider) <= 0 {
 			t.Fatalf("timeout for %q must be positive", provider)
 		}
-	}
-	if got := vidRushAcquireBudget(plan, scriptpkg.VidRushProviderArtlist); got != vidRushArtlistAcquireBudget {
-		t.Fatalf("Artlist budget = %d, want %d", got, vidRushArtlistAcquireBudget)
 	}
 	if got := vidRushAcquireBudget(plan, scriptpkg.VidRushProviderInternetImages); got != 22 {
 		t.Fatalf("internet-images budget = %d, want 22", got)

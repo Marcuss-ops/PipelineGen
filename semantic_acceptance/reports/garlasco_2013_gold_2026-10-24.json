@@ -1,7 +1,7 @@
 {
   "schema": "garlasco_gold_report.v1",
   "run": "2026-10-24",
-  "worker": "../BrainRust/target/release/semantic-engine",
+  "worker": "../../BrainRust/target/release/semantic-engine",
   "gold": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/garlasco_2013_gold.json",
   "script": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/semantic_acceptance/fixtures/garlasco_2013_reconstructed.txt",
   "manifest_fingerprint": "9294f00793b985bb",

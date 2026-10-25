@@ -99,12 +99,11 @@ for entry in "${WORK_LIST[@]}"; do
     if [[ "$MODE" == "generate" ]]; then
         # ── Generate: POST /api/script/generate ──────────────────────────
         if [[ "$VOICEOVER" == "1" ]]; then
-            [[ -n "$DOCS_FOLDER_ID" ]] || { echo "[bench] ERROR: --docs-folder or BENCH_DOCS_FOLDER_ID is required with --voiceover" >&2; exit 2; }
-            PAYLOAD=$(python3 - "$PAYLOAD_ARG" "$DOCS_FOLDER_ID" <<'PY'
+            PAYLOAD=$(python3 - "$PAYLOAD_ARG" <<'PY'
 import json, sys
 from time import time_ns
 
-topic, folder = sys.argv[1:]
+topic = sys.argv[1]
 print(json.dumps({
   "version": 2,
   "preset": "custom",
@@ -120,8 +119,7 @@ print(json.dumps({
                "render": {"enabled": True,
                           "watermark": {"enabled": True, "text": "MATT DAMON", "position": "top_right", "opacity": 1},
                           "subtitles": {"enabled": True, "mode": "burn"}}},
-    "audio": {"mode": "COMBINED_TIMELINE", "timing": {"mode": "required", "boundary": "word", "formats": ["json", "srt", "vtt"]}},
-    "docs": {"enabled": True, "languages": ["en"], "folder_id": folder}
+    "audio": {"mode": "COMBINED_TIMELINE", "timing": {"mode": "required", "boundary": "word", "formats": ["json", "srt", "vtt"]}}
   }]
 }))
 PY

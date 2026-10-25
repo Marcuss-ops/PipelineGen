@@ -500,7 +500,6 @@ func TestReprocessExecute_ClipDrive_StagesFromDriveFileID(t *testing.T) {
 //
 // Pins that ReprocessUseCase.Execute routes the Drive upload through the
 // canonical YouTubeClip destination (registry-resolved real folder) instead
-// of the legacy Artlist destination + stale ParentFolderID.
 
 func TestReprocessExecute_ForwardsYouTubeClipDestination(t *testing.T) {
 	t.Parallel()

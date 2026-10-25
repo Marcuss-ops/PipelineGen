@@ -55,7 +55,6 @@ func (DefaultPhaseResolver) Resolve(run kernobs.RunReport, audio scriptgeneratio
 		measure(PhaseProbe, srcAudioMetrics+".probe_ms", audio.ProbeMS, nil),
 		measure(PhaseHash, srcAudioMetrics+".hash_ms", audio.HashMS, nil),
 		measure(PhaseUpload, srcAudioMetrics+".upload_ms", audio.UploadMS, nil),
-		measure(PhaseGoogleDoc, srcExecutionStep+":DOCUMENT", stepDuration(steps, "DOCUMENT"), nil),
 		measure(PhaseRenderEnqueue, srcExecutionStep+":VELOX_ENQUEUE", stepDuration(steps, "VELOX_ENQUEUE"), nil),
 	}
 }

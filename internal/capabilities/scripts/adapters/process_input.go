@@ -26,9 +26,9 @@ type ProcessInput struct {
 
 	// Entities carries the entity-extraction result, populated by
 	// MergePostProcessResult when the entities processor produces
-	// output. Threaded through to the canonical document renderer so
-	// the Google Doc renders the <h2>Entities</h2> section when
-	// non-empty. Nil until the entities processor runs.
+	// output. It is the canonical typed entity surface consumed by the
+	// response and persistence writers. Nil until the entities
+	// processor runs.
 	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026).
 	Entities *scriptpkg.EntityResult
 
@@ -38,16 +38,14 @@ type ProcessInput struct {
 
 	// Metadata carries the video-metadata result, populated by
 	// MergePostProcessResult when the metadata processor produces
-	// output. Threaded through to the canonical document renderer so
-	// the Google Doc renders the <h2>Video Metadata</h2> section
-	// when non-empty. Nil until the metadata processor runs.
+	// output. It is the canonical typed metadata surface consumed by
+	// the response and persistence writers. Nil until the metadata
+	// processor runs.
 	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026).
 	Metadata []scriptpkg.VideoMetadata
 
-	// Provenance carries the provisional generation provenance block.
-	// The document processor fills DocID/DocLink after creating or
-	// updating the Google Doc and embeds the complete block into the
-	// document HTML. Populated by GenerateOneUseCase before Run.
+	// Provenance carries the generation provenance block. Populated by
+	// GenerateOneUseCase before Run.
 	// PR-PROVENANCE (July 2026).
 	Provenance *scriptpkg.GenerationProvenance
 

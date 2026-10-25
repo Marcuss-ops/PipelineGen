@@ -70,9 +70,9 @@ func localizedPlanFor(lang string, priority int) LocalizedClipPlan {
 }
 
 // runLocalizationE2E runs the full fan-out for the given languages and returns
-// the scheduler results + the assembled doc ref. This is the ONLY code path:
-// 2 languages and 10 languages both flow through it unchanged.
-func runLocalizationE2E(t *testing.T, languages []string, concurrency int) ([]TaskResult, *LocalizedDocumentRef) {
+// the scheduler results. This is the ONLY code path: 2 languages and 10
+// languages both flow through it unchanged.
+func runLocalizationE2E(t *testing.T, languages []string, concurrency int) []TaskResult {
 	t.Helper()
 
 	compiler, err := NewLocalizedClipCompiler(fakeSourceResolver{facts: validSourceFacts()}, validCompilerConfig())
@@ -129,44 +129,15 @@ func runLocalizationE2E(t *testing.T, languages []string, concurrency int) ([]Ta
 	}
 	results := scheduler.Wait()
 
-	entries := make([]LocalizedDocumentEntry, 0, len(results))
-	for _, r := range results {
-		if r.Err != nil {
-			t.Fatalf("language %q render failed: %v", r.Artifact.Language, r.Err)
-		}
-		entries = append(entries, LocalizedDocumentEntry{
-			SceneID:      r.Artifact.SceneID,
-			ClipID:       r.Artifact.ClipID,
-			Language:     r.Artifact.Language,
-			Priority:     r.Priority,
-			VideoAssetID: r.Artifact.AssetID,
-			DriveFileID:  r.Artifact.DriveFileID,
-			DriveLink:    r.Artifact.DriveLink,
-			DurationMS:   r.Artifact.DurationMS,
-			SHA256:       r.Artifact.SHA256,
-		})
-	}
-
-	assembler, err := NewDocumentAssembler(&fakeDocPublisher{result: &DocPublishResult{ID: "doc-e2e", Link: "https://docs/doc-e2e"}})
-	if err != nil {
-		t.Fatalf("NewDocumentAssembler: %v", err)
-	}
-	ref, err := assembler.Assemble(context.Background(), AssembleInput{Title: "Localization E2E", Entries: entries})
-	if err != nil {
-		t.Fatalf("Assemble: %v", err)
-	}
-	return results, ref
+	return results
 }
 
 // assertFanOut verifies the deterministic, priority-ordered result of a
 // fan-out: one successful artifact per language, in request order.
-func assertFanOut(t *testing.T, languages []string, results []TaskResult, ref *LocalizedDocumentRef) {
+func assertFanOut(t *testing.T, languages []string, results []TaskResult) {
 	t.Helper()
 	if len(results) != len(languages) {
 		t.Fatalf("results: got %d, want %d", len(results), len(languages))
-	}
-	if len(ref.Entries) != len(languages) {
-		t.Fatalf("doc entries: got %d, want %d", len(ref.Entries), len(languages))
 	}
 	for i, lang := range languages {
 		if results[i].Priority != i || results[i].Artifact.Language != lang {
@@ -178,25 +149,22 @@ func assertFanOut(t *testing.T, languages []string, results []TaskResult, ref *L
 		if results[i].Artifact.PlanFingerprint != localizedPlanFor(lang, i).Fingerprint {
 			t.Errorf("results[%d] plan_fingerprint drift", i)
 		}
-		if ref.Entries[i].Language != lang || ref.Entries[i].Priority != i {
-			t.Fatalf("doc entries[%d]: got lang=%q priority=%d, want %q/%d", i, ref.Entries[i].Language, ref.Entries[i].Priority, lang, i)
-		}
 	}
 }
 
 // TestLocalizationE2E_EnEs is the FIRST end-to-end test: two languages, one
 // full fan-out through every step.
 func TestLocalizationE2E_EnEs(t *testing.T) {
-	results, ref := runLocalizationE2E(t, []string{"en", "es"}, 2)
-	assertFanOut(t, []string{"en", "es"}, results, ref)
+	results := runLocalizationE2E(t, []string{"en", "es"}, 2)
+	assertFanOut(t, []string{"en", "es"}, results)
 }
 
 // TestLocalizationE2E_TenLanguages scales the SAME pipeline to 10 languages
 // with no rewrites — only the language slice changes.
 func TestLocalizationE2E_TenLanguages(t *testing.T) {
 	languages := []string{"en", "es", "it", "pt-BR", "fr", "de", "pl", "ru", "tr", "id"}
-	results, ref := runLocalizationE2E(t, languages, 4)
-	assertFanOut(t, languages, results, ref)
+	results := runLocalizationE2E(t, languages, 4)
+	assertFanOut(t, languages, results)
 }
 
 // TestLocalizationE2E_IsolatedLanguageFailureDoesNotBlockOthers verifies the

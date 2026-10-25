@@ -44,7 +44,6 @@ import (
 // godlike/06 SSOT (one canonical owner per fact): this interface
 // is the SOLE canonical typed contract for the translation
 // postprocessor. Sibling consumers (voiceover.Promo +
-// artlist.ClipSearch) use the underlying `translation.TranslatorFunc`
 // directly; the postprocessor layer owns the per-target-language
 // iteration + SpecScene mutation + warnings channel + metrics
 // emission, so the dedicated port is justified per the

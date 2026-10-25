@@ -121,7 +121,6 @@ func TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata(t *testing.T) {
 }
 
 // TestSaveDiscoveredAsset_DifferentProvidersProduceDifferentJobKeys
-// pins the provider-segment of the JobKey: artlist and youtube clip
 // IDs that happen to share the same string MUST still produce
 // distinct JobKeys.
 func TestSaveDiscoveredAsset_DifferentProvidersProduceDifferentJobKeys(t *testing.T) {
@@ -250,7 +249,6 @@ func TestEnqueueAndIndex_DifferentContentHashDifferentEventKey(t *testing.T) {
 
 // TestEnqueueAndIndex_ProviderFromClipSource pins that the provider
 // segment of the event_key is read from clip.Source (not hardcoded).
-// YouTube + artlist with the same clipID MUST produce different
 // event_keys.
 func TestEnqueueAndIndex_ProviderFromClipSource(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
@@ -307,8 +305,6 @@ func TestEnqueueIndexEvent_UsesOutboxKeyShape(t *testing.T) {
 
 // TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix pins the
 // provider-inference contract: a yt_ prefix MUST yield "youtube",
-// a planner: prefix MUST yield "stock", an artlist_ prefix MUST
-// yield "artlist", and an unknown prefix MUST yield "" which the
 // canonical OutboxKey constructor rejects with ErrEmptyProvider.
 func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 	cases := []struct {

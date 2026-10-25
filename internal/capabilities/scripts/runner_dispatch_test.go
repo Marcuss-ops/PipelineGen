@@ -57,14 +57,13 @@ func (t *orderRecordingTranslator) snapshot() []string {
 // before the next scene, targets in the caller's req.Languages order — never
 // an arbitrary interleaving across scenes.
 func TestTranslationPhaseDispatchesInSceneLanguagePriorityOrder(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	recorder := &orderRecordingTranslator{}
 	runner.translator = recorder
 	runner.SetTranslationConcurrency(1)
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeNone
-	req.Docs = DocumentsConfig{}
 	req.Languages = []Language{"en", "es", "it"}
 
 	runID := "run-translation-dispatch-order"

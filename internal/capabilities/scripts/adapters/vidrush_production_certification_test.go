@@ -17,7 +17,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-type certificationArtlistProvider struct {
+type certificationProvider struct {
 	mu          sync.Mutex
 	searches    []scriptports.VidRushSearchRequest
 	acquires    []string
@@ -25,19 +25,19 @@ type certificationArtlistProvider struct {
 	failVerify  map[string]bool
 }
 
-func (p *certificationArtlistProvider) Name() string { return scriptpkg.VidRushProviderArtlist }
-func (p *certificationArtlistProvider) Search(_ context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+func (p *certificationProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
+func (p *certificationProvider) Search(_ context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	p.mu.Lock()
 	p.searches = append(p.searches, req)
 	p.mu.Unlock()
 	return []scriptpkg.SegmentAssetCandidate{{
-		AssetID: "art-" + strings.ReplaceAll(req.SceneID, " ", "-"), Provider: scriptpkg.VidRushProviderArtlist,
-		Query: req.Query, SourceURL: "https://cdn.artlist.example/" + req.SceneID + ".m3u8",
-		SourcePageURL: "https://artlist.example/clip/" + req.SceneID, RelevanceScore: .9,
+		AssetID: "cert-" + strings.ReplaceAll(req.SceneID, " ", "-"), Provider: scriptpkg.VidRushProviderInternetImages,
+		Query: req.Query, SourceURL: "https://cdn.example/" + req.SceneID + ".m3u8",
+		SourcePageURL: "https://example/clip/" + req.SceneID, RelevanceScore: .9,
 		TechnicalQualityScore: .9, ProviderReliability: .9,
 	}}, nil
 }
-func (p *certificationArtlistProvider) Acquire(_ context.Context, c scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+func (p *certificationProvider) Acquire(_ context.Context, c scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	p.mu.Lock()
 	p.acquires = append(p.acquires, c.AssetID)
 	fail := p.failAcquire[c.AssetID]
@@ -48,7 +48,7 @@ func (p *certificationArtlistProvider) Acquire(_ context.Context, c scriptpkg.Se
 	c.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
 	return scriptports.LocalArtifact{Candidate: c, LocalPath: "/materialized/" + c.AssetID + ".mp4", MIMEType: "video/mp4", SizeBytes: 42, ContentSHA256: "sha-" + c.AssetID}, nil
 }
-func (p *certificationArtlistProvider) Verify(_ context.Context, a scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+func (p *certificationProvider) Verify(_ context.Context, a scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	p.mu.Lock()
 	fail := p.failVerify[a.Candidate.AssetID]
 	p.mu.Unlock()
@@ -90,13 +90,13 @@ func (f *certificationFinalizer) Finalize(_ context.Context, a scriptports.Verif
 	return c, nil
 }
 
-func artlistOnlyCertificationPlan() *scriptpkg.ResolvedGenerationPlan {
+func stockOnlyCertificationPlan() *scriptpkg.ResolvedGenerationPlan {
 	return &scriptpkg.ResolvedGenerationPlan{Language: "en", PromptVersion: "cert-v1", MediaPlan: mediadomain.MediaPlanSpec{
-		ProviderPolicy: mediadomain.MediaProviderPolicy{Artlist: mediadomain.MediaToggleEnabled},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
 	}}
 }
 
-func newCertificationProcessor(t *testing.T, provider *certificationArtlistProvider, finalizer *certificationFinalizer) *VidRushMaterializationProcessor {
+func newCertificationProcessor(t *testing.T, provider *certificationProvider, finalizer *certificationFinalizer) *VidRushMaterializationProcessor {
 	t.Helper()
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(provider); err != nil {
@@ -109,19 +109,19 @@ func newCertificationProcessor(t *testing.T, provider *certificationArtlistProvi
 func certificationSegment(id, text string, candidates ...scriptpkg.SegmentAssetCandidate) scriptpkg.VidRushSegmentResult {
 	hash := "hash-" + id
 	return scriptpkg.VidRushSegmentResult{SegmentID: id, SceneID: id, Text: text, TextHash: hash, Insights: scriptpkg.SegmentInsights{
-		SegmentID: id, TextHash: hash, ArtlistQueries: []string{text}, NounChunks: strings.Fields(text),
+		SegmentID: id, TextHash: hash, NounChunks: strings.Fields(text),
 	}, Assets: scriptpkg.SegmentAssetSelection{Candidates: candidates}}
 }
 
-func TestVidRushCertification_ArtlistOnlyIdentityAndDurableBinding(t *testing.T) {
-	provider := &certificationArtlistProvider{}
+func TestVidRushCertification_ProviderIdentityAndDurableBinding(t *testing.T) {
+	provider := &certificationProvider{}
 	finalizer := &certificationFinalizer{}
 	processor := newCertificationProcessor(t, provider, finalizer)
-	plan := artlistOnlyCertificationPlan()
+	plan := stockOnlyCertificationPlan()
 	texts := []string{"coastal road", "barista latte art", "trail runner sunrise"}
 	for i, text := range texts {
 		id := fmt.Sprintf("scene-%d", i+1)
-		candidate := scriptpkg.SegmentAssetCandidate{AssetID: id + "-asset", Provider: scriptpkg.VidRushProviderArtlist, Query: text, SourceURL: "https://cdn.artlist.example/" + id + ".m3u8", SourcePageURL: "https://artlist.example/" + id, RelevanceScore: .9, TechnicalQualityScore: .9, ProviderReliability: .9}
+		candidate := scriptpkg.SegmentAssetCandidate{AssetID: id + "-asset", Provider: scriptpkg.VidRushProviderInternetImages, Query: text, SourceURL: "https://cdn.example/" + id + ".m3u8", SourcePageURL: "https://example/" + id, RelevanceScore: .9, TechnicalQualityScore: .9, ProviderReliability: .9}
 		got, err := processor.Materialize(context.Background(), plan, certificationSegment(id, text, candidate))
 		if err != nil {
 			t.Fatalf("scene %s: %v", id, err)
@@ -143,34 +143,17 @@ func TestVidRushCertification_ArtlistOnlyIdentityAndDurableBinding(t *testing.T)
 		t.Fatalf("materialization must not bypass discovery through provider Search: %d calls", len(provider.searches))
 	}
 	if len(provider.acquires) != 3 {
-		t.Fatalf("Artlist acquire calls=%d, want 3", len(provider.acquires))
-	}
-}
-
-func TestVidRushCertification_SemanticProfileArtlistQueriesAreVisual(t *testing.T) {
-	seg := scriptpkg.CanonicalSegment{ID: "coffee", Text: "A barista pours steamed milk into an espresso and creates latte art.", TextHash: "coffee-hash"}
-	profile := scriptpkg.BuildSegmentSemanticProfile(seg, scriptpkg.EntityResult{NounChunks: []string{"barista", "steamed milk", "espresso", "latte art", "coffee shop"}}, "model", "prompt")
-	queries := scriptpkg.BuildArtlistQueries(profile, 5)
-	joined := strings.ToLower(strings.Join(queries, " | "))
-	for _, want := range []string{"barista", "espresso", "latte art"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("queries=%q missing %q", queries, want)
-		}
-	}
-	for _, forbidden := range []string{"creates a", "he begins", "remains closely", "reveals how", "carved out"} {
-		if strings.Contains(joined, forbidden) {
-			t.Fatalf("non-visual phrase %q leaked into queries=%q", forbidden, queries)
-		}
+		t.Fatalf("provider acquire calls=%d, want 3", len(provider.acquires))
 	}
 }
 
 func TestVidRushCertification_GhostAssetAndFallbackAreFailClosed(t *testing.T) {
-	provider := &certificationArtlistProvider{failAcquire: map[string]bool{"bad-download": true}, failVerify: map[string]bool{"bad-verify": true}}
+	provider := &certificationProvider{failAcquire: map[string]bool{"bad-download": true}, failVerify: map[string]bool{"bad-verify": true}}
 	finalizer := &certificationFinalizer{}
 	processor := newCertificationProcessor(t, provider, finalizer)
-	plan := artlistOnlyCertificationPlan()
+	plan := stockOnlyCertificationPlan()
 	makeCandidate := func(id string) scriptpkg.SegmentAssetCandidate {
-		return scriptpkg.SegmentAssetCandidate{AssetID: id, Provider: scriptpkg.VidRushProviderArtlist, Query: "warehouse robots", SourceURL: "https://cdn.artlist.example/" + id + ".m3u8", SourcePageURL: "https://artlist.example/" + id, RelevanceScore: .9, TechnicalQualityScore: .9, ProviderReliability: .9}
+		return scriptpkg.SegmentAssetCandidate{AssetID: id, Provider: scriptpkg.VidRushProviderInternetImages, Query: "warehouse robots", SourceURL: "https://cdn.example/" + id + ".m3u8", SourcePageURL: "https://example/" + id, RelevanceScore: .9, TechnicalQualityScore: .9, ProviderReliability: .9}
 	}
 	got, err := processor.Materialize(context.Background(), plan, certificationSegment("warehouse", "warehouse robots", makeCandidate("bad-download"), makeCandidate("bad-verify"), makeCandidate("good")))
 	if err != nil {
@@ -181,8 +164,9 @@ func TestVidRushCertification_GhostAssetAndFallbackAreFailClosed(t *testing.T) {
 			t.Fatalf("ghost/failing candidate became bindable: %#v", c)
 		}
 	}
-	if got.Assets.PrimaryVideo == nil || got.Assets.PrimaryVideo.AssetID != "good" {
-		t.Fatalf("winner=%#v, want good candidate", got.Assets.PrimaryVideo)
+	images := got.Assets.SecondaryImages
+	if len(images) != 1 || images[0].AssetID != "good" {
+		t.Fatalf("persisted images=%#v, want the good candidate", images)
 	}
 	if finalizer.calls != 1 {
 		t.Fatalf("finalizer calls=%d, want only successful candidate", finalizer.calls)

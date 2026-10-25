@@ -102,25 +102,6 @@ func TestApplyDurableStockBindingsPreservesMixedClipOwnership(t *testing.T) {
 	}
 }
 
-func TestModelScriptOutputForDocumentPreservesCanonicalSceneData(t *testing.T) {
-	scenes := []Scene{{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Hello world", "es": "Hola mundo"}}, {ID: "scene-1", Index: 1, Text: map[Language]string{"en": "Second scene", "es": "Segunda escena"}}}
-	enModel := modelScriptOutputForDocument(&GenerateResult{Scenes: scenes}, "en")
-	assert.Equal(t, "Hello world", enModel.SpecScene.Scenes[0].Text)
-	assert.Equal(t, "Second scene", enModel.SpecScene.Scenes[1].Text)
-	esModel := modelScriptOutputForDocument(&GenerateResult{Scenes: scenes}, "es")
-	assert.Equal(t, "Hola mundo", esModel.SpecScene.Scenes[0].Text)
-	assert.Equal(t, "Segunda escena", esModel.SpecScene.Scenes[1].Text)
-}
-
-func TestModelScriptOutputForDocumentPreservesTechnicalBindingsForJSON(t *testing.T) {
-	scenes := []Scene{{Index: 0, Text: map[Language]string{"en": "First"}, Clip: &ClipReference{DriveLink: "https://drive.google.com/CLIP-SECRET"}, Clips: []*ClipReference{{DriveLink: "https://drive.google.com/CLIP-A"}, {DriveLink: "https://drive.google.com/CLIP-B"}}, Voiceover: map[Language]AudioReference{"en": {URL: "https://drive.google.com/VOICE-EN"}}}}
-	model := modelScriptOutputForDocument(&GenerateResult{Scenes: scenes}, "en")
-	bindings := model.SpecScene.Scenes[0].Bindings
-	assert.Equal(t, "https://drive.google.com/CLIP-SECRET", bindings.Clip.DriveLink)
-	assert.Len(t, bindings.Clips, 2)
-	assert.Equal(t, "https://drive.google.com/VOICE-EN", bindings.Voiceover.Links["en"])
-}
-
 func TestContainsAny(t *testing.T) {
 	assert.True(t, containsAny("hello world", "world"))
 	assert.True(t, containsAny("timeout error", "timeout", "deadline"))

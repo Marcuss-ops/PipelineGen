@@ -93,8 +93,8 @@ type PutFileRequest struct {
 	// that want only the cheaper size-match leave this empty.
 	ExpectedSHA256 string
 
-	// PublicRead is required for assets that Google Docs must fetch directly
-	// from Drive (for example entity images inserted as inline images).
+	// PublicRead makes the delivered file readable by link for consumers that
+	// fetch it directly from Drive (image deliveries).
 	PublicRead bool
 }
 

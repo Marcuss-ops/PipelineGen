@@ -46,7 +46,6 @@ func (f VidRushPlanResolverFunc) ResolveVidRushPlan(ctx context.Context, req Gen
 // wrapped by MediaCertBarrier so a CERTIFIED=false run fails the job.
 type VidRushPipeline struct {
 	// ProviderResolver fans out the enriched segment's visual provider
-	// searches (Artlist, internet images) after entity extraction. A nil
 	// resolver leaves enrichment at the entities+queries stage. When
 	// StockResolverPort + SamplerPort are set, SemanticProviderResolver is
 	// composed with this fan-out resolver.
@@ -160,7 +159,6 @@ func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *
 		// overlays. Those stills are separate overlay assets and do not replace
 		// or alter the stock-bound video.
 		cloned := segment
-		cloned.Cache.Artlist = "BYPASSED"
 		cloned.Cache.YouTube = "BYPASSED"
 		cloned.Cache.Binding = "STOCK_BOUND"
 		if !stockBoundEntityImageSearchEnabled(plan) || r.fanout == nil {
@@ -169,13 +167,11 @@ func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *
 		}
 		imagePlan := *plan
 		imagePlan.MediaPlan = plan.MediaPlan.Clone()
-		imagePlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
 		imagePlan.MediaPlan.ProviderPolicy.YouTube = mediadomain.MediaToggleDisabled
 		updated, err := r.fanout.ResolveProviders(ctx, &imagePlan, cloned)
 		if err != nil {
 			return segment, err
 		}
-		updated.Cache.Artlist = "BYPASSED"
 		updated.Cache.YouTube = "BYPASSED"
 		updated.Cache.Binding = "STOCK_BOUND"
 		return updated, nil
@@ -189,9 +185,7 @@ func (r *SemanticAndFanoutResolver) ResolveProviders(ctx context.Context, plan *
 	}
 	fanoutPlan := *plan
 	fanoutPlan.MediaPlan = plan.MediaPlan.Clone()
-	// Artlist was already handled by the semantic resolver. Prevent a second
 	// live search while preserving the caller's image/generation policy.
-	fanoutPlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
 	return r.fanout.ResolveProviders(ctx, &fanoutPlan, updated)
 }
 
@@ -218,7 +212,6 @@ func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *s
 	// The stock resolver owns video discovery and must never bypass the plan's
 	// provider policy. Image-only/generation-only plans still use the later
 	// image materialization stages, but must not probe local video stock or
-	// fall back to Artlist.
 	if plan == nil || !plan.MediaPlan.ProviderPolicy.YouTube.AsBool() {
 		segment.Cache.InternetImagesProviderSearches = 0
 		return segment, nil
@@ -294,7 +287,6 @@ type SegmentMaterializer interface {
 
 // SegmentEnricher enriches one stable scene into a VidRushSegmentResult. It is
 // the single reusable owner of per-segment VidRush work: entity extraction,
-// important words/phrases, Artlist and image query construction, cache lookup
 // and metrics. Implementations must return an immutable result and must never
 // mutate shared scene state.
 type SegmentEnricher interface {

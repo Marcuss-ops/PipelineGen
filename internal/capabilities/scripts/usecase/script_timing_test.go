@@ -5,9 +5,9 @@
 //
 //   - STAGE boundaries   → script.prepare / normalize / validate /
 //     source.resolve / script.plan / script.engine / script.postprocess /
-//     audio.pipeline / persistence.sqlite / document.publish
+//     audio.pipeline / persistence.sqlite
 //   - OPERATION boundaries → qdrant.search / sqlite.hydrate / ollama.generate /
-//     edge_tts.synthesize / google_docs.publish / rust.audio_render
+//     edge_tts.synthesize / rust.audio_render
 //
 // GenerationTimings is only a compatibility projection of those canonical
 // observations (never a second timer). The derived Breakdown / Fanout /
@@ -276,33 +276,6 @@ func TestScriptTiming_PostprocessorsProjectCanonicalStages(t *testing.T) {
 		assert.Equal(t, canonical, got,
 			"stage report %q must equal the canonical stage observation", name)
 	}
-}
-
-// ── Google Docs boundary ──────────────────────────────────────────────
-
-// TestScriptTiming_GoogleDocsMeasured pins that document publication records
-// the document.publish stage and exactly one google_docs.publish operation per
-// language through the full gencore.GenerateOneUseCase.Execute path.
-func TestScriptTiming_GoogleDocsMeasured(t *testing.T) {
-	ctx, run := startScriptTimingRun(t)
-
-	docs := &documentsE2EStub{}
-	uc := buildUsecaseWithDocuments(&testsupport.FakeOllamaGen{}, docs)
-
-	item := makeTextOnlyItem("script-timing-docs", "Source text about clean energy for the document surface.")
-	item.Language = "it"
-	item.Title = "Timing Docs"
-	item.ScriptParams.SkipQualityGate = true
-	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}, FolderID: "folder-timing"}
-
-	_, err := uc.Execute(ctx, item, scriptpkg.Preset(""), nil)
-	require.NoError(t, err)
-
-	report := run.Report()
-	_, ok := scriptTimingStageMs(report, "document.publish")
-	assert.True(t, ok, "document.publish stage must be recorded")
-	assert.Equal(t, 1, scriptTimingOpCount(report, "google_docs", "publish"),
-		"google_docs.publish must be measured once for one language")
 }
 
 // ── Fan-out / no double counting / unattributed (derived views) ───────

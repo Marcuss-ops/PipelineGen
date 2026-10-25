@@ -533,21 +533,6 @@ func TestRunTranslatedNLPStoresGroundedPerLanguageAnnotations(t *testing.T) {
 	}
 }
 
-func TestAnnotationForLanguageDoesNotLeakSourceAnnotations(t *testing.T) {
-	scene := Scene{
-		Annotations: &scriptpkg.SceneAnnotations{Language: "en"},
-		LocalizedAnnotations: map[Language]*scriptpkg.SceneAnnotations{
-			"it": {Language: "it"},
-		},
-	}
-	if got := annotationForLanguage(scene, "it"); got == nil || got.Language != "it" {
-		t.Fatalf("localized annotation not selected: %+v", got)
-	}
-	if got := annotationForLanguage(scene, "fr"); got != nil {
-		t.Fatalf("source annotation leaked into fr document: %+v", got)
-	}
-}
-
 // ── Redundant translated-NER gate (audit P5/C3) ──────────────────────
 //
 // The gate exists to stop calling VisualNER on a translation whose source

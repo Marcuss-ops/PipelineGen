@@ -63,7 +63,6 @@ type DuplicateMatch struct {
 	AssetID string `json:"asset_id"`
 
 	// Source is the canonical source identity (e.g. "youtube",
-	// "artlist", "stock", "local").
 	Source string `json:"source"`
 
 	// Name is the human-readable asset name.

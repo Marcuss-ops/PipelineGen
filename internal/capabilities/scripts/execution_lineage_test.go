@@ -74,7 +74,7 @@ func (r *recordingExecutionRecorder) RecordOperation(_ context.Context, exec Exe
 // operationByKey finds the first recorded operation matching kind+scene+lang.
 
 func TestRunnerExecutionContextAndLineageCertification(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	clipPath := t.TempDir() + "/clip.mp4"
 	clipBytes := []byte("lineage clip")
 	if err := os.WriteFile(clipPath, clipBytes, 0o600); err != nil {
@@ -119,7 +119,7 @@ func TestRunnerExecutionContextAndLineageCertification(t *testing.T) {
 		}
 	}
 	if err := CertifyExecutionLineage(recorder.steps, recorder.inputs, recorder.outputs, []string{
-		"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "AUDIO_COMPILE", "PERSISTENCE", "DOCUMENT",
+		"NORMALIZE", "SCRIPT", "TRANSLATION", "VOICEOVER", "AUDIO_COMPILE", "PERSISTENCE",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestCertifyExecutionLineageRejectsIncompleteTerminalState(t *testing.T) {
 }
 
 func TestExecutionRecorderFailureFailsRun(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	runID := "run-recorder-failure-001"
 	req := defaultTestRequest()
 	if err := repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}); err != nil {

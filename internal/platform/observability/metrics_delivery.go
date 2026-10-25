@@ -6,12 +6,12 @@
 // registry, surfaced via /metrics (api/routes.go:274-284).
 //
 // Cardinality (bounded, no risk):
-//   - destination: 9 DestinationKey values (YouTubeClip, Artlist,
-//     Stock, Image, Voiceover, SoundEffect, Book,
-//     Script, Document).
-//   - outcome: 3 values (success, failure, skipped).
-//   - Total series: 9 × 3 = 27 per labelled metric, plus 2
-//     run-summary gauges (drive_roots_validator_last_run_*).
+//
+//	  Stock, Image, Voiceover, SoundEffect, Book,
+//	  Script, Document).
+//	- outcome: 3 values (success, failure, skipped).
+//	- Total series: 9 × 3 = 27 per labelled metric, plus 2
+//	  run-summary gauges (drive_roots_validator_last_run_*).
 //
 // Forward-pointer: if operators need transient vs terminal failure
 // breakdown, the outcome label can be widened to {success,

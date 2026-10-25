@@ -65,13 +65,11 @@ import (
 // and the write surface (Upload + PutFile) live on different adapters
 // (drive.Reader for read, delivery.Publisher for write).
 //
-// PR2.7: introduced alongside the retired-wide-port artlist.DriveFolderManager
 // to retire the raw SDK reach-through previously done in
 // semantic_enricher.go::updateCumulativeMetadataJSON.
 //
 // F3.14 (June 2026): the wide-port methods (ListByQuery, Download, Upload,
 // findFileByName) were retired — zero callers remain after F2.11 closed
-// the artlist + voiceover + cards paths to drive.Reader + delivery.Publisher.
 // The single-method surface here is the canonical F3.14 end-state; future
 // additions should be justified against drive.Reader / delivery.Publisher
 // / drive.FileLifecycle ownerships before they land here.
@@ -111,7 +109,6 @@ type DriveFolderManagerAdapter struct {
 const driveFolderCacheCapacity = 2048
 
 // NewDriveFolderManagerAdapter constructs the adapter from a configured
-// Drive SDK service. The composition root in internal/app/module_sources.go::WireArtlist
 // builds the SDK once and reuses it across multiple consumers (this
 // adapter + the existing Uploader), so Drive credentials are loaded
 // exactly once at composition time.

@@ -13,7 +13,6 @@ import (
 // PostgreSQL media SSOT.
 //
 // MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): this replaces the retired
-// SQLite `artlist.AdminMediaMetadataSource`. The projection is a media_assets
 // read and media_assets is PostgreSQL-owned, so the previous SQLite read could
 // only ever answer from a database that holds no committed media rows — the
 // export saw an empty catalog while PostgreSQL held the assets. The

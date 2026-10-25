@@ -92,7 +92,6 @@ type VerifiedArtifact struct {
 	OutputDriveSubpath []string
 }
 
-// VidRushAssetProvider is the common application port for Artlist, web-image
 // retrieval and image generation. Persistence remains outside this interface.
 type VidRushAssetProvider interface {
 	Name() string

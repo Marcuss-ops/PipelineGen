@@ -67,6 +67,43 @@ func TestStockPath_AllowsOptionalProvider(t *testing.T) {
 	require.Equal(t, []string{"run_1b25ac8e5470", "metadata"}, segments)
 }
 
+// TestRegistry_RetiredDestinationResolvesToSuccessor pins the asset
+// migration contract: a persisted row that still carries the retired
+// "artlist" destination resolves to the stock policy (root folder, path
+// builder and conflict policy) instead of failing as unknown — which is
+// what keeps those assets reachable after the dedicated Artlist Drive
+// folder and storage path were removed.
+func TestRegistry_RetiredDestinationResolvesToSuccessor(t *testing.T) {
+	r := NewDestinationRegistry(&config.Config{
+		Drive: config.DriveConfig{
+			MediaRootFolder:  "fake-root",
+			StockRootFolder:  "stock-root",
+			ImagesRootFolder: "images-root",
+		},
+	})
+
+	retired := DestinationKey("artlist")
+	require.True(t, r.Has(retired), "a retired destination key MUST keep resolving (legacy rows carry it)")
+	require.True(t, r.Has(DestinationStock))
+
+	legacy, err := r.Resolve(retired)
+	require.NoError(t, err)
+	stock, err := r.Resolve(DestinationStock)
+	require.NoError(t, err)
+	// DestinationPolicy carries a PathBuilder func, so the policies are
+	// compared field-by-field rather than by struct equality.
+	require.Equal(t, stock.RootFolderID, legacy.RootFolderID,
+		"the retired key MUST resolve to the successor's root folder")
+	require.Equal(t, stock.Namespace, legacy.Namespace)
+	require.Equal(t, stock.RequireSubpath, legacy.RequireSubpath)
+	require.Equal(t, stock.ConflictPolicy, legacy.ConflictPolicy,
+		"the retired key MUST inherit the successor's conflict policy")
+	require.Equal(t, "stock-root", legacy.RootFolderID)
+
+	require.NotContains(t, r.Keys(), retired,
+		"a retired key MUST NOT be re-registered as its own policy")
+}
+
 // TestRegistry_AllKeysPresent runs a completeness check across all
 // registered destination keys. Adding a new DestinationKey without
 // a corresponding registry entry must surface here.
@@ -79,7 +116,6 @@ func TestRegistry_AllKeysPresent(t *testing.T) {
 
 	expectedKeys := []DestinationKey{
 		DestinationYouTubeClip,
-		DestinationArtlist,
 		DestinationStock,
 		DestinationImage,
 		DestinationVoiceover,

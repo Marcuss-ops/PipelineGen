@@ -312,7 +312,7 @@ type EntityImageBinding struct {
 	MediaType string `json:"media_type,omitempty"`
 	DriveLink string `json:"drive_link,omitempty"`
 	// PreviewURL is the direct image URL used for inline rendering in the
-	// Google Doc (IDEAL PASS). It is the candidate's source image URL, never
+	// response (IDEAL PASS). It is the candidate's source image URL, never
 	// a Drive view-page link. Empty when no direct image is available.
 	PreviewURL string `json:"preview_url,omitempty"`
 	// SHA256 is the content address of the materialized asset bytes (the

@@ -151,9 +151,6 @@ func (s StorageConfig) AnimationsPath() string { return s.mediaSubPath("animatio
 // YoutubeClipsPath returns the full path to the youtube clips directory.
 func (s StorageConfig) YoutubeClipsPath() string { return s.mediaSubPath("youtube") }
 
-// ArtlistPath returns the full path to the artlist directory.
-func (s StorageConfig) ArtlistPath() string { return s.mediaSubPath("artlist") }
-
 // ImagesPath returns the full path to the images directory.
 func (s StorageConfig) ImagesPath() string { return s.mediaSubPath("images") }
 

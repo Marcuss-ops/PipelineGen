@@ -141,13 +141,10 @@ var verifyOneClipTenLanguagesTargets = []string{"it", "pl", "ru", "de", "es", "p
 //     audio once. Subtitles are BURNED: the shipped artifact is the MP4, and a
 //     sidecar track is not it.
 //
-//  3. THE CLIPS FIELDS CANNOT DIVERT THE RENDER — the destination is
-//     `<resolved documents root>/<job>/<language>`; the payload's
-//     drive_folder_id/drive_subfolder_name are the fallback of a run with no
-//     documents root at all. With docs enabled the documents root resolves
-//     (here the configured default, since the payload pins no docs.folder_id) and
-//     it is deliberately NOT the clips folder — which is what keeps every
-//     language's clip beside the script it was rendered from.
+//  3. THE DESTINATION IS THE CLIPS LAYOUT — the destination is
+//     `<clips root | payload drive_folder_id>[/<payload drive_subfolder_name>]/<language>`,
+//     which is what keeps every language's clip in its own folder. Google Docs
+//     was retired, so there is no documents root above it.
 func TestVerifyOneClipOneSceneTenLanguagesManifestPinsTheRuntimeContract(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join("..", "..", "..", "ops", "jobs", "verify_1clip_10lang.generate.json"))
 	if err != nil {
@@ -207,26 +204,6 @@ func TestVerifyOneClipOneSceneTenLanguagesManifestPinsTheRuntimeContract(t *test
 		if want == string(req.SourceLanguage) {
 			t.Fatalf("language %q is the source language; it cannot also be a translation target", want)
 		}
-	}
-
-	// 4. One document — and therefore one folder — per language, source included.
-	if !req.Docs.Enabled {
-		t.Fatal("docs publishing must be explicit for this batch")
-	}
-	if len(req.Docs.Languages) != len(verifyOneClipTenLanguagesTargets)+1 {
-		t.Fatalf("docs languages = %v, want the source plus the nine targets", req.Docs.Languages)
-	}
-
-	// 5. The clips fields are a FALLBACK, never the destination.
-	docsRoot, err := scriptpkg.ResolveScriptDocsFolderID(req.Docs.Enabled, req.Docs.FolderID, "canonical-docs-root")
-	if err != nil {
-		t.Fatalf("resolve documents root: %v", err)
-	}
-	if docsRoot != "canonical-docs-root" {
-		t.Fatalf("documents root = %q, want the configured default (the payload pins no docs.folder_id)", docsRoot)
-	}
-	if docsRoot == req.Render.DriveFolderID {
-		t.Fatalf("documents root and the clips folder are both %q; the clip would not sit beside its script", docsRoot)
 	}
 
 	// The path constant is asserted too, so a rename of the acceptance job is a

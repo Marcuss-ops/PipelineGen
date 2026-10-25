@@ -45,11 +45,11 @@ func (a RegistryProviderClient) SearchProvider(ctx context.Context, query string
 	// in this composition can never answer — probe once and fail with the
 	// typed unavailability signal instead of issuing the query.
 	if lookup, ok := a.Registry.(providerAvailabilityLookup); ok {
-		if _, err := lookup.Provider(scriptpkg.VidRushProviderArtlist); err != nil {
+		if _, err := lookup.Provider(scriptpkg.VidRushProviderYouTube); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrProviderUnavailable, err)
 		}
 	}
-	rows, err := a.Registry.Search(ctx, scriptpkg.VidRushProviderArtlist, scriptports.VidRushSearchRequest{Query: query, Limit: limit})
+	rows, err := a.Registry.Search(ctx, scriptpkg.VidRushProviderYouTube, scriptports.VidRushSearchRequest{Query: query, Limit: limit})
 	if err != nil {
 		return nil, err
 	}

@@ -69,20 +69,9 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	if !e.finalJob() {
 		return
 	}
-	// Deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 3): the
-	// `script.docs_publish` child owns document publication from here. The
-	// run stays non-terminal at CORE_READY with its core snapshot durable;
-	// the parent aggregator completes the run and flips the broker terminal
-	// once the child publishes. Skipping documents() here is load-bearing:
-	// running it would chain the Docs wall clock back onto this job and
-	// defeat the cutover. A nil enqueuer (or docs disabled) leaves
-	// docsDeferred false and the inline path below runs unchanged.
-	if e.docsDeferred {
-		return
-	}
-	if !e.documents() {
-		return
-	}
+	// Google Docs publication was removed completely: there is no post-core
+	// document leg to defer or run. The run completes after the non-document
+	// phases and the async voiceover pool is joined inside complete().
 	e.complete()
 }
 
@@ -117,7 +106,6 @@ func RunnerPhaseSequence() []kernobs.StageName {
 		kernobs.StageRunAudioCompile,
 		kernobs.StageRunPersistence,
 		kernobs.StageRunFinalJob,
-		kernobs.StageRunDocument,
 	}
 }
 
@@ -143,7 +131,9 @@ func runStagePhase(stage Stage) (kernobs.StageName, bool) {
 	case StageCompilingAudio:
 		return kernobs.StageRunAudioCompile, true
 	case StagePublishingDocuments:
-		return kernobs.StageRunDocument, true
+		// Legacy resume marker for the post-core publication leg. Its work
+		// is the remote final job, so it reports under that phase.
+		return kernobs.StageRunFinalJob, true
 	default:
 		return "", false
 	}

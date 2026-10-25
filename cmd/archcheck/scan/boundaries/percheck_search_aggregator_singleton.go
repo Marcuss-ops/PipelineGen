@@ -11,7 +11,6 @@
 //
 // Why singleton: the SearchAggregator owns the per-backend
 // fan-out + per-scope routing policy (semantic, local, youtube-
-// live, artlist-live, stock, images — the 6 canonical backends
 // registered via `BuildSearchBackends`). A second construction
 // site that constructs its own NewAggregator with a different
 // BackendRegistry would diverge the search-routing decision

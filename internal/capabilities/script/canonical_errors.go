@@ -40,7 +40,7 @@ import (
 //	400 — client payload errors (existing)
 //	409 — handled at submitter level, not here
 //	422 — unprocessable entity
-//	502 — provider bad response (Gemma/Docs)
+//	502 — provider bad response (Gemma)
 //	503 — provider unavailable
 //	504 — provider timeout
 //	500 — unexpected internal error (default)

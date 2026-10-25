@@ -198,7 +198,6 @@ func TestCreatorRuntime_CompilePinDBOrphanResolved(t *testing.T) {
 // ── 3. BuildCreatorRuntime constructor smoke tests ────────────
 
 // minimalCreatorConfig returns a minimal config that disables
-// every external feature (Drive, Artlist, YouTube, Qdrant, etc.)
 // so BuildCreatorRuntime can construct without network round-trips.
 // Mirrors the fixture in composition_test.go::minimalConfig.
 func minimalCreatorConfig(dataDir string) *config.Config {

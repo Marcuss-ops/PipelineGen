@@ -26,7 +26,7 @@
 // Shared test fixture (stubs + in-memory repo + factory helpers):
 //
 //   - runner_helpers_test.go       ← stub{TextGenerator,Translator,
-//     VoiceoverGenerator,DocumentPublisher} +
+//     VoiceoverGenerator} +
 //     inMemRunRepository + newStub...() factories +
 //     defaultTestRequest + defaultTestScenes + newTestRunner +
 //     awaitCompletion

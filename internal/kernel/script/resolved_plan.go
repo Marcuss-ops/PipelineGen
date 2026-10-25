@@ -51,7 +51,6 @@ type ResolvedGenerationPlan struct {
 	// For text sources it's the topic+source_text+guidelines assembly.
 	// For clip/catalog/search sources it's the clip evidence text.
 	SourceText       string                `json:"source_text"`
-	ArtlistKeywords  []string              `json:"artlist_keywords,omitempty"`
 	ResearchSources  []SourceReference     `json:"research_sources,omitempty"`
 	ResearchReport   *ResearchReport       `json:"research_report,omitempty"`
 	ResearchEvidence *ResearchEvidencePack `json:"research_evidence,omitempty"`
@@ -162,9 +161,6 @@ type ResolvedGenerationPlan struct {
 
 	// ── Output ────────────────────────────────────────────────────────
 	DriveFolderID     string              `json:"drive_folder_id,omitempty"`
-	DocsEnabled       bool                `json:"docs_enabled,omitempty"`
-	DocsLanguages     []string            `json:"docs_languages,omitempty"`
-	DocsFolderID      string              `json:"docs_folder_id,omitempty"`
 	VoiceoverEnabled  Toggle              `json:"voiceover_enabled,omitempty"`
 	VoiceoverGroup    string              `json:"voiceover_group,omitempty"`
 	VoiceoverFolderID string              `json:"voiceover_folder_id,omitempty"`

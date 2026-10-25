@@ -133,7 +133,6 @@ func (r *Resolver) Resolve(ctx context.Context, req ResolveRequest) (ResolveResu
 	reason := fmt.Sprintf("local_candidates=%d (threshold=%d), best_score=%.2f (min=%.2f)", len(localCands), threshold, bestLocal, minQuality)
 	providerCands, err := r.provider.SearchProvider(ctx, req.Query, limit)
 	if providerUnavailable(err) {
-		// The provider cannot serve in this composition at all (the Artlist
 		// registry path is not wired since the 2026-10-05 wiring removal).
 		// Issuing the fallback query is pure waste and its failure would kill
 		// an otherwise valid local resolve, so the fallback is skipped

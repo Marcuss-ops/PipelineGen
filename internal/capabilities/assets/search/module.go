@@ -20,7 +20,6 @@
 // Descriptor into `assetsapi.Dependencies.Search` (route module that
 // mounts /search on the parent /api/media group).
 //
-// Pattern parity with `artlist/module.go` (C1-Step 3),
 // `youtube/module.go` (C1-Step 4), `clips/module.go` (C1-Step 5),
 // `stock/module.go` (C1-Step 6), `voiceover/module.go` (C1-Step 7),
 // `soundeffect/module.go` (C1-Step 8), `register/module.go`
@@ -29,7 +28,6 @@
 // UNIQUE TO SEARCH: the Handler is the THINNEST in the assets tree
 // today (1 dep + log, 1 route: POST /search). The Handler is already
 // Aggregator-backed per the Blocco A2 consolidation (June 2026): all
-// independent search endpoints (Artlist /search + /search/live,
 // YouTube /search, clips /search/advanced, scraper /search,
 // /api/assets/search) have been absorbed into the single
 // POST /api/media/search endpoint that delegates to the canonical

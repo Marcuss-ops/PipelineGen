@@ -271,7 +271,6 @@ func mergeVidRushSegments(dst, src []scriptpkg.VidRushSegmentResult) []scriptpkg
 
 // mergeVidRushSegmentResult preserves provider discoveries when a later
 // processor returns only its own asset delta (for example, internet_images
-// returning an image candidate after clip_search returned Artlist clips).
 // Segment identity is shared, but provider assets are additive state and
 // must not be replaced by the last processor to touch the segment.
 func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpkg.VidRushSegmentResult {
@@ -302,9 +301,6 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	if len(src.Insights.SpecialNames) > 0 {
 		out.Insights.SpecialNames = append([]string(nil), src.Insights.SpecialNames...)
 	}
-	if len(src.Insights.ArtlistQueries) > 0 {
-		out.Insights.ArtlistQueries = append([]string(nil), src.Insights.ArtlistQueries...)
-	}
 	if len(src.Insights.ImageQueries) > 0 {
 		out.Insights.ImageQueries = append([]string(nil), src.Insights.ImageQueries...)
 	}
@@ -327,9 +323,6 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	}
 	if src.Cache.Extraction != "" {
 		out.Cache.Extraction = src.Cache.Extraction
-	}
-	if src.Cache.Artlist != "" {
-		out.Cache.Artlist = src.Cache.Artlist
 	}
 	if src.Cache.InternetImages != "" {
 		out.Cache.InternetImages = src.Cache.InternetImages

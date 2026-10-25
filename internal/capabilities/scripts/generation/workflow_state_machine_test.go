@@ -14,7 +14,6 @@ func TestWorkflowState_LegalForwardTransitions(t *testing.T) {
 	}{
 		{StateScriptReady, StateImagesPending},
 		{StateImagesPending, StateImagesGenerated},
-		{StateImagesGenerated, StateDocumentCreated},
 	}
 	for _, tt := range tests {
 		if !tt.from.IsValidTransition(tt.to) {
@@ -33,9 +32,6 @@ func TestWorkflowState_IllegalBackwardTransitions(t *testing.T) {
 		{StateImagesPending, StateScriptReady},
 		{StateImagesGenerated, StateImagesPending},
 		{StateImagesGenerated, StateScriptReady},
-		{StateDocumentCreated, StateImagesGenerated},
-		{StateDocumentCreated, StateImagesPending},
-		{StateDocumentCreated, StateScriptReady},
 	}
 	for _, tt := range tests {
 		if tt.from.IsValidTransition(tt.to) {
@@ -78,8 +74,7 @@ func TestWorkflowState_SelfLoopIdempotency(t *testing.T) {
 func TestWorkflowState_StickyTerminalSinks(t *testing.T) {
 	terminals := []WorkflowState{StateWorkflowFailed, StateWorkflowDeadLettered}
 	nonTerminals := []WorkflowState{
-		StateScriptReady, StateImagesPending,
-		StateImagesGenerated, StateDocumentCreated,
+		StateScriptReady, StateImagesPending, StateImagesGenerated,
 	}
 
 	for _, term := range terminals {
@@ -152,8 +147,8 @@ func TestWorkflowState_ValidateAndTransition_InvalidTarget(t *testing.T) {
 
 func TestWorkflowState_CanonicalValuesComplete(t *testing.T) {
 	vals := CanonicalWorkflowStateValues()
-	if len(vals) != 6 {
-		t.Fatalf("expected 6 canonical values, got %d: %v", len(vals), vals)
+	if len(vals) != 5 {
+		t.Fatalf("expected 5 canonical values, got %d: %v", len(vals), vals)
 	}
 	seen := make(map[WorkflowState]bool)
 	for _, v := range vals {
@@ -167,28 +162,24 @@ func TestWorkflowState_CanonicalValuesComplete(t *testing.T) {
 	}
 }
 
-// ── Test 8: DOCUMENT_CREATED is terminal success (no forward) ────────────
+// ── Test 8: IMAGES_GENERATED is terminal success (no forward) ────────────
 
-func TestWorkflowState_DocumentCreatedTerminalSuccess(t *testing.T) {
-	// DOCUMENT_CREATED is terminal success — no forward progression
-	// to any non-terminal state (backward edges are rejected).
-	// It CAN still transition to FAILED/DEAD_LETTERED via the
-	// early-return in IsValidTransition (post-document-creation
-	// failure is legitimate).
-	nonSelfTargets := []WorkflowState{
-		StateScriptReady, StateImagesPending, StateImagesGenerated,
-	}
+func TestWorkflowState_ImagesGeneratedTerminalSuccess(t *testing.T) {
+	// IMAGES_GENERATED is terminal success — no forward progression
+	// to any earlier state (backward edges are rejected). It CAN still
+	// transition to FAILED/DEAD_LETTERED via the early-return in
+	// IsValidTransition.
+	nonSelfTargets := []WorkflowState{StateScriptReady, StateImagesPending}
 	for _, to := range nonSelfTargets {
-		if StateDocumentCreated.IsValidTransition(to) {
-			t.Errorf("expected DOCUMENT_CREATED -> %s to be ILLEGAL (terminal success)", to)
+		if StateImagesGenerated.IsValidTransition(to) {
+			t.Errorf("expected IMAGES_GENERATED -> %s to be ILLEGAL (terminal success)", to)
 		}
 	}
-	// DOCUMENT_CREATED CAN legitimately transition to FAILED / DEAD_LETTERED.
-	if !StateDocumentCreated.IsValidTransition(StateWorkflowFailed) {
-		t.Error("expected DOCUMENT_CREATED -> FAILED to be VALID (post-creation failure)")
+	if !StateImagesGenerated.IsValidTransition(StateWorkflowFailed) {
+		t.Error("expected IMAGES_GENERATED -> FAILED to be VALID")
 	}
-	if !StateDocumentCreated.IsValidTransition(StateWorkflowDeadLettered) {
-		t.Error("expected DOCUMENT_CREATED -> DEAD_LETTERED to be VALID (post-creation failure)")
+	if !StateImagesGenerated.IsValidTransition(StateWorkflowDeadLettered) {
+		t.Error("expected IMAGES_GENERATED -> DEAD_LETTERED to be VALID")
 	}
 }
 
@@ -198,13 +189,5 @@ func TestWorkflowState_SkipForbidden(t *testing.T) {
 	// SCRIPT_READY → IMAGES_GENERATED is a skip (must go through IMAGES_PENDING).
 	if StateScriptReady.IsValidTransition(StateImagesGenerated) {
 		t.Error("expected SCRIPT_READY -> IMAGES_GENERATED to be ILLEGAL (skip)")
-	}
-	// SCRIPT_READY → DOCUMENT_CREATED is a skip.
-	if StateScriptReady.IsValidTransition(StateDocumentCreated) {
-		t.Error("expected SCRIPT_READY -> DOCUMENT_CREATED to be ILLEGAL (skip)")
-	}
-	// IMAGES_PENDING → DOCUMENT_CREATED is a skip.
-	if StateImagesPending.IsValidTransition(StateDocumentCreated) {
-		t.Error("expected IMAGES_PENDING -> DOCUMENT_CREATED to be ILLEGAL (skip)")
 	}
 }

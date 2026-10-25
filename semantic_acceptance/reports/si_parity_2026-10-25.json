@@ -1,0 +1,156 @@
+{
+  "schema": "si_parity.v1",
+  "results": [
+    {
+      "check": "garlasco_2013_reconstructed.split_bounds",
+      "verdict": "PASS",
+      "detail": "5 scenes with sentence indices, 0 out of shared split bounds"
+    },
+    {
+      "check": "garlasco_2013_reconstructed.si_temporal_covered",
+      "verdict": "PASS",
+      "detail": "13/13 SI temporal events share an engine normalized year"
+    },
+    {
+      "check": "garlasco_2013_reconstructed.si_relation_endpoints",
+      "verdict": "PASS",
+      "detail": "5/5 SI relation endpoints are engine identities"
+    },
+    {
+      "check": "garlasco_2013_reconstructed.si_relation_asserted_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0/0 named-pair SI relations also asserted by the engine"
+    },
+    {
+      "check": "garlasco_2013_reconstructed.si_comparison_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0 named-subject SI comparisons uncovered"
+    },
+    {
+      "check": "garlasco_2013_reconstructed.si_causal_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0 named-pair SI causal links uncovered"
+    },
+    {
+      "check": "garlasco_2013_reconstructed.si_generic_links_documented",
+      "verdict": "PASS",
+      "detail": "11 SI generic-concept links (relations 5, comparisons 1, causal 5) outside the engine's named-subject contract: analysis-only signals, never consumed by production"
+    },
+    {
+      "check": "garlasco_full.split_bounds",
+      "verdict": "PASS",
+      "detail": "8 scenes with sentence indices, 0 out of shared split bounds"
+    },
+    {
+      "check": "garlasco_full.si_temporal_covered",
+      "verdict": "PASS",
+      "detail": "23/23 SI temporal events share an engine normalized year"
+    },
+    {
+      "check": "garlasco_full.si_relation_endpoints",
+      "verdict": "PASS",
+      "detail": "3/3 SI relation endpoints are engine identities"
+    },
+    {
+      "check": "garlasco_full.si_relation_asserted_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0/0 named-pair SI relations also asserted by the engine"
+    },
+    {
+      "check": "garlasco_full.si_comparison_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0 named-subject SI comparisons uncovered"
+    },
+    {
+      "check": "garlasco_full.si_causal_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0 named-pair SI causal links uncovered"
+    },
+    {
+      "check": "garlasco_full.si_generic_links_documented",
+      "verdict": "PASS",
+      "detail": "6 SI generic-concept links (relations 3, comparisons 0, causal 3) outside the engine's named-subject contract: analysis-only signals, never consumed by production"
+    },
+    {
+      "check": "comparison_precision.split_bounds",
+      "verdict": "PASS",
+      "detail": "0 scenes with sentence indices, 0 out of shared split bounds"
+    },
+    {
+      "check": "comparison_precision.si_temporal_covered",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0/0 SI temporal events share an engine normalized year"
+    },
+    {
+      "check": "comparison_precision.si_relation_endpoints",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "SI emitted no entity relations"
+    },
+    {
+      "check": "comparison_precision.si_relation_asserted_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "SI emitted no entity relations"
+    },
+    {
+      "check": "comparison_precision.si_comparison_named",
+      "verdict": "PASS",
+      "detail": "0 named-subject SI comparisons uncovered"
+    },
+    {
+      "check": "comparison_precision.si_causal_named",
+      "verdict": "NOT_APPLICABLE",
+      "detail": "0 named-pair SI causal links uncovered"
+    },
+    {
+      "check": "comparison_precision.si_generic_links_documented",
+      "verdict": "PASS",
+      "detail": "0 SI generic-concept links (relations 0, comparisons 0, causal 0) outside the engine's named-subject contract: analysis-only signals, never consumed by production"
+    }
+  ],
+  "per_fixture": {
+    "garlasco_2013_reconstructed": {
+      "si_temporal_events": 13,
+      "si_relations": 5,
+      "si_comparisons": 1,
+      "si_causal": 5,
+      "si_generic_links": [
+        "pavia->indagini(precedes)",
+        "vita->distinzione tecnica(causes)",
+        "racconto->vita(causes)",
+        "atti->contraddittorio(causes)",
+        "diversi->documenti(causes)",
+        "filo conduttore/primi rilievi",
+        "il_28_settembre_2026_la_->ulteriori_accertamenti_e",
+        "evita_di_confondere_un_a->è_una_distinzione_tecnic",
+        "provenienti_da_un_indaga->il_racconto_deve_evitare",
+        "ogni_parte_possa_verific->consulenti_accesso_agli_",
+        "lo_stesso_corpo_di_docum->riportare_queste_posizio"
+      ],
+      "engine_scenes": 9
+    },
+    "garlasco_full": {
+      "si_temporal_events": 23,
+      "si_relations": 3,
+      "si_comparisons": 0,
+      "si_causal": 3,
+      "si_generic_links": [
+        "grande risonanza mediatica->quadro iniziale(causes)",
+        "sentenza->fatti(precedes)",
+        "fondamentale->processuale(causes)",
+        "è_qui_che_emerge_il_quad->è_proprio_da_questo_gior",
+        "infatti_anche->un_appello_la_sentenza_r",
+        "impedisce_di_cristallizz->questo_meccanismo_legale"
+      ],
+      "engine_scenes": 12
+    },
+    "comparison_precision": {
+      "si_temporal_events": 0,
+      "si_relations": 0,
+      "si_comparisons": 1,
+      "si_causal": 0,
+      "si_generic_links": [],
+      "engine_scenes": 1
+    }
+  },
+  "provenance": "reconstructed Garlasco fixtures; signal-coverage parity between two implementations, not independent editorial annotation"
+}

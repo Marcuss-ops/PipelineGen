@@ -61,7 +61,6 @@ func maybeWrapNamespace(cfg *config.Config, namespace, specificRoot string, inne
 // segment. Used when the destination falls back to the unified
 // media_root_folder (see config.DriveConfig.IsUsingMediaRoot). The
 // namespace ensures the unified root stays organized with canonical
-// subdirectories (clips, stock, artlist, etc.) instead of having every
 // destination write directly into the root.
 func withNamespace(namespace string, inner PathBuilder) PathBuilder {
 	return func(req PublishRequest) ([]string, error) {
@@ -184,22 +183,6 @@ func YouTubeClipPath(req PublishRequest) ([]string, error) {
 }
 
 // ── Domain paths ───────────────────────────────────────────────────────
-
-// ArtlistPath builds the path for Artlist assets:
-//
-//	artlist/{term}/{asset_id}
-func ArtlistPath(req PublishRequest) ([]string, error) {
-	group := strings.TrimSpace(req.Group)
-	subject := strings.TrimSpace(req.Subject)
-	if group == "" {
-		return nil, fmt.Errorf("delivery: ArtlistPath: group (search term) is required")
-	}
-	seg := []string{pathutil.SafeFolderName(group)}
-	if subject != "" {
-		seg = append(seg, pathutil.SafeFolderName(subject))
-	}
-	return seg, nil
-}
 
 // StockPath builds the path for stock footage (DoD item 4, July 2026):
 //

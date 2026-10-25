@@ -104,20 +104,13 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	docPub := newStubDocumentPublisher()
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{}, docPub, canonicalTestDocumentRenderer{})
-	runner.SetScriptDocsFolderID("test-docs-folder")
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	// Google Docs is ALWAYS enabled on the certified entity-timing path: the
-	// published document is the durable surface that carries the per-scene
-	// entity annotations (SpecScene JSON), so the doc and the EntityTimeline
-	// SSOT describe the same entities.
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 	req.Project = "entity-timeline-cert"
 
 	runID := "run-entity-timeline-001"
@@ -178,25 +171,11 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 		}
 	}
 
-	// GOOGLE DOCS TRUE — the certified entity-timing run publishes the Google
-	// Doc (docs.enabled=true) and the document's SpecScene JSON carries the
-	// same per-scene entity annotations the EntityTimeline was projected
-	// from, so the doc surface and the timing SSOT never diverge.
-	doc, ok := res.Documents["en"]
-	require.True(t, ok, "a Google Doc must be published when docs.enabled=true")
-	require.NotEmpty(t, doc.ID, "document id must be present")
-	require.NotEmpty(t, doc.Link, "document link must be present")
-	require.Len(t, docPub.records, 1, "exactly one document must be upserted (en)")
-	require.Equal(t, 2, res.DocumentSceneCounts["en"], "document must project both scenes")
-	content := docPub.records[0].Content
-	require.NotContains(t, content, "<h2>Remote Job Payload JSON</h2>", "document must not expose the remote payload")
-	require.Contains(t, content, "<h2>SpecScene JSON</h2>", "document must expose the semantic SpecScene audit JSON")
 	// ENTITY NAME CARDS ARE AN EDITORIAL LANE. An entity-only run projects the
 	// exact text cards the resolver derived from the certified timeline — no
 	// phrase, image, value or brand lane is invented — and the two same-scene
 	// mentions coalesce into one entity-name chain per scene.
 	require.NotNil(t, res.OverlayPlan, "entity name cards project a final editorial plan")
-	require.Contains(t, content, "<h2>Semantic Overlay JSON</h2>", "the document carries the entity-card plan")
 	require.Len(t, res.OverlayPlan.Items, 2, "one coalesced entity-name chain per scene")
 	for _, item := range res.OverlayPlan.Items {
 		require.Empty(t, item.AssetRefs, "the narrated entities have no verified media")

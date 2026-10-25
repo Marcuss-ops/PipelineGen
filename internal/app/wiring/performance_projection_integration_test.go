@@ -221,8 +221,8 @@ func setupPerformanceProjectionDBs(t *testing.T) (primary, obs *sql.DB) {
 }
 
 // seedRunningJob inserts a RUNNING job claimed by (workerID, leaseID) at the
-// given revision, plus its finalized run report and two runner execution
-// steps (DOCUMENT + VELOX_ENQUEUE). The report status + wall time drive the
+// given revision, plus its finalized run report and the VELOX_ENQUEUE runner
+// execution step. The report status + wall time drive the
 // projected run row; the ollama generate operation and audio mix_ms drive two
 // measured phases so the projection writes steps.
 func seedRunningJobWithFinalizedRun(t *testing.T, primary, obs *sql.DB, jobID, runID, runStatus string, wallMS int64) {
@@ -279,7 +279,6 @@ func seedRunningJobWithFinalizedRun(t *testing.T, primary, obs *sql.DB, jobID, r
 		id, name string
 		dur      int64
 	}{
-		{"step-doc", "DOCUMENT", 1241},
 		{"step-enq", "VELOX_ENQUEUE", 115},
 	} {
 		if _, err := primary.Exec(`
@@ -395,19 +394,18 @@ func TestPerformanceProjection_EndToEnd_CompleteConsumesAndProjects(t *testing.T
 
 	assertProjectedRun(t, primary, jobID, runID, "SUCCEEDED", 87431)
 
-	// Measured phases become steps: ollama generate + rust_mix + DOCUMENT +
+	// Measured phases become steps: ollama generate + rust_mix +
 	// VELOX_ENQUEUE. Every step must be correlated to the run.
 	var stepCount int
 	if err := primary.QueryRow(`SELECT COUNT(*) FROM performance_steps WHERE run_id = ?`, runID).Scan(&stepCount); err != nil {
 		t.Fatal(err)
 	}
-	if stepCount != 4 {
-		t.Fatalf("performance_steps = %d, want 4 (script_gemma, rust_mix, google_doc, render_enqueue)", stepCount)
+	if stepCount != 3 {
+		t.Fatalf("performance_steps = %d, want 3 (script_gemma, rust_mix, render_enqueue)", stepCount)
 	}
 	wantSteps := map[string]int64{
 		"script_gemma":   18340,
 		"rust_mix":       4120,
-		"google_doc":     1241,
 		"render_enqueue": 115,
 	}
 	rows, err := primary.Query(`SELECT name, duration_ms FROM performance_steps WHERE run_id = ?`, runID)
@@ -435,8 +433,8 @@ func TestPerformanceProjection_EndToEnd_CompleteConsumesAndProjects(t *testing.T
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if seen != 4 {
-		t.Errorf("matched steps = %d, want 4", seen)
+	if seen != 3 {
+		t.Errorf("matched steps = %d, want 3", seen)
 	}
 }
 

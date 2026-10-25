@@ -3,7 +3,7 @@
 # Per AGENTS.md max_lines_per_file: 1000 plus the P2 directive,
 # the canonical build chain is split into 7 thematic includes.
 # This file holds only the verify-bucket targets. Cross-bucket
-# dependencies (e.g. verify-artlist-live -> auth-check) resolve
+# dependencies (e.g. a -live target -> auth-check) resolve
 # naturally via Make's recursive target resolution.
 # Root Makefile contains include make/*.mk plus all: build.
 

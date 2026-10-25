@@ -62,7 +62,6 @@ var PipelineGenQdrantNamespace = uuid.MustParse("e5e9b4b1-2c8a-4f7d-9b3e-6c2d9a1
 
 // AssetIDToQdrantPointID maps an internal AssetID — an opaque string,
 // typically a YouTube-style token like "yt_<videoId>_<segStart>_<segEnd>"
-// or an Artlist/voiceover-style id — to a deterministic point ID
 // suitable for Qdrant.
 //
 // Properties (see package doc):

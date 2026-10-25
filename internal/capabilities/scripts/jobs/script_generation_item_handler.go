@@ -255,10 +255,6 @@ func toScriptItemResultMap(itemID, requestedLanguage, childJobID, parentJobID st
 			m["source"] = res.Source
 		}
 	}
-	if res != nil && res.Artifacts.Document != nil {
-		m["doc_id"] = res.Artifacts.Document.DocID
-		m["doc_link"] = res.Artifacts.Document.DocLink
-	}
 	return m
 }
 

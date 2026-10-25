@@ -11,7 +11,6 @@ package asset
 // transcode, upload). Bytes is the on-disk size.
 //
 // SourceID is the canonical locator that produced this staged file
-// (e.g. the YouTube URL, Artlist m3u8, stock clip URL). Callers use
 // it to correlate staged files with their originating ClipPlan
 // entries when multiple sources are staged in one orchestrator run.
 //

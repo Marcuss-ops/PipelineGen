@@ -93,7 +93,6 @@ type DestinationPolicy struct {
 	// root folder or does not require namespace isolation.
 	//
 	// Canonical namespace values:
-	//   clips, stock, artlist, images, voiceovers, books, scripts,
 	//   sound_effects, documents, admin
 	//
 	// Per godlike/06 SSOT (one canonical owner per fact): the namespace
@@ -109,7 +108,6 @@ type DestinationPolicy struct {
 	// seam.
 	//
 	// Semantics per destination (P1.1 mapping, July 2026):
-	//   - YouTube clip / Artlist / Stock / Image / Voiceover /
 	//     SoundEffect → ConflictSkip  (immutable / versioned assets,
 	//     collisions are content-hash dupes that should not overwrite)
 	//   - Book / Script / Document → ConflictOverwrite (regenerable
@@ -158,16 +156,26 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 }
 
 // Has reports whether the registry contains a policy for the given key.
+//
+// Retired keys (see capabilities/delivery.CanonicalizeDestination) are
+// folded into their canonical successor first, so a persisted legacy key
+// reports the same answer as the destination that now owns its assets.
 func (r *DestinationRegistry) Has(key DestinationKey) bool {
-	_, ok := r.policies[key]
+	_, ok := r.policies[CanonicalizeDestination(key)]
 	return ok
 }
 
 // Resolve returns the policy for the given key, or an error if the key
 // is not registered. Callers MUST check Has() first when iterating over
 // a known set of keys (e.g. in tests).
+//
+// Retired keys are folded into their canonical successor before the
+// lookup: an outbox row or queued job that still carries a retired
+// destination publishes through the successor's root, path builder and
+// conflict policy instead of failing closed and orphaning the asset.
 func (r *DestinationRegistry) Resolve(key DestinationKey) (DestinationPolicy, error) {
-	p, ok := r.policies[key]
+	canonical := CanonicalizeDestination(key)
+	p, ok := r.policies[canonical]
 	if !ok {
 		return DestinationPolicy{}, fmt.Errorf("delivery: unknown destination key %q", key)
 	}

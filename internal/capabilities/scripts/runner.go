@@ -25,19 +25,12 @@ import (
 // Each stage is checkpointed so a retry resumes from the last
 // failed stage.
 type Runner struct {
-	repo         RunRepository
-	textGen      TextGenerator
-	translator   Translator
-	voiceoverGen VoiceoverGenerator
-	docPublisher DocumentPublisher
-	// documentFolderResolver resolves the per-language run folder a script
-	// document publishes into (<documents root>/<job>/<language>), so a
-	// document lands beside the clips it describes. Optional: nil keeps the
-	// flat documents root.
-	documentFolderResolver DocumentFolderResolver
-	documentRenderer       DocumentRenderer
-	combinedAudioRenderer  CombinedAudioRenderer
-	finalAudioPublisher    FinalAudioPublisher
+	repo                  RunRepository
+	textGen               TextGenerator
+	translator            Translator
+	voiceoverGen          VoiceoverGenerator
+	combinedAudioRenderer CombinedAudioRenderer
+	finalAudioPublisher   FinalAudioPublisher
 	// audioAssetSource turns the run's BGM/SFX asset_ids into verified
 	// local paths + certified durations before the audio plan is compiled.
 	// Nil means the audio intent block is not resolvable — a run that
@@ -52,18 +45,16 @@ type Runner struct {
 	nlpGenerationGate       *GenerationGate
 	// jobStageSink mirrors durable run stages into job_stage_status rows of
 	// the single-item job; jobStages maps runID -> open job stage state.
-	jobStageSink              job.JobStageStatusStore
-	jobStages                 sync.Map
-	vidRushPipeline           *VidRushPipeline
-	finalJobSubmitter         FinalJobSubmitter
-	phraseImpactAnalyzer      PhraseImpactAnalyzer
-	sceneIntelligenceAnalyzer SceneIntelligenceAnalyzer
-	sceneSemanticAnalyzer     SceneSemanticAnalyzer
+	jobStageSink          job.JobStageStatusStore
+	jobStages             sync.Map
+	vidRushPipeline       *VidRushPipeline
+	finalJobSubmitter     FinalJobSubmitter
+	sceneSemanticAnalyzer SceneSemanticAnalyzer
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
 	// phase fans out scene×language synthesis to at most this many concurrent
 	// calls. It defaults to DefaultTTSConcurrency; SetTTSConcurrency overrides
-	// it. Docs publishing and Rust final-audio render stay single-threaded.
+	// it. Rust final-audio render stays single-threaded.
 	ttsConcurrency int
 	// nlpConcurrency bounds the NLP/entity-extraction fan-out: how many
 	// scene enrichments the SceneReadyCoordinator and the translated-NLP pass
@@ -97,13 +88,6 @@ type Runner struct {
 	vidRushMu   sync.RWMutex
 	vidRushRuns map[string]vidRushWiring
 
-	// scriptDocsFolderID is the configured default script documents
-	// destination (PIPELINEGEN_SCRIPT_DOCS_FOLDER_ID). It is resolved ONCE
-	// against the caller's docs.folder_id by resolveArtifactRoutingContext
-	// at run start; no document phase re-derives it. Empty means "not
-	// configured" — a docs.enabled=true run fails closed.
-	scriptDocsFolderID string
-
 	// overlayCanvas is the target render canvas for the derived OverlayPlan.
 	// Zero means the production contract default (1920×1080 @ 24 FPS) applies.
 	overlayCanvas OverlayCanvasSpec
@@ -119,12 +103,6 @@ type Runner struct {
 	// non-nil is fail-closed (an enqueue error fails the run).
 	overlayPrepareEnqueuer OverlayPrepareEnqueuer
 	overlayRenderEnqueuer  OverlayRenderEnqueuer
-	// docsPublishEnqueuer submits the deferred `script.docs_publish` child at
-	// CORE_READY. Nil means the deferred Docs leg is not wired, so the run
-	// keeps publishing documents inline exactly as before; non-nil is
-	// fail-closed, because a parent that defers its terminal flip to a child
-	// that was never submitted is a hung run, not a degraded one.
-	docsPublishEnqueuer DocsPublishEnqueuer
 	// localizedRenderEnqueuer is the per-(scene, language) localized render
 	// fan-out. Nil means render is not registered (no-op); non-nil is
 	// fail-closed. It is the seam the SceneTextReady fan-out fires the moment
@@ -156,7 +134,7 @@ type Runner struct {
 	// recorderMu serializes calls into the execution recorder. Production
 	// recorders are expected to be durable, but the port is not required to
 	// implement internal concurrency; serialization also keeps the lineage
-	// contract deterministic during parallel Docs/render fan-out.
+	// contract deterministic during the parallel render fan-out.
 	recorderMu sync.Mutex
 
 	// voiceoverPublishDrainer drains the async voiceover publish pool
@@ -221,23 +199,15 @@ func NewRunner(
 	textGen TextGenerator,
 	translator Translator,
 	voiceoverGen VoiceoverGenerator,
-	docPublisher DocumentPublisher,
-	documentRenderers ...DocumentRenderer,
 ) *Runner {
 	if repo == nil {
 		panic("scriptgeneration: RunRepository is required for Runner")
-	}
-	var documentRenderer DocumentRenderer
-	if len(documentRenderers) > 0 {
-		documentRenderer = documentRenderers[0]
 	}
 	return &Runner{
 		repo:                     repo,
 		textGen:                  textGen,
 		translator:               translator,
 		voiceoverGen:             voiceoverGen,
-		docPublisher:             docPublisher,
-		documentRenderer:         documentRenderer,
 		recorder:                 noopExecutionRecorder{},
 		vidRushRuns:              make(map[string]vidRushWiring),
 		ttsConcurrency:           DefaultTTSConcurrency,
@@ -248,11 +218,8 @@ func NewRunner(
 	}
 }
 
-// SetDocumentRenderer wires the canonical presentation adapter after runner
-// construction. This keeps the capability testable without importing an HTML
-// or Drive implementation into the capability package.
 func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateRequest) (*VidRushIncrementalCoordinator, error) {
-	// Request-level semantic gate: plain text/audio/docs runs have no consumer
+	// Request-level semantic gate: plain text/audio runs have no consumer
 	// for per-scene VidRush enrichment, so they skip extraction, provider
 	// search, and materialization entirely. Explicit entities/images/media
 	// plans still opt in; explicit disabled always wins.
@@ -299,14 +266,13 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	// The ingress media policy is an explicit caller contract. Keep it
 	// authoritative at the coordinator boundary as well: plan builders may
 	// enrich editorial fields, but they must not silently re-enable a provider
-	// that the durable request disabled (notably Artlist in images-only runs).
 	if plan != nil {
 		// The run request is the authoritative carrier for Drive output
 		// routing. Keep a resolver implementation that returns only the
 		// semantic/media portion from losing the folder before the
 		// materializer reaches the finalizer.
 		if strings.TrimSpace(plan.DriveFolderID) == "" {
-			plan.DriveFolderID = textutil.FirstNonEmpty(req.Render.DriveFolderID, req.DriveFolderID, req.Docs.FolderID)
+			plan.DriveFolderID = textutil.FirstNonEmpty(req.Render.DriveFolderID)
 		}
 		if r.log != nil {
 			r.log.Info("VidRush plan resolved", zap.String("run_id", runID), zap.String("drive_folder_id", strings.TrimSpace(plan.DriveFolderID)), zap.String("title", plan.Title), zap.String("language", plan.Language))

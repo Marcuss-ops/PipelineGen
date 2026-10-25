@@ -73,10 +73,6 @@
           "include": [],
           "entity_images": {"enabled": false}
         }
-      },
-      "docs": {
-        "enabled": true,
-        "languages": ["en", "it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"]
       }
     }
   ]

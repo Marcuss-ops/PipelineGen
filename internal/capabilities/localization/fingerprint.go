@@ -3,8 +3,8 @@ package localization
 // fingerprint.go owns the canonical LocalizedClipPlan fingerprint — the
 // deterministic identity of "create THIS clip in THIS language". It is the
 // SINGLE function that computes the digest (godlike/06 SSOT): the runner, the
-// renderer, the Drive uploader, and the Docs writer all consume the value
-// stored on plan.Fingerprint and MUST NOT re-derive their own variant.
+// renderer and the Drive uploader all consume the value stored on
+// plan.Fingerprint and MUST NOT re-derive their own variant.
 //
 // The digest folds exactly the eight facts that change the rendered bytes
 // (the plan's canonical fingerprint contract):

@@ -133,14 +133,8 @@ func TestSceneTextGeneratorResolveVidRushPlanResolvesCanonicalDriveFolderPrecede
 	//
 	//	plan.DriveFolderID = req.Render.DriveFolderID (trimmed)
 	//
-	// The Docs.FolderID is deliberately NOT consulted here: it owns the
-	// DOCUMENT destination (routing_context.go), not the generated-media
-	// bundle that entity-image materialization and overlay publication are
-	// routed into. Letting docs.folder_id select the media root routed
-	// overlays into the documents tree (the 2026-09-30 Milton incident).
-	// The VidRush coordinator (runner.go) owns the legacy fallback chain
-	// for callers that still carry the flat DriveFolderID; this adapter
-	// never invents a media root.
+	// This adapter never invents a media root: an absent render root
+	// resolves to the empty string.
 	base := func() scriptgen.GenerateRequest {
 		return scriptgen.GenerateRequest{
 			SourceLanguage: "en",
@@ -157,23 +151,12 @@ func TestSceneTextGeneratorResolveVidRushPlanResolvesCanonicalDriveFolderPrecede
 			name: "explicit render root is the plan root",
 			with: func(req *scriptgen.GenerateRequest) {
 				req.Render = scriptpkg.VideoRenderSpec{DriveFolderID: "render-root"}
-				req.DriveFolderID = "artifact-root"
-				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
 			},
 			want: "render-root",
 		},
 		{
-			name: "flat drive folder and docs folder never select the media root",
+			name: "absent render root resolves to empty",
 			with: func(req *scriptgen.GenerateRequest) {
-				req.DriveFolderID = "artifact-root"
-				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
-			},
-			want: "",
-		},
-		{
-			name: "docs folder alone selects nothing",
-			with: func(req *scriptgen.GenerateRequest) {
-				req.Docs = scriptgen.DocumentsConfig{FolderID: "docs-root"}
 			},
 			want: "",
 		},

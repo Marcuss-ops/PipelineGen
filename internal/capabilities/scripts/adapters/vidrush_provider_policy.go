@@ -13,10 +13,6 @@ type vidRushProviderPolicy struct {
 }
 
 var vidRushProviderPolicies = map[string]vidRushProviderPolicy{
-	scriptpkg.VidRushProviderArtlist: {
-		name: scriptpkg.VidRushProviderArtlist, acquireTimeout: vidRushArtlistAcquireTimeout,
-		budget: func(*scriptpkg.ResolvedGenerationPlan) int { return vidRushArtlistAcquireBudget },
-	},
 	scriptpkg.VidRushProviderInternetImages: {
 		name: scriptpkg.VidRushProviderInternetImages, acquireTimeout: vidRushImageAcquireTimeout,
 		budget: func(plan *scriptpkg.ResolvedGenerationPlan) int {

@@ -49,16 +49,13 @@ package script
 //	DownstreamVoiceover: 1 voiceover sibling only (no images).
 //	DownstreamImages:    N image siblings only (no voiceover).
 //	DownstreamBoth:      1 voiceover + N image siblings.
-//	DownstreamDocument:  1 Google Doc sibling (no voice, no images).
 //
 // DownstreamBoth is provided so callers can request BOTH asset classes
 // for a single item in one envelope (no need to emit distinct
-// per-kind envelopes). DownstreamDocument is the canonical Google Doc
-// sibling envelope — its semantics are independent of voiceover/images
-// (no AssetRequirements sub-struct; the dispatcher routes via Kind
-// alone). DownstreamKind is also surfaced in AssetRequirements via
-// the pointer fields (Voiceover != nil XOR Images != nil) — the Kind
-// is a fast-path for the dispatcher's fan-out routing.
+// per-kind envelopes). DownstreamKind is also surfaced in
+// AssetRequirements via the pointer fields (Voiceover != nil XOR
+// Images != nil) — the Kind is a fast-path for the dispatcher's
+// fan-out routing.
 type DownstreamKind string
 
 const (
@@ -68,14 +65,6 @@ const (
 	DownstreamImages DownstreamKind = "images"
 	// DownstreamBoth: voiceover + image siblings (combined envelope).
 	DownstreamBoth DownstreamKind = "both"
-	// DownstreamDocument: Google Doc sibling only (no asset
-	// sub-structs; the document processor is the canonical sibling
-	// producer per SCRIPTCONTRACT-2026-07-08 PR-1 processor
-	// ordering). Added in PR-1 of the SCRIPT-DOWNSTREAM-CUTOVER
-	// wave to give the manifest a first-class per-item Doc
-	// envelope (pre-PR-1, the Document processor was registered
-	// once at script scope rather than per-item).
-	DownstreamDocument DownstreamKind = "document"
 )
 
 // IsValid reports whether k is one of the canonical DownstreamKind
@@ -83,7 +72,7 @@ const (
 // wire values or hand-crafted strings.
 func (k DownstreamKind) IsValid() bool {
 	switch k {
-	case DownstreamVoiceover, DownstreamImages, DownstreamBoth, DownstreamDocument:
+	case DownstreamVoiceover, DownstreamImages, DownstreamBoth:
 		return true
 	}
 	return false
@@ -204,16 +193,13 @@ func NewImagesRequirements(count int, stylePreset string) *ImagesRequirements {
 // in kernel/script.
 //
 // Wire tags:
-//   - Kind          string  (canonical "drive_folder" | "google_doc"
-//     | "local"; empty == default
-//     "drive_folder").
+//   - Kind          string  (canonical "drive_folder" | "local";
+//     empty == default "drive_folder").
 //   - FolderID      string  (Google Drive folder id; required for
-//     drive_folder / google_doc destinations).
-//   - DocumentTitle string  (Google Doc title when Kind="google_doc").
+//     drive_folder destinations).
 type OutputDestination struct {
-	Kind          string `json:"kind"`
-	FolderID      string `json:"folder_id,omitempty"`
-	DocumentTitle string `json:"document_title,omitempty"`
+	Kind     string `json:"kind"`
+	FolderID string `json:"folder_id,omitempty"`
 }
 
 // ── DownstreamRequest — canonical envelope ────────────────────────────
@@ -240,7 +226,7 @@ type OutputDestination struct {
 //     Pointer fields preserve "user
 //     opted in to this kind" semantics.
 //   - OutputDest                 : output destination envelope (Drive
-//     folder + optional DocumentTitle).
+//     folder).
 type DownstreamRequest struct {
 	Kind              DownstreamKind    `json:"kind"`
 	ItemRef           string            `json:"item_ref"` // GenerationItemV2.ID
@@ -304,20 +290,6 @@ func NewDownstreamRequestImages(
 // non-nil invariant (passing nil for either sub-struct is a
 // programming error — the dispatcher's fail-closed branch will
 // reject the envelope if either is missing at run time).
-
-// NewDownstreamRequestDocument constructs a DownstreamRequest envelope
-// for a Google Doc-only downstream sibling. Added in PR-1 of the
-// SCRIPT-DOWNSTREAM-CUTOVER wave to give the canonical Document
-// producer a first-class per-item dispatch path (pre-PR-1 the
-// Document processor was script-scope rather than per-item).
-//
-// Doc envelopes have no AssetRequirements sub-structs (the document is
-// the asset, not a sibling of one). The helper preserves the
-// no-sub-struct invariant; AssetRequirements stays at zero-value.
-//
-// The outputDest must specify Kind="google_doc" with a non-empty
-// FolderID + DocumentTitle for the dispatcher's fail-closed path
-// (validation happens in the dispatcher, not in this helper).
 
 // ── ManifestV2 — canonical container ──────────────────────────────────
 

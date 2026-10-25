@@ -213,7 +213,6 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *Databases, re
 		ServerURL:             cfg.ClipIndexer.ServerURL,
 		ScriptPath:            cfg.ClipIndexer.ScriptPath,
 		PythonBin:             cfg.ClipIndexer.PythonBin,
-		AutoIndexAfterArtlist: cfg.ClipIndexer.AutoIndexAfterArtlist,
 		MaxConcurrentIndexing: cfg.ClipIndexer.MaxConcurrentIndexing,
 		DBPath:                dbs.Main.Path(),
 	}, dbs.Main, dbs.Main.Path(), log)

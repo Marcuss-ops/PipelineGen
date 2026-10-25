@@ -23,7 +23,7 @@ import (
 // non-positive override restores the certified default, exactly like the TTS
 // pool. A zero width would deadlock the fan-out.
 func TestSetNLPConcurrency_ZeroFallsBackToDefault(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 
 	runner.SetNLPConcurrency(0)
 	require.Equal(t, DefaultNLPConcurrency, runner.nlpConcurrency)
@@ -37,7 +37,7 @@ func TestSetNLPConcurrency_ZeroFallsBackToDefault(t *testing.T) {
 // instead of a constant, so the configured parallelism is authoritative for
 // every branch of the SceneTextReady fan-out.
 func TestSceneReadyCoordinator_PoolsFollowConfiguredConcurrency(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	runner.SetNLPConcurrency(7)
 	runner.SetTTSConcurrency(3)
 	runner.SetTranslationConcurrency(2)
@@ -57,7 +57,7 @@ func TestSceneReadyCoordinator_PoolsFollowConfiguredConcurrency(t *testing.T) {
 // fallback on a default-constructed runner: an untouched runner keeps the
 // certified extraction width.
 func TestSceneReadyCoordinator_NLPSlotsUseCertifiedDefaultWhenUnset(t *testing.T) {
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 
 	coordinator := newSceneReadyCoordinator(context.Background(), runner, "run-nlp-pool-default",
 		defaultTestRequest(), kernelscript.ArtifactRoutingContext{}, ExecutionContext{})

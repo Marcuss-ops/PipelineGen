@@ -43,12 +43,6 @@
           ]
         }
       },
-      "docs": {
-        "enabled": false,
-        "languages": [
-          "en"
-        ]
-      },
       "media_plan": {
         "mode": "hybrid",
         "provider_policy": {

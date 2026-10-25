@@ -21,7 +21,7 @@ type SilenceRemapEvidence struct {
 // TimingCertificationInput is the complete, self-contained evidence for the
 // EDGE/WORD/PHRASE/MASTER/SILENCE timing certification of one scene. It is
 // the machine-checked contract behind the human "Phrase Timing" surface in
-// the Google Doc: every timestamp must be traceable end-to-end, from the Edge
+// the diagnostics: every timestamp must be traceable end-to-end, from the Edge
 // word boundaries, through the optional silence-remap, into the local phrase
 // span and the final master timeline.
 type TimingCertificationInput struct {

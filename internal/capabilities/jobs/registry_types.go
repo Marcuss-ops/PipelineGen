@@ -65,7 +65,7 @@ const (
 	// defers the terminal flip to the parent aggregator instead of taking it.
 	//
 	// The deferred legs are the ones that must not chain behind the worker's
-	// own finalization (the Google Docs publication leg, today). The job leaves
+	// own finalization (the worker-side artifact/Drive finalization). The job leaves
 	// the worker in a non-terminal post-processing state; the aggregator that
 	// already exists for the batch path (scripts/jobs/parent_aggregator.go,
 	// FinalizeAggregateParent) becomes the single authority on the terminal
@@ -267,13 +267,6 @@ const (
 	// with target_status=FAILED when aggregate=failed_terminal per
 	// godlike/07 (no fake availability), otherwise SUCCEEDED.
 	TypeScriptGenerateItem = script.TypeGenerateItem
-
-	// ── Durable-DAG deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 2) ──
-	// The `script.docs_publish` child that script.generate enqueues once its
-	// CORE_READY snapshot is durable. Re-exported here so registry_script.go
-	// names it as a bare identifier, like every other script child type; the
-	// canonical string ("script.docs_publish") stays in kernel/script.
-	TypeScriptDocsPublish = script.TypeDocsPublish
 
 	// PR-BATCH-REGISTER-ASYNC (July 2026): async clip registration via
 	// the /api/media/register-batch endpoint. Each clip becomes an

@@ -146,8 +146,6 @@ func TestStockSearchTextStrategy_SourceURLIncluded(t *testing.T) {
 	}
 }
 
-// ── Artlist strategy tests ──────────────────────────────────────────
-
 func TestArtlistSearchTextStrategy_HappyPath(t *testing.T) {
 	input := SearchTextInput{
 		Source:      "artlist",

@@ -21,8 +21,6 @@ package defaults
 //     (group := "general")
 //     internal/application/assets/videomuscles/youtube_pipeline.go
 //     (filepath.Join(... "media", "clips", "general", videoID))
-//     internal/capabilities/assets/providers/artlist/run_orchestrator_stages.go
-//     (same path-join pattern under "media", "artlist", "general", genID).
 //   - channels.Default policy struct (internal/application/channels/
 //     service.go::Default) — MaxClipDuration=60, Priority=2,
 //     MaxSegments=2, MaxVideosPerRun=3, MinSemanticScore=60,
@@ -41,7 +39,6 @@ type YouTubeConfig struct {
 	// FallbackCategory is the category applied when classification
 	// fails. Legacy inlined value: "general". Used both as the
 	// fallback value and as a fixed path segment under
-	// media/{clips|artlist}/.
 	FallbackCategory string
 
 	// MaxSegments is the per-video cap on extracted segments.

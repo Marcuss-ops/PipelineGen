@@ -237,6 +237,27 @@ type OutputFacts struct {
 	Channels         int    `json:"channels,omitempty"`
 	ChannelLayout    string `json:"channel_layout,omitempty"`
 	AudioBitrate     string `json:"audio_bitrate,omitempty"`
+	// BatchSegments is the per-item certification of a P4 batch-superjob
+	// session (TICKET-BATCH-SUPERJOB): one MP4 per semantic item, all cut from
+	// ONE encoder session. "Receipt per batch + voci per segmento": the batch
+	// keeps one artifact record and every segment carries its own content
+	// address and facts here, so each MP4 stays independently fetchable,
+	// verifiable and retryable. Absent for single-output jobs.
+	BatchSegments []BatchSegmentFacts `json:"batch_segments,omitempty"`
+}
+
+// BatchSegmentFacts is one per-item segment of a batch-superjob render: the
+// segment's independent identity (its own content address) plus the structural
+// facts a consumer needs to validate it in isolation.
+type BatchSegmentFacts struct {
+	ItemID     string `json:"item_id"`
+	SHA256     string `json:"sha256"`
+	SizeBytes  int64  `json:"size_bytes"`
+	FrameCount int    `json:"frame_count,omitempty"`
+	DurationUS int64  `json:"duration_us,omitempty"`
+	Width      int    `json:"width,omitempty"`
+	Height     int    `json:"height,omitempty"`
+	Retried    bool   `json:"retried,omitempty"`
 }
 
 // Artifact is the metadata of a rendered artifact, including the copy-only

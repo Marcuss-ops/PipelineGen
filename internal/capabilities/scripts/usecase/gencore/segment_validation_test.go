@@ -376,3 +376,45 @@ func TestSourceTextFallbackParagraphHonorsBounds(t *testing.T) {
 		t.Fatalf("fallback lost authored entities: %q", got)
 	}
 }
+
+// warmFailingGenerator is a generator whose optional WarmModel seam fails.
+// It pins the best-effort contract: warm is a latency optimization, never a
+// correctness gate.
+type warmFailingGenerator struct {
+	sequentialSegmentGenerator
+	warmCalls int
+}
+
+func (g *warmFailingGenerator) WarmModel(context.Context, string) error {
+	g.warmCalls++
+	return errors.New("model load timeout")
+}
+
+// TestGenerateSegments_WarmFailureIsBestEffort pins that a failed warm does
+// NOT fail the generation. The old contract burned whole attempts on warm
+// timeouts (measured on the live ledger: 125 failed `ollama.warm` operations,
+// up to 600s each, each killing a generation before any segment was
+// produced). The generate call itself is the model-health gate.
+func TestGenerateSegments_WarmFailureIsBestEffort(t *testing.T) {
+	gen := &warmFailingGenerator{}
+	gen.results = []*scriptports.GenerationResult{{Script: textOfNWords(10)}}
+	engine := NewEngine(gen, nil, zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		TargetWords: 20,
+		Segments:    []scriptpkg.ScriptSegment{{Topic: "one", TargetWords: 10, MinWords: 8}},
+	}
+
+	result, err := engine.generateSegments(context.Background(), plan, scriptports.TextGenerationRequest{Model: "gemma4:e4b"})
+	if err != nil {
+		t.Fatalf("a warm failure must not fail the generation, got: %v", err)
+	}
+	if result == nil {
+		t.Fatal("generation must still produce its result")
+	}
+	if gen.warmCalls != 1 {
+		t.Fatalf("warm seam calls = %d, want 1 (attempted once, then ignored)", gen.warmCalls)
+	}
+	if len(gen.prompts) != 1 {
+		t.Fatalf("generate calls = %d, want 1 (the segment fan-out must run)", len(gen.prompts))
+	}
+}

@@ -122,12 +122,6 @@ func ItemForTimings() scriptpkg.GenerationItemV2 {
 		Tone:     "neutral",
 		Style:    "standard",
 		Model:    "llama3:8b",
-		// Docs are enabled by applyPublicationDefaults during normalization;
-		// validation fails closed without a resolvable docs folder, so the
-		// fixture carries the caller override a real deployment always has.
-		Docs: scriptpkg.DocumentsSpec{
-			FolderID: "TEST_DOCS_FOLDER",
-		},
 		Source: scriptpkg.SourceSpec{
 			Type:  scriptpkg.SourceText,
 			Topic: "Stage durations plumbing",

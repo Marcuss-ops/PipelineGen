@@ -31,12 +31,11 @@
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
 	verify-rust-muscles verify-rust-fetch verify-rust-contract verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-integration verify-architecture \
-	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-artlist verify-kernel verify-main test-main-stock verify-main-clip verify-release \
-	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-artlist verify-race-kernel \
+	verify-images verify-script verify-research verify-clips	verify-qdrant verify-indexing verify-drive verify-docs verify-voiceover verify-translation verify-timeline verify-storage verify-database verify-jobs verify-api	verify-ollama verify-youtube verify-kernel verify-main test-main-stock verify-main-clip verify-release \
+	verify-race-script verify-race-research verify-race-clips verify-race-stock verify-race-qdrant verify-race-indexing verify-race-drive verify-race-docs verify-race-voiceover verify-race-images verify-race-translation verify-race-timeline verify-race-storage verify-race-database verify-race-jobs verify-race-api	verify-race-ollama verify-race-youtube verify-race-kernel \
 	whisper-preflight \
 	verify-component-coverage verify-reconciliation-contracts verify-orphan-cleanup verify-retention verify-cancel-recovery verify-migrations verify-migration-upgrade verify-db-integrity verify-qdrant-rebuild \
 	regen-routes-yaml archcheck-strict audit-plan \
-	verify-artlist \
 	test-youtube-url test-youtube-metadata test-youtube-transcript test-highlight-selection \
 	verify-stock-unit verify-stock-integration \
 	test-stock-component test-stock-download test-stock-cut test-stock-cache test-stock-dedupe test-stock-index \
@@ -47,7 +46,6 @@
 	test-youtube-stock-resilience test-youtube-stock-release benchmark-youtube-stock \
 	diagnose-youtube-stock \
 	verify-vidrush-contract verify-sceneir verify-visualner verify-mediasampler verify-stockintelligence verify-vidrush-semantic verify-media-intelligence vidrush-pre-final verify-vidrush-extraction verify-vidrush-query-planning \
-	verify-vidrush-artlist-search verify-vidrush-artlist-download verify-vidrush-artlist-persist verify-vidrush-artlist-index \
 	verify-vidrush-image-search verify-vidrush-image-download verify-vidrush-image-validation verify-vidrush-image-persist verify-vidrush-image-index \
 	verify-vidrush-image-generation verify-vidrush-image-generation-cache verify-vidrush-image-generation-persist \
 	verify-vidrush-binding verify-vidrush-dedupe verify-vidrush-cache verify-vidrush-recovery verify-vidrush-concurrency \
@@ -59,7 +57,7 @@
 	verify-pipeline-e2e verify-pipeline-e2e-live \
 	test-qdrant-fixtures test-qdrant-fixtures-down \
 	test-postgres test-postgres-down \
-	doctor artlist auth-check regenerate-token \
+	doctor auth-check regenerate-token \
 	smoke-voiceover \
 	deps tidy-check vuln bench bench-cliprender benchmark-e2e e2e-up e2e-status e2e-down dev-up dev-down velox ci preflight preflight-e2e verify-format test-imports install-hooks regen-current-yaml
 
@@ -137,11 +135,10 @@ help:
 	@echo "  make e2e-status          Show E2E harness status + preflight"
 	@echo ""
 	@echo "DOMAIN-SPECIFIC (live operational; require running server / external stack)"
-	@echo "  make auth-check       Operator pre-flight against /api/artlist/job-consumer (fails closed)"
+	@echo "  make auth-check       Operator pre-flight against /api/system/doctor (fails closed)"
 	@echo "  make verify-pipeline-e2e       Hermetic 10-step pipeline contract battery (no server needed)"
 	@echo "  make verify-pipeline-e2e-live  Live 10-step pipeline gate (server + token + Drive; 10/10 required)"
 	@echo "  make doctor           GET /api/system/doctor with admin token"
-	@echo "  make artlist          POST /api/artlist/run (TERM= LIMIT= STRATEGY=)"
 	@echo ""
 	@echo "NEVER push when verify-main is RED. See scripts/hooks/pre-push for the gate."
 

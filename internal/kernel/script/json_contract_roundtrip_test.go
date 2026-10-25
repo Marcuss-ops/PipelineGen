@@ -49,8 +49,11 @@ func TestGenerationEnvelopeV2_RoundTripPreservesContract(t *testing.T) {
 				Languages:           []string{"en", "it"},
 				TranslateTo:         "it",
 			},
+			// The retired Google Docs block stays JSON-decodable: an old
+			// envelope is recognised (and rejected fail-closed at Start), never
+			// silently dropped.
 			Docs: DocumentsSpec{
-				Enabled:   true,
+				Enabled:   false,
 				Languages: []string{"en", "it"},
 				FolderID:  "docs-folder",
 			},

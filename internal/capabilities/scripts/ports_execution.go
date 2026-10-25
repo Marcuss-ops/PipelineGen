@@ -13,7 +13,6 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,57 +26,6 @@ import (
 // The video render enqueue port was removed with the video render path.
 // The future Chronon overlay path submits through
 // QueueRenderEnqueuer.EnqueueChrononPlan, which does not need this port.
-
-// DocsPublishEnqueuer submits the deferred `script.docs_publish` child that
-// performs the post-CORE_READY Docs leg (TICKET-CORE-READY-DURABLE-DAG step 3).
-//
-// It carries a run REFERENCE, never a copy of the result: the child re-reads
-// the durable snapshot. That is what lets the run be published from after a
-// restart, and what keeps a single version of the plan.
-//
-// Semantics follow the OverlayPrepareEnqueuer precedent: a nil enqueuer means
-// the child leg is NOT wired (the run keeps publishing documents inline, exactly
-// as before), and a non-nil enqueuer is FAIL-CLOSED — an enqueue error fails the
-// run rather than silently leaving a parent that deferred its terminal flip to
-// a child that was never submitted.
-type DocsPublishEnqueuer interface {
-	EnqueueDocsPublish(ctx context.Context, req DocsPublishEnqueue) error
-}
-
-// DocsPublishActiveKey is the deterministic idempotency key of the deferred
-// Docs child for a (parent job, run) pair. ONE canonical builder (godlike/06
-// SSOT): the wiring enqueuer, the parent handler's waiting envelope and the
-// parent aggregator's child lookup all derive the same key, so a retried
-// parent re-enqueue addresses the same child row instead of fanning out a
-// second publisher for the same documents.
-func DocsPublishActiveKey(parentJobID, runID string) string {
-	return "docs-publish:" + parentJobID + ":" + runID
-}
-
-// DocsPublishCorrelationID is the deterministic correlation of the deferred
-// Docs child. The parent's own correlation is passed through when present so
-// the child's events join the parent's trace; otherwise it derives from the
-// (parent job, run) pair exactly like the active key.
-func DocsPublishCorrelationID(parentJobID, parentCorrelation, runID string) string {
-	if strings.TrimSpace(parentCorrelation) != "" {
-		return strings.TrimSpace(parentCorrelation)
-	}
-	return strings.TrimSpace(parentJobID) + ":docs:" + strings.TrimSpace(runID)
-}
-
-// DocsPublishEnqueue is the enqueue request for the deferred Docs child.
-type DocsPublishEnqueue struct {
-	// ParentJobID is the script.generate job that owns the run. The child
-	// carries it so the parent aggregator can find the parent still awaiting
-	// aggregation without a second lookup.
-	ParentJobID string
-	// RunID is the durable run whose CORE_READY snapshot the child publishes
-	// from.
-	RunID string
-	// CorrelationID is passed through so the child's events join the parent's
-	// trace.
-	CorrelationID string
-}
 
 // OverlayPrepareEnqueuer enqueues the overlay.prepare job for the run's
 // pre-timing OverlayIntents. It is fire-and-forget: prepare resolves
@@ -105,23 +53,11 @@ type LocalizedRenderInput struct {
 	RunID       string
 	ParentJobID string `json:"parent_job_id,omitempty"`
 
-	// DocsFolderID and JobID are the destination facts of a produced
-	// localized clip: it publishes into <DocsFolderID>/<JobID>/<language>,
-	// which is the folder that language's script document is written into.
-	//
-	// DocsFolderID is this run's RESOLVED documents root
-	// (ArtifactRoutingContext.DocsFolderID), and JobID is the job whose
-	// documents folder the script phase published. They are resolved ONCE
-	// at generation start and propagated verbatim (godlike/06 SSOT), so the
-	// clip folder is derived from the same two facts the documents phase
-	// used instead of a second, independently-drifting copy of that routing.
-	//
-	// A produced clip and the script it belongs to are two halves of ONE
-	// per-language deliverable: publishing the clip anywhere else splits that
-	// deliverable across two Drive trees and leaves the clip findable only by
-	// knowing its filename.
-	DocsFolderID string `json:"docs_folder_id,omitempty"`
-	JobID        string `json:"job_id,omitempty"`
+	// JobID is the job whose artifact tree the produced localized clip
+	// publishes into: <clips root | payload folder>/<drive_subfolder_name>
+	// with the language nested inside. It is resolved ONCE at generation
+	// start and propagated verbatim (godlike/06 SSOT).
+	JobID string `json:"job_id,omitempty"`
 
 	SceneID    string
 	SceneIndex int
@@ -231,7 +167,7 @@ type LocalizedRenderResult struct {
 	DriveFileID string `json:"drive_file_id,omitempty"`
 	DriveLink   string `json:"drive_link,omitempty"`
 	// DriveFolderID is the RESOLVED destination folder the artifact was
-	// published into (<DocsFolderID>/<JobID>/<language>). It is projected so
+	// published into (<job>/<language> under the clips root). It is projected so
 	// the destination of a render is readable on the run result instead of
 	// only being inferable from the log — and so a gate can prove that two
 	// languages of the same clip did NOT land in one shared folder. Empty on

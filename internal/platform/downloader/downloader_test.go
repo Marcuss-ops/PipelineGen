@@ -23,7 +23,7 @@ import (
 // it with the hosts the test URLs use. In production this list is
 // populated from config at startup; in tests we populate it inline.
 var testAllowedHosts = []string{
-	"artlist.io",
+	"example.com",
 	"www.youtube.com",
 	"youtu.be",
 }
@@ -44,10 +44,8 @@ func setupTestAllowlist(t *testing.T) {
 // to Run() so the regression-guard tests can inspect the constructed
 // download command without spawning an actual yt-dlp subprocess.
 //
-// PR-ARTLIST-COOKIES-CONFIG (2026-07-06) added the config-driven
 // --cookies path; this mock is the load-bearing seam for the
 // conditional-injection contract (godlike/07 fail-closed: empty
-// ArtlistCookiesPath SKIPS the --cookies flag entirely). Mirrors the
 // captureRunner pattern in internal/infrastructure/youtube/metadata_test.go
 // and internal/infrastructure/youtube/subtitles_test.go.
 type captureRunner struct {
@@ -85,20 +83,7 @@ func hasFlagArg(args []string, flag string) bool {
 	return false
 }
 
-// flagValueIndex returns the index of the value following the given
-// flag, or -1 if the flag is absent / not followed by a value. Used
-// for asserting paired-flag values (e.g. "--cookies <path>").
-func flagValueIndex(args []string, flag string) int {
-	for i, arg := range args {
-		if arg == flag && i+1 < len(args) {
-			return i + 1
-		}
-	}
-	return -1
-}
-
-// newTestDownloader builds a YTDLPDownloader wired to a fresh
-// captureRunner, with the given artlistCookiesPath. The runner is
+// newTestDownloader builds a YTDLPDownloader wired to a fresh captureRunner
 // exposed for argv assertions.
 //
 // godlike/07 minimum-blast-radius: we construct via NewYTDLP (so
@@ -106,13 +91,9 @@ func flagValueIndex(args []string, flag string) int {
 // only the runner field via direct field assignment (same package
 // access). This mirrors the canonical "production wiring + test
 // override" pattern from the metadata/subtitle adapter tests.
-func newTestDownloader(t *testing.T, artlistCookiesPath string) (*YTDLPDownloader, *captureRunner) {
+func newTestDownloader(t *testing.T) (*YTDLPDownloader, *captureRunner) {
 	t.Helper()
-	cfg := &ytcfg.Config{
-		External: ytcfg.ExternalConfig{
-			ArtlistCookiesPath: artlistCookiesPath,
-		},
-	}
+	cfg := &ytcfg.Config{}
 	runner := &captureRunner{}
 	d := NewYTDLP(cfg)
 	d.runner = runner // inject mock (Pattern 0 port)
@@ -136,127 +117,6 @@ func writeDummyOutputFile(t *testing.T, outputPath string) {
 	require.NoError(t, os.WriteFile(resolved, []byte("dummy video content for hermetic test"), 0o644))
 }
 
-// TestDownload_ArtlistEmptyCookiesPath_SkipsFlag is the load-bearing
-// godlike/07 fail-closed contract test for PR-ARTLIST-COOKIES-CONFIG.
-// When artlistCookiesPath is empty (the canonical default), the
-// --cookies flag MUST NOT appear in argv so operators see a visible
-// 403 from Artlist instead of a silent --cookies /nonexistent/path
-// failure on a hardcoded path.
-//
-// Failure modes this test catches:
-//  1. Re-introduction of the hardcoded `/tmp/artlist_cookies.txt`
-//     default (the pre-PR drift).
-//  2. Loss of the conditional guard `if d.artlistCookiesPath != ""`
-//     in Download()'s Artlist branch.
-//  3. Re-introduction of any "silent default path" that would mask
-//     the missing dependency.
-func TestDownload_ArtlistEmptyCookiesPath_SkipsFlag(t *testing.T) {
-	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "" /*empty artlist cookies path = fail-closed default*/)
-
-	outputPath := filepath.Join(t.TempDir(), "source.mp4")
-	writeDummyOutputFile(t, outputPath)
-
-	err := d.Download(context.Background(), &DownloadRequest{
-		URL:        "https://artlist.io/royalty-free-stock/boxing-knockout",
-		OutputPath: outputPath,
-	})
-	require.NoError(t, err, "Download should succeed (captureRunner returns success)")
-	require.Equal(t, 1, runner.calls, "ProcessRunner.Run must be invoked exactly once")
-	require.NotEmpty(t, runner.argv, "argv must not be empty")
-
-	// godlike/07 fail-closed: --cookies MUST be skipped when path is empty
-	assert.False(t, hasFlagArg(runner.argv, "--cookies"),
-		"--cookies must NOT be present when artlistCookiesPath is empty (godlike/07 fail-closed contract)")
-
-	// The 4 other static Artlist args MUST still be emitted (they're
-	// artlist-specific impersonation, NOT drift; they must always be
-	// present for artlist URLs).
-	assert.True(t, hasFlagArg(runner.argv, "Referer:https://artlist.io/"),
-		"Referer header must be present (artlist-specific impersonation)")
-	assert.True(t, hasFlagArg(runner.argv, "Origin:https://artlist.io/"),
-		"Origin header must be present (artlist-specific impersonation)")
-	assert.True(t, hasFlagArg(runner.argv, "generic:impersonate"),
-		"extractor-args generic:impersonate must be present (artlist-specific impersonation)")
-}
-
-// TestDownload_ArtlistCustomCookiesPath_InjectsFlag is the canonical
-// success-case test: when artlistCookiesPath is set, the --cookies
-// flag MUST be present in argv with the configured path as the next
-// argument. This is the regression guard for the "operator set
-// ARTLIST_COOKIES_PATH and expects it to be honored" path.
-func TestDownload_ArtlistCustomCookiesPath_InjectsFlag(t *testing.T) {
-	setupTestAllowlist(t)
-	const cookiesPath = "/var/lib/pipelinegen/artlist_cookies.txt"
-	d, runner := newTestDownloader(t, cookiesPath)
-
-	outputPath := filepath.Join(t.TempDir(), "source.mp4")
-	writeDummyOutputFile(t, outputPath)
-
-	err := d.Download(context.Background(), &DownloadRequest{
-		URL:        "https://artlist.io/royalty-free-stock/boxing-knockout",
-		OutputPath: outputPath,
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, runner.calls)
-
-	// --cookies MUST be present
-	require.True(t, hasFlagArg(runner.argv, "--cookies"),
-		"--cookies must be present when artlistCookiesPath is set (canonical success case)")
-
-	// The value following --cookies MUST be the configured path
-	cookiesIdx := flagValueIndex(runner.argv, "--cookies")
-	require.GreaterOrEqual(t, cookiesIdx, 0,
-		"--cookies must be followed by a value (the cookies path)")
-	assert.Equal(t, cookiesPath, runner.argv[cookiesIdx],
-		"cookies path value must be the configured artlistCookiesPath")
-
-	// The 4 other static Artlist args MUST still be emitted
-	assert.True(t, hasFlagArg(runner.argv, "Referer:https://artlist.io/"),
-		"Referer header must be present (artlist-specific impersonation)")
-	assert.True(t, hasFlagArg(runner.argv, "Origin:https://artlist.io/"),
-		"Origin header must be present (artlist-specific impersonation)")
-	assert.True(t, hasFlagArg(runner.argv, "generic:impersonate"),
-		"extractor-args generic:impersonate must be present (artlist-specific impersonation)")
-}
-
-// TestDownload_NonArtlistURL_NoArtlistArgs verifies the inverse
-// contract: a non-Artlist URL (e.g. YouTube) MUST NOT inject any of
-// the Artlist-specific args (no --cookies, no Referer/Origin, no
-// generic:impersonate). This is the regression guard against future
-// refactors that accidentally leak the Artlist branch into the
-// default YouTube path.
-//
-// The test sets artlistCookiesPath to a non-empty value to ensure the
-// guard is on the URL substring check, NOT on the config field being
-// empty. If the guard were "artlistCookiesPath != \"\"" instead of
-// "URL contains artlist", the test would FAIL on the --cookies
-// injection for the YouTube URL.
-func TestDownload_NonArtlistURL_NoArtlistArgs(t *testing.T) {
-	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "/var/lib/pipelinegen/artlist_cookies.txt" /*non-empty: guard must be URL-based*/)
-
-	outputPath := filepath.Join(t.TempDir(), "source.mp4")
-	writeDummyOutputFile(t, outputPath)
-
-	err := d.Download(context.Background(), &DownloadRequest{
-		URL:        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-		OutputPath: outputPath,
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, runner.calls)
-
-	// None of the Artlist-specific args must appear for a YouTube URL
-	assert.False(t, hasFlagArg(runner.argv, "--cookies"),
-		"--cookies must NOT appear for non-Artlist URLs (the Artlist branch is gated on URL substring)")
-	assert.False(t, hasFlagArg(runner.argv, "Referer:https://artlist.io/"),
-		"Referer header must NOT appear for non-Artlist URLs")
-	assert.False(t, hasFlagArg(runner.argv, "Origin:https://artlist.io/"),
-		"Origin header must NOT appear for non-Artlist URLs")
-	assert.False(t, hasFlagArg(runner.argv, "generic:impersonate"),
-		"extractor-args generic:impersonate must NOT appear for non-Artlist URLs")
-}
-
 // TestDownload_DelegatesToBaseArgs is the BaseArgs regression guard
 // for the downloader. Mirrors
 // TestGetVideoMetadata_DelegatesToBaseArgs_CanonicalPlayerClient from
@@ -276,7 +136,7 @@ func TestDownload_NonArtlistURL_NoArtlistArgs(t *testing.T) {
 //  4. Loss of the canonical player-client value on YouTube URLs.
 func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "")
+	d, runner := newTestDownloader(t)
 
 	outputPath := filepath.Join(t.TempDir(), "source.mp4")
 	writeDummyOutputFile(t, outputPath)
@@ -319,7 +179,7 @@ func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 // continue an in-flight download rather than re-fetching the whole source.
 func TestDownload_FullSource_IncludesContinueFlag(t *testing.T) {
 	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "")
+	d, runner := newTestDownloader(t)
 
 	outputPath := filepath.Join(t.TempDir(), "source.mp4")
 	writeDummyOutputFile(t, outputPath)
@@ -340,7 +200,7 @@ func TestDownload_FullSource_IncludesContinueFlag(t *testing.T) {
 // the requested output template. This is the fast path used by the
 // stock pipeline replay when the source media already exists on disk.
 func TestDownload_FileURL_CopiesLocalSource(t *testing.T) {
-	d, runner := newTestDownloader(t, "")
+	d, runner := newTestDownloader(t)
 
 	tmpDir := t.TempDir()
 	sourcePath := filepath.Join(tmpDir, "source.mp4")
@@ -361,7 +221,7 @@ func TestDownload_FileURL_CopiesLocalSource(t *testing.T) {
 
 func TestListChannelVideos_UsesRunnerAndParsesJSON(t *testing.T) {
 	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "")
+	d, runner := newTestDownloader(t)
 	runner.result = &process.Result{
 		ExitCode: 0,
 		Stdout: strings.Join([]string{
@@ -387,7 +247,7 @@ func TestListChannelVideos_UsesRunnerAndParsesJSON(t *testing.T) {
 
 func TestListChannelVideos_FailsOnInvalidJSONLine(t *testing.T) {
 	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "")
+	d, runner := newTestDownloader(t)
 	runner.result = &process.Result{
 		ExitCode: 0,
 		Stdout:   "{\"id\":\"one\"}\nnot-json\n",
@@ -404,7 +264,7 @@ func TestListChannelVideos_FailsOnInvalidJSONLine(t *testing.T) {
 
 func TestGetVideoMetadata_UsesRunner(t *testing.T) {
 	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "")
+	d, runner := newTestDownloader(t)
 	metaJSON := map[string]any{
 		"id":          "abc123",
 		"title":       "Video",
@@ -826,7 +686,7 @@ func flagIndex(args []string, flag string) int {
 // manually-assembled configs) no pacing flags leak into argv.
 func TestDownload_YouTube_SleepArgs_Absent_WhenDisabled(t *testing.T) {
 	setupTestAllowlist(t)
-	d, runner := newTestDownloader(t, "") // zero sleep config
+	d, runner := newTestDownloader(t) // zero sleep config
 
 	outputPath := filepath.Join(t.TempDir(), "source.mp4")
 	writeDummyOutputFile(t, outputPath)
@@ -843,7 +703,6 @@ func TestDownload_YouTube_SleepArgs_Absent_WhenDisabled(t *testing.T) {
 }
 
 // TestDownload_NonYouTube_SleepArgs_Absent pins the URL gating: pacing flags
-// and the player-client fallback are YouTube-specific; an Artlist download
 // argv must never carry --min/--max-sleep-interval even when sleep is
 // configured.
 func TestDownload_NonYouTube_SleepArgs_Absent(t *testing.T) {
@@ -859,7 +718,7 @@ func TestDownload_NonYouTube_SleepArgs_Absent(t *testing.T) {
 	writeDummyOutputFile(t, outputPath)
 
 	require.NoError(t, d.Download(context.Background(), &DownloadRequest{
-		URL:        "https://artlist.io/royalty-free-stock/boxing-knockout",
+		URL:        "https://example.com/video.mp4",
 		OutputPath: outputPath,
 	}))
 	require.Equal(t, 1, runner.calls)

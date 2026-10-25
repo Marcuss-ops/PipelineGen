@@ -282,7 +282,6 @@ func collectDriveRoots(dc config.DriveConfig) []string {
 	add(dc.NormalClipsSourceFolder)
 	add(dc.ClipsFolder())
 	add(dc.VoiceoverFolder())
-	add(dc.ArtlistFolder())
 	add(dc.ScriptsFolder())
 	add(dc.ImagesFolder())
 	add(dc.CopertineFolder())

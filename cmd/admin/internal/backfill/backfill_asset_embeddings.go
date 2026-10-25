@@ -10,7 +10,6 @@
 //   - Apply: generates and persists missing embeddings.
 //   - --only-missing: skip assets that have all four embeddings (default).
 //     Use --all to process every candidate including already-complete ones.
-//   - --source: filter by asset source (youtube, artlist, stock, etc.).
 //   - Checkpoint/resume: save progress to a JSON file; resume from it.
 //     Checkpoint is flushed every --progress assets. Between flushes,
 //     a crash loses up to --progress assets of progress — safe because

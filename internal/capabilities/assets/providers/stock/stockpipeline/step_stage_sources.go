@@ -236,11 +236,18 @@ func stageUniqueSourcesBounded(
 			// this source's plan group (empty → the stager fetches the whole
 			// source). It is the single reason a 40-second actor set no longer
 			// pulls whole interviews.
-			prepared, stageErr := preparer.Prepare(ctx, source)
+			// Sub-operation (PR-STOCK-SUB-OPERATIONS): one unique source is one
+			// measured download, so a multi-source staging is attributable per
+			// source instead of one opaque wall.
+			var prepared *ingest.PreparedSource
+			stageErr := measureSourceDownload(ctx, plan.SourceProvider, func(opCtx context.Context) error {
+				var prepareErr error
+				prepared, prepareErr = preparer.Prepare(opCtx, source)
+				return prepareErr
+			})
 			switch {
 			case stageErr != nil:
 				// Graceful degradation: stage failure is recorded and skipped.
-				// Mirrors YouTube (process_segment.go Step 4a) + Artlist pattern.
 				// The downstream extract_clips step can still proceed with
 				// cached/pre-staged sources if available; no staged asset for
 				// this URL means clips referencing it will fail at cut.

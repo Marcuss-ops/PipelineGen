@@ -52,9 +52,12 @@ with no arguments to list all registered commands (~95 total). Key categories:
   they fail closed with a typed retirement error because the Qdrant media
   projection no longer exists)
 - **Cleanup**: `cleanup-orphans`, `cleanup-all-orphans`,
-  `cleanup-artlist-empty-folders`, `cleanup-stock-orphans`,
-  `zombie-sweep`, `delete-specific-folders`, `delete-drive-images`,
-  `delete-clip-by-drive-file`
+  `cleanup-stock-orphans`, `zombie-sweep`, `delete-specific-folders`,
+  `delete-drive-images`, `delete-clip-by-drive-file`
+  (`cleanup-artlist-empty-folders` is retired with the Artlist Drive root;
+  use `migrate-artlist-assets` for the one-shot asset move — dry-run by
+  default, `--apply` to move the children of the retired root into
+  `<stock root>/artlist`, conflicts skipped and reported)
 - **Sound effects**: `classify-sound-effects`, `download-sound-effects`,
   `organize-sound-effects-drive`, `organize-foley-drive`, `trim-sound-effects`,
   `rename-indexed-sound-effects`, `rename-sound-effects`,
@@ -79,7 +82,6 @@ with no arguments to list all registered commands (~95 total). Key categories:
 |---|---|---|
 | `archcheck` | `cmd/archcheck/` | Target-tree policy scanner (`go run ./cmd/archcheck`) |
 | `architecture-aggregate` | `cmd/architecture-aggregate/` | Generates `architecture/ownership.generated.yaml` |
-| `capability-inventory-aggregate` | `cmd/capability-inventory-aggregate/` | Generates `architecture/capability_inventory/baseline.yaml` |
 
 ## Diagnostic tools (`tools/`)
 

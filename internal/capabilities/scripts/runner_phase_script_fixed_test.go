@@ -331,7 +331,7 @@ func TestFixedMediaRenderUnitsSizesTheFailureChannel(t *testing.T) {
 func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
 	rec := &recordingLocalizedRenderEnqueuer{}
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(),
-		&entityTimelineVoiceoverGenerator{}, newStubDocumentPublisher(), canonicalTestDocumentRenderer{})
+		&entityTimelineVoiceoverGenerator{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetLocalizedRenderEnqueuer(rec)
 

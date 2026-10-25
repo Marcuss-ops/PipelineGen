@@ -75,10 +75,9 @@ func TestBuildPlan_ClipOnlySkipsVoiceoverSideEffect(t *testing.T) {
 	}
 }
 
-func TestBuildPlan_ReconciliationRunsBeforePersistenceAndDocument(t *testing.T) {
+func TestBuildPlan_ReconciliationRunsBeforePersistence(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Source: scriptpkg.SourceSpec{Type: scriptpkg.SourceText, Topic: "topic"},
-		Docs:   scriptpkg.DocumentsSpec{Enabled: true},
 		Output: scriptpkg.OutputSpec{SaveToDB: true, VoiceoverEnabled: scriptpkg.ToggleEnabled, VoiceoverFolderID: "voiceover-folder"},
 	})
 
@@ -87,7 +86,6 @@ func TestBuildPlan_ReconciliationRunsBeforePersistenceAndDocument(t *testing.T) 
 		string(adapters.ProcessorVoiceover),
 		string(adapters.ProcessorAssetLocationReconciliation),
 		string(adapters.ProcessorPersistence),
-		string(adapters.ProcessorDocument),
 	}
 	if len(plan.Postprocessors) != len(want) {
 		t.Fatalf("postprocessors=%v, want %v", plan.Postprocessors, want)
@@ -122,7 +120,7 @@ func TestBuildPlan_ReconciliationIsPresentOnceWithMediaAndImages(t *testing.T) {
 		t.Fatalf("reconciliation must appear exactly once, got %d in %v", count, plan.Postprocessors)
 	}
 	for i, processor := range plan.Postprocessors {
-		if processor == string(adapters.ProcessorPersistence) || processor == string(adapters.ProcessorDocument) {
+		if processor == string(adapters.ProcessorPersistence) {
 			if i <= gateIndex {
 				t.Fatalf("terminal processor %q appears before reconciliation: %v", processor, plan.Postprocessors)
 			}

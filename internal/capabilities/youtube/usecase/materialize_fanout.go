@@ -11,7 +11,6 @@
 //
 // Everything above is correct, but it stops there: the clip ends up with
 // exactly the languages the acquisition chain happened to produce (usually
-// just the original), while the Artlist / Stock / generic paths get their
 // other languages from the post-publish fan-out their finalizers call.
 // The YouTube per-segment pipeline commits through
 // localized.LocalizedClipWriter directly and never reached
@@ -79,7 +78,6 @@ func (u *ProcessYouTubeSegmentUseCase) enqueueMaterializeFanOut(
 // Late binding is required because the fan-out helper needs the jobs broker,
 // which the composition root assembles AFTER the domain bundle (and therefore
 // after this use case) exists. wireLateBindings calls this once at boot, before
-// any request is served — the same late-binding pattern the Artlist/Stock
 // finalizers already use (AssetTxFinalizer.WithFanOut).
 //
 // nil-safe: a nil port, a nil service, or a service built without the

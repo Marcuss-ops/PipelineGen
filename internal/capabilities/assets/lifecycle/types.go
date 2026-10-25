@@ -37,7 +37,6 @@ type FinalizeInput struct {
 	Group       string
 	Subfolder   string
 	// Subject is used by path builders that key off an asset ID
-	// (YouTubeClipPath / ArtlistPath / StockPath / ImagePath).
 	Subject string
 	// ProjectID is used by VoiceoverPath / BookPath / ScriptPath
 	// (project-level grouping).

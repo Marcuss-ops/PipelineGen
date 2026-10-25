@@ -22,7 +22,6 @@ import (
 // AppLogger loads the production config and a zap production logger;
 // returns (cfg, log, cleanup, err). Used by admin commands that need
 // the full config (cleanup, list-drive-folder, reset-video-ai,
-// verify-artlist-pipeline).
 //
 // The cleanup callback is safe to call multiple times — zap.Sync is
 // returns-nil-on-already-flushed, so an extra defer cleanup is

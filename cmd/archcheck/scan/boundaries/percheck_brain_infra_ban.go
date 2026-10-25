@@ -18,7 +18,6 @@
 //   - imports of internal/platform/qdrant
 //   - imports of internal/platform/sqlite
 //   - imports of internal/platform/drive
-//   - imports of concrete external providers (Artlist/YouTube)
 //   - literal calls: qdrant.NewClient, db.Exec, repo.Upsert,
 //     exec.Command("ffmpeg"), exec.Command("yt-dlp")
 //
@@ -52,9 +51,7 @@ var (
 		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/platform/drive",
-		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube",
-		"\"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/artlist",
 		"\"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/youtube",
 	}
 )

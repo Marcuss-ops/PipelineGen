@@ -138,14 +138,11 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 
 // ── Postprocessor clip-search adapter structs (composition-root-local) ──
 
-// artlistClipSearchAdapter was DELETED here on 2026-09-20. It was the
-// pre-registry Artlist fallback (wrapping usecase.SearchArtlistClips plus an
 // optional remote provider search) and it had no construction site anywhere in
 // the tree. wire_script_postprocess_ai.go states the disposition in the code it
 // replaced it with: "the old ClipServices/Drive/Jobs/remote fallback is
 // intentionally gone". The canonical implementation is
 // adapters.VidRushRegistryMediaResolver over the VidRushAssetProviderRegistry,
-// which is what that file now assigns to adapters.ArtlistClipSearcher.
 
 // internetImageSearchAdapter wraps the canonical ImageSearchResolver
 // into the adapters.InternetImageSearcher port.

@@ -18,7 +18,6 @@
 // The 9 components (user spec verbatim):
 //
 //  1. Downloader            — source bytes (production: YouTubeStager /
-//     ArtlistStager / StockStager).
 //  2. MediaNormalizer       — canonical container/codec normalization.
 //  3. ContentHasher         — canonical SHA-256 (AssetCommitter
 //     supersede-gate fingerprint).
@@ -31,7 +30,6 @@
 //  9. AssetCommitter — canonical SSOT atomic media_assets +
 //     outbox_events write surface (QDRANT-002).
 //
-// All 3 providers (YouTube / Artlist / Stock) MUST flow through the
 // SAME persistence.AssetCommitter instance (composition-root enforces).
 //
 // State-traversal mapping (per PR-CATALOG-MULTILINGUA step 7's canonical
@@ -65,7 +63,6 @@ import (
 // ── Port interfaces (godlike/06 SSOT) ────────────────────────────────────────
 
 // Downloader downloads source bytes for a clip asset. Production
-// candidates: existing YouTubeStager / ArtlistStager / StockStager —
 // each implements ports.SourceStager whose StageSource signature
 // matches Downloader.Download.
 type Downloader interface {

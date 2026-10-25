@@ -28,17 +28,16 @@ func findOperation(ops []ArtifactOperation, match func(ArtifactOperation) bool) 
 	return nil
 }
 
-// TestRunnerCorrelationID_TranslationTTSDriveUpload pins the per-(scene,
-// language) correlation on the chunked-voiceover path: every target scene has
-// a translation operation, every (scene, language) has a TTS operation whose
-// asset_id is the produced voiceover, and every docs language has a
-// drive_upload operation whose asset_id is the published document.
-func TestRunnerCorrelationID_TranslationTTSDriveUpload(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+// TestRunnerCorrelationID_TranslationAndTTS pins the per-(scene, language)
+// correlation on the chunked-voiceover path: every target scene has a
+// translation operation and every (scene, language) has a TTS operation whose
+// asset_id is the produced voiceover.
+func TestRunnerCorrelationID_TranslationAndTTS(t *testing.T) {
+	runner, repo, _, _, _, _ := newTestRunner()
 	recorder := &recordingExecutionRecorder{}
 	runner.SetExecutionRecorder(recorder)
 
-	req := defaultTestRequest() // en + es, 3 scenes, CHUNKED_VOICEOVER + docs
+	req := defaultTestRequest() // en + es, 3 scenes, CHUNKED_VOICEOVER
 	runID := "run-correlation-chunked-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
 		ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing,
@@ -74,37 +73,28 @@ func TestRunnerCorrelationID_TranslationTTSDriveUpload(t *testing.T) {
 	require.Equal(t, "vo-scene-1-es", tts.AssetID, "TTS operation must carry the produced voiceover asset")
 	require.Equal(t, "COMPLETED", tts.Status)
 
-	// Drive: one operation per docs language whose asset_id is the document.
-	doc := findOperation(recorder.operations, func(op ArtifactOperation) bool {
-		return op.Kind == OperationDriveUpload && op.SceneID == "" && op.Language == "es"
-	})
-	require.NotNil(t, doc, "es document drive_upload operation must be recorded")
-	require.Equal(t, "doc-abc-123", doc.AssetID, "drive_upload must carry the published document id")
-
-	// Count sanity: 3 target translations, 3×2 voiceovers, 2 documents.
-	var translations, ttsCount, driveUploads int
+	// Count sanity: 3 target translations, 3×2 voiceovers. Google Docs is
+	// retired, so this non-final run publishes no document.
+	var translations, ttsCount int
 	for _, op := range recorder.operations {
 		switch op.Kind {
 		case OperationTranslation:
 			translations++
 		case OperationTTS:
 			ttsCount++
-		case OperationDriveUpload:
-			driveUploads++
 		}
 	}
 	require.Equal(t, 3, translations, "3 target translations")
 	require.Equal(t, 6, ttsCount, "3 scenes × 2 languages voiceovers")
-	require.Equal(t, 2, driveUploads, "2 documents (en + es)")
 }
 
-// TestRunnerCorrelationID_RenderValidationFinalAudioDrive pins the run-scoped
+// TestRunnerCorrelationID_RenderValidationFinalAudio pins the run-scoped
 // operations on the combined-timeline path: render and validation both carry
-// the produced final_audio asset_id, and the final-audio Drive upload carries
-// the published canonical asset_id — completing the render → validation →
-// Drive segment of the same correlation chain.
-func TestRunnerCorrelationID_RenderValidationFinalAudioDrive(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+// the produced final_audio asset_id. A non-final run does not publish the
+// master to Drive: Google Docs was its old consumer, so the upload would be
+// pure wall loss.
+func TestRunnerCorrelationID_RenderValidationFinalAudio(t *testing.T) {
+	runner, repo, _, _, _, _ := newTestRunner()
 	clipPath := t.TempDir() + "/clip.mp4"
 	clipBytes := []byte("correlation clip")
 	require.NoError(t, os.WriteFile(clipPath, clipBytes, 0o600))
@@ -149,9 +139,7 @@ func TestRunnerCorrelationID_RenderValidationFinalAudioDrive(t *testing.T) {
 	require.NotNil(t, validation, "validation operation must be recorded")
 	require.Equal(t, "final-audio", validation.AssetID, "validation must reference the same certified master")
 
-	drive := findOperation(recorder.operations, func(op ArtifactOperation) bool {
-		return op.Kind == OperationDriveUpload && op.AssetID == "final-audio-published"
-	})
-	require.NotNil(t, drive, "final-audio drive_upload operation must be recorded")
-	require.Equal(t, Language("en"), drive.Language, "final-audio drive_upload carries the source language")
+	require.Nil(t, findOperation(recorder.operations, func(op ArtifactOperation) bool {
+		return op.Kind == OperationDriveUpload
+	}), "a non-final run must not publish the final audio master to Drive")
 }

@@ -389,7 +389,7 @@ func TestVidRushProviderFanoutCatalogHitSkipsProvider(t *testing.T) {
 	repo := newIntegrationEntityImageCatalog()
 	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/mj/fanout.jpg")
 	searcher := &catalogIntegrationSearcher{}
-	fanout := NewVidRushProviderFanoutWithCatalog(nil, searcher, nil, repo)
+	fanout := NewVidRushProviderFanoutWithCatalog(searcher, nil, repo)
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled}}}
 	segment := scriptpkg.VidRushSegmentResult{SegmentID: "fanout", TextHash: "fanout-hash", Insights: scriptpkg.SegmentInsights{
 		Entities: []scriptpkg.ExtractedEntity{{Value: "Michael Jordan", Type: "PERSON"}}, ImageQueries: []string{"Michael Jordan"},

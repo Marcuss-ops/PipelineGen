@@ -4,12 +4,12 @@
 // The resolver is the single source of truth for determining whether a
 // drive_link in a SpecScene binding is still valid. It must be used
 // before:
-//   - Google Doc rendering
+//   - rendered document assembly
 //   - SQLite persistence
 //   - Manifest emission
 //   - API response construction
 //
-// No drive_link may be written into a Google Doc without first passing
+// No drive_link may be written into a rendered document without first passing
 // through this resolver.
 // Merged 2026-10-10 with asset_location_commit.go: verifying a resolved
 // location and committing it are one operation on one type.
@@ -120,7 +120,7 @@ type AssetLocationVerifier interface {
 
 // AssetLocationResolver is the canonical port for resolving and
 // verifying an asset's Drive location. Every drive_link that enters
-// a SpecScene binding or Google Doc MUST pass through this resolver.
+// a SpecScene binding or rendered document MUST pass through this resolver.
 //
 // The application layer owns this interface; the concrete
 // implementation lives in internal/platform/drive and uses the

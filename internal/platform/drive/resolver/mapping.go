@@ -69,8 +69,6 @@ func (a *Adapter) rootForDestination(dest delivery.DestinationKey) (string, erro
 		folder = a.cfg.StockFolder()
 	case delivery.DestinationYouTubeClip:
 		folder = a.cfg.ClipsFolder()
-	case delivery.DestinationArtlist:
-		folder = a.cfg.ArtlistFolder()
 	case delivery.DestinationVoiceover:
 		folder = a.cfg.VoiceoverFolder()
 	case delivery.DestinationScript:
@@ -104,8 +102,6 @@ func rootConfigKey(dest delivery.DestinationKey) string {
 		return "stock"
 	case delivery.DestinationYouTubeClip:
 		return "clips"
-	case delivery.DestinationArtlist:
-		return "artlist"
 	case delivery.DestinationVoiceover:
 		return "voiceover"
 	case delivery.DestinationScript:
@@ -143,7 +139,6 @@ func incompatibleFieldProbe(dest delivery.DestinationKey) []string {
 	case delivery.DestinationImage,
 		delivery.DestinationStock,
 		delivery.DestinationYouTubeClip,
-		delivery.DestinationArtlist,
 		delivery.DestinationSoundEffect,
 		delivery.DestinationDocument:
 		return []string{"project", "language"}
@@ -190,7 +185,7 @@ func segmentsForDestination(dest delivery.DestinationKey, loc domaindelivery.Ass
 	case delivery.DestinationImage:
 		// Mirror: req.Style = loc.Style; req.Subject = loc.SubjectOrName()
 		return []string{loc.Style, loc.SubjectOrName()}
-	case delivery.DestinationStock, delivery.DestinationYouTubeClip, delivery.DestinationArtlist:
+	case delivery.DestinationStock, delivery.DestinationYouTubeClip:
 		// Mirror: req.Group = loc.Category; req.Subject = loc.SubjectOrName() (and Provider for Stock)
 		segs := []string{loc.Category, loc.SubjectOrName()}
 		if dest == delivery.DestinationStock {
@@ -222,7 +217,7 @@ func segmentsForDestination(dest delivery.DestinationKey, loc domaindelivery.Ass
 // destination mandatory-check at the resolver boundary.
 func mandatoryFieldGate(dest delivery.DestinationKey, segments []string) string {
 	switch dest {
-	case delivery.DestinationImage, delivery.DestinationYouTubeClip, delivery.DestinationArtlist,
+	case delivery.DestinationImage, delivery.DestinationYouTubeClip,
 		delivery.DestinationDocument:
 		if segments[len(segments)-1] == "" {
 			return "subject"

@@ -76,7 +76,6 @@ type Entry struct {
 //
 //	videoID + ":" + language + ":" + source
 //
-// (lowercased to match the artlist cache's lowerKey convention).
 // The source tag participates in the key because ASR vs manual
 // subtitles can yield materially different text; caching them as
 // one entity would be a silent-fidelity regression.
@@ -88,7 +87,6 @@ func CacheKey(videoID, language, source string) string {
 	}, ":"))
 }
 
-// lowerKey fast-lower-cases ASCII A-Z bytes (per the existing artlist
 // cache::lowerKey convention). Deliberately NOT strings.ToLower
 // because the canonical key segments are all ASCII; the inline
 // transform avoids the stdlib allocation for hot L1 lookups.

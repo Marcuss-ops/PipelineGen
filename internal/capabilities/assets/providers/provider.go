@@ -20,7 +20,6 @@ import (
 // No source currently implements FetchProvider — the contract is
 // reserved for the post-Stock wave so that the channel-monitor
 // YouTube fetch path and Stock's binary delivery have a stable
-// target. Adapters that do NOT download (artlist: no public
 // fetch binary path; youtube: download lives in channel-monitor)
 // satisfy only SearchProvider and omit CapabilityFetch from
 // Capabilities().
@@ -38,12 +37,11 @@ import (
 //
 //   - write into Qdrant;
 //   - decide asset lifecycle transitions;
-//   - create Google Docs or other cross-domain side-effects;
+//   - create cross-domain side-effects;
 //   - import any HTTP API handler package;
 //   - execute business workflow that crosses its bounded context.
 type Provider interface {
 	// Name returns the human-readable provider identifier
-	// (e.g. "artlist", "youtube", "stock"). Must be unique within a
 	// Registry. Must be stable across calls. Must NOT be empty
 	// (Registry.Register returns ErrEmptyName otherwise).
 	Name() string
@@ -58,7 +56,6 @@ type Provider interface {
 // query. Adapters that only fetch (no live search) must NOT
 // implement this interface.
 //
-// Artlist, YouTube and Stock implement SearchProvider (Stock was
 // added August 2026 so it appears in the unified search discovery
 // universe).
 type SearchProvider interface {
@@ -66,7 +63,6 @@ type SearchProvider interface {
 
 	// Search returns up to req.Limit candidates matching req.Query.
 	// NextPageToken in the result is non-empty iff the underlying
-	// source paginates; providers without a cursor (artlist,
 	// youtube) always return NextPageToken == "".
 	//
 	// The returned slice is owned by the implementation and must

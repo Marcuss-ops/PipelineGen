@@ -28,7 +28,7 @@ func TestAssetLocationReconciliation_NilVerifierError(t *testing.T) {
 }
 
 // A missing verifier is a required composition failure: the registry must
-// propagate the fail-closed scene and stop before document publication.
+// propagate the fail-closed scene and stop before the downstream processor.
 func TestAssetLocationReconciliation_MissingVerifierStopsDownstreamPublication(t *testing.T) {
 	reconciliation := NewAssetLocationReconciliationProcessor(nil)
 	downstream := &reconciliationDownstreamRecorder{}
@@ -41,7 +41,7 @@ func TestAssetLocationReconciliation_MissingVerifierStopsDownstreamPublication(t
 	result, err := registry.Run(context.Background(), &scriptpkg.ResolvedGenerationPlan{
 		Postprocessors: []string{
 			string(adapters.ProcessorAssetLocationReconciliation),
-			string(adapters.ProcessorDocument),
+			string(adapters.ProcessorPersistence),
 		},
 	}, adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{
 		Version: 1,

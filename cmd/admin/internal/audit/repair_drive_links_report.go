@@ -1,11 +1,7 @@
 package audit
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
-
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // repairAuditReport is the canonical JSON audit output produced by
@@ -14,7 +10,6 @@ type repairAuditReport struct {
 	JobID               string `json:"job_id"`
 	ExecutedAt          string `json:"executed_at"`
 	RemoveInvalid       bool   `json:"remove_invalid"`
-	RefreshDocs         bool   `json:"refresh_docs"`
 	AssetsReferenced    int    `json:"assets_referenced"`
 	Verified            int    `json:"verified"`
 	Updated             int    `json:"updated"`
@@ -30,7 +25,6 @@ type repairAuditReport struct {
 	QdrantEventsEmitted int    `json:"qdrant_events_emitted"`
 	SpecSceneRepaired   bool   `json:"specscene_repaired"`
 	SQLiteUpdated       bool   `json:"sqlite_updated"`
-	DocumentsRefreshed  int    `json:"documents_refreshed"`
 	// NoOp is derived from the report and records the formal replay
 	// contract: the run observed the job but performed no mutation.
 	NoOp     bool                `json:"no_op"`
@@ -61,7 +55,7 @@ func repairReportIsNoOp(r repairAuditReport) bool {
 	if r.TransportErrors > 0 || r.QdrantMismatches > 0 || len(r.Warnings) > 0 {
 		return false
 	}
-	if r.SpecSceneRepaired || r.SQLiteUpdated || r.QdrantEventsEmitted > 0 || r.DocumentsRefreshed > 0 {
+	if r.SpecSceneRepaired || r.SQLiteUpdated || r.QdrantEventsEmitted > 0 {
 		return false
 	}
 	if r.RemoveInvalid && (r.Updated > 0 || r.Missing > 0 || r.Trashed > 0 ||
@@ -78,7 +72,6 @@ func printRepairSummary(r *repairAuditReport) {
 	fmt.Printf("Job ID:         %s\n", r.JobID)
 	fmt.Printf("Executed at:    %s\n", r.ExecutedAt)
 	fmt.Printf("Remove:         %v\n", r.RemoveInvalid)
-	fmt.Printf("Refresh:        %v\n\n", r.RefreshDocs)
 	fmt.Println("──────────────────────────────────────────────")
 	fmt.Println("Summary")
 	fmt.Println("──────────────────────────────────────────────")
@@ -97,7 +90,6 @@ func printRepairSummary(r *repairAuditReport) {
 	fmt.Printf("  Qdrant events emitted:   %d\n", r.QdrantEventsEmitted)
 	fmt.Printf("  SpecScene repaired:     %v\n", r.SpecSceneRepaired)
 	fmt.Printf("  SQLite updated:         %v\n", r.SQLiteUpdated)
-	fmt.Printf("  Documents refreshed:    %d\n", r.DocumentsRefreshed)
 	if len(r.Warnings) > 0 {
 		fmt.Println("\n  Warnings:")
 		for _, w := range r.Warnings {
@@ -109,98 +101,4 @@ func printRepairSummary(r *repairAuditReport) {
 	} else {
 		fmt.Printf("\n  Final status: COMPLETED\n")
 	}
-}
-
-// buildRepairHTML renders a minimal SpecScene HTML document for the
-// repair refresh. Uses the same structure as
-// BuildSpecSceneDocumentHTML but without importing the adapters
-// package (keeps the admin CLI free of application-layer deps).
-func buildRepairHTML(model *scriptpkg.ModelScriptOutputV1, title string) string {
-	if model == nil {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>")
-	if strings.TrimSpace(title) != "" {
-		b.WriteString("<h1>")
-		writeEscaped(&b, strings.TrimSpace(title))
-		b.WriteString("</h1>")
-	}
-	if len(model.SpecScene.Scenes) > 0 {
-		b.WriteString("<h2>Scenes</h2>")
-		for i := range model.SpecScene.Scenes {
-			scene := &model.SpecScene.Scenes[i]
-			b.WriteString("<section>")
-			b.WriteString("<h3>")
-			writeEscaped(&b, scene.ID)
-			b.WriteString("</h3>")
-			if text := strings.TrimSpace(scene.Text); text != "" {
-				b.WriteString("<p>")
-				writeEscaped(&b, text)
-				b.WriteString("</p>")
-			}
-			if clip := scene.Bindings.Clip; clip != nil {
-				b.WriteString("<p><strong>Clip:</strong> ")
-				writeLink(&b, clip.DriveLink, clip.ClipTitle, clip.ClipID)
-				b.WriteString("</p>")
-				if clip.SubtitleLink != "" {
-					b.WriteString("<p><strong>Subtitles ASS:</strong> ")
-					writeLink(&b, clip.SubtitleLink, clip.SubtitleFileID, clip.SubtitleFileID)
-					b.WriteString("</p>")
-				}
-			}
-			if stock := scene.Bindings.Stock; stock != nil {
-				b.WriteString("<p><strong>Clip:</strong> ")
-				writeLink(&b, stock.DriveLink, stock.Name, stock.AssetID)
-				b.WriteString("</p>")
-			}
-			b.WriteString("</section>")
-		}
-	}
-	raw, err := json.MarshalIndent(model.SpecScene, "", "  ")
-	if err == nil {
-		b.WriteString("<h2>SpecScene JSON</h2><pre>")
-		writeEscaped(&b, string(raw))
-		b.WriteString("</pre>")
-	}
-	b.WriteString("</body></html>")
-	return b.String()
-}
-
-func writeEscaped(b *strings.Builder, s string) {
-	for _, r := range s {
-		switch r {
-		case '&':
-			b.WriteString("&amp;")
-		case '<':
-			b.WriteString("&lt;")
-		case '>':
-			b.WriteString("&gt;")
-		case '"':
-			b.WriteString("&quot;")
-		default:
-			b.WriteRune(r)
-		}
-	}
-}
-
-func writeLink(b *strings.Builder, url, label, fallback string) {
-	url = strings.TrimSpace(url)
-	if url == "" {
-		if fallback == "" {
-			b.WriteString("(no link)")
-			return
-		}
-		writeEscaped(b, fallback)
-		return
-	}
-	label = strings.TrimSpace(label)
-	if label == "" {
-		label = url
-	}
-	b.WriteString("<a href=\"")
-	writeEscaped(b, url)
-	b.WriteString("\">")
-	writeEscaped(b, label)
-	b.WriteString("</a>")
 }

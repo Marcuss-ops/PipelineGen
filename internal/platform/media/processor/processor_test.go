@@ -327,7 +327,6 @@ func TestProcessor_SkipPublishSkipsPublisher(t *testing.T) {
 // this test pins the application-layer contract: when Process() returns
 // Status="processed" with FolderID set, the 5 fields are present on
 // ProcessResult AND the Publisher was invoked with the canonical
-// PublishRequest shape (Destination=DestinationArtlist, LocalPath,
 // Filename, Description populated).
 func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T) {
 	ctx := context.Background()
@@ -391,7 +390,7 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 	// AssetID + Group + Subject + ParentFolderID fields.
 	// (ConflictPolicy is zero-value ConflictOverwrite = legacy default.)
 	assert.NotNil(t, pub.lastReq, "F2.8: Publisher must have been invoked")
-	assert.Equal(t, delivery.DestinationArtlist, pub.lastReq.Destination, "F2.8: PublishRequest.Destination MUST default to DestinationArtlist (Input has no Destination field today; TODO F2.9 when a non-artlist caller emerges)")
+	assert.Equal(t, delivery.DestinationStock, pub.lastReq.Destination, "F2.8: PublishRequest.Destination MUST default to DestinationStock — the canonical destination that inherited the retired Artlist assets (Input has no Destination field today; TODO F2.9 when a non-default caller emerges)")
 	assert.NotEmpty(t, pub.lastReq.LocalPath, "F2.8: PublishRequest.LocalPath must point to processed file")
 	assert.NotEmpty(t, pub.lastReq.Filename, "F2.8: PublishRequest.Filename must be the canonical SafeName+ID form")
 	assert.NotEmpty(t, pub.lastReq.Description, "F2.8: PublishRequest.Description must include input.Name + input.ID")
@@ -400,14 +399,12 @@ func TestProcessorE2E_PublishesAndPopulatesDriveFieldsOnValidInput(t *testing.T)
 	// F2.8 reviewer-feedback Q1: Subject defaults to empty string (NOT
 	// input.ID). Leaking media_assets.id into the PathBuilder Subject
 	// slot produces opaque UUID folder metadata that humans see via
-	// PathSegments. A meaningful Subject (artlist asset UUID,
 	// YouTube video ID) MUST be plumbed explicitly via F2.9.
 	assert.Equal(t, "", pub.lastReq.Subject, "F2.8: PublishRequest.Subject MUST default to empty string (no leaky UUID in Drive folder metadata; a meaningful Subject comes via F2.9)")
 	assert.Equal(t, "fake-folder-id-for-e2e", pub.lastReq.ParentFolderID, "F2.8: PublishRequest.ParentFolderID = input.FolderID (explicit-folder caller inheritance)")
 	// August 2026 (reprocess certification fix): regenerable processor
 	// outputs must always replace the previous rendition on Drive.
 	// Pinning the explicit policy so the registry ConflictSkip default
-	// (DestinationArtlist, P1.1) can never silently pin Drive to the
 	// first rendition again.
 	assert.Equal(t, delivery.ConflictOverwrite, pub.lastReq.ConflictPolicy,
 		"processor outputs are regenerable renditions: ConflictPolicy MUST be explicit ConflictOverwrite")
@@ -578,7 +575,6 @@ func TestProcess_LocalPathPreservedOnHashStepFailure(t *testing.T) {
 // `if input.LocalPath == "" { _ = os.Remove(actualRawPath) }` cleanup
 // guard. Without this pin, a refactor that drops the guard on the
 // post-success path would silently delete the SourceStager's staged
-// file — the very next defer Cleanup at the artlist call site would
 // see os.ErrNotExist and log warn noise.
 func TestProcess_LocalPathPreservedOnHappyPath(t *testing.T) {
 	ctx := context.Background()
@@ -712,11 +708,8 @@ func TestProcessor_HonorsExplicitDestination(t *testing.T) {
 		"explicit destination must drop ParentFolderID so the registry resolves the real folder (no stale FolderID drift)")
 }
 
-// TestProcessor_LegacyDestinationDefaultsToArtlistWithParentFolderID pins
-// the backward-compat path: an empty Destination keeps DestinationArtlist +
-// ParentFolderID=input.FolderID (the legacy artlist escape hatch), and Group
 // falls back to input.Term.
-func TestProcessor_LegacyDestinationDefaultsToArtlistWithParentFolderID(t *testing.T) {
+func TestProcessor_LegacyDestinationDefaultsToStockWithParentFolderID(t *testing.T) {
 	ctx := context.Background()
 	localPath := writeStagedFileForTest(t, "staged-bytes")
 	pub := &fakePublisher{}
@@ -736,7 +729,8 @@ func TestProcessor_LegacyDestinationDefaultsToArtlistWithParentFolderID(t *testi
 	})
 	require.NoError(t, err)
 	require.NotNil(t, pub.lastReq)
-	assert.Equal(t, delivery.DestinationArtlist, pub.lastReq.Destination)
+	assert.Equal(t, delivery.DestinationStock, pub.lastReq.Destination,
+		"the legacy default MUST resolve to the canonical stock destination (the retired Artlist folder is gone)")
 	assert.Equal(t, "artlist-term", pub.lastReq.Group, "legacy Group must fall back to input.Term")
 	assert.Equal(t, "legacy-folder", pub.lastReq.ParentFolderID, "legacy path must preserve ParentFolderID=input.FolderID")
 }

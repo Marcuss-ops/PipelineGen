@@ -20,7 +20,6 @@
 // Descriptor into `assetsapi.Dependencies.Register` (route module that
 // mounts /media/register-from-youtube + /media/register-batch).
 //
-// Pattern parity with `artlist/module.go` (C1-Step 3),
 // `youtube/module.go` (C1-Step 4), `clips/module.go` (C1-Step 5),
 // `stock/module.go` (C1-Step 6), `voiceover/module.go` (C1-Step 7),
 // `soundeffect/module.go` (C1-Step 8).

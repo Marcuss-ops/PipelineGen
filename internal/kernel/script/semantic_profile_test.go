@@ -42,7 +42,6 @@ func TestSegmentSemanticProfile_JSONRoundTrip(t *testing.T) {
 		},
 		Retrieval: &RetrievalIntent{
 			YouTube: []string{"John Froelich first gasoline tractor 1892"},
-			Artlist: []string{"vintage tractor farm field"},
 			Images:  []string{"John Froelich 1892 gasoline tractor"},
 		},
 	}
@@ -56,7 +55,7 @@ func TestSegmentSemanticProfile_JSONRoundTrip(t *testing.T) {
 		`"segment_id"`, `"text_hash"`, `"understanding_model_version"`,
 		`"prompt_version"`, `"topic"`, `"subtopics"`, `"keywords"`,
 		`"visual_terms"`, `"terms"`, `"important_phrases"`, `"entities"`,
-		`"retrieval"`, `"youtube"`, `"artlist"`, `"images"`,
+		`"retrieval"`, `"youtube"`, `"images"`,
 		`"confidence"`, `"kind"`,
 	} {
 		if !strings.Contains(wire, key) {
@@ -202,7 +201,6 @@ func TestBuildSegmentSemanticProfile_PromotesNounChunksToVisualTerms(t *testing.
 
 // TestBuildSegmentSemanticProfile_WeightsKeywordsByOrder certifies that the
 // extractor's importance order becomes a deterministic descending confidence:
-// the first ImportantWord/ArtlistPhrase carries the highest score, exactly
 // like the scene-annotation important-word projection.
 func TestBuildSegmentSemanticProfile_WeightsKeywordsByOrder(t *testing.T) {
 	profile := BuildSegmentSemanticProfile(
@@ -357,5 +355,41 @@ func TestTermKindConstantsAreCanonical(t *testing.T) {
 		if string(kind) == "" {
 			t.Fatalf("TermKind %q must serialize to a non-empty string", kind)
 		}
+	}
+}
+
+// TestSegmentSemanticProfile_DecodesLegacyArtlistRetrievalPayload pins the
+// compatibility boundary left by the Artlist retirement: profiles persisted
+// before the retirement still carry a "retrieval.artlist" array. Decoding
+// them MUST keep succeeding (and keep the surviving YouTube/Images queries
+// intact) even though the retired surface is no longer re-emitted.
+func TestSegmentSemanticProfile_DecodesLegacyArtlistRetrievalPayload(t *testing.T) {
+	legacy := []byte(`{
+		"segment_id": "segment-002",
+		"text_hash": "abc123",
+		"retrieval": {
+			"youtube": ["John Froelich first gasoline tractor 1892"],
+			"artlist": ["vintage tractor farm field"],
+			"images": ["John Froelich 1892 gasoline tractor"]
+		}
+	}`)
+
+	var profile SegmentSemanticProfile
+	if err := json.Unmarshal(legacy, &profile); err != nil {
+		t.Fatalf("legacy payload with retired artlist surface must still decode: %v", err)
+	}
+	if profile.Retrieval == nil {
+		t.Fatal("legacy payload lost its retrieval intent")
+	}
+	if len(profile.Retrieval.YouTube) != 1 || len(profile.Retrieval.Images) != 1 {
+		t.Fatalf("legacy payload lost surviving queries: %+v", *profile.Retrieval)
+	}
+
+	raw, err := json.Marshal(profile)
+	if err != nil {
+		t.Fatalf("marshal decoded legacy profile: %v", err)
+	}
+	if strings.Contains(string(raw), `"artlist"`) {
+		t.Fatalf("retired artlist surface must not be re-emitted: %s", raw)
 	}
 }

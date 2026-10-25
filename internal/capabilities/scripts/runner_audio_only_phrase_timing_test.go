@@ -68,19 +68,16 @@ func TestRunner_AudioOnly_PhraseTimingsProducedWithoutVideoRender(t *testing.T) 
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := &timingVoiceoverGenerator{}
-	docPub := newStubDocumentPublisher()
 	renderEnq := newStubRenderEnqueuer()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 
 	runID := "run-audio-only-phrase-timing"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{
@@ -137,11 +134,6 @@ func TestRunner_AudioOnly_PhraseTimingsProducedWithoutVideoRender(t *testing.T) 
 	require.NotNil(t, res.FinalAudio, "final_audio.m4a must be certified")
 	require.NotNil(t, res.AudioPlan, "audio plan must be persisted")
 	require.Equal(t, capabilityaudio.FinalAudioCopy, res.AudioStrategy)
-
-	// DOC — the Google Doc was published with id + link.
-	require.NotNil(t, res.Documents["en"], "document must be published")
-	require.NotEmpty(t, res.Documents["en"].ID, "document id must be present")
-	require.NotEmpty(t, res.Documents["en"].Link, "document link must be present")
 
 	// VIDEO — the audio-only contract: no render job, zero video enqueues.
 	// The phrase projection never gates on the video path.

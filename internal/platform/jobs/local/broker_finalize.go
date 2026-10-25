@@ -282,9 +282,9 @@ func verifiedFromStagedRef(ctx context.Context, ref *remote.StagedArtifactRefere
 	}
 	// Language is NEVER fabricated here. The pre-fix code defaulted an empty
 	// language to the literal "it", which silently routed every language-less
-	// artifact into the Italian tree (`<docs root>/<job>/it`) regardless of the
-	// generation item's language and of `docs.enabled`. The hint now comes from
-	// the producer only (DriveLanguage / the `language` artifact-metadata key).
+	// artifact into the Italian tree regardless of the generation item's
+	// language. The hint now comes from the producer only (DriveLanguage /
+	// the `language` artifact-metadata key).
 	// A destination that REQUIRES a language (script, voiceover) fails closed
 	// in delivery.BuildPublishRequest with a "missing language"
 	// ErrAssetPublishLocationIncompleteForDestination instead of guessing;

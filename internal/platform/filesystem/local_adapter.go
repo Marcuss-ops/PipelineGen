@@ -2,7 +2,6 @@
 //
 // Concrete implementation of the application-layer LocalFSPort typed
 // port. The adapter wraps the stdlib os package so the application
-// layer (stockpipeline, artlist, voiceover, …) never needs to import
 // "os" directly — gitlike/07 PR-REFACTOR-P0-IO-BINDER rule.
 //
 // godlike/06 SSOT (one canonical owner per fact):

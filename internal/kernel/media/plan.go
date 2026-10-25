@@ -132,6 +132,8 @@ func (m *MediaPlanSpec) UnmarshalJSON(data []byte) error {
 	for _, name := range names {
 		switch name {
 		case "artlist":
+			// The Artlist provider is retired. The legacy name is still
+			// accepted so old payloads parse, but the toggle routes no work.
 			m.ProviderPolicy.Artlist = MediaToggleEnabled
 		case "internet_images", "images":
 			m.ProviderPolicy.InternetImages = MediaToggleEnabled
@@ -177,7 +179,6 @@ type MediaExtractionPolicy struct {
 	// overlap a named entity; model extraction remains the default path.
 	ImportantPhrases            []string          `json:"important_phrases,omitempty"`
 	MaxImportantWordsPerSegment int               `json:"max_important_words_per_segment,omitempty"`
-	MaxArtlistQueriesPerSegment int               `json:"max_artlist_queries_per_segment,omitempty"`
 	MaxImageQueriesPerSegment   int               `json:"max_image_queries_per_segment,omitempty"`
 	Strategy                    string            `json:"strategy,omitempty"`
 	EntityImages                EntityImagePolicy `json:"entity_images,omitempty"`
@@ -369,6 +370,8 @@ func (t MediaToggle) AsBool() bool {
 // MediaProviderPolicy controls which visual providers may be used by
 // the VidRush pipeline.
 type MediaProviderPolicy struct {
+	// Artlist is accepted for legacy payload compatibility only. The provider
+	// is retired: no acquisition or query builder reads this toggle.
 	Artlist         MediaToggle `json:"artlist,omitempty"`
 	YouTube         MediaToggle `json:"youtube,omitempty"`
 	InternetImages  MediaToggle `json:"internet_images,omitempty"`
@@ -475,7 +478,6 @@ type MediaRef struct {
 	// ClipID is the ID of a caller-supplied clip.
 	ClipID string `json:"clip_id,omitempty"`
 
-	// Provider is the provider that owns this asset (drive, artlist,
 	// youtube, pexels, ...).
 	Provider string `json:"provider,omitempty"`
 

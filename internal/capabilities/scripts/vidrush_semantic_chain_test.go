@@ -91,8 +91,8 @@ func TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief(t *testing
 		"the narration must stay fenced from the canonical source")
 	require.Len(t, result.Insights.Entities, 3,
 		"narration-grounded entities must survive the projection")
-	require.Empty(t, result.Insights.ArtlistQueries,
-		"a plan with Artlist disabled must not build Artlist queries")
+	require.Empty(t, result.Insights.YouTubeQueries,
+		"a plan with no acquisition provider enabled must not build search queries")
 }
 
 // TestSceneIRSegmentEnricherFallsBackToSourceWithoutNarration preserves the
@@ -665,7 +665,7 @@ func TestMediaCertBarrierFailsJobWhenCertifiedFalse(t *testing.T) {
 				PrimaryVideo: &scriptpkg.SegmentAssetCandidate{
 					SegmentID: "mediterranean-01-greek-salad",
 					AssetID:   "artlist-boxing-001",
-					Provider:  scriptpkg.VidRushProviderArtlist,
+					Provider:  "artlist",
 					Entity:    "woman boxing",
 					Query:     "woman boxing gloves",
 				},
@@ -679,7 +679,7 @@ func TestMediaCertBarrierFailsJobWhenCertifiedFalse(t *testing.T) {
 			{Name: mediacert.CheckArtlistRelevance, Passed: false},
 		},
 	}}
-	spec := mediacert.Spec{Segments: 1, VideoProvider: scriptpkg.VidRushProviderArtlist}
+	spec := mediacert.Spec{Segments: 1, VideoProvider: "artlist"}
 	barrier, err := NewMediaCertBarrier(inner, certifier, spec)
 	require.NoError(t, err)
 
@@ -712,14 +712,14 @@ func TestMediaCertBarrierPassesCertifiedRun(t *testing.T) {
 				PrimaryVideo: &scriptpkg.SegmentAssetCandidate{
 					SegmentID: "mediterranean-01-greek-salad",
 					AssetID:   "artlist-greek-salad-001",
-					Provider:  scriptpkg.VidRushProviderArtlist,
+					Provider:  "artlist",
 					Entity:    "greek salad",
 				},
 			},
 		},
 	}}
 	certifier := stubMediaCertifier{report: mediacert.Report{JobStatus: "SUCCEEDED", Certified: true}}
-	spec := mediacert.Spec{Segments: 1, VideoProvider: scriptpkg.VidRushProviderArtlist}
+	spec := mediacert.Spec{Segments: 1, VideoProvider: "artlist"}
 	barrier, err := NewMediaCertBarrier(inner, certifier, spec)
 	require.NoError(t, err)
 

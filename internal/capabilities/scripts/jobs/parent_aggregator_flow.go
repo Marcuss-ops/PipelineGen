@@ -32,16 +32,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		return nil
 	}
 
-	// Deferred Docs leg (TICKET-CORE-READY-DURABLE-DAG step 4): a single-item
-	// parent that stopped at CORE_READY owns no item children — its deferred
-	// work is the one `script.docs_publish` child. It aggregates on a
-	// different branch so the batch item-counting below (which finalises a
-	// parent with zero ChildJobIDs as FAILED) can never misread it.
-	if docs, ok := docsDeferredOf(j.Result); ok {
-		a.aggregateDocsDeferred(ctx, j, docs)
-		return nil
-	}
-
 	// Filter empty child IDs (failed-enqueue placeholders).
 	childIDs := parentResult.ChildJobIDs
 	filtered := make([]string, 0, len(childIDs))
@@ -98,8 +88,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 			childStageIndex[childID] = index
 		}
 	}
-	childDocLinks := make(map[string]string) // item_id → doc_link (2026-07-07 fix)
-	childDocIDs := make(map[string]string)   // item_id → doc_id (2026-07-07 fix)
 	childStageProgress := make(map[string]job.StageProgress)
 	for _, childID := range childIDs {
 		var status job.Status
@@ -170,15 +158,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		}
 		if (status == job.StatusSucceeded) && childOK {
 			succeeded++
-			// Collect doc_link/doc_id from succeeded children so the
-			// parent result surfaces Google Doc links to operators
-			// (2026-07-07 fix — previously dropped by toScriptItemResultMap).
-			if childResult.DocLink != "" {
-				childDocLinks[childResult.ItemID] = childResult.DocLink
-			}
-			if childResult.DocID != "" {
-				childDocIDs[childResult.ItemID] = childResult.DocID
-			}
 		} else {
 			failed++
 		}
@@ -214,8 +193,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		ChildIDs:       childIDs,
 		PerLanguage:    parentResult.PerLanguage,
 		StageProgress:  job.MergeStageProgress(job.AggregateStageProgressByStage(stageStatuses), childStageProgress),
-		ChildDocLinks:  childDocLinks,
-		ChildDocIDs:    childDocIDs,
 	}
 	a.finalizeParent(ctx, j.ID, aggResult)
 	return nil
@@ -254,12 +231,6 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		"child_job_ids":       agg.ChildIDs,
 		"per_language":        agg.PerLanguage,
 		"stage_progress":      agg.StageProgress,
-	}
-	if len(agg.ChildDocLinks) > 0 {
-		resultMap["child_doc_links"] = agg.ChildDocLinks
-	}
-	if len(agg.ChildDocIDs) > 0 {
-		resultMap["child_doc_ids"] = agg.ChildDocIDs
 	}
 
 	targetStatus := job.StatusSucceeded
@@ -347,7 +318,3 @@ func scriptItemP0_1Gate(childJSON []byte) bool {
 	}
 	return !*cr.OK
 }
-
-// DocsDeferredParent is the typed read of a docs-deferred waiting envelope
-// (generation_handler.go docsDeferredEnvelope). Field names match the envelope
-// keys exactly; batch keys are absent and ignored.

@@ -488,7 +488,6 @@ func RunVidRushProviderAvailabilityPreflight(ctx context.Context, plan mediadoma
 		name    string
 		enabled bool
 	}{
-		{name: scriptpkg.VidRushProviderArtlist, enabled: plan.ProviderPolicy.Artlist.AsBool()},
 		{name: scriptpkg.VidRushProviderYouTube, enabled: plan.ProviderPolicy.YouTube.AsBool()},
 		{name: scriptpkg.VidRushProviderInternetImages, enabled: plan.ProviderPolicy.InternetImages.AsBool()},
 		{name: scriptpkg.VidRushProviderImageGeneration, enabled: plan.ProviderPolicy.ImageGeneration.AsBool()},

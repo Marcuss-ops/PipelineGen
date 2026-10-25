@@ -39,9 +39,8 @@ const percheckImageAssetInvariantsRuleLabel = "percheck_image_asset_invariants"
 // (gemmaPromptScopeRelPathPrefix = "internal/application/scripts/usecase")
 // lives UNDER a directory whose basename is `scripts`. A basename
 // match on `scripts` would prune the entire subtree including our
-// target dir. The voiceover / script_docs_route siblings can
-// safely skip `scripts` because they have no usecase-overlay
-// target — but this scanner MUST descend. The walker still only
+// target dir. The voiceover sibling can safely skip `scripts`
+// because it has no usecase-overlay target — but this scanner MUST descend. The walker still only
 // acts on `.go` files (via the suffix guards), so project-root
 // operational scripts (bash / Python / YAML) which live at the
 // top-level `<root>/scripts/` are also unaffected from a noise

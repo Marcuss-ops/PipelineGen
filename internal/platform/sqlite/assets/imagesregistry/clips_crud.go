@@ -79,7 +79,6 @@ func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*asset.Asset,
 //     (test code paths are explicitly allowlisted by the CI lint).
 //
 // Removed from public API surfaces:
-//   - artlist.AssetStore (search_core_test only)
 //   - clips.ClipRepositoryPort (clip_ops.go only)
 //   - sourcing.ClipStorePort (sourcing/service.go only)
 //

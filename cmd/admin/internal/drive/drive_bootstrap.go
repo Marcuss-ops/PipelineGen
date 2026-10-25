@@ -15,7 +15,6 @@
 // //
 // Canonical subdirectories:
 //
-//	clips, stock, artlist, images, voiceovers, scripts,
 //	sound_effects, documents, admin
 //
 // Each maps to its corresponding DestinationKey namespace (F2).

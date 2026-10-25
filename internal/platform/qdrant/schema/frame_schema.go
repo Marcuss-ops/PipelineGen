@@ -73,7 +73,6 @@ const FrameVectorName = "visual"
 //	asset_id          keyword : canonical media_assets.id
 //	ts_ms             integer : canonical timestamp in ms
 //	language          keyword : ISO 639-1 (it, en, ...)
-//	source_provider   keyword : "artlist" / "youtube" / "images" / ...
 //	embedding_version keyword : FrameEmbeddingVersion SSOT
 func FrameIndexSchema() *IndexSchema {
 	return &IndexSchema{

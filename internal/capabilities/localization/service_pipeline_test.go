@@ -3,7 +3,6 @@ package localization
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -142,11 +141,7 @@ func TestService_RenderContinuesWhileDriveUploadIsBlocked(t *testing.T) {
 	driveRelease := make(chan struct{})
 	uploader := &blockingPipelineUploader{started: make(chan struct{}, 3), release: driveRelease}
 	drivePublisher := newTestPublisher(t, uploader)
-	docAssembler, err := NewDocumentAssembler(&fakeDocPublisher{result: &DocPublishResult{ID: "doc", Link: "https://docs/doc"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := NewServiceWithConcurrency(renderer, drivePublisher, docAssembler, 2, 2)
+	service, err := NewServiceWithConcurrency(renderer, drivePublisher, 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,10 +157,9 @@ func TestService_RenderContinuesWhileDriveUploadIsBlocked(t *testing.T) {
 	done := make(chan *LocalizeResult, 1)
 	go func() {
 		result, localizeErr := service.Localize(context.Background(), LocalizeInput{
-			Concurrency:  2,
-			FolderID:     "folder",
-			SkipDocument: true,
-			Plans:        plans,
+			Concurrency: 2,
+			FolderID:    "folder",
+			Plans:       plans,
 		})
 		if localizeErr != nil {
 			done <- nil
@@ -200,8 +194,7 @@ func TestService_UploadRenderedDoesNotInvokeRenderer(t *testing.T) {
 		executor,
 	)
 	uploader := &fakeDriveUploader{result: &DriveUploadResult{FileID: "drive-recovered", Link: "https://drive/recovered"}}
-	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader),
-		mustTestDocumentAssembler(t), 2, 2)
+	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), 2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,20 +211,11 @@ func TestService_UploadRenderedDoesNotInvokeRenderer(t *testing.T) {
 	}
 }
 
-func mustTestDocumentAssembler(t *testing.T) *DocumentAssembler {
-	t.Helper()
-	a, err := NewDocumentAssembler(&fakeDocPublisher{result: &DocPublishResult{ID: "doc", Link: "https://docs/doc"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return a
-}
-
 func TestService_UploadPoolIsBoundedAndFailureIsolated(t *testing.T) {
 	executor := &pipelineRenderExecutor{third: make(chan struct{})}
 	renderer := newTestRenderer(t, pipelineCompiler{}, newTestWire(t, pipelineSubtitleResolver{}, pipelineSubtitleCompiler{}), executor)
 	uploader := &boundedPipelineUploader{delay: 5 * time.Millisecond, failAt: map[int]error{2: context.DeadlineExceeded}}
-	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), mustTestDocumentAssembler(t), 3, 2)
+	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), 3, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +228,7 @@ func TestService_UploadPoolIsBoundedAndFailureIsolated(t *testing.T) {
 		plans[i].Priority = i
 		plans[i].Fingerprint = Fingerprint(plans[i])
 	}
-	result, err := service.Localize(context.Background(), LocalizeInput{Concurrency: 3, FolderID: "folder", SkipDocument: true, Plans: plans})
+	result, err := service.Localize(context.Background(), LocalizeInput{Concurrency: 3, FolderID: "folder", Plans: plans})
 	if err != nil {
 		t.Fatalf("Localize: %v", err)
 	}
@@ -263,14 +247,14 @@ func TestService_ScalingAndConcurrentJobs(t *testing.T) {
 	executor := &pipelineRenderExecutor{third: make(chan struct{})}
 	renderer := newTestRenderer(t, pipelineCompiler{}, newTestWire(t, pipelineSubtitleResolver{}, pipelineSubtitleCompiler{}), executor)
 	uploader := &boundedPipelineUploader{delay: time.Millisecond, failAt: map[int]error{}}
-	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), mustTestDocumentAssembler(t), 3, 4)
+	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), 3, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, size := range []int{5, 20, 50} {
 		t.Run(fmt.Sprintf("scaling_%d", size), func(t *testing.T) {
 			result, err := service.Localize(context.Background(), LocalizeInput{
-				Concurrency: 3, FolderID: "folder", SkipDocument: true, Plans: pipelinePlans(size),
+				Concurrency: 3, FolderID: "folder", Plans: pipelinePlans(size),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -285,7 +269,7 @@ func TestService_ScalingAndConcurrentJobs(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		go func() {
 			result, err := service.Localize(context.Background(), LocalizeInput{
-				Concurrency: 3, FolderID: "folder", SkipDocument: true, Plans: pipelinePlans(20),
+				Concurrency: 3, FolderID: "folder", Plans: pipelinePlans(20),
 			})
 			if err != nil {
 				jobs <- nil
@@ -306,13 +290,13 @@ func TestService_Soak100RunsHasNoCumulativeFailures(t *testing.T) {
 	executor := &pipelineRenderExecutor{third: make(chan struct{})}
 	renderer := newTestRenderer(t, pipelineCompiler{}, newTestWire(t, pipelineSubtitleResolver{}, pipelineSubtitleCompiler{}), executor)
 	uploader := &boundedPipelineUploader{delay: time.Microsecond, failAt: map[int]error{}}
-	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), mustTestDocumentAssembler(t), 2, 4)
+	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), 2, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
 	plans := pipelinePlans(5)
 	for run := 0; run < 100; run++ {
-		result, err := service.Localize(context.Background(), LocalizeInput{Concurrency: 2, FolderID: "folder", SkipDocument: true, Plans: plans})
+		result, err := service.Localize(context.Background(), LocalizeInput{Concurrency: 2, FolderID: "folder", Plans: plans})
 		if err != nil || result == nil || len(result.Artifacts) != len(plans) || len(result.Failures) != 0 {
 			t.Fatalf("soak run %d failed: err=%v result=%+v", run, err, result)
 		}
@@ -359,51 +343,5 @@ func TestRenderWidth(t *testing.T) {
 				t.Fatalf("RenderWidth(%d, %d) = (%d, %v), want (%d, %v)", tc.machine, tc.requested, got, cramped, tc.want, tc.cramped)
 			}
 		})
-	}
-}
-
-// TestService_DocumentAssemblyRequiresUploadedLinks pins the tail invariant:
-// the manifest IS the set of uploaded Drive links, so a plan whose upload
-// failed is absent from the doc and every entry that reaches it carries a
-// non-empty link. It exists because "assemble the doc once the renders are
-// ready, in parallel with the remaining uploads" reads like a safe latency win
-// but publishes a manifest with blank links (godlike/07 no-fake-availability).
-func TestService_DocumentAssemblyRequiresUploadedLinks(t *testing.T) {
-	executor := &pipelineRenderExecutor{third: make(chan struct{})}
-	renderer := newTestRenderer(t, pipelineCompiler{}, newTestWire(t, pipelineSubtitleResolver{}, pipelineSubtitleCompiler{}), executor)
-	// The 2nd upload fails: exactly one plan must be dropped from the manifest.
-	uploader := &boundedPipelineUploader{delay: time.Millisecond, failAt: map[int]error{2: context.DeadlineExceeded}}
-	docs := &fakeDocPublisher{result: &DocPublishResult{ID: "doc", Link: "https://docs/doc"}}
-	assembler, err := NewDocumentAssembler(docs)
-	if err != nil {
-		t.Fatal(err)
-	}
-	service, err := NewServiceWithConcurrency(renderer, newTestPublisher(t, uploader), assembler, 2, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := service.Localize(context.Background(), LocalizeInput{
-		Concurrency: 2, FolderID: "folder", DocTitle: "Localization", Plans: pipelinePlans(3),
-	})
-	if err != nil {
-		t.Fatalf("Localize: %v", err)
-	}
-	if len(result.Artifacts) != 2 || len(result.Failures) != 1 {
-		t.Fatalf("artifacts=%d failures=%d, want 2/1", len(result.Artifacts), len(result.Failures))
-	}
-	if result.Ref == nil || len(result.Ref.Entries) != 2 {
-		t.Fatalf("doc ref = %+v, want exactly the 2 uploaded plans", result.Ref)
-	}
-	for _, entry := range result.Ref.Entries {
-		if entry.DriveLink == "" || entry.DriveFileID == "" {
-			t.Fatalf("doc entry reached the manifest without its Drive link: %+v", entry)
-		}
-	}
-	if strings.Contains(docs.got.Content, "no link") {
-		t.Fatalf("manifest lists a clip with no link:\n%s", docs.got.Content)
-	}
-	if got := strings.Count(docs.got.Content, "<a href="); got != 2 {
-		t.Fatalf("manifest links = %d, want 2 (the failed upload must not be listed)", got)
 	}
 }

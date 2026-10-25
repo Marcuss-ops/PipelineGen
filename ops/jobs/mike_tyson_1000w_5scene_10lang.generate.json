@@ -149,10 +149,6 @@
         "fit": "cover",
         "opacity": 1,
         "loop": false
-      },
-      "docs": {
-        "enabled": false,
-        "languages": ["it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"]
       }
     }
   ]

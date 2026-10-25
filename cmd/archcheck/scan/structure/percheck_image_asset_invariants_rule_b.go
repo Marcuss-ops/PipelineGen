@@ -324,8 +324,7 @@ func matchForbiddenGemmaField(tagNames []string) string {
 
 // descendIntoGemmaScope returns true iff `dir` is on the path
 // from the project root to any file under
-// gemmaPromptScopeRelPathPrefix. Mirrors
-// percheck_script_docs_route.go::shouldDescendIntoScope.
+// gemmaPromptScopeRelPathPrefix.
 // Path-component-bounded: "internal/application/scripts/usecase/"
 // (with trailing slash) is the canonical scope root, and every
 // strict descendant starts with the prefix.

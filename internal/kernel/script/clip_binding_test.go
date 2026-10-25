@@ -97,7 +97,6 @@ func TestClipDurationMs_TableDriven(t *testing.T) {
 // produced by the YouTube clip-id builder in
 // `internal/application/scripts/usecase/...`), a uuid-shaped
 // id (defensive — some callers pass through asset IDs from
-// the artlist_atomic_writer lineage), an empty id
 // (degenerate — nil-string handling), and a unicode-containing
 // id (defensive — tests the parameter doesn't accidentally
 // influence the return path).
@@ -111,7 +110,6 @@ func TestClipDurationMsFromAssetID_AlwaysZero(t *testing.T) {
 		// fixture evidence).
 		{"canonical clip id", "clip_yt_abc123_120_180_v1"},
 
-		// UUID-shaped id (from the artlist_atomic_writer
 		// lineage — defensive cover).
 		{"uuid-shaped id", "550e8400-e29b-41d4-a716-446655440000"},
 

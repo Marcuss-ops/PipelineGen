@@ -50,10 +50,6 @@
           "save_to_db": true,
           "stock_enabled": "disabled"
         },
-        "docs": {
-          "enabled": false,
-          "languages": ["en"]
-        },
         "media_plan": {
           "mode": "hybrid",
           "force_refresh_assets": true,

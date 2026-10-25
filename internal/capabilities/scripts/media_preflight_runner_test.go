@@ -20,7 +20,7 @@ func (p *failingMediaPreflight) Run(context.Context, GenerateRequest) PreflightR
 }
 
 func TestRunnerMediaPreflightFailsBeforeTextGeneration(t *testing.T) {
-	runner, repo, textGen, _, _, _, _ := newTestRunner()
+	runner, repo, textGen, _, _, _ := newTestRunner()
 	preflight := &failingMediaPreflight{result: PreflightResult{
 		Failures: []PreflightFailure{{
 			Category: "fixed_clip_audio",
@@ -31,7 +31,6 @@ func TestRunnerMediaPreflightFailsBeforeTextGeneration(t *testing.T) {
 	runner.SetMediaPreflight(preflight)
 
 	req := defaultTestRequest()
-	req.Docs = DocumentsConfig{}
 	req.DocsEnabled = false
 	req.Languages = nil
 	req.Audio = "none"

@@ -275,7 +275,6 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 // The Publisher receives:
 //
 //	delivery.PublishRequest{
-//	    Destination: destKey,                              // artlist/stock/clip per ReuploadRequest.Source
 //	    ProjectID:   strings.TrimSpace(string(clip.Source)), // auto-derive from clip.Source
 //	    Group:       strings.TrimSpace(clip.Group),          // explicit caller-provided
 //	    Subject:     filename,                               // per-file identity (mirrors soundeffect/handler.go)
@@ -346,9 +345,6 @@ func TestReuploadExecute_PublishesWithAutoDerivedFields(t *testing.T) {
 	}
 }
 
-// TestReuploadExecute_ArtlistSourceSetsArtlistDestination pins the
-// per-source destination mapping: ReuploadRequest.Source="artlist"
-// → Destination=Artlist + ProjectID="artlist" + auto-derived fields.
 // This is the cross-source routing surface that the canonical
 // DestinationRegistry consumes; the test ensures the auto-derivation
 // chain (Source → Destination + ProjectID) works for non-clip
@@ -383,11 +379,9 @@ func TestReuploadExecute_ArtlistSourceSetsArtlistDestination(t *testing.T) {
 	}
 
 	req := pub.lastPublishRequest
-	if req.Destination != delivery.DestinationArtlist {
-		t.Errorf("Destination = %q, want %q (Source=\"artlist\" → DestinationArtlist)", req.Destination, delivery.DestinationArtlist)
+	if req.Destination != delivery.DestinationStock {
+		t.Errorf("Destination = %q, want %q (retired Source=\"artlist\" → the canonical stock destination that inherited its assets)", req.Destination, delivery.DestinationStock)
 	}
-	// ProjectID auto-derives from clip.Source — for an artlist clip,
-	// the canonical Project surface is "artlist".
 	if req.ProjectID != "artlist" {
 		t.Errorf("ProjectID = %q, want %q (auto-derived from clip.Source)", req.ProjectID, "artlist")
 	}

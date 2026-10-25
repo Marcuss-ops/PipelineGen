@@ -257,7 +257,7 @@ func (e *executionRun) audioCompile() bool {
 			// upload entirely (golden measured it at ~15 s of wall) instead of
 			// paying it for an artifact nobody reads.
 			if e.r.log != nil {
-				e.r.log.Info("final audio Drive publish skipped: no documents and no final job consume it",
+				e.r.log.Info("final audio Drive publish skipped: no consumer requires it",
 					zap.String("run_id", e.runID))
 			}
 			audioPublished = true
@@ -271,7 +271,24 @@ func (e *executionRun) audioCompile() bool {
 		}
 	}
 	if done != nil {
+		// The join is QUEUE WAIT on the overlay sibling, not audio work: before
+		// this instrumentation the tail where audio had finished and the run was
+		// simply parked on the overlay branch landed in the run's unattributed
+		// bucket (the TICKET-OVERLAY-THROUGHPUT "which inputs wait on the
+		// others" question). Recorded as a completion wait on the render-queue
+		// component — the same vocabulary waitForCompletion uses — so overlap
+		// with the sibling's own render-queue waits is dissolved by the kernel's
+		// blocked-interval UNION (overlapping waits count once).
+		joinStarted := time.Now()
 		outcome := <-done
+		if joinFinished := time.Now(); joinFinished.After(joinStarted) {
+			kernobs.RecordWait(e.ctx, kernobs.WaitInfo{
+				Kind:       kernobs.WaitCompletion,
+				Component:  kernobs.ComponentRenderQueue,
+				StartedAt:  joinStarted,
+				FinishedAt: joinFinished,
+			})
+		}
 		if outcome.err != nil && (compiled || (!errors.Is(outcome.err, context.Canceled) && !errors.Is(outcome.err, context.DeadlineExceeded))) {
 			return failJoined(outcome.err)
 		}

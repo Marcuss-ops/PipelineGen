@@ -2,7 +2,6 @@
 // SEMANTIC-LOCATION-API-2026-07-06 Wave 1.
 //
 // Per-destination: 1 happy-path test per DestinationKey (10 constants:
-// YouTubeClip / Artlist / Stock / Image / Voiceover / Book / Script /
 // SoundEffect / Document / Admin). 9 tested here (Admin is a path-less
 // admin destination — out-of-scope for the semantic-location mapper
 // per Wave 1, handled separately in FASE-2.2 AdminPath closure).
@@ -110,20 +109,45 @@ func TestBuildPublishRequest_DestinationYouTubeClip_GroupAndSubject(t *testing.T
 	}
 }
 
-func TestBuildPublishRequest_DestinationArtlist_GroupAndSubject(t *testing.T) {
-	in := imgInput(DestinationArtlist, func(a *AssetPublishInput) {
+// A replayed payload can still carry the retired "artlist" destination.
+// The mapper folds it into the canonical successor (stock) BEFORE the
+// per-destination switch, so the request is validated and routed by the
+// destination that now owns those assets instead of failing as unknown.
+func TestBuildPublishRequest_RetiredArtlistDestinationFoldsToStock(t *testing.T) {
+	in := imgInput("artlist", func(a *AssetPublishInput) {
 		a.Location.Category = "boxing-search"
 		a.Location.Subject = "art_001"
+		a.Location.Provider = "artlist"
 	})
 	req, err := BuildPublishRequest(in)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
+	}
+	if req.Destination != DestinationStock {
+		t.Errorf("Destination = %q, want %q (retired key MUST fold to its successor)", req.Destination, DestinationStock)
 	}
 	if req.Group != "boxing-search" {
 		t.Errorf("Group = %q, want %q", req.Group, "boxing-search")
 	}
 	if req.Subject != "art_001" {
 		t.Errorf("Subject = %q, want %q", req.Subject, "art_001")
+	}
+	if req.Provider != "artlist" {
+		t.Errorf("Provider = %q, want %q", req.Provider, "artlist")
+	}
+}
+
+// The fold MUST NOT invent the successor's mandatory fields: a legacy
+// payload that satisfied the retired destination's (looser) contract
+// still fails closed rather than publishing into a half-built path.
+func TestBuildPublishRequest_RetiredArtlistDestinationFailsClosedWithoutStockFields(t *testing.T) {
+	in := imgInput("artlist", func(a *AssetPublishInput) {
+		a.Location.Category = "boxing-search"
+		a.Location.Subject = "art_001"
+	})
+	_, err := BuildPublishRequest(in)
+	if !errors.Is(err, ErrAssetPublishLocationIncompleteForDestination) {
+		t.Fatalf("err = %v, want ErrAssetPublishLocationIncompleteForDestination (missing stock provider)", err)
 	}
 }
 

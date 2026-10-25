@@ -136,7 +136,6 @@ func ParseMode(s string) RetrievalMode { return ParseRetrievalMode(s) }
 //
 //   - SearchCatalog   : canonical index only (Qdrant → SQLite hydrate;
 //     the local SQLite backend). NO live provider call. Reproducible.
-//   - SearchDiscovery : live providers only (artlist, youtube, stock,
 //     images). NO Qdrant call. Produces ExternalCandidate-shaped hits.
 //   - SearchBlended   : catalog + discovery, deduped via the canonical
 //     identity resolver (source_type|source_ref).
@@ -202,7 +201,6 @@ type Filters struct {
 	// (media_assets.asset_kind / semantic_role).
 	//
 	// They are NOT interchangeable with Source. Source is physical
-	// PROVENANCE (where the bytes came from: youtube, artlist, voiceover,
 	// script, …); AssetKind/SemanticRole are the asset FAMILY and its usage
 	// intent. A stock clip acquired from YouTube is source="youtube" with
 	// asset_kind="stock_video" / semantic_role="stock", so a family query

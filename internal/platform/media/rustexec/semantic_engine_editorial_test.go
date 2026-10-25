@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	coreasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -138,3 +139,18 @@ func TestSemanticEngineEditorialPreservesE5PassagesAndStillAnalyzesOnce(t *testi
 }
 
 func ptrInt(value int) *int { return &value }
+
+type phraseImpactFakeEmbedder struct {
+	batchResponse func(texts []string) [][]float32
+	calls         [][]string
+}
+
+func (f *phraseImpactFakeEmbedder) EmbedPassagesBatch(_ context.Context, texts []string) ([]coreasset.EmbeddingResult, error) {
+	f.calls = append(f.calls, append([]string(nil), texts...))
+	vectors := f.batchResponse(texts)
+	out := make([]coreasset.EmbeddingResult, len(vectors))
+	for index, vector := range vectors {
+		out[index] = coreasset.EmbeddingResult{Vector: vector, Dimensions: len(vector)}
+	}
+	return out, nil
+}

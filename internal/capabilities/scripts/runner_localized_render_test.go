@@ -84,7 +84,7 @@ func (e *recordingLocalizedRenderEnqueuer) snapshot() []LocalizedRenderInput {
 
 func TestRunner_LocalizedRenderResumeUsesUploadOnlyPath(t *testing.T) {
 	enq := &recoveryLocalizedRenderEnqueuer{}
-	runner, _, _, _, _, _, _ := newTestRunner()
+	runner, _, _, _, _, _ := newTestRunner()
 	runner.SetLocalizedRenderEnqueuer(enq)
 	staged := LocalizedRenderResult{
 		SceneID: "scene-0", Language: "en", ClipID: "clip-0", Status: "RENDERED",
@@ -108,7 +108,7 @@ func TestRunner_LocalizedRenderResumeUsesUploadOnlyPath(t *testing.T) {
 // non-deterministic; the test asserts only the set of enqueued work, not
 // the order.
 func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{}
 	runner.SetLocalizedRenderEnqueuer(enq)
 	runner.SetTTSConcurrency(1)
@@ -152,7 +152,7 @@ func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
 // still blocked before emitting scene 1 — Rust can start on scene 0 without
 // waiting for scene 1 (or the whole run).
 func TestRunner_SourceClipsAudioNone_LocalizedRenderFanout(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{producedVideo: &LocalizedRenderResult{
 		AssetID: "rendered-asset", SHA256: "0123456789abcdef0123456789abcdef", DriveFileID: "drive-1", DriveLink: "https://drive.test/rendered", DurationMS: 1000, Status: "UPLOADED",
 	}}
@@ -196,7 +196,7 @@ func TestRunner_SourceClipsAudioNone_LocalizedRenderFanout(t *testing.T) {
 }
 
 func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	enq := &recordingLocalizedRenderEnqueuer{}
 	runner.textGen = streamer
@@ -275,7 +275,7 @@ func TestLocalizedRenderClipFields(t *testing.T) {
 // resolve (asset_id, sha256, duration) without re-deriving them.
 // P0.4 async render: enqueue happens in goroutines; wait up to 5s for all 6.
 func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{}
 	runner.SetLocalizedRenderEnqueuer(enq)
 	runner.SetTTSConcurrency(1)
@@ -324,7 +324,7 @@ func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
 // that produced it. This is the deterministic surface the E2E visual audit
 // reads to prove "this run rendered this video".
 func TestRunner_LocalizedRenderFanout_RecordsProducedVideo(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
+	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{
 		producedVideo: &LocalizedRenderResult{
 			SceneID:     "scene-0",

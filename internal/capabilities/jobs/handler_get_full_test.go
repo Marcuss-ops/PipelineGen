@@ -368,13 +368,13 @@ func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
 			{Name: "script.engine", Status: "completed", DurationMs: 79320},
 			{Name: "script.postprocess", Status: "completed", DurationMs: 2994},
 			{Name: "persistence.sqlite", Status: "completed", DurationMs: 281},
-			{Name: "document.publish", Status: "completed", DurationMs: 918},
+			{Name: "audio_publish", Status: "completed", DurationMs: 918},
 		},
 		Operations: []kernobs.OperationReport{
 			{Stage: "source.resolve", Component: "qdrant", Operation: "search", DurationMs: 420},
 			{Stage: "source.resolve", Component: "sqlite", Operation: "hydrate", DurationMs: 690},
 			{Stage: "script.engine", Component: "ollama", Operation: "generate", DurationMs: 78910},
-			{Stage: "document.publish", Component: "google_docs", Operation: "publish", DurationMs: 710},
+			{Stage: "audio_publish", Component: "drive", Operation: "upload", DurationMs: 710},
 		},
 	}
 	raw, err := json.Marshal(&report)
@@ -403,7 +403,7 @@ func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
 	}
 	assert.Equal(t, int64(1840), stageMs["source.resolve"], "source.resolve stage wall must surface")
 	assert.Equal(t, int64(281), stageMs["persistence.sqlite"], "persistence.sqlite stage wall must surface")
-	assert.Equal(t, int64(918), stageMs["document.publish"], "document.publish stage wall must surface")
+	assert.Equal(t, int64(918), stageMs["audio_publish"], "audio_publish stage wall must surface")
 
 	opWork := make(map[string]int64, len(timing.Operations))
 	for _, op := range timing.Operations {
@@ -412,7 +412,7 @@ func TestGetFull_ExposesTimingBreakdown(t *testing.T) {
 	assert.Equal(t, int64(420), opWork["qdrant.search"], "qdrant.search work must surface")
 	assert.Equal(t, int64(690), opWork["sqlite.hydrate"], "sqlite.hydrate work must surface")
 	assert.Equal(t, int64(78910), opWork["ollama.generate"], "ollama.generate work must surface")
-	assert.Equal(t, int64(710), opWork["google_docs.publish"], "google_docs.publish work must surface")
+	assert.Equal(t, int64(710), opWork["drive.upload"], "drive.upload work must surface")
 }
 
 // TestGetFull_CoreReadyProjectsDurableScriptWithoutCompletingJob pins the

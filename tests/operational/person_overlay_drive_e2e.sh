@@ -19,7 +19,7 @@ DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # observe a valid GPU job instead of reporting a false polling failure.
 PERSON_OVERLAY_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-300}"
 # A completed script job can precede its asynchronous Drive outbox receipts.
-# Give the complete smoke (render + eventual publication + Docs checks) room to
+# Give the complete smoke (render + artifact publication) room to
 # finish even when the renderer uses the full poll window.
 SMOKE_TIMEOUT_SECONDS="${SMOKE_TIMEOUT_SECONDS:-600}"
 OVERLAY_DRIVE_LINK_TIMEOUT_SECONDS="${OVERLAY_DRIVE_LINK_TIMEOUT_SECONDS:-120}"
@@ -126,7 +126,6 @@ jq -n \
           planner: { candidate_limit: 3 },
           include_trace: true
         },
-        docs: { enabled: true, languages: ["en"] }
       }]
     }' > "$PAYLOAD"
 
@@ -336,24 +335,6 @@ SCRIPT_ID=$(jq -r '.script_id // 0' <<<"$RESULT")
 FINAL_AUDIO_DRIVE_LINK=$(jq -r '.final_audio?.drive_link // empty' <<<"$RESULT")
 [[ "$FINAL_AUDIO_DRIVE_LINK" == http* ]] || fail "final audio senza drive_link"
 
-DOC_LINK=$(jq -r '.documents?.en?.link // empty' <<<"$RESULT")
-[[ "$DOC_LINK" == https://docs.google.com/document/* ]] || fail "Docs endpoint senza link documento"
-DOC_ID=$(sed -nE 's#^https://docs\.google\.com/document/d/([^/]+)/.*#\1#p' <<<"$DOC_LINK")
-[[ -n "$DOC_ID" ]] || fail "impossibile estrarre document_id dal link Docs"
-DOC_HTML="$RESULTS_DIR/document-${RUN_ID}.html"
-curl -L --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" -sS \
-    "https://docs.google.com/document/d/${DOC_ID}/export?format=html" \
-    -o "$DOC_HTML" || fail "export del Google Doc fallito"
-grep -Fq "Semantic Overlay" "$DOC_HTML" || fail "Docs HTML senza sezione Semantic Overlay"
-grep -Fq "Semantic Overlay JSON" "$DOC_HTML" || fail "Docs HTML senza JSON overlay associato"
-grep -Fq "person:ada-lovelace" "$DOC_HTML" || fail "Docs HTML senza identità canonica Ada Lovelace"
-grep -Fq "Rendered Overlay JSON" "$DOC_HTML" || fail "Docs HTML senza JSON dell'artefatto Chronon"
-grep -Fq "Entities" "$DOC_HTML" || fail "Docs HTML senza sezione Entities"
-grep -Fq "Person:" "$DOC_HTML" || fail "Docs HTML senza riga Person compatta"
-if grep -Fq "<img" "$DOC_HTML"; then
-    fail "Docs HTML contiene ancora un'immagine inline nell'entity summary"
-fi
-
 printf '%sPASS%s job=%s\n' "$GREEN" "$RESET" "$JOB_ID"
 printf '  PERSON: %s\n' "$PERSON_NAMES"
 printf '  generated text chars: %s\n' "${#GENERATED_TEXT}"
@@ -369,5 +350,4 @@ printf '  overlay Drive: %s\n' "$OVERLAY_DRIVE_LINK"
 printf '  overlay Drive folder: %s\n' "$OVERLAY_DRIVE_FOLDER"
 printf '  short overlay artifacts: %s (first duration: %s us)\n' "$OVERLAY_RENDERED_ARTIFACT_COUNT" "$OVERLAY_DURATION_US"
 printf '  final audio Drive: %s\n' "$FINAL_AUDIO_DRIVE_LINK"
-printf '  Docs: %s\n' "$DOC_LINK"
 printf '  full result: %s\n' "$FULL"

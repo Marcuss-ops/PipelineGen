@@ -270,10 +270,6 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 
 	visual := scriptpkg.BuildSegmentVisualProfile(ir.Profile)
 	visualProfile := &visual
-	// Artlist is currently not an acquisition provider in this pipeline. Do
-	// not construct queries for an enabled or unknown policy: there is no
-	// usable provider consumer, cache, or binding downstream.
-	var artlistQueries []string
 	// Entity extraction is the source for identity-image queries. PERSON
 	// identities are queried independently; the broader visual-profile query
 	// builder is not used because it defeats entity-level caching.
@@ -315,8 +311,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 				}
 				return append([]string(nil), specialNames...)
 			}(),
-			ArtlistQueries: artlistQueries,
-			ImageQueries:   imageQueries,
+			ImageQueries: imageQueries,
 		},
 	}
 	return result, nil

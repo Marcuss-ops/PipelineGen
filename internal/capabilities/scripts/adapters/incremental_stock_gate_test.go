@@ -16,7 +16,7 @@ func stockGatePlan() *scriptpkg.ResolvedGenerationPlan {
 		Title: "mixed", Language: "pt",
 		MediaPlan: mediadomain.MediaPlanSpec{
 			ProviderPolicy: mediadomain.MediaProviderPolicy{
-				Artlist: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled,
+				InternetImages: mediadomain.MediaToggleEnabled,
 			},
 		},
 		StockBindings: []scriptpkg.StockBindingInput{{
@@ -30,7 +30,7 @@ func stockGatePlan() *scriptpkg.ResolvedGenerationPlan {
 func stockGateSegment() scriptpkg.VidRushSegmentResult {
 	return scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1", SceneID: "scene-1", Position: 1, Text: "stock scene", TextHash: "hash-stock",
-		Insights: scriptpkg.SegmentInsights{ImageQueries: []string{"stock image query"}, ArtlistQueries: []string{"stock clip query"}},
+		Insights: scriptpkg.SegmentInsights{ImageQueries: []string{"stock image query"}},
 	}
 }
 
@@ -39,23 +39,22 @@ func stockGateSegment() scriptpkg.VidRushSegmentResult {
 // stock-bound segment must leave provider discovery with BYPASSED markers and
 // no candidates, while the same segment WITHOUT the binding keeps searching.
 func TestIncrementalFanoutStockBoundSegmentNeverSearches(t *testing.T) {
-	artlist := &stockGateArtlistSearcher{}
 	images := &stockGateImageSearcher{}
-	fanout := NewVidRushProviderFanout(artlist, images)
+	fanout := NewVidRushProviderFanout(images)
 
 	plan := stockGatePlan()
 	got, err := fanout.ResolveProviders(context.Background(), plan, stockGateSegment())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Cache.Artlist != "BYPASSED" || got.Cache.InternetImages != "BYPASSED" || got.Cache.Binding != "STOCK_BOUND" {
+	if got.Cache.InternetImages != "BYPASSED" || got.Cache.Binding != "STOCK_BOUND" {
 		t.Fatalf("stock-bound fanout cache state = %+v, want BYPASSED + STOCK_BOUND", got.Cache)
 	}
 	if len(got.Assets.Candidates) != 0 || len(got.Assets.SecondaryImages) != 0 {
 		t.Fatalf("stock-bound fanout produced provider media: %+v", got.Assets)
 	}
-	if len(artlist.queries) != 0 || len(images.queries) != 0 {
-		t.Fatalf("stock-bound segment reached the searchers: artlist=%v images=%v", artlist.queries, images.queries)
+	if len(images.queries) != 0 {
+		t.Fatalf("stock-bound segment reached the searchers: images=%v", images.queries)
 	}
 
 	// Control: the identical segment WITHOUT the binding must search.
@@ -74,9 +73,8 @@ func TestIncrementalFanoutStockBoundSegmentNeverSearches(t *testing.T) {
 }
 
 func TestIncrementalFanoutAllowsOnlyExplicitEntityImageSidecarForStock(t *testing.T) {
-	artlist := &stockGateArtlistSearcher{}
 	images := &stockGateImageSearcher{}
-	fanout := NewVidRushProviderFanout(artlist, images)
+	fanout := NewVidRushProviderFanout(images)
 	plan := stockGatePlan()
 	plan.MediaPlan.Extraction.EntityImages = mediadomain.EntityImagePolicy{
 		Enabled: true, Scope: "per_scene", EntityTypes: []string{"PERSON"},
@@ -85,14 +83,11 @@ func TestIncrementalFanoutAllowsOnlyExplicitEntityImageSidecarForStock(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Cache.Binding != "STOCK_BOUND" || got.Cache.Artlist != "BYPASSED" || got.Cache.YouTube != "BYPASSED" {
+	if got.Cache.Binding != "STOCK_BOUND" || got.Cache.YouTube != "BYPASSED" {
 		t.Fatalf("stock sidecar provider states = %+v", got.Cache)
 	}
 	if got.Cache.InternetImages == "BYPASSED" || len(got.Assets.SecondaryImages) == 0 {
 		t.Fatalf("explicit entity image sidecar did not search: cache=%+v secondary=%d", got.Cache, len(got.Assets.SecondaryImages))
-	}
-	if len(artlist.queries) != 0 {
-		t.Fatalf("stock-bound scene reached Artlist: %v", artlist.queries)
 	}
 }
 
@@ -139,7 +134,7 @@ func TestMaterializePortKeepsStockVideoAndMaterializesExplicitImageSidecar(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Cache.Binding != "STOCK_BOUND" || got.Cache.Artlist != "BYPASSED" || got.Cache.ImageGeneration != "BYPASSED" {
+	if got.Cache.Binding != "STOCK_BOUND" || got.Cache.ImageGeneration != "BYPASSED" {
 		t.Fatalf("stock sidecar cache state = %+v", got.Cache)
 	}
 	if got.Assets.PrimaryVideo == nil || got.Assets.PrimaryVideo.AssetID != "stock-video" {

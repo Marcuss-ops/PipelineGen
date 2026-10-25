@@ -37,7 +37,6 @@ import (
 // parent to a file (multi-parent semantics), rename a file,
 // bulk-cleanup files matching a query.
 //
-// Consumers: artlist.SemanticEnricher (Trash), job/cleanup_handler
 // (Delete), YouTube/storage.moveFile use cases (Move), system handler
 // rename endpoint (Rename), future move/rename/cleanup orchestrators.
 // The composition root exposes this port as root.Drive.Lifecycle

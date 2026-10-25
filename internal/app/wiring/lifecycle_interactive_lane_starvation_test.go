@@ -50,9 +50,13 @@ func newJobsPlaneTestDB(t testing.TB) *sql.DB {
 
 // seedBenchmarkQueue fills the SQLite store with batch QUEUED jobs ahead of
 // the interactive one, mirroring the measured production shape: a long stream
-// of asset.text.materialize / youtube_clip.extract work sitting between a
-// user-waiting script.generate and its worker. Payloads go to the canonical
-// job_payloads table (the jobs row is never widened — migration 004).
+// of batch work sitting between a user-waiting script.generate and its worker.
+// The seeded type is system.cleanup: asset.text.materialize /
+// youtube_clip.extract moved to the dedicated feeder lane (T7), so they are
+// not part of the general backlog this proof runs against — the backlog SHAPE
+// (batch work ahead of the latency-critical job) is unchanged. Payloads go to
+// the canonical job_payloads table (the jobs row is never widened —
+// migration 004).
 func seedBenchmarkQueue(t testing.TB, db *sql.DB, batchCount int) {
 	t.Helper()
 	seedBatchJobsOnly(t, db, batchCount)
@@ -74,9 +78,10 @@ func seedBenchmarkQueue(t testing.TB, db *sql.DB, batchCount int) {
 // reseed the same store repeatedly, so ids must never collide.
 var a1SeedSeq atomic.Int64
 
-// seedBatchJobsOnly queues n batch jobs (asset.text.materialize, the dominant
-// batch type in the timing snapshot) WITHOUT the interactive job — used by
-// the churn benchmarks, which measure the general claim path alone.
+// seedBatchJobsOnly queues n batch jobs (system.cleanup — a general-pool
+// batch type; the old materialize seed moved to the feeder lane in T7)
+// WITHOUT the interactive job — used by the churn benchmarks, which measure
+// the general claim path alone.
 func seedBatchJobsOnly(t testing.TB, db *sql.DB, n int) {
 	t.Helper()
 	ctx := context.Background()
@@ -85,7 +90,7 @@ func seedBatchJobsOnly(t testing.TB, db *sql.DB, n int) {
 		id := fmt.Sprintf("batch-%d", a1SeedSeq.Add(1))
 		if _, err := db.ExecContext(ctx,
 			`INSERT INTO jobs (id, type, status, priority, created_at, updated_at, revision)
-			 VALUES (?, 'asset.text.materialize', 'QUEUED', 5, ?, ?, 1)`, id, now, now); err != nil {
+			 VALUES (?, 'system.cleanup', 'QUEUED', 5, ?, ?, 1)`, id, now, now); err != nil {
 			t.Fatalf("seed batch job %d: %v", i, err)
 		}
 		if _, err := db.ExecContext(ctx,

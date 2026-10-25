@@ -52,16 +52,6 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			RequireSubpath: false,
 			ConflictPolicy: ConflictOverwrite, // P1: admin CLI always overwrites
 		},
-		// DestinationArtlist: curated artlist assets. Immutable versioned
-		// uploads — collisions are content-hash dupes that should not
-		// overwrite.
-		DestinationArtlist: {
-			RootFolderID:   cfg.Drive.ArtlistFolder(),
-			Namespace:      "artlist",
-			PathBuilder:    maybeWrapNamespace(cfg, "artlist", cfg.Drive.ArtlistRootFolder, ArtlistPath),
-			RequireSubpath: false,
-			ConflictPolicy: ConflictSkip, // curated artlist asset
-		},
 		// DestinationClipMetadata (P0-#1 atomic-RMW cutover, July 2026):
 		// canonical policy for the per-folder metadata.json sidecar
 		// that backs UpdateCumulativeMetadataJSON. The sidecar lives
@@ -153,7 +143,10 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			ConflictPolicy: ConflictOverwrite, // latest metadata.json wins
 		},
 		// DestinationStock: licensed stock footage. Immutable
-		// versioned uploads.
+		// versioned uploads. It also owns the assets of the retired
+		// Artlist destination: the legacy "artlist" key is folded into
+		// this one before lookup (CanonicalizeDestination), so persisted
+		// rows land in this root with this conflict policy.
 		DestinationStock: {
 			RootFolderID:   cfg.Drive.StockFolder(),
 			Namespace:      "stock",

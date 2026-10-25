@@ -43,7 +43,6 @@ type GenerationSpec struct {
 
 	// ── Feature flags ────────────────────────────────────────────────
 	ExtractEntities   bool   `json:"extract_entities,omitempty"`
-	ArtlistSearch     bool   `json:"artlist_search,omitempty"`
 	StockSearch       bool   `json:"stock_search,omitempty"`
 	GenerateMetadata  bool   `json:"generate_metadata,omitempty"`
 	VoiceoverGroup    string `json:"voiceover_group,omitempty"`

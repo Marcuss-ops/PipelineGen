@@ -67,11 +67,6 @@ type LocalizedRenderEnqueuerConfig struct {
 	// FolderAdmin creates/reuses a per-script child under FolderID.
 	FolderAdmin drive.Admin
 	JobBroker   job.JobBroker
-	// DocFolderID is the Drive folder the localization manifest doc publishes
-	// into. Empty disables doc assembly routing (Localize still runs render +
-	// upload; the doc publish fails closed if the localization service is
-	// built with a doc publisher and no folder).
-	DocFolderID string
 	// SubtitleFolderID is the Drive root for generated ASS subtitle artifacts.
 	SubtitleFolderID string
 	// Concurrency is the render fan-out parallelism per Localize call (a
@@ -521,16 +516,11 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		FolderID:          cfg.Drive.ClipsFolder(),
 		FolderAdmin:       root.Drive.Admin,
 		JobBroker:         root.Jobs.Repo,
-		DocFolderID:       cfg.Scripts.ScriptDocsFolderID,
 		SubtitleFolderID:  "1noSFMK_UeF_Xo-RRZWvH10U7tiL1jPP1",
 		Concurrency:       cfg.Scripts.LocalizedRenderConcurrency,
 		GlobalConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
 	}, log, resolver, materializer, transcriptResolver, root.Repos.SubtitleArtifactRepo, root.CanonicalAssetWriter)
 	runner.SetLocalizedRenderEnqueuer(adapter)
-	// One folder authority for the render lane and the documents lane: a
-	// language's script document must land in the SAME
-	// <documents root>/<job>/<language> folder as the clips it describes.
-	runner.SetDocumentFolderResolver(adapter)
 	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (RenderingGen/Chronon)",
 		zap.String("source_language", LocalizationConfigFromConfig(cfg).SourceLanguage),
 		zap.String("clips_folder", cfg.Drive.ClipsFolder()))

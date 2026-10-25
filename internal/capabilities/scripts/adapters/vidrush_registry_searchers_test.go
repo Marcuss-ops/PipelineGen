@@ -14,17 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
-type boundedVidRushSearchProvider struct {
-	active    atomic.Int32
-	maxActive atomic.Int32
-	queries   atomic.Int32
-	failQuery string
-}
-
-type rateLimitedVidRushSearchProvider struct {
-	calls atomic.Int32
-}
-
 type roundRobinImageSearchProvider struct {
 	queries []string
 }
@@ -45,93 +34,6 @@ func (*roundRobinImageSearchProvider) Acquire(context.Context, scriptpkg.Segment
 
 func (*roundRobinImageSearchProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	return scriptports.VerifiedArtifact{}, errors.New("not used")
-}
-
-func (p *rateLimitedVidRushSearchProvider) Name() string { return scriptpkg.VidRushProviderArtlist }
-
-func (p *rateLimitedVidRushSearchProvider) Search(_ context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
-	if p.calls.Add(1) == 1 {
-		return nil, errors.New("artlist: invalid response: status 429")
-	}
-	return []scriptpkg.SegmentAssetCandidate{{
-		AssetID: "retry-asset", Provider: p.Name(), SourceURL: "https://cdn.example/retry-asset.m3u8",
-		Query: req.Query,
-	}}, nil
-}
-
-func (*rateLimitedVidRushSearchProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
-	return scriptports.LocalArtifact{}, nil
-}
-func (*rateLimitedVidRushSearchProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
-	return scriptports.VerifiedArtifact{}, nil
-}
-
-func (p *boundedVidRushSearchProvider) Name() string { return scriptpkg.VidRushProviderArtlist }
-
-func (p *boundedVidRushSearchProvider) Search(ctx context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
-	if req.Query == p.failQuery {
-		return nil, errors.New("provider query failed")
-	}
-	current := p.active.Add(1)
-	defer p.active.Add(-1)
-	p.queries.Add(1)
-	for {
-		previous := p.maxActive.Load()
-		if current <= previous || p.maxActive.CompareAndSwap(previous, current) {
-			break
-		}
-	}
-	select {
-	case <-time.After(10 * time.Millisecond):
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	return []scriptpkg.SegmentAssetCandidate{{
-		AssetID: "asset-" + req.Query, Provider: p.Name(),
-		SourceURL: "https://cdn.example/" + req.Query + ".m3u8",
-	}}, nil
-}
-
-func (*boundedVidRushSearchProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
-	return scriptports.LocalArtifact{}, nil
-}
-
-// querysetCountingArtlistSearcher records SearchClips calls for the query-set dedup
-// pin below.
-type querysetCountingArtlistSearcher struct {
-	calls atomic.Int32
-}
-
-func (s *querysetCountingArtlistSearcher) SearchClips(_ context.Context, _ string, phrases []string) ([]ArtlistClipMatch, error) {
-	s.calls.Add(1)
-	return []ArtlistClipMatch{{Phrase: phrases[0], ClipNames: []string{"clip-1"}, ClipDriveLinks: []string{"https://cdn.example/clip-1"}}}, nil
-}
-func (*boundedVidRushSearchProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
-	return scriptports.VerifiedArtifact{}, nil
-}
-
-func TestVidRushRegistryMediaResolverUsesBoundedFanout(t *testing.T) {
-	provider := &boundedVidRushSearchProvider{}
-	registry := NewVidRushAssetProviderRegistry()
-	if err := registry.Register(provider); err != nil {
-		t.Fatal(err)
-	}
-	registry.Freeze()
-
-	phrases := []string{"one", "two", "three", "four", "five"}
-	matches, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchClips(context.Background(), "scene", phrases)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) != len(phrases) {
-		t.Fatalf("matches = %d, want %d", len(matches), len(phrases))
-	}
-	if got := provider.queries.Load(); got != int32(len(phrases)) {
-		t.Fatalf("provider queries = %d, want %d", got, len(phrases))
-	}
-	if got := provider.maxActive.Load(); got > 3 {
-		t.Fatalf("max concurrent provider calls = %d, want <= 3", got)
-	}
 }
 
 func TestVidRushRegistryMediaResolverSearchImagesKeepsVariantsInTopPool(t *testing.T) {
@@ -163,40 +65,6 @@ func TestVidRushRegistryMediaResolverSearchImagesKeepsVariantsInTopPool(t *testi
 	}
 }
 
-func TestVidRushRegistryMediaResolverPreservesPartialResultsAndError(t *testing.T) {
-	provider := &boundedVidRushSearchProvider{failQuery: "bad"}
-	registry := NewVidRushAssetProviderRegistry()
-	if err := registry.Register(provider); err != nil {
-		t.Fatal(err)
-	}
-	registry.Freeze()
-
-	matches, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchClips(context.Background(), "scene", []string{"good", "bad"})
-	if err == nil || !strings.Contains(err.Error(), "bad") {
-		t.Fatalf("error = %v, want failed query context", err)
-	}
-	if len(matches) != 1 || matches[0].Phrase != "good" {
-		t.Fatalf("partial matches = %#v, want the successful query", matches)
-	}
-}
-
-func TestVidRushRegistryMediaResolverRetriesRateLimit(t *testing.T) {
-	provider := &rateLimitedVidRushSearchProvider{}
-	registry := NewVidRushAssetProviderRegistry()
-	if err := registry.Register(provider); err != nil {
-		t.Fatal(err)
-	}
-	registry.Freeze()
-
-	matches, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchClips(context.Background(), "scene", []string{"coastal road"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) != 1 || provider.calls.Load() != 2 {
-		t.Fatalf("matches=%d calls=%d, want one match after one bounded retry", len(matches), provider.calls.Load())
-	}
-}
-
 // fanoutGate coordinates the two provider searchers so a test can prove they
 // start concurrently rather than sequentially.
 type fanoutGate struct {
@@ -204,20 +72,30 @@ type fanoutGate struct {
 	release chan struct{}
 }
 
-type gatedArtlistSearcher struct {
+type gatedYouTubeProvider struct {
 	calls atomic.Int32
 	gate  *fanoutGate
 }
 
-func (s *gatedArtlistSearcher) SearchClips(ctx context.Context, _ string, phrases []string) ([]ArtlistClipMatch, error) {
-	s.calls.Add(1)
-	s.gate.entered <- "artlist"
+func (p *gatedYouTubeProvider) Name() string { return scriptpkg.VidRushProviderYouTube }
+
+func (p *gatedYouTubeProvider) Search(ctx context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	p.calls.Add(1)
+	p.gate.entered <- "youtube"
 	select {
-	case <-s.gate.release:
+	case <-p.gate.release:
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	return []ArtlistClipMatch{{Phrase: phrases[0], ClipNames: []string{"clip-1"}, ClipDriveLinks: []string{"https://cdn.example/clip-1"}}}, nil
+	return []scriptpkg.SegmentAssetCandidate{{AssetID: "yt-1", Provider: p.Name(), SourceURL: "https://youtu.be/yt-1", Query: req.Query}}, nil
+}
+
+func (*gatedYouTubeProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	return scriptports.LocalArtifact{}, errors.New("not used")
+}
+
+func (*gatedYouTubeProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	return scriptports.VerifiedArtifact{}, errors.New("not used")
 }
 
 type gatedImageSearcher struct {
@@ -238,25 +116,28 @@ func (s *gatedImageSearcher) SearchImages(ctx context.Context, req InternetImage
 
 func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 	gate := &fanoutGate{entered: make(chan string, 2), release: make(chan struct{})}
-	artlist := &gatedArtlistSearcher{gate: gate}
+	youtube := &gatedYouTubeProvider{gate: gate}
 	images := &gatedImageSearcher{gate: gate}
-	fanout := NewVidRushProviderFanout(artlist, images)
+	fanout := NewVidRushProviderFanoutWithYouTube(images, youtube)
 
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Title: "parallel",
 		MediaPlan: mediadomain.MediaPlanSpec{
 			ProviderPolicy: mediadomain.MediaProviderPolicy{
-				Artlist:        mediadomain.MediaToggleEnabled,
+				YouTube:        mediadomain.MediaToggleEnabled,
 				InternetImages: mediadomain.MediaToggleEnabled,
 			},
+			Sources: []mediadomain.SegmentMediaSource{{
+				SegmentID: "seg-1", Provider: scriptpkg.VidRushProviderYouTube,
+				SourceURL: "https://youtu.be/seg-1", Mode: mediadomain.SegmentMediaSourceModeSuggested,
+			}},
 		},
 	}
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "seg-1", TextHash: "hash", Text: "scene text",
 		Insights: scriptpkg.SegmentInsights{
-			SegmentID:      "seg-1",
-			ArtlistQueries: []string{"artlist query"},
-			ImageQueries:   []string{"image query"},
+			SegmentID:    "seg-1",
+			ImageQueries: []string{"image query"},
 		},
 	}
 
@@ -286,8 +167,8 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 		t.Fatalf("ResolveProviders error: %v", err)
 	}
 
-	if artlist.calls.Load() != 1 || images.calls.Load() != 1 {
-		t.Fatalf("artlist calls=%d images calls=%d, want 1 each", artlist.calls.Load(), images.calls.Load())
+	if youtube.calls.Load() != 1 || images.calls.Load() != 1 {
+		t.Fatalf("youtube calls=%d images calls=%d, want 1 each", youtube.calls.Load(), images.calls.Load())
 	}
 	if result.Assets.PrimaryVideo != nil {
 		t.Fatalf("provider fanout selected a primary: %+v", result.Assets.PrimaryVideo)
@@ -322,7 +203,7 @@ func (s *rejectAllPersonImages) ScoreImageCandidates(_ context.Context, _ string
 
 func TestVidRushFanoutAppliesImageGateToCachedCandidates(t *testing.T) {
 	scorer := &rejectAllPersonImages{}
-	fanout := NewVidRushProviderFanout(nil, nil).WithSemanticScorer(scorer)
+	fanout := NewVidRushProviderFanout(nil).WithSemanticScorer(scorer)
 	candidate := scriptpkg.SegmentAssetCandidate{
 		AssetID: "cached-person", Provider: scriptpkg.VidRushProviderInternetImages,
 		SourceURL: "https://images.example/cached-person.jpg", Entity: "Example Person",
@@ -341,7 +222,7 @@ func TestVidRushFanoutAppliesImageGateToCachedCandidates(t *testing.T) {
 
 func TestVidRushFanoutUsesPortraitGateOnlyForPersonQueries(t *testing.T) {
 	scorer := &rejectAllPersonImages{}
-	fanout := NewVidRushProviderFanout(nil, nil).WithSemanticScorer(scorer)
+	fanout := NewVidRushProviderFanout(nil).WithSemanticScorer(scorer)
 	segment := scriptpkg.VidRushSegmentResult{SegmentID: "ctx-01", Insights: scriptpkg.SegmentInsights{
 		Entities: []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON"}},
 	}}
@@ -374,7 +255,7 @@ func TestVidRushProviderFanoutCachesEmptyImageResults(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
-	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, newMemoryVidRushCache())
+	fanout := NewVidRushProviderFanoutWithCache(searcher, newMemoryVidRushCache())
 
 	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -426,7 +307,7 @@ func TestVidRushProviderFanoutRetriesEmptyEntityImageResults(t *testing.T) {
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
 	cache := newMemoryVidRushCache()
-	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, cache)
+	fanout := NewVidRushProviderFanoutWithCache(searcher, cache)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Topic:    "Garlasco",
 		Language: "it",
@@ -462,7 +343,7 @@ func TestVidRushProviderFanoutForceRefreshBypassesCache(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
-	fanout := NewVidRushProviderFanoutWithCache(nil, searcher, newMemoryVidRushCache())
+	fanout := NewVidRushProviderFanoutWithCache(searcher, newMemoryVidRushCache())
 
 	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -497,76 +378,5 @@ func TestVidRushProviderFanoutForceRefreshBypassesCache(t *testing.T) {
 	}
 	if got := b.Cache.InternetImages; got == "HIT_EXACT" {
 		t.Fatalf("force-refresh cache state = %q, want a fresh search (MISS/REFRESHED)", got)
-	}
-}
-
-// TestVidRushArtlistQuerySetSharedAcrossSegments pins the P6a anti-muda
-// contract: two DIFFERENT segments (different ids/hashes) with the SAME
-// Artlist query set pay ONE provider search — the raw matches are shared and
-// each segment stamps its own identity at conversion.
-func TestVidRushArtlistQuerySetSharedAcrossSegments(t *testing.T) {
-	vidrushArtlistCache = cacheutil.NewLRU(vidrushArtlistL1Capacity)
-	searcher := &querysetCountingArtlistSearcher{}
-	fanout := NewVidRushProviderFanout(searcher, nil)
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		Title:    "queryset-dedup",
-		Language: "en",
-		MediaPlan: mediadomain.MediaPlanSpec{
-			ProviderPolicy: mediadomain.MediaProviderPolicy{Artlist: mediadomain.MediaToggleEnabled},
-		},
-	}
-	segmentA := scriptpkg.VidRushSegmentResult{
-		SegmentID: "seg-a", TextHash: "hash-a", Text: "first text about Ali",
-		Insights: scriptpkg.SegmentInsights{SegmentID: "seg-a", ArtlistQueries: []string{"Muhammad Ali"}},
-	}
-	segmentB := scriptpkg.VidRushSegmentResult{
-		SegmentID: "seg-b", TextHash: "hash-b", Text: "second text about Ali",
-		Insights: scriptpkg.SegmentInsights{SegmentID: "seg-b", ArtlistQueries: []string{"  muhammad ali "}},
-	}
-
-	a, err := fanout.ResolveProviders(context.Background(), plan, segmentA)
-	if err != nil {
-		t.Fatalf("segment A: %v", err)
-	}
-	b, err := fanout.ResolveProviders(context.Background(), plan, segmentB)
-	if err != nil {
-		t.Fatalf("segment B: %v", err)
-	}
-	if got := searcher.calls.Load(); got != 1 {
-		t.Fatalf("provider searches = %d, want 1 shared across both segments", got)
-	}
-	for _, candidate := range a.Assets.Candidates {
-		if candidate.SegmentID != "seg-a" {
-			t.Fatalf("segment A candidate carries %q, want seg-a", candidate.SegmentID)
-		}
-	}
-	for _, candidate := range b.Assets.Candidates {
-		if candidate.SegmentID != "seg-b" {
-			t.Fatalf("segment B candidate carries %q, want seg-b", candidate.SegmentID)
-		}
-	}
-	if len(a.Assets.Candidates) == 0 || len(b.Assets.Candidates) == 0 {
-		t.Fatal("both segments must receive candidates from the shared matches")
-	}
-}
-
-// TestVidRushArtlistQuerySetKey pins the normalization: order, case and
-// padding variants of one query set share a single key.
-func TestVidRushArtlistQuerySetKey(t *testing.T) {
-	base := vidRushArtlistQuerySetKey("Title", "en", []string{"Muhammad Ali", "Boxing"})
-	for _, variant := range [][]string{
-		{"boxing", "muhammad ali"},
-		{"  Muhammad Ali ", "BOXING"},
-		{"Boxing", "Muhammad Ali"},
-	} {
-		if got := vidRushArtlistQuerySetKey("Title", "en", variant); got != base {
-			t.Fatalf("variant %q has a different key", variant)
-		}
-	}
-	if other := vidRushArtlistQuerySetKey("Title", "en", []string{"Muhammad Ali"}); other == base {
-		t.Fatal("a different query set must not share the key")
-	}
-	if other := vidRushArtlistQuerySetKey("Other", "en", []string{"Muhammad Ali", "Boxing"}); other == base {
-		t.Fatal("a different title must not share the key")
 	}
 }

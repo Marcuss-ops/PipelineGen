@@ -24,10 +24,10 @@ func (tractorE2EEnricher) Enrich(_ context.Context, _ *scriptpkg.ResolvedGenerat
 		Entities:    []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON", Confidence: .99}, {Value: "Iowa", Type: "PLACE", Confidence: .96}, {Value: "1892", Type: "DATE", Confidence: .99}},
 	}
 	profile.Retrieval = &scriptpkg.RetrievalIntent{
-		YouTube: []string{"John Froelich first gasoline tractor 1892"}, Artlist: []string{"steam tractor farm field", "vintage agricultural machinery"}, Images: []string{"John Froelich", "1892 gasoline tractor"},
+		YouTube: []string{"John Froelich first gasoline tractor 1892"}, Images: []string{"John Froelich", "1892 gasoline tractor"},
 	}
 	return scriptpkg.VidRushSegmentResult{SegmentID: scene.ID, SceneID: scene.ID, Position: scene.Index, Text: scene.Text, TextHash: profile.TextHash, Insights: scriptpkg.SegmentInsights{
-		SegmentID: scene.ID, TextHash: profile.TextHash, Entities: profile.Entities, ImportantWords: []string{"trattori", "agricoltura"}, ImportantPhrases: []string{"origine dei primi trattori"}, YouTubeQueries: profile.Retrieval.YouTube, ArtlistQueries: profile.Retrieval.Artlist, ImageQueries: profile.Retrieval.Images,
+		SegmentID: scene.ID, TextHash: profile.TextHash, Entities: profile.Entities, ImportantWords: []string{"trattori", "agricoltura"}, ImportantPhrases: []string{"origine dei primi trattori"}, YouTubeQueries: profile.Retrieval.YouTube, ImageQueries: profile.Retrieval.Images,
 	}}, nil
 }
 
@@ -40,7 +40,7 @@ func (r *tractorE2EResolver) ResolveProviders(_ context.Context, _ *scriptpkg.Re
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
-	segment.Assets.Candidates = append(segment.Assets.Candidates, scriptpkg.SegmentAssetCandidate{AssetID: "remote-asset", Provider: scriptpkg.VidRushProviderArtlist, Query: segment.Insights.ArtlistQueries[0]})
+	segment.Assets.Candidates = append(segment.Assets.Candidates, scriptpkg.SegmentAssetCandidate{AssetID: "remote-asset", Provider: scriptpkg.VidRushProviderYouTube, Query: segment.Insights.ImportantPhrases[0]})
 	return segment, nil
 }
 
@@ -68,7 +68,7 @@ func (c *tractorE2ECatalog) SearchAssets(_ context.Context, q assetsearch.AssetS
 }
 
 func TestTractorSegmentsEndToEndProfileQueriesAndIndexedReuse(t *testing.T) {
-	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Quando sono stati inventati i trattori?", Language: "it", Model: "gemma3:1b", PromptVersion: "segment-v1", MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled}}}
+	plan := &scriptpkg.ResolvedGenerationPlan{Title: "Quando sono stati inventati i trattori?", Language: "it", Model: "gemma3:1b", PromptVersion: "segment-v1", MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, InternetImages: mediadomain.MediaToggleEnabled}}}
 	coordinator := scriptgeneration.NewVidRushIncrementalCoordinator(tractorE2EEnricher{}, plan, 2)
 	remote := &tractorE2EResolver{}
 	materializer := &tractorE2EMaterializer{}
@@ -82,7 +82,6 @@ func TestTractorSegmentsEndToEndProfileQueriesAndIndexedReuse(t *testing.T) {
 	result := results[0]
 	require.Len(t, result.Insights.Entities, 3)
 	require.Contains(t, result.Insights.YouTubeQueries, "John Froelich first gasoline tractor 1892")
-	require.Contains(t, result.Insights.ArtlistQueries, "steam tractor farm field")
 	require.Contains(t, result.Insights.ImageQueries, "John Froelich")
 	require.Equal(t, 1, remote.calls)
 	require.Equal(t, 1, materializer.calls)

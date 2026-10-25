@@ -89,7 +89,7 @@ func fiveDistinctScenes() []Scene {
 
 // R01: job with 5 scenes, no important_phrases => manifest + highlights.
 func TestEditorialRuntimeCert_R01_FiveScenesSealManifest(t *testing.T) {
-	runner, repo, textGen, _, _, _, _ := newTestRunner()
+	runner, repo, textGen, _, _, _ := newTestRunner()
 	textGen.scenes = fiveDistinctScenes()
 	title := "Scene title"
 	hl := make([]scriptpkg.SceneHighlight, 0, 5)
@@ -102,10 +102,9 @@ func TestEditorialRuntimeCert_R01_FiveScenesSealManifest(t *testing.T) {
 			GloballyIndexed: false,
 		})
 	}
-	runner.SetPhraseImpactAnalyzer(&stubSceneHighlightAnalyzer{
-		stubPhraseImpactAnalyzer: stubPhraseImpactAnalyzer{result: scriptpkg.PhraseImpactResult{Summary: "auto"}},
-		highlights:               hl,
-	})
+	runner.SetSceneSemanticAnalyzer(&stubCombinedSemanticAnalyzer{result: scriptpkg.PhraseImpactResult{
+		Summary: "auto", SceneHighlights: hl,
+	}})
 	req := defaultTestRequest()
 	req.MediaPlan.Extraction.ImportantPhrases = nil
 	runID := "run-cert-r01-001"
@@ -258,15 +257,14 @@ func TestEditorialRuntimeCert_R12_RetryStable(t *testing.T) {
 
 // R14: resume from checkpoint produces no duplicated scenes or manifests.
 func TestEditorialRuntimeCert_R14_ResumeNoDuplicates(t *testing.T) {
-	runner, repo, textGen, _, _, _, _ := newTestRunner()
+	runner, repo, textGen, _, _, _ := newTestRunner()
 	textGen.scenes = fiveDistinctScenes()[:2]
-	runner.SetPhraseImpactAnalyzer(&stubSceneHighlightAnalyzer{
-		stubPhraseImpactAnalyzer: stubPhraseImpactAnalyzer{result: scriptpkg.PhraseImpactResult{Summary: "s"}},
-		highlights: []scriptpkg.SceneHighlight{
+	runner.SetSceneSemanticAnalyzer(&stubCombinedSemanticAnalyzer{result: scriptpkg.PhraseImpactResult{
+		Summary: "s", SceneHighlights: []scriptpkg.SceneHighlight{
 			{SceneID: "scene-0", TitleStatus: "unavailable", Bullets: []scriptpkg.SceneBulletSpan{{SentenceStart: 0, SentenceEnd: 1, Text: "b0"}}},
 			{SceneID: "scene-1", TitleStatus: "unavailable", Bullets: []scriptpkg.SceneBulletSpan{{SentenceStart: 1, SentenceEnd: 2, Text: "b1"}}},
 		},
-	})
+	}})
 	req := defaultTestRequest()
 	runID := "run-cert-r14-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))
@@ -287,8 +285,8 @@ func TestEditorialRuntimeCert_R14_ResumeNoDuplicates(t *testing.T) {
 
 // R15: worker down => run continues, no valid editorial declared.
 func TestEditorialRuntimeCert_R15_WorkerDownNoValidEditorial(t *testing.T) {
-	runner, repo, _, _, _, _, _ := newTestRunner()
-	runner.SetPhraseImpactAnalyzer(&stubPhraseImpactAnalyzer{err: assert.AnError})
+	runner, repo, _, _, _, _ := newTestRunner()
+	runner.SetSceneSemanticAnalyzer(&stubCombinedSemanticAnalyzer{err: assert.AnError})
 	req := defaultTestRequest()
 	runID := "run-cert-r15-001"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{ID: runID, Request: req, Status: RunStatusPending, CurrentStage: StageNormalizing}))

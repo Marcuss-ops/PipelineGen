@@ -53,7 +53,6 @@ func chdirToProjectRoot(t *testing.T) {
 }
 
 // minimalConfig returns a config that disables all heavy external features
-// (Drive, Artlist, YouTube, VectorSearch, Reranker, VLM, ClipIndexer,
 // background jobs) so NewComposition runs without network round-trips.
 // Mirrors the fixture in wire_test.go so composition has the same baseline.
 // Package-shared across all 3 composition_*_test.go files.

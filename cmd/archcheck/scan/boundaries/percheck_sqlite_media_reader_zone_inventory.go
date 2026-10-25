@@ -82,12 +82,8 @@ package boundaries
 //     in the inventory (it still reads media_assets for Get/Save/List).
 //
 //     `clips_statistics.go` left the inventory AND the tree: its live
-//     `CountBySource` (the /api/artlist/diagnostics per-source total) now
 //     resolves on the media SSOT through pgmedia.MediaStatisticsReader, exposed
-//     as a dedicated optional artlist port (artlist.SourceCounter then; widened
-//     to artlist.MediaStats in sub-wave B' below, when its two siblings moved
 //     too), and its dead CountPersistedSince had already gone. The count was
-//     moved OFF artlist.AssetStore rather than stubbed on the repository, so
 //     this package never reads media_assets again: the operational store keeps
 //     implementing only its operational methods (seven at that point, five after
 //     sub-wave B'). With no media handle the port stays nil and the diagnostics
@@ -124,9 +120,7 @@ package boundaries
 //     LastUpdatedAtForTerm, the media half of a SPLIT row) were the only reason
 //     the operational store still owned a media_assets aggregate: both now
 //     resolve on the media SSOT through `pgmedia.MediaStatisticsReader`,
-//     exposed as the widened optional `artlist.MediaStats` port (the same port
 //     that already carried the per-source count). Moving them OFF the port is
-//     what let the file go: `artlist.AssetStore` keeps only its five operational
 //     methods, and the chained-dead `youtube/ports.ClipStorePort.CountClips`
 //     (zero call sites) was deleted with it. Two semantics were deliberately
 //     preserved and pinned on the live engine — CountClips keeps the

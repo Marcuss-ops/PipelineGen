@@ -48,11 +48,9 @@ func TestRunner_VoiceoverRequiresProjectBeforeTTS(t *testing.T) {
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := &recordingProjectGenerator{}
-	docPub := newStubDocumentPublisher()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 
 	req := defaultTestRequest()
 	req.Project = "" // unresolved project → fail before any TTS call
@@ -82,11 +80,9 @@ func TestRunner_ProjectPropagatesToEverySceneVoiceover(t *testing.T) {
 	textGen := newStubTextGenerator(defaultTestScenes())
 	translator := newStubTranslator()
 	voiceoverGen := &recordingProjectGenerator{}
-	docPub := newStubDocumentPublisher()
 
-	runner := NewRunner(repo, textGen, translator, voiceoverGen, docPub, canonicalTestDocumentRenderer{})
+	runner := NewRunner(repo, textGen, translator, voiceoverGen)
 	runner.SetLogger(zap.NewNop())
-	runner.SetScriptDocsFolderID("test-docs-folder")
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
@@ -94,7 +90,6 @@ func TestRunner_ProjectPropagatesToEverySceneVoiceover(t *testing.T) {
 	req.Audio = capabilityaudio.AudioModeCombinedTimeline
 	req.Source.Type = SourceText
 	req.Languages = []Language{"en"}
-	req.Docs = DocumentsConfig{Enabled: true, Languages: []Language{"en"}}
 
 	runID := "run-project-propagates"
 	require.NoError(t, repo.Create(context.Background(), &GenerationRun{

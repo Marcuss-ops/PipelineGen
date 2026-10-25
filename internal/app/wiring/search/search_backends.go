@@ -240,7 +240,6 @@ func sourceOrAll(s string) string {
 // (PR-PROVIDERS-SEARCHAGGREGATOR-REMOVE, July 2026) — the legacy
 // provider→aggregator composition-only bridge is RETIRED. The
 // 6 canonical backends (semantic + local + youtube-live,
-// artlist-live, stock, images) are now registered via
 // BuildSearchBackends above; every search consumer routes
 // through *search.Aggregator. The archcheck forward-prevention
 // gate `percheck_providers_searchaggregator_ban` pins the

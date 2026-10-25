@@ -13,7 +13,6 @@ import (
 // minimal — never return the whole *Config). The delegation order
 // matches the canonical accessors on *config.Config:
 //
-//	cfg.Drive.X   for ClipsDriveFolder / ArtlistDriveFolder / StockDriveFolder
 //	cfg.Storage.X for MediaPath / TempPath / DataDir / YoutubeClipsPath / AssetsPath
 //
 // HC-1 (June 2026): `timeouts appjobs.TimeoutResolver` is the typed
@@ -58,13 +57,6 @@ func (a *clipsCfgAdapter) RootFolder() string {
 		return ""
 	}
 	return a.cfg.Drive.RootFolder()
-}
-
-func (a *clipsCfgAdapter) ArtlistDriveFolder() string {
-	if a.cfg == nil {
-		return ""
-	}
-	return a.cfg.Drive.ArtlistFolder()
 }
 
 func (a *clipsCfgAdapter) StockDriveFolder() string {

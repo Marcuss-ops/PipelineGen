@@ -17,12 +17,12 @@ func docsItem() scriptpkg.GenerationItemV2 {
 	}
 }
 
-func TestValidateItemDocsFailClosedWithoutFolder(t *testing.T) {
+func TestValidateItemDocsEnabledFailsClosed(t *testing.T) {
 	item := docsItem()
 	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}}
 	err := ValidateItem(item)
 	if err == nil {
-		t.Fatal("docs.enabled=true with no resolvable folder must fail validation")
+		t.Fatal("docs.enabled=true must fail validation: Google Docs is retired")
 	}
 	var planErr *scriptpkg.PlanInvalidError
 	if !errors.As(err, &planErr) {
@@ -30,21 +30,21 @@ func TestValidateItemDocsFailClosedWithoutFolder(t *testing.T) {
 	}
 	found := false
 	for _, d := range planErr.Details {
-		if strings.Contains(d, "docs enabled but no script docs folder configured") {
+		if strings.Contains(d, "Google Docs publication has been retired") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected docs folder failure detail, got %v", planErr.Details)
+		t.Fatalf("expected the retirement failure detail, got %v", planErr.Details)
 	}
 }
 
-func TestValidateItemDocsResolvedFolderPasses(t *testing.T) {
+func TestValidateItemDocsFolderDoesNotUnretire(t *testing.T) {
 	item := docsItem()
 	item.Docs = scriptpkg.DocumentsSpec{Enabled: true, Languages: []string{"it"}, FolderID: "RESOLVED_FOLDER"}
-	if err := ValidateItem(item); err != nil {
-		t.Fatalf("docs.enabled=true with a resolved folder must validate: %v", err)
+	if err := ValidateItem(item); err == nil {
+		t.Fatal("a folder id must not resurrect the retired capability")
 	}
 }
 

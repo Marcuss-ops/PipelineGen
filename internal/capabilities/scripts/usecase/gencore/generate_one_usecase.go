@@ -533,7 +533,6 @@ func projectCanonicalTimings(report *kernobs.RunReport) scriptpkg.GenerationTimi
 	vidrush := VidRushTimingFields(out.PostprocessMs)
 	out.SegmentExtractionMs = vidrush.SegmentExtractionMs
 	out.QueryGenerationMs = vidrush.QueryGenerationMs
-	out.ArtlistSearchMs = vidrush.ArtlistSearchMs
 	out.InternetImageSearchMs = vidrush.InternetImageSearchMs
 	out.ImageGenerationMs = vidrush.ImageGenerationMs
 	out.SQLiteMs = vidrush.SQLiteMs

@@ -1,6 +1,5 @@
 // Package reranker provides a standalone CrossEncoder reranking client.
 // It calls the Python reranker_server.py to reorder Qdrant search results
-// for all media types: clips, stock, artlist, images, voiceovers, AI video.
 //
 // Design principles:
 //   - Standalone module (not coupled to realtime or Qdrant)
@@ -241,4 +240,3 @@ func validateResults(candidates []Candidate, results []Result) error {
 
 // BuildCandidateText creates a rich description string for the reranker.
 // The more fields provided, the better the CrossEncoder can understand the match.
-// Works for any media type: clips, stock, artlist, images, voiceovers, AI video.

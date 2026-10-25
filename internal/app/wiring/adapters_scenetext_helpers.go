@@ -18,7 +18,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func buildEditorialPrompt(topic, sourceText, title, query string, targetWords, minWords int, style, guidelines, language, promptVersion string) string {
-	sourceText, _ = scriptpkg.ParseArtlistDirectives(sourceText)
+	sourceText = strings.TrimSpace(sourceText)
 	var parts []string
 	if topic != "" {
 		parts = append(parts, "Topic: "+topic)
@@ -72,7 +72,6 @@ func genSourceToSourceSpec(src scriptgen.Source) scriptpkg.SourceSpec {
 		Type:               scriptpkg.SourceType(src.Type),
 		Topic:              src.Topic,
 		SourceText:         src.SourceText,
-		ArtlistKeywords:    copyStrings(src.ArtlistKeywords),
 		Guidelines:         src.Guidelines,
 		ClipIDs:            copyStrings(src.ClipIDs),
 		NumClips:           src.NumClips,

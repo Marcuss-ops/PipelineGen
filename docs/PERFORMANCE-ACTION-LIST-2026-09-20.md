@@ -172,15 +172,6 @@ Evidenza iniziale: il profilo `/etc` attivo richiede `pipe`, `hardware_encoder: 
 
 Evidenza iniziale: report del 4 ottobre mostrano 27–39 s di font preflight. Stato: aperto; nessuna cache da introdurre prima dell’audit delle dipendenze.
 
-### 5. Docs disabilitato end-to-end — P1
-
-- [ ] Ispezionare il payload persistito completo, inclusi i campi legacy (`docs_enabled`) e i livelli envelope/request, e correlare con stato/operazione effettiva `document.publish` dello stesso run.
-- [ ] Riprodurre con fixture locale l’intero percorso payload → normalizzazione/builder → request durevole → runner/worker; l’opt-out canonico deve essere autorevole anche se un campo legacy contraddittorio è presente, oppure il payload deve essere respinto esplicitamente.
-- [ ] Aggiungere test che asseriscano zero invocazioni al publisher (non solo run riuscito o stage saltato) quando Docs è disabilitato, e un test positivo quando è abilitato.
-- [ ] Criterio: payload persistito `docs.enabled=false` non deve produrre operazioni di creazione/render/pubblicazione Docs; log/report deve distinguere la fase Docs saltata dal drain indipendente degli upload voiceover.
-
-Evidenza iniziale: `ResolveDocsConfig` abilita Docs con `Docs.Enabled || DocsEnabled`; il builder copia il flag canonico anche nel legacy. Verificare il payload completo e le operazioni prima di attribuire il report a un bug del codice. Stato: aperto.
-
 ### Vincoli e aggiornamento
 
 - Conservare le modifiche locali già presenti nei repository `refactored`, `RenderingGen` e `Chronon3d`; non ripristinare o rifattorizzare file estranei.

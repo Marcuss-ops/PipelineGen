@@ -24,7 +24,7 @@ type CriticalPathStage struct {
 // A stage is top-level when its wall-time interval is not strictly contained
 // within any other stage's interval. This mirrors the script.generate
 // hierarchy (script.prepare → normalize/validate/source.resolve/plan,
-// script.postprocess → processors → persistence.sqlite/document.publish) so
+// script.postprocess → processors → persistence.sqlite) so
 // each wall-clock millisecond is attributed to exactly one sequential phase.
 type Breakdown struct {
 	// AttributedStageMs is the WALL TIME covered by the top-level

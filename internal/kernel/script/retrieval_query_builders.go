@@ -4,7 +4,6 @@ import "strings"
 
 const (
 	defaultYouTubeQueryLimit = 5
-	defaultArtlistQueryLimit = 5
 	defaultImageQueryLimit   = 5
 )
 
@@ -26,17 +25,6 @@ func BuildYouTubeQueries(profile SegmentSemanticProfile, limit int) []string {
 	return uniqueQueries(queries, limit)
 }
 
-// QueriesForArtlist uses a persisted canonical retrieval projection when one
-// exists, otherwise it derives the provider query from the semantic profile.
-// This is the only compatibility read path for pre-SceneIR results.
-func QueriesForArtlist(profile SegmentSemanticProfile, limit int) []string {
-	if profile.Retrieval != nil && len(profile.Retrieval.Artlist) > 0 {
-		return uniqueRetrievalQueries(profile.Retrieval.Artlist, normalizedQueryLimit(limit, defaultArtlistQueryLimit))
-	}
-	return BuildArtlistQueries(profile, limit)
-}
-
-// QueriesForImages is the image equivalent of QueriesForArtlist.
 func QueriesForImages(profile SegmentSemanticProfile, limit int) []string {
 	if profile.Retrieval != nil && len(profile.Retrieval.Images) > 0 {
 		return uniqueRetrievalQueries(profile.Retrieval.Images, normalizedQueryLimit(limit, defaultImageQueryLimit))
@@ -74,25 +62,6 @@ func BuildYouTubeQueriesWithExplicit(profile SegmentSemanticProfile, explicit st
 	}
 	queries = append(queries, BuildYouTubeQueries(profile, limit)...)
 	return uniqueQueries(queries, normalizedQueryLimit(limit, defaultYouTubeQueryLimit))
-}
-
-// BuildArtlistQueries creates visual-first queries from VisualTerms, visual
-// entities and contextual terms. Editorial narrative phrases are not provider
-// evidence and therefore never enter this provider projection.
-func BuildArtlistQueries(profile SegmentSemanticProfile, limit int) []string {
-	limit = normalizedQueryLimit(limit, defaultArtlistQueryLimit)
-	var queries []string
-	for _, term := range profile.VisualTerms {
-		queries = append(queries, term.Value)
-	}
-	queries = append(queries, termQuery(profile, TermKindVisual, TermKindContext, TermKindAction, TermKindTechnology))
-	queries = append(queries, joinQuery(weightedValues(profile.Keywords)...))
-	for _, entity := range profile.Entities {
-		if isVisualEntity(entity) {
-			queries = append(queries, joinQuery(append([]string{entity.Value}, termValues(profile, TermKindVisual, TermKindContext, TermKindTechnology)...)...))
-		}
-	}
-	return uniqueQueries(queries, limit)
 }
 
 // BuildImageQueries creates entity-first image queries, then falls back to

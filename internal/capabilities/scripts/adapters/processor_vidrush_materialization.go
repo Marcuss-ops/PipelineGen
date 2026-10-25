@@ -47,15 +47,9 @@ type vidRushMaterializedSegment struct {
 }
 
 const (
-	vidRushArtlistAcquireBudget = 3
 	// Provider calls are bounded independently from the postprocessor context.
 	// A failed remote provider must not consume the whole VidRush run while its
 	// fallback scraper or browser waits on an unavailable upstream.
-	// Browser-authenticated HLS downloads commonly need ~30 seconds before
-	// the scraper returns the verified local artifact. Keep this below the
-	// resolver's broader timeout while avoiding premature cancellation of a
-	// valid Artlist acquisition.
-	vidRushArtlistAcquireTimeout    = 120 * time.Second
 	vidRushImageAcquireTimeout      = 15 * time.Second
 	vidRushGenerationAcquireTimeout = 2 * time.Minute
 	vidRushVerifyTimeout            = 20 * time.Second
@@ -107,8 +101,7 @@ func (p *VidRushMaterializationProcessor) Name() ProcessorName {
 }
 
 func (p *VidRushMaterializationProcessor) Policy(plan *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
-	if plan != nil && (providerEnabledForVidRush(plan, scriptpkg.VidRushProviderArtlist) ||
-		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
+	if plan != nil && (providerEnabledForVidRush(plan, scriptpkg.VidRushProviderInternetImages) ||
 		providerEnabledForVidRush(plan, scriptpkg.VidRushProviderImageGeneration)) {
 		return ProcessorRequired
 	}
@@ -279,7 +272,6 @@ func (p *VidRushMaterializationProcessor) Materialize(ctx context.Context, plan 
 // shared acquire/verify/finalize path.
 func (p *VidRushMaterializationProcessor) materializeStockBoundEntityImages(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) (vidRushMaterializedSegment, error) {
 	cloned := CloneVidRushSegmentResult(segment)
-	cloned.Cache.Artlist = "BYPASSED"
 	cloned.Cache.ImageGeneration = "BYPASSED"
 	cloned.Cache.YouTube = "BYPASSED"
 	cloned.Cache.Binding = "STOCK_BOUND"
@@ -289,7 +281,6 @@ func (p *VidRushMaterializationProcessor) materializeStockBoundEntityImages(ctx 
 	}
 	imagePlan := *plan
 	imagePlan.MediaPlan = plan.MediaPlan.Clone()
-	imagePlan.MediaPlan.ProviderPolicy.Artlist = mediadomain.MediaToggleDisabled
 	imagePlan.MediaPlan.ProviderPolicy.YouTube = mediadomain.MediaToggleDisabled
 	imagePlan.MediaPlan.ProviderPolicy.ImageGeneration = mediadomain.MediaToggleDisabled
 	imagePlan.MediaPlan.ProviderPolicy.InternetImages = mediadomain.MediaToggleEnabled
@@ -299,7 +290,6 @@ func (p *VidRushMaterializationProcessor) materializeStockBoundEntityImages(ctx 
 		return vidRushMaterializedSegment{}, err
 	}
 	materialized.result.Assets.PrimaryVideo = primary
-	materialized.result.Cache.Artlist = "BYPASSED"
 	materialized.result.Cache.ImageGeneration = "BYPASSED"
 	materialized.result.Cache.YouTube = "BYPASSED"
 	materialized.result.Cache.Binding = "STOCK_BOUND"

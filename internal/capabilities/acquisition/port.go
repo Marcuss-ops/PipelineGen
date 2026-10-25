@@ -7,7 +7,6 @@
 // releases it (or it expires), with a deterministic CleanupToken for
 // idempotent release-on-retry. The legacy `assets.SourceStager` remains
 // active only for compatibility consumers that have not yet migrated
-// (stock, images, and jobs/assets). YouTube and Artlist now consume
 // this port directly.
 //
 // Why a NEW package? The acquisition namespace encapsulates the
@@ -20,7 +19,6 @@
 //
 // Pattern 0 (AGENTS.md): the port + types live in application-layer so
 // consumer pipelines can declare compile-time dependencies without
-// importing infrastructure. Stock, YouTube, and Artlist use this port;
 // remaining compatibility consumers are migrated separately.
 // Concrete implementations live under `internal/platform/acquisition/`.
 package acquisition
@@ -84,7 +82,6 @@ var (
 // ── SourceRef — the canonical "what to stage" descriptor ──────────────
 
 // SourceRef identifies what to acquire / stage. URL is the canonical
-// source locator (YouTube URL, Artlist m3u8, Drive file ID, etc. depending
 // on the implementation). DownloadSection is an optional time range in
 // yt-dlp format ("*00:01:20-00:01:35"); empty means "the full asset".
 //

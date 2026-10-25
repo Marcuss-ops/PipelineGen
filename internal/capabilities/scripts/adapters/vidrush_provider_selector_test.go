@@ -13,14 +13,14 @@ func TestVidRushProviderSelectorExistingLockedAssetWins(t *testing.T) {
 		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled},
 		Assignments: []mediadomain.SegmentMediaAssignment{{
 			SegmentID: "segment-1", Slot: mediadomain.SlotPrimaryVideo, Locked: true,
-			Asset: mediadomain.MediaRef{AssetID: "asset-existing", Provider: scriptpkg.VidRushProviderArtlist},
+			Asset: mediadomain.MediaRef{AssetID: "asset-existing", Provider: scriptpkg.VidRushProviderImageGeneration},
 		}},
 	}}
 	got, err := selector.Select(plan, scriptpkg.VidRushSegmentResult{SegmentID: "segment-1"}, "video")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Selected != scriptpkg.VidRushProviderArtlist || got.UsedAssetID != "asset-existing" {
+	if got.Selected != scriptpkg.VidRushProviderImageGeneration || got.UsedAssetID != "asset-existing" {
 		t.Fatalf("selection = %+v", got)
 	}
 }
@@ -28,13 +28,10 @@ func TestVidRushProviderSelectorExistingLockedAssetWins(t *testing.T) {
 func TestVidRushProviderSelectorHistoricalEntityPrefersYouTube(t *testing.T) {
 	selector := NewVidRushProviderSelector()
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
-		ProviderPolicy: mediadomain.MediaProviderPolicy{
-			YouTube: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleEnabled,
-		},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled},
 	}}
 	segment := scriptpkg.VidRushSegmentResult{SegmentID: "segment-2", Text: "John Froelich built a tractor in 1892.", Insights: scriptpkg.SegmentInsights{
-		Entities:       []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON"}, {Value: "1892", Type: "DATE"}},
-		ArtlistQueries: []string{"historic tractor"},
+		Entities: []scriptpkg.ExtractedEntity{{Value: "John Froelich", Type: "PERSON"}, {Value: "1892", Type: "DATE"}},
 	}}
 	got, err := selector.Select(plan, segment, "video")
 	if err != nil {
@@ -48,9 +45,7 @@ func TestVidRushProviderSelectorHistoricalEntityPrefersYouTube(t *testing.T) {
 func TestVidRushProviderSelectorImageContentPrefersInternetImages(t *testing.T) {
 	selector := NewVidRushProviderSelector()
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
-		ProviderPolicy: mediadomain.MediaProviderPolicy{
-			InternetImages: mediadomain.MediaToggleEnabled, Artlist: mediadomain.MediaToggleEnabled,
-		},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
 	}}
 	got, err := selector.Select(plan, scriptpkg.VidRushSegmentResult{SegmentID: "segment-3", Insights: scriptpkg.SegmentInsights{
 		Entities:     []scriptpkg.ExtractedEntity{{Value: "Ada Lovelace", Type: "PERSON"}},
@@ -67,7 +62,7 @@ func TestVidRushProviderSelectorImageContentPrefersInternetImages(t *testing.T) 
 func TestVidRushProviderSelectorReturnsStableTieOrder(t *testing.T) {
 	selector := NewVidRushProviderSelector()
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
-		ProviderPolicy: mediadomain.MediaProviderPolicy{Artlist: mediadomain.MediaToggleEnabled, ImageGeneration: mediadomain.MediaToggleEnabled},
+		ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleEnabled, ImageGeneration: mediadomain.MediaToggleEnabled},
 	}}
 	segment := scriptpkg.VidRushSegmentResult{SegmentID: "segment-4", Text: "An abstract idea."}
 	first, err := selector.Select(plan, segment, "")

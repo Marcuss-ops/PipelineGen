@@ -19,7 +19,6 @@ import (
 // + ...) into the search.Capability enum used by Aggregator.Eligible.
 //
 // SourceRef carries the provider-native identifier (YouTube VideoID,
-// artlist item id, etc). The Aggregator's 4-key dedup uses
 // Source+"|"+SourceRef as the canonical-provider-identity key.
 type providerSearchBackend struct {
 	provider providers.SearchProvider
@@ -48,14 +47,12 @@ func (b *providerSearchBackend) Capabilities() []search.Capability {
 }
 
 // Universe reports SearchDiscovery: provider backends perform live
-// provider calls (artlist, youtube, stock, images) and never touch
 // Qdrant. They are excluded from catalog-universe queries.
 func (b *providerSearchBackend) Universe() search.SearchUniverse {
 	return search.SearchDiscovery
 }
 
 func (b *providerSearchBackend) Search(ctx context.Context, q search.Query) ([]search.Candidate, error) {
-	// PR-2 (June 2026): provider backends (artlist, youtube, stock)
 	// do not support hash-match lookups; the canonical hash path
 	// is in domain of the local catalog. A non-empty Query.Hash
 	// is intentionally a no-op (return nil, nil) so the fanout

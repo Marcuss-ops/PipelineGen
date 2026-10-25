@@ -65,7 +65,6 @@
 // canonica di idempotenza):
 //
 //	This package is the SOLE canonical owner of the 3 key
-//	constructors. Other packages (artlist, outboxevents, drive,
 //	clipindexer) MUST use these functions, not ad-hoc string
 //	concatenations. A drift between the canonical key shape
 //	and an ad-hoc producer surfaces as duplicate rows that the

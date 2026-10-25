@@ -58,7 +58,6 @@ type SeedInput struct {
 	RunFingerprint string
 	// SourceID identifies the specific input source within the run:
 	// the canonical yt-dlp URL hash, the FolderManager folder ID, the
-	// Artlist asset ID, or an empty string for run-level-only seeds.
 	// Empty is allowed and produces a sentinel "run-level" seed that
 	// is still deterministic across retries (canonical form uses "_").
 	SourceID string

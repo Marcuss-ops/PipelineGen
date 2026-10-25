@@ -1,5 +1,4 @@
 // Package providerassets defines the canonical, provider-agnostic model
-// for a media asset discovered through an external catalog (Artlist,
 // Storyblocks, Pexels, Pixabay, etc.).
 //
 // The types here are intentionally plain structs with no infrastructure
@@ -68,7 +67,6 @@ type ProviderRendition struct {
 // ProviderAsset is the canonical, provider-agnostic representation of a
 // media asset returned by any external catalog adapter.
 type ProviderAsset struct {
-	// Provider identifies the source catalog, e.g. "artlist", "pexels".
 	Provider string
 
 	// ExternalID is the provider's own asset identifier.
@@ -179,7 +177,6 @@ type SearchResult struct {
 }
 
 // ProviderAdapter is the unified interface implemented by every external
-// catalog adapter (Artlist, Storyblocks, Pexels, Pixabay, etc.).
 type ProviderAdapter interface {
 	// Name returns the provider name, e.g. "pexels".
 	Name() string

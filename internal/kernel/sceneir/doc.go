@@ -1,6 +1,5 @@
 // Package sceneir owns the SceneIR semantic compiler: the immutable
 // intermediate representation produced from a canonical VidRush segment
-// before any provider (Artlist, images, stock) builds retrieval queries.
 //
 // SceneIR resolves the deepest contamination bug observed in the VidRush
 // LIVE test: the original segment is rewritten by the creative LLM, loses
@@ -21,7 +20,6 @@
 //	SourceText
 //	SourceTextHash
 //
-// Artlist, image and stock query builders MUST consume SourceText +
 // SemanticProfile, never NarrationText. This package is the boundary that
 // makes that separation physical: SceneIR carries both surfaces and exposes
 // distinct read APIs for each.

@@ -140,7 +140,12 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) (err e
 			}
 			continue
 		}
-		_, renderErr := renderer.Render(ctx, resolved)
+		// Sub-operation (PR-STOCK-SUB-OPERATIONS): one chunk is one measured
+		// render pass (1:1 cardinality), so the compose wall splits per chunk.
+		renderErr := measureChunkRender(ctx, func(opCtx context.Context) error {
+			_, err := renderer.Render(opCtx, resolved)
+			return err
+		})
 		if renderErr != nil {
 			// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (2026-07-04): per-chunk
 			// graceful degradation (Warn + continue) mirrors the

@@ -16,7 +16,7 @@ import (
 //	400 — payload or source.type not valid
 //	409 — idempotency conflict with different payload
 //	422 — scene formally valid but not processable
-//	502 — Gemma or Docs invalid response
+//	502 — Gemma invalid response
 //	503 — provider not configured or temporarily unavailable
 //	504 — timeout provider
 //	500 — unexpected internal error
