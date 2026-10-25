@@ -36,6 +36,7 @@ type (
 	OverlayBackground       = capmodel.OverlayBackground
 	OverlayEntityRef        = capmodel.OverlayEntityRef
 	OverlayImageLayer       = capmodel.OverlayImageLayer
+	OverlayIntakeBudget     = capmodel.OverlayIntakeBudget
 	OverlayIntent           = capmodel.OverlayIntent
 	OverlayItem             = capmodel.OverlayItem
 	OverlayItemFrame        = capmodel.OverlayItemFrame
@@ -45,6 +46,7 @@ type (
 	OverlayKind             = capmodel.OverlayKind
 	OverlayMediaContract    = capmodel.OverlayMediaContract
 	OverlayPlan             = capmodel.OverlayPlan
+	OverlayPlanIntake       = capmodel.OverlayPlanIntake
 	OverlayProbeResult      = capmodel.OverlayProbeResult
 	OverlaySoundEffect      = capmodel.OverlaySoundEffect
 	OverlaySource           = capmodel.OverlaySource
@@ -55,34 +57,42 @@ type (
 )
 
 const (
-	IntentSourceEntity      = capmodel.IntentSourceEntity
-	IntentSourceEntityImage = capmodel.IntentSourceEntityImage
-	JobTypePrepare          = capmodel.JobTypePrepare
-	JobTypeRender           = capmodel.JobTypeRender
-	KindBrandText           = capmodel.KindBrandText
-	KindChapterCard         = capmodel.KindChapterCard
-	KindConcept             = capmodel.KindConcept
-	KindEntityCard          = capmodel.KindEntityCard
-	KindEntityImage         = capmodel.KindEntityImage
-	KindImagePopup          = capmodel.KindImagePopup
-	KindImportantPhrase     = capmodel.KindImportantPhrase
-	KindImportantWord       = capmodel.KindImportantWord
-	KindLocation            = capmodel.KindLocation
-	KindLogo                = capmodel.KindLogo
-	KindLowerThird          = capmodel.KindLowerThird
-	KindMap                 = capmodel.KindMap
-	KindMixedChain          = capmodel.KindMixedChain
-	KindNumber              = capmodel.KindNumber
-	KindOrganization        = capmodel.KindOrganization
-	KindPhraseChain         = capmodel.KindPhraseChain
-	KindProduct             = capmodel.KindProduct
-	KindQuote               = capmodel.KindQuote
-	OverlayIntentVersion    = capmodel.OverlayIntentVersion
-	OverlayStatusReady      = capmodel.OverlayStatusReady
-	SchemaVersionPlan       = capmodel.SchemaVersionPlan
-	SchemaVersionResult     = capmodel.SchemaVersionResult
-	TimingStateFrozen       = capmodel.TimingStateFrozen
-	TimingStatePending      = capmodel.TimingStatePending
+	IntentSourceEntity           = capmodel.IntentSourceEntity
+	IntentSourceEntityImage      = capmodel.IntentSourceEntityImage
+	JobTypePrepare               = capmodel.JobTypePrepare
+	JobTypeRender                = capmodel.JobTypeRender
+	KindBrandText                = capmodel.KindBrandText
+	KindChapterCard              = capmodel.KindChapterCard
+	KindConcept                  = capmodel.KindConcept
+	KindEntityCard               = capmodel.KindEntityCard
+	KindEntityImage              = capmodel.KindEntityImage
+	KindImagePopup               = capmodel.KindImagePopup
+	KindImportantPhrase          = capmodel.KindImportantPhrase
+	KindImportantWord            = capmodel.KindImportantWord
+	KindLocation                 = capmodel.KindLocation
+	KindLogo                     = capmodel.KindLogo
+	KindLowerThird               = capmodel.KindLowerThird
+	KindMap                      = capmodel.KindMap
+	KindMixedChain               = capmodel.KindMixedChain
+	KindNumber                   = capmodel.KindNumber
+	KindOrganization             = capmodel.KindOrganization
+	KindPhraseChain              = capmodel.KindPhraseChain
+	KindProduct                  = capmodel.KindProduct
+	KindQuote                    = capmodel.KindQuote
+	OverlayDropCategoryDisabled  = capmodel.OverlayDropCategoryDisabled
+	OverlayDropCompositionMerged = capmodel.OverlayDropCompositionMerged
+	OverlayDropEditorialBudget   = capmodel.OverlayDropEditorialBudget
+	OverlayDropEntityImageBudget = capmodel.OverlayDropEntityImageBudget
+	OverlayDropGroupLimit        = capmodel.OverlayDropGroupLimit
+	OverlayDropMapsOnly          = capmodel.OverlayDropMapsOnly
+	OverlayDropPerSceneCap       = capmodel.OverlayDropPerSceneCap
+	OverlayDropUnmaterialized    = capmodel.OverlayDropUnmaterialized
+	OverlayIntentVersion         = capmodel.OverlayIntentVersion
+	OverlayStatusReady           = capmodel.OverlayStatusReady
+	SchemaVersionPlan            = capmodel.SchemaVersionPlan
+	SchemaVersionResult          = capmodel.SchemaVersionResult
+	TimingStateFrozen            = capmodel.TimingStateFrozen
+	TimingStatePending           = capmodel.TimingStatePending
 )
 
 var (

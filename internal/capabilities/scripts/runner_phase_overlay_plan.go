@@ -141,7 +141,7 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 		}
 	}
 	if result.OverlayPlan != nil {
-		r.log.Info("runner: overlay plan compiled",
+		fields := []zap.Field{
 			zap.String("run_id", runID),
 			zap.Int("scenes", len(result.Scenes)),
 			zap.Int("timed_scenes", result.OverlayPlan.TimedScenes),
@@ -150,7 +150,16 @@ func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req 
 			zap.Int("recap_cards", result.OverlayPlan.RecapCards),
 			zap.Int("chart_placements", result.OverlayPlan.ChartPlacements),
 			zap.Int("chart_cards", result.OverlayPlan.ChartCards),
-		)
+		}
+		if intake := result.OverlayPlanIntake; intake != nil {
+			fields = append(fields,
+				zap.Int("candidate_items", intake.Candidates),
+				zap.Int("planned_items", intake.Planned),
+				zap.Any("planned_by_kind", intake.PlannedByKind),
+				zap.Any("dropped_by_reason", intake.DroppedByReason),
+			)
+		}
+		r.log.Info("runner: overlay plan compiled", fields...)
 	}
 	r.logPhraseMotionSelections(runID, result.OverlayPlan)
 	r.logPhraseAnchoringDiagnostics(runID, result, req.SourceLanguage)

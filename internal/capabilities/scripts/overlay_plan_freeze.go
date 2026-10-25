@@ -40,6 +40,10 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	var phraseItems []capabilityoverlay.OverlayItem
 	if plan != nil {
 		phraseItems = plan.Items
+		// Intake is planner-side telemetry carried beside the wire plan: it
+		// explains the gap between the requested overlay mix and the items
+		// that were actually admitted.
+		result.OverlayPlanIntake = plan.Intake
 	}
 	phraseBudget := capabilityoverlay.MeasurePhraseOverlayBudgetWithLimit(phraseItems, canvas.MaxPhraseOverlays)
 	result.PhraseOverlayBudget = &phraseBudget
