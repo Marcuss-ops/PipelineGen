@@ -1,6 +1,6 @@
 # TICKET-RESIDENT-RENDER-ENGINE (P2)
 
-**Stato:** APPROVATO 24/10/2026 — da implementare.
+**Stato:** PARTIAL (25/10/2026) — downscale/cache immagini e test di identità presenti; la sessione encoder cross-item non è certificabile e resta disattivata.
 **Origine:** idee di paradigma di `TICKET-OVERLAY-THROUGHPUT-100-MIN.md`,
 approvate dall'utente il 24/10/2026. Unifica le fix 4/5/6 della
 profilazione per-item (23/10) in un unico ciclo di vita residente.
@@ -51,6 +51,20 @@ immagini a risoluzione sorgente, non i font.
       `vramprobe` per 3 lane dal 23/10).
 
 ## Dipendenze e rischi
+
+### Verifica closeout 2026-10-25
+
+- **PASS locale (CTest mirato 25/10):** decode display-bounded, chiave
+  distinta per bounds e GPU content digest sono coperti da
+  `test_image_cache_display_bound_downscale.cpp`.
+- **PARTIAL / NOT RUN:** il test di riuso encoder ha riprodotto
+  `avcodec_send_frame: End of file` dopo la finalizzazione del primo MP4.
+  `avcodec_flush_buffers()` non riapre un encoder drenato. Per evitare artefatti
+  corrotti, `codec_session_reuse_enabled()` ora fallisce chiuso e i tre daemon
+  sono stati riavviati senza il drop-in che attivava il flag.
+- **NOT RUN:** gate ≤100 ms su 100 item, picco VRAM sul golden completo e parità
+  pixel/audio su 100 item. Il codice di riuso non va riattivato finché il writer
+  batch non possiede un unico encoder non drenato e confini MP4 verificati.
 
 - Vincolo VRAM: è il limite che ha imposto la serializzazione dei job render.
 - Il downscale non è byte-preserving: serve il re-baseline dei golden con
