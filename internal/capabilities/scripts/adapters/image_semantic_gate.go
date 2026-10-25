@@ -61,6 +61,12 @@ func scoreInternetImageCandidates(ctx context.Context, scorer SemanticCandidateS
 	if scorer == nil || len(candidates) == 0 {
 		return candidates, nil
 	}
+	if allCandidatesHaveReusableVerdict(candidates) {
+		// The catalog/cache already holds a definitive pixel verdict for every
+		// candidate. Re-running the visual scorer here is exactly the double
+		// download + VLM call this fast path removes.
+		return candidates, nil
+	}
 	scored, err := scorer.ScoreImageCandidates(ctx, query, candidates)
 	if err != nil {
 		return candidates, err

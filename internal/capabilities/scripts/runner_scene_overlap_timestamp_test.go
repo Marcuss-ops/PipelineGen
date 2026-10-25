@@ -80,6 +80,10 @@ func TestSceneTextStreaming_TranslationTTSStartBeforeNextSceneReady(t *testing.T
 
 	require.False(t, scene0.TranslationStartedAt.IsZero(), "scene 0 must record its translation start")
 	require.False(t, scene0.TTSStartedAt.IsZero(), "scene 0 must record its TTS start")
+	require.False(t, scene0.TTSCompletedAt.IsZero(), "scene 0 must close its TTS boundary")
+	require.False(t, scene0.TTSCompletedAt.Before(scene0.TTSStartedAt),
+		"scene 0 TTS completion (%v) must not precede its start (%v)",
+		scene0.TTSCompletedAt, scene0.TTSStartedAt)
 	require.False(t, scene1.TextReadyAt.IsZero(), "scene 1 must record its text-ready instant")
 	require.False(t, scene2.TextReadyAt.IsZero(), "scene 2 must record its text-ready instant")
 

@@ -45,6 +45,22 @@ func (r *routingFakeResolver) ExistingImages(context.Context, string, int) ([]im
 	return nil, nil
 }
 
+func TestVidRushInternetImageSearcherReturnsOneSharedAdapter(t *testing.T) {
+	resolver := &routingFakeResolver{providers: map[string]imagesrouting.ImageSearcher{
+		"duckduckgo": &routingFakeSearcher{provider: "duckduckgo"},
+	}}
+	root := &ComposeRoot{Domains: &DomainBundle{ImageSearchResolver: resolver}}
+
+	first := vidrushInternetImageSearcher(root, zap.NewNop())
+	second := vidrushInternetImageSearcher(root, zap.NewNop())
+	if first == nil || second == nil {
+		t.Fatal("image searcher is nil")
+	}
+	if first != second {
+		t.Fatal("vidrushInternetImageSearcher returned two adapters; their caches would not be shared")
+	}
+}
+
 func TestInternetImageSearchRoutesPeopleAwayFromCommons(t *testing.T) {
 	ddg := &routingFakeSearcher{provider: "duckduckgo", results: []imagesrouting.ImageSearchResult{
 		{PreviewURL: "https://ddg.invalid/stasi.jpg", Provider: "duckduckgo", Score: 1},

@@ -3,11 +3,13 @@ package wiring
 import (
 	"context"
 	"database/sql"
+	"sync"
 
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -68,6 +70,15 @@ type ComposeRoot struct {
 
 	AI      *AIBundle
 	Domains *DomainBundle
+
+	// imageSearchAdapter is the ONE process-wide internet-image adapter.
+	// The semantic planner, the VidRush fan-out and the internet_images
+	// postprocessor all receive it through vidrushInternetImageSearcher, so
+	// its cache and singleflight collapse duplicate provider calls instead of
+	// being recreated per wiring site.
+	imageSearchAdapter     scriptadapters.InternetImageSearcher
+	imageSearchAdapterOnce sync.Once
+
 	Jobs    *JobsBundle
 	Outbox  *OutboxBundle
 	Sync    *SyncBundle

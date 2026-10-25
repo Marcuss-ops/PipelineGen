@@ -55,6 +55,12 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 	}
 	for i := range out {
 		candidate := &out[i]
+		if scriptadapters.ReusablePersonImageVerdict(*candidate) {
+			// The verdict is already stored on the candidate/catalog. Do not
+			// download the pixels or spend a VLM call again merely because a
+			// later stage received the same cached candidate.
+			continue
+		}
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) || strings.TrimSpace(candidate.Entity) == "" {
 			continue
 		}

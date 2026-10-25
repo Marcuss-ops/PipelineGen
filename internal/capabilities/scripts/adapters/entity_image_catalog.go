@@ -128,6 +128,13 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			candidate = hydrated
 		}
 		out = append(out, candidate)
+		// Every usable row above costs one materialization lookup. Once the
+		// requested pool size is satisfied there is nothing left to hydrate:
+		// stopping here keeps a warm catalog replay at `limit` lookups instead
+		// of one per row in the 100-row scan window.
+		if limit > 0 && len(out) >= limit {
+			break
+		}
 	}
 	usableCount := len(out)
 	if limit > 0 && len(out) > limit {

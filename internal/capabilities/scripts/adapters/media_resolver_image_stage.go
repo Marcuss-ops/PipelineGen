@@ -159,6 +159,15 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			updatedSegments = append(updatedSegments, updated)
 			continue
 		}
+		if fanoutAlreadyOwnsInternetImageDiscovery(plan, &updated) {
+			// The VidRush fan-out already discovered this segment's images
+			// (HIT_EXACT or a refresh it performed). Re-running discovery here
+			// was the second full provider/VLM pass on the same segment.
+			reuseFanoutInternetImageCandidates(&updated)
+			updated.Cache.InternetImagesProviderSearches = 0
+			updatedSegments = append(updatedSegments, updated)
+			continue
+		}
 		imageQueries := updated.Insights.ImageQueries
 		entityPoolLookup := entityImagesEnabled && plan != nil && plan.MediaPlan.Extraction.EntityImages.PerScene()
 		catalogLimit := entityImageCatalogPoolSize

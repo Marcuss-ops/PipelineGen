@@ -92,6 +92,49 @@ func TestScoreInternetImageCandidatesFailOpen(t *testing.T) {
 	}
 }
 
+type countingSemanticScorer struct{ calls int }
+
+func (s *countingSemanticScorer) ScoreImageCandidates(_ context.Context, _ string, in []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.calls++
+	return in, nil
+}
+
+func TestScoreInternetImageCandidatesSkipsDefinitiveVerdicts(t *testing.T) {
+	accepted := semanticGateCandidate("accepted")
+	accepted.SemanticStatus = entitycatalog.CandidateSemanticAccepted
+	accepted.SemanticScore = 0.92
+	accepted.QualityReason = "Ollama visual verification confirmed one dominant subject"
+	rejected := semanticGateCandidate("rejected")
+	rejected.SemanticStatus = entitycatalog.CandidateSemanticRejected
+	rejected.QualityReason = "Ollama visual verification detected a split panel or collage"
+	scorer := &countingSemanticScorer{}
+
+	out, err := scoreInternetImageCandidates(context.Background(), scorer, "q", []scriptpkg.SegmentAssetCandidate{accepted, rejected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scorer.calls != 0 {
+		t.Fatalf("scorer calls = %d, want 0 when every candidate already carries a verdict", scorer.calls)
+	}
+	if len(out) != 2 || out[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted || out[1].SemanticStatus != entitycatalog.CandidateSemanticRejected {
+		t.Fatalf("cached verdicts were rewritten: %+v", out)
+	}
+}
+
+func TestScoreInternetImageCandidatesRetriesTransientRejection(t *testing.T) {
+	transient := semanticGateCandidate("transient")
+	transient.SemanticStatus = entitycatalog.CandidateSemanticRejected
+	transient.QualityReason = "visual verification failed: context deadline exceeded"
+	scorer := &countingSemanticScorer{}
+
+	if _, err := scoreInternetImageCandidates(context.Background(), scorer, "q", []scriptpkg.SegmentAssetCandidate{transient}); err != nil {
+		t.Fatal(err)
+	}
+	if scorer.calls != 1 {
+		t.Fatalf("scorer calls = %d, want 1 for a transient rejection", scorer.calls)
+	}
+}
+
 type fixedInternetImageSearcher struct {
 	candidates []scriptpkg.SegmentAssetCandidate
 }
