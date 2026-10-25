@@ -340,6 +340,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if canvas.RandomLightLeakOnClipStart {
 		items = append(items, scriptoverlay.ClipStartLightLeakItems(planID, result.CanonicalTimeline)...)
 	}
+	intake := newOverlayPlanIntakeTracker(len(result.Scenes), len(timedScenes), capabilityoverlay.OverlayIntakeBudget{
+		PhraseOverlays: phraseCeiling, ImageOverlays: imageCeiling, MapOverlays: mapLimit, MaxPerScene: canvas.MaxOverlaysPerScene,
+	})
+	intake.addCandidates(len(items))
 	// A semantic catalog reference is only a database identity until its bytes
 	// have been staged into the RenderingGen object store. Never enqueue that
 	// placeholder as a render asset: Chronon would resolve it to a nonexistent
@@ -358,6 +362,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			filteredItems = append(filteredItems, item)
 		}
 	}
+	intake.stage(capabilityoverlay.OverlayDropUnmaterialized, len(items), len(filteredItems))
 	items = filteredItems
 	if canvas.RandomLightLeakOnOverlayStart {
 		items = append(items, scriptoverlay.OverlayStartLightLeakItems(planID, items)...)
@@ -426,7 +431,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			}
 			namedCardItems = append(namedCardItems, item)
 		}
-		items = append(items, capNamedEntityCardsPerScene(namedCardItems, maxNamedEntityCardsPerScene)...)
+		namedCards := capNamedEntityCardsPerScene(namedCardItems, maxNamedEntityCardsPerScene)
+		intake.addCandidates(len(namedCards))
+		items = append(items, namedCards...)
 	}
 	// The scene budget is intentionally local, so enforce the separate
 	// run-level identity-image ceiling before sealing the render plan. This
@@ -436,7 +443,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if entityImageCeiling <= 0 {
 		entityImageCeiling = capabilityoverlay.MaxEntityImageOverlaysPerRun
 	}
-	items = capEntityImageOverlays(items, entityImageCeiling, len(perSceneImages) > 0 && perSceneImages[0])
+	cappedEntityImages := capEntityImageOverlays(items, entityImageCeiling, len(perSceneImages) > 0 && perSceneImages[0])
+	intake.stage(capabilityoverlay.OverlayDropEntityImageBudget, len(items), len(cappedEntityImages))
+	items = cappedEntityImages
 	// MapsOnly is a final semantic filter: entity-card resolution above can
 	// append text-only named entities after BuildPlan, and those are not maps.
 	// Apply it after every producer so a map-only run cannot leak a label card.
@@ -447,14 +456,19 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				kept = append(kept, item)
 			}
 		}
+		intake.stage(capabilityoverlay.OverlayDropMapsOnly, len(items), len(kept))
 		items = kept
 	}
 	// Apply category controls before budgeting and chain composition so filtered
 	// overlays do not consume capacity and the remaining items can still fuse.
-	items = filterOverlayItemsByCategory(items, result.Scenes, canvas)
+	categoryItems := filterOverlayItemsByCategory(items, result.Scenes, canvas)
+	intake.stage(capabilityoverlay.OverlayDropCategoryDisabled, len(items), len(categoryItems))
+	items = categoryItems
 	// Enforce per-group quotas before the shared visual budget so image and
 	// captioned identity-image allowances remain independently available.
-	items = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
+	groupItems := applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
+	intake.stage(capabilityoverlay.OverlayDropGroupLimit, len(items), len(groupItems))
+	items = groupItems
 	// The map-aware editorial budget keeps the certified run ceilings: images,
 	// grounded phrases and one composed location map.
 	// It runs on individual assets before composition so dedupe and counts do
@@ -465,9 +479,13 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		// this is the authoritative admission pass, so omitting it would let
 		// chapter cards spend the long-phrase slots again.
 		bulletCap, _ := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupBullets)
-		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithBulletLane(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages, shortPhraseCap, longPhraseCap, bulletCap)
+		budgeted, _ := capabilityoverlay.ApplyEditorialOverlayBudgetWithBulletLane(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages, shortPhraseCap, longPhraseCap, bulletCap)
+		intake.stage(capabilityoverlay.OverlayDropEditorialBudget, len(items), len(budgeted))
+		items = budgeted
 	} else {
-		items, _ = capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages)
+		budgeted, _ := capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages)
+		intake.stage(capabilityoverlay.OverlayDropEditorialBudget, len(items), len(budgeted))
+		items = budgeted
 	}
 	if len(items) == 0 {
 		return nil, nil
@@ -479,10 +497,16 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// otherwise LimitOverlayItemsPerScene drops the second image before it can
 	// fuse and every animation stays a singolo overlay.
 	if canvas.AnimationCounts["chain_disabled"] == 0 {
-		items = composeNearbyEntityImages(items, canvas.Width, canvas.Height)
+		composed := composeNearbyEntityImages(items, canvas.Width, canvas.Height)
+		intake.stage(capabilityoverlay.OverlayDropCompositionMerged, len(items), len(composed))
+		items = composed
 	}
-	items = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
-	items = capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
+	groupItems = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
+	intake.stage(capabilityoverlay.OverlayDropGroupLimit, len(items), len(groupItems))
+	items = groupItems
+	sceneItems := capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
+	intake.stage(capabilityoverlay.OverlayDropPerSceneCap, len(items), len(sceneItems))
+	items = sceneItems
 	// Apply effects after entity assets are attached and nearby images have
 	// been composed, so the random policy covers both generic images and every
 	// entity-image child while respecting the final admitted render set.
@@ -521,7 +545,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}); err != nil {
 		return nil, fmt.Errorf("overlay plan: %w", err)
 	}
-	items = capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
+	coalesced := capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
+	intake.stage(capabilityoverlay.OverlayDropCompositionMerged, len(items), len(coalesced))
+	items = coalesced
 	// Single-owner boundary (§3 step 5→6): ResolveAnimationSelections valida
 	// che chain container e composite parent non portino MotionID proprie e che
 	// ogni child/segmento conservi la scelta. Validazione, mai ricampionamento.
@@ -535,5 +561,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 
 	// The master audio/timeline extent derivation and the plan sealing live in
 	// overlay_plan_seal.go (split under the 600-line file gate; same behavior).
-	return sealOverlayPlan(result, language, plannerPlan, resolved, items, canvas, planID, videoID, projectID)
+	sealed, err := sealOverlayPlan(result, language, plannerPlan, resolved, items, canvas, planID, videoID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if sealed != nil {
+		sealed.Intake = intake.finish(sealed.Items)
+	}
+	return sealed, nil
 }

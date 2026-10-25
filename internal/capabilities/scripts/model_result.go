@@ -132,6 +132,12 @@ type GenerateResult struct {
 	// of unique grounded phrases materialized into OverlayPlan. It is result
 	// telemetry and is deliberately excluded from the renderer wire contract.
 	PhraseOverlayBudget *capabilityoverlay.PhraseOverlayBudget `json:"phrase_overlay_budget,omitempty"`
+	// OverlayPlanIntake explains the sealed OverlayPlan against the run's
+	// request: the budgets the canvas allowed, how many candidate items each
+	// producer supplied, how many the plan kept, and which admission stage
+	// removed the rest. It is result telemetry and is deliberately excluded
+	// from the renderer wire contract, so it never changes render identity.
+	OverlayPlanIntake *capabilityoverlay.OverlayPlanIntake `json:"overlay_plan_intake,omitempty"`
 
 	// SemanticRenderBundle is the cross-stage audit contract assembled from
 	// the same certified surfaces as OverlayPlan. It is a projection, never a
