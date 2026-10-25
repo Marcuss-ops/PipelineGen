@@ -65,3 +65,17 @@ dataflow-streaming (paradigma #4): wall da somma(fasi) a max(fasi)
   verificati prima di avviare lo scheduler speculative.
 - Il commit speculativo non deve sporcare l'ObjectStore di artefatti
   scartati: staging + rename atomico per hash.
+
+### Verifica locale mirata — 25/10/2026
+
+- PASS: `TestSceneTraceContract_RealSeamsFeedTheTimelineAndCriticalPath` e
+  `TestSceneTextReady_TranslatedNLPOverlapsTTS` nella selezione mirata
+  `go test ./internal/capabilities/scripts -run '^(... )$' -count=1`.
+  Questo certifica il contratto locale trace/overlap scene-text, non
+  generate×render.
+- FAIL separato: la suite larga scripts+overlays+observability fallisce su
+  regressioni di fixture/registry non relative al gate P3. Il risultato mirato
+  resta PASS limitato ai due test nominati.
+- NOT IMPLEMENTED / NOT RUN: nessun scheduler render-ahead speculativo, commit
+  idempotente per hash, trace live generate×render ≥50% o critical path
+  end-to-end completo è stato aggiunto/eseguito in questo checkpoint.

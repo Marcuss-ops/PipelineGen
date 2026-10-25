@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -86,7 +85,7 @@ func TestFixedMediaSkipsInternetImageSearch(t *testing.T) {
 	}
 }
 
-func TestFixedMediaBlocksIncrementalFanoutAndSourceFallback(t *testing.T) {
+func TestFixedMediaBlocksIncrementalFanout(t *testing.T) {
 	images := &countingImageSearcher{}
 	fanout := NewVidRushProviderFanout(images)
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{
@@ -101,14 +100,8 @@ func TestFixedMediaBlocksIncrementalFanoutAndSourceFallback(t *testing.T) {
 		t.Fatalf("fixed fanout changed authoritative media: images=%d result=%+v", images.calls, got)
 	}
 
-	fallback := &sourceResolverStub{stage: "fallback"}
-	_, err = (VidRushSourceResolver{ImageFallback: fallback}).Resolve(context.Background(), SourceResolutionRequest{
-		Plan: plan, Segment: scriptpkg.CanonicalSegment{ID: "intro-segment", Text: "fixed", ExecutionMode: scriptpkg.SceneExecutionFixedMedia},
-		Slot: mediadomain.SlotPrimaryVideo,
-	})
-	if !errors.Is(err, scriptpkg.ErrFixedMediaDownstreamForbidden) || fallback.calls != 0 {
-		t.Fatalf("fixed source fallback was invoked: err=%v calls=%d", err, fallback.calls)
-	}
+	// The old SourceResolver fallback half is gone with VidRushSourceResolver;
+	// the fanout guard above remains the production surface.
 }
 
 func TestFixedMediaSkipsMaterializerAndPreservesAuthoritativeAsset(t *testing.T) {

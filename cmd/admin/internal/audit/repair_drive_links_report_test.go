@@ -11,7 +11,6 @@ func TestRepairAuditReport_JSONRoundTrip(t *testing.T) {
 		JobID:               "job-json-audit",
 		ExecutedAt:          "2026-07-31T12:00:00Z",
 		RemoveInvalid:       true,
-		RefreshDocs:         true,
 		AssetsReferenced:    3,
 		Verified:            1,
 		Updated:             1,
@@ -20,7 +19,6 @@ func TestRepairAuditReport_JSONRoundTrip(t *testing.T) {
 		QdrantEventsEmitted: 1,
 		SpecSceneRepaired:   true,
 		SQLiteUpdated:       true,
-		DocumentsRefreshed:  1,
 		Warnings:            []string{"one warning"},
 		Details: []repairAssetDetail{{
 			ItemIdx: 0, SceneID: "scene-0", Label: "clip", AssetID: "asset-1",
@@ -34,7 +32,7 @@ func TestRepairAuditReport_JSONRoundTrip(t *testing.T) {
 		t.Fatalf("marshal repair report: %v", err)
 	}
 	wire := string(raw)
-	for _, key := range []string{`"job_id"`, `"executed_at"`, `"remove_invalid"`, `"refresh_docs"`, `"assets_referenced"`, `"qdrant_events_emitted"`, `"warnings"`, `"details"`} {
+	for _, key := range []string{`"job_id"`, `"executed_at"`, `"remove_invalid"`, `"assets_referenced"`, `"qdrant_events_emitted"`, `"warnings"`, `"details"`} {
 		if !strings.Contains(wire, key) {
 			t.Fatalf("expected repair report JSON key %s: %s", key, wire)
 		}
@@ -69,7 +67,6 @@ func TestRepairReportIsNoOp_RequiresZeroSideEffects(t *testing.T) {
 		{"sqlite", func(r *repairAuditReport) { r.SQLiteUpdated = true }},
 		{"qdrant", func(r *repairAuditReport) { r.QdrantEventsEmitted = 1 }},
 		{"qdrant mismatch", func(r *repairAuditReport) { r.QdrantMismatches = 1 }},
-		{"document", func(r *repairAuditReport) { r.DocumentsRefreshed = 1 }},
 		{"specscene", func(r *repairAuditReport) { r.SpecSceneRepaired = true }},
 		{"upload warning", func(r *repairAuditReport) { r.Warnings = []string{"upload"} }},
 		{"requested mutation", func(r *repairAuditReport) {

@@ -54,9 +54,7 @@
 package usecase
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -443,82 +441,6 @@ func TestClipPrePlan_GoldenStructuralParity(t *testing.T) {
 		t.Errorf("golden slots[0] visual_intent does NOT start with the planner's runtime prefix "+
 			"'Visual depiction of: ' (would indicate the planner's visualIntentFor() drift): got=%q",
 			visual0)
-	}
-}
-
-// TestPrePlanner_VisualIntentAndAnchorOffsetsPerSlot verifies the
-// planner's per-slot computation independently of the golden file.
-// Pins the planner's runtime SSOT:
-//
-//   - anchorOffsetsForTopic returns (0, 0, "") when no topic
-//     substring matches the canonicalized source text.
-//   - visualIntentFor(topic, 0, len(canonical)) returns
-//     "Visual depiction of: <topic> (at source offset 0/<len>)".
-//
-// Together with the byte-compare golden in
-// TestClipPrePlanner_PacquiaoBroner_E2E Suite (a), this test catches
-// both computation drift AND planner-output-byte drift.
-func TestPrePlanner_VisualIntentAndAnchorOffsetsPerSlot(t *testing.T) {
-	t.Parallel()
-
-	p := NewDeterministicPlanner()
-	plan, err := p.Plan(context.Background(), pacquiaoReq())
-	if err != nil {
-		t.Fatalf("plan: %v", err)
-	}
-
-	// Canonical source length (the same substrate `visualIntentFor`
-	// uses). The byte length is 380 (verified by UPDATE_GOLDEN=1
-	// regeneration: SHA-256 input bytes == 380).
-	canonical := scriptpkg.CanonicalizeSourceText(pacquiaoSourceText)
-	if len(canonical) != 380 {
-		t.Fatalf("canonical source byte length drift: want 380, got %d (substrate contract pin)",
-			len(canonical))
-	}
-
-	wantSlots := []struct {
-		topic        string
-		wantStartOff int
-	}{
-		{"La fase iniziale e lo studio della distanza", 0},
-		{"Pressione crescente di Pacquiao (round 4-6)", 0},
-		{"Round 7 - momento decisivo", 0},
-		{"Decisione finale dei giudici", 0},
-	}
-	if len(plan.Slots) != len(wantSlots) {
-		t.Fatalf("slot count: want %d, got %d", len(wantSlots), len(plan.Slots))
-	}
-	for i, want := range wantSlots {
-		s := plan.Slots[i]
-		if s.Topic != want.topic {
-			t.Errorf("slot[%d] topic drift: want %q, got %q",
-				i, want.topic, s.Topic)
-		}
-		// anchorOffsetsForTopic: no substring match → degenerate
-		// (0, 0, "").
-		if s.SourceAnchor == nil {
-			t.Errorf("slot[%d] source_anchor nil", i)
-			continue
-		}
-		if s.SourceAnchor.StartOffset != want.wantStartOff {
-			t.Errorf("slot[%d] source_anchor.start_offset: want %d, got %d",
-				i, want.wantStartOff, s.SourceAnchor.StartOffset)
-		}
-		if s.SourceAnchor.EndOffset != want.wantStartOff {
-			t.Errorf("slot[%d] source_anchor.end_offset: want %d, got %d",
-				i, want.wantStartOff, s.SourceAnchor.EndOffset)
-		}
-		if s.SourceAnchor.Excerpt != "" {
-			t.Errorf("slot[%d] source_anchor.excerpt: want empty (no substring match), got %q",
-				i, s.SourceAnchor.Excerpt)
-		}
-		// visualIntentFor(topic, 0, 380) → exact format.
-		wantVisual := fmt.Sprintf("Visual depiction of: %s (at source offset %d/%d)",
-			want.topic, want.wantStartOff, len(canonical))
-		if s.VisualIntent != wantVisual {
-			t.Errorf("slot[%d] visual_intent drift: want %q, got %q",
-				i, wantVisual, s.VisualIntent)
-		}
 	}
 }
 

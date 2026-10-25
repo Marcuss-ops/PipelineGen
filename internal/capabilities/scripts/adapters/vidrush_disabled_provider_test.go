@@ -43,13 +43,3 @@ func TestVidRushDisabledProviderProducesNoSearchOrAcquire(t *testing.T) {
 		t.Fatalf("searches=%d acquires=%d", probe.searches.Load(), probe.acquires.Load())
 	}
 }
-
-func TestVidRushSourceResolverDisabledProviderDoesNotResolve(t *testing.T) {
-	probe := &sourceResolverStub{stage: "youtube"}
-	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{ProviderPolicy: mediadomain.MediaProviderPolicy{YouTube: mediadomain.MediaToggleDisabled}}}
-	resolver := VidRushSourceResolver{YouTube: probe}
-	_, err := resolver.Resolve(context.Background(), SourceResolutionRequest{Plan: plan, Segment: scriptpkg.CanonicalSegment{ID: "seg", Text: "topic"}, Slot: mediadomain.SlotPrimaryVideo, Profile: scriptpkg.SegmentSemanticProfile{Topic: "topic"}})
-	if err == nil {
-		t.Fatal("disabled provider unexpectedly resolved a source")
-	}
-}

@@ -140,12 +140,6 @@ job_handler_map:
   - job_type: script.generate_batch
     handler: BatchJobHandler.Handle
     owner: internal/capabilities/scripts
-  - job_type: artlist.run
-    handler: ArtlistHandler.enqueueArtlistRun
-    owner: internal/capabilities/assets/providers/artlist
-  - job_type: media.artlist
-    handler: artlist.jobHandler
-    owner: internal/capabilities/assets/providers/artlist
   - job_type: media.youtube_clip
     handler: YouTube clip ingest handler
     owner: internal/capabilities/assets/providers/youtube

@@ -7,7 +7,14 @@ VERIFY_COMPONENT_RUNNER ?= $(PYTHON) scripts/ci/verify-component.py
 VERIFY_ALL_COMPONENTS_RUNNER ?= $(PYTHON) scripts/ci/verify-all-components.py
 VERIFY_CHANGED_COMPONENTS_RUNNER ?= $(PYTHON) scripts/ci/verify-changed-components.py
 VERIFY_COMPONENT_FLAGS ?=
-VERIFY_CHANGED_COMPONENTS_FLAGS ?=
+# The Make aggregate opts into --run-all-when-unmapped (docs/operations/
+# component-verification.md): a changed path with no registry owner — e.g. a
+# deleted root-level file, which can never re-enter the registry because the
+# coverage gate only admits paths that exist — falls back to verifying EVERY
+# registered component instead of failing the run. The direct script call
+# without this flag still fails closed, and the unmapped paths stay in the
+# report until registry coverage is expanded.
+VERIFY_CHANGED_COMPONENTS_FLAGS ?= --run-all-when-unmapped
 # Concurrent component workers (verify-component.py). Default 4; bounded by
 # the number of resolved components. Independent components run in parallel
 # while dependency blocking, command deduplication, and timeout semantics are

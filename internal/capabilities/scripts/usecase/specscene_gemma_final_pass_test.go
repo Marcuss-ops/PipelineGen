@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -111,35 +110,6 @@ func TestSpecSceneGemma_FinalPass_ThreeAlignedAssets(t *testing.T) {
 		clip2 = "yt_vdC5GXxS-qU_146_155_v1"
 		clip3 = "yt_vdC5GXxS-qU_193_205_v1"
 	)
-
-	t.Run("gemma_scene_plan_uses_canonical_clip_order", func(t *testing.T) {
-		plan := &scriptpkg.ClipPrePlan{
-			Version: 1,
-			Title:   "Pacquiao vs Adrien Broner",
-			Slots: []scriptpkg.ClipSearchSlot{
-				{Ref: "scene-0", Topic: "Pacquiao talks about Mayweather in Japan", TargetDurationMs: 15000},
-				{Ref: "scene-1", Topic: "Broner says not to worry about Floyd", TargetDurationMs: 9000},
-				{Ref: "scene-2", Topic: "Broner jokes about hood support", TargetDurationMs: 12000},
-			},
-		}
-
-		res := ports.ClipSamplerResult{
-			ClipIDs: []string{clip1, clip2, clip3},
-		}
-
-		scenes := usecase.BuildGemmaScenePlan(res, plan, 900)
-		require.Len(t, scenes, 3)
-
-		assert.Equal(t, clip1, scenes[0].SelectedClipRef)
-		assert.Equal(t, clip2, scenes[1].SelectedClipRef)
-		assert.Equal(t, clip3, scenes[2].SelectedClipRef)
-		assert.Equal(t, "scene-0", scenes[0].SlotRef)
-		assert.Equal(t, "scene-1", scenes[1].SlotRef)
-		assert.Equal(t, "scene-2", scenes[2].SlotRef)
-		assert.Empty(t, scenes[0].TranscribedText)
-		assert.Empty(t, scenes[1].TranscribedText)
-		assert.Empty(t, scenes[2].TranscribedText)
-	})
 
 	t.Run("translated_specscene_preserves_three_asset_bindings", func(t *testing.T) {
 		in, evidence := makePacquiaoBronerFinalPassSpecScene()

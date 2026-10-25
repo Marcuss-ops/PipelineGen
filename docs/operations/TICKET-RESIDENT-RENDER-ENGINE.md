@@ -1,6 +1,6 @@
 # TICKET-RESIDENT-RENDER-ENGINE (P2)
 
-**Stato:** PARTIAL (25/10/2026) — fix locali di cache/prepare e downscale con test presenti; riuso encoder cross-job non implementato/attivo e non certificabile. Non confondere il writer multi-segmento P4 (sessione entro un piano, più MP4) con una sessione residente cross-job.
+**Stato:** PARTIAL (25/10/2026) — fix locali di cache/prepare, downscale display-bound e test presenti; riuso encoder cross-job non implementato/attivo e non certificato. Non confondere il writer multi-segmento P4 (sessione entro un piano, più MP4) con una sessione residente cross-job.
 **Origine:** idee di paradigma di `TICKET-OVERLAY-THROUGHPUT-100-MIN.md`,
 approvate dall'utente il 24/10/2026. Unifica le fix 4/5/6 della
 profilazione per-item (23/10) in un unico ciclo di vita residente.
@@ -25,20 +25,42 @@ Costi per-item che un motore residente pagherebbe una volta (dati
 | decode + promozione GPU immagini a risoluzione sorgente | ~300 MB/item (8 upload, 242 MB byte immagini) | lavoro unico-per-item, è la radice reale del «font_preflight» (1.862 ms = 1.823 ms `asset_decode`) |
 | pool warmup | ~65 ms | chiuso da fix 4(b) (top-up-only) |
 
-Le fix 4/5/6 sono oggi pezzi separati e incompleti; la proiezione
-«prepare −310 ms/item» è stata ri-attribuita: il residuo è il decode di
-immagini a risoluzione sorgente, non i font.
+Le fix 4/5/6 sono pezzi separati e non equivalgono al motore residente
+completo. La proiezione «prepare −310 ms/item» è stata ri-attribuita: il
+residuo è il decode di immagini a risoluzione sorgente, non i font; non è un
+guadagno misurato sul percorso residente.
 
 ## Cambio
 
-1. **Texture residenti canvas-sized:** downscale a canvas al decode, LRU
-   content-addressed in VRAM (`GpuAssetCache` estesa), eviction sotto budget
-   `vramprobe`. Unifica fix 6 + fix 4.
-2. **Sessione encoder cross-item:** una sessione di encode sopravvive a più
-   item (open/close una volta per sessione, non per artefatto). Unifica fix 5.
-3. **Warmup cross-job:** pool/atlas/font già caldi alla ricezione del job
-   (il `FullGraphSession` per-device già sopravvive ai job; estendere il
-   concetto alle risorse immagine e alla sessione encoder).
+1. **Texture residenti canvas-sized:** downscale al decode display-bound e
+   cache content-addressed hanno building block e test locali; LRU GPU con
+   eviction sotto budget `vramprobe` va verificata nel percorso golden. Unifica
+   fix 6 + parte del fix 4.
+2. **Sessione encoder cross-item/cross-job:** obiettivo non implementato nel
+   percorso produttivo; una sessione non deve essere riusata dopo EOF senza
+   contratto e certificazione del muxer. Il writer segmentato P4 ha scope
+   intra-piano e non chiude questo requisito. Unifica fix 5.
+3. **Warmup cross-job:** pool/atlas/font e risorse immagine calde tra job;
+   `FullGraphSession` per-device sopravvive già ai job, ma il comportamento
+   richiesto dal motore residente va misurato end-to-end.
+
+### Verifica mirata — 25/10/2026
+
+- I test Chronon per downscale display-bound e identità ImageCache citati nel
+  closeout erano prove precedenti; in questo checkpoint non è stato possibile
+  ricostruire il binario C++ `linux-video-test` per rieseguirli. Stato di questa
+  sessione: **NOT RUN** (non retroclassificare come nuova verifica).
+- I test Go P4 sul writer intra-piano passano nel modulo RenderingGen, ma non
+  implementano né attestano il riuso encoder fra job. Il codec resta drained
+  dopo EOF; P2 cross-job è ancora **NOT IMPLEMENTED**.
+- La suite mirata di pipeline è mista: i test di batching/manifest/trace
+  selezionati passano; la suite larga scripts+overlays+observability fallisce
+  su cinque regressioni di fixture/registry già visibili nel working tree
+  (builder, editorial manifest, provider Artlist, `esri_light`). Questi FAIL
+  non forniscono evidenza per il gate P2.
+- Gate ≤100 ms/100 item, parità pixel/audio sul golden residente e picco VRAM
+  del mix da 100 item restano **NOT RUN**; richiedono percorso residente
+  cross-job, build coerente e finestra di misura sul golden.
 
 ## Gate di accettazione
 

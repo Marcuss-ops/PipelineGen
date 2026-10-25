@@ -21,14 +21,8 @@ package stockpipeline
 
 import (
 	"context"
-	"fmt"
-	"strings"
 	"testing"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 

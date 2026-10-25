@@ -39,9 +39,12 @@ type canonicalMotionUniverse struct {
 	// entity_visual_sequence.v1.json camera_recipes: the documented entity
 	// camera-motion vocabulary.
 	cameraRecipeIDs map[string]bool
-	// basemapStyleIDs is parsed from Chronon3d/tools/cartography/
-	// dynamic_tile_pyramid.py BASEMAP_STYLES: the production palette the
-	// dynamic-map renderer validates against (is_basemap_style).
+	// basemapStyleIDs is parsed from the cartography module's
+	// dynamic_tile_pyramid.py BASEMAP_STYLES (now owned by
+	// ChrononPlugin/plugins/maps/tools/cartography; the legacy
+	// Chronon3d/tools/cartography copy is an accepted fallback): the
+	// production palette the dynamic-map renderer validates against
+	// (is_basemap_style).
 	basemapStyleIDs map[string]bool
 	// mapMotionIDs is parsed from the python map renderer vocabulary tables
 	// (MAP_LABEL_ANIMATIONS, MAP_CAMERA_ANIMATIONS and siblings): these are
@@ -143,7 +146,11 @@ func loadCanonicalMotionUniverse(t *testing.T) canonicalMotionUniverse {
 		}
 		return out
 	}
-	for _, style := range parsePyStringTuple("Chronon3d/tools/cartography/dynamic_tile_pyramid.py", "BASEMAP_STYLES") {
+	basemapStyles := parsePyStringTuple("ChrononPlugin/plugins/maps/tools/cartography/dynamic_tile_pyramid.py", "BASEMAP_STYLES")
+	if len(basemapStyles) == 0 {
+		basemapStyles = parsePyStringTuple("Chronon3d/tools/cartography/dynamic_tile_pyramid.py", "BASEMAP_STYLES")
+	}
+	for _, style := range basemapStyles {
 		universe.basemapStyleIDs[style] = true
 	}
 	scanExecutorVocabulary := func(dir string) {
@@ -163,6 +170,7 @@ func loadCanonicalMotionUniverse(t *testing.T) canonicalMotionUniverse {
 		}
 	}
 	scanExecutorVocabulary("ChrononTemplate/tools/map")
+	scanExecutorVocabulary("ChrononPlugin/plugins/maps/tools/cartography")
 	scanExecutorVocabulary("Chronon3d/tools/cartography")
 	var chronon struct {
 		Motions []struct {

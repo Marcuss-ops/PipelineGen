@@ -1,6 +1,6 @@
 # Ticket: portare la generazione degli overlay a 100/minuto
 
-Stato: **APERTO — target 100 overlay/min NON dimostrato.** Ultimo golden misurato e riportato nel closeout: mediana **74,4/min** (v25–v27; 75, 72 e 76 item validati nelle rispettive finestre); il cambio P4 a writer segmentato ha solo prove locali, nessun throughput live attribuibile. Le proiezioni (incluse ~94/min, ~110/min o stime a 3 lane) non sono risultati. La misura finale va ripetuta sullo stesso payload/mix, con conteggio di artefatti validati e stesso criterio temporale, dopo aver verificato build e topologia effettivamente in esecuzione.
+Stato: **APERTO — gate formale 100 overlay/min NON dimostrato.** Le precedenti misure 107,28 / 99,87 / 95,80/min usavano la packet replication NVENC, ora esclusa perché intermittentemente non sicura sul DTS. Ultimo run stabile col fallback NVENC: **78,01/min** (73 item); conferma dopo il test P1 software: **80,79/min** (75 item), ma con carico concorrente. Entrambi restano campioni sotto 100; serve il mix completo, artefatti validati e topologia verificata per certificare la capacità.
 Priorità: **P1**  
 Ambito: generazione, refactoring e rendering degli overlay nei job video YouTube di PipelineGen / RenderingGen.
 
@@ -32,10 +32,15 @@ Il ticket deve identificare e ridurre il tempo speso nelle fasi di generazione, 
 
 ## Evidenza storica disponibile
 
-- La batch Garlasco da 10 video usa payload `generate` con un obiettivo di **40 overlay** per copione e consegna sequenziale. La manifest registra un conteggio osservato tra **13 e 36 overlay**: il target dichiarato non coincide sempre con quelli materializzati.
-- Nella stessa batch, alcuni job hanno richiesto correzioni mirate: un video ha limitato `max_overlays_per_scene=1`; un altro ha disabilitato le mappe dopo errori deterministici. Sono stati registrati anche overlay entity-card in conflitto con date-card, oltre a tentativi cancellati e risottomissioni.
-- Perciò la prima opportunità misurabile è ridurre overlay mancanti, conflitti e retry, oltre ad accelerare il percorso riuscito. La documentazione attuale non contiene una misura omogenea overlay/minuto né una scomposizione temporale di questi job.
-- La velocità di 6–7/minuto è la baseline operativa riferita dall'utente e va confermata con timestamp e conteggio validato. Non è ancora una misura ricavata dai log.
+- La batch Garlasco da 10 video usava payload `generate` con un obiettivo di
+  **40 overlay** per copione; la manifest registra **13–36** elementi. Sono
+  conteggi di piano/output storico, non una baseline omogenea di artefatti
+  validati per minuto.
+- Job con limiti diversi, mappe disabilitate, conflitti o retry non sono
+  campioni direttamente confrontabili; servono a documentare difetti e
+  variabilità, non la capacità del sistema.
+- La stima operativa 6–7/minuto riferita dall'utente non è verificata dai log.
+  La baseline confrontabile comincia dalle run golden strumentate sotto.
 
 ### Prima ricostruzione misurata
 
@@ -525,7 +530,7 @@ Per ogni run salvare almeno: `run_id`, input hash, revisione, configurazione e w
 - [x] Baseline iniziale del golden case registrata con almeno tre run confrontabili e conteggio degli overlay validi. **Mediana 27,2 overlay/min** (v8 29,5, v9 27,2, v10 25,4), 36–41 overlay validati per run, tutti con link Drive certificati.
 - [x] Almeno un job storico valutato: confronto documentato con fixture equivalente (golden derivato da `08_fonti_media` con differenze dichiarate; ricostruzione misurata della batch storica in «Evidenza storica»).
 - [x] Ogni fase costosa e le cause di retry/mancata materializzazione risultano attribuibili o segnalate come non osservabili. Scomposizione in «Baseline misurata e dove si perde tempo»; residuo dichiarato: `drive_publish` sincrono dei compositi final-job e micro-fasi non ancora proiettate.
-- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul golden case. Misurato: **27,2/min** (mediana 3 run a 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4, 23/10) → **78,9/min** (mediana v22–v24, 3 lane + fused batching, 24/10) → **74,4/min** (mediana v25–v27 post Fix 6) — **gate NON raggiunto, gap 1,27×**. Le run v13/v14 (34,7–39,4/min) misurano la fix 1 e la prima configurazione 3 lane; v16/v18 sono outlier da finestra degradata. La strada preferita resta il taglio del servizio seriale per-item (2,75 s → ~1,3 s con le fix 1-2-4-5) ≈ **94 item/min con le sole 2 lane certificate**; vedi «Profilazione per-item del servizio render — 23 ottobre 2026». Vincolo esterno: l'evidenza VRAM certificata copre 2 daemon, con certificazione 3 lane (`vramprobe`) solo dal 23/10 (v18 non confrontabile). **Gate ridefinito 23/10 (metrica per classe):** vedi «Metrica per classe e ridefinizione del gate» sotto: il numero `item/min` da solo non è più un accettabile report di gate, perché dipende dal mix di classi del piano materializzato.
+- [ ] Gate di throughput concordato e misurato: obiettivo **100 overlay/minuto** sul mix golden completo. Storico misurato: **27,2/min** (v8–v10, 1 lane) → **37,8–41,7/min** (v11/v12, 2 lane) → **47,0–48,1/min** (v15/v17, 2 lane + pool 4) → **78,9/min** (v22–v24) → **74,4/min** (v25–v27 post Fix 6, 75/72/76 item validati). Il gate NON è raggiunto. Le run successive hanno mix/configurazioni diverse e le proiezioni di servizio (1,3 s/item ≈94/min; ~110/min batch; 88–100/min a 3 lane) non sono risultati né certificano il target. v16/v18 sono outlier da finestra degradata. Ripetere il golden completo sullo stesso payload/mix dopo le modifiche Chronon, annotando build, topologia live, planned/rendered/validated e rate per classe.
 
 ### Implementazione Go del batching — 24/10
 
@@ -931,7 +936,7 @@ proposta.
 | --- | --- | --- |
 | 4 cache prepare/font tra item | **FATTO (parte raggiungibile)** | (a) Eliminata la seconda `runtime::prepare_render` per job: `warmup_pipe_renderer` richiamava l'intera preparation già eseguita dal setup sullo stesso (renderer, compiled) — preflight + resolve + decode + publish ripetuti per item — solo per ottenere `warmup_renderer=true`; ora chiama direttamente `runtime::warmup_renderer` (pool prealloc + touch + dummy frame), e il fail-fast della preparation passa a un gate esplicito (`PipeExportSession::preparation_ok` + diagnostic, consumato in `video_export_native`). La doppia accumulazione dei timings della preparation nel sidecar (prepare_timings contava due volte gli stessi eventi) è eliminata di conseguenza. (b) Attribuzione (finding #3/#6): `prepare_breakdown` espone ora `prepare_render_ms` (nome onesto del vecchio `font_preflight_ms`, che resta come alias legacy) più le sotto-fasi misurate `prepare_asset_preflight_ms`, `prepare_asset_resolve_ms`, `prepare_asset_decode_ms`, `prepare_image_decode_ms`, `prepare_image_upload_ms`, `prepare_font_load_ms`, `prepare_font_resolve_ms` (null = non misurato, mai 0 finto); `vulkan_device_ms` è marcato process-level (`vulkan_device_ms_scope: "process"`). Tool `tools/summarize_timing_sidecars.py` allineato. Test: nuovo caso in `tests/cli/test_timing_sidecar_schema.cpp`; verdi `chronon3d_cli_tests` 253/253 e `chronon3d_media_video_tests` 144/144. |
 | 5 overhead fissi per-item | **PARZIALE** | Rimossa una copia profonda ridondante del piano JSON in `prepare_render_plan`: `auto plan_json = root` copiava l'intero documento (due volte per gli envelope `renderinggen.job`) prima che `decode_render_plan` producesse la propria copia di variable-resolution; ora il piano è agganciato per riferimento. `plan_decode_validate` (61–65 ms) risulta decode+validazione tipizzata singola: nessun'altra ridondanza provata nel path. `encoder_open_nvenc` (104 ms) + `encode_close` (155 ms) sono il ciclo di vita della sessione encoder per item: l'eliminazione richiede il riuso sessione cross-item, cioè il paradigma «un piano = una sessione render» (v. sotto), non un micro-fix. |
-| 6 downscale immagini prima dell'upload GPU | **VALUTATO — non implementato (richiede misura di correttezza)** | Evidenza raccolta: (a) il bitmap caricato è RGBA32F a risoluzione sorgente (`CachedImage::gpu_rgba`; `SurfaceDesc.bytes = gpu_rgba.size()*sizeof(float)`) — nel golden ~8 upload e ~242 MB/item; (b) `GpuAssetCache::acquire` deduplica già per content key (nessun re-upload dimostrabile); (c) un downscale a canvas cambia i campioni di resampling → output pixel diverso ovunque l'immagine è ridotta, mentre le lane certificate impongono parità byte Vulkan↔software e i golden pixel-oracles andrebbero re-baselineati. **Exit condition**: implementarlo come cambio misurato insieme al re-baseline dei golden pixel e ai gate di parità aggiornati; la misura prima/dopo si legge già dal sidecar (`job.image.upload_ms`/`upload_count`). Non esiste variante byte-preserving del downscale; la stessa radice (decode+promozione immagini a risoluzione sorgente) è anche il costo reale che il profiling attribuiva a `font_preflight` (v. sotto). |
+| 6 downscale immagini prima dell'upload GPU | **BUILDING BLOCK LOCALE, GOLDEN NOT CERTIFIED** | I test Chronon `test_image_cache_display_bound_downscale.cpp` passano 4 casi/32 assertion per downscale ai bounds, media premultiplied-linear, no-upscale e identità/digest distinti. Il downscale non è byte-preserving: manca re-baseline pixel sul golden e misura before/after dei byte/VRAM nel mix throughput. Non chiamarlo non implementato: il percorso e i test locali esistono; non chiamarlo certificato né attribuirgli il miglioramento live (v25–v27 74,4/min non dimostra un guadagno). |
 
 **Ri-attribuzione del «prepare» (evidenza dal sidecar reale
 `docs/evidence/camera-authority-migration/T16/cam04-shared-plan-20261022/c3d_render150_timing.json`):**
@@ -949,30 +954,32 @@ realistico a ~1,3 s/item passa per fix 6 + taglio render loop, non per una
 Dieci cambi di modello (non micro-fix) che la sessione di analisi ha prodotto
 verso il gate 100/min. Ordine per (guadagno atteso × dipendenze).
 
-**Aggiornamento 24/10/2026:** l'utente ha approvato la serie di paradigmi e
-aperto i ticket operativi in `docs/operations/`:
+**Aggiornamento 25/10/2026:** i ticket sottostanti sono stati riallineati al
+closeout disponibile; la tabella riporta lo stato dimostrato, non il solo stato
+di approvazione iniziale. Non esiste ancora una misura che dimostri 100/min.
+
+L'utente ha approvato la serie di paradigmi il 24/10/2026 e ha aperto i ticket
+operativi in `docs/operations/`:
 
 | Ticket | Paradigma | Gate principale |
 | --- | --- | --- |
-| `TICKET-STATIC-OVERLAY-DURATION-INVARIANT.md` (P1) | riuso di frame per overlay statico | PASS limitato a `IMPORTANT_PHRASE` / `static_text_smoke`, Vulkan/NVENC; estensione ad altri preset aperta |
-| `TICKET-RESIDENT-RENDER-ENGINE.md` (P2) | risorse residenti e sessione encoder cross-job | PARTIAL; ≤100 ms/100 item, parità e VRAM golden NOT RUN |
-| `TICKET-RENDER-AHEAD-SPECULATIVE.md` (P3) | render-ahead con commit per hash | prerequisito trace locale presente; scheduler speculativo e overlap live ≥50% NOT RUN |
-| `TICKET-BATCH-SUPERJOB.md` (P4) | un piano = una sessione encoder, N MP4 distinti | implementazione/test locali PASS; live N-MP4, retry indotto e ≤1,1 s/item NOT RUN; Gate A è proxy single-MP4 |
-| `TICKET-MANIFEST-IDENTITY.md` (P5) | identità per manifest (proposta per ridurre MP4-per-item) | parziale, flag default-off; golden A/B live e negoziazione final worker NOT DONE |
-| `Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md` (B2→B1→B3) | executor depth + overlay persistente + MTSDF single-pass | gate sidecar già nello spec |
+| `TICKET-STATIC-OVERLAY-DURATION-INVARIANT.md` (P1) | riuso di frame per overlay statico | PASS limitato a `IMPORTANT_PHRASE` / `static_text_smoke`, Vulkan/NVENC; inventario: 11 preset ufficiali, nessun secondo statico live qualificato; regressioni P1 software/NV12 esistono ma test C++ non rieseguiti qui |
+| `TICKET-RESIDENT-RENDER-ENGINE.md` (P2) | risorse residenti e sessione encoder cross-job | PARTIAL; encoder cross-job non implementato; ≤100 ms/100 item, parità e VRAM golden NOT RUN |
+| `TICKET-RENDER-AHEAD-SPECULATIVE.md` (P3) | render-ahead con commit per hash | trace locale scene-text PASS nella selezione mirata; scheduler speculativo e overlap generate×render live ≥50% NOT RUN |
+| `TICKET-BATCH-SUPERJOB.md` (P4) | un piano = una sessione encoder, N MP4 distinti | test Go completi RenderingGen/queue PASS; suite PipelineGen mirata PASS ma suite larga FAIL su cinque casi; test/build Chronon non rieseguiti qui; live N-MP4, retry indotto e ≤1,1 s/item NOT RUN; Gate A resta proxy single-MP4 |
+| `TICKET-MANIFEST-IDENTITY.md` (P5) | identità per manifest (proposta per ridurre MP4-per-item) | flag default-off; test manifest/A-B locali mirati PASS; golden A/B live e negoziazione final worker NOT DONE |
+| `Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md` (B2→B1→B3) | executor depth + overlay persistente + MTSDF single-pass | specifica di riferimento; B1 DirectYUV è LAND nel repo, B2/B3 restano da misurare/implementare secondo i rispettivi gate |
 
 Ordine di lavoro storico (24/10), non certificazione né garanzia: B2 → P1 →
 P2 → misura golden live → P3 → P4/P5. La misura del golden non ha chiuso
 100/min e l'implementazione locale P4 non la sostituisce.
 
-1. **Un piano = una sessione render** (al posto di un job per item). Ogni item
-   paga oggi startup (186 ms) + open/close encoder (259 ms) + decode piano +
-   prepare + receipt: ~1,3 s di overhead fisso su 2,75 s di servizio. Batchare
-   gli item (per scena o per piano) in una sessione con N segmenti: uno
-   startup, un encoder, un receipt. Proiezione: servizio/item → render loop +
-   marginali (~1,1 s) ⇒ **~110 item/min a 2 lane già certificate**. Elimina
-   alla radice le residue fix 4/5. È il cambiamento che chiude il gate senza
-   superare i 2 daemon.
+1. **Un piano = una sessione render** (P4, non ancora certificato live N-MP4).
+   Le stime storiche identificano startup, encoder open/close e receipt come
+   costi per item; il batch segmentato mira ad ammortizzarli, ma il servizio
+   effettivo e il throughput sul mix golden restano da misurare. La proiezione
+   render-loop+marginali (~1,1 s/item, ~110/min su due lane) è ipotesi, non prova
+   che P4 chiuda il gate o che mantenga la stessa correttezza per MP4 distinti.
 2. **Verifica content-addressed asincrona + certificazione per versione**.
    Fix 1/2/3 vanno in questa direzione (un probe, un digest, decode fuori
    lane): completare con il full-decode campionato per batch e per cambio
@@ -1117,8 +1124,8 @@ le attribuisce un guadagno non misurato.
 | Nessuna query Artlist quando il provider è disabilitato | **Sì (unit)** | `TestSceneIRSegmentEnricherExtractsFromNarrationNotEditorialBrief` asserisce `ArtlistQueries` vuoto |
 | Voiceover per-item local-only (niente upload Drive nel critical path) | **Sì (unit)** | test voiceover/service e jobs PASS; `timing.json` locale è la SSOT, nessun cleanup Drive senza file remoto |
 | Streaming per-scena attivo anche con fixed sections intro/outro (batch gate forcing) | **Sì (unit)** | `TestSceneTextStreaming_FixedSectionsDoNotForceBatch` e `TestSceneTextPathReasonNamesTheBlockingGate` PASS; gate `batch_intro_outro` rimosso, hint/topologia restano per le invarianti dichiarate in «Streaming per-scena con fixed sections» |
-| Gate 100 overlay/min misurato su golden live, 3 run, stessa macchina | **Misurato, target NON raggiunto** | v22–v24: mediana 78,9/min; v25–v27 post Fix 6: mediana 74,4/min, con 75/72/76 item validati. È evidenza pre-modifiche Chronon correnti; gap rispetto a 100 = 25,6/min (25,6%). Nessuna run successiva dimostra il target. |
-| Parità pixel/audio su golden decodificato | **No** | Richiede decode dei golden e re-baseline dichiarato; i test unit non sostituiscono il confronto pixel |
+| Gate 100 overlay/min misurato su golden live, 3 run, stessa macchina | **Misurato, target formale NON raggiunto** | v25–v27: mediana 74,4/min; post-fix writer tre run: 107,28 / 99,87 / 95,80 su 74/75/76 item, mediana descrittiva 99,87/min. Mix non identici e sotto il requisito da 100 item; non certificano capacità sostenibile. Dettaglio nelle verifiche 25/10 in fondo. |
+| Parità pixel/audio del golden throughput completo | **NOT RUN** | Richiede decode/confronto degli artefatti golden del mix throughput. Il confronto P1 720/720 è solo sul preset statico dedicato e non sostituisce questo gate. |
 | P1 durata statica O(1) | **PASS sul preset statico dedicato; non generalizzato** | Run live 25/10: rapporto 0,684×, 720/720 frame identici. La slope storica +372 ms/s su 161 phrase-card descrive il percorso precedente e non invalida il nuovo caso mirato; serve copertura per altri preset se si estende il claim. Vedi `TICKET-STATIC-OVERLAY-DURATION-INVARIANT.md` |
 | P2 motore residente | **PARTIAL** | Building block cache/downscale con test locali; cross-job encoder, gate 100 item, parità golden e VRAM mix completo non provati. Vedi ticket P2. |
 | P4 batch-superjob | **Implementazione locale PASS / live PARTIAL** | Writer/receipt/retry segmentati testati; live Gate A ratio 0,291 produce un solo MP4. Live N-MP4, retry indotto, parità per segmento e soglia ≤1,1 s/item non provati. Vedi ticket P4. |
@@ -1169,7 +1176,7 @@ Con 3 sessioni NVENC simultanee il servizio per item sale: la terza lane
 **non aggiunge ~50% di throughput ma ~30–35% effettivo** in v18. Conseguenza
 operativa: (a) la strada "3 lane" da sola non chiude il gate; (b) le
 interventi che abbassano il servizio (fix 2/4/5 e sessione persistente
-P4) restano l'unica leva strutturale; (c) le mappe vanno pre-materializzate
+P4) sono leve candidate, non risultati; (c) le mappe vanno pre-materializzate
 fuori dal percorso di sottomissione (stessa direzione di P3, ma sul *prepare*,
 non solo sul decode).
 
@@ -1400,11 +1407,12 @@ proiezione 6,35× contro il gate 1,2×. La A/B dedicata con card statiche vere
 va eseguita con l'implementazione P1 (harness deterministica lato Chronon,
 3 s vs 30 s, `render_attempt_analytics.render_ms`).
 
-### Gate P2 (overhead fisso per-item) — misurato dai sidecar deep v22–v27
+### Gate P2 (overhead fisso per-item) — dato storico, non misura del percorso residente
 
-Gate: *startup + prepare non-asset + encoder open/close ≤ 100 ms*. Misurato
-su `startup_breakdown`/`prepare_breakdown`/`encode_close_ms` dei sidecar
-content-addressed (item singoli):
+Il gate P2 è *startup + prepare non-asset + encoder open/close ≤ 100 ms*.
+I seguenti sidecar content-addressed v22–v27 misurano il vecchio percorso
+item-singolo; documentano la distanza storica dal gate ma non sono una misura
+post-implementazione P2:
 
 | Run | n | Overhead fisso/item | di cui startup | enc_open (in startup) | enc_close |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -1415,11 +1423,12 @@ content-addressed (item singoli):
 | v26 | 38 | 429 ms | 196 ms | 123 ms | 183 ms |
 | v27 | 35 | 460 ms | 205 ms | 128 ms | 208 ms |
 
-**Media ~465 ms/item contro il gate 100 ms → NON raggiunto (4,6×).** I
-campioni con `prepare_non_asset` negativo derivano da sovrapposizione delle
-sotto-fasi (`prepare_render_ms` include `prepare_font_load_ms`); il totale
-fisso resta robusto. È esattamente il target di P2 (sessione encoder
-cross-item + startup residente).
+**Media storica ~465 ms/item contro il gate 100 ms.** È un dato del vecchio
+percorso, non un verdetto della nuova architettura residente: il gate P2 resta
+NOT RUN perché non esistono ancora 100 item consecutivi misurati con il
+percorso cross-job richiesto. I campioni con `prepare_non_asset` negativo
+derivano da sovrapposizione delle sotto-fasi (`prepare_render_ms` include
+`prepare_font_load_ms`).
 
 ### Gate P4 (batch-superjob) — misurato dai sidecar batch v22–v27
 
@@ -1432,12 +1441,184 @@ cross-item + startup residente).
 
 ### Decisione attesa: P2 (overlay-layer / motore residente) vs squeeze residuo
 
-Dati misurati oggi: gap 100/min = 1,27× sulla finestra; overhead fisso
-465 ms/item (P2 lo eliminerebbe quasi per intero); slope durata +372 ms/s
-(P1); fused risparmia solo 8–34% (P4 darebbe il salto strutturale). Le leve
-micro ancora disponibili senza cambio di paradigma (ritocchi prepare/font,
-dispatch) sono stimate in pochi punti percentuali — non chiudono 1,27× in
-modo robusto su mix diversi. **Decisione dell'utente richiesta** fra:
-(a) proseguire con l'implementazione dei ticket P1/P2/P4 approvati
-(raccomandato: P2+P4 coprono il gap con margine), (b) squeeze residuo
-solo micro-fix.
+Dati storici: gap 100/min = 1,27× sulla finestra rispetto alla mediana v25–v27;
+overhead old-path ~465 ms/item; P1 aveva slope +372 ms/s nel corpus animato
+pre-fast-path; i proxy fused storici risparmiavano 8–34%. Queste osservazioni
+motivano P1/P2/P4 ma non dimostrano che P2 o P4 chiudano il gap: P2 non ha il
+gate 100-item, P4 non ha la misura live N-MP4 e P1 è certificato su un solo
+preset. La ricognizione del 25/10 ha rieseguito le suite complete RenderingGen
+e queue e vet PASS, i test PipelineGen mirati di batching/manifest/trace PASS;
+la suite più ampia `scripts ./capabilities/overlays/... ./kernel/observability`
+resta FAIL su cinque casi (builder request/keywords, editorial manifest,
+preflight Artlist e registry `esri_light`). La configurazione CMake
+`linux-video-test` passa ma il build C++ mirato scade a 600 s senza generare i
+binari target, mentre era attivo il build release CLI: i CTest C++ P1/P2/P4
+sono NOT RUN in questo checkpoint. Il target 100/min richiede una nuova misura
+golden completa, non una decisione basata su proiezioni; i gate live che
+richiedono worker/daemon aggiornati richiedono una finestra autorizzata, non un
+deploy implicito.
+
+### Verifica locale mirata — 25/10/2026
+
+La ricognizione dei cataloghi e dei test conferma che il solo preset dimostrato
+live per P1 è `IMPORTANT_PHRASE` / `static_text_smoke`, backend Vulkan/NVENC.
+RenderingGen definisce 11 preset ufficiali: i tre text (`static_text_smoke`,
+`phrase_default`, `classic_phrase`) e otto image. Il contratto di preset prova
+materializzazione/catalogo, non qualifica tutti i preset come statici; non è
+emerso un secondo fixture live statico con durata invariata. In Chronon sono
+presenti regressioni deterministic P1: `P1 static run replicates the anchor
+packet with exact pixel parity` (libx264/software, 24 frame) e `ExecutionResolver
+preserves proven packet duplicates on NV12 output` (contratto di routing). La
+suite certificativa per-durata 3 s/30 s resta l'harness live che richiede
+worker e servizi; questi test locali non ne sostituiscono il rapporto di
+servizio o la copertura backend.
+
+Verifiche rieseguite sul working tree:
+
+- PASS: `GOMAXPROCS=2 go test ./... -count=1` in `RenderingGen/renderinggen`.
+- PASS: `GOMAXPROCS=2 go test ./... -count=1` in `RenderingGen/queue`.
+- PASS: `GOMAXPROCS=2 go vet ./...` in entrambi i moduli.
+- PASS mirato: `go test ./internal/capabilities/scripts -run` con 16 test
+  nominati per batching/order, P3 trace/overlap locale e P5 manifest
+  A/B/identità; l'insieme più ampio
+  `go test ./internal/capabilities/scripts ./internal/capabilities/overlays/...
+  ./internal/kernel/observability -count=1` resta FAIL sui cinque casi
+  registrati nella sessione (builder payload/keyword, editorial manifest,
+  preflight Artlist e source-registry `esri_light`). Nessuna di queste cause è
+  stata nascosta o attribuita ai gate locali verdi.
+- NOT COMPLETE: il build `linux-video-test` è stato configurato con successo,
+  ma la ricostruzione mirata C++ non ha prodotto i binari richiesti entro il
+  timeout di 600 s mentre era attivo un build release separato; i CTest cache,
+  render-graph e media-video non risultano quindi rieseguiti in questo
+  checkpoint. Non considerarli PASS sulla base del build precedente.
+- NOT RUN: C++ test reali del writer P4/P1 nel checkpoint corrente, live P1 su
+  altri preset/backend, P2 100-item/VRAM/parità, P3 overlap generate×render live,
+  P4 N-MP4/parità/retry/≤1,1 s per-item, P5 golden A/B e throughput 100/min.
+  Il run P4 dell'11:00 produceva un singolo MP4 (0,291 proxy); P1 resta PASS
+  limitato ai dati 10:57 già registrati sopra. Ogni gate che richiede worker
+  aggiornato, servizi di produzione o finestra golden resta fuori da questo
+  checkpoint senza deploy/riavvii.
+
+### Ripresa golden e fix writer — 25/10/2026, 14:10 UTC
+
+- Build release Chronon completato con
+  `cmake --build build/chronon/linux-video-release --target chronon3d_cli -j12`.
+  Dopo la correzione del drain, il rebuild ha compilato e linkato 3/3 step;
+  SHA-256 CLI `5759c3a43c9c797a75a52c1c4f183f623af97232362e3eef72a1c6e23c21a790`.
+- Il rerun precedente (`after-cpp-live-20261025T135536Z`) si è fermato
+  all'item 24: il log live mostra `duplicate frame 30 breaks the presentation
+  cursor 28`. Le 24 chiamate in 29,8 s sono un parziale e non certificano il
+  gate. `goldensummary` non ha trovato un'identità della fan-out run nel job
+  fallito; ciò impedisce il report, non rende la run una misura valida.
+- Fix locale: `write_duplicate_frame` ripete `drain_ready_cuda_frames(true)`
+  finché non restano frame CUDA pendenti, prima del controllo del cursore.
+  Il build release passa e il test P1 `P1 static run replicates the anchor
+  packet with exact pixel parity` passa: 1 caso, 60 assertion nel profilo
+  `linux-video-test`.
+- I tre daemon attivi hanno ancora il processo precedente. Il restart via
+  `systemctl` è stato negato da polkit; i permessi sudo non interattivi
+  disponibili non autorizzano Chronon. Il golden aggiornato non è stato
+  rilanciato perché i daemon non hanno caricato il fix. P1 resta aperto sul
+  gate live CUDA/NVENC; P2–P5 mantengono gli stati e i gate elencati sopra.
+
+### Aggiornamento writer P1 — 25/10/2026, 15:04 UTC
+
+- Rimosse le righe `p1-order-debug` dal writer; la logica funzionale resta
+  invariata. Build release `chronon3d_cli -j12` PASS, SHA-256
+  `0fb96618bc1c0cda80e1f26c96fd991381145b4ed378f3697fe33127f1255817`.
+  I tre daemon attivi riportano lo stesso SHA. Il test mirato del writer nel
+  profilo `linux-video-test` PASS: 1 caso, 60 assertion (libx264/software).
+- Il golden diagnostico `p1-dts-diag-20261025T144631Z` è riuscito con 74/74
+  overlay e finestra 46,252 s: **95,996 overlay/min** (arrotondato 96/min).
+  È un risultato utile, ma resta sotto 100/min e la build conteneva log
+  diagnostici; non chiude il gate throughput.
+- Il primo rerun senza diagnostica,
+  `p1-clean-20261025T1500Z` (`job_1792940039797698206_b9d9b0fd`), è FAILED
+  sul batch item 010 dopo 12 render completati: IPC restituisce solo
+  `render job failed with exit code 1`; `goldensummary` non può attribuire
+  gli attempt a un'unica fan-out run. Non è una misura throughput valida e
+  non è stato conteggiato come PASS.
+- Il rerun pulito indipendente `p1-clean-retry1-20261025T1510Z` è SUCCEEDED:
+  job `job_1792940327155379001_49292e90`, run
+  `run_2d01fdc1-407f-406c-bc4e-21aae80cea9f`; piano e render **74/74 COMPLETED**,
+  16 batch con artifact object-store URL e SHA-256, finestra overlay 41,388 s,
+  **107,28 item/min**. Mix realizzato: 50 text_phrase, 7 image, 6 entity_image,
+  3 entity_card, 7 number, 1 map. Il riepilogo non contiene
+  `overlay_links_drive`; i 16 link verificati sono URL object-store dei batch.
+- Questo è un risultato live sopra 100/min sul mix effettivamente generato,
+  ma non chiude il gate formale: il golden richiede il mix completo da 100 item
+  e almeno tre run confrontabili; questa run ne ha 74. Il singolo run da
+  107,28/min è un campione, non capacità sostenibile. La precedente run pulita
+  fallita resta esclusa. Il throughput 100/min e P2–P5 restano aperti ai gate
+  descritti sopra.
+- Seconda replica pulita `p1-clean-retry2-20261025T1515Z` SUCCEEDED:
+  job `job_1792940760090182091_2d5d524b`, run
+  `run_7a81cd1e-a33a-4f1f-9577-fddcbc9f0e8c`; 75/75 COMPLETED, 17 batch artifact
+  URL/SHA, finestra 45,057 s, **99,87 item/min**. Mix: 49 text_phrase,
+  8 image, 9 entity_image, 7 number, 2 map. La macchina aveva attività CPU
+  concorrenti visibili durante la run; mantenere il dato come campione, non
+  come certificazione del target.
+- Terza replica pulita `p1-clean-retry3-20261025T1520Z` SUCCEEDED:
+  job `job_1792941064545580172_5e10c4cb`, run
+  `run_52ade3a6-9fe3-4da6-9c2e-f2434700af30`; 76/76 COMPLETED, 12 batch
+  artifact URL/SHA, finestra 47,600 s, **95,80 item/min**. Mix: 50 text_phrase,
+  8 image, 9 entity_image, 7 number, 2 map. La mediana descrittiva dei tre
+  rerun puliti è **99,87/min** (range **95,80–107,28/min**), ma non è una
+  certificazione confrontabile: i run hanno 74/75/76 item e mix differenti,
+  tutti inferiori ai 100 item richiesti dal golden. La mediana è inoltre sotto
+  la soglia. Un run precedente pulito fallito è escluso.
+- Verifica artefatti sul DB e sui log worker: le righe di output sono 54/52/61
+  con outcome `success`/`cache_hit` rispettivamente 53/1, 50/2 e 60/1; tutti
+  gli SHA delle righe sono distinti entro ciascun run. I 16/17/12 batch artifact
+  hanno URL e SHA propri e il `overlay_item_count` coincide con gli `item_ids`
+  in ogni batch. I log confermano receipt/decode gate per i render e SHA/frame
+  verification per le map importate. `overlay_links_drive` è zero/assente:
+  il report conta URL object-store, senza attribuire pubblicazione Drive.
+
+### Stato aggiornato — 25/10/2026, 16:30 UTC
+
+- Dopo il fallimento intermittente DTS/PTS con packet replication NVENC, il
+  writer ora abilita le repliche packet-level solo sui backend supportati;
+  NVENC segue il percorso render/encode normale. Il reset dello stato duplicate
+  quando riprendono i frame CUDA reali è incluso, ma da solo non ha risolto il
+  riordino dei packet NVENC. La build release `chronon3d_cli -j12` è PASS,
+  SHA-256 `a5b200a0892cc5399aaa7fbee901b1659500841691af65ec37bae092c91bb552`;
+  i tre daemon sono stati riavviati e verificati sul nuovo binario.
+- Golden Garlasco `p1-nvenc-no-packet-replica-20261025T1630Z`:
+  job `job_1792945832931944005_775fdbef`, run
+  `run_e2494726-8ab9-4684-b478-7360e4359179`, **SUCCEEDED 73/73**,
+  15 batch, finestra 56,148 s = **78,01 overlay/min**. Nessun errore di
+  packet DTS monotono, duplicate submit, encoder duplicate o close nei log.
+- La run certifica la stabilità del percorso NVENC conservativo, ma il target
+  di 100/min resta **APERTO**: il dato è 78,01/min. I precedenti 95,80–107,28
+  erano misurati con packet replication NVENC intermittentemente non sicura;
+  non sono una prova valida di capacità affidabile. Il caso software mantiene
+  il percorso di replica e richiede il test mirato aggiornato.
+- Nessun P è dichiarato chiuso sulla base di questa misura: P2–P5 hanno i gate
+  ancora elencati nel closeout. Dopo ogni ulteriore fix P rimane obbligatorio
+  rilanciare Garlasco e registrare la misura prima di chiudere quel P.
+- Verifica software completata alle 16:45 UTC: build del target
+  `chronon3d_native_decoder_teardown_tests` in `linux-video-test` PASS; caso
+  `P1 static run replicates the anchor packet with exact pixel parity` PASS,
+  **1 caso / 60 assertion** su libx264. Questa prova copre il percorso software,
+  non dimostra che NVENC possa riattivare in sicurezza la packet replication.
+
+### Conferma Garlasco dopo test P1 — 25/10/2026, 16:47–16:52 UTC
+
+- Rilanciato il payload immutabile con chiave univoca dopo il PASS software:
+  job `job_1792946833233702416_cbd26671`, run
+  `run_9405664a-c61f-4c75-9e06-bc43ff1272f5`, **SUCCEEDED**, 75/75 overlay
+  render completati. Finestra 55,702 s = **80,79 overlay/min**; piano/mix:
+  50 text_phrase, 7 image, 3 entity_image, 5 entity_card, 7 number, 3 map.
+- Le righe artefatto nel DB sono 59: 47 output singoli + 12 batch; 59/59 SHA
+  presenti e distinti, tutti i 12 batch hanno conteggio item coerente e stato
+  `COMPLETED`; i tre output mappa hanno `import_verified=1`. Il job usa
+  `final_job=false`: Drive publication è disabilitata per policy e non viene
+  conteggiata come link Drive. La misura conta i 75 item validati dal summary,
+  non 59 righe (i batch rappresentano più item).
+- La run non è una certificazione pulita: altri carichi di sistema erano
+  attivi. `llama-server` e un secondo processo `freebuff` sono partiti dopo
+  l'avvio del job e prima della finestra overlay; embedding server e un
+  processo `freebuff` erano già attivi. La velocità osservata resta quindi un
+  dato informativo, non comparabile con run a macchina scarica. Il target
+  100/min resta **APERTO**.

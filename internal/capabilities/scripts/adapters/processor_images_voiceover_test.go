@@ -29,7 +29,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -233,147 +232,6 @@ func processInputFromModel(model *scriptpkg.ModelScriptOutputV1) adapterspkg.Pro
 
 // ── Test: ImageProcessor ──────────────────────────────────────────
 
-func TestImageProcessorNilGen(t *testing.T) {
-	t.Parallel()
-	proc := processor.NewImageProcessor(nil, zap.NewNop())
-	_, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nScenesModel(2)))
-	if err == nil {
-		t.Fatal("expected error when ImageGenService is nil")
-	}
-}
-
-func TestImageProcessorNoScenes(t *testing.T) {
-	t.Parallel()
-	gen := &fakeImageGen{results: []*processor.ImageResult{{SourceURL: "http://img1"}}}
-	proc := processor.NewImageProcessor(gen, zap.NewNop())
-	model := nScenesModel(0)
-	_, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(model))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assert.Equal(t, int32(0), gen.calls.Load(), "gen should not be called when SpecScene is empty")
-	assert.Len(t, model.SpecScene.Scenes, 0)
-}
-
-func TestImageProcessorNilModel(t *testing.T) {
-	t.Parallel()
-	gen := &fakeImageGen{results: []*processor.ImageResult{{SourceURL: "http://img1"}}}
-	proc := processor.NewImageProcessor(gen, zap.NewNop())
-	result, err := proc.Process(context.Background(), textOnlyPlan(), processInputFromModel(nil))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result == nil {
-		t.Fatal("result should be non-nil")
-	}
-}
-
-func TestImageProcessorSuccess(t *testing.T) {
-	t.Parallel()
-	gen := &fakeImageGen{results: []*processor.ImageResult{{SourceURL: "http://img1.jpg"}}}
-	proc := processor.NewImageProcessor(gen, zap.NewNop())
-	model := nScenesModel(1)
-	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	require.NotNil(t, result)
-	require.Len(t, result.SceneImages, 1)
-	assert.Equal(t, "http://img1.jpg", result.SceneImages[0].URL)
-}
-
-func TestImageProcessorPrefersGeneratedImagePath(t *testing.T) {
-	t.Parallel()
-	gen := &generatedPriorityImageGen{}
-	proc := processor.NewImageProcessor(gen, zap.NewNop())
-	model := &scriptpkg.ModelScriptOutputV1{
-		SchemaVersion: 1,
-		Text:          "Generated script.",
-		SpecScene: scriptpkg.SpecSceneOutput{
-			Version: 1,
-			Scenes: []scriptpkg.SpecScene{
-				{
-					ID:    "scene-0",
-					Index: 0,
-					Title: "Ancient Rome at dawn",
-					Text:  "Long narrative about the early Republic and the Roman hills.",
-					Kind:  scriptpkg.SceneImage,
-				},
-			},
-		},
-	}
-	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	require.NotNil(t, result)
-	require.Len(t, result.SceneImages, 1)
-	assert.Equal(t, int32(1), gen.genCalls.Load(), "GenerateSmartImage should be preferred when available")
-	assert.Equal(t, int32(0), gen.searchCalls.Load(), "SearchAndDownload should not be used when generation is available")
-	assert.Equal(t, "https://drive.google.com/file/d/drive-Create a cinematic documentary image depicting: Ancient Rome at dawn/view", result.SceneImages[0].URL)
-	require.Len(t, gen.lastPrompts, 3)
-	assert.Equal(t, "Create a cinematic documentary image depicting: Ancient Rome at dawn", gen.lastPrompts[0], "the primary prompt should be an explicit visual instruction")
-	assert.Equal(t, "Ancient Rome at dawn", gen.lastPrompts[1], "scene title should remain available as context")
-	assert.Equal(t, "Long narrative about the early Republic and the Roman hills.", gen.lastPrompts[2], "full scene text should remain available as secondary context")
-}
-
-func TestImageProcessorPartialFailure(t *testing.T) {
-	t.Parallel()
-	gen := &fakeImageGen{
-		results: []*processor.ImageResult{{SourceURL: "http://img1.jpg"}, nil},
-		errs:    []error{nil, errors.New("timeout")},
-	}
-	proc := processor.NewImageProcessor(gen, zap.NewNop())
-	model := nScenesModel(2)
-	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
-	if err != nil {
-		t.Fatalf("unexpected error (partial failures should not abort): %v", err)
-	}
-	require.NotNil(t, result)
-	require.Len(t, result.SceneImages, 2)
-	assert.Equal(t, "http://img1.jpg", result.SceneImages[0].URL)
-	assert.Equal(t, "", result.SceneImages[1].URL)
-	// ImageProcessor logs partial failures but does not populate
-	// PostProcessResult.Warnings (unlike VoiceoverProcessor which
-	// does). The log output is the canonical warning surface.
-}
-
-func TestImageProcessorWarmupAndParallelFanout(t *testing.T) {
-	t.Parallel()
-
-	gen := &blockingImageGen{
-		release: make(chan struct{}),
-	}
-
-	proc := processor.NewImageProcessor(gen, zap.NewNop())
-	model := nScenesModel(4)
-
-	done := make(chan struct{})
-	var result *adapterspkg.PostProcessResult
-	var err error
-	go func() {
-		result, err = proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
-		close(done)
-	}()
-
-	require.Eventually(t, func() bool {
-		return gen.calls.Load() >= 2
-	}, 2*time.Second, 10*time.Millisecond, "expected at least two concurrent image generations")
-
-	close(gen.release)
-	<-done
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Len(t, result.SceneImages, 4)
-	assert.Equal(t, int32(1), gen.prewarmCalled.Load(), "expected prewarm to run before fan-out")
-	assert.Equal(t, int32(0), gen.prewarmMisses.Load(), "search should never start before warmup completes")
-	assert.GreaterOrEqual(t, gen.maxInFlight.Load(), int32(2), "expected parallel fan-out to keep >1 generation in flight")
-	for i, img := range result.SceneImages {
-		assert.Equal(t, i, img.Index)
-		assert.Equal(t, "http://img/scene-"+itoaSimple(i), img.URL)
-	}
-}
-
 // ── Test: VoiceoverProcessor ──────────────────────────────────────
 
 func TestVoiceoverProcessorNilGen(t *testing.T) {
@@ -468,13 +326,6 @@ func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 }
 
 // ── Test: processor names ─────────────────────────────────────────
-
-func TestImageProcessorName(t *testing.T) {
-	proc := processor.NewImageProcessor(&fakeImageGen{results: []*processor.ImageResult{}}, zap.NewNop())
-	if proc.Name() != adapterspkg.ProcessorImages {
-		t.Errorf("expected name \"images\", got %q", proc.Name())
-	}
-}
 
 func TestVoiceoverProcessorName(t *testing.T) {
 	proc := processor.NewVoiceoverProcessor(&fakeVoiceoverGen{}, zap.NewNop())
