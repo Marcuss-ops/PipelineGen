@@ -110,7 +110,9 @@ func projectSemanticSearchFeedback(
 				return nil, fmt.Errorf("semantic search feedback: proposal %q repeats query %q", proposalID, text)
 			}
 			seenQueries[text] = struct{}{}
-			queries = append(queries, scriptgen.SemanticSearchQuery{Kind: kind, Text: text})
+			queries = append(queries, scriptgen.SemanticSearchQuery{
+				Kind: kind, Text: text, Origin: query.Origin, Illustrative: query.Illustrative,
+			})
 		}
 		feedback.Entries = append(feedback.Entries, scriptgen.SemanticSearchFeedbackEntry{
 			ProposalID: proposalID,

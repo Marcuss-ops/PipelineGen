@@ -23,6 +23,9 @@ type SemanticSearchAttempt struct {
 	CandidateID, AssetKey string
 	SceneID               string
 	Query, QueryKind      string
+	QueryOrigin           string
+	TemplateID            string
+	Illustrative          bool
 	Rung                  int
 	// Rank is the plan rank of the composition. The concurrent scheduler
 	// uses it to keep the measured report deterministic even when attempts
@@ -113,7 +116,8 @@ func (p *SemanticProductionPlan) attemptForUnit(unit *SemanticProductionUnit) (S
 	query := unit.Queries[unit.Rung]
 	attempt := SemanticSearchAttempt{
 		CandidateID: unit.CandidateID, AssetKey: unit.AssetKey, SceneID: unit.SceneID,
-		Query: query.Text, QueryKind: query.Kind, Rung: unit.Rung,
+		Query: query.Text, QueryKind: query.Kind, QueryOrigin: query.Origin, TemplateID: query.TemplateID,
+		Illustrative: query.Illustrative, Rung: unit.Rung,
 		Rank: unit.Rank, Class: SearchClassGeneric,
 	}
 	if len(unit.EntityIDs) == 1 {

@@ -126,6 +126,9 @@ type SemanticProductionUnit struct {
 // becomes a rendered overlay asset.
 type SemanticResolvedImage struct {
 	AssetID, URL, DriveLink, SHA256, MediaType, Provider, Query, Entity string
+	QueryOrigin                                                         string
+	TemplateID                                                          string
+	Illustrative                                                        bool
 	Width, Height                                                       int
 }
 

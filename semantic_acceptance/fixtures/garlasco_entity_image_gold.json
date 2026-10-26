@@ -1,0 +1,45 @@
+{
+  "schema": "brainrust.semantic_gold.v1",
+  "fixture": "garlasco_full.txt",
+  "purpose": "Editorial reference for entity recall and image-query relevance; query examples are not claims that these exact images exist.",
+  "entities": [
+    {"surface": "Chiara Poggi", "type": "PERSON", "identity": "chiara_poggi"},
+    {"surface": "Andrea Sempio", "type": "PERSON", "identity": "andrea_sempio"},
+    {"surface": "Alberto Stasi", "type": "PERSON", "identity": "alberto_stasi"},
+    {"surface": "Garlasco", "type": "LOCATION", "identity": "garlasco"},
+    {"surface": "Pavia", "type": "LOCATION", "identity": "pavia"},
+    {"surface": "via Pascoli", "type": "LOCATION", "identity": "via_pascoli"},
+    {"surface": "Procura di Pavia", "type": "ORG", "identity": "procura_pavia"},
+    {"surface": "Cassazione", "type": "ORG", "identity": "cassazione"}
+  ],
+  "useful_visual_objects": [
+    "reperto",
+    "traccia biologica",
+    "analisi del DNA",
+    "consulenze tecniche",
+    "documenti giudiziari"
+  ],
+  "query_examples": [
+    {"kind": "exact_entity", "query": "Chiara Poggi", "origin": "literal", "illustrative": false},
+    {"kind": "exact_entity", "query": "Procura di Pavia", "origin": "literal", "illustrative": false},
+    {"kind": "contextual", "query": "Cassazione processo Alberto Stasi", "origin": "derived_from_source_context", "illustrative": false},
+    {"kind": "illustrative_material", "query": "Garlasco veduta città Pavia", "origin": "derived_from_semantic_template", "template_id": "it.LOCATION", "derived_terms": ["veduta", "città"], "illustrative": true},
+    {"kind": "illustrative_material", "query": "reperto analisi DNA laboratorio forense", "origin": "derived_from_semantic_template", "template_id": "it.OBJECT", "derived_terms": ["laboratorio", "forense"], "illustrative": true},
+    {"kind": "illustrative_material", "query": "consulenze tecniche documenti giudiziari", "origin": "derived_from_semantic_template", "template_id": "it.ORG", "derived_terms": ["documenti", "giudiziari"], "illustrative": true}
+  ],
+  "forbidden_pair_queries": [
+    "Chiara Poggi Alberto Stasi",
+    "Andrea Sempio Alberto Stasi",
+    "Chiara Poggi Andrea Sempio"
+  ],
+  "phrase_integrity_examples": [
+    {
+      "kind": "complete_source_segment",
+      "text": "Nel duemilatredici la Cassazione interviene annullando con rinvio la sentenza, e il caso torna in aula con un nuovo giudizio d'appello che si conclude nel duemilaquattordici con una condanna a sedici anni di reclusione."
+    }
+  ],
+  "micro_summary_examples": [
+    "Cassazione: annullamento con rinvio nel 2013",
+    "Alberto Stasi: condanna nel 2014"
+  ]
+}

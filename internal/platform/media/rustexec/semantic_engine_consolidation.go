@@ -2,6 +2,7 @@ package rustexec
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -99,17 +100,44 @@ func projectSemanticConsolidation(
 			// states the fact while the identity it searches is introduced by
 			// another scene. Source slices keep the stricter scene grounding.
 			grounding := source
-			if strings.TrimSpace(query.Kind) == "exact_mention" {
-				grounding = scriptText
-			}
-			if strings.TrimSpace(query.Text) == "" || !groundedQuery(grounding, query.Text) {
+			if strings.TrimSpace(query.Origin) == "literal" || query.Origin == "" {
+				if strings.TrimSpace(query.Kind) == "exact_mention" {
+					grounding = scriptText
+				}
+				if strings.TrimSpace(query.Text) == "" || !groundedQuery(grounding, query.Text) {
+					return nil, fmt.Errorf("semantic consolidation: candidate %q query %q is not grounded", wireCandidate.ID, query.Text)
+				}
+			} else if !groundedContextQuery(source, query) {
 				return nil, fmt.Errorf("semantic consolidation: candidate %q query %q is not grounded", wireCandidate.ID, query.Text)
 			}
 			if _, duplicate := seenQueries[query.Text]; duplicate {
 				return nil, fmt.Errorf("semantic consolidation: candidate %q repeats query %q", wireCandidate.ID, query.Text)
 			}
 			seenQueries[query.Text] = struct{}{}
-			queries = append(queries, scriptgen.SemanticSearchQuery{Kind: query.Kind, Text: query.Text})
+			projectedQuery := scriptgen.SemanticSearchQuery{
+				Kind: query.Kind, Text: query.Text, Origin: query.Origin,
+				Illustrative: query.Illustrative,
+			}
+			if query.Evidence != nil {
+				projectedQuery.Evidence = *query.Evidence
+			}
+			if query.EvidenceStartByte != nil {
+				projectedQuery.EvidenceStartByte = *query.EvidenceStartByte
+			}
+			if query.EvidenceEndByte != nil {
+				projectedQuery.EvidenceEndByte = *query.EvidenceEndByte
+			}
+			if query.TemplateID != nil {
+				projectedQuery.TemplateID = *query.TemplateID
+			}
+			projectedQuery.DerivedTerms = append(projectedQuery.DerivedTerms, query.DerivedTerms...)
+			for _, component := range query.Components {
+				projectedQuery.Components = append(projectedQuery.Components, scriptgen.SemanticSearchQueryComponent{
+					Kind: component.Kind, ComponentType: component.ComponentType, Text: component.Text,
+					StartByte: component.StartByte, EndByte: component.EndByte,
+				})
+			}
+			queries = append(queries, projectedQuery)
 		}
 		if wireCandidate.RequiresMedia && len(queries) == 0 {
 			return nil, fmt.Errorf("semantic consolidation: media candidate %q has no query", wireCandidate.ID)
@@ -329,4 +357,41 @@ func derefString(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+func groundedContextQuery(source string, query semanticEngineQuery) bool {
+	if (query.Origin != "derived_from_source_context" && query.Origin != "derived_from_semantic_template") || query.Evidence == nil ||
+		query.EvidenceStartByte == nil || query.EvidenceEndByte == nil ||
+		!groundedSpan(source, *query.EvidenceStartByte, *query.EvidenceEndByte, *query.Evidence) ||
+		len(query.Components) < 2 {
+		return false
+	}
+	components := append([]semanticEngineQueryComponent(nil), query.Components...)
+	sort.Slice(components, func(i, j int) bool { return components[i].StartByte < components[j].StartByte })
+	parts := make([]string, 0, len(components))
+	for _, component := range components {
+		if component.StartByte < *query.EvidenceStartByte || component.EndByte > *query.EvidenceEndByte ||
+			!groundedSpan(source, component.StartByte, component.EndByte, component.Text) {
+			return false
+		}
+		parts = append(parts, strings.TrimSpace(component.Text))
+	}
+	if query.Origin == "derived_from_source_context" {
+		return strings.Join(parts, " ") == query.Text
+	}
+	if query.TemplateID == nil || strings.TrimSpace(*query.TemplateID) == "" || !query.Illustrative || len(query.DerivedTerms) == 0 {
+		return false
+	}
+	groundedTerms := strings.Fields(strings.Join(parts, " "))
+	groundedTerms = append(groundedTerms, strings.Fields(strings.Join(query.DerivedTerms, " "))...)
+	queryTerms := strings.Fields(query.Text)
+	for index := range groundedTerms {
+		groundedTerms[index] = strings.ToLower(groundedTerms[index])
+	}
+	for index := range queryTerms {
+		queryTerms[index] = strings.ToLower(queryTerms[index])
+	}
+	sort.Strings(groundedTerms)
+	sort.Strings(queryTerms)
+	return strings.Join(groundedTerms, "\x00") == strings.Join(queryTerms, "\x00")
 }

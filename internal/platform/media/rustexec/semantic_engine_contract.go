@@ -118,8 +118,24 @@ type semanticEngineProductionCandidate struct {
 }
 
 type semanticEngineQuery struct {
-	Kind string `json:"kind"`
-	Text string `json:"text"`
+	Kind              string                         `json:"kind"`
+	Text              string                         `json:"text"`
+	Origin            string                         `json:"origin"`
+	Illustrative      bool                           `json:"illustrative"`
+	Evidence          *string                        `json:"evidence,omitempty"`
+	EvidenceStartByte *int                           `json:"evidence_start_byte,omitempty"`
+	EvidenceEndByte   *int                           `json:"evidence_end_byte,omitempty"`
+	Components        []semanticEngineQueryComponent `json:"components,omitempty"`
+	TemplateID        *string                        `json:"template_id,omitempty"`
+	DerivedTerms      []string                       `json:"derived_terms,omitempty"`
+}
+
+type semanticEngineQueryComponent struct {
+	Kind          string `json:"kind"`
+	ComponentType string `json:"component_type"`
+	Text          string `json:"text"`
+	StartByte     int    `json:"start_byte"`
+	EndByte       int    `json:"end_byte"`
 }
 
 type semanticEngineConsolidatedFact struct {

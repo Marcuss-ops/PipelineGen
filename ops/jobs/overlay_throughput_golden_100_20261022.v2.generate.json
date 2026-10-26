@@ -19,7 +19,7 @@
       },
       "max_phrase_overlays": 50,
       "max_image_overlays": 30,
-      "max_map_overlays": 10,
+      "max_map_overlays": 0,
       "overlay_style": {
         "font_family": "playfair_display_italic",
         "color": [
@@ -46,7 +46,7 @@
         }
       },
       "animation_counts": {
-        "maps": 3,
+        "maps": 0,
         "images": 13,
         "images_with_text": 13,
         "important_phrase": 20,
@@ -407,7 +407,7 @@
         "opacity": 1
       },
       "overlay_group_limits": {
-        "maps": 10,
+        "maps": 0,
         "short_phrases": 25,
         "long_phrases": 25,
         "entities_with_text": 10,
@@ -415,7 +415,7 @@
         "locations": 0
       },
       "overlay_categories": {
-        "maps": "enabled",
+        "maps": "disabled",
         "phrases": "enabled",
         "images": "enabled",
         "numbers": "enabled",

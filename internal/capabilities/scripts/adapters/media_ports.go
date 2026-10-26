@@ -16,10 +16,13 @@ type InternetImageSearchRequest struct {
 	// QueryClass is the semantic routing class (`person`, `organization`,
 	// `location`, `object`, `event`, `generic`). Empty keeps the canonical
 	// provider cascade unchanged.
-	QueryClass string
-	Language   string
-	Limit      int
-	Provider   string
+	QueryClass   string
+	QueryOrigin  string
+	TemplateID   string
+	Illustrative bool
+	Language     string
+	Limit        int
+	Provider     string
 	// ForceRefresh bypasses durable retrieved-image reuse: the bytes behind
 	// a stored URL can change upstream (source re-encode), so a recorded
 	// hash is only a claim until bytes are re-downloaded and re-hashed

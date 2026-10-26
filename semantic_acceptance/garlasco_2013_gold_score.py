@@ -240,12 +240,50 @@ def query_pool(manifest):
     queries = []
     for entry in manifest.get("search_feedback", {}).get("entries", []):
         for query in entry.get("queries", []):
-            queries.append({"kind": query.get("kind", ""), "text": query.get("text", ""), "scene_id": entry.get("scene_id", "")})
+            queries.append({**query, "scene_id": entry.get("scene_id", "")})
     for scene in manifest.get("scenes", []):
         for proposal in scene.get("visual_proposals", []):
             for text in proposal.get("visual_query_suggestions", []):
-                queries.append({"kind": "proposal_suggestion", "text": text, "scene_id": scene["scene_id"]})
+                queries.append({"kind": "proposal_suggestion", "origin": "literal", "text": text, "scene_id": scene["scene_id"]})
+    for candidate in (manifest.get("visual_consolidation") or {}).get("production_candidates", []):
+        for query in candidate.get("queries", []):
+            queries.append({**query, "scene_id": candidate.get("scene_id", "")})
     return queries
+
+
+def query_is_grounded(query, source_text):
+    text = query.get("text") or ""
+    if not text or not source_text:
+        return False
+    if query.get("origin", "literal") == "literal":
+        return text in source_text
+    origin = query.get("origin")
+    if origin not in ("derived_from_source_context", "derived_from_semantic_template"):
+        return False
+    raw = source_text.encode("utf-8")
+    evidence = query.get("evidence") or ""
+    start, end = query.get("evidence_start_byte"), query.get("evidence_end_byte")
+    if start is None or end is None or start > end or end > len(raw):
+        return False
+    if raw[start:end].decode("utf-8", "replace") != evidence:
+        return False
+    components = query.get("components") or []
+    if len(components) < 2:
+        return False
+    for component in components:
+        left, right = component.get("start_byte"), component.get("end_byte")
+        if left is None or right is None or left < start or right > end or left > right:
+            return False
+        if raw[left:right].decode("utf-8", "replace") != component.get("text"):
+            return False
+    ordered = sorted(components, key=lambda item: item["start_byte"])
+    source_terms = " ".join(item["text"].strip() for item in ordered)
+    if origin == "derived_from_source_context":
+        return source_terms == text
+    if not query.get("template_id") or not query.get("illustrative") or not query.get("derived_terms"):
+        return False
+    expected = sorted((source_terms + " " + " ".join(query["derived_terms"])).casefold().split())
+    return expected == sorted(text.casefold().split())
 
 
 def visual_hits(gold, manifest):
@@ -262,11 +300,12 @@ def visual_hits(gold, manifest):
     return hits
 
 
-def query_stats(gold, manifest, source_text):
+def query_stats(gold, manifest, source_text, scenes):
     queries = query_pool(manifest)
-    exact = [query for query in queries if query["kind"] == "exact_mention"]
+    exact = [query for query in queries if query["origin"] == "literal"]
     unique_exact = Counter(norm(query["text"]) for query in exact)
-    invalid = [query for query in queries if norm(query["text"]) not in norm(source_text)]
+    source_by_scene = {scene["scene_id"]: scene["text"] for scene in scenes}
+    invalid = [query for query in queries if not query_is_grounded(query, source_by_scene.get(query.get("scene_id"), source_text))]
     named = []
     for query in exact:
         text = query["text"]
@@ -430,7 +469,7 @@ def consolidation_stats(manifest, scenes, source_text):
             invalid_evidence.append(candidate.get("id"))
         for query in candidate.get("queries") or []:
             text = query.get("text", "")
-            if not text or text not in scene_text:
+            if not query_is_grounded(query, scene_text):
                 invalid_queries.append((candidate.get("id"), text))
     unrepresented = [
         fact.get("id")
@@ -579,8 +618,8 @@ def evaluate(manifest, scenes, source_text, gold):
     visual_recall = sum(1 for item in visual if item["hit"]) / len(visual)
     add("visual_concept_recall", "PASS" if visual_recall >= gold["thresholds"]["visual_concept_recall"] else "FAIL", "%.2f (%d/%d core concepts)" % (visual_recall, sum(1 for item in visual if item["hit"]), len(visual)))
 
-    qstats = query_stats(gold, manifest, source_text)
-    add("query_grounding", "PASS" if qstats["invalid"] == 0 else "FAIL", "%d invalid of %d queries; every valid query is an exact source slice" % (qstats["invalid"], qstats["queries"]))
+    qstats = query_stats(gold, manifest, source_text, scenes)
+    add("query_grounding", "PASS" if qstats["invalid"] == 0 else "FAIL", "%d invalid of %d queries; source spans and declared illustrative terms validate" % (qstats["invalid"], qstats["queries"]))
     volume_verdict = "NEEDS_REVIEW" if qstats["entries"] > 12 * max(1, qstats["scenes"]) else "PASS"
     add("query_volume", volume_verdict, "%d entries, %.1f per scene; %d exact (%d unique); named share %.2f" % (qstats["entries"], qstats["entries"] / max(1, qstats["scenes"]), qstats["exact"], qstats["unique_exact"], qstats["named_share"]))
     add("query_named_share", "NEEDS_REVIEW", "%.2f of unique exact mentions name a gold entity/core concept; generic visual concepts are not counted and no independent relevance labels exist" % qstats["named_share"])

@@ -73,6 +73,35 @@ func TestSemanticSearchFeedbackBroadensThenSkipsTheVisual(t *testing.T) {
 	}
 }
 
+func TestContextQueryKeepsItsIllustrativeProvenanceThroughPlanning(t *testing.T) {
+	query := SemanticSearchQuery{
+		Kind: "context_phrase", Text: "Alberto Stasi processo giudiziario",
+		Origin: "derived_from_source_context", Illustrative: true,
+		Evidence: "Alberto Stasi affronta un processo giudiziario lungo.",
+	}
+	plan := feedbackPlan(t, []SemanticSearchQuery{
+		{Kind: "exact_mention", Text: "Alberto Stasi", Origin: "literal"}, query,
+	}, "person_01")
+	first, ok := plan.NextSearchAttempt()
+	if !ok {
+		t.Fatal("missing exact query")
+	}
+	second, more, err := plan.RecordSearchOutcome(SemanticSearchOutcome{
+		CandidateID: first.CandidateID, Rung: first.Rung,
+	})
+	if err != nil || !more {
+		t.Fatalf("context query did not follow exact query: %+v %v %v", second, more, err)
+	}
+	if second.QueryOrigin != query.Origin || !second.Illustrative {
+		t.Fatalf("query provenance was lost: %+v", second)
+	}
+	feedback := plan.SearchFeedback()
+	if len(feedback.Entries) != 1 || len(feedback.Entries[0].Queries) != 2 ||
+		feedback.Entries[0].Queries[1].Origin != query.Origin || !feedback.Entries[0].Queries[1].Illustrative {
+		t.Fatalf("feedback lost query provenance: %+v", feedback)
+	}
+}
+
 func TestSemanticSearchFeedbackSettlesASatisfiedAsset(t *testing.T) {
 	plan := feedbackPlan(t, []SemanticSearchQuery{{Kind: "exact_mention", Text: "Alberto Stasi"}}, "person_01")
 	if _, more, err := plan.RecordSearchOutcome(SemanticSearchOutcome{CandidateID: "vc_0001", Rung: 0, Found: true, AssetID: "asset_42"}); err != nil || more {

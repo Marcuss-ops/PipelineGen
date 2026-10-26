@@ -14,6 +14,7 @@ from semantic_today_acceptance import FIXTURE, call_worker, split_scenes, write_
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GOLD = os.path.join(HERE, "fixtures", "garlasco_gold.json")
+IMAGE_GOLD = os.path.join(HERE, "fixtures", "garlasco_entity_image_gold.json")
 
 
 def mentions(text, phrase):
@@ -25,6 +26,8 @@ def run(worker, timeout):
         text = fh.read()
     with open(GOLD, encoding="utf-8") as fh:
         gold = json.load(fh)
+    with open(IMAGE_GOLD, encoding="utf-8") as fh:
+        image_gold = json.load(fh)
     manifest, scenes = call_worker(worker, split_scenes(text, 220), timeout)
     results = []
 
@@ -82,6 +85,49 @@ def run(worker, timeout):
     for kw in gold["keywords"]:
         n = mentions(text, kw)
         results.append({"check": "keyword:" + kw, "verdict": "PASS" if n else "FAIL", "detail": "%d in text" % n})
+
+    all_entities = [e for s in manifest["scenes"] for e in s.get("entities", [])]
+    for expected in image_gold["entities"]:
+        hit = any(
+            entity.get("text", "").casefold() == expected["surface"].casefold()
+            and entity.get("type") == expected["type"]
+            for entity in all_entities
+        )
+        results.append({
+            "check": "image_entity:%s" % expected["surface"],
+            "verdict": "PASS" if hit else "FAIL",
+            "detail": expected["type"] if hit else "missing typed surface",
+        })
+
+    query_records = []
+    for scene_manifest in manifest["scenes"]:
+        query_records.extend(scene_manifest.get("contextual_image_queries", []))
+        query_records.extend(scene_manifest.get("composed_image_queries", []))
+        for proposal in scene_manifest.get("visual_proposals", []):
+            query_records.extend({"text": text} for text in proposal.get("visual_query_suggestions", []))
+    query_records.extend(
+        query
+        for candidate in (manifest.get("visual_consolidation") or {}).get("production_candidates", [])
+        for query in candidate.get("queries", [])
+    )
+    for forbidden in image_gold["forbidden_pair_queries"]:
+        present = any(
+            " ".join((record.get("text") or record.get("query") or "").casefold().split())
+            == " ".join(forbidden.casefold().split())
+            for record in query_records
+        )
+        results.append({
+            "check": "forbidden_image_pair:%s" % forbidden,
+            "verdict": "FAIL" if present else "PASS",
+            "detail": "unlinked person pair emitted" if present else "not emitted",
+        })
+
+    derived = [q for q in query_records if q.get("origin") in ("derived_from_source_context", "derived_from_semantic_template")]
+    results.append({
+        "check": "derived_image_queries",
+        "verdict": "PASS" if derived else "NEEDS_REVIEW",
+        "detail": "%d contextual queries carry provenance" % len(derived),
+    })
 
     groups = sum(len(s.get("semantic_groups", [])) for s in manifest["scenes"])
     results.append({"check": "groups", "verdict": "PASS" if groups >= gold["groups_expected_min"] else "FAIL",
