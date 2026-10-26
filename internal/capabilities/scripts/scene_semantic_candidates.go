@@ -53,28 +53,31 @@ type NumericFactCandidate struct {
 // SemanticCandidateBundle carries the grounded projections from one analyze
 // call.
 type SemanticCandidateBundle struct {
-	SchemaVersion  string
-	Language       string
-	Fingerprint    string
-	Analyzers      SemanticAnalyzerVersions
-	Status         string
-	Reason         string
-	RejectedItems  int
-	Entities       []SemanticEntityCandidate
-	EntityFacts    []SemanticEntityFact
-	Identities     []SemanticIdentity
-	Relations      SemanticRelationView
-	Bullets        []BulletCandidate
-	ShortPhrases   []SemanticTextCandidate
-	LongPhrases    []SemanticTextCandidate
-	Quotes         []SemanticTextCandidate
-	ImportantWords []SemanticTextCandidate
-	Charts         []ChartValueCandidate
-	Temporal       []TemporalFactCandidate
-	Numeric        []NumericFactCandidate
-	Proposals      []SemanticVisualProposal
-	Groups         []SemanticGroup
-	MicroSummaries []SemanticMicroSummary
+	SchemaVersion          string
+	Language               string
+	Fingerprint            string
+	Analyzers              SemanticAnalyzerVersions
+	Status                 string
+	Reason                 string
+	RejectedItems          int
+	Entities               []SemanticEntityCandidate
+	EntityFacts            []SemanticEntityFact
+	Identities             []SemanticIdentity
+	Relations              SemanticRelationView
+	Bullets                []BulletCandidate
+	ShortPhrases           []SemanticTextCandidate
+	LongPhrases            []SemanticTextCandidate
+	Quotes                 []SemanticTextCandidate
+	ImportantWords         []SemanticTextCandidate
+	ImportantSegments      []SemanticImportantSegment
+	ComposedImageQueries   []SemanticComposedImageQuery
+	ContextualImageQueries []SemanticContextualImageQuery
+	Charts                 []ChartValueCandidate
+	Temporal               []TemporalFactCandidate
+	Numeric                []NumericFactCandidate
+	Proposals              []SemanticVisualProposal
+	Groups                 []SemanticGroup
+	MicroSummaries         []SemanticMicroSummary
 	// SearchFeedback is the whole-script asset-search handshake: one pending
 	// entry per image-backed proposal, carrying the exact-source query ladder.
 	// It is repeated on every scene bundle for the same reason as
@@ -85,6 +88,39 @@ type SemanticCandidateBundle struct {
 	// does not need a second transport. The pointer is shared; consumers must
 	// treat it as read-only.
 	Consolidation *SemanticVisualConsolidation
+}
+
+// SemanticImportantSegment is a complete, source-grounded passage. Sentence
+// indices are inclusive and evidence must match the exact UTF-8 source span.
+type SemanticImportantSegment struct {
+	ID, Kind, Evidence                  string
+	SentenceStart, SentenceEnd          int
+	Start, End                          int
+	Score                               float64
+	VisualMentions, MeasurementMentions int
+}
+
+// SemanticQueryComponent is one source-grounded part of a composed image query.
+type SemanticQueryComponent struct {
+	Kind, ComponentType, Text string
+	Start, End                int
+}
+
+// SemanticComposedImageQuery keeps the query and the evidence spans that
+// justify combining its components.
+type SemanticComposedImageQuery struct {
+	ID, Kind, Query           string
+	Start, End, SentenceIndex int
+	Components                []SemanticQueryComponent
+}
+
+// SemanticContextualImageQuery is a provider query joined from a subject and
+// its explicitly asserted location. The composed query itself is synthetic;
+// sentence evidence and component spans remain exact source slices.
+type SemanticContextualImageQuery struct {
+	ID, Kind, Query, Evidence                 string
+	EvidenceStart, EvidenceEnd, SentenceIndex int
+	Components                                []SemanticQueryComponent
 }
 
 type SemanticAnalyzerVersions struct {

@@ -32,7 +32,6 @@ package observability
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/zap"
 )
 
 // Session / liveness (gauges) ───────────────────────────────────────
@@ -332,15 +331,3 @@ var WorkerEventDropsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 // Tests: TestWithWorker_SkipOnEmpty,
 //
 //	TestWithWorker_NonEmptyReturnsDifferent.
-func WithWorker(logger *zap.Logger, workerID, sessionID string) *zap.Logger {
-	if logger == nil {
-		return nil
-	}
-	if workerID == "" && sessionID == "" {
-		return logger
-	}
-	return logger.With(
-		zap.String(LogKeyWorkerID, workerID),
-		zap.String(LogKeySessionID, sessionID),
-	)
-}

@@ -101,14 +101,6 @@ var WorkflowSteps = []StepSpec{
 }
 
 // StepByKey returns the canonical step spec for a durable step key.
-func StepByKey(stepKey string) (StepSpec, bool) {
-	for _, spec := range WorkflowSteps {
-		if spec.StepKey == stepKey {
-			return spec, true
-		}
-	}
-	return StepSpec{}, false
-}
 
 // ── Typed workflow errors (godlike/07 typed-error contract) ───────────
 

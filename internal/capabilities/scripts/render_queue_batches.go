@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -8,6 +9,47 @@ import (
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
+
+// certifiedSegmentReferences validates the worker-owned independent outputs
+// before any publication or final-job handoff. Overlapping editorial batches
+// have no segments and continue to use their single composite artifact.
+func certifiedSegmentReferences(artifact *RenderArtifact, plan capoverlay.OverlayPlan, jobID string) ([]OverlayItemRenderReference, error) {
+	if artifact == nil || len(artifact.BatchSegments) == 0 {
+		return nil, nil
+	}
+	byID := make(map[string]OverlayItemRenderReference, len(artifact.BatchSegments))
+	for _, ref := range artifact.BatchSegments {
+		a := ref.Artifact
+		if _, duplicate := byID[ref.ItemID]; duplicate || ref.ItemID == "" || a == nil {
+			return nil, fmt.Errorf("invalid or duplicate batch segment %q", ref.ItemID)
+		}
+		digest, err := hex.DecodeString(a.SHA256)
+		if err != nil || len(digest) != 32 || a.StorageKey != a.SHA256 || a.URL == "" || a.SizeBytes <= 0 || a.FrameCount <= 0 || a.DurationUS <= 0 || len(a.OutputFacts) == 0 {
+			return nil, fmt.Errorf("batch segment %q has incomplete certification", ref.ItemID)
+		}
+		ref.JobID = jobID
+		byID[ref.ItemID] = ref
+	}
+	refs := make([]OverlayItemRenderReference, 0, len(byID))
+	for _, item := range plan.Items {
+		if item.Kind == "background" {
+			continue
+		}
+		ref, ok := byID[item.ID]
+		if !ok {
+			return nil, fmt.Errorf("missing batch segment for item %q", item.ID)
+		}
+		if ref.Artifact.Width != plan.Width || ref.Artifact.Height != plan.Height || ref.Artifact.FPSNum <= 0 || ref.Artifact.FPSDen <= 0 || ref.Artifact.FPSNum*plan.FPSDen != plan.FPSNum*ref.Artifact.FPSDen {
+			return nil, fmt.Errorf("batch segment %q canvas/fps mismatch", item.ID)
+		}
+		refs = append(refs, ref)
+		delete(byID, item.ID)
+	}
+	if len(byID) != 0 {
+		return nil, fmt.Errorf("batch contains unexpected segment identities")
+	}
+	return refs, nil
+}
 
 // overlayBatchWork is one Chronon invocation. Batch windows are scene-local;
 // maps remain singleton work because their dynamic renderer has a separate

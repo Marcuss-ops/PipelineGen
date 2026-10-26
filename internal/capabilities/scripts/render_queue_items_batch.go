@@ -132,6 +132,14 @@ func (e *QueueRenderEnqueuer) enqueueSeparateOverlayItems(ctx context.Context, p
 		if ref.Artifact == nil {
 			return overlayItemRenderResult{}, fmt.Errorf("render overlay batch %s completed without a certified artifact", work.id)
 		}
+		// A tileable session produced independent item MP4s. They must not
+		// be collapsed back into an editorial composite in the final handoff.
+		if len(ref.Items) > 0 {
+			return overlayItemRenderResult{
+				full: ref, item: ref.Items[0], additionalItems: ref.Items[1:],
+				order: work.candidates[0].index,
+			}, nil
+		}
 		batch := &OverlayBatchRenderReference{
 			BatchID: work.id, SceneID: work.sceneID, StartUS: work.startUS, EndUS: batchEndUS,
 			JobID: ref.JobID, Status: ref.Status, Artifact: ref.Artifact,

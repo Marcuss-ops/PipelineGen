@@ -46,12 +46,6 @@
 //     scanner is additive, not subtractive).
 package detail
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-)
-
 // MetadataKeySpec is the canonical schema for one allowed
 // Asset.Metadata key.
 type MetadataKeySpec struct {
@@ -145,21 +139,6 @@ var allowedMetadataKeys = []MetadataKeySpec{
 // godlike/06 SSOT invariant: all canonical keys are
 // lower-snake-case dot-separated. Namespaces are sorted
 // (e.g. `stock.*`) follow the same shape.
-func ValidateMetadataKeyShape(key string) error {
-	if key == "" {
-		return fmt.Errorf("metadata key is empty")
-	}
-	if strings.HasPrefix(key, ".") || strings.HasSuffix(key, ".") || strings.Contains(key, "..") {
-		return fmt.Errorf("metadata key %q has an empty namespace segment", key)
-	}
-	if strings.ContainsAny(key, " \t\r\n") {
-		return fmt.Errorf("metadata key %q contains whitespace", key)
-	}
-	if key != strings.ToLower(key) {
-		return fmt.Errorf("metadata key %q must be lowercase", key)
-	}
-	return nil
-}
 
 // AllowedMetadataKeys returns the canonical whitelist
 // sorted alphabetically by `Key` (deterministic). The
@@ -180,20 +159,7 @@ func ValidateMetadataKeyShape(key string) error {
 // silent-pass which is a NO-FAKE-AVAILABILITY regression.
 // The positive surface is intentionally tiny (3 entries)
 // so PRs that add keys are visible at code-review time.
-func AllowedMetadataKeys() []MetadataKeySpec {
-	keys := append([]MetadataKeySpec(nil), allowedMetadataKeys...)
-	sort.Slice(keys, func(i, j int) bool { return keys[i].Key < keys[j].Key })
-	return keys
-}
 
 // HasMetadataKey reports whether key is an exact member of the canonical
 // whitelist. Used by archcheck `percheck_metadata_key_registry` for O(N)
 // lookups against the alphabet. Namespaced prefixes are never wildcard-matched.
-func HasMetadataKey(key string) bool {
-	for _, spec := range allowedMetadataKeys {
-		if spec.Key == key {
-			return true
-		}
-	}
-	return false
-}

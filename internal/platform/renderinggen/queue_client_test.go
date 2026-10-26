@@ -19,6 +19,27 @@ import (
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
+func TestToScriptArtifactKeepsSegmentCertificationIndependent(t *testing.T) {
+	in := &queueclient.Artifact{ArtifactHash: "mirror", DriveFileID: "mirror-drive",
+		OutputFacts: &queueclient.OutputFacts{BatchSegments: []queueclient.BatchSegmentFacts{{
+			ItemID: "item", SHA256: strings.Repeat("a", 64), ArtifactURL: "http://store/item", SizeBytes: 123,
+			FrameCount: 8, DurationUS: 800000, Width: 64, Height: 48, FirstFrameKeyframe: true,
+			OutputFacts: &queueclient.OutputFacts{Container: "mp4", VideoCodec: "h264", FPSNum: 10, FPSDen: 1},
+		}}}}
+	out := toScriptArtifact(in)
+	if len(out.BatchSegments) != 1 {
+		t.Fatal("segment lost")
+	}
+	ref := out.BatchSegments[0]
+	if ref.ItemID != "item" || ref.Artifact.SHA256 != strings.Repeat("a", 64) || ref.Artifact.DriveFileID != "" || ref.Artifact.FPSNum != 10 || ref.Artifact.URL != "http://store/item" {
+		t.Fatalf("segment inherited mirror identity or lost facts: %+v", ref.Artifact)
+	}
+	var facts queueclient.OutputFacts
+	if err := json.Unmarshal(ref.Artifact.OutputFacts, &facts); err != nil || len(facts.BatchSegments) != 0 || facts.VideoCodec != "h264" {
+		t.Fatalf("wrong per-segment facts: %+v %v", facts, err)
+	}
+}
+
 func TestClientSubmitCreated(t *testing.T) {
 	var gotBody json.RawMessage
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

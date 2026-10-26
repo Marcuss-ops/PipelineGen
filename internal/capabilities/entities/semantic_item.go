@@ -26,8 +26,6 @@ package entities
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 )
 
 // SemanticType is the canonical semantic-index vocabulary. It is a superset of
@@ -120,30 +118,3 @@ var ErrInvalidSemanticItem = errors.New("invalid semantic item")
 // canonical type and text, valid rune and microsecond spans, and a confidence
 // within [0,1]. A consumer can never trust an item whose WHAT is not grounded
 // in a monotonic WHEN.
-func (i SemanticItem) Validate() error {
-	if strings.TrimSpace(i.SemanticID) == "" {
-		return fmt.Errorf("%w: empty semantic_id", ErrInvalidSemanticItem)
-	}
-	if strings.TrimSpace(i.SceneID) == "" {
-		return fmt.Errorf("%w: %q empty scene_id", ErrInvalidSemanticItem, i.SemanticID)
-	}
-	if strings.TrimSpace(string(i.Type)) == "" {
-		return fmt.Errorf("%w: %q empty type", ErrInvalidSemanticItem, i.SemanticID)
-	}
-	if strings.TrimSpace(i.Text) == "" {
-		return fmt.Errorf("%w: %q empty text", ErrInvalidSemanticItem, i.SemanticID)
-	}
-	if strings.TrimSpace(i.NormalizedText) == "" {
-		return fmt.Errorf("%w: %q empty normalized_text", ErrInvalidSemanticItem, i.SemanticID)
-	}
-	if i.StartChar < 0 || i.EndChar <= i.StartChar {
-		return fmt.Errorf("%w: %q invalid char span [%d,%d)", ErrInvalidSemanticItem, i.SemanticID, i.StartChar, i.EndChar)
-	}
-	if i.StartUS < 0 || i.EndUS <= i.StartUS {
-		return fmt.Errorf("%w: %q invalid microsecond span [%d,%d)", ErrInvalidSemanticItem, i.SemanticID, i.StartUS, i.EndUS)
-	}
-	if i.Confidence < 0 || i.Confidence > 1 {
-		return fmt.Errorf("%w: %q confidence %f out of range", ErrInvalidSemanticItem, i.SemanticID, i.Confidence)
-	}
-	return nil
-}

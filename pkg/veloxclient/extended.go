@@ -115,6 +115,7 @@ func (c *Client) PostToWriter(ctx context.Context, path string, payload any, w i
 // legacy lowercase vocabulary (queued/running/completed) and the uppercase
 // worker vocabulary (SUCCEEDED/FAILED), so callers must not compare raw
 // strings.
+
 func IsTerminalStatus(status string) (terminal bool, success bool) {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
 	case "SUCCEEDED", "COMPLETED", "DONE", "SUCCESS":

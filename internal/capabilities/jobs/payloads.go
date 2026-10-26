@@ -1,11 +1,5 @@
 package jobs
 
-import (
-	"encoding/json"
-
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-)
-
 // ── Typed job payloads (Punto 22) ─────────────────────────────────────────
 // Each job type has a corresponding payload struct and a factory that
 // unmarshals the raw JSON into the concrete type. This eliminates runtime
@@ -111,16 +105,6 @@ type TypedPayload interface {
 
 // DecodePayload unmarshals the job's raw payload into the requested type T.
 // Returns an error if the payload cannot be decoded.
-func DecodePayload[T TypedPayload](j *job.Job) (*T, error) {
-	var payload T
-	if len(j.Payload) == 0 {
-		return &payload, nil
-	}
-	if err := json.Unmarshal(j.Payload, &payload); err != nil {
-		return nil, err
-	}
-	return &payload, nil
-}
 
 // ── Versioned payload envelope (future use) ───────────────────────────────
 // When payloads need to evolve, wrap them in a versioned envelope:

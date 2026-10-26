@@ -2,7 +2,6 @@ package localization
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -28,57 +27,6 @@ type Scheduler struct {
 	concurrency int
 	mu          sync.Mutex
 	results     []TaskResult
-}
-
-func NewScheduler(ctx context.Context, render RenderFunc, concurrency int) (*Scheduler, error) {
-	if render == nil {
-		return nil, fmt.Errorf("localization.NewScheduler: render func is required")
-	}
-	if concurrency < 1 {
-		concurrency = 1
-	}
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(concurrency)
-	return &Scheduler{render: render, g: g, ctx: gctx, concurrency: concurrency}, nil
-}
-
-func (s *Scheduler) Concurrency() int {
-	if s == nil {
-		return 0
-	}
-	return s.concurrency
-}
-
-func (s *Scheduler) Submit(task LocalizedClipTask) int {
-	s.mu.Lock()
-	idx := len(s.results)
-	s.results = append(s.results, TaskResult{Priority: task.Priority})
-	s.mu.Unlock()
-
-	s.g.Go(func() error {
-		// errgroup.SetLimit is the scheduler's actual render semaphore. Since
-		// Go's errgroup hides its acquisition timestamp, the render function
-		// records the owner-side interval immediately around execution; the
-		// scheduler itself remains the single concurrency owner.
-		artifact, err := s.render(s.ctx, task.Plan)
-		s.mu.Lock()
-		s.results[idx] = TaskResult{Priority: task.Priority, Artifact: artifact, Err: err}
-		s.mu.Unlock()
-		return nil
-	})
-	return idx
-}
-
-func (s *Scheduler) Wait() []TaskResult {
-	if s == nil {
-		return nil
-	}
-	_ = s.g.Wait()
-	s.mu.Lock()
-	results := make([]TaskResult, len(s.results))
-	copy(results, s.results)
-	s.mu.Unlock()
-	return results
 }
 
 // RecordRenderSlotWait is the scheduler-side seam for callers that use a

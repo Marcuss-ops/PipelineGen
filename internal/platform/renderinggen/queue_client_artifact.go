@@ -18,7 +18,7 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 	if in == nil {
 		return nil
 	}
-	return &scriptgen.RenderArtifact{
+	out := &scriptgen.RenderArtifact{
 		ID:                 in.ID,
 		Kind:               in.Kind,
 		StorageKey:         in.StorageKey,
@@ -64,6 +64,31 @@ func toScriptArtifact(in *queueclient.Artifact) *scriptgen.RenderArtifact {
 		ChrononTimingSizeBytes:   in.ChrononTimingSizeBytes,
 		ChrononTimingContentType: in.ChrononTimingContentType,
 	}
+	if in.OutputFacts != nil {
+		for _, segment := range in.OutputFacts.BatchSegments {
+			artifact := &scriptgen.RenderArtifact{
+				Kind: "segment", StorageKey: segment.SHA256, SHA256: segment.SHA256,
+				URL: segment.ArtifactURL, MimeType: "video/mp4", SizeBytes: segment.SizeBytes,
+				Width: segment.Width, Height: segment.Height, FrameCount: segment.FrameCount,
+				DurationUS: segment.DurationUS, OutputFacts: rawOutputFacts(segment.OutputFacts),
+				FirstFrameKeyframe: segment.FirstFrameKeyframe, ClosedGOP: segment.ClosedGOP,
+				CopyEligible: segment.CopyEligible, Backend: in.Backend, ChrononVersion: in.ChrononVersion,
+			}
+			if segment.CopyEligible {
+				artifact.ProfileID = in.ProfileID
+			}
+			if facts := segment.OutputFacts; facts != nil {
+				artifact.FPSNum, artifact.FPSDen = facts.FPSNum, facts.FPSDen
+				artifact.Container, artifact.Codec = facts.Container, facts.VideoCodec
+				artifact.CodecProfile, artifact.PixelFormat = facts.VideoProfile, facts.PixelFormat
+				artifact.AudioStreams = facts.AudioStreams
+			}
+			out.BatchSegments = append(out.BatchSegments, scriptgen.OverlayItemRenderReference{
+				ItemID: segment.ItemID, Status: scriptgen.RenderQueueStateCompleted, Artifact: artifact,
+			})
+		}
+	}
+	return out
 }
 
 func rawArtifactProvenance(provenance *queueclient.ArtifactProvenance) json.RawMessage {

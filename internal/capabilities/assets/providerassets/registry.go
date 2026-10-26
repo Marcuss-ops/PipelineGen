@@ -28,9 +28,6 @@ type Registry struct {
 }
 
 // NewRegistry returns an empty registry.
-func NewRegistry() *Registry {
-	return &Registry{entries: make(map[string]ProviderAdapter)}
-}
 
 // Register adds a ProviderAdapter to the catalog.
 func (r *Registry) Register(adapter ProviderAdapter) error {

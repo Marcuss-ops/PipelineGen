@@ -3,11 +3,6 @@
 package assembly
 
 import (
-	"encoding/json"
-	"fmt"
-	"sort"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
@@ -87,43 +82,4 @@ type FinalizeResultV1 struct {
 	ArtifactID      string `json:"artifact_id"`
 	State           string `json:"state"`
 	ArtifactPath    string `json:"artifact_path,omitempty"`
-}
-
-func (p PrepareV1) Validate() error {
-	if p.ContractVersion != ContractVersion {
-		return fmt.Errorf("unsupported assembly contract %q", p.ContractVersion)
-	}
-	if p.AssemblyID == "" || p.ParentJobID == "" {
-		return fmt.Errorf("assembly_id and parent_job_id are required")
-	}
-	if p.OutputContract != OutputContract {
-		return fmt.Errorf("unsupported output contract %q", p.OutputContract)
-	}
-	if len(p.Assets) == 0 {
-		return fmt.Errorf("assets must not be empty")
-	}
-	for _, a := range p.Assets {
-		if err := validateAsset(a); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func validateAsset(a AssetRequirement) error {
-	if a.AssetID == "" || a.Kind == "" {
-		return fmt.Errorf("asset_id and kind are required")
-	}
-	if a.Required && a.Availability == AvailabilityKnown && a.Location == "" && a.SHA256 == "" {
-		return fmt.Errorf("known required asset %q has no location or sha256", a.AssetID)
-	}
-	return nil
-}
-func PreparationHash(p PrepareV1) (string, error) {
-	p.PreparationHash = ""
-	sort.Slice(p.Assets, func(i, j int) bool { return p.Assets[i].AssetID < p.Assets[j].AssetID })
-	b, err := json.Marshal(p)
-	if err != nil {
-		return "", err
-	}
-	return "sha256:" + digest.SHA256Bytes(b), nil
 }

@@ -71,10 +71,6 @@ package detail
 
 import (
 	"errors"
-	"fmt"
-	"strconv"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // ErrClipIdentityEmpty is the typed sentinel for ANY ClipKey
@@ -112,21 +108,3 @@ var ErrClipIdentityInvalid = errors.New("asset.ClipKey: start_ms >= 0 AND end_ms
 // offending field name (subject_id, source_video_id) or value
 // (start_ms=N, end_ms=M<=start_ms=N) so operators can trace which
 // upstream producer failed canonicalization.
-func ClipKey(subjectID, sourceVideoID string, startMs, endMs int64) (string, error) {
-	if subjectID == "" {
-		return "", fmt.Errorf("%w: empty subject_id", ErrClipIdentityEmpty)
-	}
-	if sourceVideoID == "" {
-		return "", fmt.Errorf("%w: empty source_video_id", ErrClipIdentityEmpty)
-	}
-	if startMs < 0 {
-		return "", fmt.Errorf("%w: start_ms=%d (must be >= 0)", ErrClipIdentityInvalid, startMs)
-	}
-	if endMs <= startMs {
-		return "", fmt.Errorf("%w: end_ms=%d <= start_ms=%d (must be strictly >)", ErrClipIdentityInvalid, endMs, startMs)
-	}
-
-	canonical := subjectID + "|" + sourceVideoID + "|" +
-		strconv.FormatInt(startMs, 10) + "|" + strconv.FormatInt(endMs, 10)
-	return digest.SHA256String(canonical), nil
-}

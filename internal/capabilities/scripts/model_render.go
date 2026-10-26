@@ -39,6 +39,10 @@ import (
 // copy-only certification) so the document renderer and Velox copy assembly
 // consume the same immutable reference without probing the file themselves.
 type RenderArtifact struct {
+	// BatchSegments are independently certified MP4s from one encoder session.
+	// They never inherit the mirror's structural facts or Drive identity.
+	BatchSegments []OverlayItemRenderReference `json:"batch_segments,omitempty"`
+
 	ID           string `json:"id,omitempty"`
 	Kind         string `json:"kind,omitempty"`
 	StorageKey   string `json:"storage_key,omitempty"`
