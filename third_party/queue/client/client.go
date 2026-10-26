@@ -250,14 +250,19 @@ type OutputFacts struct {
 // segment's independent identity (its own content address) plus the structural
 // facts a consumer needs to validate it in isolation.
 type BatchSegmentFacts struct {
-	ItemID     string `json:"item_id"`
-	SHA256     string `json:"sha256"`
-	SizeBytes  int64  `json:"size_bytes"`
-	FrameCount int    `json:"frame_count,omitempty"`
-	DurationUS int64  `json:"duration_us,omitempty"`
-	Width      int    `json:"width,omitempty"`
-	Height     int    `json:"height,omitempty"`
-	Retried    bool   `json:"retried,omitempty"`
+	ArtifactURL        string       `json:"artifact_url,omitempty"`
+	OutputFacts        *OutputFacts `json:"output_facts,omitempty"`
+	FirstFrameKeyframe bool         `json:"first_frame_keyframe,omitempty"`
+	ClosedGOP          bool         `json:"closed_gop,omitempty"`
+	CopyEligible       bool         `json:"copy_eligible,omitempty"`
+	ItemID             string       `json:"item_id"`
+	SHA256             string       `json:"sha256"`
+	SizeBytes          int64        `json:"size_bytes"`
+	FrameCount         int          `json:"frame_count,omitempty"`
+	DurationUS         int64        `json:"duration_us,omitempty"`
+	Width              int          `json:"width,omitempty"`
+	Height             int          `json:"height,omitempty"`
+	Retried            bool         `json:"retried,omitempty"`
 }
 
 // Artifact is the metadata of a rendered artifact, including the copy-only

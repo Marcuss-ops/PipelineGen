@@ -304,9 +304,27 @@ type SemanticProductionCandidate struct {
 	Rationale           []string
 }
 
-// SemanticSearchQuery is one rung of a production query ladder.
+// SemanticSearchQuery is one rung of a production query ladder. Context queries
+// retain the sentence and source spans that justify combining their terms.
 type SemanticSearchQuery struct {
-	Kind, Text string
+	Kind              string                         `json:"kind"`
+	Text              string                         `json:"text"`
+	Origin            string                         `json:"origin,omitempty"`
+	Illustrative      bool                           `json:"illustrative,omitempty"`
+	Evidence          string                         `json:"evidence,omitempty"`
+	EvidenceStartByte int                            `json:"evidence_start_byte"`
+	EvidenceEndByte   int                            `json:"evidence_end_byte"`
+	Components        []SemanticSearchQueryComponent `json:"components,omitempty"`
+	TemplateID        string                         `json:"template_id,omitempty"`
+	DerivedTerms      []string                       `json:"derived_terms,omitempty"`
+}
+
+type SemanticSearchQueryComponent struct {
+	Kind          string `json:"kind"`
+	ComponentType string `json:"component_type"`
+	Text          string `json:"text"`
+	StartByte     int    `json:"start_byte"`
+	EndByte       int    `json:"end_byte"`
 }
 
 // SemanticConsolidatedFact is a canonical fact after duplicate mentions are

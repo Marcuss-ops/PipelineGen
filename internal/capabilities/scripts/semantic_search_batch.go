@@ -19,13 +19,16 @@ const SemanticSearchBatchSchema = "semantic_search_batch.v1"
 // against the retrieval provider. The plan owns the query text; the port owns
 // network and caching.
 type SemanticAssetSearchRequest struct {
-	CandidateID string
-	SceneID     string
-	Query       string
-	QueryKind   string
-	Rung        int
-	Entity      string
-	QueryClass  string
+	CandidateID  string
+	SceneID      string
+	Query        string
+	QueryKind    string
+	QueryOrigin  string
+	TemplateID   string
+	Illustrative bool
+	Rung         int
+	Entity       string
+	QueryClass   string
 	// ProviderLane is the budget lane this query charges. It is derived from
 	// QueryClass and is stable enough to appear in an operator report.
 	ProviderLane string
@@ -168,14 +171,17 @@ func (c SemanticSearchBatchConfig) normalized() SemanticSearchBatchConfig {
 
 // SemanticSearchAttemptResult is one measured provider attempt.
 type SemanticSearchAttemptResult struct {
-	CandidateID string
-	SceneID     string
-	Query       string
-	QueryKind   string
-	Rung        int
-	Rank        int
-	Class       SemanticSearchClass
-	Entity      string
+	CandidateID  string
+	SceneID      string
+	Query        string
+	QueryKind    string
+	QueryOrigin  string
+	TemplateID   string
+	Illustrative bool
+	Rung         int
+	Rank         int
+	Class        SemanticSearchClass
+	Entity       string
 	// Status is `hit`, `miss`, `error` or `skipped`.
 	Status    string
 	LatencyMS int64
@@ -345,7 +351,8 @@ func (p *SemanticSearchBatchPlanner) routeAttempts(plan *SemanticProductionPlan,
 		p.planMu.Unlock()
 		row := SemanticSearchAttemptResult{
 			CandidateID: attempt.CandidateID, SceneID: attempt.SceneID,
-			Query: attempt.Query, QueryKind: attempt.QueryKind, Rung: attempt.Rung,
+			Query: attempt.Query, QueryKind: attempt.QueryKind, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
+			Illustrative: attempt.Illustrative, Rung: attempt.Rung,
 			Rank: attempt.Rank, Class: attempt.Class, Entity: attempt.Entity,
 			Status: "skipped", RouteSkip: true,
 		}

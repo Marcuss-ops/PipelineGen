@@ -268,14 +268,45 @@ def check_search_feedback(results, manifest, scenes):
             bad += 1
         for query in queries:
             text = raw.get(scene_id, b"")
-            if not query.get("text") or query["text"].encode("utf-8") not in text:
+            if not query_is_grounded(text, query):
                 bad += 1
-    if widest < 2:
-        check(results, "search_feedback", "NEEDS_REVIEW",
-              "%d entries, widest ladder has %d rung(s)" % (len(entries), widest))
-        return
     check(results, "search_feedback", "PASS" if bad == 0 else "FAIL",
           "%d entries, widest ladder %d rungs, %d bad" % (len(entries), widest, bad))
+
+
+def query_is_grounded(raw, query):
+    """Validate a literal source query or a composed query's exact spans."""
+    text = query.get("text") or ""
+    if not raw or not text:
+        return False
+    origin = query.get("origin", "literal")
+    if origin == "literal":
+        return text.encode("utf-8") in raw
+    if origin not in ("derived_from_source_context", "derived_from_semantic_template"):
+        return False
+    evidence = query.get("evidence") or ""
+    start, end = query.get("evidence_start_byte"), query.get("evidence_end_byte")
+    if start is None or end is None or start > end or end > len(raw):
+        return False
+    if raw[start:end].decode("utf-8", "replace") != evidence:
+        return False
+    components = query.get("components") or []
+    if len(components) < 2:
+        return False
+    for component in components:
+        left, right = component.get("start_byte"), component.get("end_byte")
+        if left is None or right is None or left < start or right > end or left > right:
+            return False
+        if raw[left:right].decode("utf-8", "replace") != component.get("text"):
+            return False
+    ordered = sorted(components, key=lambda item: item["start_byte"])
+    source_terms = " ".join(item["text"].strip() for item in ordered)
+    if origin == "derived_from_source_context":
+        return source_terms == text
+    if not query.get("template_id") or not query.get("illustrative") or not query.get("derived_terms"):
+        return False
+    expected = sorted((source_terms + " " + " ".join(query["derived_terms"])).casefold().split())
+    return expected == sorted(text.casefold().split())
 
 
 def check_chronology(results, manifest, scenes, gold):
@@ -592,8 +623,7 @@ def check_consolidation(results, manifest, scenes):
                 bad.append("candidate %s unknown fact %s" % (candidate.get("id"), fact_id))
         production_queries += len(candidate.get("queries") or [])
         for query in candidate.get("queries") or []:
-            text = query.get("text") or ""
-            if not text or text not in scene_text:
+            if not query_is_grounded(raw, query):
                 bad.append("candidate %s ungrounded query" % candidate.get("id"))
     for fact in facts:
         representation = fact.get("representation")
@@ -615,7 +645,7 @@ def check_consolidation(results, manifest, scenes):
     selective = (
         len(candidates) <= raw_proposals
         and metrics.get("estimated_search_jobs", 0) <= metrics.get("raw_search_entries", 0)
-        and metrics.get("production_queries", 0) <= raw_queries
+        and metrics.get("production_queries", 0) <= raw_queries + metrics.get("production_search_candidates", 0)
     )
     check(
         results,

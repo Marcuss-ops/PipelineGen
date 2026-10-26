@@ -201,8 +201,36 @@ def grounded(raw, scene_id, start, end, text):
     return chunk[start:end].decode("utf-8", "replace") == text
 
 
-def grounded_query(scene_raw, text):
-    return bool(scene_raw) and bool(text) and text.encode("utf-8") in scene_raw
+def grounded_query(scene_raw, query):
+    text = query.get("text") or ""
+    if not scene_raw or not text:
+        return False
+    origin = query.get("origin", "literal")
+    if origin == "literal":
+        return text.encode("utf-8") in scene_raw
+    if origin not in ("derived_from_source_context", "derived_from_semantic_template"):
+        return False
+    evidence = query.get("evidence") or ""
+    start, end = query.get("evidence_start_byte"), query.get("evidence_end_byte")
+    if not grounded({"scene": scene_raw}, "scene", start, end, evidence):
+        return False
+    components = query.get("components") or []
+    if len(components) < 2:
+        return False
+    for component in components:
+        left, right = component.get("start_byte"), component.get("end_byte")
+        if left is None or right is None or left < start or right > end:
+            return False
+        if not grounded({"scene": scene_raw}, "scene", left, right, component.get("text")):
+            return False
+    ordered = sorted(components, key=lambda item: item["start_byte"])
+    source_terms = " ".join(item["text"].strip() for item in ordered)
+    if origin == "derived_from_source_context":
+        return source_terms == text
+    if not query.get("template_id") or not query.get("illustrative") or not query.get("derived_terms"):
+        return False
+    expected = sorted((source_terms + " " + " ".join(query["derived_terms"])).casefold().split())
+    return expected == sorted(text.casefold().split())
 
 
 def audit(manifest, scenes):
@@ -326,9 +354,7 @@ def audit(manifest, scenes):
         if entry.get("status") != "pending":
             hard.append("search feedback status %r" % entry.get("status"))
         for query in entry.get("queries") or []:
-            # A search rung is a verbatim slice of the scene; the schema carries
-            # no offsets for it, so containment is the exact check.
-            if not query.get("text") or query["text"].encode("utf-8") not in raw.get(entry.get("scene_id"), b""):
+            if not grounded_query(raw.get(entry.get("scene_id"), b""), query):
                 hard.append("search rung ungrounded %r" % query.get("text"))
     consolidation = manifest.get("visual_consolidation") or {}
     if not consolidation:
@@ -378,7 +404,7 @@ def audit(manifest, scenes):
             if candidate.get("requires_media"):
                 media_assets.add(candidate.get("asset_key"))
             for query in queries:
-                if not query.get("text") or not grounded_query(scene_raw, query.get("text")):
+                if not grounded_query(scene_raw, query):
                     hard.append("consolidation candidate %s ungrounded query" % candidate.get("id"))
             for item in candidate.get("chart_items") or []:
                 if not grounded(raw, scene_id, item.get("start_byte"), item.get("end_byte"), item.get("text")):

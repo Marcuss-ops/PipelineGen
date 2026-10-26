@@ -95,7 +95,8 @@ func (p *SemanticSearchBatchPlanner) dispatch(ctx context.Context, plan *Semanti
 func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *SemanticProductionPlan, attempt SemanticSearchAttempt, language string) (SemanticSearchAttemptResult, *SemanticSearchAttempt) {
 	row := SemanticSearchAttemptResult{
 		CandidateID: attempt.CandidateID, SceneID: attempt.SceneID,
-		Query: attempt.Query, QueryKind: attempt.QueryKind, Rung: attempt.Rung,
+		Query: attempt.Query, QueryKind: attempt.QueryKind, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
+		Illustrative: attempt.Illustrative, Rung: attempt.Rung,
 		Rank: attempt.Rank, Class: attempt.Class, Entity: attempt.Entity,
 	}
 	key := cacheKey(attempt, language)
@@ -151,7 +152,8 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 				AssetID: outcome.AssetID, URL: strings.TrimSpace(first.URL),
 				DriveLink: strings.TrimSpace(first.DriveLink), SHA256: strings.TrimSpace(first.SHA256),
 				MediaType: strings.TrimSpace(first.MediaType), Provider: provider,
-				Query: attempt.Query, Entity: strings.TrimSpace(first.Entity),
+				Query: attempt.Query, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
+				Illustrative: attempt.Illustrative, Entity: strings.TrimSpace(first.Entity),
 				Width: first.Width, Height: first.Height,
 			}
 		}
@@ -214,7 +216,8 @@ func (p *SemanticSearchBatchPlanner) searchWithBudget(ctx context.Context, attem
 	lane := attempt.Class.ProviderLane()
 	request := SemanticAssetSearchRequest{
 		CandidateID: attempt.CandidateID, SceneID: attempt.SceneID,
-		Query: attempt.Query, QueryKind: attempt.QueryKind, Rung: attempt.Rung,
+		Query: attempt.Query, QueryKind: attempt.QueryKind, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
+		Illustrative: attempt.Illustrative, Rung: attempt.Rung,
 		Entity: attempt.Entity, QueryClass: string(attempt.Class), ProviderLane: lane,
 		Language: strings.TrimSpace(language), Limit: p.cfg.Limit,
 	}

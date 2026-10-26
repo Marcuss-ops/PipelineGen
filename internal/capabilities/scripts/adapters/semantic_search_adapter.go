@@ -44,13 +44,16 @@ func (s *SemanticAssetSearch) Search(ctx context.Context, req scriptgen.Semantic
 		entity = strings.TrimSpace(req.Query)
 	}
 	candidates, err := s.searcher.SearchImages(ctx, InternetImageSearchRequest{
-		SegmentID:  strings.TrimSpace(req.CandidateID),
-		Query:      req.Query,
-		Entity:     entity,
-		QueryClass: req.QueryClass,
-		Language:   req.Language,
-		Limit:      req.Limit,
-		Provider:   semanticProductionProvider,
+		SegmentID:    strings.TrimSpace(req.CandidateID),
+		Query:        req.Query,
+		Entity:       entity,
+		QueryClass:   req.QueryClass,
+		QueryOrigin:  req.QueryOrigin,
+		TemplateID:   req.TemplateID,
+		Illustrative: req.Illustrative,
+		Language:     req.Language,
+		Limit:        req.Limit,
+		Provider:     semanticProductionProvider,
 	})
 	if err != nil {
 		return scriptgen.SemanticAssetSearchResponse{}, err
