@@ -232,31 +232,6 @@ func annotatePlanMapBackends(plan *capoverlay.OverlayPlan, decisions []planMapBa
 	}
 }
 
-// planNeedsPerItemMapRenders reports whether the plan holds map content that
-// must render through the dynamic per-item route: a python-backend map in a
-// plan that is not the single foldable map item. It consumes the single
-// backend decision above, so routing and annotation always agree.
-func planNeedsPerItemMapRenders(plan capoverlay.OverlayPlan) bool {
-	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
-	if nativeDiagnostic {
-		return false
-	}
-	decisions, err := resolvePlanMapBackends(plan)
-	if err != nil {
-		return true
-	}
-	pythonMaps := 0
-	for _, decision := range decisions {
-		if decision.backend == scriptoverlay.MapBackendDynamic {
-			pythonMaps++
-		}
-	}
-	if pythonMaps > 0 && len(plan.Items) > 1 {
-		return true
-	}
-	return len(decisions) > 1
-}
-
 // ── map item lineage (moved from render_queue_items.go) ─────────────
 
 func mapEntityLineage(mapOverlay *capoverlay.MapOverlay) ([]string, []string) {

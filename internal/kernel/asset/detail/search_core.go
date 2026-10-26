@@ -9,7 +9,10 @@
 //
 // MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): SearchClipsByKeywords and
 // SearchStockByKeywords have since been DELETED from that file (zero call
-// sites); SearchClips and SearchClipsAdvanced remain.
+// sites). 2026-10-26: SearchClips and SearchClipsAdvanced are DELETED too
+// (chained dead — the whole file search_queries.go went with them), so the
+// local SQLite search surface no longer exists; catalog search resolves on
+// the PostgreSQL media SSOT.
 // Cross-package scoring
 // (`asset.ScoreClips`) is the public surface for the SearchClips
 // scoring algorithm; this file no longer holds scoring logic.

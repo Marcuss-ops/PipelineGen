@@ -19,12 +19,9 @@ if [[ -z "${VELOX_LEXICON_ROOT:-}" ]]; then
     VELOX_LEXICON_ROOT="$DIR/config/lexicons"
 fi
 export VELOX_FEATURE_IMAGES_ENABLED=true
-# Production dynamic maps use the prepared OpenCL sampler on every map
-# composition. Set DYNAMIC_MAP_GPU_SAMPLER=0 in the service environment for
-# the bounded CPU rollback path.
-if [[ -z "${DYNAMIC_MAP_GPU_SAMPLER:-}" ]]; then
-    DYNAMIC_MAP_GPU_SAMPLER=1
-fi
+# (The DYNAMIC_MAP_GPU_SAMPLER knob is RETIRED with the Python map renderer:
+# the single native map lane is CPU-sampled and its profile/sampler travel as
+# one closed contract — see scripts/overlay/map_encode_profile.go.)
 # Bounded GPU render concurrency. Three persistent Rust runners overlap
 # independent NVDEC/NVENC jobs without allowing an unbounded FFmpeg burst;
 # override this in the environment for a measured 1..4 worker canary.
@@ -33,6 +30,5 @@ if [[ -z "${VELOX_MEDIA_EXECUTION_SLOTS:-}" ]]; then
 fi
 export VELOX_LEXICON_ROOT
 export VELOX_MEDIA_EXECUTION_SLOTS
-export DYNAMIC_MAP_GPU_SAMPLER
 set +a
 exec "$DIR/bin/pipelinegen" --mode "${VELOX_RUN_MODE:-all}"

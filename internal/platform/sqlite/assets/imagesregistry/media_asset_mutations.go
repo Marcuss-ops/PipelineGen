@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // mediaAssetSQLExecutor is the canonical SQL mutation boundary for
@@ -52,36 +53,19 @@ func execAssetUpdate(ctx context.Context, exec mediaAssetSQLExecutor, assetID, o
 // (internal/platform/postgres/media/mutations.go, UpdateMediaAssetUsage), so
 // no SQLite writer of media_assets.reuse_count / last_used_at may survive here.
 
-// CheckAndIncrementMediaAssetVersion performs the canonical optimistic
-// concurrency update used by the admin console. The read-back remains here
-// so the compare-and-swap and its SSOT lookup share one writer family.
-
-func CheckAndIncrementMediaAssetVersion(ctx context.Context, db *sql.DB, assetID string, expectedVersion int) (currentVersion int, ok bool, err error) {
-	if db == nil {
-		return 0, false, fmt.Errorf("asset committer: database is required")
-	}
-	if strings.TrimSpace(assetID) == "" {
-		return 0, false, fmt.Errorf("asset committer: asset id is required")
-	}
-	result, err := db.ExecContext(ctx, `
-		UPDATE media_assets
-		SET admin_version = admin_version + 1
-		WHERE id = ? AND admin_version = ?`, assetID, expectedVersion)
-	if err != nil {
-		return 0, false, fmt.Errorf("asset committer: increment admin version: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, false, fmt.Errorf("asset committer: admin version rows affected: %w", err)
-	}
-	if err := db.QueryRowContext(ctx, `SELECT admin_version FROM media_assets WHERE id = ?`, assetID).Scan(&currentVersion); err != nil {
-		if err == sql.ErrNoRows {
-			return 0, false, fmt.Errorf("asset committer: asset not found")
-		}
-		return 0, false, fmt.Errorf("asset committer: read admin version: %w", err)
-	}
-	return currentVersion, affected == 1, nil
-}
+// MEDIA LEGACY READ-PLANE DEMOLITION (2026-10-26):
+// CheckAndIncrementMediaAssetVersion is DELETED — this file's only media READ
+// (the `SELECT admin_version FROM media_assets` read-back). Its sole consumer
+// was the SQLite admin-console version store
+// (platform/sqlite/adminconsole/version_store.go, itself deleted in the same
+// change): ComposeRoot.MediaAssetVersionStore() is PostgreSQL-ONLY now and
+// returns nil when the media plane is closed, because the module that used the
+// store already refuses to register without the media SSOT. The optimistic
+// concurrency primitive lives on the PostgreSQL media SSOT
+// (pgmedia.NewPostgresEntityVersionStore). With this read gone, everything
+// that remains in this file is a narrow UPDATE primitive — the family the
+// writer gate exempts as canonical owner ("non-media mutation primitives":
+// lifecycle/enrich/index-state machines, admin console, maintenance).
 
 // UpdateMediaAssetContentHashesTx persists the paired content/binary digest
 // projection for an existing asset inside a caller-owned transaction.
@@ -221,6 +205,14 @@ func HardDeleteMediaAssetTx(ctx context.Context, tx *sql.Tx, assetID string) err
 }
 
 func UpdateMediaAssetIndexState(ctx context.Context, exec mediaAssetSQLExecutor, assetID, state, updatedAt, lastError string) error {
+	// Writer-wave guard (MEDIA LEGACY READ-PLANE DEMOLITION): the terminal
+	// INDEXED transition is owned solely by PostgresIndexWorker on the media
+	// SSOT, so the operational primitive refuses it too — this is the dynamic-
+	// parameter path the percheck_indexed_state_writer_ssot literal scan cannot
+	// see. See ErrIndexStateOwnedByIndexWorker.
+	if strings.EqualFold(strings.TrimSpace(state), string(asset.StateIndexed)) {
+		return fmt.Errorf("media asset mutations: index state update %q: %w", assetID, ErrIndexStateOwnedByIndexWorker)
+	}
 	if strings.TrimSpace(updatedAt) == "" {
 		updatedAt = time.Now().UTC().Format(time.RFC3339)
 	}

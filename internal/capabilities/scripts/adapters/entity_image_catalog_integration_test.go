@@ -78,6 +78,16 @@ func (c *integrationEntityImageCatalog) UpsertCandidate(_ context.Context, candi
 			if existing.Status == entitycatalog.CandidateStatusRetired {
 				candidate.Status = entitycatalog.CandidateStatusRetired
 			}
+			// Mirror the SQLite upsert contract (entity_image_catalog_adapter.go):
+			// a discovery write carrying no pixel verdict can never downgrade a
+			// durable accepted/rejected verdict.
+			noVerdict := candidate.SemanticStatus == "" || candidate.SemanticStatus == entitycatalog.CandidateSemanticUnknown
+			durable := existing.SemanticStatus == entitycatalog.CandidateSemanticAccepted || existing.SemanticStatus == entitycatalog.CandidateSemanticRejected
+			if noVerdict && durable {
+				candidate.SemanticStatus = existing.SemanticStatus
+				candidate.SemanticScore = existing.SemanticScore
+				candidate.QualityReason = existing.QualityReason
+			}
 			c.candidates[id] = candidate
 			return id, nil
 		}

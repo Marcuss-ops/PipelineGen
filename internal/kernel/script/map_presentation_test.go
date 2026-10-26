@@ -13,7 +13,7 @@ func TestMapPresentationNormalizeDefaults(t *testing.T) {
 	}
 	want := MapPresentation{
 		Enabled: true, Mode: "auto", GroupNearbyPlaces: true, MaxPinsPerGroup: 5,
-		Style: "satellite", Animation: "random", Camera: "auto",
+		Style: "chronon_editorial", Animation: "random", Camera: "auto",
 		AllowRoute: true, SelectionMode: "auto",
 	}
 	if resolved != want {
@@ -56,15 +56,22 @@ func TestMapPresentationNormalizeFailsClosed(t *testing.T) {
 		"unknown style":           {Style: "neon_cyber"},
 		"pin cap above budget":    {MaxPinsPerGroup: 6},
 		"pin cap zero-ish":        {MaxPinsPerGroup: -1},
-		"exact without id":        {SelectionMode: "exact", Style: "satellite"},
+		"exact without id":        {SelectionMode: "exact", Style: "chronon_editorial"},
 		"exact with random style": {SelectionMode: "exact", Animation: "pulse_marker", Style: "random"},
 		"manual without id":       {Mode: "manual"},
+		// The raster basemap families are demolition debt: the native map
+		// renderer draws the editorial vector basemap only, so they fail
+		// closed at submit — never a silent style swap, never a late job
+		// failure inside the render queue.
+		"unported raster style":  {Style: "satellite"},
+		"unported roadmap style": {Style: "roadmap"},
+		"unported terrain style": {Style: "terrain"},
 	} {
 		if _, err := spec.Normalize(); err == nil {
 			t.Errorf("%s: expected fail-closed normalization", name)
 		}
 	}
-	if _, err := (&MapPresentationSpec{SelectionMode: "exact", Animation: "pulse_marker", Style: "satellite"}).Normalize(); err != nil {
+	if _, err := (&MapPresentationSpec{SelectionMode: "exact", Animation: "pulse_marker", Style: "chronon_editorial"}).Normalize(); err != nil {
 		t.Fatalf("exact explicit selection must normalize: %v", err)
 	}
 }

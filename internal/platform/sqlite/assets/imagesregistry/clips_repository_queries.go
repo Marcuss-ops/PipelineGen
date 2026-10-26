@@ -149,6 +149,4 @@ func inClause(n int, col string, notOpt ...string) string {
 	return col + " " + op + " (" + strings.Join(placeholders, ",") + ")"
 }
 
-type AdvancedSearchRequest = detail.AdvancedSearchRequest
-type AdvancedSearchResult = detail.AdvancedSearchResult
 type SegmentEmbeddingRecord = detail.SegmentEmbeddingRecord

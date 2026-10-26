@@ -29,8 +29,11 @@ type MapPresentationSpec struct {
 	// MaxPinsPerGroup caps one map group at this many pins (1..5). Zero uses
 	// the certified default of 5; above 5 fails closed (the renderer budget).
 	MaxPinsPerGroup int `json:"max_pins_per_group,omitempty"`
-	// Style is the basemap treatment: satellite (default), roadmap, terrain or
-	// random (seeded palette draw).
+	// Style is the basemap treatment: chronon_editorial (aliases chronon,
+	// editorial; default — the only style the native renderer serves), the
+	// raster families satellite/roadmap/terrain (demolition debt: rejected
+	// until their parity gates land) or random (seeded draw over the
+	// servable styles).
 	Style string `json:"style,omitempty"`
 	// Animation is the composition id, "random" (family-based seeded draw) or
 	// empty (same as random).
@@ -72,7 +75,7 @@ func (s *MapPresentationSpec) Normalize() (MapPresentation, error) {
 		Mode:              "auto",
 		GroupNearbyPlaces: true,
 		MaxPinsPerGroup:   DefaultMaxPinsPerGroup,
-		Style:             "satellite",
+		Style:             "chronon_editorial",
 		Animation:         "random",
 		Camera:            "auto",
 		AllowRoute:        true,
@@ -111,10 +114,16 @@ func (s *MapPresentationSpec) Normalize() (MapPresentation, error) {
 	}
 	if style := strings.TrimSpace(s.Style); style != "" {
 		switch strings.ToLower(style) {
-		case "satellite", "roadmap", "terrain", "random":
+		case "chronon_editorial", "chronon", "editorial", "random":
 			resolved.Style = strings.ToLower(style)
+		case "satellite", "roadmap", "terrain":
+			// The raster tile families are demolition debt: the native map
+			// renderer draws the editorial vector basemap only. Rejecting here
+			// fails closed at submit with the reason — never a silent style
+			// swap, never a job that dies later inside the render queue.
+			return MapPresentation{}, fmt.Errorf("map_presentation.style %q selects the raster basemap family: not ported to the native map renderer (demolition debt, TICKET-MAPS-NATIVE-PORT); declare chronon_editorial or random", s.Style)
 		default:
-			return MapPresentation{}, fmt.Errorf("map_presentation.style %q is unsupported; choose satellite, roadmap, terrain or random", s.Style)
+			return MapPresentation{}, fmt.Errorf("map_presentation.style %q is unsupported; choose chronon_editorial (aliases chronon, editorial) or random", s.Style)
 		}
 	}
 	if animation := strings.TrimSpace(s.Animation); animation != "" {

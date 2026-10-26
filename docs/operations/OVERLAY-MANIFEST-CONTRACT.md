@@ -1,13 +1,21 @@
-# Contratto manifest overlay col final worker (P5, Opzione B)
+# Contratto manifest overlay col final worker (P5, cutover manifest puro)
 
-Stato: **proposta scritta, in attesa di negoziazione cross-team** (con il worker
-finale / Master 51, `BrainRust/pipelinegen-muscles/src/transform_assemble.rs`).
-Fino a quando la negoziazione non è esplicitamente conclusa, il perimetro
-operativo del final job resta quello di oggi: vedi §4.
+Stato: **cutover ATTIVO in questo checkout** — il percorso manifest+timeline è
+l'unico percorso di render per gli overlay ordinarie, e il payload del final
+job porta **solo** il wire manifest (1 artefatto certificato per timeline +
+manifest tipizzato + righe sostitutive indipendenti per i soli item a percorso
+dedicato: mappe e chain item). Il worker finale (Master 51,
+`BrainRust/pipelinegen-muscles/src/transform_assemble.rs`) deve ancora
+apprendere il manifest: la negoziazione cross-team consiste nell'adottare i
+due campi wire qui documentati (`overlay_manifest` nel FINALIZE e i riferimenti
+a finestra `timeline_item_id`/`in_us`/`out_us` per i clip di scena). Fino a
+quel deploy, le final job con overlay restano bloccate sul lato remoto: è la
+conseguenza documentata della scelta "manifest puro", non un difetto locale.
 
 Riferimenti: `docs/operations/TICKET-MANIFEST-IDENTITY.md`,
 `docs/operations/TICKET-OVERLAY-THROUGHPUT-100-MIN.md`,
-`internal/capabilities/overlays/model/manifest.go`.
+`internal/capabilities/overlays/model/manifest.go`,
+`internal/capabilities/scripts/final_job_overlay_manifest.go`.
 
 ## 1. Il modello: una voce di manifest, non un MP4 per item
 
@@ -26,19 +34,22 @@ item_id   →  ( track, in_us, out_us, content_hash )
   piano, invariata tra rigenerazioni dello stesso slot).
 - `track`: layer di compositing (z-order). Un item disegna **sopra ogni item
   precedente con cui si sovrappone** (track = 1 + max(track dei precedenti
-  sovrapposti)); l'ordine di piano sopravvive alla proiezione.
+  sovrapposti)); l'ordine di piano sopravvive alla proiezione. Il track è
+  **autorevole** perché lo z-order è già cotto nei pixel dell'artefatto.
 - `in_us` / `out_us`: posizione sulla timeline con l'orologio canonico a
-  microsecondi interi del piano (`in_us` incluso, `out_us` escluso,
-  `out_us = in_us + duration_us` dell'item). Sono lo stesso segmento che
-  l'handoff finale proietta sui frame (§3).
+  microsecondi interi del piano (`in_us` incluso, `out_us` escluso). Sono la
+  **finestra letterale renderizzata**: il wire la porta verbatim, perché il
+  manifest è anche la ricevuta dell'artefatto e non va mai riscritto.
 - `content_hash`: identità content-addressed del contenuto renderizzato della
   voce — il render key dell'item calcolato sul child plan che il percorso
   esegue davvero (64 hex minuscoli). Copre testo, asset, stili, timing
-  relativo, canvas; NON copre il posizionamento (spostare una finestra è
-  metadata, non contenuto nuovo).
+  relativo, canvas; NON copre il posizionamento.
 
-Il documento porta anche `plan_id`, `video_id` e `timeline_sha256` (identità
-dell'artefatto certificato, valorizzata a certificazione avvenuta).
+L'artefatto è **ancorato a plan t=0** e copre l'intero piano (tutte le scene):
+la proiezione §3 non ha offset di origine, e l'ancoraggio a 0 allinea Source/
+Background al tempo di piano (il difetto storico "la source riparte dal frame
+zero" delle finestre fuse non è raggiungibile). Il documento porta anche
+`plan_id`, `video_id` e `timeline_sha256` (identità dell'artefatto certificato).
 
 ## 2. Identità e retry
 
@@ -48,7 +59,9 @@ Due identità, distinte per costruzione:
   canoniche (item_id + content_hash + placement, ordine canonico) + identità di
   piano. Esclude `timeline_sha256`, quindi è stabile prima e dopo la
   certificazione. È l'indirizzo di contenuto dell'artefatto timeline: la cache
-  content-addressed del percorso manifest+timeline è cablata su questo digest.
+  content-addressed del percorso manifest+timeline è cablata su questo digest
+  ed è di **proprietà del livello manifest** (`ManifestOwnedCache`): il
+  submitter non crea una seconda riga per lo stesso artefatto.
 - **Identità di voce** — `OverlayManifestEntry.RetryKey()`: SHA-256 su
   (item_id + content_hash). La stessa coppia ⇒ la stessa identità di lavoro.
 
@@ -58,83 +71,112 @@ Contratto di retry (gate 2 del ticket):
   ripetuto, nessun artefatto duplicato** (lo Store della cache è idempotente
   sul digest della chiave).
 - Una voce cambia contenuto ⇒ cambia `content_hash` ⇒ cambia il digest del
-  manifest ⇒ esattamente un nuovo render.
+  manifest ⇒ esattamente un nuovo render della composizione.
 - Spostare una finestra senza cambiare contenuto non cambia l'identità della
   voce (retry per voce), ma cambia correttamente l'identità di composizione
   (la posizione fa parte dei pixel dell'artefatto).
-- Sul percorso per-item, la classificazione per voce
-  (`classifyManifestEntries`) riusa le righe content-addressed esistenti
-  (stesso item_id + stesso content_hash ⇒ clip certificata riusata, nessun
-  secondo artefatto).
 
 ## 3. Proiezione sui frame (griglia condivisa)
 
-La griglia è quella già usata dall'handoff finale
-(`finalJobOverlayAssetsExcluding` in `internal/capabilities/scripts/overlay_publication.go`),
-con `frame_denominator = 1_000_000 * fps_den`:
+La griglia è quella già usata dall'handoff finale, con
+`frame_denominator = 1_000_000 * fps_den`:
 
 ```
 start_frame = ceil(in_us  * fps_num / frame_denominator)
 end_frame   = ceil(out_us * fps_num / frame_denominator)      (esclusivo)
 ```
 
-Vincoli già sanzionati dall'ammissione finale e riconosciuti da questo
-contratto: la finestra non può eccedere i frame certificati dell'artefatto
-(clamp a `artifact.frame_count`), non può iniziare dopo la fine della base
-certificata, e due finestre final-job non possono condividere nemmeno un frame
-(mode=replace). Il manifest conserva il segmento in µs; la proiezione è
-l'unica mappa sui frame.
+Vincoli di proiezione riconosciuti da questo contratto:
 
-## 4. Decisione documentata: requisito Drive-per-item
+- la finestra non può eccedere i frame certificati dell'artefatto
+  (**clamp a `artifact.frame_count`** e, in coda, alla base certificata:
+  il worker proietta e clampa, il wire resta verbatim — riscrivere `out_us`
+  nel payload romperebbe la ricevuta §2);
+- non può **iniziare** dopo la fine della base certificata (questo è un errore
+  fail-closed in produzione, non un clamp);
+- **le finestre possono sovrapporsi**: ogni voce legge i propri frame dallo
+  STESSO artefatto, quindi la sostituzione è idempotente e lo z-order è già
+  risolto nei pixel. La vecchia regola "nessun frame condiviso (mode=replace)"
+  esisteva solo perché ogni voce portava la propria clip: con il cutover è
+  superata e le voci vengono emesse al placement renderizzato (nessuna
+  rischedulazione a payload time).
 
-**Il requisito Drive-per-item è PRESERVATO.**
+## 4. Wire del final job: manifest puro
 
-Il final worker di oggi consuma un artefatto Drive per overlay (i Drive ID sono
-embebdi nel PREPARE). Il percorso manifest+timeline produce un artefatto
-certificato + manifest e **non** sostituisce quell'handoff: i piani final-job
-(`require_drive_before_return`, `source`) non eleggono mai il percorso manifest
-(`manifestTimelineEligible`) e restano sul percorso per-item, che continua a
-pubblicare per item.
+Il PREPARE resta invariato (`scenes[]`, `copy_only`, `delivery_plan`). Il
+FINALIZE porta:
 
-La sostituzione (un artefatto per timeline + manifest al posto di N artefatti
-Drive) richiede la rinegoziazione esplicita di questo contratto col worker
-finale: è la fase 2 del ticket P5 e NON è conclusa. La demolizione del percorso
-per-item è subordinata a (a) parità A/B pixel/audio certificata su piano golden
-e (b) questo contratto rinegoziato — in questo checkout resta quindi intatta,
-come da portata del ticket.
+- `overlay_manifest`: il documento tipizzato §1 + `asset` (l'unico artefatto
+  Drive certificato: `asset_id`, `drive_file_id`, `url`, `sha256`,
+  `size_bytes`, `frame_count`, `duration_ms`) — il worker scarica **1 file** e
+  proietta le voci sui frame della master (§3);
+- `overlays`: **solo** le righe sostitutive indipendenti degli item a percorso
+  dedicato (mappe, chain item), che mantengono una clip propria certificata e
+  le regole di sempre (identità di contenuto unica; finestre disgiunte da
+  ogni altra finestra, incluse quelle della composizione);
+- i clip di scena "phrase-only" (scene senza video sorgente, la cui animazione
+  È la scena) sono **riferimenti a finestra** nell'artefatto timeline
+  (`timeline_item_id`, `in_us`, `out_us`) invece di clip Drive standalone.
 
-## 5. Handoff fail-closed invariato
+Decisioni documentate del cutover (cambiamenti rispetto al percorso per-item):
 
-Nessuna invariante dell'handoff finale cambia con questo contratto:
+1. **Le voci omesse sono sicure.** Le phrase consumate come clip di scena e le
+   card image-style su scene clip-intermediate non vengono emesse nel manifest:
+   i loro frame non vengono mai sostituiti e la clip sorgente resta visibile.
+   L'artefatto contiene pixel non utilizzati, mai posizionati.
+2. **La politica di placement è a monte.** Il vecchio handoff spostava le
+   phrase callout prima delle scene clip-intermediate a payload time; con il
+   placement congelato nel render, la stessa regola vive in
+   `normalizeFinalJobOverlayWindows` (runner, prima del render) ed è
+   idempotente. Le immagini-scheda su quelle scene restano omesse (punto 1).
+3. **I chart group sono pre-composti per costruzione.** Card + barre vivono
+   come voci dello stesso artefatto: il gate "split chart" del vecchio percorso
+   («pre-compose the chart into a single certified artifact») è soddisfatto dal
+   manifest stesso e viene rimosso.
+
+## 5. Handoff fail-closed
+
+Nessuna invariante dell'handoff finale viene indebolita:
 
 - un piano che richiede consegna Drive senza publisher configurato fallisce
-  (mai silenzioso): `render plan requires Drive delivery but no overlay
-  publisher is configured`;
-- un artefatto mancante, non Drive, senza spazio locale o senza frame
-  certificati fallisce l'intero handoff (`finalJobOverlayAssetsExcluding`);
-- il percorso manifest+timeline non tocca il final job: la sua eleggibilità
-  esclude esplicitamente `require_drive_before_return` e i compositi con
-  `source`.
+  (mai silenzioso);
+- un artefatto timeline mancante, non Drive, senza `sha256` canonico o senza
+  byte fallisce l'intero handoff (`finalJobManifestWire`);
+- il manifest viene ri-validato al build time (`manifest.Validate`: id unici,
+  content_hash unici — "one content one overlay", la classe d'incidente
+  2026-09-30);
+- una voce che **inizia** dopo la fine della base certificata fallisce;
+- una riga dedicata senza artefatto certificato, o che condivide byte con la
+  timeline o con un'altra riga, fallisce;
+- un item ordinario senza voce di manifest e senza artefatto dedicato fallisce
+  (nessun fallback silenzioso).
 
 ## 6. Wire tipizzato
 
 - Modello: `internal/capabilities/overlays/model/manifest.go`
   (`OverlayManifest`, `OverlayManifestEntry`, `SchemaVersionManifest`).
-- Trasporto: `RenderReference.Manifest`
-  (`internal/capabilities/scripts/model_result.go`), valorizzato solo dal
-  percorso manifest+timeline; le righe `Items`/`Batches` dello stesso
-  reference si legano al digest del manifest, che funge da receipt.
+- Trasporto render: `RenderReference.Manifest`
+  (`internal/capabilities/scripts/model_result.go`).
+- Trasporto remoto: `finalize.overlay_manifest` +
+  `scene.clip.{timeline_item_id,in_us,out_us}`
+  (`internal/capabilities/scripts/final_job_overlay_manifest.go`,
+  `internal/capabilities/scripts/final_job_phrase_clip.go`).
 
 ## 7. Prova nel repository
 
 - `internal/capabilities/overlays/model/manifest_test.go` — validazione,
   determinismo della serializzazione, identità per voce e di composizione.
-- `internal/capabilities/scripts/overlay_manifest_identity_test.go` — retry
-  per voce su cache content-addressed (nessun lavoro ripetuto, nessun
-  artefatto duplicato, degrado a pending su guasto cache).
-- `internal/capabilities/scripts/overlay_manifest_timeline_test.go` — un
-  artefatto + manifest, ordine/z-order preservati, retry per digest, flag di
-  rollback e fallback fail-closed al percorso per-item.
-- `internal/capabilities/scripts/overlay_manifest_ab_test.go` — harness A/B:
-  parità pixel/audio su fixture reali ffmpeg a finestre letterali, parità
-  z-order in sovrapposizione, accordo ordine/fenestra tra i due percorsi.
+- `internal/capabilities/scripts/render_queue_batches_test.go` — composizione
+  manifest: finestre letterali plan-absolute (inclusi i confi tra scene),
+  voce singola ammessa, ammissione caption per disgiunzione temporale,
+  partizione mappe/chain ai percorsi dedicati.
+- `internal/capabilities/scripts/final_job_overlay_ssot_gate_test.go` — gate
+  fail-closed sul nuovo wire: content-hash duplicato, riga che condivide
+  l'artefatto della timeline, sovrapposizioni ammesse con track, chart group
+  pre-composto, voce oltre la base certificata.
+- `internal/capabilities/scripts/final_job_payload_test.go` — phrase-only clip
+  come riferimento a finestra, voce consumata omessa, item scoperto rifiutato,
+  finestre renderizzate preservate, clamp lato worker.
+- `internal/platform/sqlite/overlayrendercache/integration_test.go` — una
+  riga di cache per composizione (ownership manifest), retry senza lavoro
+  ripetuto, kill switch.

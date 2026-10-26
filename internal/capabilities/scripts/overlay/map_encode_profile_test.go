@@ -7,36 +7,43 @@ import (
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-// TestResolveMapEncodeProfileDefaultsToProduction pins the output contract:
-// with no explicit declaration the profile requires the production NVENC
-// encoder. Existing jobs keep their exact codec without any operator action.
-func TestResolveMapEncodeProfileDefaultsToProduction(t *testing.T) {
+// TestResolveMapEncodeProfileDefaultsToNativeCPU pins the output contract:
+// with no explicit declaration the profile is the single native renderer's
+// certified closed profile (libx264/veryfast/CRF23). The Python renderer is
+// retired (TICKET-MAPS-NATIVE-PORT fase 7) and the native renderer has no
+// OpenCL sampler, so there is no GPU default to preserve.
+func TestResolveMapEncodeProfileDefaultsToNativeCPU(t *testing.T) {
 	profile, err := ResolveMapEncodeProfile("")
 	if err != nil {
-		t.Fatalf("empty declaration must select production: %v", err)
+		t.Fatalf("empty declaration must select the production default: %v", err)
 	}
-	if profile.Codec != MapProductionCodec || !profile.ExpectGPU || profile.Preset != "p6" || profile.Quality != 15 {
-		t.Fatalf("default profile = %+v, want production NVENC p6/CQ15 with GPU", profile)
+	if profile.Codec != MapCPUCodec || profile.ExpectGPU || profile.Preset != "veryfast" || profile.Quality != 23 {
+		t.Fatalf("default profile = %+v, want the native certified CPU profile libx264 veryfast/CRF23", profile)
 	}
-	if profile.Codec != "h264_nvenc" {
-		t.Fatalf("production codec = %q, want h264_nvenc (existing jobs keep NVENC)", profile.Codec)
+	if err := RequireNativeServableProfile(profile); err != nil {
+		t.Fatalf("the default profile must be servable by the native renderer: %v", err)
 	}
-	explicit, err := ResolveMapEncodeProfile("h264_nvenc")
+	explicit, err := ResolveMapEncodeProfile("libx264")
 	if err != nil || explicit != profile {
-		t.Fatalf("explicit production codec must equal the default: %+v, %v", explicit, err)
+		t.Fatalf("explicit CPU codec must equal the default: %+v, %v", explicit, err)
 	}
 }
 
-// TestResolveMapEncodeProfileCertifiesCPUOnlyOnExplicitOptIn pins the second
-// certified path: libx264 is available but never implicit, and unknown names
-// fail closed instead of degrading to whatever encoder is at hand.
-func TestResolveMapEncodeProfileCertifiesCPUOnlyOnExplicitOptIn(t *testing.T) {
-	profile, err := ResolveMapEncodeProfile("libx264")
+// TestResolveMapEncodeProfileKeepsTheClosedGPUContract pins the second
+// declarable profile: the legacy NVENC family stays declarable with its exact
+// wire shaping (the contract a future OpenCL-sampler port must satisfy), but
+// the render boundary rejects it typed until that port lands — never a silent
+// downgrade to a CPU encode, never a silent acceptance.
+func TestResolveMapEncodeProfileKeepsTheClosedGPUContract(t *testing.T) {
+	gpu, err := ResolveMapEncodeProfile(MapLegacyGPUCodec)
 	if err != nil {
-		t.Fatalf("explicit CPU codec must resolve: %v", err)
+		t.Fatalf("the legacy NVENC profile must stay declarable: %v", err)
 	}
-	if profile.Codec != MapCPUCodec || profile.ExpectGPU || profile.Preset != "veryfast" || profile.Quality != 23 {
-		t.Fatalf("CPU profile = %+v, want explicit libx264 veryfast/CRF23 without GPU", profile)
+	if gpu.Codec != "h264_nvenc" || !gpu.ExpectGPU || gpu.Preset != "p6" || gpu.Quality != 15 {
+		t.Fatalf("legacy GPU profile = %+v, want the closed NVENC p6/CQ15 contract", gpu)
+	}
+	if err := RequireNativeServableProfile(gpu); err == nil {
+		t.Fatal("the legacy NVENC profile must fail closed at the native render boundary (OpenCL sampler demolition debt)")
 	}
 	if _, err := ResolveMapEncodeProfile("hevc_nvenc"); err == nil {
 		t.Fatal("an uncertified encoder name must fail closed")
@@ -47,22 +54,12 @@ func TestResolveMapEncodeProfileCertifiesCPUOnlyOnExplicitOptIn(t *testing.T) {
 }
 
 // TestMapEncodeVideoArgsCarryTheDeclaredCodec proves the ffmpeg shaping comes
-// from the declared profile: the production branch keeps the certified NVENC
-// shaping byte-identical, the CPU branch never smuggles NVENC flags in.
+// from the declared profile: the CPU branch is the production shaping, the
+// closed GPU branch keeps its exact NVENC shaping byte-identical for the
+// future port and never leaks GPU flags into CPU args.
 func TestMapEncodeVideoArgsCarryTheDeclaredCodec(t *testing.T) {
-	gpu := MapEncodeVideoArgs(DefaultMapEncodeProfile())
-	joined := strings.Join(gpu, " ")
-	for _, want := range []string{"-c:v h264_nvenc", "-gpu 0", "-preset p6", "-tune hq", "-rc vbr", "-cq 15", "-b:v 0"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("production args %q miss %q", joined, want)
-		}
-	}
-	cpu, err := ResolveMapEncodeProfile("libx264")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cpuArgs := MapEncodeVideoArgs(cpu)
-	cpuJoined := strings.Join(cpuArgs, " ")
+	cpu := DefaultMapEncodeProfile()
+	cpuJoined := strings.Join(MapEncodeVideoArgs(cpu), " ")
 	for _, want := range []string{"-c:v libx264", "-preset veryfast", "-crf 23"} {
 		if !strings.Contains(cpuJoined, want) {
 			t.Fatalf("CPU args %q miss declared option %q", cpuJoined, want)
@@ -73,33 +70,46 @@ func TestMapEncodeVideoArgsCarryTheDeclaredCodec(t *testing.T) {
 			t.Fatalf("CPU args %q must not carry GPU shaping %q", cpuJoined, forbidden)
 		}
 	}
+	gpu, err := ResolveMapEncodeProfile(MapLegacyGPUCodec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(MapEncodeVideoArgs(gpu), " ")
+	for _, want := range []string{"-c:v h264_nvenc", "-gpu 0", "-preset p6", "-tune hq", "-rc vbr", "-cq 15", "-b:v 0"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("legacy GPU args %q miss %q", joined, want)
+		}
+	}
 }
 
 // TestValidateMapEncoderTelemetryRefusesAnotherProfile pins the decoupling:
 // telemetry from a different profile than declared is a certification error
 // naming both sides — never a silent acceptance, never an auto-substitution.
 func TestValidateMapEncoderTelemetryRefusesAnotherProfile(t *testing.T) {
-	production := DefaultMapEncodeProfile()
-	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 15, production); err != nil {
-		t.Fatalf("matching production telemetry must certify: %v", err)
+	cpu := DefaultMapEncodeProfile()
+	gpu, err := ResolveMapEncodeProfile(MapLegacyGPUCodec)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := ValidateMapEncoderTelemetry("libx264", false, "veryfast", 23, production); err == nil {
-		t.Fatal("CPU telemetry under the production profile must fail (no silent NVENC→x264 swap)")
-	}
-	cpu, _ := ResolveMapEncodeProfile("libx264")
 	if err := ValidateMapEncoderTelemetry("libx264", false, "veryfast", 23, cpu); err != nil {
 		t.Fatalf("matching CPU telemetry must certify: %v", err)
 	}
 	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 15, cpu); err == nil {
-		t.Fatal("NVENC telemetry under the CPU profile must fail")
+		t.Fatal("NVENC telemetry under the CPU profile must fail (no silent NVENC→x264 swap)")
 	}
-	if err := ValidateMapEncoderTelemetry("h264_nvenc", false, "p6", 15, production); err == nil {
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 15, gpu); err != nil {
+		t.Fatalf("matching legacy GPU telemetry must certify: %v", err)
+	}
+	if err := ValidateMapEncoderTelemetry("libx264", false, "veryfast", 23, gpu); err == nil {
+		t.Fatal("CPU telemetry under the GPU profile must fail")
+	}
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", false, "p6", 15, gpu); err == nil {
 		t.Fatal("a GPU codec without the GPU flag must fail (flag and codec travel together)")
 	}
-	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p4", 15, production); err == nil {
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p4", 15, gpu); err == nil {
 		t.Fatal("NVENC telemetry with a different preset must fail")
 	}
-	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 18, production); err == nil {
+	if err := ValidateMapEncoderTelemetry("h264_nvenc", true, "p6", 18, gpu); err == nil {
 		t.Fatal("NVENC telemetry with a different quality must fail")
 	}
 }

@@ -1,6 +1,7 @@
 package overlay
 
 import (
+	"strings"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -85,5 +86,51 @@ func TestMapRenderRequirementsForDerivesRealNeeds(t *testing.T) {
 	}
 	if got := MapRenderRequirementsFor(capabilityoverlay.OverlayItem{ID: "x"}); got != (MapRenderRequirements{}) {
 		t.Fatalf("non-map item requirements = %+v, want zero", got)
+	}
+}
+
+// TestMapAnimationPlaceholdersDemandNoComposition pins the placeholder rule:
+// empty, "random" and "auto" are draw knobs resolved at the render boundary,
+// so they claim no composition capability. A CONCRETE id claims it and fails
+// closed when nothing can draw it.
+func TestMapAnimationPlaceholdersDemandNoComposition(t *testing.T) {
+	for _, placeholder := range []string{"", "random", "RANDOM", "auto", " auto "} {
+		item := capabilityoverlay.OverlayItem{ID: "m", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
+			Params: map[string]any{"map_animation": placeholder}}
+		req := MapRenderRequirementsFor(item)
+		if req.DynamicCameraTour || req.EditorialComposition {
+			t.Fatalf("placeholder %q must claim no composition requirement, got %+v", placeholder, req)
+		}
+	}
+	concrete := capabilityoverlay.OverlayItem{ID: "m", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
+		Params: map[string]any{"map_animation": "pulse_marker"}}
+	if req := MapRenderRequirementsFor(concrete); !req.DynamicCameraTour {
+		t.Fatalf("concrete composition must claim the tour capability, got %+v", req)
+	}
+}
+
+// TestPerPinTimingIsTheOneDeclinableRequirement pins the declared-degradation
+// policy: grounded per-pin spoken timing data riding on every planned map is
+// DECLINED (with the reason recorded) when timing is the only unmet
+// requirement — the base flyover presents every place continuously. Any other
+// unmet requirement keeps failing closed, and the decline never reaches a
+// composition that cannot run.
+func TestPerPinTimingIsTheOneDeclinableRequirement(t *testing.T) {
+	timed := capabilityoverlay.OverlayItem{ID: "m", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
+		Params: map[string]any{"map_pin_timing": map[string]map[string]any{}}}
+	backend, reason, err := ResolveMapItemBackend(timed, false)
+	if err != nil {
+		t.Fatalf("timing-only maps must resolve through the declared decline: %v", err)
+	}
+	if backend != MapBackendDynamic {
+		t.Fatalf("declined timing map backend = %q, want dynamic", backend)
+	}
+	if !strings.Contains(reason, "per-pin spoken timing declined") {
+		t.Fatalf("decline must be declared in the reason, got %q", reason)
+	}
+	unportable := capabilityoverlay.OverlayItem{ID: "m2", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
+		Params: map[string]any{"map_pin_timing": map[string]map[string]any{}, "map_animation": "region_zoom"}}
+	if _, _, err := ResolveMapItemBackend(unportable, false); err == nil {
+		t.Fatal("the decline must never cover an unportable composition")
 	}
 }

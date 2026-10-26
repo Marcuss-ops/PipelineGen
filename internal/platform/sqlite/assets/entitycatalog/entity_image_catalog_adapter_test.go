@@ -225,3 +225,96 @@ func TestSQLiteEntityImageCatalogValidationAndCascade(t *testing.T) {
 		t.Fatalf("cascade materialization = %+v, err=%v", materialization, err)
 	}
 }
+
+// TestSQLiteEntityImageCatalogUpsertPreservesDurableVerdicts pins the
+// no-downgrade contract of UpsertCandidate: a discovery re-observation that
+// carries NO pixel verdict (semantic_status unknown) must never clobber a
+// durable accepted/rejected verdict, while a real verification outcome still
+// rewrites it. Without the preservation, every catalog-cache replay and
+// provider refresh reset the row to unknown, IsUsableCandidateQuality then
+// failed, and the pool forced a provider re-search plus a full download+VLM
+// re-verification of pixels that were already certified.
+func TestSQLiteEntityImageCatalogUpsertPreservesDurableVerdicts(t *testing.T) {
+	repo := NewSQLiteEntityImageCatalogAdapter(openEntityImageCatalogTestDB(t))
+	ctx := context.Background()
+
+	if err := repo.UpsertEntity(ctx, capentity.Entity{CanonicalEntityID: "person:chiara-poggi", EntityType: "PERSON", CanonicalName: "Chiara Poggi"}); err != nil {
+		t.Fatal(err)
+	}
+	const url = "https://images.example/chiara-poggi-1.jpg"
+
+	// First observation comes from the pixel verifier: accepted, scored.
+	id, err := repo.UpsertCandidate(ctx, capentity.Candidate{
+		CanonicalEntityID: "person:chiara-poggi", Provider: "duckduckgo", Rank: 1,
+		SourceURL: url, SemanticStatus: capentity.CandidateSemanticAccepted,
+		SemanticScore: 0.92, QualityReason: "Ollama visual verification confirmed one dominant subject",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A later discovery pass re-observes the same URL with NO verdict
+	// (catalog-cache replay or provider refresh). The durable verdict,
+	// its score and its reason must survive untouched.
+	if _, err := repo.UpsertCandidate(ctx, capentity.Candidate{
+		CanonicalEntityID: "person:chiara-poggi", Provider: "duckduckgo", Rank: 4,
+		SourceURL: url,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(ctx, "person:chiara-poggi", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("candidates = %d, want 1", len(rows))
+	}
+	got := rows[0]
+	if got.ID != id {
+		t.Fatalf("candidate id = %d, want %d", got.ID, id)
+	}
+	if got.SemanticStatus != capentity.CandidateSemanticAccepted || got.SemanticScore != 0.92 {
+		t.Fatalf("verdict = %s/%v, want accepted/0.92 preserved", got.SemanticStatus, got.SemanticScore)
+	}
+	if got.QualityReason != "Ollama visual verification confirmed one dominant subject" {
+		t.Fatalf("quality reason = %q, want the stored reason preserved", got.QualityReason)
+	}
+	if got.Rank != 4 {
+		t.Fatalf("rank = %d, want the discovery rank updated to 4", got.Rank)
+	}
+
+	// A real verification outcome (accepted -> rejected) still rewrites
+	// the verdict: preservation applies only to unknown writes.
+	if _, err := repo.UpsertCandidate(ctx, capentity.Candidate{
+		CanonicalEntityID: "person:chiara-poggi", Provider: "duckduckgo", Rank: 5,
+		SourceURL: url, SemanticStatus: capentity.CandidateSemanticRejected,
+		QualityReason: "Ollama visual verification detected a split panel or collage",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.ListCandidates(ctx, "person:chiara-poggi", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].SemanticStatus != capentity.CandidateSemanticRejected || rows[0].SemanticScore != 0 {
+		t.Fatalf("verdict = %s/%v, want rejected/0 from a real verification outcome", rows[0].SemanticStatus, rows[0].SemanticScore)
+	}
+	if rows[0].QualityReason != "Ollama visual verification detected a split panel or collage" {
+		t.Fatalf("quality reason = %q, want the rejection reason", rows[0].QualityReason)
+	}
+
+	// A fresh accepted outcome upgrades the rejection again.
+	if _, err := repo.UpsertCandidate(ctx, capentity.Candidate{
+		CanonicalEntityID: "person:chiara-poggi", Provider: "duckduckgo", Rank: 6,
+		SourceURL: url, SemanticStatus: capentity.CandidateSemanticAccepted, SemanticScore: 0.8,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.ListCandidates(ctx, "person:chiara-poggi", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].SemanticStatus != capentity.CandidateSemanticAccepted || rows[0].SemanticScore != 0.8 {
+		t.Fatalf("verdict = %s/%v, want accepted/0.8 after re-certification", rows[0].SemanticStatus, rows[0].SemanticScore)
+	}
+}

@@ -114,9 +114,10 @@ type SemanticComposedImageQuery struct {
 	Components                []SemanticQueryComponent
 }
 
-// SemanticContextualImageQuery is a provider query joined from a subject and
-// its explicitly asserted location. The composed query itself is synthetic;
-// sentence evidence and component spans remain exact source slices.
+// SemanticContextualImageQuery is a compact provider query joined from
+// source-grounded entities in one sentence. A co-mention is a retrieval cue,
+// not an assertion that the entities are related; sentence evidence and
+// component spans remain exact source slices.
 type SemanticContextualImageQuery struct {
 	ID, Kind, Query, Evidence                 string
 	EvidenceStart, EvidenceEnd, SentenceIndex int

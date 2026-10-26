@@ -130,9 +130,11 @@ func TestDynamicMapVideoCacheKeyFencesPayloadRendererProfileAndEpoch(t *testing.
 	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-b", profile, "cpu", 1920, 1080); changed == base {
 		t.Fatal("different renderer script shared cache identity")
 	}
-	profile.Codec = scriptoverlay.MapCPUCodec
-	profile.ExpectGPU = false
-	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", profile, "cpu", 1920, 1080); changed == base {
+	legacyGPU, err := scriptoverlay.ResolveMapEncodeProfile(scriptoverlay.MapLegacyGPUCodec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", legacyGPU, "cpu", 1920, 1080); changed == base {
 		t.Fatal("different encoder profile shared cache identity")
 	}
 	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", scriptoverlay.DefaultMapEncodeProfile(), "opencv_opencl", 1920, 1080); changed == base {

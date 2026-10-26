@@ -2,12 +2,26 @@ package imagesregistry
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
+
+// ErrIndexStateOwnedByIndexWorker is returned when the operational SQLite
+// plane is asked to write the terminal INDEXED state. That transition is
+// owned SOLELY by PostgresIndexWorker on the media SSOT
+// (percheck_indexed_state_writer_ssot, godlike/06): embedding → pgvector
+// upsert → fenced INDEXED → outbox completed. The SQL-string gate can only
+// catch a literal `index_state = 'INDEXED'`, so the dynamic-parameter path
+// through SetIndexState is refused HERE, at the write boundary — the same
+// "must keep refusing INDEXED" guard the media-reader register row called
+// for (writer-wave scope, MEDIA LEGACY READ-PLANE DEMOLITION).
+var ErrIndexStateOwnedByIndexWorker = errors.New(
+	"clips.SetIndexState: refusing to write INDEXED on the operational SQLite plane — the terminal INDEXED transition is owned solely by PostgresIndexWorker (internal/platform/postgres/media) on the media SSOT")
 
 // ── PR1 (June 2026) — file role ───────────────────────────────────────────
 //
@@ -65,6 +79,9 @@ func (r *ClipsRepository) SetIndexState(ctx context.Context, id string, state as
 	}
 	if state == "" {
 		return fmt.Errorf("clips.SetIndexState: state is required (got empty string; use the canonical 7-state enum)")
+	}
+	if strings.EqualFold(strings.TrimSpace(string(state)), string(asset.StateIndexed)) {
+		return fmt.Errorf("clips.SetIndexState(%s): %w", id, ErrIndexStateOwnedByIndexWorker)
 	}
 	nowStr := timeutil.FormatRFC3339(time.Now())
 	err := UpdateMediaAssetIndexState(ctx, r.db, id, string(state), nowStr, "")

@@ -38,18 +38,22 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			return result, false
 		}
 		r.markGenerationStart(runID, time.Now())
+		hb := r.startStageHeartbeat(runID, StageGeneratingSceneText)
+		defer hb.close()
 		var scenes []Scene
 		var genErr error
 		var generatedTrace scriptpkg.SourceTrace
 		streamed := false
 		var streamTranslationMetrics *TranslationPipelineMetrics
 		var streamAudioMetrics *AudioPipelineMetrics
+		hb.setOp("prepare_scene_text_generation")
 		path := r.prepareSceneTextGeneration(ctx, runID, req, routing, exec)
 		ready := path.ready
+		hb.setOp("generate_scene_text")
 		scenes, generatedTrace, streamed, genErr = r.generateSceneText(ctx, runID, req, exec, path)
 		segmentTopologyNeedsMaterialization := path.topologyNeedsMaterialization
 		if genErr != nil {
-			cause := fmt.Errorf("generate scene text failed: %w", genErr)
+			cause := fmt.Errorf("generate scene text failed: %w", hb.annotate(genErr))
 			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
@@ -75,15 +79,16 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			normalizeGeneratedSceneIdentity(scenes)
 		}
 		if len(scenes) == 0 {
-			cause := fmt.Errorf("generate scene text returned zero scenes")
+			cause := hb.annotate(fmt.Errorf("generate scene text returned zero scenes"))
 			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
 		}
 		if ready != nil {
+			hb.setOp("scene_ready_wait")
 			scenes, streamTranslationMetrics, streamAudioMetrics, genErr = ready.wait(ctx, scenes)
 			if genErr != nil {
-				cause := fmt.Errorf("scene ready downstream failed: %w", genErr)
+				cause := fmt.Errorf("scene ready downstream failed: %w", hb.annotate(genErr))
 				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 				return result, false
@@ -91,6 +96,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			// The normal translation/TTS stages become idempotent no-ops for
 			// these scenes, while their metrics remain visible on the result.
 		}
+		hb.setOp("postprocess_scene_output")
 		bindExplicitClipSceneText(req, scenes)
 		if req.Source.Type == SourceClips && !r.validateClipSceneOutput(ctx, runID, req, exec, scriptStep, scenes) {
 			return result, false
@@ -100,7 +106,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		var fixedErr error
 		scenes, fixedErr = applyFixedSections(req, scenes)
 		if fixedErr != nil {
-			cause := fmt.Errorf("fixed section injection failed: %w", fixedErr)
+			cause := fmt.Errorf("fixed section injection failed: %w", hb.annotate(fixedErr))
 			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return result, false
@@ -120,7 +126,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 				zap.String("requested_language", string(req.SourceLanguage)))
 		}
 		if gateErr := validateMinimumGeneratedOutput(req, output); gateErr != nil {
-			cause := fmt.Errorf("minimum generated text gate: %w", gateErr)
+			cause := fmt.Errorf("minimum generated text gate: %w", hb.annotate(gateErr))
 			r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 			return nil, false
@@ -166,6 +172,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		var piOut piOutcome
 		if piEnabled {
+			hb.setOp("editorial_enrichment")
 			out, err := r.computePhraseImpactEnrichment(ctx, output.Text, scenes, req)
 			if err != nil {
 				piOut.err = err
@@ -208,6 +215,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// The plan is only useful if its exact-source ladder is executed
 		// against the real provider. This phase is optional: an unwired
 		// planner leaves the plan and its feedback pending, unchanged.
+		hb.setOp("semantic_search_batch")
 		r.executeSemanticSearchBatch(ctx, req.SourceLanguage, result)
 		// Consume what the batch resolved. Only content-addressed hits bind,
 		// and only where the media stage has not already chosen an asset, so
@@ -221,6 +229,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// and no MP4. Keep this path source-language-only and reuse the same
 		// localized renderer, watermark contract, and certified result sink.
 		if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
+			hb.setOp("localized_render_fanout")
 			renderBatchStarted := time.Now()
 			concurrency := req.Render.RenderConcurrency
 			if concurrency < 1 {
@@ -368,6 +377,7 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			}
 			renders.Wait()
 			if renderErr != nil {
+				renderErr = hb.annotate(renderErr)
 				r.failExecutionStepBestEffort(ctx, exec, scriptStep, renderErr)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, renderErr)
 				return result, false
@@ -395,13 +405,14 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		}
 		r.checkpoint(ctx, runID, result)
 		if !streamed {
+			hb.setOp("emit_scene_commits")
 			var emitErr error
 			_ = kernobs.MeasureStage(ctx, "emit_scene_commits", func(stageCtx context.Context) error {
 				emitErr = r.emitSceneCommits(stageCtx, runID, req, exec, scenes)
 				return emitErr
 			})
 			if emitErr != nil {
-				cause := fmt.Errorf("emit scene commits: %w", emitErr)
+				cause := fmt.Errorf("emit scene commits: %w", hb.annotate(emitErr))
 				r.failExecutionStepBestEffort(ctx, exec, scriptStep, cause)
 				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, cause)
 				return result, false

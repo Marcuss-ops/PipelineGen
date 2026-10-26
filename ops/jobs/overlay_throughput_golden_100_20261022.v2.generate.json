@@ -68,7 +68,8 @@
         ],
         "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
         "render": {
-          "enabled": true,
+          "enabled": false,
+          "overlays_only": true,
           "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
           "require_gpu": true,
           "subtitles": {

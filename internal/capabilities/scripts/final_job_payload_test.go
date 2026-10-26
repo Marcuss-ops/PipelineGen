@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -27,6 +28,36 @@ func certifiedPhraseVideoArtifact() *RenderArtifact {
 	}
 }
 
+// manifestContentHash returns distinct canonical content hashes for fixture
+// manifest entries (the model enforces one content one overlay).
+func manifestContentHash(seed int) string {
+	return fmt.Sprintf("%064x", seed+1)
+}
+
+// manifestOverlayRender builds the RenderReference the manifest-timeline path
+// produces: ONE certified timeline artifact plus the typed manifest, with one
+// identity row per voice (no per-item artifacts).
+func manifestOverlayRender(items []capabilityoverlay.OverlayItem, artifact *RenderArtifact) *RenderReference {
+	entries := make([]capabilityoverlay.OverlayManifestEntry, 0, len(items))
+	rows := make([]OverlayItemRenderReference, 0, len(items))
+	for index, item := range items {
+		entries = append(entries, capabilityoverlay.OverlayManifestEntry{
+			ItemID: item.ID, Track: index,
+			InUS: item.StartUSValue(), OutUS: item.EndUSValue(),
+			ContentHash: manifestContentHash(index),
+		})
+		rows = append(rows, OverlayItemRenderReference{ItemID: item.ID, JobID: "manifest-job", Status: "SUCCEEDED", BatchID: "manifest-batch"})
+	}
+	manifest := capabilityoverlay.OverlayManifest{
+		SchemaVersion:  capabilityoverlay.SchemaVersionManifest,
+		PlanID:         "plan-manifest",
+		VideoID:        "run-manifest",
+		TimelineSHA256: strings.ToLower(strings.TrimSpace(artifact.SHA256)),
+		Entries:        entries,
+	}
+	return &RenderReference{JobID: "manifest-job", Status: "SUCCEEDED", Artifact: artifact, Items: rows, Manifest: &manifest}
+}
+
 func phraseOnlyFinalJobResult(sceneID string) *GenerateResult {
 	artifact := certifiedPhraseVideoArtifact()
 	item := capabilityoverlay.OverlayItem{ID: "phrase-item", SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Garlasco, provincia di Pavia.", StartUS: 0, DurationUS: 5_000_000}
@@ -35,7 +66,7 @@ func phraseOnlyFinalJobResult(sceneID string) *GenerateResult {
 		FinalAudio:        certifiedFinalAudio(5000),
 		Scenes:            []Scene{{ID: sceneID, Text: map[Language]string{"it": "Garlasco, provincia di Pavia."}}},
 		OverlayPlan:       &capabilityoverlay.OverlayPlan{SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-phrase", VideoID: "run-phrase", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{item}},
-		OverlayRender:     &RenderReference{Items: []OverlayItemRenderReference{{ItemID: item.ID, Status: "SUCCEEDED", Artifact: artifact}}},
+		OverlayRender:     manifestOverlayRender([]capabilityoverlay.OverlayItem{item}, artifact),
 	}
 }
 
@@ -51,7 +82,10 @@ func TestBuildFinalJobPayloadsUsesPublishedPhraseVideoForPhraseOnlyScene(t *test
 	}
 	ref, ok := scenes[0]["stock"].(map[string]any)
 	if !ok || ref["drive_file_id"] != "phrase-drive-id" || ref["sha256"] != strings.Repeat("c", 64) || scenes[0]["kind"] != "clip" {
-		t.Fatalf("phrase-only clip = %#v, want the certified overlay video", scenes[0])
+		t.Fatalf("phrase-only clip = %#v, want the certified timeline video", scenes[0])
+	}
+	if ref["timeline_item_id"] != "phrase-item" || ref["in_us"] != int64(0) || ref["out_us"] != int64(5_000_000) {
+		t.Fatalf("phrase clip window reference = %#v, want the phrase manifest window inside the timeline artifact", ref)
 	}
 	if scenes[0]["duration_seconds"] != 5.0 {
 		t.Fatalf("phrase video duration = %v, want five seconds", scenes[0]["duration_seconds"])
@@ -64,44 +98,55 @@ func TestBuildFinalJobPayloadsUsesPublishedPhraseVideoForPhraseOnlyScene(t *test
 	if len(overlays) != 0 {
 		t.Fatalf("finalize overlays = %#v, want consumed phrase video omitted to avoid rendering its animation twice", overlays)
 	}
+	manifest, ok := finalize["overlay_manifest"].(map[string]any)
+	if !ok {
+		t.Fatalf("finalize overlay_manifest = %#v, want the typed manifest document", finalize["overlay_manifest"])
+	}
+	if entries := manifest["entries"].([]any); len(entries) != 0 {
+		t.Fatalf("manifest entries = %#v, want the consumed phrase omitted from placement", entries)
+	}
 }
 
 func TestFinalJobPhraseVideoRejectsUncertifiedArtifact(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
-	result.OverlayRender.Items[0].Artifact = &RenderArtifact{ID: "incomplete", DriveFileID: "phrase-drive-id", MimeType: "video/mp4", CopyEligible: false}
+	result.OverlayRender.Artifact = &RenderArtifact{ID: "incomplete", DriveFileID: "phrase-drive-id", MimeType: "video/mp4", CopyEligible: false}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{Title: "Garlasco", SourceLanguage: "it"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "not a certified published video") {
 		t.Fatalf("BuildFinalJobPayloads error = %v, want fail-closed uncertified phrase video", err)
 	}
 }
 
-func TestFinalJobPhraseVideoWithoutPublishedOverlayStillFailsClosed(t *testing.T) {
+func TestFinalJobPhraseVideoWithoutPublishedTimelineStillFailsClosed(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
-	result.OverlayRender.Items[0].Artifact = nil
+	result.OverlayRender.Artifact = nil
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{Title: "Garlasco", SourceLanguage: "it"}, result, finalJobPayloadResolver{})
-	if err == nil || !strings.Contains(err.Error(), "no rendered phrase artifact") {
-		t.Fatalf("BuildFinalJobPayloads error = %v, want missing phrase artifact rejection", err)
+	if err == nil || !strings.Contains(err.Error(), "no certified timeline artifact") {
+		t.Fatalf("BuildFinalJobPayloads error = %v, want missing timeline artifact rejection", err)
 	}
 }
 
-func TestFinalJobOverlayAssetsExcludingConsumedPhraseDoesNotDuplicateTheVideo(t *testing.T) {
+func TestFinalJobOverlayHandoffConsumedPhraseDoesNotDuplicateTheVideo(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
 	consumed := map[string]struct{}{"phrase-item": {}}
-	overlays, err := finalJobOverlayAssetsExcluding(result, consumed)
+	overlays, manifestWire, err := finalJobOverlayHandoff(result, consumed)
 	if err != nil {
-		t.Fatalf("finalJobOverlayAssetsExcluding: %v", err)
+		t.Fatalf("finalJobOverlayHandoff: %v", err)
 	}
 	if len(overlays) != 0 {
 		t.Fatalf("final overlays = %#v, want consumed phrase omitted", overlays)
 	}
+	entries := manifestWire["entries"].([]any)
+	if len(entries) != 0 {
+		t.Fatalf("manifest entries = %#v, want the consumed phrase omitted from placement", entries)
+	}
 }
 
-func TestFinalJobOverlayAssetsExcludingStillRejectsMissingUnconsumedArtifacts(t *testing.T) {
+func TestFinalJobOverlayHandoffStillRejectsUncoveredItems(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
 	result.OverlayPlan.Items = append(result.OverlayPlan.Items, capabilityoverlay.OverlayItem{ID: "other-item", SceneID: "scene-phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Altra frase", StartUS: 0, DurationUS: 5_000_000})
-	_, err := finalJobOverlayAssetsExcluding(result, map[string]struct{}{"phrase-item": {}})
-	if err == nil || !strings.Contains(err.Error(), `overlay "other-item" has no published render artifact`) {
-		t.Fatalf("finalJobOverlayAssetsExcluding error = %v, want missing remaining artifact", err)
+	_, _, err := finalJobOverlayHandoff(result, map[string]struct{}{"phrase-item": {}})
+	if err == nil || !strings.Contains(err.Error(), `overlay "other-item" has no manifest entry`) {
+		t.Fatalf("finalJobOverlayHandoff error = %v, want missing manifest entry rejection", err)
 	}
 }
 
@@ -138,94 +183,85 @@ func TestTrimFinalJobSceneTailFitsVideoWithinFinalAudio(t *testing.T) {
 	}
 }
 
-func TestScheduleFinalJobSceneImageMovesAfterReplaceOverlays(t *testing.T) {
-	image := capabilityoverlay.OverlayItem{ID: "scene-image", SceneID: "scene-1", Kind: "image", StartUS: 5_000_000, DurationUS: 5_000_000}
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 20_000_000}}},
-		OverlayPlan: &capabilityoverlay.OverlayPlan{Items: []capabilityoverlay.OverlayItem{
-			image,
-			{ID: "entity-card", SceneID: "scene-1", Kind: "entity_image", StartUS: 6_000_000, DurationUS: 4_000_000},
-			{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", StartUS: 12_000_000, DurationUS: 2_000_000},
-		}},
-	}
-	frameGuardUS := int64((1_000_000 + 24 - 1) / 24)
-	start, end, err := scheduleFinalJobSceneImage(result, image, frameGuardUS)
-	if err != nil {
-		t.Fatalf("scheduleFinalJobSceneImage: %v", err)
-	}
-	if start != 14_000_000+frameGuardUS || end != 19_000_000+frameGuardUS {
-		t.Fatalf("scheduled image window = %d-%d, want 14s-19s with frame guard %d", start, end, frameGuardUS)
-	}
-}
-
-func TestFinalJobSchedulesOverlappingDateCardsWithinScene(t *testing.T) {
+func TestFinalJobManifestAdmitsOverlappingEntriesWithTracks(t *testing.T) {
+	// Two date cards on the SAME window: the pure-manifest wire admits them
+	// (both read from one artifact, so placement is idempotent) and the baked
+	// z-order (track) is authoritative. The per-item handoff had to move the
+	// second card out of the way for mode=replace; that scheduling is gone.
 	items := []capabilityoverlay.OverlayItem{
 		{ID: "date-tick", SceneID: "scene-1", Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "28 settembre", StartUS: 5_000_000, DurationUS: 5_000_000},
 		{ID: "date-month", SceneID: "scene-1", Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "28 settembre 2026", StartUS: 5_000_000, DurationUS: 5_000_000},
 	}
+	artifact := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("d", 64), SizeBytes: 100, FrameCount: 480}
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 20_000_000}}},
 		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
-		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{
-			{ItemID: "date-tick", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-tick-artifact", DriveFileID: "date-tick-drive", SHA256: strings.Repeat("d", 64), SizeBytes: 100, FrameCount: 120}},
-			{ItemID: "date-month", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-month-artifact", DriveFileID: "date-month-drive", SHA256: strings.Repeat("e", 64), SizeBytes: 100, FrameCount: 120}},
-		}},
+		OverlayRender:     manifestOverlayRender(items, artifact),
 	}
-	overlays, err := finalJobOverlayAssetsExcluding(result, nil)
+	overlays, manifestWire, err := finalJobOverlayHandoff(result, nil)
 	if err != nil {
-		t.Fatalf("finalJobOverlayAssetsExcluding: %v", err)
+		t.Fatalf("finalJobOverlayHandoff: %v", err)
 	}
-	if len(overlays) != 2 {
-		t.Fatalf("final overlays = %d, want both date cards", len(overlays))
+	if len(overlays) != 0 {
+		t.Fatalf("final overlays = %#v, want no dedicated replace rows", overlays)
 	}
-	first := overlays[0].(map[string]any)
-	second := overlays[1].(map[string]any)
-	if first["start_frame"] != int64(120) || first["end_frame"] != int64(240) {
-		t.Fatalf("first overlay window = %v-%v, want 120-240", first["start_frame"], first["end_frame"])
+	entries := manifestWire["entries"].([]any)
+	if len(entries) != 2 {
+		t.Fatalf("manifest entries = %d, want both date cards", len(entries))
 	}
-	if second["start_frame"] != int64(240) || second["end_frame"] != int64(360) {
-		t.Fatalf("second overlay window = %v-%v, want 240-360", second["start_frame"], second["end_frame"])
+	for index, raw := range entries {
+		entry := raw.(map[string]any)
+		if entry["in_us"] != int64(5_000_000) || entry["out_us"] != int64(10_000_000) {
+			t.Fatalf("entry %d window = %v-%v, want the rendered 5s-10s placement preserved", index, entry["in_us"], entry["out_us"])
+		}
+		if entry["track"] != index {
+			t.Fatalf("entry %d track = %v, want z-order %d", index, entry["track"], index)
+		}
 	}
 }
 
-func TestFinalJobClampsOverlayAtCertifiedBaseEnd(t *testing.T) {
+func TestFinalJobManifestKeepsRenderedWindowPastCertifiedBaseEnd(t *testing.T) {
+	// A last date card can extend a little past the certified base (its scene
+	// was planned against a longer source). The manifest documents the
+	// RENDERED placement verbatim — clamping the emitted window would desync
+	// the receipt from the artifact — and the projection clamps the tail to
+	// the certified base on the worker (contract §3). An entry that STARTS
+	// past the base is still fail-closed.
+	item := capabilityoverlay.OverlayItem{ID: "last-date", SceneID: "scene-1", Kind: "number", StartUS: 29_939_000_000 / 24, DurationUS: 5_000_000}
+	artifact := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("a", 64), SizeBytes: 100, FrameCount: 719_808}
 	result := &GenerateResult{
-		FinalAudio: &FinalAudioReference{DurationMS: 1_249_708}, // floor to complete frames at 24 fps
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			FPSNum: 24, FPSDen: 1,
-			Items: []capabilityoverlay.OverlayItem{{ID: "last-date", SceneID: "scene-1", Kind: "number", StartUS: 29_939_000_000 / 24, DurationUS: 5_000_000}},
-		},
-		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{{
-			ItemID: "last-date", Status: "SUCCEEDED",
-			Artifact: &RenderArtifact{ID: "last-date-artifact", DriveFileID: "last-date-drive", SHA256: strings.Repeat("a", 64), SizeBytes: 100, FrameCount: 120},
-		}}},
+		FinalAudio:    &FinalAudioReference{DurationMS: 1_249_708}, // floor to complete frames at 24 fps
+		OverlayPlan:   &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{item}},
+		OverlayRender: manifestOverlayRender([]capabilityoverlay.OverlayItem{item}, artifact),
 	}
-	overlays, err := finalJobOverlayAssetsExcluding(result, nil)
+	_, manifestWire, err := finalJobOverlayHandoff(result, nil)
 	if err != nil {
-		t.Fatalf("finalJobOverlayAssetsExcluding: %v", err)
+		t.Fatalf("finalJobOverlayHandoff: %v", err)
 	}
-	window := overlays[0].(map[string]any)
-	if got := window["end_frame"]; got != int64(29_992) {
-		t.Fatalf("overlay end_frame = %v, want clamp to certified base frame 29992", got)
+	entry := manifestWire["entries"].([]any)[0].(map[string]any)
+	if got := entry["out_us"]; got != item.EndUSValue() {
+		t.Fatalf("entry out_us = %v, want the rendered window %d preserved (worker clamps the tail)", got, item.EndUSValue())
 	}
 }
 
-func TestFinalJobRejectsOverlaysThatCannotFitInScene(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "date-a", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000},
-		{ID: "date-b", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000},
-	}
+func TestFinalJobRejectsDedicatedRowsThatCannotFitBesideComposition(t *testing.T) {
+	// A dedicated-path map keeps its own replace clip, so it must never share
+	// a frame with composition frames (those belong to the timeline artifact).
+	// When the scene has no free window left, the handoff fails closed before
+	// any remote attempt.
+	phrase := capabilityoverlay.OverlayItem{ID: "date-a", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000}
+	mapItem := capabilityoverlay.OverlayItem{ID: "map-a", SceneID: "scene-1", Kind: "dynamic_map", StartUS: 0, DurationUS: 5_000_000, Map: &capabilityoverlay.MapOverlay{}}
+	timeline := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("f", 64), SizeBytes: 100, FrameCount: 120}
+	mapArtifact := &RenderArtifact{ID: "map-artifact", DriveFileID: "map-drive", SHA256: strings.Repeat("g", 64), SizeBytes: 100, FrameCount: 120}
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 5_000_000}}},
-		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
-		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{
-			{ItemID: "date-a", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-a-artifact", DriveFileID: "date-a-drive", SHA256: strings.Repeat("f", 64), SizeBytes: 100, FrameCount: 120}},
-			{ItemID: "date-b", Status: "SUCCEEDED", Artifact: &RenderArtifact{ID: "date-b-artifact", DriveFileID: "date-b-drive", SHA256: strings.Repeat("g", 64), SizeBytes: 100, FrameCount: 120}},
-		}},
+		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{phrase, mapItem}},
+		OverlayRender:     manifestOverlayRender([]capabilityoverlay.OverlayItem{phrase}, timeline),
 	}
-	_, err := finalJobOverlayAssetsExcluding(result, nil)
+	result.OverlayRender.Items = append(result.OverlayRender.Items, OverlayItemRenderReference{ItemID: "map-a", Status: "SUCCEEDED", Artifact: mapArtifact})
+	_, _, err := finalJobOverlayHandoff(result, nil)
 	if err == nil || !strings.Contains(err.Error(), `cannot fit a non-overlapping 120-frame window in scene "scene-1"`) {
-		t.Fatalf("finalJobOverlayAssetsExcluding error = %v, want local no-space rejection", err)
+		t.Fatalf("finalJobOverlayHandoff error = %v, want local no-space rejection", err)
 	}
 }
 
@@ -844,7 +880,10 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 4500, Text: "hello"}},
 		},
-		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{{ItemID: "phrase-overlay", Artifact: &RenderArtifact{ID: "overlay-1", DriveFileID: "overlay-drive-1", SHA256: strings.Repeat("d", 64), SizeBytes: 50, CopyEligible: true}}}},
+		OverlayRender: manifestOverlayRender(
+			[]capabilityoverlay.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 4500, Text: "hello"}},
+			&RenderArtifact{ID: "overlay-1", DriveFileID: "overlay-drive-1", SHA256: strings.Repeat("d", 64), SizeBytes: 50, FrameCount: 105, CopyEligible: true},
+		),
 	}
 	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -864,12 +903,27 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 		}
 	}
 	overlays := finalize["overlays"].([]any)
-	if len(overlays) != 1 {
-		t.Fatalf("finalize overlays = %d, want one Drive overlay reference", len(overlays))
+	if len(overlays) != 0 {
+		t.Fatalf("finalize overlays = %#v, want no per-item rows on the pure-manifest wire", overlays)
 	}
-	overlay := overlays[0].(map[string]any)
-	if overlay["drive_file_id"] != "overlay-drive-1" || overlay["url"] != "velox-drive://overlay-drive-1" || overlay["size_bytes"] != int64(50) || overlay["start_frame"] != int64(3) || overlay["end_frame"] != int64(108) || overlay["frame_count"] != int64(105) || overlay["mode"] != "replace" {
-		t.Fatalf("overlay payload = %#v, want remote Drive overlay on the frame grid", overlay)
+	manifest, ok := finalize["overlay_manifest"].(map[string]any)
+	if !ok {
+		t.Fatalf("finalize overlay_manifest = %#v, want the typed manifest document", finalize["overlay_manifest"])
+	}
+	asset := manifest["asset"].(map[string]any)
+	if asset["drive_file_id"] != "overlay-drive-1" || asset["url"] != "velox-drive://overlay-drive-1" || asset["size_bytes"] != int64(50) || asset["mode"] != "replace" {
+		t.Fatalf("timeline asset = %#v, want the certified Drive timeline artifact", asset)
+	}
+	if manifest["timeline_sha256"] != strings.Repeat("d", 64) {
+		t.Fatalf("timeline_sha256 = %v, want the artifact digest", manifest["timeline_sha256"])
+	}
+	entries := manifest["entries"].([]any)
+	if len(entries) != 1 {
+		t.Fatalf("manifest entries = %d, want one placement voice", len(entries))
+	}
+	entry := entries[0].(map[string]any)
+	if entry["item_id"] != "phrase-overlay" || entry["in_us"] != int64(100_000) || entry["out_us"] != int64(4_500_000) {
+		t.Fatalf("manifest entry = %#v, want the phrase window on the plan clock", entry)
 	}
 	for _, raw := range finalize["runtime_assets"].([]any) {
 		if raw.(map[string]any)["role"] == "final_composite" {

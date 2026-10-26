@@ -45,45 +45,59 @@ func mapCompositionOf(t *testing.T, plan OverlayPlan) string {
 	return found
 }
 
-// TestMapCompositionChosenEndToEndIsDeterministicPerSeed runs the whole planner
-// twice with the same job seed and requires the same recorded composition, then
-// checks that the chosen composition belongs to the certified set.
-func TestMapCompositionChosenEndToEndIsDeterministicPerSeed(t *testing.T) {
-	certified := map[string]bool{"region_zoom": true, "pulse_marker": true, "spotlight": true}
+// servableComposition reports whether the planner may record this composition:
+// only compositions the single dynamic renderer serves (PortedMapCompositions)
+// or the empty base-flyover id.
+func servableComposition(id string) bool {
+	if id == "" {
+		return true
+	}
+	for _, ported := range PortedMapCompositions() {
+		if ported == id {
+			return true
+		}
+	}
+	return false
+}
 
+// TestMapCompositionChosenEndToEndIsDeterministicPerSeed runs the whole
+// planner twice with the same job seed and requires the same recorded
+// composition, and that the recorded composition is servable end to end.
+func TestMapCompositionChosenEndToEndIsDeterministicPerSeed(t *testing.T) {
 	first := mapCompositionOf(t, buildSingleMapPlan(t, "job-e2e-A"))
 	second := mapCompositionOf(t, buildSingleMapPlan(t, "job-e2e-A"))
-	if first == "" || !certified[first] {
-		t.Fatalf("end-to-end composition %q is not a certified map composition", first)
+	if !servableComposition(first) {
+		t.Fatalf("end-to-end composition %q is not servable by the single dynamic renderer", first)
 	}
 	if first != second {
 		t.Fatalf("same seed must yield the same composition end to end: %q vs %q", first, second)
 	}
 }
 
-// TestMapCompositionChosenEndToEndVariesAcrossSeeds proves that different job
-// seeds reach the planner's seeded draw and produce more than one composition.
-// Unified catalog: all three restrained compositions carry a single pin
-// (Python MULTI_PIN_SYSTEMS is empty), so no single-pin exclusion applies.
-func TestMapCompositionChosenEndToEndVariesAcrossSeeds(t *testing.T) {
-	certified := map[string]bool{"region_zoom": true, "pulse_marker": true, "spotlight": true}
+// TestMapCompositionEndToEndRecordsOnlyServableCompositions proves that
+// different job seeds reach the planner's seeded draw and every recorded
+// composition is servable — while no composed family has landed its parity
+// gate that means the certified base flyover for every seed, never an
+// unported family. A seeded draw that CHOOSES servable compositions (the
+// engine's family-first sampler) is pinned in the overlay subpackage.
+func TestMapCompositionEndToEndRecordsOnlyServableCompositions(t *testing.T) {
 	seen := map[string]bool{}
 	for i := 0; i < 24; i++ {
 		seed := "job-e2e-" + string(rune('a'+i))
 		composition := mapCompositionOf(t, buildSingleMapPlan(t, seed))
-		if !certified[composition] {
-			t.Fatalf("single-pin composition %q not in unified pool (seed %q)", composition, seed)
+		if !servableComposition(composition) {
+			t.Fatalf("composition %q not servable by the single dynamic renderer (seed %q)", composition, seed)
 		}
 		seen[composition] = true
 	}
-	if len(seen) < 2 {
-		t.Fatalf("different job seeds should vary the composition end to end, got %v", seen)
+	if len(seen) == 0 {
+		t.Fatal("the end-to-end draw must record at least one composition id")
 	}
 }
 
 // TestMapCompositionEndToEndMultiPinKeepsEveryPlace runs three rapid places
-// through BuildPlan: the group must keep all three pins and still record a
-// certified composition chosen from the multi-pin-compatible families.
+// through BuildPlan: the group must keep all three pins and record only a
+// servable composition.
 func TestMapCompositionEndToEndMultiPinKeepsEveryPlace(t *testing.T) {
 	plate := testMapPlate(t, "plate-rome", romeLat, romeLon, mapTestWidth, mapTestHeight)
 	var places []MapCandidate
@@ -113,8 +127,8 @@ func TestMapCompositionEndToEndMultiPinKeepsEveryPlace(t *testing.T) {
 			t.Fatalf("multi-pin map must keep all 3 places, got %d", len(item.Map.Pins))
 		}
 		composition, _ := item.Params["map_animation"].(string)
-		if composition != "region_zoom" && composition != "pulse_marker" && composition != "spotlight" {
-			t.Fatalf("multi-pin composition %q is not certified", composition)
+		if !servableComposition(composition) {
+			t.Fatalf("multi-pin composition %q is not servable", composition)
 		}
 	}
 }

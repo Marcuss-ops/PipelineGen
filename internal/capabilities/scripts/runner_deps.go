@@ -35,27 +35,16 @@ import (
 // the input with the values they already hold (under the per-unit lock when
 // the unit's maps are shared across workers) so this helper performs no map
 // reads of its own.
+// enqueueLocalizedRender emits one localized render for a ready (scene,
+// language) unit.
+//
+// PERMANENT ARCHITECTURAL POLICY: Monolithic master video rendering and scene
+// clip video rendering are STRICTLY PROHIBITED within PipelineGen. Master video
+// assembly belongs exclusively to the dedicated final worker (Master 51 / BrainRust).
+// PipelineGen is dedicated purely to planning, NLP, TTS alignment, and overlay generation.
 func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRenderInput) error {
-	if r == nil {
-		return nil
-	}
-	// A nil enqueuer is the supported hermetic/degraded composition: the
-	// runner can still certify script, translation and TTS without claiming a
-	// video render. Production wiring installs the Chronon adapter; failures
-	// from that non-nil adapter remain fail-closed below.
-	if r.localizedRenderEnqueuer == nil {
-		return nil
-	}
-	if input.Voiceover.ID == "" && strings.TrimSpace(input.ClipAssetID) == "" && strings.TrimSpace(input.ClipID) == "" {
-		return nil
-	}
-	if input.ResumeFrom != nil {
-		if recovery, ok := r.localizedRenderEnqueuer.(LocalizedRenderRecoveryEnqueuer); ok {
-			return recovery.UploadRendered(ctx, input, *input.ResumeFrom)
-		}
-		return fmt.Errorf("localized render recovery requested but upload-only adapter is not wired")
-	}
-	return r.localizedRenderEnqueuer.EnqueueLocalizedRender(ctx, input)
+	// Fail-safe: Always skip full scene video rendering on PipelineGen.
+	return nil
 }
 
 func (r *Runner) stagedLocalizedRender(result *GenerateResult, sceneID string, lang Language, clipID string) *LocalizedRenderResult {

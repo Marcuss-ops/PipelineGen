@@ -245,7 +245,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// through this run's publication step. A miss is the historical path.
 	var cacheKey OverlayRenderCacheKey
 	cacheable := false
-	if e.renderCache != nil {
+	if e.renderCache != nil && !(metadata != nil && metadata.ManifestOwnedCache) {
 		cacheKey, cacheable = overlayRenderCacheKeyForPlan(semanticPlan, e.renderCacheEpochValue())
 	}
 	cacheHit := false
@@ -311,10 +311,6 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	}
 	observeCompletionWait(wait, renderOutcomeSuccess)
 	artifactAvailableAt := time.Now()
-	segmentRefs, err := certifiedSegmentReferences(done.Artifact, semanticPlan, jobID)
-	if err != nil {
-		return RenderReference{}, err
-	}
 	attemptOutcome := renderOutcomeSuccess
 	if cacheHit {
 		attemptOutcome = renderOutcomeCacheHit
@@ -336,7 +332,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		// Only a caller that consumes a remote Drive identity (the final-job
 		// delivery surface) explicitly opts into publication.
 		if plan.RequireDriveBeforeReturn && e.publisher != nil {
-			if len(segmentRefs) == 0 && (done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "") {
+			if done.Artifact == nil || done.Artifact.SHA256 == "" || done.Artifact.SizeBytes <= 0 || done.Artifact.URL == "" {
 				return fmt.Errorf("render job %s completed without certified artifact", jobID)
 			}
 			publication := OverlayPublicationSpec{
@@ -375,10 +371,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				publication.OverlayBatchItemIDs = append([]string(nil), metadata.BatchItemIDs...)
 				publication.OverlayBatchEndUS = metadata.BatchEndUS
 			}
-			outputs := segmentRefs
-			if len(outputs) == 0 {
-				outputs = []OverlayItemRenderReference{{Artifact: done.Artifact}}
-			}
+			outputs := []OverlayItemRenderReference{{Artifact: done.Artifact}}
 			for _, output := range outputs {
 				spec := publication
 				if output.ItemID != "" {
@@ -453,5 +446,5 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// as submit + wait + Σ worker phases.
 	recordRenderingGenPhases(ctx, done.Artifact)
 	recordQueueBoundaryPhases(ctx, submitAcceptedAt.Sub(submitStartedAt).Milliseconds(), wait.CompletionWait.Milliseconds())
-	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact, Items: segmentRefs}, nil
+	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
 }

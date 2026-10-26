@@ -2,37 +2,54 @@ package overlays
 
 import "testing"
 
+// TestSelectMapCompositionIsDeterministicPerSeed pins the seed→composition
+// contract of the planner's draw: the same job always records the same
+// composition, whatever the servable subset is.
 func TestSelectMapCompositionIsDeterministicPerSeed(t *testing.T) {
 	first := SelectMapComposition("job-a", "scene-1", "item-1", 2)
 	second := SelectMapComposition("job-a", "scene-1", "item-1", 2)
-	if first == "" || first != second {
+	if first != second {
 		t.Fatalf("same seed must give the same composition: %q vs %q", first, second)
 	}
 }
 
-func TestSelectMapCompositionVariesAcrossSeeds(t *testing.T) {
-	seen := map[string]bool{}
+// TestSelectMapCompositionDrawsOnlyServableFamilies pins the map-audit
+// selection rule: a random draw only ever selects compositions the single
+// dynamic renderer serves (PortedMapCompositions). While every composed
+// family is demolition debt awaiting its own parity gate (the native renderer
+// serves the base flyover only), the draw is empty and the map presents the
+// certified base flyover — an unported family is excluded from random
+// selection, never silently swapped in and never a failed map.
+func TestSelectMapCompositionDrawsOnlyServableFamilies(t *testing.T) {
+	ported := map[string]bool{}
+	for _, id := range PortedMapCompositions() {
+		ported[id] = true
+	}
 	for i := 0; i < 64; i++ {
 		seed := string(rune('a'+i%26)) + "-job-" + string(rune('0'+i%10)) + string(rune('A'+i%7))
-		seen[SelectMapComposition(seed, "scene-1", "item-1", 2)] = true
-	}
-	if len(seen) < 2 {
-		t.Fatalf("different seeds should yield varied compositions, got %v", seen)
+		for _, pins := range []int{1, 2, 5} {
+			got := SelectMapComposition(seed, "scene-1", "item-1", pins)
+			if got != "" && !ported[got] {
+				t.Fatalf("selection %q (seed %q, %d pins) is not servable by the single dynamic renderer", got, seed, pins)
+			}
+		}
 	}
 }
 
+// TestSelectMapCompositionExcludesIncompatibleFamilies pins the data
+// compatibility half of the selection contract: one map holds 1..5 grounded
+// places (the renderer's pin budget), and anything outside never receives a
+// composition.
 func TestSelectMapCompositionExcludesIncompatibleFamilies(t *testing.T) {
-	// Unified catalog (single source: animation registry random pool): the
-	// restrained pool is region_zoom/pulse_marker/spotlight and all three
-	// carry a single pin (Python MULTI_PIN_SYSTEMS is empty). The old
-	// planner-local exclusion of pulse_marker for 1 pin was the diverged
-	// parallel selector removed by the map audit.
-	allowed := map[string]bool{"region_zoom": true, "pulse_marker": true, "spotlight": true}
+	ported := map[string]bool{}
+	for _, id := range PortedMapCompositions() {
+		ported[id] = true
+	}
 	for i := 0; i < 64; i++ {
 		seed := string(rune('a' + i%26))
 		single := SelectMapComposition(seed, "scene-1", "item-1", 1)
-		if !allowed[single] {
-			t.Fatalf("one pin must use the unified random pool, got %q", single)
+		if single != "" && !ported[single] {
+			t.Fatalf("one pin must draw only servable compositions, got %q", single)
 		}
 	}
 	if got := SelectMapComposition("job", "scene-1", "item-1", 0); got != "" {

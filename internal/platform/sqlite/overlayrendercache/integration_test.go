@@ -90,7 +90,6 @@ func newIntegrationEnqueuer(t *testing.T, client scriptgen.RenderQueueClient, ca
 	if err != nil {
 		t.Fatal(err)
 	}
-	enqueuer.SetSeparateItemRenders(true)
 	enqueuer.SetOverlayRenderCache(cache, "integration-epoch")
 	return enqueuer
 }

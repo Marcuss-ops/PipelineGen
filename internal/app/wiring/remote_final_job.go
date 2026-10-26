@@ -99,6 +99,11 @@ func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 
 // StartFinalJob creates the Master job and returns its durable handle without
 // polling. The scripts runner checkpoints this receipt before it attaches.
+//
+// It never sends FINALIZE to an identity the Master reports as already leased
+// or canceled: a leased job is handed back as ErrFinalJobPending so the next
+// attempt ATTACHES to it, and a canceled one is handed back as a stale receipt
+// so the next attempt prepares a fresh identity instead of replaying a dead id.
 func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) (scriptgen.RemoteFinalJobResult, error) {
 	if a == nil || a.client == nil {
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job adapter is not configured")
@@ -113,14 +118,56 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	// is kept between the two phases and through the wait, so a bounded wait that
 	// expires still reports a handle the next attempt can resume from — the job
 	// exists on the Master either way.
-	jobID, err := a.client.Prepare(ctx, pre)
+	prepared, err := a.client.PrepareJob(ctx, pre)
 	if err != nil {
+		if errors.Is(err, remotejob.ErrRemoteStaleJob) {
+			return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: staleReceiptStatus(prepared.Status)},
+				fmt.Errorf("remote preparation %s is stale and must be replaced: %w: %w", prepared.JobID, scriptgen.ErrFinalJobStaleReceipt, err)
+		}
 		return scriptgen.RemoteFinalJobResult{}, err
 	}
-	if err := a.client.Finalize(ctx, jobID, finalize); err != nil {
-		return scriptgen.RemoteFinalJobResult{JobID: jobID}, err
+	if remoteJobInFlight(prepared.Status) {
+		// The idempotent PREPARE replayed a job that is already leased and
+		// running. Finalizing it is forbidden (and would fail with
+		// job_already_leased); handing the handle back lets the next attempt
+		// attach to the render that already exists.
+		return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: prepared.Status},
+			fmt.Errorf("remote job %s is already leased and %s: %w", prepared.JobID, prepared.Status, scriptgen.ErrFinalJobPending)
 	}
-	return scriptgen.RemoteFinalJobResult{JobID: jobID, Status: "RUNNING"}, nil
+	if err := a.client.Finalize(ctx, prepared.JobID, finalize); err != nil {
+		receipt := scriptgen.RemoteFinalJobResult{JobID: prepared.JobID}
+		if errors.Is(err, remotejob.ErrRemoteStaleJob) {
+			receipt.Status = staleReceiptStatus("")
+			return receipt, fmt.Errorf("remote finalize of %s is stale and must be replaced: %w: %w", prepared.JobID, scriptgen.ErrFinalJobStaleReceipt, err)
+		}
+		return receipt, err
+	}
+	return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: "RUNNING"}, nil
+}
+
+// staleReceiptStatus projects a stale transport outcome onto the capability's
+// terminal receipt vocabulary. A Master-reported terminal status is kept as-is
+// (it archives the real outcome); any other stale cause — a lease conflict — is
+// archived as REJECTED so the receipt is terminal and the next attempt rotates
+// the idempotency key instead of replaying the dead identity.
+func staleReceiptStatus(remoteStatus string) string {
+	switch strings.ToUpper(strings.TrimSpace(remoteStatus)) {
+	case "FAILED", "CANCELLED", "CANCELED", "REJECTED":
+		return strings.ToUpper(strings.TrimSpace(remoteStatus))
+	default:
+		return "REJECTED"
+	}
+}
+
+// remoteJobInFlight reports a Master status that means the job is already
+// leased and progressing — a status that must be resumed, never re-finalized.
+func remoteJobInFlight(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "RUNNING", "QUEUED", "PENDING", "PREPARING", "RENDERING":
+		return true
+	default:
+		return false
+	}
 }
 
 // AttachFinalJob waits on a job a previous attempt already submitted: the poll

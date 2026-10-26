@@ -6,11 +6,14 @@ package scriptgeneration
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -338,4 +341,85 @@ func countKind(items []capabilityoverlay.OverlayItem, kind string) int {
 		}
 	}
 	return count
+}
+
+// TestNativeMapRenderEndToEnd drives the REAL render boundary: one multi-place
+// map OverlayPlan through renderDynamicMapVideoOnce against the native map
+// renderer (ChrononPlugin/maps_dynamic_map_render). Host-gated exactly like
+// the encoder tests: it runs when VELOX_MAP_NATIVE_RENDERER_PATH is
+// configured. The subprocess must produce the MP4 and the certified
+// chronon.dynamic-map-telemetry.v1 summary the render path validates — a wire
+// regression (payload field, encoder profile, sampler, basemap, camera
+// anchor) fails HERE instead of in production — and the decision report must
+// declare every base-flyover degradation instead of silently dropping it.
+func TestNativeMapRenderEndToEnd(t *testing.T) {
+	renderer := strings.TrimSpace(os.Getenv("VELOX_MAP_NATIVE_RENDERER_PATH"))
+	if renderer == "" {
+		t.Skip("VELOX_MAP_NATIVE_RENDERER_PATH not configured; native map render e2e is host-gated")
+	}
+	plan := capabilityoverlay.OverlayPlan{
+		PlanID: "map-e2e", VideoID: "map-e2e-video", Fingerprint: "map-e2e-fingerprint",
+		Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, DurationMS: 6000,
+		Items: []capabilityoverlay.OverlayItem{{
+			ID: "map-e2e-item", Kind: "map",
+			StartMs: 0, EndMs: 6000, StartUS: 0, DurationUS: 6_000_000,
+			Map: &capabilityoverlay.MapOverlay{
+				Pins: []capabilityoverlay.MapOverlayPin{
+					{ID: "city:rome", Label: "Rome", Latitude: 41.9028, Longitude: 12.4964, Color: "#FF3B30"},
+					{ID: "city:naples", Label: "Naples", Latitude: 40.8518, Longitude: 14.2681},
+				},
+				AreaGlowRadiusKM: 5,
+			},
+			Params: map[string]any{
+				"map_type":           "chronon_editorial",
+				"map_group_strategy": "multi_pin",
+				"map_pin_timing": map[string]map[string]any{
+					"city:rome":   {"start_us": int64(0), "duration_us": int64(2_500_000)},
+					"city:naples": {"start_us": int64(3_000_000), "duration_us": int64(2_500_000)},
+				},
+			},
+		}},
+	}
+	path, err := renderDynamicMapVideoOnce(context.Background(), plan, nil, t.TempDir())
+	require.NoError(t, err, "the native renderer must execute the realtime wire contract")
+	require.FileExists(t, path)
+
+	reportPath := filepath.Join(filepath.Dir(path), "map-e2e-item.map-decision.json")
+	require.FileExists(t, reportPath)
+	raw, err := os.ReadFile(reportPath)
+	require.NoError(t, err)
+	var report struct {
+		Schema        string `json:"schema"`
+		Backend       string `json:"backend"`
+		BackendReason string `json:"backend_reason"`
+		Basemap       string `json:"basemap"`
+		Composition   string `json:"composition"`
+		Places        []struct {
+			EntityID  string `json:"entity_id"`
+			State     string `json:"state"`
+			Presented bool   `json:"presented"`
+		} `json:"places"`
+		Exclusions []struct {
+			Reason string `json:"reason"`
+			Detail string `json:"detail"`
+		} `json:"exclusions"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &report))
+	require.Equal(t, "pipelinegen.map-decision.v1", report.Schema)
+	require.Equal(t, "dynamic", report.Backend, "the native renderer executes the dynamic backend")
+	require.Contains(t, report.BackendReason, "per-pin spoken timing declined")
+	require.Equal(t, "chronon_editorial", report.Basemap)
+	require.Empty(t, report.Composition, "the certified base flyover carries no composed scene")
+	require.Len(t, report.Places, 2)
+	for _, place := range report.Places {
+		require.Equal(t, "rendered", place.State, "place %s", place.EntityID)
+		require.True(t, place.Presented, "place %s", place.EntityID)
+	}
+	declared := map[string]string{}
+	for _, exclusion := range report.Exclusions {
+		declared[exclusion.Reason] = exclusion.Detail
+	}
+	for _, want := range []string{"per_pin_timing_not_ported", "area_glow_not_ported", "pin_presentation_simplified"} {
+		require.NotEmpty(t, declared[want], "degradation %q must be declared in the map decision report, got %v", want, declared)
+	}
 }

@@ -21,6 +21,17 @@ ScriptFlow locality maps are connected in `BuildScriptGenerationRuntime`:
 4. RenderingGen compiles accepted semantic map plans into Chronon basemap, pin,
    label, and attribution layers. It does not fetch basemap tiles at render
    time.
+5. **Dynamic map rendering is the native renderer of ChrononPlugin**
+   (`maps_dynamic_map_render`, single lane since the Python renderer's
+   retirement — TICKET-MAPS-NATIVE-PORT fase 6-7). It draws the editorial
+   vector basemap with the certified dive flyover and camera-aligned labels,
+   and emits the certified `chronon.dynamic-map-telemetry.v1` summary. It is
+   resolved through `VELOX_MAP_NATIVE_RENDERER_PATH`, its boundary catalog
+   through `CHRONON_MAPS_CATALOG_DIR` (both set by the `map-native.conf`
+   systemd drop-in; they ship inside the chronon3d-runtime image under
+   `/opt/chrononmaps`). A composition, camera tour, label animation, raster
+   basemap style or NVENC profile it cannot draw fails closed with a typed
+   error naming the unported family — never a silent downgrade.
 
 A geocoding endpoint and one of the plate sources must be configured for
 automatic maps. An explicitly geocoding-enabled request without a geocoder
@@ -101,9 +112,10 @@ The dynamic-map MP4 cache is wired by the runtime under
 `VELOX_MAP_VIDEO_CACHE_DIR` to override that directory and
 `VELOX_MAP_VIDEO_CACHE_EPOCH` to invalidate it when a runtime dependency or
 basemap source changes without a corresponding source-file change. The cache
-fingerprint includes the resolved map payload, renderer Python sources,
-cartography Python sources, map assets, output dimensions, and encoder profile.
-Cache hits still pass the ordinary media-contract and telemetry checks.
+fingerprint includes the resolved map payload, the SHA-256 of the native
+renderer binary (any rebuild invalidates cached MP4s), map assets, output
+dimensions, encoder profile and sampler. Cache hits still pass the ordinary
+media-contract and telemetry checks.
 
 When a RenderingGen queue is configured, PipelineGen plans generated map
 coverage from geospatial descriptors only. It does not launch the preliminary
@@ -142,14 +154,40 @@ production rollout still requires deploying compatible versions of both
 services together. GPU concurrency remains unchanged until the full
 calibration is run while safely isolated from active production rendering.
 
-Current encoder settings are implementation defaults, not user-selectable
-profiles:
+The map encoder profile is DECLARED (`PIPELINEGEN_MAP_CODEC`) and must match
+the renderer's certified telemetry byte-for-byte; a mismatch fails closed with
+both sides named:
 
-- ChrononTemplate: libx264 `veryfast`, CRF 18, yuv420p.
-- RenderingGen: configured encoder backend/preset (e.g. native NVENC p1).
+- **Default (production)**: the native renderer's closed profile — libx264
+  `veryfast`, CRF 23, CPU sampler.
+- `PIPELINEGEN_MAP_CODEC=h264_nvenc` stays declarable (its wire shaping
+  contract is pinned for the future OpenCL-sampler port) but is rejected at
+  the render boundary with a typed error until that port lands.
+- RenderingGen: configured encoder backend/preset (e.g. native NVENC p1) for
+  the non-map overlay classes.
 
 The import path skips the RenderingGen/Chronon encode for dynamic map videos;
 other overlay jobs continue to use the normal Chronon render path.
+
+### What the base flyover presents, and what is declared
+
+The native lane serves the certified base flyover: one anchor (the mean of the
+drawn places), the `slow_approach` dive, `label_animation=none`, the
+`chronon_editorial` basemap and up to five unique places. The planner's
+grounded camera move (plate→LOD zooms) travels verbatim for single-place
+fly-tos; multi-place maps use a deterministic fit framing that keeps every
+place in frame. Beyond that certified subset:
+
+- **Declared degradations** (recorded as exclusions in the Map Decision
+  Report, never silent): per-pin spoken camera activation (the base flyover
+  presents every place continuously), the area-glow ring, pin accent color
+  and extra pin cards, and composed presentations the planner's strategy
+  implied (`composition_fallback`).
+- **Fail-closed with typed errors**: an explicitly requested composition
+  (`map_animation`), composed pin extras, raster basemap styles
+  (`satellite`/`roadmap`/`terrain`), label animations and multi-tap tours —
+  each names its demolition-debt family (TICKET-MAPS-NATIVE-PORT) and must
+  land its bit-exact parity gate before it may be served.
 
 ## Verification
 
@@ -158,6 +196,12 @@ Focused verification from the repository checkout:
 ```bash
 cd refactored
 go test ./internal/app/wiring ./internal/platform/config ./internal/platform/geocoding ./internal/capabilities/maps ./internal/capabilities/scripts ./internal/capabilities/overlays
+
+# Host-gated realtime e2e: runs the INSTALLED native renderer for real
+# (map-native.conf paths) and validates its telemetry through the render path.
+VELOX_MAP_NATIVE_RENDERER_PATH=/usr/local/bin/maps_dynamic_map_render \
+CHRONON_MAPS_CATALOG_DIR=/usr/local/share/chrononplugin/maps-catalog \
+  go test -run TestNativeMapRenderEndToEnd -v ./internal/capabilities/scripts/
 
 cd ../RenderingGen/renderinggen
 go test ./internal/overlay -run 'TestGeoreferencedMapCompilesGroundedLayers|TestMapMotionMustResolveAndKeepBasemapCentered|TestPipelineGenOverlayPlanLowersToTimedVideoLayer|TestPipelineGenOverlayPlanIsContractValid|TestTemplateRegistryIsSingleSourceOfKind'

@@ -98,12 +98,23 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 // renderOverlayPlans computes against a private snapshot. It never writes the
 // durable run or execution step; the joined caller owns failures and results.
 func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, resumeIdx int, result *GenerateResult) ([]overlayRenderOutcome, error) {
-	if result == nil || !req.Render.Enabled || r.overlayRenderEnqueuer == nil || stageSkipped(resumeIdx, StageCompilingAudio) {
+	if result == nil || (!req.Render.Enabled && !req.Render.OverlaysOnly) || r.overlayRenderEnqueuer == nil || stageSkipped(resumeIdx, StageCompilingAudio) {
 		return nil, nil
 	}
 	pending := pendingOverlayPlans(result, req)
 	if len(pending) == 0 {
 		return nil, nil
+	}
+	if req.FinalJob {
+		// Final-job placement policy runs BEFORE the render: the manifest
+		// wire freezes placement at render time, so phrase callouts on
+		// intermediate clip scenes are moved before their clip here (the
+		// per-item handoff used to move them at payload time).
+		for _, item := range pending {
+			if err := normalizeFinalJobOverlayWindows(item.plan, result); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
 		func(renderCtx context.Context, _ int, item languageOverlayPlan) (overlayRenderOutcome, error) {

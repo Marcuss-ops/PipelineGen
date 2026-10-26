@@ -73,6 +73,16 @@ func NativeMapCapabilities() MapBackendCapabilities {
 	}
 }
 
+// NativeMapBasemaps is the single projection of the basemap styles the native
+// renderer draws: the editorial vector basemap only. The retired Python
+// renderer fetched Esri raster tiles; raster styles are demolition debt and
+// resolve to a typed error at the render boundary — never a silent style
+// swap — so "random" draws from this subset and an explicit raster style
+// fails closed by name.
+func NativeMapBasemaps() map[string]bool {
+	return map[string]bool{"chronon_editorial": true}
+}
+
 // DynamicMapCapabilities: the native dynamic map renderer of ChrononPlugin
 // (maps_dynamic_map_render) draws the editorial vector basemap with the
 // certified dive flyover and camera-aligned labels. Multi-stop camera tours,
@@ -114,7 +124,52 @@ func ResolveMapBackendFor(r MapRenderRequirements) (MapBackend, string, error) {
 			return candidate.backend, "capabilities cover all map render requirements", nil
 		}
 	}
-	return "", "", fmt.Errorf("no map backend covers the requested render requirements: %+v", r)
+	return "", "", fmt.Errorf("no map backend covers the requested render requirements (%s): %s", unmetMapRequirements(r), unmetMapRequirementsHint(r))
+}
+
+// unmetMapRequirements names the requirements no backend covers, so a failed
+// map resolution reads as "which presentation feature is not ported" instead
+// of a struct dump.
+func unmetMapRequirements(r MapRenderRequirements) string {
+	var names []string
+	for _, candidate := range []struct {
+		name  string
+		met   bool
+		claim bool
+	}{
+		{"StaticPlate", NativeMapCapabilities().StaticPlates, r.StaticPlate},
+		{"CameraFlyOver", NativeMapCapabilities().CameraFlyOver, r.CameraFlyOver},
+		{"DynamicCameraTour", DynamicMapCapabilities().DynamicCameraTours, r.DynamicCameraTour},
+		{"LabelAnimation", DynamicMapCapabilities().LabelAnimations, r.LabelAnimation},
+		{"EditorialComposition", DynamicMapCapabilities().EditorialCompositions, r.EditorialComposition},
+		{"MultiPinSystem", DynamicMapCapabilities().MultiPinSystems, r.MultiPinSystem},
+		{"PerPinTiming", DynamicMapCapabilities().PerPinTiming, r.PerPinTiming},
+	} {
+		if candidate.claim && !candidate.met {
+			names = append(names, candidate.name)
+		}
+	}
+	return strings.Join(names, ", ")
+}
+
+// unmetMapRequirementsHint names the demolition-debt families behind the
+// unmet requirements (TICKET-MAPS-NATIVE-PORT): each one must land its
+// bit-exact parity gate before it may be served.
+func unmetMapRequirementsHint(r MapRenderRequirements) string {
+	parts := []string{}
+	if r.DynamicCameraTour || r.MultiPinSystem {
+		parts = append(parts, "composed scenes/tours are demolition debt (parity gate pending) — request map_animation empty/random for the certified base flyover")
+	}
+	if r.EditorialComposition {
+		parts = append(parts, "editorial scene compositions are demolition debt (parity gate pending)")
+	}
+	if r.LabelAnimation {
+		parts = append(parts, "label animations are demolition debt (parity gate pending)")
+	}
+	if r.PerPinTiming {
+		parts = append(parts, "per-pin spoken camera activation is demolition debt (parity gate pending)")
+	}
+	return strings.Join(parts, "; ")
 }
 
 // ResolveMapBackend conservatively selects the backend for a composition
@@ -141,7 +196,7 @@ func MapRenderRequirementsFor(item capabilityoverlay.OverlayItem) MapRenderRequi
 	if item.Map.CameraMove != nil && len(item.Map.LODs) >= 2 {
 		req.CameraFlyOver = true
 	}
-	if composition, _ := item.Params["map_animation"].(string); strings.TrimSpace(composition) != "" {
+	if composition, _ := item.Params["map_animation"].(string); !MapAnimationPlaceholder(composition) {
 		if strings.HasPrefix(strings.TrimSpace(composition), "ed_") {
 			req.EditorialComposition = true
 		} else {
@@ -158,6 +213,18 @@ func MapRenderRequirementsFor(item capabilityoverlay.OverlayItem) MapRenderRequi
 		req.DynamicCameraTour = true
 	}
 	return req
+}
+
+// MapAnimationPlaceholder reports whether a map_animation value carries no
+// presentation requirement of its own: empty, "random" and "auto" are draw
+// placeholders resolved by the seeded sampler at the render boundary (the
+// draw only ever selects compositions the executing renderer serves), so
+// they demand no composition capability and are never written to the plan
+// params as if they were concrete ids. A CONCRETE id is an explicit request
+// and its requirements travel to the backend resolution.
+func MapAnimationPlaceholder(composition string) bool {
+	trimmed := strings.TrimSpace(composition)
+	return trimmed == "" || strings.EqualFold(trimmed, "random") || strings.EqualFold(trimmed, "auto")
 }
 
 // MapExecutionPolicy makes the production preference explicit instead of
@@ -205,10 +272,25 @@ func ResolveMapItemBackendWithPolicy(item capabilityoverlay.OverlayItem, policy 
 		return MapBackendNative, "policy=diagnostic_native: native compiler covers all map render requirements", nil
 	}
 	backend, _, err := ResolveMapBackendFor(req)
-	if err != nil {
-		return "", "", err
+	if err == nil {
+		return backend, "policy=" + string(policy) + ": capabilities cover all map render requirements", nil
 	}
-	return backend, "policy=" + string(policy) + ": capabilities cover all map render requirements", nil
+	// PerPinTiming is the one DECLINABLE requirement: it marks grounded
+	// per-pin spoken timing DATA riding on every planned map, and the native
+	// base flyover presentation has no camera-activation concept (every place
+	// stays presented, so nothing is dropped). The decline is declared — the
+	// reason travels to the map decision report and the render payload — and
+	// it applies only when timing is the single unmet requirement; any other
+	// unmet requirement keeps failing closed with its typed error.
+	if req.PerPinTiming {
+		reduced := req
+		reduced.PerPinTiming = false
+		if reducedBackend, _, reducedErr := ResolveMapBackendFor(reduced); reducedErr == nil {
+			declined := "policy=" + string(policy) + ": per-pin spoken timing declined (native base flyover presents every place continuously; camera-activation families await their parity gates)"
+			return reducedBackend, declined, nil
+		}
+	}
+	return "", "", err
 }
 
 // ResolveMapItemBackend is the per-map backend decision used at the render

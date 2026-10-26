@@ -8,12 +8,15 @@ import (
 // MapEncodeProfile is the DECLARED execution profile for a map render: which
 // video codec the artifact must carry and whether a GPU encoder is expected.
 //
-// Cartographic validity and encoder choice are separate concerns: the map
-// renderer may run on GPU (production) or CPU (explicitly certified), but the
+// Cartographic validity and encoder choice are separate concerns: the
 // observed telemetry must match the declared profile. A mismatch fails
-// closed — the boundary never silently substitutes one codec for another, so
-// existing NVENC jobs keep their exact output contract and a CPU render is
-// only ever produced under an explicit operator opt-in.
+// closed — the boundary never silently substitutes one codec for another.
+// Since the Python renderer was retired (TICKET-MAPS-NATIVE-PORT fase 7) the
+// single map lane is the native renderer of ChrononPlugin, whose certified
+// closed profile is libx264/veryfast/CRF23: the NVENC family needs the
+// OpenCL sampler the native renderer does not provide yet (demolition debt),
+// so an NVENC declaration is rejected at the render boundary with a typed
+// error instead of being silently downgraded to a CPU encode.
 type MapEncodeProfile struct {
 	// Codec is the required video encoder (telemetry video_encoder).
 	Codec string
@@ -26,38 +29,57 @@ type MapEncodeProfile struct {
 }
 
 const (
-	// MapProductionCodec is the certified production map encoder.
-	MapProductionCodec = "h264_nvenc"
-	// MapCPUCodec is the separately certified CPU map encoder. It is never
-	// selected implicitly: only an explicit operator declaration opts in.
+	// MapProductionCodec is the certified production map encoder: the native
+	// renderer's closed CPU profile (libx264/veryfast/CRF23).
+	MapProductionCodec = MapCPUCodec
+	// MapLegacyGPUCodec is the GPU NVENC profile of the retired Python lane.
+	// It stays declarable and its shaping contract remains pinned below, but
+	// the render boundary rejects it until the OpenCL sampler is ported.
+	MapLegacyGPUCodec = "h264_nvenc"
+	// MapCPUCodec is the native renderer's certified CPU map encoder.
 	MapCPUCodec = "libx264"
-	// MapEncodeProfileEnv names the explicit operator opt-in. Empty means the
-	// production default; naming the CPU codec certifies the CPU path for
-	// this render. Anything else fails closed.
+	// MapEncodeProfileEnv names the explicit profile declaration. Empty means
+	// the production default; naming the CPU codec certifies the CPU path.
+	// Anything else fails closed.
 	MapEncodeProfileEnv = "PIPELINEGEN_MAP_CODEC"
 )
 
-// DefaultMapEncodeProfile is the production contract: GPU NVENC at preset p6/CQ 15.
+// DefaultMapEncodeProfile is the production contract: the native renderer's
+// certified CPU profile at preset veryfast/CRF 23.
 func DefaultMapEncodeProfile() MapEncodeProfile {
-	return MapEncodeProfile{Codec: MapProductionCodec, ExpectGPU: true, Preset: "p6", Quality: 15}
+	return MapEncodeProfile{Codec: MapCPUCodec, ExpectGPU: false, Preset: "veryfast", Quality: 23}
 }
 
 // ResolveMapEncodeProfile declares the execution profile for one map render.
-// Empty selects the production default; the CPU codec selects the separately
-// certified CPU path. An unknown name fails closed instead of degrading to
+// Empty selects the production default; the CPU codec selects the same
+// certified CPU path explicitly; the legacy NVENC codec resolves as the
+// closed GPU profile the render boundary rejects (never silently encoded on
+// another encoder). An unknown name fails closed instead of degrading to
 // whichever encoder happens to be available.
 func ResolveMapEncodeProfile(explicit string) (MapEncodeProfile, error) {
 	switch strings.TrimSpace(strings.ToLower(explicit)) {
 	case "":
 		return DefaultMapEncodeProfile(), nil
-	case MapProductionCodec:
-		return DefaultMapEncodeProfile(), nil
 	case MapCPUCodec:
-		return MapEncodeProfile{Codec: MapCPUCodec, ExpectGPU: false, Preset: "veryfast", Quality: 23}, nil
+		return DefaultMapEncodeProfile(), nil
+	case MapLegacyGPUCodec:
+		return MapEncodeProfile{Codec: MapLegacyGPUCodec, ExpectGPU: true, Preset: "p6", Quality: 15}, nil
 	default:
-		return MapEncodeProfile{}, fmt.Errorf("unsupported map encoder %q: declare %q (production) or %q (certified CPU)",
-			strings.TrimSpace(explicit), MapProductionCodec, MapCPUCodec)
+		return MapEncodeProfile{}, fmt.Errorf("unsupported map encoder %q: declare %q (production) or %q (legacy NVENC, rejected until the OpenCL sampler is ported)",
+			strings.TrimSpace(explicit), MapCPUCodec, MapLegacyGPUCodec)
 	}
+}
+
+// RequireNativeServableProfile fails closed on a declared profile the single
+// native map renderer cannot execute. The NVENC family needs the OpenCL
+// sampler (demolition debt): it is rejected with a typed error naming the
+// unported capability — never silently encoded on another encoder.
+func RequireNativeServableProfile(profile MapEncodeProfile) error {
+	if profile.ExpectGPU {
+		return fmt.Errorf("map encoder %q requires the OpenCL sampler the native map renderer does not provide yet (demolition debt, TICKET-MAPS-NATIVE-PORT): declare %q or leave %s empty",
+			profile.Codec, MapCPUCodec, MapEncodeProfileEnv)
+	}
+	return nil
 }
 
 // MapEncodeVideoArgs renders the declared profile as ffmpeg video-encoder

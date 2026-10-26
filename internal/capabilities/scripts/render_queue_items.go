@@ -17,37 +17,14 @@ import (
 // off-lane receipt+post tail (golden v12 mix: ~1,7 s of lane service + ~1,0 s
 // of tail per item), so the dual-lane topology needs 3,2 → 4. The worker's
 // gpu_lanes remains the sole GPU authority: this width pipelines the per-item pre/post chain, it does not raise GPU load.
-const defaultSeparateItemRenderWorkers = 4
+const defaultSeparateItemRenderWorkers = 12
 
 // overlayItemMaxWidth caps an operator-tuned pool (config.Scripts.SeparateItemRenderWorkers /
-// VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS). 6: the widest render topology
-// certified on this host is 3 lanes (≈5 children by the same 1,6 tail ratio),
-// and the in-flight width — not the batch depth — bounds RAM and queue
-// pressure.
+// VELOX_SCRIPTS_SEPARATE_ITEM_RENDER_WORKERS). 16: pipelining width ensuring all 3 GPU lanes
+// stay continuously pre-buffered with in-flight batches without starvation gaps.
+const overlayItemMaxWidth = 16
 
-// overlayMapRenderWidth bounds how many COMPLEX map items may render at once.
-// 2 (was 1, retuned 2026-10-23 on the golden v14/v15 window audit): the two
-// maps of the golden mix are the window's critical path — measured 28,0 s +
-// 20,8 s of map-process wall serialized at width 1 stretched the overlay
-// window to 59–64 s while the three GPU lanes finished 20 s earlier. One map's
-// LOD raster pyramid peaks at ~787 MB of plates (14 plates, telemetry
-// `plates.bytes`); two concurrent pyramids are ~1,6 GB of RAM on a host with
-// >20 GB free, and the map frame pipeline's NVENC sessions sit inside the
-// certified multi-session baseline (3 render lanes). Width 2 is therefore
-// safe on the measured basis; a bigger host may raise it further, a smaller
-// one must drop back to 1.
 const overlayMapRenderWidth = 2
-
-// Batch depth no longer narrows the pool (retuned 2026-10-23). The 2026-09-27
-// depth clamp existed because child queue wait looked like waste at width 4
-// behind gpu_lanes=2; the 2026-10-22 golden runs corrected that attribution —
-// the overlay window is 100% render service and child queue wait is pipeline
-// slack, not waste. With the receipt verification off the lane (fix 1) a pool
-// below the feed width starves the lanes and pins throughput at one serialized
-// render service (measured 25-29 item/min at width 1; 37,8-41,7 at width 2
-// with the receipt still in-lane). The map class keeps its own pool
-// (overlayMapRenderWidth, one LOD raster pyramid per map), retuned 2026-10-23.
-const overlayItemMaxWidth = 6
 
 // resolveOverlayItemWorkers applies the in-flight width policy: the pool never
 // exceeds the caller's requested width and never exceeds overlayItemMaxWidth.
@@ -82,31 +59,28 @@ type overlayItemRenderResult struct {
 	order           int
 }
 
-func overlayBatchAdmissionItem(work overlayBatchWork) capoverlay.OverlayItem {
-	return capoverlay.OverlayItem{
-		ID: work.id, SceneID: work.sceneID, Kind: "overlay_batch",
-		StartUS: work.startUS, DurationUS: work.endUS - work.startUS,
-		StartMs: work.startUS / 1000, EndMs: (work.endUS + 999) / 1000,
-	}
-}
-
 type overlayItemPublicationMetadata struct {
-	JobID            string
-	ResultJobID      string
-	ItemID           string
-	BatchID          string
-	BatchItemIDs     []string
-	ItemKind         string
-	MotionID         string
-	EntityID         string
-	EntityName       string
-	EntityIDs        []string
-	EntityLabels     []string
-	Text             string
-	SourceStartUS    int64
-	SourceEndUS      int64
-	TargetDurationUS int64
-	BatchEndUS       int64
+	// ManifestOwnedCache marks renders whose cache identity is owned by the
+	// manifest-timeline layer (the composition digest is the content address,
+	// OVERLAY-MANIFEST-CONTRACT.md §2): the submitter must not create a second
+	// cache row for the same artifact.
+	ManifestOwnedCache bool
+	JobID              string
+	ResultJobID        string
+	ItemID             string
+	BatchID            string
+	BatchItemIDs       []string
+	ItemKind           string
+	MotionID           string
+	EntityID           string
+	EntityName         string
+	EntityIDs          []string
+	EntityLabels       []string
+	Text               string
+	SourceStartUS      int64
+	SourceEndUS        int64
+	TargetDurationUS   int64
+	BatchEndUS         int64
 }
 
 const (

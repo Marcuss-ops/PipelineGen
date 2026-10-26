@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -217,6 +218,71 @@ func TestVidRushFanoutAppliesImageGateToCachedCandidates(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("verified candidates = %+v, want rejected cached image filtered before materialization", got)
+	}
+}
+
+// TestVidRushFanoutHydratesDurableVerdictsAndSkipsReverification pins the
+// cache-hit fast path of the resolve: a discovered candidate whose URL already
+// carries a durable pixel verdict in the catalog is served from that verdict —
+// the scorer is never called (no download, no VLM call), and the verdict
+// survives into the returned candidates.
+func TestVidRushFanoutHydratesDurableVerdictsAndSkipsReverification(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/mj/certified.jpg")
+	if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{
+		CanonicalEntityID: "person:michael-jordan", Provider: "duckduckgo", Rank: 1,
+		SourceURL:      "https://images.example/mj/certified.jpg",
+		SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 0.9,
+		QualityReason: "Ollama visual verification confirmed one dominant subject",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	scorer := &rejectAllPersonImages{}
+	fanout := NewVidRushProviderFanoutWithCatalog(nil, nil, repo).WithSemanticScorer(scorer)
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "cached", Provider: scriptpkg.VidRushProviderInternetImages, Query: "Michael Jordan", Entity: "Michael Jordan", SourceURL: "https://images.example/mj/certified.jpg"},
+	}
+	got, err := fanout.verifyPersonImageCandidates(context.Background(), candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scorer.calls != 0 {
+		t.Fatalf("scorer calls = %d, want 0 — the durable verdict must serve the cache hit without a VLM call", scorer.calls)
+	}
+	if len(got) != 1 || got[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted || got[0].SemanticScore != 0.9 {
+		t.Fatalf("verified = %+v, want the durable accepted verdict hydrated", got)
+	}
+}
+
+// TestVidRushFanoutTransientRejectionStaysRetryable pins the complement: an
+// outage-shaped rejection ("verification failed") is not a quality fact, so it
+// is never hydrated as a reusable verdict and the candidate keeps going
+// through the scorer.
+func TestVidRushFanoutTransientRejectionStaysRetryable(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/mj/flaky.jpg")
+	if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{
+		CanonicalEntityID: "person:michael-jordan", Provider: "duckduckgo", Rank: 1,
+		SourceURL:      "https://images.example/mj/flaky.jpg",
+		SemanticStatus: entitycatalog.CandidateSemanticRejected, SemanticScore: 0,
+		QualityReason: "visual verification failed: context deadline exceeded",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	scorer := &rejectAllPersonImages{}
+	fanout := NewVidRushProviderFanoutWithCatalog(nil, nil, repo).WithSemanticScorer(scorer)
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{AssetID: "flaky", Provider: scriptpkg.VidRushProviderInternetImages, Query: "Michael Jordan", Entity: "Michael Jordan", SourceURL: "https://images.example/mj/flaky.jpg"},
+	}
+	got, err := fanout.verifyPersonImageCandidates(context.Background(), candidates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scorer.calls != 1 {
+		t.Fatalf("scorer calls = %d, want 1 — a transient rejection must stay retryable", scorer.calls)
+	}
+	if len(got) != 0 {
+		t.Fatalf("verified = %+v, want the retry outcome (rejected by the scorer) filtered", got)
 	}
 }
 

@@ -29,13 +29,13 @@ func (e *QueueRenderEnqueuer) renderDynamicMapVideo(ctx context.Context, plan ca
 	return renderDynamicMapVideoWithGate(ctx, plan, e.mapGPUGate, e.mapVideoCacheDir)
 }
 
+// dynamicMapSamplerForProfile names the map sampler for one render. The
+// single map lane is the native renderer of ChrononPlugin, whose certified
+// sampling path is CPU-only: the OpenCL sampler is demolition debt together
+// with the NVENC encoder family, so there is no sampler knob to override —
+// the declared profile and the sampler travel as one contract and both fail
+// closed at the boundary when they claim GPU work the renderer cannot do.
 func dynamicMapSamplerForProfile(profile scriptoverlay.MapEncodeProfile) string {
-	if profile.ExpectGPU {
-		return "opencv_opencl"
-	}
-	if strings.TrimSpace(os.Getenv("DYNAMIC_MAP_GPU_SAMPLER")) == "1" {
-		return "opencv_opencl"
-	}
 	return "cpu"
 }
 
@@ -200,20 +200,41 @@ func renderDynamicMapVideoWithGate(ctx context.Context, plan capoverlay.OverlayP
 	})
 }
 
-// resolveMapBasemap maps the runtime map_type through the shared map registry;
-// random choices use the active basemap palette from the same registry.
+// resolveMapBasemap maps the runtime map_type through the shared map registry
+// and the single native renderer's certified basemap subset
+// (scriptoverlay.NativeMapBasemaps). The retired Python renderer fetched Esri
+// raster tiles; the native renderer draws the editorial vector basemap only,
+// so a raster style fails closed by name (never a silent style swap) and
+// "random" draws from the servable subset. The registry vocabulary stays
+// cross-repo canonical; servability is decided here, at execution.
 func resolveMapBasemap(mapType, seed, slot string) (string, error) {
-	if strings.EqualFold(strings.TrimSpace(mapType), "random") {
-		selected := deterministicMapStyle(seed, "map_basemap", slot, mapBasemapStyles())
+	servable := scriptoverlay.NativeMapBasemaps()
+	// Empty means "no map_type requested": the registry's default is an Esri
+	// raster style (cross-repo canonical, unchanged), which the native renderer
+	// does not draw — so the empty request takes the servable draw, exactly
+	// like "random". applyMapPresentationToItems always writes the concrete
+	// default; this branch covers hand-built plans.
+	if strings.TrimSpace(mapType) == "" || strings.EqualFold(strings.TrimSpace(mapType), "random") {
+		pool := make([]string, 0, len(servable))
+		for _, style := range mapBasemapStyles() {
+			if servable[style] {
+				pool = append(pool, style)
+			}
+		}
+		selected := deterministicMapStyle(seed, "map_basemap", slot, pool)
 		if selected == "" {
 			return "", fmt.Errorf("no certified map basemap available")
 		}
 		return selected, nil
 	}
-	if id, ok := capoverlay.AnimationMapTypeBasemap(mapType); ok {
-		return id, nil
+	id, ok := capoverlay.AnimationMapTypeBasemap(mapType)
+	if !ok {
+		return "", fmt.Errorf("unsupported runtime map_type %q", mapType)
 	}
-	return "", fmt.Errorf("unsupported runtime map_type %q", mapType)
+	if !servable[id] {
+		return "", fmt.Errorf("basemap %q (map_type %q) is not ported to the native map renderer (raster tile family, demolition debt, TICKET-MAPS-NATIVE-PORT): declare map_type chronon_editorial", id, mapType)
+	}
+	return id, nil
 }
 
 // resolveMapAnimation resolves ONE runtime map animation. An explicit

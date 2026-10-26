@@ -138,10 +138,16 @@ func MapCompositionCertified() []string {
 	return capabilityoverlay.AnimationCandidates("map.composition")
 }
 
-// MapCompositionRandomPool is the restrained random-draw pool (the subset of
-// certified compositions the sampler may pick when the caller chose nothing).
+// MapCompositionRandomPool is the restrained random-draw pool: the subset of
+// certified compositions the sampler may pick when the caller chose nothing.
+// It projects the single ported-subset declaration
+// (capabilityoverlay.PortedMapCompositions) — the compositions the single
+// dynamic renderer (ChrononPlugin native) draws with certified parity gates.
+// No composed family is ported yet, so the pool is empty and a random draw
+// resolves to the base flyover presentation; a family joins the pool the
+// moment it lands its parity gate.
 func MapCompositionRandomPool() []string {
-	return []string{"region_zoom", "pulse_marker", "spotlight"}
+	return capabilityoverlay.PortedMapCompositions()
 }
 
 // EligibleMapCompositions removes only renderer-documented multi-pin systems
@@ -268,7 +274,17 @@ func ResolveMapCompositionFor(requested, seed, slot string, input MapComposition
 	pool := EligibleMapCompositionsFor(input, MapCompositionRandomPool())
 	selected := DeterministicMapCompositionChoice(seed, slot, pool)
 	if selected == "" {
-		return "", "", fmt.Errorf("no certified map composition available for %d pins", input.PinCount)
+		// Base flyover (map_animation empty): the native renderer's certified
+		// default presentation. No composed family is ported yet, so the random
+		// draw resolves to the base flyover — a presentation the executing
+		// renderer certifies — instead of failing the map or swapping in a
+		// family it cannot draw. The declared fallback records why when the
+		// planner's strategy implied a composed presentation.
+		fallbackReason := ""
+		if strategy := strings.TrimSpace(input.Strategy); strategy != "" {
+			fallbackReason = "base_flyover:" + strategy + " presentation is not ported to the native renderer yet (parity gate pending); the base flyover keeps all places"
+		}
+		return "", fallbackReason, nil
 	}
 	fallbackReason := ""
 	if strings.TrimSpace(input.Strategy) == "multi_pin" && input.PinCount > 1 {

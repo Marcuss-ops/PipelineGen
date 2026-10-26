@@ -41,6 +41,22 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 				"remote final job %s is still %s: %w", receipt.JobID, receipt.Status, ErrFinalJobPending))
 			return false
 		}
+		if errors.Is(err, ErrFinalJobStaleReceipt) {
+			// The Master will never accept another FINALIZE for this identity
+			// (canceled preparation, or a lease held elsewhere). Archive it as
+			// TERMINAL so the next attempt rotates the idempotency key
+			// (finalJobAttemptIdempotencyKey) and prepares a FRESH remote job:
+			// the identity lives on the Master, so clearing the local receipt
+			// alone would only replay the dead id forever.
+			if !finalJobReceiptTerminal(&remote) {
+				remote.Status = "REJECTED"
+			}
+			if r.log != nil {
+				r.log.Warn("invalidating stale remote final-job receipt; the next attempt prepares a fresh identity",
+					zap.String("run_id", runID), zap.String("remote_job_id", remote.JobID),
+					zap.Int("attempt", remote.Attempt), zap.Error(err))
+			}
+		}
 		// Preserve a terminal Master response; the old RUNNING receipt must not
 		// remain authoritative after the worker has ended the remote job.
 		if result != nil && strings.TrimSpace(remote.JobID) != "" && strings.TrimSpace(remote.Status) != "" {
@@ -319,7 +335,10 @@ func (r *Runner) failRunWithRetry(ctx context.Context, runID string, failedStage
 	// the same expensive pipeline without changing their inputs. The canonical
 	// typed retry contract is shared with the job worker; the one intentional
 	// non-error deferral is a remote final render that is still running.
-	retryable := retry.IsTransient(err) || errors.Is(err, ErrFinalJobPending) || errors.Is(err, ErrFinalAudioLocalArtifactMissing)
+	// ErrFinalJobStaleReceipt is retryable with CHANGED inputs: the retry that
+	// follows rotates the idempotency key and prepares a fresh remote identity,
+	// so it is not a blind repeat of the refused one.
+	retryable := retry.IsTransient(err) || errors.Is(err, ErrFinalJobPending) || errors.Is(err, ErrFinalAudioLocalArtifactMissing) || errors.Is(err, ErrFinalJobStaleReceipt)
 	if nextAttempt <= MaxRetries && retryable && !isPermanentMediaPreflightFailure(err) {
 		delay := RetryDelay(attempt)
 		now := time.Now().UTC()
