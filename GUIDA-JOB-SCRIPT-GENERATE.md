@@ -195,7 +195,8 @@ unico da 373 s. La controprova v1 (percorso seriale pre-fix, 39 item) limita
 l'overhead non-render a ~2,6 s/item, publish Drive incluso. La causa dominante
 è il lavoro per-item **non proiettato nella telemetria** delle voci pesanti
 (mappe: 42–90 s/item con prefetch tile/prepare/encode visibili solo nei log del
-worker). Fonte: `docs/operations/TICKET-OVERLAY-THROUGHPUT-100-MIN.md`.
+worker). Fonte: [`../docs/stato/refactored.md`](../docs/stato/refactored.md) §1 e
+[`../docs/stato/renderinggen.md`](../docs/stato/renderinggen.md).
 
 ### 3.2 Quello che la batch Garlasco insegna sui retry
 
@@ -437,9 +438,9 @@ Per job Garlasco (20 scene, ~21 min di audio), da `audio_metrics` nei risultati:
 
 ## 8. Leve di velocizzazione — ordine consigliato per guadagno atteso
 
-Riferimento completo: `TODO-pipeline-100x-velocita.md` (roadmap A–K con stato
-di ogni voce) e `docs/operations/TICKET-OVERLAY-THROUGHPUT-100-MIN.md`
-(obiettivo 100 overlay/min; baseline misurata 27,2/min su 3 run, vedi ticket).
+Riferimento completo: [`../docs/stato/refactored.md`](../docs/stato/refactored.md)
+§2 (roadmap A–K con stato di ogni voce) e §1 (obiettivo 100 overlay/min e
+misure correnti).
 
 | # | Leva | Stato | Guadagno atteso | Dove |
 |---|---|---|---|---|
@@ -509,7 +510,7 @@ sqlite3 'file:data/observability/runs.db.sqlite?mode=ro' \
 Le due metriche si calcolano come `items / window_s * 60` (item/min) e
 `overlay validati / minuti di wall della finestra` (contratto di misura sopra).
 Lo storico completo delle misure e la scomposizione «dove si perde tempo»:
-`docs/operations/TICKET-OVERLAY-THROUGHPUT-100-MIN.md`.
+[`../docs/stato/refactored.md`](../docs/stato/refactored.md) §1.
 
 ---
 
@@ -556,7 +557,6 @@ vuoto; 85 run con osservabilità parziale (`observability_degraded`).
 - Batch Garlasco: `ops/jobs/garlasco_batch_10_20261019_sequential_v7/`
   (`manifest.json`, `CHANGELOG.md`, `results/*.job.full.json`)
 - Audit animazioni Garlasco: `ops/jobs/garlasco_animation_audit_20261021/`
-- Throughput overlay: `docs/operations/TICKET-OVERLAY-THROUGHPUT-100-MIN.md`
-- Roadmap velocità: `TODO-pipeline-100x-velocita.md` (anatomia al secondo di un
-  job reale §2, roadmap A–K §4, ordine di esecuzione §5)
-- Performance final job: `TODO-milton-finaljob-performance.md`
+- Throughput overlay: [`../docs/stato/refactored.md`](../docs/stato/refactored.md) §1
+- Roadmap velocità e candidati: [`../docs/stato/refactored.md`](../docs/stato/refactored.md) §2–§3
+- Performance final job (Milton, chiuso): [`../docs/stato/refactored.md`](../docs/stato/refactored.md) §7
