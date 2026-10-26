@@ -60,7 +60,6 @@ type (
 
 const (
 	IntentSourceEntity           = capmodel.IntentSourceEntity
-	IntentSourceEntityImage      = capmodel.IntentSourceEntityImage
 	JobTypeImport                = capmodel.JobTypeImport
 	JobTypePrepare               = capmodel.JobTypePrepare
 	JobTypeRender                = capmodel.JobTypeRender
