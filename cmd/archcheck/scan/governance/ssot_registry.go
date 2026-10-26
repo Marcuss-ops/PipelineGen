@@ -128,11 +128,14 @@ var ssotRules = []ssotRule{
 		ScanFile: scanMetadataKeysRuleFile,
 	},
 	{
-		Name:             indexedStateWriterSSOTRule,
-		MatchedRule:      "indexed_state_writer_ssot",
-		Scope:            []string{"internal/"},
-		SkipDirs:         policy.SkipDirs(),
-		SkipPathPrefixes: policy.Prefixes([]string{policy.ScannerSourcePrefix, policy.TestOnlySupportDirPrefix}),
+		Name:        indexedStateWriterSSOTRule,
+		MatchedRule: "indexed_state_writer_ssot",
+		Scope:       []string{"internal/"},
+		SkipDirs:    policy.SkipDirs(),
+		// TESTONLY-SWEEP-64a: TestOnlySupportDirPrefix (the SQLite AssetCommitter
+		// testdouble directory) is gone with the dead-code sweep; the prefix is
+		// dropped here so TestSSOTRegistryPathsExist fails closed on ghost prefixes.
+		SkipPathPrefixes: policy.Prefixes([]string{policy.ScannerSourcePrefix}),
 		Owners:           indexedStateWriterSSOTCanonicalPaths,
 		ScanFile:         scanIndexedStateWriterRuleFile,
 	},
