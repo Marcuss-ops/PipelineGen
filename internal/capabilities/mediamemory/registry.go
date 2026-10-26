@@ -29,9 +29,6 @@ package mediamemory
 
 import (
 	"errors"
-	"fmt"
-	"reflect"
-	"sort"
 	"sync"
 )
 
@@ -118,9 +115,6 @@ type StrategyRegistry struct {
 }
 
 // NewStrategyRegistry returns an empty, mutable registry.
-func NewStrategyRegistry() *StrategyRegistry {
-	return &StrategyRegistry{entries: make(map[string]Strategy)}
-}
 
 // Register adds a strategy under its Name().
 // Returns:
@@ -129,92 +123,16 @@ func NewStrategyRegistry() *StrategyRegistry {
 //   - ErrEmptyName           if s.Name() returns "".
 //   - ErrFrozen              if the registry is already frozen.
 //   - ErrAlreadyRegistered   if a strategy with the same Name exists.
-func (r *StrategyRegistry) Register(s Strategy) error {
-	if s == nil {
-		return ErrNilStrategy
-	}
-	if rv := reflect.ValueOf(s); rv.Kind() == reflect.Pointer && rv.IsNil() {
-		return ErrNilStrategy
-	}
-	name := s.Name()
-	if name == "" {
-		return ErrEmptyName
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.frozen {
-		return ErrFrozen
-	}
-	if _, exists := r.entries[name]; exists {
-		return fmt.Errorf("%w: %q", ErrAlreadyRegistered, name)
-	}
-	r.entries[name] = s
-	return nil
-}
 
 // Freeze locks the registry. Idempotent.
-func (r *StrategyRegistry) Freeze() {
-	r.mu.Lock()
-	r.frozen = true
-	r.mu.Unlock()
-}
 
 // IsFrozen reports whether the registry has been frozen.
-func (r *StrategyRegistry) IsFrozen() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.frozen
-}
 
 // All returns every strategy, sorted by Name() for determinism.
-func (r *StrategyRegistry) All() []Strategy {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make([]Strategy, 0, len(r.entries))
-	for _, s := range r.entries {
-		out = append(out, s)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name() < out[j].Name() })
-	return out
-}
 
 // Lookup returns the strategy under `name`. ErrStrategyNotFound is
 // wrapped so callers branch via errors.Is.
-func (r *StrategyRegistry) Lookup(name string) (Strategy, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	s, ok := r.entries[name]
-	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrStrategyNotFound, name)
-	}
-	return s, nil
-}
 
 // EligibleFor returns the subset of strategies whose
 // ConceptTypes() intersect c.ConceptType. Wildcards
 // (ConceptTypes() == nil) are always eligible.
-func (r *StrategyRegistry) EligibleFor(c MediaConcept) []Strategy {
-	all := r.All()
-	out := make([]Strategy, 0, len(all))
-	for _, s := range all {
-		if s.ResolvesConcept(c) {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// freezableRegistry is the canonical narrow interface the
-// composition root wires against. godlike/06 SSOT: production
-// adapter code is written against freezableRegistry, not against
-// *StrategyRegistry directly, so a future Swap (e.g. to a
-// concurrent-map backed registry) does not break call sites.
-type freezableRegistry interface {
-	Freeze()
-	IsFrozen() bool
-}
-
-// Compile-time assertion: *StrategyRegistry implements the canonical
-// freezableRegistry interface. Drift in field layout or method set
-// surfaces as a build error, not a runtime nil-deref.
-var _ freezableRegistry = (*StrategyRegistry)(nil)

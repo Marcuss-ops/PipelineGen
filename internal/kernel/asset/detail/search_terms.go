@@ -20,12 +20,7 @@
 package detail
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
-import (
 	"strings"
-	"unicode/utf8"
 )
 
 // ── companion to migration 091 — derived search_terms backfill ─────
@@ -89,33 +84,12 @@ var deriveStripper = strings.NewReplacer(
 // normalizeToken strips punctuation, lowercases, and trims. Returns
 // the canonical form to feed into the seen-set, OR empty string
 // when the token has zero meaningful words after stripping.
-func normalizeToken(s string) string {
-	s = deriveStripper.Replace(s)
-	s = strings.ToLower(strings.TrimSpace(s))
-	return s
-}
 
 // addNormalized stamps a token through normalizeToken + the
 // dedupe-set; always tokenizes via Fields so multi-word post-strip
 // output (e.g. `[BTS]` -> `BTS` after bracket strip, `Tokyo Tower` ->
 // `tokyo tower`) collapses to per-word entries instead of one
 // aliased blob.
-func addNormalized(out []string, seen map[string]struct{}, token string) []string {
-	t := normalizeToken(token)
-	if t == "" {
-		return out
-	}
-	for _, w := range strings.Fields(t) {
-		if utf8.RuneCountInString(w) < 2 {
-			continue
-		}
-		if _, ok := seen[w]; !ok {
-			seen[w] = struct{}{}
-			out = append(out, w)
-		}
-	}
-	return out
-}
 
 // DeriveSearchTerms returns a normalized keyword slice from an
 // asset.Asset's text fields + metadata_json keys. Safe on nil asset.Asset.
@@ -133,55 +107,6 @@ func addNormalized(out []string, seen map[string]struct{}, token string) []strin
 // descriptive text (SearchText) precedes fine-grained labels
 // (Tags). Substring search does not depend on order; this order
 // only affects the JSON array rendered for human debug.
-func DeriveSearchTerms(a *asset.Asset) []string {
-	if a == nil {
-		return []string{}
-	}
-	seen := make(map[string]struct{}, 16)
-	out := make([]string, 0, 16)
-
-	out = addNormalized(out, seen, a.Name)
-	out = addNormalized(out, seen, a.Filename)
-	out = addNormalized(out, seen, a.SearchText)
-	out = addNormalized(out, seen, a.Category)
-	for _, t := range a.Tags {
-		out = addNormalized(out, seen, t)
-	}
-
-	// metadata_json keys that the clipindexer / semantic enricher
-	// populate — same shape as RebuildSearchTerms' SELECT projection
-	// in the local infra Wave C search_terms_queries.go so the JSON
-	// column and the indexed companion table stay conceptually
-	// aligned.
-	if a.Metadata != nil {
-		for _, k := range []string{
-			"clean_title", "clip_summary", "hook", "topics",
-			"speakers", "mentioned_people", "people",
-			"clip_tags", "search_keywords", "embedding_text",
-		} {
-			v, ok := a.Metadata[k]
-			if !ok {
-				continue
-			}
-			switch val := v.(type) {
-			case string:
-				out = addNormalized(out, seen, val)
-			case []string:
-				for _, s := range val {
-					out = addNormalized(out, seen, s)
-				}
-			case []any:
-				for _, item := range val {
-					if s, ok := item.(string); ok {
-						out = addNormalized(out, seen, s)
-					}
-				}
-			}
-		}
-	}
-
-	return out
-}
 
 // mergeSearchTerms adds caller-supplied terms first (precedence),
 // then derived terms (backfill). Both pre-sets go through the same
@@ -194,14 +119,3 @@ func DeriveSearchTerms(a *asset.Asset) []string {
 // Side effect: the returned slice is a fresh allocation; caller
 // inputs are not mutated. Safe to call on slices that other code
 // holds references to.
-func mergeSearchTerms(callerSupplied, derived []string) []string {
-	seen := make(map[string]struct{}, len(callerSupplied)+len(derived))
-	out := make([]string, 0, len(callerSupplied)+len(derived))
-	for _, s := range callerSupplied {
-		out = addNormalized(out, seen, s)
-	}
-	for _, s := range derived {
-		out = addNormalized(out, seen, s)
-	}
-	return out
-}

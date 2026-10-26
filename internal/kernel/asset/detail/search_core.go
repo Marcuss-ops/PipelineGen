@@ -26,10 +26,10 @@
 package detail
 
 import (
+	"context"
+
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
-
-import "context"
 
 // AdvancedSearchRequest contains filters for advanced clip search.
 //

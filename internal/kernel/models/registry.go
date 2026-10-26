@@ -180,24 +180,8 @@ var (
 )
 
 // canonicalOrder is the stable registry order (declaration order).
-var canonicalOrder = [...]Model{E5, SigLIP, Reranker, SegmentUnderstanding, CLAP, Whisper}
-
-// Canonical returns the full registry in stable order.
-func Canonical() []Model {
-	out := make([]Model, 0, len(canonicalOrder))
-	out = append(out, canonicalOrder[:]...)
-	return out
-}
 
 // ByID looks up a model by its canonical id.
-func ByID(id string) (Model, bool) {
-	for _, m := range canonicalOrder {
-		if m.ID == id {
-			return m, true
-		}
-	}
-	return Model{}, false
-}
 
 // Identity returns the immutable identity fingerprint "id|revision". Any
 // consumer that names a model (collection naming, contract hashes, cache
@@ -239,4 +223,13 @@ func (m Model) Validate() error {
 		return fmt.Errorf("models: %s has negative languages=%d", m.ID, m.Languages)
 	}
 	return nil
+}
+
+var canonicalOrder = [...]Model{E5, SigLIP, Reranker, SegmentUnderstanding, CLAP, Whisper}
+
+// Canonical returns the full registry in stable order.
+func Canonical() []Model {
+	out := make([]Model, 0, len(canonicalOrder))
+	out = append(out, canonicalOrder[:]...)
+	return out
 }

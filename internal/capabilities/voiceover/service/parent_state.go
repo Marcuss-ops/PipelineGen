@@ -147,12 +147,6 @@ func (a *FanoutResultSnapshotAccessor) Snapshot(parentID string) []LanguageOutco
 // silent ParentPartialSuccess placeholder (the latter would mask
 // the bug in production). Per AGENTS.md WireUp pattern: failures
 // at the wire surface should be loud, not silent.
-func AggregateByParent(parentID string, accessor SnapshotAccessor) ParentState {
-	if accessor == nil {
-		panic("voiceover.AggregateByParent: SnapshotAccessor is required (parentID=" + parentID + ")")
-	}
-	return AggregateChildOutcomes(accessor.Snapshot(parentID))
-}
 
 // AggregateChildOutcomes computes the canonical ParentState from a
 // snapshot of children's per-language terminal-or-pending posture.
@@ -184,34 +178,3 @@ func AggregateByParent(parentID string, accessor SnapshotAccessor) ParentState {
 // Callers in micro-commit #4 (HandleJob) feed a synthetic pending-
 // only slice; callers in micro-commit #5 (aggregator tick driver)
 // feed a durable snapshot read from the parent_job_id query.
-func AggregateChildOutcomes(children []LanguageOutcome) ParentState {
-	if len(children) == 0 {
-		// Pinned by TestAggregateChildOutcomes_NoChildrenCompleteIsPartial:
-		// no terminal children visible → we cannot commit to a
-		// homogeneous terminal state, so report partial.
-		return ParentPartialSuccess
-	}
-	terminal, succeeded, failed := 0, 0, 0
-	for _, c := range children {
-		switch c.Status {
-		case job.StatusSucceeded:
-			terminal++
-			succeeded++
-		case job.StatusFailed, job.StatusCancelled:
-			terminal++
-			failed++
-		}
-	}
-
-	if terminal < len(children) {
-		// Snapshot is incomplete — children still in flight.
-		return ParentPartialSuccess
-	}
-	if failed == 0 {
-		return ParentSucceeded
-	}
-	if succeeded == 0 {
-		return ParentFailed
-	}
-	return ParentPartialSuccess
-}

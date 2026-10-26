@@ -211,33 +211,6 @@ type VisualSummaryService struct {
 
 // NewVisualSummaryService wires the orchestrator. nil log →
 // zap.NewNop() (the canonical log-not-required pattern).
-func NewVisualSummaryService(
-	sampler FrameSampler,
-	vlm VLMClient,
-	repo VisualSummaryRepositoryWriter,
-	tempDir string,
-	log *zap.Logger,
-) (s *VisualSummaryService, err error) {
-	if sampler == nil {
-		return nil, errors.New("visual_summary_service: sampler is nil")
-	}
-	if vlm == nil {
-		return nil, errors.New("visual_summary_service: vlm client is nil")
-	}
-	if repo == nil {
-		return nil, errors.New("visual_summary_service: repo is nil")
-	}
-	if strings.TrimSpace(tempDir) == "" {
-		return nil, errors.New("visual_summary_service: tempDir must not be empty")
-	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	return &VisualSummaryService{
-		sampler: sampler, vlm: vlm, repo: repo,
-		tempDir: tempDir, log: log,
-	}, nil
-}
 
 // RunJob executes one VLM pass over one asset's local_path.
 //

@@ -19,10 +19,6 @@ package render
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"math"
-	"strings"
 
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 )
@@ -115,9 +111,6 @@ type SmartResolver struct {
 // NewSmartResolver builds the resolver. Fail-closed: a nil prober yields a
 // resolver that can never verify copy eligibility (always FULL_RENDER with
 // a reason); a nil cache simply disables cache probing.
-func NewSmartResolver(probe AssetProber, cache capcache.Cache, target TargetProfile) *SmartResolver {
-	return &SmartResolver{probe: probe, cache: cache, target: target}
-}
 
 // Resolve decides the execution mode for the sealed plan:
 //
@@ -128,133 +121,17 @@ func NewSmartResolver(probe AssetProber, cache capcache.Cache, target TargetProf
 // A structurally invalid plan is a hard error (no decision is possible on a
 // drifted plan). Probe failures never fail the decision: they degrade to
 // FULL_RENDER with a reason, because rendering does not depend on the probe.
-func (r *SmartResolver) Resolve(ctx context.Context, plan RenderPlan) (CompatibilityReport, error) {
-	if err := plan.Validate(); err != nil {
-		return CompatibilityReport{}, fmt.Errorf("render strategy: %w", err)
-	}
-	report := CompatibilityReport{Mode: ExecutionRender, VideoCompatible: false, AudioCompatible: true}
-	policy := plan.ExecutionPolicy
-	if policy == nil {
-		report.Reasons = append(report.Reasons, "no execution policy: cache identity and stream copy are disabled")
-	} else {
-		if hit, digest, err := r.cacheHit(ctx, plan, policy); err == nil && hit {
-			report.Mode = ExecutionCache
-			report.VideoCompatible = true
-			report.Reasons = append(report.Reasons, "artifact cache hit "+digest)
-			return report, nil
-		} else if err != nil {
-			// A cache probe failure must never block rendering (mirror of the
-			// sourcedl advisory-lookup contract): degrade to the probe path.
-			report.Reasons = append(report.Reasons, "artifact cache probe failed: "+err.Error())
-		}
-		if !policy.AllowStreamCopy {
-			report.Reasons = append(report.Reasons, "stream copy disabled by execution policy")
-		}
-	}
-
-	// Compositing requirements from the plan surface. Today's canonical
-	// RenderPlan cannot express overlays/transitions/watermarks, so these
-	// stay false; the moment a plan carries them they gate stream copy here
-	// (single decision surface, no scattered checks).
-	report.RequiresOverlay = planHasOverlays(plan)
-	report.RequiresTransition = planHasTransitions(plan)
-	report.RequiresWatermark = planHasWatermark(plan)
-
-	// Audio compatibility is a plan fact, not a probe fact: the final audio
-	// is a certified asset muxed at assembly. Copy-eligible final audio (or
-	// no audio at all) means no audio mix is required.
-	if plan.FinalAudio != nil && !plan.FinalAudio.CopyEligible {
-		report.AudioCompatible = false
-		report.RequiresAudioMix = true
-		report.Reasons = append(report.Reasons, "final audio is not copy-eligible: audio mix required")
-	}
-
-	if policy == nil || !policy.AllowStreamCopy || report.RequiresOverlay || report.RequiresTransition || report.RequiresWatermark {
-		return report, nil
-	}
-	if !r.targetComplete() {
-		report.Reasons = append(report.Reasons, "target profile is incomplete: stream copy cannot be verified")
-		return report, nil
-	}
-	if r.probe == nil {
-		report.Reasons = append(report.Reasons, "asset prober is not configured: stream copy cannot be verified")
-		return report, nil
-	}
-
-	copyEligible := true
-	for _, entry := range plan.Manifest {
-		facts, err := r.probe.Probe(ctx, entry.Path)
-		if err != nil {
-			copyEligible = false
-			report.Reasons = append(report.Reasons, fmt.Sprintf("asset %s: probe failed (%v): stream copy cannot be verified", entry.AssetID, err))
-			continue
-		}
-		check := r.videoCompatibility(entry.AssetID, facts, plan)
-		report.RequiresScale = report.RequiresScale || check.requiresScale
-		report.RequiresFPSChange = report.RequiresFPSChange || check.requiresFPSChange
-		report.RequiresPixelChange = report.RequiresPixelChange || check.requiresPixelChange
-		if check.reason != "" {
-			copyEligible = false
-			report.Reasons = append(report.Reasons, check.reason)
-		}
-	}
-	if copyEligible {
-		report.Mode = ExecutionCopy
-		report.VideoCompatible = true
-		report.Reasons = append(report.Reasons, "all sources are stream-copy compatible; per-segment keyframe alignment is certified by the executor")
-	}
-	return report, nil
-}
 
 // cacheHit probes the artifact cache with the canonical final-render key
 // (SourceSHA256 = PlanSHA256, operation = render_final, parameters = policy
 // hashes, processor = renderer version). Returns the cache digest on hit so
 // callers can open the artifact.
-func (r *SmartResolver) cacheHit(ctx context.Context, plan RenderPlan, policy *RenderExecutionPolicy) (bool, string, error) {
-	if r.cache == nil {
-		return false, "", nil
-	}
-	key, err := FinalRenderCacheKey(plan)
-	if err != nil {
-		return false, "", err
-	}
-	digest, err := key.Digest()
-	if err != nil {
-		return false, "", err
-	}
-	entry, ok, err := r.cache.Lookup(ctx, key, 0)
-	if err != nil {
-		return false, "", err
-	}
-	return ok && entry != nil, digest, nil
-}
 
 // FinalRenderCacheKey builds the canonical artifact-cache key for executing
 // a sealed plan: SourceSHA256 is the plan's own PlanSHA256 (which already
 // contains the execution policy), parameters carry the policy hashes, and
 // the processor version is the policy's renderer version. A plan without a
 // policy has no cache identity.
-func FinalRenderCacheKey(plan RenderPlan) (capcache.Key, error) {
-	if plan.ExecutionPolicy == nil {
-		return capcache.Key{}, fmt.Errorf("render strategy: execution policy is required for a cache key")
-	}
-	if err := validateExecutionPolicy(plan.ExecutionPolicy); err != nil {
-		return capcache.Key{}, err
-	}
-	params, err := json.Marshal(struct {
-		OutputProfile  string `json:"output_profile"`
-		RendererPolicy string `json:"renderer_policy"`
-	}{plan.ExecutionPolicy.TargetProfileHash, plan.ExecutionPolicy.EncoderPolicyHash})
-	if err != nil {
-		return capcache.Key{}, fmt.Errorf("render strategy: cache parameters: %w", err)
-	}
-	return capcache.Key{
-		SourceSHA256:     plan.PlanSHA256,
-		Operation:        CacheOperationRenderFinal,
-		ParametersJSON:   string(params),
-		ProcessorVersion: plan.ExecutionPolicy.RendererVersion,
-	}, nil
-}
 
 // videoCompatibility is one asset's per-dimension verdict against the
 // target profile and plan frame rate. reason is "" exactly when the asset
@@ -267,57 +144,14 @@ type videoCompatibility struct {
 	requiresPixelChange bool
 }
 
-func (r *SmartResolver) videoCompatibility(assetID string, facts AssetFacts, plan RenderPlan) videoCompatibility {
-	if !strings.EqualFold(facts.VideoCodec, r.target.Codec) {
-		return videoCompatibility{reason: fmt.Sprintf("asset %s: codec %q != target %q", assetID, facts.VideoCodec, r.target.Codec)}
-	}
-	if facts.Width != r.target.Width || facts.Height != r.target.Height {
-		return videoCompatibility{reason: fmt.Sprintf("asset %s: geometry %dx%d != target %dx%d", assetID, facts.Width, facts.Height, r.target.Width, r.target.Height), requiresScale: true}
-	}
-	if !strings.EqualFold(facts.PixelFormat, r.target.PixelFormat) {
-		return videoCompatibility{reason: fmt.Sprintf("asset %s: pixel format %q != target %q", assetID, facts.PixelFormat, r.target.PixelFormat), requiresPixelChange: true}
-	}
-	if !fpsCompatible(facts, plan) {
-		return videoCompatibility{reason: fmt.Sprintf("asset %s: fps %.3f != plan %d/%d", assetID, facts.FPS, plan.FPSNumerator, plan.FPSDenominator), requiresFPSChange: true}
-	}
-	if r.target.KeyframeInterval > 0 && facts.KeyframeInterval != r.target.KeyframeInterval {
-		if facts.KeyframeInterval <= 0 {
-			return videoCompatibility{reason: fmt.Sprintf("asset %s: keyframe interval unverified by probe", assetID)}
-		}
-		return videoCompatibility{reason: fmt.Sprintf("asset %s: keyframe interval %d != target %d", assetID, facts.KeyframeInterval, r.target.KeyframeInterval)}
-	}
-	return videoCompatibility{}
-}
-
 // fpsCompatible compares the probed fps against the plan's rational frame
 // rate: exact rational match when the probe reports num/den, float tolerance
 // otherwise (mirror of the clip contract's 0.5 fps tolerance).
-func fpsCompatible(facts AssetFacts, plan RenderPlan) bool {
-	if facts.FPSNum > 0 && facts.FPSDen > 0 && plan.FPSNumerator > 0 && plan.FPSDenominator > 0 {
-		return facts.FPSNum == int(plan.FPSNumerator) && facts.FPSDen == int(plan.FPSDenominator)
-	}
-	target := float64(plan.FPSNumerator) / float64(plan.FPSDenominator)
-	return math.Abs(facts.FPS-target) <= 0.5
-}
 
 // targetComplete reports whether the pinned target profile is fully
 // specified. An incomplete profile can never certify a copy.
-func (r *SmartResolver) targetComplete() bool {
-	return strings.TrimSpace(r.target.Codec) != "" &&
-		strings.TrimSpace(r.target.PixelFormat) != "" &&
-		r.target.Width > 0 && r.target.Height > 0
-}
 
 // planHasOverlays reports whether the plan carries any overlay surface.
 // Today's canonical RenderPlan cannot express overlays; the hook exists so
 // the moment a plan carries them, stream copy is gated here — the single
 // decision surface.
-func planHasOverlays(plan RenderPlan) bool { return false }
-
-// planHasTransitions reports whether the plan carries any transition
-// requiring compositing. See planHasOverlays.
-func planHasTransitions(plan RenderPlan) bool { return false }
-
-// planHasWatermark reports whether the plan carries a watermark. See
-// planHasOverlays.
-func planHasWatermark(plan RenderPlan) bool { return false }

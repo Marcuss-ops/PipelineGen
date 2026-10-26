@@ -34,13 +34,10 @@
 package detail
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
-import (
 	"context"
 	"errors"
 
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/delivery"
 	"go.uber.org/zap"
 )

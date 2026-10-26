@@ -1,13 +1,11 @@
 package detail
 
 import (
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-)
-
-import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 func TestCanonicalImageMetadataBuilder_RetrievedSource(t *testing.T) {
