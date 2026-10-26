@@ -45,7 +45,6 @@ import (
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	adminconsolesqlite "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/adminconsole"
 )
 
 // newCanonicalAssetCommitter resolves the canonical media writer from an
@@ -282,21 +281,19 @@ func (r *ComposeRoot) MediaAssetDetailsLookup() AssetDetailsLookup {
 }
 
 // MediaAssetVersionStore resolves the admin console optimistic-concurrency
-// port. PostgreSQL owns media_assets.admin_version whenever the media SSOT is
-// open; the SQLite store is the degrade-mode fallback.
+// port. PostgreSQL owns media_assets.admin_version, so this is
+// PostgreSQL-ONLY and returns nil when the media plane is closed (the same
+// contract as MediaAssetDetailsLookup): the admin-console module already
+// refuses to register without the media SSOT, so a nil store cannot starve a
+// supported deployment. The SQLite fallback
+// (adminconsolesqlite.NewVersionStore) was DELETED in the MEDIA LEGACY
+// READ-PLANE DEMOLITION (2026-10-26) — it read admin_version off the
+// operational mirror that holds no committed media rows.
 func (r *ComposeRoot) MediaAssetVersionStore() appadminconsole.EntityVersionStore {
-	if r == nil {
+	if r == nil || r.MediaPostgres == nil {
 		return nil
 	}
-	if r.MediaPostgres != nil {
-		if store := pgmedia.NewPostgresEntityVersionStore(r.MediaPostgres); store != nil {
-			return store
-		}
-	}
-	if r.DB != nil && r.DB.DB != nil {
-		return adminconsolesqlite.NewVersionStore(r.DB.DB)
-	}
-	return nil
+	return pgmedia.NewPostgresEntityVersionStore(r.MediaPostgres)
 }
 
 // ── YouTube enrichment persistence ──────────────────────────────────────

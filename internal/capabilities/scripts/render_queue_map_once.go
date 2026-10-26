@@ -15,18 +15,44 @@ import (
 	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 )
 
+// cameraMoveZoom reads one grounded zoom of the planner's camera move.
+func cameraMoveZoom(move *capoverlay.MapCameraMove, start bool) float64 {
+	if move == nil {
+		return 0
+	}
+	if start {
+		return move.StartZoom
+	}
+	return move.EndZoom
+}
+
+// hasPinAccent reports whether any pin carries per-pin presentation the
+// native base flyover does not draw (accent color), so the decision report
+// declares the simplification once.
+func hasPinAccent(pins []capoverlay.MapOverlayPin) bool {
+	for _, pin := range pins {
+		if strings.TrimSpace(pin.Color) != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
 	profile, err := scriptoverlay.ResolveMapEncodeProfile(os.Getenv(scriptoverlay.MapEncodeProfileEnv))
 	if err != nil {
 		return "", err
 	}
+	// The execution profile is DECLARED up front and must be servable by the
+	// single native renderer: its certified closed profile is libx264/veryfast/
+	// CRF23, and the NVENC family (OpenCL sampler) is demolition debt that
+	// fails closed here — never a silent encoder substitution.
+	if err := scriptoverlay.RequireNativeServableProfile(profile); err != nil {
+		return "", err
+	}
 	if len(plan.Items) != 1 || plan.Items[0].Map == nil {
 		return "", fmt.Errorf("expected exactly one map item")
 	}
-	// The execution profile (codec + GPU expectation) is DECLARED up front:
-	// production NVENC by default, certified CPU only under an explicit
-	// operator opt-in. Telemetry and the upscale step below must both match
-	// this profile — never a silent substitution.
 	encodeProfile := profile
 	sampler := dynamicMapSamplerForProfile(encodeProfile)
 	mapAnimationForAdmission, _ := plan.Items[0].Params["map_animation"].(string)
@@ -66,30 +92,17 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	if renderWidth > 1920 || renderHeight > 1080 {
 		renderWidth, renderHeight = 1920, 1080
 	}
-	// Optional per-pin composition extras (subtitle, category, color, value,
-	// unit, photo, location) ride on the map item params keyed by pin id.
-	// Absent extras degrade gracefully in the renderer: compact cards, no
-	// counter row, no photo slot. Never fabricated.
-	pinExtrasByID := map[string]any{}
-	if raw, ok := plan.Items[0].Params["map_pin_extras"]; ok {
-		if typed, ok := raw.(map[string]any); ok {
-			pinExtrasByID = typed
-		}
-	}
+	// The native renderer's wire pins are the grounded place identity only
+	// (id, label, latitude, longitude) — its payload contract refuses fields
+	// it cannot draw. Per-pin presentation extras (subtitle, category, accent
+	// color, value, unit, photo, location) belong to composed presentations
+	// that are not ported: map_pin_extras on an item fails closed at the
+	// backend resolution above (it demands the composed scene capability),
+	// and the plain pin projection below never smuggles unported fields onto
+	// the wire.
 	pins := make([]map[string]any, 0, len(plan.Items[0].Map.Pins))
 	for _, pin := range plan.Items[0].Map.Pins {
-		entry := map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude, "scope": pin.Scope}
-		if color := strings.TrimSpace(pin.Color); color != "" {
-			entry["color"] = color
-		}
-		if raw, ok := pinExtrasByID[pin.ID].(map[string]any); ok {
-			for _, key := range []string{"subtitle", "category", "color", "value", "unit", "photo", "location"} {
-				if value, ok := raw[key]; ok {
-					entry[key] = value
-				}
-			}
-		}
-		pins = append(pins, entry)
+		pins = append(pins, map[string]any{"id": pin.ID, "label": pin.Label, "latitude": pin.Latitude, "longitude": pin.Longitude})
 	}
 	// The camera move and basemap are the map's LOOK. They
 	// are resolved by the pipeline's single deterministic sampler, seeded by the
@@ -102,6 +115,15 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	// renderer payload so the camera activates each place exactly when the
 	// voiceover names it. The renderer never re-derives editorial timing.
 	pinTiming := scriptoverlay.MapPinTimingPayload(plan.Items[0].Params, pins)
+	// The single-anchor native camera framing: the anchor is the mean of the
+	// drawn places, and the zoom interval is either the planner's grounded
+	// camera move or a deterministic fit keeping every place in frame. The
+	// certified product dive (5.2→17.8) stays the renderer's own default for
+	// a single place with no grounded move — its zoom keys are omitted.
+	cameraMove := plan.Items[0].Map.CameraMove
+	anchorLat, anchorLon, cameraStartZoom, cameraEndZoom, sendZooms := scriptoverlay.MapNativeCameraFraming(
+		pins, renderWidth, renderHeight, cameraMove != nil,
+		cameraMoveZoom(cameraMove, true), cameraMoveZoom(cameraMove, false))
 	mapGroup := scriptoverlay.MapGroupPayload(plan.Items[0].Params)
 	mapGroupStrategy := scriptoverlay.MapGroupStrategyParam(plan.Items[0].Params)
 	seed := mapRunSeed(plan)
@@ -169,25 +191,20 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	} else {
 		return "", backendErr
 	}
-	for _, pin := range pins {
-		id, _ := pin["id"].(string)
-		latitude, _ := scriptoverlay.MapPinFloat(pin, "latitude")
-		longitude, _ := scriptoverlay.MapPinFloat(pin, "longitude")
-		label, _ := pin["label"].(string)
-		scope, _ := pin["scope"].(string)
+	for _, pin := range plan.Items[0].Map.Pins {
 		place := scriptoverlay.MapDecisionPlace{
-			EntityID: id, Label: label, Scope: scope,
-			Latitude: latitude, Longitude: longitude,
+			EntityID: pin.ID, Label: pin.Label, Scope: pin.Scope,
+			Latitude: pin.Latitude, Longitude: pin.Longitude,
 			Geocoded: true, State: "eligible",
 		}
 		for _, entry := range pinTiming {
-			if entryID, _ := entry["id"].(string); entryID == id {
+			if entryID, _ := entry["id"].(string); entryID == pin.ID {
 				place.StartUS = int64(scriptoverlay.MustFloat(entry["start_s"]) * 1_000_000)
 				place.DurationUS = int64(scriptoverlay.MustFloat(entry["duration_s"]) * 1_000_000)
 			}
 		}
 		if place.DurationUS == 0 {
-			report.AddExclusion("no_spoken_timing", "pin "+id+" has no grounded occurrence timing; the camera cannot follow it")
+			report.AddExclusion("no_spoken_timing", "pin "+pin.ID+" has no grounded occurrence timing; the camera cannot follow it")
 		} else {
 			place.State = "scheduled"
 		}
@@ -196,17 +213,35 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	if mapFallbackReason != "" {
 		report.AddExclusion("declared_fallback", mapFallbackReason)
 	}
-	log.Printf("Chronon dynamic map styles selected: seed=%s camera=%s label=%s composition=%s basemap=%s", seed, cameraAnimation, labelAnimation, mapAnimation, basemapStyle)
+	// Declared degradations of the base flyover presentation: each one is
+	// recorded in the map decision report and its wire field is sent in the
+	// certified-closed value — never a field the renderer would silently
+	// ignore or approximate.
+	if len(pinTiming) > 0 {
+		report.AddExclusion("per_pin_timing_not_ported", "per-pin spoken timing declined: the native base flyover presents every place continuously (camera-activation family awaits its parity gate)")
+	}
+	if plan.Items[0].Map.AreaGlowRadiusKM > 0 {
+		report.AddExclusion("area_glow_not_ported", fmt.Sprintf("area glow ring of %.1f km declined: the glow family awaits its parity gate", plan.Items[0].Map.AreaGlowRadiusKM))
+	}
+	if hasPinAccent(plan.Items[0].Map.Pins) {
+		report.AddExclusion("pin_presentation_simplified", "pin accent color and extra cards are not ported: the native base flyover draws the certified camera-aligned labels")
+	}
+	log.Printf("Chronon dynamic map styles selected: seed=%s camera=%s label=%s composition=%s basemap=%s anchor=(%.4f,%.4f) zooms=[%.2f->%.2f]",
+		seed, cameraAnimation, labelAnimation, mapAnimation, basemapStyle, anchorLat, anchorLon, cameraStartZoom, cameraEndZoom)
 	payload := map[string]any{
 		"width": renderWidth, "height": renderHeight,
 		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
 		"duration_us": scriptoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000, "pins": pins,
-		"pin_timing":           pinTiming,
+		"camera_anchor": []float64{anchorLat, anchorLon},
+		// Pin timing is grounded DATA: the report carries it (Places), but the
+		// base flyover presents every place continuously and the renderer
+		// refuses non-empty spoken schedules — declared above.
+		"pin_timing":           []map[string]any{},
 		"map_group":            mapGroup,
 		"map_group_strategy":   mapGroupStrategy,
 		"composition_family":   string(mapCompositionFamily(mapAnimation)),
 		"composition_fallback": mapFallbackReason,
-		"area_glow_radius_km":  plan.Items[0].Map.AreaGlowRadiusKM,
+		"area_glow_radius_km":  0,
 		"camera_animation":     cameraAnimation,
 		"label_animation":      labelAnimation,
 		"map_animation":        mapAnimation,
@@ -217,6 +252,10 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 			"preset": encodeProfile.Preset, "quality": encodeProfile.Quality,
 		},
 		"sampler": sampler,
+	}
+	if sendZooms {
+		payload["camera_start_zoom"] = cameraStartZoom
+		payload["camera_end_zoom"] = cameraEndZoom
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

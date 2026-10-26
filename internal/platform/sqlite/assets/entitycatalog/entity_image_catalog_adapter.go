@@ -132,6 +132,13 @@ func (a *SQLiteEntityImageCatalogAdapter) SetRefreshState(ctx context.Context, c
 	return nil
 }
 
+// UpsertCandidate records one discovered candidate. The upsert mirrors the
+// broken/retired status preservation with an equivalent verdict rule: a
+// discovery write that carries NO pixel verdict (semantic_status 'unknown',
+// the defaultSemanticStatus of an empty value) can never downgrade a durable
+// accepted/rejected verdict. Re-observing a URL is a retrieval fact, not a
+// re-certification; the verdict is rewritten only by a real verification
+// outcome (accepted/rejected) through the same surface.
 func (a *SQLiteEntityImageCatalogAdapter) UpsertCandidate(ctx context.Context, candidate capentity.Candidate) (int64, error) {
 	if a == nil || a.db == nil {
 		return 0, fmt.Errorf("entity image catalog: database unavailable")
@@ -160,10 +167,25 @@ func (a *SQLiteEntityImageCatalogAdapter) UpsertCandidate(ctx context.Context, c
 				WHEN entity_image_catalog_candidates.status IN ('broken', 'retired') THEN entity_image_catalog_candidates.status
 				ELSE excluded.status
 			END,
-			semantic_status = excluded.semantic_status,
-			semantic_score = excluded.semantic_score,
+			semantic_status = CASE
+				WHEN excluded.semantic_status = 'unknown'
+					AND entity_image_catalog_candidates.semantic_status IN ('accepted', 'rejected')
+					THEN entity_image_catalog_candidates.semantic_status
+				ELSE excluded.semantic_status
+			END,
+			semantic_score = CASE
+				WHEN excluded.semantic_status = 'unknown'
+					AND entity_image_catalog_candidates.semantic_status IN ('accepted', 'rejected')
+					THEN entity_image_catalog_candidates.semantic_score
+				ELSE excluded.semantic_score
+			END,
 			technical_score = excluded.technical_score,
-			quality_reason = excluded.quality_reason,
+			quality_reason = CASE
+				WHEN excluded.semantic_status = 'unknown'
+					AND entity_image_catalog_candidates.semantic_status IN ('accepted', 'rejected')
+					THEN entity_image_catalog_candidates.quality_reason
+				ELSE excluded.quality_reason
+			END,
 			last_seen_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
 	`, canonicalID, strings.TrimSpace(candidate.Provider), candidate.Rank,

@@ -10,12 +10,14 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -232,6 +234,10 @@ func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *s
 		Subject:     subject,
 		VisualTerms: terms,
 		Query:       query,
+		// The resolve replay cache is keyed by query+policy+thresholds and
+		// must bypass exactly like the image caches on a forced refresh.
+		PolicySignature: stockResolvePolicySignature(plan),
+		ForceRefresh:    plan != nil && (plan.MediaPlan.ForceRefreshAssets || plan.ForceRefresh),
 	}
 	stockRes, err := r.stockResolver.Resolve(ctx, stockReq)
 	if err != nil {
@@ -270,6 +276,24 @@ func (r *SemanticProviderResolver) ResolveProviders(ctx context.Context, plan *s
 	// MediaCert can assert the LOCAL FIRST PROVIDER SECOND invariant.
 	segment.Cache.InternetImagesProviderSearches = stockRes.ProviderLiveRequests
 	return segment, nil
+}
+
+// stockResolvePolicySignature is the stable provider-policy context of the
+// calling plan (digest of the provider toggles + extraction policy). It
+// partitions the content-addressed resolve cache so two plans with different
+// media policy can never share a cached discovery pass.
+func stockResolvePolicySignature(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil {
+		return ""
+	}
+	raw, err := json.Marshal(struct {
+		ProviderPolicy mediadomain.MediaProviderPolicy   `json:"provider_policy"`
+		Extraction     mediadomain.MediaExtractionPolicy `json:"extraction"`
+	}{ProviderPolicy: plan.MediaPlan.ProviderPolicy, Extraction: plan.MediaPlan.Extraction})
+	if err != nil {
+		return ""
+	}
+	return digest.SHA256Bytes(raw)
 }
 
 // SegmentMaterializer acquires, verifies and finalizes the candidate assets

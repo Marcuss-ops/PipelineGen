@@ -322,6 +322,73 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 	return nil
 }
 
+// hydratePersonImageVisualVerdicts stamps durable pixel verdicts from the
+// catalog onto discovered candidates that carry none. The segment/entity
+// discovery caches store PRE-verification candidates, so a cache hit used to
+// download the pixels and spend a VLM call again for URLs the catalog has
+// already certified. Only a definitive, non-transient verdict is stamped:
+// ReusablePersonImageVerdict is the single decision surface for that, so an
+// outage-shaped rejection stays retryable exactly like inside the scorer. Any
+// catalog error degrades to no hydration (the candidate is simply re-verified
+// later) — the catalog is a replay projection, never truth.
+func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Repository, candidates []scriptpkg.SegmentAssetCandidate) {
+	if repo == nil || len(candidates) == 0 {
+		return
+	}
+	type pendingIndex struct {
+		index int
+		url   string
+	}
+	byEntity := make(map[string][]pendingIndex)
+	for i := range candidates {
+		candidate := &candidates[i]
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
+			strings.TrimSpace(candidate.Entity) == "" || strings.TrimSpace(candidate.SourceURL) == "" {
+			continue
+		}
+		if ReusablePersonImageVerdict(*candidate) {
+			continue
+		}
+		identity, err := entitycatalog.CanonicalizePersonName(candidate.Entity)
+		if err != nil {
+			continue
+		}
+		byEntity[identity.CanonicalEntityID] = append(byEntity[identity.CanonicalEntityID], pendingIndex{
+			index: i, url: strings.ToLower(strings.TrimSpace(candidate.SourceURL)),
+		})
+	}
+	for entityID, pending := range byEntity {
+		rows, err := repo.ListCandidates(ctx, entityID, 1000)
+		if err != nil {
+			continue
+		}
+		verdicts := make(map[string]entitycatalog.Candidate, len(rows))
+		for _, row := range rows {
+			verdicts[strings.ToLower(strings.TrimSpace(row.SourceURL))] = row
+		}
+		for _, p := range pending {
+			row, ok := verdicts[p.url]
+			if !ok {
+				continue
+			}
+			verdict := scriptpkg.SegmentAssetCandidate{
+				SemanticStatus: row.SemanticStatus,
+				SemanticScore:  row.SemanticScore,
+				QualityReason:  row.QualityReason,
+			}
+			if !ReusablePersonImageVerdict(verdict) {
+				continue
+			}
+			candidate := &candidates[p.index]
+			candidate.SemanticStatus = row.SemanticStatus
+			candidate.SemanticScore = row.SemanticScore
+			if strings.TrimSpace(row.QualityReason) != "" {
+				candidate.QualityReason = row.QualityReason
+			}
+		}
+	}
+}
+
 // nowUTC is a small seam for catalog refresh timestamps while keeping the
 // persistence adapter responsible for the actual SQL representation.
 func nowUTC() time.Time { return time.Now().UTC() }

@@ -79,14 +79,21 @@ type manifestEntryWork struct {
 // earlier items)), so the plan's z-order survives the manifest projection
 // unchanged even when lower tracks are free.
 func buildOverlayManifestEntries(parent capoverlay.OverlayPlan, epoch string) ([]manifestEntryWork, error) {
-	works := make([]manifestEntryWork, 0, len(parent.Items))
+	return buildManifestEntryWorks(parent, overlayRenderableCandidates(parent), epoch)
+}
+
+// buildManifestEntryWorks derives the manifest entries for an explicit
+// candidate subset of the parent plan (the manifest-timeline composition
+// excludes maps and chain items, which keep their dedicated render paths).
+// Track is computed across the whole subset so z-order survives the manifest
+// projection unchanged.
+func buildManifestEntryWorks(parent capoverlay.OverlayPlan, candidates []overlayItemCandidate, epoch string) ([]manifestEntryWork, error) {
+	works := make([]manifestEntryWork, 0, len(candidates))
 	type entryWindow struct{ in, out int64 }
-	windows := make([]entryWindow, 0, len(parent.Items))
-	tracks := make([]int, 0, len(parent.Items))
-	for index, item := range parent.Items {
-		if isOverlayBackgroundTemplate(item.TemplateID) {
-			continue
-		}
+	windows := make([]entryWindow, 0, len(candidates))
+	tracks := make([]int, 0, len(candidates))
+	for _, candidate := range candidates {
+		index, item := candidate.index, candidate.source
 		child, metadata, err := separateOverlayItemPlan(parent, item, index)
 		if err != nil {
 			return nil, err

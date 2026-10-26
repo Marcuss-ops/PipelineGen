@@ -50,6 +50,15 @@ type ResolveRequest struct {
 	// MinimumQuality is the minimum best-score below which the provider
 	// live path is consulted. Zero uses the resolver default (0.6).
 	MinimumQuality float32 `json:"minimum_quality,omitempty"`
+	// PolicySignature is the stable provider-policy context of the calling
+	// plan (a digest of the provider toggles + extraction policy). It is a
+	// cache-key component only: two plans with different media policy must
+	// never share a cached discovery pass.
+	PolicySignature string `json:"policy_signature,omitempty"`
+	// ForceRefresh bypasses the resolve replay cache for this request and
+	// re-runs live discovery (the refreshed result still updates the cache,
+	// mirroring the VidRush image caches' force-refresh contract).
+	ForceRefresh bool `json:"force_refresh,omitempty"`
 }
 
 // ResolveResult is the resolver output: the local candidates (and any
@@ -74,6 +83,11 @@ type ResolveResult struct {
 	LocalCandidateCount int `json:"local_candidate_count"`
 	// FallbackReason is non-empty when the provider live path was taken.
 	FallbackReason string `json:"fallback_reason,omitempty"`
+	// CacheHit reports that the candidate set was served from the
+	// content-addressed resolve cache instead of live discovery. A hit
+	// always reports ProviderLiveRequests=0: no provider was contacted for
+	// this request, and the winner is still sampled fresh per request.
+	CacheHit bool `json:"cache_hit,omitempty"`
 }
 
 // LocalSearchPort is the Qdrant local search surface. The resolver consults

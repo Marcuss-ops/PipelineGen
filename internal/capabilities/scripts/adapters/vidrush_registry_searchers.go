@@ -210,6 +210,18 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context,
 		recordEntityImageVisualOutcomes(f.metrics, candidates, nil)
 		return append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), nil
 	}
+	// Cached/provider candidates arrive PRE-verification: stamp the durable
+	// catalog verdicts first so a warm reuse skips the download + VLM call
+	// entirely (the scorer itself honors the same ReusablePersonImageVerdict
+	// contract per candidate).
+	hydratePersonImageVisualVerdicts(ctx, f.catalog, candidates)
+	if allCandidatesHaveReusableVerdict(candidates) {
+		// Every candidate carries a definitive pixel verdict already —
+		// re-running the visual scorer is exactly the double download + VLM
+		// call this fast path removes.
+		recordEntityImageVisualOutcomes(f.metrics, candidates, nil)
+		return filterInternetImageCandidates(deduplicateInternetImageCandidates(normalizeInternetImageCandidates(append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), "person entity image"))), nil
+	}
 	scored, err := f.semanticScorer.ScoreImageCandidates(ctx, "person entity image", candidates)
 	if err != nil {
 		recordEntityImageVisualOutcomes(f.metrics, candidates, err)

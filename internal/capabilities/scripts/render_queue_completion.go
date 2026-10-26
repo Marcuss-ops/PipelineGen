@@ -147,21 +147,6 @@ func (e *QueueRenderEnqueuer) SetFreshRender(on bool) {
 	}
 }
 
-func (e *QueueRenderEnqueuer) SetSeparateItemRenders(on bool) {
-	if e != nil {
-		e.separateItemRenders = on
-	}
-}
-
-// SetOverlayWindowBatching enables the deterministic cost-based composition
-// of compatible same-scene render windows. It does not change worker GPU
-// admission; the queue worker remains the sole GPU lane authority.
-func (e *QueueRenderEnqueuer) SetOverlayWindowBatching(on bool) {
-	if e != nil {
-		e.overlayWindowBatching = on
-	}
-}
-
 // SetOverlayRenderCache wires the content-addressed reuse index for individual
 // clips and fused batch compositions. Passing nil keeps renders uncached.
 // An empty epoch resolves at call time from OverlayRenderCacheEpoch().

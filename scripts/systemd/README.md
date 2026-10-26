@@ -222,6 +222,11 @@ must be **preserved** during the manual migration (do not remove them):
 - `hmac.conf` — `VELOX_DELIVERY_HMAC_SECRET`
 - `webhook.conf` — `VELOX_BASE_URL`
 - `worker-token.conf` — `VELOX_WORKER_TOKEN`
+- `map-native.conf` — the native map renderer lane
+  (`VELOX_MAP_NATIVE_RENDERER_PATH` + `CHRONON_MAPS_CATALOG_DIR`, versioned in
+  `scripts/systemd/pipelinegen.service.d/map-native.conf`; install with
+  `sudo cp` + `systemctl daemon-reload` after `cmake --install` of
+  `ChrononPlugin/plugins/maps`)
 
 ## Historical migration procedure (script retired)
 

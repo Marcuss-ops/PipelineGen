@@ -43,10 +43,10 @@ lives **inside an item**; there are no top-level shortcut keys.
         "glow_color": "#000000",
         "stroke_size": 3
       },
-      "map_type": "satellite",
+      "map_type": "chronon_editorial",
       "map_camera_animation": "slow_approach",
       "map_label_animation": "none",
-      "map_animation": "focus_title",
+      "map_animation": "random",
       "animation_policies": [
         {"target":"important_phrase","group_id":"scene-1","motion_id":"phrase_apple_clean_07_slide_up_soft"},
         {"target":"image","group_id":"scene-1","subgroup_id":"hero","motion_id":"image_focus_reveal"}
@@ -145,21 +145,33 @@ Visual overlay categories can also be selected with the item-level
 matching uses an explicit scene ID first, then its position when the segment
 has no ID (or the same ID as the generated scene).
 
-`map_type` selects one basemap for the run: `satellite` (default, the
-classic Python satellite map), `roadmap`, `terrain`, or `random`. Satellite
-uses Esri World Imagery, roadmap the clean street-map canvas, terrain
-topographic tiles. `random` samples only this 3-style classic palette
-(never ocean/light/dark/natgeo decorative canvases); omission means
-`satellite`, never a random pick.
+`map_type` selects one basemap for the run. The single map renderer is the
+native renderer of ChrononPlugin (the Python renderer is retired), which
+draws the **editorial vector basemap only**:
+
+- `chronon_editorial` (aliases `chronon`, `editorial`) — **default** when the
+  field is omitted; the certified editorial look.
+- `random` — a seeded draw over the servable styles (today the editorial
+  basemap; never a decorative canvas).
+- `satellite`, `roadmap`, `terrain` — the Esri raster tile families. They are
+  **demolition debt** (TICKET-MAPS-NATIVE-PORT): rejected with a typed error
+  until their bit-exact parity gates land — never silently swapped for a
+  different look.
+
 `map_camera_animation` currently allows only `slow_approach`; omission and
 `random` resolve to that deterministic camera move. `map_label_animation` is
 fixed to `none` because retained maps draw their own text. The catalog has
 exactly ten animations: six Saudi/Middle East scenes (`ed_saudi_base`,
 `ed_iran_glow`, `ed_yemen_fill`, `ed_yemen_markers`, `ed_hormuz_routes`,
 `ed_mocha_tactical`), three ordinary glow maps (`region_zoom`, `pulse_marker`,
-`spotlight`), and `slow_approach`. Random map selection uses only the three
-ordinary compositions; regional scenes require explicit selection.
-`map_animation` accepts those nine compositions and fails closed on other IDs.
+`spotlight`), and `slow_approach`.
+`map_animation` accepts those nine compositions as its vocabulary and fails
+closed on other IDs — but the native renderer serves the certified **base
+flyover only** until each composed family lands its parity gate. An explicitly
+requested composition therefore fails closed with a typed error naming the
+unported family (never approximated); omission and `random` resolve to the
+base flyover: one anchor, the `slow_approach` dive, every grounded place
+presented.
 
 `phrase_motions`, `image_motions`, and `entity_image_motions` accept arrays of
 certified animation IDs and rotate through the requested pool. `phrase_motions`

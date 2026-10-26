@@ -354,7 +354,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		}
 		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "music", music)
 	}
-	remoteOverlays, err := finalJobOverlayAssetsExcluding(result, consumedPhraseOverlays)
+	remoteOverlays, overlayManifest, err := finalJobOverlayHandoff(result, consumedPhraseOverlays)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -377,6 +377,13 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		"idempotency_key": key + "-finalize",
 		"overlays":        remoteOverlays,
 		"runtime_assets":  runtimeAssets,
+	}
+	// Pure-manifest overlay wire (OVERLAY-MANIFEST-CONTRACT.md §4): the
+	// composition's overlays travel as ONE certified timeline asset + the
+	// typed manifest; `overlays` keeps only the dedicated-path replace rows
+	// (maps, chain).
+	if overlayManifest != nil {
+		finalize["overlay_manifest"] = overlayManifest
 	}
 	if hasFinalAudio {
 		runtimeAudio := map[string]any{

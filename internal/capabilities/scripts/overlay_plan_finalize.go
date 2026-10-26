@@ -31,10 +31,15 @@ import (
 func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType, cameraAnimation, labelAnimation, mapAnimation string) error {
 	mapType = strings.ToLower(strings.TrimSpace(mapType))
 	if mapType == "" {
-		mapType = "satellite"
+		// The native renderer's certified basemap: the raster tile families
+		// are demolition debt and can no longer be a default.
+		mapType = "chronon_editorial"
 	}
 	if !capabilityoverlay.AnimationSupportsMapType(mapType) {
-		return fmt.Errorf("map_type %q is unsupported; choose roadmap, terrain, satellite, chronon_editorial (aliases chronon, editorial), or random", mapType)
+		return fmt.Errorf("map_type %q is unsupported; choose chronon_editorial (aliases chronon, editorial), satellite, roadmap, terrain, or random", mapType)
+	}
+	if basemap, ok := capabilityoverlay.AnimationMapTypeBasemap(mapType); ok && !scriptoverlay.NativeMapBasemaps()[basemap] {
+		return fmt.Errorf("map_type %q selects basemap %q: the raster tile family is not ported to the native map renderer (demolition debt, TICKET-MAPS-NATIVE-PORT); declare chronon_editorial or random", mapType, basemap)
 	}
 	if err := validateRuntimeMapAnimation("map_camera_animation", cameraAnimation, mapCameraAnimationsCertified()); err != nil {
 		return err
@@ -53,13 +58,17 @@ func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType,
 			items[i].Params = map[string]any{}
 		}
 		items[i].Params["map_type"] = mapType
-		if cameraAnimation != "" {
+		// Placeholders ("random"/"auto") are request-level draw knobs resolved
+		// by the seeded sampler at the render boundary: only CONCRETE ids are
+		// written to the plan params, so the plan never claims a presentation
+		// it did not choose and downstream validators only ever see ids.
+		if cameraAnimation != "" && !scriptoverlay.MapAnimationPlaceholder(cameraAnimation) {
 			items[i].Params["map_camera_animation"] = cameraAnimation
 		}
-		if labelAnimation != "" {
+		if labelAnimation != "" && !scriptoverlay.MapAnimationPlaceholder(labelAnimation) {
 			items[i].Params["map_label_animation"] = labelAnimation
 		}
-		if mapAnimation != "" {
+		if mapAnimation != "" && !scriptoverlay.MapAnimationPlaceholder(mapAnimation) {
 			items[i].Params["map_animation"] = mapAnimation
 		}
 	}

@@ -1,6 +1,7 @@
 package overlay
 
 import (
+	"math"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -137,5 +138,118 @@ func TestMapItemDurationMSUsesPlanBoundsThenFallback(t *testing.T) {
 	inverted := capabilityoverlay.OverlayItem{StartMs: 5, EndMs: 5}
 	if got := MapItemDurationMS(inverted, 9999); got != 9999 {
 		t.Fatalf("empty window must fall back, got %d", got)
+	}
+}
+
+// testGlobalPx mirrors dynamic_tile_pyramid.latlon_to_global_px (and the C++
+// map_camera.cpp port): the independent projection reference used to verify
+// the framing keeps every place inside the native frame.
+func testGlobalPx(lat, lon float64, zoom int) (float64, float64) {
+	clamp := func(v, lo, hi float64) float64 {
+		if v < lo {
+			return lo
+		}
+		if v > hi {
+			return hi
+		}
+		return v
+	}
+	lat = clamp(lat, -85.05112878, 85.05112878)
+	lon = clamp(lon, -180, 180)
+	scale := 256.0 * float64(int64(1)<<zoom)
+	x := (lon + 180) / 360 * scale
+	rad := lat * math.Pi / 180
+	y := (1 - math.Log(math.Tan(rad)+1/math.Cos(rad))/math.Pi) * 0.5 * scale
+	return x, y
+}
+
+// TestMapNativeCameraFramingSinglePlaceKeepsTheProductDive pins the
+// single-place contract: the anchor is the place itself, and with no grounded
+// camera move the zoom keys are OMITTED so the renderer runs its certified
+// product dive — the pipeline never invents zooms.
+func TestMapNativeCameraFramingSinglePlaceKeepsTheProductDive(t *testing.T) {
+	pins := []map[string]any{{"id": "a", "label": "A", "latitude": 41.9, "longitude": 12.5}}
+	lat, lon, _, _, send := MapNativeCameraFraming(pins, 1920, 1080, false, 0, 0)
+	if lat != 41.9 || lon != 12.5 {
+		t.Fatalf("anchor = (%v,%v), want the place itself", lat, lon)
+	}
+	if send {
+		t.Fatal("a single place with no grounded move must omit the zoom keys (certified product dive)")
+	}
+	lat, lon, start, end, send := MapNativeCameraFraming(pins, 1920, 1080, true, 5.5, 8.25)
+	if !send || start != 5.5 || end != 8.25 {
+		t.Fatalf("a grounded camera move must travel verbatim, got send=%t %.2f->%.2f", send, start, end)
+	}
+	if lat != 41.9 || lon != 12.5 {
+		t.Fatalf("anchor = (%v,%v), want the place itself", lat, lon)
+	}
+	// Two entries on the SAME coordinate are one renderer place.
+	twin := append(pins, map[string]any{"id": "b", "label": "B", "latitude": 41.9, "longitude": 12.5})
+	if _, _, _, _, send := MapNativeCameraFraming(twin, 1920, 1080, false, 0, 0); send {
+		t.Fatal("duplicate coordinates must collapse to the single-place contract")
+	}
+}
+
+// TestMapNativeCameraFramingMultiPlaceKeepsEveryPlaceInFrame pins the
+// multi-place contract: the anchor is the mean of the renderer-drawn places
+// and the END zoom is the tightest framing whose native frame still holds the
+// whole pin span inside the margin — nothing is dropped off frame.
+func TestMapNativeCameraFramingMultiPlaceKeepsEveryPlaceInFrame(t *testing.T) {
+	pins := []map[string]any{
+		{"id": "a", "label": "A", "latitude": 43.7687, "longitude": 11.2569},
+		{"id": "b", "label": "B", "latitude": 43.3188, "longitude": 11.3308},
+		{"id": "c", "label": "C", "latitude": 42.8512, "longitude": 12.5021},
+	}
+	const width, height = 1920, 1080
+	lat, lon, start, end, send := MapNativeCameraFraming(pins, width, height, false, 0, 0)
+	if !send {
+		t.Fatal("a multi-place map must travel explicit zooms")
+	}
+	wantLat, wantLon := (43.7687+43.3188+42.8512)/3, (11.2569+11.3308+12.5021)/3
+	if math.Abs(lat-wantLat) > 1e-9 || math.Abs(lon-wantLon) > 1e-9 {
+		t.Fatalf("anchor = (%v,%v), want the mean of the drawn places (%v,%v)", lat, lon, wantLat, wantLon)
+	}
+	if !(start < end && end <= 17.8 && start >= 2) {
+		t.Fatalf("zooms %.2f->%.2f must dive and stay inside the certified range", start, end)
+	}
+	// At the END zoom every place must project inside the frame margin.
+	zf := int(math.Floor(end))
+	scale := math.Pow(2, end-float64(zf))
+	ax, ay := testGlobalPx(lat, lon, zf)
+	margin := 0.12 * float64(width)
+	marginY := 0.12 * float64(height)
+	for _, pin := range pins {
+		gx, gy := testGlobalPx(pin["latitude"].(float64), pin["longitude"].(float64), zf)
+		x := float64(width)/2 + (gx-ax)*scale
+		y := float64(height)/2 + (gy-ay)*scale
+		if x < margin || x > float64(width)-margin || y < marginY || y > float64(height)-marginY {
+			t.Fatalf("pin %v projects to (%.0f,%.0f) at end zoom %.2f, outside the %.0f%% frame margin", pin["id"], x, y, end, 100*0.12)
+		}
+	}
+	// A wider span must yield a LOWER end zoom (tighter framing has limits).
+	wide := append([]map[string]any{}, pins...)
+	wide[2] = map[string]any{"id": "c", "label": "C", "latitude": 36.0, "longitude": 18.0}
+	_, _, _, wideEnd, _ := MapNativeCameraFraming(wide, width, height, false, 0, 0)
+	if wideEnd >= end {
+		t.Fatalf("wider span must fit at a lower zoom: %.2f >= %.2f", wideEnd, end)
+	}
+}
+
+// TestMapNativeCameraFramingDegenerateInputs pins the closed edges: no
+// coordinates, no zooms sent; a grounded move on a multi-place map cannot
+// override the fit — route zooms frame the route endpoints, so the fit keeps
+// every place in frame and the two framings agree.
+func TestMapNativeCameraFramingDegenerateInputs(t *testing.T) {
+	if _, _, _, _, send := MapNativeCameraFraming(nil, 1920, 1080, false, 0, 0); send {
+		t.Fatal("an empty pin set must not invent camera zooms")
+	}
+	pins := []map[string]any{
+		{"id": "a", "latitude": 43.7687, "longitude": 11.2569},
+		{"id": "b", "latitude": 43.3188, "longitude": 11.3308},
+	}
+	_, _, _, fitEnd, _ := MapNativeCameraFraming(pins, 1920, 1080, false, 0, 0)
+	_, _, start, end, send := MapNativeCameraFraming(pins, 1920, 1080, true, 4.0, 6.0)
+	if !send || end != fitEnd || start >= end {
+		t.Fatalf("multi-place framing must keep the fit (got %.2f, fit %.2f) with a grounded move present: %.2f->%.2f send=%t", end, fitEnd, start, end, send)
 	}
 }

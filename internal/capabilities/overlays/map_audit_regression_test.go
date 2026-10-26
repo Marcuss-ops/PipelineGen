@@ -63,12 +63,21 @@ func TestTimelineAdmissionCollision(t *testing.T) {
 }
 
 func TestSelectMapCompositionFromRegistry(t *testing.T) {
+	// The registry certifies the catalog; the ported subset decides
+	// servability. The selection is deterministic and only ever records a
+	// composition the single dynamic renderer serves (empty = the certified
+	// base flyover while no composed family has landed its parity gate).
 	got := SelectMapComposition("seed", "scene", "item-1", 1)
-	if got == "" {
-		t.Fatal("expected registry-derived composition for 1 pin")
-	}
 	got2 := SelectMapComposition("seed", "scene", "item-1", 1)
 	if got != got2 {
 		t.Fatal("selection must be deterministic")
+	}
+	if !servableComposition(got) {
+		t.Fatalf("selection %q is not servable by the single dynamic renderer", got)
+	}
+	for _, id := range PortedMapCompositions() {
+		if id == got && !AnimationSelectable(id, "map.composition") {
+			t.Fatalf("servable composition %q must stay registry-certified", id)
+		}
 	}
 }

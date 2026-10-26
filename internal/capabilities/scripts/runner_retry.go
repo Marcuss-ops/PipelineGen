@@ -36,6 +36,13 @@ func deriveErrorCode(err error, stage Stage) string {
 	if errors.Is(err, ErrFinalJobPending) {
 		return "REMOTE_RENDER_PENDING"
 	}
+	// A stale remote identity (canceled preparation, lease held elsewhere) is
+	// recoverable ONLY by preparing a fresh one. The code is stable so a retry
+	// bot can tell "this attempt will rotate the remote identity" apart from a
+	// render failure, and dashboards can count identity rotations.
+	if errors.Is(err, ErrFinalJobStaleReceipt) {
+		return "REMOTE_JOB_STALE"
+	}
 	// A producer that offers bytes which do not hash to the content address it
 	// named has violated its contract; retrying the same payload cannot repair
 	// it. The code is stable so a retry bot stops instead of re-rendering.

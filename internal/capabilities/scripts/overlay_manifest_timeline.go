@@ -1,118 +1,119 @@
 package scriptgeneration
 
-// overlay_manifest_timeline.go is path (b) of the P5 A/B measurement
-// (docs/operations/TICKET-MANIFEST-IDENTITY.md): ONE certified artifact per
-// timeline plus the manifest — item_id → (track, in_us, out_us, content-hash)
-// — instead of one intermediate MP4 per item. The composition is rendered
-// once (single compositing, single encode) and the manifest digest is its
-// content address.
+// overlay_manifest_timeline.go owns the overlay render cutover (P5 path (b),
+// docs/operations/OVERLAY-MANIFEST-CONTRACT.md): ONE certified artifact per
+// plan timeline plus the manifest — item_id → (track, in_us, out_us,
+// content_hash) — instead of one intermediate MP4 per item. The composition is
+// rendered once (single compositing, single encode) and the manifest digest is
+// its content address. This is now the ONLY render path for ordinary overlay
+// items: the per-item path survives exclusively for maps and chain items,
+// which keep their dedicated render pipelines (dynamic-map admission and
+// asset lifecycle; chain segment rebasing) and are merged into the same
+// render reference as independent certified items.
+//
+// The artifact is anchored at plan t=0 (the contract's frame grid projects
+// plan-absolute in_us with NO origin offset), so the plan's Source/Background
+// is aligned with plan time inside the composition and the historical
+// "source restarts at frame zero" defect of window-anchored batches cannot
+// occur. Final-job plans elect this path too: the manifest is the wire
+// document the final worker consumes (OVERLAY-MANIFEST-CONTRACT.md §4).
 //
 // Retry contract (gate 2) at this path: the manifest digest aggregates every
 // voice's identity (item_id + content-hash + placement), so the same manifest
 // resolves to the same composition cache row — no repeated work, and the
-// cache's idempotent Store never produces a second artifact. The per-voice
-// clip ledger stays on the per-item path (classifyManifestEntries).
-//
-// The path is behind an explicit opt-in flag (default OFF): the per-item path
-// remains the production default until the A/B parity gate is certified, and
-// the flag is the rollback lever. Plans the composition cannot cover fail
-// closed to the per-item path.
+// cache's idempotent Store never produces a second artifact.
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// OverlayManifestTimelineEnv enables the manifest+timeline render path for
-// eligible plans. Default is OFF (per-item path); set to 1/true/yes/on to
-// measure or adopt path (b).
-const OverlayManifestTimelineEnv = "VELOX_SCRIPTS_OVERLAY_MANIFEST_TIMELINE"
-
-// overlayManifestTimelineEnabled reports the explicit opt-in state.
-func overlayManifestTimelineEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(OverlayManifestTimelineEnv))) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
+// partitionOverlayRenderWork splits a plan's renderable items between the
+// manifest timeline composition (everything the single certified artifact
+// covers) and the dedicated per-item paths (maps and chain items keep their
+// own render pipelines and their own certified artifacts).
+func partitionOverlayRenderWork(plan capoverlay.OverlayPlan) (manifest, dedicated []overlayItemCandidate) {
+	type captionWindow struct {
+		inUS  int64
+		outUS int64
 	}
+	var acceptedCaptions []captionWindow
+
+	for _, candidate := range overlayRenderableCandidates(plan) {
+		if candidate.source.Map != nil || capoverlay.IsChainItemKind(candidate.source.Kind) {
+			dedicated = append(dedicated, candidate)
+			continue
+		}
+		if overlayItemMayCompileLinkedCaption(candidate.source) {
+			startUS, endUS := overlayCandidateRenderWindow(plan, candidate)
+			collides := false
+			for _, prior := range acceptedCaptions {
+				if startUS < prior.outUS && prior.inUS < endUS {
+					collides = true
+					break
+				}
+			}
+			if collides {
+				dedicated = append(dedicated, candidate)
+				continue
+			}
+			acceptedCaptions = append(acceptedCaptions, captionWindow{inUS: startUS, outUS: endUS})
+		}
+		manifest = append(manifest, candidate)
+	}
+	return manifest, dedicated
 }
 
-// manifestTimelineEligible reports whether a plan may render as ONE manifest
-// timeline artifact. The composition shares a single frame timeline, so it
-// must obey the fused-window admission rules at plan scale, and final-job
-// overlays keep their Drive-per-item handoff until the manifest contract is
-// renegotiated with the final worker. The second return value is the refusal
-// reason for operators and tests.
-func manifestTimelineEligible(plan capoverlay.OverlayPlan) (bool, string) {
-	if plan.RequireDriveBeforeReturn {
-		return false, "final-job overlays keep the Drive-per-item handoff until the manifest contract is renegotiated"
+// admitManifestCaptionWindows enforces the fitted-caption gate at plan scale.
+// The composition shares ONE frame timeline, where RenderingGen's fitted
+// entity-caption gate compares every image-linked caption against every other
+// and rejects pairs whose fitted canvas bounds overlap while they share a
+// frame (golden v21). The planner cannot predict the fitted geometry (fitting
+// runs on materialized aspect ratios inside the worker), but the gate's
+// shared-frame half is exactly what the planner CAN decide: caption-bearing
+// members whose (padded) render windows are pairwise disjoint in µs can never
+// share a frame — ceil projection is monotone — so they can never collide,
+// with any fitted geometry. Overlapping caption windows are refused here,
+// deterministically and before any render.
+func admitManifestCaptionWindows(candidates []overlayItemCandidate, plan capoverlay.OverlayPlan) error {
+	type captionWindow struct {
+		id    string
+		inUS  int64
+		outUS int64
 	}
-	if plan.Source != nil {
-		return false, "source-bound composites stay on the per-item path"
-	}
-	candidates := overlayRenderableCandidates(plan)
-	if len(candidates) < 2 {
-		return false, "manifest timeline needs at least two overlay items"
-	}
-	scene := ""
-	captions := 0
+	var captions []captionWindow
 	for _, candidate := range candidates {
-		item := candidate.source
-		if item.Map != nil || capoverlay.IsChainItemKind(item.Kind) {
-			return false, "maps and chain items keep their dedicated render paths"
+		if !overlayItemMayCompileLinkedCaption(candidate.source) {
+			continue
 		}
-		if id := strings.TrimSpace(item.SceneID); id != "" {
-			if scene == "" {
-				scene = id
-			} else if id != scene {
-				return false, "manifest timeline is scene-local"
+		startUS, endUS := overlayCandidateRenderWindow(plan, candidate)
+		for _, prior := range captions {
+			if startUS < prior.outUS && prior.inUS < endUS {
+				return fmt.Errorf("caption-bearing overlays %q and %q share frames on one timeline; render windows must be disjoint to pass the fitted-caption gate", prior.id, candidate.source.ID)
 			}
 		}
-		if overlayItemMayCompileLinkedCaption(item) {
-			captions++
-		}
+		captions = append(captions, captionWindow{id: candidate.source.ID, inUS: startUS, outUS: endUS})
 	}
-	if captions > 1 {
-		return false, "the fitted-caption gate admits one caption-bearing member per shared frame timeline"
-	}
-	return true, ""
-}
-
-// overlayManifestCompositionCacheKey is the content address of the timeline
-// artifact: the manifest digest (every voice's identity and placement, in
-// canonical order) plus the rendered child plan's context and the deployment
-// epoch. Two runs that build the same manifest compose the same artifact and
-// must share one cache row and one stored artifact.
-func overlayManifestCompositionCacheKey(child capoverlay.OverlayPlan, manifest capoverlay.OverlayManifest, epoch string) (OverlayRenderCacheKey, bool) {
-	renderKey := manifest.Digest()
-	if len(renderKey) != 64 || !isLowerHex(renderKey) {
-		return OverlayRenderCacheKey{}, false
-	}
-	contextHash := overlayPlanRenderContextDigest(child)
-	if contextHash == "" {
-		return OverlayRenderCacheKey{}, false
-	}
-	key := OverlayRenderCacheKey{RenderKey: renderKey, PlanContext: contextHash, Epoch: strings.TrimSpace(epoch)}
-	if key.Epoch == "" {
-		key.Epoch = OverlayRenderCacheEpoch()
-	}
-	if err := key.Validate(); err != nil {
-		return OverlayRenderCacheKey{}, false
-	}
-	return key, true
+	return nil
 }
 
 // enqueueOverlayManifestTimeline renders one certified artifact for the whole
 // plan timeline and returns it with its manifest. A retry of the same manifest
-// reuses the certified artifact and never renders nor stores again.
-func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
-	works, err := buildOverlayManifestEntries(plan, e.renderCacheEpochValue())
+// reuses the certified artifact and never renders nor stores again. Map and
+// chain items render through their dedicated per-item paths and merge into
+// the same reference.
+func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context, plan capoverlay.OverlayPlan, candidates, dedicated []overlayItemCandidate) (RenderReference, error) {
+	if len(candidates) == 0 {
+		return RenderReference{}, fmt.Errorf("overlay manifest timeline has no composition candidates")
+	}
+	if err := admitManifestCaptionWindows(candidates, plan); err != nil {
+		return RenderReference{}, err
+	}
+	works, err := buildManifestEntryWorks(plan, candidates, e.renderCacheEpochValue())
 	if err != nil {
 		return RenderReference{}, err
 	}
@@ -122,16 +123,16 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 		VideoID:       strings.TrimSpace(plan.VideoID),
 		Entries:       make([]capoverlay.OverlayManifestEntry, 0, len(works)),
 	}
-	candidates := make([]overlayItemCandidate, 0, len(works))
+	ordered := make([]overlayItemCandidate, 0, len(works))
 	for _, work := range works {
 		manifest.Entries = append(manifest.Entries, work.Entry)
-		candidates = append(candidates, overlayItemCandidate{index: work.Index, source: work.Item})
+		ordered = append(ordered, overlayItemCandidate{index: work.Index, source: work.Item})
 	}
 	if err := manifest.Validate(); err != nil {
 		return RenderReference{}, err
 	}
-	_, endUS := overlayCandidateRenderWindow(plan, candidates[0])
-	for _, candidate := range candidates[1:] {
+	_, endUS := overlayCandidateRenderWindow(plan, ordered[0])
+	for _, candidate := range ordered[1:] {
 		_, itemEnd := overlayCandidateRenderWindow(plan, candidate)
 		if itemEnd > endUS {
 			endUS = itemEnd
@@ -139,17 +140,17 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 	}
 	// The manifest projects plan-absolute in_us directly onto the artifact's
 	// frames — start_frame = ceil(in_us · fps_num / (1e6 · fps_den)) with NO
-	// origin offset (OVERLAY-MANIFEST-CONTRACT.md §3, the same grid as
-	// finalJobOverlayAssetsExcluding) — so the timeline artifact MUST begin at
-	// plan t=0. Anchoring the fused window at the first render window (the
-	// batch-path convention) shifted every entry by that offset: on the live
-	// A/B (2026-10-24) entries landed 6 frames early on a 30 fps plan while
+	// origin offset (OVERLAY-MANIFEST-CONTRACT.md §3, the same grid as the
+	// final handoff) — so the timeline artifact MUST begin at plan t=0.
+	// Anchoring the fused window at the first render window (the batch-path
+	// convention) shifted every entry by that offset: on the live A/B
+	// (2026-10-24) entries landed 6 frames early on a 30 fps plan while
 	// their manifest in_us stayed plan-absolute.
 	work := overlayBatchWork{
-		sceneID:    strings.TrimSpace(candidates[0].source.SceneID),
+		sceneID:    strings.TrimSpace(ordered[0].source.SceneID),
 		startUS:    0,
 		endUS:      overlayBatchWireEndUS(0, endUS),
-		candidates: candidates,
+		candidates: ordered,
 	}
 	work.id = overlayBatchIdentity(plan, work)
 	child, err := fusedOverlayBatchPlan(plan, work)
@@ -160,32 +161,59 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 	if !ok {
 		return RenderReference{}, fmt.Errorf("overlay manifest timeline has no content-addressed identity")
 	}
-	if artifact, hit, _ := e.lookupOverlayRenderCacheTimed(ctx, key); hit {
-		return assembleManifestTimelineReference(work.id, "completed", artifact, work, manifest), nil
+	var artifact *RenderArtifact
+	var jobID, status string
+	if cached, hit, _ := e.lookupOverlayRenderCacheTimed(ctx, key); hit {
+		artifact, jobID, status = cached, work.id, "completed"
+	} else {
+		metadata := &overlayItemPublicationMetadata{
+			ManifestOwnedCache: true,
+			JobID:              textutil.FirstNonEmpty(plan.DriveJobID, plan.PlanID),
+			ResultJobID:        textutil.FirstNonEmpty(plan.ResultJobID, plan.DriveJobID),
+			ItemID:             "manifest:" + manifest.Digest(),
+			BatchID:            manifest.Digest(),
+			ItemKind:           "overlay_manifest_timeline",
+			SourceStartUS:      work.startUS,
+			SourceEndUS:        work.endUS,
+			TargetDurationUS:   work.endUS - work.startUS,
+			BatchEndUS:         work.endUS,
+		}
+		for _, candidate := range ordered {
+			metadata.BatchItemIDs = append(metadata.BatchItemIDs, candidate.source.ID)
+		}
+		ref, err := e.enqueueChrononPlan(ctx, child, metadata)
+		if err != nil {
+			return RenderReference{}, fmt.Errorf("render overlay manifest timeline: %w", err)
+		}
+		if ref.Artifact == nil {
+			return RenderReference{}, fmt.Errorf("overlay manifest timeline completed without a certified artifact")
+		}
+		e.storeOverlayRenderCacheTimed(ctx, key, ref.Artifact)
+		artifact, jobID, status = ref.Artifact, ref.JobID, ref.Status
 	}
-	metadata := &overlayItemPublicationMetadata{
-		JobID:            textutil.FirstNonEmpty(plan.DriveJobID, plan.PlanID),
-		ResultJobID:      textutil.FirstNonEmpty(plan.ResultJobID, plan.DriveJobID),
-		ItemID:           "manifest:" + manifest.Digest(),
-		BatchID:          manifest.Digest(),
-		ItemKind:         "overlay_manifest_timeline",
-		SourceStartUS:    work.startUS,
-		SourceEndUS:      work.endUS,
-		TargetDurationUS: work.endUS - work.startUS,
-		BatchEndUS:       work.endUS,
+	reference := assembleManifestTimelineReference(jobID, status, artifact, work, manifest)
+	if len(dedicated) == 0 {
+		return reference, nil
 	}
-	for _, candidate := range candidates {
-		metadata.BatchItemIDs = append(metadata.BatchItemIDs, candidate.source.ID)
-	}
-	ref, err := e.enqueueChrononPlan(ctx, child, metadata)
+	dedicatedRef, err := e.enqueueDedicatedOverlayItems(ctx, plan, dedicated)
 	if err != nil {
-		return RenderReference{}, fmt.Errorf("render overlay manifest timeline: %w", err)
+		return RenderReference{}, err
 	}
-	if ref.Artifact == nil {
-		return RenderReference{}, fmt.Errorf("overlay manifest timeline completed without a certified artifact")
+	reference.Items = mergeRenderItemsByPlanOrder(reference.Items, dedicatedRef.Items, plan)
+	return reference, nil
+}
+
+// mergeRenderItemsByPlanOrder folds the dedicated-path item rows into the
+// manifest reference's rows and restores the parent plan's editorial order
+// (child plan identity depends on the original plan index).
+func mergeRenderItemsByPlanOrder(manifestItems, dedicatedItems []OverlayItemRenderReference, plan capoverlay.OverlayPlan) []OverlayItemRenderReference {
+	order := make(map[string]int, len(plan.Items))
+	for index, item := range plan.Items {
+		order[item.ID] = index
 	}
-	e.storeOverlayRenderCacheTimed(ctx, key, ref.Artifact)
-	return assembleManifestTimelineReference(ref.JobID, ref.Status, ref.Artifact, work, manifest), nil
+	merged := append(append([]OverlayItemRenderReference(nil), manifestItems...), dedicatedItems...)
+	sortRenderItemsByPlanOrder(merged, order)
+	return merged
 }
 
 // assembleManifestTimelineReference binds one certified artifact to the
@@ -215,4 +243,28 @@ func assembleManifestTimelineReference(jobID, status string, artifact *RenderArt
 		}},
 		Manifest: &manifest,
 	}
+}
+
+// overlayManifestCompositionCacheKey is the content address of the timeline
+// artifact: the manifest digest (every voice's identity and placement, in
+// canonical order) plus the rendered child plan's context and the deployment
+// epoch. Two runs that build the same manifest compose the same artifact and
+// must share one cache row and one stored artifact.
+func overlayManifestCompositionCacheKey(child capoverlay.OverlayPlan, manifest capoverlay.OverlayManifest, epoch string) (OverlayRenderCacheKey, bool) {
+	renderKey := manifest.Digest()
+	if len(renderKey) != 64 || !isLowerHex(renderKey) {
+		return OverlayRenderCacheKey{}, false
+	}
+	contextHash := overlayPlanRenderContextDigest(child)
+	if contextHash == "" {
+		return OverlayRenderCacheKey{}, false
+	}
+	key := OverlayRenderCacheKey{RenderKey: renderKey, PlanContext: contextHash, Epoch: strings.TrimSpace(epoch)}
+	if key.Epoch == "" {
+		key.Epoch = OverlayRenderCacheEpoch()
+	}
+	if err := key.Validate(); err != nil {
+		return OverlayRenderCacheKey{}, false
+	}
+	return key, true
 }

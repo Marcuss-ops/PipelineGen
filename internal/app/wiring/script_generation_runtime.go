@@ -245,8 +245,6 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		// submission fresh here caused identical overlays to be rendered and
 		// published repeatedly.
 		renderEnqueuer.SetFreshRender(false)
-		renderEnqueuer.SetSeparateItemRenders(true)
-		renderEnqueuer.SetOverlayWindowBatching(cfg.Scripts.OverlayWindowBatching)
 		// Pipelining depth for the per-item overlay renders. This is not a GPU
 		// bound: the worker's worker.gpu_lanes remains the only authority on
 		// concurrent GPU work, so this overlaps the per-item pre/post chain
@@ -395,6 +393,11 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			return mediaSampler.Sample(context.Background(), segmentID, subject, terms, converted, false)
 		}
 		if resolver, resolverErr := stockintelligence.NewResolver(local, hydrator, provider, sampler); resolverErr == nil {
+			// Content-addressed resolve replay cache (L1 LRU + durable L2):
+			// repeated entity/query discovery — across segments and across
+			// runs — is served without re-embedding, re-searching or hitting
+			// the provider live path. The sampler stays per-request.
+			resolver.WithCache(documentadapters.NewStockResolveCache(vidRushCache))
 			if service, serviceErr := stockintelligence.NewService(resolver); serviceErr == nil {
 				pipeline.StockResolverPort = service
 			}

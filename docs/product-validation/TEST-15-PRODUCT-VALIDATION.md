@@ -32,10 +32,7 @@ no q3_minutes == 0
 Run:
 
 ```bash
-# NOTE: the validator is not in the tree — `tools/product_validation.py` was
-# deleted with the tools/ directory by commit `7e6965aab`.
-# Re-create it before this command is runnable.
-python3 tools/product_validation.py test-15 --input <feedback.json>
+python3 scripts/product_validation.py test-15 --input <feedback.json>
 ```
 
 Exit `0` means the supplied evidence satisfies the contract. Exit `1` means

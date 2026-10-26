@@ -283,10 +283,11 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
 		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
-			return ChatResult{}, &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama chat returned status %d", resp.StatusCode)}
+			return ChatResult{}, &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama chat returned status %d: %s", resp.StatusCode, string(respBody))}
 		}
-		return ChatResult{}, fmt.Errorf("ollama chat returned status %d", resp.StatusCode)
+		return ChatResult{}, fmt.Errorf("ollama chat returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result types.ChatResponse

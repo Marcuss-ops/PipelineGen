@@ -67,8 +67,9 @@ func init() {
 // the allowedHardDeleteChildColumns allowlist. Called at init() so
 // the panic fires at process startup, well before any SQL is executed.
 //
-// Pattern: mirrors the column-allowlist gates in transition.go
-// (allowedJobColumns) and search_queries.go (allowedSortColumns).
+// Pattern: mirrors the column-allowlist gate in transition.go
+// (allowedJobColumns). (The sibling allowedSortColumns of the deleted
+// search_queries.go went with that file, 2026-10-26.)
 func validateHardDeleteChildTables() {
 	for _, ct := range hardDeleteChildTables {
 		key := ct.table + "." + ct.column
@@ -148,9 +149,8 @@ var hardDeleteChildTables = []childDelete{
 // must appear here; init() panics on mismatch so a typo in the
 // package-level var surfaces at startup rather than at first purge.
 //
-// Pattern: mirrors allowedJobColumns (transition.go) and
-// allowedSortColumns (search_queries.go) — one canonical allowlist
-// per fmt.Sprintf SQL site. Keys are "<table>.<column>".
+// Pattern: mirrors allowedJobColumns (transition.go) — one canonical
+// allowlist per fmt.Sprintf SQL site. Keys are "<table>.<column>".
 var allowedHardDeleteChildColumns = map[string]bool{
 	"asset_locations.asset_id":  true,
 	"asset_processing.asset_id": true,

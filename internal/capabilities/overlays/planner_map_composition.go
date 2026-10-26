@@ -38,13 +38,46 @@ func mapCompositionFamilyOf(id string) string {
 	return "location_focus"
 }
 
+// PortedMapCompositions lists the composition ids the single dynamic map
+// renderer draws with certified parity gates. The Python renderer is retired
+// (TICKET-MAPS-NATIVE-PORT fase 7): the native renderer
+// (ChrononPlugin/maps_dynamic_map_render) serves the BASE flyOVER
+// presentation only, and every composed family (region, multi-location,
+// journey-route, comparison, editorial scenes) is demolition debt awaiting
+// its own bit-exact parity gate BEFORE it may be served. The seeded draw
+// therefore selects nothing today and the map presents the certified base
+// flyover — incompatible variants are excluded from random selection, never
+// silently swapped for a family the executing renderer cannot draw. A family
+// joins this list the moment it lands its parity gate and becomes servable.
+//
+// This is the SINGLE ported-subset declaration: the resolver's random pool
+// (scripts/overlay MapCompositionRandomPool) projects this same list.
+func PortedMapCompositions() []string {
+	return nil
+}
+
 // mapCompositionFamilies builds families from the registry-certified random
-// pool (the restrained sampler subset), grouped by the single family
-// classification above. No hardcoded member lists.
+// pool (the restrained sampler subset) restricted to the compositions the
+// single dynamic renderer actually draws (PortedMapCompositions), grouped by
+// the single family classification above. No hardcoded member lists: the
+// registry certifies the catalog, the ported subset decides servability.
 func mapCompositionFamilies(pinCount int) []mapCompositionFamily {
-	pool := AnimationRandomCandidates("map.composition")
+	ported := map[string]bool{}
+	for _, id := range PortedMapCompositions() {
+		ported[id] = true
+	}
+	pool := []string{}
+	for _, id := range AnimationRandomCandidates("map.composition") {
+		if ported[id] {
+			pool = append(pool, id)
+		}
+	}
 	if len(pool) == 0 {
-		pool = AnimationCandidates("map.composition")
+		for _, id := range AnimationCandidates("map.composition") {
+			if ported[id] {
+				pool = append(pool, id)
+			}
+		}
 	}
 	byFamily := map[string][]string{}
 	order := []string{}
@@ -73,11 +106,13 @@ func mapCompositionFamilies(pinCount int) []mapCompositionFamily {
 	return out
 }
 
-// SelectMapComposition picks a certified composition for one static map item.
-// The family is chosen among those compatible with pinCount, then the member
-// within it. Both draws are seeded by (seed, scene, item), so the same job
-// always yields the same composition and a new job may yield another. It
-// returns "" when no family fits.
+// SelectMapComposition picks a certified, servable composition for one static
+// map item. The family is chosen among those compatible with pinCount and
+// ported to the single dynamic renderer, then the member within it. Both draws
+// are seeded by (seed, scene, item), so the same job always yields the same
+// composition and a new job may yield another. It returns "" when no family
+// fits — today always "" (the base flyover presentation), because no composed
+// family has landed its parity gate yet.
 func SelectMapComposition(seed, sceneID, itemID string, pinCount int) string {
 	if pinCount < 1 || pinCount > maxMapPinsPerGroup {
 		return ""

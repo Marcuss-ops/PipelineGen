@@ -444,6 +444,11 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			warnings = append(warnings, fmt.Sprintf("internet_images: bounded query fan-out failed for segment %s: %v", updated.SegmentID, mapErr))
 		}
 		for _, queryResult := range queryResults {
+			// Cached/provider candidates arrive PRE-verification: stamp the
+			// durable catalog verdicts first so a warm reuse skips the download
+			// + VLM call (the allCandidatesHaveReusableVerdict fast path in
+			// scoreInternetImageCandidates then serves the whole batch).
+			hydratePersonImageVisualVerdicts(ctx, p.catalog, queryResult.candidates)
 			scored, scoreErr := scoreInternetImageCandidates(ctx, p.semanticScorer, queryResult.query, queryResult.candidates)
 			if scoreErr != nil {
 				warnings = append(warnings, fmt.Sprintf("internet_images: semantic scoring unavailable for segment %s: %v", updated.SegmentID, scoreErr))

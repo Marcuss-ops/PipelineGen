@@ -76,6 +76,65 @@ func ReadTokenFile(path string) (string, error) {
 // carries the job id — the handle a caller must keep in order to come back.
 var ErrRemotePending = errors.New("remote job is not terminal yet")
 
+// ErrRemoteStaleJob reports a Master job identity that must never take another
+// FINALIZE: its preparation was canceled, it already ended terminal, or its
+// lease is held elsewhere (`job_already_leased`). The identity lives on the
+// Master, so clearing a local receipt does not make it reusable — the caller
+// must archive the id it names (see StaleJobError) and prepare a fresh one.
+var ErrRemoteStaleJob = errors.New("remote job identity is stale and cannot be finalized")
+
+// StaleJobError is ErrRemoteStaleJob carrying the exact job identity that must
+// never be finalized again plus the transport cause, so the caller can archive
+// the handle and still see why the Master refused it.
+type StaleJobError struct {
+	JobID  string
+	Status string
+	Cause  error
+}
+
+func (e *StaleJobError) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("remote job %s is stale (status=%s): %v: %v", e.JobID, e.Status, ErrRemoteStaleJob, e.Cause)
+	}
+	return fmt.Sprintf("remote job %s is stale (status=%s): %v", e.JobID, e.Status, ErrRemoteStaleJob)
+}
+
+// Unwrap exposes both the sentinel and the transport cause.
+func (e *StaleJobError) Unwrap() []error {
+	if e.Cause == nil {
+		return []error{ErrRemoteStaleJob}
+	}
+	return []error{ErrRemoteStaleJob, e.Cause}
+}
+
+// terminalJobStatus reports a Master status that can no longer be finalized.
+func terminalJobStatus(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "FAILED", "CANCELED", "CANCELLED", "REJECTED":
+		return true
+	default:
+		return false
+	}
+}
+
+// staleJobResponse reports whether a Master error names a stale job identity:
+// a lease held elsewhere or a job already canceled. The tokens are matched as
+// whole phrases so a message about a released resource never classifies as a
+// lease conflict.
+func staleJobResponse(message string) bool {
+	msg := strings.ToLower(message)
+	for _, token := range []string{
+		"job_already_leased", "job_already_canceled", "job_already_cancelled",
+		"already leased", "already canceled", "already cancelled",
+		"lease conflict", "lease_conflict",
+	} {
+		if strings.Contains(msg, token) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Client) ready() error {
 	if c == nil || c.HTTP == nil || c.BaseURL == "" || c.Token == "" {
 		return fmt.Errorf("remote job client is not configured")
@@ -83,33 +142,51 @@ func (c *Client) ready() error {
 	return nil
 }
 
-// Prepare performs the Master's PREPARE phase and returns the job it created.
-//
-// It is split out of Submit so a caller can persist the job id BEFORE waiting
-// on it: the id is the only handle to a render that outlives this process, and
-// while it lived inside one blocking call a crash mid-render lost the address
-// of a job the Master kept running.
-func (c *Client) Prepare(ctx context.Context, pre map[string]any) (string, error) {
+// PrepareJob performs the Master's PREPARE phase and returns the full result
+// envelope. It refuses an identity the Master reports as already terminal: a
+// canceled preparation must never take a FINALIZE, so the caller gets a typed
+// StaleJobError and replaces that identity instead of leasing it again.
+func (c *Client) PrepareJob(ctx context.Context, pre map[string]any) (Result, error) {
 	if err := c.ready(); err != nil {
-		return "", err
+		return Result{}, err
 	}
 	var prepared jobEnvelope
 	if err := c.request(ctx, http.MethodPost, "/api/v1/jobs/pre", pre, &prepared, http.StatusAccepted); err != nil {
-		return "", fmt.Errorf("remote PREPARE: %w", err)
+		return Result{}, fmt.Errorf("remote PREPARE: %w", err)
 	}
 	jobID := strings.TrimSpace(prepared.JobID)
 	if jobID == "" {
 		jobID = strings.TrimSpace(prepared.ID)
 	}
 	if jobID == "" {
-		return "", fmt.Errorf("remote PREPARE returned no job_id")
+		return Result{}, fmt.Errorf("remote PREPARE returned no job_id")
 	}
-	return jobID, nil
+	state := unwrap(prepared)
+	status := strings.ToUpper(strings.TrimSpace(state.Status))
+	if terminalJobStatus(status) {
+		return Result{JobID: jobID, Status: status}, &StaleJobError{JobID: jobID, Status: status}
+	}
+	return Result{JobID: jobID, Status: state.Status}, nil
+}
+
+// Prepare performs the Master's PREPARE phase and returns the job it created.
+//
+// It is split out of Submit so a caller can persist the job id BEFORE waiting
+// on it: the id is the only handle to a render that outlives this process, and
+// while it lived inside one blocking call a crash mid-render lost the address
+// of a job the Master kept running. It is the id-only projection of PrepareJob.
+func (c *Client) Prepare(ctx context.Context, pre map[string]any) (string, error) {
+	result, err := c.PrepareJob(ctx, pre)
+	return result.JobID, err
 }
 
 // Finalize performs the Master's FINALIZE phase for an already prepared job.
 // Idempotent-by-job-id on the caller's side: the phase names the job, so a
 // retried FINALIZE addresses the same Master job instead of creating one.
+//
+// A Master refusal that names a stale identity (a lease held elsewhere, or a
+// job already canceled) is classified as StaleJobError: replaying FINALIZE on
+// that id can never succeed, so the caller must replace it rather than retry.
 func (c *Client) Finalize(ctx context.Context, jobID string, finalize map[string]any) error {
 	if err := c.ready(); err != nil {
 		return err
@@ -118,7 +195,11 @@ func (c *Client) Finalize(ctx context.Context, jobID string, finalize map[string
 		return fmt.Errorf("remote FINALIZE requires a job id")
 	}
 	if err := c.request(ctx, http.MethodPost, "/api/v1/jobs/"+url.PathEscape(jobID)+"/finalize", finalize, nil, http.StatusAccepted); err != nil {
-		return fmt.Errorf("remote FINALIZE job %s: %w", jobID, err)
+		wrapped := fmt.Errorf("remote FINALIZE job %s: %w", jobID, err)
+		if staleJobResponse(wrapped.Error()) {
+			return &StaleJobError{JobID: jobID, Status: "LEASE_CONFLICT", Cause: wrapped}
+		}
+		return wrapped
 	}
 	return nil
 }

@@ -349,6 +349,7 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("final_job=true but remote final-job submitter is not configured"))
 		return false
 	}
+	r.auditFinalJobArtifactReuse(runID, result)
 	receipt := (*RemoteFinalJobResult)(nil)
 	if result != nil {
 		receipt = result.RemoteFinalJob

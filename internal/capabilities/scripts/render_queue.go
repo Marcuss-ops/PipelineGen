@@ -110,57 +110,14 @@ type QueueRenderEnqueuer struct {
 // important: sending PipelineGen's old v1 concrete document makes the worker
 // validate it against the v2 schema and fail before Chronon starts.
 func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
-	// Path (b) of the P5 A/B: one certified artifact per timeline + manifest.
-	// Explicit opt-in only; plans the composition cannot cover fall through to
-	// the per-item path unchanged (fail-closed rollback).
-	if overlayManifestTimelineEnabled() {
-		if eligible, _ := manifestTimelineEligible(plan); eligible {
-			return e.enqueueOverlayManifestTimeline(ctx, plan)
+	manifestCandidates, dedicatedCandidates := partitionOverlayRenderWork(plan)
+	if len(manifestCandidates) == 0 {
+		if len(dedicatedCandidates) == 0 {
+			return e.enqueueChrononPlan(ctx, plan, nil)
 		}
+		return e.enqueueDedicatedOverlayItems(ctx, plan, dedicatedCandidates)
 	}
-	switch resolveOverlayRenderMode(e, plan) {
-	case overlayRenderModeSingle, overlayRenderModeFused:
-		return e.enqueueSeparateOverlayItems(ctx, plan)
-	default:
-		return e.enqueueChrononPlan(ctx, plan, nil)
-	}
-}
-
-type overlayRenderMode string
-
-const (
-	overlayRenderModeScene  overlayRenderMode = "scene"
-	overlayRenderModeSingle overlayRenderMode = "single"
-	overlayRenderModeFused  overlayRenderMode = "fused"
-)
-
-// resolveOverlayRenderMode owns the scene/single/fused decision. Map backend
-// compatibility may force window rendering; otherwise the configured single
-// item policy selects it. The deterministic window planner then decides
-// whether any compatible window actually benefits from fusion.
-func resolveOverlayRenderMode(enqueuer *QueueRenderEnqueuer, plan capoverlay.OverlayPlan) overlayRenderMode {
-	if enqueuer == nil || len(plan.Items) == 0 {
-		return overlayRenderModeScene
-	}
-	if !enqueuer.separateItemRenders && !planNeedsPerItemMapRenders(plan) {
-		return overlayRenderModeScene
-	}
-	if !enqueuer.overlayWindowBatching {
-		return overlayRenderModeSingle
-	}
-	candidates := make([]overlayItemCandidate, 0, len(plan.Items))
-	for index, item := range plan.Items {
-		if isOverlayBackgroundTemplate(item.TemplateID) {
-			continue
-		}
-		candidates = append(candidates, overlayItemCandidate{index: index, source: item})
-	}
-	for _, work := range planOverlayBatchWork(plan, candidates) {
-		if len(work.candidates) > 1 {
-			return overlayRenderModeFused
-		}
-	}
-	return overlayRenderModeSingle
+	return e.enqueueOverlayManifestTimeline(ctx, plan, manifestCandidates, dedicatedCandidates)
 }
 
 // EnqueueFinalJobCompositePlan renders a complete opaque scene composition in

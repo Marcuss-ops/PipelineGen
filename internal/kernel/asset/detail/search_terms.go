@@ -1,14 +1,13 @@
 // Package asset — search-term pure helpers (Wave C / Phase 2 slim).
 //
-// Phase 2 (Wave C / Blocco 1 asset.Asset SSOT, June 2026): the 4 SQL
+// Phase 2 (Wave C / Blocco 1 asset.Asset SSOT, June 2026): the SQL
 // receivers (SearchByTerms/fetchClipsByIDs/UpdateSearchTerms/
-// RebuildSearchTerms) that used to live here are now canonical on
-// the LOCAL infra sqlite asset store
-// (internal/platform/sqlite/assets/search_terms_queries.go)
-// and reached via HYBRID-embed promotion. The `updateTermsInTx`
-// closure that `UpdateSearchTerms` used (lowercase, unexported) was
-// inlined into the infra file's `UpdateSearchTerms` implementation.
-// Don't restore the closure.
+// RebuildSearchTerms) that used to live here moved to the LOCAL infra
+// sqlite asset store and were then DELETED in the MEDIA LEGACY READ-PLANE
+// DEMOLITION (2026-09-16 RebuildSearchTerms; 2026-10-26 the rest — chained
+// dead once imagesregistry/search_queries.go, their only entry point, was
+// deleted; the clip_search_terms index they populated has no production
+// reader). Do not restore them: the media read plane is PostgreSQL.
 //
 // Pure helpers (DeriveSearchTerms/normalizeToken/addNormalized/
 // deriveStripper/mergeSearchTerms) STAY in domain: they have no SQL

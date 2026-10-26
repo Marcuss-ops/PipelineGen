@@ -70,30 +70,38 @@ func executeProfile(t *testing.T, ffmpeg, ffprobe string, profile MapEncodeProfi
 	return out
 }
 
-// TestMapProductionProfileExecutesOnGPU certifies the declared production
-// execution profile against real hardware: the exact ffmpeg arguments
-// MapEncodeVideoArgs emits for the default profile must encode H.264 on this
-// host's NVIDIA encoder. Hosts without NVENC skip — the profile is a
-// production-hardware contract, and a CPU-only machine was never promised it.
-func TestMapProductionProfileExecutesOnGPU(t *testing.T) {
+// TestMapLegacyGPUProfileExecutesOnGPU certifies the closed legacy NVENC
+// profile's ffmpeg shaping against real hardware: the exact arguments
+// MapEncodeVideoArgs emits must encode H.264 on this host's NVIDIA encoder.
+// Hosts without NVENC skip — the profile is a hardware contract. It stays
+// declarable and executable as WIRE CONTRACT for the future OpenCL-sampler
+// port, while the native render boundary rejects it (demolition debt).
+func TestMapLegacyGPUProfileExecutesOnGPU(t *testing.T) {
 	ffmpeg, ffprobe, ok := ffmpegAvailable()
 	if !ok {
 		t.Skip("ffmpeg/ffprobe toolchain not installed")
 	}
 	if !hostOffersNVENC(t, ffmpeg) {
-		t.Skip("host ffmpeg has no h264_nvenc; production GPU profile needs NVIDIA hardware")
+		t.Skip("host ffmpeg has no h264_nvenc; the legacy GPU profile needs NVIDIA hardware")
 	}
-	profile := DefaultMapEncodeProfile()
-	if profile.Codec != MapProductionCodec || !profile.ExpectGPU {
-		t.Fatalf("default profile = %+v, want production NVENC", profile)
+	profile, err := ResolveMapEncodeProfile(MapLegacyGPUCodec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Codec != MapLegacyGPUCodec || !profile.ExpectGPU {
+		t.Fatalf("legacy GPU profile = %+v, want the closed NVENC contract", profile)
+	}
+	if err := RequireNativeServableProfile(profile); err == nil {
+		t.Fatal("the legacy GPU profile must fail closed at the native render boundary")
 	}
 	out := executeProfile(t, ffmpeg, ffprobe, profile)
-	t.Logf("production profile certified on host GPU: %s", out)
+	t.Logf("legacy GPU profile shaping certified on host GPU: %s", out)
 }
 
-// TestMapCPUProfileExecutesWithoutGPU certifies the separately certified CPU
-// path the same way: the declared libx264 arguments must encode H.264 with
-// no GPU on any host carrying the ffmpeg toolchain.
+// TestMapCPUProfileExecutesWithoutGPU certifies the native renderer's
+// production profile the same way: the declared libx264 arguments must encode
+// H.264 with no GPU on any host carrying the ffmpeg toolchain, and the
+// profile must be servable by the native render boundary.
 func TestMapCPUProfileExecutesWithoutGPU(t *testing.T) {
 	ffmpeg, ffprobe, ok := ffmpegAvailable()
 	if !ok {
@@ -102,6 +110,9 @@ func TestMapCPUProfileExecutesWithoutGPU(t *testing.T) {
 	profile, err := ResolveMapEncodeProfile("libx264")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err := RequireNativeServableProfile(profile); err != nil {
+		t.Fatalf("the production CPU profile must be servable by the native renderer: %v", err)
 	}
 	out := executeProfile(t, ffmpeg, ffprobe, profile)
 	t.Logf("CPU profile certified without GPU: %s", out)

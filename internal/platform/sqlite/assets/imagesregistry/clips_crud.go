@@ -16,10 +16,12 @@ import (
 // canonical mutation surface (CRUD-shaped): Upsert + Get + GetClip, the
 // dispatcher-only UpsertClip + DeleteClip wrappers, and the typed
 // command-dispatcher Mutate entry point. SetIndexState/SoftDelete
-// live in clips_index_state.go; tx-scoped mutations in clips_transactions.go;
-// filtered Count in clips_queries.go. The ResolveBy* lookups moved to the
-// PostgreSQL media SSOT (pgmedia.MediaSearcher) when clips_resolution.go was
-// deleted on 2026-09-20.
+// live in clips_index_state.go; tx-scoped mutations in clips_transactions.go.
+// The ResolveBy* lookups moved to the PostgreSQL media SSOT
+// (pgmedia.MediaSearcher) when clips_resolution.go was deleted on 2026-09-20,
+// and the filtered Count of clips_queries.go died with that file on 2026-10-26
+// (zero call sites — every count in the tree resolves on the media SSOT or on
+// the un-filtered metric surface of clips_repository_queries.go).
 //
 // MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21): SourceVersionFor is DELETED
 // together with source_version.go (this method was its only wrapper). The
