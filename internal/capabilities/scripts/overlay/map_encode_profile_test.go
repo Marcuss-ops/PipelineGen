@@ -104,29 +104,26 @@ func TestValidateMapEncoderTelemetryRefusesAnotherProfile(t *testing.T) {
 	}
 }
 
-// TestMapDiagnosticCannotForceNativeForDynamicContent is the parity gate: the
-// native MAP compiler has no tile pyramid, label animations or editorial
-// compositor, so visual parity with the dynamic renderer is NOT established.
-// The diagnostic opt-in therefore only ever applies to static content — a
-// composition needing dynamic-only capabilities still resolves to the dynamic
-// backend. Removing the native camera gap (true visual parity) is what would
-// allow this gate to open, never a flag flip.
+// TestMapDiagnosticCannotForceNativeForDynamicContent is the parity gate:
+// the native MAP compiler has no tile pyramid, label animations or editorial
+// compositor. A composition needing unported capabilities fails closed with a
+// typed error — it is never silently downgraded to a backend that cannot draw
+// it. The diagnostic opt-in only ever applies to static content.
 func TestMapDiagnosticCannotForceNativeForDynamicContent(t *testing.T) {
 	dynamic := capabilityoverlay.OverlayItem{ID: "map-1", Kind: "map",
 		Map:    &capabilityoverlay.MapOverlay{},
 		Params: map[string]any{"map_animation": "region_zoom", "map_pin_timing": map[string]any{}},
 	}
-	backend, _, err := ResolveMapItemBackend(dynamic, true)
-	if err != nil {
-		t.Fatalf("dynamic requirements must resolve: %v", err)
+	if backend, _, err := ResolveMapItemBackend(dynamic, true); err == nil && backend == MapBackendNative {
+		t.Fatalf("unported dynamic content must never resolve to the native compiler (got %q)", backend)
 	}
-	if backend != MapBackendPython {
-		t.Fatalf("diagnostic native render of dynamic content = %q, want python until visual parity exists", backend)
+	if _, _, err := ResolveMapItemBackend(dynamic, true); err == nil {
+		t.Fatal("unported dynamic content must fail closed until it is ported")
 	}
 	static := capabilityoverlay.OverlayItem{ID: "map-2", Kind: "map",
 		Map: &capabilityoverlay.MapOverlay{},
 	}
-	backend, _, err = ResolveMapItemBackend(static, true)
+	backend, _, err := ResolveMapItemBackend(static, true)
 	if err != nil {
 		t.Fatalf("static requirements must resolve: %v", err)
 	}
@@ -137,7 +134,7 @@ func TestMapDiagnosticCannotForceNativeForDynamicContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("static requirements must resolve: %v", err)
 	}
-	if backend != MapBackendPython {
-		t.Fatalf("production (no diagnostic) keeps the certified dynamic presentation = %q, want python", backend)
+	if backend != MapBackendDynamic {
+		t.Fatalf("production keeps the certified dynamic presentation = %q, want dynamic", backend)
 	}
 }

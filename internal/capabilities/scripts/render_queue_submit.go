@@ -54,7 +54,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	mapItemCount := len(decisions)
 	pythonMapCount := 0
 	for _, decision := range decisions {
-		if decision.backend == scriptoverlay.MapBackendPython {
+		if decision.backend == scriptoverlay.MapBackendDynamic {
 			pythonMapCount++
 		}
 	}

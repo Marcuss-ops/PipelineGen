@@ -7,9 +7,10 @@
 // determina quale backend supporta la composizione richiesta:
 //
 //	Native Chronon — mappe già supportate dal compiler nativo.
-//	Python Map Backend — composizioni avanzate non ancora portate.
+//	Dynamic Map Renderer — il porting nativo di ChrononPlugin.
 //
-// Da conservare: il backend Python in ChrononTemplate finché non c'è parità.
+// Un solo renderer dinamico: il porting nativo (maps_dynamic_map_render).
+// Le composizioni non ancora portate falliscono chiuso con errore tipizzato.
 // La queue coordina i render cartografici come gli altri render (stesso job,
 // retry, storage, pubblicazione), con classe di concorrenza separata a 1.
 package overlay
@@ -25,8 +26,8 @@ import (
 type MapBackend string
 
 const (
-	MapBackendNative MapBackend = "native"
-	MapBackendPython MapBackend = "python"
+	MapBackendNative  MapBackend = "native"
+	MapBackendDynamic MapBackend = "dynamic"
 )
 
 // MapRenderRequirements is what ONE map composition actually needs from its
@@ -72,18 +73,15 @@ func NativeMapCapabilities() MapBackendCapabilities {
 	}
 }
 
-// PythonMapCapabilities: ChrononTemplate's dynamic tile-pyramid renderer is
-// the only backend for live camera tours, camera flyovers, label animations,
-// editorial compositions, multi-pin systems and per-pin spoken timing.
-func PythonMapCapabilities() MapBackendCapabilities {
+// DynamicMapCapabilities: the native dynamic map renderer of ChrononPlugin
+// (maps_dynamic_map_render) draws the editorial vector basemap with the
+// certified dive flyover and camera-aligned labels. Multi-stop camera tours,
+// label animations, editorial compositions and per-pin spoken timing are not
+// ported yet: those requirements fail closed with a typed error.
+func DynamicMapCapabilities() MapBackendCapabilities {
 	return MapBackendCapabilities{
-		StaticPlates:          true,
-		CameraFlyOver:         true,
-		DynamicCameraTours:    true,
-		LabelAnimations:       true,
-		EditorialCompositions: true,
-		MultiPinSystems:       true,
-		PerPinTiming:          true,
+		StaticPlates:  true,
+		CameraFlyOver: true,
 	}
 }
 
@@ -107,9 +105,9 @@ func ResolveMapBackendFor(r MapRenderRequirements) (MapBackend, string, error) {
 		backend MapBackend
 		caps    MapBackendCapabilities
 	}{
-		// Python first: the dynamic renderer covers every requirement, while
-		// the native compiler is the certified static/LOD path.
-		{MapBackendPython, PythonMapCapabilities()},
+		// The dynamic renderer first; the native compiler is the certified
+		// static/LOD plate path.
+		{MapBackendDynamic, DynamicMapCapabilities()},
 		{MapBackendNative, NativeMapCapabilities()},
 	} {
 		if candidate.caps.Satisfies(r) {
@@ -124,7 +122,7 @@ func ResolveMapBackendFor(r MapRenderRequirements) (MapBackend, string, error) {
 // projection of ResolveMapBackendFor over the classic two-flag input.
 func ResolveMapBackend(hasCamera, hasLabelComposition bool) MapBackend {
 	if hasCamera || hasLabelComposition {
-		return MapBackendPython
+		return MapBackendDynamic
 	}
 	return MapBackendNative
 }
@@ -203,9 +201,6 @@ func MapExecutionPolicyFromEnv(nativeDiagnostic bool, override string) MapExecut
 // item count).
 func ResolveMapItemBackendWithPolicy(item capabilityoverlay.OverlayItem, policy MapExecutionPolicy) (MapBackend, string, error) {
 	req := MapRenderRequirementsFor(item)
-	if policy != MapExecutionDiagnosticNative && item.Map != nil {
-		req.DynamicCameraTour = true
-	}
 	if policy == MapExecutionDiagnosticNative && NativeMapCapabilities().Satisfies(req) {
 		return MapBackendNative, "policy=diagnostic_native: native compiler covers all map render requirements", nil
 	}

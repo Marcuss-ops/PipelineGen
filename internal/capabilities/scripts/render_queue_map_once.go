@@ -31,13 +31,14 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	sampler := dynamicMapSamplerForProfile(encodeProfile)
 	mapAnimationForAdmission, _ := plan.Items[0].Params["map_animation"].(string)
 	needsGPUAdmission := mapRenderRequiresGPU(encodeProfile, sampler, mapAnimationForAdmission)
-	plateGenerator := strings.TrimSpace(os.Getenv("VELOX_GEO_MAP_PLATE_GENERATOR_PATH"))
-	if plateGenerator == "" {
-		return "", fmt.Errorf("VELOX_GEO_MAP_PLATE_GENERATOR_PATH is not configured")
+	// Single map lane: the native renderer of ChrononPlugin (the Python
+	// renderer is retired — TICKET-MAPS-NATIVE-PORT fase 7).
+	nativeRenderer := strings.TrimSpace(os.Getenv("VELOX_MAP_NATIVE_RENDERER_PATH"))
+	if nativeRenderer == "" {
+		return "", fmt.Errorf("VELOX_MAP_NATIVE_RENDERER_PATH is not configured")
 	}
-	scriptPath := filepath.Join(filepath.Dir(plateGenerator), "map", "render_dynamic_map_overlay.py")
-	if _, err := os.Stat(scriptPath); err != nil {
-		return "", fmt.Errorf("find Chronon map renderer %s: %w", scriptPath, err)
+	if _, err := os.Stat(nativeRenderer); err != nil {
+		return "", fmt.Errorf("find Chronon native map renderer %s: %w", nativeRenderer, err)
 	}
 	tmpDir, err := os.MkdirTemp("", "pipelinegen-dynamic-map-")
 	if err != nil {
@@ -224,7 +225,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	if err := os.WriteFile(inputPath, encoded, 0600); err != nil {
 		return "", fmt.Errorf("write map render input: %w", err)
 	}
-	rendererFingerprint, err := dynamicMapRendererFingerprint(scriptPath, plateGenerator)
+	rendererFingerprint, err := dynamicMapRendererFingerprint(nativeRenderer)
 	if err != nil {
 		return "", fmt.Errorf("identify dynamic map renderer dependencies: %w", err)
 	}
@@ -242,7 +243,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 		defer release()
 	}
 	if !cacheHit {
-		cmd := exec.CommandContext(ctx, "/usr/bin/python3", scriptPath, "--input", inputPath,
+		cmd := exec.CommandContext(ctx, nativeRenderer, "--input", inputPath,
 			"--output", outputPath, "--summary-output", summaryPath)
 		var output boundedMapRenderOutput
 		cmd.Stdout, cmd.Stderr = &output, &output

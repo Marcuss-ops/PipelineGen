@@ -173,7 +173,7 @@ func (e *QueueRenderEnqueuer) PreMaterializeDynamicMapVideo(ctx context.Context,
 func (e *QueueRenderEnqueuer) preMaterializeMapUnit(ctx context.Context, semanticPlan capoverlay.OverlayPlan, decisions []planMapBackend) error {
 	pythonMaps := 0
 	for _, decision := range decisions {
-		if decision.backend == scriptoverlay.MapBackendPython {
+		if decision.backend == scriptoverlay.MapBackendDynamic {
 			pythonMaps++
 		}
 	}
