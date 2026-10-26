@@ -19,8 +19,6 @@ require (
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-contrib/gzip v1.2.6
 	github.com/gin-gonic/gin v1.12.0
-	github.com/go-playground/universal-translator v0.18.1
-	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/uuid v1.6.0
 	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/prometheus/client_golang v1.24.1
@@ -35,7 +33,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-require golang.org/x/net v0.57.0 // indirect
+require (
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-playground/validator/v10 v10.30.3 // indirect
+	golang.org/x/net v0.57.0 // indirect
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
