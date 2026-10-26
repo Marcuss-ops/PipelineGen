@@ -46,9 +46,10 @@ type canonicalMotionUniverse struct {
 	// production palette the dynamic-map renderer validates against
 	// (is_basemap_style).
 	basemapStyleIDs map[string]bool
-	// mapMotionIDs is parsed from the python map renderer vocabulary tables
+	// mapMotionIDs is parsed from the map renderer vocabulary tables
 	// (MAP_LABEL_ANIMATIONS, MAP_CAMERA_ANIMATIONS and siblings): these are
-	// the ids render_dynamic_map_overlay.py and the geo camera accept.
+	// the ids the geo camera accepts (the dynamic lane is the native renderer
+	// of ChrononPlugin since the Python renderer was retired).
 	mapMotionIDs map[string]bool
 }
 
@@ -154,23 +155,31 @@ func loadCanonicalMotionUniverse(t *testing.T) canonicalMotionUniverse {
 		universe.basemapStyleIDs[style] = true
 	}
 	scanExecutorVocabulary := func(dir string) {
-		files, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), "*.py"))
-		if err != nil {
-			return
-		}
 		wordRe := regexp.MustCompile(`"([a-z][a-z0-9_]+)"`)
-		for _, file := range files {
-			data, err := os.ReadFile(file)
+		for _, pattern := range []string{"*.py", "*.cpp", "*.hpp"} {
+			files, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(dir), pattern))
 			if err != nil {
 				continue
 			}
-			for _, m := range wordRe.FindAllStringSubmatch(string(data), -1) {
-				universe.mapMotionIDs[m[1]] = true
+			for _, file := range files {
+				data, err := os.ReadFile(file)
+				if err != nil {
+					continue
+				}
+				for _, m := range wordRe.FindAllStringSubmatch(string(data), -1) {
+					universe.mapMotionIDs[m[1]] = true
+				}
 			}
 		}
 	}
 	scanExecutorVocabulary("ChrononTemplate/tools/map")
 	scanExecutorVocabulary("ChrononPlugin/plugins/maps/tools/cartography")
+	// The dynamic map lane is the native renderer of ChrononPlugin: its
+	// sources are the verified executor vocabulary since the Python renderer
+	// was retired (2026-10-26).
+	scanExecutorVocabulary("ChrononPlugin/plugins/maps/src")
+	scanExecutorVocabulary("ChrononPlugin/plugins/maps/include/chrononplugin/maps")
+	scanExecutorVocabulary("ChrononPlugin/plugins/maps/tools/map_native")
 	scanExecutorVocabulary("Chronon3d/tools/cartography")
 	var chronon struct {
 		Motions []struct {

@@ -1,12 +1,9 @@
 package scriptgeneration
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 
@@ -250,7 +247,7 @@ func planNeedsPerItemMapRenders(plan capoverlay.OverlayPlan) bool {
 	}
 	pythonMaps := 0
 	for _, decision := range decisions {
-		if decision.backend == scriptoverlay.MapBackendPython {
+		if decision.backend == scriptoverlay.MapBackendDynamic {
 			pythonMaps++
 		}
 	}
@@ -286,69 +283,22 @@ func mapEntityLineage(mapOverlay *capoverlay.MapOverlay) ([]string, []string) {
 
 // ── dynamic map renderer fingerprint (moved from render_queue_map.go) ──
 
-// dynamicMapRendererFingerprint covers the Python modules that implement the
-// renderer, camera, sampler, tile pyramid, compositions, and offline map data.
-// Hashing only render_dynamic_map_overlay.py allowed a cached MP4 to survive
-// behavior changes in imported modules.
-func dynamicMapRendererFingerprint(scriptPath, plateGenerator string) (string, error) {
-	mapDir := filepath.Dir(scriptPath)
-	workspace := filepath.Dir(filepath.Dir(filepath.Dir(plateGenerator)))
-	assetDir := filepath.Join(mapDir, "assets")
-	type source struct {
-		root      string
-		namespace string
-		path      string
+// dynamicMapRendererFingerprint is the cache identity of the map renderer:
+// the SHA-256 of the native renderer binary (ChrononPlugin's
+// maps_dynamic_map_render). The binary IS the built renderer code — camera,
+// sampler, tile raster, labels — so any rebuild invalidates cached MP4s. The
+// renderer additionally bakes its own source fingerprint into the telemetry
+// summary (renderer_fingerprint), so an artifact can always be re-attributed
+// to the code that produced it.
+func dynamicMapRendererFingerprint(nativeRenderer string) (string, error) {
+	data, err := os.ReadFile(nativeRenderer)
+	if err != nil {
+		return "", err
 	}
-	var files []source
-	for _, candidate := range []struct {
-		root      string
-		namespace string
-	}{
-		{root: mapDir, namespace: "map"},
-		{root: filepath.Join(workspace, "Chronon3d", "tools", "cartography"), namespace: "cartography"},
-	} {
-		root := candidate.root
-		if _, err := os.Stat(root); err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return "", err
-		}
-		err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if entry.IsDir() {
-				return nil
-			}
-			isAsset := candidate.namespace == "map" && strings.HasPrefix(path, assetDir+string(filepath.Separator))
-			if strings.HasSuffix(strings.ToLower(entry.Name()), ".py") || isAsset {
-				files = append(files, source{root: root, namespace: candidate.namespace, path: path})
-			}
-			return nil
-		})
-		if err != nil {
-			return "", err
-		}
+	if len(data) == 0 {
+		return "", fmt.Errorf("native map renderer %s is empty", nativeRenderer)
 	}
-	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
-	var manifest bytes.Buffer
-	for _, file := range files {
-		rel, err := filepath.Rel(file.root, file.path)
-		if err != nil {
-			return "", err
-		}
-		manifest.WriteString(file.namespace + "\x00" + rel + "\x00")
-		data, err := os.ReadFile(file.path)
-		if err != nil {
-			return "", err
-		}
-		manifest.Write(data)
-	}
-	if len(files) == 0 {
-		return "", fmt.Errorf("no dynamic-map renderer sources found under %s", mapDir)
-	}
-	return digest.SHA256Bytes(manifest.Bytes()), nil
+	return digest.SHA256Bytes(data), nil
 }
 
 // ── dynamic map import attestation (merged from render_queue_map_import.go) ──

@@ -10,11 +10,11 @@ func TestResolveMapBackend(t *testing.T) {
 	if got := ResolveMapBackend(false, false); got != MapBackendNative {
 		t.Fatalf("plain geo → native, got %q", got)
 	}
-	if got := ResolveMapBackend(true, false); got != MapBackendPython {
-		t.Fatalf("camera → python, got %q", got)
+	if got := ResolveMapBackend(true, false); got != MapBackendDynamic {
+		t.Fatalf("camera → dynamic, got %q", got)
 	}
-	if got := ResolveMapBackend(false, true); got != MapBackendPython {
-		t.Fatalf("label/composition → python, got %q", got)
+	if got := ResolveMapBackend(false, true); got != MapBackendDynamic {
+		t.Fatalf("label/composition → dynamic, got %q", got)
 	}
 }
 
@@ -26,8 +26,7 @@ func TestMapBackendIsDecidedByCapabilitiesNotItemCount(t *testing.T) {
 	mapItem := func(id string) capabilityoverlay.OverlayItem {
 		return capabilityoverlay.OverlayItem{
 			ID: id, Kind: "map",
-			Map:    &capabilityoverlay.MapOverlay{Pins: []capabilityoverlay.MapOverlayPin{{ID: "p1"}}},
-			Params: map[string]any{"map_animation": "pulse_marker"},
+			Map: &capabilityoverlay.MapOverlay{Pins: []capabilityoverlay.MapOverlayPin{{ID: "p1"}}},
 		}
 	}
 	single := capabilityoverlay.OverlayPlan{Items: []capabilityoverlay.OverlayItem{mapItem("map-1")}}
@@ -38,8 +37,8 @@ func TestMapBackendIsDecidedByCapabilitiesNotItemCount(t *testing.T) {
 			if err != nil {
 				t.Fatalf("map %s requirements do not resolve: %v", item.ID, err)
 			}
-			if backend != MapBackendPython {
-				t.Fatalf("map %s backend = %q, want python (dynamic composition)", item.ID, backend)
+			if backend != MapBackendDynamic {
+				t.Fatalf("map %s backend = %q, want dynamic (the single map renderer)", item.ID, backend)
 			}
 		}
 	}
@@ -48,17 +47,23 @@ func TestMapBackendIsDecidedByCapabilitiesNotItemCount(t *testing.T) {
 // TestResolveMapBackendForFailsClosedOnUncoveredRequirements proves an
 // unmet requirement is a typed error, never a silent downgrade.
 func TestResolveMapBackendForFailsClosedOnUncoveredRequirements(t *testing.T) {
-	if _, _, err := ResolveMapBackendFor(MapRenderRequirements{StaticPlate: true, EditorialComposition: true}); err != nil {
-		t.Fatalf("editorial composition must resolve to the dynamic renderer: %v", err)
+	if _, _, err := ResolveMapBackendFor(MapRenderRequirements{StaticPlate: true, EditorialComposition: true}); err == nil {
+		t.Fatal("editorial composition is not ported: resolution must fail closed")
 	}
-	if _, _, err := ResolveMapBackendFor(MapRenderRequirements{StaticPlate: true, DynamicCameraTour: true, PerPinTiming: true}); err != nil {
-		t.Fatalf("per-pin timing must resolve to the dynamic renderer: %v", err)
+	if _, _, err := ResolveMapBackendFor(MapRenderRequirements{StaticPlate: true, DynamicCameraTour: true, PerPinTiming: true}); err == nil {
+		t.Fatal("per-pin timing is not ported: resolution must fail closed")
 	}
 	if !NativeMapCapabilities().Satisfies(MapRenderRequirements{StaticPlate: true, CameraFlyOver: true}) {
 		t.Fatal("native backend must cover certified plate + LOD camera fly-to")
 	}
+	if !DynamicMapCapabilities().Satisfies(MapRenderRequirements{StaticPlate: true, CameraFlyOver: true}) {
+		t.Fatal("dynamic renderer must cover the ported base flyover")
+	}
 	if NativeMapCapabilities().Satisfies(MapRenderRequirements{StaticPlate: true, PerPinTiming: true}) {
 		t.Fatal("native backend claims per-pin spoken timing it cannot render")
+	}
+	if DynamicMapCapabilities().Satisfies(MapRenderRequirements{StaticPlate: true, PerPinTiming: true}) {
+		t.Fatal("the dynamic renderer claims per-pin spoken timing it cannot render")
 	}
 }
 
