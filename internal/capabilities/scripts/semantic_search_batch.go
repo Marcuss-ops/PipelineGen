@@ -100,6 +100,10 @@ type SemanticSearchBatchConfig struct {
 	Cache SemanticSearchCache
 	// CacheTTL is how long a cached provider answer stays valid.
 	CacheTTL time.Duration
+	// StableEntityCacheTTL gives durable place and organization answers a
+	// longer lifetime. Provider invalidation remains available when a source
+	// index changes.
+	StableEntityCacheTTL time.Duration
 	// DisableCache turns the plan cache off for a measurement that must hit
 	// the provider every time.
 	DisableCache bool
@@ -111,14 +115,15 @@ type SemanticSearchBatchConfig struct {
 // per planned composition.
 func DefaultSemanticSearchBatchConfig() SemanticSearchBatchConfig {
 	return SemanticSearchBatchConfig{
-		Limit:            8,
-		QueryTimeout:     10 * time.Second,
-		MaxQueries:       256,
-		MaxConcurrency:   4,
-		RateLimitRetries: 2,
-		Budget:           defaultSemanticSearchBudget(),
-		Cache:            NewSemanticSearchPlanCache(512),
-		CacheTTL:         time.Hour,
+		Limit:                8,
+		QueryTimeout:         10 * time.Second,
+		MaxQueries:           256,
+		MaxConcurrency:       4,
+		RateLimitRetries:     2,
+		Budget:               defaultSemanticSearchBudget(),
+		Cache:                NewSemanticSearchPlanCache(512),
+		CacheTTL:             time.Hour,
+		StableEntityCacheTTL: 30 * 24 * time.Hour,
 	}
 }
 
@@ -160,6 +165,9 @@ func (c SemanticSearchBatchConfig) normalized() SemanticSearchBatchConfig {
 	}
 	if c.CacheTTL <= 0 {
 		c.CacheTTL = defaults.CacheTTL
+	}
+	if c.StableEntityCacheTTL <= 0 {
+		c.StableEntityCacheTTL = defaults.StableEntityCacheTTL
 	}
 	if c.DisableCache {
 		c.Cache = nil

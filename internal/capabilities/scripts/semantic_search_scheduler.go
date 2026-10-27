@@ -177,13 +177,18 @@ func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt Semantic
 	}
 	release := p.cacheLocks.Lock(key)
 	defer release()
-	if entry, ok := p.cfg.Cache.Get(ctx, key); ok && p.nowTime().Sub(entry.StoredAt) <= p.cfg.CacheTTL {
+	cacheTTL := p.cfg.CacheTTL
+	if attempt.Class == SearchClassLocation || attempt.Class == SearchClassOrganization {
+		cacheTTL = p.cfg.StableEntityCacheTTL
+	}
+	if entry, ok := p.cfg.Cache.Get(ctx, key); ok && p.nowTime().Sub(entry.StoredAt) <= cacheTTL {
 		return entry.Response, true, 0, false, nil
 	}
 	response, latency, rateLimited, err := p.searchWithBudget(ctx, attempt, language)
 	if err == nil && len(response.Hits) > 0 {
+		storedAt := p.nowTime()
 		p.cfg.Cache.Put(ctx, key, SemanticSearchCacheEntry{
-			Response: response, StoredAt: p.nowTime(),
+			Response: response, StoredAt: storedAt, ExpiresAt: storedAt.Add(cacheTTL),
 			Provider: cacheAnswerProvider(response), ProviderLane: attempt.Class.ProviderLane(),
 		})
 	}

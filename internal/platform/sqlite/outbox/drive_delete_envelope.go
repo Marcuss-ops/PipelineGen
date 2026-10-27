@@ -1,6 +1,6 @@
 // Package outbox — drive_delete_envelope.go
 //
-// Producer-side mirror of application/jobs/outbox.DriveDeleteHandler.
+// Producer-side mirror of internal/capabilities/jobs.DriveDeleteHandler.
 // v1 wire envelope for the Drive Trash (or hard-Delete) step of the
 // deletion state machine (Blocco 3.1, June 2026):
 //
@@ -9,15 +9,15 @@
 // Convention parallels delete_envelope.go: this envelope is emitted by
 // outbox.Dispatcher.EnqueueDriveDelete (tx-bound). The schema_version
 // literal MUST match the consumer's DriveDeleteRequestSchemaVersion
-// constant (declared in application/jobs/outbox/drive_delete.go when
-// Blocco 3.1 lands) — mismatch is classified as TERMINAL by the
+// constant (declared in internal/capabilities/jobs/drive_delete.go —
+// Blocco 3.1 landed) — mismatch is classified as TERMINAL by the
 // consumer (QDRANT-002 PR4 invariant I, June 2026).
 //
 // Permanently is the only Blocco 3.1 addition over delete_envelope.go:
 // true routes Drive.Delete (permanent, Files.Delete SDK call); false
 // routes Drive.Trash (recoverable, Files.Update{Trashed:true}). The
 // consumer-side decision lives in DriveDeleteHandler in
-// application/jobs/outbox/drive_delete.go.
+// internal/capabilities/jobs/drive_delete.go.
 package outbox
 
 import (
@@ -33,7 +33,7 @@ import (
 // DriveDeleteRequestSchemaVersion is the canonical, EXACT string the
 // handler accepts (mirrors DeleteRequestSchemaVersion in delete_envelope.go
 // and the consumer-side counterparts in
-// application/jobs/outbox/index_delete.go::DeleteRequestSchemaVersion +
+// internal/capabilities/jobs/index_delete.go::DeleteRequestSchemaVersion +
 // .../drive_delete.go::DriveDeleteRequestSchemaVersion which the
 // consumer declares at its own scope).
 //

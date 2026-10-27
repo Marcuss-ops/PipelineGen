@@ -119,19 +119,16 @@ func TestFingerprint_IncludesExecutionGPURequirement(t *testing.T) {
 		t.Fatalf("execution.require_gpu must be part of the fingerprint, got the same digest %q", fpPlain)
 	}
 
-	// require_zero_copy is fail-closed by construction (no backend certifies
-	// video_zero_copy), so it must address a distinct byte-identity too rather
-	// than aliasing onto the request it would otherwise be indistinguishable
-	// from.
+	// require_zero_copy is UNSATISFIABLE (no backend certifies video_zero_copy)
+	// and is rejected at the request gate (Validate), so it can never reach the
+	// render cache at all: Fingerprint refuses it exactly like every other
+	// invalid request. That is a stronger cache-safety property than a distinct
+	// byte-identity — the request addresses NO artifact, ever.
 	zeroCopy := classicPaleOliveRequest()
 	zeroCopy.Execution = &ExecutionSpec{RequireZeroCopy: true}
 	zeroCopy.Normalize()
-	fpZeroCopy, err := zeroCopy.Fingerprint()
-	if err != nil {
-		t.Fatalf("Fingerprint zero-copy: %v", err)
-	}
-	if fpZeroCopy == fpPlain {
-		t.Fatalf("execution.require_zero_copy must be part of the fingerprint, got the same digest %q", fpPlain)
+	if _, err := zeroCopy.Fingerprint(); err == nil {
+		t.Fatal("Fingerprint must reject execution.require_zero_copy (unsatisfiable demand, refused at the request gate)")
 	}
 }
 

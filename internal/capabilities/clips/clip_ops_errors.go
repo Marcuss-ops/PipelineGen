@@ -5,8 +5,9 @@ import "errors"
 // ── Typed error sentinels for the fix-hash flow (S1d, June 2026) ───────
 //
 // Pair with errors.Is for branching on caller-side. The handler layer
-// (api/assets/clips/clip_ops.go::HandleFixHash) translates each sentinel
-// into the canonical HTTP status code:
+// (HandleFixHash in internal/capabilities/assets/clips/
+// clip_integrity_handler.go) translates each sentinel into the canonical
+// HTTP status code:
 //
 //	ErrFixHashVoiceoverUnsupported   → 400 (unsupported source)
 //	ErrFixHashMissingDriveLink       → 409 (clip has no Drive mirror)

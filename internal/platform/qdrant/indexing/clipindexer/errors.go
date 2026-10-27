@@ -7,7 +7,7 @@
 // godlike/06 SSOT: this file is the SOLE declaration surface
 // for the typed-error contract that ships across package
 // boundaries. A second declaration elsewhere (e.g. in
-// application/jobs/outbox/indexing.go mimicking the same
+// internal/capabilities/jobs/index_delete.go mimicking the same
 // message) is a godlike/06 drift anti-pattern — every consumer
 // imports this symbol via the canonical import path.
 package clipindexer

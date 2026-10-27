@@ -38,7 +38,9 @@ echo ""
 
 export OAUTHLIB_INSECURE_TRANSPORT=1
 
-python3 "${REPO_ROOT}/scripts/tools/generate_drive_token.py" \
+# Single source of truth: scripts/generate_drive_token.py is the canonical
+# token-regeneration tool (AGENTS.md "Authentication SSOT").
+python3 "${REPO_ROOT}/scripts/generate_drive_token.py" \
     --credentials "$CRED_FILE" \
     --token "$TOKEN_FILE" \
     --manual

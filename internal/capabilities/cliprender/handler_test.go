@@ -241,6 +241,31 @@ func TestRenderHandler_RejectsMissingSourceAsset(t *testing.T) {
 	}
 }
 
+// TestRenderHandler_RejectsRequireZeroCopy verifies the wire-level edge
+// fail-fast for execution.require_zero_copy: 400 INVALID_PAYLOAD naming the
+// reason, and NO enqueue — an unsatisfiable demand must fail at the transport
+// boundary, never as a job that burns a full GPU render to fail afterwards.
+func TestRenderHandler_RejectsRequireZeroCopy(t *testing.T) {
+	jobsSvc := &stubJobsSvc{}
+	r := newTestRouter(jobsSvc)
+
+	rec := doRender(r, `{"source_asset_id": "x", "execution": {"require_zero_copy": true}}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status: got %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp renderResponse
+	_ = json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp.Status != StatusError || resp.ErrorCode != ErrCodeInvalidPayload {
+		t.Errorf("resp: got %+v, want status=error error_code=INVALID_PAYLOAD", resp)
+	}
+	if !strings.Contains(resp.Error, "require_zero_copy") {
+		t.Errorf("error should mention require_zero_copy; got %q", resp.Error)
+	}
+	if jobsSvc.enqueued != nil {
+		t.Error("enqueue must not be called for an unsatisfiable execution demand")
+	}
+}
+
 // TestRenderHandler_RejectsUnknownField verifies the strict decoder
 // rejects undeclared JSON fields (UNKNOWN_FIELD).
 func TestRenderHandler_RejectsUnknownField(t *testing.T) {

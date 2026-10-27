@@ -10,8 +10,8 @@
 // This package owns BOTH the business contract (request.go), the job
 // handler binding (worker.go) and the HTTP transport (handler.go +
 // contract.go). Transport lives in the capability (a target root) per
-// the architecture migration policy: internal/api is migration-only and
-// forbids new files, so the capability owns its own thin gin surface
+// the architecture migration policy: the retired internal/api root
+// takes no new files, so the capability owns its own thin gin surface
 // (mirror of internal/capabilities/jobs/transport).
 //
 // Capability Standard module.go contract:

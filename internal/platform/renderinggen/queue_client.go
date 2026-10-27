@@ -224,6 +224,12 @@ func (e *ClipRenderExecutor) SetPollInterval(interval time.Duration) *ClipRender
 
 // SetChunking enables the conservative production chunk policy for long,
 // source-only clips. Composition plans remain exclusive.
+//
+// HONEST STATUS: production wiring calls this (clip_render_runtime.go), but
+// the chunk path is DORMANT for every valid plan — see chunkPolicy and the
+// pins in TestChunkPolicyIsDormantForEverySealedPlan. Configuring chunking
+// today buys nothing and costs nothing; enabling it requires audio-aware
+// assembly (video-only children + one full-audio mux at the anchor).
 func (e *ClipRenderExecutor) SetChunking(chunkDuration time.Duration, alignmentFrames int64, chunkMax int) *ClipRenderExecutor {
 	if e == nil {
 		return e
@@ -338,8 +344,18 @@ func (e *ClipRenderExecutor) chunkPolicy(plan cliprender.ClipRenderPlanV1) (int,
 	// Chunk assembly is video-only. Audio packet boundaries and the source
 	// audio policy belong to the complete clip, so splitting a plan that carries
 	// audio can produce failed children or an assembled parent without audio.
-	// Keep this guard here, next to the transport optimisation it protects:
-	// every valid compiled clip plan currently carries a non-empty audio mode.
+	//
+	// HONEST POLICY (pinned by TestChunkPolicyIsDormantForEverySealedPlan):
+	// this guard makes chunking DORMANT for every valid plan by construction.
+	// The seal validator REQUIRES a non-empty audio mode
+	// (copy_if_compatible|transcode), so the only shape this policy accepts
+	// (Audio.Mode == "") is exactly the shape plan.Validate() rejects — and
+	// Submit validates before chunkPolicy while RenderJobID's anchor path goes
+	// through BuildChunkSet, which validates too. The chunk family can never
+	// fire today: the machinery is wired but asleep. Unlocking chunking is NOT
+	// a policy tweak — children must render video-only and the anchor must mux
+	// the full source audio once (audio-aware assembly). Until that lands, this
+	// guard keeps the dormant niche honest instead of pretending it is live.
 	if plan.Audio.Mode != "" {
 		return 0, 0, false
 	}

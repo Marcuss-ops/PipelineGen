@@ -47,6 +47,7 @@ type ImagesCoreDeps struct {
 // surface.
 type ImagesStorageDeps struct {
 	ImageRepo    ImageRepository
+	LocalIndex   LocalResolvedImageIndex
 	DriveReader  imageingest.DriveReader
 	Publisher    delivery.Publisher
 	DestResolver DestinationResolver

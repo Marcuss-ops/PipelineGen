@@ -78,7 +78,7 @@ func (a *SQLiteSemanticPlanCacheAdapter) Get(ctx context.Context, key string) (s
 		return scriptgen.SemanticSearchCacheEntry{}, false
 	}
 	return scriptgen.SemanticSearchCacheEntry{
-		Response: response, StoredAt: storedAt,
+		Response: response, StoredAt: storedAt, ExpiresAt: expiresAt,
 		Provider: provider, ProviderLane: lane,
 	}, true
 }
@@ -99,7 +99,11 @@ func (a *SQLiteSemanticPlanCacheAdapter) Put(ctx context.Context, key string, en
 		storedAt = a.now()
 	}
 	storedAt = storedAt.UTC()
-	expiresAt := storedAt.Add(a.ttl)
+	expiresAt := entry.ExpiresAt
+	if expiresAt.IsZero() || !expiresAt.After(storedAt) {
+		expiresAt = storedAt.Add(a.ttl)
+	}
+	expiresAt = expiresAt.UTC()
 	if _, err := a.db.ExecContext(ctx, `
 		INSERT INTO semantic_plan_cache(cache_key, payload_json, provider, provider_lane, stored_at, expires_at)
 		VALUES (?, ?, ?, ?, ?, ?)

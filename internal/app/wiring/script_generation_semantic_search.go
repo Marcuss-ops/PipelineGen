@@ -31,6 +31,9 @@ func wireSemanticSearchPlanner(runner *scriptgen.Runner, cfg *config.Config, roo
 	if ttl := time.Duration(cfg.Scripts.SemanticPlanCacheTTLSeconds) * time.Second; ttl > 0 {
 		batchConfig.CacheTTL = ttl
 	}
+	if ttl := time.Duration(cfg.Scripts.SemanticStableEntityCacheTTLSeconds) * time.Second; ttl > 0 {
+		batchConfig.StableEntityCacheTTL = ttl
+	}
 	cacheLabel := "memory"
 	if root.CacheDB != nil && root.CacheDB.DB != nil {
 		batchConfig.Cache = sqlitescripts.NewSQLiteSemanticPlanCacheAdapter(root.CacheDB.DB, batchConfig.CacheTTL, log)
@@ -45,5 +48,6 @@ func wireSemanticSearchPlanner(runner *scriptgen.Runner, cfg *config.Config, roo
 	log.Info("semantic production search batch wired (real provider, measured)",
 		zap.String("plan_cache", cacheLabel),
 		zap.Duration("plan_cache_ttl", batchConfig.CacheTTL),
+		zap.Duration("stable_entity_cache_ttl", batchConfig.StableEntityCacheTTL),
 		zap.Int("max_concurrency", batchConfig.MaxConcurrency))
 }

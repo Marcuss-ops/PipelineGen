@@ -42,7 +42,7 @@ const (
 	//
 	// Producer: outbox.Dispatcher.EnqueueDriveDelete (replaces the
 	// pre-Blocco 3.1 atomic EnqueueAndDelete which was a best-effort
-	// single-shot). Consumer: application/jobs/outbox.DriveDeleteHandler
+	// single-shot). Consumer: internal/capabilities/jobs.DriveDeleteHandler
 	// calls drive.FileLifecycle.Trash (or .Delete for hard-delete),
 	// then transitions lifecycle_state → INDEX_DELETE_PENDING and
 	// emits EventAssetIndexDeleteRequested in the same tx so a
@@ -86,7 +86,7 @@ const (
 	// outbox.Dispatcher gets a typed EnqueueAssetPublished(port,
 	// payload) in Wave 6. Carries the rich payload — destination,
 	// origin, category, subject, provider, drive_file_id, drive_path,
-	// tags — so the consumer (application/jobs/outbox.AssetPublishedHandler)
+	// tags — so the consumer (internal/capabilities/jobs.AssetPublishedHandler)
 	// composes a richer Qdrant embed text WITHOUT re-loading these
 	// semantic fields from media_assets.
 	//

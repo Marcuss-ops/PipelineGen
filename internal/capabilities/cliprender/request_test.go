@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -251,6 +252,40 @@ func TestValidate_AudioAndTranscriptEnums(t *testing.T) {
 	req.Normalize()
 	if err := req.Validate(); err == nil {
 		t.Error("unknown transcript mode must fail")
+	}
+}
+
+// TestValidate_RejectsUnsatisfiableRequireZeroCopy pins the EDGE fail-fast
+// for execution.require_zero_copy: the demand is unsatisfiable (no backend
+// certifies video_zero_copy since the PATH B CUDA hybrid removal), so it must
+// be rejected by Validate — before any enqueue, any asset download and any GPU
+// render. The historical gate rejected it only AFTER the render had run: one
+// full GPU render burned to fail a request that was already doomed at decode
+// time.
+//
+// The counter-constraint: require_gpu is SATISFIABLE (Chronon is GPU-native)
+// and must keep validating — only impossible demands are rejected at the edge.
+func TestValidate_RejectsUnsatisfiableRequireZeroCopy(t *testing.T) {
+	req := &RenderRequest{SourceAssetID: "a", Execution: &ExecutionSpec{RequireZeroCopy: true}}
+	req.Normalize()
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("execution.require_zero_copy=true must be rejected by Validate (unsatisfiable demand)")
+	}
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("error = %v, want typed ErrInvalidRequest", err)
+	}
+	if !strings.Contains(err.Error(), "require_zero_copy") {
+		t.Fatalf("error = %q, want the require_zero_copy failure reason", err)
+	}
+
+	// The satisfiable counterpart keeps validating: require_gpu names a real
+	// contract assertion (the artifact must report a GPU backend), never an
+	// impossible demand.
+	gpu := &RenderRequest{SourceAssetID: "a", Execution: &ExecutionSpec{RequireGPU: true}}
+	gpu.Normalize()
+	if err := gpu.Validate(); err != nil {
+		t.Fatalf("execution.require_gpu=true must validate (satisfiable demand): %v", err)
 	}
 }
 

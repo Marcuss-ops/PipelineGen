@@ -131,12 +131,11 @@ type ClipVoiceoverRecordDTO struct {
 //
 // QDRANT-asset-mutation isolation (June 2026): UpsertClip was REMOVED
 // from this port. Production callers (clips.ClipOpsService +
-// api/assets/clips) MUST use ClipIndexDispatcherPort to emit media_assets
-// writes via outbox.Dispatcher.EnqueueAndIndex; the lower-level UpsertClip
-// method stays on *assets.ClipsRepository for the dispatcher's exclusive
-// use. The CI lint scripts/ci-architectural-checks.sh enforces this
-// boundary by failing on `UpsertClip\(` matches in
-// internal/application + internal/api production paths.
+// internal/capabilities/assets/clips) MUST use ClipIndexDispatcherPort to
+// emit media_assets writes via outbox.Dispatcher.EnqueueAndIndex; the
+// lower-level UpsertClip method stays on *assets.ClipsRepository for the
+// dispatcher's exclusive use. Production code outside the dispatcher
+// MUST NOT call it (test call sites are allowed).
 // AssetReader is the consumer-owned read contract the clips use cases need:
 // the single-asset lookup, and nothing else.
 //

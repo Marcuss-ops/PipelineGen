@@ -187,7 +187,7 @@ func TestClipOps_Cleanup_DeepDryRun_ActiveKeySuffix(t *testing.T) {
 // pre-PR-3 synchronous-fallback REMOVAL: Cleanup is now fail-closed
 // across deep AND non-deep modes when jobs=nil. Operators must wire
 // the broker before invoking Cleanup at all. The HTTP handler layer
-// (api/assets/clips/clip_ops.go) maps ErrJobsUnavailable → 503 so
+// (internal/capabilities/assets/clips) maps ErrJobsUnavailable → 503 so
 // callers see a single "broker missing" signal regardless of mode.
 //
 // Wave 22 PR-5 polish (June 2026) flipped the synchronous-fallback

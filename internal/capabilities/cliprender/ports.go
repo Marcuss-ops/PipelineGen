@@ -459,9 +459,13 @@ type DestinationFolderResolveInput struct {
 // destination.subfolder_name. All clips of one script/batch carry the same
 // name, so sequential or concurrent jobs converge on a single shared leaf
 // folder (EnsureFolder is idempotent + singleflight-deduped in-process). The
-// publisher stays dumb: it receives the fully-resolved leaf folder ID and
-// never creates folders itself. Fail-closed: a resolver returning an empty
-// folder ID is a typed error, never a silent root fallback.
+// canonical adapter additionally memoizes (root + name) → leaf folder ID for
+// a bounded TTL with singleflight-deduped misses, so a whole batch costs one
+// create-or-reuse round-trip per TTL window even across sequential jobs
+// (errors are never cached; the TTL bounds staleness). The publisher stays
+// dumb: it receives the fully-resolved leaf folder ID and never creates
+// folders itself. Fail-closed: a resolver returning an empty folder ID is a
+// typed error, never a silent root fallback.
 type DestinationFolderResolver interface {
 	ResolveDestinationFolder(ctx context.Context, in DestinationFolderResolveInput) (string, error)
 }

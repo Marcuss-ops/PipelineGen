@@ -16,8 +16,9 @@
 // AuthSecurityPort is internal/platform/httpserver/middleware.TokenSecurityAdapter
 // (re-located from pkg/middleware on June 2026 — pkg/ is leaf-only
 // by AGENTS.md Pattern 4 and HTTP-middleware concrete adapters cannot
-// legitimately live there). The struct is reachable from internal/api,
-// cmd/admin, and internal/app without crossing layering boundaries.
+// legitimately live there). The struct is reachable from the HTTP
+// capability packages, cmd/admin, and internal/app without crossing
+// layering boundaries.
 // The cfg-wrapping trio that previously lived as inline auth
 // adapters in api/server.go + cmd/admin/gen_api_docs.go +
 // internal/app/middleware_security_adapter.go was deleted; callers

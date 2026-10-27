@@ -14,7 +14,7 @@
 //     but with IN(...) clause for the --retry-failed mode.
 //
 // Commit F (August 2026): the reusable core moved to
-// internal/application/indexing/backfill; the shared row/run shapes
+// internal/capabilities/indexing/backfill; the shared row/run shapes
 // (indexing.Candidate, indexing.Deps, indexing.Checkpoint) now come from
 // that package. Both helpers additionally select the content_hash
 // expression so the core can build the deterministic event_key

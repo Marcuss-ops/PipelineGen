@@ -25,6 +25,7 @@ import (
 // been removed.
 type ImageStorageService struct {
 	repo          ImageRepository
+	localIndex    LocalResolvedImageIndex
 	publisher     delivery.Publisher
 	driveReader   imageingest.DriveReader
 	cfg           *config.Config

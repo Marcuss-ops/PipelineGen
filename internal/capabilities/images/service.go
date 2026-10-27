@@ -38,6 +38,13 @@ func (s *Service) RetrievalRegistry() *retrieved.RetrievalProviderRegistry {
 	return s.Store.retrievalRegistry
 }
 
+func (s *Service) LocalResolvedImageIndex() LocalResolvedImageIndex {
+	if s == nil || s.Store == nil {
+		return nil
+	}
+	return s.Store.localIndex
+}
+
 // NewService is the canonical constructor for the root facade. Generation and
 // retrieval registries remain independently owned and are composed once here.
 func NewService(deps ImagesDeps) *Service {
@@ -61,6 +68,7 @@ func NewService(deps ImagesDeps) *Service {
 
 	store := &ImageStorageService{
 		repo:          deps.Storage.ImageRepo,
+		localIndex:    deps.Storage.LocalIndex,
 		publisher:     deps.Storage.Publisher,
 		driveReader:   deps.Storage.DriveReader,
 		cfg:           cfg,

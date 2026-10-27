@@ -11,9 +11,9 @@
 // Each of the three wrapped *config.Config the same way and exposed the
 // same 3 methods (EnableAuth/AdminToken/WorkerToken) for consumption
 // by the auth/worker-auth/admin-token middlewares. PG-006.1
-// consolidates the canonical concrete struct here so internal/api and
-// cmd/admin can import it without crossing internal/app layering
-// boundaries; the composition root at internal/app/ wires the
+// consolidates the canonical concrete struct here so the HTTP
+// capability packages and cmd/admin can import it without crossing
+// internal/app layering boundaries; the composition root at internal/app/ wires the
 // structured value from cfg.Security fields at construction time.
 //
 // Pattern 0 (PG-006.1 round-2, June 2026): a concrete HTTP-middleware

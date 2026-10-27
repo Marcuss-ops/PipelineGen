@@ -258,6 +258,17 @@ func (r *RenderRequest) Validate() error {
 		return fmt.Errorf("%w: request is not normalized (call Normalize before Validate)", ErrInvalidRequest)
 	}
 
+	// execution.require_zero_copy is UNSATISFIABLE: after the PATH B CUDA
+	// hybrid removal no backend certifies video_zero_copy, so a request that
+	// sets it can never succeed. It is rejected HERE — at the request
+	// boundary — before an enqueue, an asset download or a GPU render is ever
+	// spent on it. The historical gate sat in the completion path, AFTER
+	// Chronon had rendered the whole clip: a full GPU render burned to fail a
+	// request that was already doomed at decode time.
+	if r.Execution != nil && r.Execution.RequireZeroCopy {
+		return fmt.Errorf("%w: execution.require_zero_copy=true is unsatisfiable: no backend certifies video_zero_copy (GPU compositing is Chronon-only via the RenderingGen queue)", ErrInvalidRequest)
+	}
+
 	switch r.Background.Mode {
 	case BackgroundModeNone, BackgroundModeBlurSource:
 		// No asset and therefore no media family: a declared kind would be an

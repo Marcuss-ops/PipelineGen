@@ -125,6 +125,38 @@ func seedSubject(t *testing.T, db *sql.DB, slug string) {
 	}
 }
 
+type stubLocalResolvedImageIndex struct {
+	ids []string
+	err error
+}
+
+func (s *stubLocalResolvedImageIndex) Search(context.Context, string, int) ([]string, error) {
+	return s.ids, s.err
+}
+func (*stubLocalResolvedImageIndex) Index(context.Context, string, string) error { return nil }
+
+func TestSearchAndDownloadReusesAssetFromLocalSemanticIndex(t *testing.T) {
+	db := openImageCacheTestDB(t)
+	repo := imagesrepo.NewImagesRepository(db)
+	seedCachedImage(t, db, "reused-image", "hash-local-1", "Jaguar animal in rainforest", time.Now())
+	store := &ImageStorageService{
+		repo:       repo,
+		localIndex: &stubLocalResolvedImageIndex{ids: []string{"reused-image"}},
+		log:        zap.NewNop(),
+	}
+
+	got, err := store.SearchAndDownloadDetailed(context.Background(), "new-topic", "New topic", "Jaguar animal in rainforest", "en", nil)
+	if err != nil {
+		t.Fatalf("SearchAndDownloadDetailed: %v", err)
+	}
+	if got == nil || got.Asset == nil {
+		t.Fatal("local index hit did not return the existing asset")
+	}
+	if got.Asset.Hash != "hash-local-1" || got.CacheSource != "local_semantic_index" || !got.CacheHit {
+		t.Fatalf("unexpected local index result: %+v", got)
+	}
+}
+
 func TestImageSearchCacheKey_NormalizesQueryLanguageAndPolicy(t *testing.T) {
 	base := imageSearchCacheKey(" Jaguar   animal in rainforest ", " IT ", "wikipedia,searxng,duckduckgo,drive")
 	same := imageSearchCacheKey("jaguar animal in rainforest", "it", "wikipedia,searxng,duckduckgo,drive")

@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // deferredDriveJobType is the only job type whose finalize artifacts defer
@@ -29,7 +30,10 @@ import (
 // final runs consume the runner-published master audio (single publication
 // owner, ReferencesPublishedAudio) and the overlay deliverables ride their
 // own RequireDriveBeforeReturn gate — neither reads these artifacts.
-const deferredDriveJobType = "script.generate"
+//
+// The wire literal is owned by internal/kernel/job (godlike/06 one owner per
+// fact): this is an alias of the canonical constant, never a re-declaration.
+const deferredDriveJobType = job.TypeScriptGenerate
 
 // finalizeDrivePublicationDeferrable reports whether this staged artifact may
 // publish its Drive copy after completion instead of inside it. The

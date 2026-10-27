@@ -71,8 +71,8 @@ var ErrStagedArtifactReferenceInvalidDestination = errors.New(
 // CanonicalDestinationKeys is the canonical 9-key directory used by the
 // wire layer's destination validation. Kept here (rather than imported
 // from internal/platform/delivery) to avoid an import cycle
-// (internal/domain -> internal/application is a layering violation per
-// godlike/06 one-canonical-owner-per-fact). The application-layer
+// (importing the application layer from internal/domain is a layering
+// violation per godlike/06 one-canonical-owner-per-fact). The application-layer
 // delivery.DestinationKey enum is the CANONICAL source of these values;
 // this list is the PACKAGE-LOCAL projection used for wire validation.
 var CanonicalDestinationKeys = map[string]bool{

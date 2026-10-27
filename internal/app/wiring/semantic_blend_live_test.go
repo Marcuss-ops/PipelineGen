@@ -54,7 +54,10 @@ func TestLiveSemanticProductionBlendRoutesRealProviders(t *testing.T) {
 	if info, err := os.Stat(binary); err != nil || info.Mode()&0o111 == 0 {
 		t.Skipf("semantic-engine binary not installed at %s; run make rust-fetch", binary)
 	}
-	fixture := filepath.Join(root, "semantic_acceptance", "fixtures", "garlasco_2013_reconstructed.txt")
+	fixture := strings.TrimSpace(os.Getenv("VELOX_SEMANTIC_BLEND_FIXTURE"))
+	if fixture == "" {
+		fixture = filepath.Join(root, "semantic_acceptance", "fixtures", "garlasco_2013_reconstructed.txt")
+	}
 	data, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Skipf("acceptance fixture not available: %v", err)
@@ -115,11 +118,9 @@ func TestLiveSemanticProductionBlendRoutesRealProviders(t *testing.T) {
 		t.Fatalf("create cache schema: %v", err)
 	}
 
-	batchConfig := scriptgen.SemanticSearchBatchConfig{
-		Limit: 5, MaxConcurrency: 4, QueryTimeout: 25 * time.Second,
-		Cache:    sqlitescripts.NewSQLiteSemanticPlanCacheAdapter(cacheDB, time.Hour, log),
-		CacheTTL: time.Hour,
-	}
+	batchConfig := scriptgen.DefaultSemanticSearchBatchConfig()
+	batchConfig.Cache = sqlitescripts.NewSQLiteSemanticPlanCacheAdapter(cacheDB, time.Hour, log)
+	batchConfig.CacheTTL = time.Hour
 	planner, err := scriptgen.NewSemanticSearchBatchPlanner(documentadapters.NewSemanticAssetSearch(searcher), batchConfig)
 	if err != nil {
 		t.Fatalf("planner: %v", err)

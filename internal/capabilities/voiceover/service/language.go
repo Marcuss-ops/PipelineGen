@@ -8,8 +8,7 @@
 // primitive-obsession on Language across 14+ raw-string sites in
 // command.go, task.go, types.go, result.go, parent_state.go,
 // filename.go, ports.go, persistence/repository.go, jobs/fanout.go,
-// process.go, stages.go, usecase.go, and the API boundary
-// (api/assets/voiceover/types.go).
+// process.go, stages.go, usecase.go, and the voiceover API boundary.
 //
 // JSON wire compat: type Language string serialises the
 // underlying BCP-47 string byte-for-byte. The "language" /

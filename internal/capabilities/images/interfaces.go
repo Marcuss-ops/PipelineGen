@@ -34,6 +34,21 @@ type ImageListRepository interface {
 	ListImages(ctx context.Context, filter ImageFilter) ([]ImageSearchResult, error)
 }
 
+// LocalImageAssetHydrator is an optional repository capability used by the
+// semantic index to hydrate Qdrant asset IDs from canonical local metadata.
+type LocalImageAssetHydrator interface {
+	ListImagesByAssetIDs(ctx context.Context, assetIDs []string) ([]ImageSearchResult, error)
+}
+
+// LocalResolvedImageIndex searches metadata for images already ingested by
+// this service. Search returns canonical asset IDs; callers hydrate bytes and
+// rights metadata from the asset repository instead of treating Qdrant
+// payloads as an asset store.
+type LocalResolvedImageIndex interface {
+	Search(ctx context.Context, query string, limit int) ([]string, error)
+	Index(ctx context.Context, assetID, document string) error
+}
+
 type SubService interface {
 	Search(ctx context.Context, req SearchRequest) (SearchResponse, error)
 }

@@ -8,7 +8,9 @@ package imagesrepo
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
@@ -37,6 +39,49 @@ func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*detail.ImageAs
 	`
 	row := r.db.QueryRowContext(ctx, query, id)
 	return scanImageAssetFromRow(row)
+}
+
+// ListImagesByAssetIDs returns canonical list projections for semantic-index
+// hits, including their typed provider rights and authorized Drive link.
+func (r *ImagesRepository) ListImagesByAssetIDs(ctx context.Context, assetIDs []string) ([]detail.RepositoryImageRow, error) {
+	if r == nil || r.db == nil || len(assetIDs) == 0 {
+		return nil, nil
+	}
+	if len(assetIDs) > 50 {
+		assetIDs = assetIDs[:50]
+	}
+	pl := make([]string, len(assetIDs))
+	args := make([]any, len(assetIDs))
+	for i, id := range assetIDs {
+		pl[i], args[i] = "?", id
+	}
+	query := `SELECT ma.id, ma.origin, ma.provider, json_extract(ma.metadata_json, '$.subject_id'), COALESCE(NULLIF(ma.url, ''), NULLIF(ma.thumbnail_url, ''), NULLIF(ma.thumb_url, ''), rid.source_image_url), ma.drive_link, ma.content_sha256, ma.width, ma.height, rid.source_page_url, rid.license, rid.author, gid.prompt_resolved, gid.style_id, gid.style_version
+		FROM media_assets ma
+		LEFT JOIN retrieved_image_details rid ON ma.id = rid.asset_id
+		LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id
+		WHERE ma.source = 'image' AND ma.id IN (` + strings.Join(pl, ",") + `)`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]detail.RepositoryImageRow, 0, len(assetIDs))
+	for rows.Next() {
+		var id, origin, provider, subjectID, previewURL, driveLink, hash sql.NullString
+		var width, height sql.NullInt64
+		var sourcePage, license, author, prompt, styleID, styleVersion sql.NullString
+		if err := rows.Scan(&id, &origin, &provider, &subjectID, &previewURL, &driveLink, &hash, &width, &height, &sourcePage, &license, &author, &prompt, &styleID, &styleVersion); err != nil {
+			return nil, err
+		}
+		out = append(out, detail.RepositoryImageRow{
+			AssetID: id.String, Origin: detail.ImageOrigin(origin.String), Provider: provider.String,
+			Name: prompt.String, PreviewURL: previewURL.String, DriveLink: driveLink.String,
+			ContentSHA256: hash.String, Width: int(width.Int64), Height: int(height.Int64),
+			SourcePageURL: sourcePage.String, License: license.String, Author: author.String,
+			StyleID: styleID.String, StyleVersion: styleVersion.String,
+		})
+	}
+	return out, rows.Err()
 }
 
 // Delete elimina un'immagine

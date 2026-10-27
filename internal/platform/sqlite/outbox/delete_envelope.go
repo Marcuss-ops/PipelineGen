@@ -8,7 +8,7 @@ import (
 )
 
 // deleteRequestV1 is the producer-side mirror of the consumer
-// (application/jobs/outbox.index_delete.go::indexDeleteRequestV1).
+// (internal/capabilities/jobs/index_delete.go::indexDeleteRequestV1).
 //
 // QDRANT-002 PR7: this envelope is emitted by Dispatcher.EnqueueAndDelete
 // inside an atomic tx together with the media_assets.index_state

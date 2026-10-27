@@ -460,15 +460,15 @@ func TestWorker_NilPublicationFailsClosedWithoutPanic(t *testing.T) {
 	}
 }
 
-// TestWorker_RequireZeroCopyFailsClosedEvenWithChrononBackend pins the
-// fail-closed contract of execution.require_zero_copy after the PATH B CUDA
-// hybrid removal: NO backend certifies video_zero_copy anymore, so even a
-// certified-Chronon outcome must NOT satisfy the demand. The render phase
-// still executes (the outcome is valid), then the worker returns a typed
-// error — never a silent success and never a downgrade to a path that
-// merely skips the certification.
-func TestWorker_RequireZeroCopyFailsClosedEvenWithChrononBackend(t *testing.T) {
-	w, _, _ := newTestWorker(t)
+// TestWorker_RequireZeroCopyRejectedBeforeRender pins the EDGE fail-fast
+// contract of execution.require_zero_copy: the demand is unsatisfiable (no
+// backend certifies video_zero_copy since the PATH B CUDA hybrid removal), so
+// the job payload is rejected at the worker's request gate — BEFORE
+// preparation and BEFORE the render. The historical contract rendered the
+// whole clip first and failed afterwards: one full GPU render burned to fail a
+// request that was already doomed at decode time.
+func TestWorker_RequireZeroCopyRejectedBeforeRender(t *testing.T) {
+	w, mat, _ := newTestWorker(t)
 	renderer := &fakeRenderExecutor{outcome: &RenderOutcome{
 		OutputPath:  "/work/rendered-clip.mp4",
 		SizeBytes:   4096,
@@ -486,13 +486,19 @@ func TestWorker_RequireZeroCopyFailsClosedEvenWithChrononBackend(t *testing.T) {
 
 	_, err := handleRendered(t, context.Background(), w, "job-zero-copy", req)
 	if err == nil {
-		t.Fatal("require_zero_copy=true must fail closed even with a certified Chronon outcome")
+		t.Fatal("require_zero_copy=true must fail closed")
+	}
+	if !errors.Is(err, ErrInvalidJobPayload) {
+		t.Fatalf("error = %v, want typed ErrInvalidJobPayload (rejected at the payload gate)", err)
 	}
 	if !strings.Contains(err.Error(), "require_zero_copy") {
 		t.Fatalf("error = %q, want the require_zero_copy failure reason", err)
 	}
-	if renderer.called != 1 {
-		t.Fatalf("renderer calls = %d, want 1 (the render executes before the fail-closed gate)", renderer.called)
+	if renderer.called != 0 {
+		t.Fatalf("renderer calls = %d, want 0 (an unsatisfiable demand must never burn a render)", renderer.called)
+	}
+	if len(mat.calls) != 0 {
+		t.Fatalf("materializer calls = %v, want none (preparation must not run for an unsatisfiable demand)", mat.calls)
 	}
 }
 

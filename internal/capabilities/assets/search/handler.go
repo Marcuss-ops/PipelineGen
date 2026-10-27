@@ -1,5 +1,5 @@
-// Package search (api/assets/search) — handler.go is the thin HTTP
-// transport for the unified media search surface.
+// Package search (internal/capabilities/assets/search) — handler.go
+// is the thin HTTP transport for the unified media search surface.
 //
 // Blocco A2 consolidation (June 2026): all independent search endpoints
 // scraper /search, /api/assets/search) are absorbed into a single

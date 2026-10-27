@@ -6,8 +6,8 @@
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - This file is the SOLE owner of the os.* calls exposed through
-//     the LocalFSPort interface. Every file in internal/application
-//     that needs to read/write/stat files MUST go through the port,
+//     the LocalFSPort interface. Every caller that needs to
+//     read/write/stat files MUST go through the port,
 //     not call os.* directly.
 //
 // godlike/07 minimum-blast-radius: the adapter is stateless and

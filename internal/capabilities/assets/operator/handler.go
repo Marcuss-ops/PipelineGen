@@ -159,7 +159,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 // ── Module wrapper (consumed by sibling `module.go` for api.Descriptor) ──
 //
 // moduleWrapper wraps Handler to satisfy the api.Module interface that
-// internal/api/registry.Module consumes. It lives in handler.go (facciata)
+// the internal/platform/httpserver module registry consumes. It lives in
+// handler.go (facciata)
 // next to NewHandler because module.go::Build calls NewModule(handler)
 // at construction time and this is the canonical factory pair.
 //

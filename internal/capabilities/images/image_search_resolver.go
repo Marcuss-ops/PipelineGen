@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -38,6 +39,7 @@ var ErrUnknownTerritory = errors.New("routing.Resolve: unknown territory")
 type ImageSearchResolverImpl struct {
 	retrieved RetrievalSearchBackend
 	repo      ImageListRepository
+	local     LocalResolvedImageIndex
 }
 
 // compile-time assertion: ImageSearchResolverImpl satisfies ImageSearchResolver.
@@ -65,6 +67,12 @@ func WithImageListRepository(repo ImageListRepository) ImageSearchResolverOption
 	return func(r *ImageSearchResolverImpl) {
 		r.repo = repo
 	}
+}
+
+// WithLocalResolvedImageIndex adds the optional local semantic lookup that
+// runs before external image providers. Nil leaves legacy routing unchanged.
+func WithLocalResolvedImageIndex(index LocalResolvedImageIndex) ImageSearchResolverOption {
+	return func(r *ImageSearchResolverImpl) { r.local = index }
 }
 
 // NewImageSearchResolver constructs the canonical resolver from
@@ -128,15 +136,55 @@ func (r *ImageSearchResolverImpl) ExistingImages(ctx context.Context, subject st
 	if r == nil || r.repo == nil {
 		return nil, nil
 	}
-	subjectID := textutil.Slugify(subject)
-	if subjectID == "" {
-		return nil, nil
+	limit = ResolvedLimit(limit)
+	results := make([]ImageSearchResult, 0, limit)
+	seen := make(map[string]struct{}, limit)
+	appendUnique := func(rows []ImageSearchResult) {
+		for _, row := range rows {
+			key := strings.TrimSpace(row.AssetID)
+			if key == "" {
+				key = strings.TrimSpace(row.DriveLink)
+			}
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			results = append(results, row)
+			if len(results) >= limit {
+				return
+			}
+		}
 	}
-	return r.repo.ListImages(ctx, ImageFilter{
-		SubjectID: subjectID,
-		Origins:   []detail.ImageOrigin{detail.ImageOriginRetrieved},
-		Limit:     ResolvedLimit(limit),
-	})
+	if r.local != nil {
+		if ids, err := r.local.Search(ctx, subject, limit); err == nil && len(ids) > 0 {
+			if hydrator, ok := r.repo.(LocalImageAssetHydrator); ok {
+				if rows, hydrateErr := hydrator.ListImagesByAssetIDs(ctx, ids); hydrateErr == nil {
+					appendUnique(rows)
+				}
+			}
+		}
+	}
+	if len(results) < limit {
+		subjectID := textutil.Slugify(subject)
+		if subjectID != "" {
+			rows, err := r.repo.ListImages(ctx, ImageFilter{
+				SubjectID: subjectID,
+				Origins:   []detail.ImageOrigin{detail.ImageOriginRetrieved},
+				Limit:     limit - len(results),
+			})
+			if err != nil {
+				if len(results) > 0 {
+					return results, nil
+				}
+				return nil, err
+			}
+			appendUnique(rows)
+		}
+	}
+	return results, nil
 }
 
 type retrievedProviderSearcher struct {

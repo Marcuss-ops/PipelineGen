@@ -32,7 +32,7 @@
 //
 // Standard-library imports only. No application/infrastructure
 // imports. The JobHandlerFunc signature is a function-type so the
-// adapter wraps existing HandlerFunc (in application/jobs/types.go)
+// adapter wraps existing HandlerFunc (in internal/capabilities/jobs/types.go)
 // at the composition-root boundary.
 //
 // ── Migration schedule ──────────────────────────────────────────────

@@ -118,7 +118,7 @@ type ExternalConfig struct {
 	// (internal/capabilities/assets/providers/stock/enrichment). When
 	// false, the composition root skips wiring the EnrichmentHandler
 	// (mirror of the StockPipelineEnabled pattern in
-	// api/assets/stock/module.go). When true, the worker pool picks up
+	// internal/capabilities/assets/stock/module.go). When true, the worker pool picks up
 	// `media.stock_rlm_enrich` jobs and dispatches them to the
 	// EnrichmentHandler via the CompiledJobRegistry.
 	//

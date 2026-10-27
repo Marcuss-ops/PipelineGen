@@ -166,6 +166,37 @@ func (s *ImageStorageService) searchAndDownloadDetailed(ctx context.Context, sub
 		)
 	}
 
+	// Query the local semantic index before the live image-provider cascade.
+	// Hits contain asset IDs only; bytes and license/provenance metadata are
+	// hydrated from the canonical repository.
+	if s.localIndex != nil {
+		assetIDs, indexErr := s.localIndex.Search(ctx, query, 8)
+		if indexErr != nil {
+			s.log.Warn("resolved-image local index unavailable; continuing with live providers",
+				zap.String("query", query), zap.Error(indexErr))
+		} else {
+			assetReader, canHydrate := s.repo.(interface {
+				GetByID(context.Context, any) (*detail.ImageAsset, error)
+			})
+			for _, assetID := range assetIDs {
+				if !canHydrate {
+					break
+				}
+				cached, getErr := assetReader.GetByID(ctx, assetID)
+				if getErr != nil || cached == nil || cached.PathRel == "" {
+					continue
+				}
+				s.log.Info("resolved image reused from local semantic index",
+					zap.String("subject", slug), zap.String("asset_id", cached.Hash),
+					zap.String("query", query))
+				return &SearchResult{
+					Asset: cached, CacheHit: true, CacheSource: "local_semantic_index",
+					RetrievalProvider: string(cached.Provider),
+				}, nil
+			}
+		}
+	}
+
 	if subject == nil {
 		subject = &asset.Subject{Slug: slug, DisplayName: displayName}
 		_, err := s.repo.CreateSubject(ctx, subject)

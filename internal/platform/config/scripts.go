@@ -50,6 +50,11 @@ type ScriptsConfig struct {
 	// back to one hour (scriptgeneration default).
 	SemanticPlanCacheTTLSeconds int `yaml:"semantic_plan_cache_ttl_seconds" env:"VELOX_SCRIPTS_SEMANTIC_PLAN_CACHE_TTL_SECONDS" default:"3600"`
 
+	// SemanticStableEntityCacheTTLSeconds is the freshness window for positive
+	// location and organization retrievals; source-scoped invalidation can evict
+	// answers earlier when a provider's index changes.
+	SemanticStableEntityCacheTTLSeconds int `yaml:"semantic_stable_entity_cache_ttl_seconds" env:"VELOX_SCRIPTS_SEMANTIC_STABLE_ENTITY_CACHE_TTL_SECONDS" default:"2592000"`
+
 	// BatchWebSearchConcurrency caps the parallel SearXNG searches in
 	// batch generation. Each search is a network call; 4 is a
 	// safe default for a single SearXNG instance. Raise for a clustered
@@ -378,6 +383,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.SemanticPlanCacheTTLSeconds <= 0 {
 		s.SemanticPlanCacheTTLSeconds = 3600
+	}
+	if s.SemanticStableEntityCacheTTLSeconds <= 0 {
+		s.SemanticStableEntityCacheTTLSeconds = 2592000
 	}
 	return s
 }

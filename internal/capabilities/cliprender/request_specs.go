@@ -218,10 +218,13 @@ type ExecutionSpec struct {
 	// never satisfied by a non-GPU artifact. Default false skips the extra
 	// assertion without weakening the unconditional Chronon-only gate.
 	RequireGPU bool `json:"require_gpu,omitempty"`
-	// RequireZeroCopy demands a device-local video path. It is fail-closed by
-	// construction: after the PATH B CUDA hybrid removal no backend certifies
-	// video_zero_copy, so a request that sets it always fails with a typed
-	// error — never a silent downgrade.
+	// RequireZeroCopy demands a device-local video path. It is UNSATISFIABLE
+	// by construction: after the PATH B CUDA hybrid removal no backend
+	// certifies video_zero_copy. RenderRequest.Validate therefore rejects a
+	// request that sets it at the EDGE — 400 INVALID_PAYLOAD (typed
+	// ErrInvalidRequest) before any enqueue, and typed ErrInvalidJobPayload on
+	// a payload replay — never a silent downgrade and never a GPU render that
+	// can only fail.
 	RequireZeroCopy bool `json:"require_zero_copy,omitempty"`
 }
 

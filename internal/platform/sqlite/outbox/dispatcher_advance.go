@@ -36,7 +36,7 @@
 //	    a permanent in-flight state without a consumer.
 //
 // Pattern 0 (AGENTS.md): the application-layer handler (e.g.
-// DriveDeleteHandler in application/jobs/outbox/drive_delete.go)
+// DriveDeleteHandler in internal/capabilities/jobs/drive_delete.go)
 // calls this method WITHOUT seeing a *sql.Tx — the tx boundary
 // stays encapsulated in Dispatcher. The application-layer handler
 // declares a narrow port (StateAdvancer in ports.go) that mirrors

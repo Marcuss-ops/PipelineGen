@@ -66,7 +66,29 @@ func (a *imageListRepoAdapter) ListImages(ctx context.Context, filter images.Ima
 	return out, nil
 }
 
+func (a *imageListRepoAdapter) ListImagesByAssetIDs(ctx context.Context, assetIDs []string) ([]images.ImageSearchResult, error) {
+	if a == nil || a.repo == nil {
+		return nil, nil
+	}
+	dbRows, err := a.repo.ListImagesByAssetIDs(ctx, assetIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]images.ImageSearchResult, 0, len(dbRows))
+	for _, row := range dbRows {
+		out = append(out, images.ImageSearchResult{
+			AssetID: row.AssetID, Origin: string(row.Origin), Provider: row.Provider,
+			Name: row.Name, PreviewURL: row.PreviewURL, DriveLink: row.DriveLink,
+			ContentSHA256: row.ContentSHA256, SourcePageURL: row.SourcePageURL,
+			Author: row.Author, License: row.License, Width: row.Width, Height: row.Height,
+			Score: 1, StyleID: row.StyleID, StyleVersion: row.StyleVersion,
+		})
+	}
+	return out, nil
+}
+
 var _ images.ImageListRepository = (*imageListRepoAdapter)(nil)
+var _ images.LocalImageAssetHydrator = (*imageListRepoAdapter)(nil)
 
 func buildImageSearchResolver(imageSvc *images.Service, imageRepo *imagesrepo.ImagesRepository, log *zap.Logger) (images.ImageSearchResolver, error) {
 	if imageSvc == nil || imageSvc.RetrievalRegistry() == nil {
@@ -78,6 +100,7 @@ func buildImageSearchResolver(imageSvc *images.Service, imageRepo *imagesrepo.Im
 	resolver, err := images.NewImageSearchResolver(
 		images.WithRetrievalBackend(imageSvc.RetrievalRegistry()),
 		images.WithImageListRepository(&imageListRepoAdapter{repo: imageRepo}),
+		images.WithLocalResolvedImageIndex(imageSvc.LocalResolvedImageIndex()),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("images.NewImageSearchResolver: %w", err)
