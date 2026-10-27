@@ -80,7 +80,7 @@ func TestMigrations_286_MirrorFieldsContract(t *testing.T) {
 	if _, err := db2.Exec(`
 		INSERT INTO media_assets (id, lifecycle_state, index_state, content_sha256, binary_sha256, file_hash) VALUES
 			('m-sha', 'ACTIVE', 'DISCOVERED', '', '', ?),
-			('m-md5', 'ACTIVE', 'DISCOVERED', '', '', ?)	` , sha, md5); err != nil {
+			('m-md5', 'ACTIVE', 'DISCOVERED', '', '', ?)	`, sha, md5); err != nil {
 		t.Fatalf("seed media_assets: %v", err)
 	}
 
@@ -89,7 +89,8 @@ func TestMigrations_286_MirrorFieldsContract(t *testing.T) {
 		t.Fatalf("apply migration 286 over seeded rows: %v", err)
 	}
 
-	type row struct{ content, binary string
+	type row struct {
+		content, binary string
 	}
 	checks := []struct {
 		query   string
