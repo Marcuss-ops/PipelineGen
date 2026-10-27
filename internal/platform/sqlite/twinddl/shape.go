@@ -199,10 +199,10 @@ var (
 	createIndexRe    = regexp.MustCompile(`(?is)\bCREATE\s+(UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?["` + "`" + `\[]?([A-Za-z_][A-Za-z0-9_]*)["` + "`" + `\]]?\s+ON\s+["` + "`" + `\[]?([A-Za-z_][A-Za-z0-9_]*)["` + "`" + `\]]?\s*\(`)
 	dropIndexRe      = regexp.MustCompile(`(?is)\bDROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?["` + "`" + `\[]?([A-Za-z_][A-Za-z0-9_]*)`)
 	colNameRe        = regexp.MustCompile(`(?s)^["` + "`" + `\[]?([A-Za-z_][A-Za-z0-9_]*)["` + "`" + `\]]?\s+(.*)$`)
-	notNullRe     = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
-	primaryKeyRe  = regexp.MustCompile(`(?i)\bPRIMARY\s+KEY\b`)
-	defaultWordRe = regexp.MustCompile(`(?i)\bDEFAULT\b`)
-	checkClauseRe = regexp.MustCompile(`(?i)\bCHECK\s*\(`)
+	notNullRe        = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
+	primaryKeyRe     = regexp.MustCompile(`(?i)\bPRIMARY\s+KEY\b`)
+	defaultWordRe    = regexp.MustCompile(`(?i)\bDEFAULT\b`)
+	checkClauseRe    = regexp.MustCompile(`(?i)\bCHECK\s*\(`)
 	// tableConstraintRe classifies table-level constraint segments. It anchors
 	// on the full keyword WITH its delimiter so a column named
 	// checkpoint_stage is never mistaken for a CHECK clause.
@@ -466,13 +466,13 @@ func NewFoldState() *FoldState {
 // for the same name inside one migration (the 285 repair idiom) must resolve
 // newest-wins, and the regexes below match per-kind, not per-position.
 type foldEvent struct {
-	pos     int
-	kind    string // createTable | addColumn | dropColumn | renameColumn | renameTable | createIndex | dropIndex
-	name    string
-	arg     string
-	arg2    string
-	unique  bool
-	body    string
+	pos    int
+	kind   string // createTable | addColumn | dropColumn | renameColumn | renameTable | createIndex | dropIndex
+	name   string
+	arg    string
+	arg2   string
+	unique bool
+	body   string
 }
 
 // FoldDeclarations folds the DDL statements of one SQL text into the fold
