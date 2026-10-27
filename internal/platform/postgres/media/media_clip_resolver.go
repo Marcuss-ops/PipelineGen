@@ -88,10 +88,10 @@ func (s *MediaSearcher) ResolveByExternalProviderID(ctx context.Context, provide
 	if provider == "" || externalID == "" {
 		return nil, nil
 	}
-	query := `SELECT ` + mediaAssetReadColumns + ` FROM media_assets WHERE drive_file_id = $1 AND COALESCE(lifecycle_state,'') <> 'DELETED' ORDER BY created_at ASC`
+	query := `SELECT ` + mediaAssetReadColumns + ` FROM media_assets WHERE drive_file_id = $1 AND COALESCE(lifecycle_state,'') <> 'DELETED' ORDER BY ` + tsExpr("created_at") + ` ASC`
 	args := []any{externalID}
 	if provider != "google_drive" {
-		query = `SELECT ` + mediaAssetReadColumns + ` FROM media_assets WHERE source = $1 AND (NULLIF(metadata_json, '')::jsonb)->>'external_id' = $2 AND COALESCE(lifecycle_state,'') <> 'DELETED' ORDER BY created_at ASC`
+		query = `SELECT ` + mediaAssetReadColumns + ` FROM media_assets WHERE source = $1 AND (NULLIF(metadata_json, '')::jsonb)->>'external_id' = $2 AND COALESCE(lifecycle_state,'') <> 'DELETED' ORDER BY ` + tsExpr("created_at") + ` ASC`
 		args = []any{provider, externalID}
 	}
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -122,7 +122,7 @@ func (s *MediaSearcher) ResolveByDriveFileID(ctx context.Context, fileID string)
 		return nil, nil
 	}
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+mediaAssetReadColumns+` FROM media_assets WHERE drive_file_id = $1 AND COALESCE(lifecycle_state,'') <> 'DELETED' ORDER BY created_at ASC`,
+		`SELECT `+mediaAssetReadColumns+` FROM media_assets WHERE drive_file_id = $1 AND COALESCE(lifecycle_state,'') <> 'DELETED' ORDER BY `+tsExpr("created_at")+` ASC`,
 		trimmed)
 	if err != nil {
 		return nil, fmt.Errorf("postgres media: ResolveByDriveFileID(%q): %w", trimmed, err)

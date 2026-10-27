@@ -107,7 +107,7 @@ func (s *PostgresAssetStore) List(ctx context.Context, filter asset.Filter) ([]*
 		"COALESCE(media_type, ''), COALESCE(category, ''), COALESCE(lifecycle_state, 'ACTIVE'), " +
 		"COALESCE(created_at, ''), COALESCE(updated_at, '') " +
 		"FROM media_assets WHERE " + where +
-		" ORDER BY created_at DESC"
+		" ORDER BY " + tsExpr("created_at") + " DESC"
 	if filter.Limit > 0 {
 		args = append(args, filter.Limit)
 		query += fmt.Sprintf(" LIMIT $%d", len(args))
@@ -205,7 +205,7 @@ func (r *MediaClipAssetReader) List(ctx context.Context, filter asset.Filter) ([
 	}
 
 	where, args := assetFilterPredicates(filter)
-	query := "SELECT " + mediaAssetReadColumns + " FROM media_assets WHERE " + where + " ORDER BY created_at DESC"
+	query := "SELECT " + mediaAssetReadColumns + " FROM media_assets WHERE " + where + " ORDER BY " + tsExpr("created_at") + " DESC"
 	if filter.Limit > 0 {
 		args = append(args, filter.Limit)
 		query += fmt.Sprintf(" LIMIT $%d", len(args))

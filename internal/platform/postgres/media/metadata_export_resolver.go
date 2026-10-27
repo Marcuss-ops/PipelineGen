@@ -123,7 +123,7 @@ func (r *MetadataExportResolver) LoadProvenanceSection(ctx context.Context, asse
 		SELECT COALESCE(source_type, '')
 		FROM media_asset_sources
 		WHERE asset_id = $1
-		ORDER BY is_primary DESC, discovered_at DESC
+		ORDER BY is_primary DESC, `+tsCastExpr("discovered_at")+` DESC
 		LIMIT 1
 	`, assetID).Scan(&source)
 	if err == sql.ErrNoRows {

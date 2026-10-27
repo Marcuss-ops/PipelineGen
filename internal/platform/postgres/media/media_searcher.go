@@ -35,12 +35,12 @@ package media
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // MediaSearcher implements appsearch.VectorStorePort against the
@@ -372,19 +372,12 @@ func assetToVectorSearchResult(a *assetRow) appsearch.VectorSearchResult {
 	}
 }
 
-// decodeTagsJSON parses the canonical tags TEXT JSON column ('[]' default).
-// Malformed JSON degrades to an empty list, never a crash — search
-// hydration must not fail on a single legacy row.
+// decodeTagsJSON parses a string-array column (media_assets.tags,
+// search_terms…). The format contract and its codec have a single owner:
+// internal/kernel/asset/detail (ParseStringArrayColumn — ” and '[]' both
+// mean "no terms", malformed JSON degrades to nil, never a crash).
 func decodeTagsJSON(raw string) []string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "[]" {
-		return nil
-	}
-	var tags []string
-	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
-		return nil
-	}
-	return tags
+	return detail.ParseStringArrayColumn(raw)
 }
 
 // mediaSearchFilterDims carries the scalar equality dimensions the pgvector

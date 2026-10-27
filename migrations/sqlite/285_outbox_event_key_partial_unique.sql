@@ -1,0 +1,54 @@
+-- database: primary
+-- Migration 285: outbox_events.event_key uniqueness is PARTIAL — converge the
+-- primary plane to the contract its own writers and both sibling declarations
+-- already encode (migration-museum audit point 7, twin declarations; see
+-- docs/migrations/BASELINE_INVENTORY.md "Twin declarations").
+--
+-- outbox_events is declared three times by hand:
+--   * 092_create_outbox_events.sql + the 000_baseline_267 snapshot (primary)
+--   * migrations/sqlite_jobs/001_jobs_plane.sql (jobs plane)
+--   * migrations/postgres/001_media_schema.sql (PostgreSQL media SSOT)
+--
+-- The contract every writer encodes is the PARTIAL unique index:
+--   * Repository.Enqueue / EnqueueWithPriority
+--     (internal/platform/sqlite/outboxevents/repository_write.go) and the
+--     job.completed emitter (internal/platform/sqlite/jobs/lifecycle_complete.go)
+--     all use `ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING`:
+--     non-empty event_key is the idempotency arbiter, empty event_key marks
+--     one-shot inserts that must NEVER be deduplicated. The same repository
+--     code runs against BOTH SQLite planes (root.DB and the jobs DB).
+--   * sqlite_jobs/001_jobs_plane.sql declares ux_jobs_outbox_event_key
+--     ON outbox_events(event_key) WHERE event_key <> '' (partial).
+--   * migrations/postgres/001_media_schema.sql declares ux_outbox_events_event_key
+--     ON outbox_events (event_key) WHERE event_key <> '' under the explicit
+--     comment "Partial unique index (SQLite parity intent)".
+--
+-- Only the primary declaration drifted: 092 (and the baseline snapshot taken
+-- from it) creates a FULL unique index while its own comment claims "the
+-- uniqueness triggers only when event_key is non-empty". With the full index
+-- SQLite silently absorbs the second empty-key one-shot insert through the
+-- ON CONFLICT DO NOTHING path and hard-fails it with a UNIQUE constraint error
+-- through the plain INSERT path (artifact_stages.InsertWithOutbox) — so the
+-- two planes behave differently for identical shared code. The pinned
+-- behaviour is reproduced by internal/platform/sqlite/migrations_twin_parity_test.go
+-- (TestMigrations_TwinOutboxEventKeyContract).
+--
+-- Rebuild: the partial index is strictly weaker than the full one — every row
+-- satisfying the old index satisfies the new one — so the swap is
+-- non-destructive and non-empty-key dedupe is byte-identical. The canonical
+-- name (ux_outbox_events_event_key) is re-taken by its canonical owner using
+-- the unconditional DROP-then-CREATE idiom of 273 (a CREATE INDEX IF NOT
+-- EXISTS whose name is already taken is a silent no-op — the 273 incident).
+--
+-- Why a forward migration and not an edit of 092: an applied file is never
+-- modified (SHA-256 ledger invariant); the ledger skips it, so only a new
+-- numbered migration can converge old and fresh databases alike.
+--
+-- Scope: primary only. On observability, 267 quarantined outbox_events to
+-- legacy_observability_outbox_events (the old index name followed the rename);
+-- observability is not a business registry and receives no outbox writes. The
+-- cache plane inherits 092's table via scope=all but has no outbox writer.
+
+DROP INDEX IF EXISTS ux_outbox_events_event_key;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
+    ON outbox_events(event_key) WHERE event_key != '';

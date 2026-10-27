@@ -151,18 +151,11 @@ func databaseNameFromDSN(dsn string) string {
 }
 
 func applyMediaMigrations(db *sql.DB) error {
-	stmts := []string{
-		pgmigration.MediaSchemaDDL,
-		pgmigration.MediaVectorSurfacesDDL,
-		pgmigration.MediaHNSWIndexesDDL,
-		pgmigration.MediaTimestampsTimestamptzDDL,
-		pgmigration.MediaAssetVersionsDDL,
-		pgmigration.MediaClipFoldersDDL,
-		pgmigration.MediaAssetProcessingDDL,
-		// 009 retires the face descriptor columns: applied last because 002
-		// uses CREATE TABLE IF NOT EXISTS and cannot converge an existing db.
-		pgmigration.MediaDropAssetFacesDDL,
-	}
+	// The canonical ORDERED self-bootstrap sequence (001→009, 009 last
+	// because 002's CREATE TABLE IF NOT EXISTS cannot converge an existing
+	// database) lives in one place — pgmigration.MediaSelfBootstrapDDL — so
+	// no runner can apply a silent prefix of it (audit point 9).
+	stmts := pgmigration.MediaSelfBootstrapDDL
 	for i, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
 			return fmt.Errorf("migration %d: %w", i+1, err)

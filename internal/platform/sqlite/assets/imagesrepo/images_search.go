@@ -55,7 +55,7 @@ func (r *ImagesRepository) ListImagesByAssetIDs(ctx context.Context, assetIDs []
 	for i, id := range assetIDs {
 		pl[i], args[i] = "?", id
 	}
-	query := `SELECT ma.id, ma.origin, ma.provider, json_extract(ma.metadata_json, '$.subject_id'), COALESCE(NULLIF(ma.url, ''), NULLIF(ma.thumbnail_url, ''), NULLIF(ma.thumb_url, ''), rid.source_image_url), ma.drive_link, ma.content_sha256, ma.width, ma.height, rid.source_page_url, rid.license, rid.author, gid.prompt_resolved, gid.style_id, gid.style_version
+	query := `SELECT ma.id, ma.origin, ma.provider, json_extract(ma.metadata_json, '$.subject_id'), COALESCE(NULLIF(ma.url, ''), NULLIF(ma.thumbnail_url, ''), rid.source_image_url), ma.drive_link, ma.content_sha256, ma.width, ma.height, rid.source_page_url, rid.license, rid.author, gid.prompt_resolved, gid.style_id, gid.style_version
 		FROM media_assets ma
 		LEFT JOIN retrieved_image_details rid ON ma.id = rid.asset_id
 		LEFT JOIN generated_image_details gid ON ma.id = gid.asset_id

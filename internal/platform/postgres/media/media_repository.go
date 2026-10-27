@@ -196,7 +196,7 @@ const mediaAssetReadColumns = `
 	lifecycle_state, index_state, duration_ms,
 	local_path, drive_file_id, drive_link, download_link,
 	COALESCE(NULLIF(binary_sha256, ''), NULLIF(content_sha256, ''), content_sha256),
-	COALESCE(NULLIF(thumbnail_url, ''), thumb_url),
+	thumbnail_url,
 	source_url, source_provider, source_video_id, youtube_video_id,
 	start_ms, end_ms, folder_id, parent_folder_id, folder_path, created_at, metadata_json,
 	search_terms, review_status,
@@ -207,6 +207,38 @@ const mediaAssetReadColumns = `
 	-- family from the id prefix.
 	asset_kind, semantic_role
 `
+
+// tsExpr returns the effective typed timestamp expression for a TEXT column
+// carrying a migration-004 typed mirror (<column>_ts). Readers prefer the
+// mirror and fall back to the parsed legacy TEXT sibling for rows written
+// before the backfill (their mirror is NULL). The trailing '-infinity'
+// sentinel preserves the legacy empty-string placement ("unset is oldest",
+// the same shape as enrichStateUpdatedAtExpr) once the value is typed.
+//
+// This is the CONTRACT-phase read shape of migration 004: once every read
+// goes through here, the legacy TEXT columns can be dropped and the
+// dual-write retired without touching the readers again — only the NULLIF
+// fallback has to shrink at that point.
+//
+// PARAMETER TYPING PITFALL. A statement that ALSO writes the legacy TEXT
+// columns from a string parameter ($N) must compare through
+// `NULLIF($N, ”)::timestamptz`, never `$N::timestamptz`: the bare cast
+// re-types the parameter as TIMESTAMPTZ at parse time, and every other use
+// of $N in the statement then coerces its literals — `NULLIF($N, ”)`
+// fails with "invalid input syntax for type timestamp with time zone: \"\"".
+// The NULLIF form keeps $N TEXT-typed, matching the dual-write setters.
+func tsExpr(column string) string {
+	return `COALESCE(` + column + `_ts, NULLIF(` + column + `, '')::timestamptz, '-infinity'::timestamptz)`
+}
+
+// tsCastExpr is the mirror-less form of tsExpr, for timestamp columns that
+// never received a migration-004 typed mirror (media_asset_sources.discovered_at,
+// asset_processing.updated_at). It still removes the lexicographic TEXT
+// comparison — the ordering becomes typed — but there is no mirror to prefer,
+// so the parsed legacy value is the only source.
+func tsCastExpr(column string) string {
+	return `COALESCE(NULLIF(` + column + `, '')::timestamptz, '-infinity'::timestamptz)`
+}
 
 type mediaAssetScanner interface {
 	Scan(dest ...any) error

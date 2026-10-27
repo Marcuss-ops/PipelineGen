@@ -19,7 +19,7 @@ func (s *MediaSearcher) FindClipIDByName(ctx context.Context, name string) (stri
 	return s.queryClipID(ctx, `
 		SELECT id FROM media_assets
 		WHERE name = $1 AND lifecycle_state <> 'DELETED'
-		ORDER BY created_at DESC LIMIT 1
+		ORDER BY `+tsExpr("created_at")+` DESC LIMIT 1
 	`, needle)
 }
 
@@ -39,14 +39,14 @@ func (s *MediaSearcher) FindClipIDByYouTubeVideoID(ctx context.Context, videoID 
 			WHERE (youtube_video_id = $1 OR source_video_id = $1)
 			  AND lifecycle_state <> 'DELETED'
 			  AND start_ms = $2 AND end_ms = $3
-			ORDER BY created_at DESC LIMIT 1
+			ORDER BY `+tsExpr("created_at")+` DESC LIMIT 1
 		`, vid, int64(startSec*1000), int64(endSec*1000))
 	}
 	return s.queryClipID(ctx, `
 		SELECT id FROM media_assets
 		WHERE (youtube_video_id = $1 OR source_video_id = $1)
 		  AND lifecycle_state <> 'DELETED'
-		ORDER BY created_at DESC LIMIT 1
+		ORDER BY `+tsExpr("created_at")+` DESC LIMIT 1
 	`, vid)
 }
 
@@ -61,7 +61,7 @@ func (s *MediaSearcher) FindClipIDBySourceURL(ctx context.Context, url string) (
 		SELECT id FROM media_assets
 		WHERE (source_url = $1 OR youtube_url = $1)
 		  AND lifecycle_state <> 'DELETED'
-		ORDER BY created_at DESC LIMIT 1
+		ORDER BY `+tsExpr("created_at")+` DESC LIMIT 1
 	`, needle)
 }
 

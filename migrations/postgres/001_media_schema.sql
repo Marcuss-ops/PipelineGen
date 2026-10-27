@@ -148,8 +148,23 @@ CREATE INDEX IF NOT EXISTS idx_media_assets_lifecycle_state
     ON media_assets (lifecycle_state);
 CREATE INDEX IF NOT EXISTS idx_media_assets_index_state
     ON media_assets (index_state);
-CREATE INDEX IF NOT EXISTS idx_media_assets_legacy_file_md5
-    ON media_assets (legacy_file_md5);
+-- Guarded (convergence): 010/012 drop media_assets.legacy_file_md5, so a
+-- plain CREATE INDEX on the column fails on every re-run of this file after
+-- the contract migration. The index exists only while the column exists.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'media_assets'
+          AND column_name = 'legacy_file_md5'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE schemaname = 'public' AND indexname = 'idx_media_assets_legacy_file_md5'
+    ) THEN
+        CREATE INDEX idx_media_assets_legacy_file_md5 ON media_assets (legacy_file_md5);
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_media_assets_content_sha256
     ON media_assets (content_sha256);
 

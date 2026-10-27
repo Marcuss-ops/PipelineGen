@@ -290,7 +290,9 @@ func TestChunkSetValidateIsTheAssemblyGate(t *testing.T) {
 		{"forged id", func(s *ChunkSet) { s.Chunks[0].JobID = "chunk-forged" }},
 		{"no digest", func(s *ChunkSet) { s.PlanSHA256 = "" }},
 		{"too many windows", func(s *ChunkSet) { s.RequestedChunks = 2 }},
-		{"wrong contract", func(s *ChunkSet) { s.ContractVersion = "clip-chunk.v2" }},
+		// Derived, never hardcoded: a family built under ANY other contract
+		// (including yesterday's) must be refused whatever the current version is.
+		{"wrong contract", func(s *ChunkSet) { s.ContractVersion = ChunkContractVersion + "-stale" }},
 		{"no frames", func(s *ChunkSet) { s.TotalFrames = 0 }},
 	}
 	for _, tc := range broken {

@@ -252,7 +252,10 @@ func TestWorker_FailureRetriesThenDeadLetters(t *testing.T) {
 		if err := worker.Handle(ctx, claim); err == nil {
 			t.Fatalf("expected embed failure on attempt %d", i+1)
 		}
-		if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at = '1970-01-01T00:00:00Z' WHERE id = $1`, claim.Event.ID); err != nil {
+		// Rewind BOTH sides of the migration-004 pair: readers prefer the
+		// typed mirror, so a TEXT-only write would leave the stale backoff
+		// stamp in charge and the event would never become claimable again.
+		if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at = '1970-01-01T00:00:00Z', next_attempt_at_ts = '1970-01-01T00:00:00Z' WHERE id = $1`, claim.Event.ID); err != nil {
 			t.Fatalf("rewind backoff: %v", err)
 		}
 	}

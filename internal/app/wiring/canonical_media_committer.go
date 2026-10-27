@@ -44,6 +44,7 @@ import (
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 )
 
@@ -192,10 +193,10 @@ func (s *pgMediaAssetStore) Save(ctx context.Context, details *asset.Details) er
 		SearchText:   mediaStringPtr(a.SearchText),
 		ReviewStatus: mediaStringPtr(string(a.ReviewStatus)),
 	}
-	if tags := encodeStringSliceJSON(a.Tags); tags != "" {
+	if tags := detail.EncodeStringArrayColumn(a.Tags); tags != "" {
 		patch.Tags = &tags
 	}
-	if terms := encodeStringSliceJSON(a.SearchTerms); terms != "" {
+	if terms := detail.EncodeStringArrayColumn(a.SearchTerms); terms != "" {
 		patch.SearchTerms = &terms
 	}
 	if meta := mediaMetadataPatchJSON(a); meta != "" {
@@ -403,19 +404,6 @@ func youTubeIndexState(a *asset.Asset) asset.IndexState {
 
 func mediaStringPtr(v string) *string {
 	return &v
-}
-
-// encodeStringSliceJSON returns the canonical JSON-array encoding for a string
-// slice, or "" when there is nothing to write.
-func encodeStringSliceJSON(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	raw, err := json.Marshal(values)
-	if err != nil {
-		return ""
-	}
-	return string(raw)
 }
 
 // mediaMetadataPatchJSON builds the shallow metadata merge for the editable

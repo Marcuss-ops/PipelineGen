@@ -59,6 +59,20 @@ never drops or rewrites rows.
 
 Three options were considered; we pin **option B** as the cutover contract:
 
+> **As-built amendment (2026-10-27, audit point 10):** the shipped runner
+> implements **option A** (ledger sentinel `version = 0`, filename
+> `000_baseline_267.sql`), not the B alias below. The A/B distinction was
+> explicitly "both feasible" in § 2.1; A preserves `1..267` row identities on
+> old databases, and B's stated goal — fresh baseline-bootstrapped DBs not
+> failing `validateAppliedMigrationSet` — is met by the sentinel-aware check
+> (`migrations_discovery.go::baselineApplied`, plus the pinned tests
+> `migrations_ledger_test.go`, `migrations_203_test.go`,
+> `migrations_092_093_test.go`). Option A is therefore the **operative
+> contract**; the B pin below is historical. The discoverability rule reads:
+> a baseline sentinel row for `N` (`version = 0`,
+> `000_baseline_<N>.sql`) satisfies `001..N` for that `targetDB` even when no
+> per-version rows exist.
+
 * (A) Baseline as version `0` + sentinel: record `version = 0`,
   `filename = 000_baseline_267.sql` — keeps `1..267` row identities intact on
   old DBs. Fresh DBs seed one row and then skip `1..267` by explicit range

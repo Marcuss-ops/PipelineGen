@@ -534,7 +534,10 @@ func TestParity_UpdateDriveDeliveryByLegacyHash(t *testing.T) {
 	c, db := newPostgresCommitter(t)
 	ctx := context.Background()
 
-	// The Drive projection keys on source='image' + content_sha256.
+	// The Drive projection keys on source='image' + content_sha256, and
+	// content_sha256 holds the BYTE identity (Content.ContentSHA256 =
+	// "sha256:bytes") — the 010 contract repointed this lookup away from the
+	// retired legacy hash bucket.
 	req := fullCommitRequest()
 	req.Asset.Source = "image"
 	req.Asset.Filename = "image.jpg"
@@ -544,7 +547,7 @@ func TestParity_UpdateDriveDeliveryByLegacyHash(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := c.UpdateDriveDeliveryByLegacyHash(ctx, "sha256:content", persistence.DriveDeliveryMutation{
+	err := c.UpdateDriveDeliveryByLegacyHash(ctx, "sha256:bytes", persistence.DriveDeliveryMutation{
 		DriveFileID: "drv-1", DriveLink: "https://drive.example/1", DownloadLink: "https://dl.example/1", Status: "delivered",
 	})
 	if err != nil {

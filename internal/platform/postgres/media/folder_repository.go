@@ -126,7 +126,7 @@ func (r *FolderRepository) ListFolders(ctx context.Context, source string) ([]*d
 		query += ` WHERE source = $1`
 		args = append(args, source)
 	}
-	query += ` ORDER BY updated_at DESC`
+	query += " ORDER BY " + tsExpr("updated_at") + " DESC"
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

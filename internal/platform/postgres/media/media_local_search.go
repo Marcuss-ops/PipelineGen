@@ -84,7 +84,7 @@ func (s *MediaSearcher) SearchLocal(ctx context.Context, req LocalMediaSearchReq
 	}
 	query += `
 		  AND lifecycle_state IN ('ACTIVE', 'INDEXED', 'READY', 'PUBLISHED')
-		ORDER BY updated_at DESC, id ASC
+		ORDER BY ` + tsExpr("updated_at") + ` DESC, id ASC
 		LIMIT $` + strconv.Itoa(len(args)+1)
 	args = append(args, limit)
 
@@ -115,7 +115,7 @@ func (s *MediaSearcher) FindAllByHash(ctx context.Context, hash string, limit in
 		FROM media_assets
 		WHERE binary_sha256 = $1 OR content_sha256 = $1 OR content_sha256 = $1
 		   OR binary_sha256 = $2 OR content_sha256 = $2 OR content_sha256 = $2
-		ORDER BY updated_at DESC, id ASC
+		ORDER BY `+tsExpr("updated_at")+` DESC, id ASC
 		LIMIT $3
 	`, candidates[0], candidates[len(candidates)-1], limit)
 	if err != nil {

@@ -85,6 +85,13 @@ type OutboxStatusMetrics interface {
 // row-level fencing — PostgreSQL UPDATE ... WHERE status='pending' is
 // atomic under concurrent workers). Ordering: priority DESC,
 // next_attempt_at ASC, id ASC (migration 186 parity).
+//
+// The fence and the ordering compare through the migration-004 typed mirror
+// (tsExpr), never the legacy TEXT sibling. Unset (” or NULL) maps to
+// '-infinity' = "due now, oldest first", which is what the empty string meant
+// lexicographically AND what SQLite migration 186 ordered first (NULLs first);
+// the plain TEXT port had NULLs sorting LAST, which starved never-attempted
+// events behind retried ones.
 func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration) (*OutboxClaim, error) {
 	now := timeutil.FormatRFC3339(time.Now())
 	leaseID := uuid.NewString()
@@ -95,8 +102,8 @@ func (r *Repository) ClaimNext(ctx context.Context, workerID string, leaseTTL ti
 		WITH candidate AS (
 			SELECT id FROM outbox_events
 			WHERE status = 'pending'
-			  AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
-			ORDER BY priority DESC, next_attempt_at ASC, id ASC
+			  AND (`+tsExpr("next_attempt_at")+` <= NULLIF($1, '')::timestamptz)
+			ORDER BY priority DESC, `+tsExpr("next_attempt_at")+` ASC, id ASC
 			LIMIT 1
 			FOR UPDATE SKIP LOCKED
 		)
@@ -155,8 +162,8 @@ func (r *Repository) ClaimBatch(ctx context.Context, workerID string, leaseTTL t
 		WITH candidate AS (
 			SELECT id FROM outbox_events
 			WHERE status = 'pending'
-			  AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
-			ORDER BY priority DESC, next_attempt_at ASC, id ASC
+			  AND (`+tsExpr("next_attempt_at")+` <= NULLIF($1, '')::timestamptz)
+			ORDER BY priority DESC, `+tsExpr("next_attempt_at")+` ASC, id ASC
 			LIMIT $2
 			FOR UPDATE SKIP LOCKED
 		)
@@ -298,9 +305,9 @@ func (r *Repository) RequeueExpiredLeases(ctx context.Context, limit int) (int, 
 		WITH expired AS (
 			SELECT id FROM outbox_events
 			WHERE status = 'processing'
-			  AND lease_expiry IS NOT NULL
-			  AND lease_expiry < $1
-			ORDER BY lease_expiry ASC, id ASC
+		  AND lease_expiry IS NOT NULL
+		  AND `+tsExpr("lease_expiry")+` < NULLIF($1, '')::timestamptz
+		ORDER BY `+tsExpr("lease_expiry")+` ASC, id ASC
 			LIMIT $2
 		)
 		UPDATE outbox_events

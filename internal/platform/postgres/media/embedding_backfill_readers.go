@@ -231,7 +231,7 @@ func (r *BackfillReader) ListMissingEmbeddingAssets(ctx context.Context, ids []s
 		args = append(args, source)
 		query += fmt.Sprintf(" AND m.source = $%d", len(args))
 	}
-	query += ` ORDER BY m.created_at DESC`
+	query += " ORDER BY " + tsExpr("m.created_at") + " DESC"
 	if limit > 0 {
 		args = append(args, limit)
 		query += fmt.Sprintf(" LIMIT $%d", len(args))

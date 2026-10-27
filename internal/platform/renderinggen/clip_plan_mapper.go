@@ -158,12 +158,28 @@ func hashAddressedPath(assetID, filename string) string {
 }
 
 // MapClipPlanToOverlayPlan converts a sealed ClipRenderPlanV1 into the
-// renderinggen.overlay-plan.v1 JSON wire representation.
+// renderinggen.overlay-plan.v1 JSON wire representation — the single-job
+// shape, audio block included (the worker muxes the source stream).
 //
 // The caller must have called plan.Validate() before invoking this function;
 // the mapper itself performs a lightweight re-check and returns an error if
 // the plan is structurally invalid.
 func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) {
+	return mapClipPlanToOverlayPlan(plan, true)
+}
+
+// MapClipPlanToOverlayPlanVideoOnly is the CHUNK-CHILD shape of the same
+// sealed plan: identical except the audio block is omitted, so the child
+// renders a silent, copy-eligible segment and the chunk family's anchor muxes
+// the source audio exactly once over the assembled video (audio-aware
+// assembly; see docs/operations/TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md). The
+// overlay-plan.v1 schema declares audio as optional, so the child document is
+// contract-valid without any schema change.
+func MapClipPlanToOverlayPlanVideoOnly(plan cliprender.ClipRenderPlanV1) ([]byte, error) {
+	return mapClipPlanToOverlayPlan(plan, false)
+}
+
+func mapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1, includeAudio bool) ([]byte, error) {
 	if plan.Version != cliprender.PlanVersion {
 		return nil, fmt.Errorf("clip plan mapper: unsupported plan version %q", plan.Version)
 	}
@@ -303,12 +319,17 @@ func MapClipPlanToOverlayPlan(plan cliprender.ClipRenderPlanV1) ([]byte, error) 
 		op.Watermark = wm
 	}
 
-	// Audio
-	op.Audio = &overlayAudio{
-		Mode:       plan.Audio.Mode,
-		Codec:      plan.Audio.Codec,
-		SampleRate: plan.Audio.SampleRate,
-		Channels:   plan.Audio.Channels,
+	// Audio — omitted for chunk children (includeAudio=false): the child is a
+	// silent segment and the family anchor muxes the source stream exactly
+	// once over the assembled video. The audio-less document is schema-valid
+	// (overlay-plan.v1 declares audio as optional).
+	if includeAudio {
+		op.Audio = &overlayAudio{
+			Mode:       plan.Audio.Mode,
+			Codec:      plan.Audio.Codec,
+			SampleRate: plan.Audio.SampleRate,
+			Channels:   plan.Audio.Channels,
+		}
 	}
 
 	// Entity overlays — one pre-rendered segment PER certified overlay.render

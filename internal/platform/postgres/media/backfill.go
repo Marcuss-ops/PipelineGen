@@ -121,10 +121,11 @@ func RunMediaBackfill(ctx context.Context, cfg BackfillConfig) (*BackfillReport,
 	}
 
 	// Self-bootstrapping schema: idempotent IF NOT EXISTS DDL is a no-op on
-	// an already-populated media database. 003 registers the canonical
-	// embedding families and creates the production HNSW ANN indexes;
-	// 004 adds TIMESTAMPTZ mirrors for every hot-path TEXT timestamp.
-	for _, ddl := range []string{pgmigration.MediaSchemaDDL, pgmigration.MediaVectorSurfacesDDL, pgmigration.MediaHNSWIndexesDDL, pgmigration.MediaTimestampsTimestamptzDDL, pgmigration.MediaAssetVersionsDDL, pgmigration.MediaClipFoldersDDL, pgmigration.MediaAssetProcessingDDL, pgmigration.MediaDropAssetFacesDDL} {
+	// an already-populated media database. The canonical ORDERED sequence
+	// (001→009, 009 last) lives in one place —
+	// pgmigration.MediaSelfBootstrapDDL — so no runner can apply a silent
+	// prefix of it (audit point 9).
+	for _, ddl := range pgmigration.MediaSelfBootstrapDDL {
 		if _, err := pg.ExecContext(ctx, ddl); err != nil {
 			return nil, fmt.Errorf("media backfill: apply media migrations: %w", err)
 		}
