@@ -135,9 +135,9 @@ Per rendere l'intero sistema realtime:
 | :--- | :--- | :--- | :--- |
 | **Step 1** | **Disaccoppiamento `OverlaysOnly` in PipelineGen** | Zero frame master renderizzati in planning | **COMPLETATO & SIGILLATO** |
 | **Step 2** | **Fix Static Frame Bypass in `SceneHasher`** | Frame statici istantanei senza raster GPU | **COMPLETATO** |
-| **Step 3** | **Cross-Scene Mega-Batching (P0)** | 1.800–2.200 overlay/min su 3 socket | **IN CORSO (Architettura Validata)** |
+| **Step 3** | **Cross-Scene Mega-Batching (P0)** | 1.800–2.200 overlay/min su 3 socket | **IMPLEMENTATO & TESTATO (benchmark live pendente)** |
 | **Step 4** | **NVENC Resident Session Cross-Job (P3)** | Latenza singolo job <50ms, 0 teardown | **INTEGRATO (Multi-Segment P4)** |
-| **Step 5** | **Manifest Demuxless Timeline (P2)** | -90% I/O disco, zero MP4 intermedi | **COMPLETATO IN BRAINRUST (122 Test Passati)** |
+| **Step 5** | **Manifest Demuxless Timeline (P2)** | -90% I/O disco, zero MP4 intermedi | **COMPLETATO IN BRAINRUST (126 Test Passati)** |
 | **Step 6** | **TTS Locale GPU + CTC Alignment (C1/C2)** | Pianificazione totale copione <30s | **ANALIZZATO** |
 
 ---
@@ -154,3 +154,21 @@ Per rendere l'intero sistema realtime:
 
 ### 6.3 Divieto Assoluto Rendering Master Video
 - In `refactored/internal/capabilities/scripts/runner_deps.go`, la funzione `enqueueLocalizedRender` è stata convertita in no-op permanente (`return nil`). Nessun video master intero (30.540 frame) verrà mai più generato o renderizzato dentro PipelineGen.
+
+---
+
+## 7. Aggiornamento Implementazione (2026-10-27)
+
+### 7.1 P0: Packed Composition — criteri di accettazione verificati
+- La packed composition (`refactored/internal/capabilities/scripts/overlay_manifest_packed.go`) è coperta da test con item cross-scene (scene-01 + scene-02 nella stessa canvas packed); i test P0 di RenderingGen sono verdi.
+- Il benchmark live 1.800–2.200 overlay/min su 3 socket resta da eseguire: lo stato Step 3 resta "implementato & testato", non "misurato".
+
+### 7.2 P2: Parità wire Go↔Rust chiusa
+- Il manifest packed Go emette `artifact_in_us`/`artifact_out_us`; il consumatore Rust (`BrainRust/pipelinegen-muscles/src/protocol.rs`) ora li deserializza e valida con la stessa semantica Go (coerenza in_us/out_us/artifact_in_us/artifact_out_us, corrispondenza asset_id↔entry track, campi packed senza significato fisico → errore fail-closed).
+- Suite BrainRust: **126 test verdi** (123 unit + 3 integration); `cargo fmt` e `clippy` puliti.
+
+### 7.3 Governance JOBS-POLICY-ORDER e bonifica sorgenti multiple di verità
+- **Drive-token SSOT**: `scripts/generate_drive_token.py` è l'unica implementazione, `scripts/regenerate_token.sh` l'unico wrapper; tutti i messaggi operatore puntano a path reali. I tre comandi fantasma (`go run ./scripts/tools/regenerate_drive_token.go`, `go run ./scripts/generate_drive_token.go`, `python3 scripts/tools/generate_drive_token.py`) sono eliminati.
+- **Legacy-path comments**: tutti i puntatori Go live ai root cancellati (`application/jobs`, `internal/application`, `internal/api`, `api/assets/*` come path-pacchetto) riscritti verso i path reali. Restano solo riferimenti storici espliciti ("retired", "eliminated", "absorbed"), route HTTP live (`/api/assets/operator/*`) e i commenti SQL nelle migration applicate, immutabili per design del ledger (checksum-pinned).
+- **Allineamento**: `cmd/architecture-aggregate --dry-run` OK (`architecture/ownership.generated.yaml` in sync), ratchets `jobs/{queue,scheduling,finalize}` presenti, `go test ./cmd/archcheck/...` verde.
+- **Worktree**: resta solo `main` in entrambi i repository; `refactored-clean` (WIP già in main, verificato file-per-file) e `.tmp/pipelinegen-head` rimossi, prune vuoto, entry `.gitignore` orfana rimossa.
