@@ -28,9 +28,21 @@ go run ./cmd/semantic-extract \
 ```
 
 Use `--output -` to write JSON to stdout. `--scene-words` controls the target
-chunk size (default 160); chunks are made at sentence boundaries where
-possible. `VELOX_RUST_SEMANTIC_ENGINE_PATH` can supply the binary path instead
-of `--engine`.
+chunk size (default 320); the larger default keeps related events and their
+references together while retaining sentence boundaries where possible.
+`VELOX_RUST_SEMANTIC_ENGINE_PATH` can supply the binary path instead of `--engine`.
+
+The deterministic regression fixture is `cmd/semantic-extract/testdata/visual_events.txt`.
+Run it with the same command to inspect composed searches, unsupported relations,
+future projects and malformed subtitle tokens:
+
+```bash
+go run ./cmd/semantic-extract \
+  --input ./cmd/semantic-extract/testdata/visual_events.txt \
+  --language en \
+  --engine ../BrainRust/target/release/semantic-engine \
+  --output /tmp/visual-events-report.json
+```
 
 ## Admin commands
 

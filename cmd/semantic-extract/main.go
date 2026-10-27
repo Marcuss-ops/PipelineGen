@@ -23,7 +23,7 @@ func main() {
 	outputPath := flag.String("output", "-", "JSON output path, or - for stdout")
 	language := flag.String("language", "en", "BCP-47 language code")
 	enginePath := flag.String("engine", defaultEnginePath(), "path to the BrainRust semantic-engine binary")
-	sceneWords := flag.Int("scene-words", 160, "target maximum words per scene chunk")
+	sceneWords := flag.Int("scene-words", 320, "target maximum words per scene chunk")
 	flag.Parse()
 
 	if strings.TrimSpace(*inputPath) == "" {

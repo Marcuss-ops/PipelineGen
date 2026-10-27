@@ -92,6 +92,7 @@ type SemanticPlannedIdentity struct {
 type SemanticProductionUnit struct {
 	CandidateID, Recipe string
 	Rank                int
+	Priority            float64
 	SceneID             string
 	EntityIDs           []string
 	FactIDs             []string
@@ -263,6 +264,11 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 
 	candidates := append([]SemanticProductionCandidate(nil), consolidation.ProductionCandidates...)
 	sort.SliceStable(candidates, func(i, j int) bool {
+		leftScore := semanticPlannerPriority(candidates[i], knownIdentities)
+		rightScore := semanticPlannerPriority(candidates[j], knownIdentities)
+		if leftScore != rightScore {
+			return leftScore > rightScore
+		}
 		if candidates[i].Rank != candidates[j].Rank {
 			return candidates[i].Rank < candidates[j].Rank
 		}
@@ -306,6 +312,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 		}
 		unit := SemanticProductionUnit{
 			CandidateID: candidate.ID, Recipe: candidate.Recipe, Rank: candidate.Rank,
+			Priority:  semanticPlannerPriority(candidate, knownIdentities),
 			SceneID:   candidate.SceneID,
 			EntityIDs: append([]string(nil), candidate.EntityIDs...),
 			FactIDs:   append([]string(nil), candidate.FactIDs...),
@@ -430,6 +437,41 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 	sort.Slice(plan.Identity, func(i, j int) bool { return plan.Identity[i].ID < plan.Identity[j].ID })
 	plan.factsByCandidate = candidateFacts
 	return plan, nil
+}
+
+// semanticPlannerPriority gives a source-grounded composed query a chance to
+// compete as the visual event it describes. Rust assigns a base priority to
+// the owning identity; this final planner pass considers the actual query rung
+// before spending a scarce media slot. An isolated one-word identity remains
+// available as a fallback, but does not beat a well-grounded composition just
+// because its identity score was slightly higher.
+func semanticPlannerPriority(candidate SemanticProductionCandidate, identities map[string]SemanticIdentity) float64 {
+	priority := candidate.Priority
+	if slices.Contains(candidate.Rationale, "global_document_anchor") {
+		return priority
+	}
+	if candidate.Recipe != "entity_search" || len(candidate.Queries) == 0 {
+		return priority
+	}
+	query := candidate.Queries[0]
+	if query.Origin == "derived_from_source_context" && strings.TrimSpace(query.Evidence) != "" && len(query.Components) >= 2 {
+		owner := normalizeIdentitySurface(candidate.Title)
+		for _, entityID := range candidate.EntityIDs {
+			if identity, ok := identities[entityID]; ok && normalizeIdentitySurface(identity.CanonicalSurface) != "" {
+				owner = normalizeIdentitySurface(identity.CanonicalSurface)
+				break
+			}
+		}
+		for _, component := range query.Components {
+			if normalizeIdentitySurface(component.Text) == owner {
+				return min(priority+0.2, 0.97)
+			}
+		}
+	}
+	if len(strings.Fields(strings.TrimSpace(query.Text))) == 1 {
+		return priority * 0.82
+	}
+	return priority
 }
 
 // revokeSkippedUnit keeps coverage and identity admission honest after a
