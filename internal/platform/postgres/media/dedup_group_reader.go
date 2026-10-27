@@ -166,7 +166,7 @@ func (r *MediaDuplicateGroupReader) DuplicateAssetIDsByYouTubeID(ctx context.Con
 		WHERE `+youtubeIDExpr+` = $1
 		  AND lifecycle_state <> 'DELETED'
 		  AND id <> $2
-		ORDER BY created_at DESC, id DESC
+		ORDER BY `+tsExpr("created_at")+` DESC, id DESC
 	`, videoID, excludeID)
 	if err != nil {
 		return nil, fmt.Errorf("media duplicate group reader: duplicate id query: %w", err)

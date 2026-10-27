@@ -3,7 +3,7 @@
 - **Data:** 2026-10-27
 - **Autori:** Pierone + Buffy (Codebuff)
 - **Moduli interessati:** `refactored` (PipelineGen: `cliprender`, `internal/platform/renderinggen`), `RenderingGen` (`internal/processor`), `Chronon3d` (solo verifica, nessuna modifica attesa), `BrainRust` (nessuna modifica — contratto artefatto invariato)
-- **Stato:** ATTIVO / PROPOSTO DI SBLOCCO
+- **Stato:** IN IMPLEMENTAZIONE — sblocco atterrato su tutti e tre i moduli (v. §9); residui dichiarati in §9
 - **Obiettivo:** Rendere il chunking realmente attivo per i clip source-only lunghi (children video-only + mux sorgente una sola volta all'anchor), riducendo la latenza per clip da ~1× a ~1/N sul pool di worker, senza cambiare il contratto dell'arte-fatto pubblicato.
 
 ---
@@ -73,4 +73,46 @@ Risultato: `SetChunking` è cablato in produzione ma **non può mai attivarsi**.
 - `refactored/internal/capabilities/cliprender/plan_seal_validation.go` — audio mode obbligatoria sui piani validi
 - `RenderingGen/renderinggen/internal/processor/pipeline.go` — `AudioSourcePath`, `FragmentedMP4: audioPath == ""`, metrica `AudioModeUnsupported`
 - `RenderingGen/renderinggen/internal/processor/finalization.go` — assembly packet-copy, gate copy-eligibility
-- Test pin: `TestChunkPolicyIsDormantForEverySealedPlan`, `TestChunkPolicyRefusesPlansWithAudio` (`clip_executor_test.go`)
+- Test pin: `TestChunkPolicyChunksAudioPlans`, `TestChunkProducerChildrenAreVideoOnlyAndAnchorOwnsAudio`, `TestParentFinalizerMuxesSourceAudioOnce`, `TestParentFinalizerSilentAnchorStaysFragmented`
+
+## 9. Stato di Implementazione (2026-10-27)
+
+Lo sblocco è atterrato su tutti e tre i moduli, con pin su ogni contratto:
+
+### 9.1 `refactored` — famiglia audio-aware
+- `MapClipPlanToOverlayPlanVideoOnly` (`clip_plan_mapper.go`): la shape child del piano — identica all'anchor tranne il blocco `audio` omesso (lo schema `overlay-plan.v1` dichiara audio opzionale: nessun cambio contratto). `MapClipPlanToOverlayPlan` resta la shape single-job con audio.
+- `chunk_producer.go`: i child sottomettono la mapping video-only, l'anchor la mapping completa (audio + source) — pin `TestChunkProducerChildrenAreVideoOnlyAndAnchorOwnsAudio`.
+- `ChunkContractVersion` → `clip-chunk.v2`: il contenuto render di una finestra è cambiato (child video-only), quindi le identità v1 non vengono riusate.
+- `chunkPolicy`: guard di dormienza RIMOSSO — i piani con audio si chunkano; pin `TestChunkPolicyChunksAudioPlans` (finestre (2,48), `RenderJobID` = anchor).
+
+### 9.2 `RenderingGen` — il finalizer è l'audio owner
+- `chronon.AssembleRequest` += `AudioSourcePath` + `AudioTargetSampleRate` (stessi nomi wire e stessa semantica di `RenderRequest`: copy verbatim del flusso intero, rebase a PTS 0, resample solo se il target rate differisce).
+- `finalization.go`: `anchorAudioSource` è la SINGLE TYPED AUTHORITY — legge il piano anchor via `overlay.CompileSemantic` (lo stesso compiler del render path), risolve il source asset dal compile asset set, materializza via store e passa una sola richiesta di mux all'assembler; parent con audio ⇒ MP4 classico. Fail-closed: piano non decodificabile, audio senza source layer, source asset assente ⇒ errore (mai parent silenzioso che violerebbe il contratto clip).
+- Pin: `TestParentFinalizerMuxesSourceAudioOnce` (un solo mux, rate dichiarato, source materializzato verificato per hash) e `TestParentFinalizerSilentAnchorStaysFragmented`.
+
+### 9.3 `Chronon3d` — `assemble_segments` audio-aware
+- `SegmentAssemblyRequest` += `audio_source_path` + `audio_target_sample_rate`; `assemble_segments` dichiara lo stream audio sorgente sul `MuxSession` PRIMA dell'header e copia i pacchetti DOPO i segmenti — stesso ordine e stessa semantica packet-copy di `NativeAvEncoder::mux_source_audio` (il percorso `--gop-source` del render single-job), quindi l'artefatto assemblato è ciò che il render single-job avrebbe prodotto.
+- Fail-closed: segmenti con audio + source audio ⇒ rifiuto ("one artifact carries one audio owner"); source senza stream audio ⇒ rifiuto.
+- Daemon IPC `AssembleSegments` payload esteso: `{input_paths, output_path, fragmented_mp4, audio_source_path, audio_target_sample_rate}`.
+- Test C++: "Audio-aware assembly muxes one source stream over video-only segments" (20 packet video, stream AAC presente) e "Audio-aware assembly refuses a second audio owner and a silent audio source". Suite completa `chronon3d_cli_tests`: 261/261 verdi.
+
+### 9.4 Residui dichiarati
+- **Criterio 5 (equivalenza artefatto end-to-end)**: garantito per costruzione (stesso MuxSession, stessa semantica copy, stesso ordine del render single-job) e dai pin del mux; il test di confronto parent-assemblato vs render-single-job su fixture reali (stream audio identico per hash, fatti certificati equivalenti) resta da scrivere in RenderingGen.
+- **Ammissione parallela GPU**: resta il gate operativo per l'attivazione in produzione (precondizione già dichiarata in `chunk_producer.go`); `SetChunking` resta l'opt-in cablato.
+- **Pin C++ "esattamente una volta"**: aggiunto al test (`audio_packets == source_audio_packets`, conteggio e non presenza) ma in attesa di rebuild: il tree Chronon3d è condiviso con un altro workstream i cui file in modifica (`image_writer.cpp` + `image_writer_png_detail.hpp`) non compilano attualmente (errore TBB nei loro header). Il pin è nel sorgente del test.
+
+## 10. Scoperte dall'Implementazione (2026-10-27)
+
+### 10.1 Scoperte architetturali (utili per chi riprende il thread)
+1. **Il mux canonico di Chronon supportava GIÀ l'audio**: `MuxSession` espone `AudioStreamConfig`, `submit_audio`, `AudioResampler` (copy verbatim, trim, resample con `target_sample_rate`). Lo sblocco non ha richiesto nessun nuovo primitivo di mux — solo esporlo in `assemble_segments`.
+2. **Lo schema `overlay-plan.v1` dichiara `audio` OPZIONALE** (non è nel `required`, nessun campo obbligatorio dentro): i child video-only sono contrattualmente validi SENZA alcuno cambio di schema o ai parity test. Un cambio contratto non sarebbe stato necessario nemmeno per l'anchor.
+3. **Semantica audio del render single-job**: `NativeAvEncoder::mux_source_audio` copia verbatim TUTTO il flusso sorgente (la finestra `audio_start/end_seconds` è usata solo dal lane pipe_export), DOPO tutti i pacchetti video e PRIMA del trailer. `assemble_segments` replica esattamente questa sequenza per l'anchor — da cui l'equivalenza artefatto per costruzione.
+4. **Le due single typed authority del percorso audio**: `audioSourcePathFromPlan` (render path, legge `Plan.Output.Audio` + layer "source" del piano compilato) e `anchorAudioSource` (finalizer, `overlay.CompileSemantic` sul piano anchor + source asset dal compile asset set). Nessuno dei due legge il piano semantico "a mano".
+5. **Producer: due mapping dello stesso piano sealed** — child = mapping video-only, anchor = mapping completa. Il contratto wire non cambia; cambia solo quali blocchi vengono omessi.
+6. **`clip-chunk.v1` → `clip-chunk.v2`**: il contenuto render di una finestra è cambiato (child video-only), quindi nuove identità job. Nessuna famiglia v1 esiste in nessuna coda: la dormienza storica garantisce zero legacy.
+
+### 10.2 Scoperte operative sull'ambiente di build/verifica
+1. **Build Chronon3d**: `ninja -j 12` OOM-kill di `cc1plus` (32 GB RAM con llama-server residente ~5 GB + 3 daemon); `-j 3` è stabile. Build completo del target test ≈ 20-25 minuti da freddo.
+2. **Gate lenti per gitleaks**: `verify-agent`/`verify-main` spendono ~5 minuti nella sola scansione secret (10.5 GB); non è un hang.
+3. **Build Go concorrenti vs build cache**: con più build paralleli può comparire `could not import ... (open : no such file or directory)` (export data evictata) — è un artefatto di cache, NON una regressione: riprendere con la cache calda.
+4. **Tree condiviso con altri agent concorrenti**: durante questa sessione un altro processo Freebuff ha lavorato in parallelo su `refactored/cmd/semantic-extract/`, `refactored/internal/platform/sqlite/twinddl/` e 13 file Chronon3d (`image_writer.cpp` etc.). Conseguenze osservate: `verify-format` e `verify-unit-fast` rossi per file estranei (enforcement atomicwrite su `cmd/semantic-extract`), rebuild Chronon3d bloccato da un errore TBB nei LORO file. Regola acquisita: ogni gate rosso va diagnosticato per OWNERSHIP (git status + mtime) prima di toccare codice — e i fix di formattazione su file altrui vengono sovrascritti dal lavoro in corso.

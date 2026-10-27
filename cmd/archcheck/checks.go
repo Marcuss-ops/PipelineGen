@@ -93,6 +93,8 @@ var defaultRules = []rule{
 	{"percheck_media_write_bridge_ban", simple(boundaries.ScanMediaWriteBridgeBan)},
 	{"percheck_asset_state_no_shadow_enum", simple(governance.ScanAssetStateNoShadowEnum)},
 	{"percheck_157_asset_state_migration_default_wire", simple(migrations.ScanAssetStateMigration157DefaultWire)},
+	{"percheck_state_matrix", simple(migrations.ScanStateMatrix)},
+	{"percheck_timestamp_convention", simple(migrations.ScanTimestampConvention)},
 	{"percheck_rights_status_canonical_6", simple(governance.ScanRightsStatusCanonical6)},
 	{"percheck_review_status_canonical_4", simple(governance.ScanReviewStatusCanonical4)},
 	{"percheck_clip_ingest_pipeline_canonical_1", clipIngestRule},

@@ -11,7 +11,11 @@ func TestMigrations_223ArtlistCatalogSchema(t *testing.T) {
 			"clip_id", "title", "author", "duration_ms", "canonical_clip_url",
 			"thumbnail_url", "tags_json", "categories_json", "description",
 			"metadata_json", "first_seen_at", "last_seen_at", "updated_at",
-			"active", "downloaded", "drive_file_id", "drive_link", "local_path", "file_hash",
+			"active", "downloaded", "drive_file_id", "drive_link", "local_path",
+			// "file_hash" was the pre-229 mixed digest bucket; its data was
+			// absorbed into content_sha256 (229 → 281) and the residual column
+			// is dropped by 286_media_mirror_fields_contract.sql.
+			"content_sha256",
 		},
 		"artlist_queries": {
 			"query_id", "query", "normalized_query", "query_key", "filters_json",

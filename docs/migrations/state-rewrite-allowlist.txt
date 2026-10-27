@@ -1,0 +1,25 @@
+# state-rewrite-allowlist.txt — allowlist STORICA e CHIUSA del gate
+# percheck_state_matrix (cmd/archcheck/scan/migrations/percheck_state_matrix.go).
+#
+# Regola: una migrazione NON deve riscrivere valori di colonne di stato
+# (UPDATE ... SET status/state/*_status/*_state = ...). Le transizioni di
+# vocabolario si fanno con view o colonne generate (docs/migrations/STATE_MATRIX.md).
+#
+# Le voci qui sotto sono le sole rewrite migration esistenti, tutte anteriori
+# alla regola, in forma di path repo-relativo (convenzione delle allowlist
+# validate da percheck_governance_artifacts). Nessuna nuova voce: il gate
+# fallisce su ogni file non elencato. Una voce il cui file non contiene più
+# rewrite (o non esiste) fallisce come stale.
+migrations/sqlite/000_baseline_267.sql
+migrations/sqlite/053_job_lifecycle_atomic.sql
+migrations/sqlite/059_canonical_media_columns.sql
+migrations/sqlite/062_asset_locations_backfill.sql
+migrations/sqlite/065_job_status_lowercase.sql
+migrations/sqlite/066_job_status_uppercase.sql
+migrations/sqlite/069_job_status_check_uppercase.sql
+migrations/sqlite/094_add_media_assets_index_state_column.sql
+migrations/sqlite/101_lifecycle_state_ssot.sql
+migrations/sqlite/130_rename_ready_to_staged.sql
+migrations/sqlite/152_add_canonical_metadata_columns.sql
+migrations/sqlite/183_reconcile_lifecycle_status_shadow.sql
+migrations/sqlite/189_canonical_asset_state_constraints.sql

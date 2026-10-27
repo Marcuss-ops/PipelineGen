@@ -56,7 +56,7 @@ func (r *PostgresCanonicalIdentityResolver) ResolveSource(ctx context.Context, s
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT asset_id, COALESCE(content_sha256, '') FROM media_asset_sources
 		WHERE source_type = $1 AND source_uri = $2
-		ORDER BY is_primary DESC, discovered_at ASC`, sourceType, sourceRef)
+		ORDER BY is_primary DESC, `+tsCastExpr("discovered_at")+` ASC`, sourceType, sourceRef)
 	if err != nil {
 		return capregistry.CanonicalIdentity{}, fmt.Errorf("canonical identity resolver (postgres): resolve source (%s, %s): %w", sourceType, sourceRef, err)
 	}

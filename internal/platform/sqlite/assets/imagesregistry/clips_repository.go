@@ -44,7 +44,7 @@ const MediaAssetColumns = `
 	COALESCE(group_name, '') AS group_name,
 	COALESCE(filename, '') AS filename,
 	COALESCE(error, '') AS error,
-	COALESCE(thumb_url, '') AS thumb_url,
+	COALESCE(thumbnail_url, '') AS thumb_url,
 	COALESCE(phash, '') AS phash,
 	COALESCE(search_text, '') AS search_text,
 	COALESCE(scene_type, '') AS scene_type,

@@ -83,23 +83,17 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 		t.Fatalf("register visual family: %v", err)
 	}
 
-	// Seed one committed asset per family with real embeddings so
-	// the planner has rows to consider (an empty table can still plan a
-	// seq scan; the fixture makes the plan realistic). The committer is
-	// built over the SAME db handle — a second newMediaTestDB would
-	// truncate the family rows registered above.
-	box := pgmedia.NewOutboxRepository(db)
-	ledger, ledgerErr := pgmedia.NewRegistry(db)
-	if ledgerErr != nil {
-		t.Fatalf("registry: %v", ledgerErr)
-	}
-	committers := pgmedia.NewPostgresMediaCommitter(db, box, ledger, nil)
-
-	// Realistic fixture volume: pgvector's planner legitimately plans a
-	// Seq Scan on a near-empty table even when a usable HNSW index
-	// exists (cost model). Seed enough rows per family that the ANN
-	// index is the only rational plan for a LIMIT 20 cosine ordering.
-	// Each family gets a vector at ITS OWN pinned dimension.
+	// Realistic fixture volume (measured with pgvector 0.8.x on PostgreSQL
+	// 18): below a few thousand rows per family the planner HONESTLY
+	// prefers a top-N sort over the ANN scan — at 5000 rows the HNSW index
+	// drives the plan naturally. The historical fixture (64/24 rows) only
+	// passed on stale statistics; seeding real volume keeps the assertion
+	// at its strongest (NO planner knobs: the plan must choose the index).
+	// Bulk INSERT is test-only support (the media-writer gate exempts
+	// _test.go); the families above are registered first so the embedding
+	// validation trigger accepts the rows. Each family gets a vector at
+	// ITS OWN pinned dimension for the query literal.
+	const fixtureRows = 5000
 	semanticVec := make([]float32, hnswSemanticDim)
 	visualVec := make([]float32, hnswVisualDim)
 	for i := range semanticVec {
@@ -108,23 +102,37 @@ func TestHNSW_VectorSearchPlansIndexScan(t *testing.T) {
 	for i := range visualVec {
 		visualVec[i] = 0.01 * float32(i%13)
 	}
-	for i := 0; i < 64; i++ {
-		sid := fmt.Sprintf("yt_hnsw_semantic_%03d", i)
-		if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor(sid)); err != nil {
-			t.Fatalf("commit semantic fixture asset %s: %v", sid, err)
+	for _, fam := range []struct {
+		prefix string
+		kind   string
+		model  string
+		dim    int
+	}{
+		{"hnsw_bulk_sem_", "text", hnswSemanticModel, hnswSemanticDim},
+		{"hnsw_bulk_vis_", "visual", hnswVisualModel, hnswVisualDim},
+	} {
+		vec, err := pgvectorLiteralFor(make([]float32, fam.dim))
+		if err != nil {
+			t.Fatalf("vector literal: %v", err)
 		}
-		if err := vectors.UpsertEmbedding(ctx, sid, "text", hnswSemanticModel, semanticVec); err != nil {
-			t.Fatalf("seed semantic embedding %s: %v", sid, err)
+		if _, err := db.ExecContext(ctx, fmt.Sprintf(`
+			INSERT INTO media_assets (id, lifecycle_state, deleted_at)
+			SELECT '%s' || g, 'ACTIVE', '' FROM generate_series(1, %d) g`, fam.prefix, fixtureRows)); err != nil {
+			t.Fatalf("seed %s assets: %v", fam.kind, err)
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf(`
+			INSERT INTO media_embeddings (asset_id, embedding_type, model_id, embedding)
+			SELECT '%s' || g, '%s', '%s', '%s'::vector FROM generate_series(1, %d) g`,
+			fam.prefix, fam.kind, fam.model, vec, fixtureRows)); err != nil {
+			t.Fatalf("seed %s embeddings: %v", fam.kind, err)
 		}
 	}
-	for i := 0; i < 24; i++ {
-		vid := fmt.Sprintf("yt_hnsw_visual_%03d", i)
-		if _, err := committers.CommitAndIndex(ctx, txCommitRequestFor(vid)); err != nil {
-			t.Fatalf("commit visual fixture asset %s: %v", vid, err)
-		}
-		if err := vectors.UpsertEmbedding(ctx, vid, "visual", hnswVisualModel, visualVec); err != nil {
-			t.Fatalf("seed visual embedding %s: %v", vid, err)
-		}
+
+	// Fresh planner statistics: without ANALYZE the planner keeps the
+	// pre-insert row estimates and can mis-cost the ANN path against a
+	// top-N sort. The plan under test must reflect the seeded volume.
+	if _, err := db.ExecContext(ctx, "ANALYZE media_embeddings, media_assets"); err != nil {
+		t.Fatalf("analyze fixtures: %v", err)
 	}
 
 	visualLiteral, err := pgvectorLiteralFor(visualVec)

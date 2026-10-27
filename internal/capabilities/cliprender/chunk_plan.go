@@ -42,7 +42,12 @@ import (
 // every chunk job id, so altering what a window means (for example switching
 // from frame ranges to time ranges) mints new ids instead of silently
 // re-pointing old ones at a different meaning.
-const ChunkContractVersion = "clip-chunk.v1"
+//
+// v2 — audio-aware assembly: a window now renders a VIDEO-ONLY child (silent,
+// copy-eligible) and the family anchor owns the single source-audio mux over
+// the assembled video. The frame range is unchanged, but the window's render
+// content is not, so v1 ids are never reused for v2 work.
+const ChunkContractVersion = "clip-chunk.v2"
 
 // Chunk is one deterministic window of a sealed plan's timeline. The range is
 // HALF-OPEN [StartFrame, EndFrame) in plan frames, absolute (the plan carries no

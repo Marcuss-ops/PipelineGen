@@ -34,6 +34,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 // PostgresAssetCommitter is the canonical adapter for
@@ -275,16 +276,17 @@ func (c *PostgresAssetCommitter) CommitTxRaw(ctx context.Context, tx persistence
 	}
 	rowsAffected, _ := res.RowsAffected()
 
-	// group_name and thumb_url exist on the canonical PostgreSQL schema, so
-	// the compatibility probes the SQLite writer performs against legacy
-	// databases collapse into unconditional single-row updates here.
+	// group_name exists on the canonical PostgreSQL schema, so the
+	// compatibility probes the SQLite writer performs against legacy
+	// databases collapse into an unconditional single-row update here.
+	// The thumbnail has ONE canonical column (thumbnail_url) written by the
+	// upsert above — the thumb_url mirror write was removed with the mirror
+	// column's contract (migrations/postgres/013_media_thumb_url_contract.sql,
+	// audit point 8).
 	if req.GroupName != "" {
 		if _, err := sqlTx.ExecContext(ctx, `UPDATE media_assets SET group_name = $1, updated_at_ts = NULLIF(updated_at, '')::timestamptz WHERE id = $2`, req.GroupName, req.AssetID); err != nil {
 			return persistence.CommitResult{}, fmt.Errorf("asset committer: update group name: %w", err)
 		}
-	}
-	if _, err := sqlTx.ExecContext(ctx, `UPDATE media_assets SET thumb_url = $1, updated_at_ts = NULLIF(updated_at, '')::timestamptz WHERE id = $2`, req.ThumbnailURL, req.AssetID); err != nil {
-		return persistence.CommitResult{}, fmt.Errorf("asset committer: update thumb_url: %w", err)
 	}
 
 	// 3. UPSERT asset_locations.
@@ -521,14 +523,13 @@ func normalizeAssetCommitFields(req persistence.CommitRequest, now time.Time) as
 
 // ── Tag projection helpers (SQLite mirror: clip_writer_helpers.go) ──────
 
-// clipTagsJSON marshals the tag list as a JSON array string for the
-// media_assets.tags column (empty slice → empty string, SQLite parity).
+// clipTagsJSON marshals the tag list for the media_assets.tags column
+// (empty slice → empty string, SQLite parity). The format contract and its
+// codec have a single owner: internal/kernel/asset/detail
+// (EncodeStringArrayColumn — see its search_terms.go header for the
+// string-array column contract).
 func clipTagsJSON(tags []string) string {
-	if len(tags) == 0 {
-		return ""
-	}
-	raw, _ := json.Marshal(tags)
-	return string(raw)
+	return detail.EncodeStringArrayColumn(tags)
 }
 
 // clipTagsNorm derives the media_assets.tags_norm search string: the
@@ -552,11 +553,7 @@ func clipTagsNorm(tags []string) string {
 // tags_norm search string. Malformed input degrades to an empty norm rather
 // than failing the patch (a single legacy row must not block a mutation).
 func tagsNormFromJSON(raw string) string {
-	var tags []string
-	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
-		return ""
-	}
-	return clipTagsNorm(tags)
+	return clipTagsNorm(detail.ParseStringArrayColumn(raw))
 }
 
 // execAssetUpdate is the canonical rows-affected gate for single-asset

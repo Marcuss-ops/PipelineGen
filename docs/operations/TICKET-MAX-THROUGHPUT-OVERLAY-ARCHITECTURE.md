@@ -58,6 +58,9 @@
 >
 > La scalabilità a >2.500 overlay/min non deve quindi passare dalla moltiplicazione sconsiderata dei processi di sistema, ma dalle ottimizzazioni architetturali **P0, P2 e P3**.
 
+### 2.3 Vincolo di Build (misurato 2026-10-27)
+- La build di Chronon3d con `ninja -j 12` **OOM-kill di `cc1plus`** sulla stessa macchina (32 GB RAM, ~5 GB già residenti per llama-server + i daemon): il parallelismo di compilazione va tenuto a `-j 3` (build completo del target test ≈ 20-25 min da freddo). Il vincolo è di MEMORIA DI COMPILAZIONE, non di GPU: non interviene a runtime.
+
 ---
 
 ## 3. Le Tre Proposte Architetturali ad Altissimo Rendimento
@@ -154,6 +157,16 @@ Per rendere l'intero sistema realtime:
 
 ### 6.3 Divieto Assoluto Rendering Master Video
 - In `refactored/internal/capabilities/scripts/runner_deps.go`, la funzione `enqueueLocalizedRender` è stata convertita in no-op permanente (`return nil`). Nessun video master intero (30.540 frame) verrà mai più generato o renderizzato dentro PipelineGen.
+
+---
+
+## 7. Aggiornamento Implementazione (2026-10-27)
+
+### 7.1 Sblocco del Chunking Audio-Aware (I1) — atterrato
+- Il chunk path di clip.render, finora DORMIENTE per ogni piano valido (il guard audio rifiutava ogni piano e ogni piano valido porta audio), è stato sbloccato con la separazione audio/video: **child video-only** (segmenti silenziosi copy-eligible, concat packet-copy su confini keyframe) + **mux sorgente una sola volta all'anchor** (stessa semantica copy del render single-job `--gop-source`). Contratto artefatto invariato, nessun cambio schema (`overlay-plan.v1` dichiara audio opzionale), `ChunkContractVersion` → `clip-chunk.v2`.
+- **Impatto throughput atteso**: i clip source-only lunghi — la shape dominante del lane clip.render — diventano parallelizzabili su N worker del pool (finestre keyframe-aligned + anchor assembly-only), con la latenza per clip che scala ~1/N una volta certificata la parallel admission policy di Chronon sulla GPU target (resta il gate operativo; `SetChunking` è già cablato come opt-in in `clip_render_runtime.go`).
+- Scoperte architetturali e operative complete (mux già audio-capable, semantica audio single-job, vincoli di build, tree condiviso con agent concorrenti): vedi **`TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md` §10**.
+- **Nota di verifica multi-agente**: durante lo sviluppo un altro workstream ha modificato in parallelo il tree (`cmd/semantic-extract/`, `internal/platform/sqlite/twinddl/`, `image_writer.cpp`+header in Chronon3d): alcuni gate (`verify-format`, `verify-unit-fast`) risultano rossi per quei file estranei, non per le modifiche del chunking. I gate rossi vanno sempre diagnosticati per ownership prima di intervenire.
 
 ---
 

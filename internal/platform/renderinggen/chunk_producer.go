@@ -4,6 +4,15 @@ package renderinggen
 // lives in cliprender; this adapter lowers one sealed plan into an atomic
 // RenderingGen anchor+children family. It is opt-in until Chronon's parallel
 // admission policy is certified on the target GPU.
+//
+// AUDIO-AWARE ASSEMBLY. Children carry the VIDEO-ONLY mapping of the plan
+// (silent, copy-eligible segments that the packet-copy assembly can
+// concatenate at keyframe-aligned boundaries); the anchor carries the FULL
+// mapping, so the worker-side finalizer muxes the source audio exactly once
+// over the assembled video. Splitting audio across children would cut AAC
+// packets at video-GOP boundaries; keeping audio single-owner at the anchor
+// removes that problem by construction (see
+// docs/operations/TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md).
 
 import (
 	"context"
@@ -43,9 +52,18 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 	if err != nil {
 		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: plan chunks: %w", err)
 	}
+	// rawPlan (WITH audio) is the anchor's document — the finalizer reads its
+	// audio block + source asset to mux the family's single audio owner.
 	rawPlan, err := MapClipPlanToOverlayPlan(plan)
 	if err != nil {
 		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: map plan: %w", err)
+	}
+	// childPlan is the same plan WITHOUT the audio block: every child renders
+	// a silent segment, so assembly never has to reason about audio packet
+	// boundaries.
+	childPlan, err := MapClipPlanToOverlayPlanVideoOnly(plan)
+	if err != nil {
+		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: map video-only child plan: %w", err)
 	}
 	refs, err := overlayPlanAssets(plan)
 	if err != nil {
@@ -71,7 +89,7 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 			ID: chunk.JobID, JobType: queueclient.JobTypeRenderSegment,
 			ParentJobID: anchorID, ChunkIndex: chunk.Index,
 			FrameRange:  &scriptgen.RenderFrameRange{Start: chunk.StartFrame, End: chunk.EndFrame},
-			OverlaySpec: rawPlan, Assets: assets,
+			OverlaySpec: childPlan, Assets: assets,
 		})
 	}
 	if err := p.submitter.SubmitBatch(ctx, family); err != nil {

@@ -225,11 +225,10 @@ func (e *ClipRenderExecutor) SetPollInterval(interval time.Duration) *ClipRender
 // SetChunking enables the conservative production chunk policy for long,
 // source-only clips. Composition plans remain exclusive.
 //
-// HONEST STATUS: production wiring calls this (clip_render_runtime.go), but
-// the chunk path is DORMANT for every valid plan — see chunkPolicy and the
-// pins in TestChunkPolicyIsDormantForEverySealedPlan. Configuring chunking
-// today buys nothing and costs nothing; enabling it requires audio-aware
-// assembly (video-only children + one full-audio mux at the anchor).
+// AUDIO-AWARE ASSEMBLY: a family splits the video across video-only children
+// and keeps ONE audio owner — the anchor muxes the source stream exactly once
+// over the assembled video — so audio-carrying clip plans are chunkable. See
+// chunkPolicy and docs/operations/TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md.
 func (e *ClipRenderExecutor) SetChunking(chunkDuration time.Duration, alignmentFrames int64, chunkMax int) *ClipRenderExecutor {
 	if e == nil {
 		return e
@@ -341,26 +340,18 @@ func (e *ClipRenderExecutor) chunkPolicy(plan cliprender.ClipRenderPlanV1) (int,
 	if e == nil || e.chunkDuration <= 0 || e.chunkAlignment <= 0 || e.chunkMax < 2 {
 		return 0, 0, false
 	}
-	// Chunk assembly is video-only. Audio packet boundaries and the source
-	// audio policy belong to the complete clip, so splitting a plan that carries
-	// audio can produce failed children or an assembled parent without audio.
-	//
-	// HONEST POLICY (pinned by TestChunkPolicyIsDormantForEverySealedPlan):
-	// this guard makes chunking DORMANT for every valid plan by construction.
-	// The seal validator REQUIRES a non-empty audio mode
-	// (copy_if_compatible|transcode), so the only shape this policy accepts
-	// (Audio.Mode == "") is exactly the shape plan.Validate() rejects — and
-	// Submit validates before chunkPolicy while RenderJobID's anchor path goes
-	// through BuildChunkSet, which validates too. The chunk family can never
-	// fire today: the machinery is wired but asleep. Unlocking chunking is NOT
-	// a policy tweak — children must render video-only and the anchor must mux
-	// the full source audio once (audio-aware assembly; tracked in
-	// docs/operations/TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md). Until that lands,
-	// this guard keeps the dormant niche honest instead of pretending it is
-	// live.
-	if plan.Audio.Mode != "" {
-		return 0, 0, false
-	}
+	// AUDIO-AWARE ASSEMBLY (pinned by TestChunkPolicyChunksAudioPlans and
+	// TestChunkProducerChildrenAreVideoOnlyAndAnchorOwnsAudio): audio is NOT a
+	// policy blocker. Children render the plan's video-only mapping — silent,
+	// copy-eligible segments the packet-copy assembly concatenates at
+	// keyframe-aligned boundaries — and the family anchor carries the full
+	// plan document so the finalizer muxes the source audio exactly once over
+	// the assembled video. Audio packet boundaries therefore never meet a
+	// window boundary; the audio contract travels in the anchor's plan, not in
+	// every child's timeline. (Historical note: this guard used to refuse every
+	// plan with audio, which — with audio mandatory on every sealed plan — made
+	// the whole chunk path dormant; see
+	// docs/operations/TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md.)
 	if plan.Background != nil && plan.Background.Mode != "" && plan.Background.Mode != cliprender.BackgroundModeNone {
 		return 0, 0, false
 	}

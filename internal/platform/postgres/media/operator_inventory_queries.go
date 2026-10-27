@@ -180,7 +180,7 @@ FROM media_assets m
 LEFT JOIN loc_flags loc ON loc.asset_id = m.id
 LEFT JOIN outbox_counts o ON o.aggregate_id = m.id
 WHERE ` + where + `
-ORDER BY m.updated_at DESC, m.id DESC
+ORDER BY ` + tsExpr("m.updated_at") + ` DESC, m.id DESC
 LIMIT ` + fmt.Sprintf("$%d OFFSET $%d", len(pageArgs)-1, len(pageArgs))
 
 	rows, err := r.db.QueryContext(ctx, q, pageArgs...)
@@ -400,10 +400,14 @@ func (r *OperatorInventoryReader) listLocations(ctx context.Context, assetID str
 }
 
 func (r *OperatorInventoryReader) listProcessing(ctx context.Context, assetID string) ([]asset.ProcessingRecord, error) {
-	const q = `SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
+	// asset_processing.updated_at never received a migration-004 typed mirror
+	// (008 mirrored only started_at/completed_at), so the ordering goes through
+	// tsCastExpr: typed comparison, no lexicographic TEXT debt, no mirror to
+	// prefer.
+	q := `SELECT asset_id, step, status, started_at, completed_at, error_message, attempt_count, metadata_json
 	FROM asset_processing
 	WHERE asset_id = $1
-	ORDER BY updated_at DESC`
+	ORDER BY ` + tsCastExpr("updated_at") + ` DESC`
 
 	rows, err := r.db.QueryContext(ctx, q, assetID)
 	if err != nil {
@@ -446,10 +450,10 @@ func (r *OperatorInventoryReader) listProcessing(ctx context.Context, assetID st
 // and an asset with a pathological retry history must not be able to make the
 // detail page arbitrarily expensive.
 func (r *OperatorInventoryReader) listOutboxEvents(ctx context.Context, assetID string) ([]operator.OutboxEventProjection, error) {
-	const q = `SELECT event_type, aggregate_id, event_key, status, attempt_count, last_error, created_at, updated_at
+	q := `SELECT event_type, aggregate_id, event_key, status, attempt_count, last_error, created_at, updated_at
 	FROM outbox_events
 	WHERE aggregate_id = $1
-	ORDER BY created_at DESC
+	ORDER BY ` + tsExpr("created_at") + ` DESC
 	LIMIT 50`
 
 	rows, err := r.db.QueryContext(ctx, q, assetID)

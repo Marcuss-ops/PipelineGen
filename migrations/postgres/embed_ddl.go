@@ -106,3 +106,64 @@ var MediaAssetProcessingDDL string
 //
 //go:embed 009_drop_media_asset_faces.sql
 var MediaDropAssetFacesDDL string
+
+// MediaLegacyFileMd5ConvergeDDL is the verbatim DDL of
+// migrations/postgres/012_media_legacy_file_md5_converge.sql — the
+// idempotent convergence twin of the deployment-managed one-shots 010/011
+// (legacy_file_md5 → content_sha256). It must run LAST: every guard probes
+// the tables that 001/006 create, and it converges databases where the
+// one-shots already ran. Self-bootstrap inclusion is what makes a fresh
+// database reach the schema the writer family expects.
+//
+//go:embed 012_media_legacy_file_md5_converge.sql
+var MediaLegacyFileMd5ConvergeDDL string
+
+// MediaThumbURLContractDDL is the verbatim DDL of
+// migrations/postgres/013_media_thumb_url_contract.sql — the CONTRACT phase
+// of the media_assets thumbnail mirror pair (thumb_url vs thumbnail_url).
+// The backfill copies the mirror into the canonical column where it is empty,
+// then the mirror column is dropped (guarded, re-runnable). It must run after
+// 001_media_schema.sql, which still declares the mirror for historical
+// parity.
+//
+//go:embed 013_media_thumb_url_contract.sql
+var MediaThumbURLContractDDL string
+
+// MediaSelfBootstrapDDL is the canonical ORDERED self-bootstrap sequence for
+// the media PostgreSQL domain (migration-museum audit point 9: with
+// CREATE TABLE IF NOT EXISTS everywhere, application order is part of the
+// contract, and hand-copied per-site lists are how a runner silently applies
+// only a prefix of it). Every self-bootstrapping call site iterates THIS list
+// instead of spelling its own:
+//
+//   - internal/platform/postgres/media/testmain_test.go::applyMediaMigrations
+//   - internal/platform/postgres/media/backfill.go::RunMediaBackfill
+//   - cmd/admin/internal/backfill/media_enrichment.go (previously applied only
+//     001–003+009, leaving a fresh database without the 004 _ts columns that
+//     the dual-writers write)
+//
+// Order contract (pinned by embed_ddl_contract_test.go):
+//   - 002 before 009: 002's CREATE TABLE IF NOT EXISTS cannot converge a
+//     database that already carries the retired face columns; only 009's
+//     DROP converges the shape, so 009 must come last.
+//   - 005_media_booleans.sql is a deliberate skeleton and stays UNWIRED
+//     (BASELINE_PLAN.md §7) until the owning table is mutated.
+//   - 010/011 are deliberate absences: deployment-managed one-shots
+//     (010 is NOT idempotent — DROP/RENAME have no IF EXISTS — and cannot
+//     live in a re-runnable self-bootstrap list; 011 follows the same
+//     policy). Production applies them in the deployment migration step.
+//   - 012/013 are idempotent CONVERGENCE migrations and run LAST: each one
+//     probes columns of the tables 001/006 create (legacy_file_md5,
+//     thumb_url), so it must be applied after them.
+var MediaSelfBootstrapDDL = []string{
+	MediaSchemaDDL,
+	MediaVectorSurfacesDDL,
+	MediaHNSWIndexesDDL,
+	MediaTimestampsTimestamptzDDL,
+	MediaAssetVersionsDDL,
+	MediaClipFoldersDDL,
+	MediaAssetProcessingDDL,
+	MediaDropAssetFacesDDL,
+	MediaLegacyFileMd5ConvergeDDL,
+	MediaThumbURLContractDDL,
+}

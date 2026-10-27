@@ -12,6 +12,26 @@ architecture-governance tooling.
 
 Start with `make run` (or `go run ./cmd/server`) and `go run ./cmd/worker`.
 
+## Cold semantic extraction
+
+`semantic-extract` sends a text file directly to BrainRust's semantic engine
+and writes a versioned JSON report with the full extraction inventory and the
+Go production planner's selected/dropped units. It does not create a job or
+touch the media catalog:
+
+```bash
+go run ./cmd/semantic-extract \
+  --input transcript.txt \
+  --language en \
+  --engine ../BrainRust/target/release/semantic-engine \
+  --output extraction.json
+```
+
+Use `--output -` to write JSON to stdout. `--scene-words` controls the target
+chunk size (default 160); chunks are made at sentence boundaries where
+possible. `VELOX_RUST_SEMANTIC_ENGINE_PATH` can supply the binary path instead
+of `--engine`.
+
 ## Admin commands
 
 `cmd/admin/` contains one-shot operational and maintenance commands. It is not
