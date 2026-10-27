@@ -75,8 +75,11 @@ func renderGateAudio(t *testing.T, musclesPath, ffmpegPath string, plan audio.Co
 	if err != nil {
 		t.Fatalf("real render_audio_plan failed: %v", err)
 	}
-	if metrics.AudioEncodePasses != 1 || metrics.MixMS != 0 || metrics.AACEncodeMS <= 0 || metrics.ProbeMS <= 0 || metrics.HashMS <= 0 {
-		t.Fatalf("real render must encode once with measured encode/probe/hash timings: %+v", metrics)
+	// One AAC encode of the master (AudioEncodePasses == 1) with every stage
+	// measured: MixMS is the parallel stem fan-out (a real phase since the
+	// fan-out renderer), AACEncodeMS the single final encode pass.
+	if metrics.AudioEncodePasses != 1 || metrics.MixMS < 0 || metrics.AACEncodeMS <= 0 || metrics.ProbeMS <= 0 || metrics.HashMS <= 0 {
+		t.Fatalf("real render must encode once with measured mix/encode/probe/hash timings: %+v", metrics)
 	}
 	if err := audio.ValidateFinalAudio(audio.FinalAudioAsset{
 		AssetID:              final.AssetID,

@@ -58,8 +58,9 @@ func (r *CombinedAudioRenderer) Render(ctx context.Context, plan audio.CompiledA
 	metrics := stageMetrics
 	metrics.TotalMS = time.Since(started).Milliseconds()
 	metrics.AudioDurationMS = asset.DurationMS
-	// The single-pass contract is enforced by the Rust execution plane
-	// (render_audio_plan encodes the master exactly once); the report value
+	// The single-encode contract is enforced by the Rust execution plane
+	// (render_audio_plan AAC-encodes the master exactly once; the mix runs as
+	// parallel lossless stem passes reported in MixMS); the report value
 	// comes from there. This fallback only covers an older binary that did
 	// not emit the count.
 	if metrics.AudioEncodePasses <= 0 {

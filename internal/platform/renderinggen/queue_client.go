@@ -354,8 +354,10 @@ func (e *ClipRenderExecutor) chunkPolicy(plan cliprender.ClipRenderPlanV1) (int,
 	// through BuildChunkSet, which validates too. The chunk family can never
 	// fire today: the machinery is wired but asleep. Unlocking chunking is NOT
 	// a policy tweak — children must render video-only and the anchor must mux
-	// the full source audio once (audio-aware assembly). Until that lands, this
-	// guard keeps the dormant niche honest instead of pretending it is live.
+	// the full source audio once (audio-aware assembly; tracked in
+	// docs/operations/TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md). Until that lands,
+	// this guard keeps the dormant niche honest instead of pretending it is
+	// live.
 	if plan.Audio.Mode != "" {
 		return 0, 0, false
 	}
