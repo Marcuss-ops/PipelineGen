@@ -36,7 +36,7 @@ import (
 // port for /internal/v1/media/* routes (server-to-server surface) —
 // the production binding is *internal/capabilities/assets/storage.Handler
 // (RegisterInternalMediaRoutes method). Keeping it behind an
-// interface prevents this router from importing api/assets/storage.
+// interface prevents this router from importing the storage capability.
 //
 // QDRANT-002 (June 2026) closure: outboxHandler is wired on the SAME
 // internalGroup at /internal/v1/outbox/* (outbox monitoring endpoints

@@ -23,7 +23,7 @@
 //
 // Wire contract (godlike/07): all 4 helpers are pure HTTP concerns.
 // They do NOT own SQL/FFmpeg/Drive/provider orchestration —
-// AGENTS.md rule "internal/api owns transport only" is preserved.
+// the transport-only boundary is preserved.
 package script
 
 import (

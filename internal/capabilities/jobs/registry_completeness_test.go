@@ -103,7 +103,7 @@ var canonicalJobTypes = []string{
 	TypeVoiceoverPromo,         // domain/job/job.go
 	TypeVoiceoverGenerate,      // domain/job/job.go
 	TypeVoiceoverGenerateItem,  // domain/job/job.go
-	TypeImageGenerateGoogle,    // application/jobs/registry.go (FASE 2 / June 2026)
+	TypeImageGenerateGoogle,    // registry_types.go (FASE 2 / June 2026)
 	// Spina Dorsale Fase 2 / PR-BATCH-REGISTER-ASYNC / PR-GEMMA-EXTRACT-IMPORTANT
 	// downstream job types registered in registry_script.go, registry_stock.go,
 	// registry_media.go, and registry_extraction.go.
@@ -115,10 +115,10 @@ var canonicalJobTypes = []string{
 	TypeScriptImageSibling,     // domain/job/job.go
 	TypeScriptVoiceoverSibling, // domain/job/job.go
 	TypeYouTubeStock,           // domain/youtube/job_types.go (YouTube stock vertical slice)
-	TypeAssetTextMaterialize,   // application/jobs/registry_types.go (FASE texttracks / July 2026)
-	TypeYouTubeExtract,         // application/jobs/registry_types.go (July 2026)
-	TypeIntegrityVerify,        // application/jobs/registry_integrity.go
-	TypeAssetCleanup,           // application/jobs/registry_integrity.go
+	TypeAssetTextMaterialize,   // registry_types.go (FASE texttracks / July 2026)
+	TypeYouTubeExtract,         // registry_types.go (July 2026)
+	TypeIntegrityVerify,        // registry_integrity.go
+	TypeAssetCleanup,           // registry_integrity.go
 	TypeClipRender,             // capabilities/cliprender/request.go (canonical clip post-processing, August 2026)
 	TypeAssemblyPrepare,        // kernel/assembly/contract.go
 	TypeAssemblyFinalize,       // kernel/assembly/contract.go

@@ -19,7 +19,8 @@ import (
 // consumer in PipelineGen. It is a Go interface — consumers declare
 // their dependency as `job.Service` (interface value, not pointer-to-
 // interface) and the composition root injects the concrete
-// *application/jobs.Service, which satisfies this interface directly.
+// *jobs.Service (internal/capabilities/jobs), which satisfies this
+// interface directly.
 //
 // Pre-June-2026 this package held a concrete struct facade with
 // delegate function pointers. That facade has been eliminated in

@@ -35,7 +35,7 @@
 //
 // Layout (Commit F, August 2026): the reusable backfill engine (batch
 // processing, retry recovery, checkpointing, reporting) lives in
-// internal/application/indexing/backfill. This file keeps the CLI
+// internal/capabilities/indexing/backfill. This file keeps the CLI
 // surface — entry point, arg parsing, output formatting, composition-root
 // wiring — and supplies the SQL-backed candidate fetcher.
 //

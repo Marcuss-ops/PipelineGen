@@ -11,8 +11,9 @@ import (
 // stamped by the planner clock so a deterministic test can expire entries
 // without sleeping.
 type SemanticSearchCacheEntry struct {
-	Response SemanticAssetSearchResponse
-	StoredAt time.Time
+	Response  SemanticAssetSearchResponse
+	StoredAt  time.Time
+	ExpiresAt time.Time
 	// Provider is the provider that produced the answer (for example
 	// `wikimedia_commons` or `duckduckgo`). A durable implementation keeps it
 	// as a column so an answer can be invalidated without dropping every

@@ -8,7 +8,7 @@
 //
 //   - typed SearchFilters (no map[string]any in domain contract);
 //   - structured Candidate (no ProvisionalAsset, no ProviderMetadata);
-//   - canonical home moved from internal/application/providers/.
+//   - canonical home is this package (the old providers root is retired).
 //
 // File map:
 //

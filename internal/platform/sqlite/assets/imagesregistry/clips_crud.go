@@ -43,9 +43,8 @@ import (
 // indexing MUST use outbox.Dispatcher.EnqueueAndIndex (which
 // performs the UPSERT and outbox_events INSERT in a single
 // atomic tx). Methods flagged with `//nolint:production` below
-// are dispatcher-only entry points; the CI lint in
-// scripts/ci-architectural-checks.sh bans them in
-// internal/application + internal/api paths.
+// are dispatcher-only entry points; production code outside the
+// dispatcher MUST NOT call them (test call sites are allowed).
 func (r *ClipsRepository) Upsert(ctx context.Context, m *asset.Asset) error {
 	return r.Save(ctx, &asset.Details{Asset: m})
 }
@@ -86,8 +85,9 @@ func (r *ClipsRepository) GetClip(ctx context.Context, id string) (*asset.Asset,
 //
 // Per the user's verify-the-rg-test contract:
 //
-//	`rg 'UpsertClip\(' internal/application internal/api` returns
-//	ZERO production hits (test hits allowed).
+//	`rg 'UpsertClip\(' internal --type go` returns only this
+//	definition, the mutations.Primitives port and doc comments —
+//	ZERO production call sites (test hits allowed).
 func (r *ClipsRepository) UpsertClip(ctx context.Context, clip *asset.Asset) error {
 	return r.Upsert(ctx, clip)
 }

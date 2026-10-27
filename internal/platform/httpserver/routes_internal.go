@@ -15,11 +15,11 @@ import (
 func (r *Router) registerInternalRoutes(engine *gin.Engine) {
 	// QDRANT-002 + QDRANT-004 (June 2026): the internal-worker-broker
 	// prefix is "/internal/v1" — historically `remoteshared.InternalPathPrefix`.
-	// The Wave 14 PR5 cleanup hardcodes it here so internal/api stops
+	// The Wave 14 PR5 cleanup hardcodes it here so the HTTP layer stops
 	// importing internal/platform/remote/shared (a transport concern,
 	// not a capability concern). Anti-regression test
-	// internal/api/routes_test.go::TestRoutes_NoApiInternalV1Prefix enforces
-	// no /api/internal/v1/* route should ever leak.
+	// internal/platform/httpserver/routes_test.go::TestRoutes_NoApiInternalV1Prefix
+	// enforces no /api/internal/v1/* route should ever leak.
 	internalGroup := engine.Group("/internal/v1")
 	internalGroup.Use(middleware.WorkerAuth(r.cfg.Auth, r.cfg.Log))
 	{

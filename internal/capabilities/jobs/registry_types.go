@@ -136,7 +136,7 @@ func (e RegistryEntry) ValidateCompletion() error {
 // every registered job type carries operator-facing controls in ONE
 // shape (Timeout + DefaultMaxRetries + Queue + Concurrency + caps).
 // The pre-Wave-19 name RegistryEntry is preserved because callers
-// across internal/app, internal/application/scheduler, and the
+// across internal/app, internal/capabilities/jobs/scheduling, and the
 // dispatcher wiring reference it directly; the JobPolicy alias
 // (declared below) is the user-facing semantic name.
 //

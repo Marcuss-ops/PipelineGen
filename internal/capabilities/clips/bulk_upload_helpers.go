@@ -7,9 +7,9 @@
 // infrastructure imports.
 //
 // The functions that previously took a clipCandidate struct now take
-// individual fields so callers in different packages (api/assets/clips
-// vs application/clips) can pass their own local types without
-// a shared DTO.
+// individual fields so callers in different packages
+// (internal/capabilities/assets/clips vs internal/capabilities/clips)
+// can pass their own local types without a shared DTO.
 package clips
 
 import (

@@ -16,8 +16,8 @@
 //     (Module api.Module + Service *stockpipeline.Service).
 //   - The canonical StockUseCase constructor lives in
 //     stockpipeline/usecase.go::NewStockUseCase (returns *stockpipeline.StockUseCase,
-//     which is what api/assets/stock/module.go::Build expects).
-//   - The API Descriptor lives in api/assets/stock/module.go::StockDescriptor.
+//     which is what internal/capabilities/assets/stock/module.go::Build expects).
+//   - The API Descriptor lives in internal/capabilities/assets/stock/module.go::StockDescriptor.
 //
 // The HTTP projection is part of this bundle. It is constructed from the
 // same use case as the worker registration so the route cannot advertise a

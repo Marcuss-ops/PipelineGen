@@ -299,3 +299,53 @@ func TestExistingImagesUsesRetrievedSubjectRows(t *testing.T) {
 		t.Fatalf("origin filter = %v, want retrieved", repo.lastFilter.Origins)
 	}
 }
+
+type fakeLocalImageIndex struct {
+	ids   []string
+	query string
+}
+
+func (f *fakeLocalImageIndex) Search(_ context.Context, query string, _ int) ([]string, error) {
+	f.query = query
+	return f.ids, nil
+}
+
+func (*fakeLocalImageIndex) Index(context.Context, string, string) error { return nil }
+
+type fakeHydratingImageRepo struct {
+	*fakeImageListRepository
+	ids []string
+}
+
+func (f *fakeHydratingImageRepo) ListImagesByAssetIDs(_ context.Context, ids []string) ([]ImageSearchResult, error) {
+	f.ids = append([]string(nil), ids...)
+	return []ImageSearchResult{{AssetID: "asset-local", Origin: string(detail.ImageOriginRetrieved), DriveLink: "https://drive/asset-local"}}, nil
+}
+
+func TestExistingImagesPrefersLocalSemanticIndexAndHydratesCanonicalAsset(t *testing.T) {
+	repo := &fakeHydratingImageRepo{fakeImageListRepository: &fakeImageListRepository{rows: []ImageSearchResult{
+		{AssetID: "asset-legacy", Origin: string(detail.ImageOriginRetrieved)},
+	}}}
+	index := &fakeLocalImageIndex{ids: []string{"asset-local"}}
+	resolver, err := NewImageSearchResolver(
+		WithRetrievalBackend(&fakeRetrievalBackend{}),
+		WithImageListRepository(repo),
+		WithLocalResolvedImageIndex(index),
+	)
+	if err != nil {
+		t.Fatalf("NewImageSearchResolver: %v", err)
+	}
+	rows, err := resolver.(*ImageSearchResolverImpl).ExistingImages(context.Background(), "Garlasco evidence", 2)
+	if err != nil {
+		t.Fatalf("ExistingImages: %v", err)
+	}
+	if index.query != "Garlasco evidence" || len(repo.ids) != 1 || repo.ids[0] != "asset-local" {
+		t.Fatalf("local lookup query/IDs = %q / %v", index.query, repo.ids)
+	}
+	if len(rows) != 2 || rows[0].AssetID != "asset-local" || rows[1].AssetID != "asset-legacy" {
+		t.Fatalf("ExistingImages = %+v, want local hydrated result first then legacy result", rows)
+	}
+	if rows[0].DriveLink == "" {
+		t.Fatal("local index hit was not hydrated with canonical asset metadata")
+	}
+}

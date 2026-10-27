@@ -55,7 +55,7 @@ func (d *Dispatcher) EnqueueAndDelete(ctx context.Context, assetID string) error
 //
 // Both writes commit atomically. After commit, the outboxevents
 // Pool picks up the event and runs DriveDeleteHandler.Handle (in
-// application/jobs/outbox/drive_delete.go), which performs the
+// internal/capabilities/jobs/drive_delete.go), which performs the
 // actual Drive API call (Trash or Delete depending on the
 // permanently flag in the envelope) and stamps the second hop
 // (INDEX_DELETE_PENDING) plus emits EventAssetIndexDeleteRequested.

@@ -59,9 +59,10 @@ func (w *Worker) completeRendered(
 	if outcome.Backend != BackendChrononVulkan {
 		return nil, fmt.Errorf("clip.render: backend resolved to %q; only Chronon (%s) is permitted", outcome.Backend, BackendChrononVulkan)
 	}
-	if req.Execution.RequireZeroCopy {
-		return nil, fmt.Errorf("clip.render: execution.require_zero_copy=true is unsatisfiable: no backend certifies video_zero_copy (GPU compositing is Chronon-only via the RenderingGen queue)")
-	}
+	// execution.require_zero_copy has NO post-render gate: it is unsatisfiable
+	// and therefore rejected at the request boundary (RenderRequest.Validate),
+	// long before a render can run. A demand that can only fail must never
+	// reach this path — the render would be burned first.
 
 	if outcome.Metrics == nil {
 		outcome.Metrics = NewRenderMetricsV2()

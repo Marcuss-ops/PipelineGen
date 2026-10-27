@@ -1,4 +1,4 @@
-// Package assets (api/assets) — handler_realtime.go holds the
+// Package assets (internal/capabilities/assets) — handler_realtime.go holds the
 // RealtimeMatcher HTTP transport for the POST /api/realtime/match
 // endpoint. Wave 14 close (June 2026): this receiver was absorbed
 // from the standalone internal/api/realtime/ package when the

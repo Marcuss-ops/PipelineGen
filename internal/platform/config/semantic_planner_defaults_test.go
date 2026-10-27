@@ -19,6 +19,9 @@ func TestSemanticProductionSearchEnabledByDefault(t *testing.T) {
 	if cfg.Scripts.SemanticPlanCacheTTLSeconds != 3600 {
 		t.Fatalf("SemanticPlanCacheTTLSeconds = %d, want 3600", cfg.Scripts.SemanticPlanCacheTTLSeconds)
 	}
+	if cfg.Scripts.SemanticStableEntityCacheTTLSeconds != 30*24*60*60 {
+		t.Fatalf("SemanticStableEntityCacheTTLSeconds = %d, want 30 days", cfg.Scripts.SemanticStableEntityCacheTTLSeconds)
+	}
 	if got := cfg.Scripts.WithDefaults().SemanticPlanCacheTTLSeconds; got != 3600 {
 		t.Fatalf("WithDefaults TTL = %d, want 3600", got)
 	}

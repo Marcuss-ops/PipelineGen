@@ -120,7 +120,7 @@ func RunGenAPIDocs(args []string) error {
 
 	// PG-006.1 (June 2026): inline genDocsSecurityAdapter was deleted —
 	// cfg.Security is now snapshotted into the canonical
-	// internal/api/middleware.TokenSecurityAdapter concrete adapter
+	// internal/platform/httpserver/middleware.TokenSecurityAdapter adapter
 	// directly. Enable carries cfg.Security.EnableAuth (preserves the
 	// pre-PG-006.1 genDocsSecurityAdapter.EnableAuth() semantics;
 	// round-2 fix makes EnableAuth a passthrough, not an

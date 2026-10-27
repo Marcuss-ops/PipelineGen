@@ -57,7 +57,7 @@ import (
 
 // MediaDownloader is the capability port. Its method set is intentionally
 // compatible with the legacy ingest port while keeping this capability
-// independent from internal/application.
+// self-contained.
 type MediaDownloader interface {
 	Download(context.Context, string) (io.ReadCloser, error)
 }

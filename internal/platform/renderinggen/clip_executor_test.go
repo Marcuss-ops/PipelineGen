@@ -104,6 +104,79 @@ func TestChunkPolicyRefusesPlansWithAudio(t *testing.T) {
 	}
 }
 
+// TestChunkPolicyIsDormantForEverySealedPlan pins the honest chunking
+// policy: chunking is CONFIGURED in production (clip_render_runtime.go calls
+// SetChunking) but DORMANT for every valid plan — and these pins prove
+// exactly why, without pretending the machinery is live:
+//
+//  1. the seal validator REQUIRES a non-empty audio mode
+//     (copy_if_compatible|transcode) on every valid plan, and
+//  2. the chunk policy refuses to split ANY plan that carries audio (the
+//     assembly is video-only), while
+//  3. the only shape the policy would accept (Audio.Mode == "") is exactly
+//     the shape plan.Validate() rejects — and both Submit and RenderJobID's
+//     anchor path validate first — so the chunk family can never fire.
+//
+// Audio is therefore the SOLE blocker at the policy level: clearing ONLY
+// Audio.Mode flips the verdict. Unlocking chunking is not a policy tweak — it
+// needs audio-aware assembly (video-only children + one full-audio mux at the
+// anchor), tracked as future work.
+func TestChunkPolicyIsDormantForEverySealedPlan(t *testing.T) {
+	plan := validClipPlan(t)
+	plan.DurationMS = int64((2 * time.Minute) / time.Millisecond)
+	if err := plan.Seal(); err != nil {
+		t.Fatalf("seal long clip plan: %v", err)
+	}
+
+	executor, err := NewClipRenderExecutor(&fakeClipQueue{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.SetChunking(time.Minute, 48, 2)
+
+	// (1)+(2): every VALID plan carries an audio mode and is never chunked.
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("fixture plan must be valid: %v", err)
+	}
+	if requested, alignment, ok := executor.chunkPolicy(plan); ok {
+		t.Fatalf("valid plan must not be chunked: requested=%d alignment=%d", requested, alignment)
+	}
+	if got := executor.RenderJobID(plan); got != plan.RunID {
+		t.Fatalf("valid plan must retain the plain render job id: got %q, want %q", got, plan.RunID)
+	}
+
+	// (3): audio is the SOLE blocker — clearing ONLY Audio.Mode (and re-sealing
+	// so the hash stays content-consistent) flips the policy verdict:
+	// 2min clip / 1min chunks → 2 keyframe-aligned windows.
+	videoOnly := plan
+	videoOnly.Audio = cliprender.PlanAudio{}
+	if err := videoOnly.Seal(); err != nil {
+		t.Fatalf("seal video-only plan: %v", err)
+	}
+	requested, alignment, ok := executor.chunkPolicy(videoOnly)
+	if !ok {
+		t.Fatal("chunk policy must accept the video-only shape: the audio guard is not the sole blocker")
+	}
+	if requested != 2 || alignment != 48 {
+		t.Fatalf("video-only chunk plan = (%d windows, alignment %d), want (2, 48)", requested, alignment)
+	}
+
+	// ...and that shape is exactly what the seal validator rejects — for the
+	// audio contract, not for the hash (it was re-sealed) — closing the niche:
+	// neither Submit nor the RenderJobID anchor path can ever run a family.
+	if err := videoOnly.Validate(); err == nil {
+		t.Fatal("a plan with empty audio mode must fail seal validation")
+	} else if !strings.Contains(err.Error(), "audio mode") {
+		t.Fatalf("video-only plan must fail on the audio contract, got: %v", err)
+	}
+	if _, err := cliprender.BuildChunkSet(videoOnly, requested, alignment); err == nil {
+		t.Fatal("BuildChunkSet must reject the video-only shape (seal validation), so the anchor path can never fire")
+	}
+	if got := executor.RenderJobID(videoOnly); got != videoOnly.RunID {
+		t.Fatalf("video-only plan must still render as one job today: got %q, want %q", got, videoOnly.RunID)
+	}
+}
+
 // TestClipRenderExecutorSubmitsOverlayPlanV1 verifies the critical contract:
 // the submitted JSON carries schema_version="renderinggen.overlay-plan.v1",
 // NOT a raw ClipRenderPlanV1 (which would be silently pass-through'd by the

@@ -250,6 +250,45 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 	}
 }
 
+func TestStableLocationCacheOutlivesOrdinaryQueryTTL(t *testing.T) {
+	clock := &batchTestClock{now: time.Unix(100, 0)}
+	query := "Pavia Italia"
+	port := &batchTestPort{
+		clock: clock,
+		results: map[string][]SemanticAssetHit{
+			query: {{AssetID: "asset-pavia", SHA256: strings.Repeat("b", 64)}},
+		},
+	}
+	cache := NewSemanticSearchPlanCache(8)
+	planner := batchPlanner(t, port, clock, SemanticSearchBatchConfig{
+		MaxConcurrency: 1, Cache: cache, CacheTTL: time.Hour,
+		StableEntityCacheTTL: 30 * 24 * time.Hour,
+	})
+	attempt := SemanticSearchAttempt{
+		CandidateID: "location-pavia", Entity: "Pavia", Class: SearchClassLocation, Query: query,
+	}
+	key := cacheKey(attempt, "it")
+	if _, _, _, _, err := planner.fetch(context.Background(), attempt, "it", key); err != nil {
+		t.Fatalf("initial fetch: %v", err)
+	}
+	clock.Advance(7 * time.Hour)
+	_, cached, _, _, err := planner.fetch(context.Background(), attempt, "it", key)
+	if err != nil {
+		t.Fatalf("stable cache fetch: %v", err)
+	}
+	if !cached || len(port.calls) != 1 {
+		t.Fatalf("stable location cache did not survive ordinary TTL: cached=%v provider_calls=%d", cached, len(port.calls))
+	}
+	clock.Advance(31 * 24 * time.Hour)
+	_, cached, _, _, err = planner.fetch(context.Background(), attempt, "it", key)
+	if err != nil {
+		t.Fatalf("expired stable cache fetch: %v", err)
+	}
+	if cached || len(port.calls) != 2 {
+		t.Fatalf("stable cache remained after 30 days: cached=%v provider_calls=%d", cached, len(port.calls))
+	}
+}
+
 func TestSemanticSearchBatchRetries429OnTheSameRung(t *testing.T) {
 	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"}
 	identities := []SemanticIdentity{{ID: "org_01", CanonicalSurface: "Corte d'Appello", Kind: "ORG"}}

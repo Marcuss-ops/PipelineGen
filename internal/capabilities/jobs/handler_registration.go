@@ -20,7 +20,7 @@
 //
 //   - internal/kernel/job/service.go::Service             (kernel canonical Service)
 //   - internal/capabilities/scripts/ports/ports.go::Broker (scripts broker port)
-//   - internal/api/module_descriptor.go::JobRegistrar     (api capability-standard)
+//   - internal/platform/httpserver/module_descriptor.go::JobRegistrar (api capability-standard)
 //   - internal/app/creator_runtime.go::brokerAdapter      (creator runtime inline adapter)
 //
 // Locked by the corresponding assertions at each interface declaration site

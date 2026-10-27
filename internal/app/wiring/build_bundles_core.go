@@ -45,9 +45,11 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
+	sqliteimageindex "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imageindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/stager"
 )
 
@@ -331,6 +333,26 @@ type buildImagesParams struct {
 }
 
 func buildImagesService(params buildImagesParams) (*images.Service, semantic.MetadataWriterPort) {
+	var localImageIndex images.LocalResolvedImageIndex
+	if params.ImageRepo != nil && params.Cfg.ClipIndexer.ServerURL != "" {
+		embedder := embeddings.NewHTTPTextEmbedderWithTimeout(params.Cfg.ClipIndexer.ServerURL, 0)
+		passageEmbedder, ok := embedder.(sqliteimageindex.Embedder)
+		if ok {
+			idx, indexErr := sqliteimageindex.New(params.ImageRepo.DB(), passageEmbedder)
+			if indexErr == nil {
+				ensureCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				indexErr = idx.EnsureSchema(ensureCtx)
+				cancel()
+			}
+			if indexErr != nil {
+				params.Log.Warn("resolved-image SQLite vector index unavailable; image search will use live providers", zap.Error(indexErr))
+			} else {
+				localImageIndex = idx
+			}
+		} else {
+			params.Log.Warn("resolved-image SQLite vector index unavailable; text sidecar lacks passage embedding support")
+		}
+	}
 	const destinationsYAMLPath = "config/image_destinations.yaml"
 	destResolver, err := images.NewYamlResolver(destinationsYAMLPath, params.Cfg.Drive.ImagesFolder())
 	if err != nil {
@@ -366,7 +388,7 @@ func buildImagesService(params buildImagesParams) (*images.Service, semantic.Met
 	imageService := images.NewService(images.ImagesDeps{
 		Core: images.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
 		Storage: images.ImagesStorageDeps{
-			ImageRepo: params.ImageRepo, DriveReader: newImagesDriveReaderAdapter(params.DriveUploader),
+			ImageRepo: params.ImageRepo, LocalIndex: localImageIndex, DriveReader: newImagesDriveReaderAdapter(params.DriveUploader),
 			Publisher: params.Publisher, DestResolver: destResolver,
 		},
 		GenAI: images.ImagesGenAIDeps{

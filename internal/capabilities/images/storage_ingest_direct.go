@@ -308,6 +308,19 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	// Drive identity and delivery status are written only by the post-commit
 	// worker; provenance needed by indexing is already part of the committed
 	// metadata and the image projection above.
+	if s.localIndex != nil {
+		searchQuery, _ := ctx.Value(SearchQueryKey).(string)
+		indexDocument := strings.Join([]string{
+			description,
+			searchQuery,
+			slug,
+			strings.Join(tags, " "),
+		}, " ")
+		if indexErr := s.localIndex.Index(ctx, hash, indexDocument); indexErr != nil && s.log != nil {
+			s.log.Warn("resolved image persisted but local semantic indexing failed; live providers remain available",
+				zap.String("asset_id", hash), zap.Error(indexErr))
+		}
+	}
 	return result, nil
 }
 
