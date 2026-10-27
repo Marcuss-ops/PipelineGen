@@ -68,6 +68,17 @@ func TestMigrations_286_MirrorFieldsContract(t *testing.T) {
 	md5 := strings.Repeat("b", 32)    // MD5 length → NOT promoted
 	nonHex := strings.Repeat("z", 64) // 64 chars, not hex → NOT promoted
 
+	// Parent rows first: asset_versions.asset_id is a FK to media_assets(id)
+	// (migration 105), so the seeded version rows need their assets to exist.
+	if _, err := db2.Exec(`
+		INSERT INTO media_assets (id, lifecycle_state, index_state, content_sha256, binary_sha256, file_hash) VALUES
+			('v-sha', 'ACTIVE', 'DISCOVERED', '', '', ''),
+			('v-md5', 'ACTIVE', 'DISCOVERED', '', '', ''),
+			('v-nonhex', 'ACTIVE', 'DISCOVERED', '', '', ''),
+			('v-exists', 'ACTIVE', 'DISCOVERED', '', '', '')
+	`); err != nil {
+		t.Fatalf("seed media_assets parents for asset_versions: %v", err)
+	}
 	if _, err := db2.Exec(`
 		INSERT INTO asset_versions (asset_id, version_number, source_uri, content_sha256, file_hash) VALUES
 			('v-sha',    1, '', '', ?),
