@@ -165,7 +165,7 @@ func TestMediaResolverImageStageSemanticScorerDropsRejectedCandidates(t *testing
 		semanticGateCandidate("score-keep"),
 		semanticGateCandidate("score-reject"),
 	}}
-	processor := NewMediaResolverImageStage(searcher).WithSemanticScorer(rejectingSemanticScorer{})
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil).WithSemanticScorer(rejectingSemanticScorer{})
 
 	result, err := processor.Process(context.Background(), semanticStagePlan(), semanticStageInput())
 	if err != nil {
@@ -188,7 +188,7 @@ func TestMediaResolverImageStageSemanticScorerErrorKeepsDiscovery(t *testing.T) 
 		semanticGateCandidate("score-keep"),
 		semanticGateCandidate("score-reject"),
 	}}
-	processor := NewMediaResolverImageStage(searcher).WithSemanticScorer(erroringSemanticScorer{})
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil).WithSemanticScorer(erroringSemanticScorer{})
 
 	result, err := processor.Process(context.Background(), semanticStagePlan(), semanticStageInput())
 	if err != nil {

@@ -44,8 +44,10 @@ import (
 	"time"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/platform/jobs/local"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
@@ -183,6 +185,37 @@ func initCompositionMinimalWithContext(_ context.Context, cfg *config.Config, lo
 				preparation := assetfinalizer.NewArtifactPreparation(drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log), log)
 				broker.WithArtifactPreparation(preparation)
 				log.Info("wired canonical ArtifactPreparation into local broker; staged artifacts publish through Drive before finalization")
+				// L10 — deferred Drive publication for the post_writer deliverables:
+				// the artifact bytes stage into the local content-addressed object
+				// store (H1) and the delivery intent rides the completion outbox, so
+				// the ~18-31 s upload leaves the user's critical path. Enabled ONLY
+				// when consumer and producer wire together: without a registered
+				// consumer the broker keeps the synchronous path and emits no intent.
+				// The delivery intent is enqueued into the SAME outbox plane the
+				// finalizer writes (jobs.db when the jobs plane is split), and the
+				// consumer must register on the registry that drains THAT plane.
+				splitJobsPlane := root.Jobs != nil && root.Jobs.DB != nil && root.Jobs.DB.DB != nil
+				var outboxRegistry *outboxevents.HandlerRegistry
+				if root.Outbox != nil {
+					outboxRegistry = finalizeDriveOutboxRegistry(root.Outbox.EventsRegistry, root.Outbox.JobsEventsRegistry, splitJobsPlane)
+				}
+				if mutator, mutatorOK := assetCommitter.(persistence.AssetMutator); mutatorOK && outboxRegistry != nil {
+					objectStore, storeErr := buildFinalizeDriveObjectStore(cfg)
+					if storeErr != nil {
+						log.Warn("deferred finalize Drive publication NOT wired: object store unavailable; keeping the synchronous publication path", zap.Error(storeErr))
+					} else {
+						var observer *kernobs.RunObserver
+						if root.ObservabilityDB != nil {
+							observer = finalizeDriveDeliveryObserver(root.ObservabilityDB.DB)
+						}
+						if regErr := registerFinalizeDriveDeliveryHandler(outboxRegistry, preparation, mutator, objectStore, observer, log); regErr != nil {
+							partialCleanup()
+							return nil, nil, nil, fmt.Errorf("wire services composition: %w", regErr)
+						}
+						broker.WithDeferredDrivePublication(objectStore)
+						log.Info("wired deferred finalize Drive publication: finalize.drive_delivery.requested.v1 → outbox consumer (staged through the H1 object store)")
+					}
+				}
 			} else {
 				log.Warn("canonical ArtifactPreparation NOT wired: Drive publisher unavailable; staged artifact jobs will fail closed")
 			}

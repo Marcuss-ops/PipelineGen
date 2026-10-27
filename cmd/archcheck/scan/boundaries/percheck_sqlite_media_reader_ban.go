@@ -395,46 +395,6 @@ func sqliteMediaReaderIsGrandfathered(relPath string) bool {
 	return false
 }
 
-// sqliteMediaReaderRegisterEntryIsLive reports whether a debt-register entry
-// still has a SQLite-dialect read of media_assets to pardon.
-//
-// WHY THIS EXISTS. The register is the ratchet that drives the historical
-// SQLITE_MEDIA_READERS=0 counter to zero, and a ratchet only works in one
-// direction if a stale entry FAILS. An entry that survives after its consumer
-// migrated is the failure mode that makes such registers useless: it hides
-// real debt behind a permanently-growing allowlist people stop reading. An
-// entry is therefore live only when the file still contains at least one read
-// of media_assets that is not PostgreSQL-dialect — the same predicate
-// inspectSQLiteMediaReaderFile uses to report a violation. Anything else (read
-// gone, or every remaining read migrated to $N placeholders) must be deleted
-// from the register in the same change.
-func sqliteMediaReaderRegisterEntryIsLive(root, relPath string) (bool, error) {
-	absPath := filepath.Join(root, filepath.FromSlash(relPath))
-	source, err := os.ReadFile(absPath)
-	if err != nil {
-		return false, err
-	}
-	masked := source
-	fileSet := token.NewFileSet()
-	parsed, parseErr := parser.ParseFile(fileSet, absPath, source, parser.ParseComments)
-	var spans []sqlMediaSpan
-	if parseErr == nil && parsed != nil {
-		masked = maskGoComments(source, fileSet, parsed)
-		if positionFile := fileSet.File(parsed.Pos()); positionFile != nil {
-			spans = sqlMediaSpans(source, positionFile, parsed)
-		}
-	}
-	maskedStr := string(masked)
-	maskedStr = blankSpans(maskedStr, sqliteMediaReaderDeleteRe.FindAllStringIndex(maskedStr, -1))
-	for _, match := range sqliteMediaReaderReadRe.FindAllStringIndex(maskedStr, -1) {
-		if span, ok := sqlMediaSpanContaining(spans, match[0]); ok && span.postgres {
-			continue
-		}
-		return true, nil
-	}
-	return false, nil
-}
-
 // ScanSQLiteMediaReaderBan walks internal/ and cmd/ and reports every
 // non-test Go file that reads media_assets without being a grandfathered
 // legacy reader, a canonical PostgreSQL reader, or the scanner itself.

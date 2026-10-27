@@ -232,7 +232,8 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		// request (different renderer, different pixels).
 		MapBackend string `json:"map_backend,omitempty"`
 		// SamplingIdentity carries the worker's entity-style sampling seed
-		// (plan id + video id + item id) for items that opt into entity style
+		// (stable plan identity + video id + item id) for items that opt into
+		// entity style
 		// selection. Those items are NOT content-addressed across plans: the
 		// worker samples a style per plan identity even when the item bytes are
 		// identical, so reusing another plan's artifact would silently change
@@ -265,7 +266,7 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		}
 		if strings.TrimSpace(item.EntityStyleID) != "" {
 			context.SamplingIdentity = strings.Join([]string{
-				strings.TrimSpace(plan.PlanID), strings.TrimSpace(plan.VideoID), strings.TrimSpace(item.ID),
+				samplingPlanIdentity(plan), strings.TrimSpace(plan.VideoID), strings.TrimSpace(item.ID),
 			}, "\x00")
 		}
 	} else if len(plan.Items) > 1 {
@@ -277,7 +278,7 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 			}
 			if strings.TrimSpace(item.EntityStyleID) != "" {
 				fact.SamplingIdentity = strings.Join([]string{
-					strings.TrimSpace(plan.PlanID), strings.TrimSpace(plan.VideoID), strings.TrimSpace(item.ID),
+					samplingPlanIdentity(plan), strings.TrimSpace(plan.VideoID), strings.TrimSpace(item.ID),
 				}, "\x00")
 			}
 			context.Items = append(context.Items, fact)
@@ -288,6 +289,19 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		return ""
 	}
 	return digest.SHA256Bytes(raw)
+}
+
+// samplingPlanIdentity mirrors the worker's entity-style sample base
+// (RenderingGen internal/overlay/entity_style.go, entityStyleSampleKey): the
+// plan's STABLE creative identity — the producer project, falling back to the
+// plan id — never the run identity. Plan ids are per-run (run_f…), so hashing
+// them here would name the same pixels differently on every retry and defeat
+// the reuse this cache exists for.
+func samplingPlanIdentity(plan capoverlay.OverlayPlan) string {
+	if id := strings.TrimSpace(plan.ProjectID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(plan.PlanID)
 }
 
 type overlayCacheItemContext struct {

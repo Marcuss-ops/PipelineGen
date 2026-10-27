@@ -61,6 +61,23 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 		return nil, ErrFinalizerNotConfigured
 	}
 
+	// Get the job row before any artifact work: the attempt counter and lease
+	// expiry need it, and the deferred-publication scope decision reads the job
+	// type. Fetching it here also fail-closes a missing job before a single
+	// upload starts (the Phase 1 "zero wasted uploads" contract).
+	j, err := b.jobs.Get(ctx, cmd.JobID)
+	if err != nil {
+		return nil, fmt.Errorf("broker: get job for finalization: %w", err)
+	}
+	if j == nil {
+		return nil, fmt.Errorf("broker: job %q not found for finalization", cmd.JobID)
+	}
+
+	// deferredDeliveryEvents collects the durable Drive-delivery intents of the
+	// artifacts whose publication moved off the completion critical path. They
+	// fan out inside the same completion transaction as the SUCCEEDED flip.
+	var deferredDeliveryEvents []finalization.OutboxEvent
+
 	// Deserialise artifacts from the command. The wire-format was renamed
 	// PublishedArtifacts -> StagedArtifacts in P0-COMPL-5-WIRE-NAMING
 	// (July 2026); the Carry value is still json.RawMessage so the unmarshal
@@ -74,6 +91,10 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 			return nil, fmt.Errorf("broker: deserialise staged artifacts: %w", err)
 		}
 		isStaged := len(staged) > 0 && staged[0] != nil && staged[0].Destination != ""
+		// Per-index deferral marks: indexed (not append-order) so the flattened
+		// delivery events and the legacy normalization stay deterministic.
+		var deferredDrive []bool
+		var deferredArtifacts []finalization.OutboxEvent
 		if isStaged {
 			if b.preparation == nil {
 				return nil, fmt.Errorf("broker: staged artifacts require canonical ArtifactPreparation")
@@ -103,11 +124,43 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 			// partial-success (the failed artifact fails the whole job, exactly
 			// like the pre-parallel contract).
 			artifacts = make([]finalization.PublishedArtifact, len(verified))
+			deferredDrive = make([]bool, len(verified))
+			deferredArtifacts = make([]finalization.OutboxEvent, len(verified))
 			g, pubCtx := errgroup.WithContext(ctx)
 			g.SetLimit(finalizePublishConcurrency)
 			for i := range verified {
 				i, va := i, verified[i]
 				g.Go(func() error {
+					if b.deferredDriveStore != nil && finalizeDrivePublicationDeferrable(j.Type, va) {
+						var intent finalization.FinalizeDriveDeliveryRequest
+						stageErr := kernobs.MeasureOperation(pubCtx, kernobs.OperationInfo{
+							Stage:     kernobs.StageOrDefault(pubCtx, kernobs.StagePublish),
+							Component: kernobs.ComponentName("finalize"),
+							Operation: kernobs.OperationObjectStoreUpload,
+							Items:     1,
+							Bytes:     va.SizeBytes,
+						}, func(stageCtx context.Context) error {
+							var err error
+							intent, err = b.stageDeferredDrivePublication(stageCtx, cmd.JobID, va)
+							return err
+						})
+						if stageErr != nil {
+							return fmt.Errorf("broker: defer Drive publication of staged artifact %q: %w", va.ArtifactID, stageErr)
+						}
+						payload, marshalErr := json.Marshal(intent)
+						if marshalErr != nil {
+							return fmt.Errorf("broker: encode Drive delivery intent for %q: %w", va.ArtifactID, marshalErr)
+						}
+						deferredDrive[i] = true
+						deferredArtifacts[i] = finalization.OutboxEvent{
+							EventType:   finalization.EventFinalizeDriveDeliveryRequested,
+							AggregateID: cmd.JobID,
+							EventKey:    deferredDriveEventKey(cmd.JobID, va),
+							Payload:     payload,
+						}
+						artifacts[i] = pendingFinalizeArtifact(va)
+						return nil
+					}
 					published, err := b.preparation.Prepare(pubCtx, va)
 					if err != nil {
 						return fmt.Errorf("broker: publish staged artifact %q: %w", va.ArtifactID, err)
@@ -118,6 +171,11 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 			}
 			if err := g.Wait(); err != nil {
 				return nil, err
+			}
+			for i := range deferredArtifacts {
+				if deferredDrive[i] {
+					deferredDeliveryEvents = append(deferredDeliveryEvents, deferredArtifacts[i])
+				}
 			}
 		} else if err := json.Unmarshal(cmd.StagedArtifacts, &artifacts); err != nil {
 			return nil, fmt.Errorf("broker: deserialise published artifacts: %w", err)
@@ -136,6 +194,13 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 			if !artifacts[i].Requirement.Valid() {
 				artifacts[i].Requirement = finalization.ArtifactRequirementRequired
 			}
+			// A deferred artifact is deliberately local (no Drive identity at
+			// completion): synthesising the legacy local Location would insert a
+			// bogus asset_locations row and claim an action=created identity that
+			// does not exist yet. The outbox consumer reconciles the real one.
+			if i < len(deferredDrive) && deferredDrive[i] {
+				continue
+			}
 			if artifacts[i].Location.Provider == "" {
 				artifacts[i].Location = finalization.AssetLocation{
 					Provider: "local", FileID: artifacts[i].ArtifactID,
@@ -152,15 +217,9 @@ func (b *Broker) CompleteWithArtifacts(ctx context.Context, cmd appjobs.Complete
 			return nil, fmt.Errorf("broker: deserialise outbox events: %w", err)
 		}
 	}
-
-	// Get the job row to compute the attempt counter and lease expiry.
-	j, err := b.jobs.Get(ctx, cmd.JobID)
-	if err != nil {
-		return nil, fmt.Errorf("broker: get job for finalization: %w", err)
-	}
-	if j == nil {
-		return nil, fmt.Errorf("broker: job %q not found for finalization", cmd.JobID)
-	}
+	// Durable Drive-delivery intents ride the same completion fan-out as the
+	// command's own events (deterministic order: command events first).
+	events = append(events, deferredDeliveryEvents...)
 
 	// LeaseExpiry is a *time.Time in the Job struct; default to 30s
 	// from now if nil (matches the Claim default).

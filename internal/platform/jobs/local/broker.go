@@ -7,6 +7,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/cas"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/workernodes"
 )
 
@@ -18,8 +19,13 @@ type Broker struct {
 	finalizer      finalization.JobFinalizer
 	preparation    finalization.ArtifactPreparationService
 	folderResolver finalization.ArtifactFolderResolver
-	log            *zap.Logger
-	coalesceOn     bool // true when coalescer is configured; gated via nil-check
+	// deferredDriveStore is the content-addressed object store (H1) the
+	// deferred Drive publication stages artifacts through. When nil (or when
+	// no consumer is registered at the composition root) every artifact keeps
+	// the synchronous publication path.
+	deferredDriveStore *cas.Store
+	log                *zap.Logger
+	coalesceOn         bool // true when coalescer is configured; gated via nil-check
 }
 
 // Deps is the constructor dependency injection container (mandatory for
@@ -83,5 +89,15 @@ func (b *Broker) WithArtifactPreparation(p finalization.ArtifactPreparationServi
 // already-resolved video folder.
 func (b *Broker) WithArtifactFolderResolver(r finalization.ArtifactFolderResolver) *Broker {
 	b.folderResolver = r
+	return b
+}
+
+// WithDeferredDrivePublication enables the asynchronous finalize Drive
+// publication path for eligible artifacts (see finalizeDrivePublication
+// Deferrable): their bytes are staged into the given content-addressed object
+// store and their publication intent rides the completion outbox. Optional:
+// when nil, every artifact publishes synchronously exactly as before.
+func (b *Broker) WithDeferredDrivePublication(store *cas.Store) *Broker {
+	b.deferredDriveStore = store
 	return b
 }

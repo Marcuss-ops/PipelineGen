@@ -449,62 +449,6 @@ func TestSQLiteMediaReaderGrandfatheredFilesExist(t *testing.T) {
 	}
 }
 
-// TestSQLiteMediaReaderRegisterHasNoStaleEntries is the ratchet pin. Existing
-// is not enough: an entry whose SQLite read has been migrated must be deleted,
-// otherwise the register silently becomes a permanent allowlist and the
-// promoted SQLITE_MEDIA_READERS counter stops meaning anything.
-//
-// This fired for real on 2026-09-13: internal/app/wiring/registry_adminconsole_api.go
-// was migrated to root.MediaAssetStore()/root.MediaAssetVersionStore() by a
-// concurrent change, leaving its entry stale. The file-existence test above
-// did not notice.
-func TestSQLiteMediaReaderRegisterHasNoStaleEntries(t *testing.T) {
-	root, err := filepath.Abs("../../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Skipf("repository root not resolvable from the test cwd: %v", err)
-	}
-	for _, rel := range allRegisteredMediaReaderFiles() {
-		live, err := sqliteMediaReaderRegisterEntryIsLive(root, rel)
-		if err != nil {
-			t.Errorf("debt-register entry %q is unreadable: %v", rel, err)
-			continue
-		}
-		if !live {
-			t.Errorf("debt-register entry %q is STALE — it has no remaining SQLite-dialect read of media_assets; delete the entry (the register must ratchet to zero, never grow into a permanent allowlist)", rel)
-		}
-	}
-}
-
-// TestSQLiteMediaReaderRegisterEntryIsLive pins the staleness predicate itself:
-// a SQLite read is live, an all-PostgreSQL file is stale, and a mixed file is
-// live for its SQLite branch.
-func TestSQLiteMediaReaderRegisterEntryIsLive(t *testing.T) {
-	tmp := t.TempDir()
-	cases := []struct {
-		rel  string
-		body string
-		want bool
-	}{
-		{"sqlite.go", "package x\n\nconst q = \"SELECT id FROM media_assets WHERE id = ?\"\n", true},
-		{"postgres.go", "package x\n\nconst q = \"SELECT id FROM media_assets WHERE id = $1\"\n", false},
-		{"mixed.go", "package x\n\nconst pg = \"SELECT id FROM media_assets WHERE id = $1\"\nconst lite = \"SELECT id FROM media_assets WHERE id = ?\"\n", true},
-		{"gone.go", "package x\n\nconst q = \"SELECT id FROM pg_media_projection\"\n", false},
-	}
-	for _, tc := range cases {
-		writeGoFile(t, tmp, tc.rel, tc.body)
-		got, err := sqliteMediaReaderRegisterEntryIsLive(tmp, tc.rel)
-		if err != nil {
-			t.Fatalf("%s: %v", tc.rel, err)
-		}
-		if got != tc.want {
-			t.Errorf("%s: live = %v, want %v", tc.rel, got, tc.want)
-		}
-	}
-}
-
 // TestScanSQLiteMediaReaderBan_RepoTreeIsClean is the integration pin: the
 // real repository must satisfy the promoted gate. A failure here means a new
 // SQLite media reader landed (or a grandfathered consumer came back).

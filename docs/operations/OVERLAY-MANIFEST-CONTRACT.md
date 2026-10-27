@@ -101,6 +101,34 @@ Vincoli di proiezione riconosciuti da questo contratto:
   superata e le voci vengono emesse al placement renderizzato (nessuna
   rischedulazione a payload time).
 
+### 3.1 Timeline packed (composizione compatta, zero frame vuoti)
+
+Con il P0 (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE §3.4) la composizione
+di un piano **senza source video e senza background allineato al tempo**
+(solo colore, o nessuno) **rinuncia agli span vuoti del piano**: l'artefatto
+viene renderizzato su una **canvas packed** — l'unione delle finestre
+LITERAL degli overlay, disposte una dietro l'altra — invece di coprire
+l'intero asse temporale da t=0 (la run live `gate-100-overlays-only-r2`
+aveva codificato 27.864 frame di cui ~80% vuoti).
+
+- **Voci del manifest**: `in_us`/`out_us` restano la finestra di piano
+  verbatim (la ricevuta, mai riscritta). Due campi opzionali portano la
+  posizione reale sull'artefatto:
+  `artifact_in_us` / `artifact_out_us` (esclusivi come gli altri, set
+  **sempre insieme**, `artifact_out_us - artifact_in_us ≤ out_us - in_us`).
+- **Proiezione**: su una timeline packed la griglia §3 si applica ai campi
+  `artifact_*`, non a `in_us`/`out_us`. Un consumer che usa solo §3 su una
+  voce packed degrada fail-closed come già previsto in §3/§5 (clamp/errore
+  oltre la base certificata) — mai silenziosamente.
+- **Identità**: le posizioni packed entrano nel documento (e quindi nel
+  digest e nella chiave della cache di composizione) — un artefatto packed
+  e uno assoluto sono due composizioni distinte. Spostare le posizioni
+  stesse non cambia l'identità di voce (`RetryKey`).
+- **Vincoli di ammissione** (`overlay_manifest_packed.go`, fail-closed):
+  `source` presente → mai packed; background `image`/`video` → mai packed;
+  background `color` o assente → packed consentito; ogni finestra candidata
+  deve essere coperta dall'unione (un errore, mai un offset 0 silenzioso).
+
 ## 4. Wire del final job: manifest puro
 
 Il PREPARE resta invariato (`scenes[]`, `copy_only`, `delivery_plan`). Il

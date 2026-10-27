@@ -101,6 +101,10 @@ func (p RenderPhase) IsValid() bool {
 // submit phase (the historical, blocking form's entry point); an unknown value
 // is a typed error rather than a silent fallback, so a payload typo can never
 // silently re-run submission (which would re-prepare and re-upload assets).
+//
+// EXPORTED: the composition root's pool-split contract pin
+// (wiring.TestClipRenderPhaseScopeMatchesCapabilityContract) builds its probe
+// payload through this parser so a reintroduced local literal fails there.
 func ParseRenderPhase(payload map[string]any) (RenderPhase, error) {
 	if payload == nil {
 		return RenderPhaseSubmit, nil
@@ -249,21 +253,6 @@ func (c Continuation) Encode() (json.RawMessage, error) {
 		return nil, fmt.Errorf("clip.render: encode continuation: %w", err)
 	}
 	return raw, nil
-}
-
-// DecodeContinuation reads a continuation out of a settle-phase payload.
-func DecodeContinuation(raw json.RawMessage) (Continuation, error) {
-	var c Continuation
-	if len(raw) == 0 {
-		return c, fmt.Errorf("%w: settle phase requires a continuation payload", ErrInvalidJobPayload)
-	}
-	if err := json.Unmarshal(raw, &c); err != nil {
-		return c, fmt.Errorf("%w: decode continuation: %v", ErrInvalidJobPayload, err)
-	}
-	if err := c.Validate(); err != nil {
-		return c, err
-	}
-	return c, nil
 }
 
 // ResumeDocument is the content-addressed document the settle phase loads. It

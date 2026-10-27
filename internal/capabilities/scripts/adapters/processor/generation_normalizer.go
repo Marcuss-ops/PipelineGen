@@ -139,22 +139,6 @@ func applyMediaDensity(spec *scriptpkg.ScriptSpec) {
 	}
 }
 
-// NormalizeEnvelope applies NormalizeItem to every item in the
-// envelope. The envelope's Preset is passed to each item.
-// The envelope is NOT modified (items are processed in a new slice).
-func NormalizeEnvelope(env *scriptpkg.GenerationEnvelopeV2, cfg NormalizationConfig) []scriptpkg.GenerationItemV2 {
-	if env == nil || len(env.Items) == 0 {
-		return nil
-	}
-	normalized := make([]scriptpkg.GenerationItemV2, len(env.Items))
-	for i := range env.Items {
-		item := env.Items[i] // shallow copy
-		NormalizeItem(&item, env.Preset, cfg)
-		normalized[i] = item
-	}
-	return normalized
-}
-
 // ── Step 2 helpers ───────────────────────────────────────────────
 
 func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConfig) {

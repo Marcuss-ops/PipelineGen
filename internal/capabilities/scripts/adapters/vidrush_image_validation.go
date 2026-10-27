@@ -17,8 +17,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	_ "golang.org/x/image/webp"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -89,13 +90,6 @@ func ValidateVidRushRemoteImageURL(raw string) error {
 
 func isVidRushPrivateIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified()
-}
-
-// DownloadVidRushImage applies the size, MIME, timeout and redirect policy.
-// It returns bytes only; callers hand those bytes to the common staging/
-// finalization path rather than inserting media_assets themselves.
-func DownloadVidRushImage(ctx context.Context, client *http.Client, rawURL string, policy VidRushImagePolicy) ([]byte, string, error) {
-	return downloadVidRushImage(ctx, client, rawURL, "", policy)
 }
 
 // DownloadVidRushImageForCandidate carries the result page as a referrer when

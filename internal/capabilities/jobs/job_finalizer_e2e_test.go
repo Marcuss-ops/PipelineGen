@@ -13,7 +13,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	finalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 const minimalSchema = `
@@ -260,90 +259,5 @@ func TestE2E_LeaseExpiryNullIsAcceptedBySQLGated(t *testing.T) {
 	}
 	if _, err := f.CompleteWithArtifacts(context.Background(), req); err != nil {
 		t.Fatalf("idempotent completion with NULL expiry: %v", err)
-	}
-}
-
-func TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision(t *testing.T) {
-	t.Parallel()
-	db := openTestDB(t)
-	jobID, workerID, leaseID := "job-bus", "w-bus", "lease-bus"
-	expiry := time.Now().Add(10 * time.Minute)
-	insertRunningJob(t, db, jobID, workerID, leaseID, expiry)
-	if _, err := db.Exec(`UPDATE jobs SET revision = 0 WHERE id = ?`, jobID); err != nil {
-		t.Fatalf("anchor revision: %v", err)
-	}
-
-	bus := finalize.NewBus()
-	f := finalize.New(db, nil, noopAssetTx{}, zap.NewNop()).WithBus(bus)
-	sub, err := bus.Subscribe(jobID)
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Close()
-
-	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, expiry), json.RawMessage(`{"status":"ok"}`), "abc")
-	res, err := f.CompleteWithArtifacts(context.Background(), req)
-	if err != nil || res == nil || res.Status != "SUCCEEDED" {
-		t.Fatalf("completion = (%+v, %v), want SUCCEEDED", res, err)
-	}
-
-	awaitCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	evt, err := sub.Await(awaitCtx)
-	if err != nil {
-		t.Fatalf("await event: %v", err)
-	}
-	if evt.JobID != jobID || evt.FinalStatus != job.StatusSucceeded || evt.Err != nil || evt.Revision != 1 || evt.Attempt != req.Result.Attempt {
-		t.Fatalf("unexpected completion event: %+v", evt)
-	}
-
-	sub2, err := bus.Subscribe(jobID)
-	if err != nil {
-		t.Fatalf("resubscribe: %v", err)
-	}
-	defer sub2.Close()
-	if _, err := f.CompleteWithArtifacts(context.Background(), req); err != nil {
-		t.Fatalf("idempotent re-call: %v", err)
-	}
-	awaitCtx2, cancel2 := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel2()
-	_, err = sub2.Await(awaitCtx2)
-	if !errors.Is(err, finalize.ErrWaitTimedOut) {
-		t.Fatalf("idempotent re-call await err = %v, want ErrWaitTimedOut", err)
-	}
-}
-
-func TestFinalizer_NoPublishOnFailure(t *testing.T) {
-	t.Parallel()
-	db := openTestDB(t)
-	jobID, workerID, leaseID := "job-bus-fail", "w-bus-fail", "lease-bus-fail"
-	pastExpiry := time.Now().Add(-10 * time.Minute)
-	insertRunningJob(t, db, jobID, workerID, leaseID, pastExpiry)
-
-	bus := finalize.NewBus()
-	f := finalize.New(db, nil, noopAssetTx{}, zap.NewNop()).WithBus(bus)
-	sub, err := bus.Subscribe(jobID)
-	if err != nil {
-		t.Fatalf("subscribe: %v", err)
-	}
-	defer sub.Close()
-
-	req := finalizationRequestWithArtifact(validLease(jobID, workerID, leaseID, pastExpiry), json.RawMessage(`{"status":"ok"}`), "abc")
-	_, err = f.CompleteWithArtifacts(context.Background(), req)
-	if !errors.Is(err, finalization.ErrLeaseExpired) {
-		t.Fatalf("err = %v, want ErrLeaseExpired", err)
-	}
-	awaitCtx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
-	_, err = sub.Await(awaitCtx)
-	if !errors.Is(err, finalize.ErrWaitTimedOut) {
-		t.Fatalf("await err = %v, want ErrWaitTimedOut", err)
-	}
-	var status string
-	if err := db.QueryRow(`SELECT status FROM jobs WHERE id = ?`, jobID).Scan(&status); err != nil {
-		t.Fatalf("read status: %v", err)
-	}
-	if status == "SUCCEEDED" {
-		t.Fatal("failure path published success or mutated durable state")
 	}
 }

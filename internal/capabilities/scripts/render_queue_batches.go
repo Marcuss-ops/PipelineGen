@@ -26,6 +26,12 @@ type overlayBatchWork struct {
 	startUS    int64
 	endUS      int64
 	candidates []overlayItemCandidate
+	// packed is the P0 packed-composition placement map (itemID → packed
+	// canvas position, overlay_manifest_packed.go). Nil composes the classic
+	// plan-absolute timeline; non-nil renounces the plan's empty spans and
+	// pins every item at its packed artifact position. endUS then measures
+	// the PACKED canvas, not the plan's absolute span.
+	packed map[string]packedPlacement
 }
 
 func overlayBatchWireEndUS(startUS, endUS int64) int64 {
@@ -71,6 +77,12 @@ func overlayBatchIdentity(plan capoverlay.OverlayPlan, work overlayBatchWork) st
 	// The schema tag keeps composition identities in their historical digest
 	// domain: renaming it would orphan every cached timeline artifact.
 	schema := "pipelinegen.overlay-window-batch.v1"
+	if work.packed != nil {
+		// The packed composition is a DIFFERENT artifact (compact canvas) at
+		// the same manifest identity: a distinct digest domain keeps its
+		// composition rows from aliasing an absolute-timeline row.
+		schema = "pipelinegen.overlay-packed-batch.v1"
+	}
 	parts := []string{schema, strings.TrimSpace(plan.PlanID), strings.TrimSpace(work.sceneID), fmt.Sprint(work.startUS), fmt.Sprint(work.endUS)}
 	for _, candidate := range work.candidates {
 		item := candidate.source
@@ -96,6 +108,9 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 	if len(work.candidates) == 0 || work.endUS <= work.startUS {
 		return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q is not a positive window", work.id)
 	}
+	if len(work.packed) > 0 && len(work.packed) != len(work.candidates) {
+		return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q packed placements (%d) do not match its candidates (%d)", work.id, len(work.packed), len(work.candidates))
+	}
 	child, _, err := separateOverlayItemPlan(parent, work.candidates[0].source, work.candidates[0].index)
 	if err != nil {
 		return capoverlay.OverlayPlan{}, err
@@ -120,7 +135,19 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 			return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q has item %q before its start", work.id, candidate.source.ID)
 		}
 		item := itemPlan.Items[0]
-		item.StartUS = metadata.SourceStartUS - work.startUS
+		if work.packed != nil {
+			// Packed canvas: the item's frames live at its packed position
+			// (overlay_manifest_packed.go); the absolute plan offset never
+			// reaches the composition.
+			placement, ok := work.packed[strings.TrimSpace(candidate.source.ID)]
+			if !ok {
+				return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q has no packed placement for item %q", work.id, candidate.source.ID)
+			}
+			item.StartUS = placement.ArtifactInUS
+			endUS = work.endUS
+		} else {
+			item.StartUS = metadata.SourceStartUS - work.startUS
+		}
 		// P5/P4 window contract (OVERLAY-MANIFEST-CONTRACT.md §1): the item
 		// occupies exactly [in_us, out_us) = its LITERAL plan window, because
 		// the handoff projects that segment onto the artifact's frames (§3).
@@ -132,7 +159,7 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 		item.StartMs = item.StartUS / 1000
 		item.EndMs = (item.StartUS + item.DurationUS + 999) / 1000
 		item.RenderKey = ""
-		if item.StartUS+item.DurationUS > endUS {
+		if work.packed == nil && item.StartUS+item.DurationUS > endUS {
 			endUS = item.StartUS + item.DurationUS
 		}
 		items = append(items, item)

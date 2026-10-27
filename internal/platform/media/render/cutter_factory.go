@@ -18,10 +18,6 @@ import (
 // Executor when supplied, keeping cutter, renderer, and probe under one
 // process/cancellation/limiter policy.
 
-func NewConfiguredCutterWithExecutor(rustBinary, ffmpegPath string, policy mediaexec.EncoderPolicy, profile mediaexec.VideoProfile, log *zap.Logger, executor *rustexec.Executor) (stockpipeline.VideoCutter, error) {
-	return NewConfiguredCutterWithExecutionConfig(rustBinary, ffmpegPath, mediaexec.ExecutionConfig{Profile: profile, Policy: policy}, log, executor)
-}
-
 // NewConfiguredCutterWithExecutionConfig wires the full Go-owned media
 // execution contract — policy, profile, and the cut capacity policy
 // (MaxParallelCuts) — into the Rust cutter backend.

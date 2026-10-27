@@ -366,8 +366,13 @@ func groundedContextQuery(source string, query semanticEngineQuery) bool {
 		len(query.Components) < 2 {
 		return false
 	}
+	// Components are validated in the order the worker sent them: the query
+	// text must equal the sent-order join. Composing by source byte order
+	// instead would reject a valid subject-first query whenever the subject
+	// span sits after the target span in the sentence (e.g. "fascicolo di
+	// X"): the same sent-order contract as the per-scene contextual
+	// validator.
 	components := append([]semanticEngineQueryComponent(nil), query.Components...)
-	sort.Slice(components, func(i, j int) bool { return components[i].StartByte < components[j].StartByte })
 	parts := make([]string, 0, len(components))
 	for _, component := range components {
 		if component.StartByte < *query.EvidenceStartByte || component.EndByte > *query.EvidenceEndByte ||

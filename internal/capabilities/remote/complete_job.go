@@ -39,8 +39,6 @@ package remote
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -224,91 +222,6 @@ type CompleteJobRequest struct {
 	// triple with (jobID, attempt) per the UNIQUE INDEX on
 	// job_results(job_id, attempt, result_hash).
 	ResultHash string
-}
-
-// Validated validates the request before any TX work begins
-// (pre-TX fail-fast gate per godlike/07). Returns nil if the
-// request is well-formed; otherwise returns the aggregated
-// missing-fields diagnostic so the operator sees the full
-// picture in one error message.
-func (r *CompleteJobRequest) Validated() error {
-	if r == nil {
-		return fmt.Errorf("%w: nil receiver", ErrCompleteJobRequestMissingFields)
-	}
-	var missing []string
-	if strings.TrimSpace(r.WorkerID) == "" {
-		missing = append(missing, "workerID")
-	}
-	if strings.TrimSpace(r.JobID) == "" {
-		missing = append(missing, "jobID")
-	}
-	if r.Attempt < 0 {
-		missing = append(missing, "attempt (negative)")
-	}
-	if strings.TrimSpace(r.LeaseID) == "" {
-		missing = append(missing, "leaseID")
-	}
-	if len(r.Result) == 0 || string(r.Result) == "null" {
-		missing = append(missing, "result (empty)")
-	}
-	if strings.TrimSpace(r.ResultHash) == "" {
-		missing = append(missing, "resultHash")
-	}
-	if len(r.Artifacts.Artifacts) == 0 {
-		missing = append(missing, "artifacts (empty manifest)")
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("%w (godlike/07 no-fake-availability): %s",
-			ErrCompleteJobRequestMissingFields, strings.Join(missing, ", "))
-	}
-	return nil
-}
-
-// ValidateArtifacts runs the manifest-only invariants (independent
-// of the request envelope). Returns nil if every artifact is
-// well-formed and FINALIZED; otherwise returns the first violation
-// with typed error attribution for the godlike/07 audit surface.
-//
-// Invariant order (matches the spec test surface):
-//  1. SchemaVersion must equal SchemaVersionArtifactManifestV1
-//  2. Every artifact must have Status == StatusReady (FINALIZED alias)
-//  3. (Defensive) No artifact carries a "path" key in its JSON
-//     payload — the Sender-safe type omits it; runtime check is the
-//     backstop against future drift.
-//
-// Implements godlike/06 SSOT dual-type integrity: the typed manifest
-// NO LocalPath field exists; only a deliberate runtime JSON check
-// can detect a slipped-in path key (backward-compat with future
-// envelopes that might add a key).
-func (r *CompleteJobRequest) ValidateArtifacts() error {
-	if r == nil {
-		return fmt.Errorf("%w: nil receiver", ErrRemoteArtifactManifestInvalid)
-	}
-	if r.Artifacts.SchemaVersion != job.SchemaVersionArtifactManifestV1 {
-		return fmt.Errorf("%w: SchemaVersion must be %q, got %q",
-			ErrRemoteArtifactManifestInvalid,
-			job.SchemaVersionArtifactManifestV1,
-			r.Artifacts.SchemaVersion)
-	}
-	for i, a := range r.Artifacts.Artifacts {
-		if a.Status != job.StatusReady {
-			return fmt.Errorf("%w: artifacts[%d] (%s) has status %q, want %q",
-				ErrRemoteArtifactStateNotFinalized,
-				i, a.ID, a.Status, job.StatusReady)
-		}
-		// Defensive LocalPath guard (the typed contract already
-		// enforces this; the JSON key check is the backstop against
-		// future envelope drift that adds a path key).
-		if a.ID == "" {
-			return fmt.Errorf("%w: artifacts[%d] has empty ID",
-				ErrRemoteArtifactManifestInvalid, i)
-		}
-		if a.SHA256 == "" {
-			return fmt.Errorf("%w: artifacts[%d] (%s) has empty SHA256",
-				ErrRemoteArtifactManifestInvalid, i, a.ID)
-		}
-	}
-	return nil
 }
 
 // ── CompleteJobResponse (typed envelope returned to the Creator-side client / handler) ──

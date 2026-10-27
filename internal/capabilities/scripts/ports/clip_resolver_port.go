@@ -21,7 +21,6 @@ package ports
 
 import (
 	"context"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
@@ -62,29 +61,6 @@ const (
 	// drive_file_id for google_drive.
 	RefTypeExternalProviderID ReferenceType = "external_provider_id"
 )
-
-// allReferenceTypes is the canonical set of supported ReferenceType
-// values. Used by Valid() and by future admin/telemetry paths that
-// enumerate the supported set without hard-coding the constants.
-var allReferenceTypes = []ReferenceType{
-	RefTypeMediaAssetID,
-	RefTypeYouTubeVideoID,
-	RefTypeDriveFileID,
-	RefTypeExternalProviderID,
-}
-
-// Valid reports whether r is one of the supported ReferenceType
-// values. The resolver uses Valid() as a precondition before
-// dispatching on Type — invalid types produce Unresolved references
-// with Reason="invalid_type" rather than panicking.
-func (r ReferenceType) Valid() bool {
-	for _, t := range allReferenceTypes {
-		if r == t {
-			return true
-		}
-	}
-	return false
-}
 
 // ClipReference is one typed input to the resolver.
 // Type is authoritative — the resolver never inspects Value to
@@ -178,22 +154,4 @@ type ClipRepositoryReader interface {
 // ClipResolver is the canonical typed resolver for ClipReference.
 type ClipResolver interface {
 	Resolve(ctx context.Context, refs []ClipReference) (*ClipResolutionResult, error)
-}
-
-// externalProviderSeparator is the canonical compound separator for
-// RefTypeExternalProviderID values. Single source of truth — the
-// admin ingest endpoint emits the same separator. Exported
-// so callers constructing compound values do not magic-string the
-// delimiter in unrelated packages.
-const externalProviderSeparator = "::"
-
-// ParseExternalProviderValue splits a compound value into provider
-// and external_id. Returns ok=false on malformed inputs (missing
-// separator, empty side).
-func ParseExternalProviderValue(v string) (provider, externalID string, ok bool) {
-	idx := strings.Index(v, externalProviderSeparator)
-	if idx <= 0 || idx >= len(v)-len(externalProviderSeparator) {
-		return "", "", false
-	}
-	return v[:idx], v[idx+len(externalProviderSeparator):], true
 }

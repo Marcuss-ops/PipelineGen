@@ -117,6 +117,27 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 	if err != nil {
 		return RenderReference{}, err
 	}
+	// P0 packed composition (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE §3.4):
+	// when the plan carries no time-aligned background/source layer the
+	// artifact renounces the plan's empty spans — the canvas covers only the
+	// packed union of the candidates' literal windows, and every entry
+	// records where its frames actually live via
+	// artifact_in_us/artifact_out_us (§3 packed timeline). The plan-absolute
+	// InUS/OutUS receipt stays verbatim in both modes.
+	packedSupported := planSupportsPackedComposition(plan)
+	packedPlacements := map[string]packedPlacement(nil)
+	var packedEnd int64 = -1
+	if packedSupported {
+		placements, end, placementsErr := computePackedPlacements(plan, candidates)
+		if placementsErr != nil {
+			return RenderReference{}, fmt.Errorf("overlay manifest timeline packed composition: %w", placementsErr)
+		}
+		if stampErr := stampPackedPlacements(works, placements); stampErr != nil {
+			return RenderReference{}, fmt.Errorf("overlay manifest timeline packed composition: %w", stampErr)
+		}
+		packedPlacements = placements
+		packedEnd = end
+	}
 	manifest := capoverlay.OverlayManifest{
 		SchemaVersion: capoverlay.SchemaVersionManifest,
 		PlanID:        strings.TrimSpace(plan.PlanID),
@@ -131,11 +152,17 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 	if err := manifest.Validate(); err != nil {
 		return RenderReference{}, err
 	}
-	_, endUS := overlayCandidateRenderWindow(plan, ordered[0])
-	for _, candidate := range ordered[1:] {
-		_, itemEnd := overlayCandidateRenderWindow(plan, candidate)
-		if itemEnd > endUS {
-			endUS = itemEnd
+	workEndUS := int64(0)
+	if packedSupported {
+		workEndUS = overlayBatchWireEndUS(0, packedEnd)
+	} else {
+		_, firstEnd := overlayCandidateRenderWindow(plan, ordered[0])
+		workEndUS = firstEnd
+		for _, candidate := range ordered[1:] {
+			_, itemEnd := overlayCandidateRenderWindow(plan, candidate)
+			if itemEnd > workEndUS {
+				workEndUS = itemEnd
+			}
 		}
 	}
 	// The manifest projects plan-absolute in_us directly onto the artifact's
@@ -149,8 +176,9 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 	work := overlayBatchWork{
 		sceneID:    strings.TrimSpace(ordered[0].source.SceneID),
 		startUS:    0,
-		endUS:      overlayBatchWireEndUS(0, endUS),
+		endUS:      overlayBatchWireEndUS(0, workEndUS),
 		candidates: ordered,
+		packed:     packedPlacements,
 	}
 	work.id = overlayBatchIdentity(plan, work)
 	child, err := fusedOverlayBatchPlan(plan, work)

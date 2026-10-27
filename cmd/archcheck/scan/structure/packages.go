@@ -43,12 +43,6 @@ type internalRootMigration struct {
 	Targets       []string `json:"targets"`
 }
 
-// ScanPackages runs the package-size scan. Registered debt is governed by the
-// same owner/baseline/deadline contract in every mode.
-func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int) {
-	ScanPackagesForMode(root, pol, r, fileLines, false)
-}
-
 // ScanPackagesForMode walks non-test Go files, records per-file line counts and
 // enforces package hotspot governance. A registered hotspot is not itself a
 // violation while it stays within baseline and before its deadline. Growth,

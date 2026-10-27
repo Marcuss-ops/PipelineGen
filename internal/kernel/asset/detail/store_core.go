@@ -78,28 +78,8 @@ func (s *Service) Repository() Repository {
 
 // LocationRepository returns the canonical LocationRepository adapter
 // for the underlying Store, or nil when the bridge is not implemented.
-func (s *Service) LocationRepository() LocationRepository {
-	if a, ok := s.store.(assetStoreAdapter); ok {
-		return a.LocationRepository()
-	}
-	return nil
-}
-
 // ProcessingRepository returns the canonical ProcessingRepository
 // adapter for the underlying Store, or nil when the bridge is not
 // implemented.
-func (s *Service) ProcessingRepository() ProcessingRepository {
-	if a, ok := s.store.(assetStoreAdapter); ok {
-		return a.ProcessingRepository()
-	}
-	return nil
-}
-
 // VersionRepository returns the canonical VersionRepository adapter
 // for the underlying Store, or nil when the bridge is not implemented.
-func (s *Service) VersionRepository() VersionRepository {
-	if a, ok := s.store.(assetStoreAdapter); ok {
-		return a.VersionRepository()
-	}
-	return nil
-}

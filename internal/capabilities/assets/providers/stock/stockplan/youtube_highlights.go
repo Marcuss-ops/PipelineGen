@@ -4,12 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"math"
 	"net/url"
 	"sort"
 	"strings"
 	"unicode"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 var (

@@ -466,6 +466,8 @@ type ImportantSentence struct {
 	Index      int      `json:"index"`
 	Text       string   `json:"text"`
 	Importance float64  `json:"importance"`
+	Centrality float64  `json:"centrality"`
+	Novelty    float64  `json:"novelty"`
 	StartSec   *float64 `json:"start,omitempty"`
 	EndSec     *float64 `json:"end,omitempty"`
 }
@@ -508,12 +510,22 @@ type SceneHighlight struct {
 	GloballyIndexed bool              `json:"globally_indexed"`
 }
 
+// EditorialBulletPoint preserves the source sentence and optional audio timing
+// behind the legacy text-only BulletPoints projection.
+type EditorialBulletPoint struct {
+	SentenceIndex int      `json:"sentence_index"`
+	Text          string   `json:"text"`
+	StartSec      *float64 `json:"start,omitempty"`
+	EndSec        *float64 `json:"end,omitempty"`
+}
+
 type PhraseImpactResult struct {
-	Summary         string              `json:"summary"`
-	BulletPoints    []string            `json:"bullet_points"`
-	HeavySentences  []ImportantSentence `json:"heavy_sentences"`
-	ChapterManifest ChapterManifest     `json:"chapter_manifest,omitempty"`
-	SceneHighlights []SceneHighlight    `json:"scene_highlights,omitempty"`
+	Summary         string                 `json:"summary"`
+	BulletPoints    []string               `json:"bullet_points"`
+	BulletDetails   []EditorialBulletPoint `json:"bullet_details,omitempty"`
+	HeavySentences  []ImportantSentence    `json:"heavy_sentences"`
+	ChapterManifest ChapterManifest        `json:"chapter_manifest,omitempty"`
+	SceneHighlights []SceneHighlight       `json:"scene_highlights,omitempty"`
 	// SceneHighlightsCertified is false when scene identity was incoherent:
 	// the manifest must not be treated as certified (video still continues).
 	SceneHighlightsCertified bool `json:"scene_highlights_certified,omitempty"`

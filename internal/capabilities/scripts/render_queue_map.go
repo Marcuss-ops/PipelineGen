@@ -102,13 +102,6 @@ func projectMapRendererPhases(ctx context.Context, tilePrefetchMS, platePrepareM
 	record(kernobs.OperationEncode, renderEncodeWallS*1000)
 }
 
-// renderDynamicMapVideo delegates map motion to the same ChrononTemplate
-// camera/tile-pyramid renderer used by approved dynamic-map overlays. The
-// resulting MP4 enters normal content-addressed staging and publication.
-func renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan, cacheDirs ...string) (string, error) {
-	return renderDynamicMapVideoWithGate(ctx, plan, nil, cacheDirs...)
-}
-
 // PreMaterializeDynamicMapVideo renders the dynamic map video of EVERY map
 // item in the plan into the durable cache WITHOUT submitting anything to the
 // render queue (TICKET-OVERLAY-THROUGHPUT: «le mappe vanno pre-materializzate
@@ -354,10 +347,6 @@ var (
 	mapCameraAnimations = capoverlay.AnimationRandomCandidates("map.camera")
 	mapLabelAnimations  = capoverlay.AnimationRandomCandidates("map.label")
 )
-
-func mapMapAnimationsRandomPool() []string {
-	return scriptoverlay.MapCompositionRandomPool()
-}
 
 // mapCameraAnimationsCertified lists every camera id the Python renderer
 // accepts, including explicit-only choices. resolveMapAnimation validates

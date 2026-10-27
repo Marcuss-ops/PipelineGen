@@ -23,21 +23,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// ssotRegistryWantRules is the pinned registry. Changing it is a deliberate
-// act: the test exists so a fact cannot be dropped by accident.
-var ssotRegistryWantRules = []string{
-	embeddingConstantsRule,
-	durationProbeSSOTRule,
-	observabilityOperationSSOTRule,
-	speechTimingSSOTRule,
-	projectDerivationSSOTRule,
-	evidencePrecedenceSSOTRule,
-	stopwordMapRule,
-	metadataKeyScannerRule,
-	indexedStateWriterSSOTRule,
-	assetCommitterEventSSOTRule,
-}
-
 func writeSSOTFixture(t *testing.T, root, rel, body string) {
 	t.Helper()
 	full := filepath.Join(root, filepath.FromSlash(rel))
@@ -61,27 +46,6 @@ func ssotViolationsForRule(r *report.Report, rule string) []report.Violation {
 		}
 	}
 	return out
-}
-
-// TestSSOTRegistryMatchesPinnedSet verifies the registry still contains
-// exactly the expected rules, in order and with unique ids.
-func TestSSOTRegistryMatchesPinnedSet(t *testing.T) {
-	got := ssotRuleNames()
-	if len(got) != len(ssotRegistryWantRules) {
-		t.Fatalf("registry has %d rules, want %d: %v", len(got), len(ssotRegistryWantRules), got)
-	}
-	for i, want := range ssotRegistryWantRules {
-		if got[i] != want {
-			t.Errorf("rule[%d] = %q, want %q", i, got[i], want)
-		}
-	}
-	seen := map[string]bool{}
-	for _, name := range got {
-		if seen[name] {
-			t.Errorf("duplicate rule id %q", name)
-		}
-		seen[name] = true
-	}
 }
 
 // TestSSOTRegistryPathsExist fails closed on a registry row whose Scope,

@@ -91,9 +91,9 @@
 // constructors (AssetKey, JobKey, OutboxKey).
 package idempotency
 
-import ()
-
-import "strings"
+import (
+	"strings"
+)
 
 // AssetKey constructs the canonical media_assets row identity.
 // The 4-tuple (provider, clipID, sourceVersion, sha256File) is

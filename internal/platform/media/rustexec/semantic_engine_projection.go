@@ -21,7 +21,7 @@ func projectSemanticBullets(source string, bullets []semanticEngineCandidate) []
 		}
 		out = append(out, scriptgen.BulletCandidate{
 			Text: bullet.Text, SentenceIndex: bullet.SentenceIndex, Start: bullet.StartByte, End: bullet.EndByte,
-			Score: bullet.Score,
+			Score: bullet.Score, ID: bullet.ID, Kind: bullet.Kind, Evidence: bullet.Evidence, Provenance: bullet.Provenance,
 		})
 	}
 	return out
@@ -100,6 +100,85 @@ func projectSemanticText(source string, candidates []semanticEngineCandidate) ([
 			Evidence: candidate.Evidence, Provenance: candidate.Provenance,
 			SentenceIndex: candidate.SentenceIndex, Start: candidate.StartByte, End: candidate.EndByte, Score: candidate.Score,
 		})
+	}
+	return out, nil
+}
+
+func projectSemanticImportantSegments(source string, items []semanticEngineImportantSegment) ([]scriptgen.SemanticImportantSegment, error) {
+	out := make([]scriptgen.SemanticImportantSegment, 0, len(items))
+	for _, item := range items {
+		if item.ID == "" || item.Kind != "important_segment" || item.SentenceStart < 0 || item.SentenceEnd < item.SentenceStart ||
+			item.Score < 0 || item.Score > 1 || item.VisualMentions < 0 || item.MeasurementMentions < 0 ||
+			!groundedSpan(source, item.StartByte, item.EndByte, item.Evidence) {
+			return nil, fmt.Errorf("important segment %q is invalid or not grounded", item.ID)
+		}
+		out = append(out, scriptgen.SemanticImportantSegment{ID: item.ID, Kind: item.Kind, Evidence: item.Evidence,
+			SentenceStart: item.SentenceStart, SentenceEnd: item.SentenceEnd, Start: item.StartByte, End: item.EndByte,
+			Score: item.Score, VisualMentions: item.VisualMentions, MeasurementMentions: item.MeasurementMentions})
+	}
+	return out, nil
+}
+
+func projectSemanticQueryComponents(source string, items []semanticEngineQueryComponent) ([]scriptgen.SemanticQueryComponent, error) {
+	out := make([]scriptgen.SemanticQueryComponent, 0, len(items))
+	for _, item := range items {
+		if item.Kind == "" || item.ComponentType == "" || !groundedSpan(source, item.StartByte, item.EndByte, item.Text) {
+			return nil, fmt.Errorf("query component %q is invalid or not grounded", item.Text)
+		}
+		out = append(out, scriptgen.SemanticQueryComponent{Kind: item.Kind, ComponentType: item.ComponentType, Text: item.Text, Start: item.StartByte, End: item.EndByte})
+	}
+	return out, nil
+}
+
+func componentsWithin(items []scriptgen.SemanticQueryComponent, start, end int) bool {
+	for i, item := range items {
+		if item.Start < start || item.End > end {
+			return false
+		}
+		for _, other := range items[:i] {
+			if item.Start < other.End && other.Start < item.End {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func projectSemanticComposedImageQueries(source string, items []semanticEngineComposedImageQuery) ([]scriptgen.SemanticComposedImageQuery, error) {
+	out := make([]scriptgen.SemanticComposedImageQuery, 0, len(items))
+	for _, item := range items {
+		components, err := projectSemanticQueryComponents(source, item.Components)
+		if err != nil {
+			return nil, err
+		}
+		if item.ID == "" || item.Kind != "composed_image_query" || len(components) < 2 || item.SentenceIndex < 0 ||
+			!groundedSpan(source, item.StartByte, item.EndByte, item.Query) ||
+			!componentsWithin(components, item.StartByte, item.EndByte) {
+			return nil, fmt.Errorf("composed query %q is invalid or not grounded", item.ID)
+		}
+		out = append(out, scriptgen.SemanticComposedImageQuery{ID: item.ID, Kind: item.Kind, Query: item.Query, Start: item.StartByte, End: item.EndByte, SentenceIndex: item.SentenceIndex, Components: components})
+	}
+	return out, nil
+}
+
+func projectSemanticContextualImageQueries(source string, items []semanticEngineContextualImageQuery) ([]scriptgen.SemanticContextualImageQuery, error) {
+	out := make([]scriptgen.SemanticContextualImageQuery, 0, len(items))
+	for _, item := range items {
+		components, err := projectSemanticQueryComponents(source, item.Components)
+		if err != nil {
+			return nil, err
+		}
+		joined := make([]string, 0, len(components))
+		for _, component := range components {
+			joined = append(joined, component.Text)
+		}
+		if item.ID == "" || item.Kind != "contextual_image_query" || len(components) < 2 || item.SentenceIndex < 0 || item.Query != strings.Join(joined, " ") ||
+			!groundedSpan(source, item.EvidenceStartByte, item.EvidenceEndByte, item.Evidence) ||
+			!componentsWithin(components, item.EvidenceStartByte, item.EvidenceEndByte) {
+			return nil, fmt.Errorf("contextual query %q is invalid or not grounded", item.ID)
+		}
+		out = append(out, scriptgen.SemanticContextualImageQuery{ID: item.ID, Kind: item.Kind, Query: item.Query, Evidence: item.Evidence,
+			EvidenceStart: item.EvidenceStartByte, EvidenceEnd: item.EvidenceEndByte, SentenceIndex: item.SentenceIndex, Components: components})
 	}
 	return out, nil
 }
@@ -291,6 +370,9 @@ func projectSemanticGroups(currentSceneID string, texts map[string]string, group
 				Start: member.StartByte, End: member.EndByte}
 			if member.TemporalSurface != nil {
 				entry.TemporalSurface = *member.TemporalSurface
+			}
+			if member.NormalizedDate != nil {
+				entry.NormalizedDate = *member.NormalizedDate
 			}
 			projected.Members = append(projected.Members, entry)
 		}

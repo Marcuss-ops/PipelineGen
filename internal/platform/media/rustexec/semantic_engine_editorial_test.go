@@ -69,7 +69,7 @@ func TestSemanticEngineEditorialUsesOneManifestRequestAndPreservesProducts(t *te
 		{SceneID: "scene_02", Text: semanticSceneTwo, StartByte: &startTwo, EndByte: &endTwo},
 	}
 
-	editorial := `"editorial":{"summary":"Grounded summary.","bullet_points":[{"text":"Marco Rossi founded the studio."}],"heavy_sentences":[{"index":0,"text":"Marco Rossi founded the studio.","importance":0.9}],"chapter_manifest":{"schema_version":"chapter_manifest.v1","chapters":[]},"scene_highlights":[],"timings":{"split_ms":1,"embedding_ms":0,"similarity_ms":2,"ranking_ms":3,"summary_ms":1,"bullet_ms":1,"total_ms":8}},`
+	editorial := `"editorial":{"summary":"Grounded summary.","bullet_points":[{"text":"Marco Rossi founded the studio.","sentence_index":0,"start":1.5,"end":3.5}],"heavy_sentences":[{"index":0,"text":"Marco Rossi founded the studio.","importance":0.9,"centrality":0.8,"novelty":0.7}],"chapter_manifest":{"schema_version":"chapter_manifest.v1","chapters":[]},"scene_highlights":[],"timings":{"split_ms":1,"embedding_ms":0,"similarity_ms":2,"ranking_ms":3,"summary_ms":1,"bullet_ms":1,"total_ms":8}},`
 	fixture := strings.Replace(semanticFixture, `"scenes": [`, editorial+`"scenes": [`, 1)
 	runner := &semanticRunner{output: []byte(fixture)}
 	executor := &Executor{runner: runner, outputLimit: 64 * 1024, binaryPath: "semantic-engine"}
@@ -89,6 +89,9 @@ func TestSemanticEngineEditorialUsesOneManifestRequestAndPreservesProducts(t *te
 	}
 	if !result.SceneHighlightsCertified || result.Timings.TotalMS != 8 || result.ChapterManifest.SchemaVersion != "chapter_manifest.v1" {
 		t.Fatalf("editorial metadata was not preserved: %+v", result)
+	}
+	if len(result.BulletDetails) != 1 || result.BulletDetails[0].SentenceIndex != 0 || result.BulletDetails[0].StartSec == nil || *result.BulletDetails[0].StartSec != 1.5 || result.BulletDetails[0].EndSec == nil || *result.BulletDetails[0].EndSec != 3.5 || result.HeavySentences[0].Centrality != 0.8 || result.HeavySentences[0].Novelty != 0.7 {
+		t.Fatalf("editorial sentence metadata was lost: %+v", result)
 	}
 	var request semanticEngineRequest
 	if err := json.Unmarshal(runner.input, &request); err != nil {

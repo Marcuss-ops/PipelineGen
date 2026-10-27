@@ -291,10 +291,11 @@ type ChartValueCandidate struct {
 // the scripts layer re-maps it onto the Go sentence splitter before it can
 // become an editorial bullet.
 type BulletCandidate struct {
-	Text          string
-	SentenceIndex int
-	Start         int
-	End           int
+	ID, Kind, Evidence, Provenance string
+	Text                           string
+	SentenceIndex                  int
+	Start                          int
+	End                            int
 	// Score is the semantic engine's grounded salience; it travels to
 	// Phrase Impact so candidate ranking uses one shared priority function.
 	Score float64

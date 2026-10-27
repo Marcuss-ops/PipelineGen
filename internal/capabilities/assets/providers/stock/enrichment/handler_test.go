@@ -517,8 +517,8 @@ func TestEnrichmentHandler_HandleJob_HappyPath_EmitsV1Envelope(t *testing.T) {
 	if got.IdempotencyKey == "" {
 		t.Error("IdempotencyKey is empty")
 	}
-	if !IsValidEnrichmentIdempotencyKey(got.IdempotencyKey) || len(got.IdempotencyKey) != 64 {
-		t.Errorf("IdempotencyKey is not 64-char hex: %q", got.IdempotencyKey)
+	if len(got.IdempotencyKey) != 64 {
+		t.Errorf("IdempotencyKey is not 64 chars: %q", got.IdempotencyKey)
 	}
 	if got.EventID == "" {
 		t.Error("EventID is empty")

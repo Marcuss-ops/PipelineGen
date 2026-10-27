@@ -141,17 +141,6 @@ func render(tmplStr string, data map[string]any) (string, error) {
 	return buf.String(), nil
 }
 
-func joinStrings(ss []string) string {
-	result := ""
-	for i, s := range ss {
-		if i > 0 {
-			result += ", "
-		}
-		result += s
-	}
-	return result
-}
-
 // ApplyFilteringConfig applies YAML filtering lists to the types package.
 func (c *Config) ApplyFilteringConfig() {
 	if c == nil {

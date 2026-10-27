@@ -57,14 +57,6 @@ type MediaResolverImageStage struct {
 	semanticScorer SemanticCandidateScorer
 }
 
-func NewMediaResolverImageStage(searcher InternetImageSearcher, metrics ...VidRushMetrics) *MediaResolverImageStage {
-	return NewMediaResolverImageStageWithCatalog(searcher, nil, nil, metrics...)
-}
-
-func NewMediaResolverImageStageWithCache(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, metrics ...VidRushMetrics) *MediaResolverImageStage {
-	return NewMediaResolverImageStageWithCatalog(searcher, cache, nil, metrics...)
-}
-
 func NewMediaResolverImageStageWithCatalog(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *MediaResolverImageStage {
 	var m VidRushMetrics
 	if len(metrics) > 0 {

@@ -280,16 +280,6 @@ func pkgFromRelPath(rel string) string {
 	return filepath.ToSlash(dir)
 }
 
-// ssotRuleNames returns the registered rule ids in registry order. It exists
-// for the registry-integrity test and for operator introspection.
-func ssotRuleNames() []string {
-	out := make([]string, 0, len(ssotRules))
-	for _, rule := range ssotRules {
-		out = append(out, rule.Name)
-	}
-	return out
-}
-
 // ssotRuleByName resolves a registered rule by id. A missing id is a
 // programming error in the registry, so it panics loudly at first use rather
 // than silently scanning nothing (godlike/07: a gate that cannot fail open).

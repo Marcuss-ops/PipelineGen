@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // VidRushGenerationRequest describes only the missing-image calculation. The
@@ -21,26 +19,6 @@ type VidRushGenerationRequest struct {
 	Provider        string
 	PromptVersion   string
 	TargetImages    int
-}
-
-func MissingVidRushImageCount(segment scriptpkg.VidRushSegmentResult, target int) int {
-	if target <= 0 {
-		return 0
-	}
-	verified := 0
-	for _, image := range segment.Assets.SecondaryImages {
-		if (image.Provider != scriptpkg.VidRushProviderInternetImages && image.Provider != scriptpkg.VidRushProviderImageGeneration) || !image.LifecycleComplete() {
-			continue
-		}
-		if strings.EqualFold(strings.TrimSpace(image.RightsStatus), "rejected") {
-			continue
-		}
-		verified++
-	}
-	if verified >= target {
-		return 0
-	}
-	return target - verified
 }
 
 // VidRushGenerationCacheKey is stable across process restarts and includes

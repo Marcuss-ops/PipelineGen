@@ -76,7 +76,7 @@ func TestStockBoundScenesBypassImageSearch(t *testing.T) {
 	}}
 	input := ProcessInput{SpecScene: spec, StockBindings: bindings, VidRushSegments: stockGateSegments()}
 
-	imageResult, err := NewMediaResolverImageStage(images).Process(context.Background(), plan, input)
+	imageResult, err := NewMediaResolverImageStageWithCatalog(images, nil, nil).Process(context.Background(), plan, input)
 	require.NoError(t, err)
 	require.False(t, containsQuery(images.queries, "stock image query"),
 		"the stock-bound segment's query must never reach the image searcher (searched: %v)", images.queries)
@@ -90,7 +90,7 @@ func TestStockBoundSceneAllowsExplicitEntityImageSidecarSearch(t *testing.T) {
 		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
 		Extraction:     mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{Enabled: true, Scope: "per_scene"}},
 	}}
-	result, err := NewMediaResolverImageStage(images).Process(context.Background(), plan, ProcessInput{
+	result, err := NewMediaResolverImageStageWithCatalog(images, nil, nil).Process(context.Background(), plan, ProcessInput{
 		SpecScene: spec, StockBindings: bindings, VidRushSegments: stockGateSegments(),
 	})
 	require.NoError(t, err)

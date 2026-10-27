@@ -463,28 +463,3 @@ func inspectMediaWriteBridgeFile(root, absPath string, r *report.Report) {
 		})
 	}
 }
-
-// mediaWriteBridgeRegisterEntryIsLive reports whether a debt-register entry
-// still has a generic-seam media write to pardon.
-//
-// WHY THIS EXISTS. The register is a ratchet: an entry that survives after its
-// consumer migrated turns the register into a permanent allowlist people stop
-// reading. An entry is live only when the file still contains at least one
-// detected seam write — the same predicate inspectMediaWriteBridgeFile uses to
-// report a violation. Anything else must be deleted in the same change.
-func mediaWriteBridgeRegisterEntryIsLive(root, relPath string) (bool, error) {
-	absPath := filepath.Join(root, filepath.FromSlash(relPath))
-	source, err := os.ReadFile(absPath)
-	if err != nil {
-		return false, err
-	}
-	fileSet := token.NewFileSet()
-	parsed, parseErr := parser.ParseFile(fileSet, absPath, source, parser.ParseComments)
-	if parseErr != nil || parsed == nil {
-		// Fail-closed in the same direction as the scanner: an unparseable
-		// registered file is treated as still live so it cannot silently
-		// become a ghost entry.
-		return true, nil
-	}
-	return len(mediaWriteBridgeFindViolations(source, fileSet, parsed)) > 0, nil
-}

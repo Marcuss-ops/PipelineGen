@@ -22,7 +22,6 @@ package scriptgeneration
 // key digest) can never produce a second artifact for one entry.
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -72,16 +71,6 @@ type manifestEntryWork struct {
 	Artifact *RenderArtifact
 }
 
-// buildOverlayManifestEntries derives the manifest entries for a parent
-// plan's renderable items, in plan order. Background items are skipped as
-// canvas primitives. Track is the deterministic z-layer: an item draws above
-// every earlier item it overlaps (track = 1 + max(track of overlapping
-// earlier items)), so the plan's z-order survives the manifest projection
-// unchanged even when lower tracks are free.
-func buildOverlayManifestEntries(parent capoverlay.OverlayPlan, epoch string) ([]manifestEntryWork, error) {
-	return buildManifestEntryWorks(parent, overlayRenderableCandidates(parent), epoch)
-}
-
 // buildManifestEntryWorks derives the manifest entries for an explicit
 // candidate subset of the parent plan (the manifest-timeline composition
 // excludes maps and chain items, which keep their dedicated render paths).
@@ -123,35 +112,4 @@ func buildManifestEntryWorks(parent capoverlay.OverlayPlan, candidates []overlay
 		tracks = append(tracks, track)
 	}
 	return works, nil
-}
-
-// classifyManifestEntries partitions a plan's manifest entries into certified
-// content (cache hit: the entry's rendered content is already certified) and
-// pending work — gate 2 in action. The same item_id + content-hash pair always
-// resolves to the same entry identity, so a retry classifies a certified entry
-// as reused and the caller never re-renders it nor stores a duplicate
-// artifact. Cache, kill-switch and probe failures degrade to pending: a broken
-// cache may cost time, never correctness.
-func (e *QueueRenderEnqueuer) classifyManifestEntries(ctx context.Context, parent capoverlay.OverlayPlan) (certified, pending []manifestEntryWork, err error) {
-	works, err := buildOverlayManifestEntries(parent, e.renderCacheEpochValue())
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, work := range works {
-		artifact, hit, _ := e.lookupOverlayRenderCacheTimed(ctx, work.Key)
-		if hit {
-			work.Artifact = artifact
-			certified = append(certified, work)
-			continue
-		}
-		pending = append(pending, work)
-	}
-	return certified, pending, nil
-}
-
-// certifyManifestEntry stores the artifact that certifies one entry's content.
-// The cache Store is idempotent on the key digest, so re-certifying the same
-// entry reuses its row instead of producing a second artifact.
-func (e *QueueRenderEnqueuer) certifyManifestEntry(ctx context.Context, work manifestEntryWork, artifact *RenderArtifact) {
-	e.storeOverlayRenderCacheTimed(ctx, work.Key, artifact)
 }

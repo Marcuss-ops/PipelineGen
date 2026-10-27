@@ -37,16 +37,7 @@
 package boundaries
 
 import (
-	"bufio"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strconv"
-	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
 // assetStateCanonical14Path is the canonical SOLE owner of
@@ -77,95 +68,3 @@ const assetStateCanonical14Rule = "percheck_asset_state_canonical_14"
 // percheck_asset_state_no_shadow_enum so an operator sees
 // both the count constraint AND its shadow-guard companion.
 const assetStateCanonical14Note = "AssetState canonical file must declare exactly 14 const entries (PR-CATALOG-MULTILINGUA step 7, July 2026); godlike/06 SSOT requires the const count to equal CanonicalAssetStateValues(); if a 15th state is needed, update the type surface, the matrix test, and this gate in lockstep"
-
-// assetStateWarn is the centralized WARN-bucket emitter
-// for residue-accounting. Mirrors imageAssetWarn.
-func assetStateWarn(r *report.Report, label, msg string) {
-	r.Warnings = append(r.Warnings, assetStateCanonical14Rule+" "+label+" "+msg)
-}
-
-// ScanAssetStateCanonical14 opens the single canonical file
-// (assetStateCanonical14Path) and counts const declarations
-// of the form `StateAssetX AssetState = "..."`. The count
-// MUST equal 14; otherwise the scanner emits a violation
-// with the actual count surface. Comment-only references
-// to StateAsset constants are WARNed (residue accounting,
-// godlike/07 discipline).
-//
-// scanner ignores the value of each const's string literal;
-// only the COUNT is enforced. The shadow-enum scanner
-// (percheck_asset_state_no_shadow_enum) catches duplicate
-// declarations outside the canonical file; the alphabet
-// value drift is captured at runtime by
-// TestAssetState_StringLiteralValues.
-func ScanAssetStateCanonical14(root string, _ *policy.Policy, r *report.Report) {
-	path := filepath.Join(root, assetStateCanonical14Path)
-	f, err := os.Open(path)
-	if err != nil {
-		// The canonical file is the SSOT; if it cannot be
-		// opened the operator MUST investigate. Surface a
-		// violation rather than silently passing.
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/kernel/asset",
-			File:        assetStateCanonical14Path,
-			Line:        0,
-			Rule:        assetStateCanonical14Rule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "canonical_14_count_mismatch",
-			Note:        assetStateCanonical14Note + " | cannot open canonical file: " + err.Error(),
-		})
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	// wantCount is the canonical inventory size, sourced from
-	// internal/kernel/asset.AssetStateAlphabetCount (godlike/06
-	// SSOT — single literal source-of-truth for the canonical
-	// alphabet size across the codebase). A future agent
-	// changing that constant surfaces in the matrix tests too,
-	// so the percheck scanner + the alphabetic file surface +
-	// the runtime helper are kept in lockstep without parallel
-	// hardcoded literals.
-	const wantCount = asset.AssetStateAlphabetCount
-	count := 0
-	commentOnly := 0
-	lineNo := 0
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
-		if assetStateConstLineRe.MatchString(line) {
-			count++
-			continue
-		}
-		// Residue accounting (godlike/07): a comment line
-		// referencing the StateAsset surface is descriptive
-		// prose and not a real declaration. WARN, do NOT
-		// violate.
-		trimmed := strings.TrimLeft(line, " \t")
-		if (strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*")) &&
-			strings.Contains(line, "StateAsset") {
-			commentOnly++
-		}
-	}
-	if count != wantCount {
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     "internal/kernel/asset",
-			File:        assetStateCanonical14Path,
-			Line:        0,
-			Rule:        assetStateCanonical14Rule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "canonical_14_count_mismatch",
-			Note: assetStateCanonical14Note +
-				" | actual const count: " + strconv.Itoa(count) +
-				" | want: " + strconv.Itoa(wantCount),
-		})
-	}
-	if commentOnly > 0 {
-		assetStateWarn(r, "canonical-14-count:",
-			strconv.Itoa(commentOnly)+" comment-only reference(s) in "+assetStateCanonical14Path+
-				" (descriptive prose; non-fatal per godlike/07 no-fake-availability)")
-	}
-}

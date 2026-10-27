@@ -1,6 +1,9 @@
 package rustexec
 
-import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+import (
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
 
 // semanticEngineRequest is the NDJSON request shape of the engine.
 type semanticEngineRequest struct {
@@ -31,14 +34,16 @@ type semanticEngineResponse struct {
 // surface is retained by the scripts contract, and every source offset is
 // re-verified before a candidate is exposed to planning.
 type semanticEngineManifest struct {
-	SchemaVersion       string                         `json:"schema_version"`
-	Language            string                         `json:"language"`
-	Fingerprint         string                         `json:"fingerprint"`
-	Analyzers           semanticEngineAnalyzerVersions `json:"analyzers"`
-	Scenes              []semanticEngineSceneManifest  `json:"scenes"`
-	VisualConsolidation *semanticEngineConsolidation   `json:"visual_consolidation,omitempty"`
-	SearchFeedback      *semanticEngineSearchFeedback  `json:"search_feedback,omitempty"`
-	Editorial           *semanticEngineEditorialResult `json:"editorial,omitempty"`
+	SchemaVersion       string                            `json:"schema_version"`
+	Language            string                            `json:"language"`
+	Fingerprint         string                            `json:"fingerprint"`
+	Analyzers           semanticEngineAnalyzerVersions    `json:"analyzers"`
+	Scenes              []semanticEngineSceneManifest     `json:"scenes"`
+	StoryGraph          *scriptgen.SemanticStoryGraph     `json:"story_graph,omitempty"`
+	VisualCoverage      *scriptgen.SemanticVisualCoverage `json:"visual_coverage,omitempty"`
+	VisualConsolidation *semanticEngineConsolidation      `json:"visual_consolidation,omitempty"`
+	SearchFeedback      *semanticEngineSearchFeedback     `json:"search_feedback,omitempty"`
+	Editorial           *semanticEngineEditorialResult    `json:"editorial,omitempty"`
 }
 
 // semanticEngineSearchFeedback mirrors semantic-core::manifest::SearchFeedback.
@@ -226,14 +231,12 @@ type semanticEngineConsolidationMetrics struct {
 }
 
 type semanticEngineEditorialResult struct {
-	Summary      string `json:"summary"`
-	BulletPoints []struct {
-		Text string `json:"text"`
-	} `json:"bullet_points"`
-	HeavySentences  []scriptpkg.ImportantSentence `json:"heavy_sentences"`
-	ChapterManifest scriptpkg.ChapterManifest     `json:"chapter_manifest"`
-	SceneHighlights []scriptpkg.SceneHighlight    `json:"scene_highlights"`
-	Timings         scriptpkg.PhraseImpactTimings `json:"timings"`
+	Summary         string                           `json:"summary"`
+	BulletPoints    []scriptpkg.EditorialBulletPoint `json:"bullet_points"`
+	HeavySentences  []scriptpkg.ImportantSentence    `json:"heavy_sentences"`
+	ChapterManifest scriptpkg.ChapterManifest        `json:"chapter_manifest"`
+	SceneHighlights []scriptpkg.SceneHighlight       `json:"scene_highlights"`
+	Timings         scriptpkg.PhraseImpactTimings    `json:"timings"`
 }
 
 type semanticEngineSplitResponse struct {
@@ -250,27 +253,65 @@ type semanticEngineAnalyzerVersions struct {
 	VisualNER    string `json:"visualner"`
 	SemanticCore string `json:"semantic_core"`
 	PhraseImpact string `json:"phrase_impact"`
+	Lexicon      string `json:"lexicon"`
 }
 
 type semanticEngineSceneManifest struct {
-	SceneID         string                       `json:"scene_id"`
-	Status          string                       `json:"status"`
-	Reason          *string                      `json:"reason"`
-	RejectedItems   int                          `json:"rejected_items"`
-	Entities        []semanticEngineCandidate    `json:"entities"`
-	EntityFacts     []semanticEngineEntityFact   `json:"entity_facts"`
-	Identities      []semanticEngineIdentity     `json:"identities"`
-	Relations       semanticEngineRelationView   `json:"relations"`
-	NumericFacts    []semanticEngineNumeric      `json:"numeric_facts"`
-	TemporalFacts   []semanticEngineTemporal     `json:"temporal_facts"`
-	Bullets         []semanticEngineCandidate    `json:"bullets"`
-	ShortPhrases    []semanticEngineCandidate    `json:"short_phrases"`
-	LongPhrases     []semanticEngineCandidate    `json:"long_phrases"`
-	Quotes          []semanticEngineCandidate    `json:"quotes"`
-	ImportantWords  []semanticEngineCandidate    `json:"important_words"`
-	VisualProposals []semanticEngineProposal     `json:"visual_proposals"`
-	SemanticGroups  []semanticEngineGroup        `json:"semantic_groups"`
-	MicroSummaries  []semanticEngineMicroSummary `json:"micro_summaries"`
+	SceneID                string                               `json:"scene_id"`
+	Status                 string                               `json:"status"`
+	Reason                 *string                              `json:"reason"`
+	RejectedItems          int                                  `json:"rejected_items"`
+	Entities               []semanticEngineCandidate            `json:"entities"`
+	EntityFacts            []semanticEngineEntityFact           `json:"entity_facts"`
+	Identities             []semanticEngineIdentity             `json:"identities"`
+	Relations              semanticEngineRelationView           `json:"relations"`
+	NumericFacts           []semanticEngineNumeric              `json:"numeric_facts"`
+	TemporalFacts          []semanticEngineTemporal             `json:"temporal_facts"`
+	Bullets                []semanticEngineCandidate            `json:"bullets"`
+	ShortPhrases           []semanticEngineCandidate            `json:"short_phrases"`
+	LongPhrases            []semanticEngineCandidate            `json:"long_phrases"`
+	Quotes                 []semanticEngineCandidate            `json:"quotes"`
+	ImportantWords         []semanticEngineCandidate            `json:"important_words"`
+	ImportantSegments      []semanticEngineImportantSegment     `json:"important_segments"`
+	ComposedImageQueries   []semanticEngineComposedImageQuery   `json:"composed_image_queries"`
+	ContextualImageQueries []semanticEngineContextualImageQuery `json:"contextual_image_queries"`
+	VisualProposals        []semanticEngineProposal             `json:"visual_proposals"`
+	SemanticGroups         []semanticEngineGroup                `json:"semantic_groups"`
+	MicroSummaries         []semanticEngineMicroSummary         `json:"micro_summaries"`
+}
+
+type semanticEngineImportantSegment struct {
+	ID                  string  `json:"id"`
+	Kind                string  `json:"kind"`
+	SentenceStart       int     `json:"sentence_index_start"`
+	SentenceEnd         int     `json:"sentence_index_end"`
+	Evidence            string  `json:"evidence"`
+	StartByte           int     `json:"start_byte"`
+	EndByte             int     `json:"end_byte"`
+	Score               float64 `json:"score"`
+	VisualMentions      int     `json:"visual_mentions"`
+	MeasurementMentions int     `json:"measurement_mentions"`
+}
+
+type semanticEngineComposedImageQuery struct {
+	ID            string                         `json:"id"`
+	Kind          string                         `json:"kind"`
+	Query         string                         `json:"query"`
+	StartByte     int                            `json:"start_byte"`
+	EndByte       int                            `json:"end_byte"`
+	SentenceIndex int                            `json:"sentence_index"`
+	Components    []semanticEngineQueryComponent `json:"components"`
+}
+
+type semanticEngineContextualImageQuery struct {
+	ID                string                         `json:"id"`
+	Kind              string                         `json:"kind"`
+	Query             string                         `json:"query"`
+	Evidence          string                         `json:"evidence"`
+	EvidenceStartByte int                            `json:"evidence_start_byte"`
+	EvidenceEndByte   int                            `json:"evidence_end_byte"`
+	SentenceIndex     int                            `json:"sentence_index"`
+	Components        []semanticEngineQueryComponent `json:"components"`
 }
 
 // semanticEngineMicroSummary mirrors semantic-core::manifest::MicroSummary.
@@ -379,6 +420,7 @@ type semanticEngineGroupMember struct {
 	StartByte       int     `json:"start_byte"`
 	EndByte         int     `json:"end_byte"`
 	TemporalSurface *string `json:"temporal_surface"`
+	NormalizedDate  *string `json:"normalized_date"`
 }
 
 type semanticEngineProposal struct {

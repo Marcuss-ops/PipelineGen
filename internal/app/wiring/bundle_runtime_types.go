@@ -18,15 +18,21 @@ import (
 
 // OutboxBundle aggregates the canonical outbox dispatcher and event workers.
 type OutboxBundle struct {
-	CanonicalWriter  assetspersistence.CanonicalAssetWriter
-	Dispatcher       *outbox.Dispatcher
-	EventsRepo       *outboxevents.Repository
-	EventsRegistry   *outboxevents.HandlerRegistry
-	EventsPool       *outboxevents.Pool
-	JobsEventsPool   *outboxevents.Pool
-	MediaIndexWorker *pgmedia.PostgresIndexWorker
-	Publisher        outboxevents.Handler
-	DriveUploader    outboxevents.Handler
+	CanonicalWriter assetspersistence.CanonicalAssetWriter
+	Dispatcher      *outbox.Dispatcher
+	EventsRepo      *outboxevents.Repository
+	EventsRegistry  *outboxevents.HandlerRegistry
+	EventsPool      *outboxevents.Pool
+	// JobsEventsRegistry is the split jobs plane's outbox registry — the one
+	// JobsEventsPool drains jobs.db with. Execution-plane completion events
+	// (job.completed, finalize delivery intents) live in that outbox, so their
+	// consumers MUST register here, never on EventsRegistry. Without a split
+	// plane this is the same instance as EventsRegistry.
+	JobsEventsRegistry *outboxevents.HandlerRegistry
+	JobsEventsPool     *outboxevents.Pool
+	MediaIndexWorker   *pgmedia.PostgresIndexWorker
+	Publisher          outboxevents.Handler
+	DriveUploader      outboxevents.Handler
 
 	// MediaIndexRequester is the canonical PostgreSQL media index-plane
 	// request port. The TextTrackMaterializer emits its post-translation

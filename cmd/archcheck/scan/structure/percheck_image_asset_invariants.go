@@ -60,7 +60,6 @@
 package structure
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
@@ -76,52 +75,4 @@ import (
 // pointer comment so the audit trail is preserved.
 type imageAssetInvariant interface {
 	Scan(root string, r *report.Report)
-}
-
-// defaultImageAssetInvariants returns the canonical registry
-// for the percheck_image_asset_invariants gate. The slice order
-// IS the runner order: Rule A's violations are appended before
-// Rule B's violations. Reordering requires an explicit rationale
-// and a fresh code-review pass because the per-rule residue
-// warnings (`commentCount`) and violation Note strings are
-// pinned to the per-runner-order scope.
-//
-// To add a Rule C: append a third struct implementing
-// imageAssetInvariant below with a forward-pointer comment
-// referencing the originating PR. Do NOT re-order Rule A
-// ahead of Rule B — the wire-compatible output invariant of
-// the binary is anchored to this order.
-func defaultImageAssetInvariants() []imageAssetInvariant {
-	return []imageAssetInvariant{
-		imageAssetLiteralBanRule{},
-		imageAssetGemmaDTOLeakBanRule{},
-	}
-}
-
-// ScanImageAssetInvariants walks every .go file under <root>
-// and emits the registered sub-rule violations in registry
-// order:
-//
-//	image_asset_literal_ban (Rule A)  → imageAssetLiteralBanRule{}
-//	gemma_dto_leak_ban       (Rule B) → imageAssetGemmaDTOLeakBanRule{}
-//
-// All registered rules apply the godlike/07 residue-accounting
-// discipline (comment-only → r.Warnings via imageAssetWarn;
-// production code → r.Violations with SeverityError).
-//
-// Severity is `error` (forward-prevention gate; the runner
-// --strict mode promotes to ExitViolations). For non-strict mode,
-// the runner still prints the report; the exit code remains 0
-// unless --strict is on.
-//
-// The pol (*policy.Policy) parameter is reserved for the
-// PR-A godlike/08 evolution that may plumb severity overrides
-// at the per-rule level; today every rule ignores pol and emits
-// the default SeverityError. The parameter stays on the public
-// signature so the runner wiring does not need to migrate when
-// the closure pattern is upgraded.
-func ScanImageAssetInvariants(root string, _ *policy.Policy, r *report.Report) {
-	for _, rule := range defaultImageAssetInvariants() {
-		rule.Scan(root, r)
-	}
 }

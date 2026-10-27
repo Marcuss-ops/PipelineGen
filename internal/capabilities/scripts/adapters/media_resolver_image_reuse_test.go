@@ -49,7 +49,7 @@ func TestInternetImagesStageReusesFanoutCandidatesWithoutProviderSearch(t *testi
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &countingImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 
 	result, err := processor.Process(context.Background(), reuseTestPlan(false), fanoutReuseInput("HIT_EXACT", "Garlasco"))
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestInternetImagesStageForceRefreshBypassesFanoutReuse(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &countingImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 
 	result, err := processor.Process(context.Background(), reuseTestPlan(true), fanoutReuseInput("HIT_EXACT", "Garlasco"))
 	require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestInternetImagesStageDedupesCandidatesInCache(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &duplicateInternetImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "dedupe-segment",
 		TextHash:  "dedupe-hash",

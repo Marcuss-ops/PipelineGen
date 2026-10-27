@@ -28,28 +28,6 @@ func NoopFindByPHash(_ context.Context, _ string) (string, error) {
 // must leave ContentHashFn nil and fail closed with
 // ErrContentHashLookupNotWired instead.
 
-// GetAllWithDriveFileID is a generic helper for the common registry pattern:
-// list all records from a repository, convert-and-filter each to a
-// *MediaRecord via a single callback. The callback returns (nil, false) to
-// skip an item (e.g. empty DriveFileID).
-func GetAllWithDriveFileID[T any](
-	ctx context.Context,
-	listAll func(context.Context) ([]T, error),
-	convert func(T) (*MediaRecord, bool),
-) ([]*MediaRecord, error) {
-	items, err := listAll(ctx)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]*MediaRecord, 0, len(items))
-	for _, item := range items {
-		if rec, ok := convert(item); ok {
-			result = append(result, rec)
-		}
-	}
-	return result, nil
-}
-
 // ── SimpleRegistry ─────────────────────────────────────────────────────
 
 // SimpleRegistry implements Registry entirely via callback functions.

@@ -76,10 +76,6 @@ const imageAssetRuleANote = "forbidden `&detail.ImageAsset{...}` literal outside
 // ScanImageAssetInvariants.
 type imageAssetLiteralBanRule struct{}
 
-func (imageAssetLiteralBanRule) Scan(root string, r *report.Report) {
-	scanImageAssetLiterals(root, r)
-}
-
 // scanImageAssetLiterals walks the tree and emits image_asset_
 // literal_ban Rule A violations for any non-exempt file containing
 // one of `imageAssetLiterals` outside the comment-only bucket.

@@ -300,17 +300,3 @@ func resolveSceneFanoutRequestID(ctx context.Context) string {
 	}
 	return fmt.Sprintf("scene-fanout-%d", time.Now().UnixNano())
 }
-
-// CountCompletedSceneOutcomes returns the count of outcomes whose
-// Status is NOT "failed" (canonical inverse of failure count). The
-// canonical policy contract is "any non-failed status is a successful
-// outcome" — matches the processor's "Status == 'failed'" warning filter.
-func CountCompletedSceneOutcomes(outcomes []*SceneOutcome) int {
-	var count int
-	for _, out := range outcomes {
-		if out.Status != "failed" {
-			count++
-		}
-	}
-	return count
-}

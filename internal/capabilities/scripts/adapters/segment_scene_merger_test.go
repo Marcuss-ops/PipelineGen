@@ -19,7 +19,6 @@ func TestVidRushSceneMerger_AppliesAnnotationsWithoutMutation(t *testing.T) {
 		Text:      scene.Text,
 		Insights: scriptpkg.SegmentInsights{
 			SegmentID: "scene-0",
-			TextHash:  segmentTextHash(scene.Text),
 			Entities: []scriptpkg.ExtractedEntity{
 				{Value: "Mike Tyson", Type: "PERSON", Confidence: 0.9},
 			},

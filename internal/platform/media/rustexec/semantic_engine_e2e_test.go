@@ -2,15 +2,107 @@ package rustexec
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"go.uber.org/zap"
 )
+
+// This regression compares every emitted JSON field recursively, not just
+// fields known to Go: adding a Rust field cannot silently drop it on decode.
+func TestSemanticEngineRealBinaryWireFields(t *testing.T) {
+	binary := resolveSemanticEngineBinary()
+	if binary == "" {
+		t.Skip("semantic-engine not installed; set VELOX_RUST_SEMANTIC_ENGINE_PATH for analytic contract certification")
+	}
+	scenes := []scriptgen.SemanticSceneInput{
+		{SceneID: "first", Text: "Lo Stadio Aurora fu inaugurato nel 1959 a Torino. Il 42% dei tifosi festeggia, contro il 18% del gruppo."},
+		{SceneID: "second", Text: "Lo Stadio Aurora fu rinnovato nel 2008 a Torino."},
+	}
+	request := semanticEngineRequest{Operation: "analyze_script", Language: "it"}
+	for _, scene := range scenes {
+		request.Scenes = append(request.Scenes, semanticEngineScene{SceneID: scene.SceneID, Text: scene.Text})
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := NewExecutor(binary, resolveFFmpegBinary(), zap.NewNop())
+	body, _, err := executor.Run(context.Background(), payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire semanticEngineResponse
+	if err := json.Unmarshal(body, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if !wire.OK || wire.Manifest == nil {
+		t.Fatalf("worker failed: %s", body)
+	}
+	roundtrip, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expected, actual any
+	if err := json.Unmarshal(body, &expected); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(roundtrip, &actual); err != nil {
+		t.Fatal(err)
+	}
+	var compare func(string, any, any)
+	compare = func(path string, want, got any) {
+		t.Helper()
+		switch value := want.(type) {
+		case map[string]any:
+			object, ok := got.(map[string]any)
+			if !ok {
+				t.Fatalf("%s lost object", path)
+			}
+			for key, item := range value {
+				projected, ok := object[key]
+				if !ok {
+					t.Fatalf("%s.%s lost on Go decode", path, key)
+				}
+				compare(path+"."+key, item, projected)
+			}
+		case []any:
+			items, ok := got.([]any)
+			if !ok || len(items) != len(value) {
+				t.Fatalf("%s lost array", path)
+			}
+			for i := range value {
+				compare(fmt.Sprintf("%s[%d]", path, i), value[i], items[i])
+			}
+		default:
+			if !reflect.DeepEqual(want, got) {
+				t.Fatalf("%s changed: %v -> %v", path, want, got)
+			}
+		}
+	}
+	compare("manifest", expected.(map[string]any)["manifest"], actual.(map[string]any)["manifest"])
+	adapter, err := NewSemanticEngineAdapter(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundles, err := adapter.SemanticBundles(context.Background(), "it", scenes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := bundles["first"]
+	if bundle.Analyzers.Lexicon == "" || bundle.StoryGraph == nil || bundle.VisualCoverage == nil || len(bundle.StoryGraph.Nodes) == 0 || bundle.VisualCoverage.TotalFacts == 0 {
+		t.Fatalf("script views lost: %+v", bundle)
+	}
+	if !reflect.DeepEqual(bundle.StoryGraph, wire.Manifest.StoryGraph) || !reflect.DeepEqual(bundle.VisualCoverage, wire.Manifest.VisualCoverage) {
+		t.Fatal("script views changed during projection")
+	}
+}
 
 func resolveSemanticEngineBinary() string {
 	if fromEnv := os.Getenv("VELOX_RUST_SEMANTIC_ENGINE_PATH"); fromEnv != "" {
@@ -245,8 +337,20 @@ func TestSemanticEngineRealBinaryPlansGarlascoProduction(t *testing.T) {
 	if plan.Metrics.MediaUnits == 0 || plan.Metrics.MediaUnits > 20 {
 		t.Fatalf("the certified run budget was not applied: %+v", plan.Metrics)
 	}
-	if plan.Metrics.PlannedQueries != plan.Metrics.MediaUnits {
-		t.Fatalf("every admitted media unit needs exactly one active ladder: %+v", plan.Metrics)
+	activeLadders, queryRungs := 0, 0
+	for _, unit := range plan.Units {
+		if unit.RequiresMedia && unit.Status == scriptgen.ProductionUnitPlanned {
+			if len(unit.Queries) == 0 {
+				t.Fatalf("media unit %q lost its query ladder", unit.CandidateID)
+			}
+			activeLadders++
+			queryRungs += len(unit.Queries)
+		} else if len(unit.Queries) != 0 {
+			t.Fatalf("unsearched unit %q retained a query ladder", unit.CandidateID)
+		}
+	}
+	if activeLadders != plan.Metrics.MediaUnits || queryRungs != plan.Metrics.PlannedQueries {
+		t.Fatalf("query ladder/rung accounting drift: ladders=%d rungs=%d metrics=%+v", activeLadders, queryRungs, plan.Metrics)
 	}
 	if plan.Metrics.AdmittedUnits < plan.Metrics.MediaUnits {
 		t.Fatalf("every media unit is also an admitted unit: %+v", plan.Metrics)
@@ -320,7 +424,8 @@ func TestSemanticEngineRealBinaryPlansGarlascoProduction(t *testing.T) {
 		}
 	}
 	if plan.Metrics.SearchesSatisfied != 1 || plan.Metrics.SearchesSkipped != plan.Metrics.SearchesFailed ||
-		plan.Metrics.SearchesSatisfied+plan.Metrics.SearchesFailed != plan.Metrics.PlannedQueries {
+		plan.Metrics.SearchesSatisfied+plan.Metrics.SearchesFailed != plan.Metrics.MediaUnits ||
+		plan.SearchableUnits() != 0 || plan.Metrics.SearchAttempts > plan.Metrics.PlannedQueries {
 		t.Fatalf("settled search metrics: %+v", plan.Metrics)
 	}
 	t.Logf("planner feedback: satisfied=%d failed=%d skipped=%d broadens=%d",
@@ -371,8 +476,12 @@ func TestSemanticEngineRealBinaryPlansPlannerVolumes(t *testing.T) {
 			if covered != plan.Coverage.CanonicalFacts {
 				t.Fatalf("coverage accounting: %+v", plan.Coverage)
 			}
-			if plan.Metrics.MediaUnits > 20 || plan.Metrics.PlannedQueries != plan.Metrics.MediaUnits {
-				t.Fatalf("run budget: %+v", plan.Metrics)
+			queryRungs := 0
+			for _, unit := range plan.Units {
+				queryRungs += len(unit.Queries)
+			}
+			if plan.Metrics.MediaUnits > 20 || plan.Metrics.PlannedQueries != queryRungs {
+				t.Fatalf("run budget/query rung accounting: %+v, actual rungs=%d", plan.Metrics, queryRungs)
 			}
 			if len(feedback.Entries) != plan.Metrics.MediaUnits {
 				t.Fatalf("one feedback entry per searched composition: %d vs %d", len(feedback.Entries), plan.Metrics.MediaUnits)

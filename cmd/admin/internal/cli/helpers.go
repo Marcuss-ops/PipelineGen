@@ -14,12 +14,13 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
-	"go.uber.org/zap"
 )
 
 func ResolveDBPath(cfg *config.Config) string {

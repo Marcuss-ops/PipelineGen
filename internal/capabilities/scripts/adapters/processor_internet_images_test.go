@@ -69,7 +69,7 @@ var _ scriptports.VidRushCachePort = (*memoryVidRushCache)(nil)
 // TestInternetImagesProcessorCachesEmptyResultsInL2).
 func TestInternetImagesProcessorDoesNotCacheProviderMisses(t *testing.T) {
 	searcher := &emptyInternetImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaPlan: media.MediaPlanSpec{
 			ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
@@ -95,7 +95,7 @@ func TestInternetImagesProcessorDoesNotCacheProviderMisses(t *testing.T) {
 
 func TestInternetImagesProcessorCacheOnlyNeverCallsProvider(t *testing.T) {
 	searcher := &emptyInternetImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ForceRefresh: true,
 		MediaPlan: media.MediaPlanSpec{
@@ -142,7 +142,7 @@ func (s recordingInternetImageSearcher) SearchImages(_ context.Context, req Inte
 
 func TestInternetImagesProcessorUsesManualSearchBeforeEntityExpansion(t *testing.T) {
 	searcher := recordingInternetImageSearcher{queries: make(chan string, 1)}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ForceRefresh: true,
 		MediaPlan: media.MediaPlanSpec{
@@ -259,7 +259,7 @@ func TestFinalizeVidRushBindingsPreservesExactSelectedImages(t *testing.T) {
 }
 
 func TestInternetImagesProcessorRetainsResultsAcrossAllQueries(t *testing.T) {
-	processor := NewMediaResolverImageStage(multipleInternetImageSearcher{})
+	processor := NewMediaResolverImageStageWithCatalog(multipleInternetImageSearcher{}, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaPlan: media.MediaPlanSpec{
 			ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
@@ -306,7 +306,7 @@ func (rogueInternetImageSearcher) SearchImages(_ context.Context, req InternetIm
 // the processor MUST filter them out at ingest time. Only candidates with
 // provider="internet_images" (or empty, which gets defaulted) survive.
 func TestInternetImagesProcessor_RejectsNonInternetImagesProviders(t *testing.T) {
-	processor := NewMediaResolverImageStage(rogueInternetImageSearcher{})
+	processor := NewMediaResolverImageStageWithCatalog(rogueInternetImageSearcher{}, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		MediaPlan: media.MediaPlanSpec{
 			ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
@@ -359,7 +359,7 @@ func (s *recordingImageSearcher) SearchImages(_ context.Context, req InternetIma
 
 func TestInternetImagesProcessor_SearchesPrimaryEntity(t *testing.T) {
 	searcher := &recordingImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: media.MediaPlanSpec{
 		ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
 		Extraction:     media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{Enabled: true, EntityTypes: []string{"GPE"}, MaxPerEntity: 1}},
@@ -394,7 +394,7 @@ func (s *entityImageSearcher) SearchImages(_ context.Context, req InternetImageS
 
 func TestInternetImagesProcessorProjectsAndCachesEntityImages(t *testing.T) {
 	searcher := &entityImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{Language: "it", MediaPlan: media.MediaPlanSpec{
 		Extraction: media.MediaExtractionPolicy{EntityImages: media.EntityImagePolicy{
 			Enabled: true, EntityTypes: []string{"PERSON"}, MaxPerEntity: 1,
@@ -448,7 +448,7 @@ func (s *countingImageSearcher) SearchImages(_ context.Context, req InternetImag
 func TestInternetImagesCacheColdWarmForcedRefresh(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	searcher := &countingImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 
 	buildPlan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -517,7 +517,7 @@ func TestEntityImageCacheColdWarmForcedRefresh(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &entityImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 
 	entityPlan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -591,7 +591,7 @@ func TestEntityImageCacheRetriesEmptyProviderResult(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
-	processor := NewMediaResolverImageStageWithCache(searcher, newMemoryVidRushCache())
+	processor := NewMediaResolverImageStageWithCatalog(searcher, newMemoryVidRushCache(), nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		Topic:    "Garlasco",
 		Language: "it",
@@ -636,7 +636,7 @@ func TestInternetImagesResearchPathCacheColdWarm(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &countingImageSearcher{}
-	processor := NewMediaResolverImageStage(searcher)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 
 	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
@@ -703,7 +703,7 @@ func TestInternetImagesProcessorCachesEmptyResultsInL2(t *testing.T) {
 	vidrushImageCache = cacheutil.NewLRU(vidrushImageL1Capacity)
 	entityImageCache = cacheutil.NewLRU(entityImageL1Capacity)
 	searcher := &emptyInternetImageSearcher{}
-	processor := NewMediaResolverImageStageWithCache(searcher, newMemoryVidRushCache())
+	processor := NewMediaResolverImageStageWithCatalog(searcher, newMemoryVidRushCache(), nil)
 
 	plan := func(forceRefresh bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{

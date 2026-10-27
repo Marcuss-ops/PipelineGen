@@ -276,8 +276,15 @@ def query_is_grounded(query, source_text):
             return False
         if raw[left:right].decode("utf-8", "replace") != component.get("text"):
             return False
-    ordered = sorted(components, key=lambda item: item["start_byte"])
-    source_terms = " ".join(item["text"].strip() for item in ordered)
+    # The compact provider query may put a relation's subject before its
+    # target even when the target occurs first in the sentence. Component
+    # order is the query order; byte spans independently prove every term is
+    # grounded in the attached evidence.
+    for index, component in enumerate(components):
+        for other in components[:index]:
+            if component["start_byte"] < other["end_byte"] and other["start_byte"] < component["end_byte"]:
+                return False
+    source_terms = " ".join(item["text"].strip() for item in components)
     if origin == "derived_from_source_context":
         return source_terms == text
     if not query.get("template_id") or not query.get("illustrative") or not query.get("derived_terms"):
