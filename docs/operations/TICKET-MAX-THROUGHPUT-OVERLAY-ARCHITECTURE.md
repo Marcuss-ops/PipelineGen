@@ -185,3 +185,40 @@ Per rendere l'intero sistema realtime:
 - **Legacy-path comments**: tutti i puntatori Go live ai root cancellati (`application/jobs`, `internal/application`, `internal/api`, `api/assets/*` come path-pacchetto) riscritti verso i path reali. Restano solo riferimenti storici espliciti ("retired", "eliminated", "absorbed"), route HTTP live (`/api/assets/operator/*`) e i commenti SQL nelle migration applicate, immutabili per design del ledger (checksum-pinned).
 - **Allineamento**: `cmd/architecture-aggregate --dry-run` OK (`architecture/ownership.generated.yaml` in sync), ratchets `jobs/{queue,scheduling,finalize}` presenti, `go test ./cmd/archcheck/...` verde.
 - **Worktree**: resta solo `main` in entrambi i repository; `refactored-clean` (WIP già in main, verificato file-per-file) e `.tmp/pipelinegen-head` rimossi, prune vuoto, entry `.gitignore` orfana rimossa.
+
+## 8. Verifica del gate operativo 100 overlay/min (27-10-2026)
+
+### Evidenza P4: parità pixel segmentata (27-10-2026)
+
+Eseguito con il binario Chronon fast-dev appena compilato:
+`CHRONON_BINARY=../../Chronon3d/build/chronon/linux-video-fast-dev/apps/chronon3d_cli/chronon3d_cli go test -run '^TestSegmentedSessionMatchesIndependentSingleItemRenders$' -count=1 ./internal/processor`
+da `RenderingGen/renderinggen`. Esito: PASS, 3 segmenti / 12 frame totali,
+parità frame-per-frame dopo decode YUV rispetto a tre render indipendenti,
+durata 5,22 s. È evidenza del controllo engine-level, non una chiusura del
+ticket end-to-end: mancano audio valido, il mix completo, tutti i video e la
+verifica golden del rate.
+
+Il gate da 100 overlay/min resta aperto. Le ultime tre run golden archiviate
+(`gate-100-r4..r6`, pool a tre daemon) hanno prodotto:
+
+| Run | Piano/render completati | Finestra render | Rate |
+| --- | ---: | ---: | ---: |
+| r4 | 70/70 | 41,295 s | 101,71/min |
+| r5 | 65/65 | 42,685 s | 91,37/min |
+| r6 | 67/67 | 41,968 s | 95,79/min |
+
+La mediana è **95,79 overlay/min**; nessuna run ha materializzato i 100 item
+del mix richiesto. La successiva r7 (`gate-100-r7-freebuff`) ha completato
+69/69 in 47,598 s (**86,98/min**). Questi run dimostrano stabilità del percorso
+e un singolo campione oltre 100/min, ma non una capacità sostenuta né il gate
+golden completo.
+
+Il 27 ottobre il test live P4
+`TestSegmentedSessionMatchesIndependentSingleItemRenders` è passato con il
+binario fast-dev aggiornato. La nuova run end-to-end canonica si è fermata
+nella fase TTS (capture audio a durata zero, poi circuit breaker). Un retry
+senza audio, dopo il rebuild del Semantic Engine, è terminato ma non ha
+prodotto `overlay_plan` né artefatti renderizzati: non è un run di throughput.
+Non si attribuisce rate a nessuno di questi tentativi. Per chiudere il gate
+serve una run golden con 100 item validati, encoder P4 in uso, tre daemon
+pronti e nessun carico concorrente.
