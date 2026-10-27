@@ -186,36 +186,6 @@ func EnrichmentIdempotencyKey(chunkID, contentHash string, version EnrichmentVer
 	return idempotency.BuildKeyString("stock-enrich", chunkID+":"+contentHash+":"+string(version))
 }
 
-// IsValidEnrichmentIdempotencyKey returns true if `key` is a
-// well-formed enrichment idempotency_key value: either the empty
-// marker (64-char hex absent — callers must probe both this
-// function AND the empty-case handler) or 64-char hex characters
-// with case-insensitive A-F + 0-9.
-//
-// The case-insensitive allow (A-F AND a-f) matches the C6
-// IsValidIdempotencyKey convention (RFC 7230 case-insensitive
-// HTTP header value semantics) so the producer (enrichment
-// handler) and consumer (AssetPublishedHandler) use the same
-// validator. Canonical recomputation always returns lowercase.
-func IsValidEnrichmentIdempotencyKey(key string) bool {
-	if key == "" {
-		// Empty marker is valid by definition; callers MUST
-		// handle the "wiring-bug" case explicitly. See
-		// EnrichmentIdempotencyKey docs for the empty triple
-		// surface.
-		return true
-	}
-	if len(key) != 64 {
-		return false
-	}
-	for _, c := range key {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
-			return false
-		}
-	}
-	return true
-}
-
 // ErrEnrichmentIdempotencyKeyConflict is the typed sentinel
 // returned when the idempotency_key derivation observes a
 // malformed triple. This is a corruption signal — the
@@ -240,31 +210,6 @@ func IsValidEnrichmentIdempotencyKey(key string) bool {
 // vs C11 enrichment events) and conflating them would obscure
 // the audit trail.
 var ErrEnrichmentIdempotencyKeyConflict = errors.New("enrichment: idempotency key conflict (malformed triple: empty chunkID, non-canonical contentHash, or unknown version)")
-
-// EnrichmentIdempotencyKeyDiagnostic is the canonical
-// no-fake-availability diagnostic helper: returns a stable
-// "what is wrong with this triple" message for the empty-input
-// case. Used by adapters verifying the pre-emit gate (the
-// EnrichmentHandler MUST call this BEFORE emitting the
-// asset.published v1 outbox event so a malformed triple
-// surfaces as a typed error, NOT a silent-success invalid
-// key).
-//
-// Returns "" when the triple is valid (callers can use the
-// empty-string return as a "no error" signal without
-// probing EnrichmentIdempotencyKey's error return).
-func EnrichmentIdempotencyKeyDiagnostic(chunkID, contentHash string, version EnrichmentVersion) string {
-	if chunkID == "" {
-		return "enrichment idempotency key: chunkID is empty (godlike/07 no-fake-availability)"
-	}
-	if !isValidHex64(contentHash) {
-		return "enrichment idempotency key: contentHash is not 64-char lowercase hex (godlike/07 no-fake-availability)"
-	}
-	if !version.IsValid() {
-		return fmt.Sprintf("enrichment idempotency key: version=%q is not a known EnrichmentVersion (godlike/07 no-fake-availability — schema drift signal)", version)
-	}
-	return ""
-}
 
 // isValidHex64 returns true if s is a 64-character lowercase
 // hexadecimal string (the canonical contentHash wire shape).

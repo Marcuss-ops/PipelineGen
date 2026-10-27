@@ -73,10 +73,11 @@ package jobs
 
 import (
 	"context"
-	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
-	"go.uber.org/zap"
 	"sync/atomic"
 	"time"
+
+	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
+	"go.uber.org/zap"
 
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -182,9 +183,4 @@ func (w *Worker) reportCalendar(jobID, kind, status, phase string, progress *int
 	if err := w.calendarReporter.EnqueueJobProgress(jobID, update); err != nil {
 		w.log.Warn("calendar progress spool failed", zap.String("job_id", jobID), zap.Error(err))
 	}
-}
-
-func (w *Worker) WithCalendarReporter(reporter *instaeditcalendar.Reporter) *Worker {
-	w.calendarReporter = reporter
-	return w
 }

@@ -107,55 +107,6 @@ type progressEnvelope struct {
 	Progress Progress `json:"progress"`
 }
 
-// EnqueueProgress durably stores an update and never waits for an HTTP request.
-func (r *Reporter) EnqueueProgress(eventKey string, update Progress) error {
-	if eventKey == "" {
-		return fmt.Errorf("event key is required")
-	}
-	data, err := json.Marshal(progressEnvelope{EventKey: eventKey, Progress: update})
-	if err != nil {
-		return fmt.Errorf("encode calendar progress: %w", err)
-	}
-	nonce := make([]byte, 8)
-	if _, err := rand.Read(nonce); err != nil {
-		return err
-	}
-	name := fmt.Sprintf("%020d-%s.json", time.Now().UnixNano(), hex.EncodeToString(nonce))
-	tmp, err := os.CreateTemp(r.dir, ".pending-*.tmp")
-	if err != nil {
-		return fmt.Errorf("create calendar outbox record: %w", err)
-	}
-	tmpName := tmp.Name()
-	ok := false
-	defer func() {
-		_ = tmp.Close()
-		if !ok {
-			_ = os.Remove(tmpName)
-		}
-	}()
-	if err = tmp.Chmod(0600); err == nil {
-		_, err = tmp.Write(data)
-	}
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if closeErr := tmp.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return fmt.Errorf("persist calendar progress: %w", err)
-	}
-	if err = os.Rename(tmpName, filepath.Join(r.dir, name)); err != nil {
-		return fmt.Errorf("publish calendar progress: %w", err)
-	}
-	if d, e := os.Open(r.dir); e == nil {
-		_ = d.Sync()
-		_ = d.Close()
-	}
-	ok = true
-	return nil
-}
-
 // EnqueueJobProgress stores a report by Job Master ID; the drain resolves the
 // associated Calendar card later, allowing the card to be created after enqueue.
 func (r *Reporter) EnqueueJobProgress(jobID string, update Progress) error {

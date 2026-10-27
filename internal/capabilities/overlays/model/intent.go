@@ -20,9 +20,10 @@ package model
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // OverlayIntentVersion is the schema version of the OverlayIntent. Bump it

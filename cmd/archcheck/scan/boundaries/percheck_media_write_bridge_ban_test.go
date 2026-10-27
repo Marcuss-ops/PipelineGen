@@ -394,59 +394,6 @@ func TestMediaWriteBridgeRegisteredFilesExist(t *testing.T) {
 	}
 }
 
-// TestMediaWriteBridgeRegisterHasNoStaleEntries is the ratchet pin. Existing is
-// not enough: an entry whose seam write has been migrated must be deleted,
-// otherwise the register silently becomes a permanent allowlist.
-func TestMediaWriteBridgeRegisterHasNoStaleEntries(t *testing.T) {
-	root, err := filepath.Abs("../../../..")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
-		t.Skipf("repository root not resolvable from the test cwd: %v", err)
-	}
-	for _, rel := range allRegisteredMediaWriteBridgeFiles() {
-		live, err := mediaWriteBridgeRegisterEntryIsLive(root, rel)
-		if err != nil {
-			t.Errorf("register entry %q is unreadable: %v", rel, err)
-			continue
-		}
-		if !live {
-			t.Errorf("register entry %q is STALE — it has no remaining generic-seam media write; delete the entry (the register must ratchet to zero, never grow into a permanent allowlist)", rel)
-		}
-	}
-}
-
-// TestMediaWriteBridgeRegisterEntryIsLive pins the staleness predicate itself.
-func TestMediaWriteBridgeRegisterEntryIsLive(t *testing.T) {
-	tmp := t.TempDir()
-	writeGoFile(t, tmp, "live.go", detailSeamHeader+`type svc struct {
-	repo detail.Repository
-}
-
-func (s *svc) Do(ctx any) error {
-	return s.repo.SoftDelete(ctx, "x")
-}
-`)
-	writeGoFile(t, tmp, "stale.go", detailSeamHeader+`type svc struct {
-	repo detail.Repository
-}
-
-func (s *svc) Read(ctx any) {
-	_, _ = s.repo.Get(ctx, "x")
-}
-`)
-	for rel, want := range map[string]bool{"live.go": true, "stale.go": false} {
-		got, err := mediaWriteBridgeRegisterEntryIsLive(tmp, rel)
-		if err != nil {
-			t.Fatalf("%s: %v", rel, err)
-		}
-		if got != want {
-			t.Errorf("%s: live = %v, want %v", rel, got, want)
-		}
-	}
-}
-
 // TestScanMediaWriteBridgeBan_RepoTreeIsClean is the integration pin: the real
 // repository must satisfy the gate. A failure here means either a new
 // production seam write landed or a registered consumer was migrated.

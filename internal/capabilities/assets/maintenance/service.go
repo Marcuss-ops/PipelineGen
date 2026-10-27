@@ -60,17 +60,7 @@ func NewService(
 
 // SetDriveFileChecker wires the optional Drive-side existence check used by
 // deep_cleanup. Leave nil to skip the Drive orphan pass.
-func (s *Service) SetDriveFileChecker(c DriveFileChecker) {
-	s.driveFileCheck = c
-}
-
 // SetDeepCleanupBatch overrides the per-pass row cap (default 1000).
-func (s *Service) SetDeepCleanupBatch(n int) {
-	if n > 0 {
-		s.deepCleanupBatch = n
-	}
-}
-
 // HandleJob processes system maintenance jobs.
 func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	s.log.Info("Handling maintenance job", zap.String("job_id", job.ID))

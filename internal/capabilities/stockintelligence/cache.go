@@ -63,12 +63,6 @@ type resolveCacheEntry struct {
 	MergedProvider bool `json:"merged_provider,omitempty"`
 }
 
-func (e resolveCacheEntry) clone() resolveCacheEntry {
-	out := e
-	out.Candidates = cloneCandidates(e.Candidates)
-	return out
-}
-
 func cloneCandidates(candidates []Candidate) []Candidate {
 	if candidates == nil {
 		return nil

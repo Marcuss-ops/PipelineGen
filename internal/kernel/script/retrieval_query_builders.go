@@ -92,22 +92,6 @@ func BuildImageQueries(profile SegmentSemanticProfile, limit int) []string {
 
 func (k WeightedKeyword) ValueIfPresent() string { return strings.TrimSpace(k.Value) }
 
-func isPersonEntity(entity ExtractedEntity) bool {
-	return strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON")
-}
-
-func isVisualEntity(entity ExtractedEntity) bool {
-	if strings.TrimSpace(entity.Value) == "" || isPersonEntity(entity) {
-		return false
-	}
-	switch strings.ToUpper(strings.TrimSpace(entity.Type)) {
-	case "KEYWORD", "DATE", "TIME", "CARDINAL", "ORDINAL", "MONEY", "PERCENT":
-		return false
-	default:
-		return true
-	}
-}
-
 func isRetrievalEntity(entity ExtractedEntity) bool {
 	kind := strings.ToUpper(strings.TrimSpace(entity.Type))
 	return strings.TrimSpace(entity.Value) != "" && kind != "KEYWORD" && kind != "CONCEPT"

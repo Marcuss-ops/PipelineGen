@@ -19,8 +19,9 @@ package mediaregistry
 import (
 	"context"
 	"errors"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // CanonicalIdentity is the resolved identity of an asset. Exactly one of the

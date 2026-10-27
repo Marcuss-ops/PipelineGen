@@ -72,9 +72,6 @@ func TestEnrichmentIdempotencyKey_ByteStabilityAcrossRetries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first call: unexpected error: %v", err)
 	}
-	if !IsValidEnrichmentIdempotencyKey(first) {
-		t.Fatalf("first call: key is not a valid 64-char hex: %q", first)
-	}
 	for i := 0; i < 1000; i++ {
 		k, err := EnrichmentIdempotencyKey(canonicalChunkID, canonicalContentHash, EnrichmentVersionV1)
 		if err != nil {
@@ -169,11 +166,6 @@ func TestEnrichmentIdempotencyKey_EmptyChunkID_ReturnsSentinel(t *testing.T) {
 	if k != "" {
 		t.Errorf("expected empty key marker, got %q", k)
 	}
-	// Diagnostic helper returns the specific message.
-	diag := EnrichmentIdempotencyKeyDiagnostic("", canonicalContentHash, EnrichmentVersionV1)
-	if !strings.Contains(diag, "chunkID is empty") {
-		t.Errorf("expected diagnostic to mention chunkID, got %q", diag)
-	}
 }
 
 // Test 6: malformed contentHash → typed sentinel + empty key marker.
@@ -198,11 +190,6 @@ func TestEnrichmentIdempotencyKey_MalformedContentHash_ReturnsSentinel(t *testin
 			}
 			if k != "" {
 				t.Errorf("%s: expected empty key marker, got %q", tc.name, k)
-			}
-			// Diagnostic helper returns the specific message.
-			diag := EnrichmentIdempotencyKeyDiagnostic(canonicalChunkID, tc.contentHash, EnrichmentVersionV1)
-			if !strings.Contains(diag, "contentHash") {
-				t.Errorf("%s: expected diagnostic to mention contentHash, got %q", tc.name, diag)
 			}
 		})
 	}
@@ -231,57 +218,8 @@ func TestEnrichmentIdempotencyKey_UnknownVersion_ReturnsSentinel(t *testing.T) {
 			if k != "" {
 				t.Errorf("%s: expected empty key marker, got %q", tc.name, k)
 			}
-			// Diagnostic helper returns the specific message.
-			diag := EnrichmentIdempotencyKeyDiagnostic(canonicalChunkID, canonicalContentHash, tc.version)
-			if !strings.Contains(diag, "version") {
-				t.Errorf("%s: expected diagnostic to mention version, got %q", tc.name, diag)
-			}
 		})
 	}
-}
-
-// Test 8: IsValidEnrichmentIdempotencyKey accepts canonical,
-// rejects malformed. Mirrors the C6 IsValidIdempotencyKey and
-// C7 IsValidCompleteJobIdempotencyKey contract.
-func TestIsValidEnrichmentIdempotencyKey_AcceptsCanonicalRejectsMalformed(t *testing.T) {
-	canonicalKey, err := EnrichmentIdempotencyKey(canonicalChunkID, canonicalContentHash, EnrichmentVersionV1)
-	if err != nil {
-		t.Fatalf("EnrichmentIdempotencyKey: %v", err)
-	}
-
-	t.Run("empty marker is valid by definition", func(t *testing.T) {
-		if !IsValidEnrichmentIdempotencyKey("") {
-			t.Errorf("expected empty marker to be valid (callers must probe BOTH this function AND the empty-case handler)")
-		}
-	})
-
-	t.Run("canonical 64-char hex is valid", func(t *testing.T) {
-		if !IsValidEnrichmentIdempotencyKey(canonicalKey) {
-			t.Errorf("expected canonical key to be valid: %q", canonicalKey)
-		}
-	})
-
-	t.Run("uppercase 64-char hex is valid (RFC 7230 case-insensitive)", func(t *testing.T) {
-		if !IsValidEnrichmentIdempotencyKey(strings.ToUpper(canonicalKey)) {
-			t.Errorf("expected uppercase 64-char hex to be valid: %q", strings.ToUpper(canonicalKey))
-		}
-	})
-
-	t.Run("wrong-length is invalid", func(t *testing.T) {
-		if IsValidEnrichmentIdempotencyKey(canonicalKey[:63]) {
-			t.Errorf("expected 63-char key to be invalid")
-		}
-		if IsValidEnrichmentIdempotencyKey(canonicalKey + "0") {
-			t.Errorf("expected 65-char key to be invalid")
-		}
-	})
-
-	t.Run("non-hex char is invalid", func(t *testing.T) {
-		bad := "z" + canonicalKey[1:] // first char is non-hex
-		if IsValidEnrichmentIdempotencyKey(bad) {
-			t.Errorf("expected non-hex char to be invalid: %q", bad)
-		}
-	})
 }
 
 // TestEnrichmentIdempotencyKey_MatchesBuildKeyString pins the
@@ -319,48 +257,4 @@ func TestEnrichmentIdempotencyKey_MatchesBuildKeyString(t *testing.T) {
 	if got != "ba93a47600b9bce576d7d7562629dc8ca01c8ff1d715284ad60c4161d6e3ccfd" {
 		t.Errorf("EnrichmentIdempotencyKey must produce byte-stable output identical to legacy hashutil.SHA256String + pkg/idempotency.BuildKeyString (in-flight outbox events rely on this); got %q", got)
 	}
-}
-
-// Test 9: EnrichmentIdempotencyKeyDiagnostic returns specific
-// messages for each empty-input case, and "" for valid triples
-// (canonical "no error" signal).
-func TestEnrichmentIdempotencyKeyDiagnostic_ReturnsSpecificMessages(t *testing.T) {
-	t.Run("valid triple returns empty string", func(t *testing.T) {
-		diag := EnrichmentIdempotencyKeyDiagnostic(canonicalChunkID, canonicalContentHash, EnrichmentVersionV1)
-		if diag != "" {
-			t.Errorf("expected empty string for valid triple, got %q", diag)
-		}
-	})
-
-	t.Run("empty chunkID returns chunkID message", func(t *testing.T) {
-		diag := EnrichmentIdempotencyKeyDiagnostic("", canonicalContentHash, EnrichmentVersionV1)
-		if !strings.Contains(diag, "chunkID is empty") {
-			t.Errorf("expected chunkID message, got %q", diag)
-		}
-	})
-
-	t.Run("malformed contentHash returns contentHash message", func(t *testing.T) {
-		diag := EnrichmentIdempotencyKeyDiagnostic(canonicalChunkID, "bad-hash", EnrichmentVersionV1)
-		if !strings.Contains(diag, "contentHash") {
-			t.Errorf("expected contentHash message, got %q", diag)
-		}
-	})
-
-	t.Run("unknown version returns version message", func(t *testing.T) {
-		diag := EnrichmentIdempotencyKeyDiagnostic(canonicalChunkID, canonicalContentHash, EnrichmentVersion("v2"))
-		if !strings.Contains(diag, "version") {
-			t.Errorf("expected version message, got %q", diag)
-		}
-	})
-
-	t.Run("first failing field wins (chunkID before contentHash before version)", func(t *testing.T) {
-		// When chunkID is empty AND contentHash is malformed AND
-		// version is unknown, the diagnostic should mention the
-		// first failing field (chunkID), not all three. This
-		// pins the diagnostic's "first-failure-wins" semantics.
-		diag := EnrichmentIdempotencyKeyDiagnostic("", "bad", EnrichmentVersion("v2"))
-		if !strings.Contains(diag, "chunkID is empty") {
-			t.Errorf("expected chunkID message (first-failure-wins), got %q", diag)
-		}
-	})
 }

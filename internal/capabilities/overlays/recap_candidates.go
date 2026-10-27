@@ -52,10 +52,6 @@ func normalizeRecapTitle(title string) string {
 //
 // Callers building a recap at a narration boundary should use
 // BuildRecapCandidatesThrough so a later chapter cannot leak into the card.
-func BuildRecapCandidates(sources []RecapSource, maxCards int) []RecapCandidate {
-	return BuildRecapCandidatesThrough(sources, maxCards, int(^uint(0)>>1))
-}
-
 // BuildRecapCandidatesThrough additionally gates every cited sentence by
 // its narration index. A candidate is admitted only when all of its source
 // sentence IDs are at or before narratedThrough; mixed earlier/later sources
@@ -138,15 +134,3 @@ func RecapPlacementPoints(numChapters int, thematicShiftBeforeLast bool) []int {
 // RecapInvalidatedBy reports whether a recap candidate depends on any
 // changed source (chapter/bullet id): an edit to an earlier chapter
 // invalidates the recaps built on it, never unrelated ones.
-func RecapInvalidatedBy(c RecapCandidate, changedSourceIDs []string) bool {
-	changed := map[string]struct{}{}
-	for _, id := range changedSourceIDs {
-		changed[strings.TrimSpace(id)] = struct{}{}
-	}
-	for _, id := range c.SourceIDs {
-		if _, ok := changed[strings.TrimSpace(id)]; ok {
-			return true
-		}
-	}
-	return false
-}

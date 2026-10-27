@@ -2,26 +2,6 @@ package adapters
 
 import scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
-func filterNLPScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
-	out := make([]scriptpkg.SpecScene, 0, len(scenes))
-	for _, scene := range scenes {
-		if scene.AllowsNLP() {
-			out = append(out, scene)
-		}
-	}
-	return out
-}
-
-func FilterMediaResolutionScenes(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
-	out := make([]scriptpkg.SpecScene, 0, len(scenes))
-	for _, scene := range scenes {
-		if sceneAllowsMediaResolution(scene) {
-			out = append(out, scene)
-		}
-	}
-	return out
-}
-
 func sceneByIdentity(spec scriptpkg.SpecSceneOutput, sceneID, segmentID string, index int) (scriptpkg.SpecScene, bool) {
 	for _, scene := range spec.Scenes {
 		if sceneID != "" && scene.ID == sceneID {
@@ -37,11 +17,6 @@ func sceneByIdentity(spec scriptpkg.SpecSceneOutput, sceneID, segmentID string, 
 	return scriptpkg.SpecScene{}, false
 }
 
-func sceneAllowsNLP(spec scriptpkg.SpecSceneOutput, sceneID, segmentID string, index int) bool {
-	scene, ok := sceneByIdentity(spec, sceneID, segmentID, index)
-	return !ok || scene.AllowsNLP()
-}
-
 func sceneAllowsMediaSearch(spec scriptpkg.SpecSceneOutput, sceneID, segmentID string, index int) bool {
 	scene, ok := sceneByIdentity(spec, sceneID, segmentID, index)
 	return !ok || scene.AllowsMediaSearch()
@@ -54,35 +29,12 @@ func sceneHasDirectStockBinding(spec scriptpkg.SpecSceneOutput, bindings []scrip
 	return scriptpkg.SceneHasDirectStockBinding(spec, bindings, sceneID, segmentID, index)
 }
 
-// sceneAllowsMediaSearchForPlan extends sceneAllowsMediaSearch with the
-// direct stock-binding contract. Without it, a scene whose stock folder was
-// expanded into plan/input stock bindings still looked "generated" to the
-// search stages and leaked into provider image/clip discovery.
-func sceneAllowsMediaSearchForPlan(spec scriptpkg.SpecSceneOutput, bindings []scriptpkg.StockBindingInput, sceneID, segmentID string, index int) bool {
-	if scriptpkg.SceneHasDirectStockBinding(spec, bindings, sceneID, segmentID, index) {
-		return false
-	}
-	return sceneAllowsMediaSearch(spec, sceneID, segmentID, index)
-}
-
 func stockBindingForSegment(plan *scriptpkg.ResolvedGenerationPlan, inputBindings []scriptpkg.StockBindingInput, segment scriptpkg.VidRushSegmentResult) (scriptpkg.StockBindingInput, bool) {
 	return scriptpkg.StockBindingForSegment(plan, inputBindings, segment)
 }
 
 func sceneAllowsMediaResolution(scene scriptpkg.SpecScene) bool {
 	return scene.AllowsVisualIntent() && scene.AllowsMediaResolution() && scene.AllowsMediaReplacement()
-}
-
-func sceneExecutionModeFor(scenes []scriptpkg.SpecScene, segmentID string, index int) scriptpkg.SceneExecutionMode {
-	for _, scene := range scenes {
-		if segmentID != "" && (scene.ID == segmentID || scene.SegmentID == segmentID) {
-			return scene.ExecutionMode.Normalize()
-		}
-	}
-	if index >= 0 && index < len(scenes) {
-		return scenes[index].ExecutionMode.Normalize()
-	}
-	return scriptpkg.SceneExecutionGenerated
 }
 
 func sceneIsFixedMedia(spec scriptpkg.SpecSceneOutput, sceneID, segmentID string, index int) bool {
@@ -100,18 +52,6 @@ func allSegmentsFixedMedia(spec scriptpkg.SpecSceneOutput, segments []scriptpkg.
 		}
 	}
 	return true
-}
-
-func hasMediaSearchSegments(input ProcessInput) bool {
-	for _, segment := range input.VidRushSegments {
-		if segment.ExecutionMode.IsFixedMedia() {
-			continue
-		}
-		if sceneAllowsMediaSearchForPlan(input.SpecScene, input.StockBindings, segment.SceneID, segment.SegmentID, segment.Position) {
-			return true
-		}
-	}
-	return false
 }
 
 func hasImageSearchSegments(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) bool {

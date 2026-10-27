@@ -82,7 +82,20 @@ func (e *recordingLocalizedRenderEnqueuer) snapshot() []LocalizedRenderInput {
 	return append([]LocalizedRenderInput(nil), e.inputs...)
 }
 
-func TestRunner_LocalizedRenderResumeUsesUploadOnlyPath(t *testing.T) {
+// Dispatch-seal contract (docs/stato/refactored.md "Divieto Strutturale
+// Rendering Master Video", 2026-10-26): PipelineGen never dispatches
+// localized scene renders — not on fan-out, not on resume, not on fixed
+// media, not while streaming. The external final worker (Master 51 /
+// BrainRust) owns rendering. Every test below pins BOTH halves of that
+// contract: zero dispatch AND a run that still reaches COMPLETED (an
+// expectation left live under the seal would fail the run with
+// INCOMPLETE_RENDER_SET at completion).
+
+// TestRunner_LocalizedRenderResumeIsSealed pins the resume path: a staged
+// RENDERED result offered back to the runner must neither be re-uploaded nor
+// re-enqueued — upload and render belong to the external final worker, and
+// the seal swallows the call without an error.
+func TestRunner_LocalizedRenderResumeIsSealed(t *testing.T) {
 	enq := &recoveryLocalizedRenderEnqueuer{}
 	runner, _, _, _, _, _ := newTestRunner()
 	runner.SetLocalizedRenderEnqueuer(enq)
@@ -95,19 +108,15 @@ func TestRunner_LocalizedRenderResumeUsesUploadOnlyPath(t *testing.T) {
 		ClipID: staged.ClipID, ClipAssetID: staged.ClipID,
 		ResumeFrom: &staged,
 	})
-	require.NoError(t, err)
-	require.Len(t, enq.recovered, 1)
-	require.Equal(t, staged.LocalPath, enq.recovered[0].LocalPath)
+	require.NoError(t, err, "the seal is a silent skip, never an error")
+	require.Empty(t, enq.recovered, "resume must not take the upload-only path")
 	require.Empty(t, enq.snapshot(), "resume must not enqueue a fresh render")
 }
 
-// TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage pins the batch
-// path fan-out: the moment each (scene, language) TTS completes, a localized
-// render is enqueued — one per language per scene.
-// P0.4 async render: render fire is a goroutine so enqueue order IS
-// non-deterministic; the test asserts only the set of enqueued work, not
-// the order.
-func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
+// TestRunner_LocalizedRenderFanout_NeverDispatches pins the batch path under
+// the seal: even after every (scene, language) TTS completes, nothing is
+// handed to the render enqueuer and the run still finishes COMPLETED.
+func TestRunner_LocalizedRenderFanout_NeverDispatches(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{}
 	runner.SetLocalizedRenderEnqueuer(enq)
@@ -127,31 +136,19 @@ func TestRunner_LocalizedRenderFanout_EnqueuesPerSceneLanguage(t *testing.T) {
 
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
-	require.Equal(t, RunStatusCompleted, final.Status)
+	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
-	inputs := enq.snapshot()
-	require.Len(t, inputs, 6, "3 scenes × 2 languages must enqueue 6 localized renders")
-
-	want := []string{
-		"scene-0:en", "scene-0:es",
-		"scene-1:en", "scene-1:es",
-		"scene-2:en", "scene-2:es",
-	}
-	got := make([]string, len(inputs))
-	for i, in := range inputs {
-		got[i] = in.SceneID + ":" + string(in.Language)
-		require.Equal(t, runID, in.RunID)
-		require.NotEmpty(t, in.Text, "localized render must carry the scene text")
-		require.NotEmpty(t, in.Voiceover.ID, "localized render must carry the voiceover asset")
-	}
-	require.ElementsMatch(t, want, got, "fan-out must enqueue all (scene, language) pairs")
+	require.Empty(t, enq.snapshot(),
+		"3 scenes × 2 languages must dispatch nothing: rendering belongs to the external final worker")
 }
 
-// TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady pins the
-// streaming overlap: scene 0's localized renders are enqueued while the LLM is
-// still blocked before emitting scene 1 — Rust can start on scene 0 without
-// waiting for scene 1 (or the whole run).
-func TestRunner_SourceClipsAudioNone_LocalizedRenderFanout(t *testing.T) {
+// TestRunner_SourceClipsAudioNone_CompletesSealed pins the regression the
+// dispatch seal creates if the expectation counter is left live: a SourceClips
+// run with Render.Enabled and audio=NONE expects 6 renders, so with dispatch
+// sealed the expectation must be sealed too — otherwise completion fails with
+// INCOMPLETE_RENDER_SET (expected=6 successful=0) instead of finishing the
+// script run.
+func TestRunner_SourceClipsAudioNone_CompletesSealed(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{producedVideo: &LocalizedRenderResult{
 		AssetID: "rendered-asset", SHA256: "0123456789abcdef0123456789abcdef", DriveFileID: "drive-1", DriveLink: "https://drive.test/rendered", DurationMS: 1000, Status: "UPLOADED",
@@ -184,18 +181,16 @@ func TestRunner_SourceClipsAudioNone_LocalizedRenderFanout(t *testing.T) {
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
 	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
-	inputs := enq.snapshot()
-	require.Len(t, inputs, 6, "normal SourceClips audio NONE must render 3 scenes × source+target languages")
-	want := []string{"scene-0:en", "scene-0:es", "scene-1:en", "scene-1:es", "scene-2:en", "scene-2:es"}
-	got := make([]string, 0, len(inputs))
-	for _, in := range inputs {
-		got = append(got, in.SceneID+":"+string(in.Language))
-		require.Empty(t, in.Voiceover.ID, "audio NONE must not synthesize TTS")
-	}
-	require.ElementsMatch(t, want, got)
+	require.Empty(t, enq.snapshot(),
+		"audio NONE with sealed dispatch must not hand any (scene, language) unit to the render lane")
 }
 
-func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testing.T) {
+// TestRunner_LocalizedRenderFanout_StreamingCompletesSealed keeps the gated
+// streaming path covered under the seal: while generation is blocked before
+// scene 1 nothing is dispatched (grace window included, so a late async
+// dispatch would be caught), and after release the run completes with a
+// permanently empty render lane.
+func TestRunner_LocalizedRenderFanout_StreamingCompletesSealed(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	streamer := newGatedStreamingTextGenerator(defaultTestScenes())
 	enq := &recordingLocalizedRenderEnqueuer{}
@@ -222,19 +217,9 @@ func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testin
 		t.Fatal("streamer did not emit scene 0")
 	}
 
-	// Scene 0's downstream fan-out (translate + TTS + render enqueue) must
-	// complete while generation is still blocked before scene 1.
-	deadline := time.Now().Add(5 * time.Second)
-	for len(enq.snapshot()) < 2 {
-
-		if time.Now().After(deadline) {
-			t.Fatalf("scene-0 localized renders were not enqueued: %v", enq.snapshot())
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	for _, in := range enq.snapshot() {
-		require.NotEqual(t, "scene-1", in.SceneID, "scene-1 render must not be enqueued while generation is blocked before scene 1")
-	}
+	// Give scene 0's downstream fan-out its window to (not) dispatch.
+	time.Sleep(100 * time.Millisecond)
+	require.Empty(t, enq.snapshot(), "no render may dispatch while generation is blocked before scene 1")
 
 	close(streamer.release)
 	select {
@@ -243,7 +228,7 @@ func TestRunner_LocalizedRenderFanout_RenderStartsBeforeNextSceneReady(t *testin
 		t.Fatal("streaming run did not complete")
 	}
 	require.Equal(t, RunStatusCompleted, awaitCompletion(t, repo, runID, time.Second).Status)
-	require.Len(t, enq.snapshot(), 6, "all 3 scenes × 2 languages must be enqueued by the end")
+	require.Empty(t, enq.snapshot(), "the render lane must stay empty through completion")
 }
 
 // TestLocalizedRenderClipFields pins the source-clip resolution helper: the
@@ -270,11 +255,11 @@ func TestLocalizedRenderClipFields(t *testing.T) {
 	require.Zero(t, dur)
 }
 
-// TestRunner_LocalizedRenderFanout_CarriesSourceClip proves the fan-out hands
-// the source-clip reference to the enqueuer, so the real Rust adapter can
-// resolve (asset_id, sha256, duration) without re-deriving them.
-// P0.4 async render: enqueue happens in goroutines; wait up to 5s for all 6.
-func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
+// TestRunner_LocalizedRenderFanout_SourceClipScenesCompleteSealed keeps the
+// source-clip scenario covered under the seal: scenes bound to source clips
+// run to completion without handing a single clip reference to the render
+// lane. Clip resolution itself stays pinned by TestLocalizedRenderClipFields.
+func TestRunner_LocalizedRenderFanout_SourceClipScenesCompleteSealed(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{}
 	runner.SetLocalizedRenderEnqueuer(enq)
@@ -295,35 +280,17 @@ func TestRunner_LocalizedRenderFanout_CarriesSourceClip(t *testing.T) {
 
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
-	require.Equal(t, RunStatusCompleted, final.Status)
+	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
-	// Async render goroutines may still be in-flight after run completion;
-	// wait for all 6 to land.
-	deadline := time.Now().Add(5 * time.Second)
-	for len(enq.snapshot()) < 6 {
-
-		if time.Now().After(deadline) {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-
-	inputs := enq.snapshot()
-	require.Len(t, inputs, 6, "3 scenes × 2 languages")
-	for _, in := range inputs {
-		require.Equal(t, "clip-source", in.ClipID, "enqueued input must carry the source clip id")
-		require.Equal(t, "clip-source", in.ClipAssetID, "enqueued input must carry the media asset id")
-		require.Equal(t, "cccc", in.ClipSHA256, "enqueued input must carry the clip sha256")
-		require.Equal(t, int64(12_000), in.ClipDurationMS, "enqueued input must carry the clip duration")
-	}
+	require.Empty(t, enq.snapshot(), "source-clip scenes must not dispatch renders under the seal")
 }
 
-// TestRunner_LocalizedRenderFanout_RecordsProducedVideo certifies that a
-// certified produced video of the fan-out (asset id, sha256, Drive link) is
-// recorded on the run result — the final MP4 is never orphaned from the run
-// that produced it. This is the deterministic surface the E2E visual audit
-// reads to prove "this run rendered this video".
-func TestRunner_LocalizedRenderFanout_RecordsProducedVideo(t *testing.T) {
+// TestRunner_LocalizedRenderFanout_RecordsNoLocalVideo pins the result
+// surface under the seal: even with a producing sink wired, the run result
+// carries no LocalizedRenders and no render failures — produced videos are
+// facts of the external final worker (Master 51 / BrainRust), never of the
+// planning run.
+func TestRunner_LocalizedRenderFanout_RecordsNoLocalVideo(t *testing.T) {
 	runner, repo, _, _, _, _ := newTestRunner()
 	enq := &recordingLocalizedRenderEnqueuer{
 		producedVideo: &LocalizedRenderResult{
@@ -351,21 +318,9 @@ func TestRunner_LocalizedRenderFanout_RecordsProducedVideo(t *testing.T) {
 
 	runner.Execute(context.Background(), runID, req)
 	final := awaitCompletion(t, repo, runID, 5*time.Second)
-	require.Equal(t, RunStatusCompleted, final.Status)
+	require.Equal(t, RunStatusCompleted, final.Status, final.ErrorMessage)
 
 	require.NotNil(t, final.Result, "run result must be populated")
-	deadline := time.Now().Add(5 * time.Second)
-	for len(final.Result.LocalizedRenders) < 6 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-		final = awaitCompletion(t, repo, runID, time.Second)
-	}
-	require.Len(t, final.Result.LocalizedRenders, 6, "every (scene, language) fan-out must record its produced video")
-	for _, rendered := range final.Result.LocalizedRenders {
-		require.Equal(t, "final-video-asset-1", rendered.AssetID, "produced video asset id must be recorded")
-		require.Equal(t, "0123456789abcdef", rendered.SHA256, "produced video sha256 must be recorded")
-		require.Equal(t, "drive-final-1", rendered.DriveFileID, "produced video drive file id must be recorded")
-		require.NotEmpty(t, rendered.DriveLink, "produced video drive link must be recorded")
-		require.Equal(t, int64(12_000), rendered.DurationMS)
-		require.Equal(t, "UPLOADED", rendered.Status)
-	}
+	require.Empty(t, final.Result.LocalizedRenders, "the sealed lane must record no local renders")
+	require.Empty(t, final.Result.LocalizedRenderFailures, "the sealed lane must record no render failures")
 }

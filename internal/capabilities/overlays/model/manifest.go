@@ -65,6 +65,16 @@ type OverlayManifestEntry struct {
 	// content: a canonical lowercase SHA-256 (64 hex). It names WHAT is
 	// drawn, never where; two entries may share content but never ItemID.
 	ContentHash string `json:"content_hash"`
+	// ArtifactInUS/ArtifactOutUS are the OPTIONAL packed-composition positions
+	// (docs/operations/OVERLAY-MANIFEST-CONTRACT.md §3, "packed timeline"):
+	// where on the CERTIFIED artifact's own frames the entry's content was
+	// actually rendered. Both stay nil on the classic plan-absolute timeline;
+	// on a packed timeline (§3.4 of TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE:
+	// empty plan spans are NOT rendered) they are both set and differ from
+	// InUS/OutUS — which keep carrying the semantic plan window verbatim.
+	// Nil pointers keep the zero/absent distinction: packed offsets may be 0.
+	ArtifactInUS  *int64 `json:"artifact_in_us,omitempty"`
+	ArtifactOutUS *int64 `json:"artifact_out_us,omitempty"`
 }
 
 // Validate reports whether the entry is a well-formed manifest row.
@@ -83,6 +93,24 @@ func (e OverlayManifestEntry) Validate() error {
 	}
 	if !digest.IsCanonicalSHA256(e.ContentHash) {
 		return fmt.Errorf("overlay manifest entry %q: content_hash %q is not a canonical SHA-256", e.ItemID, e.ContentHash)
+	}
+	if (e.ArtifactInUS == nil) != (e.ArtifactOutUS == nil) {
+		return fmt.Errorf("overlay manifest entry %q: artifact_in_us/artifact_out_us must be set together", e.ItemID)
+	}
+	if e.ArtifactInUS != nil {
+		in, out := *e.ArtifactInUS, *e.ArtifactOutUS
+		if in < 0 {
+			return fmt.Errorf("overlay manifest entry %q: artifact_in_us must be >= 0", e.ItemID)
+		}
+		if out <= in {
+			return fmt.Errorf("overlay manifest entry %q: artifact_out_us must be greater than artifact_in_us", e.ItemID)
+		}
+		if out-in > e.OutUS-e.InUS {
+			// The packed span never outlasts the entry's literal plan window:
+			// packing only shrinks the canvas (union of real overlay windows),
+			// it never re-times an entry's own duration.
+			return fmt.Errorf("overlay manifest entry %q: packed arrow [%d,%d) exceeds the entry window", e.ItemID, in, out)
+		}
 	}
 	return nil
 }

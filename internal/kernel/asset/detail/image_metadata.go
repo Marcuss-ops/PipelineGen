@@ -131,22 +131,6 @@ func (b *CanonicalImageMetadataBuilder) WithExtra(extra asset.ImageMetadataMap) 
 
 // WithProvenance adds web-retrieval provenance keys. Empty values are
 // ignored.
-func (b *CanonicalImageMetadataBuilder) WithProvenance(imageURL, pageURL, sourceName, query string) *CanonicalImageMetadataBuilder {
-	if imageURL != "" {
-		b.data["source_image_url"] = imageURL
-	}
-	if pageURL != "" {
-		b.data["source_page_url"] = pageURL
-	}
-	if sourceName != "" {
-		b.data["source_name"] = sourceName
-	}
-	if query != "" {
-		b.data["source_query"] = query
-	}
-	return b
-}
-
 // Build returns the JSON string and the canonical origin/provider that
 // should be copied onto the asset record.
 func (b *CanonicalImageMetadataBuilder) Build() (string, asset.ImageOrigin, asset.ImageProvider) {

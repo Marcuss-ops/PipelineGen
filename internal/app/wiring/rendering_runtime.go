@@ -51,10 +51,6 @@ func gpuGateSlots() (slots int, explicit bool) {
 	return resolveGPUGateSlots(os.Getenv("RENDERINGGEN_GPU_SLOTS"))
 }
 
-func overlayGPUGateConfig() (path string, slots int) {
-	return infraoverlays.ConfiguredGPUGateConfig()
-}
-
 func newOverlayGPUGate() (*infraoverlays.GPUGate, string, int, error) {
 	return infraoverlays.NewConfiguredGPUGate()
 }

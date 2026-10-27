@@ -2,8 +2,9 @@ package script
 
 import (
 	"fmt"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
 	"golang.org/x/text/unicode/norm"
 )

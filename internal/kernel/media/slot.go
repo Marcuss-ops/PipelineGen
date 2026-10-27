@@ -98,10 +98,6 @@ func (k SlotKind) SupportsTimeRange() bool {
 //
 // Deprecated: use k.IsValid() instead. Kept for backward compatibility
 // until all callers are migrated.
-func IsKnownSlotKind(k SlotKind) bool {
-	return k.IsValid()
-}
-
 // IsMediaTypeAllowed reports whether the given media type is
 // compatible with the slot. It is the canonical SSOT for the
 // slot ↔ media type mapping used by the planner, ranker, and

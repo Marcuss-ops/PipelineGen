@@ -36,10 +36,6 @@ import (
 // Under -race this is mandatory; a plain int triggers TEST
 // FAILURE. Use int(t.revision.Load()) to read; use
 // t.revision.Store(int64(j.Revision)) to write.
-func (t *Tools) ExpectedRevision() int {
-	return int(t.revision.Load())
-}
-
 // Complete forwards a successful job outcome to the broker using
 // the worker's current ExpectedRevision (post-renewal). Mirrors the
 // existing Progress/IsCancelled/Renew convention of Tools bridging
@@ -216,10 +212,6 @@ func (t *Tools) Event(ctx context.Context, eventType, message string, data map[s
 		t.ledger.RecordEvent(ctx, t.jobID, eventType, message, data)
 	}
 	return err
-}
-
-func (t *Tools) IsCancelled(ctx context.Context) (bool, error) {
-	return t.broker.IsCancelled(ctx, t.jobID, t.leaseID)
 }
 
 func (t *Tools) Renew(ctx context.Context, leaseTTL time.Duration) error {

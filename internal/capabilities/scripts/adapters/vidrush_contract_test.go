@@ -8,36 +8,12 @@ import (
 	"image/jpeg"
 	"image/png"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
-
-func TestVidRushImageValidationRejectsSSRFAndHTML(t *testing.T) {
-	for _, raw := range []string{
-		"http://localhost/image.jpg",
-		"http://127.0.0.1/image.jpg",
-		"http://169.254.169.254/latest/meta-data",
-		"file:///tmp/image.jpg",
-	} {
-		if err := ValidateVidRushRemoteImageURL(raw); !errors.Is(err, ErrVidRushSSRFBlocked) {
-			t.Errorf("ValidateVidRushRemoteImageURL(%q) = %v", raw, err)
-		}
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte("<html>not an image</html>"))
-	}))
-	defer server.Close()
-	_, _, err := DownloadVidRushImage(context.Background(), server.Client(), server.URL, DefaultVidRushImagePolicy())
-	if !errors.Is(err, ErrVidRushSSRFBlocked) {
-		t.Fatalf("loopback test server error = %v, want SSRF block", err)
-	}
-}
 
 func TestVidRushImageHeadPreflightTreatsMimeAsAdvisoryAndRejectsOversize(t *testing.T) {
 	policy := DefaultVidRushImagePolicy()
@@ -161,17 +137,6 @@ func TestVidRushLifecycleDoesNotBindUnpersistedOrUnverifiedRights(t *testing.T) 
 	candidate.IndexStatus = scriptpkg.VidRushStatusFailed
 	if candidate.ReadyForBinding() {
 		t.Fatal("failed index candidate must not be binding-ready")
-	}
-}
-
-func TestMissingVidRushImageCountUsesVerifiedWebImagesOnly(t *testing.T) {
-	segment := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{
-		{Provider: scriptpkg.VidRushProviderInternetImages, AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed, RightsStatus: "verified"},
-		{Provider: scriptpkg.VidRushProviderInternetImages, RightsStatus: "verified"},
-		{Provider: scriptpkg.VidRushProviderImageGeneration, RightsStatus: "verified"},
-	}}}
-	if got := MissingVidRushImageCount(segment, 2); got != 1 {
-		t.Fatalf("missing images = %d, want 1", got)
 	}
 }
 

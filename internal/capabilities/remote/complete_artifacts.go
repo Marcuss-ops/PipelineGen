@@ -34,8 +34,6 @@ package remote
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -135,67 +133,6 @@ type CompleteWithArtifactsRequest struct {
 	// resolution is the caller's contract because the catalog
 	// registry lives outside the finalization domain.
 	AssetMappings map[string]string
-}
-
-// Validated is the pre-TX fail-fast gate (godlike/07
-// no-fake-availability). Returns nil if the request is well-formed;
-// otherwise returns the aggregated missing-fields diagnostic so
-// the operator sees the full picture in one error message.
-func (r *CompleteWithArtifactsRequest) Validated() error {
-	if r == nil {
-		return fmt.Errorf("%w: nil receiver", ErrCompleteWithArtifactsRequestMissingFields)
-	}
-	var missing []string
-	if strings.TrimSpace(r.WorkerID) == "" {
-		missing = append(missing, "workerID")
-	}
-	if strings.TrimSpace(r.JobID) == "" {
-		missing = append(missing, "jobID")
-	}
-	if r.Attempt < 0 {
-		missing = append(missing, "attempt (negative)")
-	}
-	if strings.TrimSpace(r.LeaseID) == "" {
-		missing = append(missing, "leaseID")
-	}
-	if len(r.Result) == 0 || string(r.Result) == "null" {
-		missing = append(missing, "result (empty)")
-	}
-	if strings.TrimSpace(r.ResultHash) == "" {
-		missing = append(missing, "resultHash")
-	}
-	if len(r.AssetMappings) == 0 {
-		missing = append(missing, "assetMappings (empty)")
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("%w (godlike/07 no-fake-availability): %s",
-			ErrCompleteWithArtifactsRequestMissingFields, strings.Join(missing, ", "))
-	}
-	return nil
-}
-
-// ValidateArtifactMappings enforces the invariant that every
-// published artifact (caller-side second positional argument) has a
-// matching AssetMappings entry. Returns the typed
-// ErrRemoteArtifactLocationMismatch for the FIRST missing
-// mapping so the operator can correlate the missing entry to the
-// artifact list verbatim.
-//
-// Pre-TX fail-fast gate — godlike/07 no-fake-availability: a
-// caller that forgets to wire AssetMappings for an artifact MUST
-// NOT silently fall through to the TX path (the in-TX fail would
-// be too late to recover from a half-published TX rollback).
-func (r *CompleteWithArtifactsRequest) ValidateArtifactMappings(artifactIDs []string) error {
-	if r == nil {
-		return fmt.Errorf("%w: nil receiver", ErrCompleteWithArtifactsRequestMissingFields)
-	}
-	for _, id := range artifactIDs {
-		if mapped, ok := r.AssetMappings[id]; !ok || strings.TrimSpace(mapped) == "" {
-			return fmt.Errorf("%w: artifact %q has no entry in AssetMappings",
-				ErrCompleteWithArtifactsRequestMissingFields, id)
-		}
-	}
-	return nil
 }
 
 // ── CompleteWithArtifactsResponse (typed envelope) ──────────────

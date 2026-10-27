@@ -47,6 +47,16 @@ func (r *Runner) enqueueLocalizedRender(ctx context.Context, input LocalizedRend
 	return nil
 }
 
+// sceneRenderDispatchSealed is the single kill switch for in-process scene
+// render dispatch (the permanent policy above, docs/stato/refactored.md
+// "Divieto Strutturale Rendering Master Video"). The expected-render counter
+// in runner_phase_script.go consults it: counting renders as expected work
+// while dispatch is sealed would fail every SourceClips+render run with
+// INCOMPLETE_RENDER_SET (expected=N successful=0) at completion. The seal and
+// the expectation are one contract — change both sides together, never one
+// alone.
+const sceneRenderDispatchSealed = true
+
 func (r *Runner) stagedLocalizedRender(result *GenerateResult, sceneID string, lang Language, clipID string) *LocalizedRenderResult {
 	if result == nil {
 		return nil

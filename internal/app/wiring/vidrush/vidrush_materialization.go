@@ -431,23 +431,5 @@ func safeArtifactFilename(assetID, ext string) string {
 	return name + ext
 }
 
-func provenanceSlugWiring(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	var b strings.Builder
-	lastDash := false
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-			lastDash = false
-			continue
-		}
-		if !lastDash && b.Len() > 0 {
-			b.WriteByte('-')
-			lastDash = true
-		}
-	}
-	return strings.Trim(b.String(), "-")
-}
-
 var _ scriptports.VidRushAssetProvider = (*vidRushInternetImageProvider)(nil)
 var _ scriptports.VidRushArtifactFinalizer = (*vidRushArtifactFinalizer)(nil)

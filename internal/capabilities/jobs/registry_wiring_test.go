@@ -28,7 +28,6 @@
 package jobs
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -200,107 +199,5 @@ func TestRunner_WithRegistry_NilIsTolerant(t *testing.T) {
 	}
 	if workers[0].reg != nil {
 		t.Errorf("worker[0] reg should be nil when Runner.registry is nil, got %v", workers[0].reg)
-	}
-}
-
-// ── Issue 4 (June 2026, P1) + PR-jobs-retry-contract (July 2026) ───
-// Pin the *Service*-side strict typed MaxRetries resolution. The
-// PR-jobs-retry-contract refactor removes the pre-PR legacy
-// hard-coded 3-retry fallback (godlike/07 NO-FAKE-AVAILABILITY) and
-// replaces it with a single typed Registry.GetMaxRetries(jobType)
-// lookup that returns ErrMaxRetriesUnknown for unregistered types.
-// resolveMaxRetries signature is now (int, error) — the caller
-// (Enqueue) propagates the error so a missing registration is loud,
-// NOT silenced by a silent default.
-//
-// Other split of duties (helper layer for EnqueueGenerationJob): pinned
-// in internal/capabilities/scripts/jobs/generation_enqueue_registry_test.go.
-
-// TestService_ResolveMaxRetries_RegisteredTypeUsesRegistryDefault:
-// PR-jobs-retry-contract strict typed contract — when a registry is
-// attached AND the job type is registered, MaxRetries=0 must resolve
-// to registry.DefaultMaxRetries (5 in this fixture) via the typed
-// GetMaxRetries lookup. Returned error MUST be nil.
-func TestService_ResolveMaxRetries_RegisteredTypeUsesRegistryDefault(t *testing.T) {
-	t.Parallel()
-	reg := newWiringRegistry(t, time.Minute, 5)
-
-	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-	got, err := svc.resolveMaxRetries(wiringTestType, 0)
-	if err != nil {
-		t.Errorf("PR-jobs-retry-contract: resolveMaxRetries(registered, 0) err = %v, want nil", err)
-	}
-	if got != 5 {
-		t.Errorf("resolveMaxRetries(registered, 0) = %d, want registry default 5", got)
-	}
-}
-
-// TestService_ResolveMaxRetries_UnregisteredType_ReturnsErrMaxRetriesUnknown:
-// strict typed-error contract — unregistered jobTypes MUST return
-// ErrMaxRetriesUnknown (godlike/07 NO-FAKE-AVAILABILITY: the legacy
-// silent 3-retry fallback is REMOVED in PR-jobs-retry-contract).
-func TestService_ResolveMaxRetries_UnregisteredType_ReturnsErrMaxRetriesUnknown(t *testing.T) {
-	t.Parallel()
-	reg := newWiringRegistry(t, time.Minute, 5)
-
-	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-	got, err := svc.resolveMaxRetries("totally.unknown.type", 0)
-	if !errors.Is(err, ErrMaxRetriesUnknown) {
-		t.Errorf("resolveMaxRetries(unregistered, 0) err = %v, want ErrMaxRetriesUnknown", err)
-	}
-	if got != 0 {
-		t.Errorf("resolveMaxRetries(unregistered, 0) = %d, want 0 on error path", got)
-	}
-}
-
-// TestService_ResolveMaxRetries_PreservesExplicitValue: callers may
-// pre-set MaxRetries to an explicit value (e.g. admin override, batch
-// retry policy). The registry MUST NOT override that value.
-func TestService_ResolveMaxRetries_PreservesExplicitValue(t *testing.T) {
-	t.Parallel()
-	reg := newWiringRegistry(t, time.Minute, 5)
-	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-
-	for _, v := range []int{1, 2, 4, 7, 100} {
-		got, err := svc.resolveMaxRetries(wiringTestType, v)
-		if err != nil {
-			t.Errorf("resolveMaxRetries(%q, %d) err = %v, want nil", wiringTestType, v, err)
-		}
-		if got != v {
-			t.Errorf("resolveMaxRetries(%q, %d) = %d, want preserved verbatim", wiringTestType, v, got)
-		}
-	}
-}
-
-// TestService_ResolveMaxRetries_PreservesNegativeSentinel: -1 was the
-// canonical "explicit zero retries" sentinel in the pre-Issue-4 code
-// path. The new strict typed lookup MUST preserve that semantic
-// verbatim — -1 must NOT be silently turned into "use default" nor
-// "lookup registry default".
-func TestService_ResolveMaxRetries_PreservesNegativeSentinel(t *testing.T) {
-	t.Parallel()
-	reg := newWiringRegistry(t, time.Minute, 5)
-	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
-	if err != nil {
-		t.Fatalf("NewService: %v", err)
-	}
-
-	for _, v := range []int{-1, -7, -42} {
-		got, err := svc.resolveMaxRetries(wiringTestType, v)
-		if err != nil {
-			t.Errorf("resolveMaxRetries(%q, %d) err = %v, want nil", wiringTestType, v, err)
-		}
-		if got != 0 {
-			t.Errorf("resolveMaxRetries(%q, %d) = %d, want 0 (negative sentinel maps to no-retries)", wiringTestType, v, got)
-		}
 	}
 }

@@ -136,7 +136,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		bundle.Fingerprint = manifest.Fingerprint
 		bundle.Analyzers = scriptgen.SemanticAnalyzerVersions{
 			VisualNER: manifest.Analyzers.VisualNER, SemanticCore: manifest.Analyzers.SemanticCore,
-			PhraseImpact: manifest.Analyzers.PhraseImpact,
+			PhraseImpact: manifest.Analyzers.PhraseImpact, Lexicon: manifest.Analyzers.Lexicon,
 		}
 		bundle.Status = scene.Status
 		bundle.RejectedItems = scene.RejectedItems
@@ -146,7 +146,8 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		if scene.Entities == nil || scene.EntityFacts == nil || scene.Identities == nil || scene.Relations.CoMentions == nil ||
 			scene.Relations.AssertedRelations == nil || scene.NumericFacts == nil || scene.TemporalFacts == nil || scene.SemanticGroups == nil ||
 			scene.Bullets == nil || scene.ShortPhrases == nil || scene.LongPhrases == nil ||
-			scene.Quotes == nil || scene.ImportantWords == nil || scene.VisualProposals == nil || scene.MicroSummaries == nil {
+			scene.Quotes == nil || scene.ImportantWords == nil || scene.ImportantSegments == nil ||
+			scene.ComposedImageQueries == nil || scene.ContextualImageQueries == nil || scene.VisualProposals == nil || scene.MicroSummaries == nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q omits required manifest collections", scene.SceneID)
 		}
 		if scene.Status != "valid" {
@@ -179,6 +180,15 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		if bundle.ImportantWords, err = projectSemanticText(source, scene.ImportantWords); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q important words: %w", scene.SceneID, err)
 		}
+		if bundle.ImportantSegments, err = projectSemanticImportantSegments(source, scene.ImportantSegments); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q important segments: %w", scene.SceneID, err)
+		}
+		if bundle.ComposedImageQueries, err = projectSemanticComposedImageQueries(source, scene.ComposedImageQueries); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q composed image queries: %w", scene.SceneID, err)
+		}
+		if bundle.ContextualImageQueries, err = projectSemanticContextualImageQueries(source, scene.ContextualImageQueries); err != nil {
+			return nil, nil, fmt.Errorf("semantic-engine: scene %q contextual image queries: %w", scene.SceneID, err)
+		}
 		if bundle.Proposals, err = projectSemanticProposals(source, scene.VisualProposals); err != nil {
 			return nil, nil, fmt.Errorf("semantic-engine: scene %q proposals: %w", scene.SceneID, err)
 		}
@@ -203,6 +213,9 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		bundles[scene.SceneID] = bundle
 		a.cacheEntities(manifest.Language, source, bundle.Entities)
 	}
+	if err := validateSemanticScriptViews(texts, manifest.StoryGraph, manifest.VisualCoverage, bundles); err != nil {
+		return nil, nil, fmt.Errorf("semantic-engine: %w", err)
+	}
 	consolidation, err := projectSemanticConsolidation(texts, manifest.VisualConsolidation, bundles)
 	if err != nil {
 		return nil, nil, err
@@ -212,6 +225,8 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		return nil, nil, err
 	}
 	for _, bundle := range bundles {
+		bundle.StoryGraph = manifest.StoryGraph
+		bundle.VisualCoverage = manifest.VisualCoverage
 		bundle.Consolidation = consolidation
 		bundle.SearchFeedback = feedback
 	}
@@ -225,6 +240,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 			return nil, nil, fmt.Errorf("semantic-engine: editorial request has no transcript")
 		}
 		result := scriptpkg.PhraseImpactResult{Summary: manifest.Editorial.Summary, ChapterManifest: manifest.Editorial.ChapterManifest}
+		result.BulletDetails = append([]scriptpkg.EditorialBulletPoint(nil), manifest.Editorial.BulletPoints...)
 		for _, bullet := range manifest.Editorial.BulletPoints {
 			result.BulletPoints = append(result.BulletPoints, bullet.Text)
 		}

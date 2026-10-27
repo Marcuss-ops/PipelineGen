@@ -144,14 +144,22 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			TranslationMetrics: streamTranslationMetrics,
 			AudioMetrics:       streamAudioMetrics,
 		}
+		// The metrics struct exists whenever a render-enabled clip run can
+		// record render work; the EXPECTATION (the completion gate in
+		// completeRun) is only promised while dispatch is live. Sealing
+		// ExpectedRenderCount under sceneRenderDispatchSealed (runner_deps.go)
+		// keeps the run from demanding work this runner never dispatches.
 		if req.Source.Type == SourceClips && req.Render.Enabled {
-			// Expected renders are the canonical render-unit count, not the
-			// scene count: a fixed intro/outro contributes one unit per bound
-			// clip (one final render per clip), fanned out per render
-			// language for fixed media (Intro V2).
-			expectedUnits := expectedRenderUnits(req, scenes)
-			result.ExpectedRenderCount = expectedUnits
-			result.RenderMetrics = &RenderMetrics{Expected: expectedUnits, Concurrency: req.Render.RenderConcurrency}
+			result.RenderMetrics = &RenderMetrics{Concurrency: req.Render.RenderConcurrency}
+			if !sceneRenderDispatchSealed {
+				// Expected renders are the canonical render-unit count, not the
+				// scene count: a fixed intro/outro contributes one unit per bound
+				// clip (one final render per clip), fanned out per render
+				// language for fixed media (Intro V2).
+				expectedUnits := expectedRenderUnits(req, scenes)
+				result.ExpectedRenderCount = expectedUnits
+				result.RenderMetrics.Expected = expectedUnits
+			}
 		}
 		// The unified Rust editorial enrichment computes VALUES only over the
 		// stable text; the single writer below owns every result mutation.

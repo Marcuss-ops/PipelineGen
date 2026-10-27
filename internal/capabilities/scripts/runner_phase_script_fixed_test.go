@@ -322,13 +322,13 @@ func TestFixedMediaRenderUnitsSizesTheFailureChannel(t *testing.T) {
 	}
 }
 
-// TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage is the regression
-// for the live INCOMPLETE_RENDER_SET (expected=13 successful=10) on the
-// voiceover path: a fixed intro/outro has no voiceover work item, so the TTS
-// fan-out can never trigger its renders. The ONE owner of that matrix must
-// dispatch one render per bound clip per render language, with the fixed
-// caption text of that language, and report through the injected sink.
-func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
+// TestLaunchFixedMediaRenders_SealedDispatchesNothing pins the fixed
+// intro/outro lane under the dispatch seal: launchFixedMediaRenders still
+// builds the unit matrix (counting stays covered by
+// TestExpectedRenderUnitsCountsFixedMultilingualFanout) but hands nothing to
+// the render enqueuer and reports no failures — dispatch belongs to the
+// external final worker (Master 51 / BrainRust).
+func TestLaunchFixedMediaRenders_SealedDispatchesNothing(t *testing.T) {
 	rec := &recordingLocalizedRenderEnqueuer{}
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(nil), newStubTranslator(),
 		&entityTimelineVoiceoverGenerator{})
@@ -372,32 +372,8 @@ func TestLaunchFixedMediaRendersDispatchesEveryUnitAndLanguage(t *testing.T) {
 	if len(failures) != 0 {
 		t.Fatalf("fixed fan-out reported failures: %+v", failures)
 	}
-	if want := fixedMediaRenderUnits(req, []Scene{scene}); len(inputs) != want {
-		t.Fatalf("dispatched %d fixed renders, want %d (one per clip per language)", len(inputs), want)
-	}
-	seen := map[string]string{}
-	for _, in := range inputs {
-		key := in.ClipID + "/" + string(in.Language)
-		if _, dup := seen[key]; dup {
-			t.Fatalf("clip/language unit dispatched twice: %s", key)
-		}
-		seen[key] = in.Text
-		if in.SceneID != scene.ID {
-			t.Fatalf("unit scene = %q, want %q", in.SceneID, scene.ID)
-		}
-		if in.ClipID == "" || in.ClipAssetID != in.ClipID {
-			t.Fatalf("unit clip binding = %q/%q", in.ClipID, in.ClipAssetID)
-		}
-		if strings.TrimSpace(in.Text) == "" {
-			t.Fatalf("unit %s carries no caption text", key)
-		}
-	}
-	for _, clip := range []string{"intro-a", "intro-b"} {
-		for _, lang := range []Language{"en", "it"} {
-			if _, ok := seen[clip+"/"+string(lang)]; !ok {
-				t.Fatalf("missing fixed render for clip %s language %s (dispatched %v)", clip, lang, seen)
-			}
-		}
+	if len(inputs) != 0 {
+		t.Fatalf("dispatched %d fixed renders under the seal, want 0 — rendering belongs to the external final worker", len(inputs))
 	}
 }
 

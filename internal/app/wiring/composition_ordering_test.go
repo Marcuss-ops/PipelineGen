@@ -141,9 +141,12 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	require.Error(t, mediaStoreErr, "root.MediaAssetStore() must fail closed without the media SSOT")
 	require.Nil(t, mediaStore, "root.MediaAssetStore() must not resolve a store without the media SSOT")
 	require.Nil(t, root.MediaAssetReader(), "root.MediaAssetReader() must be nil without the media SSOT")
-	// MediaAssetVersionStore still resolves an operational SQLite store
-	// (admin_version optimistic concurrency); retiring it is a separate step.
-	require.NotNil(t, root.MediaAssetVersionStore(), "root.MediaAssetVersionStore()")
+	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-10-26): the SQLite fallback was
+	// deleted; the admin console's optimistic-concurrency port is
+	// PostgreSQL-only and resolves nil without the media SSOT (the module
+	// refuses to register in that state, so a nil port cannot starve a
+	// supported deployment).
+	require.Nil(t, root.MediaAssetVersionStore(), "root.MediaAssetVersionStore() must be nil without the media SSOT")
 
 	// SearchBundle canaries (4 fields).
 	require.NotNil(t, root.Search.AssetIndexService, "root.Search.AssetIndexService")

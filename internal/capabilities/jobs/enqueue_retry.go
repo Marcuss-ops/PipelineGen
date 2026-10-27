@@ -12,37 +12,3 @@
 // visibility preserves all caller paths; Enqueue calls s.resolveMaxRetries
 // with no import changes.
 package jobs
-
-import jobqueue "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/queue"
-
-// resolveMaxRetries encodes the strict typed MaxRetries fallback
-// semantic in a single testable helper. Enqueue() delegates to this
-// helper so the logic is decoupled from repo/dispatcher concerns
-// (test fixtures only need typed Service+Registry wiring).
-//
-// Three-way semantics, in priority order:
-//
-//  1. currentMR < 0  → 0      (explicit "no retries" sentinel —
-//     pre-Issue-4 behavior preserved verbatim).
-//
-//  2. currentMR > 0  → currentMR  (caller pre-set value preserved
-//     verbatim; registry is the fallback, not an override).
-//
-//  3. currentMR == 0 → registry.GetMaxRetries(jobType) (strict
-//     typed lookup; the registry MUST already be attached at
-//     construction time per the 4-arg NewService fail-closed
-//     constructor). Unknown jobTypes return ErrMaxRetriesUnknown —
-//     the caller (Enqueue) propagates the error so a missing
-//     registration is loud, NOT silenced by a legacy 3-retry
-//     fallback (PR-jobs-retry-contract removes the legacy
-//     `return 3` line per godlike/07 NO-FAKE-AVAILABILITY).
-//
-// godlike/06 SSOT: this strict lookup supersedes the pre-PR
-// hasRegistry() guard + the legacy `return 3` line. Removing those
-// shapes eliminates two silent-success surfaces in one sweep.
-func (s *Service) resolveMaxRetries(jobType string, currentMR int) (int, error) {
-	if s == nil || s.registry == nil {
-		return 0, ErrRegistryRequired
-	}
-	return jobqueue.ResolveMaxRetries(s.registry, jobType, currentMR)
-}

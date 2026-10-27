@@ -44,7 +44,7 @@ func TestVidRushGoldenT6ColdWarmHasZeroNewSearchesDownloadsAndUploads(t *testing
 	cache := newMemoryVidRushCache()
 	searcher := &countingImageSearcher{}
 	metrics := &warmReplayImageMetrics{}
-	processor := NewMediaResolverImageStageWithCache(searcher, cache, metrics)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, cache, nil, metrics)
 	plan := func(force bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{
 			Language: "it", Topic: "maya",
@@ -103,7 +103,7 @@ func TestVidRushImagesWarmReplayPersistsAndReusesL2(t *testing.T) {
 	cache := newMemoryVidRushCache()
 	searcher := &countingImageSearcher{}
 	metrics := &warmReplayImageMetrics{}
-	processor := NewMediaResolverImageStageWithCache(searcher, cache, metrics)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, cache, nil, metrics)
 	plan := func(force bool) *scriptpkg.ResolvedGenerationPlan {
 		return &scriptpkg.ResolvedGenerationPlan{Language: "it", Topic: "maya", MediaPlan: mediadomain.MediaPlanSpec{
 			ProviderPolicy:     mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},

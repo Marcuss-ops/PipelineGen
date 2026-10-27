@@ -35,30 +35,8 @@ func mapCompositionFamily(id string) scriptoverlay.MapCompositionFamily {
 	return scriptoverlay.MapCompositionFamilyOf(id)
 }
 
-func eligibleMapCompositionsFor(input mapCompositionInput, certified []string) []string {
-	return scriptoverlay.EligibleMapCompositionsFor(input, certified)
-}
-
 func resolveMapCompositionFor(requested, seed, slot string, input mapCompositionInput) (string, string, error) {
 	return scriptoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
-}
-
-// resolveMapComposition is the classic selection API retained for callers and
-// tests that hold only the pin count.
-func resolveMapComposition(requested, seed, slot string, pinCounts ...int) (string, error) {
-	input := mapCompositionInput{}
-	if len(pinCounts) > 0 {
-		input.PinCount = pinCounts[0]
-	}
-	selected, _, err := resolveMapCompositionFor(requested, seed, slot, input)
-	return selected, err
-}
-
-// eligibleMapCompositions removes only renderer-documented multi-pin systems
-// that cannot run for this map's grounded pin count. Explicit selections still
-// validate against the full certified catalog and fail closed in the renderer.
-func eligibleMapCompositions(pinCount int, certified []string) []string {
-	return scriptoverlay.EligibleMapCompositions(pinCount, certified)
 }
 
 // mapMapAnimationsCertified lists every renderer-approved map_animation id:

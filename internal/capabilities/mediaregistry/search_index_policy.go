@@ -17,16 +17,3 @@ const SearchIndexTaxonomySQL = `
 const SearchIndexEligibilitySQL = SearchIndexTaxonomySQL + `
     AND COALESCE(embedding_json, '') NOT IN ('', '[]', '{}')
 `
-
-// IsSearchIndexEligible is the in-memory counterpart of
-// SearchIndexEligibilitySQL. It is strict and fail-closed for incomplete
-// canonical rows.
-func IsSearchIndexEligible(t AssetTaxonomy, embeddingJSON, deletedAt string) bool {
-	if t.Namespace == "" || t.SourceType == "" || embeddingJSON == "" || embeddingJSON == "[]" || embeddingJSON == "{}" || deletedAt != "" {
-		return false
-	}
-	if err := t.Validate(); err != nil {
-		return false
-	}
-	return t.IndexEligibility() == IndexEligibilitySearchable
-}

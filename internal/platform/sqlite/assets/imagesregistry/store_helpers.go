@@ -72,27 +72,6 @@ func buildClipFolderQuery(source string) string {
 	return q
 }
 
-// clipSearchColumns returns the columns used by the LIKE-fallback
-// search path.
-func clipSearchColumns() []string {
-	return []string{
-		"tags",
-		"name",
-		"search_text",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.description')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.clean_title')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.clip_summary')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.hook')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.topics')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.speakers')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.mentioned_people')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.people')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.clip_tags')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.search_keywords')",
-		"json_extract(COALESCE(metadata_json,'{}'), '$.embedding_text')",
-	}
-}
-
 // ── Receiver methods (4 moved from domain) ──────────────────────────
 
 // GetFolderChildren returns non-deleted assets whose

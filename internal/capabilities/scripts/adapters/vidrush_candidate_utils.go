@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"math"
-	"strings"
 )
 
 // clampUnit is a neutral score-normalization helper for discovery metadata.
@@ -16,5 +15,3 @@ func clampUnit(value float64) float64 {
 	}
 	return value
 }
-
-func hasValue(value string) bool { return strings.TrimSpace(value) != "" }

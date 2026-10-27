@@ -42,6 +42,7 @@ const semanticFixture = `{
      {"id":"bullet_02","text":"Revenue grew 25% against 18% in 2024.","type":"SENTENCE","start_byte":32,"end_byte":69,"evidence":"Revenue grew 25% against 18% in 2024.","score":1.0,"provenance":"visualner"}
     ],
     "short_phrases": [{"id":"phrase_01","text":"founded","type":"PHRASE","start_byte":12,"end_byte":19,"evidence":"founded","score":0.6,"provenance":"phrase_impact"}], "long_phrases": [], "quotes": [], "important_words": [],
+    "important_segments": [], "composed_image_queries": [], "contextual_image_queries": [],
     "visual_proposals": [
      {"id":"scene_01_visual_001","proposal_type":"chart","entity_ids":[],"suggested_visual":"bar_comparison","status":"requires_semantic_validation","score":0.9,
       "chart_items":[
@@ -66,6 +67,7 @@ const semanticFixture = `{
      {"id":"bullet_01","text":"The hearing was on 15 March 2008.","type":"SENTENCE","start_byte":0,"end_byte":33,"evidence":"The hearing was on 15 March 2008.","score":1.0,"provenance":"visualner"}
     ],
     "short_phrases": [], "long_phrases": [], "quotes": [], "important_words": [],
+    "important_segments": [], "composed_image_queries": [], "contextual_image_queries": [],
     "visual_proposals": [],
     "semantic_groups": [], "micro_summaries": [], "rejected_items": 0
    }
@@ -258,14 +260,21 @@ func TestSemanticEngineRejectsWrongSchemaAndBadInputs(t *testing.T) {
 }
 
 func TestSemanticEngineFailsClosedOnIncompleteManifestAndDanglingIdentity(t *testing.T) {
-	omitted := strings.Replace(semanticFixture, `"short_phrases": [], `, ``, 1)
-	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(omitted)}))
-	if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "omits required manifest collections") {
-		t.Fatalf("expected missing collection rejection, got %v", err)
+	for _, collection := range []string{"short_phrases", "important_segments", "composed_image_queries", "contextual_image_queries"} {
+		t.Run(collection, func(t *testing.T) {
+			omitted := strings.Replace(semanticFixture, `"`+collection+`": [],`, ``, 1)
+			if omitted == semanticFixture {
+				t.Fatal("fixture collection was not removed")
+			}
+			adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(omitted)}))
+			if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "omits required manifest collections") {
+				t.Fatalf("expected missing collection rejection, got %v", err)
+			}
+		})
 	}
 
 	dangling := strings.Replace(semanticFixture, `"id":"person_01","canonical_surface":"Marco Rossi"`, `"id":"person_99","canonical_surface":"Marco Rossi"`, 1)
-	adapter, _ = NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(dangling)}))
+	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(dangling)}))
 	if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "unknown identity") {
 		t.Fatalf("expected dangling identity rejection, got %v", err)
 	}

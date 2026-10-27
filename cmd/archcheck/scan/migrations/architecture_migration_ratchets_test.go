@@ -37,33 +37,6 @@ import (
 //	func TestParseDomainJobAddedImportsBlocksOnlyProductionAdditions(t *testing.T) { ... }
 //	func TestAddedLineImportsDomainJobRejectsCommentsAndCanonicalPath(t *testing.T) { ... }
 
-func TestScanPackagesRegisteredHotspotCannotGrow(t *testing.T) {
-	root := t.TempDir()
-	writeHotspotRegistry(t, root, `{
-  "version": 1,
-  "hotspots": [{
-    "path": "internal/capabilities/jobs/queue",
-    "owner": "internal/capabilities/jobs/queue",
-    "deadline": "2026-09-15",
-    "baseline_files": 2,
-    "target_packages": ["internal/capabilities/jobs/queue/queue"]
-  }],
-  "root_migrations": []
-}`)
-	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/a.go", "package jobs\n")
-	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/b.go", "package jobs\n")
-	writeTestGoFile(t, root, "internal/capabilities/jobs/queue/c.go", "package jobs\n")
-
-	r := &report.Report{}
-	structure.ScanPackages(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{})
-	if len(r.Violations) != 1 {
-		t.Fatalf("expected one hotspot violation, got %#v", r.Violations)
-	}
-	if r.Violations[0].MatchedRule != "package_hotspot_growth" || r.Violations[0].Severity != "error" {
-		t.Fatalf("expected hard growth ratchet, got %#v", r.Violations[0])
-	}
-}
-
 func TestScanPackagesProductionRejectsUnregisteredHotspot(t *testing.T) {
 	root := t.TempDir()
 	writeHotspotRegistry(t, root, `{

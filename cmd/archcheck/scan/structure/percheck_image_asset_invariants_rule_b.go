@@ -116,10 +116,6 @@ const imageAssetRuleBNote = "forbidden JSON field in Gemma-prompt-construction s
 // implementation. Same shadow pattern as Rule A.
 type imageAssetGemmaDTOLeakBanRule struct{}
 
-func (imageAssetGemmaDTOLeakBanRule) Scan(root string, r *report.Report) {
-	scanImageAssetGemmaDTOFields(root, r)
-}
-
 // scanImageAssetGemmaDTOFields walks the Gemma-prompt-
 // construction directory (gemmaPromptScopeRelPathPrefix) and
 // emits gemma_dto_leak_ban Rule B violations for any struct

@@ -82,14 +82,6 @@ func EditorialBackgroundIDs() []string {
 }
 
 // EditorialBackgroundIdentities returns the stable alias -> Drive identity map.
-func EditorialBackgroundIdentities() map[string]string {
-	out := make(map[string]string, len(editorialBackgroundAssets))
-	for _, asset := range editorialBackgroundAssets {
-		out[asset.ID] = asset.DriveFileID
-	}
-	return out
-}
-
 // LookupEditorialBackground resolves a public alias to its canonical asset.
 // Matching is case-insensitive and whitespace-tolerant, consistent with the
 // audio alias resolution.

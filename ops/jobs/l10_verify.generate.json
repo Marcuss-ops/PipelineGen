@@ -1,0 +1,83 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "l10-verify-20261026",
+  "items": [
+    {
+      "id": "verify-1clip-1scene-10lang",
+      "project": "verify-1clip-1scene-10lang",
+      "title": "Verify 1 clip 1 scena 10 lingue",
+      "language": "en",
+      "tone": "documentario ironico",
+      "style": "Scrivi una narrazione documentaristica chiara e coinvolgente basata solo sulle informazioni fornite.",
+      "source": {
+        "type": "text",
+        "topic": "La corsa allo spazio: da Sputnik a Artemis",
+        "source_text": "La corsa allo spazio inizia nel 1957 con lo Sputnik e attraversa le prime missioni umane, le esplorazioni lunari e le stazioni orbitali internazionali, fino ai programmi contemporanei di ritorno sulla Luna."
+      },
+      "script_params": {
+        "target_words": 60,
+        "min_words": 30,
+        "segment_words": 60,
+        "segments": [
+          {
+            "id": "scene-0",
+            "topic": "La corsa allo spazio: da Sputnik a Artemis",
+            "source_text": "La corsa allo spazio inizia nel 1957 con lo Sputnik e attraversa le prime missioni umane, le esplorazioni lunari e le stazioni orbitali internazionali, fino ai programmi contemporanei di ritorno sulla Luna.",
+            "target_words": 60,
+            "min_words": 30,
+            "max_words": 120,
+            "duration_ms": 15000
+          }
+        ],
+        "source_text_verbatim": true,
+        "single_scene": true
+      },
+      "output": {
+        "save_to_db": true,
+        "extract_entities": false,
+        "generate_timeline": true,
+        "voiceover_enabled": false,
+        "languages": [],
+        "render": {
+          "enabled": false,
+          "require_gpu": false,
+          "drive_folder_id": "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2",
+          "subtitles": {
+            "enabled": true,
+            "mode": "burn",
+            "preset": "subs-young"
+          },
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-01"
+          }
+        },
+        "drive_folder_id": "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
+      },
+      "audio": {
+        "mode": "NONE"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "provider_policy": {
+          "internet_images": "disabled",
+          "artlist": "disabled",
+          "image_generation": "disabled",
+          "youtube": "disabled"
+        },
+        "extraction": {
+          "enabled": false,
+          "include": [],
+          "entity_images": {
+            "enabled": false
+          }
+        }
+      }
+    }
+  ]
+}
