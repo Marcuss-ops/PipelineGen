@@ -31,7 +31,6 @@ func buildReport(
 		}
 	}
 	planByScene := make(map[string][]scriptgen.SemanticProductionUnit)
-	candidatePriority := make(map[string]float64)
 	if plan != nil {
 		report.Plan = planReport{Schema: plan.Schema, Metrics: planMetricsReport{
 			RawCandidates:           plan.Metrics.RawCandidates,
@@ -57,11 +56,6 @@ func buildReport(
 			case scriptgen.ProductionUnitDroppedSceneBudget:
 				report.Plan.DroppedSceneBudget++
 			}
-		}
-	}
-	if consolidation != nil {
-		for _, candidate := range consolidation.ProductionCandidates {
-			candidatePriority[candidate.ID] = candidate.Priority
 		}
 	}
 	seenEngine := false
@@ -92,7 +86,7 @@ func buildReport(
 		for _, unit := range planByScene[input.SceneID] {
 			entry.ProductionUnits = append(entry.ProductionUnits, unitReport{
 				CandidateID: unit.CandidateID, Recipe: unit.Recipe, Rank: unit.Rank,
-				Priority: candidatePriority[unit.CandidateID],
+				Priority: unit.Priority,
 				Title:    unit.Title, Evidence: unit.Evidence, Status: unit.Status,
 				SearchStatus: unit.SearchStatus, RequiresMedia: unit.RequiresMedia,
 				RejectionReason: unit.DroppedReason, Queries: plannedQueries(unit.Queries),

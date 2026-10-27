@@ -64,6 +64,47 @@ func TestSemanticProductionPlanAppliesTheRunBudgetDeterministically(t *testing.T
 	}
 }
 
+func TestGroundedContextQueryWinsScarceSlotOverBareEntity(t *testing.T) {
+	contextual := SemanticSearchQuery{
+		Kind: "context_phrase", Text: "Andrea Sempio treatment plant Toledo",
+		Origin: "derived_from_source_context", Evidence: "Andrea Sempio described a treatment plant in Toledo.",
+		Components: []SemanticSearchQueryComponent{
+			{Kind: "entity", ComponentType: "PERSON", Text: "Andrea Sempio"},
+			{Kind: "object", ComponentType: "OBJECT", Text: "treatment plant"},
+			{Kind: "location", ComponentType: "LOCATION", Text: "Toledo"},
+		},
+	}
+	bare := SemanticSearchQuery{Kind: "exact_mention", Text: "Ann Arbor", Origin: "literal"}
+	consolidation := planConsolidation([]SemanticProductionCandidate{
+		planCandidate("vc_bare", "entity_search", "s01", 1, []string{"person_01"}, "entity:bare", bare),
+		planCandidate("vc_context", "entity_search", "s02", 2, []string{"person_02"}, "context:event", contextual),
+	}, nil)
+	consolidation.ProductionCandidates[0].Priority = 0.82
+	consolidation.ProductionCandidates[1].Priority = 0.68
+	plan, err := BuildSemanticProductionPlan(consolidation, planIdentities(), SemanticProductionPlanConfig{
+		MaxMediaUnits: 1, MaxMediaUnitsPerScene: 1,
+	})
+	if err != nil {
+		t.Fatalf("plan build failed: %v", err)
+	}
+	if got := plan.Units[0].CandidateID; got != "vc_context" {
+		t.Fatalf("grounded context should take the only media slot, got %s", got)
+	}
+	if plan.Units[1].Status != ProductionUnitDroppedBudget {
+		t.Fatalf("bare identity should remain available after the slot is spent: %+v", plan.Units[1])
+	}
+}
+
+func TestDocumentAnchorKeepsItsCrossScenePriority(t *testing.T) {
+	anchor := planCandidate("vc_anchor", "entity_search", "s01", 1, nil, "anchor:toledo",
+		SemanticSearchQuery{Kind: "exact_mention", Text: "Toledo", Origin: "literal"})
+	anchor.Priority = 0.93
+	anchor.Rationale = []string{"global_document_anchor"}
+	if got := semanticPlannerPriority(anchor, nil); got != 0.93 {
+		t.Fatalf("document anchor priority was changed: %v", got)
+	}
+}
+
 func TestSemanticProductionPlanReusesOneRetrievalPerAsset(t *testing.T) {
 	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{

@@ -1,0 +1,5 @@
+Toledo is the subject of this report, and Ohio is the state around it. A drinking-water emergency affected Toledo after contamination in Lake Erie. The city switched its intake and built a treatment plant at Collins Park in East Toledo. The plant serves neighborhoods across the city.
+
+The transcript also mentions a factory, but the factory is not part of the water emergency. A local speaker named Tracy Rhodess describes buying supplies in Taylor, Michigan. The report does not say that Tracy worked at Collins Park.
+
+The report later describes a proposed battery factory in Michigan. Construction has not started. An old caption contains the malformed token 140ome, and a place name is transcribed as Lake Mami; keep those source strings available for review instead of silently rewriting them.
