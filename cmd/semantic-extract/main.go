@@ -14,6 +14,7 @@ import (
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 	"go.uber.org/zap"
 )
 
@@ -78,7 +79,7 @@ func main() {
 		}
 		return
 	}
-	if err := os.WriteFile(*outputPath, result, 0o644); err != nil {
+	if err := atomicwrite.WriteFile(*outputPath, result, 0o644); err != nil {
 		fatal("write output: %v", err)
 	}
 }
