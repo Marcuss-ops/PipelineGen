@@ -26,12 +26,7 @@ package detail
 
 import (
 	"errors"
-	"fmt"
-	"sort"
-	"strings"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // VisualSummary is the canonical domain model for one row in
@@ -193,59 +188,6 @@ var (
 	ErrVisualSummaryNilReceiver = errors.New("visual_summary: nil receiver")
 )
 
-// Validate enforces the row-level invariants. nil-safe.
-//
-// Returns errors.Join of all field-level violations so callers
-// can recover the full reason set via errors.Is (against any of
-// ErrVisualSummary*) or via err.Error() string inspection. The
-// single-error contract was previously a joined string; the
-// errors.Join upgrade lets the repository, the payload mapper,
-// and the admin reindex command programmatic-distinguish between
-// "empty asset_id" and "actions-too-long" without parsing prose.
-//
-// Ordering (deterministic contract):
-//  1. AssetID non-empty       -> ErrVisualSummaryEmptyAssetID
-//  2. VisualSummaryText fit   -> ErrVisualSummarySummaryTooLong
-//  3. VisibleActions fit      -> ErrVisualSummaryActionsTooLong
-//  4. VisibleEntities fit     -> ErrVisualSummaryEntitiesTooLong
-//  5. FrameCount >= 0         -> ErrVisualSummaryNegativeFrameCount
-//  6. IntervalSeconds >= 0    -> ErrVisualSummaryNegativeInterval
-//     (zero is the "never sampled / legacy" sentinel and IS a valid
-//     row only because EmptyAssetDB returns IntervalSeconds=0;
-//     the canonical writer always sets IntervalSeconds > 0 once a
-//     real VLM pass has run.)
-//
-// nil-safe: a nil receiver returns ErrVisualSummaryNilReceiver so
-// the typed-error contract is preserved at every call site.
-func (v *VisualSummary) Validate() error {
-	if v == nil {
-		return ErrVisualSummaryNilReceiver
-	}
-	var errs []error
-	if strings.TrimSpace(v.AssetID) == "" {
-		errs = append(errs, ErrVisualSummaryEmptyAssetID)
-	}
-	if len(v.VisualSummaryText) > MaxVisualSummaryChars {
-		errs = append(errs, ErrVisualSummarySummaryTooLong)
-	}
-	if len(v.VisibleActions) > MaxVisibleItems {
-		errs = append(errs, ErrVisualSummaryActionsTooLong)
-	}
-	if len(v.VisibleEntities) > MaxVisibleItems {
-		errs = append(errs, ErrVisualSummaryEntitiesTooLong)
-	}
-	if v.FrameCount < 0 {
-		errs = append(errs, ErrVisualSummaryNegativeFrameCount)
-	}
-	if v.IntervalSeconds < 0 {
-		errs = append(errs, ErrVisualSummaryNegativeInterval)
-	}
-	if len(errs) == 0 {
-		return nil
-	}
-	return errors.Join(errs...)
-}
-
 // EmptyAssetDB constructs the canonical no-op row used by the
 // legacy / pre-VLM migration path. Returns a Validate-clean
 // VisualSummary with asset_id only, no VLM pass invoked.
@@ -255,54 +197,3 @@ func (v *VisualSummary) Validate() error {
 // visual_summary/visible_actions/visible_entities entirely
 // when the row is empty. See qdrant.payload_builder_test.go for
 // the omitempty regression contract.
-
-// ComputeSourceHash returns the deterministic SHA-256 fingerprint
-// of (sorted_visible_actions || sorted_visible_entities || model_name
-// || model_version || preprocessing_version || frame_count). Empty
-// fields are excluded from the hash input so an empty {[]} array
-// produces the same hash as a {nil} array - the fail-closed
-// "no VLM pass" path produces a stable empty hash that the
-// supersede gate can compare across re-runs.
-//
-// The function is stable for fixed inputs: same VisibleActions +
-// VisibleEntities + model + version + frame_count -> same hash
-// (one canonical ordering via sort.Strings + canonical concatenation).
-//
-// godlike/06 SSOT: this function is the SOLE canonical
-// SourceHash constructor. The CLI-level supersede gate
-// (cmd/admin/reindex_visual_summary.go) reads this hash to
-// decide whether to re-index. A future port to a different
-// hash (e.g. SHA-3) must add an explicit version bump.
-func ComputeSourceHash(
-	visibleActions []string,
-	visibleEntities []string,
-	modelName string,
-	modelVersion string,
-	preprocessingVersion string,
-	frameCount int,
-) string {
-	acts := append([]string(nil), visibleActions...)
-	ents := append([]string(nil), visibleEntities...)
-	sort.Strings(acts)
-	sort.Strings(ents)
-	var b strings.Builder
-	b.WriteString("actions:")
-	for _, s := range acts {
-		b.WriteString(s)
-		b.WriteString("|")
-	}
-	b.WriteString(";entities:")
-	for _, s := range ents {
-		b.WriteString(s)
-		b.WriteString("|")
-	}
-	b.WriteString(";model:")
-	b.WriteString(modelName)
-	b.WriteString(":")
-	b.WriteString(modelVersion)
-	b.WriteString(";preproc:")
-	b.WriteString(preprocessingVersion)
-	b.WriteString(";frames:")
-	fmt.Fprintf(&b, "%d", frameCount)
-	return digest.SHA256String(b.String())
-}
