@@ -61,21 +61,5 @@ const (
 	TerritoryAll ImageSearchTerritory = "all"
 )
 
-// String returns the canonical, persisted string representation.
-func (t ImageSearchTerritory) String() string {
-	return string(t)
-}
-
-// IsValid reports whether the territory matches a known constant.
-// Empty string is intentionally INVALID — a caller that wants to
-// search across both territories MUST pass TerritoryAll explicitly.
-func (t ImageSearchTerritory) IsValid() bool {
-	switch t {
-	case TerritoryRetrieved, TerritoryGenerated, TerritoryAll:
-		return true
-	}
-	return false
-}
-
 // String methods for ImageOrigin and ImageProvider are defined by the
 // canonical asset package. ImageSearchTerritory remains local to detail.

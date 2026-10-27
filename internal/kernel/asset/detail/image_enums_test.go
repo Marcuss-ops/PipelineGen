@@ -123,22 +123,6 @@ func TestImageProvider_JSONRoundTrip(t *testing.T) {
 	}
 }
 
-func TestImageSearchTerritory_StableValues(t *testing.T) {
-	cases := []struct {
-		territory ImageSearchTerritory
-		want      string
-	}{
-		{TerritoryRetrieved, "retrieved"},
-		{TerritoryGenerated, "generated"},
-		{TerritoryAll, "all"},
-	}
-	for _, tc := range cases {
-		if tc.territory.String() != tc.want || !tc.territory.IsValid() {
-			t.Errorf("invalid territory contract for %q", tc.territory)
-		}
-	}
-}
-
 func TestTypedEnums_JSONStrings(t *testing.T) {
 	type payload struct {
 		O ImageOrigin          `json:"o"`
