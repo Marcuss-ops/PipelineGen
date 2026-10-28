@@ -56,7 +56,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"go.uber.org/zap"
 )
 
@@ -242,6 +244,59 @@ func TestSendSynthesizeRequest_HappyPath(t *testing.T) {
 	}
 	if result.Status != "generated" {
 		t.Errorf("Status = %q, want %q", result.Status, "generated")
+	}
+}
+
+type timingProbeStub struct {
+	mediaexec.AudioProcessor
+	info *mediaexec.MediaInfo
+	err  error
+}
+
+func (s timingProbeStub) Probe(context.Context, string) (*mediaexec.MediaInfo, error) {
+	return s.info, s.err
+}
+
+func TestSendSynthesizeRequestPreservesTimingProbeFailure(t *testing.T) {
+	outDir := t.TempDir()
+	outFile := writeOutputFile(t, filepath.Join(outDir, "voice.mp3"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(ttsSynthesizeResponse{
+			OK: true, Path: outFile, MetadataPath: outFile + ".metadata.jsonl", BoundaryCount: 1,
+		})
+	}))
+	defer srv.Close()
+
+	probeFailure := errors.New("probe worker unavailable")
+	for _, tc := range []struct {
+		name  string
+		probe timingProbeStub
+		want  string
+	}{
+		{"worker error", timingProbeStub{err: probeFailure}, "probe worker unavailable"},
+		{"missing metadata", timingProbeStub{}, "probe returned no media information"},
+		{"zero duration", timingProbeStub{info: &mediaexec.MediaInfo{}}, "duration is not positive"},
+		{"valid duration", timingProbeStub{info: &mediaexec.MediaInfo{Duration: time.Second}}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newTestProcessor(t, srv.URL, "it", nil)
+			p.SetMediaExecutor(tc.probe)
+			result, err := p.sendSynthesizeRequest(context.Background(), &AudioInput{
+				Text: "test", Language: "it", Filename: "voice.mp3", OutputDir: outDir,
+			})
+			if tc.want == "" {
+				if err != nil || result == nil || result.Duration != time.Second {
+					t.Fatalf("valid probe: result=%+v err=%v", result, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("probe error = %v, want %q", err, tc.want)
+			}
+			if tc.name == "worker error" && !errors.Is(err, probeFailure) {
+				t.Fatalf("probe cause was not preserved: %v", err)
+			}
+		})
 	}
 }
 

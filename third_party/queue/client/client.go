@@ -618,7 +618,11 @@ func (c *Client) Get(ctx context.Context, id string) (Job, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		raw, _ := io.ReadAll(resp.Body)
-		return Job{}, fmt.Errorf("queue get: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		message := fmt.Sprintf("queue get: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		if resp.StatusCode >= http.StatusInternalServerError {
+			return Job{}, fmt.Errorf("%s: %w", message, errQueueStatusUnavailable)
+		}
+		return Job{}, errors.New(message)
 	}
 
 	var job Job

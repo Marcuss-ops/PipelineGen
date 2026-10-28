@@ -165,14 +165,23 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 			result.ContentSHA256 = hash
 		}
 	}
+	var durationProbeErr error
 	if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
-		if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr == nil {
-			result.Duration = info.Duration
+		if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr != nil {
+			durationProbeErr = probeErr
+		} else if info == nil {
+			durationProbeErr = fmt.Errorf("probe returned no media information")
 		} else {
-			p.log.Warn("failed to probe synthesized audio duration", zap.Error(probeErr))
+			result.Duration = info.Duration
 		}
 	} else {
-		p.log.Warn("failed to probe synthesized audio duration", zap.Error(mediaErr))
+		durationProbeErr = mediaErr
+	}
+	if durationProbeErr != nil {
+		p.log.Warn("failed to probe synthesized audio duration", zap.Error(durationProbeErr))
+	}
+	if err := validateTimingDuration(result, durationProbeErr); err != nil {
+		return nil, err
 	}
 	result.Metrics.PostprocessMS = time.Since(postprocessStart).Milliseconds()
 	result.Metrics.AudioDurationMS = result.Duration.Milliseconds()

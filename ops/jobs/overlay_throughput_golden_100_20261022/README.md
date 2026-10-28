@@ -1,14 +1,37 @@
 # Golden case — 100 overlay/minuto
 
-Payload immutabile: `../overlay_throughput_golden_100_20261022.v2.generate.json`
-(SHA-256 `60fb14ec1e6ace95489f38e2b84f91dd7a28d45d89edbcf1e5c060a52d63080d`).
+Payload attualmente nel repository: `../overlay_throughput_golden_100_20261022.v2.generate.json`
+(SHA-256 `fe06d3b3fe68685af53fdf353de8940dd3db8c68046d97896f18b99b42c2f672`).
+Il precedente SHA-256 `60fb14ec1e6ace95489f38e2b84f91dd7a28d45d89edbcf1e5c060a52d63080d`
+identifica la versione precedente a `f255d9505`; quel commit ha sostituito
+`render.enabled=true` con `render.enabled=false, overlays_only=true`. Non
+assumere che le run storiche usino lo stesso payload: verificare lo SHA della
+copia effettivamente sottomessa per ogni confronto.
 
 Deriva dal job reale `08_fonti_media.generate.v11.json` (batch Garlasco 10 video):
 20 segmenti, clip intro già selezionate, `final_job=false` (overlay-only),
 riuso cache abilitato, refresh asset disabilitato, `max_overlays_per_scene=10`.
 Il mix richiesto è 25 frasi brevi + 25 lunghe + 30 immagini (10 schede entità)
-+ 10 date + 10 mappe = 100 overlay; il piano materializzato dipende dai
-risultati live di ricerca e tipicamente consegna 37–41 item.
++ 10 date + 10 mappe = 100 overlay. Il payload corrente è però un caso **senza
+mappe**: `overlay_categories.maps=disabled`, `max_map_overlays=0`,
+`overlay_group_limits.maps=0` e `animation_counts.maps=0`. Non può certificare
+il mix richiesto, anche se il testo del brief domanda dieci mappe. Il piano
+materializzato dipende inoltre dai risultati live; le run recenti r4–r7 hanno
+prodotto 65–70 item. Il test sintetico
+`TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items` prova 100
+item con candidati completi e mappe abilitate, non la run live. Serve una
+versione del workload coerente con il mix, con candidati e asset verificati;
+non cambiare il payload storico fingendo che le misure restino confrontabili.
+
+Il nuovo workload `../overlay_throughput_golden_100_20261022.v3-maps.generate.json`
+(SHA-256 `7d3089014f613aff65318ad6779e5ac7c8d66cbf017f95e2f2c3f0f88c8c4f3a`)
+abilita le mappe e mantiene `final_job=false`, `render.enabled=false` e
+`overlays_only=true`. Il test sintetico legge e verifica direttamente i suoi
+limiti e le sue categorie, poi controlla il mix 25+25+20+10+10+10 con
+candidati e asset di prova. È una prova del planner, non garanzia che i
+provider live producano i 100 candidati o che il throughput sia certificato.
+Il driver `run_golden.sh` usa ancora la v2; per la v3 specificare il nuovo file
+nel comando `submit-and-poll.sh` solo in un ambiente autorizzato.
 
 ## Comando di ripetizione
 

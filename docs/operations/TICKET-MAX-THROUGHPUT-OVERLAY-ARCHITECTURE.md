@@ -219,6 +219,68 @@ binario fast-dev aggiornato. La nuova run end-to-end canonica si è fermata
 nella fase TTS (capture audio a durata zero, poi circuit breaker). Un retry
 senza audio, dopo il rebuild del Semantic Engine, è terminato ma non ha
 prodotto `overlay_plan` né artefatti renderizzati: non è un run di throughput.
-Non si attribuisce rate a nessuno di questi tentativi. Per chiudere il gate
-serve una run golden con 100 item validati, encoder P4 in uso, tre daemon
-pronti e nessun carico concorrente.
+Non si attribuisce rate a nessuno di questi tentativi. Il successivo snapshot
+`codex-20261027T1713Z-audio-video-full` riporta inoltre un fallimento durante
+l'attesa della timeline: `queue get: HTTP 500: timeout: context deadline
+exceeded`. È compatibile con il limite PostgreSQL di 15 s per operazione, ma
+lo snapshot non distingue attesa connessione, lock o query: causa non ancora
+provata. Il valore TTS `duration=0` può anche derivare da probe fallita, che
+il processor attualmente registra e degrada a zero; non prova da solo che il
+file fosse vuoto. Le catture e i log della probe non sono presenti nello
+snapshot. Una probe locale su MP3 sintetico con i binari BrainRust disponibili
+restituisce 1,032 s; non riproduce il difetto live.
+
+Il payload corrente è `final_job=false`, `render.enabled=false`,
+`overlays_only=true`, SHA-256 `fe06d3b3fe68685af53fdf353de8940dd3db8c68046d97896f18b99b42c2f672`.
+Il precedente SHA `60fb14ec1e6ace95489f38e2b84f91dd7a28d45d89edbcf1e5c060a52d63080d`
+è della versione precedente al commit `f255d9505`. Il payload corrente disabilita
+le mappe, nonostante il brief ne richieda dieci; il test sintetico del mix da
+100 passa solo con candidati completi e mappe abilitate. Per chiudere il gate
+serve un workload coerente e identificato, una run overlay-only con 100 item
+materializzati e validati, encoder P4 in uso, tre daemon pronti e nessun carico
+concorrente. Nessun video master è richiesto.
+
+## 9. Ripristino runtime per il prossimo gate overlay-only (27-10-2026)
+
+- Rebuild `Chronon3d/build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli`
+  completato con `ninja -j12`; questo è il percorso che i drop-in dei daemon
+  cercano. Il test P4 segmentato passa anche col binario release appena prodotto
+  (3 segmenti, 12 frame, parità pixel; 4,63 s). È una verifica di parità engine,
+  non una misura di throughput.
+- Ripristinato `refactored/.venv-whisper` dai lock Whisper e TTS. Il preflight
+  CUDA è PASS; PipelineGen è attivo e `/ready` restituisce 200. `bin/pipelinegen`
+  è stato compilato localmente con `go build`: `make build-server` si ferma
+  intenzionalmente al gate `rust-fetch` perché il release BrainRust pinna ICU 72
+  e l'host espone ICU 70. I binari BrainRust locali usati per questa prova sono
+  legati a ICU 70; non viene dichiarata l'installazione del release pin.
+- I daemon `chronon3d-b` e `chronon3d-c` sono attivi. `chronon3d.service` è
+  `start-limit-hit`; il worker RenderingGen in uso dichiara 3 lane e i socket
+  primario, B e C. Senza il socket primario la topologia non è integra e non va
+  usata per certificare il rate massimo. Il reset richiede `systemctl` con
+  autenticazione sudo interattiva; nessun final job è stato inviato.
+- Payload candidato overlay-only con mappe abilitate:
+  `ops/jobs/overlay_throughput_golden_100_20261022.v3-maps.generate.json`,
+  SHA-256 `7d3089014f613aff65318ad6779e5ac7c8d66cbf017f95e2f2c3f0f88c8c4f3a`;
+  `final_job=false`, `render.enabled=false`, `overlays_only=true`, mappe
+  abilitate. Il mix richiesto è 25 short + 25 long + 30 immagini (10 schede
+  entità incluse) + 10 date + 10 mappe. Il test sintetico di materializzazione
+  da 100 item è PASS. La run live resta NOT RUN finché la terza socket non è
+  disponibile; pertanto il ticket e il gate 100/min restano aperti.
+
+### 9.1 Ripresa live overlay-only (27-10-2026)
+
+- Eseguito `systemctl reset-failed/start chronon3d.service`: primario, B e C
+  risultano tutti attivi e le tre socket Unix esistono. RenderingGen è attivo
+  con `gpu_lanes=3` e la lista delle tre socket; PipelineGen `/ready` è 200,
+  `running_jobs=0` al controllo pre-submit. Nessun final job è stato inviato.
+- Sottomesso il candidato v3 con chiave
+  `overlay-throughput-golden-v3-20261027T2127Z`, job
+  `job_1793136466907463021_521f717d`. Il payload verifica
+  `final_job=false`, `render.enabled=false`, `overlays_only=true` e mappe
+  abilitate. Il job è stato accettato e risulta `RUNNING` nella fase `leased`;
+  non ha ancora pubblicato `overlay_plan` o metriche render, quindi non è
+  attribuibile alcun rate.
+- Il tempo pre-render è degradato dalle ricerche immagini: Commons va in
+  timeout e SearXNG non è raggiungibile (`127.0.0.1:8080/healthz`). Questa
+  attesa non è la finestra di rendering; il benchmark live va considerato
+  ancora aperto fino alla terminal state e alla verifica dei 100 item.

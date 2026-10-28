@@ -8,6 +8,7 @@ package scriptgeneration
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -226,8 +227,43 @@ func appendEntityTimelineScene(timeline *capabilityentities.EntityTimeline, scen
 // when the candidate supply exists — 25 short + 25 long phrases, 20 context
 // images + 10 entity cards, 10 dates and 10 maps.
 func TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items(t *testing.T) {
+	payloadPath := filepath.Join("..", "..", "..", "ops", "jobs", "overlay_throughput_golden_100_20261022.v3-maps.generate.json")
+	raw, err := os.ReadFile(payloadPath)
+	require.NoError(t, err)
+	var payload struct {
+		FinalJob bool `json:"final_job"`
+		Items    []struct {
+			MaxPhraseOverlays   int               `json:"max_phrase_overlays"`
+			MaxImageOverlays    int               `json:"max_image_overlays"`
+			MaxMapOverlays      int               `json:"max_map_overlays"`
+			MaxOverlaysPerScene int               `json:"max_overlays_per_scene"`
+			AnimationCounts     map[string]int    `json:"animation_counts"`
+			OverlayGroupLimits  map[string]int    `json:"overlay_group_limits"`
+			OverlayCategories   map[string]string `json:"overlay_categories"`
+			Output              struct {
+				Render struct {
+					Enabled      bool `json:"enabled"`
+					OverlaysOnly bool `json:"overlays_only"`
+				} `json:"render"`
+			} `json:"output"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &payload))
+	require.False(t, payload.FinalJob)
+	require.Len(t, payload.Items, 1)
+	item := payload.Items[0]
+	require.False(t, item.Output.Render.Enabled)
+	require.True(t, item.Output.Render.OverlaysOnly)
+	require.Equal(t, "enabled", item.OverlayCategories["maps"])
+	canvas := goldenMixCanvas()
+	require.Equal(t, canvas.MaxPhraseOverlays, item.MaxPhraseOverlays)
+	require.Equal(t, canvas.MaxImageOverlays, item.MaxImageOverlays)
+	require.Equal(t, canvas.MaxMapOverlays, item.MaxMapOverlays)
+	require.Equal(t, canvas.MaxOverlaysPerScene, item.MaxOverlaysPerScene)
+	require.Equal(t, canvas.OverlayGroupLimits, item.OverlayGroupLimits)
+	require.Equal(t, canvas.AnimationCounts, item.AnimationCounts)
 	result, resolver := goldenMixResult(t)
-	plan, err := CompileOverlayPlanWithPlates(result, "en", goldenMixCanvas(),
+	plan, err := CompileOverlayPlanWithPlates(result, "en", canvas,
 		"plan-golden-mix", "video-golden-mix", "project-golden-mix", resolver, true, true)
 	require.NoError(t, err)
 	require.NotNil(t, plan)
