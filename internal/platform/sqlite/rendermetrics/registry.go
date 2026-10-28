@@ -58,7 +58,7 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO render_attempt_analytics (
-			attempt_id, job_id, item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us,
+			attempt_id, job_id, run_id, item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us,
 			submit_started_at, submit_accepted_at, wait_started_at, wait_finished_at,
 			queue_queued_at, queue_started_at, queue_completed_at, artifact_available_at, outcome,
 			phrase_count, word_count, number_count, image_count, leak_count,
@@ -78,9 +78,10 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 			?,?,?,?,?,?,?,?,?, ?,
 			?,?,?,?,?,?,?,?,?, ?,
 			?,?,?,?,?,?,?,?,?, ?,
-			?,?)
+			?,?,?)
 		ON CONFLICT(attempt_id) DO UPDATE SET
 			job_id = excluded.job_id,
+			run_id = excluded.run_id,
 			item_id = excluded.item_id,
 			batch_id = excluded.batch_id,
 			batch_item_ids_json = excluded.batch_item_ids_json,
@@ -143,6 +144,7 @@ func (r *Registry) RecordAttempt(ctx context.Context, attempt scriptgen.RenderAt
 			recorded_at = excluded.recorded_at`,
 		attempt.AttemptID,
 		attempt.JobID,
+		attempt.RunID,
 		attempt.ItemID,
 		attempt.BatchID,
 		batchItemIDsJSON,

@@ -8,6 +8,18 @@
 
 ---
 
+## 0. TODO — cosa manca (agg. 2026-10-28)
+
+Pending "GOAL A" dalla sessione Freebuff 2026-10-25 — sessione encoder persistente
+cross-item (−259 ms/item) per chiudere il gap 83,98 → ≥100 overlay/min:
+
+- [ ] A1. Mappare il ciclo di vita dell'encoder e il meccanismo encoder-reuse disabilitato (dove/why fail-closed).
+- [ ] A2. Implementare il riuso sessione sicuro + contratto mux/EOF nel percorso render.
+- [ ] A3. Test di regressione (doctest) + suite mirate verdi.
+- [ ] A4. Build `-j14`, commit mirato, deploy release, restart daemon.
+- [ ] A5. Golden ×3 di confronto + mediana vs baseline 83,98/min; aggiornare il ticket.
+- [ ] Aggiornare i MD di closeout con root cause motion-blur, fix e stato lavori.
+
 ## 1. Diagnosi del Collo di Bottiglia Storico e Risoluzioni Effettuate
 
 ### 1.1 Root Cause del Blocco Storico (1–2 overlay/minuto)

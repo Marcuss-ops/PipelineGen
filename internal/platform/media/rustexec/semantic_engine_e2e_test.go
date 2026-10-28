@@ -198,7 +198,10 @@ func TestSemanticEngineRealBinaryAnalysesWholeScript(t *testing.T) {
 			if query == contextQuery {
 				contextualSearch = true
 			}
-			if query == "I tifosi festeggiano sugli spalti dopo" {
+			// The worker emits the grounded concept phrase itself (and the
+			// full sentence above) for a multiword visual subject; an older
+			// leading-prefix form is not the contract.
+			if query == "tifosi festeggiano sugli spalti" {
 				phraseSearch = true
 			}
 		}
@@ -371,8 +374,11 @@ func TestSemanticEngineRealBinaryPlansGarlascoProduction(t *testing.T) {
 		t.Fatal("no identity was admitted for an image")
 	}
 
+	// The planner intentionally ranks a source-grounded context query above a
+	// bare exact mention (refactored 0306c8e41); either kind is a valid first
+	// rung as long as it carries a query and a known rung.
 	attempt, ok := plan.NextSearchAttempt()
-	if !ok || attempt.Query == "" || attempt.QueryKind != "exact_mention" {
+	if !ok || attempt.Query == "" || (attempt.QueryKind != "exact_mention" && attempt.QueryKind != "context_phrase") {
 		t.Fatalf("first planner attempt: %+v ok=%v", attempt, ok)
 	}
 	next, more, err := plan.RecordSearchOutcome(scriptgen.SemanticSearchOutcome{CandidateID: attempt.CandidateID, Rung: attempt.Rung})

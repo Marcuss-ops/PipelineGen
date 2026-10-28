@@ -12,6 +12,11 @@
 //     presentation. Incompatible variants are excluded, never silently swapped.
 //   - An explicit certified id wins verbatim unless its certified presentation
 //     cannot run beside the selected camera/label — then it fails closed.
+//   - The certified vocabulary is the projection of the native map renderer's
+//     own catalog (ChrononPlugin/plugins/maps/maps-renderer-catalog.v1.json):
+//     the retired Python compositions are gone from the registry, so a stale
+//     request fails by name here and never reaches a renderer that no longer
+//     draws it.
 package overlay
 
 import (
@@ -41,34 +46,20 @@ type MapCompositionInput struct {
 type MapCompositionFamily string
 
 const (
-	MapFamilyLocationFocus MapCompositionFamily = "location_focus"
-	MapFamilyMultiPin      MapCompositionFamily = "multi_pin"
-	MapFamilyJourney       MapCompositionFamily = "journey_route"
-	MapFamilyRegion        MapCompositionFamily = "region_highlight"
-	MapFamilyComparison    MapCompositionFamily = "comparison"
-	MapFamilyEditorial     MapCompositionFamily = "editorial_documentary"
+	MapFamilyLocationFocus MapCompositionFamily = capabilityoverlay.MapFamilyLocationFocus
+	MapFamilyMultiPin      MapCompositionFamily = capabilityoverlay.MapFamilyMultiPin
+	MapFamilyJourney       MapCompositionFamily = capabilityoverlay.MapFamilyJourney
+	MapFamilyRegion        MapCompositionFamily = capabilityoverlay.MapFamilyRegion
+	MapFamilyComparison    MapCompositionFamily = capabilityoverlay.MapFamilyComparison
+	MapFamilyEditorial     MapCompositionFamily = capabilityoverlay.MapFamilyEditorial
 )
 
-// MapCompositionFamilyOf classifies one certified composition id. Unknown ids
-// belong to the single-location family; a route composition joins the journey
-// family as soon as the catalog certifies one.
+// MapCompositionFamilyOf classifies one certified composition id. The single
+// classification switch lives with the registry projection
+// (capabilityoverlay.MapCompositionFamilyOf); this is the typed facade, so
+// planner and resolver can never disagree about a family.
 func MapCompositionFamilyOf(id string) MapCompositionFamily {
-	switch strings.TrimSpace(id) {
-	case "region_zoom":
-		return MapFamilyRegion
-	case "pulse_marker", "spotlight":
-		return MapFamilyLocationFocus
-	case "route_line", "journey_route":
-		return MapFamilyJourney
-	case "multi_locations", "multi_pin_reveal":
-		return MapFamilyMultiPin
-	case "comparison_split", "territory_compare":
-		return MapFamilyComparison
-	}
-	if strings.HasPrefix(strings.TrimSpace(id), "ed_") {
-		return MapFamilyEditorial
-	}
-	return MapFamilyLocationFocus
+	return MapCompositionFamily(capabilityoverlay.MapCompositionFamilyOf(id))
 }
 
 // MapEditorialSceneBounds is the Go projection of the single geographic
@@ -132,8 +123,10 @@ func MapPinFloat(pin map[string]any, key string) (float64, bool) {
 	return 0, false
 }
 
-// MapCompositionCertified lists every composition id the Python renderer
-// accepts: the map systems plus the GPU-certified editorial scenes.
+// MapCompositionCertified lists every composition id the executing map
+// renderer draws: the projection of the native ChrononPlugin map catalog in
+// the animation registry (map.composition). Explicit and random requests both
+// admit against this list; servability on top of it is PortedMapCompositions.
 func MapCompositionCertified() []string {
 	return capabilityoverlay.AnimationCandidates("map.composition")
 }
@@ -142,10 +135,10 @@ func MapCompositionCertified() []string {
 // certified compositions the sampler may pick when the caller chose nothing.
 // It projects the single ported-subset declaration
 // (capabilityoverlay.PortedMapCompositions) — the compositions the single
-// dynamic renderer (ChrononPlugin native) draws with certified parity gates.
-// No composed family is ported yet, so the pool is empty and a random draw
-// resolves to the base flyover presentation; a family joins the pool the
-// moment it lands its parity gate.
+// dynamic renderer (ChrononPlugin native) draws from the data the planner
+// supplies. A draw that fits no pool composition resolves to the certified
+// base flyover presentation; a composition joins the pool the moment the
+// renderer draws it from planner-supplied data.
 func MapCompositionRandomPool() []string {
 	return capabilityoverlay.PortedMapCompositions()
 }

@@ -40,13 +40,39 @@ con l'output reale dell'aggregator, mai con dati sintetici.
 6. **Bug piu grave**: `Chronon3d/docs/FOLLOWUP_TICKETS.md` §Open Blockers — `[FILL: ticket id]`.
 7. **Metrica migliorata**: `[FILL: week-over-week delta]` (richiede 2 settimane di dati; la prima run semina la baseline).
 
+## Prima run — baseline settimanale (2026-10-28, source `pipelinegen`)
+
+Comando: `WEEKLY_SCORECARD_SOURCE=pipelinegen bash scripts/run_weekly_scorecard.sh`
+(exit 0, 8/8 metriche). Settimana 2026-10-21 → 2026-10-28.
+
+| # | Metric | Value | Aggregation source |
+|---|---|---|---|
+| 1 | videos_completed | **95** | `run_observability`: COUNT(DISTINCT job_id) `script.generate` SUCCEEDED, 7d |
+| 2 | failure_rate | **40.64%** | famiglia video (`script.generate`, `script.generate_item`) FAILED/total, 7d |
+| 3 | manual_touches_per_video | 0.00 | touchpoints.jsonl (nessun touchpoint registrato) |
+| 4 | cost_per_finished_minute | `[UNSET-rate]` | rate non dichiarato dal founder: placeholder onesto |
+| 5 | p95_render_time | 485.561 s | `run_observability.wall_time_ms` ASC, p95 |
+| 6 | peak_memory | `[no-source]` | contatore assente su questa superficie |
+| 7 | deterministic_hash_failures | 0 | grep GATE_FAIL in `~/.chronon3d/selftest_log/` |
+| 8 | bbox_contract_violations | `[no-source]` | contatore assente su questa superficie |
+
+Nota fonte: lo store SQLite `~/.chronon3d/telemetry/telemetry.sqlite` della
+superficie contratta **non può esistere** sulle build post Wave 1D (demolizione
+dello store, guard irreversibile `Chronon3d/tools/check_no_sqlite.sh`, engine
+events-only). L'aggregator supporta quindi `WEEKLY_SCORECARD_SOURCE=pipelinegen`
+che legge la telemetria reale (`data/observability/api_requests.db.sqlite`:
+`run_observability`, `run_resource_aggregates`); il default `chronon3d` e il
+contratto exit 2 su DB assente restano invariati. Le metriche senza superficie
+di contatore sono `[no-source]`, mai zeri fabbricati.
+
 ## §honesty cert
 
 - `WEEKLY_COST_HOURLY_RATE` è **REQUIRED** per la metrica 4; unset = placeholder
   `[UNSET-rate]`, mai un rate inventato (§honesty "non inventare").
 - Tutte e 8 le metriche derivano da superfici di telemetria osservabili
-  (SQLite `~/.chronon3d/telemetry/telemetry.sqlite`, JSONL touchpoints, selftest
-  logs): nessun valore sintetico passato per reale.
+  (SQLite `~/.chronon3d/telemetry/telemetry.sqlite` oppure, con
+  `WEEKLY_SCORECARD_SOURCE=pipelinegen`, `data/observability/api_requests.db.sqlite`;
+  JSONL touchpoints; selftest logs): nessun valore sintetico passato per reale.
 - Le voci di questo template sono impegni FILL-IN-THE-BLANK, non dati reali
   precompilati: la prima run dell'aggregator semina la baseline.
 - macchina-verifica end-to-end su DB popolato: **DEFERRED** al primo run del

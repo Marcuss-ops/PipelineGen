@@ -8,6 +8,14 @@
 
 ---
 
+## 0. TODO — cosa manca (agg. 2026-10-28)
+
+Pending dalla sessione Freebuff 2026-10-27 (§9.4 residui + scoperte del confronto parent assemblato/single-job):
+
+- [ ] Correggere la divergenza AAC priming trovata nel confronto parent assemblato vs single-job; verificare hash audio, frame, durata e aggiornare i fatti certificati.
+- [ ] Rieseguire le regressioni RenderingGen (`go test ./...` in `renderinggen`) dopo il fix AAC (erano verdi prima del fix).
+- [ ] Completare i gate mancanti e l'attivazione operativa (§9.4): `verify-main` e la suite Chronon3d completa non risultano rieseguiti.
+
 ## 1. Storia e Perché Questo Ticket Esiste
 
 - Il producer dei chunk (I1) fu implementato (`chunk_plan.go` in `cliprender`, `chunk_producer.go` in `internal/platform/renderinggen`, `SubmitChunked`) ma il relativo ticket fu **chiuso come wont-fix** il 2026-10-11 (decisione registrata in `AGENTS.md`, "Documentation rule"; i dettagli vivono nella git history). Il machinario è rimasto collegato ma dormiente.

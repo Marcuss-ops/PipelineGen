@@ -19,6 +19,16 @@ if [[ -z "${VELOX_LEXICON_ROOT:-}" ]]; then
     VELOX_LEXICON_ROOT="$DIR/config/lexicons"
 fi
 export VELOX_FEATURE_IMAGES_ENABLED=true
+# Native map renderer: when a freshly built ChrononPlugin renderer is promoted
+# into bin/, it wins over the systemd drop-in value (same rationale as the
+# Artlist export above: a stale systemd Environment must not pin an artifact
+# build). The documented provisioning remains
+# `sudo cmake --install ChrononPlugin/build-native-maps --prefix /usr/local`:
+# once the /usr/local binary is refreshed, remove this copy and the drop-in
+# value stands again automatically.
+if [[ -x "$DIR/bin/maps_dynamic_map_render" ]]; then
+    export VELOX_MAP_NATIVE_RENDERER_PATH="$DIR/bin/maps_dynamic_map_render"
+fi
 # (The DYNAMIC_MAP_GPU_SAMPLER knob is RETIRED with the Python map renderer:
 # the single native map lane is CPU-sampled and its profile/sampler travel as
 # one closed contract — see scripts/overlay/map_encode_profile.go.)

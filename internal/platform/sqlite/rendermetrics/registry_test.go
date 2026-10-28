@@ -29,6 +29,7 @@ const schema = `
 CREATE TABLE render_attempt_analytics (
     attempt_id      TEXT PRIMARY KEY,
     job_id          TEXT NOT NULL DEFAULT '',
+    run_id          TEXT NOT NULL DEFAULT '',
     item_id         TEXT NOT NULL DEFAULT '',
     batch_id        TEXT NOT NULL DEFAULT '',
     batch_item_ids_json TEXT NOT NULL DEFAULT '[]',

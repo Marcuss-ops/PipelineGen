@@ -128,7 +128,8 @@ type GenerationItemV2 struct {
 	// empty/random resolves to that same registered runtime choice.
 	// MapLabelAnimation is fixed to none: the retained map compositions
 	// own their text; standalone map-label animation styles are retired.
-	// MapAnimation selects one of the nine retained map compositions.
+	// MapAnimation selects one of the native map compositions (the
+	// ChrononPlugin map catalog projection registered as map.composition).
 	MapType            string `json:"map_type,omitempty"`
 	MapCameraAnimation string `json:"map_camera_animation,omitempty"`
 	MapLabelAnimation  string `json:"map_label_animation,omitempty"`

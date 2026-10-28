@@ -156,7 +156,8 @@ func itemRunID(result map[string]any, full jobFull) string {
 }
 
 // loadSamples joins render_attempt_analytics rows onto the plan/render item
-// identities. Rows are restricted to the fan-out run id when known so a rerun
+// identities. Rows are restricted to the fan-out run id when known — via the
+// explicit run_id column (migration 287), never a substring join — so a rerun
 // of the same immutable payload cannot bleed into this run's numbers.
 func loadSamples(dbPath, runID string, planItems, renderItems map[string]string) ([]rendermetrics.ItemSample, int, error) {
 	db, err := sql.Open("sqlite3", readOnlyDSN(dbPath))
@@ -171,8 +172,8 @@ func loadSamples(dbPath, runID string, planItems, renderItems map[string]string)
 	          FROM render_attempt_analytics WHERE item_id <> '' AND item_id NOT LIKE 'batch:%'`
 	args := []any{}
 	if runID != "" {
-		query += ` AND job_id LIKE ?`
-		args = append(args, "%"+runID+"%")
+		query += ` AND run_id = ?`
+		args = append(args, runID)
 	}
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -231,8 +232,8 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 	          FROM render_attempt_analytics WHERE item_id LIKE 'batch:%'`
 	args := []any{}
 	if runID != "" {
-		query += ` AND job_id LIKE ?`
-		args = append(args, "%"+runID+"%")
+		query += ` AND run_id = ?`
+		args = append(args, runID)
 	}
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -379,8 +380,8 @@ func driveLinkCount(db *sql.DB, runID string) int {
 	          WHERE item_id <> '' AND drive_link <> ''`
 	args := []any{}
 	if runID != "" {
-		query += ` AND job_id LIKE ?`
-		args = append(args, "%"+runID+"%")
+		query += ` AND run_id = ?`
+		args = append(args, runID)
 	}
 	var count int
 	if err := db.QueryRow(query, args...).Scan(&count); err != nil {

@@ -18,9 +18,12 @@ import (
 // inner `;` and producing a partial CREATE TRIGGER statement that failed
 // with a syntax error.
 //
-// Caveat: matches BEGIN/END case-insensitively as whole words. None of
-// our 47 migrations use BEGIN TRANSACTION/ COMMIT pairs, so the depth model
-// holds — every BEGIN pairs with a matching END on the trigger body.
+// Caveat: matches BEGIN/END case-insensitively as whole words. Trigger-body
+// BEGINs pair with a matching END, so the depth model holds. A
+// transaction-starter BEGIN (BEGIN IMMEDIATE/TRANSACTION/EXCLUSIVE/DEFERRED)
+// is excluded from depth tracking via isTransactionModifierAfter, and the
+// resulting standalone statement is rejected by the pre-flight migration
+// body check instead of being silently applied.
 func splitSQLStatements(body string) []string {
 	// Pre-pass: strip `--` line comments so semicolons inside comments
 	// can't confuse the splitter.
@@ -215,6 +218,39 @@ func isConditionalInsertOnMissingTable(errMsg, stmt string) bool {
 //     the word "BEGIN") do NOT match;
 //   - splitSQLStatements already guarantees these appear as standalone
 //     statements (no trailing `;` after trim+strip).
+//
+// migrationDisablesForeignKeys reads the optional `-- foreign_keys: off`
+// header directive from a migration file. Format and placement mirror
+// parseMigrationScope's `-- database:` directive: leading `--` comment lines
+// are scanned until the first non-comment, non-blank line; the directive is
+// matched case-insensitively as the whole trimmed comment text.
+//
+// The directive is reserved for migrations that are otherwise inexpressible:
+// a parent-table rebuild must drop/rename the referenced table, and with
+// foreign_keys ON the implicit DELETE FROM of DROP TABLE fires ON DELETE
+// CASCADE actions (defer_foreign_keys defers violations, NOT actions) and
+// ALTER TABLE RENAME rewrites every child REFERENCES clause onto the retired
+// name. applyMigration toggles the PRAGMA around the file's transaction
+// (it is a no-op inside one) and restores it afterwards.
+func migrationDisablesForeignKeys(content []byte) bool {
+	if len(content) >= 3 && content[0] == 0xEF && content[1] == 0xBB && content[2] == 0xBF {
+		content = content[3:]
+	}
+	for _, raw := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "--") {
+			return false
+		}
+		if strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(trimmed, "--")), "foreign_keys: off") {
+			return true
+		}
+	}
+	return false
+}
+
 func isNestedTransactionControl(stmt string) bool {
 	s := strings.ToUpper(strings.TrimSpace(stmt))
 	s = strings.TrimRight(s, ";")

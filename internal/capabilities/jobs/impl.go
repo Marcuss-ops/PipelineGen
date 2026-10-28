@@ -156,7 +156,13 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 		return
 	}
 
-	apiutil.Accepted(c, gin.H{
+	// Batch Brasil visibility: surface the routing facts of the submitted
+	// payload (channel_id / final_job / Drive destination) on the enqueue
+	// response itself, not only inside the persisted payload.
+	payloadRaw, _ := json.Marshal(dto.Payload)
+	vis := ExtractDeliveryVisibility(payloadRaw, j.Result)
+
+	resp := gin.H{
 		"job_id": j.ID,
 		"job": gin.H{
 			"id":       j.ID,
@@ -165,7 +171,11 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 			"project":  j.Project,
 			"progress": j.Progress,
 		},
-	})
+	}
+	for k, v := range vis.deliveryFields() {
+		resp[k] = v
+	}
+	apiutil.Accepted(c, resp)
 }
 
 // M2MTypes exposes the canonical external-safe automation catalog. Remote
@@ -267,7 +277,15 @@ func (h *JobsHandler) List(c *gin.Context) {
 		return
 	}
 
-	apiutil.OK(c, gin.H{"jobs": jobsList, "count": len(jobsList)})
+	// Queue view (Batch Brasil visibility): each element keeps the full
+	// canonical job JSON keys and gains the explicit delivery fields
+	// (channel_id / final_job / Drive destination / remote render state),
+	// so operators no longer dig into the persisted payload.
+	views := make([]map[string]any, 0, len(jobsList))
+	for i := range jobsList {
+		views = append(views, jobQueueView(&jobsList[i]))
+	}
+	apiutil.OK(c, gin.H{"jobs": views, "count": len(views)})
 }
 
 func (h *JobsHandler) Cancel(c *gin.Context) {
@@ -461,7 +479,7 @@ func (h *JobsHandler) buildJobResponse(j *job.Job, events []job.Event) gin.H {
 		}
 	}
 
-	return gin.H{
+	resp := gin.H{
 		"id":                     j.ID,
 		"type":                   j.Type,
 		"status":                 j.Status,
@@ -494,4 +512,10 @@ func (h *JobsHandler) buildJobResponse(j *job.Job, events []job.Event) gin.H {
 		"retryable":              j.CanRetry(),
 		"job":                    j,
 	}
+	// Batch Brasil visibility: explicit routing fields alongside the raw
+	// payload/result (additive keys — existing consumers keep working).
+	for k, v := range JobDeliveryVisibility(j).deliveryFields() {
+		resp[k] = v
+	}
+	return resp
 }

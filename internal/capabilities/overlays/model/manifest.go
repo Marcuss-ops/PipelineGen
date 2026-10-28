@@ -45,9 +45,24 @@ const (
 	manifestEntryRetryTag = "overlay-manifest-entry-retry/v1"
 )
 
+// ManifestPlacement is the OPTIONAL spatial projection of an entry
+// (docs/operations/TICKET-PARADIGM-ALPHA-LAYER-HUD.md §A1, contract §3.2):
+// the pixel rect, on the plan's canvas, where the entry's content draws.
+// Absent = full-canvas (the current path, no migration); present = the
+// content projects into this rect. The four values are set together — a
+// half-set rect is malformed and fails validation. Canvas bounds are a
+// producer-side fail-closed check (the manifest carries no canvas size).
+type ManifestPlacement struct {
+	XPx int64 `json:"x_px"`
+	YPx int64 `json:"y_px"`
+	WPx int64 `json:"w_px"`
+	HPx int64 `json:"h_px"`
+}
+
 // OverlayManifestEntry is one overlay's identity inside a single certified
 // timeline artifact. The pair (ItemID, ContentHash) is the idempotent work
-// identity; Track/InUS/OutUS place the entry's content on the timeline.
+// identity; Track/InUS/OutUS/Placement place the entry's content on the
+// timeline and canvas.
 type OverlayManifestEntry struct {
 	// ItemID is the stable semantic identity of the overlay item, reused
 	// verbatim from the plan item ID across regenerations of the same slot.
@@ -75,6 +90,13 @@ type OverlayManifestEntry struct {
 	// Nil pointers keep the zero/absent distinction: packed offsets may be 0.
 	ArtifactInUS  *int64 `json:"artifact_in_us,omitempty"`
 	ArtifactOutUS *int64 `json:"artifact_out_us,omitempty"`
+	// Placement is the OPTIONAL spatial projection (ManifestPlacement): the
+	// pixel rect on the plan canvas where this entry draws. Nil means the
+	// entry draws full-canvas (the classic path). Like Track/InUS/OutUS it
+	// is placement metadata: it is excluded from RetryKey (content identity)
+	// and included in OverlayManifest.Digest (composition identity — two
+	// rects are two compositions, because the pixels differ).
+	Placement *ManifestPlacement `json:"placement,omitempty"`
 }
 
 // Validate reports whether the entry is a well-formed manifest row.
@@ -110,6 +132,14 @@ func (e OverlayManifestEntry) Validate() error {
 			// packing only shrinks the canvas (union of real overlay windows),
 			// it never re-times an entry's own duration.
 			return fmt.Errorf("overlay manifest entry %q: packed arrow [%d,%d) exceeds the entry window", e.ItemID, in, out)
+		}
+	}
+	if e.Placement != nil {
+		if e.Placement.XPx < 0 || e.Placement.YPx < 0 {
+			return fmt.Errorf("overlay manifest entry %q: placement x_px/y_px must be >= 0", e.ItemID)
+		}
+		if e.Placement.WPx <= 0 || e.Placement.HPx <= 0 {
+			return fmt.Errorf("overlay manifest entry %q: placement w_px/h_px must be greater than 0", e.ItemID)
 		}
 	}
 	return nil

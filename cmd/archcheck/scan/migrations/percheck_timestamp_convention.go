@@ -32,6 +32,7 @@ package migrations
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -56,6 +57,49 @@ func isTimestampColumn(name string) bool {
 		strings.HasSuffix(name, "_until")
 }
 
+// renameTableRe matches the SQLite table-rebuild rename step
+// (ALTER TABLE <scratch> RENAME TO <real>).
+var renameTableRe = regexp.MustCompile(`(?is)ALTER\s+TABLE\s+"?([a-z_][a-z0-9_]*)"?\s+RENAME\s+TO\s+"?([a-z_][a-z0-9_]*)"?`)
+
+// migrationSQL is one scanned migration file.
+type migrationSQL struct {
+	rel     string
+	version int
+	body    string
+}
+
+// migrationVersionOf parses the numeric prefix of a migration filename
+// (000_baseline… → 000). Unparsable names return -1 and never qualify as a
+// carry-forward source (fail-closed: their declarations always offend).
+func migrationVersionOf(name string) int {
+	base := name
+	if i := strings.IndexByte(base, '_'); i > 0 {
+		base = base[:i]
+	}
+	v, err := strconv.Atoi(base)
+	if err != nil {
+		return -1
+	}
+	return v
+}
+
+// columnShape is one declared column shape used for carry-forward comparison.
+type columnShape struct {
+	version    int
+	hasDefault bool
+	def        string
+}
+
+// renameMapIn returns the scratch→real renames declared by one file, keyed by
+// lower-cased source name.
+func renameMapIn(body string) map[string]string {
+	out := map[string]string{}
+	for _, m := range renameTableRe.FindAllStringSubmatch(body, -1) {
+		out[strings.ToLower(m[1])] = strings.ToLower(m[2])
+	}
+	return out
+}
+
 // ScanTimestampConvention runs the four legs described in the package comment.
 func ScanTimestampConvention(root string, _ *policy.Policy, r *report.Report) {
 	if !scanTimestampDocLockstep(root, r) {
@@ -63,6 +107,7 @@ func ScanTimestampConvention(root string, _ *policy.Policy, r *report.Report) {
 	}
 	allow := loadTimestampAllowlist(root, r)
 	seenAllow := map[string]bool{}
+	filesByDir := map[string][]migrationSQL{}
 	for _, dir := range stateMigrationRoots {
 		entries, err := os.ReadDir(filepath.Join(root, dir))
 		if err != nil {
@@ -79,17 +124,46 @@ func ScanTimestampConvention(root string, _ *policy.Policy, r *report.Report) {
 				timestampViolation(r, rel, 0, "timestamp_file_unreadable", err.Error())
 				continue
 			}
-			hits := timestampOffenses(string(body))
-			if allow[rel] {
-				seenAllow[rel] = true
+			filesByDir[dir] = append(filesByDir[dir], migrationSQL{rel: rel, version: migrationVersionOf(e.Name()), body: string(body)})
+		}
+	}
+	for _, dir := range stateMigrationRoots {
+		earliest := earliestColumnShapes(filesByDir[dir])
+		for _, f := range filesByDir[dir] {
+			renames := renameMapIn(f.body)
+			carryForward := func(def statematrix.ColumnDef) bool {
+				// A rebuild reaches its final name one of two ways: the scratch
+				// table is renamed INTO place, or the original is renamed AWAY
+				// and the replacement keeps the original name. Both rename
+				// endpoints therefore resolve to the same logical column.
+				table := strings.ToLower(def.Table)
+				candidates := []string{table}
+				for from, to := range renames {
+					if from == table {
+						candidates = append(candidates, to)
+					}
+					if to == table {
+						candidates = append(candidates, from)
+					}
+				}
+				for _, c := range candidates {
+					if s, ok := earliest[c+"."+strings.ToLower(def.Name)]; ok && s.version < f.version && s.hasDefault == def.HasDefault && s.def == def.Default {
+						return true
+					}
+				}
+				return false
+			}
+			hits := timestampOffenses(f.body, carryForward)
+			if allow[f.rel] {
+				seenAllow[f.rel] = true
 				if len(hits) == 0 {
 					timestampViolation(r, timestampConventionAllow, 0, "timestamp_allowlist_stale",
-						"entry "+rel+" no longer offends the timestamp convention; drop the entry")
+						"entry "+f.rel+" no longer offends the timestamp convention; drop the entry")
 				}
 				continue
 			}
 			for _, hit := range hits {
-				timestampViolation(r, rel, hit.line, hit.rule, hit.note)
+				timestampViolation(r, f.rel, hit.line, hit.rule, hit.note)
 			}
 		}
 	}
@@ -108,8 +182,32 @@ type timestampOffense struct {
 	note string
 }
 
-// timestampOffenses scans one SQL file for the two banned shapes.
-func timestampOffenses(sql string) []timestampOffense {
+// earliestColumnShapes returns the earliest corpus declaration of every
+// table.column in one migration plane (plane-scoped on purpose: twin tables
+// share names across planes but are different tables in different databases).
+func earliestColumnShapes(files []migrationSQL) map[string]columnShape {
+	out := map[string]columnShape{}
+	for _, f := range files {
+		if f.version < 0 {
+			continue
+		}
+		for _, def := range statematrix.ExtractColumns(f.body) {
+			key := strings.ToLower(def.Table) + "." + strings.ToLower(def.Name)
+			if s, ok := out[key]; !ok || f.version < s.version {
+				out[key] = columnShape{version: f.version, hasDefault: def.HasDefault, def: def.Default}
+			}
+		}
+	}
+	return out
+}
+
+// timestampOffenses scans one SQL file for the two banned shapes. carryForward
+// receives every leg-3 candidate: when it reports true the column is a
+// schema-preserving RE-DECLARATION of an earlier corpus declaration with the
+// exact same shape (a table rebuild — SQLite has no ALTER COLUMN — carries
+// historical shapes forward verbatim). That introduces no NEW timestamp debt,
+// so it is not a convention offense; the first declaration is.
+func timestampOffenses(sql string, carryForward func(statematrix.ColumnDef) bool) []timestampOffense {
 	var hits []timestampOffense
 	// Leg 2: mixed-format DEFAULT, tracked per line after comment stripping.
 	lines := strings.Split(sql, "\n")
@@ -129,6 +227,9 @@ func timestampOffenses(sql string) []timestampOffense {
 	// Leg 3: DEFAULT '' on a timestamp column.
 	for _, def := range statematrix.ExtractColumns(sql) {
 		if !isTimestampColumn(def.Name) || !def.HasDefault || def.Default != "" {
+			continue
+		}
+		if carryForward != nil && carryForward(def) {
 			continue
 		}
 		hits = append(hits, timestampOffense{

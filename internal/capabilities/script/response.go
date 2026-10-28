@@ -51,6 +51,20 @@ type GenerateResponse struct {
 	Status       string           `json:"status,omitempty"`
 	StatusURL    string           `json:"status_url,omitempty"`
 	CurrentStage string           `json:"current_stage,omitempty"`
+
+	// Delivery visibility (Batch Brasil wire-shape audit, 2026-10-28):
+	// the routing facts of the submitted envelope — channel_id,
+	// final_job and the Drive destination — surfaced on the enqueue
+	// response itself instead of being readable only inside the
+	// persisted payload. Field-count lock deliberately bumped 5 → 9 in
+	// response_test.go (the test file IS the canonical contract surface);
+	// the remote final-render state is exposed by the queue view
+	// (remote_final_job_status), not here — at enqueue time there is no
+	// receipt yet and this shape never fabricates state.
+	ChannelID          string `json:"channel_id,omitempty"`
+	FinalJob           bool   `json:"final_job,omitempty"`
+	DriveFolderID      string `json:"drive_folder_id,omitempty"`
+	DriveSubfolderName string `json:"drive_subfolder_name,omitempty"`
 }
 
 // async populates the response for the async (job-enqueued) branch,
@@ -72,4 +86,16 @@ func (r *GenerateResponse) async(jobID, status, statusURL string) {
 func (r *GenerateResponse) asyncWithStage(jobID, status, statusURL, currentStage string) {
 	r.async(jobID, status, statusURL)
 	r.CurrentStage = currentStage
+}
+
+// withDelivery surfaces the envelope's routing facts (Batch Brasil
+// visibility item). Multi-item envelopes surface the first non-empty
+// value per field; the per-item truth stays visible in the queue view,
+// which projects each item's own job. Callers route through this helper
+// for the same reason as async(): the helper signature IS the contract.
+func (r *GenerateResponse) withDelivery(channelID string, finalJob bool, driveFolderID, driveSubfolderName string) {
+	r.ChannelID = channelID
+	r.FinalJob = finalJob
+	r.DriveFolderID = driveFolderID
+	r.DriveSubfolderName = driveSubfolderName
 }
