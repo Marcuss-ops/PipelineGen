@@ -155,10 +155,115 @@ type rewriteHit struct {
 	column string
 }
 
+// stripTriggerBodies blanks out the bodies of CREATE TRIGGER statements
+// (newlines preserved, so reported line numbers stay truthful). The state
+// vocabulary freeze exists for IN-PLACE migration rewrites (the 065→066→069
+// flip-flop): a migration that re-declares an existing trigger rewrites no
+// value at migration time — the body is RUNTIME logic fired per row change.
+// asset_state's trigger projection is precisely this schema's generated-column
+// mechanism (canonical.go: "derived from lifecycle_state + index_state by the
+// triggers"), so its UPDATE text is not a "rewrite migration".
+func stripTriggerBodies(sql string) string {
+	out := []byte(sql)
+	lower := strings.ToLower(sql)
+	pos := 0
+	for {
+		startRel := strings.Index(lower[pos:], "create trigger")
+		if startRel < 0 {
+			return string(out)
+		}
+		start := pos + startRel
+		bodyStart := wordIndex(lower, "begin", start)
+		if bodyStart < 0 {
+			pos = start + 1
+			continue
+		}
+		end := triggerBodyEnd(lower, bodyStart)
+		if end < 0 {
+			end = len(sql)
+		}
+		for i := bodyStart; i < end && i < len(out); i++ {
+			if out[i] != '\n' {
+				out[i] = ' '
+			}
+		}
+		pos = end
+	}
+}
+
+// wordIndex finds the next whole-word occurrence of word at or after from.
+func wordIndex(lower, word string, from int) int {
+	for i := from; ; {
+		rel := strings.Index(lower[i:], word)
+		if rel < 0 {
+			return -1
+		}
+		at := i + rel
+		beforeOK := at == 0 || !isIdentByte(lower[at-1])
+		afterOK := at+len(word) >= len(lower) || !isIdentByte(lower[at+len(word)])
+		if beforeOK && afterOK {
+			return at
+		}
+		i = at + 1
+	}
+}
+
+func isIdentByte(b byte) bool {
+	return b == '_' || (b >= '0' && b <= '9') || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// triggerBodyEnd returns the index just past the `;` that terminates the
+// trigger body starting at the `begin` keyword (case-insensitive, lower-cased
+// text). Nesting is counted over BEGIN blocks, CASE expressions and IF blocks:
+// the body's final END closes the outermost BEGIN, after which the first `;`
+// ends the statement. Returns -1 when the body is unbalanced.
+func triggerBodyEnd(lower string, bodyStart int) int {
+	depth, caseDepth := 0, 0
+	i := bodyStart
+	for i < len(lower) {
+		switch {
+		case wordIndex(lower, "begin", i) == i:
+			depth++
+			i += 5
+		case wordIndex(lower, "case", i) == i:
+			caseDepth++
+			i += 4
+		case wordIndex(lower, "end", i) == i:
+			i += 3
+			j := i
+			for j < len(lower) && (lower[j] == ' ' || lower[j] == '\t' || lower[j] == '\n' || lower[j] == '\r') {
+				j++
+			}
+			switch {
+			case j < len(lower) && wordIndex(lower, "if", j) == j: // END IF
+				i = j + 2
+			case caseDepth > 0: // CASE expression's END
+				caseDepth--
+				i = j
+			default: // block END
+				depth--
+				i = j
+				if depth == 0 {
+					semi := strings.IndexByte(lower[i:], ';')
+					if semi < 0 {
+						return -1
+					}
+					return i + semi + 1
+				}
+			}
+		default:
+			i++
+		}
+	}
+	return -1
+}
+
 // stateRewritesIn returns the (line, column) of every state-column assignment
-// inside UPDATE ... SET clauses of the given SQL text.
+// inside UPDATE ... SET clauses of the given SQL text. Trigger bodies are
+// excluded first (stripTriggerBodies): they are runtime logic, not a migration
+// rewriting a vocabulary in place.
 func stateRewritesIn(sql string) []rewriteHit {
-	cleaned := stripSQLLineComments(sql)
+	cleaned := stripTriggerBodies(stripSQLLineComments(sql))
 	var hits []rewriteHit
 	for _, m := range updateStmtRe.FindAllStringSubmatchIndex(cleaned, -1) {
 		setStart, setEnd := m[4], m[5]

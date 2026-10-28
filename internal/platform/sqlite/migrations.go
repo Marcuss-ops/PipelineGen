@@ -91,6 +91,11 @@ func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB strin
 		return fmt.Errorf("storage: open %s: %w", dbPath, err)
 	}
 	defer func() { _ = db.Close() }()
+	// Single connection, like NewSQLiteDB: the `-- foreign_keys: off` migration
+	// directive toggles a per-connection PRAGMA around one file's transaction,
+	// which is only sound when Exec and Begin share the connection.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	return migrateAll(db, log, targetDir, targetDB)
 }

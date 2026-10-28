@@ -11,7 +11,10 @@
 //   - writeGenerateSubmitSuccess — 202 Accepted with GenerateResponse.async
 //     shape; X-Idempotency-Replay: true when
 //     res.IsIdempotencyHit; canonical-status
-//     surfaced from res.Job.Status.
+//     surfaced from res.Job.Status. Both success
+//     writers also surface the envelope's routing
+//     facts via withDelivery (Batch Brasil
+//     visibility).
 //   - extractJobID               — res.Operation.JobID (the canonical
 //     worker-assigned job_id); empty when
 //     the application contract is empty
@@ -37,7 +40,33 @@ import (
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/operations"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// deliveryFromEnvelope projects the routing facts of the submitted
+// envelope for the enqueue response (Batch Brasil visibility item):
+// channel_id, final_job and the Drive destination. Multi-item envelopes
+// surface the FIRST non-empty value per field — the response shape
+// carries one delivery block; the per-item truth stays visible in the
+// queue view, which projects each item's own job.
+func deliveryFromEnvelope(env *scriptpkg.GenerationEnvelopeV2) (channelID string, finalJob bool, driveFolderID, driveSubfolderName string) {
+	if env == nil {
+		return "", false, "", ""
+	}
+	finalJob = env.FinalJob
+	for _, item := range env.Items {
+		if channelID == "" {
+			channelID = item.ChannelID
+		}
+		if driveFolderID == "" {
+			driveFolderID = item.Output.Render.DriveFolderID
+		}
+		if driveSubfolderName == "" {
+			driveSubfolderName = item.Output.Render.DriveSubfolderName
+		}
+	}
+	return channelID, finalJob, driveFolderID, driveSubfolderName
+}
 
 // writeGenerateSubmitError maps an opsapp.Submit error to the canonical
 // HTTP response shape.
@@ -105,7 +134,7 @@ func writeGenerateSubmitError(c *gin.Context, err error) {
 // godlike/06 SSOT: GenerateResponse (defined in handler_generate_types.go)
 // is the canonical wire shape; this helper owns the production of a successful
 // submission response and is consumed solely by HandlerGenerate.Generate.
-func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult) {
+func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult, env *scriptpkg.GenerationEnvelopeV2) {
 	status := resolveJobStatus(res)
 	if res != nil && res.IsIdempotencyHit {
 		c.Writer.Header().Set("X-Idempotency-Replay", "true")
@@ -118,6 +147,7 @@ func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult) {
 
 	resp := GenerateResponse{}
 	resp.async(jobID, status, "/api/jobs/"+jobID+"/full")
+	resp.withDelivery(deliveryFromEnvelope(env))
 	c.JSON(http.StatusAccepted, resp)
 }
 
@@ -133,7 +163,7 @@ func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult) {
 //
 // The run's CurrentStage reflects the initial pipeline phase
 // (NORMALIZING → GENERATING_SCENE_TEXT → ... → PUBLISHING_DOCUMENTS).
-func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, jobID string, res *opsapp.SubmitResult, isReplay bool) {
+func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, jobID string, res *opsapp.SubmitResult, isReplay bool, env *scriptpkg.GenerationEnvelopeV2) {
 	if isReplay {
 		c.Writer.Header().Set("X-Idempotency-Replay", "true")
 	}
@@ -144,6 +174,7 @@ func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, job
 
 	resp := GenerateResponse{}
 	resp.asyncWithStage(jobID, resolveJobStatus(res), "/api/jobs/"+jobID+"/full", string(run.CurrentStage))
+	resp.withDelivery(deliveryFromEnvelope(env))
 	c.JSON(http.StatusAccepted, resp)
 }
 

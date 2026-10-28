@@ -33,6 +33,21 @@ provider live producano i 100 candidati o che il throughput sia certificato.
 Il driver `run_golden.sh` usa ancora la v2; per la v3 specificare il nuovo file
 nel comando `submit-and-poll.sh` solo in un ambiente autorizzato.
 
+Il workload `../overlay_throughput_golden_100_20261022.v4-maps-auto.generate.json`
+(SHA-256 `071eddaaa5526270f0e1b15ccb1105c92dcc7311534579d88b55b987e1527d1b`)
+è la variante **mappe a selezione automatica**: stesso identico corpo della v3
+(mix, limiti, categorie, brief, cache), con la sola configurazione mappe
+portata al contratto unico `map_presentation` (`mode=auto`, `animation=random`,
+`camera=auto`, `style=chronon_editorial`, `selection_mode=auto`) e i campi
+legacy `map_type/map_camera_animation/map_label_animation/map_animation`
+rimossi (la v3 ne aveva uno: `map_animation=region_zoom`, oggi ritirato e
+fail-closed). Lo scopo non è il throughput ma certificare che la **selezione
+automatica** delle composizioni mappe campioni la gallery nativa
+ChrononPlugin (incluse le nuove scene documentarie) su un piano reale e che il
+renderer nativo le esegua. L'item id è nuovo (`...-v4-maps-auto`) sia per la
+cache fredda sia per non consumare la chiave v3: le run v4 NON sono
+confrontabili col throughput delle run v2/v3.
+
 ## Comando di ripetizione
 
 ```bash

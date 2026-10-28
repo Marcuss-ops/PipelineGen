@@ -34,9 +34,17 @@ ripetuta qui.
 
 ## Drift noti (da non replicare)
 
-- `artifacts.status`: il CHECK effettivo su DB fresco (baseline `000`) è a 6 stati
-  senza `STAGED`, mentre la migrazione storica `131` ne installa uno a 7 stati con
-  `STAGED` (BC alias di `READY`): due storie diverse per lo stesso vincolo.
+- `artifacts.status` — **RISOLTO (28/10/2026)**: la «seconda storia» non esiste
+  più. La migrazione `131` è un **no-op** dalla sua chiusura v3.2 (il rebuild fu
+  rimosso: non installa alcun vincolo, registra solo la riga di ledger), quindi
+  l'unica storia per il vincolo è il CHECK a 6 stati installato da `051`/`000`
+  (`STAGING,VERIFYING,READY,FAILED,QUARANTINED,DELETED`) — esattamente la riga
+  di questa matrice. Lato Go, `StatusStaged` è un nome BC il cui wire value è
+  `"READY"` (`internal/capabilities/assets/artifacts/types.go`, AZIONE-15) e
+  nessuno scrive un `STAGED` letterale in `artifacts.status` (l'unico
+  vocabolario `STAGED` appartiene a `artifact_stages.state`, altra tabella).
+  I due lati restano pinnati da `TestStatusConstantValues` (enum Go) e
+  `TestStateMatrixMatchesLiveSchema` (CHECK SQL): una sola storia.
 - `media_assets.lifecycle_state` ha DEFAULT `'ready'` (lowercase) in SQLite e
   `'ACTIVE'` in Postgres: casing e valore incoerenti tra i piani (il vocabolario
   operativo è quello UPPER documentato in `canonical.go`).
@@ -101,9 +109,6 @@ ripetuta qui.
 | preparation_units | state | sqlite_jobs | - | - | - | FAILED,STALE |
 | projection_registry | status | sqlite | - | BUILDING,VALIDATED,ACTIVE,RETIRED,FAILED,FAILED_CLEANED | UPPER | RETIRED,FAILED,FAILED_CLEANED |
 | publication_intents | state | sqlite | PREPARED | PREPARED,UPLOADING,PUBLISHED,COMMITTED,ORPHANED,CLEANUP_PENDING,CLEANED,FAILED | UPPER | COMMITTED,ORPHANED,CLEANED,FAILED |
-| qdrant_cleanup_audit | status | sqlite | - | - | - | - |
-| qdrant_collections | status | sqlite | created | created,indexing,verified,active,reindexing,in_use,retired | lower | retired |
-| qdrantprojection_checkpoints | status | sqlite | running | running,succeeded,failed,abandoned | lower | succeeded,failed,abandoned |
 | registry_runs | status | sqlite | - | - | - | - |
 | run_child_observations | status | sqlite | - | - | - | - |
 | run_observability | status | sqlite | - | RUNNING,SUCCEEDED,FAILED,CANCELLED,ABANDONED | UPPER | SUCCEEDED,FAILED,CANCELLED,ABANDONED |

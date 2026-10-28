@@ -2,11 +2,12 @@
 // wire shape of POST /api/script/generate (PR-morti-sync, July 2026).
 //
 // godlike/07 forward-prevention gates:
-//   - Field count must remain EXACTLY 5 (NO re-introduction of dead
+//   - Field count must remain EXACTLY 9 (NO re-introduction of dead
 //     sync fields like Script/WordCount/Title/Language/Model/CacheStatus/
 //     CacheHit/Count/Total/Results/EntitiesJSON/DocLink/DocID/Warnings).
-//   - JSON-keys MUST be the canonical async set (ok + job_id + status +
-//     status_url + current_stage).
+//   - JSON-keys MUST be the canonical set (ok + job_id + status +
+//     status_url + current_stage + the four Batch Brasil delivery
+//     visibility fields).
 //   - Zero value MUST serialize as far as omitempty permits (ok:false
 //     emits; everything else drops).
 //
@@ -14,6 +15,15 @@
 // the field-count lock + wire-shape assertions in this file (godlike/06
 // SSOT: this test file IS the canonical contract surface for what the
 // HTTP handler MAY emit).
+//
+// WIRE-SHAPE AUDIT (2026-10-28, Batch Brasil visibility item —
+// docs/stato/refactored.md §6): +4 fields (channel_id / final_job /
+// drive_folder_id / drive_subfolder_name). Rationale: the enqueue
+// response must surface the routing facts of the submitted envelope
+// instead of hiding them in the persisted payload. Additive-only:
+// all four use omitempty, so pre-existing consumers see no new keys
+// unless the caller actually declared those facts. The lock is bumped
+// 5 → 9 deliberately in lockstep with this audit.
 package script
 
 import (
@@ -21,18 +31,22 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // TestGenerateResponse_FieldCountLock pins the field count to exactly
-// 5. godlike/07 forward-prevention gate: a future re-introduction of
-// dead sync fields (Script / WordCount / Title / Language / Model /
-// CacheStatus / CacheHit / Count / Total / Results / EntitiesJSON /
-// DocLink / DocID) would surface as a test failure, requiring a
-// deliberate wire-shape audit before bumping this lock.
+// 9 (5 canonical async + 4 Batch Brasil delivery visibility fields, see
+// the WIRE-SHAPE AUDIT in this file's header). godlike/07
+// forward-prevention gate: a future re-introduction of dead sync fields
+// (Script / WordCount / Title / Language / Model / CacheStatus / CacheHit
+// / Count / Total / Results / EntitiesJSON / DocLink / DocID) would
+// surface as a test failure, requiring a deliberate wire-shape audit
+// before bumping this lock.
 func TestGenerateResponse_FieldCountLock(t *testing.T) {
 	t.Parallel()
 
-	const wantCount = 5
+	const wantCount = 9
 	got := reflect.TypeOf(GenerateResponse{}).NumField()
 	if got != wantCount {
 		t.Fatalf("GenerateResponse field count = %d, want %d (forward-prevention lock).\nField names: %v",
@@ -46,7 +60,7 @@ func TestGenerateResponse_FieldCountLock(t *testing.T) {
 func TestGenerateResponse_FieldNamesCanonical(t *testing.T) {
 	t.Parallel()
 
-	const want = "ok job_id status status_url current_stage"
+	const want = "ok job_id status status_url current_stage channel_id final_job drive_folder_id drive_subfolder_name"
 	got := fieldNamesCanonical()
 	if got != want {
 		t.Fatalf("GenerateResponse JSON-keys = %q\n  want   = %q", got, want)
@@ -71,8 +85,9 @@ func TestGenerateResponse_ZeroValueMarshal(t *testing.T) {
 }
 
 // TestGenerateResponse_AsyncHelper_PopulatedAllFields verifies the
-// canonical async path: every field populated → exact 5-key wire
-// shape with all values verbatim.
+// canonical async path: the async fields populated → exact 4-key wire
+// shape with all values verbatim (the delivery fields stay omitted
+// until withDelivery runs — see the delivery test below).
 func TestGenerateResponse_AsyncHelper_PopulatedAllFields(t *testing.T) {
 	t.Parallel()
 
@@ -151,6 +166,46 @@ func TestGenerateResponse_AsyncHelper_ValuesReceiver_NoNilPanic(t *testing.T) {
 	}
 	if string(resp.JobID) != "job-z" {
 		t.Fatalf("async() should set JobID=%q; got %q", "job-z", resp.JobID)
+	}
+}
+
+// TestGenerateResponse_DeliveryVisibility pins the Batch Brasil
+// visibility wire shape: withDelivery surfaces channel_id / final_job /
+// the Drive destination on the enqueue response, additively (the
+// canonical async keys are unchanged).
+func TestGenerateResponse_DeliveryVisibility(t *testing.T) {
+	t.Parallel()
+
+	resp := GenerateResponse{}
+	resp.async("job-abc-123", "PENDING", "/api/jobs/job-abc-123/full")
+	resp.withDelivery("crime", true, "1AbC_folderId", "Milton final job")
+	got, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("json.Marshal err: %v", err)
+	}
+	want := `{"ok":true,"job_id":"job-abc-123","status":"PENDING","status_url":"/api/jobs/job-abc-123/full","channel_id":"crime","final_job":true,"drive_folder_id":"1AbC_folderId","drive_subfolder_name":"Milton final job"}`
+	if string(got) != want {
+		t.Fatalf("delivery JSON\n  got  = %s\n  want = %s", string(got), want)
+	}
+}
+
+// TestDeliveryFromEnvelope_FirstNonEmptyPerField pins the multi-item
+// projection rule: first non-empty value per field, root final_job flag
+// preserved. Per-item truth remains visible in the queue view.
+func TestDeliveryFromEnvelope_FirstNonEmptyPerField(t *testing.T) {
+	t.Parallel()
+
+	env := &scriptpkg.GenerationEnvelopeV2{
+		FinalJob: true,
+		Items: []scriptpkg.GenerationItemV2{
+			{ChannelID: ""},
+			{ChannelID: "crime", Output: scriptpkg.OutputSpec{Render: scriptpkg.VideoRenderSpec{DriveFolderID: "1AbC_folderId", DriveSubfolderName: "Milton final job"}}},
+			{ChannelID: "young", Output: scriptpkg.OutputSpec{Render: scriptpkg.VideoRenderSpec{DriveFolderID: "other"}}},
+		},
+	}
+	channelID, finalJob, folderID, folderName := deliveryFromEnvelope(env)
+	if channelID != "crime" || !finalJob || folderID != "1AbC_folderId" || folderName != "Milton final job" {
+		t.Fatalf("deliveryFromEnvelope = (%q, %v, %q, %q)", channelID, finalJob, folderID, folderName)
 	}
 }
 

@@ -39,6 +39,10 @@ type MapRenderRequirements struct {
 	StaticPlate bool
 	// CameraFlyOver: a certified LOD pyramid flown between route endpoints.
 	CameraFlyOver bool
+	// NativeComposition: one documentary composition of the native gallery
+	// (the executing renderer's own vocabulary, PortedMapCompositions) drawn
+	// from grounded places alone.
+	NativeComposition bool
 	// DynamicCameraTour: a live tile-pyramid camera following spoken timing.
 	DynamicCameraTour bool
 	// LabelAnimation / EditorialComposition / MultiPinSystem: presentation
@@ -56,6 +60,7 @@ type MapRenderRequirements struct {
 type MapBackendCapabilities struct {
 	StaticPlates          bool
 	CameraFlyOver         bool
+	NativeCompositions    bool
 	DynamicCameraTours    bool
 	LabelAnimations       bool
 	EditorialCompositions bool
@@ -73,6 +78,19 @@ func NativeMapCapabilities() MapBackendCapabilities {
 	}
 }
 
+// NativeMapCompositions reports whether the single dynamic map renderer draws
+// this composition from grounded places alone. It projects the one ported
+// subset (capabilityoverlay.PortedMapCompositions), so servability can never
+// be claimed twice.
+func NativeMapCompositions(id string) bool {
+	for _, served := range capabilityoverlay.PortedMapCompositions() {
+		if served == strings.TrimSpace(id) {
+			return true
+		}
+	}
+	return false
+}
+
 // NativeMapBasemaps is the single projection of the basemap styles the native
 // renderer draws: the editorial vector basemap only. The retired Python
 // renderer fetched Esri raster tiles; raster styles are demolition debt and
@@ -85,13 +103,16 @@ func NativeMapBasemaps() map[string]bool {
 
 // DynamicMapCapabilities: the native dynamic map renderer of ChrononPlugin
 // (maps_dynamic_map_render) draws the editorial vector basemap with the
-// certified dive flyover and camera-aligned labels. Multi-stop camera tours,
-// label animations, editorial compositions and per-pin spoken timing are not
-// ported yet: those requirements fail closed with a typed error.
+// certified dive flyover and camera-aligned labels, plus its own documentary
+// composition gallery from grounded places (NativeCompositions). Multi-stop
+// camera tours, label animations, editorial scene compositions and per-pin
+// spoken timing are not ported yet: those requirements fail closed with a
+// typed error.
 func DynamicMapCapabilities() MapBackendCapabilities {
 	return MapBackendCapabilities{
-		StaticPlates:  true,
-		CameraFlyOver: true,
+		StaticPlates:       true,
+		CameraFlyOver:      true,
+		NativeCompositions: true,
 	}
 }
 
@@ -99,6 +120,7 @@ func DynamicMapCapabilities() MapBackendCapabilities {
 func (c MapBackendCapabilities) Satisfies(r MapRenderRequirements) bool {
 	return (!r.StaticPlate || c.StaticPlates) &&
 		(!r.CameraFlyOver || c.CameraFlyOver) &&
+		(!r.NativeComposition || c.NativeCompositions) &&
 		(!r.DynamicCameraTour || c.DynamicCameraTours) &&
 		(!r.LabelAnimation || c.LabelAnimations) &&
 		(!r.EditorialComposition || c.EditorialCompositions) &&
@@ -139,6 +161,7 @@ func unmetMapRequirements(r MapRenderRequirements) string {
 	}{
 		{"StaticPlate", NativeMapCapabilities().StaticPlates, r.StaticPlate},
 		{"CameraFlyOver", NativeMapCapabilities().CameraFlyOver, r.CameraFlyOver},
+		{"NativeComposition", DynamicMapCapabilities().NativeCompositions, r.NativeComposition},
 		{"DynamicCameraTour", DynamicMapCapabilities().DynamicCameraTours, r.DynamicCameraTour},
 		{"LabelAnimation", DynamicMapCapabilities().LabelAnimations, r.LabelAnimation},
 		{"EditorialComposition", DynamicMapCapabilities().EditorialCompositions, r.EditorialComposition},
@@ -158,7 +181,7 @@ func unmetMapRequirements(r MapRenderRequirements) string {
 func unmetMapRequirementsHint(r MapRenderRequirements) string {
 	parts := []string{}
 	if r.DynamicCameraTour || r.MultiPinSystem {
-		parts = append(parts, "composed scenes/tours are demolition debt (parity gate pending) — request map_animation empty/random for the certified base flyover")
+		parts = append(parts, "composed scenes/tours are demolition debt (parity gate pending) — request map_animation empty/random for the native gallery or the base flyover")
 	}
 	if r.EditorialComposition {
 		parts = append(parts, "editorial scene compositions are demolition debt (parity gate pending)")
@@ -197,9 +220,12 @@ func MapRenderRequirementsFor(item capabilityoverlay.OverlayItem) MapRenderRequi
 		req.CameraFlyOver = true
 	}
 	if composition, _ := item.Params["map_animation"].(string); !MapAnimationPlaceholder(composition) {
-		if strings.HasPrefix(strings.TrimSpace(composition), "ed_") {
+		switch {
+		case NativeMapCompositions(composition):
+			req.NativeComposition = true
+		case strings.HasPrefix(strings.TrimSpace(composition), "ed_"):
 			req.EditorialComposition = true
-		} else {
+		default:
 			req.DynamicCameraTour = true
 		}
 	}

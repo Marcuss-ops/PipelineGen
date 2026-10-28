@@ -101,12 +101,17 @@ func TestBoot_OnEmpty_Primary_AllExpectedTablesExist(t *testing.T) {
 		"jobs",
 		"scripts",
 		"outbox_events",
-		"qdrantprojection_checkpoints",
-		"qdrantprojection_dlq",
-		"qdrant_collections",
 	}
 	for _, tbl := range expected {
 		assertTableExists(t, db, tbl, true)
+	}
+
+	// Migration 288 demolished the residual Qdrant projection registry
+	// (schema residue since the PostgreSQL media-SSOT cutover). A fresh
+	// primary boot must NOT resurrect them: the create migrations still run,
+	// the demolition migration drops them again.
+	for _, tbl := range []string{"qdrantprojection_checkpoints", "qdrantprojection_dlq", "qdrant_collections", "qdrant_cleanup_audit"} {
+		assertTableExists(t, db, tbl, false)
 	}
 }
 
@@ -167,8 +172,7 @@ func TestBoot_OnEmpty_Observability_OnlyApiRequests(t *testing.T) {
 	// When the scope-directive backfill wave adds directives to all
 	// primary-only migrations, enable the full table-absence assertions:
 	//   for _, tbl := range []string{"media_assets", "jobs", "scripts",
-	//       "category_channels", "qdrantprojection_checkpoints",
-	//       "qdrantprojection_dlq", "qdrant_collections"} {
+	//       "category_channels"} {
 	//       assertTableExists(t, db, tbl, false)
 	//   }
 }

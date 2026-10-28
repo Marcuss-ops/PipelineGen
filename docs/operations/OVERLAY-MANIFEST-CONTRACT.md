@@ -44,6 +44,9 @@ item_id   →  ( track, in_us, out_us, content_hash )
   voce — il render key dell'item calcolato sul child plan che il percorso
   esegue davvero (64 hex minuscoli). Copre testo, asset, stili, timing
   relativo, canvas; NON copre il posizionamento.
+- `placement` (opzionale, §3.2): il rect di proiezione spaziale della voce
+  sulla canvas del piano (`x_px`,`y_px`,`w_px`,`h_px`). Assente = full-canvas
+  (percorso classico, nessuna migrazione).
 
 L'artefatto è **ancorato a plan t=0** e copre l'intero piano (tutte le scene):
 la proiezione §3 non ha offset di origine, e l'ancoraggio a 0 allinea Source/
@@ -129,6 +132,33 @@ aveva codificato 27.864 frame di cui ~80% vuoti).
   background `color` o assente → packed consentito; ogni finestra candidata
   deve essere coperta dall'unione (un errore, mai un offset 0 silenzioso).
 
+### 3.2 Placement spaziale (rect) — wire LAND, compositing SPEC
+
+Aggiunto dal cammino A di
+[`TICKET-PARADIGM-ALPHA-LAYER-HUD.md`](TICKET-PARADIGM-ALPHA-LAYER-HUD.md)
+(A1, 2026-10-28): un'entry può portare il **rect di proiezione spaziale**
+(`placement: {x_px, y_px, w_px, h_px}`, px sulla canvas del piano).
+
+- **Semantica:** assente ⇒ la voce si proietta full-canvas (comportamento
+  attuale, byte-compatibile); presente ⇒ il contenuto della voce si proietta
+  in quel rect. I quattro valori sono un oggetto unico: una coppia parziale
+  non è esprimibile sul wire e fallisce la deserializzazione (fail-closed già
+  a parse time lato Rust; lato Go i campi mancanti diventano zero e falliscono
+  la validazione: `w_px/h_px > 0`, `x_px/y_px ≥ 0`). Il vincolo
+  `x_px+w_px ≤ canvas_w` (e analogo per h) è **producer-side fail-closed**: il
+  manifest non porta le dimensioni canvas.
+- **Identità (invariante §2):** il rect è metadata di posizione come
+  `track`/`in_us`/`out_us` — escluso da `RetryKey` (stessa identità di lavoro
+  al retry), incluso in `Digest()` (rect diversi ⇒ pixel diversi ⇒
+  composizioni distinte, una riga di cache per ciascuna).
+- **Stato del consumer:** il compositing a rect nel final worker
+  (`transform_assemble`, alpha-blend sulla regione) è la fase **A3** del
+  ticket ed è **NON IMPLEMENTATO**: fino ad allora le entry portano
+  `placement: null` e il proiettore ignora il campo. Un consumer che proietta
+  una entry con rect usando la regola full-canvas la disegna fuori posizione:
+  l'attivazione del producer sul rect è quindi bloccata alla chiusura di A3
+  (gate di parità visiva), non da oggi.
+
 ## 4. Wire del final job: manifest puro
 
 Il PREPARE resta invariato (`scenes[]`, `copy_only`, `delivery_plan`). Il
@@ -182,7 +212,8 @@ Nessuna invariante dell'handoff finale viene indebolita:
 ## 6. Wire tipizzato
 
 - Modello: `internal/capabilities/overlays/model/manifest.go`
-  (`OverlayManifest`, `OverlayManifestEntry`, `SchemaVersionManifest`).
+  (`OverlayManifest`, `OverlayManifestEntry`, `ManifestPlacement`,
+  `SchemaVersionManifest`).
 - Trasporto render: `RenderReference.Manifest`
   (`internal/capabilities/scripts/model_result.go`).
 - Trasporto remoto: `finalize.overlay_manifest` +
@@ -193,7 +224,12 @@ Nessuna invariante dell'handoff finale viene indebolita:
 ## 7. Prova nel repository
 
 - `internal/capabilities/overlays/model/manifest_test.go` — validazione,
-  determinismo della serializzazione, identità per voce e di composizione.
+  determinismo della serializzazione, identità per voce e di composizione;
+  placement: validazione del rect, `RetryKey` insensibile al rect,
+  `Digest()` distinto per rect distinti.
+- `BrainRust/pipelinegen-muscles/src/protocol.rs` — parità wire Go↔Rust:
+  rect validato fail-closed su entrambi i lati, oggetto placement
+  all-or-nothing alla deserializzazione.
 - `internal/capabilities/scripts/render_queue_batches_test.go` — composizione
   manifest: finestre letterali plan-absolute (inclusi i confi tra scene),
   voce singola ammessa, ammissione caption per disgiunzione temporale,

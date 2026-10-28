@@ -1,0 +1,54 @@
+{
+ "generated_at": "2026-10-28T08:43:01.007774+00:00",
+ "gate": "B0 \u2014 breakdown loop_* per componente (TICKET-PARADIGM-ALPHA-LAYER-HUD \u00a74 B0)",
+ "method": "chronon3d_cli render 456 frame 1080p30, backend vulkan, NVENC native p1 QP23 (profilo noto-buono dei test GPU), telemetria per-frame dal sidecar *.timing.json; stessa formula di render_job_finalize.cpp (loop_other = loop \u2212 preparation \u2212 graph \u2212 handoff)",
+ "binary": "Chronon3d/build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli",
+ "cases": {
+  "chronon_text_full_static": {
+   "sidecar": ".tmp/b0_loop_breakdown/static/b0_static.mp4.timing.json",
+   "process_wall_ms": 2033.999343,
+   "startup_ms": 729.12009,
+   "prepare_ms": 426.96085600000004,
+   "render_loop_ms": 826.265494,
+   "executed_frames": 1,
+   "fast_path_reused_frames": 455,
+   "loop_prepare_ms": 0.036657,
+   "loop_graph_prepare_ms": 5.146,
+   "loop_graph_execute_ms": 6.454,
+   "loop_timeline_eval_ms": 0.318,
+   "loop_text_ms": 0.405,
+   "loop_encode_handoff_ms": 0.019961,
+   "loop_interpretation_cpu_ms": 12.359656999999999,
+   "loop_other_submission_ms": 813.885876,
+   "interpretation_pct_of_loop": 1.5,
+   "other_pct_of_loop": 98.5,
+   "fixed_startup_prepare_pct_of_process_wall": 56.8
+  },
+  "chronon_text_elements_motion": {
+   "sidecar": ".tmp/b0_loop_breakdown/motion/b0_motion.mp4.timing.json",
+   "process_wall_ms": 2248.700523,
+   "startup_ms": 797.87163,
+   "prepare_ms": 453.970776,
+   "render_loop_ms": 961.136292,
+   "executed_frames": 90,
+   "fast_path_reused_frames": 366,
+   "loop_prepare_ms": 20.856794,
+   "loop_graph_prepare_ms": 29.261999999999997,
+   "loop_graph_execute_ms": 266.39400000000006,
+   "loop_timeline_eval_ms": 21.238,
+   "loop_text_ms": 15.047999999999998,
+   "loop_encode_handoff_ms": 0.17125599999999996,
+   "loop_interpretation_cpu_ms": 352.79879400000004,
+   "loop_other_submission_ms": 608.166242,
+   "interpretation_pct_of_loop": 36.7,
+   "other_pct_of_loop": 63.3,
+   "fixed_startup_prepare_pct_of_process_wall": 55.7
+  }
+ },
+ "verdict": {
+  "criterion": "loop_graph_eval + loop_other >= 30% del wall item (motion fixture)",
+  "motion_graph_plus_other_pct_of_process_wall": 40.2,
+  "pass": true,
+  "limits": "il residuo (loop_other) \u00e8 submission/queue NVENC, non interpretazione: il cammino B non pu\u00f2 reclamarlo. Il target reale di B \u00e8 l'interpretazione CPU (36.7% del loop sul motion fixture). I costi fissi per job (startup+prepare, 55.7% del process_wall) sono la leva piu' grande e indipendente da B."
+ }
+}

@@ -209,6 +209,25 @@
   },
   "entries": [
     {
+      "id": "air_defense_interception_dome",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 15
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
       "id": "air_rise_type_on",
       "families": [
         "phrase.classic_apple",
@@ -1025,6 +1044,25 @@
       "chronontemplate_family": "brush_v1"
     },
     {
+      "id": "cell_tower_triangulation",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 6
+      },
+      "min_pin_count": 3,
+      "max_pin_count": 5
+    },
+    {
       "id": "center_expansion",
       "families": [
         "authored.generic_motion_v1"
@@ -1074,6 +1112,25 @@
         "text"
       ],
       "chronontemplate_family": "apple_v2"
+    },
+    {
+      "id": "cinematic_anchor_pitch_tilt",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 25
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
     },
     {
       "id": "cinematic_camera_push",
@@ -1146,6 +1203,22 @@
         "phrase.classic_apple": 4,
         "phrase.all": 4
       }
+    },
+    {
+      "id": "crime_scene_radar",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "order": {
+        "map.composition": 3
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
     },
     {
       "id": "crisp_mask_center_open",
@@ -2360,8 +2433,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -2374,8 +2447,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -2388,8 +2461,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -2402,8 +2475,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -2416,8 +2489,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -2430,8 +2503,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -2663,6 +2736,402 @@
       "order": {
         "entity.caption": 3
       }
+    },
+    {
+      "id": "flood_sea_level_inundation",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 23
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "frontline_fluid_corridor",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 11
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "great_circle_polar_route",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 18
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "isochrone_travel_bubble",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 7
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "missile_arc_ballistic",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 13
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "multi_camera_split_matrix",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 14
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "multi_leg_flight",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 4
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "naval_chokepoint_exclusion",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 12
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "night_vision_infrared",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 10
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "pipeline_energy_flow",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 20
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "port_hub_radial_burst",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 19
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "route_line",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 1
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "satellite_before_after_split",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 21
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "satellite_dive_lock",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 2
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "subsea_cable_glow_network",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 16
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "supply_chain_artery_pulse",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 17
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "territory_polygon_wipe",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "order": {
+        "map.composition": 5
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "thermal_heatmap_overlay",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 9
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "timeline_suspect_trail",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 8
+      },
+      "min_pin_count": 2,
+      "max_pin_count": 5
+    },
+    {
+      "id": "topographic_contour_rise",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 22
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "wildfire_burn_scar_expansion",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 24
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
     },
     {
       "id": "entity_yaw_caption",
@@ -6612,13 +7081,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 6
       }
@@ -6652,13 +7118,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 3
       }
@@ -7790,6 +8253,23 @@
       }
     },
     {
+      "id": "exponential_dive",
+      "families": [
+        "map.camera"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.camera"
+      ],
+      "order": {
+        "map.camera": 1
+      }
+    },
+    {
       "id": "soft_clay_press",
       "families": [
         "phrase.all"
@@ -7894,8 +8374,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {

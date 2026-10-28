@@ -334,6 +334,56 @@ func TestAnimationRegistryActiveEntriesAreCanonicalAndRetiredEntriesAreNotSelect
 	}
 }
 
+// TestMapCompositionsAreTheChrononPluginCatalog pins the registry's map
+// vocabulary to the native renderer's published catalog
+// (ChrononPlugin/plugins/maps/maps-renderer-catalog.v1.json): the registry only
+// exposes compositions the renderer draws, the projection is complete (every
+// catalog animation is registered), and the servable subset is a subset of
+// both. A composition can therefore never be planned for a renderer that
+// refuses it, nor hidden from the planner when the renderer draws it.
+func TestMapCompositionsAreTheChrononPluginCatalog(t *testing.T) {
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate test source")
+	}
+	root := filepath.Join(filepath.Dir(source), "..", "..", "..", "..")
+	raw, err := os.ReadFile(filepath.Join(root, "ChrononPlugin", "plugins", "maps", "maps-renderer-catalog.v1.json"))
+	if err != nil {
+		t.Skipf("ChrononPlugin map catalog not available: %v", err)
+	}
+	var catalog struct {
+		Source        string   `json:"source"`
+		MapAnimations []string `json:"map_animations"`
+	}
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		t.Fatalf("decode ChrononPlugin map catalog: %v", err)
+	}
+	if catalog.Source != "ChrononPlugin" || len(catalog.MapAnimations) == 0 {
+		t.Fatalf("ChrononPlugin map catalog is not the expected artifact: %+v", catalog)
+	}
+	cataloged := map[string]bool{}
+	for _, id := range catalog.MapAnimations {
+		cataloged[id] = true
+	}
+	registered := map[string]bool{}
+	for _, id := range canonicalAnimationRegistry.Candidates("map.composition") {
+		registered[id] = true
+		if !cataloged[id] {
+			t.Errorf("registry exposes map composition %q outside the ChrononPlugin catalog", id)
+		}
+	}
+	for id := range cataloged {
+		if families, known := canonicalAnimationRegistry.FamiliesOf(id); !known || !containsMotion(families, "map.composition") {
+			t.Errorf("ChrononPlugin map composition %q is not registered in map.composition", id)
+		}
+	}
+	for _, id := range PortedMapCompositions() {
+		if !cataloged[id] || !registered[id] {
+			t.Errorf("servable composition %q must be both cataloged and registered", id)
+		}
+	}
+}
+
 // TestShortPhraseWordGroupsMatchCatalog ensures every routed recipe still
 // exists in the canonical catalog and is only listed at its authored word_count.
 // ShortPhrase overlays themselves are static in the planner; these groups are

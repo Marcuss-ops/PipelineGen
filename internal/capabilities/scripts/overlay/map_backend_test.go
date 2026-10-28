@@ -109,6 +109,33 @@ func TestMapAnimationPlaceholdersDemandNoComposition(t *testing.T) {
 	}
 }
 
+// TestNativeGalleryCompositionClaimsItsOwnCapability pins the classification
+// half of the servability contract: a composition of the native documentary
+// gallery (the ChrononPlugin map catalog projection) claims only its own
+// capability and resolves to the single dynamic renderer — it is neither a
+// camera tour nor an editorial scene, so it never rides their fail-closed
+// paths.
+func TestNativeGalleryCompositionClaimsItsOwnCapability(t *testing.T) {
+	item := capabilityoverlay.OverlayItem{ID: "m", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
+		Params: map[string]any{"map_animation": "thermal_heatmap_overlay"}}
+	req := MapRenderRequirementsFor(item)
+	if !req.NativeComposition || req.DynamicCameraTour || req.EditorialComposition {
+		t.Fatalf("native gallery composition requirements = %+v", req)
+	}
+	backend, _, err := ResolveMapBackendFor(req)
+	if err != nil || backend != MapBackendDynamic {
+		t.Fatalf("native gallery composition must resolve to the dynamic renderer, got %q %v", backend, err)
+	}
+	// A composition the planner cannot feed (crime_scene_radar needs
+	// crime_scene_radius_m) is not in the servable subset and keeps failing
+	// closed with its typed error.
+	dataBound := capabilityoverlay.OverlayItem{ID: "m2", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
+		Params: map[string]any{"map_animation": "crime_scene_radar"}}
+	if req := MapRenderRequirementsFor(dataBound); req.NativeComposition {
+		t.Fatalf("data-bound composition must not claim the native gallery capability, got %+v", req)
+	}
+}
+
 // TestPerPinTimingIsTheOneDeclinableRequirement pins the declared-degradation
 // policy: grounded per-pin spoken timing data riding on every planned map is
 // DECLINED (with the reason recorded) when timing is the only unmet

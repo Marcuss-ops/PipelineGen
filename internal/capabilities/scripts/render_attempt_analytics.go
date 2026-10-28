@@ -15,6 +15,7 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -26,6 +27,15 @@ import (
 type RenderAttemptAnalytics struct {
 	AttemptID string `json:"attempt_id"`
 	JobID     string `json:"job_id"`
+	// RunID is the render fan-out run identity the job id embeds
+	// (`<run_id>:item:<nnn>:<item_id>` — the child plan identity built by
+	// render_queue_items.go). It is the explicit per-run correlation column
+	// (migration 287) so per-run queries filter on `run_id = ?` instead of
+	// the fragile `job_id LIKE '%<run_id>%'` substring join. Legacy
+	// full-timeline ids carry no `:item:` fan-out: a `run_`-prefixed plan id
+	// IS the run identity and is mirrored verbatim; any other id leaves
+	// RunID empty — never a fabricated identity.
+	RunID string `json:"run_id,omitempty"`
 	// ItemID is the per-overlay correlation key: the semantic OverlayItem.ID
 	// that this short video renders. Empty for the legacy full-timeline path
 	// (multiple items in one job) and non-empty for the production per-item
@@ -130,6 +140,22 @@ type RenderAttemptAnalytics struct {
 	ChrononTimingContentType string `json:"chronon_timing_content_type,omitempty"`
 }
 
+// RenderRunID derives the run identity from an analytics job id, using the
+// exact same derivation as the migration-287 backfill (write path and
+// historical backfill must produce identical values):
+//   - `<run>:item:<nnn>:<item>` → the `<run>` prefix (per-item fan-out);
+//   - `run_...` without fan-out → the id itself (legacy full-timeline);
+//   - anything else → "" (no recoverable run identity).
+func RenderRunID(jobID string) string {
+	if i := strings.Index(jobID, ":item:"); i > 0 {
+		return jobID[:i]
+	}
+	if strings.HasPrefix(jobID, "run_") {
+		return jobID
+	}
+	return ""
+}
+
 // RenderAttemptRecorder persists one render-attempt analytics record. The
 // production concrete is the platform SQLite adapter; the capability stays
 // independent of the storage engine.
@@ -155,6 +181,7 @@ func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capoverlay.Overl
 	rec := RenderAttemptAnalytics{
 		AttemptID:         attemptID,
 		JobID:             plan.PlanID,
+		RunID:             RenderRunID(plan.PlanID),
 		Content:           capoverlay.CountContent(plan),
 		CompletionWaitMS:  wait.CompletionWait.Milliseconds(),
 		PollingSleepMS:    wait.PollingSleep.Milliseconds(),

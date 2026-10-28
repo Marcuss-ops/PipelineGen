@@ -31,6 +31,18 @@ func TestOverlayManifestEntryValidate(t *testing.T) {
 		"inverted window":    func(e *OverlayManifestEntry) { e.OutUS = e.InUS - 1 },
 		"short content_hash": func(e *OverlayManifestEntry) { e.ContentHash = "abc123" },
 		"uppercase hash":     func(e *OverlayManifestEntry) { e.ContentHash = strings.ToUpper(e.ContentHash) },
+		"negative placement x": func(e *OverlayManifestEntry) {
+			e.Placement = &ManifestPlacement{XPx: -1, YPx: 0, WPx: 800, HPx: 150}
+		},
+		"negative placement y": func(e *OverlayManifestEntry) {
+			e.Placement = &ManifestPlacement{XPx: 0, YPx: -1, WPx: 800, HPx: 150}
+		},
+		"zero placement width": func(e *OverlayManifestEntry) {
+			e.Placement = &ManifestPlacement{XPx: 0, YPx: 0, WPx: 0, HPx: 150}
+		},
+		"negative placement height": func(e *OverlayManifestEntry) {
+			e.Placement = &ManifestPlacement{XPx: 0, YPx: 0, WPx: 800, HPx: -1}
+		},
 	} {
 		entry := valid
 		mutate(&entry)
@@ -68,6 +80,69 @@ func TestOverlayManifestEntryRetryKeyBindsContentNotPlacement(t *testing.T) {
 	}
 	if base.RetryKey() != base.RetryKey() {
 		t.Fatalf("retry identity must be stable across calls")
+	}
+}
+
+func TestOverlayManifestEntryRetryKeyIgnoresRectPlacement(t *testing.T) {
+	t.Parallel()
+	base := OverlayManifestEntry{
+		ItemID:      "scene-01-overlay-0",
+		Track:       0,
+		InUS:        0,
+		OutUS:       2_000_000,
+		ContentHash: "a3f1c2d4e5b60718293a4b5c6d7e8f90123456789abcdef0123456789abc0123",
+	}
+	rect := base
+	rect.Placement = &ManifestPlacement{XPx: 40, YPx: 800, WPx: 800, HPx: 150}
+	if base.RetryKey() != rect.RetryKey() {
+		t.Fatalf("the spatial rect is placement metadata: it must not change the entry work identity")
+	}
+	moved := rect
+	moved.Placement = &ManifestPlacement{XPx: 640, YPx: 200, WPx: 800, HPx: 150}
+	if rect.RetryKey() != moved.RetryKey() {
+		t.Fatalf("moving the rect must not change the entry work identity")
+	}
+}
+
+func TestOverlayManifestDigestSeparatesRectPlacements(t *testing.T) {
+	t.Parallel()
+	entry := OverlayManifestEntry{
+		ItemID:      "scene-01-overlay-0",
+		Track:       0,
+		InUS:        0,
+		OutUS:       2_000_000,
+		ContentHash: "a3f1c2d4e5b60718293a4b5c6d7e8f90123456789abcdef0123456789abc0123",
+	}
+	base := OverlayManifest{
+		SchemaVersion: SchemaVersionManifest,
+		PlanID:        "plan-01",
+		VideoID:       "video-01",
+		Entries:       []OverlayManifestEntry{entry},
+	}
+	other := base
+	moved := entry
+	moved.Placement = &ManifestPlacement{XPx: 40, YPx: 800, WPx: 800, HPx: 150}
+	other.Entries = []OverlayManifestEntry{moved}
+	if base.Digest() == other.Digest() {
+		t.Fatalf("full-canvas and rect-projected compositions draw different pixels: they must be distinct compositions")
+	}
+	reshaped := other
+	reshapedEntry := moved
+	reshapedEntry.Placement = &ManifestPlacement{XPx: 40, YPx: 800, WPx: 820, HPx: 150}
+	reshaped.Entries = []OverlayManifestEntry{reshapedEntry}
+	if other.Digest() == reshaped.Digest() {
+		t.Fatalf("two different rects must name two different compositions")
+	}
+	raw, err := json.Marshal(other)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	again, err := json.Marshal(other)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !bytes.Equal(raw, again) {
+		t.Fatalf("serialization must stay deterministic with placement present")
 	}
 }
 

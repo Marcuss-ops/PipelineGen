@@ -266,7 +266,7 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 			writeGenerateSubmitError(c, err)
 			return
 		}
-		writeGenerationRunSuccess(c, run, jobID, res, res != nil && res.IsIdempotencyHit)
+		writeGenerationRunSuccess(c, run, jobID, res, res != nil && res.IsIdempotencyHit, cmd.Envelope)
 		return
 	}
 
@@ -276,5 +276,5 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 		writeGenerateSubmitError(c, err)
 		return
 	}
-	writeGenerateSubmitSuccess(c, res)
+	writeGenerateSubmitSuccess(c, res, cmd.Envelope)
 }

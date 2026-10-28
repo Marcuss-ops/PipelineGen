@@ -5,16 +5,19 @@ package artifacts
 import "testing"
 
 // TestStatusConstantValues guards against value-drift on the 7 canonical
-// Status constants. These 7 strings (STAGING / VERIFYING / STAGED /
-// FAILED / QUARANTINED / DELETED) are the production source-of-truth
-// for 25 importers of internal/artifacts; a typo would silently
-// break 25 downstream callers without this guard. Surface drift in
-// CI as 'expected="STAGED" got="STAGEX"' rather than after a runtime
-// regression.
+// Status constants. Their WIRE values are the 6-state SQL vocabulary of the
+// artifacts table (STAGING / VERIFYING / READY / FAILED / QUARANTINED /
+// DELETED — the CHECK installed by migrations 051/000 and pinned by the
+// `artifacts.status` row of docs/migrations/STATE_MATRIX.md): a typo would
+// silently break the downstream callers of internal/artifacts without this
+// guard. Surface drift in CI as 'expected="READY" got="READX"' rather than
+// after a runtime regression.
 //
-// AZIONE 15 (July 2026): StatusReady is now a BC alias for StatusStaged
-// (equals "STAGED"). The test asserts the canonical string values,
-// not the alias identity.
+// AZIONE 15 (July 2026): StatusStaged is a BC NAME whose wire value is
+// "READY" (there is no "STAGED" in artifacts.status — the only STAGED
+// vocabulary belongs to artifact_stages.state, a different table), and
+// StatusReady is the alias for StatusStaged. The test asserts the canonical
+// string values, not the alias identity.
 //
 // Mirrors the discipline already established in
 // internal/kernel/asset/asset_test.go (TestStateConstantsMatchAssets,

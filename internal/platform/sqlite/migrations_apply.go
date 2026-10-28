@@ -43,6 +43,32 @@ func applyMigration(db queryable, log *zap.Logger, version int, filename, checks
 		log = zap.NewNop()
 	}
 	startedAt := time.Now()
+	// `-- foreign_keys: off` header directive: some DDL is only expressible
+	// with enforcement disabled — a parent-table rebuild (SQLite has no ALTER
+	// COLUMN) must drop/rename the referenced table, and with foreign_keys ON
+	// the implicit DELETE FROM of DROP TABLE fires every ON DELETE CASCADE
+	// action (PRAGMA defer_foreign_keys defers violations, NOT actions) while
+	// ALTER TABLE RENAME rewrites the REFERENCES clauses of every child table
+	// onto the retired name. `PRAGMA foreign_keys` is a no-op INSIDE a
+	// transaction, so the toggle happens here, outside the runner's per-file
+	// transaction, and is restored unmediately afterwards.
+	//
+	// Connection affinity: the pragma is per-connection. Both production
+	// handles are single-connection by construction (NewSQLiteDB pins
+	// SetMaxOpenConns(1); RunMigrationsOnDB pins its one-shot handle the same
+	// way), so Exec-before-Begin is guaranteed to hit the transaction's
+	// connection.
+	fkOff := migrationDisablesForeignKeys(content)
+	if fkOff {
+		if _, err := db.Exec("PRAGMA foreign_keys=OFF"); err != nil {
+			return fmt.Errorf("%s: disable foreign_keys for rebuild: %w", filename, err)
+		}
+		defer func() {
+			if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+				log.Error("restore foreign_keys=ON after migration", zap.String("filename", filename), zap.Error(err))
+			}
+		}()
+	}
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)

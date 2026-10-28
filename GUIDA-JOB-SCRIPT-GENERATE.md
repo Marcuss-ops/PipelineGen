@@ -32,7 +32,7 @@ stock, impostazioni audio/render) in:
 | `cmd/worker` | prende in lease il job ed esegue il handler |
 | `internal/capabilities/scripts/jobs/generation_handler.go` | handler `script.generate`, orchestrazione |
 | `internal/capabilities/scripts/runner_*.go` | il Runner: le fasi di business (vedi §2) |
-| `data/media/media.db.sqlite` | registro performance durevole (`performance_runs/steps`) |
+| `data/media/media.db.sqlite` | piano primario (SSOT domini non-media) + registri durevoli: `performance_runs/steps`, `render_attempt_analytics` (riga per-item con `run_id`, vedi §8) |
 | `data/observability/api_requests.db.sqlite` | telemetria run: `run_observability`, `run_stage_observations`, `run_operation_observations` |
 | RenderingGen (worker remoto, es. `51.91.11.36`) | render finale video (`remote_final_job`) e lane GPU overlay (`chronon3d.service` via IPC) |
 | Google Drive | delivery: VO, audio master, artefatti, cartelle per job |
@@ -497,16 +497,19 @@ non vanno confrontate).
 
 ```bash
 # fasi di job e sotto-operazioni (incluse prefetch/prepare/encode mappe e
-# upload Drive reali dell'outbox) — run di un job:
-sqlite3 'file:data/observability/runs.db.sqlite?mode=ro' \
-  "SELECT run_id, stage, wall_ms FROM run_stage_observations WHERE job_id='<JOB>' ORDER BY stage;
-   SELECT run_id, stage, component, operation, total_work_ms, max_work_ms, calls
-   FROM run_operation_observations WHERE job_id='<JOB>' ORDER BY stage, component;"
+# upload Drive reali dell'outbox) — run di un job (la chiave di correlazione
+# è run_id, non esiste una colonna job_id su queste tabelle):
+sqlite3 'file:data/observability/api_requests.db.sqlite?mode=ro' \
+  "SELECT run_id, name, duration_ms FROM run_stage_observations WHERE run_id='<RUN>' ORDER BY started_at;
+   SELECT run_id, stage, component, operation, duration_ms, attempts, queue_wait_ms
+   FROM run_operation_observations WHERE run_id='<RUN>' ORDER BY stage, component;"
 
-# finestra render e item/min della run worker:
-sqlite3 'file:data/observability/runs.db.sqlite?mode=ro' \
-  "SELECT (MAX(queue_completed_at)-MIN(queue_queued_at))/1e9 AS window_s, COUNT(*) AS items
-   FROM render_attempt_analytics WHERE run_id='<RUN>';"
+# finestra render e item/min della run worker (run_id è la colonna esplicita
+# della migration 287 — più alcun join per substring su job_id):
+sqlite3 'file:data/media/media.db.sqlite?mode=ro' \
+  "SELECT (julianday(MAX(queue_completed_at))-julianday(MIN(queue_queued_at)))*24*60 AS window_min,
+          COUNT(*) AS items
+     FROM render_attempt_analytics WHERE run_id='<RUN>';"
 ```
 
 Le due metriche si calcolano come `items / window_s * 60` (item/min) e
