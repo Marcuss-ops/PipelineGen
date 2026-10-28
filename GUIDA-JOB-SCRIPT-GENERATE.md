@@ -466,9 +466,11 @@ retry, hash output. Non confrontare finestre diverse come equivalenti.
 
 **Golden case** (baseline overlay-only): payload immutabile
 `ops/jobs/overlay_throughput_golden_100_20261022.v2.generate.json` (SHA-256
-`60fb14…d63080d`), derivato da `08_fonti_media.generate.v11.json`: 25 frasi
-brevi + 25 lunghe + 30 immagini + 10 date + 10 mappe, `max_overlays_per_scene=10`,
-`final_job=false`. **Baseline misurata (22/10, 3 run confrontabili v8/v9/v10,
+`fe06d3…42c2f672`; `60fb14…d63080d` identifica la versione precedente),
+derivato da `08_fonti_media.generate.v11.json`: il brief richiede 25 frasi
+brevi + 25 lunghe + 30 immagini + 10 date + 10 mappe, ma il payload corrente
+**disabilita le mappe** e non certifica quel mix. `max_overlays_per_scene=10`,
+`final_job=false`, `render.enabled=false`, `overlays_only=true`. **Baseline misurata (22/10, 3 run confrontabili v8/v9/v10,
 1 lane render): mediana 27,2 overlay/min sulla finestra render (range
 25,4–29,5). Dopo la seconda lane di render (2° daemon Chronon +
 `overlayItemDeepWidth=2`, run v11): 37,8 overlay/min (+39%, finestra 60,4 s,

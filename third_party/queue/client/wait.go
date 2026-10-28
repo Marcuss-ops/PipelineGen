@@ -38,6 +38,12 @@ const (
 // producer long poll, so the caller can degrade to polling instead of failing.
 var errWaitRouteUnsupported = errors.New("queue wait route unsupported")
 
+// A server-side status read can fail while the render continues. Keep the
+// failure bounded so an unavailable queue is not mistaken for success.
+var errQueueStatusUnavailable = errors.New("queue status temporarily unavailable")
+
+const maxConsecutiveStatusFailures = 3
+
 // IsTerminalState reports whether a job state is terminal for a producer
 // waiting on completion. `rendered` is deliberately excluded (see the package
 // note above).
@@ -133,6 +139,7 @@ func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (J
 		interval = time.Second
 	}
 	backoff := interval
+	consecutiveStatusFailures := 0
 	backoffTimer := time.NewTimer(backoff)
 	defer backoffTimer.Stop()
 	for {
@@ -140,8 +147,15 @@ func (c *Client) Wait(ctx context.Context, id string, interval time.Duration) (J
 		if err == nil && IsTerminalState(job.State) {
 			return job, nil
 		}
-		if err != nil && !errors.Is(err, ErrNotFound) {
+		if errors.Is(err, errQueueStatusUnavailable) {
+			consecutiveStatusFailures++
+			if consecutiveStatusFailures >= maxConsecutiveStatusFailures {
+				return Job{}, err
+			}
+		} else if err != nil && !errors.Is(err, ErrNotFound) {
 			return Job{}, err
+		} else {
+			consecutiveStatusFailures = 0
 		}
 		select {
 		case <-ctx.Done():

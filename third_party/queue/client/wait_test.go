@@ -106,6 +106,30 @@ func TestWaitTerminalFallsBackAfterTransientWaitFailure(t *testing.T) {
 	}
 }
 
+func TestWaitTerminalRecoversFromTransientStatusTimeout(t *testing.T) {
+	gets := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /jobs/job-1/wait", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	})
+	mux.HandleFunc("GET /jobs/job-1", func(w http.ResponseWriter, _ *http.Request) {
+		gets++
+		if gets == 1 {
+			http.Error(w, "timeout: context deadline exceeded", http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(Job{ID: "job-1", State: StateCompleted})
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	job, err := New(ts.URL).WaitTerminal(ctx, "job-1")
+	if err != nil || job.State != StateCompleted || gets != 2 {
+		t.Fatalf("job=%+v gets=%d err=%v", job, gets, err)
+	}
+}
+
 func TestWaitTerminalUnknownJobIsNotFound(t *testing.T) {
 	ts := waitServer(t, StateCompleted, true)
 	c := New(ts.URL)

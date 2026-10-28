@@ -3,7 +3,7 @@
 - **Data:** 2026-10-27
 - **Autori:** Pierone + Buffy (Codebuff)
 - **Moduli interessati:** `refactored` (PipelineGen: `cliprender`, `internal/platform/renderinggen`), `RenderingGen` (`internal/processor`), `Chronon3d` (solo verifica, nessuna modifica attesa), `BrainRust` (nessuna modifica — contratto artefatto invariato)
-- **Stato:** IN IMPLEMENTAZIONE — sblocco atterrato su tutti e tre i moduli (v. §9); residui dichiarati in §9
+- **Stato:** IN IMPLEMENTAZIONE — sblocco atterrato su tutti e tre i moduli (v. §9); parità su fixture reale verificata, gate completi e attivazione operativa ancora aperti
 - **Obiettivo:** Rendere il chunking realmente attivo per i clip source-only lunghi (children video-only + mux sorgente una sola volta all'anchor), riducendo la latenza per clip da ~1× a ~1/N sul pool di worker, senza cambiare il contratto dell'arte-fatto pubblicato.
 
 ---
@@ -97,16 +97,17 @@ Lo sblocco è atterrato su tutti e tre i moduli, con pin su ogni contratto:
 - Test C++: "Audio-aware assembly muxes one source stream over video-only segments" (20 packet video, stream AAC presente) e "Audio-aware assembly refuses a second audio owner and a silent audio source". Suite completa `chronon3d_cli_tests`: 261/261 verdi.
 
 ### 9.4 Residui dichiarati
-- **Criterio 5 (equivalenza artefatto end-to-end)**: garantito per costruzione (stesso MuxSession, stessa semantica copy, stesso ordine del render single-job) e dai pin del mux; il test di confronto parent-assemblato vs render-single-job su fixture reali (stream audio identico per hash, fatti certificati equivalenti) resta da scrivere in RenderingGen.
+- **Criterio 5 (equivalenza artefatto)**: `TestAudioAwareChunkParentMatchesSingleJob` passa sul worker corrente con una fixture AAC di 12 secondi e due child; confronta fatti di output, durata, 360 frame decodificati e hash dei pacchetti audio non negativi della sorgente con parent e single-job. La verifica riguarda questa fixture, non ogni formato o configurazione.
+- **Pin C++ "esattamente una volta"**: i due test `Audio-aware assembly` passano (59 assertion); il conteggio riguarda i pacchetti con PTS/DTS non negativo, coerenti con l'origine del single-job. Il pacchetto AAC di priming negativo è escluso anche nell'assembler.
+- **Gate**: `go test ./... -count=1` e `go vet ./...` passano in `RenderingGen/renderinggen`; `make verify-agent` passa in `refactored` (17 componenti da cache, 3 eseguiti). `verify-main` e la suite Chronon3d completa non sono stati rieseguiti, quindi il ticket non è chiuso. Il test Vulkan surface materializer, precedentemente bloccato al linking, è stato ricompilato e passa 27 test / 162 assertion.
 - **Ammissione parallela GPU**: resta il gate operativo per l'attivazione in produzione (precondizione già dichiarata in `chunk_producer.go`); `SetChunking` resta l'opt-in cablato.
-- **Pin C++ "esattamente una volta"**: aggiunto al test (`audio_packets == source_audio_packets`, conteggio e non presenza) ma in attesa di rebuild: il tree Chronon3d è condiviso con un altro workstream i cui file in modifica (`image_writer.cpp` + `image_writer_png_detail.hpp`) non compilano attualmente (errore TBB nei loro header). Il pin è nel sorgente del test.
 
 ## 10. Scoperte dall'Implementazione (2026-10-27)
 
 ### 10.1 Scoperte architetturali (utili per chi riprende il thread)
 1. **Il mux canonico di Chronon supportava GIÀ l'audio**: `MuxSession` espone `AudioStreamConfig`, `submit_audio`, `AudioResampler` (copy verbatim, trim, resample con `target_sample_rate`). Lo sblocco non ha richiesto nessun nuovo primitivo di mux — solo esporlo in `assemble_segments`.
 2. **Lo schema `overlay-plan.v1` dichiara `audio` OPZIONALE** (non è nel `required`, nessun campo obbligatorio dentro): i child video-only sono contrattualmente validi SENZA alcuno cambio di schema o ai parity test. Un cambio contratto non sarebbe stato necessario nemmeno per l'anchor.
-3. **Semantica audio del render single-job**: `NativeAvEncoder::mux_source_audio` copia verbatim TUTTO il flusso sorgente (la finestra `audio_start/end_seconds` è usata solo dal lane pipe_export), DOPO tutti i pacchetti video e PRIMA del trailer. `assemble_segments` replica esattamente questa sequenza per l'anchor — da cui l'equivalenza artefatto per costruzione.
+3. **Semantica audio del render single-job**: `NativeAvEncoder::mux_source_audio` copia i pacchetti sorgente nella finestra `audio_start/end_seconds`, DOPO i pacchetti video e PRIMA del trailer. Con origine zero esclude i pacchetti con PTS/DTS negativo o assente; l'assembler replica tale selezione per l'anchor. La parità è verificata sulla fixture indicata in §9.4, non inferita per tutte le sorgenti.
 4. **Le due single typed authority del percorso audio**: `audioSourcePathFromPlan` (render path, legge `Plan.Output.Audio` + layer "source" del piano compilato) e `anchorAudioSource` (finalizer, `overlay.CompileSemantic` sul piano anchor + source asset dal compile asset set). Nessuno dei due legge il piano semantico "a mano".
 5. **Producer: due mapping dello stesso piano sealed** — child = mapping video-only, anchor = mapping completa. Il contratto wire non cambia; cambia solo quali blocchi vengono omessi.
 6. **`clip-chunk.v1` → `clip-chunk.v2`**: il contenuto render di una finestra è cambiato (child video-only), quindi nuove identità job. Nessuna famiglia v1 esiste in nessuna coda: la dormienza storica garantisce zero legacy.
