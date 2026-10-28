@@ -23,10 +23,11 @@ import (
 )
 
 // renderAttemptAnalyticsWiringSchema is the canonical render_attempt_analytics
-// DDL (migrations 215 + 227 + 271 + 275 + 276 + 279 + 280) needed by the SQLite recorder.
+// DDL (migrations 215 + 227 + 271 + 275 + 276 + 279 + 280 + 287) needed by the SQLite recorder.
 const renderAttemptAnalyticsWiringSchema = `
 CREATE TABLE render_attempt_analytics (
     attempt_id      TEXT PRIMARY KEY,
+    run_id          TEXT NOT NULL DEFAULT '',
     job_id          TEXT NOT NULL DEFAULT '',
     item_id         TEXT NOT NULL DEFAULT '',
     batch_id        TEXT NOT NULL DEFAULT '',
