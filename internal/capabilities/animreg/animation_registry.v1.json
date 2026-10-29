@@ -3071,6 +3071,44 @@
       "max_pin_count": 5
     },
     {
+      "id": "area_glow_pulse",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 26
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
+      "id": "territory_glow_reveal",
+      "families": [
+        "map.composition"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "map_animation",
+      "random": [
+        "map.composition"
+      ],
+      "order": {
+        "map.composition": 27
+      },
+      "min_pin_count": 1,
+      "max_pin_count": 5
+    },
+    {
       "id": "entity_yaw_caption",
       "families": [
         "entity.caption",
