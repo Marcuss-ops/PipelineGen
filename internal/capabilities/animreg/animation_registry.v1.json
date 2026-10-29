@@ -214,13 +214,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 15
       },
@@ -1049,13 +1046,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 6
       },
@@ -1119,13 +1113,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 25
       },
@@ -1210,8 +1201,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -2743,13 +2734,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 23
       },
@@ -2762,13 +2750,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 11
       },
@@ -2781,13 +2766,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 18
       },
@@ -2800,13 +2782,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 7
       },
@@ -2819,13 +2798,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 13
       },
@@ -2838,13 +2814,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 14
       },
@@ -2876,13 +2849,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 12
       },
@@ -2895,13 +2865,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 10
       },
@@ -2914,13 +2881,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 20
       },
@@ -2933,13 +2897,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 19
       },
@@ -2971,13 +2932,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 21
       },
@@ -2990,13 +2948,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 2
       },
@@ -3009,13 +2964,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 16
       },
@@ -3028,13 +2980,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 17
       },
@@ -3047,8 +2996,8 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
       "order": {
@@ -3063,13 +3012,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 9
       },
@@ -3082,13 +3028,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 8
       },
@@ -3101,13 +3044,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 22
       },
@@ -3120,13 +3060,10 @@
         "map.composition"
       ],
       "lanes": [],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [],
       "kind": "map_animation",
-      "random": [
-        "map.composition"
-      ],
       "order": {
         "map.composition": 24
       },
@@ -9935,7 +9872,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -9950,7 +9887,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -9970,7 +9907,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -9990,7 +9927,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10010,7 +9947,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10030,7 +9967,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10050,7 +9987,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10070,7 +10007,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10085,7 +10022,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10100,7 +10037,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 2,
+      "group_size": 2,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10120,7 +10057,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 3,
+      "group_size": 3,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10140,7 +10077,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 3,
+      "group_size": 3,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10155,7 +10092,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 3,
+      "group_size": 3,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10170,7 +10107,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 3,
+      "group_size": 3,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10185,7 +10122,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 3,
+      "group_size": 3,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10205,7 +10142,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 4,
+      "group_size": 4,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10225,7 +10162,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 4,
+      "group_size": 4,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10240,7 +10177,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 4,
+      "group_size": 4,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10255,7 +10192,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 4,
+      "group_size": 4,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10270,7 +10207,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 4,
+      "group_size": 4,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10290,7 +10227,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 5,
+      "group_size": 5,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10305,7 +10242,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 5,
+      "group_size": 5,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10320,7 +10257,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 5,
+      "group_size": 5,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10335,7 +10272,7 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 5,
+      "group_size": 5,
       "requires_3d": false,
       "catalog_version": 1
     },
@@ -10355,11 +10292,10 @@
       "targets": [
         "image_group"
       ],
-            "group_size": 5,
+      "group_size": 5,
       "requires_3d": false,
       "catalog_version": 1
-    }
-,
+    },
     {
       "id": "classic_playfair_baseline_rise",
       "families": [
@@ -10474,8 +10410,7 @@
         "phrase.long": 51,
         "phrase.all": 115
       }
-    }
-,
+    },
     {
       "id": "classic_playfair_word_lift",
       "families": [
