@@ -45,9 +45,9 @@ ripetuta qui.
   vocabolario `STAGED` appartiene a `artifact_stages.state`, altra tabella).
   I due lati restano pinnati da `TestStatusConstantValues` (enum Go) e
   `TestStateMatrixMatchesLiveSchema` (CHECK SQL): una sola storia.
-- `media_assets.lifecycle_state` ha DEFAULT `'ready'` (lowercase) in SQLite e
-  `'ACTIVE'` in Postgres: casing e valore incoerenti tra i piani (il vocabolario
-  operativo è quello UPPER documentato in `canonical.go`).
+- `media_assets.lifecycle_state` usa DEFAULT `'ACTIVE'` (UPPER) sia in SQLite
+  sia in Postgres dalla migrazione SQLite `289`; il vocabolario operativo è
+  quello UPPER documentato in `canonical.go`.
 
 <!-- state-matrix:begin -->
 | table | column | planes | default | values | casing | terminal |
@@ -84,7 +84,7 @@ ripetuta qui.
 | job_steps | status | sqlite,sqlite_jobs | - | - | - | - |
 | jobs | status | sqlite | - | QUEUED,LEASED,RUNNING,SUCCEEDED,RETRY_WAIT,FAILED,CANCELLED | UPPER | SUCCEEDED,FAILED,CANCELLED |
 | jobs | status | sqlite_jobs | QUEUED | - | UPPER | SUCCEEDED,FAILED,CANCELLED |
-| media_assets | lifecycle_state | sqlite | ready | - | lower | DELETED,ARCHIVED |
+| media_assets | lifecycle_state | sqlite | ACTIVE | - | UPPER | DELETED,ARCHIVED |
 | media_assets | lifecycle_state | postgres | ACTIVE | - | UPPER | DELETED,ARCHIVED |
 | media_assets | index_state | postgres,sqlite | DISCOVERED | - | UPPER | INDEXED,INDEX_FAILED,DELETED |
 | media_assets | enrich_state | postgres,sqlite | PENDING | - | UPPER | - |

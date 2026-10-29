@@ -54,6 +54,11 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	if err := rows.Scan(&oldVersion, &oldFilename, &oldChecksum); err != nil {
 		return fmt.Errorf("scan legacy migration 238: %w", err)
 	}
+	// RunMigrationsOnDB limits the pool to one connection. Release the ledger
+	// cursor before issuing the following queries or the pool waits forever.
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("close legacy migration 238 rows: %w", err)
+	}
 	if oldVersion != 238 || oldFilename != "238_run_resource_reports.sql" {
 		return nil
 	}
@@ -70,6 +75,9 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	if !canonicalRows.Next() || canonicalRows.Scan(&canonicalExists) != nil {
 		return fmt.Errorf("scan canonical migration 239 presence")
 	}
+	if err := canonicalRows.Close(); err != nil {
+		return fmt.Errorf("close canonical migration 239 rows: %w", err)
+	}
 	if canonicalExists != 0 {
 		return fmt.Errorf("legacy migration 238 is present while canonical migration 239 is also present")
 	}
@@ -81,6 +89,9 @@ func reconcileHistoricalMigrationIdentities(db queryable, migrations []migration
 	var tableExists int
 	if !tableRows.Next() || tableRows.Scan(&tableExists) != nil {
 		return fmt.Errorf("scan run_resource_reports schema presence")
+	}
+	if err := tableRows.Close(); err != nil {
+		return fmt.Errorf("close run_resource_reports schema rows: %w", err)
 	}
 	if tableExists != 1 {
 		return fmt.Errorf("legacy migration 238 is recorded but run_resource_reports is absent")
