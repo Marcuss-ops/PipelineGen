@@ -351,7 +351,8 @@ func countKind(items []capabilityoverlay.OverlayItem, kind string) int {
 // chronon.dynamic-map-telemetry.v1 summary the render path validates — a wire
 // regression (payload field, encoder profile, sampler, basemap, camera
 // anchor) fails HERE instead of in production — and the decision report must
-// declare every base-flyover degradation instead of silently dropping it.
+// declare unsupported timing/presentation degradation while the chosen map
+// composition stays inside the native renderer's ported subset.
 func TestNativeMapRenderEndToEnd(t *testing.T) {
 	renderer := strings.TrimSpace(os.Getenv("VELOX_MAP_NATIVE_RENDERER_PATH"))
 	if renderer == "" {
@@ -409,7 +410,8 @@ func TestNativeMapRenderEndToEnd(t *testing.T) {
 	require.Equal(t, "dynamic", report.Backend, "the native renderer executes the dynamic backend")
 	require.Contains(t, report.BackendReason, "per-pin spoken timing declined")
 	require.Equal(t, "chronon_editorial", report.Basemap)
-	require.Empty(t, report.Composition, "the certified base flyover carries no composed scene")
+	require.Contains(t, capabilityoverlay.PortedMapCompositions(), report.Composition,
+		"the selected documentary composition must be drawn by the native renderer")
 	require.Len(t, report.Places, 2)
 	for _, place := range report.Places {
 		require.Equal(t, "rendered", place.State, "place %s", place.EntityID)

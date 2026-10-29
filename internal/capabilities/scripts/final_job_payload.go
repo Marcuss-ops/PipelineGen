@@ -207,7 +207,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 				var overlayID string
 				var ok bool
 				var overlayErr error
-				asset, durationMS, overlayID, ok, overlayErr = finalJobPhraseOverlayClip(result, segment.ID)
+				asset, durationMS, overlayID, ok, overlayErr = finalJobPhraseOverlayClip(ctx, result, segment.ID)
 				if overlayErr != nil {
 					return nil, nil, overlayErr
 				}
@@ -278,7 +278,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			asset, ok := stockAssetCache[file.ID]
 			if !ok {
 				var err error
-				asset, err = resolver.ResolveFinalJobAsset(ctx, file.ID)
+				asset, err = resolveFinalJobAsset(ctx, resolver, file.ID)
 				if err != nil {
 					return nil, nil, fmt.Errorf("resolve stock file %s (%s): %w", file.Name, file.ID, err)
 				}
@@ -320,7 +320,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if err := enforceFinalJobPreflight(remoteScenes, result.FinalAudio.DurationMS); err != nil {
 			return nil, nil, err
 		}
-		audioRef, err := finalJobAudioAsset(*result.FinalAudio)
+		audioRef, err := finalJobAudioAsset(ctx, *result.FinalAudio)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -329,7 +329,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
 	}
 	for _, bgm := range req.BackgroundMusic {
-		asset, err := resolver.ResolveFinalJobAsset(ctx, bgm.AssetID)
+		asset, err := resolveFinalJobAsset(ctx, resolver, bgm.AssetID)
 		if err != nil {
 			return nil, nil, fmt.Errorf("resolve background music %q for remote prefetch: %w", bgm.AssetID, err)
 		}
@@ -354,7 +354,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		}
 		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "music", music)
 	}
-	remoteOverlays, overlayManifest, err := finalJobOverlayHandoff(result, consumedPhraseOverlays)
+	remoteOverlays, overlayManifest, err := finalJobOverlayHandoff(ctx, result, consumedPhraseOverlays)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -14,6 +14,7 @@ package scriptgeneration
 // certified artifact all fail the whole handoff before any remote attempt.
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -74,7 +75,7 @@ func normalizeFinalJobOverlayWindows(plan *capoverlay.OverlayPlan, result *Gener
 // and the overlay_manifest wire document for the composition. Either side
 // may be empty (a plan with no maps/chain emits no rows; a plan with only
 // maps/chain emits no manifest), but never both when semantic overlays exist.
-func finalJobOverlayHandoff(result *GenerateResult, consumed map[string]struct{}) ([]any, map[string]any, error) {
+func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consumed map[string]struct{}) ([]any, map[string]any, error) {
 	if result == nil || result.OverlayPlan == nil || len(result.OverlayPlan.Items) == 0 {
 		return []any{}, nil, nil
 	}
@@ -110,12 +111,12 @@ func finalJobOverlayHandoff(result *GenerateResult, consumed map[string]struct{}
 			manifestItems[strings.TrimSpace(entry.ItemID)] = struct{}{}
 		}
 		var err error
-		manifestWire, err = finalJobManifestWire(result, consumed, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
+		manifestWire, err = finalJobManifestWire(ctx, result, consumed, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
-	rows, err := finalJobDedicatedOverlayRows(result, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
+	rows, err := finalJobDedicatedOverlayRows(ctx, result, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -136,7 +137,7 @@ func finalJobOverlayHandoff(result *GenerateResult, consumed map[string]struct{}
 // instead of a standalone Drive clip); image-style cards on intermediate clip
 // scenes are dropped for the same reason the per-item handoff dropped them —
 // mode=replace would cover the source clip that must stay visible.
-func finalJobManifestWire(result *GenerateResult, consumed map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) (map[string]any, error) {
+func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) (map[string]any, error) {
 	manifest := result.OverlayRender.Manifest
 	if manifest == nil {
 		return nil, fmt.Errorf("final_job overlays are not on the manifest wire (missing overlay_manifest)")
@@ -151,13 +152,13 @@ func finalJobManifestWire(result *GenerateResult, consumed map[string]struct{}, 
 	if artifact == nil {
 		return nil, fmt.Errorf("final_job overlay timeline has no published render artifact")
 	}
-	driveID := strings.TrimSpace(artifact.DriveFileID)
 	sha := strings.TrimSpace(artifact.SHA256)
-	if driveID == "" || len(sha) != 64 || artifact.SizeBytes <= 0 {
-		return nil, fmt.Errorf("final_job overlay timeline is not a certified published Drive artifact")
+	assetRef, refErr := finalJobRenderArtifactRef(ctx, artifact)
+	if refErr != nil || len(sha) != 64 {
+		return nil, fmt.Errorf("final_job overlay timeline is not a certified downloadable artifact: %w", refErr)
 	}
 	if prior, exists := admittedContent[sha]; exists {
-		return nil, fmt.Errorf("final_job overlays %q and the overlay timeline render the same Drive artifact %s; one image one overlay", prior, driveID)
+		return nil, fmt.Errorf("final_job overlays %q and the overlay timeline render the same artifact %s; one image one overlay", prior, sha)
 	}
 	admittedContent[sha] = "overlay_timeline"
 
@@ -207,19 +208,22 @@ func finalJobManifestWire(result *GenerateResult, consumed map[string]struct{}, 
 			"content_hash": entry.ContentHash,
 		})
 	}
+	asset := map[string]any{
+		"asset_id": assetRef["asset_id"], "sha256": sha,
+		"size_bytes": artifact.SizeBytes, "frame_count": artifact.FrameCount,
+		"duration_ms": (artifact.DurationUS + 999) / 1000,
+		"mode":        "replace", "audio_mode": "preserve_final_audio",
+	}
+	for key, value := range assetRef {
+		asset[key] = value
+	}
 	return map[string]any{
 		"schema_version":  manifest.SchemaVersion,
 		"plan_id":         manifest.PlanID,
 		"video_id":        manifest.VideoID,
 		"timeline_sha256": strings.ToLower(strings.TrimSpace(manifest.TimelineSHA256)),
-		"asset": map[string]any{
-			"asset_id": firstFinalJobValue(artifact.ID, driveID), "drive_file_id": driveID,
-			"url": driveFileWebLink(driveID), "sha256": sha,
-			"size_bytes": artifact.SizeBytes, "frame_count": artifact.FrameCount,
-			"duration_ms": (artifact.DurationUS + 999) / 1000,
-			"mode":        "replace", "audio_mode": "preserve_final_audio",
-		},
-		"entries": entries,
+		"asset":           asset,
+		"entries":         entries,
 	}, nil
 }
 
@@ -228,7 +232,7 @@ func finalJobManifestWire(result *GenerateResult, consumed map[string]struct{}, 
 // artifact per item and the worker keeps replacing those windows one clip at
 // a time. Every other plan item must be covered by the manifest — a regular
 // item without a manifest entry is a broken handoff, not a fallback.
-func finalJobDedicatedOverlayRows(result *GenerateResult, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) ([]any, error) {
+func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) ([]any, error) {
 	plan := result.OverlayPlan
 	artifacts := make(map[string]RenderArtifact, len(result.OverlayRender.Items))
 	for _, rendered := range result.OverlayRender.Items {
@@ -243,21 +247,17 @@ func finalJobDedicatedOverlayRows(result *GenerateResult, manifestItems map[stri
 		if id == "" {
 			return nil, fmt.Errorf("final_job overlay plan has an item without an ID")
 		}
-		dedicated := item.Map != nil || capoverlay.IsChainItemKind(item.Kind)
-		if !dedicated {
-			if _, covered := manifestItems[id]; !covered {
-				return nil, fmt.Errorf("final_job overlay %q has no manifest entry and no dedicated artifact", id)
-			}
+		if _, covered := manifestItems[id]; covered {
 			continue
 		}
 		artifact, ok := artifacts[id]
 		if !ok {
-			return nil, fmt.Errorf("final_job overlay %q has no published render artifact", id)
+			return nil, fmt.Errorf("final_job overlay %q has no manifest entry and no dedicated render artifact", id)
 		}
-		driveID := strings.TrimSpace(artifact.DriveFileID)
 		sha := strings.TrimSpace(artifact.SHA256)
-		if driveID == "" || len(sha) != 64 || artifact.SizeBytes <= 0 {
-			return nil, fmt.Errorf("final_job overlay %q is not a certified published Drive artifact", id)
+		assetRef, refErr := finalJobRenderArtifactRef(ctx, &artifact)
+		if refErr != nil || len(sha) != 64 {
+			return nil, fmt.Errorf("final_job overlay %q is not a certified downloadable artifact: %w", id, refErr)
 		}
 		startUS, endUS := item.StartUSValue(), item.EndUSValue()
 		startFrame := (startUS*int64(fpsNum) + frameDenominator - 1) / frameDenominator
@@ -279,7 +279,7 @@ func finalJobDedicatedOverlayRows(result *GenerateResult, manifestItems map[stri
 		// Gate 1 — content identity: the same rendered artifact admitted twice
 		// would render the same visual again.
 		if prior, exists := admittedContent[sha]; exists {
-			return nil, fmt.Errorf("final_job overlays %q and %q render the same Drive artifact %s; one image one overlay", prior, id, driveID)
+			return nil, fmt.Errorf("final_job overlays %q and %q render the same artifact %s; one image one overlay", prior, id, sha)
 		}
 		admittedContent[sha] = id
 		// Gate 2 — frame window: a dedicated row replaces its window with its
@@ -304,13 +304,16 @@ func finalJobDedicatedOverlayRows(result *GenerateResult, manifestItems map[stri
 			startFrame, endFrame = scheduledStart, scheduledEnd
 		}
 		admittedFrames[id] = finalJobFrameWindow{start: startFrame, end: endFrame, sceneID: item.SceneID}
-		rows = append(rows, map[string]any{
-			"id": id, "asset_id": firstFinalJobValue(artifact.ID, driveID),
-			"drive_file_id": driveID, "url": driveFileWebLink(driveID),
+		row := map[string]any{
+			"id": id, "asset_id": assetRef["asset_id"],
 			"sha256": sha, "size_bytes": artifact.SizeBytes,
 			"start_frame": startFrame, "end_frame": endFrame, "frame_count": endFrame - startFrame,
 			"mode": "replace", "z_index": index + 1, "audio_mode": "preserve_final_audio",
-		})
+		}
+		for key, value := range assetRef {
+			row[key] = value
+		}
+		rows = append(rows, row)
 	}
 	return rows, nil
 }

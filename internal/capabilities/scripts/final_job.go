@@ -556,7 +556,7 @@ func resolveFinalJobFixedMediaAsset(ctx context.Context, resolver FinalJobAssetR
 			return asset, err
 		}
 	}
-	return resolver.ResolveFinalJobAsset(ctx, clipID)
+	return resolveFinalJobAsset(ctx, resolver, clipID)
 }
 
 // renderedClipAssetRef projects a certified localized render into the runtime
@@ -566,8 +566,23 @@ func resolveFinalJobFixedMediaAsset(ctx context.Context, resolver FinalJobAssetR
 func renderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, rendered LocalizedRenderResult, sceneID string) (map[string]any, int64, error) {
 	driveID := strings.TrimSpace(rendered.DriveFileID)
 	sha := strings.TrimSpace(rendered.SHA256)
-	if driveID == "" || len(sha) != 64 || rendered.DurationMS <= 0 {
-		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q is not a certified published MP4 (drive_file_id, 64-char sha256 and positive duration required)", sceneID, rendered.AssetID)
+	if (!finalJobObjectStoreConfigured() && driveID == "") || len(sha) != 64 || rendered.DurationMS <= 0 {
+		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q is not a certified MP4 (64-char sha256 and positive duration required)", sceneID, rendered.AssetID)
+	}
+	if finalJobObjectStoreConfigured() {
+		info, err := os.Stat(strings.TrimSpace(rendered.LocalPath))
+		if err != nil {
+			return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q has no Creator-local source for Objectstore publication: %w", sceneID, rendered.AssetID, err)
+		}
+		if err := publishFinalJobLocalObject(ctx, rendered.LocalPath, sha, info.Size()); err != nil {
+			return nil, 0, fmt.Errorf("publish final_job scene %q rendered clip to Objectstore: %w", sceneID, err)
+		}
+		asset, err := finalJobObjectStoreRef(ctx, "", sha, sha, info.Size())
+		if err != nil {
+			return nil, 0, err
+		}
+		asset["duration_ms"] = rendered.DurationMS
+		return asset, rendered.DurationMS, nil
 	}
 	size, err := resolver.FinalJobPublishedFileSize(ctx, driveID)
 	if err != nil {

@@ -9,6 +9,7 @@ package scriptgeneration
 // the phrase is never overlaid a second time.
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -19,7 +20,7 @@ import (
 // into the clip slot for a phrase-only scene. The returned asset references
 // the phrase's window inside the certified timeline artifact; duration_ms is
 // the window's certified duration.
-func finalJobPhraseOverlayClip(result *GenerateResult, sceneID string) (map[string]any, int64, string, bool, error) {
+func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, sceneID string) (map[string]any, int64, string, bool, error) {
 	if result == nil || result.OverlayPlan == nil || result.OverlayRender == nil || result.OverlayRender.Manifest == nil {
 		return nil, 0, "", false, nil
 	}
@@ -48,23 +49,21 @@ func finalJobPhraseOverlayClip(result *GenerateResult, sceneID string) (map[stri
 	if artifact == nil {
 		return nil, 0, "", false, fmt.Errorf("final_job phrase-only scene %q has no certified timeline artifact", sceneID)
 	}
-	driveID := strings.TrimSpace(artifact.DriveFileID)
 	sha := strings.TrimSpace(artifact.SHA256)
-	if driveID == "" || len(sha) != 64 || artifact.SizeBytes <= 0 || !artifact.CopyEligible || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(artifact.MimeType)), "video/") {
-		return nil, 0, "", false, fmt.Errorf("final_job phrase artifact %q is not a certified published video", phrase.ID)
+	asset, refErr := finalJobRenderArtifactRef(ctx, artifact)
+	if refErr != nil || !artifact.CopyEligible || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(artifact.MimeType)), "video/") {
+		return nil, 0, "", false, fmt.Errorf("final_job phrase artifact %q is not a certified downloadable video: %v", phrase.ID, refErr)
 	}
 	durationMS := (entry.OutUS - entry.InUS + 999) / 1000
 	if durationMS <= 0 {
 		return nil, 0, "", false, fmt.Errorf("final_job phrase artifact %q has no positive certified duration", phrase.ID)
 	}
-	asset := map[string]any{
-		"asset_id": firstFinalJobValue(artifact.ID, driveID), "drive_file_id": driveID,
-		"url": driveFileWebLink(driveID), "sha256": sha,
-		"size_bytes": artifact.SizeBytes, "duration_ms": durationMS,
-		// The window reference: the compositor takes these frames from the
-		// timeline asset instead of downloading a standalone phrase clip.
-		"timeline_item_id": entry.ItemID, "in_us": entry.InUS, "out_us": entry.OutUS,
-	}
+	asset["size_bytes"] = artifact.SizeBytes
+	asset["duration_ms"] = durationMS
+	asset["sha256"] = sha
+	asset["timeline_item_id"] = entry.ItemID
+	asset["in_us"] = entry.InUS
+	asset["out_us"] = entry.OutUS
 	return asset, durationMS, phrase.ID, true, nil
 }
 

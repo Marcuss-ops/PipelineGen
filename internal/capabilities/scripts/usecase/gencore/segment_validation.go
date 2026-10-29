@@ -50,6 +50,21 @@ func splitGeneratedSegmentParagraphs(text string) []string {
 	return []string{cleaned}
 }
 
+// splitGeneratedBatchParagraphs preserves the paragraph boundaries required
+// by a multi-segment request. A blank line is the model-facing delimiter; each
+// resulting paragraph maps to exactly one segment in request order.
+func splitGeneratedBatchParagraphs(text string) []string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	parts := strings.Split(strings.TrimSpace(text), "\n\n")
+	paragraphs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if cleaned := normalizeGeneratedSegment(part); cleaned != "" {
+			paragraphs = append(paragraphs, cleaned)
+		}
+	}
+	return paragraphs
+}
+
 func normalizeGeneratedSegment(raw string) string {
 	cleaned := SanitizeScriptOutput(raw)
 	if cleaned == "" {
@@ -138,6 +153,12 @@ func (e *Engine) generateSegments(
 	}
 	if plan == nil || len(plan.Segments) == 0 {
 		return generate(ctx, req)
+	}
+	// Batch scene prose into at most ten model requests. The pair size grows
+	// only for scripts longer than twenty scenes; each response must preserve
+	// one blank-line-delimited paragraph per scene, in order.
+	if plan.ClipEvidence == nil && plan.ResearchEvidence == nil && len(plan.Segments) > 1 {
+		return e.generateSegmentBatches(ctx, plan, req, generate)
 	}
 	settings := e.segmentSettings()
 	// The stop-word set is a static lexical projection installed at bootstrap.

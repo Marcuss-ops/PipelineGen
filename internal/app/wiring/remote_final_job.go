@@ -21,7 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
 )
 
-const defaultFinalJobMasterURL = "http://51.91.11.36:8000"
+const defaultFinalJobMasterURL = "https://veloxmanager.duckdns.org"
 
 // defaultFinalJobAttachBudget keeps script.generate attached through the usual
 // remote composite render. The old 60s default marked the local job FAILED while
@@ -221,6 +221,9 @@ func finalJobWaitError(err error) error {
 }
 
 func (a *remoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
+	if strings.TrimSpace(os.Getenv("OBJECTSTORE_PUBLIC_URL")) != "" {
+		return a.ResolveFinalJobObjectStoreAsset(ctx, id)
+	}
 	if asset, ok, err := a.resolveEditorialMusicAsset(ctx, id); ok || err != nil {
 		return asset, err
 	}
