@@ -48,9 +48,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	// several. Dynamic map overlays use ChrononTemplate's live tile-pyramid
 	// renderer by default. The native MAP compiler treats the basemap as one
 	// raster plane; its camera transform looks like a zoomed screenshot and is
-	// not an acceptable substitute for a cartographic fly-in. The native path
-	// remains an explicit diagnostic opt-in (PIPELINEGEN_MAP_NATIVE_RENDER=1)
-	// until it can produce equivalent motion.
+	// not an acceptable substitute for a cartographic fly-in, so the diagnostic
+	// native override was removed (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE
+	// §9.3.3 punto 4) and the dynamic backend is the only selectable route.
 	mapItemCount := len(decisions)
 	pythonMapCount := 0
 	for _, decision := range decisions {
@@ -58,8 +58,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 			pythonMapCount++
 		}
 	}
-	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
-	if mapItemCount == 1 && pythonMapCount == 1 && len(semanticPlan.Items) == 1 && !nativeDiagnostic {
+	if mapItemCount == 1 && pythonMapCount == 1 && len(semanticPlan.Items) == 1 {
 		// The plan is ONE dynamic map: fold its rendered video into the
 		// first-class background block (the certified single-map production
 		// path). Multi-map plans take the per-item route in

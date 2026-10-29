@@ -37,6 +37,15 @@ type MapCompositionInput struct {
 	Strategy   string
 	Camera     string
 	Label      string
+	// TerritoryFeature is the ADM3 shapeName resolved for the map's FIRST pin
+	// (the renderer draws the territory of pins.front()); empty means the
+	// catalog could not resolve the pin and territory compositions are data-
+	// incompatible (TICKET map parity: the renderer matches the payload value
+	// EXACTLY against the ADM3 catalog, so callers may never guess a name).
+	TerritoryFeature string
+	// AreaGlowRadiusKM carries the plan item's area glow radius: the ported
+	// area_glow_pulse composition refuses to render without a positive one.
+	AreaGlowRadiusKM float64
 }
 
 // MapCompositionFamily is the editorial family of a certified cartographic
@@ -173,9 +182,28 @@ func EligibleMapCompositionsFor(input MapCompositionInput, certified []string) [
 		if !MapCompositionGeographyCompatible(id, input.Pins) {
 			continue
 		}
+		// Random callers drop, never fail, on data incompatibility (the same
+		// rules the explicit gate reports with a precise reason).
+		if err := mapCompositionWireDataCompatible(id, input); err != nil {
+			continue
+		}
 		filtered = append(filtered, id)
 	}
 	return filtered
+}
+
+// mapCompositionWireDataCompatible is the shared native-payload data
+// compatibility gate used by BOTH the random eligibility filter and the
+// explicit admission (AdmitMapComposition). One rule set, two surfacings:
+// random skips, exact requests fail closed with the reason.
+func mapCompositionWireDataCompatible(id string, input MapCompositionInput) error {
+	if MapTerritoryOverlayRequired(id) && strings.TrimSpace(input.TerritoryFeature) == "" {
+		return fmt.Errorf("map_animation %q requires an ADM3 territory_feature resolvable for the map's first pin", id)
+	}
+	if id == "area_glow_pulse" && input.AreaGlowRadiusKM <= 0 {
+		return fmt.Errorf("map_animation %q requires a positive area_glow_radius_km payload", id)
+	}
+	return nil
 }
 
 // DeterministicMapCompositionChoice draws across composition FAMILIES first
@@ -235,6 +263,13 @@ func AdmitMapComposition(id string, input MapCompositionInput, certified []strin
 	}
 	if err := MapCompositionPresentationCompatible(id, input); err != nil {
 		return fmt.Errorf("map_animation %q is incompatible with the selected presentation: %w", id, err)
+	}
+	// Wire-data compatibility with the NATIVE renderer's own payload
+	// validation (map_plate_render.cpp): one shared rule set with the random
+	// eligibility filter (mapCompositionWireDataCompatible); exact callers
+	// surface the reason as an error instead of silently skipping.
+	if err := mapCompositionWireDataCompatible(id, input); err != nil {
+		return fmt.Errorf("map_animation %q is incompatible with the plan's map data: %w", id, err)
 	}
 	// Geography is enforced only when pins are present: the classic pin-count-only
 	// selection API (no pins yet) defers it to the render boundary where real

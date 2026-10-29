@@ -1,6 +1,6 @@
 # Golden case — 100 overlay/minuto
 
-Payload attualmente nel repository: `../overlay_throughput_golden_100_20261022.v2.generate.json`
+Payload v2 storico conservato nel repository: `../overlay_throughput_golden_100_20261022.v2.generate.json`
 (SHA-256 `fe06d3b3fe68685af53fdf353de8940dd3db8c68046d97896f18b99b42c2f672`).
 Il precedente SHA-256 `60fb14ec1e6ace95489f38e2b84f91dd7a28d45d89edbcf1e5c060a52d63080d`
 identifica la versione precedente a `f255d9505`; quel commit ha sostituito
@@ -48,17 +48,59 @@ renderer nativo le esegua. L'item id è nuovo (`...-v4-maps-auto`) sia per la
 cache fredda sia per non consumare la chiave v3: le run v4 NON sono
 confrontabili col throughput delle run v2/v3.
 
-## Comando di ripetizione
+Il workload `../overlay_throughput_golden_100_20261022.v3.1-maps.generate.json`
+(SHA-256 `ba3befed44c7676f810945dcf04ef68daf8898e28aac6d49c2ca5ad72fc8d846`)
+è la **v3 runnabile**: corpo identico alla v3 con due sole eccezioni.
+1. `map_animation`: `region_zoom` → `territory_glow_reveal` (famiglia
+   `region_highlight`, id certificato dal catalogo nativo). La validazione
+   runtime è fail-closed sugli id ritirati: la v3 così com'è non può mai
+   compilare, quindi la correzione è necessaria, non facoltativa.
+2. I tre identificatori interni (`correlation_id`/`id`/`project`) passano da
+   `…-v3-maps` a `…-v3.1-maps`, come già fatto per la v4: cache fredda e
+   lineage univoco per il nuovo payload.
+
+Non esiste alcuna run riuscita basata sulla v3 (il primo tentativo v3-maps
+era già morto su questo stesso errore il 28/10), quindi la v3.1 non rompe
+nessuna baseline: è la definizione della misura per il mix completo con mappe.
+Driver dedicato: `run_golden_v3.sh <label>`.
+
+Aggiornamento 29/10/2026: il payload **v2 storico** conserva
+`map_animation=region_zoom` nella style spec, ID ritirato che la validazione
+attuale rifiuta fail-closed; non va quindi riutilizzato come input di nuove
+run. Correzione di provenienza: gli artefatti `v2-r8` mostrano il payload
+v2.1-nomaps e una run riuscita, non documentano un fallimento della v2
+storica. Le run v6…v28 restano riferibili solo ai rispettivi payload e binari.
+Quindi:
+
+- `overlay_throughput_golden_100_20261022.v2.1-nomaps.generate.json`
+  (SHA-256 `ad5e3468a5eee166df5f4f0899439e6de239b7e10490f042f9237f728db9f159`)
+  è la **v2 runnabile**: corpo identico con `territory_glow_reveal` (id
+  certificato) e identifieri `…-v2.1-nomaps`. Mappe DISABLED come in v2: l'id
+  serve solo alla validazione a compile e non raggiunge mai un renderer.
+  Driver `run_golden.sh` ora punta a questo file.
+- La lane mappe col mix completo resta **BLOCKED** sul producer parity
+  (vedi `TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE` §9.2): il producer Go non
+  produce `territory_feature` né un raggio area glow > 0, quindi le
+  composizioni `region_highlight` non sono inviabili; `route_line` /
+  `multi_leg_flight` sono inviabili solo per 2–5 pin.
+- La run v2.1 moderna `results/v2-r8` è riuscita ma ha renderizzato 65 item
+  in 686,127 s (5,684 item/min): non certifica né i 100 item né il gate.
+  Non è comparabile alle run storiche v6…v28, che restano confrontabili solo
+  accanto al loro payload/binario.
+
+## Comando di ripetizione (operativo, non eseguito in questa verifica)
 
 ```bash
 cd refactored
-scripts/submit-and-poll.sh \
-  ops/jobs/overlay_throughput_golden_100_20261022.v2.generate.json \
-  overlay-throughput-golden-100 \
-  overlay-throughput-golden-vN-<etichetta>-$(date -u +%Y%m%dT%H%M%SZ) \
-  3600
+ops/jobs/overlay_throughput_golden_100_20261022/run_golden.sh <label>
 ```
 
+Il driver usa il payload v2.1-nomaps con SHA-256
+`ad5e3468a5eee166df5f4f0899439e6de239b7e10490f042f9237f728db9f159`.
+Il comando effettua submit, polling e query al servizio locale: è un'azione
+live e va eseguita solo nella sessione autorizzata e con prerequisiti §9.2.
+Non eseguire il vecchio comando con il payload v2 storico: il suo
+`map_animation=region_zoom` è ritirato e viene rifiutato fail-closed.
 L'idempotency key è univoca per run (mai riusare una chiave consumata).
 Il servizio deve girare sul binario con la strumentazione
 (`prefetch/prepare/encode` delle mappe + `drive_publish` outbox) e col pool item
@@ -205,6 +247,51 @@ La composizione attuale produce un artefatto unico per piano e usa una lane.
 Per ridurre quei minuti bisogna cambiare il contratto: dividere la timeline in
 chunk, renderizzare i chunk sulle lane disponibili e unirli preservando mapping
 temporale e manifest. Il cambio di modello non risolve questo costo.
+
+## Split render per-scena live — 29/10/2026 (flag OVERLAY_RENDER_PER_SCENE=enabled)
+
+**Risultato: la finestra overlay passa da 657,3 s a 101,3 s (−85%, ×6,5; 6,3 → 39,7 overlay/min).**
+
+Setup: gate abilitato via `refactored/start_server.sh` (export default-only,
+un chiamante esplicito vince); `bin/pipelinegen` ricostruito con `go build`
+diretto — `make build-server` resta bloccato dal gate preesistente
+`rust-fetch` (BrainRust pinna ICU 72, host espone ICU 70);
+`pipelinegenctl restart-verify` PASS; env verificato nel processo attivo via
+`/proc/<pid>/environ`.
+
+Run `split-per-scene-20261029-r1`, payload e2b aggiornato
+(`../overlay_throughput_golden_90_20261028.v1-nomaps.generate.json`), job
+`job_1793272410632223240_b91456a9`, run `run_ddf249f1-6c6d-48fa-83bf-a119eaee58bf`:
+
+| Metrica | Baseline flag OFF (`gate-90-nomaps-20261028-r1`) | Split ON (`split-per-scene-20261029-r1`) |
+|---|---|---|
+| Finestra overlay | 657,3 s | **101,3 s** |
+| Throughput | 6,3 item/min | **39,7 item/min** |
+| Composizioni | 1 timeline unica (647,4 s render) | 15 batch per-scena |
+| Item | 69/69 COMPLETED | 67/67 COMPLETED |
+| Wall job completo | ~13 min (e4b) | **243,1 s** critical path |
+
+Dettagli: 15 batch, uno per scena, `worker_count_matches` su tutti; totale
+render batch 100,5 s; `cache_outcome=not_applicable` ovunque; nessun
+`overlay per-scene split failed / falling back` nel journal (zero fallback).
+Il conteggio item differisce (67 vs 69: mix numeri/immagini dell'e2b), quindi
+il confronto di throughput va letto per-classe: 50 text_phrase in entrambe le
+run. Caveat di comparabilità: il baseline r1 girava su payload e4b; il
+costo dominante (render manifest fused) è però indipendente dal modello.
+
+Nota architetturale: con lo split, le due code ping pong di §9.3.2 non
+scala linearmente col numero di item simultanei per frame; il residuo
+principale è ora la coda (`queue_wait_ms` fino a ~20 s/batch) e la coda
+`generate` (46,7% del critical path). Per il contratto del gate
+(≥100 item/min, mediana di 3 run comparabili, §9.3.5-A5) la soglia NON è
+costante giácca: 39,7 item/min è passo avanti grande ma sotto soglia.
+
+Pin test: `render_queue_split_test.go` — lo split fallisce fail-closed senza
+client del renderer (mai silentio fallback); suite
+capabilities/scripts completa verde. WIP orfano
+`runner_overlay_plan_branch_test.go` (API Runner obsolete, creato da altra
+sessione alle 11:07) parcheggiato in
+`internal/capabilities/scripts/.wip/` — da riscrivere o archiviare.
 
 ## Layout risultati
 

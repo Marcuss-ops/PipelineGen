@@ -21,7 +21,7 @@ type VoiceoverDefaultsConfig struct {
 	// Three concurrent chunks matched the measured 1200-word throughput
 	// plateau with MaxConcurrentTTS=3; the provider still bounds this per
 	// request and the global TTS semaphore remains authoritative.
-	ChunkConcurrency int `yaml:"chunk_concurrency" env:"VELOX_VOICEOVER_CHUNK_CONCURRENCY" default:"3"`
+	ChunkConcurrency int `yaml:"chunk_concurrency" env:"VELOX_VOICEOVER_CHUNK_CONCURRENCY" default:"12"`
 }
 
 // ResolvedConfig is the post-bootstrap configuration snapshot. Its embedded

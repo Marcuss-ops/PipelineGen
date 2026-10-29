@@ -55,11 +55,13 @@ func TestSplitVoiceoverWordsPrefersSentenceBoundaries(t *testing.T) {
 	}
 }
 
+// Sentence-per-chunk sizing note (2026-10-29 paradigm): test scenes are built
+// from 24-word chunks (the sentence cap) so call counts stay deterministic.
 func TestChunkedTTSProviderParallelismAndMergeOrder(t *testing.T) {
 	provider := &recordingTTS{delay: 20 * time.Millisecond}
 	merger := &recordingMerger{}
 	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 4}
-	text := strings.Repeat("parola ", 1201)
+	text := strings.Repeat("parola ", 96) // 4 sentence-sized chunks of 24
 	_, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
 		Text: text, Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
@@ -88,7 +90,7 @@ func TestChunkedTTSProviderKeepsConfiguredConcurrencyImmutable(t *testing.T) {
 	_, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
 		// Three chunks exercise the per-request cap without requiring the
 		// provider to rewrite its shared configured concurrency.
-		Text: strings.Repeat("parola ", 801), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
+		Text: strings.Repeat("parola ", 65), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -101,18 +103,57 @@ func TestChunkedTTSProviderKeepsConfiguredConcurrencyImmutable(t *testing.T) {
 	}
 }
 
+// TestChunkedTTSProviderFailureDoesNotMerge pins: a failed chunk must never
+// reach the merger. With the 2026-10-29 fail-open the whole-scene fallback
+// succeeds instead (next test); when the fallback also fails the synthesis
+// fails outright and still skips the merge.
 func TestChunkedTTSProviderFailureDoesNotMerge(t *testing.T) {
-	provider := &recordingTTS{failChunk: 2}
+	provider := &recordingTTS{failChunk: 2, failWholeScene: true}
 	merger := &recordingMerger{}
 	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 3}
 	_, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
-		Text: strings.Repeat("parola ", 801), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
+		Text: strings.Repeat("parola ", 65), Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
 	if err == nil {
-		t.Fatal("expected failed chunk")
+		t.Fatal("expected failed synthesis")
 	}
 	if merger.calls != 0 {
 		t.Fatalf("merge calls=%d want=0", merger.calls)
+	}
+}
+
+// TestChunkedTTSProviderFallsBackToWholeSceneOnChunkFailure pins the fail-open:
+// one failed sentence chunk must degrade to the canonical single-request
+// whole-scene synthesis (never fail the scene), with no merge of partial
+// chunk state and no boundaries attached from the failed batch.
+func TestChunkedTTSProviderFallsBackToWholeSceneOnChunkFailure(t *testing.T) {
+	provider := &recordingTTS{failChunk: 2}
+	merger := &recordingMerger{}
+	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 3}
+	outputDir := t.TempDir()
+	out, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
+		Text: strings.Repeat("parola ", 65), Filename: "final.mp3", OutputDir: outputDir, Language: "it",
+	})
+	if err != nil {
+		t.Fatalf("fail-open fallback must succeed: %v", err)
+	}
+	if provider.fallbackCalls != 1 {
+		t.Fatalf("fallback calls=%d want=1 (whole scene)", provider.fallbackCalls)
+	}
+	if merger.calls != 0 {
+		t.Fatalf("merge calls=%d want=0 (no partial chunk merge)", merger.calls)
+	}
+	if file, statErr := os.Stat(filepath.Join(out.LocalPath)); file == nil || statErr != nil {
+		t.Fatalf("fallback output missing: %v", statErr)
+	}
+	entries, err := os.ReadDir(outputDir)
+	if err != nil {
+		t.Fatalf("read output dir: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".chunk-") {
+			t.Errorf("failed fan-out leaked temporary chunk artifact %q", entry.Name())
+		}
 	}
 }
 
@@ -127,7 +168,7 @@ func TestChunkedTTSProviderMergesWordBoundariesWithOffset(t *testing.T) {
 	chunker := &chunkedTTSProvider{inner: provider, merger: merger, concurrency: 2}
 
 	out, err := chunker.Synthesize(context.Background(), voiceover.TTSInput{
-		Text:     strings.Repeat("parola ", 801), // → 3 chunks of 400/400/1
+		Text:     strings.Repeat("parola ", 65), // → 3 chunks of 24/24/17
 		Filename: "final.mp3", OutputDir: t.TempDir(), Language: "it",
 	})
 	if err != nil {
@@ -185,12 +226,14 @@ func (r *boundaryRecordingTTS) Synthesize(_ context.Context, in voiceover.TTSInp
 }
 
 type recordingTTS struct {
-	mu        sync.Mutex
-	active    int
-	maxActive int
-	calls     int
-	delay     time.Duration
-	failChunk int
+	mu             sync.Mutex
+	active         int
+	maxActive      int
+	calls          int
+	delay          time.Duration
+	failChunk      int
+	failWholeScene bool
+	fallbackCalls  int
 }
 
 func (r *recordingTTS) Synthesize(_ context.Context, in voiceover.TTSInput) (voiceover.TTSOutput, error) {
@@ -208,6 +251,17 @@ func (r *recordingTTS) Synthesize(_ context.Context, in voiceover.TTSInput) (voi
 	base := filepath.Base(in.Filename)
 	if r.failChunk > 0 && strings.Contains(base, "chunk-003") {
 		return voiceover.TTSOutput{}, os.ErrInvalid
+	}
+	if r.failWholeScene {
+		r.mu.Lock()
+		r.fallbackCalls++
+		r.mu.Unlock()
+		return voiceover.TTSOutput{}, os.ErrInvalid
+	}
+	if !strings.Contains(base, ".chunk-") {
+		r.mu.Lock()
+		r.fallbackCalls++
+		r.mu.Unlock()
 	}
 	path := filepath.Join(in.OutputDir, base)
 	if err := os.WriteFile(path, []byte(base), 0600); err != nil {

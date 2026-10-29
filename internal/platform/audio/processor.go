@@ -48,12 +48,21 @@ type Processor struct {
 	// Persistent worker state (VO-DECOMPOSITION P0 #1).
 	mu           sync.Mutex
 	requestSlots chan struct{}
-	cmd          *exec.Cmd
-	baseURL      string
-	httpClient   *http.Client
-	started      bool
-	media        mediaexec.AudioProcessor
-	loudness     capabilityaudio.LoudnessProber
+	// postprocessSlots bounds the LOCAL per-chunk work (silence removal,
+	// MD5, duration probe, loudness gate) independently from requestSlots.
+	// The provider slot is released as soon as the synthesized bytes are on
+	// disk, so the Edge stream continues while ffprobe/ffmpeg drain through
+	// the shared Rust media pool. Measured 2026-10-29: the probe (~1.1s at
+	// the 4-slot media executor) was paid INSIDE the synthesis slot, so the
+	// effective provider capacity was 12/(stream+postprocess) instead of
+	// 12/stream and roughly half the TTS wall was local queueing.
+	postprocessSlots chan struct{}
+	cmd              *exec.Cmd
+	baseURL          string
+	httpClient       *http.Client
+	started          bool
+	media            mediaexec.AudioProcessor
+	loudness         capabilityaudio.LoudnessProber
 }
 
 // processorShape mirrors the GENERATE-side surface of
@@ -100,6 +109,7 @@ func NewProcessor(
 		pythonScriptsDir: pythonScriptsDir,
 		log:              log,
 		requestSlots:     make(chan struct{}, DefaultTTSRequestConcurrency),
+		postprocessSlots: make(chan struct{}, DefaultTTSPostprocessConcurrency),
 	}
 }
 
@@ -108,6 +118,14 @@ func NewProcessor(
 // already near the throughput plateau while keeping queueing low; callers
 // may still override it through voiceover.max_concurrent_tts.
 const DefaultTTSRequestConcurrency = 4
+
+// DefaultTTSPostprocessConcurrency bounds the local post-processing pool
+// that now runs OUTSIDE the provider slots. 12 matches the per-scene chunk
+// fan-out: the MP3 duration path is in-process (mp3Duration), so the only
+// expensive local step left is the loudness gate's ffmpeg pass (~0.4 s per
+// sentence). A wider pool would only increase simultaneous ffmpeg decodes
+// without shortening the stage, which is now network-bound.
+const DefaultTTSPostprocessConcurrency = 12
 
 // SetRequestConcurrency bounds simultaneous requests sent to the persistent
 // Edge TTS worker. It is deliberately separate from the application fan-out:
@@ -188,7 +206,7 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 				return nil, err
 			}
 			lastErr = err
-		} else if err := p.gateLoudness(ctx, res); err != nil {
+		} else if err := p.withPostprocessSlot(ctx, func() error { return p.gateLoudness(ctx, res) }); err != nil {
 			if !errors.Is(err, ErrSilentAudio) {
 				return nil, err
 			}
@@ -268,36 +286,139 @@ func (p *Processor) synthesizeOnce(ctx context.Context, input *AudioInput, safeN
 	p.mu.Unlock()
 
 	queueStart := time.Now()
-	if p.requestSlots != nil {
-		select {
-		case p.requestSlots <- struct{}{}:
-		case <-ctx.Done():
-			return nil, ctx.Err()
+	var res *AudioResult
+	var err error
+	func() {
+		if p.requestSlots != nil {
+			select {
+			case p.requestSlots <- struct{}{}:
+				defer func() { <-p.requestSlots }()
+			case <-ctx.Done():
+				err = ctx.Err()
+				return
+			}
 		}
-		defer func() { <-p.requestSlots }()
-	}
+		res, err = p.sendSynthesizeStream(ctx, &AudioInput{
+			Text:          input.Text,
+			Language:      input.Language,
+			Voice:         input.Voice,
+			Filename:      safeName,
+			OutputDir:     input.OutputDir,
+			RemoveSilence: input.RemoveSilence,
+		})
+	}()
 	queueWait := time.Since(queueStart)
-	res, err := p.sendSynthesizeRequest(ctx, &AudioInput{
-		Text:          input.Text,
-		Language:      input.Language,
-		Voice:         input.Voice,
-		Filename:      safeName,
-		OutputDir:     input.OutputDir,
-		RemoveSilence: input.RemoveSilence,
-	})
-	if res != nil {
-		res.Metrics.LockWaitMS = lockWait.Milliseconds()
-		res.Metrics.QueueMS = queueWait.Milliseconds()
-		p.log.Info("TTS timing metrics",
-			zap.Int64("tts_queue_ms", res.Metrics.QueueMS),
-			zap.Int64("tts_lock_wait_ms", res.Metrics.LockWaitMS),
-			zap.Int64("tts_voice_resolve_ms", res.Metrics.VoiceResolveMS),
-			zap.Int64("tts_stream_ms", res.Metrics.StreamMS),
-			zap.Int64("tts_postprocess_ms", res.Metrics.PostprocessMS),
-			zap.Int64("tts_audio_duration_ms", res.Metrics.AudioDurationMS),
-			zap.Float64("tts_rtf", res.Metrics.RTF))
+	if err != nil {
+		return nil, err
 	}
-	return res, err
+	if res == nil {
+		return nil, fmt.Errorf("TTS worker returned no result")
+	}
+	res.Metrics.LockWaitMS = lockWait.Milliseconds()
+	res.Metrics.QueueMS = queueWait.Milliseconds()
+	// The provider slot has been released above: local post-processing now
+	// drains under its own bound while other synthesis streams run.
+	if err := p.postprocessSynthesizedAudio(ctx, input, res); err != nil {
+		return nil, err
+	}
+	p.log.Info("TTS timing metrics",
+		zap.Int64("tts_queue_ms", res.Metrics.QueueMS),
+		zap.Int64("tts_lock_wait_ms", res.Metrics.LockWaitMS),
+		zap.Int64("tts_voice_resolve_ms", res.Metrics.VoiceResolveMS),
+		zap.Int64("tts_stream_ms", res.Metrics.StreamMS),
+		zap.Int64("tts_postprocess_ms", res.Metrics.PostprocessMS),
+		zap.Int64("tts_audio_duration_ms", res.Metrics.AudioDurationMS),
+		zap.Float64("tts_rtf", res.Metrics.RTF))
+	return res, nil
+}
+
+// withPostprocessSlot runs fn under the local post-processing bound. A nil
+// channel (tests constructing Processor directly) means unbounded, mirroring
+// the requestSlots nil contract.
+func (p *Processor) withPostprocessSlot(ctx context.Context, fn func() error) error {
+	if p.postprocessSlots == nil {
+		return fn()
+	}
+	select {
+	case p.postprocessSlots <- struct{}{}:
+		defer func() { <-p.postprocessSlots }()
+		return fn()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// postprocessSynthesizedAudio performs the local, non-network half of a
+// synthesis attempt: optional silence removal, MD5, duration probe and word-
+// timing/duration validation. It is split from the HTTP stream so the
+// provider request slot can be released before the shared Rust media pool
+// (max 4 process runners) serves the probe.
+func (p *Processor) postprocessSynthesizedAudio(ctx context.Context, input *AudioInput, result *AudioResult) error {
+	postprocessStart := time.Now()
+	if err := p.withPostprocessSlot(ctx, func() error {
+		// Optional silence removal (mirrors the legacy processor.go block).
+		// Derive the cleaned name from the file the worker actually wrote:
+		// Generate accepts an extensionless Filename and appends ".mp3", so
+		// input.Filename is not guaranteed to carry the media extension.
+		if input.RemoveSilence {
+			cleanedPath := filepath.Join(filepath.Dir(result.LocalPath), "cleaned_"+filepath.Base(result.LocalPath))
+			media, mediaErr := p.mediaExecutor()
+			if mediaErr != nil {
+				return fmt.Errorf("remove silence: %w", mediaErr)
+			}
+			if err := media.RemoveSilence(ctx, result.LocalPath, cleanedPath); err != nil {
+				p.log.Warn("silence removal failed", zap.Error(err))
+			} else {
+				result.CleanedPath = cleanedPath
+				result.LocalPath = cleanedPath
+				result.Status = "cleaned"
+			}
+		}
+
+		// Compute MD5 hash — byte-identical with the legacy path
+		// (processor.go::generateLegacy uses md5.New()).
+		if result.LocalPath != "" {
+			if hash, hashErr := checksum.LegacyMD5File(result.LocalPath); hashErr != nil {
+				p.log.Warn("hash computation failed", zap.Error(hashErr))
+			} else {
+				result.ContentSHA256 = hash
+			}
+		}
+		var durationProbeErr error
+		// Fast path: the Edge bridge writes MPEG Layer III. Walking the frame
+		// headers is exact and costs microseconds, so the shared Rust media
+		// executor (4 runners, also used by the audio render) is not on the
+		// per-chunk critical path. Any unexpected shape falls back to the
+		// authoritative probe below, preserving the previous behaviour.
+		if fastDuration, fastErr := mp3Duration(result.LocalPath); fastErr == nil {
+			result.Duration = fastDuration
+		} else if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
+			if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr != nil {
+				durationProbeErr = probeErr
+			} else if info == nil {
+				durationProbeErr = fmt.Errorf("probe returned no media information")
+			} else {
+				result.Duration = info.Duration
+			}
+		} else {
+			durationProbeErr = mediaErr
+		}
+		if durationProbeErr != nil {
+			p.log.Warn("failed to probe synthesized audio duration", zap.Error(durationProbeErr))
+		}
+		if err := validateTimingDuration(result, durationProbeErr); err != nil {
+			return err
+		}
+		result.Metrics.PostprocessMS = time.Since(postprocessStart).Milliseconds()
+		result.Metrics.AudioDurationMS = result.Duration.Milliseconds()
+		if result.Metrics.AudioDurationMS > 0 {
+			result.Metrics.RTF = float64(result.Metrics.StreamMS) / float64(result.Metrics.AudioDurationMS)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 // generateLegacy is the pre-P0-#1 spawn-per-call path. Retained as

@@ -35,6 +35,12 @@ func DefaultVoiceoverDefaults() VoiceoverDefaultsConfig {
 		DefaultLanguage:         "en",
 		DefaultParallelism:      3,
 		MaxParallelism:          8,
-		ChunkConcurrency:        3,
+		// ChunkConcurrency is the per-scene sentence-chunk fan-out width
+		// (chunkedTTSProvider). 12 is the 2026-10-29 measurement-backed
+		// value: the live Edge bridge sustained 24 parallel syntheses with
+		// linear aggregate throughput (0 errors) and stable per-call
+		// latency; sentence-sized requests are far lighter than the whole
+		// scene requests the previous value (3) was sized for.
+		ChunkConcurrency: 12,
 	}
 }

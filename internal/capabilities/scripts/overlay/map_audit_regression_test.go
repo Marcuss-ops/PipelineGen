@@ -100,12 +100,47 @@ func TestDeterministicCompositionChoiceVariesAcrossSeeds(t *testing.T) {
 	}
 }
 
+// The DATA admission gates for the native-payload fields (TICKET map parity,
+// §9.2): territory_glow_reveal requires a resolved ADM3 territory_feature and
+// area_glow_pulse requires a positive area_glow_radius_km. Random callers
+// drop the composition from the pool; explicit requests fail with the
+// precise reason — never a payload the native renderer would refuse blind.
+func TestTerritoryAndAreaGlowDataAdmission(t *testing.T) {
+	pins := []map[string]any{{"latitude": 41.9, "longitude": 12.49}}
+	base := MapCompositionInput{PinCount: 1, Pins: pins, DurationUS: 8_000_000}
+
+	// Random: without a resolved territory, the territory family must be
+	// dropped from the eligible pool, never drawn.
+	eligible := EligibleMapCompositionsFor(base, MapCompositionRandomPool())
+	if containsComposition(eligible, "territory_glow_reveal") {
+		t.Fatal("unresolved territory must exclude territory_glow_reveal from the random pool")
+	}
+	withTerritory := base
+	withTerritory.TerritoryFeature = "Roma (RM)"
+	if err := AdmitMapComposition("territory_glow_reveal", withTerritory, MapCompositionCertified()); err != nil {
+		t.Fatalf("explicit territory request with a resolved territory must be admitted, got %v", err)
+	}
+	if err := AdmitMapComposition("territory_glow_reveal", base, MapCompositionCertified()); err == nil || !strings.Contains(err.Error(), "territory_feature") {
+		t.Fatalf("explicit territory request without a territory must fail closed with the reason, got %v", err)
+	}
+
+	// Area glow: only a positive radius admits area_glow_pulse.
+	glow := base
+	glow.AreaGlowRadiusKM = 3.5
+	if err := AdmitMapComposition("area_glow_pulse", glow, MapCompositionCertified()); err != nil {
+		t.Fatalf("positive radius must admit area_glow_pulse, got %v", err)
+	}
+	if err := AdmitMapComposition("area_glow_pulse", base, MapCompositionCertified()); err == nil || !strings.Contains(err.Error(), "area_glow_radius_km") {
+		t.Fatalf("zero radius must fail closed with the reason, got %v", err)
+	}
+}
+
 func TestBackendPolicyExplicit(t *testing.T) {
-	if MapExecutionPolicyFromEnv(false, "") != MapExecutionProductionDynamic {
+	if MapExecutionPolicyFromEnv("") != MapExecutionProductionDynamic {
 		t.Fatal("default policy must be production_dynamic")
 	}
-	if MapExecutionPolicyFromEnv(true, "") != MapExecutionDiagnosticNative {
-		t.Fatal("native env must select diagnostic_native")
+	if MapExecutionPolicyFromEnv("native_after_visual_certification") != MapExecutionNativeAfterCertification {
+		t.Fatal("explicit override must select the named policy")
 	}
 }
 

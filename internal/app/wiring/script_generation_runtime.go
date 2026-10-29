@@ -281,7 +281,16 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		} else {
 			// Ordinary certified video renders do not need a Drive copy. The
 			// queue fails closed if a final-job delivery explicitly requires one.
-			log.Info("overlay Drive publisher unavailable; local certified renders remain enabled")
+			// Single publication path (TICKET-MAX-THROUGHPUT-OVERLAY-
+			// ARCHITECTURE §9.3.3 punto 5): the bounded post-render pool owns
+			// any publication work in EVERY configuration — Drive-backed or
+			// analytics-only — so no submit-side wait can ever serialize a
+			// render lane behind Drive/analytics latency.
+			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
+			renderEnqueuer.SetAsyncPublication(true)
+			runner.SetOverlayPublicationDrainer(renderEnqueuer)
+			log.Info("overlay Drive publisher unavailable; local certified renders remain enabled",
+				zap.Int("publication_workers", cfg.Scripts.OverlayPublicationWorkers))
 		}
 		var analyticsDB *sql.DB
 		if root.DB != nil {

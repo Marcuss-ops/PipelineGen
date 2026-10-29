@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -112,7 +113,15 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 	manifestCandidates, dedicatedCandidates := partitionOverlayRenderWork(plan)
 	if len(manifestCandidates) == 0 {
 		if len(dedicatedCandidates) == 0 {
-			return e.enqueueChrononPlan(ctx, plan, nil)
+			// Un solo percorso (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE
+			// §9.3.3 punto 2): non esiste più il terzo rendito legacy che
+			// inviava l'intero piano grezzo alla coda. Un piano le cui voci
+			// sono tutta canvas di background (template BACKGROUND/
+			// VIDEO_BACKGROUND) è già dichiarato dalla SSOT del piano:
+			// il background si dichiara nel blocco Background, non come item.
+			return RenderReference{}, fmt.Errorf(
+				"overlay plan %q has no renderable candidates: declare the background in the plan Background block, not as a legacy BACKGROUND item",
+				plan.PlanID)
 		}
 		return e.enqueueDedicatedOverlayItems(ctx, plan, dedicatedCandidates)
 	}

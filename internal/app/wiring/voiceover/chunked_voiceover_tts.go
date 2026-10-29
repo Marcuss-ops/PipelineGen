@@ -14,12 +14,25 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-const voiceoverChunkMaxWords = 400
+// voiceoverChunkMaxWords is the LATENCY granularity: each provider request
+// carries at most one sentence-sized chunk (~1 sentence, 24 words cap so a
+// long sentence still splits). This is a 2026-10-29 paradigm change: with the
+// former 400-word cap the split stayed inactive for every real scene
+// (20–40 words) and synthesis remained a single long streaming request
+// (measured p50 8s/call, wall p50 102s/run). Sentence-sized chunks fan out
+// concurrently and the critical wait becomes max(sentence) + merge instead
+// of sum(whole scene). The hard service request limit (400 words) is far
+// above this value, so the original protection is unaffected.
+const voiceoverChunkMaxWords = 24
 
 // chunkedTTSProvider keeps each provider request below the speech service's
-// request limit, then joins the resulting audio in source order. The outer
-// voiceover use case still performs silence removal and Drive publication once
-// on the merged track.
+// request limit AND at sentence-level granularity (see
+// voiceoverChunkMaxWords: latency paradigm 2026-10-29), then joins the
+// resulting audio in source order. The outer voiceover use case still
+// performs silence removal and Drive publication once on the merged track.
+// A failed chunk fails OPEN to the whole-scene synthesis (single requesting
+// path with the full repair machinery), so the streaming-per-scene behaviour
+// always remains available as the safety net.
 type chunkedTTSProvider struct {
 	inner       voiceover.TTSProvider
 	merger      audioChunkMerger
@@ -84,26 +97,43 @@ func (p *chunkedTTSProvider) Synthesize(ctx context.Context, in voiceover.TTSInp
 	close(results)
 
 	outputs := make([]voiceover.TTSOutput, len(chunks))
+	anyChunkFailed := false
 	for r := range results {
 		if r.err != nil {
-			return voiceover.TTSOutput{}, fmt.Errorf("voiceover chunk %d: %w", r.index, r.err)
+			anyChunkFailed = true
+			continue
 		}
 		outputs[r.index] = r.out
+	}
+	cleanupChunks := func() {
+		for _, out := range outputs {
+			if out.LocalPath != "" {
+				_ = os.Remove(out.LocalPath)
+			}
+		}
+	}
+	if anyChunkFailed {
+		// Fail-open to the whole-scene path: a single failed sentence must
+		// not fail a scene when the original one-request synthesis is
+		// available. Chunks and plan state above are discarded; the inner
+		// provider owns retries, the loudness gate and empty-audio repair.
+		// Successful siblings are temporary chunk artifacts; discard them
+		// before retrying the whole scene so a failed fan-out cannot leak files
+		// across retries or fill the job's temporary output directory.
+		cleanupChunks()
+		return p.inner.Synthesize(ctx, in)
 	}
 	paths := make([]string, len(outputs))
 	var duration int64
 	for i, out := range outputs {
 		if out.LocalPath == "" {
+			cleanupChunks()
 			return voiceover.TTSOutput{}, fmt.Errorf("voiceover chunk %d returned empty local path", i)
 		}
 		paths[i] = out.LocalPath
 		duration += out.Duration.Nanoseconds()
 	}
-	defer func() {
-		for _, path := range paths {
-			_ = os.Remove(path)
-		}
-	}()
+	defer cleanupChunks()
 
 	merged := filepath.Join(in.OutputDir, in.Filename)
 	if err := p.merger.MergeInputs(ctx, paths, merged); err != nil {
