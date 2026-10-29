@@ -128,7 +128,7 @@ func TestFinalJobPhraseVideoWithoutPublishedTimelineStillFailsClosed(t *testing.
 func TestFinalJobOverlayHandoffConsumedPhraseDoesNotDuplicateTheVideo(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
 	consumed := map[string]struct{}{"phrase-item": {}}
-	overlays, manifestWire, err := finalJobOverlayHandoff(result, consumed)
+	overlays, manifestWire, err := finalJobOverlayHandoff(context.Background(), result, consumed)
 	if err != nil {
 		t.Fatalf("finalJobOverlayHandoff: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestFinalJobOverlayHandoffConsumedPhraseDoesNotDuplicateTheVideo(t *testing
 func TestFinalJobOverlayHandoffStillRejectsUncoveredItems(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
 	result.OverlayPlan.Items = append(result.OverlayPlan.Items, capabilityoverlay.OverlayItem{ID: "other-item", SceneID: "scene-phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Altra frase", StartUS: 0, DurationUS: 5_000_000})
-	_, _, err := finalJobOverlayHandoff(result, map[string]struct{}{"phrase-item": {}})
+	_, _, err := finalJobOverlayHandoff(context.Background(), result, map[string]struct{}{"phrase-item": {}})
 	if err == nil || !strings.Contains(err.Error(), `overlay "other-item" has no manifest entry`) {
 		t.Fatalf("finalJobOverlayHandoff error = %v, want missing manifest entry rejection", err)
 	}
@@ -198,7 +198,7 @@ func TestFinalJobManifestAdmitsOverlappingEntriesWithTracks(t *testing.T) {
 		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
 		OverlayRender:     manifestOverlayRender(items, artifact),
 	}
-	overlays, manifestWire, err := finalJobOverlayHandoff(result, nil)
+	overlays, manifestWire, err := finalJobOverlayHandoff(context.Background(), result, nil)
 	if err != nil {
 		t.Fatalf("finalJobOverlayHandoff: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestFinalJobManifestKeepsRenderedWindowPastCertifiedBaseEnd(t *testing.T) {
 		OverlayPlan:   &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{item}},
 		OverlayRender: manifestOverlayRender([]capabilityoverlay.OverlayItem{item}, artifact),
 	}
-	_, manifestWire, err := finalJobOverlayHandoff(result, nil)
+	_, manifestWire, err := finalJobOverlayHandoff(context.Background(), result, nil)
 	if err != nil {
 		t.Fatalf("finalJobOverlayHandoff: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestFinalJobRejectsDedicatedRowsThatCannotFitBesideComposition(t *testing.T
 		OverlayRender:     manifestOverlayRender([]capabilityoverlay.OverlayItem{phrase}, timeline),
 	}
 	result.OverlayRender.Items = append(result.OverlayRender.Items, OverlayItemRenderReference{ItemID: "map-a", Status: "SUCCEEDED", Artifact: mapArtifact})
-	_, _, err := finalJobOverlayHandoff(result, nil)
+	_, _, err := finalJobOverlayHandoff(context.Background(), result, nil)
 	if err == nil || !strings.Contains(err.Error(), `cannot fit a non-overlapping 120-frame window in scene "scene-1"`) {
 		t.Fatalf("finalJobOverlayHandoff error = %v, want local no-space rejection", err)
 	}

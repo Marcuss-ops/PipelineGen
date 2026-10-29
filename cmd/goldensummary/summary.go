@@ -169,7 +169,8 @@ func loadSamples(dbPath, runID string, planItems, renderItems map[string]string)
 	query := `SELECT item_id, render_ms, encode_ms, completion_wait_ms,
 	                 cache_lookup_us, cache_probe_us, cache_store_us, cache_outcome,
 	                 queue_queued_at, queue_completed_at
-	          FROM render_attempt_analytics WHERE item_id <> '' AND item_id NOT LIKE 'batch:%'`
+	          FROM render_attempt_analytics
+	          WHERE item_id <> '' AND item_id NOT LIKE 'batch:%' AND item_id NOT LIKE 'manifest:%'`
 	args := []any{}
 	if runID != "" {
 		query += ` AND run_id = ?`
@@ -229,7 +230,8 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 	                 render_ms, encode_ms, completion_wait_ms,
 	                 cache_lookup_us, cache_probe_us, cache_store_us, cache_outcome,
 	                 queue_queued_at, queue_completed_at
-	          FROM render_attempt_analytics WHERE item_id LIKE 'batch:%'`
+	          FROM render_attempt_analytics
+	          WHERE (item_id LIKE 'batch:%' OR item_id LIKE 'manifest:%')`
 	args := []any{}
 	if runID != "" {
 		query += ` AND run_id = ?`
@@ -252,6 +254,7 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 		}
 		if batchID == "" {
 			batchID = strings.TrimPrefix(itemID, "batch:")
+			batchID = strings.TrimPrefix(batchID, "manifest:")
 		}
 		var itemIDs []string
 		if err := json.Unmarshal([]byte(itemIDsJSON), &itemIDs); err != nil {

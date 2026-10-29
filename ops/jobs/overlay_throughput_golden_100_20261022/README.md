@@ -152,6 +152,60 @@ dimostrato live: 13:41:55, mappa 192 frame servita da
 render.** La classe mappa resta quindi costosa solo al primo render; il rerun
 è ≤ costo immagine.
 
+## Diagnosi live senza mappe — 28/10/2026
+
+Il job `gate-90-nomaps-20261028-r1` è riuscito, ma **non è una run Gemma 2B**:
+il payload effettivamente sottomesso usava `gemma4:e4b`; la copia successiva
+del workload passa a `gemma4:e2b`. Risultato: 69 overlay (50 frasi, 8 immagini/
+schede e 7 numeri), una composizione manifest da 68 item e un render batch
+Chronon da **647,4 s**. La finestra osservata è **657,3 s**, pari a **6,3
+overlay/min**. Chronon ha riportato **5,96 fps** con target 24 fps. La misura
+indica che il costo dominante di questa run è la singola timeline renderizzata
+su una lane; cambiare modello riduce la generazione testuale, ma non quel
+render.
+
+La CLI `goldensummary` ora riconosce le righe analytics `manifest:<digest>` come
+tentativi batch, le esclude dalle statistiche per-overlay e le abbina al batch
+del job. Prima le classificava come `unknown`, mescolando 647 s di composizione
+nelle statistiche per-item. La finestra e il tempo batch restano misure distinte.
+
+Workload aggiornato: `../overlay_throughput_golden_90_20261028.v1-nomaps.generate.json`
+(`gemma4:e2b`, mappe disabilitate). Runner: `run_golden_nomaps.sh <label>`.
+Il modello è stato scaricato sulla macchina e la prima chiamata locale breve è
+terminata in **16,57 s a freddo**; è solo uno smoke test di disponibilità, non
+una misura comparativa della generazione di 20 scene.
+
+Per questo modello PipelineGen ammette tre chiamate Ollama, ma Ollama era
+configurato con `OLLAMA_NUM_PARALLEL=1`. La configurazione live e il template
+systemd in `scripts/systemd/ollama.service.d/gpu.conf` ora usano entrambi **3**;
+Ollama è stato riavviato a job inattivi. Su due workload E2B comparabili da 20
+scene, le 20 risposte modello sono scese da **48,2 s a 32,4 s** (−33%). Il job
+completo senza render è sceso da **205,9 s a 182,5 s** (−11%); la fase `generate`
+è scesa da circa **118 s a 94 s**. Le altre fasi restano: voiceover ~29 s e
+compilazione audio ~60 s. Un successivo job con `audio.mode=NONE`, zero overlay
+e zero rendering è riuscito in **147,5 s**, 20 scene, senza TTS né renderer;
+`generate` valeva il 90% del critical path. Le misure sono salvate in
+`results/gemma4-e2b-generation-20scene-20261028-r1/`,
+`results/gemma4-e2b-generation-20scene-20261028-r2-parallel3/` e
+`results/gemma4-e2b-generation-20scene-audionone-20261028-r2/`.
+
+Il workload aveva istruzioni contraddittorie (1.900 parole nei parametri, ma
+2.700–3.000 nel prompt): il prompt ora è allineato a 1.900, massimo 2.300,
+20 segmenti da circa 95 parole. La run pulita `audio.mode=NONE` ha comunque
+prodotto **3.186 parole**: Gemma E2B non rispetta ancora il target. Un `max_words`
+rigido a 115 ha fallito sia con minimo 75 (scena 3: 56 parole) sia con minimo
+55 (scena 1: 41 parole). Il cap è quindi rimosso dal workload; non c’è ancora
+un controllo robusto del budget per questa taglia di modello. E2B è disponibile
+e più rapido, ma la lunghezza del copione va ancora verificata prima della
+pubblicazione.
+
+Il collo di bottiglia della pubblicazione completa resta Chronon: una timeline
+manifest da 68 overlay ha richiesto **647,4 s** a **5,96 fps** contro 24 fps.
+La composizione attuale produce un artefatto unico per piano e usa una lane.
+Per ridurre quei minuti bisogna cambiare il contratto: dividere la timeline in
+chunk, renderizzare i chunk sulle lane disponibili e unirli preservando mapping
+temporale e manifest. Il cambio di modello non risolve questo costo.
+
 ## Layout risultati
 
 `results/<run>/` contiene:

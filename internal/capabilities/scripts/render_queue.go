@@ -2,7 +2,6 @@ package scriptgeneration
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -118,37 +117,4 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capov
 		return e.enqueueDedicatedOverlayItems(ctx, plan, dedicatedCandidates)
 	}
 	return e.enqueueOverlayManifestTimeline(ctx, plan, manifestCandidates, dedicatedCandidates)
-}
-
-// EnqueueFinalJobCompositePlan renders a complete opaque scene composition in
-// one Chronon job even when ordinary overlay production is split per item.
-// These artifacts are finished scene footage consumed by the Master worker.
-func (e *QueueRenderEnqueuer) EnqueueFinalJobCompositePlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
-	if len(plan.Items) == 0 {
-		return RenderReference{}, fmt.Errorf("final-job composite plan has no overlay items")
-	}
-	return e.enqueueChrononPlan(ctx, plan, nil)
-}
-
-// RenderFinalJobComposite waits for both Chronon and the run-scoped Drive
-// publication, so callers receive an asset the Master can resolve immediately.
-func (e *QueueRenderEnqueuer) RenderFinalJobComposite(ctx context.Context, plan capoverlay.OverlayPlan) (RenderArtifact, error) {
-	normalizedPlan, cleanup, err := normalizeFinalJobVideoBackground(ctx, plan)
-	if err != nil {
-		return RenderArtifact{}, fmt.Errorf("normalize final-job video background: %w", err)
-	}
-	if cleanup != nil {
-		defer cleanup()
-	}
-	ref, err := e.EnqueueFinalJobCompositePlan(ctx, normalizedPlan)
-	if err != nil {
-		return RenderArtifact{}, err
-	}
-	if err := e.Wait(ctx); err != nil {
-		return RenderArtifact{}, fmt.Errorf("publish final-job composite: %w", err)
-	}
-	if ref.Artifact == nil {
-		return RenderArtifact{}, fmt.Errorf("final-job composite render returned no artifact")
-	}
-	return *ref.Artifact, nil
 }

@@ -7,6 +7,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -90,13 +91,35 @@ func appendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, r
 	*dst = append(*dst, item)
 }
 
-func finalJobAudioAsset(audio FinalAudioReference) (map[string]any, error) {
+func finalJobAudioAsset(ctx context.Context, audio FinalAudioReference) (map[string]any, error) {
 	driveID := driveFileIDFromLink(audio.DriveLink)
-	if driveID == "" || len(strings.TrimSpace(audio.FinalAudioSHA256)) != 64 || audio.SizeBytes <= 0 || audio.DurationMS <= 0 || !audio.FinalMix || !audio.CopyEligible {
-		return nil, fmt.Errorf("final_job requires a published, certified FINAL_AUDIO_COPY mix with Drive file ID, SHA-256, size, and duration")
+	if (!finalJobObjectStoreConfigured() && driveID == "") || len(strings.TrimSpace(audio.FinalAudioSHA256)) != 64 || audio.SizeBytes <= 0 || audio.DurationMS <= 0 || !audio.FinalMix || !audio.CopyEligible {
+		return nil, fmt.Errorf("final_job requires a published, certified FINAL_AUDIO_COPY mix with source identity, SHA-256, size, and duration")
 	}
 	if !strings.EqualFold(strings.TrimSpace(audio.Codec), "aac") || !strings.EqualFold(strings.TrimSpace(audio.Profile), "LC") || audio.SampleRate != 48000 || audio.Channels != 2 || !strings.EqualFold(strings.TrimSpace(audio.ChannelLayout), "stereo") {
 		return nil, fmt.Errorf("final_job final audio is not canonical AAC-LC 48 kHz stereo")
+	}
+	if finalJobObjectStoreConfigured() {
+		if err := publishFinalJobLocalObject(ctx, audio.Path, audio.FinalAudioSHA256, audio.SizeBytes); err != nil {
+			return nil, fmt.Errorf("publish final audio to Objectstore: %w", err)
+		}
+		asset, err := finalJobObjectStoreRef(ctx, audio.AssetID, audio.FinalAudioSHA256, audio.FinalAudioSHA256, audio.SizeBytes)
+		if err != nil {
+			return nil, err
+		}
+		asset["duration_ms"] = audio.DurationMS
+		asset["codec"] = audio.Codec
+		asset["profile"] = audio.Profile
+		asset["sample_rate"] = audio.SampleRate
+		asset["channels"] = audio.Channels
+		asset["channel_layout"] = audio.ChannelLayout
+		asset["strategy"] = "FINAL_AUDIO_COPY"
+		asset["copy_eligible"] = audio.CopyEligible
+		asset["audio_contract_version"] = audio.AudioContractVersion
+		asset["audio_plan_version"] = audio.AudioPlanVersion
+		asset["audio_plan_sha256"] = audio.PlanSHA256
+		asset["final_mix"] = audio.FinalMix
+		return asset, nil
 	}
 	return map[string]any{
 		"asset_id": audio.AssetID, "drive_file_id": driveID,
