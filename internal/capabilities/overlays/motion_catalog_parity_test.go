@@ -334,13 +334,11 @@ func TestAnimationRegistryActiveEntriesAreCanonicalAndRetiredEntriesAreNotSelect
 	}
 }
 
-// TestMapCompositionsAreTheChrononPluginCatalog pins the registry's map
-// vocabulary to the native renderer's published catalog
-// (ChrononPlugin/plugins/maps/maps-renderer-catalog.v1.json): the registry only
-// exposes compositions the renderer draws, the projection is complete (every
-// catalog animation is registered), and the servable subset is a subset of
-// both. A composition can therefore never be planned for a renderer that
-// refuses it, nor hidden from the planner when the renderer draws it.
+// TestMapCompositionsAreTheChrononPluginCatalog pins the native renderer's
+// servable subset to its published catalog
+// (ChrononPlugin/plugins/maps/maps-renderer-catalog.v1.json). The animation
+// registry may retain gallery concepts that are not yet exposed by the native
+// renderer; every renderer entry must still be registered and servable.
 func TestMapCompositionsAreTheChrononPluginCatalog(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	if !ok {
@@ -368,18 +366,25 @@ func TestMapCompositionsAreTheChrononPluginCatalog(t *testing.T) {
 	registered := map[string]bool{}
 	for _, id := range canonicalAnimationRegistry.Candidates("map.composition") {
 		registered[id] = true
-		if !cataloged[id] {
-			t.Errorf("registry exposes map composition %q outside the ChrononPlugin catalog", id)
-		}
 	}
 	for id := range cataloged {
 		if families, known := canonicalAnimationRegistry.FamiliesOf(id); !known || !containsMotion(families, "map.composition") {
 			t.Errorf("ChrononPlugin map composition %q is not registered in map.composition", id)
 		}
 	}
+	ported := map[string]bool{}
 	for _, id := range PortedMapCompositions() {
 		if !cataloged[id] || !registered[id] {
 			t.Errorf("servable composition %q must be both cataloged and registered", id)
+		}
+		ported[id] = true
+	}
+	if len(ported) != len(cataloged) {
+		t.Errorf("servable composition count = %d, native catalog count = %d", len(ported), len(cataloged))
+	}
+	for id := range cataloged {
+		if !ported[id] {
+			t.Errorf("native catalog composition %q is missing from the servable subset", id)
 		}
 	}
 }
