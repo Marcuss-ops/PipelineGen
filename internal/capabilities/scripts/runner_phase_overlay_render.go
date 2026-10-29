@@ -95,6 +95,40 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 	return true
 }
 
+// renderOverlayPlanAtBoundary is the ONLY place that chooses the submission
+// shape for one language plan (TICKET-OVERLAY-RENDER-PER-SCENE-2026-10-29).
+//
+// The per-scene split (one composition per scene window, N independent GPU
+// round-trips instead of one whole-timeline pass) is opt-in via
+// OVERLAY_RENDER_PER_SCENE and applies to NON-final jobs only: the remote
+// final worker consumes the single-timeline manifest wire today, so a final
+// job must keep the exact single-artifact reference shape until that worker
+// contract lands. Single-scene plans never split (degenerate case of the
+// same shape), and enqueuers without the Split capability keep the single
+// path — including every test mock, so flag OFF and capability-missing both
+// reproduce today's behaviour byte for byte.
+//
+// Fail-closed fallback: ANY split error falls back to the single-timeline
+// submission, so a flag-ON run can only ever end up with more GPU work, never
+// a different failure surface than the certified path.
+func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRequest, plan *capabilityoverlay.OverlayPlan) (RenderReference, error) {
+	if plan == nil {
+		return RenderReference{}, nil
+	}
+	if overlayPerSceneSplitEnabled() && !req.FinalJob && planSpansMultipleScenes(*plan) {
+		if splitter, ok := r.overlayRenderEnqueuer.(OverlayPlanSplitEnqueuer); ok {
+			ref, splitErr := splitter.EnqueueChrononPlanSplit(ctx, *plan)
+			if splitErr == nil {
+				return ref, nil
+			}
+			r.log.Warn("overlay per-scene split failed; falling back to the single-timeline submission",
+				zap.String("plan_id", plan.PlanID),
+				zap.Error(splitErr))
+		}
+	}
+	return r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *plan)
+}
+
 // renderOverlayPlans computes against a private snapshot. It never writes the
 // durable run or execution step; the joined caller owns failures and results.
 func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, resumeIdx int, result *GenerateResult) ([]overlayRenderOutcome, error) {
@@ -123,7 +157,7 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, re
 			// re-time a wait it does not own.
 			observability.OverlayRenderItems.Observe(float64(len(item.plan.Items)))
 			startedAt := time.Now()
-			ref, renderErr := r.overlayRenderEnqueuer.EnqueueChrononPlan(renderCtx, *item.plan)
+			ref, renderErr := r.renderOverlayPlanAtBoundary(renderCtx, req, item.plan)
 			boundaryWall := time.Since(startedAt)
 			observability.OverlayRenderDurationSeconds.Observe(boundaryWall.Seconds())
 			if renderErr != nil {

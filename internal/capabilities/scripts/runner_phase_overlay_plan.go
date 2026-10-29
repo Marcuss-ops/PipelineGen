@@ -13,165 +13,19 @@ import (
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
 )
 
 // compileAudioOverlayPlan builds the timing-frozen overlay plan from the
 // canonical audio timeline. Keeping this before the independent audio render
 // lets the overlay worker begin as soon as both plans exist.
+// compileAudioOverlayPlan runs the SSOT plan projection with the
+// runner's fail-closed audio-compile semantics on the caller's goroutine.
+// The overlap path (runner_overlay_plan_branch.go) computes the exact same
+// projection on a detached snapshot and applies it at the join.
 func (r *Runner) compileAudioOverlayPlan(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, step ExecutionStep, result *GenerateResult) bool {
-	reportTimingSkip := func(skip timingProjectionSkip) {
-		observability.ScriptTimingProjectionSkipTotal.WithLabelValues(skip.SceneID, skip.Surface).Inc()
-		r.log.Warn("voiceover timing projection skipped an unanchored surface",
-			zap.String("scene_id", skip.SceneID), zap.String("surface", skip.Surface), zap.Error(skip.Cause))
-	}
-	if err := compileResultPhraseTimings(result, req.SourceLanguage, reportTimingSkip); err != nil {
-		cause := fmt.Errorf("phrase timing compilation failed: %w", err)
-		r.failExecutionStepBestEffort(ctx, exec, step, cause)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-		return false
-	}
-	if err := compileResultEntityTimeline(result, req.SourceLanguage, reportTimingSkip); err != nil {
-		cause := fmt.Errorf("entity timeline compilation failed: %w", err)
-		r.failExecutionStepBestEffort(ctx, exec, step, cause)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-		return false
-	}
-	background, bgErr := r.resolveOverlayBackground(ctx, req.OverlayBackground)
-	if bgErr != nil {
-		cause := fmt.Errorf("resolve overlay background failed: %w", bgErr)
-		r.failExecutionStepBestEffort(ctx, exec, step, cause)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-		return false
-	}
-	canvas := r.overlayCanvas
-	canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
-	canvas.Background = overlayBackgroundFromPayload(background)
-	canvas.Style = req.OverlayStyle
-	canvas.PhraseMotions = req.PhraseMotions
-	canvas.PhraseMotionFamily = req.PhraseMotionFamily
-	canvas.MotionSeed = strings.TrimSpace(req.MotionSeed)
-	canvas.CoherenceSeed = strings.TrimSpace(req.CoherenceSeed)
-	// Goal E2: the phrases the semantic profile grounded as most relevant take
-	// the prominent entrance, the rest keep the calm rotation. The canvas may
-	// already carry an explicit override (zero = unset).
-	if canvas.HeavyPhrasePriority <= 0 {
-		canvas.HeavyPhrasePriority = heavyPhrasePriorityDefault
-	}
-	// An explicit operator threshold wins over the default: catalog runs pin
-	// it unreachable so heavy-boosted phrases stay inside the requested
-	// caller-pool rotation instead of leaving it.
-	if req.HeavyPhrasePriority > 0 {
-		canvas.HeavyPhrasePriority = req.HeavyPhrasePriority
-	}
-	canvas.ImageMotions = req.ImageMotions
-	canvas.EntityImageMotions = req.EntityImageMotions
-	canvas.EntityCaptionMotions = req.EntityCaptionMotions
-	canvas.AnimationPolicies = req.AnimationPolicies
-	canvas.RandomLightLeakOnClipStart = req.RandomLightLeakOnClipStart
-	canvas.RandomLightLeakOnOverlayStart = req.RandomLightLeakOnOverlayStart
-	canvas.RandomImageEffects = req.RandomImageEffects
-	canvas.MapType = req.MapType
-	canvas.MapCameraAnimation = req.MapCameraAnimation
-	canvas.MapLabelAnimation = req.MapLabelAnimation
-	canvas.MapAnimation = req.MapAnimation
-	canvas.MapPresentation = req.MapPresentation
-	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
-	canvas.MaxOverlaysPerScene = req.MaxOverlaysPerScene
-	canvas.MaxMapOverlays = req.MaxMapOverlays
-	canvas.MapsOnly = req.MapsOnly
-	canvas.MaxImageOverlays = req.MaxImageOverlays
-	canvas.AnimationCounts = cloneAnimationCounts(req.AnimationCounts)
-	canvas.OverlayGroupLimits = cloneOverlayGroupLimits(req.OverlayGroupLimits)
-	canvas.OverlayCategories = scriptpkg.CloneOverlayCategories(req.OverlayCategories)
-	canvas.OverlayCategorySegments = scriptpkg.CloneScriptSegments(req.ScriptParams.Segments)
-	// The current chain wire carries visual segments only; it cannot preserve
-	// per-image sound_effect clips. Keep image overlays separate when per-image
-	// SFX are requested so the established asset resolver can attach one cue to
-	// each image before the plan is queued, rather than silently dropping cues.
-	if req.RandomSFXOnImageOverlay {
-		canvas.AnimationCounts["chain_disabled"] = 1
-	}
-	canvas.EntityStyleID = req.EntityStyleID
-	canvas.DisableNumberOverlays = req.DisableNumberOverlays
-	canvas.DisableRecapOverlays = req.DisableRecapOverlays
-	canvas.DisableChartOverlays = req.DisableChartOverlays
-	canvas.DisableEditorialOverlays = req.DisableEditorialOverlays
-	canvas.EnableCharts = req.EnableCharts
-	if canvas.Style == nil && background != nil {
-		canvas.Style = background.Style
-	}
-	driveFolderID := strings.TrimSpace(req.Render.DriveFolderID)
-	plates := r.mapPlates
-	if !r.shouldGeocodeScriptLocations(req) {
-		plates = nil
-	}
-	imageProviderEnabled := req.MediaPlan.ProviderPolicy.InternetImages.AsBool() || req.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
-	// Context stills and identity portraits are separate overlay lanes. The
-	// shared run image budget and content-hash dedupe prevent duplicate bytes.
-	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled
-	r.log.Info("runner: overlay canvas motion inputs",
-		zap.String("run_id", runID),
-		zap.String("phrase_motion_family", canvas.PhraseMotionFamily),
-		zap.Int("phrase_motions", len(canvas.PhraseMotions)),
-		zap.Float64("heavy_phrase_priority", canvas.HeavyPhrasePriority),
-		zap.Any("animation_counts", canvas.AnimationCounts),
-	)
-	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
-		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
-		r.failExecutionStepBestEffort(ctx, exec, step, cause)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-		return false
-	}
-	if req.RandomSFXOnImageOverlay {
-		if err := attachRandomOverlaySFXToPlan(result.OverlayPlan); err != nil {
-			cause := fmt.Errorf("attach random image-overlay SFX: %w", err)
-			r.failExecutionStepBestEffort(ctx, exec, step, cause)
-			r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-			return false
-		}
-		for _, plan := range result.LocalizedOverlayPlans {
-			if err := attachRandomOverlaySFXToPlan(plan); err != nil {
-				cause := fmt.Errorf("attach random localized image-overlay SFX: %w", err)
-				r.failExecutionStepBestEffort(ctx, exec, step, cause)
-				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-				return false
-			}
-		}
-	}
-	if result.OverlayPlan != nil {
-		fields := []zap.Field{
-			zap.String("run_id", runID),
-			zap.Int("scenes", len(result.Scenes)),
-			zap.Int("timed_scenes", result.OverlayPlan.TimedScenes),
-			zap.Int("items", len(result.OverlayPlan.Items)),
-			zap.Int("recap_placements", result.OverlayPlan.RecapPlacements),
-			zap.Int("recap_cards", result.OverlayPlan.RecapCards),
-			zap.Int("chart_placements", result.OverlayPlan.ChartPlacements),
-			zap.Int("chart_cards", result.OverlayPlan.ChartCards),
-		}
-		if intake := result.OverlayPlanIntake; intake != nil {
-			fields = append(fields,
-				zap.Int("candidate_items", intake.Candidates),
-				zap.Int("planned_items", intake.Planned),
-				zap.Any("planned_by_kind", intake.PlannedByKind),
-				zap.Any("dropped_by_reason", intake.DroppedByReason),
-			)
-		}
-		r.log.Info("runner: overlay plan compiled", fields...)
-	}
-	r.logPhraseMotionSelections(runID, result.OverlayPlan)
-	r.logPhraseAnchoringDiagnostics(runID, result, req.SourceLanguage)
-	setOverlayDriveJobID(result, exec.JobID)
-	if err := validatePlannedEditingSpans(result); err != nil {
-		return r.failAudioCompileStep(ctx, runID, exec, step, fmt.Errorf("editing timeline preflight failed: %w", err))
-	}
-	if _, err := BuildEditingTimeline(result); err != nil {
-		cause := fmt.Errorf("editing timeline preflight failed: %w", err)
-		r.failExecutionStepBestEffort(ctx, exec, step, cause)
-		r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-		return false
+	if err := r.computeOverlayPlanProjection(ctx, runID, req, exec.JobID, result); err != nil {
+		return r.failAudioCompileStep(ctx, runID, exec, step, err)
 	}
 	return true
 }
@@ -218,10 +72,23 @@ func (e *executionRun) audioCompile() bool {
 		// to the internal run/plan ID after JSON checkpointing.
 		setOverlayDriveJobID(snapshot, e.exec.JobID)
 		done = make(chan audioOverlayOutcome, 1)
+		// The P2 barrier (spun in runAudioCompilePhase off the P1 plan branch)
+		// may already have certified some languages while the master compiled.
+		// The fork merges its outcomes before its pending capture, so a language
+		// the barrier composed is never re-submitted; only the fork writes.
+		barrier := state.Barrier
 		go func() {
 			var outcome audioOverlayOutcome
+			var barrierOutcomes []overlayRenderOutcome
 			// Explicit sibling ownership survives temporal containment.
 			_, outcome.err = kernobs.MeasureIndependentStageReport(ctx, StageOverlayRender, func(c context.Context) error {
+				if barrier != nil {
+					// Carry the barrier's certified outcomes into the fork's join:
+					// they must reach the durable result exactly like the fork's
+					// own submissions do, and no language composed by the barrier
+					// is re-submitted because applyToSnapshot claimed it first.
+					barrierOutcomes = barrier.applyToSnapshot(snapshot)
+				}
 				var err error
 				outcome.outcomes, err = e.r.renderOverlayPlans(c, e.req, e.resumeIdx, snapshot)
 				if err == nil && e.req.FinalJob && e.r.overlayPublicationDrainer != nil {
@@ -232,6 +99,7 @@ func (e *executionRun) audioCompile() bool {
 				}
 				return err
 			})
+			outcome.outcomes = append(barrierOutcomes, outcome.outcomes...)
 			if outcome.err != nil {
 				cancel()
 			}

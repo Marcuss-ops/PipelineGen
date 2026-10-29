@@ -29,7 +29,15 @@ type audioCompileState struct {
 	AudioSkipped bool
 	// OnPlanReady starts an independent render against an immutable snapshot.
 	// The caller joins it before finalization; nil preserves serial callers.
+	// non-nil is also what marks the overlap path: NULL callers render through
+	// the serial overlay render phase instead.
 	OnPlanReady func(*GenerateResult) bool
+	// Barrier is the P2 overlay-language submit-barrier (running_on the detached
+	// P1 plan-branch outcome while this master compile runs). The OnPlanReady
+	// render fork applies its certified outcomes onto its own snapshot before
+	// rendering, so a barrier-composed language is never re-submitted. nil keeps
+	// serial behavior (final jobs, serial render callers, gate off).
+	Barrier *overlayLanguageBarrier
 }
 
 // runAudioCompilePhase compiles the canonical timeline and the semantic
@@ -50,6 +58,11 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 	var canonicalTimeline capabilityaudio.CanonicalTimeline
 	var compiledAudioPlan capabilityaudio.CompiledAudioPlan
 	overlayPrepared := false
+	// planBranch is the P1 detached overlay-plan computation. It is started
+	// only on the COMBINED_TIMELINE path (where the master compile is heavy)
+	// and stays nil everywhere else, so the serial projection fallback
+	// below is unchanged for those modes.
+	var planBranch *overlayPlanBranch
 	// Audio mode is an explicit request-level choice. The presence of
 	// generated scenes (or voiceover assets) is never a mode selector.
 	mode, modeErr := capabilityaudio.ResolveAudioMode(req.Audio, false)
@@ -118,6 +131,22 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 				r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
 				r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
 				return false
+			}
+			// ── P1: certified-timing + overlay-plan branch ───────────
+			// Every plan fact is final at audio-phase entry (per-unit word
+			// timings, per-unit durations, SceneTextReady annotations), so
+			// the phrase/entity projections and the sealed overlay plan
+			// compile on a detached snapshot WHILE the clip-audio prepare
+			// and the master composition below run. The join applies the
+			// projection on this goroutine, which stays the durable result's
+			// single writer (runner_overlay_plan_branch.go).
+			planBranch = r.startOverlayPlanBranch(ctx, runID, req, exec, result, mode)
+			// P2: the overlay-language submit-barrier renders every pending plan
+			// off the detached branch outcome while the master composition below
+			// runs. The OnPlanReady render fork merges it onto its own snapshot
+			// before capturing its pending set (see runner_phase_overlay_plan.go).
+			if out != nil && out.OnPlanReady != nil {
+				out.Barrier = r.startOverlayRenderBarrier(ctx, runID, req, exec, resumeIdx, planBranch)
 			}
 			var audioAssets capabilityaudio.ResolvedAudioAssets
 			var compileTimings AudioCompileTimings
@@ -217,7 +246,13 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			if out != nil && out.OnPlanReady != nil {
 				result.CanonicalTimeline = &canonicalTimeline
 				result.AudioPlan = &compiledAudioPlan
-				if !r.compileAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result) || !out.OnPlanReady(result) {
+				var planProjected bool
+				if planBranch != nil {
+					planProjected = r.joinOverlayPlanProjection(ctx, runID, req, exec, payloadStep, result, planBranch)
+				} else {
+					planProjected = r.compileAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result)
+				}
+				if !planProjected || !out.OnPlanReady(result) {
 					return false
 				}
 				overlayPrepared = true
@@ -430,8 +465,14 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 			}
 		}
 		result.CanonicalTimeline = &canonicalTimeline
-		if !overlayPrepared && !r.compileAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result) {
-			return false
+		if !overlayPrepared {
+			if planBranch != nil {
+				if !r.joinOverlayPlanProjection(ctx, runID, req, exec, payloadStep, result, planBranch) {
+					return false
+				}
+			} else if !r.compileAudioOverlayPlan(ctx, runID, req, exec, payloadStep, result) {
+				return false
+			}
 		}
 		r.logLocationOverlayPlan(req, result)
 	}
