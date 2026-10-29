@@ -79,7 +79,7 @@ func TestFinalJobHandoffRejectsRowSharingTimelineArtifact(t *testing.T) {
 		Artifact: &RenderArtifact{ID: "map-artifact", DriveFileID: "map-drive", SHA256: sha, SizeBytes: 60, CopyEligible: true},
 	})
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
-	if err == nil || !strings.Contains(err.Error(), "same Drive artifact") {
+	if err == nil || !strings.Contains(err.Error(), "same artifact") {
 		t.Fatalf("BuildFinalJobPayloads error = %v, want duplicate-artifact fail-closed gate", err)
 	}
 }

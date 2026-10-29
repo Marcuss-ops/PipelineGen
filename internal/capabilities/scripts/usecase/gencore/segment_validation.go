@@ -157,7 +157,14 @@ func (e *Engine) generateSegments(
 	// Batch scene prose into at most ten model requests. The pair size grows
 	// only for scripts longer than twenty scenes; each response must preserve
 	// one blank-line-delimited paragraph per scene, in order.
-	if plan.ClipEvidence == nil && plan.ResearchEvidence == nil && len(plan.Segments) > 1 {
+	hasSegmentSourceText := false
+	for _, segment := range plan.Segments {
+		if cleanSegmentSourceText(segment.SourceText) != "" {
+			hasSegmentSourceText = true
+			break
+		}
+	}
+	if plan.ClipEvidence == nil && plan.ResearchEvidence == nil && !hasSegmentSourceText && len(plan.Segments) > 1 {
 		return e.generateSegmentBatches(ctx, plan, req, generate)
 	}
 	settings := e.segmentSettings()
