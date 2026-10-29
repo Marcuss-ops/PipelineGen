@@ -174,9 +174,21 @@ con 35% wall reale.
 
 **Residui aperti (NOT RUN / bloccati host):**
 
-- [ ] Misura wall fuori da `COMPILING_AUDIO` before/after su job 100-scene
-  reale (>1 lingua, workload comparabile al tratto `tts-chunk-verify-v2`) —
-  richiede worker RenderingGen live; la stima ~35% resta stimata, non misura.
+- [x] Misura wall fuori da `COMPILING_AUDIO`: ESEGUITA live oggi (run
+  `split-per-scene-20261029-r1`, job `job_1793272410632223240_b91456a9`,
+  payload `overlay_throughput_golden_90_20261028.v1-nomaps.generate.json`): la
+  finestra overlay passa da 657,3 s (flag OFF, baseline
+  `gate-90-nomaps-20261028-r1`) a **101,3 s (−85%, ×6,5)**; throughput
+  6,3 → **39,7 overlay/min**; 15 batch per-scena, 67/67 item COMPLETED,
+  zero fallback split, zero `worker_count` mismatch. Evidenza:
+  `ops/jobs/overlay_throughput_golden_100_20261022/results/split-per-scene-20261029-r1/summary.json`
+  e sezione "Split render per-scena" del README del golden. Caveat: baseline
+  e2b vs run e4b (mix leggero diverso); confronto per-classe confermato
+  (50 text_phrase in entrambe). Il gate ≥100 overlay/min (contratto mediana
+  di 3 run comparabili) NON è a soglia: 39,7 < 100 — il residuo è attribuito a
+  `queue_wait_ms` (~20 s/batch) e alla fase `generate` (46,7% del critical
+  path), che appartengono al contratto di `TICKET-MAX-THROUGHPUT-OVERLAY-
+  ARCHITECTURE.md` (#57), non a questa scheda.
 - [ ] Contratto worker decode-replace multi-artefatto per FinalJob (i final
   job NON splittano oggi: il wire single-manifest resta la SSOT finché il
   contratto `manifest schema_version + decode per batch` non atterra — vedi

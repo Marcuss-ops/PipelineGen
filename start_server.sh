@@ -8,6 +8,18 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 # shellcheck source=scripts/lib/dotenv.sh
 source "$DIR/scripts/lib/dotenv.sh"
 load_dotenv_missing "$DIR/.env"
+
+# Max-throughput overlay (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE): enable
+# the per-scene split render gate and fill the worker's 3 GPU lanes
+# (gpu_lanes=3; GPU admission stays the throughput authority). Default-only
+# so an explicit caller env wins.
+export OVERLAY_RENDER_PER_SCENE="${OVERLAY_RENDER_PER_SCENE:-enabled}"
+export OVERLAY_RENDER_PER_SCENE_WORKERS="${OVERLAY_RENDER_PER_SCENE_WORKERS:-3}"
+# Language submit-barrier (TICKET-OVERLAY-QUEUE-OVERLAP): the render fork
+# submits the frozen language plans from the P1 plan branch while the master
+# audio compile is still running, instead of only after the OnPlanReady
+# hand-off. Non-final jobs only; fail-closed fallback keeps today's surface.
+export OVERLAY_RENDER_LANG_BARRIER="${OVERLAY_RENDER_LANG_BARRIER:-enabled}"
 # Provider policy: YouTube is the only external acquisition provider.
 # Keep this explicit so a stale systemd Environment override cannot remount
 # Artlist after a restart; the canonical setting also lives in config.yaml.
