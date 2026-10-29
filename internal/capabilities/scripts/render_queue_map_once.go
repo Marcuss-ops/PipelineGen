@@ -147,13 +147,30 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 		return "", err
 	}
 	compositionChoice, _ := plan.Items[0].Params["map_animation"].(string)
+	// Wire DATA resolution BEFORE composition admission (TICKET map parity):
+	// the ported territory family (territory_glow_reveal) carries the ADM3
+	// shapeName of the map's FIRST pin — the same exact spelling the native
+	// renderer matches against the SAME catalog file. Empty means the catalog
+	// could not resolve the pin: the resolver's data-compatibility gate then
+	// keeps territory compositions out of the random draw and gives explicit
+	// requests a precise failure, never a guessed name that the renderer would
+	// refuse deep inside its render loop.
+	territoryFeature := ""
+	if len(plan.Items[0].Map.Pins) > 0 {
+		pin := plan.Items[0].Map.Pins[0]
+		if resolved, ok := scriptoverlay.ResolveMapTerritoryFeature(scriptoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude); ok {
+			territoryFeature = resolved
+		}
+	}
 	mapAnimation, mapFallbackReason, err := resolveMapCompositionFor(compositionChoice, seed, mapStyleSlot, mapCompositionInput{
-		PinCount:   len(plan.Items[0].Map.Pins),
-		Pins:       pins,
-		DurationUS: scriptoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000,
-		Strategy:   mapGroupStrategy,
-		Camera:     cameraAnimation,
-		Label:      labelAnimation,
+		PinCount:         len(plan.Items[0].Map.Pins),
+		Pins:             pins,
+		DurationUS:       scriptoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000,
+		Strategy:         mapGroupStrategy,
+		Camera:           cameraAnimation,
+		Label:            labelAnimation,
+		TerritoryFeature: territoryFeature,
+		AreaGlowRadiusKM: plan.Items[0].Map.AreaGlowRadiusKM,
 	})
 	if err != nil {
 		return "", err
@@ -185,7 +202,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	report.Basemap = basemapStyle
 	report.MapGroup = mapGroup
 	report.Strategy = mapGroupStrategy
-	if backend, backendReason, backendErr := scriptoverlay.ResolveMapItemBackend(plan.Items[0], os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"); backendErr == nil {
+	if backend, backendReason, backendErr := scriptoverlay.ResolveMapItemBackend(plan.Items[0]); backendErr == nil {
 		report.Backend = string(backend)
 		report.BackendReason = backendReason
 	} else {
@@ -220,8 +237,8 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	if len(pinTiming) > 0 {
 		report.AddExclusion("per_pin_timing_not_ported", "per-pin spoken timing declined: the native base flyover presents every place continuously (camera-activation family awaits its parity gate)")
 	}
-	if plan.Items[0].Map.AreaGlowRadiusKM > 0 {
-		report.AddExclusion("area_glow_not_ported", fmt.Sprintf("area glow ring of %.1f km declined: the glow family awaits its parity gate", plan.Items[0].Map.AreaGlowRadiusKM))
+	if plan.Items[0].Map.AreaGlowRadiusKM > 0 && mapAnimation != "area_glow_pulse" {
+		report.AddExclusion("area_glow_not_ported", fmt.Sprintf("area glow ring of %.1f km declined: the selected composition %q does not draw the ring (area_glow_pulse is the ported glow composition)", plan.Items[0].Map.AreaGlowRadiusKM, mapAnimation))
 	}
 	if hasPinAccent(plan.Items[0].Map.Pins) {
 		report.AddExclusion("pin_presentation_simplified", "pin accent color and extra cards are not ported: the native base flyover draws the certified camera-aligned labels")
@@ -256,6 +273,16 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	if sendZooms {
 		payload["camera_start_zoom"] = cameraStartZoom
 		payload["camera_end_zoom"] = cameraEndZoom
+	}
+	// Native-payload DATA fields (parity landed): the wire carries exactly
+	// what the composition was admitted for — the renderer validates them at
+	// its boundary and refuses silently-absent requirements.
+	if scriptoverlay.MapTerritoryOverlayRequired(mapAnimation) {
+		payload["territory_feature"] = territoryFeature
+	}
+	if mapAnimation == "area_glow_pulse" {
+		// The admission gate guarantees a positive radius for this composition.
+		payload["area_glow_radius_km"] = plan.Items[0].Map.AreaGlowRadiusKM
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

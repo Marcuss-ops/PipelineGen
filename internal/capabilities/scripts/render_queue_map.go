@@ -124,11 +124,6 @@ func (e *QueueRenderEnqueuer) PreMaterializeDynamicMapVideo(ctx context.Context,
 	if e == nil {
 		return fmt.Errorf("queue render enqueuer is not configured")
 	}
-	if os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1" {
-		// The native diagnostic route renders on the worker: there is no
-		// local dynamic-map video to prepare.
-		return nil
-	}
 	// The SAME normalization the submission's fold applies, so both sides
 	// resolve the same durable cache key.
 	semanticPlan, decisions, err := normalizeDynamicMapFoldPlan(plan)

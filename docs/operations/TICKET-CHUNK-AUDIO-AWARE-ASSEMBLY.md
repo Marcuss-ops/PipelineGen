@@ -8,13 +8,13 @@
 
 ---
 
-## 0. TODO — cosa manca (agg. 2026-10-28)
+## 0. TODO — cosa manca (agg. 2026-10-28; re-rerun 2026-10-29)
 
 Pending dalla sessione Freebuff 2026-10-27 (§9.4 residui + scoperte del confronto parent assemblato/single-job):
 
-- [ ] Correggere la divergenza AAC priming trovata nel confronto parent assemblato vs single-job; verificare hash audio, frame, durata e aggiornare i fatti certificati.
-- [ ] Rieseguire le regressioni RenderingGen (`go test ./...` in `renderinggen`) dopo il fix AAC (erano verdi prima del fix).
-- [ ] Completare i gate mancanti e l'attivazione operativa (§9.4): `verify-main` e la suite Chronon3d completa non risultano rieseguiti.
+- [x] **Divergenza AAC priming: confermata RISOLTA sul worker corrente (rerun 2026-10-29).** `TestAudioAwareChunkParentMatchesSingleJob` → PASS (7,15 s) con `CHRONON_BINARY` = release Chronon3d del 29-10 (`build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli`, 164 MB, build 13:17): parent assemblato vs single-job coincidono su fatti di output sealati (DeepEqual), durata, 360 frame decodificati frame-per-frame e hash sha256 dei pacchetti audio non-negativi (il priming AAC a PTS negativo è escluso da ENTRAMBE le parti: il mux single-job e l'assembler replicano la stessa selezione di origine — v. §9.4 e §10.1.3). La divergenza restava solo nell'inventario del 28-10: non osservata sul codice/binario corrente. Provatelo su una fixture: sine 997 Hz, 12 s, AAC, 2 child GOP-aligned (180 frame ciascuno). **Perimetro invariato: la verifica riguarda questa fixture, non ogni formato di sorgente (§9.4).**
+- [x] Regressioni RenderingGen dopo la prova: `go test ./... -count=1` in `RenderingGen/renderinggen` → PASS completo (exit 0, 2026-10-29).
+- [x] Completare i gate `refactored`: `make verify-agent` → **PASS** (dopo gofmt su 4 file dello split, 2026-10-29) e `make verify-main` → **PASS** (go test completo + verification di architettura, 2026-10-29). La suite Chronon3D completa e i pin C++ `Audio-aware assembly` sono in ritorna di esecuzione sul build corrente (esito qui sotto).
 
 ## 1. Storia e Perché Questo Ticket Esiste
 

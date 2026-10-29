@@ -2,13 +2,24 @@
 # Driver per una run golden overlay-only (payload immutabile v2).
 # Uso: run_golden.sh <label>   (es. overlay-only-v20)
 # Produce in results/<label>/: submit.log, job.full.json, summary.json
+#
+# ATTENZIONE (29/10/2026): il payload v2 storico contiene
+# `map_animation=region_zoom`, id ritirato e fail-closed: ogni run v2 muore in
+# `overlay plan compilation` (rilevato sulla run v2-r8 del 29/10; anche le
+# v6…v28 col vecchio binario non riproducibili). Il driver punta ora alla
+# v2.1-nomaps (SHA ad5e3468a5eee166df5f4f0899439e6de239b7e10490f042f9237f728db9f159):
+# corpo identico alla v2 con territory_glow_reveal (id certificato) e
+# identifieri `…-v2.1-nomaps`. Le mappe restano DISABLED come in v2: l'id non
+# raggiunge mai un renderer, serve solo alla validazione a compile.
 set -Eeuo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT"
 
 LABEL="${1:?uso: run_golden.sh <label>}"
-PAYLOAD="ops/jobs/overlay_throughput_golden_100_20261022.v2.generate.json"
+# Payload runnabile v2.1-nomaps di default; override esplicito per varianti
+# (es. v2.2-streaming) conservando la provenienza del driver.
+PAYLOAD="${PAYLOAD_OVERRIDE:-ops/jobs/overlay_throughput_golden_100_20261022.v2.1-nomaps.generate.json}"
 RES="ops/jobs/overlay_throughput_golden_100_20261022/results/$LABEL"
 mkdir -p "$RES"
 

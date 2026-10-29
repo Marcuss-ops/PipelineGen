@@ -158,13 +158,12 @@ func normalizeDynamicMapFoldPlan(plan capoverlay.OverlayPlan) (capoverlay.Overla
 }
 
 func resolvePlanMapBackends(plan capoverlay.OverlayPlan) ([]planMapBackend, error) {
-	nativeDiagnostic := os.Getenv("PIPELINEGEN_MAP_NATIVE_RENDER") == "1"
 	var decisions []planMapBackend
 	for i := range plan.Items {
 		if plan.Items[i].Map == nil {
 			continue
 		}
-		backend, reason, err := scriptoverlay.ResolveMapItemBackend(plan.Items[i], nativeDiagnostic)
+		backend, reason, err := scriptoverlay.ResolveMapItemBackend(plan.Items[i])
 		if err != nil {
 			return nil, fmt.Errorf("resolve map backend for item %q: %w", plan.Items[i].ID, err)
 		}

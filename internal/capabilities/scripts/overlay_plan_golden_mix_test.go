@@ -227,7 +227,13 @@ func appendEntityTimelineScene(timeline *capabilityentities.EntityTimeline, scen
 // when the candidate supply exists — 25 short + 25 long phrases, 20 context
 // images + 10 entity cards, 10 dates and 10 maps.
 func TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items(t *testing.T) {
-	payloadPath := filepath.Join("..", "..", "..", "ops", "jobs", "overlay_throughput_golden_100_20261022.v3-maps.generate.json")
+	// v3.1 (SHA 7d3089... ba3befed44c7676f810945dcf04ef68daf8898e28aac6d49c2ca5ad72fc8d846)
+	// is the v3 golden payload with the single presentation field the renderer
+	// retired post-publication: map_animation region_zoom → certified
+	// territory_glow_reveal (same region_highlight family). v3 itself can no
+	// longer compile (fail-closed on the retired id), so v3.1 is the throughput
+	// contract below.
+	payloadPath := filepath.Join("..", "..", "..", "ops", "jobs", "overlay_throughput_golden_100_20261022.v3.1-maps.generate.json")
 	raw, err := os.ReadFile(payloadPath)
 	require.NoError(t, err)
 	var payload struct {

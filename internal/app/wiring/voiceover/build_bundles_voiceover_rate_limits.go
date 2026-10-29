@@ -203,9 +203,31 @@ func (r *retryableTTSProvider) Synthesize(ctx context.Context, input voiceover.T
 
 // ── rateLimitedTTSProvider ────────────────────────────────────────────────
 
+// maxTTSProviderSlots is the measured ceiling of the provider gate. The
+// 2026-10-29 sentence-chunk benchmark (120 chunks, 20-scene shape, live Edge
+// bridge) measured 10.765 s wall at 12 concurrent and 5.465 s at 24, with
+// p50 ~1.0 s and zero errors: throughput scales linearly through 24. The
+// former 16-slot clamp silently ignored a configured
+// voiceover.max_concurrent_tts of 24, so the declared width never reached
+// the bridge.
+const maxTTSProviderSlots = 24
+
+// ttsLocalWorkAllowance keeps local post-processing OUT of the provider
+// admission decision. The outer gate in this file spans the whole
+// Generate call (stream + MD5/MP3 duration + loudness). The network bound is
+// owned by audioasset.Processor.requestSlots; without this allowance a 24-slot
+// gate also reserved slots for local ffmpeg work, so the streaming pool was
+// effectively 24 minus the local workers and the measured TTS stage stayed at
+// ~21 s. The allowance matches DefaultTTSPostprocessConcurrency: 24 network
+// streams + 12 local workers can be in flight, while the processor still
+// admits exactly 24 HTTP requests.
+const ttsLocalWorkAllowance = 12
+
 // rateLimitedTTSProvider wraps a voiceover.TTSProvider with a bounded
-// concurrency gate and per-call timeout. The gate capacity is clamped to
-// [1, 16] at construction; zero or negative values default to 1.
+// concurrency gate and per-call timeout. The configured provider width is
+// clamped to [1, maxTTSProviderSlots]; ttsLocalWorkAllowance is added on top
+// so local post-processing can overlap the network stream. Zero or negative
+// values default to 1 network slot.
 //
 // The gate is a per-owner-FAIR semaphore, and the time spent waiting on it is
 // recorded as a WaitSemaphore interval on the bound run: a job whose scenes
@@ -229,9 +251,15 @@ func NewRateLimitedTTSProvider(inner voiceover.TTSProvider, vcfg config.Voiceove
 	if cap < 1 {
 		cap = 1
 	}
-	if cap > 16 {
-		cap = 16
+	if cap > maxTTSProviderSlots {
+		cap = maxTTSProviderSlots
 	}
+	// The gate spans the whole Generate call, including the local
+	// post-processing that now runs outside the processor's network slots.
+	// Reserve the network width plus the local allowance so local work never
+	// consumes a streaming slot; the HTTP request bound stays
+	// maxTTSProviderSlots inside audioasset.Processor.
+	cap += ttsLocalWorkAllowance
 	timeout := time.Duration(vcfg.TTSTimeoutSec) * time.Second
 	if timeout <= 0 {
 		timeout = 120 * time.Second

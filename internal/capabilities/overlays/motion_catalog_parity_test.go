@@ -334,11 +334,18 @@ func TestAnimationRegistryActiveEntriesAreCanonicalAndRetiredEntriesAreNotSelect
 	}
 }
 
-// TestMapCompositionsAreTheChrononPluginCatalog pins the native renderer's
-// servable subset to its published catalog
-// (ChrononPlugin/plugins/maps/maps-renderer-catalog.v1.json). The animation
-// registry may retain gallery concepts that are not yet exposed by the native
-// renderer; every renderer entry must still be registered and servable.
+// TestMapCompositionsAreTheChrononPluginCatalog pins the CORRECT direction of
+// the native-catalog projection (ChrononPlugin/plugins/maps/
+// maps-renderer-catalog.v1.json). The catalog is the native renderer's FULL
+// vocabulary (servable productions AND unported showcase concepts); the
+// animation registry serves only the ported production subset. The invariants
+// are therefore:
+//
+//  1. every servable composition is covered by the native catalog;
+//  2. the servable set equals the registry's active+renderer-supported
+//     map.composition subset (single projection, no hand-maintained divergence);
+//  3. catalog entries outside the servable subset stay unselectable in the
+//     registry fail-closed: a showcase concept must never enter the planner pool.
 func TestMapCompositionsAreTheChrononPluginCatalog(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	if !ok {
@@ -363,28 +370,38 @@ func TestMapCompositionsAreTheChrononPluginCatalog(t *testing.T) {
 	for _, id := range catalog.MapAnimations {
 		cataloged[id] = true
 	}
-	registered := map[string]bool{}
+	// Servable = the registry's own projected subset: Candidates already
+	// excludes retired and renderer-unsupported entries.
+	servable := map[string]bool{}
 	for _, id := range canonicalAnimationRegistry.Candidates("map.composition") {
-		registered[id] = true
-	}
-	for id := range cataloged {
-		if families, known := canonicalAnimationRegistry.FamiliesOf(id); !known || !containsMotion(families, "map.composition") {
-			t.Errorf("ChrononPlugin map composition %q is not registered in map.composition", id)
-		}
+		servable[id] = true
 	}
 	ported := map[string]bool{}
 	for _, id := range PortedMapCompositions() {
-		if !cataloged[id] || !registered[id] {
-			t.Errorf("servable composition %q must be both cataloged and registered", id)
+		if !cataloged[id] {
+			t.Errorf("servable composition %q is missing from the native catalog", id)
+		}
+		if families, known := canonicalAnimationRegistry.FamiliesOf(id); !known || !containsMotion(families, "map.composition") {
+			t.Errorf("servable composition %q is not registered in map.composition", id)
+		}
+		if !canonicalAnimationRegistry.Selectable(id, "map.composition") {
+			t.Errorf("servable composition %q is retired or renderer-unsupported in the registry", id)
 		}
 		ported[id] = true
 	}
-	if len(ported) != len(cataloged) {
-		t.Errorf("servable composition count = %d, native catalog count = %d", len(ported), len(cataloged))
+	if len(ported) != len(servable) {
+		for id := range servable {
+			if !ported[id] {
+				t.Errorf("registry servable composition %q is not declared by PortedMapCompositions", id)
+			}
+		}
 	}
 	for id := range cataloged {
-		if !ported[id] {
-			t.Errorf("native catalog composition %q is missing from the servable subset", id)
+		if ported[id] {
+			continue
+		}
+		if canonicalAnimationRegistry.Selectable(id, "map.composition") {
+			t.Errorf("native catalog showcase composition %q is selectable in the registry: it must stay fail-closed until ported", id)
 		}
 	}
 }

@@ -600,6 +600,185 @@ func TestSentinels_ErrorsIsProbesAcrossDualWw(t *testing.T) {
 // Empty-audio classification + retry
 // ───────────────────────────────────────────────────────────────────────
 
+// blockingProbe holds the local post-processing path open so the test can
+// observe whether the provider slot was released first.
+type blockingProbe struct {
+	mediaexec.AudioProcessor
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (b blockingProbe) Probe(ctx context.Context, _ string) (*mediaexec.MediaInfo, error) {
+	select {
+	case b.started <- struct{}{}:
+	default:
+	}
+	select {
+	case <-b.release:
+		return &mediaexec.MediaInfo{Duration: time.Second}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// TestGenerate_ReleasesProviderSlotBeforePostprocess pins the 2026-10-29 TTS
+// critical-path split: the local probe (shared Rust media pool, max 4
+// runners) runs AFTER the provider request slot is released. Before the
+// split the probe was paid inside the slot, so a 24-way Edge fan-out could
+// only keep 4 probes busy and roughly half of the TTS wall was local
+// queueing.
+func TestGenerate_ReleasesProviderSlotBeforePostprocess(t *testing.T) {
+	outDir := t.TempDir()
+	outA := writeOutputFile(t, filepath.Join(outDir, "a.mp3"))
+	outB := writeOutputFile(t, filepath.Join(outDir, "b.mp3"))
+
+	entered := make(chan string, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		var req ttsSynthesizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		name := filepath.Base(req.Out)
+		path := outA
+		if name == "b.mp3" {
+			path = outB
+		}
+		entered <- name
+		_ = json.NewEncoder(w).Encode(ttsSynthesizeResponse{OK: true, Path: path})
+	}))
+	defer srv.Close()
+
+	p := newTestProcessor(t, srv.URL, "it", nil)
+	p.requestSlots = make(chan struct{}, 1)
+	p.postprocessSlots = make(chan struct{}, 1)
+	probeStarted := make(chan struct{}, 1)
+	probeRelease := make(chan struct{})
+	p.SetMediaExecutor(blockingProbe{started: probeStarted, release: probeRelease})
+
+	synthesize := func(filename string) <-chan error {
+		done := make(chan error, 1)
+		go func() {
+			_, err := p.Generate(context.Background(), &AudioInput{
+				Text: "test", Language: "it", Filename: filename, OutputDir: outDir,
+			})
+			done <- err
+		}()
+		return done
+	}
+
+	first := synthesize("a.mp3")
+	if got := receiveWithin(t, entered); got != "a.mp3" {
+		t.Fatalf("first request = %q, want a.mp3", got)
+	}
+	select {
+	case <-probeStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first synthesis never reached the post-processing probe")
+	}
+
+	second := synthesize("b.mp3")
+	if got := receiveWithin(t, entered); got != "b.mp3" {
+		t.Fatalf("second request = %q, want b.mp3 (provider slot was not released before postprocess)", got)
+	}
+
+	close(probeRelease)
+	for i, done := range []<-chan error{first, second} {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("synthesis %d failed: %v", i+1, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("synthesis %d did not finish", i+1)
+		}
+	}
+}
+
+// silenceRemovingProbe imitates the media executor for the silence-removal
+// branch: it copies the source file to the cleaned path and reports a fixed
+// duration so the timing contract is satisfied without a real decoder.
+type silenceRemovingProbe struct {
+	mediaexec.AudioProcessor
+}
+
+func (silenceRemovingProbe) RemoveSilence(_ context.Context, inputPath, outputPath string) error {
+	data, err := os.ReadFile(inputPath)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(outputPath, data, 0o644)
+}
+
+func (silenceRemovingProbe) Probe(context.Context, string) (*mediaexec.MediaInfo, error) {
+	return &mediaexec.MediaInfo{Duration: 1500 * time.Millisecond}, nil
+}
+
+// TestGenerate_RemoveSilenceKeepsMediaExtension pins that the cleaned file is
+// derived from the file the worker actually wrote. Generate accepts an
+// extensionless Filename and appends ".mp3" for the request, so using the
+// caller's Filename for the "cleaned_" name used to drop the extension and
+// hand the media executor an untyped container.
+func TestGenerate_RemoveSilenceKeepsMediaExtension(t *testing.T) {
+	outDir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		var req ttsSynthesizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := os.MkdirAll(filepath.Dir(req.Out), 0o755); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := os.WriteFile(req.Out, []byte("FAKE_MP3_BYTES"), 0o644); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(ttsSynthesizeResponse{OK: true, Path: req.Out})
+	}))
+	defer srv.Close()
+
+	p := newTestProcessor(t, srv.URL, "it", nil)
+	p.SetMediaExecutor(silenceRemovingProbe{})
+
+	res, err := p.Generate(context.Background(), &AudioInput{
+		Text: "test", Language: "it", Filename: "chunk-01", OutputDir: outDir, RemoveSilence: true,
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	want := filepath.Join(outDir, "cleaned_chunk-01.mp3")
+	if res.CleanedPath != want {
+		t.Fatalf("cleaned path = %q, want %q", res.CleanedPath, want)
+	}
+	if res.Status != "cleaned" {
+		t.Fatalf("status = %q, want cleaned", res.Status)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("cleaned file missing: %v", err)
+	}
+}
+
+func receiveWithin(t *testing.T, ch <-chan string) string {
+	t.Helper()
+	select {
+	case value := <-ch:
+		return value
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for synthesis request")
+		return ""
+	}
+}
+
 // TestIsBridgeEmptyAudioError pins the single classification site for the
 // bridge empty-audio strings (legacy CLI "Empty file", persistent worker
 // "generated file is empty or missing", and the transient Edge stream

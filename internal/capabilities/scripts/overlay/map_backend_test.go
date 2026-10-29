@@ -145,7 +145,7 @@ func TestNativeGalleryCompositionClaimsItsOwnCapability(t *testing.T) {
 func TestPerPinTimingIsTheOneDeclinableRequirement(t *testing.T) {
 	timed := capabilityoverlay.OverlayItem{ID: "m", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
 		Params: map[string]any{"map_pin_timing": map[string]map[string]any{}}}
-	backend, reason, err := ResolveMapItemBackend(timed, false)
+	backend, reason, err := ResolveMapItemBackend(timed)
 	if err != nil {
 		t.Fatalf("timing-only maps must resolve through the declared decline: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestPerPinTimingIsTheOneDeclinableRequirement(t *testing.T) {
 	}
 	unportable := capabilityoverlay.OverlayItem{ID: "m2", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
 		Params: map[string]any{"map_pin_timing": map[string]map[string]any{}, "map_animation": "region_zoom"}}
-	if _, _, err := ResolveMapItemBackend(unportable, false); err == nil {
+	if _, _, err := ResolveMapItemBackend(unportable); err == nil {
 		t.Fatal("the decline must never cover an unportable composition")
 	}
 }

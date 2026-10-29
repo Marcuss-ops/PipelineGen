@@ -4,6 +4,7 @@ package voiceover
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +15,66 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
+
+// concurrencyProbe is a TTSProvider that holds every call until released and
+// records the maximum observed concurrency. It has no retry/timeout logic of
+// its own, so it measures exactly the rate-limited gate in front of it.
+type concurrencyProbe struct {
+	entered chan struct{}
+	release chan struct{}
+	current atomic.Int64
+	max     atomic.Int64
+}
+
+func (p *concurrencyProbe) Synthesize(ctx context.Context, _ voiceover.TTSInput) (voiceover.TTSOutput, error) {
+	n := p.current.Add(1)
+	for {
+		m := p.max.Load()
+		if n <= m || p.max.CompareAndSwap(m, n) {
+			break
+		}
+	}
+	p.entered <- struct{}{}
+	select {
+	case <-p.release:
+	case <-ctx.Done():
+	}
+	p.current.Add(-1)
+	return voiceover.TTSOutput{}, nil
+}
+
+// TestRateLimitedTTSProvider_HonorsNetworkAndLocalSlots pins the 2026-10-29
+// TTS ceiling fixes: the former 16-slot clamp silently ignored a configured
+// voiceover.max_concurrent_tts of 24 (benchmark: 120 chunks, 10.765 s at 12
+// vs 5.465 s at 24), and the outer gate must not spend its network slots on
+// local probe/loudness work. The processor still bounds HTTP requests to 24;
+// this gate adds the local allowance on top so the stream stays saturated.
+func TestRateLimitedTTSProvider_HonorsNetworkAndLocalSlots(t *testing.T) {
+	want := maxTTSProviderSlots + ttsLocalWorkAllowance
+	probe := &concurrencyProbe{entered: make(chan struct{}, want), release: make(chan struct{})}
+	provider := NewRateLimitedTTSProvider(probe, config.VoiceoverConcurrencyConfig{MaxConcurrentTTS: maxTTSProviderSlots}, zap.NewNop())
+
+	var wg sync.WaitGroup
+	for i := 0; i < want; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = provider.Synthesize(context.Background(), voiceover.TTSInput{})
+		}()
+	}
+	for i := 0; i < want; i++ {
+		select {
+		case <-probe.entered:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d/%d calls reached the provider; the configured width was clamped", i, want)
+		}
+	}
+	if got := probe.max.Load(); got != int64(want) {
+		t.Fatalf("max concurrency = %d, want %d", got, want)
+	}
+	close(probe.release)
+	wg.Wait()
+}
 
 // ── retryableTTSProvider tests ────────────────────────────────────────────
 

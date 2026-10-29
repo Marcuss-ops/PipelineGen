@@ -266,24 +266,19 @@ const (
 	MapExecutionNativeAfterCertification MapExecutionPolicy = "native_after_visual_certification"
 )
 
-// MapExecutionPolicyFromEnv resolves the operator intent. PIPELINEGEN_MAP_NATIVE_RENDER=1
-// selects the diagnostic native path; PIPELINEGEN_MAP_EXECUTION_POLICY overrides
-// it explicitly when set. Default is production_dynamic.
-func MapExecutionPolicyFromEnv(nativeDiagnostic bool, override string) MapExecutionPolicy {
+// MapExecutionPolicyFromEnv resolves the operator intent. The native
+// diagnostic env override was removed with the single-path consolidation
+// (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE §9.3.3 punto 4): the native
+// compiler has no accepted visual parity, so the production dynamic renderer
+// is the only selectable presentation unless an explicit override names one
+// of the other declared policies.
+func MapExecutionPolicyFromEnv(override string) MapExecutionPolicy {
 	switch MapExecutionPolicy(override) {
-	case MapExecutionDiagnosticNative, MapExecutionProductionDynamic, MapExecutionNativeAfterCertification:
-		if override == string(MapExecutionDiagnosticNative) {
-			return MapExecutionDiagnosticNative
-		}
-		if override == string(MapExecutionNativeAfterCertification) {
-			return MapExecutionNativeAfterCertification
-		}
+	case MapExecutionDiagnosticNative, MapExecutionNativeAfterCertification:
+		return MapExecutionPolicy(override)
+	default:
 		return MapExecutionProductionDynamic
 	}
-	if nativeDiagnostic {
-		return MapExecutionDiagnosticNative
-	}
-	return MapExecutionProductionDynamic
 }
 
 // ResolveMapItemBackendWithPolicy is the per-map backend decision used at the
@@ -326,13 +321,10 @@ func ResolveMapItemBackendWithPolicy(item capabilityoverlay.OverlayItem, policy 
 // backend is never chosen from the plan's item count).
 //
 // Production policy: the dynamic tile-pyramid renderer is the certified
-// cartographic presentation for map overlays, so its capabilities are required
-// unless the operator explicitly opted into the native compiler diagnostic
-// (PIPELINEGEN_MAP_NATIVE_RENDER=1). Even then, a composition that needs
-// dynamic-only capabilities still resolves to the dynamic backend: native
-// visual parity is not established, so the diagnostic can only ever route
-// static content the native compiler genuinely covers — never force dynamic
-// content onto it.
-func ResolveMapItemBackend(item capabilityoverlay.OverlayItem, nativeDiagnostic bool) (MapBackend, string, error) {
-	return ResolveMapItemBackendWithPolicy(item, MapExecutionPolicyFromEnv(nativeDiagnostic, ""))
+// cartographic presentation for map overlays, so its capabilities are
+// required. The diagnostic native backend is not reachable from this path:
+// native visual parity is not established, so nothing can ever force dynamic
+// content onto it (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE §9.3.3 punto 4).
+func ResolveMapItemBackend(item capabilityoverlay.OverlayItem) (MapBackend, string, error) {
+	return ResolveMapItemBackendWithPolicy(item, MapExecutionPolicyFromEnv(""))
 }

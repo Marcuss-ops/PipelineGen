@@ -130,36 +130,71 @@ func (e *Engine) generateSegmentBatch(
 	batchReq.MinWords = batchPlan.TargetWords
 	batchReq.ClipIDs = nil
 	batchOrdinal := start/batchSize + 1
-	callCtx := kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
-		WorkerID: fmt.Sprintf("scene-batch-%d", batchOrdinal),
-		QueuedAt: time.Now(),
-		Metadata: map[string]string{
-			"segment_id":    "batch:" + strings.Join(ids, ","),
-			"segment_index": strconv.Itoa(start),
-			"segment_count": strconv.Itoa(end - start),
-			"segment_ids":   strings.Join(ids, ","),
-			"segment_start": strconv.Itoa(start),
-			"segment_end":   strconv.Itoa(end - 1),
-			"attempt":       "1",
-		},
-	})
-	result, err := generate(callCtx, batchReq)
-	if err != nil {
-		return segmentBatchOutput{start: start, err: fmt.Errorf("generate scene batch %d-%d: %w", start, end-1, err)}
+	// Bounded batch repair (same 1+repair policy as the per-segment path):
+	// a batch whose model output splits into the wrong paragraph count is
+	// regenerated up to settings.maxRegenerationAttempts extra times before
+	// surfacing the typed validation failure. Without this, one malformed
+	// batch killed the whole generation (observed live 2026-10-29: "scene batch
+	// 4-5 expected 2 paragraphs, got 4" -> job straight to dead letter).
+	basePrompt := batchReq.Prompt
+	baseAssignment := batchReq.SegmentAssignment
+	useSharedPrefix := SegmentPromptLayout() == SegmentPromptLayoutSharedPrefix
+	repairSuffix := fmt.Sprintf("\n\nRegenerate only this batch. Return exactly %d paragraphs, one for each scene instruction, separated by a single blank line. No headings, no scene labels, no extra paragraphs.", end-start)
+	attemptLimit := settings.maxRegenerationAttempts
+	if attemptLimit < 0 {
+		attemptLimit = 0
 	}
-	paragraphs := splitGeneratedBatchParagraphs(result.Script)
-	if len(paragraphs) != end-start {
-		return segmentBatchOutput{start: start, err: fmt.Errorf("%w: scene batch %d-%d expected %d paragraphs, got %d", scriptpkg.ErrSegmentValidationFailed, start, end-1, end-start, len(paragraphs))}
-	}
-	for offset, paragraph := range paragraphs {
-		index := start + offset
-		segmentPlan := *plan
-		segmentPlan.Segments = []scriptpkg.ScriptSegment{plan.Segments[index]}
-		segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
-		segmentPlan.SegmentWords = 0
-		if report := validateSegmentTexts(&segmentPlan, []string{paragraph}, settings); !report.Valid {
-			return segmentBatchOutput{start: start, err: fmt.Errorf("%w: scene %q in batch %d-%d failed validation: %s", scriptpkg.ErrSegmentValidationFailed, segmentIdentity(plan.Segments[index], index), start, end-1, strings.Join(report.Reasons, "; "))}
+	lastParagraphCount := 0
+	for attempt := 0; attempt <= attemptLimit; attempt++ {
+		callCtx := kernobs.WithOperationMeta(ctx, kernobs.OperationMeta{
+			WorkerID: fmt.Sprintf("scene-batch-%d", batchOrdinal),
+			QueuedAt: time.Now(),
+			Metadata: map[string]string{
+				"segment_id":    "batch:" + strings.Join(ids, ","),
+				"segment_index": strconv.Itoa(start),
+				"segment_count": strconv.Itoa(end - start),
+				"segment_ids":   strings.Join(ids, ","),
+				"segment_start": strconv.Itoa(start),
+				"segment_end":   strconv.Itoa(end - 1),
+				"attempt":       strconv.Itoa(attempt + 1),
+			},
+		})
+		result, err := generate(callCtx, batchReq)
+		if err != nil {
+			return segmentBatchOutput{start: start, err: fmt.Errorf("generate scene batch %d-%d: %w", start, end-1, err)}
+		}
+		paragraphs := splitGeneratedBatchParagraphs(result.Script)
+		if len(paragraphs) == end-start {
+			for offset, paragraph := range paragraphs {
+				index := start + offset
+				segmentPlan := *plan
+				segmentPlan.Segments = []scriptpkg.ScriptSegment{plan.Segments[index]}
+				segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
+				segmentPlan.SegmentWords = 0
+				if report := validateSegmentTexts(&segmentPlan, []string{paragraph}, settings); !report.Valid {
+					return segmentBatchOutput{start: start, err: fmt.Errorf("%w: scene %q in batch %d-%d failed validation: %s", scriptpkg.ErrSegmentValidationFailed, segmentIdentity(plan.Segments[index], index), start, end-1, strings.Join(report.Reasons, "; "))}
+				}
+			}
+			return segmentBatchOutput{start: start, paragraphs: paragraphs, result: result}
+		}
+		lastParagraphCount = len(paragraphs)
+		if attempt == attemptLimit {
+			break
+		}
+		// P1-5 anti-muda: rebuild base + suffix instead of accumulating the
+		// repair suffix across attempts, and vary the sample so the retry can
+		// actually differ from the rejected output.
+		if useSharedPrefix {
+			batchReq.SegmentAssignment = baseAssignment + repairSuffix
+		} else {
+			batchReq.Prompt = basePrompt + repairSuffix
+		}
+		batchReq.Temperature = 0.7
+		batchReq.Seed = 0
+		if batchReq.Options != nil {
+			delete(batchReq.Options, "seed")
+			delete(batchReq.Options, "temperature")
 		}
 	}
-	return segmentBatchOutput{start: start, paragraphs: paragraphs, result: result}
+	return segmentBatchOutput{start: start, err: fmt.Errorf("%w: scene batch %d-%d expected %d paragraphs, got %d", scriptpkg.ErrSegmentValidationFailed, start, end-1, end-start, lastParagraphCount)}
 }

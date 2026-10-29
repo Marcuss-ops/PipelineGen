@@ -19,9 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"go.uber.org/zap"
 )
 
@@ -50,9 +48,26 @@ type ttsSynthesizeResponse struct {
 	StreamMS       int64 `json:"stream_ms,omitempty"`
 }
 
-// sendSynthesizeRequest sends a POST /synthesize to the persistent worker
-// and returns the AudioResult. The persistent aiohttp worker handles these
-// requests concurrently; lifecycle protection is owned by synthesizeOnce.
+// sendSynthesizeRequest is the compatibility entry point used by tests and
+// callers that want the complete attempt (stream + local post-processing).
+// The production TTS path calls sendSynthesizeStream and postprocess separated
+// so the provider slot is not held while the shared media executor probes.
+func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput) (*AudioResult, error) {
+	result, err := p.sendSynthesizeStream(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.postprocessSynthesizedAudio(ctx, input, result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// sendSynthesizeStream sends a POST /synthesize to the persistent worker and
+// returns the AudioResult with the network-side facts only. The persistent
+// aiohttp worker handles these requests concurrently; lifecycle protection is
+// owned by synthesizeOnce. The caller releases its provider slot as soon as
+// this returns, before postprocessSynthesizedAudio runs.
 //
 // godlike/07 typed-error contract (PR-VO-TTS-PERSISTENT-WORKER): every
 // failure path wraps a typed sentinel + the underlying cause (dual %w,
@@ -61,7 +76,7 @@ type ttsSynthesizeResponse struct {
 //   - ErrSynthesizeFailed: non-200 status OR ok=false response body
 //   - ErrOutputMissing: post-synthesis file missing from disk (worker claimed
 //     success but the file is gone)
-func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput) (*AudioResult, error) {
+func (p *Processor) sendSynthesizeStream(ctx context.Context, input *AudioInput) (*AudioResult, error) {
 	reqBody := ttsSynthesizeRequest{
 		Text:               input.Text,
 		Lang:               input.Language,
@@ -131,63 +146,12 @@ func (p *Processor) sendSynthesizeRequest(ctx context.Context, input *AudioInput
 			StreamMS:       ttsOut.StreamMS,
 		},
 	}
-	postprocessStart := time.Now()
 
 	p.log.Info("TTS synthesized via persistent worker",
 		zap.String("path", outputPath),
 		zap.String("voice", ttsOut.Voice),
 		zap.Int64("voice_resolve_ms", result.Metrics.VoiceResolveMS),
 		zap.Int64("stream_ms", result.Metrics.StreamMS))
-
-	// Optional silence removal (mirrors the legacy processor.go block).
-	if input.RemoveSilence {
-		safeName := input.Filename
-		cleanedPath := filepath.Join(input.OutputDir, "cleaned_"+safeName)
-		media, mediaErr := p.mediaExecutor()
-		if mediaErr != nil {
-			return nil, fmt.Errorf("remove silence: %w", mediaErr)
-		}
-		if err := media.RemoveSilence(ctx, outputPath, cleanedPath); err != nil {
-			p.log.Warn("silence removal failed", zap.Error(err))
-		} else {
-			result.CleanedPath = cleanedPath
-			result.LocalPath = cleanedPath
-			result.Status = "cleaned"
-		}
-	}
-
-	// Compute MD5 hash — byte-identical with the legacy path
-	// (processor.go::generateLegacy uses md5.New()).
-	if result.LocalPath != "" {
-		if hash, hashErr := checksum.LegacyMD5File(result.LocalPath); hashErr != nil {
-			p.log.Warn("hash computation failed", zap.Error(hashErr))
-		} else {
-			result.ContentSHA256 = hash
-		}
-	}
-	var durationProbeErr error
-	if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
-		if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr != nil {
-			durationProbeErr = probeErr
-		} else if info == nil {
-			durationProbeErr = fmt.Errorf("probe returned no media information")
-		} else {
-			result.Duration = info.Duration
-		}
-	} else {
-		durationProbeErr = mediaErr
-	}
-	if durationProbeErr != nil {
-		p.log.Warn("failed to probe synthesized audio duration", zap.Error(durationProbeErr))
-	}
-	if err := validateTimingDuration(result, durationProbeErr); err != nil {
-		return nil, err
-	}
-	result.Metrics.PostprocessMS = time.Since(postprocessStart).Milliseconds()
-	result.Metrics.AudioDurationMS = result.Duration.Milliseconds()
-	if result.Metrics.AudioDurationMS > 0 {
-		result.Metrics.RTF = float64(result.Metrics.StreamMS) / float64(result.Metrics.AudioDurationMS)
-	}
 
 	return result, nil
 }

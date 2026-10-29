@@ -114,33 +114,28 @@ func TestValidateMapEncoderTelemetryRefusesAnotherProfile(t *testing.T) {
 	}
 }
 
-// TestMapDiagnosticCannotForceNativeForDynamicContent is the parity gate:
+// TestMapProductionKeepsTheCertifiedDynamicBackend is the parity gate:
 // the native MAP compiler has no tile pyramid, label animations or editorial
-// compositor. A composition needing unported capabilities fails closed with a
-// typed error — it is never silently downgraded to a backend that cannot draw
-// it. The diagnostic opt-in only ever applies to static content.
-func TestMapDiagnosticCannotForceNativeForDynamicContent(t *testing.T) {
+// compositor, and the diagnostic native override was removed with the
+// single-path consolidation (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE
+// §9.3.3 punto 4). A composition needing unported capabilities fails closed
+// with a typed error — never silently downgraded to a backend that cannot
+// draw it — and static content keeps the certified dynamic presentation.
+func TestMapProductionKeepsTheCertifiedDynamicBackend(t *testing.T) {
 	dynamic := capabilityoverlay.OverlayItem{ID: "map-1", Kind: "map",
 		Map:    &capabilityoverlay.MapOverlay{},
 		Params: map[string]any{"map_animation": "region_zoom", "map_pin_timing": map[string]any{}},
 	}
-	if backend, _, err := ResolveMapItemBackend(dynamic, true); err == nil && backend == MapBackendNative {
+	if backend, _, err := ResolveMapItemBackend(dynamic); err == nil && backend == MapBackendNative {
 		t.Fatalf("unported dynamic content must never resolve to the native compiler (got %q)", backend)
 	}
-	if _, _, err := ResolveMapItemBackend(dynamic, true); err == nil {
+	if _, _, err := ResolveMapItemBackend(dynamic); err == nil {
 		t.Fatal("unported dynamic content must fail closed until it is ported")
 	}
 	static := capabilityoverlay.OverlayItem{ID: "map-2", Kind: "map",
 		Map: &capabilityoverlay.MapOverlay{},
 	}
-	backend, _, err := ResolveMapItemBackend(static, true)
-	if err != nil {
-		t.Fatalf("static requirements must resolve: %v", err)
-	}
-	if backend != MapBackendNative {
-		t.Fatalf("diagnostic native render of static content = %q, want native", backend)
-	}
-	backend, _, err = ResolveMapItemBackend(static, false)
+	backend, _, err := ResolveMapItemBackend(static)
 	if err != nil {
 		t.Fatalf("static requirements must resolve: %v", err)
 	}
