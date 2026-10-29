@@ -111,7 +111,7 @@ func TestFinalJobPhraseVideoRejectsUncertifiedArtifact(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
 	result.OverlayRender.Artifact = &RenderArtifact{ID: "incomplete", DriveFileID: "phrase-drive-id", MimeType: "video/mp4", CopyEligible: false}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{Title: "Garlasco", SourceLanguage: "it"}, result, finalJobPayloadResolver{})
-	if err == nil || !strings.Contains(err.Error(), "not a certified published video") {
+	if err == nil || !strings.Contains(err.Error(), "not a certified downloadable video") {
 		t.Fatalf("BuildFinalJobPayloads error = %v, want fail-closed uncertified phrase video", err)
 	}
 }
