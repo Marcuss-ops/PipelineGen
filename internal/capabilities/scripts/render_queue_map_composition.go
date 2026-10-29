@@ -39,12 +39,11 @@ func resolveMapCompositionFor(requested, seed, slot string, input mapComposition
 	return scriptoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
 }
 
-// mapMapAnimationsCertified lists every renderer-approved map_animation id:
-// map systems from map_compositions plus the GPU-certified editorial
-// scenes in map_editorial.MAP_EDITORIAL_SCENES.
+// mapMapAnimationsCertified lists only the map animations exposed by the
+// single native renderer. Gallery-only registry entries remain unselectable.
 // TestMapCompositionsMatchPython guards cross-repository drift.
 func mapMapAnimationsCertified() []string {
-	return capoverlay.AnimationCandidates("map.composition")
+	return capoverlay.PortedMapCompositions()
 }
 
 // mapLabelAnimationsCertified lists every label id the Python renderer

@@ -123,12 +123,11 @@ func MapPinFloat(pin map[string]any, key string) (float64, bool) {
 	return 0, false
 }
 
-// MapCompositionCertified lists every composition id the executing map
-// renderer draws: the projection of the native ChrononPlugin map catalog in
-// the animation registry (map.composition). Explicit and random requests both
-// admit against this list; servability on top of it is PortedMapCompositions.
+// MapCompositionCertified lists only compositions exposed by the native map
+// renderer. Gallery concepts remain in the global animation registry for
+// reference, but explicit and random map requests cannot select them.
 func MapCompositionCertified() []string {
-	return capabilityoverlay.AnimationCandidates("map.composition")
+	return capabilityoverlay.PortedMapCompositions()
 }
 
 // MapCompositionRandomPool is the restrained random-draw pool: the subset of

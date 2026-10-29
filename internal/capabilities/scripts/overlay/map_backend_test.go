@@ -117,7 +117,7 @@ func TestMapAnimationPlaceholdersDemandNoComposition(t *testing.T) {
 // paths.
 func TestNativeGalleryCompositionClaimsItsOwnCapability(t *testing.T) {
 	item := capabilityoverlay.OverlayItem{ID: "m", Kind: "map", Map: &capabilityoverlay.MapOverlay{},
-		Params: map[string]any{"map_animation": "thermal_heatmap_overlay"}}
+		Params: map[string]any{"map_animation": "territory_glow_reveal"}}
 	req := MapRenderRequirementsFor(item)
 	if !req.NativeComposition || req.DynamicCameraTour || req.EditorialComposition {
 		t.Fatalf("native gallery composition requirements = %+v", req)
