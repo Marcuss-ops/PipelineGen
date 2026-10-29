@@ -38,36 +38,18 @@ type mapCompositionFamily struct {
 // can never disagree about a family. Unknown ids stay in location_focus.
 func MapCompositionFamilyOf(id string) string {
 	switch strings.TrimSpace(id) {
-	case "thermal_heatmap_overlay", "isochrone_travel_bubble", "topographic_contour_rise",
-		"flood_sea_level_inundation", "wildfire_burn_scar_expansion",
-		"naval_chokepoint_exclusion", "frontline_fluid_corridor", "territory_polygon_wipe":
+	case "territory_glow_reveal", "area_glow_pulse":
 		return MapFamilyRegion
-	case "cell_tower_triangulation", "port_hub_radial_burst":
-		return MapFamilyMultiPin
-	case "route_line", "multi_leg_flight", "timeline_suspect_trail",
-		"great_circle_polar_route", "pipeline_energy_flow", "supply_chain_artery_pulse",
-		"subsea_cable_glow_network", "missile_arc_ballistic":
+	case "route_line", "multi_leg_flight":
 		return MapFamilyJourney
-	case "satellite_before_after_split", "multi_camera_split_matrix":
-		return MapFamilyComparison
-	case "satellite_dive_lock", "night_vision_infrared", "air_defense_interception_dome",
-		"cinematic_anchor_pitch_tilt", "crime_scene_radar":
-		return MapFamilyLocationFocus
 	}
 	return MapFamilyLocationFocus
 }
 
 // PortedMapCompositions lists the map compositions the single dynamic map
-// renderer (ChrononPlugin/maps_dynamic_map_render) draws from grounded places
-// alone. The native documentary gallery IS the executing renderer's own
-// vocabulary (ChrononPlugin/plugins/maps/maps-renderer-catalog.v1.json, the
-// projection registered as map.composition), so every composition it draws
-// without extra authored data is servable. Two compositions stay out because
-// they need payload fields the planner never authors (crime_scene_radar needs
-// crime_scene_radius_m, territory_polygon_wipe needs territory_feature), and
-// every composed scene/tour family of the retired Python renderer is gone.
-// A composition joins this list the moment the renderer draws it from the data
-// the planner supplies.
+// renderer (ChrononPlugin/maps_dynamic_map_render) exposes. The catalog is
+// intentionally limited to production map treatments; visual concept
+// showcases remain in the plugin archive and cannot be selected by the planner.
 //
 // This is the SINGLE ported-subset declaration: the resolver's random pool
 // (scripts/overlay MapCompositionRandomPool) and the backend capability
@@ -75,28 +57,9 @@ func MapCompositionFamilyOf(id string) string {
 func PortedMapCompositions() []string {
 	return []string{
 		"route_line",
-		"satellite_dive_lock",
 		"multi_leg_flight",
-		"cell_tower_triangulation",
-		"isochrone_travel_bubble",
-		"timeline_suspect_trail",
-		"thermal_heatmap_overlay",
-		"night_vision_infrared",
-		"frontline_fluid_corridor",
-		"naval_chokepoint_exclusion",
-		"missile_arc_ballistic",
-		"multi_camera_split_matrix",
-		"air_defense_interception_dome",
-		"subsea_cable_glow_network",
-		"supply_chain_artery_pulse",
-		"great_circle_polar_route",
-		"port_hub_radial_burst",
-		"pipeline_energy_flow",
-		"satellite_before_after_split",
-		"topographic_contour_rise",
-		"flood_sea_level_inundation",
-		"wildfire_burn_scar_expansion",
-		"cinematic_anchor_pitch_tilt",
+		"territory_glow_reveal",
+		"area_glow_pulse",
 	}
 }
 

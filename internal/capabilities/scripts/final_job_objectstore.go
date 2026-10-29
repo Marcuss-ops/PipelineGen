@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -40,7 +39,7 @@ func finalJobObjectStoreRef(ctx context.Context, preferredID, storageKey, sha st
 	expires := time.Now().Add(7 * 24 * time.Hour).Unix()
 	objectPath := "/objects/" + sha
 	message := fmt.Sprintf("GET\n%s\n%d", objectPath, expires)
-	mac := hmac.New(sha256.New, []byte(secret))
+	mac := hmac.New(digest.NewSHA256, []byte(secret))
 	_, _ = mac.Write([]byte(message))
 	query := url.Values{"expires": {fmt.Sprintf("%d", expires)}, "sig": {hex.EncodeToString(mac.Sum(nil))}}
 	assetID := strings.TrimSpace(preferredID)

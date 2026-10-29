@@ -10,7 +10,6 @@
 # validate da percheck_governance_artifacts). Nessuna nuova voce: il gate
 # fallisce su ogni file non elencato. Una voce il cui file non contiene più
 # rewrite (o non esiste) fallisce come stale.
-migrations/sqlite/000_baseline_267.sql
 migrations/sqlite/053_job_lifecycle_atomic.sql
 migrations/sqlite/059_canonical_media_columns.sql
 migrations/sqlite/062_asset_locations_backfill.sql
