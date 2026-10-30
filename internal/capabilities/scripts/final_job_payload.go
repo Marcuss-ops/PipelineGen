@@ -3,7 +3,6 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"math"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -36,7 +35,43 @@ type FinalJobAssetResolver interface {
 	FinalJobPublishedFileSize(context.Context, string) (int64, error)
 }
 
-func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
+// finalJobStockAssetResolver is the sole Drive-backed source path in the final
+// job. Other scene and generated assets use ResolveFinalJobAsset's HTTPS flow.
+type finalJobStockAssetResolver interface {
+	ResolveFinalJobStockAsset(context.Context, string) (map[string]any, error)
+}
+
+// FinalJobVideoSegmentRequest is one exact, frame-aligned fragment that the
+// remote copy-only assembler will place on the final timeline. Preparation
+// happens before PREPARE/FINALIZE; the remote worker receives only the
+// prepared HTTPS asset and never transcodes it.
+type FinalJobVideoSegmentRequest struct {
+	SegmentID          string
+	SourceAssetID      string
+	SourceSHA256       string
+	SourceInUS         int64
+	SourceDurationUS   int64
+	TimelineStartFrame int64
+	FrameCount         int64
+	TimelineRevision   int64
+	TimelineSHA256     string
+}
+
+// FinalJobVideoSegmentPreparer materializes each selected stock/clip/overlay
+// window as one assembly-ready fragment. Implementations may reuse an
+// existing certified artifact when its bytes and exact window already match.
+type FinalJobVideoSegmentPreparer interface {
+	PrepareFinalJobVideoSegment(context.Context, map[string]any, FinalJobVideoSegmentRequest) (map[string]any, error)
+}
+
+func resolveFinalJobStockAsset(ctx context.Context, resolver FinalJobAssetResolver, id string) (map[string]any, error) {
+	if stockResolver, ok := resolver.(finalJobStockAssetResolver); ok {
+		return stockResolver.ResolveFinalJobStockAsset(ctx, id)
+	}
+	return resolveFinalJobAsset(ctx, resolver, id)
+}
+
+func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
 	if result == nil || result.CanonicalTimeline == nil || result.CanonicalTimeline.DurationUS <= 0 {
 		return nil, nil, fmt.Errorf("final_job requires a canonical timeline with positive duration")
 	}
@@ -66,6 +101,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	var scriptText strings.Builder
 	runtimeAssets := make([]any, 0)
 	seenRuntimeAssets := make(map[string]bool)
+	var audioRef map[string]any
 	// The remote video is built from ONE language: the certified renders of the
 	// source language, or the single render language the run produced. The
 	// decision is made once here instead of per scene, and an ambiguous run is
@@ -278,7 +314,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			asset, ok := stockAssetCache[file.ID]
 			if !ok {
 				var err error
-				asset, err = resolveFinalJobAsset(ctx, resolver, file.ID)
+				asset, err = resolveFinalJobStockAsset(ctx, resolver, file.ID)
 				if err != nil {
 					return nil, nil, fmt.Errorf("resolve stock file %s (%s): %w", file.Name, file.ID, err)
 				}
@@ -292,8 +328,8 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			if chunkMS > remainingMS {
 				chunkMS = remainingMS
 			}
-			// Keep the stock video on Drive. The remote worker receives this
-			// immutable reference and owns materialization/prefetch on its host.
+			// Stock may be sourced from Drive, but the worker only receives its
+			// immutable HTTPS Objectstore reference.
 			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", asset)
 			remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", asset, chunkMS, sceneText))
 			plannedDurationMS += chunkMS
@@ -320,7 +356,8 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if err := enforceFinalJobPreflight(remoteScenes, result.FinalAudio.DurationMS); err != nil {
 			return nil, nil, err
 		}
-		audioRef, err := finalJobAudioAsset(ctx, *result.FinalAudio)
+		var err error
+		audioRef, err = finalJobAudioAsset(ctx, *result.FinalAudio)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -328,33 +365,24 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	} else if delta := plannedDurationMS*1000 - result.CanonicalTimeline.DurationUS; delta < -40_000 || delta > 40_000 {
 		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
 	}
-	for _, bgm := range req.BackgroundMusic {
-		asset, err := resolveFinalJobAsset(ctx, resolver, bgm.AssetID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("resolve background music %q for remote prefetch: %w", bgm.AssetID, err)
-		}
-		music := make(map[string]any, len(asset)+1)
-		for key, value := range asset {
-			music[key] = value
-		}
-		music["kind"] = "audio"
-		for _, track := range result.AudioPlan.Tracks {
-			if string(track.Role) != "BGM" {
-				continue
-			}
-			for _, event := range track.Events {
-				if event.AssetID == bgm.AssetID && event.SourceDurationUS > 0 {
-					music["duration_ms"] = event.SourceDurationUS / 1000
-					break
-				}
-			}
-		}
-		if music["duration_ms"] == nil {
-			return nil, nil, fmt.Errorf("final_job background music %q has no canonical source duration", bgm.AssetID)
-		}
-		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "music", music)
-	}
 	remoteOverlays, overlayManifest, err := finalJobOverlayHandoff(ctx, result, consumedPhraseOverlays)
+	if err != nil {
+		return nil, nil, err
+	}
+	if overlayManifest != nil {
+		if asset, ok := overlayManifest["asset"].(map[string]any); ok {
+			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay_timeline", asset)
+		}
+	}
+	for _, raw := range remoteOverlays {
+		if asset, ok := raw.(map[string]any); ok {
+			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay", asset)
+		}
+	}
+	if audioRef == nil {
+		return nil, nil, fmt.Errorf("final_job V2 worker submission requires certified final audio")
+	}
+	compiledPlan, compiledPlanSHA, err := finalJobCompiledPlanPayload(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -364,169 +392,55 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	}
 	key := finalJobAttemptIdempotencyKey(req.IdempotencyKey, runID, attempt)
 	pre := map[string]any{
-		"idempotency_key": key,
-		"job_type":        "scene.composite.v1",
-		"copy_only":       true,
-		"video_name":      finalJobVideoName(req, runID),
-		"script_text":     strings.TrimSpace(scriptText.String()),
-		"scenes":          remoteScenes,
-		"output":          map[string]any{"width": 1920, "height": 1080, "fps": 24, "format": "mp4"},
-		"delivery_plan":   []any{map[string]any{"destination_id": "drive-production", "priority": 1, "retry_budget": 3}},
+		"idempotency_key":             key,
+		"job_type":                    "video.render.v2",
+		"render_only":                 true,
+		"video_name":                  finalJobVideoName(req, runID),
+		"script_text":                 strings.TrimSpace(scriptText.String()),
+		"compiled_render_plan_json":   compiledPlan,
+		"compiled_render_plan_sha256": compiledPlanSHA,
 	}
 	finalize := map[string]any{
 		"idempotency_key": key + "-finalize",
-		"overlays":        remoteOverlays,
 		"runtime_assets":  runtimeAssets,
 	}
-	// Pure-manifest overlay wire (OVERLAY-MANIFEST-CONTRACT.md §4): the
-	// composition's overlays travel as ONE certified timeline asset + the
-	// typed manifest; `overlays` keeps only the dedicated-path replace rows
-	// (maps, chain).
+	// The Master has a strict FINALIZE DTO. Overlay and legacy runtime hints
+	// stay inside its opaque runtime_payload; the worker's executable timing
+	// source is compiled_render_plan_json above.
+	runtimePayload := map[string]any{
+		"video_name":  finalJobVideoName(req, runID),
+		"script_text": strings.TrimSpace(scriptText.String()),
+		"overlays":    remoteOverlays,
+	}
 	if overlayManifest != nil {
-		finalize["overlay_manifest"] = overlayManifest
+		runtimePayload["overlay_manifest"] = overlayManifest
 	}
 	if hasFinalAudio {
-		runtimeAudio := map[string]any{
+		runtimePayload["runtime_audio"] = map[string]any{
 			"voiceover_asset_id":         strings.TrimSpace(result.FinalAudio.AssetID),
 			"voiceover_volume":           1.0,
 			"voiceover_duration_seconds": float64(result.FinalAudio.DurationMS) / 1000,
 		}
-		// Master accepts runtime data under this field; its typed request
-		// rejects unknown top-level runtime_audio fields.
-		finalize["runtime_payload"] = map[string]any{"runtime_audio": runtimeAudio}
+	}
+	finalize["runtime_payload"] = runtimePayload
+	if len(preparers) > 0 && preparers[0] != nil {
+		compiledPlan, runtimeAssets, err = prepareFinalJobVideoSegments(ctx, compiledPlan, runtimeAssets, preparers[0])
+		if err != nil {
+			return nil, nil, err
+		}
+		compiledPlanSHA = digest.SHA256String(compiledPlan)
+		// CompiledRenderPlanV2 is the executable timeline SSOT. Runtime payload
+		// metadata must not leak unprepared source videos to the remote job.
+		delete(runtimePayload, "overlays")
+		delete(runtimePayload, "overlay_manifest")
+	}
+	pre["compiled_render_plan_json"] = compiledPlan
+	pre["compiled_render_plan_sha256"] = compiledPlanSHA
+	finalize["runtime_assets"] = runtimeAssets
+	if len(preparers) > 0 && preparers[0] != nil {
+		if err := validateFinalJobHTTPSRuntimeAssets(runtimeAssets); err != nil {
+			return nil, nil, err
+		}
 	}
 	return pre, finalize, nil
-}
-
-func finalJobSceneDurationMS(scenes []map[string]any) int64 {
-	var total int64
-	for _, scene := range scenes {
-		seconds, ok := scene["duration_seconds"].(float64)
-		if ok && !math.IsNaN(seconds) && !math.IsInf(seconds, 0) && seconds > 0 {
-			total += int64(math.Round(seconds * 1000))
-		}
-	}
-	return total
-}
-
-// trimFinalJobSceneTail removes a small rounding surplus from the end of the
-// video timeline while preserving the minimum duration of every scene. The
-// packet-copy renderer requires its video timeline not to exceed final audio.
-func trimFinalJobSceneTail(scenes []map[string]any, surplusMS, minimumMS int64) error {
-	if surplusMS <= 0 {
-		return nil
-	}
-	for i := len(scenes) - 1; i >= 0 && surplusMS > 0; i-- {
-		seconds, ok := scenes[i]["duration_seconds"].(float64)
-		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
-			return fmt.Errorf("final_job scene %d has an invalid duration while aligning audio", i)
-		}
-		durationMS := int64(math.Round(seconds * 1000))
-		available := durationMS - minimumMS
-		if available <= 0 {
-			continue
-		}
-		trim := min(available, surplusMS)
-		scenes[i]["duration_seconds"] = float64(durationMS-trim) / 1000
-		surplusMS -= trim
-	}
-	if surplusMS > 0 {
-		return fmt.Errorf("final_job cannot trim %dms to fit the certified audio without violating minimum scene duration", surplusMS)
-	}
-	return nil
-}
-
-// finalJobIdempotencyKey stays stable when the same submitted request is
-// retried under a new local run id. The remote Master uses this key to return
-// the already-prepared render instead of starting a duplicate video job.
-// Older/internal callers without a request key retain the run-id behavior.
-func finalJobIdempotencyKey(requestKey, runID string) string {
-	requestKey = strings.TrimSpace(requestKey)
-	if requestKey == "" {
-		return "creator-77-" + strings.TrimSpace(runID)
-	}
-	// 2026-09-28: the digest SSOT (godlike/06) owns the algorithm. This call
-	// used to import crypto/sha256 directly, which the archcheck
-	// digest_sha256_import_outside_ssot gate rejects; SHA256String returns the
-	// same lowercase hex, so the first 32 characters are the exact 16 bytes the
-	// previous hex.EncodeToString(sum[:16]) produced.
-	return "creator-77-request-" + digest.SHA256String(requestKey)[:32]
-}
-
-// finalJobAttemptIdempotencyKey is stable while reconciling one PREPARE
-// attempt, and distinct after Master reports a terminal lease.
-func finalJobAttemptIdempotencyKey(requestKey, runID string, attempt int) string {
-	if attempt < 1 {
-		attempt = 1
-	}
-	return finalJobIdempotencyKey(requestKey, runID) + fmt.Sprintf("-attempt-%d", attempt)
-}
-
-// compositeVideoScene preserves source identity in the remote contract. Stock
-// footage and caller-provided clips both carry silent video in the `stock`
-// media slot, but `kind` determines which pipeline policy owns that video.
-// Keep it explicit so stock can never inherit clip subtitle/transcript work.
-func compositeVideoScene(id string, index int, kind string, asset map[string]any, durationMS int64, text string) map[string]any {
-	ref := make(map[string]any, len(asset))
-	for k, v := range asset {
-		// Materialized local paths are only for the 77-side compositor. The 51
-		// resolves this identity from Drive and rejects unknown request fields.
-		if k == "local_path" {
-			continue
-		}
-		ref[k] = v
-	}
-	if driveID := strings.TrimSpace(fmt.Sprint(ref["drive_file_id"])); driveID != "" {
-		ref["url"] = driveFileWebLink(driveID)
-	}
-	scene := map[string]any{"scene_id": id, "index": index, "kind": kind, "duration_seconds": float64(durationMS) / 1000, "stock": ref}
-	// PREPARE requires non-empty text on every scene, but stock scene text is
-	// rendered as subtitles. Stock footage is intentionally caption-free, so
-	// discard any narration/title and satisfy the schema with an invisible
-	// separator. Clip scenes retain their real caption when provided.
-	if kind == "stock" || strings.TrimSpace(text) == "" {
-		text = "\u200b"
-	}
-	scene["text"] = text
-	return scene
-}
-
-// The remote renderer requires each scene to be at least 100 ms. Audio and
-// source timing can leave a short final remainder (for example, 16 ms) after
-// millisecond rounding. Borrow that remainder from preceding scenes while
-// keeping every scene above the limit and preserving the total runtime.
-func enforceFinalJobMinimumSceneDuration(scenes []map[string]any, minimumMS int64) error {
-	if minimumMS <= 0 {
-		return fmt.Errorf("final_job minimum scene duration must be positive")
-	}
-	for i, scene := range scenes {
-		seconds, ok := scene["duration_seconds"].(float64)
-		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds < 0 {
-			return fmt.Errorf("final_job scene %d has an invalid duration", i)
-		}
-		durationMS := int64(math.Round(seconds * 1000))
-		if durationMS >= minimumMS {
-			continue
-		}
-		deficit := minimumMS - durationMS
-		for previous := i - 1; previous >= 0 && deficit > 0; previous-- {
-			previousSeconds, valid := scenes[previous]["duration_seconds"].(float64)
-			if !valid || math.IsNaN(previousSeconds) || math.IsInf(previousSeconds, 0) {
-				return fmt.Errorf("final_job scene %d has an invalid duration", previous)
-			}
-			previousMS := int64(math.Round(previousSeconds * 1000))
-			available := previousMS - minimumMS
-			if available <= 0 {
-				continue
-			}
-			take := min(available, deficit)
-			scenes[previous]["duration_seconds"] = float64(previousMS-take) / 1000
-			deficit -= take
-		}
-		if deficit > 0 {
-			return fmt.Errorf("final_job scene %d is shorter than %dms with no preceding duration to borrow", i, minimumMS)
-		}
-		scene["duration_seconds"] = float64(minimumMS) / 1000
-	}
-	return nil
 }

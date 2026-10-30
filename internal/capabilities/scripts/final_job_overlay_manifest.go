@@ -116,7 +116,7 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 			return nil, nil, err
 		}
 	}
-	rows, err := finalJobDedicatedOverlayRows(ctx, result, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
+	rows, err := finalJobDedicatedOverlayRows(ctx, result, consumed, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -221,6 +221,10 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 		"size_bytes": artifact.SizeBytes, "frame_count": artifact.FrameCount,
 		"duration_ms": (artifact.DurationUS + 999) / 1000,
 		"mode":        "replace", "audio_mode": "preserve_final_audio",
+		"codec": artifact.Codec, "container": artifact.Container,
+		"pixel_format": artifact.PixelFormat, "audio_streams": artifact.AudioStreams,
+		"width": artifact.Width, "height": artifact.Height,
+		"fps_num": artifact.FPSNum, "fps_den": artifact.FPSDen,
 	}
 	for key, value := range assetRef {
 		asset[key] = value
@@ -240,7 +244,7 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 // artifact per item and the worker keeps replacing those windows one clip at
 // a time. Every other plan item must be covered by the manifest — a regular
 // item without a manifest entry is a broken handoff, not a fallback.
-func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) ([]any, error) {
+func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, consumed, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) ([]any, error) {
 	plan := result.OverlayPlan
 	artifacts := make(map[string]RenderArtifact, len(result.OverlayRender.Items))
 	for _, rendered := range result.OverlayRender.Items {
@@ -254,6 +258,9 @@ func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, m
 		id := strings.TrimSpace(item.ID)
 		if id == "" {
 			return nil, fmt.Errorf("final_job overlay plan has an item without an ID")
+		}
+		if _, isConsumed := consumed[id]; isConsumed {
+			continue
 		}
 		if _, covered := manifestItems[id]; covered {
 			continue

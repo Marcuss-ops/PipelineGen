@@ -50,9 +50,11 @@ type OverlayPlan struct {
 	// ResultJobID is the broker job that owns the persisted job result.
 	// It is carried only across PipelineGen's publication boundary.
 	ResultJobID string `json:"-"`
-	// RequireDriveBeforeReturn is an application-only delivery constraint for
-	// final-job overlays: their Drive identities are embedded in PREPARE and
-	// must be available before that request is sent. It is not render content.
+	// RequireObjectStoreBeforeReturn marks final-job overlays that must remain
+	// available as certified Objectstore objects for the HTTPS handoff.
+	RequireObjectStoreBeforeReturn bool `json:"-"`
+	// RequireDriveBeforeReturn remains available for non-final-job workflows
+	// that explicitly consume a Drive identity.
 	RequireDriveBeforeReturn bool `json:"-"`
 	Width                    int  `json:"width"`
 	Height                   int  `json:"height"`

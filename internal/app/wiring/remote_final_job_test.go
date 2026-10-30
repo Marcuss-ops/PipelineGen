@@ -87,6 +87,27 @@ func TestFinalJobResultKeepsTheHandleWhenTheWaitFails(t *testing.T) {
 	}
 }
 
+func TestRemoteJobInFlightDistinguishesPreparedPendingFromDispatched(t *testing.T) {
+	cases := []struct {
+		status string
+		want   bool
+	}{
+		{status: "PENDING", want: false},
+		{status: "PREPARING", want: false},
+		{status: "RUNNING", want: true},
+		{status: "QUEUED", want: true},
+		{status: "RENDERING", want: true},
+		{status: "SUCCEEDED", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.status, func(t *testing.T) {
+			if got := remoteJobInFlight(tc.status); got != tc.want {
+				t.Fatalf("remoteJobInFlight(%q) = %t, want %t", tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
 // finalJobMasterStub answers status reads for one job; every read is counted so
 // a test can tell "stopped at the budget" from "waited the poll timeout".
 func finalJobMasterStub(t *testing.T, status string, body string) (*httptest.Server, *int) {
@@ -206,6 +227,7 @@ func TestRemoteFinalJobAdapterFailsClosedWithoutCredentials(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "creator-77-master.env")
 	t.Setenv("VELOX_FINAL_JOB_M2M_SECRET", "")
 	t.Setenv("VELOX_FINAL_JOB_CREDENTIALS_FILE", missing)
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "https://objects.example.test")
 
 	// A non-nil *sql.DB is enough: the credentials are resolved before the media
 	// searcher is built, so an unconfigured host never reaches the database.

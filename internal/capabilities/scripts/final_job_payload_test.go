@@ -58,6 +58,19 @@ func manifestOverlayRender(items []capabilityoverlay.OverlayItem, artifact *Rend
 	return &RenderReference{JobID: "manifest-job", Status: "SUCCEEDED", Artifact: artifact, Items: rows, Manifest: &manifest}
 }
 
+func decodeFinalJobPlanForTest(t *testing.T, payload map[string]any) finalJobCompiledPlan {
+	t.Helper()
+	raw, ok := payload["compiled_render_plan_json"].(string)
+	if !ok || raw == "" {
+		t.Fatalf("compiled_render_plan_json = %#v, want a non-empty v2 plan", payload["compiled_render_plan_json"])
+	}
+	var plan finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		t.Fatalf("decode compiled render plan: %v", err)
+	}
+	return plan
+}
+
 func phraseOnlyFinalJobResult(sceneID string) *GenerateResult {
 	artifact := certifiedPhraseVideoArtifact()
 	item := capabilityoverlay.OverlayItem{ID: "phrase-item", SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Garlasco, provincia di Pavia.", StartUS: 0, DurationUS: 5_000_000}
@@ -76,31 +89,40 @@ func TestBuildFinalJobPayloadsUsesPublishedPhraseVideoForPhraseOnlyScene(t *test
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	scenes, ok := pre["scenes"].([]map[string]any)
-	if !ok || len(scenes) != 1 {
-		t.Fatalf("pre scenes = %#v, want one phrase-video scene", pre["scenes"])
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 {
+		t.Fatalf("compiled phrase plan tracks = %#v, want one phrase-video segment", plan.VideoTracks)
 	}
-	ref, ok := scenes[0]["stock"].(map[string]any)
-	if !ok || ref["drive_file_id"] != "phrase-drive-id" || ref["sha256"] != strings.Repeat("c", 64) || scenes[0]["kind"] != "clip" {
-		t.Fatalf("phrase-only clip = %#v, want the certified timeline video", scenes[0])
+	segment := plan.VideoTracks[0].Segments[0]
+	if segment.AssetID != "phrase-video" || segment.FrameCount != 120 || segment.SourceInUS != 0 {
+		t.Fatalf("compiled phrase segment = %+v, want the certified 5s timeline video", segment)
 	}
-	if ref["timeline_item_id"] != "phrase-item" || ref["in_us"] != int64(0) || ref["out_us"] != int64(5_000_000) {
-		t.Fatalf("phrase clip window reference = %#v, want the phrase manifest window inside the timeline artifact", ref)
+	var phraseAsset *finalJobPlanAsset
+	for i := range plan.Assets {
+		if plan.Assets[i].AssetID == "phrase-video" {
+			phraseAsset = &plan.Assets[i]
+			break
+		}
 	}
-	if scenes[0]["duration_seconds"] != 5.0 {
-		t.Fatalf("phrase video duration = %v, want five seconds", scenes[0]["duration_seconds"])
+	if phraseAsset == nil || phraseAsset.SHA256 != strings.Repeat("c", 64) {
+		t.Fatalf("compiled phrase assets = %+v, want certified phrase-video identity", plan.Assets)
 	}
 	assets := finalize["runtime_assets"].([]any)
-	if len(assets) != 2 || assets[0].(map[string]any)["role"] != "clip" || assets[1].(map[string]any)["role"] != "final_audio" {
-		t.Fatalf("runtime_assets = %#v, want phrase-video clip plus certified final audio", assets)
+	roles := map[string]int{}
+	for _, raw := range assets {
+		roles[raw.(map[string]any)["role"].(string)]++
 	}
-	overlays := finalize["overlays"].([]any)
+	if roles["clip"] != 1 || roles["final_audio"] != 1 || roles["overlay_timeline"] != 1 {
+		t.Fatalf("runtime_assets = %#v, want phrase video, final audio, and its timeline reference", assets)
+	}
+	runtimePayload := finalize["runtime_payload"].(map[string]any)
+	overlays := runtimePayload["overlays"].([]any)
 	if len(overlays) != 0 {
 		t.Fatalf("finalize overlays = %#v, want consumed phrase video omitted to avoid rendering its animation twice", overlays)
 	}
-	manifest, ok := finalize["overlay_manifest"].(map[string]any)
+	manifest, ok := runtimePayload["overlay_manifest"].(map[string]any)
 	if !ok {
-		t.Fatalf("finalize overlay_manifest = %#v, want the typed manifest document", finalize["overlay_manifest"])
+		t.Fatalf("finalize overlay_manifest = %#v, want the typed manifest document", runtimePayload["overlay_manifest"])
 	}
 	if entries := manifest["entries"].([]any); len(entries) != 0 {
 		t.Fatalf("manifest entries = %#v, want the consumed phrase omitted from placement", entries)
@@ -304,8 +326,7 @@ func TestBuildFinalJobPayloadsStockOnlyNeverFallsBackToClip(t *testing.T) {
 // TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder pins the
 // used-as-stock video contract: a scene whose clips are ALL stock-marked
 // has no certified clip render, so its video MUST come from its stock folder
-// binding — the remote worker receives the Drive stock reference, never a
-// clip fallback.
+// binding — the compiled render plan carries that visual, never a clip fallback.
 func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
@@ -320,16 +341,9 @@ func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	scenes := pre["scenes"].([]map[string]any)
-	if len(scenes) != 1 {
-		t.Fatalf("scenes = %d, want the single stock chunk", len(scenes))
-	}
-	stock := scenes[0]["stock"].(map[string]any)
-	if stock["drive_file_id"] != "drive-asset" {
-		t.Fatalf("scene stock = %#v, want the Drive stock reference", stock)
-	}
-	if _, hasClip := scenes[0]["clip"]; hasClip {
-		t.Fatalf("all-stock scene must never fall back to the clip path: %#v", scenes[0])
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 || plan.VideoTracks[0].Segments[0].AssetID != "drive-asset" {
+		t.Fatalf("compiled stock segments = %+v, want one stock-folder visual and no clip fallback", plan.VideoTracks)
 	}
 }
 
@@ -647,28 +661,13 @@ func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *test
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	scenes, ok := pre["scenes"].([]map[string]any)
-	if !ok || len(scenes) != 3 {
-		t.Fatalf("scenes = %#v, want three chunks filling the 30s scene", pre["scenes"])
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 3 {
+		t.Fatalf("compiled video segments = %+v, want three chunks filling the 30s scene", plan.VideoTracks)
 	}
-	if scenes[0]["text"] != "Dolly lands the hotel joke." {
-		t.Errorf("scene text = %v, want the generated scene text", scenes[0]["text"])
-	}
-	if scenes[0]["kind"] != "clip" {
-		t.Errorf("clip-only scene kind = %v, want clip", scenes[0]["kind"])
-	}
-	if scenes[0]["duration_seconds"] != 12.0 || scenes[1]["duration_seconds"] != 12.0 || scenes[2]["duration_seconds"] != 6.0 {
-		t.Fatalf("scene durations = %v, %v, %v; want 12s, 12s, 6s", scenes[0]["duration_seconds"], scenes[1]["duration_seconds"], scenes[2]["duration_seconds"])
-	}
-	ref, ok := scenes[0]["stock"].(map[string]any)
-	if !ok {
-		t.Fatalf("scene video ref = %#v, want the silent-video reference block", scenes[0]["stock"])
-	}
-	if ref["drive_file_id"] != "render-drive-1" || ref["url"] != "velox-drive://render-drive-1" || ref["sha256"] != strings.Repeat("d", 64) || ref["size_bytes"] != int64(7_000_000) || ref["duration_ms"] != int64(12_000) {
-		t.Fatalf("scene video ref = %#v, want the certified rendered clip identity", ref)
-	}
-	if ref["asset_id"] != "derived-render-1" {
-		t.Errorf("scene video asset_id = %v, want the derived render asset", ref["asset_id"])
+	segments := plan.VideoTracks[0].Segments
+	if segments[0].AssetID != "derived-render-1" || segments[1].AssetID != "derived-render-1" || segments[2].AssetID != "derived-render-1" || segments[0].FrameCount != 288 || segments[1].FrameCount != 288 || segments[2].FrameCount != 144 {
+		t.Fatalf("compiled clip segments = %+v, want 12s/12s/6s from the certified rendered clip", segments)
 	}
 	assets, ok := finalize["runtime_assets"].([]any)
 	if !ok {
@@ -679,8 +678,8 @@ func TestBuildFinalJobPayloadsClipOnlyScenesSendTheCertifiedRenderedClip(t *test
 		asset := raw.(map[string]any)
 		if asset["role"] == "clip" {
 			clipRole++
-			if asset["drive_file_id"] != "render-drive-1" {
-				t.Errorf("runtime clip asset = %#v, want the rendered clip", asset)
+			if asset["asset_id"] != "derived-render-1" || asset["sha256"] != strings.Repeat("d", 64) {
+				t.Errorf("runtime clip asset = %#v, want the certified rendered clip identity", asset)
 			}
 		}
 	}
@@ -750,19 +749,18 @@ func TestBuildFinalJobPayloadsFixedMediaPrefersTheCertifiedRenderedClip(t *testi
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	scenes := pre["scenes"].([]map[string]any)
-	if len(scenes) != 3 {
-		t.Fatalf("scenes = %d, want three fixed-media clip cuts", len(scenes))
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 3 {
+		t.Fatalf("compiled fixed-media segments = %+v, want three 5s cuts", plan.VideoTracks)
 	}
-	ref := scenes[0]["stock"].(map[string]any)
-	if ref["drive_file_id"] != "intro-render-drive-1" {
-		t.Fatalf("fixed-media ref = %#v, want the certified rendered intro clip", ref)
+	segments := plan.VideoTracks[0].Segments
+	if segments[0].AssetID != "derived-intro-render-1" || segments[1].AssetID != "derived-intro-render-2" || segments[2].AssetID != "derived-intro-render-3" {
+		t.Fatalf("compiled fixed-media assets = %+v, want the three certified rendered intro clips", segments)
 	}
-	if scenes[0]["duration_seconds"] != 5.0 {
-		t.Fatalf("fixed-media scene duration = %v, want the 5s canonical timeline cut, not the 15s file duration", scenes[0]["duration_seconds"])
-	}
-	if scenes[1]["duration_seconds"] != 5.0 || scenes[2]["duration_seconds"] != 5.0 {
-		t.Fatalf("fixed-media clip durations = %v, %v, %v; want 5s each", scenes[0]["duration_seconds"], scenes[1]["duration_seconds"], scenes[2]["duration_seconds"])
+	for _, segment := range segments {
+		if segment.FrameCount != 120 {
+			t.Errorf("fixed-media frame count = %d, want 120 frames (5s)", segment.FrameCount)
+		}
 	}
 }
 
@@ -788,10 +786,9 @@ func TestBuildFinalJobPayloadsFixedMediaWithoutRenderKeepsTheLibraryClip(t *test
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	scenes := pre["scenes"].([]map[string]any)
-	ref := scenes[0]["stock"].(map[string]any)
-	if ref["drive_file_id"] != "drive-asset" {
-		t.Fatalf("fixed-media ref = %#v, want the resolved library clip", ref)
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 || plan.VideoTracks[0].Segments[0].AssetID != "drive-asset" {
+		t.Fatalf("compiled fixed-media plan = %+v, want the resolved library asset", plan.VideoTracks)
 	}
 }
 
@@ -808,27 +805,9 @@ func TestBuildFinalJobPayloadsDoesNotSendSubtitlesWithStockChunks(t *testing.T) 
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	scenes, ok := pre["scenes"].([]map[string]any)
-	if !ok {
-		t.Fatalf("scenes has type %T, want []map[string]any", pre["scenes"])
-	}
-	if len(scenes) != 3 {
-		t.Fatalf("scenes = %d, want 3 stock chunks", len(scenes))
-	}
-	for i, scene := range scenes {
-		if scene["kind"] != "stock" {
-			t.Errorf("scene %d kind = %v, want stock", i, scene["kind"])
-		}
-		text, ok := scene["text"].(string)
-		if !ok || text != "\u200b" {
-			t.Errorf("stock scene %d text = %#v, want the schema-required invisible separator (no visible subtitles)", i, scene["text"])
-		}
-		if _, duplicated := scene["clip"]; duplicated {
-			t.Errorf("scene %d sends video with source audio as a clip", i)
-		}
-		if _, ok := scene["stock"].(map[string]any); !ok {
-			t.Errorf("scene %d has no single silent stock asset", i)
-		}
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 3 {
+		t.Fatalf("compiled stock segments = %+v, want 3 stock windows", plan.VideoTracks)
 	}
 	runtimePayload, ok := finalize["runtime_payload"].(map[string]any)
 	if !ok {
@@ -889,26 +868,22 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	scenes := pre["scenes"].([]map[string]any)
-	if len(scenes) != 3 {
-		t.Fatalf("scenes = %d, want three timing chunks", len(scenes))
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 3 {
+		t.Fatalf("compiled video segments = %+v, want base/overlay/base timing segments", plan.VideoTracks)
 	}
-	for _, scene := range scenes {
-		stock := scene["stock"].(map[string]any)
-		if stock["drive_file_id"] != "drive-asset" {
-			t.Fatalf("scene stock = %#v, want source Drive asset", stock)
-		}
-		if _, hasClip := scene["clip"]; hasClip {
-			t.Fatalf("scene %#v also has clip; source audio would be mixed twice", scene)
-		}
+	segments := plan.VideoTracks[0].Segments
+	if segments[0].AssetID != "drive-asset" || segments[1].AssetID != "overlay-1" || segments[2].AssetID != "drive-asset" {
+		t.Fatalf("compiled video segments = %+v, want stock base around the overlay asset", segments)
 	}
-	overlays := finalize["overlays"].([]any)
+	runtimePayload := finalize["runtime_payload"].(map[string]any)
+	overlays := runtimePayload["overlays"].([]any)
 	if len(overlays) != 0 {
 		t.Fatalf("finalize overlays = %#v, want no per-item rows on the pure-manifest wire", overlays)
 	}
-	manifest, ok := finalize["overlay_manifest"].(map[string]any)
+	manifest, ok := runtimePayload["overlay_manifest"].(map[string]any)
 	if !ok {
-		t.Fatalf("finalize overlay_manifest = %#v, want the typed manifest document", finalize["overlay_manifest"])
+		t.Fatalf("finalize overlay_manifest = %#v, want the typed manifest document", runtimePayload["overlay_manifest"])
 	}
 	asset := manifest["asset"].(map[string]any)
 	if asset["drive_file_id"] != "overlay-drive-1" || asset["url"] != "velox-drive://overlay-drive-1" || asset["size_bytes"] != int64(50) || asset["mode"] != "replace" {

@@ -164,17 +164,18 @@ Aggiunto dal cammino A di
 Il PREPARE resta invariato (`scenes[]`, `copy_only`, `delivery_plan`). Il
 FINALIZE porta:
 
-- `overlay_manifest`: il documento tipizzato §1 + `asset` (l'unico artefatto
-  Drive certificato: `asset_id`, `drive_file_id`, `url`, `sha256`,
-  `size_bytes`, `frame_count`, `duration_ms`) — il worker scarica **1 file** e
-  proietta le voci sui frame della master (§3);
+- `overlay_manifest`: il documento tipizzato §1 + `asset` (riferimento
+  content-addressed nell'Objectstore: `asset_id`, URL firmato HTTPS in
+  `source_uri`, `sha256`, `size_bytes`, `frame_count`, `duration_ms`) — il
+  worker scarica **1 file** via HTTPS e proietta le voci sui frame della master
+  (§3). Il final-job non pubblica artefatti su Drive;
 - `overlays`: **solo** le righe sostitutive indipendenti degli item a percorso
   dedicato (mappe, chain item), che mantengono una clip propria certificata e
   le regole di sempre (identità di contenuto unica; finestre disgiunte da
   ogni altra finestra, incluse quelle della composizione);
 - i clip di scena "phrase-only" (scene senza video sorgente, la cui animazione
   È la scena) sono **riferimenti a finestra** nell'artefatto timeline
-  (`timeline_item_id`, `in_us`, `out_us`) invece di clip Drive standalone.
+  (`timeline_item_id`, `in_us`, `out_us`) invece di clip standalone.
 
 Decisioni documentate del cutover (cambiamenti rispetto al percorso per-item):
 
@@ -196,9 +197,9 @@ Decisioni documentate del cutover (cambiamenti rispetto al percorso per-item):
 
 Nessuna invariante dell'handoff finale viene indebolita:
 
-- un piano che richiede consegna Drive senza publisher configurato fallisce
-  (mai silenzioso);
-- un artefatto timeline mancante, non Drive, senza `sha256` canonico o senza
+- il publisher HTTPS/objectstore deve essere configurato; non esistono fallback
+  Drive nel percorso final-job;
+- un artefatto timeline mancante, non presente nell'Objectstore, senza `sha256` canonico o senza
   byte fallisce l'intero handoff (`finalJobManifestWire`);
 - il manifest viene ri-validato al build time (`manifest.Validate`: id unici,
   content_hash unici — "one content one overlay", la classe d'incidente

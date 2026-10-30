@@ -1344,3 +1344,118 @@ piano include `sampling_identity` per gli item con `entity_style_id`
 distinte serve una decisione di prodotto sull'identità creativa stabile
 (plan/video id e sampling) con parità visiva certificata; non è stata presa
 in questa sessione.
+
+## 11.6 Packed cross-scene super-batch — A/B offline e FAIL live (30-10-2026)
+
+**Implementazione.** Il runtime base di `EnqueueChrononPlanSplit` è di nuovo
+per-scena (`groupManifestCandidatesByScene`, la topologia certificata). Il
+fold packed cross-scene è dietro `OVERLAY_RENDER_PACK_SUPERBATCH`, **opt-in**:
+solo `1/true/yes/on/enabled` lo attiva; unset o `disabled` mantengono i gruppi
+per-scena. Il fold usa `computePackedPlacements` per stimare il costo di ogni
+gruppo, li ordina LPT e li distribuisce su `OVERLAY_RENDER_PER_SCENE_WORKERS`
+bin. La base non usa più il micro-batch split: sul piano golden congelato
+quel split produce **58 batch** su 64 item manifest, moltiplicando il costo
+fisso di rendezvous; resta solo come diagnostica offline.
+
+**A/B offline sul piano congelato** (`job_1793347444362962112_a21af2a3`,
+64 item manifest + 1 dedicato, `run_e8b3b484…`): 15 gruppi scena, 58 micro
+batch, **3 packed super-batch** da 19/22/23 item con canvas packed
+60,327 / 61,999 / 63,211 s (range 2,88 s). Tutti i 64 item compaiono esattamente
+una volta; nessuna violazione di overlap. Evidenza:
+`ops/jobs/overlay_throughput_golden_100_20261022/results/r1-packed-ab-20261030/report.json`.
+
+**Run live packed** (`superpack-20261030-r1`, job
+`job_1793369841878773657_0cf10458`, payload v2.1-nomaps, binario
+`df246aed…`, 3 lane): **SUCCEEDED**, 68/68 item, **3 batch** (21/27/20 item),
+finestra **93,307 s**, **43,73 item/min**, render cumulato **236,464 s** su 3
+lane (floor 78,8 s, utilizzo 84,5%). `mean_frame_ms` per batch **55,6 / 63,5 /
+44,7 ms**, contro 6–24 ms della lane per-scena; frame NVENC 645/737/679. La
+baseline per-scena dello stesso payload è **77,32 item/min** (mediana 30-10).
+La run r2 è stata cancellata (`CANCELLED`) e r3 non è stata eseguita: il
+risultato è già un FAIL netto, non una varianza.
+
+**Decisione.** Il packed cross-scene **non è promosso**: il child plan packed
+valuta troppi item per frame e il costo frame cresce più del risparmio di
+costo fisso. Il flag resta opt-in e la produzione torna al percorso per-scena.
+Il gate ≥100 item/min resta **FAIL**; la leva residua è il costo per frame
+(culling per item/finestra, riuso base) nel motore, non l’aggregazione dei
+batch. Evidenza live:
+`ops/jobs/overlay_throughput_golden_100_20261022/results/superpack-20261030-r1/`
+(`summary.json`, `job.full.json`, `attribution/report.json`) e
+`docs/operations/TICKET-100X-PERF-WAVES` per B2.
+
+**Controllo per-scena (30-10).** Dopo il rollback del default packed, una run
+di controllo sullo stesso payload (job `job_1793370354032561836_73f99b55`,
+binario `8862fa3a…`) ha completato 70/70 item in **16 batch**, finestra
+**60,476 s**, **69,45 item/min**. È un smoke di non-regressione, non una nuova
+mediana: la mediana certificata resta **77,32 item/min** (closeout 30-10).
+
+## 11.7 Mappe native e motore — misure 30-10-2026
+
+**Mappa nativa.** `TestNativeMapRenderEndToEnd` PASS con il renderer reale:
+una mappa `route_line` da 6 s e 2 pin costa **19,23 s** di test (22,13 s wall),
+180 frame, `frames_s=18,01`, `encode_wall_s=18,10`, `process_wall_s=18,95`.
+Tile cache **0 hit / 19.680 miss**, 360 plate per 2,77 GB, `compose_ms=12.888`.
+Il costo cold è ~19 s/item: 10 mappe del mix golden valgono ~190 s seriali
+(~63 s su 3 lane a bilanciamento perfetto) prima dei 90 item testuali, fuori
+dalla finestra da 60 s per 100 item/min. Serve una strategia di cache/plate
+pre-render o una composizione più economica; il mix v3.1/v4 con mappe resta
+**NOT RUN** e il costo va misurato sulla lane reale, non dedotto dal no-map.
+Evidenza: `ops/jobs/map-cost-20261030/README.md`.
+
+**Motore (B2).** Rerun canonico a 456 frame: 456/456 encode, exit 0,
+`render_loop_fps` **240,03** (gate ≥300, FAIL), `end_to_end_fps` 42,63,
+drain **12 µs** (PASS ≤50), NVENC sidecar **77,78%** (gate ≥90, FAIL),
+`nvidia-smi` non-zero 100%. Pass device: `composite` 175,261 ms +
+`layer_batch` 63,411 ms; per-frame median 0,384 + 0,134 ms. Conferma la
+banda storica 232–252 e il fatto che il limite è il lavoro per frame, non il
+drain. Evidenza: `Chronon3d/docs/evidence/b2-verify-20261030/README.md`.
+
+**Conseguenza.** Il gate ≥100 item/min resta **FAIL** su tre fronti misurati:
+packed cross-scene (43,7/min), baseline per-scena (69,5–77,3/min) e mappe
+(~19 s/item cold). La prossima leva non è l’aggregazione dei batch: è ridurre
+il costo per frame (culling degli item attivi, riuso base/surface) e portare
+le mappe fuori dalla finestra critica con cache/pre-render.
+
+## 11.8 R0, encoder e pipelining di submission — 30-10-2026
+
+**R0 attribuzione (3 run closeout).** `cmd/goldenattribution` (read-only) sui
+tre `summary.json` closeout 30-10: utilizzo lane **58,6 / 53,2 / 53,2%**,
+floor di render 27,5–42,0 s contro finestre 51,7–71,6 s, overhead fisso per
+batch **1,64–2,31 s** mediano, `queue_wait` massimo 17,6–33,8 s. La
+simulazione FIFO/LPT dà **89,62 / 89,52 item/min** di mediana: l’ordine dei
+batch non è la leva. Evidenza:
+`ops/jobs/overlay_throughput_golden_100_20261022/results/r0-attribution-20261030/`.
+
+**Controllo post-ripristino.** 70 item, 16 batch, finestra 60,476 s,
+**69,45 item/min** (`job_1793370354032561836_73f99b55`). È uno smoke di
+non-regressione, non una mediana: la mediana certificata resta 77,32/min.
+
+**Encoder cross-job — leva non disponibile.** Il riuso è fail-closed anche
+con `CHRONON_ENCODER_SESSION_REUSE=1` (la parità pixel su contenuto animato
+non è certificata); il writer multi-segmento P4 tiene già una sessione per
+superjob. I 259 ms/item di teardown citati in analisi non sono quindi
+recuperabili su questo percorso: il flag non va attivato.
+
+**Pipelining di submission — canary 6 worker (30-10, non promosso).** Il
+producer usa `OVERLAY_RENDER_PER_SCENE_WORKERS` worker, ognuno con
+submit+wait: con 16 batch e 3 lane il dead time osservato è ~1,7 s/batch. Il
+canary porta la width a 6 (2 batch in flight per lane) senza cambiare
+l’admission GPU:
+
+| Run | Item | Batch | Finestra s | Rate/min | Render somma s | Floor s | Utilizzo |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| r1 `job_1793373398871353281_37b03a24` | 65 | 13 | 45,290 | **86,11** | 99,869 | 33,290 | **73,5%** |
+| r2 `job_1793373672906470646_2b817a9c` | 66 | 16 | 54,113 | **73,18** | 119,314 | 39,771 | **73,5%** |
+| controllo 3 worker (`job_1793370354032561836_73f99b55`) | 70 | 16 | 60,476 | 69,45 | 101,757 | 33,919 | 56,1% |
+
+La mediana dei due campioni validi è **79,65/min** (+3,0% sulla mediana
+certificata 77,32, +14,7% sul controllo), e l’utilizzo lane sale di ~17 punti:
+la leva del dead time è reale. Il rate resta però dentro la varianza del mix
+(65/66 item, 13/16 batch) e il gate ≥100 resta **FAIL**. La r3 è stata
+invalidata da un riavvio concorrente del servizio alle 15:25:35, che ha anche
+cambiato il binario (`07efeeb` → `fc96aad`): non è stata eseguita una terza
+misura sullo stesso binario. Per questo il default è stato **ripristinato a
+3** e non si dichiara alcuna promozione; serve un A/B controllato di 3 run su
+binario congelato. Evidenza:
+`ops/jobs/overlay_throughput_golden_100_20261022/results/pipeline-workers6-20261030/`.

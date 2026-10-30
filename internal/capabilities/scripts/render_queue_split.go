@@ -82,6 +82,21 @@ func overlayPerSceneSplitWorkers() int {
 	return 3
 }
 
+// overlayPackedSuperBatchesEnabled gates the cross-scene packed super-batch
+// grouping. It is OPT-IN after the live 30-10 A/B: 3 packed super-batches
+// rendered at 43.7 item/min against 77.3/min for the certified per-scene
+// path, because the packed child plan raised mean_frame_ms from 6-24 to
+// 44-63. The offline plan shape (3 balanced bins) is not a throughput win on
+// this engine; only an explicit enabled/true/1/on value turns it on.
+func overlayPackedSuperBatchesEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("OVERLAY_RENDER_PACK_SUPERBATCH"))) {
+	case "1", "true", "yes", "on", "enabled":
+		return true
+	default:
+		return false
+	}
+}
+
 func parseIntEnv(name string, fallback int) int {
 	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
@@ -190,6 +205,89 @@ func groupManifestCandidatesIntoMicroBatches(plan capoverlay.OverlayPlan, candid
 	return out, nil
 }
 
+// packManifestGroupsIntoSuperBatches folds disjoint scene micro-batches into a
+// bounded number of packed super-batches. The packed composition is
+// plan-scoped (fusedOverlayBatchPlan) and safely carries items from different
+// scenes because packed placements are per item; grouping them reduces the
+// fixed rendezvous/setup cost paid once per batch. It is fail-safe: any
+// admission or placement error returns the original groups, and the feature
+// is opt-in (OVERLAY_RENDER_PACK_SUPERBATCH).
+func packManifestGroupsIntoSuperBatches(plan capoverlay.OverlayPlan, groups []sceneRenderGroup, lanes int) ([]sceneRenderGroup, error) {
+	if !overlayPackedSuperBatchesEnabled() || lanes < 1 || len(groups) <= lanes {
+		return groups, nil
+	}
+	if !planSupportsPackedComposition(plan) {
+		// A time-aligned source/background cannot be rebased onto a packed
+		// canvas; the per-scene groups keep their exact plan-time window.
+		return groups, nil
+	}
+
+	type costedGroup struct {
+		group sceneRenderGroup
+		cost  int64
+	}
+	costed := make([]costedGroup, 0, len(groups))
+	for _, group := range groups {
+		_, end, err := computePackedPlacements(plan, group.candidates)
+		if err != nil {
+			return groups, err
+		}
+		costed = append(costed, costedGroup{group: group, cost: end})
+	}
+	sort.SliceStable(costed, func(i, j int) bool {
+		if costed[i].cost != costed[j].cost {
+			return costed[i].cost > costed[j].cost
+		}
+		return costed[i].group.groupFirstIndex < costed[j].group.groupFirstIndex
+	})
+
+	type bin struct {
+		groups []sceneRenderGroup
+		load   int64
+	}
+	bins := make([]bin, lanes)
+	for i := range bins {
+		bins[i].groups = nil
+	}
+	for _, item := range costed {
+		index := 0
+		for i := 1; i < len(bins); i++ {
+			if bins[i].load < bins[index].load {
+				index = i
+			}
+		}
+		bins[index].groups = append(bins[index].groups, item.group)
+		bins[index].load += item.cost
+	}
+
+	out := make([]sceneRenderGroup, 0, lanes)
+	for _, b := range bins {
+		if len(b.groups) == 0 {
+			continue
+		}
+		candidates := make([]overlayItemCandidate, 0, 8)
+		firstIndex := b.groups[0].groupFirstIndex
+		for _, group := range b.groups {
+			candidates = append(candidates, group.candidates...)
+			if group.groupFirstIndex < firstIndex {
+				firstIndex = group.groupFirstIndex
+			}
+		}
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return candidates[i].index < candidates[j].index
+		})
+		out = append(out, sceneRenderGroup{
+			sceneID:         "packed",
+			groupFirstIndex: firstIndex,
+			candidates:      candidates,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].groupFirstIndex < out[j].groupFirstIndex
+	})
+	return out, nil
+}
+
 // planSpansMultipleScenes reports whether the plan's MANIFEST work (ordinary
 // items; maps and chains keep their dedicated per-item paths) covers more
 // than one scene. Plans whose manifest work is single-scene never split: the
@@ -228,9 +326,15 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlanSplit(ctx context.Context, plan 
 	if err := admitManifestCaptionWindows(manifestCandidates, plan); err != nil {
 		return RenderReference{}, err
 	}
-	groups, err := groupManifestCandidatesIntoMicroBatches(plan, manifestCandidates)
-	if err != nil {
-		return RenderReference{}, err
+	// Base groups are per-SCENE, exactly the certified deployed topology. The
+	// historical micro-batch split fragmented a typical golden plan into 58
+	// disjoint batches; that is only an offline partition candidate, never the
+	// runtime base. The packed super-batch fold is opt-in: the live 30-10 A/B
+	// measured 43.7/min for 3 packed bins against 77.3/min for these scene
+	// groups, so the certified path stays the base.
+	groups := groupManifestCandidatesByScene(manifestCandidates)
+	if packed, packErr := packManifestGroupsIntoSuperBatches(plan, groups, overlayPerSceneSplitWorkers()); packErr == nil && len(packed) > 0 {
+		groups = packed
 	}
 	return runSplitOverlayWork(ctx, plan,
 		func(splitCtx context.Context) ([]RenderReference, error) {

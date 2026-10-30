@@ -61,13 +61,11 @@ func (r *Runner) runAudioFinalizePhase(ctx context.Context, runID string, exec E
 	return true
 }
 
-// publishFinalAudioNeeded reports whether this run has any consumer of the
-// Drive-published master audio. Only the remote final-job payload references
-// the published asset ID; a non-final run consumes the local certified audio
-// during compile. A run without final_job has no reader for the uploaded m4a,
-// so the measured Drive upload is pure wall loss.
+// publishFinalAudioNeeded reports whether the legacy Drive audio publisher is
+// needed. Final jobs publish the certified local audio bytes directly to the
+// HTTPS Objectstore during handoff, so they never need this Drive round-trip.
 func publishFinalAudioNeeded(req GenerateRequest, r *Runner) bool {
-	return req.FinalJob
+	return false
 }
 
 func (r *Runner) publishFinalAudio(ctx context.Context, runID string, req GenerateRequest, routing kernelscript.ArtifactRoutingContext, exec ExecutionContext, result *GenerateResult) bool {

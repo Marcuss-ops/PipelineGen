@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/checksum"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
@@ -31,6 +32,11 @@ const defaultFinalJobMasterURL = "https://veloxmanager.duckdns.org"
 // timeout. Operators can still override this with
 // VELOX_FINAL_JOB_ATTACH_SECONDS.
 const defaultFinalJobAttachBudget = 50 * time.Minute
+
+// finalJobWorker51ID is Worker 51's registered Master ID. The human-readable
+// worker name is velox_worker_51_222_204_158; placement pins use the distinct
+// registered ID. Operators can override it when the worker is reprovisioned.
+const finalJobWorker51ID = "velox-worker-523925eb"
 
 // finalJobAttachBudget reads VELOX_FINAL_JOB_ATTACH_SECONDS. 0 disables the
 // hand-off (every wait runs to completion: the pre-split blocking contract).
@@ -48,17 +54,24 @@ func finalJobAttachBudget() (time.Duration, error) {
 }
 
 type remoteFinalJobAdapter struct {
-	drive  drive.Reader
-	media  *pgmedia.MediaSearcher
-	client *remotejob.Client
+	media    *pgmedia.MediaSearcher
+	stock    drive.Reader
+	client   *remotejob.Client
+	segments *finalJobSegmentPreparer
+	probe    interface {
+		Probe(context.Context, string) (*mediaexec.MediaInfo, error)
+	}
 	// attachBudget bounds a single attempt's wait on the Master render; see
 	// defaultFinalJobAttachBudget and finalJobAttachBudget.
 	attachBudget time.Duration
 }
 
 func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error) {
-	if root == nil || root.Drive == nil || root.Drive.Reader == nil || root.MediaPostgres == nil {
-		return nil, fmt.Errorf("remote final-job handoff requires Drive read access and the PostgreSQL media SSOT")
+	if root == nil || root.MediaPostgres == nil || root.Drive == nil || root.Drive.Reader == nil {
+		return nil, fmt.Errorf("remote final-job handoff requires the media SSOT and Drive stock reader")
+	}
+	if strings.TrimSpace(os.Getenv("OBJECTSTORE_PUBLIC_URL")) == "" {
+		return nil, fmt.Errorf("remote final-job HTTPS handoff requires OBJECTSTORE_PUBLIC_URL; only stock assets may use Drive")
 	}
 	token := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_M2M_SECRET"))
 	if token == "" {
@@ -80,12 +93,16 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error)
 	if base == "" {
 		base = defaultFinalJobMasterURL
 	}
+	masterURL, err := url.Parse(base)
+	if err != nil || masterURL == nil || masterURL.Scheme != "https" || masterURL.Host == "" {
+		return nil, fmt.Errorf("remote final-job master URL must use HTTPS")
+	}
 	budget, err := finalJobAttachBudget()
 	if err != nil {
 		return nil, err
 	}
 	client := remotejob.New(base, token)
-	return &remoteFinalJobAdapter{drive: root.Drive.Reader, media: pgmedia.NewMediaSearcher(root.MediaPostgres), client: client, attachBudget: budget}, nil
+	return &remoteFinalJobAdapter{media: pgmedia.NewMediaSearcher(root.MediaPostgres), stock: root.Drive.Reader, client: client, attachBudget: budget}, nil
 }
 
 func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) (scriptgen.RemoteFinalJobResult, error) {
@@ -108,10 +125,18 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	if a == nil || a.client == nil {
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job adapter is not configured")
 	}
-	pre, finalize, err := scriptgen.BuildFinalJobPayloads(ctx, runID, req, result, a)
+	if a.segments == nil {
+		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job local segment preparation is not configured; refusing to dispatch raw video sources")
+	}
+	pre, finalize, err := scriptgen.BuildFinalJobPayloads(ctx, runID, req, result, a, a.segments)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
 	}
+	workerID := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_WORKER_ID"))
+	if workerID == "" {
+		workerID = finalJobWorker51ID
+	}
+	pre["placement_pin_worker_id"] = workerID
 	// final_job=true on the local script request triggers this Master handoff.
 	// PREPARE carries the scene plan; FINALIZE attaches runtime assets and
 	// overlays so the Master refreshes prefetch before the worker starts. The id
@@ -163,7 +188,7 @@ func staleReceiptStatus(remoteStatus string) string {
 // leased and progressing — a status that must be resumed, never re-finalized.
 func remoteJobInFlight(status string) bool {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
-	case "RUNNING", "QUEUED", "PENDING", "PREPARING", "RENDERING":
+	case "RUNNING", "QUEUED", "RENDERING":
 		return true
 	default:
 		return false
@@ -221,94 +246,94 @@ func finalJobWaitError(err error) error {
 }
 
 func (a *remoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
-	if strings.TrimSpace(os.Getenv("OBJECTSTORE_PUBLIC_URL")) != "" {
-		return a.ResolveFinalJobObjectStoreAsset(ctx, id)
-	}
-	if asset, ok, err := a.resolveEditorialMusicAsset(ctx, id); ok || err != nil {
-		return asset, err
-	}
-	ref, _, err := a.assetRef(ctx, id)
-	return ref, err
+	return a.ResolveFinalJobObjectStoreAsset(ctx, id)
 }
 
-// resolveEditorialMusicAsset projects a curated BGM alias directly to its
-// canonical Drive file. Editorial audio aliases intentionally live outside
-// media_assets; the local BGM file is already required by audio compilation,
-// so hash it here and verify it matches the Drive object's MD5 before asking
-// the Master worker to prefetch it.
-func (a *remoteFinalJobAdapter) resolveEditorialMusicAsset(ctx context.Context, alias string) (map[string]any, bool, error) {
-	for _, editorial := range mediaregistry.EditorialAudioAssets() {
-		if editorial.Alias != strings.TrimSpace(alias) || editorial.Family != "music" {
-			continue
-		}
-		if a == nil || a.drive == nil {
-			return nil, true, fmt.Errorf("remote final-job adapter has no Drive reader")
-		}
-		path := filepath.Join("data", "media", "sound_effects", editorial.Filename)
-		file, err := os.Open(path)
-		if err != nil {
-			return nil, true, fmt.Errorf("open curated BGM %s: %w", editorial.Alias, err)
-		}
-		defer func() { _ = file.Close() }()
-		info, err := file.Stat()
-		if err != nil {
-			return nil, true, fmt.Errorf("stat curated BGM %s: %w", editorial.Alias, err)
-		}
-		// Content identity streams through the digest SSOT (kernel/digest
-		// SHA-256); the MD5 exists ONLY to equal the Drive object's
-		// md5Checksum provider token and therefore streams through the md5
-		// SSOT (platform/checksum) — the only package allowed to hash MD5.
-		sha256Hex, err := digest.SHA256Reader(file)
-		if err != nil {
-			return nil, true, fmt.Errorf("hash curated BGM %s: %w", editorial.Alias, err)
-		}
-		if _, err := file.Seek(0, io.SeekStart); err != nil {
-			return nil, true, fmt.Errorf("rewind curated BGM %s: %w", editorial.Alias, err)
-		}
-		md5Hex, err := checksum.LegacyMD5Reader(file)
-		if err != nil {
-			return nil, true, fmt.Errorf("md5 curated BGM %s: %w", editorial.Alias, err)
-		}
-		meta, err := a.drive.GetFileMeta(ctx, editorial.DriveFileID)
-		if err != nil {
-			return nil, true, err
-		}
-		remoteMD5, err := a.drive.GetFileMD5(ctx, editorial.DriveFileID)
-		if err != nil {
-			return nil, true, err
-		}
-		if meta == nil || meta.Size <= 0 || meta.Size != info.Size() || !strings.EqualFold(remoteMD5, md5Hex) {
-			return nil, true, fmt.Errorf("curated BGM %s local bytes do not match its Drive file", editorial.Alias)
-		}
-		return map[string]any{
-			"asset_id": editorial.Alias, "drive_file_id": editorial.DriveFileID,
-			"url":    "velox-drive://" + editorial.DriveFileID,
-			"sha256": sha256Hex, "size_bytes": info.Size(),
-		}, true, nil
+// ResolveFinalJobStockAsset retains the explicitly allowed Drive path for
+// selected stock-folder videos. Every other final-job asset goes through the
+// HTTPS Objectstore resolver above.
+func (a *remoteFinalJobAdapter) ResolveFinalJobStockAsset(ctx context.Context, id string) (map[string]any, error) {
+	if a == nil || a.stock == nil {
+		return nil, fmt.Errorf("final-job stock Drive reader is not configured")
 	}
-	return nil, false, nil
-}
-
-// FinalJobPublishedFileSize reports the published size of a certified localized
-// render, so a clip-only scene can be handed to the runtime as a complete asset
-// reference (id + sha256 + size + duration) exactly like a library asset.
-func (a *remoteFinalJobAdapter) FinalJobPublishedFileSize(ctx context.Context, driveFileID string) (int64, error) {
-	if a == nil || a.drive == nil {
-		return 0, fmt.Errorf("remote final-job adapter is not configured")
+	id = strings.TrimSpace(id)
+	if id == "" || strings.ContainsAny(id, "/\\\x00\r\n") {
+		return nil, fmt.Errorf("final-job stock Drive id is invalid")
 	}
-	id := strings.TrimSpace(driveFileID)
-	if id == "" {
-		return 0, fmt.Errorf("drive file id is required")
-	}
-	meta, err := a.drive.GetFileMeta(ctx, id)
+	meta, err := a.stock.GetFileMeta(ctx, id)
 	if err != nil {
-		return 0, err
+		return nil, fmt.Errorf("read stock Drive metadata %q: %w", id, err)
 	}
-	return meta.Size, nil
+	if meta == nil || meta.Size <= 0 {
+		return nil, fmt.Errorf("stock Drive file %q has no positive byte size", id)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "velox-final-job-stock-")
+	if err != nil {
+		return nil, fmt.Errorf("create temporary stock staging directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	path := filepath.Join(tmpDir, "stock-video")
+	reader, _, err := a.stock.DownloadFile(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("download stock Drive file %q: %w", id, err)
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		_ = reader.Close()
+		return nil, fmt.Errorf("create staged stock file: %w", err)
+	}
+	written, copyErr := io.Copy(file, reader)
+	readerErr := reader.Close()
+	fileErr := file.Close()
+	if copyErr != nil {
+		return nil, fmt.Errorf("copy stock Drive file %q: %w", id, copyErr)
+	}
+	if readerErr != nil {
+		return nil, fmt.Errorf("close stock Drive response %q: %w", id, readerErr)
+	}
+	if fileErr != nil {
+		return nil, fmt.Errorf("close staged stock file %q: %w", id, fileErr)
+	}
+	if written != meta.Size {
+		return nil, fmt.Errorf("stock Drive file %q downloaded %d bytes, expected %d", id, written, meta.Size)
+	}
+	hash, size, err := digest.SHA256File(path)
+	if err != nil {
+		return nil, fmt.Errorf("hash stock Drive file %q: %w", id, err)
+	}
+	if a.probe == nil {
+		return nil, fmt.Errorf("canonical media probe is not configured")
+	}
+	info, probeErr := a.probe.Probe(ctx, path)
+	if info == nil || !info.HasVideo {
+		return nil, fmt.Errorf("probe stock Drive video %q: video stream is missing", id)
+	}
+	resolved := asset.ResolveAssetDuration(info.Duration.Microseconds(), probeErr, 0, false)
+	if !resolved.Known() {
+		return nil, fmt.Errorf("probe stock Drive video %q: duration is unknown: %w", id, probeErr)
+	}
+	durationMS := resolved.DurationUS / 1000
+	assetID := "stock-sha256-" + hash[:24]
+	ref, err := scriptgen.PublishFinalJobLocalObject(ctx, assetID, path, hash, size)
+	if err != nil {
+		return nil, fmt.Errorf("publish stock Drive file %q to HTTPS Objectstore: %w", id, err)
+	}
+	ref["duration_ms"] = durationMS
+	return ref, nil
+}
+
+// FinalJobPublishedFileSize is retained for the capability port's legacy
+// shape, but direct HTTPS delivery never resolves sizes through Drive.
+func (a *remoteFinalJobAdapter) FinalJobPublishedFileSize(context.Context, string) (int64, error) {
+	return 0, fmt.Errorf("Drive file metadata is disabled for final-job delivery; use Objectstore HTTPS references")
 }
 
 func (a *remoteFinalJobAdapter) ListFinalJobStockFolder(ctx context.Context, folderID string) ([]scriptgen.FinalJobStockFile, error) {
-	listed, err := a.drive.ListFiles(ctx, folderID)
+	if a == nil || a.stock == nil {
+		return nil, fmt.Errorf("remote final-job stock Drive reader is not configured")
+	}
+	listed, err := a.stock.ListFiles(ctx, folderID)
 	if err != nil {
 		return nil, err
 	}
@@ -320,50 +345,6 @@ func (a *remoteFinalJobAdapter) ListFinalJobStockFolder(ctx context.Context, fol
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 	return files, nil
-}
-
-func (a *remoteFinalJobAdapter) assetRef(ctx context.Context, id string) (map[string]any, int64, error) {
-	asset, err := a.media.ResolveByMediaAssetID(ctx, id)
-	if err != nil {
-		return nil, 0, err
-	}
-	if asset == nil {
-		assets, resolveErr := a.media.ResolveByDriveFileID(ctx, id)
-		err = resolveErr
-		if err != nil {
-			return nil, 0, err
-		}
-		if len(assets) > 0 {
-			asset = assets[0]
-		}
-	}
-	if asset == nil {
-		return nil, 0, fmt.Errorf("asset is absent from media SSOT")
-	}
-	driveID := strings.TrimSpace(asset.DriveFileID())
-	if driveID == "" {
-		driveID = strings.TrimSpace(id)
-	}
-	hash := strings.TrimSpace(asset.BinarySHA256())
-	if len(hash) != 64 {
-		return nil, 0, fmt.Errorf("asset %q has no canonical SHA-256", id)
-	}
-	meta, err := a.drive.GetFileMeta(ctx, driveID)
-	if err != nil {
-		return nil, 0, err
-	}
-	durationMS := asset.Duration.Milliseconds()
-	if durationMS <= 0 {
-		durationMS = int64(asset.LegacyDurationMSMirror())
-	}
-	if durationMS <= 0 {
-		return nil, 0, fmt.Errorf("asset %q has no known duration", id)
-	}
-	ref := map[string]any{
-		"asset_id": asset.ID, "drive_file_id": driveID, "url": "velox-drive://" + driveID,
-		"sha256": hash, "size_bytes": meta.Size, "duration_ms": durationMS,
-	}
-	return ref, durationMS, nil
 }
 
 var (

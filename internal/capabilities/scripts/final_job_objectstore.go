@@ -48,8 +48,8 @@ func finalJobObjectStoreRef(ctx context.Context, preferredID, storageKey, sha st
 	}
 	assetURL := base + objectPath + "?" + query.Encode()
 	return map[string]any{
-		"asset_id": assetID, "asset_key": assetID,
-		"url": "velox-asset://" + assetID, "source_uri": assetURL,
+		"asset_id": assetID,
+		"url":      "velox-asset://" + assetID, "source_uri": assetURL,
 		"sha256": sha, "size_bytes": sizeBytes,
 	}, nil
 }
@@ -160,15 +160,30 @@ func finalJobRenderArtifactRef(ctx context.Context, artifact *RenderArtifact) (m
 	if artifact == nil {
 		return nil, fmt.Errorf("render artifact is missing")
 	}
+	var ref map[string]any
+	var err error
 	if finalJobObjectStoreConfigured() {
-		return finalJobObjectStoreRef(ctx, "", artifact.StorageKey, artifact.SHA256, artifact.SizeBytes)
+		ref, err = finalJobObjectStoreRef(ctx, "", artifact.StorageKey, artifact.SHA256, artifact.SizeBytes)
+	} else {
+		driveID := strings.TrimSpace(artifact.DriveFileID)
+		if driveID == "" || len(strings.TrimSpace(artifact.SHA256)) != 64 || artifact.SizeBytes <= 0 {
+			return nil, fmt.Errorf("render artifact is not certified for final-job delivery")
+		}
+		ref = map[string]any{"asset_id": firstFinalJobValue(artifact.ID, driveID), "drive_file_id": driveID,
+			"url": driveFileWebLink(driveID), "sha256": strings.TrimSpace(artifact.SHA256), "size_bytes": artifact.SizeBytes}
 	}
-	driveID := strings.TrimSpace(artifact.DriveFileID)
-	if driveID == "" || len(strings.TrimSpace(artifact.SHA256)) != 64 || artifact.SizeBytes <= 0 {
-		return nil, fmt.Errorf("render artifact is not a certified published Drive artifact")
+	if err != nil {
+		return nil, err
 	}
-	return map[string]any{
-		"asset_id": firstFinalJobValue(artifact.ID, driveID), "drive_file_id": driveID,
-		"url": driveFileWebLink(driveID), "sha256": strings.TrimSpace(artifact.SHA256), "size_bytes": artifact.SizeBytes,
-	}, nil
+	for key, value := range map[string]any{
+		"duration_us": artifact.DurationUS, "frame_count": artifact.FrameCount,
+		"width": artifact.Width, "height": artifact.Height, "fps_num": artifact.FPSNum, "fps_den": artifact.FPSDen,
+		"profile_id": artifact.ProfileID, "copy_eligible": artifact.CopyEligible,
+		"first_frame_keyframe": artifact.FirstFrameKeyframe, "closed_gop": artifact.ClosedGOP,
+	} {
+		if value != 0 && value != "" && value != false {
+			ref[key] = value
+		}
+	}
+	return ref, nil
 }

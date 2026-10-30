@@ -149,6 +149,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	if remoteFinalJob, remoteErr := newRemoteFinalJobAdapter(root); remoteErr != nil {
 		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(remoteErr))
 	} else {
+		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, root.MediaExec.Policy)
 		runner.SetFinalJobSubmitter(remoteFinalJob)
 		log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.client.BaseURL))
 	}

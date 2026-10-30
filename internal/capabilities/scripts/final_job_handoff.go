@@ -64,13 +64,24 @@ func firstFinalJobValue(values ...string) string {
 	return "final-job"
 }
 
+func finalJobStringValue(value any) string {
+	if value == nil {
+		return ""
+	}
+	valueString := strings.TrimSpace(fmt.Sprint(value))
+	if valueString == "<nil>" {
+		return ""
+	}
+	return valueString
+}
+
 func appendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, ref map[string]any) {
 	if ref == nil {
 		return
 	}
-	id := strings.TrimSpace(fmt.Sprint(ref["drive_file_id"]))
+	id := finalJobStringValue(ref["drive_file_id"])
 	if id == "" {
-		id = strings.TrimSpace(fmt.Sprint(ref["asset_id"]))
+		id = finalJobStringValue(ref["asset_id"])
 	}
 	if id == "" || seen[role+":"+id] {
 		return
@@ -84,7 +95,7 @@ func appendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, r
 		}
 		item[key] = value
 	}
-	if driveID := strings.TrimSpace(fmt.Sprint(ref["drive_file_id"])); driveID != "" {
+	if driveID := finalJobStringValue(ref["drive_file_id"]); driveID != "" {
 		item["url"] = driveFileWebLink(driveID)
 	}
 	item["role"] = role

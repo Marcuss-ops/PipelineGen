@@ -123,7 +123,7 @@ func TestFinalJobManifestAdmitsOverlappingEntriesInShortScene(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	manifest := finalize["overlay_manifest"].(map[string]any)
+	manifest := finalize["runtime_payload"].(map[string]any)["overlay_manifest"].(map[string]any)
 	if entries := manifest["entries"].([]any); len(entries) != 2 {
 		t.Fatalf("manifest entries = %#v, want both overlapping voices admitted", entries)
 	}
@@ -145,7 +145,7 @@ func TestFinalJobManifestAdmitsDistinctEntriesOnTheFrameGrid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	manifest := finalize["overlay_manifest"].(map[string]any)
+	manifest := finalize["runtime_payload"].(map[string]any)["overlay_manifest"].(map[string]any)
 	entries := manifest["entries"].([]any)
 	if len(entries) != 2 {
 		t.Fatalf("manifest entries = %#v, want both distinct voices admitted", entries)
@@ -178,7 +178,7 @@ func TestFinalJobManifestKeepsEntityCardOverDateCard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	manifest := finalize["overlay_manifest"].(map[string]any)
+	manifest := finalize["runtime_payload"].(map[string]any)["overlay_manifest"].(map[string]any)
 	entries := manifest["entries"].([]any)
 	if len(entries) != 2 {
 		t.Fatalf("manifest entries = %#v, want date and entity card", entries)
@@ -225,10 +225,11 @@ func TestFinalJobChartGroupArrivesPreComposed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
-	if overlays := finalize["overlays"].([]any); len(overlays) != 0 {
+	runtimePayload := finalize["runtime_payload"].(map[string]any)
+	if overlays := runtimePayload["overlays"].([]any); len(overlays) != 0 {
 		t.Fatalf("finalize overlays = %#v, want no per-item replace rows for the chart", overlays)
 	}
-	manifest := finalize["overlay_manifest"].(map[string]any)
+	manifest := runtimePayload["overlay_manifest"].(map[string]any)
 	if entries := manifest["entries"].([]any); len(entries) != 3 {
 		t.Fatalf("manifest entries = %#v, want the whole chart group inside one timeline", entries)
 	}

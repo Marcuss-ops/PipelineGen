@@ -78,7 +78,11 @@ func certifiedLocalizedRenderForClip(result *GenerateResult, sceneID, clipID, la
 }
 
 func localizedRenderIsCertifiedClip(rendered LocalizedRenderResult) bool {
-	return strings.TrimSpace(rendered.DriveFileID) != "" && len(strings.TrimSpace(rendered.SHA256)) == 64 && rendered.DurationMS > 0
+	locator := strings.TrimSpace(rendered.DriveFileID) != ""
+	if finalJobObjectStoreConfigured() {
+		locator = strings.TrimSpace(rendered.LocalPath) != ""
+	}
+	return locator && len(strings.TrimSpace(rendered.SHA256)) == 64 && rendered.DurationMS > 0
 }
 
 // clipSceneRuntimeAsset builds the runtime asset reference of a clip-only scene
@@ -120,6 +124,19 @@ func resolveFinalJobFixedMediaAsset(ctx context.Context, resolver FinalJobAssetR
 // ResolveFinalJobAsset produces, so the remote sees one asset shape regardless
 // of whether the bytes came from the media library or from this render lane.
 func renderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, rendered LocalizedRenderResult, sceneID string) (map[string]any, int64, error) {
+	if !finalJobObjectStoreConfigured() {
+		driveID := strings.TrimSpace(rendered.DriveFileID)
+		if driveID == "" || len(strings.TrimSpace(rendered.SHA256)) != 64 || rendered.DurationMS <= 0 {
+			return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q is not certified", sceneID, rendered.AssetID)
+		}
+		size, err := resolver.FinalJobPublishedFileSize(ctx, driveID)
+		if err != nil {
+			return nil, 0, err
+		}
+		assetID := firstFinalJobValue(rendered.AssetID, driveID)
+		return map[string]any{"asset_id": assetID, "drive_file_id": driveID, "url": driveFileWebLink(driveID),
+			"sha256": strings.TrimSpace(rendered.SHA256), "size_bytes": size, "duration_ms": rendered.DurationMS}, rendered.DurationMS, nil
+	}
 	driveID := strings.TrimSpace(rendered.DriveFileID)
 	sha := strings.TrimSpace(rendered.SHA256)
 	if (!finalJobObjectStoreConfigured() && driveID == "") || len(sha) != 64 || rendered.DurationMS <= 0 {
