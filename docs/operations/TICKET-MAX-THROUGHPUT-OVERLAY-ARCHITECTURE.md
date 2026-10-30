@@ -1024,6 +1024,29 @@ manuale) e rivalidato con il modo drift-check. Foundation, static (vet+build)
 e `verify-changed-components` passano; 17 componenti da cache, 3 eseguiti.
 Limite noto: ~5 minuti del gate sono la scansione gitleaks, non un hang.
 
+### 9.10 Tre run golden overlay-only — 30-10-2026
+
+Payload `v2.1-nomaps` (SHA `ad5e3468…`), stesso binario e stessa topologia
+(3 lane, 3 socket). Tre run consecutive su host quiescente: nessun build,
+deploy o restart durante la misura. Risultati in
+`ops/jobs/overlay_throughput_golden_100_20261022/results/closeout-20261030-r{1,2,3}/summary.json`.
+
+| Run | Item completati | Finestra | Rate |
+|---|---:|---:|---:|
+| r1 | 65 | 71,639 s | 54,44 item/min |
+| r2 | 69 | 51,726 s | 80,04 item/min |
+| r3 | 70 | 54,321 s | 77,32 item/min |
+
+Mediana **77,32 item/min**, range 54,44–80,04. Il gate resta **FAIL**: la
+soglia è ≥100 item/min e il mix materializzato è 65–70 item senza mappe,
+non i 100 richiesti. Questa misura non chiude quindi né il rate né il mix;
+registra una baseline ripetibile più alta della mediana 62,32 del 29-10
+(confronto indicativo: binario e SHA diversi).
+
+La prima run è la più lenta (54,44 contro 77–80 delle successive); la causa
+non è attribuita. Il deploy successivo (rebuild del worker e restart dei tre
+daemon) è avvenuto dopo r3 e non ha influenzato le tre misure.
+
 ## 10. Piano operativo — compilatore incrementale della timeline
 
 **Stato di questa sezione: SPEC / NOT RUN.** Questo ticket coordina le fasi;
