@@ -55,13 +55,16 @@ type batchBlock struct {
 	Status             string   `json:"status,omitempty"`
 	RenderMS           int64    `json:"render_ms,omitempty"`
 	EncodeMS           int64    `json:"encode_ms,omitempty"`
-	QueueMS            int64    `json:"queue_wait_ms,omitempty"`
-	CacheLookupUS      int64    `json:"cache_lookup_us,omitempty"`
-	CacheProbeUS       int64    `json:"cache_probe_us,omitempty"`
-	CacheStoreUS       int64    `json:"cache_store_us,omitempty"`
-	CacheOutcome       string   `json:"cache_outcome,omitempty"`
-	SHA256             string   `json:"sha256,omitempty"`
-	DriveID            string   `json:"drive_file_id,omitempty"`
+	// QueueMS is a legacy name: this is producer completion observation, not
+	// queue residence. Attribution exposes those intervals separately.
+	QueueMS       int64             `json:"queue_wait_ms,omitempty"`
+	Attribution   *batchAttribution `json:"attribution,omitempty"`
+	CacheLookupUS int64             `json:"cache_lookup_us,omitempty"`
+	CacheProbeUS  int64             `json:"cache_probe_us,omitempty"`
+	CacheStoreUS  int64             `json:"cache_store_us,omitempty"`
+	CacheOutcome  string            `json:"cache_outcome,omitempty"`
+	SHA256        string            `json:"sha256,omitempty"`
+	DriveID       string            `json:"drive_file_id,omitempty"`
 }
 
 type windowBlock struct {
@@ -212,12 +215,25 @@ func loadSamples(dbPath, runID string, planItems, renderItems map[string]string)
 	return samples, driveLinkCount(db, runID), nil
 }
 
+// Timings are optional observed intervals. They can overlap and must never be
+// summed as though they were an additive critical-path breakdown.
+type batchAttribution struct {
+	SubmitMS         *int64             `json:"submit_ms,omitempty"`
+	QueueResidenceMS *int64             `json:"queue_residence_ms,omitempty"`
+	QueueServiceMS   *int64             `json:"queue_service_ms,omitempty"`
+	CompletionWaitMS *int64             `json:"completion_observation_ms,omitempty"`
+	GPULaneWaitMS    *float64           `json:"gpu_lane_wait_ms,omitempty"`
+	WorkerMetrics    map[string]float64 `json:"worker_metrics_ms,omitempty"`
+	ChrononMetrics   map[string]float64 `json:"chronon_metrics,omitempty"`
+}
+
 type batchAttemptSample struct {
-	Attempt rendermetrics.ItemSample
-	BatchID string
-	ItemIDs []string
-	StartUS int64
-	EndUS   int64
+	Attribution *batchAttribution
+	Attempt     rendermetrics.ItemSample
+	BatchID     string
+	ItemIDs     []string
+	StartUS     int64
+	EndUS       int64
 }
 
 func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
@@ -229,7 +245,8 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 	query := `SELECT item_id, batch_id, batch_item_ids_json, batch_start_us, batch_end_us,
 	                 render_ms, encode_ms, completion_wait_ms,
 	                 cache_lookup_us, cache_probe_us, cache_store_us, cache_outcome,
-	                 queue_queued_at, queue_completed_at
+	                 queue_queued_at, queue_completed_at, queue_started_at,
+	                 submit_started_at, submit_accepted_at, wait_started_at, wait_finished_at, metrics_json
 	          FROM render_attempt_analytics
 	          WHERE (item_id LIKE 'batch:%' OR item_id LIKE 'manifest:%')`
 	args := []any{}
@@ -248,9 +265,14 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 		var startUS, endUS int64
 		var renderMS, encodeMS, waitMS int64
 		var cacheLookupUS, cacheProbeUS, cacheStoreUS int64
-		var queuedAt, completedAt sql.NullString
-		if err := rows.Scan(&itemID, &batchID, &itemIDsJSON, &startUS, &endUS, &renderMS, &encodeMS, &waitMS, &cacheLookupUS, &cacheProbeUS, &cacheStoreUS, &cacheOutcome, &queuedAt, &completedAt); err != nil {
+		var queuedAt, completedAt, startedAt, submitStarted, submitAccepted, waitStarted, waitFinished sql.NullString
+		var metricsJSON string
+		if err := rows.Scan(&itemID, &batchID, &itemIDsJSON, &startUS, &endUS, &renderMS, &encodeMS, &waitMS, &cacheLookupUS, &cacheProbeUS, &cacheStoreUS, &cacheOutcome, &queuedAt, &completedAt, &startedAt, &submitStarted, &submitAccepted, &waitStarted, &waitFinished, &metricsJSON); err != nil {
 			return nil, err
+		}
+		attribution, err := attributeBatch(submitStarted, submitAccepted, queuedAt, startedAt, completedAt, waitStarted, waitFinished, metricsJSON)
+		if err != nil {
+			return nil, fmt.Errorf("batch %s attribution: %w", batchID, err)
 		}
 		if batchID == "" {
 			batchID = strings.TrimPrefix(itemID, "batch:")
@@ -261,7 +283,7 @@ func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 			return nil, fmt.Errorf("decode batch item ids for %s: %w", batchID, err)
 		}
 		samples = append(samples, batchAttemptSample{
-			BatchID: batchID, ItemIDs: itemIDs, StartUS: startUS, EndUS: endUS,
+			BatchID: batchID, ItemIDs: itemIDs, StartUS: startUS, EndUS: endUS, Attribution: attribution,
 			Attempt: rendermetrics.ItemSample{
 				ItemID: itemID, Class: "batch", Status: "COMPLETED",
 				RenderMS: renderMS, EncodeMS: encodeMS, QueuedMS: waitMS,
@@ -313,6 +335,7 @@ func overlayRenderBatches(result map[string]any, samples []batchAttemptSample) [
 		}
 		if sample, ok := sampleByID[batch.BatchID]; ok {
 			batch.RenderMS, batch.EncodeMS, batch.QueueMS = sample.Attempt.RenderMS, sample.Attempt.EncodeMS, sample.Attempt.QueuedMS
+			batch.Attribution = sample.Attribution
 			batch.CacheLookupUS = sample.Attempt.CacheLookupUS
 			batch.CacheProbeUS = sample.Attempt.CacheProbeUS
 			batch.CacheStoreUS = sample.Attempt.CacheStoreUS
@@ -330,6 +353,59 @@ func overlayRenderBatches(result map[string]any, samples []batchAttemptSample) [
 		batches = append(batches, batch)
 	}
 	return batches
+}
+
+func attributeBatch(submitStarted, submitAccepted, queued, started, completed, waitStarted, waitFinished sql.NullString, metricsJSON string) (*batchAttribution, error) {
+	a := &batchAttribution{
+		SubmitMS:         intervalMillis(submitStarted, submitAccepted),
+		QueueResidenceMS: intervalMillis(queued, started),
+		QueueServiceMS:   intervalMillis(started, completed),
+		CompletionWaitMS: intervalMillis(waitStarted, waitFinished),
+	}
+	if strings.TrimSpace(metricsJSON) != "" {
+		var metrics map[string]float64
+		if err := json.Unmarshal([]byte(metricsJSON), &metrics); err != nil {
+			return nil, fmt.Errorf("decode worker metrics: %w", err)
+		}
+		if value, ok := metrics["gpu_lane_wait_ms"]; ok {
+			a.GPULaneWaitMS = &value
+		}
+		for _, name := range []string{"asset_materialize_ms", "overlay_compile_ms", "plan_ms", "render_ms", "probe_ms", "sha256_ms", "objectstore_upload_ms", "publish_ms", "drive_publish_ms", "total_ms"} {
+			if value, ok := metrics[name]; ok {
+				if a.WorkerMetrics == nil {
+					a.WorkerMetrics = make(map[string]float64)
+				}
+				a.WorkerMetrics[name] = value
+			}
+		}
+		// Keep frame counts, GPU upload volume and frame timings with their
+		// original units. Batch size alone cannot explain render cost.
+		for _, name := range []string{"chronon_job_gpu_nvenc_frames", "chronon_job_gpu_software_encode_frames", "chronon_job_gpu_gpu_upload_bytes", "chronon_job_encoder_finalize_ms", "chronon_summary_mean_frame_ms", "chronon_summary_p95_frame_ms", "chronon_summary_render_loop_fps", "chronon_summary_target_fps"} {
+			if value, ok := metrics[name]; ok {
+				if a.ChrononMetrics == nil {
+					a.ChrononMetrics = make(map[string]float64)
+				}
+				a.ChrononMetrics[name] = value
+			}
+		}
+	}
+	return a, nil
+}
+
+func intervalMillis(from, to sql.NullString) *int64 {
+	if !from.Valid || !to.Valid {
+		return nil
+	}
+	start, err := time.Parse(time.RFC3339Nano, from.String)
+	if err != nil {
+		return nil
+	}
+	end, err := time.Parse(time.RFC3339Nano, to.String)
+	if err != nil || end.Before(start) {
+		return nil
+	}
+	value := end.Sub(start).Milliseconds()
+	return &value
 }
 
 func numericInt64(value any) int64 {

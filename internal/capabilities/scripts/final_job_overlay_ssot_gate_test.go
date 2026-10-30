@@ -7,6 +7,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	overlaymodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -44,6 +45,26 @@ func ssotGateResult(items []capabilityoverlay.OverlayItem, artifact *RenderArtif
 
 func ssotTimelineArtifact(sha string) *RenderArtifact {
 	return &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: sha, SizeBytes: 50, FrameCount: 120, CopyEligible: true}
+}
+
+func TestFinalJobManifestPreservesPackedOffsetsAndRejectsPlacement(t *testing.T) {
+	item := capabilityoverlay.OverlayItem{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 1_000_000}
+	result := ssotGateResult([]capabilityoverlay.OverlayItem{item}, ssotTimelineArtifact(strings.Repeat("d", 64)))
+	in, out := int64(0), int64(1_000_000)
+	result.OverlayRender.Manifest.Entries[0].ArtifactInUS = &in
+	result.OverlayRender.Manifest.Entries[0].ArtifactOutUS = &out
+	_, manifest, err := finalJobOverlayHandoff(context.Background(), result, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := manifest["entries"].([]any)[0].(map[string]any)
+	if entry["artifact_in_us"] != in || entry["artifact_out_us"] != out {
+		t.Fatalf("packed offsets lost at final handoff: %#v", entry)
+	}
+	result.OverlayRender.Manifest.Entries[0].Placement = &overlaymodel.ManifestPlacement{WPx: 10, HPx: 10}
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err == nil {
+		t.Fatal("unsupported spatial placement must fail closed")
+	}
 }
 
 // TestFinalJobManifestRejectsDuplicateContentHash pins gate 1 on the manifest

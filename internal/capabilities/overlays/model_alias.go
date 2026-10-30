@@ -25,6 +25,7 @@ type (
 	EntityImageOverlayInput = capmodel.EntityImageOverlayInput
 	EntityOverlayInput      = capmodel.EntityOverlayInput
 	IntentPayload           = capmodel.IntentPayload
+	ManifestPlacement       = capmodel.ManifestPlacement
 	MapCameraMove           = capmodel.MapCameraMove
 	MapCenter               = capmodel.MapCenter
 	MapOverlay              = capmodel.MapOverlay

@@ -6,6 +6,16 @@
 - **Stato:** ATTIVO / IN IMPLEMENTAZIONE
 - **Target Prestazionale:** Throughput overlay da ~80–100/min a **>2.500 overlay/min**; tempo di pianificazione da 4m45s a **<30s**; eliminazione del 90% dell'I/O disco.
 
+> **Lettura operativa (29-10-2026):** i target e i fattori delle sezioni storiche
+> sono ipotesi, non risultati. L'ordine di lavoro corrente è §10; lo stato
+> osservato e le limitazioni sono §9.8. La mediana 62,32 item/min riguarda tre
+> run comparabili v2.1 **senza mappe**, 66–69 item: non certifica il mix da
+> 100. Le proiezioni 1.800–3.000/min e il confronto 83,98/min non sono
+> accettazioni; l'ultimo non è comparabile con la serie §9.8.
+> Per Chronon vale il freeze in `Chronon3d/docs/CURRENT_STATUS.md`: niente
+> nuova architettura prima di CI e baseline same-SHA verdi. Le sezioni sotto
+> descrivono lavoro futuro, non autorizzano deploy o attivazioni live.
+
 ---
 
 ## 0. TODO — cosa manca (agg. 2026-10-28; revisione 2026-10-29)
@@ -871,3 +881,378 @@ di paragone.
    `-j14` e commit mirato non eseguiti.
 5. **Run mix completo con mappe (v3.1/v4)** e shadow VRAM B3 restano gate
    separati (`TICKET-100X-PERF-WAVES`), non misurati qui.
+
+## 9.9 Overlay-only: attribuzione e percorso ai 100/min
+
+**Ambito:** nessun final job, nessun video finale, nessuna modifica al
+consumer Rust. I risultati sotto non certificano il gate ≥100/min. La mediana
+r4/r5/r6 è 62,32 item/min su 66–69 item senza mappe; il mix cambia fra run,
+quindi la serie è diagnostica e non equivale a una ripetizione deterministica
+con 100 item. I valori storici non vengono sovrascritti.
+
+### 9.9.1 Punto 1 — attribuzione batch
+
+Nel worktree `cmd/goldensummary` riporta per batch `submit_ms`,
+`queue_residence_ms` (queued → started), `queue_service_ms` (started →
+completed), `completion_observation_ms` (attesa producer), `gpu_lane_wait_ms`,
+metriche worker e, quando disponibili, frame NVENC/software, byte GPU upload,
+frame time e fps Chronon. Metrica assente = sconosciuta, non zero. Il vecchio
+`queue_wait_ms` è l'attesa di completamento osservata dal producer, non la
+permanenza in coda. Le misure si sovrappongono: non sommarle.
+
+Riproiezione in sola lettura di snapshot r4/r5/r6 e DB locale, senza render:
+
+| Run | Batch attribuiti | Coda mediana / max | GPU lane mediana / max | Render batch più lungo |
+|---|---:|---:|---:|---:|
+| r4 | 14/14 | 123,5 / 1240 ms | 0,286 / 5,742 ms | 9 item, 27.952 ms |
+| r5 | 15/15 | 9 / 1292 ms | 0,078 / 0,325 ms | 10 item, 19.825 ms |
+| r6 | 15/15 | 11 / 1266 ms | 0,082 / 0,335 ms | 7 item, 15.598 ms |
+
+In r5 il batch più lungo riporta 285 frame NVENC, 177.482.968 byte di
+upload, 33,47 ms di frame medio e 53,94 ms p95. Il tempo `render_ms` non è
+il solo tempo GPU e le metriche non attribuiscono costi ai singoli membri.
+Le attese di lane misurate riguardano soltanto il punto strumentato e non
+escludono attesa prima della submission, limiti del pool o contesa interna al
+render. Per rigenerare il report senza modificare lo storico:
+
+```bash
+cd refactored
+go run ./cmd/goldensummary \
+  --job-full ops/jobs/overlay_throughput_golden_100_20261022/results/tts-fast-20261029-r5/job.full.json \
+  --db data/media/media.db.sqlite
+```
+
+### 9.9.2 Punto 2 — job dedicati sovrapposti
+
+Il worktree avvia i batch per scena e i job dedicati in parallelo usando i
+pool e l'admission esistenti; errore o cancellazione non produce un risultato
+parziale. `TestRunSplitOverlayWork*` e `TestAssembleSplitManifestReference`
+sono passati con race detector. Benchmark **simulato** (5 iterazioni, due
+attese da 10 ms): seriale 20,78 ms/op, sovrapposto 10,90 ms/op. Non misura
+GPU né overlay/min, e non dimostra beneficio su workload senza job dedicati.
+
+Per completare la misura reale: usare lo stesso piano congelato comprendente
+scene e mappe/chain, stessi asset, cache, topologia e binari, solo variando
+la versione seriale/sovrapposta; eseguire almeno 3 run valide per versione,
+registrare durata e throughput, piani, errori, fallback, utilizzo e contesa.
+Confrontare output e timing dei singoli overlay. Se la contesa aumenta o i
+risultati differiscono, non promuovere la modifica. Il driver golden crea
+solo overlay, ma è un submit live che può consumare risorse e accedere a
+provider/store: eseguirlo esclusivamente sull'ambiente esplicitamente
+abilitato, senza deploy o restart impliciti.
+
+### 9.9.3 Punto 3 — costo e dimensione batch
+
+La riproiezione mostra render elevati anche con attese di coda molto basse;
+non basta aumentare lane o assumere che batch più grandi siano migliori.
+La composizione packed già elimina gli intervalli vuoti, preservando le
+finestre sovrapposte. Nel worktree ora è più facile confrontare costo, frame,
+frame time e volume di upload per batch; **non è stata cambiata la strategia
+di partizione né dimostrata una riduzione del costo GPU**.
+
+**Aggiornamento micro-batch (2026-10-29):** `EnqueueChrononPlanSplit`
+(dietro `OVERLAY_RENDER_PER_SCENE`) ora partiziona ogni scena in componenti
+di finestre letterali sovrapposte (`groupManifestCandidatesIntoMicroBatches`
+in `render_queue_split.go`). Item con finestre che si sovrappongono restano
+sempre nello stesso batch; componenti disgiunte diventano batch separati in
+ordine di piano. Test: `TestMicroBatchesNeverSplitOverlappingItems` e i test
+split/packed/batch passano (`go test ./internal/capabilities/scripts -run
+'MicroBatch|GroupManifest|PlanSpansMultipleScenes|EnqueueChrononPlanSplit|Batch|Packed'`).
+Limite: è una verifica di correttezza offline, **non** una misura di
+throughput; non è stata eseguita una run GPU A/B, quindi non si dichiara
+alcun miglioramento. Il percorso resta dietro il feature flag.
+
+Per completare l'ottimizzazione:
+
+1. Congelare piano/materializzazioni, fingerprint di renderer, cache e
+   topologia; registrare frame, durata packed, famiglie, overlap, byte e
+   servizio per batch, p50/p95 e makespan, inclusi tutti i retry.
+2. Confrontare offline partizione attuale e micro-batch candidati su confini
+   sicuri, mantenendo insieme finestre e dipendenze sovrapposte. Scene
+   attraversate, z-order, background video ed effetti temporali richiedono
+   verifica esplicita; un cap numerico arbitrario non garantisce parità.
+3. Implementare un'opzione bounded solo dopo prova di sicurezza, usando
+   scheduler e admission già esistenti; mantenere il comportamento corrente
+   per piani non rappresentabili. Verificare frame/tempi, ordine, artefatti,
+   cancellazione e fallback; confrontare output decodificato.
+4. Eseguire A/B reale a input e risorse identici, almeno 3 run per variante;
+   riportare item completati validati/min, frame, wall, attese e memoria. Non
+   promuovere se parità o miglioramento misurato mancano.
+
+### 9.9.4 Punto 4 — golden completo con mappe
+
+Il test sintetico `TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items`
+è passato: v3.1 richiede `final_job=false`, `render.enabled=false`,
+`overlays_only=true` e produce con fixture 25 frasi brevi + 25 lunghe +
+20 immagini + 10 entity image + 10 date + 10 mappe. I test di ammissione e
+risoluzione territorio sono passati su fixture. Non provano disponibilità
+live dei candidati, del catalogo o del renderer installato.
+
+Per chiudere il gate completo:
+
+1. Verificare la provenienza del payload v3.1 e la disponibilità di 100
+   candidati/asset validi, incluse 10 mappe; verificare catalogo ADM3 e pin
+   risolvibili, renderer effettivo compatibile e versione worker.
+2. Su host autorizzato e idle, con topologia lane dichiarata e configurazione
+   identificata, eseguire `ops/jobs/overlay_throughput_golden_100_20261022/run_golden_v3.sh <label>`
+   tre volte con label distinte. Non riusare la v3 con `region_zoom` ritirato.
+3. Per ogni run conservare payload/hash, versioni, cache, mix materializzato,
+   snapshot, summary, errori/fallback e verifica artefatti, frame e timing.
+   Verificare a posteriori che ci siano esattamente 100 item validati col mix
+   richiesto: il successo del job o del test planner non è sufficiente.
+4. Calcolare la mediana delle tre run comparabili: PASS solo con ≥100
+   item/min e tutti i controlli precedenti; altrimenti FAIL/BLOCKED con causa.
+   Il test no-map e quello completo rimangono separati.
+
+**Stato:** strumentazione e verifiche locali disponibili; A/B GPU, benchmark
+reale di partizioni e tre run del golden completo restano NOT RUN. Nessun
+claim di accelerazione reale o chiusura del gate. La misurazione live richiede
+un ambiente predisposto e accesso al percorso autenticato fuori dal workspace;
+in questa sessione non sono stati effettuati submit, restart o deploy.
+
+**Verifiche locali:** `go test ./cmd/goldensummary -count=1` PASS;
+`go test ./internal/capabilities/scripts -run 'TestRunSplitOverlayWork|TestAssembleSplitManifestReference|TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items' -count=1 -race`
+PASS; test mirati di risoluzione e ammissione mappe PASS
+(`TestMicroBatchesNeverSplitOverlappingItems` incluso).
+
+**`make verify-agent` ora PASS (2026-10-29, `verify_exit=0`).** Il gate
+falliva su `verify-overlay-model-alias`: il facade generato
+`internal/capabilities/overlays/model_alias.go` era disallineato dal modello
+(mancava l'alias `ManifestPlacement`). Rigenerato con
+`go run ./cmd/overlay-model-alias-gen --generate` (+1 riga, nessuna modifica
+manuale) e rivalidato con il modo drift-check. Foundation, static (vet+build)
+e `verify-changed-components` passano; 17 componenti da cache, 3 eseguiti.
+Limite noto: ~5 minuti del gate sono la scansione gitleaks, non un hang.
+
+## 10. Piano operativo — compilatore incrementale della timeline
+
+**Stato di questa sezione: SPEC / NOT RUN.** Questo ticket coordina le fasi;
+non introduce una seconda authority. Il cambio di paradigma è passare da
+«un job = un file completo da rifare» a **timeline dichiarativa con unità
+indipendenti, identità verificabile e materializzazione su richiesta**. Primo
+rilascio: migliorare l'overlay-only e misurare; preview eseguibile, export
+incrementale e speculazione sono fasi successive, non prerequisiti del gate
+100/min. Non assumere 100×, scalabilità lineare o eliminazione dell'encode.
+
+### 10.1 Confini e risultati che si misurano separatamente
+
+- **Overlay-only:** item validati / tempo tra primo submit e completamento
+  dell'ultimo item, più conteggio, durata, frame e mix effettivamente prodotti.
+- **Video completo:** wall da submit a consegna certificata, includendo
+  generazione, attese, audio, assemble e pubblicazione richiesti.
+- **Prima scena utile / preview:** submit → primo output visionabile; non
+  confonderlo con la consegna definitiva.
+- **Modifica incrementale:** input iniziale → output corretto dopo una
+  modifica locale; contare lavoro rifatto, cache hit e wall.
+- Per ogni run registrare SHA e stato dei quattro repo e dei binari, GPU,
+  codec, risoluzione, fps, frame, lunghezze, payload/hash, mix effettivo,
+  versioni modelli, stato cache, numero lane e carico concorrente. Misurare
+  p50/p95 dei tempi di coda e servizio e wall critico; le fasi sovrapposte
+  **non si sommano**. Salvare riferimenti ai sidecar e agli snapshot esistenti.
+- Distinguere baseline overlay-only senza mappe e golden richiesto completo
+  con 100 item e mappe. Tre run confrontabili per la mediana del gate;
+  cambiare payload, modello, mix, binario o topologia richiede una nuova
+  baseline. Nessun deploy, restart, submit o test live senza autorizzazione.
+
+### 10.2 R0 — baseline e attribuzione prima delle modifiche
+
+**Owner:** PipelineGen + RenderingGen; Chronon per sidecar GPU.
+
+1. Leggere il golden `ops/jobs/overlay_throughput_golden_100_20261022/README.md`
+   e le evidenze §9.8; verificare payload effettivo, asset e disponibilità
+   mappe, non dedurre 100 item dal nome del file. Assicurare build identificata
+   e freeze Chronon rispettato; non modificare baseline storiche.
+2. Per batch e item attribuire `queue_wait_ms`, attesa lane GPU,
+   materializzazione/probe, IPC/setup, prepare, graph/render, encode, mux,
+   publish, `prepare_join`, generazione/TTS e tempo alla prima scena.
+   Usare metriche e sidecar esistenti; aggiungere solo il punto di
+   strumentazione mancante nel suo owner, distinguendo null da zero.
+3. Costruire percorso critico a partire da intervalli temporali, non dalla
+   somma dei wall annidati. Confrontare per famiglia e numero di frame: un
+   overlay immagine, una mappa e un testo non hanno lo stesso costo.
+4. Ripetere il golden no-map ×3 a parità di condizioni; separatamente
+   eseguire il mix completo con mappe ×3 dopo prerequisiti e autorizzazione.
+   Rilevare fallimenti, fallback, lavoro ricostruito e output verificati.
+5. **Gate R0:** report riproducibile con provenienza e qualità; il gate
+   100/min si chiude solo per il workload specificato che soddisfa anche il
+   conteggio/mix richiesto. Se una fase è assente o non attribuita, segnare
+   NOT RUN/UNKNOWN; non dedurre la causa dalla sola attesa in coda.
+
+### 10.3 R1 — partizionamento adattivo e batch bounded
+
+**Owner:** `refactored/internal/capabilities/scripts/` per la forma del piano;
+`RenderingGen/renderinggen/internal/processor/` e `chronon/` per ammissione e
+misure; Chronon conserva executor/encoder. Si riusano `render_queue_split.go`,
+`overlay_manifest_timeline.go`, `overlay_manifest_packed.go`, socket spread e
+backpressure esistenti: non creare un secondo scheduler.
+
+1. Profilare dimensione, durata/frame, famiglia, overlap, media e costo
+   osservato per i batch esistenti. Costruire prima un calcolo deterministico
+   di confronto offline fra piano unico, scena e micro-batch; non affermare che
+   più gruppi o batch maggiori siano sempre migliori.
+2. Definire gruppi solo su confini sicuri: stessa griglia, background e
+   dipendenze compatibili, ordine e compositing invariati, limiti memoria,
+   frame e duration espliciti. `groupManifestCandidatesByScene` oggi assegna
+   un item che attraversa la scena a quella di inizio: provare tale caso,
+   sovrapposizioni cross-scena, transizioni, effetti temporali e z-order;
+   se non sono indipendenti tenere insieme le dipendenze o rifiutare lo split.
+3. Alimentare i gruppi al submitter esistente con concorrenza bounded e
+   backpressure. Una stima di costo può guidare raggruppamento e distribuzione
+   solo dopo profiling: preservare fairness, aging e limite VRAM/NVENC;
+   timeout, retry e cancellazione restano idempotenti. Non aggiungere lane
+   per deduzione da `queue_wait` senza verificare servizio e contesa.
+4. Confrontare A/B lo stesso input e topologia: numero batch, lavoro per
+   batch, coda, tempo GPU, memoria, frame prodotti, output decodificato e wall.
+   La fallback da split al percorso singolo oggi esiste: contarla e indicarla
+   nell'esito; non dichiarare throughput split quando è avvenuta.
+5. **Gate R1:** ordine e pixel/audio equivalenti secondo il contratto,
+   nessuna perdita o duplicazione e rate mediano misurato. Se il batching
+   peggiora il wall o aumenta troppo la contesa, non promuoverlo.
+
+### 10.4 R2 — multi-artefatto per final job, non solo overlay-only
+
+**Owner:** PipelineGen per manifest/handoff; BrainRust per proiezione;
+RenderingGen e Chronon per i fatti certificati. Ticket di dettaglio:
+[`TICKET-OVERLAY-RENDER-PER-SCENE-2026-10-29.md`](TICKET-OVERLAY-RENDER-PER-SCENE-2026-10-29.md).
+
+1. Fotografare i consumer effettivi. Oggi `render_queue_split.go` produce
+   `Batches` e `Items`, ma `Manifest=nil`; final job è escluso dallo split.
+   `BrainRust/pipelinegen-muscles/src/transform_manifest.rs` implementa la
+   proiezione **di un artefatto** e ricodifica: il closeout P5 documenta codice
+   e test, non deploy remoto. L'header di `OVERLAY-MANIFEST-CONTRACT.md` è
+   anteriore a quel closeout: verificare il binario effettivo, non inferire
+   deploy dal solo sorgente.
+2. Prima del codice concordare una revisione versionata del contratto: elenco
+   di artefatti certificati (hash, durata/frame, fps e formato) e mappatura
+   esplicita di ogni entry alla sorgente; conservare `in_us/out_us` assoluti e
+   `artifact_*` quando packed. Un solo owner per entry e retry idempotente.
+3. Specificare overlap fra batch: il replace full-frame di due artefatti
+   indipendenti non è generalmente equivalente alla composizione comune.
+   Raggruppare le finestre interdipendenti oppure definire un vero alpha
+   composite con z-order; rifiutare casi non rappresentabili, mai scegliere un
+   artefatto arbitrario. Preservare scene clip, mappe/chain e audio.
+4. Implementare producer e validazione nel proprietario del manifest, poi
+   consumer Rust con check griglia, copertura, ordine, hash e riferimenti;
+   attivare final-job solo dopo adozione del consumer. I vecchi payload restano
+   validi tramite la migrazione definita, senza interpretazione ambigua.
+5. Test: single vs multi artefatto frame-by-frame, scene-crossing e overlap,
+   fps razionali, boundary esclusivi, missing/tampered asset, retry,
+   crash/resume, numero frame, audio e durata. Poi golden reale e deploy
+   coordinato esplicitamente autorizzato. **Gate R2:** non dichiarare final
+   job supportato finché producer, consumer effettivo e golden non passano.
+
+### 10.5 R3 — identità, invalidazione e rigenerazione incrementale
+
+**Owner:** PipelineGen per dipendenze editoriali/manifest; RenderingGen per
+asset; Chronon per programma e pixel. Riutilizzare `OverlayIntent`,
+`CanonicalTimeline`, `OverlayManifest.Digest()`/`RetryKey()`,
+`overlayManifestCompositionCacheKey` e cache content-addressed già esistenti.
+
+1. Disegnare prima una matrice di dipendenza per testo, traduzione, TTS,
+   timing, asset, motion, layer, scena, audio master e output. Distinguere
+   identità editoriale stabile, identità del lavoro, digest del contenuto,
+   placement e digest dell'artefatto. Non cambiare `RetryKey` o `Digest` senza
+   migrazione del contratto; il solo riuso per item non colpisce la cache
+   dell'attuale composizione intera.
+2. Definire fingerprint canonico versionato che copra **tutti** gli input
+   che influenzano il risultato: contenuto/asset e font, testo e shaping
+   (lingua, direzione, feature e font fallback), template/motion, tempo relativo,
+   effetti, colori/alpha, fps/canvas, configurazione output, semantica e
+   versioni di compilatore/renderer. Per output codificati includere parametri
+   codec e compatibilità di bitstream. Distinguere renderer e platform quando
+   il contratto di determinismo non garantisce cross-backend equivalence.
+3. Propagare invalidazione sul grafo già posseduto dalla pipeline: cambio
+   frase può modificare TTS, word timing, offset delle scene successive,
+   transizioni e mix audio; una modifica che cambia durata non invalida solo
+   la finestra visiva locale per definizione. Le dipendenze run-wide o
+   temporali non risolte richiedono ricalcolo conservativo.
+4. Riusare solo risultati certificati, leggibili e con hash corretto; gestire
+   restart, eviction, limiti disco/VRAM, concorrenza e pubblicazione idempotente
+   via authority e outbox esistenti. Nuova famiglia/cache Chronon solo con ADR
+   e tassonomia: preferire estendere il meccanismo proprietario appropriato.
+5. Golden: cambiare una parola con durata invariata, cambiare durata,
+   posizione, lingua, font, asset e versione renderer; confrontare il risultato
+   incrementale con ricostruzione completa, inclusi audio e boundary. Misurare
+   hit/miss, frame e segmenti riutilizzati, byte e wall cold/warm. **Gate R3:**
+   nessun cache-hit errato e ricalcolo limitato provato dalle dipendenze.
+
+### 10.6 R4 — pipeline streaming e speculazione controllata
+
+**Owner:** PipelineGen; asset prefetch RenderingGen già in
+`processor/pipeline.go`. `OverlayIntent` è già creato prima del timing;
+`SceneTextReady` sovrappone TTS e analisi e P2 può già anticipare il render
+sul piano pronto. Non duplicare questi meccanismi.
+
+1. Tracciare per scena/frase lo stato delle dipendenze: testo stabilizzato,
+   asset selezionati, TTS/timing pronto, offset assoluto noto, entità e piano
+   validati. Le `CanonicalTimeline`/`EntityTimeline` run-wide sono oggi un
+   vincolo: non avviare render definitivo prima che la porzione necessaria sia
+   certificata; se occorre, progettare un contratto incrementale versionato.
+2. Spostare anticipatamente solo lavoro indipendente dal timing (prefetch
+   asset conosciuti, preparazione font/template); riusare il fan-out esistente.
+   Su ipotesi non confermate marcare lavoro speculativo con versione degli
+   input, budget e priorità inferiore; limitarne GPU, rete, memoria e coda.
+3. Su modifica/cancellazione scartare o annullare il lavoro non più valido;
+   promuovere un risultato solo dopo validazione di **tutte** le dipendenze.
+   Nessun side effect di consegna da risultato speculativo, outbox e single
+   writer restano autoritativi. Retry/restart non duplicano artefatti.
+4. Misurare tempo prima scena, wall job, lavoro scartato, hit, contesa e
+   qualità; testare cambio testo/timing dopo prefetch, annullamento, errore e
+   resume. **Gate R4:** speculazione migliora il percorso critico sullo stesso
+   workload senza rallentarlo per saturazione; altrimenti limitarla o ritirarla.
+
+### 10.7 R5 — preview prima, export dopo
+
+**Owner:** Chronon per rendering, PipelineGen per orchestration; niente GUI nel
+core. Ticket motore [`TICKET-DRAFT3D-PREVIEW`](../../../Chronon3d/docs/tickets/TICKET-DRAFT3D-PREVIEW.md).
+
+1. Prima sperimentare proxy a risoluzione ridotta dello **stesso piano**,
+   stessi timing, font, asset, frame rate e semantica; isolare la cache preview
+   da quella full-resolution. Misurare submit → prima immagine/segmento,
+   wall preview, export e qualità: ridurre i pixel non implica lo stesso
+   fattore di riduzione del tempo.
+2. Render definitivo resta autoritativo; le differenze di antialiasing,
+   effetti, leggibilità e crop sono esplicitate. Le modifiche approvate devono
+   restare semanticamente valide anche a full-resolution.
+3. Solo se serve, prototipare un player della timeline per testo rigido/fade:
+   profilo dichiarato del contratto esistente, stesse curve e shaping tramite
+   interfacce condivise, caricamento/buffering espliciti. Rifiutare effetti non
+   supportati; non duplicare evaluator o ownership dei pixel. Export asincrono
+   usa lo stesso piano certificato. Non promettere creazione a tempo zero.
+4. **Gate R5:** parità sui frame campione con tolleranza esplicita, tempi e
+   qualità registrati, full-res invariato; player e GUI non sono prerequisiti
+   del gate overlay-only.
+
+### 10.8 R6 — riuso dei segmenti compressi e scala orizzontale
+
+1. Applicare il chunking audio-aware già descritto nel
+   [`TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY`](TICKET-CHUNK-AUDIO-AWARE-ASSEMBLY.md)
+   solo ai piani supportati, con admission policy certificata e audio-owner
+   unico; non confonderlo con il multi-artefatto overlay R2.
+2. Per export incrementale classificare segmenti invariati e copy-eligible:
+   codec/profile/extradata, dimensioni, griglia, closed GOP, timestamp e
+   boundary audio devono essere compatibili. Gli overlay impressi richiedono
+   composizione e re-encode delle finestre modificate; il consumer Rust P5
+   attuale ricodifica anche la proiezione, quindi non è stream-copy.
+3. Testare decode frame, durata, PTS/DTS, sincronizzazione e priming audio,
+   concatenazioni, ingressi non compatibili e fallback esplicito. Misurare
+   frame realmente codificati, byte, latenza e qualità.
+4. Per più GPU/worker usare la queue e admission esistenti; misurare VRAM,
+   NVENC, rete, storage, saturazione e sbilanciamento. **Gate R6:** accelerazione
+   e parità end-to-end misurate, non N GPU = N× assunto.
+
+### 10.9 Sequenza e cancellazione del vecchio percorso
+
+R0 → R1; R2 è prerequisito del final-job multi-artefatto; R3 richiede identità
+stabili e usa R2 se la granularità scelta produce più artefatti. R4 può
+procedere sul prefetch già sicuro dopo R0, ma la materializzazione anticipata
+richiede i contratti timing; R5/R6 seguono le rispettive prove e non bloccano
+il gate overlay-only. Motore: dettagli in
+[`Chronon3d TICKET-100X-PERF-WAVES`](../../../Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md)
+e [`TICKET-PARADIGM-ALPHA-LAYER-HUD`](TICKET-PARADIGM-ALPHA-LAYER-HUD.md).
+
+Per ciascun eventuale bridge di migrazione registrare nel ticket/ADR owner,
+reason, exit condition osservabile, equivalence gate, removal scope e stato;
+dopo la parità e il cutover rimuovere il percorso sostituito. Non eliminare
+fallback necessari ai piani non supportati e non indebolire i gate per
+raggiungere un numero. I claim storici §3–§5 sono ipotesi, non criteri di PASS.

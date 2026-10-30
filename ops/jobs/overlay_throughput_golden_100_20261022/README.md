@@ -78,11 +78,12 @@ Quindi:
   certificato) e identifieri `…-v2.1-nomaps`. Mappe DISABLED come in v2: l'id
   serve solo alla validazione a compile e non raggiunge mai un renderer.
   Driver `run_golden.sh` ora punta a questo file.
-- La lane mappe col mix completo resta **BLOCKED** sul producer parity
-  (vedi `TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE` §9.2): il producer Go non
-  produce `territory_feature` né un raggio area glow > 0, quindi le
-  composizioni `region_highlight` non sono inviabili; `route_line` /
-  `multi_leg_flight` sono inviabili solo per 2–5 pin.
+- Aggiornamento producer parity: il producer Go risolve `territory_feature`
+  e il raggio area glow quando richiesti; la lane mappe è sbloccata a livello
+  di compile/plan, non ancora certificata live. `territory_glow_reveal`
+  richiede il catalogo ADM3 e un pin risolvibile; servono inoltre renderer
+  compatibile e candidati/asset effettivi. Vedi
+  `TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE` §9.2 e §9.9.
 - La run v2.1 moderna `results/v2-r8` è riuscita ma ha renderizzato 65 item
   in 686,127 s (5,684 item/min): non certifica né i 100 item né il gate.
   Non è comparabile alle run storiche v6…v28, che restano confrontabili solo

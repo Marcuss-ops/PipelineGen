@@ -1,5 +1,12 @@
 title = "PipelineGen gitleaks allowlist — BUILD-03 classification (2026-10-16)"
 
+# A config that defines no [[rules]] replaces the built-in rule set unless it
+# extends the defaults. Without this block gitleaks loads ZERO rules and the
+# audit command exits 0 on any input — a silent no-op, not a clean scan.
+# Verified 2026-10-29 with a probe file: rc=0 before, rc=1 after.
+[extend]
+useDefault = true
+
 # The 2026-10-10/16 secret audit reported 17 findings from the full-tree scan
 # (`gitleaks detect --source . --no-git`). Every one was classified manually:
 # all 17 are false positives (test fixtures, deterministic idempotency keys,
@@ -10,6 +17,13 @@ title = "PipelineGen gitleaks allowlist — BUILD-03 classification (2026-10-16)
 
 [allowlist]
 description = "Single-finding, literal-anchored allowlist (see per-entry classification)"
+# One generated artifact, not a source file: the bbox census is machine output
+# whose 616 hex identifiers all match generic-api-key. Allowlisted by PATH, not
+# by rule, so the rule stays active for every source file (verified 2026-10-29:
+# this single path accounts for all 616 findings of the whole tree).
+paths = [
+  '''ops/benchmarks/a0_bbox_census_20261028\.json''',
+]
 regexes = [
   "1Qatr7H-NoKiolIFh6SIrhM19nlYWdOPj",  # cmd/admin/internal/cleanup/cleanup_delete_folders.go:76 — Google Drive folder IDs (resource identifiers in the cleanup allowlist), not credentials
   "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd",  # internal/capabilities/assets/providers/stock/enrichment/outbox_emitter_test.go:120 — synthetic test idempotency keys (a1b2..../bbbb.... literals)
