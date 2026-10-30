@@ -4,8 +4,8 @@ package scriptgeneration
 // (TICKET-OVERLAY-RENDER-PER-SCENE-2026-10-29): plan-absolute entries, N
 // batches in plan order, per-item artifact rows, an identical refuse-set at
 // plan level, and a fail-closed fallback to the single-timeline submission.
-// The gate DEFAULT (OVERLAY_RENDER_PER_SCENE unset → disabled) keeps today's
-// behaviour byte for byte.
+// The gate DEFAULT (OVERLAY_RENDER_PER_SCENE unset → enabled) is the certified
+// fast path; only an explicit kill switch restores the single submission.
 
 import (
 	"context"
@@ -205,18 +205,48 @@ func TestRenderOverlayPlanAtBoundaryFinalJobNeverSplits(t *testing.T) {
 	}
 }
 
-func TestRenderOverlayPlanAtBoundaryFlagOffKeepsSinglePath(t *testing.T) {
+func TestRenderOverlayPlanAtBoundaryDefaultsToSplit(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_PER_SCENE", "")
 	stub := &splitEnqueuerStub{splitRef: RenderReference{JobID: "split-job", Status: "completed"}}
 	runner := &Runner{overlayRenderEnqueuer: stub, log: zap.NewNop()}
+	if !overlayPerSceneSplitEnabled() {
+		t.Fatal("flag unset must read as enabled: the split is the certified fast path")
+	}
+	ref, err := runner.renderOverlayPlanAtBoundary(context.Background(), GenerateRequest{}, multiScenePointerFor(t))
+	if err != nil {
+		t.Fatalf("default split must satisfy the boundary: %v", err)
+	}
+	if stub.splitCalls != 1 || stub.singleCalls != 0 {
+		t.Fatalf("default splits: split=%d single=%d, want split=1 single=0", stub.splitCalls, stub.singleCalls)
+	}
+	if ref.JobID != "split-job" {
+		t.Fatalf("reference = %q, want the split submission", ref.JobID)
+	}
+}
+
+func TestRenderOverlayPlanAtBoundaryExplicitKillSwitchKeepsSinglePath(t *testing.T) {
+	t.Setenv("OVERLAY_RENDER_PER_SCENE", "disabled")
+	stub := &splitEnqueuerStub{splitRef: RenderReference{JobID: "split-job", Status: "completed"}}
+	runner := &Runner{overlayRenderEnqueuer: stub, log: zap.NewNop()}
 	if overlayPerSceneSplitEnabled() {
-		t.Fatal("flag unset must read as disabled")
+		t.Fatal("explicit 'disabled' must read as off")
 	}
 	if _, err := runner.renderOverlayPlanAtBoundary(context.Background(), GenerateRequest{}, multiScenePointerFor(t)); err != nil {
-		t.Fatalf("flag off must keep today's single-path behaviour: %v", err)
+		t.Fatalf("kill switch must keep today's single-path behaviour: %v", err)
 	}
 	if stub.splitCalls != 0 || stub.singleCalls != 1 {
-		t.Fatalf("flag off splits nothing: split=%d single=%d", stub.splitCalls, stub.singleCalls)
+		t.Fatalf("kill switch splits nothing: split=%d single=%d", stub.splitCalls, stub.singleCalls)
+	}
+}
+
+func TestOverlayPerSceneSplitWorkersDefaultMatchesGPULanes(t *testing.T) {
+	t.Setenv("OVERLAY_RENDER_PER_SCENE_WORKERS", "")
+	if got := overlayPerSceneSplitWorkers(); got != 3 {
+		t.Fatalf("default workers = %d, want the certified 3 GPU lanes", got)
+	}
+	t.Setenv("OVERLAY_RENDER_PER_SCENE_WORKERS", "5")
+	if got := overlayPerSceneSplitWorkers(); got != 5 {
+		t.Fatalf("explicit workers = %d, want 5", got)
 	}
 }
 

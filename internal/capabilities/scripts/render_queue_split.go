@@ -31,9 +31,12 @@ package scriptgeneration
 //     fail-generic: the caller falls back to the single-timeline submission
 //     on ANY error, preserving today's exact behaviour.
 //
-// Feature gate: OVERLAY_RENDER_PER_SCENE=enabled|on|true|1 (default
-// disabled). Width: OVERLAY_RENDER_PER_SCENE_WORKERS (default 2), the
-// submission pipelining bound — RenderingGen's GPU admission remains the
+// Feature gate: OVERLAY_RENDER_PER_SCENE, default ENABLED. The split is the
+// certified fast path (one composition and one cache row per scene window);
+// only an explicit 0/false/no/off/disabled returns to the single-timeline
+// submission, mirroring the render-cache kill switch. Width:
+// OVERLAY_RENDER_PER_SCENE_WORKERS (default 3, the certified GPU lane count),
+// the submission pipelining bound — RenderingGen's GPU admission remains the
 // throughput authority.
 
 import (
@@ -54,14 +57,17 @@ type OverlayPlanSplitEnqueuer interface {
 	EnqueueChrononPlanSplit(context.Context, capoverlay.OverlayPlan) (RenderReference, error)
 }
 
-// overlayPerSceneSplitEnabled reads the opt-in feature gate once per call,
-// mirroring how OverlayRenderCacheEpoch resolves its env override.
+// overlayPerSceneSplitEnabled reads the feature gate once per call. It is
+// default-ON with an explicit kill switch: the split is already the measured
+// path (the golden series runs it enabled), so an unset variable must not
+// silently fall back to the 6.5x slower single-timeline submission on any
+// entry point that does not source start_server.sh.
 func overlayPerSceneSplitEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("OVERLAY_RENDER_PER_SCENE"))) {
-	case "enabled", "on", "true", "1":
-		return true
-	default:
+	case "0", "false", "no", "off", "disabled":
 		return false
+	default:
+		return true
 	}
 }
 
@@ -70,10 +76,10 @@ func overlayPerSceneSplitEnabled() bool {
 // remote worker's GPU admission is the throughput authority, and extra
 // concurrent submissions would only deepen queueing (see backpressure.go).
 func overlayPerSceneSplitWorkers() int {
-	if n := parseIntEnv("OVERLAY_RENDER_PER_SCENE_WORKERS", 2); n >= 1 {
+	if n := parseIntEnv("OVERLAY_RENDER_PER_SCENE_WORKERS", 3); n >= 1 {
 		return n
 	}
-	return 2
+	return 3
 }
 
 func parseIntEnv(name string, fallback int) int {
