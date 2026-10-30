@@ -37,7 +37,7 @@ func TestTmpSchemaDump(t *testing.T) {
 			_ = rows.Scan(&n)
 			tables = append(tables, n)
 		}
-		rows.Close()
+		_ = rows.Close()
 		t.Logf("=== scope %s ===", scope)
 		for _, tbl := range tables {
 			cols := func() []string {
@@ -45,7 +45,7 @@ func TestTmpSchemaDump(t *testing.T) {
 				if err != nil {
 					t.Fatalf("pragma %s: %v", tbl, err)
 				}
-				defer cr.Close()
+				defer func() { _ = cr.Close() }()
 				var out []string
 				for cr.Next() {
 					var cid int
@@ -71,6 +71,6 @@ func TestTmpSchemaDump(t *testing.T) {
 				t.Logf("  %s: file_hash=%v asset_location=%v", tbl, hasFH, hasLoc)
 			}
 		}
-		db.Close()
+		_ = db.Close()
 	}
 }
