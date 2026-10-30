@@ -277,7 +277,7 @@ func TestAudioOverlayOverlapJoinsBeforeCheckpointAndResumes(t *testing.T) {
 	}
 }
 
-func TestFinalAudioPublishesBeforeOverlayJoinButFinalizesAfterJoin(t *testing.T) {
+func TestFinalJobAudioSkipsDrivePublishAndFinalizesAfterOverlayJoin(t *testing.T) {
 	e, _, audio, overlay, _ := newAudioOverlapFixture(t)
 	// A run with neither documents nor a final job has no consumer of the
 	// master audio and the overlay-only gate skips the publish by design
@@ -299,10 +299,10 @@ func TestFinalAudioPublishesBeforeOverlayJoinButFinalizesAfterJoin(t *testing.T)
 
 	select {
 	case published := <-publisher.called:
-		require.Equal(t, audioPath, published.Path)
-	case <-time.After(3 * time.Second):
-		t.Fatal("certified final audio was not published while overlay rendering was held")
+		t.Fatalf("final-job audio unexpectedly used the legacy Drive publisher: %+v", published)
+	case <-time.After(100 * time.Millisecond):
 	}
+	require.Equal(t, audioPath, e.result.FinalAudio.Path, "the certified local audio remains available for HTTPS Objectstore publication at handoff")
 	require.Nil(t, e.result.EditingTimeline, "audio_finalize must wait for the overlay join")
 	select {
 	case <-finished:
@@ -313,7 +313,7 @@ func TestFinalAudioPublishesBeforeOverlayJoinButFinalizesAfterJoin(t *testing.T)
 	close(overlay.release)
 	require.True(t, <-finished)
 	require.NotNil(t, e.result.EditingTimeline)
-	require.Equal(t, "drive-audio", e.result.FinalAudio.DriveFileID)
+	require.Empty(t, e.result.FinalAudio.DriveFileID, "final-job audio is published through the HTTPS Objectstore handoff")
 }
 
 func TestAudioOverlayFailureAndCancellationDrainBothBranches(t *testing.T) {

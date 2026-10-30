@@ -324,6 +324,14 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 				postErr = errors.Join(postErr, fmt.Errorf("record render attempt analytics: %w", recordErr))
 			}
 		}()
+		if plan.RequireObjectStoreBeforeReturn {
+			if done.Artifact == nil || len(strings.TrimSpace(done.Artifact.SHA256)) != 64 ||
+				!strings.EqualFold(strings.TrimSpace(done.Artifact.StorageKey), strings.TrimSpace(done.Artifact.SHA256)) ||
+				done.Artifact.SizeBytes <= 0 || strings.TrimSpace(done.Artifact.URL) == "" {
+				return fmt.Errorf("render job %s completed without a certified Objectstore artifact", jobID)
+			}
+			return nil
+		}
 		if plan.RequireDriveBeforeReturn && e.publisher == nil {
 			return fmt.Errorf("render job %s requires Drive delivery but no overlay publisher is configured", jobID)
 		}

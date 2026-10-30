@@ -222,6 +222,7 @@ func restoreOverlayPlanRuntimeAssetLocations(source, target *capabilityoverlay.O
 	// to publish the finished artifact under its owning broker job.
 	target.DriveJobID = source.DriveJobID
 	target.ResultJobID = source.ResultJobID
+	target.RequireObjectStoreBeforeReturn = source.RequireObjectStoreBeforeReturn
 	target.RequireDriveBeforeReturn = source.RequireDriveBeforeReturn
 	if source.Source != nil && target.Source != nil {
 		target.Source.LocalPath = source.Source.LocalPath

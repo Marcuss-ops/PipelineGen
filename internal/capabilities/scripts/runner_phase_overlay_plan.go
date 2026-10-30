@@ -119,13 +119,10 @@ func (e *executionRun) audioCompile() bool {
 	audioPublished := false
 	if compiled {
 		if !publishFinalAudioNeeded(e.req, e.r) {
-			// Overlay-only runs consume no published master audio: the documents
-			// catalog and the final_job payload are the only consumers of the
-			// Drive asset, and neither is active for this run. Skip the Drive
-			// upload entirely (golden measured it at ~15 s of wall) instead of
-			// paying it for an artifact nobody reads.
+			// The final-job handoff publishes certified master-audio bytes to
+			// Objectstore over HTTPS; no run needs a Drive copy.
 			if e.r.log != nil {
-				e.r.log.Info("final audio Drive publish skipped: no consumer requires it",
+				e.r.log.Info("final audio Drive publish skipped: final handoff uses HTTPS Objectstore",
 					zap.String("run_id", e.runID))
 			}
 			audioPublished = true

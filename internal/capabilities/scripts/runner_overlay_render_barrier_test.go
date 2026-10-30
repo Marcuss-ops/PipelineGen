@@ -347,5 +347,6 @@ func TestOverlayLanguageBarrier_FinalJobEndToEndWithPublish(t *testing.T) {
 	require.True(t, <-finished)
 	require.Equal(t, int32(1), overlay.calls.Load(), "final jobs keep today's single fork submission")
 	require.NotNil(t, e.result.OverlayRender)
-	require.Equal(t, "drive-audio", e.result.FinalAudio.DriveFileID)
+	require.Equal(t, audioPath, e.result.FinalAudio.Path)
+	require.Empty(t, e.result.FinalAudio.DriveFileID, "final-job audio is published through the HTTPS Objectstore handoff")
 }

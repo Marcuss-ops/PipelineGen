@@ -35,6 +35,12 @@ func (p *durableOverlayArtifactPublisher) PublishOverlay(ctx context.Context, sp
 	if artifact == nil || strings.TrimSpace(artifact.SHA256) == "" || artifact.SizeBytes <= 0 || strings.TrimSpace(artifact.URL) == "" {
 		return fmt.Errorf("overlay Drive outbox requires a certified locator artifact")
 	}
+	if spec.RequireObjectStoreBeforeReturn {
+		if len(strings.TrimSpace(artifact.SHA256)) != 64 || !strings.EqualFold(strings.TrimSpace(artifact.StorageKey), strings.TrimSpace(artifact.SHA256)) {
+			return fmt.Errorf("final-job overlay is not a certified Objectstore artifact")
+		}
+		return nil
+	}
 	// Final-job scene composites are immediately referenced by the PREPARE
 	// payload, so their Drive identity must be available before this method
 	// returns. Publish these few scene assets synchronously, then retain the

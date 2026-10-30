@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "final-worker51-prepared-fragments-20261030-r8",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "final-worker51-prepared-fragments-20261030-r8",
+      "project": "final-worker51-smoke-20261030-r8",
+      "title": "Smoke final Worker 51 — stock, voce e frase r8",
+      "language": "it",
+      "tone": "documentario sportivo, intenso e cinematografico",
+      "style": "Scrivi una narrazione breve e coinvolgente in italiano. Usa la clip di Matt Damon soltanto come cold open visivo: non attribuirgli fatti su Mike Tyson e non inventare dialoghi. Dopo l'apertura, passa chiaramente a Mike Tyson. Mantieni il testo ancorato ai brief dei segmenti e allo stock associato; niente statistiche non fornite, niente citazioni inventate.",
+      "model": "gemma4:e4b",
+      "media_mode": "stock_only",
+      "source": {
+        "type": "text",
+        "topic": "Una breve verifica del flusso video finale remoto",
+        "source_text": "Verifica del montaggio: una scena stock accompagna una breve narrazione. La frase in sovrimpressione deve apparire nel suo intervallo di timeline, senza spostare la voce fuori sincrono.",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 90,
+        "min_words": 70,
+        "segment_words": 90,
+        "skip_quality_gate": false,
+        "force_refresh": true,
+        "segments": [
+          {
+            "id": "stock-smoke",
+            "kind": "stock",
+            "topic": "Una scena e una frase sul montaggio",
+            "source_text": "Una scena stock accompagna questa breve narrazione. La frase deve apparire nel punto corretto della timeline, mentre la voce resta sincronizzata per tutta la durata.",
+            "target_words": 80
+          }
+        ]
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "mix_policy": "VOICEOVER_ONLY",
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_timeline": true,
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled",
+        "stock_enabled": "enabled",
+        "voiceover_enabled": "enabled",
+        "voiceover_group": "Velox Max",
+        "voiceover_folder_id": "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A",
+        "stock_bindings": [
+          {
+            "index": 0,
+            "scene_id": "scene-0",
+            "segment_id": "stock-smoke",
+            "folder_id": "12pbQfyWAh32dgDWWWmijKdZO1pMkTyLu",
+            "name": "final-job smoke stock",
+            "source": "drive",
+            "score": 1,
+            "fallback": false,
+            "start_ms": 0,
+            "folder_link": "https://drive.google.com/drive/folders/12pbQfyWAh32dgDWWWmijKdZO1pMkTyLu"
+          }
+        ],
+        "render": {
+          "enabled": true,
+          "render_concurrency": 1,
+          "foreground_scale_percent": 100,
+          "subtitles": {
+            "enabled": false
+          },
+          "background": {
+            "mode": "none"
+          }
+        }
+      },
+      "max_phrase_overlays": 1,
+      "overlay_background": {
+        "kind": "color",
+        "color": [
+          0,
+          0,
+          0,
+          1
+        ]
+      }
+    }
+  ],
+  "final_job": true
+}
