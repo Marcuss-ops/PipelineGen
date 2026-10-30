@@ -1279,3 +1279,42 @@ reason, exit condition osservabile, equivalence gate, removal scope e stato;
 dopo la parità e il cutover rimuovere il percorso sostituito. Non eliminare
 fallback necessari ai piani non supportati e non indebolire i gate per
 raggiungere un numero. I claim storici §3–§5 sono ipotesi, non criteri di PASS.
+
+## 11. Riduzione overhead — 30-10-2026
+
+### 11.1 Attribuzione reale della run closeout r3
+
+`results/closeout-20261030-r3/summary.json` (70 item, finestra 54,321 s):
+17 batch per-scena, 85,8 s di `render_ms` cumulato su 3 lane (limite
+inferiore 28,6 s), attese di completamento fino a 8,8 s. `mean_frame_ms`
+6,6–24,4, frame NVENC 26–268 per batch, upload GPU 77–227 MB per batch.
+Il render è il critical path. `cache_outcome=not_applicable` su 16 batch su
+17 è corretto: la cache è interrogata una volta per composizione a livello
+manifest, non per ogni enqueue interno.
+
+### 11.2 Epoch cache: sorgente, non orologio
+
+`OverlayRenderCacheEpoch` usava `GitCommit@BuildTime`; `make/build.mk` stampa
+`BuildTime` con `date -u` a ogni build, quindi **ogni ricompilazione a
+sorgente identica invalidava tutte le righe**. Ora l'epoch è il commit pieno
+per un albero pulito e il digest dell'eseguibile per un albero dirty (byte
+diversi, stesso commit). Override operatore invariato
+(`PIPELINEGEN_OVERLAY_CACHE_EPOCH`). Effetto: i rerun dello stesso commit
+riusano i clip invece di ri-renderizzarli.
+
+### 11.3 Split per-scena default-on
+
+`OVERLAY_RENDER_PER_SCENE` era opt-in; ogni entry point che non sorgente
+`start_server.sh` tornava silenziosamente al percorso a timeline unica
+(×6,5 più lento nella serie misurata). Ora il default è ON con kill switch
+esplicito (`0/false/no/off/disabled`); `OVERLAY_RENDER_PER_SCENE_WORKERS`
+default 3, allineato alle lane GPU certificate. I final job restano sul
+percorso singolo.
+
+### 11.4 Limiti
+
+Nessuna delle due modifiche riduce il costo per frame. Il divario verso
+100 item/min richiede la leva motore (riuso base/background, culling per
+frame) o più capacità GPU: 85,8 s di render per 70 item non scendono sotto
+~29 s con 3 lane nemmeno a overhead zero. Nessuna nuova misura golden è stata
+eseguita per questa sezione.

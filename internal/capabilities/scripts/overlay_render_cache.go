@@ -122,23 +122,38 @@ func OverlayRenderCacheEnabled() bool {
 }
 
 // OverlayRenderCacheEpoch returns the deployment epoch mixed into every key.
-// Explicit override wins. Otherwise the pipeline build identity is used: a new
-// binary cannot serve artifacts certified by an older one. Worker-side Chronon
-// upgrades invisible to this binary are the operator's lever (the env var).
+// Explicit override wins. Otherwise the epoch is the SOURCE identity, never the
+// clock: rebuilds of identical source produce identical pixels, so they must
+// share cache rows. make/build.mk stamps BuildTime with `date -u` at every
+// build; mixing that wall clock in invalidated the whole cache on every
+// recompile and limited reuse to retries of one binary — exactly the reruns
+// the cache exists for were re-rendered. A dirty tree is different bytes with
+// the same commit, so it keys on the executable digest instead. Worker-side
+// Chronon upgrades invisible to this binary remain the operator's lever (the
+// env var).
 func OverlayRenderCacheEpoch() string {
 	if epoch := strings.TrimSpace(os.Getenv(OverlayRenderCacheEpochEnv)); epoch != "" {
 		return epoch
 	}
-	identity := buildinfo.Current()
-	if identity.GitCommit != "" && identity.BuildTime != "" {
-		return identity.GitCommit + "@" + identity.BuildTime
+	return overlayRenderCacheEpochFromIdentity(buildinfo.Current())
+}
+
+// overlayRenderCacheEpochFromIdentity is the pure half of
+// OverlayRenderCacheEpoch so the clock-independence rule is testable without a
+// real binary or the current checkout's dirty state.
+func overlayRenderCacheEpochFromIdentity(identity buildinfo.Identity) string {
+	commit := strings.TrimSpace(identity.GitCommitFull)
+	if commit != "" && !identity.GitDirty {
+		return commit
 	}
-	if identity.BinarySHA256 != "" {
-		sha := identity.BinarySHA256
+	if sha := strings.TrimSpace(identity.BinarySHA256); sha != "" {
 		if len(sha) > 16 {
 			sha = sha[:16]
 		}
 		return "binary:" + sha
+	}
+	if commit != "" {
+		return commit + "+dirty"
 	}
 	return "v1"
 }
