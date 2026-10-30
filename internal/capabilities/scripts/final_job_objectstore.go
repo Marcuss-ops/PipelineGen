@@ -68,7 +68,7 @@ func ensureFinalJobObjectStored(ctx context.Context, sha string, expectedSize in
 	if err != nil {
 		return fmt.Errorf("check Creator-to-Objectstore path: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Objectstore has no object %s (HEAD returned %d)", sha, resp.StatusCode)
 	}
@@ -98,7 +98,7 @@ func publishFinalJobLocalObject(ctx context.Context, path, sha string, sizeBytes
 	if err != nil {
 		return fmt.Errorf("open Creator-local asset for Objectstore upload: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, storeURL+"/objects/"+strings.ToLower(sha), file)
 	if err != nil {
 		return fmt.Errorf("build Objectstore upload: %w", err)
@@ -112,7 +112,7 @@ func publishFinalJobLocalObject(ctx context.Context, path, sha string, sizeBytes
 	if err != nil {
 		return fmt.Errorf("upload Creator-local asset to Objectstore: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Objectstore rejected Creator-local asset upload with status %d", resp.StatusCode)
 	}

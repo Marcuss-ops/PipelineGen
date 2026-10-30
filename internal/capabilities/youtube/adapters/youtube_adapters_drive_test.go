@@ -298,7 +298,7 @@ func TestUploadFileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy(t *te
 	// via hash comparison is the canonical replacement for the
 	// legacy Uploader.UploadFileIfChanged filename-based lookup).
 	if pub.lastPublishReq.ConflictPolicy != delivery.ConflictSkip {
-		t.Errorf("ConflictPolicy = %q, want %q (canonical content-dedupe)",
+		t.Errorf("ConflictPolicy = %v, want %v (canonical content-dedupe)",
 			pub.lastPublishReq.ConflictPolicy, delivery.ConflictSkip)
 	}
 }

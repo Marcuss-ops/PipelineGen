@@ -43,7 +43,7 @@ func TestStateMatrixMatchesLiveSchema(t *testing.T) {
 		if err := migrateAll(db, zap.NewNop(), target.dir, target.db); err != nil {
 			t.Fatalf("%s: migrate: %v", target.plane, err)
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		tables, err := db.Query(`SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
 		if err != nil {
 			t.Fatal(err)
@@ -66,7 +66,7 @@ func TestStateMatrixMatchesLiveSchema(t *testing.T) {
 				planeCols[def.Table+"."+def.Name] = def
 			}
 		}
-		tables.Close()
+		_ = tables.Close()
 		live[target.plane] = planeCols
 	}
 
@@ -152,7 +152,7 @@ func loadStateMatrix(t *testing.T) []statematrix.Row {
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	rows, err := statematrix.Parse(f)
 	if err != nil {
 		t.Fatalf("parse %s: %v", path, err)
