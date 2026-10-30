@@ -1318,3 +1318,29 @@ Nessuna delle due modifiche riduce il costo per frame. Il divario verso
 frame) o più capacità GPU: 85,8 s di render per 70 item non scendono sotto
 ~29 s con 3 lane nemmeno a overhead zero. Nessuna nuova misura golden è stata
 eseguita per questa sezione.
+
+### 11.5 Verifica live (30-10-2026)
+
+`make build` completo si ferma su `rust-fetch` (release ICU 72 contro host
+ICU 70: problema d'ambiente preesistente, non della modifica). Il server è
+stato costruito con `make -o rust-fetch build-server` dal commit
+`d94109fab`, installato in `bin/pipelinegen`, e `pipelinegen.service`
+riavviato. `/health` riporta `git_commit_full=d94109fab` e
+`render_cache.epoch=d94109fab`; prima del fix l'epoch era
+`7851de597e23@2026-10-29T14:27:05Z`. Il `BuildTime` non entra più
+nell'epoch: una ricompilazione a sorgente identica non invalida la cache.
+
+Due run golden consecutive sullo stesso payload:
+`closeout-20261030-verify1` 67 item in 75,100 s (53,53/min) e
+`closeout-20261030-verify2` 71 item in 78,295 s (54,41/min), entrambe
+`SUCCEEDED`. Sono smoke test del binario nuovo, non una nuova mediana: il
+mix di item cambia tra le run.
+
+La seconda run riporta ancora `miss_stored`: il riuso cross-run è bloccato a
+monte, non dall'epoch. `OverlayManifest.Digest()` include `PlanID` e
+`VideoID`, che il driver imposta al run id (`run_...`), e il contesto del
+piano include `sampling_identity` per gli item con `entity_style_id`
+(`below`): entrambi cambiano a ogni run. Per rendere la cache utile tra run
+distinte serve una decisione di prodotto sull'identità creativa stabile
+(plan/video id e sampling) con parità visiva certificata; non è stata presa
+in questa sessione.
