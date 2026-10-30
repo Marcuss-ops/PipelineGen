@@ -202,11 +202,19 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 				continue
 			}
 		}
-		entries = append(entries, map[string]any{
+		if entry.Placement != nil {
+			return nil, fmt.Errorf("final_job overlay %q requires unsupported spatial placement", entry.ItemID)
+		}
+		wireEntry := map[string]any{
 			"item_id": entry.ItemID, "track": entry.Track,
 			"in_us": entry.InUS, "out_us": entry.OutUS,
 			"content_hash": entry.ContentHash,
-		})
+		}
+		if entry.ArtifactInUS != nil && entry.ArtifactOutUS != nil {
+			wireEntry["artifact_in_us"] = *entry.ArtifactInUS
+			wireEntry["artifact_out_us"] = *entry.ArtifactOutUS
+		}
+		entries = append(entries, wireEntry)
 	}
 	asset := map[string]any{
 		"asset_id": assetRef["asset_id"], "sha256": sha,

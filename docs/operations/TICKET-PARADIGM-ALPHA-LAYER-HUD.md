@@ -2,7 +2,7 @@
 
 - **Data:** 2026-10-28
 - **Moduli interessati:** `refactored` (PipelineGen, contratto manifest), `RenderingGen` (producer manifest/lowering), `Chronon3d` (unità di render, compositing), `BrainRust` (`transform_assemble`, consumer wire)
-- **Stato:** `MIXED — A1 LAND (wire placement + validazione fail-closed, accettazione locale); A0 CHIUSO (misura negativa: 1,44× vs 8×, variante A2 clip-statiche non procede); A2/A3/A4 SPEC SOLO nella variante ink-based (criterio di riapertura §A0); B0–B3 SPEC (B0 solo misura)`
+- **Stato:** `MIXED — A1 LAND (wire placement + validazione fail-closed, accettazione locale); A0 CHIUSO (misura negativa: 1,44× vs 8×, variante A2 clip-statiche non procede); A2/A3/A4 SPEC SOLO nella variante ink-based; B0 PARTIAL (due fixture, corpus non misurato); B1–B3 SPEC`
 - **Siblings:** [`TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md`](TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md) (P0/P2/P3, packed timeline), [`../../../Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md`](../../../Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md) (B1/B2/B3 engine), [`../../../Chronon3d/docs/tickets/TICKET-PERF-REVOLUTIONARY-IDEAS.md`](../../../Chronon3d/docs/tickets/TICKET-PERF-REVOLUTIONARY-IDEAS.md) (C-1…C-13/I-1…I-24)
 
 > **Nessun claim di 100×** da questo file. I fattori citati sono stime di
@@ -245,8 +245,7 @@ restano.
 - [x] **A0:** census bbox eseguito (2026-10-28): **misura negativa**,
   mediana 1,44× vs soglia 8× → A2 (clip statiche per item) chiuso. Vedi §A0
   per metodo, tabella completa e criterio di riapertura ink-based.
-- [ ] **B0:** breakdown `loop_other` per componente (richiede run di render →
-  gate live).
+- [ ] **B0 PARTIAL:** breakdown sulle due fixture in `ops/benchmarks/b0_loop_breakdown_20261028.json`; manca attribuzione affidabile del residuo e confronto sul corpus golden. Non attribuire automaticamente `loop_other` a interpretazione o a una singola causa.
 - [ ] **A2/A3/A4/B1/B2/B3:** SPEC; richiedono implementazione engine/worker,
   ADR approvato e gate golden live. **NON RAGGIUNGIBILI** in una sessione
   analitica: nessun esito è dichiarato.
@@ -275,3 +274,51 @@ restano.
 4. B1 (ADR) → B2 → B3.
 5. Rerun golden gate-100 dopo ogni fase (regola esistente), mai attribuzione
    di rate da proiezioni.
+
+## 10. Piano eseguibile e correzioni di lettura (29-10-2026)
+
+Coordinamento e baseline: [`TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE`](TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md) §10.
+Il presente piano è SPEC, non autorizza modifiche a Chronon durante il freeze
+same-SHA. L'owner Chronon decide i cambi al motore; PipelineGen/RenderingGen
+non creano evaluator, cache o scheduler concorrenti.
+
+1. **A0-bis, prima di A2:** con asset reali materializzati misurare per frame
+   bounds effettivi e diff dei pixel per `text_phrase` e altre classi, incluso
+   bleed di glow/stroke/blur, subpixel, overshoot e travel. Separare bbox
+   statica di tutta la finestra da ROI variabile per frame; salvare distribuzione
+   per classe e distinguere video di sfondo dinamico da layer statici. Riaprire
+   A2 solo se la mediana ink della classe soddisfa il gate ≥8× già previsto e
+   il costo di packing, alpha, compositing e output è misurato; altrimenti
+   chiudere questa variante senza implementarla.
+2. **A2/A3, solo se ammessi:** specificare premultiplied/straight alpha, spazio
+   colore, gamma, chroma subsampling, z-order, coordinate/clipping e padding;
+   decidere il trasporto alpha con una prova sul dispositivo reale, non dare
+   per scontate le capacità di NVENC. Il `placement` è solo wire: il producer
+   non lo attiva finché il consumer finale non implementa la semantica e
+   verifica hash, dimensioni e bounds. Il composite sullo sfondo modificato
+   richiede frame reali; lo stream-copy non può bruciare overlay sui pixel.
+3. **A4, solo dopo parità:** estendere l'authority cache appropriata con chiave
+   completa di contenuto, renderer, font/shaping, colore e output; l'identità
+   di placement può essere distinta solo quando il contenuto è veramente
+   riusabile. Testare invalidazione, accesso concorrente, eviction e riuso
+   cold/warm. Una modifica del timing TTS può invalidare scene successive.
+4. **B0, interpretazione delle prove:** il report B0 2026-10-28 misura 456
+   frame 1080p30: statico 1 frame eseguito/455 riusati e 12,36 ms nel bucket
+   denominato interpretation; motion 90 eseguiti/366 riusati e 352,80 ms nel
+   bucket (36,7% del loop). Startup+prepare incidono rispettivamente per 56,8%
+   e 55,7% del wall delle due fixture. Il report etichetta il residuo come
+   submission/queue NVENC: è un residuo derivato, non una traccia sufficiente
+   a dimostrarne ogni componente. Ripetere attribuzione e golden rappresentativo
+   prima di stimare il beneficio HUD; il criterio B0 storico è soddisfatto sul
+   motion fixture secondo quel report, non è una certificazione del corpus.
+5. **B1/B2:** ADR con capability per una classe text rigido/fade, input e
+   invalidazione completa del programma e dello shaping, ownership buffer e
+   lifetimes; riusare compiler, executor, atlas e cache esistenti. Per ogni
+   feature non rappresentabile scegliere il percorso canonico esplicito, non
+   cambiare semantica silenziosamente. Il confronto include frame statici,
+   animati, overlap, font e lingua, z-order, cold/warm e full output, con la
+   parità dichiarata nel ticket e misura wall/setup/render/encode separata.
+6. **Demolition debt:** in ADR indicare owner, reason, exit condition,
+   equivalence gate, removal scope e status del ponte per la classe migrata;
+   mantenere il percorso generale per le classi non coperte. Nessun claim di
+   costo CPU o di speedup finché la prova non è stata eseguita.

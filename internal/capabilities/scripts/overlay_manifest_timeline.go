@@ -267,7 +267,7 @@ func assembleManifestTimelineReference(jobID, status string, artifact *RenderArt
 		Batches: []OverlayBatchRenderReference{{
 			BatchID: batchID, SceneID: work.sceneID, ItemIDs: itemIDs,
 			StartUS: work.startUS, EndUS: work.endUS,
-			JobID: jobID, Status: status, Artifact: artifact,
+			JobID: jobID, Status: status, Artifact: artifact, Manifest: &manifest,
 		}},
 		Manifest: &manifest,
 	}

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"go.uber.org/zap"
@@ -30,6 +31,32 @@ func splitTestPlan() capoverlay.OverlayPlan {
 			DynamicRendererOnly: true},
 	})
 	return plan
+}
+
+// TestMicroBatchesNeverSplitOverlappingItems pins the micro-batch contract:
+// items whose literal windows overlap in one scene compose together, while
+// disjoint windows become separate batches in plan order.
+func TestMicroBatchesNeverSplitOverlappingItems(t *testing.T) {
+	plan := manifestTestPlan()
+	plan.Items = []capoverlay.OverlayItem{
+		{ID: "a", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "uno due tre", StartUS: 0, DurationUS: 4_000_000},
+		{ID: "b", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "quattro cinque sei", StartUS: 3_000_000, DurationUS: 4_000_000},
+		{ID: "c", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "sette otto nove", StartUS: 20_000_000, DurationUS: 2_000_000},
+	}
+	manifest, _ := partitionOverlayRenderWork(plan)
+	groups, err := groupManifestCandidatesIntoMicroBatches(plan, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("micro-batches = %d, want 2 (a+b overlap, c disjoint)", len(groups))
+	}
+	if len(groups[0].candidates) != 2 || groups[0].candidates[0].source.ID != "a" || groups[0].candidates[1].source.ID != "b" {
+		t.Fatalf("overlapping a+b must share one micro-batch in plan order")
+	}
+	if len(groups[1].candidates) != 1 || groups[1].candidates[0].source.ID != "c" {
+		t.Fatalf("disjoint c must form its own micro-batch")
+	}
 }
 
 func TestPlanSpansMultipleScenesOnlyCountsManifestWork(t *testing.T) {
@@ -193,6 +220,148 @@ func TestRenderOverlayPlanAtBoundaryFlagOffKeepsSinglePath(t *testing.T) {
 	}
 }
 
+func TestRunSplitOverlayWorkOverlapsDedicatedAndScenes(t *testing.T) {
+	plan := splitTestPlan()
+	startedScenes := make(chan struct{})
+	startedDedicated := make(chan struct{})
+	release := make(chan struct{})
+	artifact := &RenderArtifact{ID: "scene-artifact", SHA256: strings.Repeat("a", 64)}
+	done := make(chan error, 1)
+	go func() {
+		ref, err := runSplitOverlayWork(context.Background(), plan,
+			func(ctx context.Context) ([]RenderReference, error) {
+				close(startedScenes)
+				select {
+				case <-release:
+					return []RenderReference{{JobID: "scene", Status: "completed", Artifact: artifact,
+						Items:   []OverlayItemRenderReference{{ItemID: "item-01"}},
+						Batches: []OverlayBatchRenderReference{{BatchID: "scene", Artifact: artifact}}}}, nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			},
+			func(ctx context.Context) (*RenderReference, error) {
+				close(startedDedicated)
+				select {
+				case <-release:
+					return &RenderReference{Items: []OverlayItemRenderReference{{ItemID: "map-01"}}}, nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			})
+		if err == nil && (len(ref.Items) != 2 || ref.Items[0].ItemID != "item-01" || ref.Items[1].ItemID != "map-01") {
+			err = errors.New("references were not merged in plan order")
+		}
+		done <- err
+	}()
+	for _, started := range []<-chan struct{}{startedScenes, startedDedicated} {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			close(release)
+			t.Fatal("both render branches must start before either finishes")
+		}
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunSplitOverlayWorkCancelsOtherBranchOnFailure(t *testing.T) {
+	for _, failScene := range []bool{true, false} {
+		t.Run(map[bool]string{true: "scene", false: "dedicated"}[failScene], func(t *testing.T) {
+			failure := errors.New("render branch failed")
+			otherStarted := make(chan struct{})
+			otherCancelled := make(chan struct{})
+			waitForCancellation := func(ctx context.Context) error {
+				close(otherStarted)
+				<-ctx.Done()
+				close(otherCancelled)
+				return ctx.Err()
+			}
+			fail := func(ctx context.Context) error {
+				select {
+				case <-otherStarted:
+					return failure
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_, err := runSplitOverlayWork(ctx, splitTestPlan(),
+				func(ctx context.Context) ([]RenderReference, error) {
+					if failScene {
+						return nil, fail(ctx)
+					}
+					return nil, waitForCancellation(ctx)
+				},
+				func(ctx context.Context) (*RenderReference, error) {
+					if failScene {
+						return nil, waitForCancellation(ctx)
+					}
+					return nil, fail(ctx)
+				})
+			if !errors.Is(err, failure) {
+				t.Fatalf("expected originating failure, got %v", err)
+			}
+			select {
+			case <-otherCancelled:
+			default:
+				t.Fatal("other branch did not observe cancellation")
+			}
+		})
+	}
+}
+
+func TestRunSplitOverlayWorkRejectsCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := runSplitOverlayWork(ctx, splitTestPlan(),
+		func(context.Context) ([]RenderReference, error) { return nil, nil },
+		func(context.Context) (*RenderReference, error) { return nil, nil })
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled split must fail, got %v", err)
+	}
+}
+
+// BenchmarkSplitOverlayOverlap isolates orchestration with simulated service
+// delays. It is not a GPU or production-throughput benchmark.
+func BenchmarkSplitOverlayOverlap(b *testing.B) {
+	plan := splitTestPlan()
+	artifact := &RenderArtifact{ID: "fixture"}
+	scenes := func(context.Context) ([]RenderReference, error) {
+		time.Sleep(10 * time.Millisecond)
+		return []RenderReference{{Artifact: artifact, Batches: []OverlayBatchRenderReference{{Artifact: artifact}}}}, nil
+	}
+	dedicated := func(context.Context) (*RenderReference, error) {
+		time.Sleep(10 * time.Millisecond)
+		return &RenderReference{}, nil
+	}
+	for _, mode := range []string{"before_serial", "after_overlap"} {
+		b.Run(mode, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if mode == "before_serial" {
+					refs, err := scenes(context.Background())
+					if err != nil {
+						b.Fatal(err)
+					}
+					ded, err := dedicated(context.Background())
+					if err != nil {
+						b.Fatal(err)
+					}
+					if _, err = assembleSplitManifestReference(plan, refs, ded); err != nil {
+						b.Fatal(err)
+					}
+				} else if _, err := runSplitOverlayWork(context.Background(), plan, scenes, dedicated); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 // TestAssembleSplitManifestReference pins the assembled language reference:
 // N batches in plan order, per-item rows carrying the artifact of the scene
 // that owns their frames, dedicated rows merged in editorial order.
@@ -200,8 +369,9 @@ func TestAssembleSplitManifestReference(t *testing.T) {
 	plan := splitTestPlan()
 	scene01Artifact := &RenderArtifact{ID: "a-scene-01", SHA256: strings.Repeat("a", 64)}
 	scene02Artifact := &RenderArtifact{ID: "a-scene-02", SHA256: strings.Repeat("b", 64)}
+	sceneManifest := &capoverlay.OverlayManifest{PlanID: "plan-01"}
 	scene01 := RenderReference{
-		JobID: "j1", Status: "completed", Artifact: scene01Artifact,
+		JobID: "j1", Status: "completed", Artifact: scene01Artifact, Manifest: sceneManifest,
 		Items: []OverlayItemRenderReference{
 			{ItemID: "item-01", JobID: "j1", Status: "completed", BatchID: "d1"},
 			{ItemID: "item-02", JobID: "j1", Status: "completed", BatchID: "d1"},
@@ -228,7 +398,10 @@ func TestAssembleSplitManifestReference(t *testing.T) {
 		t.Fatal("top-level Artifact must be the first scene's identity (legacy consumers)")
 	}
 	if ref.Manifest != nil {
-		t.Fatal("split reference must not carry a manifest: the single-timeline wire stays final-job-only")
+		t.Fatal("split reference must not carry a top-level single-timeline manifest")
+	}
+	if ref.Batches[0].Manifest != sceneManifest {
+		t.Fatal("split batch must retain its own certified manifest and packed offsets")
 	}
 	if len(ref.Items) != 4 {
 		t.Fatalf("rows = %d, want 3 manifest rows + 1 dedicated row", len(ref.Items))

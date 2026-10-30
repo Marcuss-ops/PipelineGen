@@ -1,7 +1,8 @@
 # TICKET — Overlay render per-scena (entiame già in overlap: design correzione)
 
-Data: 2026-10-29 · Stato: **DESIGN CORRETTO** (soprintende la versione appena
-scritta che parlava di pre-warm cache-hit: trovato contrattualmente impossibile)
+Data: 2026-10-29 · Stato: **PARTIAL** — split per scena implementato per job
+non-final; wire/consumer multi-artefatto per final job e certificazione completa
+ancora aperti (§11). Il pre-warm per-item non dà cache-hit sulla composizione.
 Priorità: alta — è l'ultimo collo seriale dopo il grosso TTS a frase lo stesso
 giorno (TICKET-TTS-CRITICAL-PATH-SENTENCE-CHUNK-2026-10-29).
 
@@ -197,4 +198,63 @@ con 35% wall reale.
 - [ ] Inserire la scheda nel version control (file attualmente untracked).
 
 Collegamento al gate ≥100 overlay/min: `TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md`
-(#57) — questo item è il collo seriale finale di quel gate.
+(#57). La serie successiva §9.8 di quel ticket è la baseline comparabile più
+recente: mediana 62,32 item/min senza mappe; questo split da solo non chiude
+il gate né prova che ogni collo seriale sia risolto.
+
+## 11. Contratto multi-artefatto e partizione sicura — passi residui
+
+**Stato: SPEC / NOT RUN.** Coerenza con il ticket principale §10.3–10.4.
+L'implementazione corrente assegna un item che attraversa scene alla scena
+iniziale e fa fallback al piano unico su errore di split; entrambi i fatti
+vanno considerati esplicitamente nell'analisi e nei test.
+
+1. Inventariare i casi non indipendenti: overlap fra scene e track,
+   transizioni, layer che attraversano boundary, video background sincronizzato,
+   filtri con storia temporale, caption, mappe e chain. Stabilire quali
+   finestre debbano rimanere nello stesso batch; non dividere solo usando
+   `SceneID` quando cambia i pixel.
+   **PARZIALE (2026-10-29):** il caso overlap è ora coperto.
+   `groupManifestCandidatesIntoMicroBatches` (`render_queue_split.go`) parte dai
+   gruppi di scena e li raffina in componenti connesse di finestre letterali
+   sovrapposte: item sovrapposti restano sempre nella stessa composizione,
+   componenti disgiunte diventano batch separati in ordine di piano. Test:
+   `TestMicroBatchesNeverSplitOverlappingItems`. Restano aperti i casi non
+   temporali (video background sincronizzato, filtri con storia temporale,
+   transizioni) che richiedono verifica pixel-level.
+2. Modellare una revisione versionata del manifest con lista di artefatti
+   verificati e riferimento entry→artefatto, `in_us/out_us` di piano,
+   `artifact_in_us/out_us` packed, griglia fps e versioni; ogni entry deve
+   avere un solo owner. Preservare retry e chiavi di composizione; specificare
+   cosa accade per una sovrapposizione fra artefatti diversi.
+3. In `final_job_overlay_manifest.go` e nel producer usare solo fatti
+   certificati; mantenere final-job sul percorso corrente fino al cutover.
+   In BrainRust, `transform_manifest.rs` già implementa replace con un singolo
+   artefatto e ricodifica; estenderlo solo dopo aver definito ordine e
+   rappresentazione degli overlap. Il closeout P5 è locale, non prova il
+   deploy del consumer remoto. Un semplice replace full-frame di batch diversi
+   non preserva necessariamente z-order o sfondo.
+4. Testare input Go→wire→Rust: 1/N batch, scene-crossing, finestre sovrapposte,
+   griglie razionali, limiti, clip phrase-only, mappe/chain, missing/tampered
+   asset, ordine deterministico, retry/cancellazione e crash-resume. Confrontare
+   output decodificato, audio e durata contro il percorso singolo; usare
+   tolleranze dichiarate quando l'encoder non garantisce bit identity.
+5. Misurare gli stessi workload e lane prima/dopo, inclusi numero batch,
+   servizio, attese, fallback e wall. Promuovere il final-job solo dopo
+   consumer effettivo aggiornato e golden completo; deploy/restart sono
+   operazioni separate da autorizzare. Se la partizione non è equivalente,
+   tenerla sul percorso unico e riportare il blocco, non aggirare la verifica.
+
+## 12. Prima modifica locale: lavoro dedicato sovrapposto allo split
+
+Nel worktree, `EnqueueChrononPlanSplit` avvia le composizioni per scena e i
+candidati sul percorso dedicato (mappe/chain) in parallelo, anziché attendere
+la fine di tutte le scene prima di sottomettere i candidati dedicati. Rimangono
+invariati admission plan-level, limiti dei pool e authority GPU di RenderingGen,
+merge in ordine piano e fallback esplicito al percorso unico sul boundary.
+Se un ramo fallisce l'altro riceve cancellazione e non viene restituito un
+risultato parziale. La modifica interessa solo piani non-final con split attivo
+che abbiano anche item dedicati; non accelera automaticamente piani senza di
+essi. Test mirati con race detector verificano sovrapposizione, cancellazione
+e ordine; **nessun benchmark live before/after, nessun throughput dichiarato**.
+Il ticket principale §10 resta aperto.

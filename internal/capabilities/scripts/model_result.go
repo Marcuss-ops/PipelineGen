@@ -498,6 +498,9 @@ type OverlayBatchRenderReference struct {
 	JobID    string          `json:"job_id"`
 	Status   string          `json:"status"`
 	Artifact *RenderArtifact `json:"artifact,omitempty"`
+	// Manifest preserves the certified per-batch timing and packed mapping.
+	// A split reference cannot safely reconstruct these facts from item rows.
+	Manifest *capabilityoverlay.OverlayManifest `json:"manifest,omitempty"`
 }
 
 // overlayArtifactForItem resolves the certified clip for a semantic item from

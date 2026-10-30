@@ -130,6 +130,60 @@ func groupManifestCandidatesByScene(candidates []overlayItemCandidate) []sceneRe
 	return groups
 }
 
+// groupManifestCandidatesIntoMicroBatches refines the scene groups into
+// micro-batches: within each scene, items whose literal windows overlap in
+// time form one connected component and always compose together. Components
+// never overlap each other in time, so no item's frames can be split across
+// two independently rendered compositions, and each item keeps its plan order
+// (candidate.index) inside its component.
+func groupManifestCandidatesIntoMicroBatches(plan capoverlay.OverlayPlan, candidates []overlayItemCandidate) ([]sceneRenderGroup, error) {
+	var out []sceneRenderGroup
+	for _, scene := range groupManifestCandidatesByScene(candidates) {
+		type windowed struct {
+			candidate overlayItemCandidate
+			in, out   int64
+		}
+		windows := make([]windowed, 0, len(scene.candidates))
+		for _, candidate := range scene.candidates {
+			inUS, outUS, err := candidateLiteralWindow(plan, candidate)
+			if err != nil {
+				return nil, err
+			}
+			windows = append(windows, windowed{candidate: candidate, in: inUS, out: outUS})
+		}
+		sort.SliceStable(windows, func(i, j int) bool {
+			if windows[i].in != windows[j].in {
+				return windows[i].in < windows[j].in
+			}
+			return windows[i].candidate.index < windows[j].candidate.index
+		})
+		current := -1
+		var currentOut int64
+		for _, w := range windows {
+			if current < 0 || w.in >= currentOut {
+				out = append(out, sceneRenderGroup{sceneID: scene.sceneID, groupFirstIndex: w.candidate.index})
+				current = len(out) - 1
+				currentOut = w.out
+			} else if w.out > currentOut {
+				currentOut = w.out
+			}
+			out[current].candidates = append(out[current].candidates, w.candidate)
+			if w.candidate.index < out[current].groupFirstIndex {
+				out[current].groupFirstIndex = w.candidate.index
+			}
+		}
+	}
+	for i := range out {
+		sort.SliceStable(out[i].candidates, func(a, b int) bool {
+			return out[i].candidates[a].index < out[i].candidates[b].index
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].groupFirstIndex < out[j].groupFirstIndex
+	})
+	return out, nil
+}
+
 // planSpansMultipleScenes reports whether the plan's MANIFEST work (ordinary
 // items; maps and chains keep their dedicated per-item paths) covers more
 // than one scene. Plans whose manifest work is single-scene never split: the
@@ -168,23 +222,66 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlanSplit(ctx context.Context, plan 
 	if err := admitManifestCaptionWindows(manifestCandidates, plan); err != nil {
 		return RenderReference{}, err
 	}
-	groups := groupManifestCandidatesByScene(manifestCandidates)
-	results, splitErr := concurrent.Map(ctx, groups, overlayPerSceneSplitWorkers(),
-		func(splitCtx context.Context, _ int, group sceneRenderGroup) (RenderReference, error) {
-			return e.enqueueOverlayManifestTimeline(splitCtx, plan, group.candidates, nil)
+	groups, err := groupManifestCandidatesIntoMicroBatches(plan, manifestCandidates)
+	if err != nil {
+		return RenderReference{}, err
+	}
+	return runSplitOverlayWork(ctx, plan,
+		func(splitCtx context.Context) ([]RenderReference, error) {
+			results, err := concurrent.Map(splitCtx, groups, overlayPerSceneSplitWorkers(),
+				func(groupCtx context.Context, _ int, group sceneRenderGroup) (RenderReference, error) {
+					return e.enqueueOverlayManifestTimeline(groupCtx, plan, group.candidates, nil)
+				})
+			if err != nil {
+				return nil, fmt.Errorf("overlay per-scene split: %w", err)
+			}
+			if err := splitCtx.Err(); err != nil {
+				return nil, err
+			}
+			return results, nil
+		},
+		func(dedicatedCtx context.Context) (*RenderReference, error) {
+			if len(dedicatedCandidates) == 0 {
+				return nil, nil
+			}
+			ref, err := e.enqueueDedicatedOverlayItems(dedicatedCtx, plan, dedicatedCandidates)
+			if err != nil {
+				return nil, err
+			}
+			return &ref, nil
 		})
-	if splitErr != nil {
-		return RenderReference{}, fmt.Errorf("overlay per-scene split: %w", splitErr)
-	}
+}
+
+// runSplitOverlayWork overlaps independent dedicated items with the scene
+// compositions. Both paths use the existing GPU admission authority; the
+// split pool and dedicated pool retain their own bounded submission widths.
+// No partial reference escapes if either branch fails or is cancelled.
+func runSplitOverlayWork(ctx context.Context, plan capoverlay.OverlayPlan,
+	scenes func(context.Context) ([]RenderReference, error),
+	dedicated func(context.Context) (*RenderReference, error),
+) (RenderReference, error) {
+	parent, cancel := context.WithCancel(ctx)
+	defer cancel()
+	group, workCtx := concurrent.WithContext(parent)
+	var sceneRefs []RenderReference
 	var dedicatedRef *RenderReference
-	if len(dedicatedCandidates) > 0 {
-		ded, err := e.enqueueDedicatedOverlayItems(ctx, plan, dedicatedCandidates)
-		if err != nil {
-			return RenderReference{}, err
-		}
-		dedicatedRef = &ded
+	group.Go("overlay-scene-compositions", func() error {
+		var err error
+		sceneRefs, err = scenes(workCtx)
+		return err
+	})
+	group.Go("overlay-dedicated-items", func() error {
+		var err error
+		dedicatedRef, err = dedicated(workCtx)
+		return err
+	})
+	if err := group.Wait(); err != nil {
+		return RenderReference{}, err
 	}
-	return assembleSplitManifestReference(plan, results, dedicatedRef)
+	if err := ctx.Err(); err != nil {
+		return RenderReference{}, err
+	}
+	return assembleSplitManifestReference(plan, sceneRefs, dedicatedRef)
 }
 
 // assembleSplitManifestReference folds the per-scene composition references
@@ -214,7 +311,11 @@ func assembleSplitManifestReference(plan capoverlay.OverlayPlan, sceneRefs []Ren
 	batches := make([]OverlayBatchRenderReference, 0, len(sceneRefs))
 	rows := make([]OverlayItemRenderReference, 0, 16)
 	for _, ref := range sceneRefs {
-		batches = append(batches, ref.Batches[0])
+		batch := ref.Batches[0]
+		if batch.Manifest == nil {
+			batch.Manifest = ref.Manifest
+		}
+		batches = append(batches, batch)
 		for _, row := range ref.Items {
 			row.Artifact = ref.Artifact
 			rows = append(rows, row)
