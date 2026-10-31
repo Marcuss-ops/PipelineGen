@@ -82,6 +82,15 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 	if result.OverlayRender == nil || (result.OverlayRender.Manifest == nil && len(result.OverlayRender.Items) == 0) {
 		return nil, nil, fmt.Errorf("final_job has semantic overlays but no published overlay render artifacts")
 	}
+	// Image preflight (the r10 class): promised entity-image overlays must be
+	// backed by a verified content address BEFORE a worker attempt exists.
+	clipScenes := make(map[string]struct{})
+	for sceneID := range finalJobIntermediateClipWindows(result) {
+		clipScenes[sceneID] = struct{}{}
+	}
+	if err := finalJobImagePreflight(result.OverlayPlan.Items, clipScenes); err != nil {
+		return nil, nil, err
+	}
 	fpsNum, fpsDen := result.OverlayPlan.FPSNum, result.OverlayPlan.FPSDen
 	if fpsNum <= 0 || fpsDen <= 0 {
 		return nil, nil, fmt.Errorf("final_job overlay plan has invalid frame rate %d/%d", fpsNum, fpsDen)
