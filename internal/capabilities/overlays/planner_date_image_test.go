@@ -11,6 +11,7 @@ func TestMoveEntityImageAsideFromOverlappingTimelineDate(t *testing.T) {
 		{
 			ID: "date", Kind: "number", TemplateID: "TIMELINE_DATE_CARD",
 			StartMs: 44_033, EndMs: 50_033,
+			Params: map[string]any{"font_size_px": float64(140), "style": map[string]any{"font_size": float64(140)}},
 		},
 	}
 
@@ -20,5 +21,11 @@ func TestMoveEntityImageAsideFromOverlappingTimelineDate(t *testing.T) {
 	}
 	if got := items[0].Params["position_y"]; got != float64(0) {
 		t.Fatalf("entity image y position = %v, want 0px", got)
+	}
+	if got := items[1].Params["font_size_px"]; got != float64(108) {
+		t.Fatalf("overlapping date font size = %v, want 108px", got)
+	}
+	if got := items[1].Params["style"].(map[string]any)["font_size"]; got != float64(108) {
+		t.Fatalf("overlapping date style font size = %v, want 108px", got)
 	}
 }
