@@ -554,6 +554,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	coalesced := capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
 	intake.stage(capabilityoverlay.OverlayDropCompositionMerged, len(items), len(coalesced))
 	items = coalesced
+	// EntityTimeline cards are resolved after the core BuildPlan call, so its
+	// date/image collision pass cannot see them. Repeat the layout check on the
+	// final combined render set before it is sealed for RenderingGen.
+	capabilityoverlay.MoveImagesAsideForOverlappingDateCards(items)
 	// Single-owner boundary (§3 step 5→6): ResolveAnimationSelections valida
 	// che chain container e composite parent non portino MotionID proprie e che
 	// ogni child/segmento conservi la scelta. Validazione, mai ricampionamento.

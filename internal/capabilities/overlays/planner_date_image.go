@@ -2,9 +2,9 @@ package overlays
 
 import "strings"
 
-// moveImagesAsideForOverlappingDateCards keeps a centered date readable when
+// MoveImagesAsideForOverlappingDateCards keeps a centered date readable when
 // its certified window overlaps an entity or editorial image, across scenes.
-func moveImagesAsideForOverlappingDateCards(items []OverlayItem) {
+func MoveImagesAsideForOverlappingDateCards(items []OverlayItem) {
 	for i := range items {
 		kind := strings.ToLower(strings.TrimSpace(items[i].Kind))
 		if kind != "image" && kind != "entity_image" {

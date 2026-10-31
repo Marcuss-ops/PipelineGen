@@ -14,7 +14,7 @@ func TestMoveEntityImageAsideFromOverlappingTimelineDate(t *testing.T) {
 		},
 	}
 
-	moveImagesAsideForOverlappingDateCards(items)
+	MoveImagesAsideForOverlappingDateCards(items)
 	if got := items[0].Params["position_x"]; got != float64(-720) {
 		t.Fatalf("entity image x position = %v, want -720px", got)
 	}
