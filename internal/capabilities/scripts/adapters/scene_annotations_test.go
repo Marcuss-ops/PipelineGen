@@ -59,6 +59,31 @@ func TestSceneAnnotationsOnePhraseAndRuneOffsets(t *testing.T) {
 	}
 }
 
+func TestSceneAnnotationsGroundsExplicitNumberWithUnit(t *testing.T) {
+	text := "Il 17 dicembre 2014 la corte condannò Stasi a 16 anni di reclusione."
+	ann := sceneAnnotations(text, "it", scriptpkg.VidRushSegmentResult{SegmentID: "scene-pena"})
+	var number *scriptpkg.AnnotatedEntity
+	for i := range ann.SecondaryEntities {
+		if ann.SecondaryEntities[i].Type == "NUMBER" {
+			number = &ann.SecondaryEntities[i]
+			break
+		}
+	}
+	if number == nil {
+		t.Fatalf("annotations = %+v, want a grounded NUMBER for the explicit sentence value", ann.SecondaryEntities)
+	}
+	if number.CanonicalName != "16 anni" || number.CanonicalEntityID != "number:16-anni" {
+		t.Fatalf("numeric annotation = %+v, want the exact value and unit", number)
+	}
+	if len(number.Mentions) != 1 {
+		t.Fatalf("numeric mention spans = %+v, want exactly one", number.Mentions)
+	}
+	span := number.Mentions[0]
+	if got := string([]rune(text)[span.StartRune:span.EndRune]); got != "16 anni" {
+		t.Fatalf("numeric mention = %q, want %q", got, "16 anni")
+	}
+}
+
 func TestSceneAnnotationsDropsMissingPhrase(t *testing.T) {
 	ann := sceneAnnotations("Mike Tyson allenava potenza.", "it", scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1",
