@@ -6,6 +6,14 @@ e ciò che è bloccato da evidenza esterna (GPU, host autorizzato, CI sullo
 stesso SHA). Un ticket non si chiude perché il suo codice compila: si chiude
 quando il criterio di accettazione dichiarato è verificato.
 
+> **Aggiornamento 2026-10-31.** Le sezioni §1–§2 sono la fotografia del 29-10.
+> Dopo quella data: `OVERLAY_RENDER_PER_SCENE` è **default-on** (`d94109fab`),
+> l'epoch cache è stabile e le tre run `closeout-20261030-r{1,2,3}` danno
+> mediana **77,32 item/min** (65–70 item, senza mappe; gate ≥100 ancora FAIL).
+> Il final job R14 ha chiuso l'handoff HTTPS con 11 frammenti e audio muxato.
+> Restano aperti il mix 100 item con mappe, il contratto multi-artefatto
+> final-job e il gate ≥100.
+
 ## 1. Chiuso in questa sessione, con evidenza
 
 ### 1.1 `make verify-agent` — di nuovo verde
@@ -30,7 +38,8 @@ un hang. Non va interrotta.
 `internal/capabilities/scripts/render_queue_split.go`: dentro ogni scena, gli
 item con finestre letterali sovrapposte formano una componente connessa e
 compongono insieme; componenti disgiunte diventano batch separati in ordine di
-piano. Il percorso resta dietro `OVERLAY_RENDER_PER_SCENE` (default off).
+piano. Il percorso `OVERLAY_RENDER_PER_SCENE` è **default-on** dal 30-10
+(`d94109fab`); il flag resta un kill switch esplicito.
 
 - Test: `TestMicroBatchesNeverSplitOverlappingItems` (overlap unito, disgiunto
   separato, ordine di piano preservato).
