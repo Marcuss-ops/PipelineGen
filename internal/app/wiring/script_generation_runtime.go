@@ -146,7 +146,13 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
-	if remoteFinalJob, remoteErr := newRemoteFinalJobAdapter(root); remoteErr != nil {
+	if fakeFinalJobRequested() {
+		// Local-only measurement mode: every local phase still runs, the remote
+		// render does not. The receipt is marked Simulated so nothing downstream
+		// can mistake it for a certified artifact.
+		runner.SetFinalJobSubmitter(newFakeFinalJobSubmitter())
+		log.Warn("remote final-job handoff SIMULATED (" + fakeFinalJobEnv + "=1): no render will be dispatched; timings cover the LOCAL pipeline only")
+	} else if remoteFinalJob, remoteErr := newRemoteFinalJobAdapter(root); remoteErr != nil {
 		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(remoteErr))
 	} else {
 		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, root.MediaExec.Policy)
@@ -355,6 +361,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			entityImageCatalogRepo,
 			vidRushMetrics,
 		).WithLogger(log)
+		// Opt-in media_manifest fast-path on the fan-out (the discovery owner
+		// for plans without the internet_images postprocessor). Fail-open: a
+		// broken manifest logs a warning and never fails a run.
+		if pins, pinsErr := documentadapters.LoadMediaManifestPinsFromEnv(); pinsErr != nil {
+			log.Warn("VidRush image fanout media_manifest fast-path disabled: manifest load failed", zap.String("error", pinsErr.Error()))
+		} else if pins != nil {
+			fanout.WithMediaManifestPins(pins)
+			log.Info("VidRush image fanout media_manifest fast-path enabled", zap.Int("pinned_entries", pins.EntryCount()))
+		}
 		if root.AI != nil && root.AI.ScriptGen != nil {
 			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
 				fanout.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))

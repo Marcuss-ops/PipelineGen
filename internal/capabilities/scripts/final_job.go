@@ -71,6 +71,11 @@ type RemoteFinalJobResult struct {
 	WorkerID    string `json:"worker_id,omitempty"`
 	ArtifactURL string `json:"artifact_url,omitempty"`
 	SHA256      string `json:"sha256,omitempty"`
+	// Simulated marks a receipt produced by the local-only fake submitter
+	// (VELOX_FAKE_FINAL_JOB): the handoff completed, but no remote render was
+	// dispatched and no artifact exists. It exists so an operator can tell a
+	// simulated completion from a certified one when reading the run result.
+	Simulated bool `json:"simulated,omitempty"`
 	// Yields counts how many attempts have already handed this job's wait back
 	// to a later attempt. It is persisted with the receipt because it is what
 	// bounds the churn: the FIRST wait is bounded (the worker is freed), and
