@@ -165,6 +165,9 @@ func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, ou
 	if !strings.Contains(strings.ToLower(codec), "264") || preset == "" || p.policy.CRF <= 0 {
 		return fmt.Errorf("final-job fragment requires a resolved H.264 encoder policy")
 	}
+	if strings.Contains(strings.ToLower(codec), "nvenc") {
+		preset = nvencPresetFor(preset)
+	}
 	args := []string{
 		"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
 		"-ss", strconv.FormatFloat(start, 'f', 6, 64), "-i", source,
@@ -196,6 +199,22 @@ func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, ou
 		return fmt.Errorf("encode assembly-ready fragment: %w: %s", err, strings.TrimSpace(string(outputBytes)))
 	}
 	return nil
+}
+
+// Encoder presets are not portable between libx264 and NVENC. The resolved
+// media policy uses x264-style names, so translate those names at the local
+// fragment boundary where the configured codec is known to be NVENC.
+func nvencPresetFor(preset string) string {
+	switch strings.ToLower(strings.TrimSpace(preset)) {
+	case "ultrafast", "superfast", "veryfast", "faster":
+		return "p2"
+	case "fast", "medium", "slow":
+		return "p4"
+	case "slower", "veryslow":
+		return "p6"
+	default:
+		return strings.TrimSpace(preset)
+	}
 }
 
 func finalJobSourceIsExactPreparedFragment(source map[string]any, request scriptgen.FinalJobVideoSegmentRequest, durationUS int64) bool {

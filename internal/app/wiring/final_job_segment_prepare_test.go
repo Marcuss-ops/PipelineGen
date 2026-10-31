@@ -10,6 +10,19 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
+func TestNVENCPresetForMapsX264PresetNames(t *testing.T) {
+	cases := map[string]string{
+		"ultrafast": "p2", "superfast": "p2", "veryfast": "p2", "faster": "p2",
+		"fast": "p4", "medium": "p4", "slow": "p4",
+		"slower": "p6", "veryslow": "p6", "p5": "p5",
+	}
+	for input, want := range cases {
+		if got := nvencPresetFor(input); got != want {
+			t.Errorf("nvencPresetFor(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestFinalJobSegmentPreparerEncodesOneAssemblyReadyFragment(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
