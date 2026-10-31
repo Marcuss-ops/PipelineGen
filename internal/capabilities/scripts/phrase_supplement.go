@@ -44,6 +44,10 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		if !ok {
 			continue
 		}
+		span, ok = completeGroundedPhrase(text, span)
+		if !ok {
+			continue
+		}
 		phrase.Text, phrase.StartRune, phrase.EndRune = span.Text, span.StartRune, span.EndRune
 		byText[phraseKey(phrase.Text)] = candidate{span: phrase, words: len(strings.Fields(phrase.Text))}
 	}
@@ -61,6 +65,10 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		if !ok {
 			continue
 		}
+		span, ok = completeGroundedPhrase(text, span)
+		if !ok {
+			continue
+		}
 		key := phraseKey(span.Text)
 		item := candidate{span: scriptpkg.AnnotationSpan{
 			Text: span.Text, StartRune: span.StartRune, EndRune: span.EndRune,
@@ -72,6 +80,10 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 	}
 	for rank, phrase := range phrasepkg.ImportantPhrasesWithCorpus(text, blocked, selectorLimit, language, corpus) {
 		span, ok := findEntitySpan(text, phrase)
+		if !ok {
+			continue
+		}
+		span, ok = completeGroundedPhrase(text, span)
 		if !ok {
 			continue
 		}
