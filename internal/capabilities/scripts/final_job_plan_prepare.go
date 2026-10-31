@@ -62,7 +62,15 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		}
 		prepared, err := preparer.PrepareFinalJobVideoSegment(ctx, source, request)
 		if err != nil {
-			return "", nil, fmt.Errorf("prepare final_job segment %q: %w", segment.SegmentID, err)
+			return "", nil, fmt.Errorf(
+				"prepare final_job segment %q from asset %q role %q at %dus for %dus: %w",
+				segment.SegmentID,
+				finalJobStringValue(source["asset_id"]),
+				finalJobStringValue(source["role"]),
+				segment.SourceInUS,
+				segment.SourceDurationUS,
+				err,
+			)
 		}
 		asset, ref, err := finalJobPreparedSegmentAsset(prepared, request)
 		if err != nil {
