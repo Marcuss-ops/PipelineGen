@@ -292,3 +292,61 @@ func TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items(t *testing.T)
 	require.Equal(t, 10, countKind(plan.Items, "entity_image"), "the entity card lane must materialize 10 items")
 	require.Equal(t, 100, len(plan.Items), "the golden mix must materialize 100 items, not 36–41")
 }
+
+func TestCompileOverlayPlanMovesResolvedEntityImageAsideFromDate(t *testing.T) {
+	result, resolver := goldenMixResult(t)
+	result.Scenes = result.Scenes[:1]
+	result.ResolvedScenes = result.ResolvedScenes[:1]
+	result.EntityTimeline.Scenes = result.EntityTimeline.Scenes[:1]
+	result.EntityTimeline.DurationUS = goldenMixSceneDurationUS
+	result.Segments = result.Segments[:1]
+
+	person := "Alberto Stasi"
+	scene := &result.Scenes[0]
+	text := scene.Text["en"] + " " + person
+	words := strings.Fields(text)
+	timing := speechTimingForWords(words)
+	scene.Text["en"] = text
+	voiceover := scene.Voiceover["en"]
+	voiceover.Duration = float64(len(words)) / 10
+	voiceover.Timing = &timing
+	scene.Voiceover["en"] = voiceover
+	assetHash := digest.SHA256String("alberto-stasi-portrait")
+	scene.Annotations.PrimaryEntities = append(scene.Annotations.PrimaryEntities, scriptpkg.AnnotatedEntity{
+		ID: "e-person-alberto-stasi", CanonicalName: person, Type: "PERSON", Confidence: 0.99,
+		Image: &scriptpkg.EntityImageBinding{Status: "bound", AssetID: "alberto-stasi-portrait", SHA256: assetHash,
+			PreviewURL: "https://images.example/alberto-stasi.jpg", MediaType: "image/jpeg"},
+	})
+	personStartUS := int64(len(words)-2) * 100_000
+	personStartRune := len([]rune(text)) - len([]rune(person))
+	entityID := capabilityentities.StableEntityID("PERSON", person)
+	result.EntityTimeline.Scenes[0].Entities = append(result.EntityTimeline.Scenes[0].Entities,
+		capabilityentities.EntityOccurrence{
+			EntityID: entityID, Name: person, Type: "PERSON", SceneID: scene.ID, SceneIndex: 0,
+			TextStart: personStartRune, TextEnd: personStartRune + len([]rune(person)),
+			WordStart: len(words) - 2, WordEnd: len(words) - 1,
+			LocalStartUS: personStartUS, LocalEndUS: personStartUS + 200_000,
+			AudioStartUS: personStartUS, AudioEndUS: personStartUS + 200_000, Confidence: 0.99,
+		})
+
+	canvas := goldenMixCanvas()
+	plan, err := CompileOverlayPlanWithPlates(result, "en", canvas,
+		"plan-date-entity-collision", "video-date-entity-collision", "project-date-entity-collision", resolver, true, true)
+	require.NoError(t, err)
+	require.NotNil(t, plan)
+	var date, portrait *capabilityoverlay.OverlayItem
+	for i := range plan.Items {
+		item := &plan.Items[i]
+		if item.TemplateID == "TIMELINE_DATE_CARD" {
+			date = item
+		}
+		if item.Kind == "entity_image" && item.EntityID == entityID {
+			portrait = item
+		}
+	}
+	require.NotNil(t, date, "fixture retains its grounded timeline date")
+	require.NotNil(t, portrait, "entity resolver adds the bound portrait after the core planner")
+	require.Less(t, portrait.StartMs, date.EndMs)
+	require.Greater(t, portrait.EndMs, date.StartMs)
+	require.Equal(t, float64(-720), portrait.Params["position_x"], "the final combined plan must move late-resolved portraits clear of date cards")
+}

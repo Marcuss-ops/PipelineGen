@@ -581,7 +581,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	input.MotionSeed = motionSeed
 	EnsureDistinctPhraseMotions(plan.Items, input)
 	EnsureDistinctNumberMotions(plan.Items, input.AnimationCounts)
-	moveImagesAsideForOverlappingDateCards(plan.Items)
+	MoveImagesAsideForOverlappingDateCards(plan.Items)
 	// Multi-Animations Runtime: fuse nearby overlays into single chain items
 	// (phrase_chain / image_chain) with concatenated motions and a fly-under
 	// + fade transition, driven by AnimationCounts chain_gap_ms /
