@@ -108,8 +108,12 @@ for i in $(seq 1 "$N_RUNS"); do
   # sessione segmentata ("P4 segmented output: N semantic item windows ...").
   # La riga è job-scoped: contiene i job id dei batch renderizzati dal
   # worker (i batch child portano il parent id del job sottomesso).
-  journalctl --no-pager -o cat -u pipelinegen-worker -u renderinggen \
-    --since "-2 hours" 2>/dev/null |
+  # Unit reali su questo host (audit 2026-10-31): le righe "P4 segmented
+  # output" vivono nel journal di renderinggen-worker (e.ok anche i parent
+  # mapping compaiono su renderinggen-queue); le unit pipelinegen-worker /
+  # renderinggen non esistono e il loro journal è sempre vuoto.
+  journalctl --no-pager -o cat -u renderinggen-worker -u renderinggen-queue \
+    --since "-3 hours" 2>/dev/null |
     grep 'P4 segmented output' | grep -F "$JOB_ID" \
     > "$RES/p4-activation-$LABEL.log" || true
   if [ -s "$RES/p4-activation-$LABEL.log" ]; then

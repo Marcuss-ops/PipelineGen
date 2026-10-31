@@ -28,7 +28,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -225,6 +224,7 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		renderer = "chronon"
 	}
 	context := struct {
+		CacheVersion    int                       `json:"cache_version"`
 		SchemaVersion   string                    `json:"schema_version"`
 		Renderer        string                    `json:"renderer"`
 		Width           int                       `json:"width"`
@@ -256,6 +256,8 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		// the same plan, which is still the expensive case.
 		SamplingIdentity string `json:"sampling_identity,omitempty"`
 	}{
+		// Invalidate rows created before background asset order was preserved.
+		CacheVersion:    2,
 		SchemaVersion:   strings.TrimSpace(plan.SchemaVersion),
 		Renderer:        renderer,
 		Width:           plan.Width,
@@ -328,8 +330,8 @@ type overlayCacheItemContext struct {
 }
 
 // overlayCacheBG is the render-relevant projection of a background. Asset
-// references are reduced to their sorted content addresses; producer-only
-// paths and URLs are excluded because the worker resolves by address.
+// references preserve their order because the renderer selects the first one;
+// producer-only paths and URLs are excluded because the worker resolves by address.
 type overlayCacheBG struct {
 	Kind    string    `json:"kind"`
 	Color   []float64 `json:"color,omitempty"`
@@ -359,7 +361,6 @@ func overlayCacheBackground(bg *capoverlay.OverlayBackground) *overlayCacheBG {
 		}
 		out.Assets = append(out.Assets, sha)
 	}
-	sort.Strings(out.Assets)
 	return out
 }
 

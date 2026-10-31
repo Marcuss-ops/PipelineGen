@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"strings"
 	"testing"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -26,6 +27,27 @@ func cacheIdentityPlan(planID, projectID string) capoverlay.OverlayPlan {
 				EntityStyleID: "premium_random_v1",
 			},
 		},
+	}
+}
+
+func TestOverlayRenderCacheIdentityPreservesBackgroundAssetOrder(t *testing.T) {
+	first := cacheIdentityPlan("run-1", "project-1")
+	first.Background = &capoverlay.OverlayBackground{
+		Kind: "image",
+		AssetRefs: []capoverlay.OverlayAssetRef{
+			{AssetID: "first", SHA256: strings.Repeat("a", 64)},
+			{AssetID: "second", SHA256: strings.Repeat("b", 64)},
+		},
+	}
+	second := cacheIdentityPlan("run-1", "project-1")
+	second.Background = &capoverlay.OverlayBackground{
+		Kind: "image",
+		AssetRefs: []capoverlay.OverlayAssetRef{
+			first.Background.AssetRefs[1], first.Background.AssetRefs[0],
+		},
+	}
+	if overlayPlanRenderContextDigest(first) == overlayPlanRenderContextDigest(second) {
+		t.Fatal("background asset order changes the rendered image and must change the cache identity")
 	}
 }
 
