@@ -6,6 +6,17 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// isInternetImageSourceProvider is the explicit allowlist of concrete search
+// backends that may enter the generic internet_images media lifecycle.
+func isInternetImageSourceProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "internet_images", "duckduckgo", "wikimedia_commons", "searxng":
+		return true
+	default:
+		return false
+	}
+}
+
 // normalizeInternetImageCandidates performs discovery normalization only.
 // It intentionally does not assign scores or choose a candidate.
 func normalizeInternetImageCandidates(in []scriptpkg.SegmentAssetCandidate, query string) []scriptpkg.SegmentAssetCandidate {

@@ -258,14 +258,25 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			releaseCatalog()
 		}
 		for _, cand := range results {
-			if strings.TrimSpace(cand.Provider) == "" {
+			provider := strings.ToLower(strings.TrimSpace(cand.Provider))
+			if provider == "" {
+				provider = "internet_images"
+			}
+			// Search adapters preserve the concrete source (for example,
+			// duckduckgo or wikimedia_commons), while the resolver contract
+			// routes all approved web-image sources through the internet_images
+			// lifecycle. Keep the source in the reason for auditability.
+			if !isInternetImageSourceProvider(provider) {
+				continue
+			}
+			if provider != "internet_images" {
+				if cand.SelectionReason == "" {
+					cand.SelectionReason = "web image retrieved from " + provider
+				}
 				cand.Provider = "internet_images"
 			}
 			if strings.TrimSpace(cand.Query) == "" {
 				cand.Query = query
-			}
-			if strings.ToLower(strings.TrimSpace(cand.Provider)) != "internet_images" {
-				continue
 			}
 			key := vidRushCandidateIdentity(cand)
 			if key == "" {
