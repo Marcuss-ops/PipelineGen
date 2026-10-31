@@ -162,6 +162,12 @@ func minimumDatePresentationDuration(date TimedAnnotation, maxDurationUS int64) 
 	if maxDurationUS >= minimumReadableDateUS && maxDurationUS < target {
 		target = maxDurationUS
 	}
+	// A timing cap is a hard visual boundary. Merely using it as the minimum
+	// target leaves longer source annotations unchanged, which lets a date
+	// remain underneath a later image overlay.
+	if maxDurationUS >= minimumReadableDateUS && date.DurationUS > maxDurationUS {
+		date.DurationUS = maxDurationUS
+	}
 	if date.DurationUS < target {
 		date.DurationUS = target
 	}
