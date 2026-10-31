@@ -339,6 +339,58 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 	}
 }
 
+func TestEntityImageCatalogReusesMaterializedImageWhenSourceIsBroken(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	db := openPersistentEntityImageCatalog(t, filepath.Join(t.TempDir(), "broken-source-drive-reuse.db"))
+	repo := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db)
+	ctx := context.Background()
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(ctx, entitycatalog.Entity{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		EntityType:        entitycatalog.EntityTypePerson,
+		CanonicalName:     identity.CanonicalName,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	candidateID, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://images.example/michael-jordan-expired.jpg",
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		QualityReason:     "previously verified image",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertMaterialization(ctx, entitycatalog.Materialization{
+		CandidateID: candidateID, AssetID: "drive-michael-jordan", ContentSHA256: "sha256-michael-jordan",
+		DriveLink: "https://drive.google.com/file/d/drive-michael-jordan/view",
+		Status:    entitycatalog.MaterializationStatusMaterialized,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetCandidateStatus(ctx, candidateID, entitycatalog.CandidateStatusBroken); err != nil {
+		t.Fatal(err)
+	}
+
+	pool, err := entityImageCatalogCandidates(ctx, repo, identity, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pool.Candidates) != 1 {
+		t.Fatalf("materialized image candidates = %d, want 1", len(pool.Candidates))
+	}
+	got := pool.Candidates[0]
+	if got.DriveLink == "" || got.ContentSHA256 == "" || got.AcquisitionStatus != scriptpkg.VidRushStatusAcquired {
+		t.Fatalf("cached Drive image was not hydrated for reuse: %+v", got)
+	}
+}
+
 func TestEntityImageCatalogTopicVariantsShareCanonicalPool(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()

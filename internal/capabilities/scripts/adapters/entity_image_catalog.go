@@ -81,6 +81,17 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			}
 			continue
 		}
+		// A broken source URL does not invalidate the durable image already
+		// copied to Drive. Reuse a fully materialized, visually accepted asset
+		// without asking the provider to serve that URL again.
+		materialization, matErr := repo.GetMaterialization(ctx, row.ID)
+		if matErr != nil {
+			return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: get materialization %d: %w", row.ID, matErr)
+		}
+		_, durableImage := applyEntityImageCatalogMaterialization(scriptpkg.SegmentAssetCandidate{}, materialization)
+		durableImage = durableImage && row.SemanticStatus == entitycatalog.CandidateSemanticAccepted &&
+			entitycatalog.IsUsableCandidateQuality(row)
+
 		assessment := entitycatalog.AssessCandidateState(nowUTC(), row)
 		if assessment.State != row.Status && !row.LastSeenAt.IsZero() &&
 			row.Status != entitycatalog.CandidateStatusBroken && row.Status != entitycatalog.CandidateStatusRetired {
@@ -90,7 +101,8 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			row.Status = assessment.State
 		}
 		recertifyLayout := personImageLayoutNeedsRecertification(row.QualityReason)
-		if !entitycatalog.IsUsableCandidateStatus(assessment.State) || (!entitycatalog.IsUsableCandidateQuality(row) && !recertifyLayout) {
+		if (!entitycatalog.IsUsableCandidateStatus(assessment.State) && !durableImage) ||
+			(!entitycatalog.IsUsableCandidateQuality(row) && !recertifyLayout && !durableImage) {
 			continue
 		}
 		if strings.TrimSpace(row.SourceURL) == "" {
@@ -119,10 +131,6 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			QualityReason:         qualityReason,
 			RightsStatus:          "unknown",
 			SelectionReason:       "persistent PERSON entity image catalog candidate",
-		}
-		materialization, matErr := repo.GetMaterialization(ctx, row.ID)
-		if matErr != nil {
-			return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: get materialization %d: %w", row.ID, matErr)
 		}
 		if hydrated, ok := applyEntityImageCatalogMaterialization(candidate, materialization); ok {
 			candidate = hydrated
