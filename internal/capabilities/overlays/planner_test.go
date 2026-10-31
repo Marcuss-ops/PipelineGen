@@ -57,6 +57,29 @@ func TestBuildPlanNeverInventsTiming(t *testing.T) {
 	}
 }
 
+func TestBuildPlanMovesOverlappingImageAsideFromTimelineDate(t *testing.T) {
+	plan, err := BuildPlan(PlanInput{
+		PlanID: "date-image-collision", VideoID: "video", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		Scenes: []SceneInput{
+			{ID: "image-scene", Images: []ImageCandidate{{AssetID: "alberto", SHA256: "hash", StartMs: 46_582, EndMs: 48_320, Score: 1}}},
+			{ID: "date-scene", Numbers: []TimedAnnotation{{Text: "17 dicembre 2009", Type: "DATE", StartMs: 44_033, EndMs: 50_033, Score: 1}}},
+		},
+	}, PlannerConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range plan.Items {
+		if item.Kind != "image" {
+			continue
+		}
+		if got := item.Params["position_x"]; got != float64(-720) {
+			t.Fatalf("overlapping image x position = %v, want -720px to clear the centered date", got)
+		}
+		return
+	}
+	t.Fatal("expected planned image item")
+}
+
 func TestAllCandidatesPlannerConfigKeepsOnlyEditorialImagesAndPhrases(t *testing.T) {
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "all-candidates", VideoID: "video-all-candidates", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
