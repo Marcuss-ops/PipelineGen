@@ -23,7 +23,7 @@ func TestDateCardWindowCapShortensOnlyWhenNextSpokenDateWouldOverlap(t *testing.
 }
 
 func TestDateCardWindowCapStopsBeforeFollowingImage(t *testing.T) {
-	date := TimedAnnotation{Text: "17 dicembre 2009", Type: "DATE", StartUS: 44_033_000, DurationUS: 1_000_000}
+	date := TimedAnnotation{Text: "17 dicembre 2009", Type: "DATE", StartUS: 44_033_000, DurationUS: 6_000_000}
 	images := []ImageCandidate{{StartUS: 46_582_000, DurationUS: 1_738_000}}
 	if got := dateCardWindowCapBeforeImage(date, images, 0); got != 2_449_000 {
 		t.Fatalf("date/image overlap cap = %d, want 2.449s", got)
