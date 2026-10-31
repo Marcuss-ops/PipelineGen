@@ -177,6 +177,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		for _, number := range numbers {
 			dateWindowCap := dateCardWindowCap(number, numbers)
+			dateWindowCap = dateCardWindowCapBeforeImage(number, images, dateWindowCap)
 			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number, input.AnimationCounts, dateWindowCap))
 		}
 

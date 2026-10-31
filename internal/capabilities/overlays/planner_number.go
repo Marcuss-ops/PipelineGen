@@ -204,3 +204,37 @@ func dateCardWindowCap(date TimedAnnotation, all []TimedAnnotation) int64 {
 	}
 	return 0
 }
+
+// dateCardWindowCapBeforeImage prevents a centered date card from being hidden
+// by a scene image that begins while the card is still visible. Keep the card
+// word-anchored and shorten only its visible tail; two seconds remains the
+// minimum readable window enforced by minimumDatePresentationDuration.
+func dateCardWindowCapBeforeImage(date TimedAnnotation, images []ImageCandidate, currentCapUS int64) int64 {
+	if !strings.EqualFold(strings.TrimSpace(date.Type), "DATE") {
+		return currentCapUS
+	}
+	start := date.StartUS
+	if start <= 0 {
+		start = date.StartMs * 1000
+	}
+	const guardUS int64 = 100_000
+	const minimumReadableUS int64 = 2_000_000
+	for _, image := range images {
+		imageStart := image.StartUS
+		if imageStart <= 0 {
+			imageStart = image.StartMs * 1000
+		}
+		gap := imageStart - start
+		if gap <= 0 || gap >= 5_000_000 {
+			continue
+		}
+		capUS := gap - guardUS
+		if capUS < minimumReadableUS {
+			continue
+		}
+		if currentCapUS == 0 || capUS < currentCapUS {
+			currentCapUS = capUS
+		}
+	}
+	return currentCapUS
+}

@@ -441,6 +441,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 	// missed (notably year-only references). These are still source-grounded
 	// and receive timing only when the exact surface is found in word timing.
 	if scene.OverlayCategories[scriptpkg.OverlayCategoryNumbers].AsBool() {
+		out.Numbers = dedupeOverlappingGroundedDates(out.Numbers)
 		for _, date := range explicitDateSurfaces(scene.Text[language]) {
 			duplicate := false
 			for i, existing := range out.Numbers {
