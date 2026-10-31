@@ -3,15 +3,16 @@
 - **Data:** 2026-10-26
 - **Autori:** Antigravity + Pierone
 - **Moduli interessati:** `refactored` (PipelineGen), `RenderingGen`, `Chronon3d`, `BrainRust` (pipelinegen-muscles)
-- **Stato:** ATTIVO / IN IMPLEMENTAZIONE
+- **Stato:** ATTIVO / IN IMPLEMENTAZIONE — gate ≥100 overlay/min **FAIL**: mediana certificata **77,32 item/min** (3 run closeout 30-10, 65–70 item senza mappe), packed cross-scene 43,73 FAIL; split per-scena default-on ed epoch cache stabile. Mix 100 item con mappe NOT RUN.
 - **Target Prestazionale:** Throughput overlay da ~80–100/min a **>2.500 overlay/min**; tempo di pianificazione da 4m45s a **<30s**; eliminazione del 90% dell'I/O disco.
 
-> **Lettura operativa (29-10-2026):** i target e i fattori delle sezioni storiche
-> sono ipotesi, non risultati. L'ordine di lavoro corrente è §10; lo stato
-> osservato e le limitazioni sono §9.8. La mediana 62,32 item/min riguarda tre
-> run comparabili v2.1 **senza mappe**, 66–69 item: non certifica il mix da
-> 100. Le proiezioni 1.800–3.000/min e il confronto 83,98/min non sono
-> accettazioni; l'ultimo non è comparabile con la serie §9.8.
+> **Lettura operativa (31-10-2026):** i target e i fattori delle sezioni
+> storiche sono ipotesi, non risultati. Lo stato misurato è §9.10 e §11:
+> mediana **77,32 item/min** su tre run closeout 30-10 (65–70 item, v2.1
+> **senza mappe**), packed cross-scene **43,73** FAIL, split per-scena
+> default-on ed epoch cache stabile. Il gate ≥100 resta **FAIL** e il mix
+> 100 item con mappe è **NOT RUN**. Le proiezioni 1.800–3.000/min e il
+> confronto 83,98/min non sono accettazioni.
 > Per Chronon vale il freeze in `Chronon3d/docs/CURRENT_STATUS.md`: niente
 > nuova architettura prima di CI e baseline same-SHA verdi. Le sezioni sotto
 > descrivono lavoro futuro, non autorizzano deploy o attivazioni live.
@@ -28,7 +29,7 @@ Revisione 2026-10-29 dopo verifica sui codici:
 - [x] A2. Implementare il riuso sessione sicuro + contratto mux/EOF nel percorso render. — Implementato lato Chronon3d (`park_codec_session_for_reuse` + `acquire/release_codec_session`, sessione adottata con fingerprint loggato). Opt-in: il flag NON è impostato nei drop-in systemd live (`/etc/systemd/system/chronon3d*.service.d/`); le unità production non attivano il riuso. Attivazione operativa separata dal codice: richiede restart dei daemon, è disabilitata di default per rispetto del boundary «un encoder per item» solo in fallback non-P4, e invalida la comparabilità con le run storiche se attivata a metà serie di gate.
 - [ ] A3. Test di regressione (doctest) + suite mirate verdi. — Test presente: "Cross-item codec session reuse stays fail-closed" in `tests/video/test_native_av_encoder_teardown_stress.cpp` (26-10); rerun suite mirata da eseguire per chiudere A3. **Rerun 29-10: BLOCKED (cross-repo)** — `Chronon3d/` non ha alcun `CMakeCache.txt` né albero di build per i test (`build/` contiene solo `chronon` e `Testing/`): il target non è costruibile senza un configure+build completo fuori dal perimetro `refactored`. Nessun PASS dichiarato.
 - [ ] A4. Build `-j14`, commit mirato, deploy release, restart daemon. — **Parziale 29-10 (solo `refactored`)**: `go build -o bin/pipelinegen ./cmd/server` PASS, restart `systemd` PASS, `/ready` HTTP 200 e env verificato da `/proc/<pid>/environ`. Restano non eseguiti: build Chronon3d `-j14` (nessun build tree, come A3) e commit mirato (nessun commit richiesto/effettuato in questa sessione).
-- [ ] A5. Golden ×3 di confronto + mediana vs baseline 83,98/min; aggiornare il ticket. — **3 run comparabili eseguite 29-10** (stesso payload v2.1-nomaps SHA `ad5e3468…`, stesso binario, 3 lane): 58,55 / 62,32 / 73,57 item/min → **mediana 62,32 item/min, gate ≥100 FAIL**. Canary 4 lane: 76,16 item/min. Dettaglio e cause in §9.8.
+- [ ] A5. Golden ×3 di confronto + mediana vs baseline 83,98/min; aggiornare il ticket. — **3 run closeout eseguite 30-10** (stesso payload v2.1-nomaps SHA `ad5e3468…`, 3 lane, host quiescente): 54,44 / 80,04 / 77,32 item/min → **mediana 77,32 item/min, gate ≥100 FAIL**; il mix 100 item con mappe resta NOT RUN. Le tre run del 29-10 (mediana 62,32) restano la serie precedente. Dettaglio in §9.10 e §11.
 - [ ] Aggiornare i MD di closeout con root cause motion-blur, fix e stato lavori.
 
 ## 1. Diagnosi del Collo di Bottiglia Storico e Risoluzioni Effettuate

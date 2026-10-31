@@ -1,8 +1,10 @@
 # TICKET — Overlay render per-scena (entiame già in overlap: design correzione)
 
-Data: 2026-10-29 · Stato: **PARTIAL** — split per scena implementato per job
-non-final; wire/consumer multi-artefatto per final job e certificazione completa
-ancora aperti (§11). Il pre-warm per-item non dà cache-hit sulla composizione.
+Data: 2026-10-29 (agg. 2026-10-31) · Stato: **PARTIAL** — split per scena
+implementato e **default-on** per i job non-final (`d94109fab`), con epoch cache
+stabile e tre run live 30-10 a mediana **77,32 item/min** (65–70 item, senza
+mappe; gate ≥100 ancora FAIL). Restano il wire/consumer multi-artefatto per i
+final job (§11) e la certificazione del mix 100 item con mappe.
 Priorità: alta — è l'ultimo collo seriale dopo il grosso TTS a frase lo stesso
 giorno (TICKET-TTS-CRITICAL-PATH-SENTENCE-CHUNK-2026-10-29).
 
@@ -188,26 +190,36 @@ con 35% wall reale.
   (50 text_phrase in entrambe). Il gate ≥100 overlay/min (contratto mediana
   di 3 run comparabili) NON è a soglia: 39,7 < 100 — il residuo è attribuito a
   `queue_wait_ms` (~20 s/batch) e alla fase `generate` (46,7% del critical
-  path), che appartengono al contratto di `TICKET-MAX-THROUGHPUT-OVERLAY-
-  ARCHITECTURE.md` (#57), non a questa scheda.
+  path), che appartengono al contratto di  `TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md` (#57), non a questa scheda.
+- [x] Split default-on e cache epoch stabile (30-10): `d94109fab` rende
+  `OVERLAY_RENDER_PER_SCENE` ON di default (kill switch esplicito) e usa il
+  commit/digest come epoch; verifica live `/health` con
+  `render_cache.epoch=d94109fab`. Le run `closeout-20261030-r{1,2,3}` danno
+  54,44 / 80,04 / 77,32 item/min → mediana **77,32**, gate ≥100 FAIL; il
+  packed cross-scene è stato provato e **non promosso** (43,73/min).
 - [ ] Contratto worker decode-replace multi-artefatto per FinalJob (i final
   job NON splittano oggi: il wire single-manifest resta la SSOT finché il
   contratto `manifest schema_version + decode per batch` non atterra — vedi
   `OVERLAY-MANIFEST-CONTRACT.md` §4).
-- [ ] Golden `overlay_throughput_golden_100_*` su host con la queue live.
-- [ ] Inserire la scheda nel version control (file attualmente untracked).
+- [ ] Golden `overlay_throughput_golden_100_*` su host con la queue live: le
+  tre run `closeout-20261030-r{1,2,3}` sono eseguite (65–70 item, mediana
+  77,32/min), ma il mix 100 item con mappe resta NOT RUN.
+- [x] Scheda inserita nel version control (`16e6b39ca`; verificata con
+  `git ls-files` il 2026-10-31).
 
 Collegamento al gate ≥100 overlay/min: `TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md`
-(#57). La serie successiva §9.8 di quel ticket è la baseline comparabile più
-recente: mediana 62,32 item/min senza mappe; questo split da solo non chiude
-il gate né prova che ogni collo seriale sia risolto.
+(#57). La baseline comparabile più recente è §9.10/§11: mediana 77,32 item/min
+senza mappe (30-10); questo split da solo non chiude il gate né prova che ogni
+collo seriale sia risolto.
 
 ## 11. Contratto multi-artefatto e partizione sicura — passi residui
 
 **Stato: SPEC / NOT RUN.** Coerenza con il ticket principale §10.3–10.4.
 L'implementazione corrente assegna un item che attraversa scene alla scena
 iniziale e fa fallback al piano unico su errore di split; entrambi i fatti
-vanno considerati esplicitamente nell'analisi e nei test.
+vanno considerati esplicitamente nell'analisi e nei test. Il final job R14
+(30-10) ha chiuso l'handoff HTTPS e assemblato 11 frammenti, ma resta sul
+percorso singolo: il contratto multi-artefatto non è cambiato.
 
 1. Inventariare i casi non indipendenti: overlap fra scene e track,
    transizioni, layer che attraversano boundary, video background sincronizzato,
