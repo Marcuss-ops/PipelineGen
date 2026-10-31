@@ -150,6 +150,10 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(remoteErr))
 	} else {
 		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, root.MediaExec.Policy)
+		// Use the same configured media processor for stock staging and
+		// certification. Without this probe the remote final-job path can
+		// download a stock clip but cannot verify its video stream/duration.
+		remoteFinalJob.probe = videoProcessor
 		runner.SetFinalJobSubmitter(remoteFinalJob)
 		log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.client.BaseURL))
 	}
