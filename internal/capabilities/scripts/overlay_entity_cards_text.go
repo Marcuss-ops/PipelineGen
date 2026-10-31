@@ -52,6 +52,99 @@ func explicitDateSurfaces(text string) []string {
 	return out
 }
 
+// dedupeOverlappingGroundedDates collapses partial mentions of one spoken
+// date (for example "17 dicembre", "dicembre 2009" and "17 dicembre 2009")
+// into the most complete source-grounded surface. The annotations must overlap
+// in certified speech timing and share only date tokens, so separate dates in
+// the same scene remain distinct.
+func dedupeOverlappingGroundedDates(numbers []capabilityoverlay.TimedAnnotation) []capabilityoverlay.TimedAnnotation {
+	dateTokens := func(text string) map[string]struct{} {
+		months := map[string]struct{}{"gennaio": {}, "febbraio": {}, "marzo": {}, "aprile": {}, "maggio": {}, "giugno": {}, "luglio": {}, "agosto": {}, "settembre": {}, "ottobre": {}, "novembre": {}, "dicembre": {}}
+		tokens := strings.Fields(strings.ToLower(strings.TrimSpace(text)))
+		if len(tokens) == 0 {
+			return nil
+		}
+		out := make(map[string]struct{}, len(tokens))
+		for _, token := range tokens {
+			if _, ok := months[token]; ok {
+				out[token] = struct{}{}
+				continue
+			}
+			if len(token) != 4 && len(token) > 2 {
+				return nil
+			}
+			for _, r := range token {
+				if r < '0' || r > '9' {
+					return nil
+				}
+			}
+			out[token] = struct{}{}
+		}
+		return out
+	}
+	subset := func(left, right map[string]struct{}) bool {
+		if len(left) == 0 || len(left) > len(right) {
+			return false
+		}
+		for token := range left {
+			if _, ok := right[token]; !ok {
+				return false
+			}
+		}
+		return true
+	}
+	dropped := make([]bool, len(numbers))
+	for i := range numbers {
+		if !strings.EqualFold(strings.TrimSpace(numbers[i].Type), "DATE") {
+			continue
+		}
+		left := dateTokens(numbers[i].Text)
+		if len(left) == 0 {
+			continue
+		}
+		leftStart, leftEnd := numbers[i].StartUS, numbers[i].StartUS+numbers[i].DurationUS
+		if leftStart <= 0 {
+			leftStart = numbers[i].StartMs * 1000
+		}
+		if leftEnd <= leftStart {
+			leftEnd = numbers[i].EndMs * 1000
+		}
+		for j := range numbers {
+			if i == j || dropped[j] || !strings.EqualFold(strings.TrimSpace(numbers[j].Type), "DATE") {
+				continue
+			}
+			right := dateTokens(numbers[j].Text)
+			if len(right) == 0 || !(subset(left, right) || subset(right, left)) {
+				continue
+			}
+			rightStart, rightEnd := numbers[j].StartUS, numbers[j].StartUS+numbers[j].DurationUS
+			if rightStart <= 0 {
+				rightStart = numbers[j].StartMs * 1000
+			}
+			if rightEnd <= rightStart {
+				rightEnd = numbers[j].EndMs * 1000
+			}
+			overlap := min(leftEnd, rightEnd) - max(leftStart, rightStart)
+			shorter := min(leftEnd-leftStart, rightEnd-rightStart)
+			if overlap <= 0 || shorter <= 0 || overlap*2 < shorter {
+				continue
+			}
+			if len(right) > len(left) || len(right) == len(left) && len(numbers[j].Text) > len(numbers[i].Text) {
+				dropped[i] = true
+				break
+			}
+			dropped[j] = true
+		}
+	}
+	out := make([]capabilityoverlay.TimedAnnotation, 0, len(numbers))
+	for i, number := range numbers {
+		if !dropped[i] {
+			out = append(out, number)
+		}
+	}
+	return out
+}
+
 func phrasesAtLeastThreeWords(phrases []capabilityoverlay.TimedAnnotation) []capabilityoverlay.TimedAnnotation {
 	filtered := make([]capabilityoverlay.TimedAnnotation, 0, len(phrases))
 	for _, phrase := range phrases {
