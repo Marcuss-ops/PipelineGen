@@ -365,6 +365,57 @@ type SegmentAssetCandidate struct {
 	// candidate has been acquired and verified. It is a dedup aid only: it
 	// never replaces the content SHA-256 and is never used for identity.
 	PerceptualHash string `json:"perceptual_hash,omitempty"`
+	// LifecycleFailureStage and LifecycleFailureReason are the structured
+	// cause of the acquire/verify/finalize failure that left this candidate
+	// non-persisted, recorded AT THE POINT OF FAILURE (contract 2026-10-31).
+	// Job payloads must be self-describing: a persistence/verification/acquisition
+	// status of "failed" with no cause is the defect that makes first-run
+	// failures undiagnosable and silently healed only by the next run. Empty
+	// both means no lifecycle failure was recorded — never write one field
+	// without the other.
+	LifecycleFailureStage  string `json:"lifecycle_failure_stage,omitempty"`
+	LifecycleFailureReason string `json:"lifecycle_failure_reason,omitempty"`
+}
+
+// VidRush lifecycle stage names carried by
+// SegmentAssetCandidate.LifecycleFailureStage. They are the closed set of
+// stages materialization can fail on; the binding value is the stage itself,
+// not a second copy of the status string.
+const (
+	VidRushLifecycleStageAcquire  = "acquire"
+	VidRushLifecycleStageVerify   = "verify"
+	VidRushLifecycleStageFinalize = "finalize"
+)
+
+// FailLifecycle records the structured cause of a failed lifecycle stage on
+// the candidate. It only records the cause: stage-specific status fields
+// remain owned by the code path that produced the outcome, so this never
+// rewrites acquisition/persistence states independently.
+func (c *SegmentAssetCandidate) FailLifecycle(stage, reason string) {
+	if c == nil {
+		return
+	}
+	c.LifecycleFailureStage = stage
+	c.LifecycleFailureReason = reason
+}
+
+// ClearLifecycleFailure drops the recorded lifecycle-failure cause. Every
+// successful finalize must call it: a durable artifact that previously failed
+// in an earlier run must not carry a stale reason into the binding payload.
+func (c *SegmentAssetCandidate) ClearLifecycleFailure() {
+	if c == nil {
+		return
+	}
+	c.LifecycleFailureStage = ""
+	c.LifecycleFailureReason = ""
+}
+
+// LifecycleFailed reports whether a structured lifecycle-failure cause is
+// recorded. It is the single predicate both the reconcile step and the
+// binding gates consult — no other site may re-derive "this candidate failed
+// in run" from warning text or status strings.
+func (c SegmentAssetCandidate) LifecycleFailed() bool {
+	return strings.TrimSpace(c.LifecycleFailureReason) != "" || strings.TrimSpace(c.PersistenceStatus) == VidRushStatusFailed
 }
 
 // UnmarshalJSON accepts the canonical "content_sha256" wire key and, one-way,

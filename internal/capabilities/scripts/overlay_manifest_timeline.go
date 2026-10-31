@@ -18,17 +18,23 @@ package scriptgeneration
 // occur. Final-job plans elect this path too: the manifest is the wire
 // document the final worker consumes (OVERLAY-MANIFEST-CONTRACT.md §4).
 //
-// Retry contract (gate 2) at this path: the manifest digest aggregates every
-// voice's identity (item_id + content-hash + placement), so the same manifest
-// resolves to the same composition cache row — no repeated work, and the
-// cache's idempotent Store never produces a second artifact.
+// Retry contract (gate 2) at this path: the composition cache key aggregates
+// every voice's identity (item_id + content-hash + track/window/placement),
+// which is stable across runs, so the same timeline resolves to the same
+// composition cache row — no repeated work, and the cache's idempotent Store
+// never produces a second artifact. The manifest digest remains the durable
+// receipt identity (OverlayBatchRenderReference.BatchID) and the final-worker
+// wire document; only the CACHE identity is row-nameable across runs.
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -274,12 +280,44 @@ func assembleManifestTimelineReference(jobID, status string, artifact *RenderArt
 }
 
 // overlayManifestCompositionCacheKey is the content address of the timeline
-// artifact: the manifest digest (every voice's identity and placement, in
-// canonical order) plus the rendered child plan's context and the deployment
-// epoch. Two runs that build the same manifest compose the same artifact and
-// must share one cache row and one stored artifact.
+// artifact: every entry's composition identity (slot, layer, window, content
+// address and placement, in canonical manifest order) plus the rendered child
+// plan's context and the deployment epoch. Two runs that compose the same
+// timeline must share one cache row and one stored artifact.
+//
+// The RenderKey deliberately does NOT hash OverlayManifest.Digest(): that
+// document embeds the per-run PlanID/VideoID, so keying on it would name the
+// identical pixels differently on every retry/run — rows were only ever
+// written and never re-read. Entry identities are stable slot identities
+// (OverlayManifestEntry.ItemID is reused verbatim across regenerations), and
+// the run-scoped recipients stay in the publication path, not in the cache
+// identity. The packed positions stay part of the key so a packed timeline
+// (different artifact frame grid) can never alias a plan-absolute row.
 func overlayManifestCompositionCacheKey(child capoverlay.OverlayPlan, manifest capoverlay.OverlayManifest, epoch string) (OverlayRenderCacheKey, bool) {
-	renderKey := manifest.Digest()
+	// A distinct digest domain keeps these rows from aliasing the legacy
+	// manifest-digest rows (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE) or the
+	// fused batch rows: same tag philosophy as overlayBatchIdentity.
+	parts := []string{"overlay-render-manifest-timeline/v1"}
+	for _, entry := range manifest.Entries {
+		// Fail closed on an incomplete identity: an entry whose content hash is
+		// not a canonical 64-hex address cannot honestly name a cache row (the
+		// single-item path applies the same gate to its render keys). Only a
+		// certified composition identity may share rows across runs.
+		content := strings.ToLower(strings.TrimSpace(entry.ContentHash))
+		if len(content) != 64 || !isLowerHex(content) {
+			return OverlayRenderCacheKey{}, false
+		}
+		parts = append(parts,
+			entry.ItemID,
+			strconv.Itoa(entry.Track),
+			strconv.FormatInt(entry.InUS, 10),
+			strconv.FormatInt(entry.OutUS, 10),
+			content,
+			manifestEntryPlacementDigest(entry.Placement),
+			manifestEntryPackedDigest(entry),
+		)
+	}
+	renderKey := digest.SHA256String(strings.Join(parts, "\x00"))
 	if len(renderKey) != 64 || !isLowerHex(renderKey) {
 		return OverlayRenderCacheKey{}, false
 	}
@@ -295,4 +333,37 @@ func overlayManifestCompositionCacheKey(child capoverlay.OverlayPlan, manifest c
 		return OverlayRenderCacheKey{}, false
 	}
 	return key, true
+}
+
+// manifestEntryPlacementDigest is the deterministic digest of the OPTIONAL
+// spatial projection of a manifest entry. encoding/json marshals
+// ManifestPlacement fields in declaration order with no map ambiguity, so the
+// same placement composes one digest and a different rect composes another
+// (two rects are two compositions — the pixels differ).
+func manifestEntryPlacementDigest(placement *capoverlay.ManifestPlacement) string {
+	if placement == nil {
+		return ""
+	}
+	raw, err := json.Marshal(placement)
+	if err != nil {
+		return ""
+	}
+	return digest.SHA256String(string(raw))
+}
+
+// manifestEntryPackedDigest carries the entry's OPTIONAL packed positions into
+// the cache identity. Nil stays distinct from zero (both may be 0 on a packed
+// timeline), so a packed composition and an absent projection never alias.
+func manifestEntryPackedDigest(entry capoverlay.OverlayManifestEntry) string {
+	if entry.ArtifactInUS == nil && entry.ArtifactOutUS == nil {
+		return ""
+	}
+	inUS, outUS := "<nil>", "<nil>"
+	if entry.ArtifactInUS != nil {
+		inUS = strconv.FormatInt(*entry.ArtifactInUS, 10)
+	}
+	if entry.ArtifactOutUS != nil {
+		outUS = strconv.FormatInt(*entry.ArtifactOutUS, 10)
+	}
+	return inUS + "-" + outUS
 }
