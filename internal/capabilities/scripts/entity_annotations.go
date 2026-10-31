@@ -129,6 +129,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)
 		}
 	}
+	appendGroundedNumberEntities(ann, text)
 	if len(ann.PrimaryEntities)+len(ann.SecondaryEntities)+len(ann.ImportantPhrases)+len(ann.ImportantWords)+len(ann.SpecialNames) == 0 {
 		return nil
 	}
