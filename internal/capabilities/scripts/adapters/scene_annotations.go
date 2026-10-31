@@ -134,6 +134,7 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)
 		}
 	}
+	appendGroundedNumberEntities(ann, text)
 	return rebaseSceneAnnotations(ann, text)
 }
 
