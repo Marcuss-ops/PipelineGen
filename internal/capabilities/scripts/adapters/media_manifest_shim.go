@@ -24,14 +24,13 @@
 package adapters
 
 import (
-	"crypto/sha256" // only for sha256.Size, the digest-length contract
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -96,15 +95,10 @@ type MediaManifestPins struct {
 
 // validDigestHex checks the exact contract accepted by the offline verifier:
 // 64 lowercase hex characters (information SHA-256). Hash strength is not a
-// crypto property here; the length+alphabet check is a corruption guard built
-// on the same alphabet as hex.DigestFormatSHA256 but locally owned.
-func validDigestHex(digest string) bool {
-	digest = strings.ToLower(strings.TrimSpace(digest))
-	if len(digest) != sha256.Size*2 {
-		return false
-	}
-	_, err := hex.DecodeString(digest)
-	return err == nil
+// crypto property here; the length+alphabet check is a corruption guard, and
+// the rule is owned by internal/kernel/digest rather than re-implemented here.
+func validDigestHex(raw string) bool {
+	return digest.IsCanonicalSHA256(strings.ToLower(strings.TrimSpace(raw)))
 }
 
 // LoadMediaManifestPins reads a media_manifest.v1 document from disk.
