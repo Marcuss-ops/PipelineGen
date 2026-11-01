@@ -100,13 +100,14 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 //
 // The per-scene split (one composition per scene window, N independent GPU
 // round-trips instead of one whole-timeline pass) is opt-in via
-// OVERLAY_RENDER_PER_SCENE and applies to NON-final jobs only: the remote
-// final worker consumes the single-timeline manifest wire today, so a final
-// job must keep the exact single-artifact reference shape until that worker
-// contract lands. Single-scene plans never split (degenerate case of the
-// same shape), and enqueuers without the Split capability keep the single
-// path — including every test mock, so flag OFF and capability-missing both
-// reproduce today's behaviour byte for byte.
+// OVERLAY_RENDER_PER_SCENE and now applies to final jobs too: the worker's
+// final manifest carries artifacts[] and the V2 plan binds one asset per
+// distinct byte-set, so several certified overlay artifacts are a supported
+// shape (the wire becomes pipelinegen.overlay-manifest-set.v1, one manifest per
+// batch). Single-scene plans never split (degenerate case of the same shape),
+// and enqueuers without the Split capability keep the single path — including
+// every test mock, so flag OFF and capability-missing both reproduce the
+// single-timeline behaviour byte for byte.
 //
 // Fail-closed fallback: ANY split error falls back to the single-timeline
 // submission, so a flag-ON run can only ever end up with more GPU work, never
@@ -115,7 +116,7 @@ func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRe
 	if plan == nil {
 		return RenderReference{}, nil
 	}
-	if overlayPerSceneSplitEnabled() && !req.FinalJob && planSpansMultipleScenes(*plan) {
+	if overlayPerSceneSplitEnabled() && planSpansMultipleScenes(*plan) {
 		if splitter, ok := r.overlayRenderEnqueuer.(OverlayPlanSplitEnqueuer); ok {
 			ref, splitErr := splitter.EnqueueChrononPlanSplit(ctx, *plan)
 			if splitErr == nil {
