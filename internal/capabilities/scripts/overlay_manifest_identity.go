@@ -88,6 +88,22 @@ func buildManifestEntryWorks(parent capoverlay.OverlayPlan, candidates []overlay
 			return nil, err
 		}
 		key, ok := overlayRenderCacheKeyForPlan(child, epoch)
+		if !ok && !overlayPlanCacheAssetsIdentified(child) && len(child.Items) == 1 {
+			// A source/background is not part of the entry content hash. An
+			// unidentified item asset, however, cannot certify that hash.
+			itemOnly := child
+			itemOnly.Source, itemOnly.Background = nil, nil
+			if !overlayPlanCacheAssetsIdentified(itemOnly) {
+				return nil, fmt.Errorf("overlay manifest entry %q: asset has no content-addressed identity", item.ID)
+			}
+			renderKey := strings.ToLower(strings.TrimSpace(child.Items[0].RenderKey))
+			if renderKey == "" {
+				renderKey = capoverlay.ComputeRenderKey(child, child.Items[0])
+			}
+			if len(renderKey) == 64 && isLowerHex(renderKey) {
+				key.RenderKey, ok = renderKey, true
+			}
+		}
 		if !ok {
 			return nil, fmt.Errorf("overlay manifest entry %q: no content-addressed identity", item.ID)
 		}

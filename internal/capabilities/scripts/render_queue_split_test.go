@@ -59,6 +59,67 @@ func TestMicroBatchesNeverSplitOverlappingItems(t *testing.T) {
 	}
 }
 
+func TestMergeOverlappingSceneGroups(t *testing.T) {
+	plan := packedSuperBatchPlan()
+	plan.Items = []capoverlay.OverlayItem{
+		{ID: "a", SceneID: "scene-a", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 0, DurationUS: 3_000_000},
+		{ID: "b", SceneID: "scene-b", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 2_000_000, DurationUS: 3_000_000},
+		{ID: "c", SceneID: "scene-c", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 4_000_000, DurationUS: 3_000_000},
+		{ID: "d", SceneID: "scene-d", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 7_000_000, DurationUS: 1_000_000},
+	}
+	groups, err := mergeOverlappingSceneGroups(plan, groupManifestCandidatesByScene(overlayRenderableCandidates(plan)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 2 || len(groups[0].candidates) != 3 || len(groups[1].candidates) != 1 {
+		t.Fatalf("expected transitive overlap a+b+c and separate boundary d, got %+v", groups)
+	}
+	for i, id := range []string{"a", "b", "c"} {
+		if groups[0].candidates[i].source.ID != id {
+			t.Fatalf("candidate %d = %q, want %q", i, groups[0].candidates[i].source.ID, id)
+		}
+	}
+	if groups[1].candidates[0].source.ID != "d" {
+		t.Fatal("half-open frame boundary must not merge disjoint scenes")
+	}
+}
+
+func TestMergeOverlappingSceneGroupsHandlesFrameRounding(t *testing.T) {
+	plan := packedSuperBatchPlan()
+	plan.FPSNum, plan.FPSDen = 30000, 1001
+	plan.Items = []capoverlay.OverlayItem{
+		{ID: "a", SceneID: "a", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 0, DurationUS: 1_001_000},
+		{ID: "b", SceneID: "b", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 1_000_000, DurationUS: 1_000_000},
+	}
+	groups, err := mergeOverlappingSceneGroups(plan, groupManifestCandidatesByScene(overlayRenderableCandidates(plan)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("windows that share a frame under floor/ceil projection must stay together, got %d groups", len(groups))
+	}
+	plan.Items[1].StartUS = 1_001_000
+	groups, err = mergeOverlappingSceneGroups(plan, groupManifestCandidatesByScene(overlayRenderableCandidates(plan)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 2 {
+		t.Fatalf("windows touching at an exact rational frame boundary should remain separate, got %d groups", len(groups))
+	}
+	plan.Items[1].StartUS = 970_000
+	groups, err = mergeOverlappingSceneGroups(plan, groupManifestCandidatesByScene(overlayRenderableCandidates(plan)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("windows sharing a frame must stay together, got %d groups", len(groups))
+	}
+	plan.FPSNum = 0
+	if _, err := mergeOverlappingSceneGroups(plan, groupManifestCandidatesByScene(overlayRenderableCandidates(plan))); err == nil {
+		t.Fatal("invalid frame rate must not permit splitting")
+	}
+}
+
 func TestPlanSpansMultipleScenesOnlyCountsManifestWork(t *testing.T) {
 	plan := splitTestPlan()
 	if !planSpansMultipleScenes(plan) {

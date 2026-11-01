@@ -271,7 +271,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 				Stage: kernobs.StagePersist, Component: "vidrush", Operation: "finalize", Provider: providerName,
 			}, func(callCtx context.Context) error {
 				var finalizeErr error
-				persisted, finalizeErr = p.finalizer.Finalize(callCtx, verified)
+				persisted, finalizeErr = finalizeWithRetry(callCtx, p.finalizer, verified)
 				return finalizeErr
 			})
 			if err != nil {
@@ -280,11 +280,13 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 					addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeRejected, 1)
 				}
 				verified.Candidate.PersistenceStatus = scriptpkg.VidRushStatusFailed
+				verified.Candidate.FailLifecycle(scriptpkg.VidRushLifecycleStageFinalize, err.Error())
 				observeEntityImageCatalogMaterialization(p.metrics, catalogMaterializationStarted)
 				warnings = append(warnings, fmt.Sprintf("vidrush_materialization: finalize %s for %s: %v", providerName, segment.SegmentID, err))
 				materialized = append(materialized, verified.Candidate)
 				continue
 			}
+			persisted.ClearLifecycleFailure()
 			materialized = append(materialized, persisted)
 			if catalogImage {
 				incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStagePublish, scriptmetrics.EntityImageOutcomeSuccess)

@@ -145,8 +145,26 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	}
 
 	windows := make([]finalJobOverlayWindow, 0)
+	manifests := []map[string]any{}
 	if overlayManifest != nil {
-		asset, ok := overlayManifest["asset"].(map[string]any)
+		if overlayManifest["schema_version"] == "pipelinegen.overlay-manifest-set.v1" {
+			rawManifests, ok := overlayManifest["manifests"].([]any)
+			if !ok || len(rawManifests) == 0 {
+				return "", "", fmt.Errorf("final_job overlay manifest set has no manifests")
+			}
+			for _, raw := range rawManifests {
+				manifest, ok := raw.(map[string]any)
+				if !ok {
+					return "", "", fmt.Errorf("final_job overlay manifest set contains an invalid manifest")
+				}
+				manifests = append(manifests, manifest)
+			}
+		} else {
+			manifests = append(manifests, overlayManifest)
+		}
+	}
+	for _, manifest := range manifests {
+		asset, ok := manifest["asset"].(map[string]any)
 		if !ok {
 			return "", "", fmt.Errorf("final_job overlay manifest has no typed asset")
 		}
@@ -163,7 +181,7 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		if err := finalJobPlanAddAsset(&assets, asset, "video", durationUS, 1920, 1080, frameCount); err != nil {
 			return "", "", fmt.Errorf("final_job overlay timeline asset: %w", err)
 		}
-		entries, ok := overlayManifest["entries"].([]any)
+		entries, ok := manifest["entries"].([]any)
 		if !ok {
 			return "", "", fmt.Errorf("final_job overlay manifest entries have an invalid shape")
 		}
@@ -239,10 +257,17 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		"audio_plan_sha256":       strings.ToLower(strings.TrimSpace(audio.PlanSHA256)),
 		"overlay_timeline_sha256": "",
 	}
-	if overlayManifest != nil {
-		if asset, ok := overlayManifest["asset"].(map[string]any); ok {
+	if len(manifests) == 1 {
+		if asset, ok := manifests[0]["asset"].(map[string]any); ok {
 			timelineMaterial["overlay_timeline_sha256"] = strings.ToLower(finalJobStringValue(asset["sha256"]))
 		}
+	} else if len(manifests) > 1 {
+		hashes := make([]string, 0, len(manifests))
+		for _, manifest := range manifests {
+			asset := manifest["asset"].(map[string]any)
+			hashes = append(hashes, strings.ToLower(finalJobStringValue(asset["sha256"])))
+		}
+		timelineMaterial["overlay_timeline_sha256"] = digest.SHA256String(strings.Join(hashes, "\x00"))
 	}
 	timelineBytes, err := json.Marshal(timelineMaterial)
 	if err != nil {
@@ -338,7 +363,7 @@ func finalJobMergeOverlayWindows(input []finalJobOverlayWindow) ([]finalJobOverl
 		if current.endUS <= current.startUS || current.assetID == "" || len(current.sha256) != 64 {
 			return nil, fmt.Errorf("final_job overlay timeline contains an invalid replacement window")
 		}
-		if len(merged) > 0 && current.startUS <= merged[len(merged)-1].endUS {
+		if len(merged) > 0 && current.startUS < merged[len(merged)-1].endUS {
 			prior := &merged[len(merged)-1]
 			if prior.assetID != current.assetID || prior.sha256 != current.sha256 || prior.artifactInUS-prior.startUS != current.artifactInUS-current.startUS {
 				return nil, fmt.Errorf("final_job overlay replacement windows overlap with different artifact timing")

@@ -55,6 +55,10 @@ type MediaResolverImageStage struct {
 	// semanticScorer is optional. When nil, discovery stays fail-open and the
 	// semantic gate in filterInternetImageCandidates is inert.
 	semanticScorer SemanticCandidateScorer
+	// manifestPins is the opt-in pinned-manifest fast path (see
+	// media_manifest_shim.go). Nil keeps every call site byte-for-byte
+	// identical to the un-pinned behavior.
+	manifestPins *MediaManifestPins
 }
 
 func NewMediaResolverImageStageWithCatalog(searcher InternetImageSearcher, cache scriptports.VidRushCachePort, catalog entitycatalog.Repository, metrics ...VidRushMetrics) *MediaResolverImageStage {
@@ -148,6 +152,24 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			(!stockBound && !sceneAllowsMediaSearch(input.SpecScene, seg.SceneID, seg.SegmentID, seg.Position)) {
 			updated.Cache.InternetImages = "BYPASSED"
 			updatedSegments = append(updatedSegments, updated)
+			continue
+		}
+		// Pinned-media fast path (opt-in, see media_manifest_shim.go): when
+		// the manifest pins this scene/segment, discovery is complete by
+		// construction — offline-verified bytes, durable verdicts, zero
+		// provider calls. It wins over caches, the fan-out short circuit and
+		// force refresh alike (a pin is the operator's authoritative pick),
+		// and it never violates cache_only (no network in either path).
+		if pinned := p.pinnedInternetImageState(plan, updated); len(pinned) > 0 {
+			updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, pinned)
+			updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, pinned)
+			updated.Cache.InternetImages = MediaManifestCacheState
+			updated.Cache.InternetImagesProviderSearches = 0
+			updated.Cache.InternetImagesNewUploads = 0
+			updatedSegments = append(updatedSegments, updated)
+			if p.metrics != nil {
+				p.metrics.IncAssetCache("internet_images", true)
+			}
 			continue
 		}
 		if fanoutAlreadyOwnsInternetImageDiscovery(plan, &updated) {

@@ -679,7 +679,14 @@ func (f *retryingMaterializationFinalizer) Finalize(_ context.Context, artifact 
 	return candidate, nil
 }
 
-func TestVidRushMaterializationRetriesAfterFinalizerFailure(t *testing.T) {
+type alwaysFailingFinalizer struct{ calls int }
+
+func (f *alwaysFailingFinalizer) Finalize(_ context.Context, _ scriptports.VerifiedArtifact) (scriptpkg.SegmentAssetCandidate, error) {
+	f.calls++
+	return scriptpkg.SegmentAssetCandidate{}, errors.New("persistence backend unavailable")
+}
+
+func TestVidRushMaterializationRetriesFinalizerSynchronously(t *testing.T) {
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(materializationProviderStub{}); err != nil {
 		t.Fatal(err)
@@ -701,18 +708,58 @@ func TestVidRushMaterializationRetriesAfterFinalizerFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.VidRushSegments[0].Assets.SecondaryImages) != 0 {
-		t.Fatal("failed finalization must not bind a secondary image")
+	// The retry is synchronous: the run that saw the transient failure binds
+	// the persisted image instead of deferring it to the next run.
+	if finalizer.calls != 2 {
+		t.Fatalf("finalizer calls = %d, want 2 (one transient failure + one retry)", finalizer.calls)
 	}
-	second, err := processor.Process(context.Background(), plan, input)
+	if len(first.VidRushSegments[0].Assets.SecondaryImages) != 1 {
+		t.Fatal("synchronous retry should bind the persisted secondary image")
+	}
+}
+
+func TestVidRushMaterializationRecordsFinalizeFailureAfterRetries(t *testing.T) {
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(materializationProviderStub{}); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	finalizer := &alwaysFailingFinalizer{}
+	processor := newTestMaterializationProcessor(registry, finalizer)
+	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "exhausted-segment",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "exhausted-asset", Provider: scriptpkg.VidRushProviderInternetImages,
+			SourceURL: "https://cdn.example/exhausted.mp4", RightsStatus: "unknown",
+		}}},
+	}}}
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+
+	result, err := processor.Process(context.Background(), plan, input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if finalizer.calls != 2 {
-		t.Fatalf("finalizer calls = %d, want 2", finalizer.calls)
+	if finalizer.calls != vidRushFinalizeAttempts {
+		t.Fatalf("finalizer calls = %d, want %d bounded attempts", finalizer.calls, vidRushFinalizeAttempts)
 	}
-	if len(second.VidRushSegments[0].Assets.SecondaryImages) != 1 {
-		t.Fatal("successful recovery should bind the persisted secondary image")
+	if len(result.VidRushSegments[0].Assets.SecondaryImages) != 0 {
+		t.Fatal("exhausted finalization must not bind a secondary image")
+	}
+	var failed *scriptpkg.SegmentAssetCandidate
+	for i := range result.VidRushSegments[0].Assets.Candidates {
+		if result.VidRushSegments[0].Assets.Candidates[i].AssetID == "exhausted-asset" {
+			failed = &result.VidRushSegments[0].Assets.Candidates[i]
+		}
+	}
+	if failed == nil {
+		t.Fatal("failed candidate must be preserved for diagnostics")
+	}
+	if failed.PersistenceStatus != scriptpkg.VidRushStatusFailed {
+		t.Fatalf("persistence_status = %q, want failed", failed.PersistenceStatus)
+	}
+	if failed.LifecycleFailureStage != scriptpkg.VidRushLifecycleStageFinalize || failed.LifecycleFailureReason == "" {
+		t.Fatalf("lifecycle failure = %q/%q, want finalize with a cause", failed.LifecycleFailureStage, failed.LifecycleFailureReason)
 	}
 }
 

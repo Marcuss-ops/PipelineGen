@@ -219,6 +219,9 @@ func overlayRenderCacheKeyForPlan(plan capoverlay.OverlayPlan, epoch string) (Ov
 // invalidate every stored plan. The context digest is where new render inputs
 // are added safely.
 func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
+	if !overlayPlanCacheAssetsIdentified(plan) {
+		return ""
+	}
 	renderer := strings.TrimSpace(plan.RendererVersion)
 	if renderer == "" {
 		renderer = "chronon"
@@ -306,6 +309,34 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		return ""
 	}
 	return digest.SHA256Bytes(raw)
+}
+
+// overlayPlanCacheAssetsIdentified prevents mutable URLs or incomplete hashes
+// from aliasing different source, background or item pixels in a reusable row.
+// Rendering remains available when an asset lacks a content address.
+func overlayPlanCacheAssetsIdentified(plan capoverlay.OverlayPlan) bool {
+	valid := func(raw string) bool {
+		sha := strings.ToLower(strings.TrimSpace(raw))
+		return len(sha) == 64 && isLowerHex(sha)
+	}
+	if plan.Source != nil && !valid(plan.Source.SHA256) {
+		return false
+	}
+	if plan.Background != nil {
+		for _, ref := range plan.Background.AssetRefs {
+			if !valid(ref.SHA256) {
+				return false
+			}
+		}
+	}
+	for _, item := range plan.Items {
+		for _, ref := range item.AssetRefs {
+			if !valid(ref.SHA256) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // samplingPlanIdentity mirrors the worker's entity-style sample base

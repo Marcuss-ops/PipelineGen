@@ -14,7 +14,27 @@ Result: **PASS**, `go test` 19.23 s, wall **22.13 s**. The test exercises one
 6-second, two-pin `route_line` map through the real native renderer boundary
 (`renderDynamicMapVideoOnce`), not a synthetic mock.
 
-## Measured telemetry
+## Reproducible local comparison (2026-10-31)
+
+Using the checked-out `ChrononTemplate/catalog` and the locally built
+`ChrononPlugin/build-native-maps/plugins/maps/maps_dynamic_map_render`, run:
+
+```bash
+cd refactored
+VELOX_MAP_NATIVE_RENDERER_PATH="$PWD/../ChrononPlugin/build-native-maps/plugins/maps/maps_dynamic_map_render" \
+CHRONON_MAPS_CATALOG_DIR="$PWD/../ChrononTemplate/catalog" \
+go test ./internal/capabilities/scripts -run '^TestNativeMapRenderEndToEnd$' -count=1 -v -p=1
+```
+
+One run before versus one after the bounded per-render editorial tile cache:
+process wall 20.70 → 9.01 s, plate composition 13.999 → 3.633 s,
+locally rasterized tiles 19,680 → 463 (19,217 memory hits). Same six-second,
+180-frame route-line workload. These are single-run measurements, not a
+statistical throughput certification; the existing cache is bounded at 1024
+tiles and the native E2E test verifies output and telemetry, not pixel parity
+of every frame. Raster test verifies repeated and wrapped tiles match pixels.
+
+## Historical measured telemetry
 
 | Field | Value |
 |---|---:|
