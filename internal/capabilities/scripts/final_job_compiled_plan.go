@@ -373,6 +373,18 @@ func finalJobMergeOverlayWindows(input []finalJobOverlayWindow) ([]finalJobOverl
 			}
 			continue
 		}
+		// Adjacent windows of the SAME artifact that are also contiguous inside
+		// it are one continuous take: keeping them apart would pay two fragment
+		// encodes (and two verifications, two uploads) for one piece of video.
+		if len(merged) > 0 {
+			prior := &merged[len(merged)-1]
+			if prior.assetID == current.assetID && prior.sha256 == current.sha256 &&
+				prior.endUS == current.startUS &&
+				prior.artifactInUS+(prior.endUS-prior.startUS) == current.artifactInUS {
+				prior.endUS = current.endUS
+				continue
+			}
+		}
 		merged = append(merged, current)
 	}
 	return merged, nil
@@ -418,12 +430,45 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 	if err := appendBase(cursorUS, durationUS); err != nil {
 		return nil, err
 	}
+	segments = finalJobMergeContiguousSegments(segments)
 	for i, segment := range segments {
 		if segment.FrameCount <= 0 || segment.SourceDurationUS <= 0 {
 			return nil, fmt.Errorf("final_job V2 segment %d has an empty frame or source window", i)
 		}
 	}
 	return segments, nil
+}
+
+// finalJobMergeContiguousSegments collapses neighbouring segments that are the
+// same source window run end to end: same asset, contiguous on the timeline and
+// contiguous inside the source. The picture is identical by construction — a
+// fragment is just a window of one asset — but every fragment costs one local
+// encode, one verification and one upload, so gluing them is pure savings.
+// Anything that is not provably one continuous window is left untouched.
+func finalJobMergeContiguousSegments(segments []finalJobPlanSegment) []finalJobPlanSegment {
+	if len(segments) < 2 {
+		return segments
+	}
+	merged := make([]finalJobPlanSegment, 0, len(segments))
+	for _, current := range segments {
+		if len(merged) > 0 {
+			prior := &merged[len(merged)-1]
+			if prior.AssetID == current.AssetID && prior.SHA256 == current.SHA256 &&
+				prior.TimelineStartFrame+prior.FrameCount == current.TimelineStartFrame &&
+				prior.SourceInUS+prior.SourceDurationUS == current.SourceInUS {
+				prior.FrameCount += current.FrameCount
+				prior.SourceDurationUS += current.SourceDurationUS
+				continue
+			}
+		}
+		merged = append(merged, current)
+	}
+	// Renumber so the segment ids stay dense and stable for the receipt and the
+	// prepared-fragment identity (which hashes the segment id).
+	for i := range merged {
+		merged[i].SegmentID = fmt.Sprintf("segment-%04d", i)
+	}
+	return merged
 }
 
 func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {

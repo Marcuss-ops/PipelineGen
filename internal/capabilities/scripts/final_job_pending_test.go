@@ -10,8 +10,10 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -485,5 +487,119 @@ func TestFirstBoundedWaitIsTheOnlyOneThatYields(t *testing.T) {
 	}
 	if !run.NextRetryAt.After(time.Now().UTC().Add(-time.Second)) {
 		t.Fatalf("NextRetryAt = %v, want a future retry", run.NextRetryAt)
+	}
+}
+
+// TestSuccessfulRemoteRenderPersistsTimingBreakdown pins the durable half of the
+// phase decomposition: the queue/execution/handoff/poll split must survive in
+// the run result (and therefore in /full), not just in a log line.
+func TestSuccessfulRemoteRenderPersistsTimingBreakdown(t *testing.T) {
+	const runID = "run-timing"
+	submitter := &stubFinalJobSubmitter{result: RemoteFinalJobResult{
+		JobID: "master-timing", Status: "SUCCEEDED", WorkerID: "w-51",
+		Timing: &RemoteFinalJobTiming{
+			MasterCreatedAt:   "2026-10-31T10:00:00Z",
+			MasterStartedAt:   "2026-10-31T10:00:12Z",
+			MasterCompletedAt: "2026-10-31T10:04:12Z",
+			QueueMS:           12_000,
+			ExecutionMS:       240_000,
+			HandoffMS:         3_500,
+			WaitMS:            243_800,
+			PollLagMS:         1_800,
+			Polls:             82,
+		},
+	}}
+	result := &GenerateResult{}
+	runner, repo := newFinalJobRunner(submitter, runID, nil)
+	if ok := runner.submitFinalJob(context.Background(), runID, defaultTestRequest(), result); !ok {
+		t.Fatal("a succeeded remote render must complete the stage")
+	}
+	run, err := repo.Get(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if run.Result == nil || run.Result.RemoteFinalJob == nil || run.Result.RemoteFinalJob.Timing == nil {
+		t.Fatal("the durable result lost the timing block")
+	}
+	timing := run.Result.RemoteFinalJob.Timing
+	if timing.QueueMS != 12_000 || timing.ExecutionMS != 240_000 || timing.HandoffMS != 3_500 || timing.PollLagMS != 1_800 {
+		t.Fatalf("timing = %+v, want the reported split persisted", timing)
+	}
+	raw, err := json.Marshal(run.Result.RemoteFinalJob)
+	if err != nil {
+		t.Fatalf("marshal receipt: %v", err)
+	}
+	for _, key := range []string{"\"queue_ms\":12000", "\"execution_ms\":240000", "\"handoff_ms\":3500", "\"poll_lag_ms\":1800"} {
+		if !strings.Contains(string(raw), key) {
+			t.Fatalf("serialized receipt %s has no %s", raw, key)
+		}
+	}
+}
+
+// TestAttachKeepsTheLocallyMeasuredHandoffTiming pins the merge on the resumed
+// path: the attach result reports only Master-clock phases, and must not erase
+// the handoff the submitting attempt measured.
+func TestAttachKeepsTheLocallyMeasuredHandoffTiming(t *testing.T) {
+	const runID = "run-handoff-merge"
+	submitter := &stubFinalJobFreshAttempt{
+		startResult:  RemoteFinalJobResult{JobID: "master-merge", Status: "RUNNING", Timing: &RemoteFinalJobTiming{HandoffMS: 4_200}},
+		attachResult: RemoteFinalJobResult{JobID: "master-merge", Status: "SUCCEEDED", Timing: &RemoteFinalJobTiming{QueueMS: 12_000, ExecutionMS: 240_000, WaitMS: 243_000, Polls: 80}},
+	}
+	result := &GenerateResult{}
+	runner, repo := newFinalJobRunner(submitter, runID, nil)
+	if ok := runner.submitFinalJob(context.Background(), runID, defaultTestRequest(), result); !ok {
+		t.Fatal("a succeeded remote render must complete the stage")
+	}
+	run, err := repo.Get(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	timing := run.Result.RemoteFinalJob.Timing
+	if timing == nil {
+		t.Fatal("the durable receipt lost the timing block")
+	}
+	if timing.HandoffMS != 4_200 {
+		t.Fatalf("handoff_ms = %d, want the locally measured 4200 preserved through attach", timing.HandoffMS)
+	}
+	if timing.ExecutionMS != 240_000 || timing.QueueMS != 12_000 || timing.Polls != 80 {
+		t.Fatalf("timing = %+v, want the Master phases merged in", timing)
+	}
+}
+
+// TestRemoteFinalJobTimingKeepsTheWorkerBlockAcrossMerge pins the receipt
+// contract: the worker split is one atomic observation, so a resumed attach
+// replaces it whole and never leaves phases from two renders mixed together.
+// TestRemoteFinalJobTimingKeepsTheSegmentPrepAcrossMerge pins the same
+// whole-block rule for the local preparation split: a resumed attach (which
+// prepares nothing) must not overwrite the run that actually encoded fragments.
+func TestRemoteFinalJobTimingKeepsTheSegmentPrepAcrossMerge(t *testing.T) {
+	base := &RemoteFinalJobTiming{HandoffMS: 308717, SegmentPrep: &RemoteFinalJobSegmentPrepTiming{Segments: 12, DownloadMS: 1000, EncodeMS: 290000, Bytes: 120000000}}
+	merged := base.Merge(&RemoteFinalJobTiming{ExecutionMS: 13943, WaitMS: 27130})
+	if merged.SegmentPrep == nil || merged.SegmentPrep.Segments != 12 || merged.SegmentPrep.EncodeMS != 290000 {
+		t.Fatalf("segment prep = %#v, want the prepared run kept", merged.SegmentPrep)
+	}
+	if merged.ExecutionMS != 13943 || merged.HandoffMS != 308717 {
+		t.Fatalf("timing = %#v, merge must keep both sides", merged)
+	}
+	if kept := base.Merge(nil); kept.SegmentPrep == nil {
+		t.Fatalf("segment prep = %#v, want nil merge to keep it", kept.SegmentPrep)
+	}
+	if none := (&RemoteFinalJobTiming{ExecutionMS: 1}).SegmentPrep; none != nil {
+		t.Fatalf("segment prep = %#v, want nil when no fragment was prepared", none)
+	}
+}
+
+func TestRemoteFinalJobTimingKeepsTheWorkerBlockAcrossMerge(t *testing.T) {
+	base := &RemoteFinalJobTiming{HandoffMS: 1200, Worker: &RemoteFinalJobWorkerTiming{EncodeMS: 10, Frames: 1}}
+	extra := &RemoteFinalJobTiming{ExecutionMS: 5000, Worker: &RemoteFinalJobWorkerTiming{EncodeMS: 90, Frames: 240}}
+	merged := base.Merge(extra)
+	if merged.Worker == nil || merged.Worker.EncodeMS != 90 || merged.Worker.Frames != 240 {
+		t.Fatalf("worker block = %#v, want the newer observation", merged.Worker)
+	}
+	if merged.HandoffMS != 1200 || merged.ExecutionMS != 5000 {
+		t.Fatalf("timing = %#v, merge must keep both sides", merged)
+	}
+	if kept := (&RemoteFinalJobTiming{ExecutionMS: 5000}).Merge(nil); kept.Worker != nil {
+		t.Fatalf("worker block = %#v, want nil when the Master reports none", kept.Worker)
 	}
 }

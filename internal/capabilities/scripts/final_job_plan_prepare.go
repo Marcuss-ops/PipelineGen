@@ -3,10 +3,12 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
@@ -44,7 +46,17 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 
 	preparedAssets := make(map[string]finalJobPlanAsset, len(plan.VideoTracks[0].Segments)+1)
 	preparedRefs := make([]any, 0, len(plan.VideoTracks[0].Segments)+1)
-	seenPrepared := make(map[string]struct{}, len(plan.VideoTracks[0].Segments))
+	// The assembler binds a PLACEMENT to the segment and an ARTIFACT to its
+	// bytes: `assets[]` requires unique ids and unique asset keys, while several
+	// segments may reference one asset, each with its own segment id and
+	// timeline position. Two placements of the same pictures are therefore ONE
+	// asset referenced twice — never two objects forced to differ in the
+	// container.
+	refIndex := make(map[string]int, len(plan.VideoTracks[0].Segments)+1)
+	placements := make(map[string]int, len(plan.VideoTracks[0].Segments)+1)
+	// Phase 1 — validate every binding and describe the work. This is cheap and
+	// sequential, and it fails before any expensive preparation starts.
+	work := make([]finalJobSegmentWork, 0, len(plan.VideoTracks[0].Segments))
 	for index := range plan.VideoTracks[0].Segments {
 		segment := &plan.VideoTracks[0].Segments[index]
 		source := refs[segment.AssetID]
@@ -54,41 +66,70 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		if !strings.EqualFold(finalJobStringValue(source["sha256"]), segment.SHA256) {
 			return "", nil, fmt.Errorf("final_job segment %q source SHA-256 does not match the compiled plan", segment.SegmentID)
 		}
-		request := FinalJobVideoSegmentRequest{
-			SegmentID: segment.SegmentID, SourceAssetID: segment.AssetID, SourceSHA256: segment.SHA256,
-			SourceInUS: segment.SourceInUS, SourceDurationUS: segment.SourceDurationUS,
-			TimelineStartFrame: segment.TimelineStartFrame, FrameCount: segment.FrameCount,
-			TimelineRevision: plan.TimelineRevision, TimelineSHA256: plan.TimelineSHA256,
-		}
-		prepared, err := preparer.PrepareFinalJobVideoSegment(ctx, source, request)
-		if err != nil {
-			return "", nil, fmt.Errorf(
-				"prepare final_job segment %q from asset %q role %q at %dus for %dus: %w",
-				segment.SegmentID,
-				finalJobStringValue(source["asset_id"]),
-				finalJobStringValue(source["role"]),
-				segment.SourceInUS,
-				segment.SourceDurationUS,
-				err,
-			)
-		}
-		asset, ref, err := finalJobPreparedSegmentAsset(prepared, request)
+		work = append(work, finalJobSegmentWork{
+			index:  index,
+			source: source,
+			request: FinalJobVideoSegmentRequest{
+				SegmentID: segment.SegmentID, SourceAssetID: segment.AssetID, SourceSHA256: segment.SHA256,
+				SourceInUS: segment.SourceInUS, SourceDurationUS: segment.SourceDurationUS,
+				TimelineStartFrame: segment.TimelineStartFrame, FrameCount: segment.FrameCount,
+				TimelineRevision: plan.TimelineRevision, TimelineSHA256: plan.TimelineSHA256,
+			},
+		})
+	}
+	// Phase 2 — prepare the fragments. They are independent, so they run on the
+	// preparer's lanes; the result is indexed by plan position, which keeps the
+	// binding deterministic whatever the completion order is.
+	prepared, err := finalJobPrepareSegments(ctx, preparer, work)
+	if err != nil {
+		return "", nil, err
+	}
+	// Phase 3 — bind in plan order. Identical BYTES resolve to one asset; every
+	// placement keeps its own segment id, position and frame window. Canonical
+	// by sha, not by work identity: two different windows of a still source can
+	// encode to the same pictures, and the plan refuses two assets with one
+	// canonical identity while the resolver refuses two ids with one asset key.
+	canonical := make(map[string]string, len(work))
+	for _, item := range work {
+		segment := &plan.VideoTracks[0].Segments[item.index]
+		source := item.source
+		asset, ref, err := finalJobPreparedSegmentAsset(prepared[item.index], item.request)
 		if err != nil {
 			return "", nil, fmt.Errorf("prepared final_job segment %q: %w", segment.SegmentID, err)
 		}
-		if _, exists := seenPrepared[asset.AssetID]; exists {
-			return "", nil, fmt.Errorf("final_job preparer reused segment asset id %q; each timeline binding must be unique", asset.AssetID)
+		if owner, exists := canonical[asset.SHA256]; exists {
+			// The bytes are already certified by that asset: publish nothing new
+			// and point this placement at it.
+			asset = preparedAssets[owner]
+		} else {
+			canonical[asset.SHA256] = asset.AssetID
+			preparedAssets[asset.AssetID] = asset
+			// One runtime reference per asset: FINALIZE requires unique ids, and a
+			// second copy of the same object is the same object.
+			if _, seen := refIndex[asset.AssetID]; !seen {
+				if strings.EqualFold(finalJobStringValue(source["role"]), "overlay_timeline") {
+					ref["role"] = "overlay"
+				}
+				refIndex[asset.AssetID] = len(preparedRefs)
+				preparedRefs = append(preparedRefs, ref)
+			}
 		}
-		seenPrepared[asset.AssetID] = struct{}{}
-		preparedAssets[asset.AssetID] = asset
-		if strings.EqualFold(finalJobStringValue(source["role"]), "overlay_timeline") {
-			ref["role"] = "overlay"
-		}
-		preparedRefs = append(preparedRefs, ref)
+		placements[asset.AssetID]++
 		segment.AssetID = asset.AssetID
 		segment.SHA256 = asset.SHA256
 		segment.SourceInUS = 0
 		segment.SourceDurationUS = asset.DurationUS
+	}
+	// An asset carries no placement: when two or more segments share it there is
+	// no single timeline position to certify, and the segment is the only place
+	// the worker reads that fact from.
+	for assetID, count := range placements {
+		if count < 2 {
+			continue
+		}
+		asset := preparedAssets[assetID]
+		asset.TimelineStartFrame = 0
+		preparedAssets[assetID] = asset
 	}
 
 	// Preserve the one final audio asset, then add only the fragments referenced
@@ -113,10 +154,12 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	sort.Slice(assets, func(i, j int) bool { return assets[i].AssetID < assets[j].AssetID })
 	plan.Assets = assets
 	// Every video reference in the plan must now bind to one of the freshly
-	// prepared fragments with the exact frame and timeline identity.
+	// prepared fragments with the exact frame identity. The timeline position
+	// belongs to the segment (and may be shared by several placements of one
+	// asset), so it is not compared against the asset.
 	for _, segment := range plan.VideoTracks[0].Segments {
 		asset, ok := preparedAssets[segment.AssetID]
-		if !ok || asset.SHA256 != segment.SHA256 || asset.FrameCount != segment.FrameCount || asset.TimelineStartFrame != segment.TimelineStartFrame {
+		if !ok || asset.SHA256 != segment.SHA256 || asset.FrameCount != segment.FrameCount {
 			return "", nil, fmt.Errorf("final_job prepared segment %q lost its exact manifest binding", segment.SegmentID)
 		}
 	}
@@ -134,11 +177,16 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	// Master validates that vocabulary while the immutable compiled plan uses
 	// kind=video. Final audio remains the last role-tagged asset above.
 
-	canonical, err := json.Marshal(plan)
+	// The remote applies these exact rules; running them here means a plan that
+	// cannot be accepted dies in this process, not in a live run.
+	if err := validateFinalJobPlanBindingRules(plan); err != nil {
+		return "", nil, err
+	}
+	canonicalPlan, err := json.Marshal(plan)
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal prepared final_job compiled plan: %w", err)
 	}
-	return string(canonical), preparedRefs, nil
+	return string(canonicalPlan), preparedRefs, nil
 }
 
 func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegmentRequest) (finalJobPlanAsset, map[string]any, error) {
@@ -369,4 +417,109 @@ func enforceFinalJobMinimumSceneDuration(scenes []map[string]any, minimumMS int6
 		scene["duration_seconds"] = float64(minimumMS) / 1000
 	}
 	return nil
+}
+
+// finalJobSegmentWork is one independent fragment preparation: the validated
+// source reference, its exact request, and its position in the compiled plan.
+type finalJobSegmentWork struct {
+	index   int
+	source  map[string]any
+	request FinalJobVideoSegmentRequest
+}
+
+// FinalJobSegmentParallelism is the optional parallelism a preparer declares. A
+// preparer that does not implement it is driven one fragment at a time.
+type FinalJobSegmentParallelism interface {
+	Parallelism() int
+}
+
+func finalJobSegmentPrepareError(item finalJobSegmentWork, err error) error {
+	return fmt.Errorf(
+		"prepare final_job segment %q from asset %q role %q at %dus for %dus: %w",
+		item.request.SegmentID,
+		finalJobStringValue(item.source["asset_id"]),
+		finalJobStringValue(item.source["role"]),
+		item.request.SourceInUS,
+		item.request.SourceDurationUS,
+		err,
+	)
+}
+
+// finalJobPrepareSegments prepares the fragments concurrently and returns them
+// indexed by plan position, so the binding stays deterministic whatever order
+// they complete in. Fail-closed: a failure cancels the remaining work and is
+// reported by plan position, never by scheduling luck, and a mere cancellation
+// is not reported over a real cause.
+func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentPreparer, work []finalJobSegmentWork) ([]map[string]any, error) {
+	prepared := make([]map[string]any, len(work))
+	if len(work) == 0 {
+		return prepared, nil
+	}
+	lanes := 1
+	if declared, ok := preparer.(FinalJobSegmentParallelism); ok {
+		if lanes = declared.Parallelism(); lanes < 1 {
+			lanes = 1
+		}
+	}
+	if lanes > len(work) {
+		lanes = len(work)
+	}
+	if lanes == 1 {
+		for _, item := range work {
+			result, err := preparer.PrepareFinalJobVideoSegment(ctx, item.source, item.request)
+			if err != nil {
+				return nil, finalJobSegmentPrepareError(item, err)
+			}
+			prepared[item.index] = result
+		}
+		return prepared, nil
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	failures := make([]error, len(work))
+	gates := make(chan struct{}, lanes)
+	var wg sync.WaitGroup
+	for _, item := range work {
+		wg.Add(1)
+		go func(item finalJobSegmentWork) {
+			defer wg.Done()
+			select {
+			case gates <- struct{}{}:
+				defer func() { <-gates }()
+			case <-runCtx.Done():
+				return
+			}
+			if runCtx.Err() != nil {
+				return
+			}
+			result, err := preparer.PrepareFinalJobVideoSegment(runCtx, item.source, item.request)
+			if err != nil {
+				failures[item.index] = finalJobSegmentPrepareError(item, err)
+				cancel()
+				return
+			}
+			prepared[item.index] = result
+		}(item)
+	}
+	wg.Wait()
+	var cancelled error
+	for _, err := range failures {
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, context.Canceled) {
+			if cancelled == nil {
+				cancelled = err
+			}
+			continue
+		}
+		return nil, err
+	}
+	if cancelled != nil {
+		return nil, cancelled
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return prepared, nil
 }

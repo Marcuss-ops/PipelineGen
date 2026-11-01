@@ -83,6 +83,127 @@ type RemoteFinalJobResult struct {
 	// retry window still finishes instead of dying on an exhausted attempt
 	// budget. Only meaningful while the job is pending.
 	Yields int `json:"yields,omitempty"`
+	// Timing decomposes the wait that `remote_final_job` reports as one stage.
+	// It is persisted with the receipt so the split survives the run and is
+	// readable from /full without re-running the render.
+	Timing *RemoteFinalJobTiming `json:"timing,omitempty"`
+}
+
+// RemoteFinalJobTiming separates the Master-side phases (queue vs execution)
+// from what the pipeline adds (handoff + attach wait + poll lag). Durations are
+// milliseconds and stay 0 when the Master did not report that boundary; a
+// missing phase is never estimated. The worker-internal split (download,
+// decode, composition, encode, mux, upload) is not exposed by the Master poll
+// API and is therefore NOT represented here — adding it requires worker
+// telemetry, not a local clock.
+type RemoteFinalJobTiming struct {
+	MasterCreatedAt   string `json:"master_created_at,omitempty"`
+	MasterStartedAt   string `json:"master_started_at,omitempty"`
+	MasterCompletedAt string `json:"master_completed_at,omitempty"`
+	QueueMS           int64  `json:"queue_ms,omitempty"`
+	ExecutionMS       int64  `json:"execution_ms,omitempty"`
+	// HandoffMS is the locally measured PREPARE+FINALIZE (payload build, upload,
+	// Master acceptance) — the part of the stage that is our own work.
+	HandoffMS int64 `json:"handoff_ms,omitempty"`
+	// WaitMS is the attach wall: polling, resumptions, transport.
+	WaitMS int64 `json:"wait_ms,omitempty"`
+	// PollLagMS is terminal observation minus the Master's completed_at.
+	PollLagMS int64 `json:"poll_lag_ms,omitempty"`
+	Polls     int   `json:"polls,omitempty"`
+	// Worker is the worker-side split of execution_ms, relayed by the Master.
+	// nil means the Master did not report it; it is never estimated here.
+	Worker *RemoteFinalJobWorkerTiming `json:"worker,omitempty"`
+	// SegmentPrep splits handoff_ms into the phases of the local fragment
+	// preparation that must finish before PREPARE can exist. nil means no
+	// fragment was prepared on this attempt (a resumed attach).
+	SegmentPrep *RemoteFinalJobSegmentPrepTiming `json:"segment_prep,omitempty"`
+	// HandoffResolveMS is the runtime-asset resolution time inside the handoff:
+	// Drive folder listings, media-SSOT lookups and Objectstore publication of
+	// the sources. It is the part of handoff_ms that is neither fragment
+	// preparation nor the two Master calls, and it is measured, never inferred.
+	HandoffResolveMS int64 `json:"handoff_resolve_ms,omitempty"`
+}
+
+// RemoteFinalJobSegmentPrepTiming is the locally measured split of the one
+// stage the remote render does not explain: preparing assembly-ready fragments
+// (download the source, encode the window, verify the frame cap, publish to the
+// HTTPS Objectstore). It is measured, never estimated: a phase that did not run
+// stays 0.
+type RemoteFinalJobSegmentPrepTiming struct {
+	Segments int `json:"segments,omitempty"`
+	// Reused counts fragments whose SOURCE already was the exact certified
+	// fragment (nothing was produced). Cached counts fragments served from the
+	// local fragment cache: the same window of the same source bytes, encoded
+	// and certified by an earlier run.
+	Reused     int   `json:"reused,omitempty"`
+	Cached     int   `json:"cached,omitempty"`
+	DownloadMS int64 `json:"download_ms,omitempty"`
+	EncodeMS   int64 `json:"encode_ms,omitempty"`
+	VerifyMS   int64 `json:"verify_ms,omitempty"`
+	PublishMS  int64 `json:"publish_ms,omitempty"`
+	Bytes      int64 `json:"bytes,omitempty"`
+}
+
+// RemoteFinalJobWorkerTiming is what the remote worker reports about its own
+// phases. Queue and execution are Master-clock intervals; these are the only
+// numbers that say why the remote render took as long as it did.
+type RemoteFinalJobWorkerTiming struct {
+	LeasedAt   string  `json:"leased_at,omitempty"`
+	StartedAt  string  `json:"started_at,omitempty"`
+	FinishedAt string  `json:"finished_at,omitempty"`
+	DownloadMS int64   `json:"download_ms,omitempty"`
+	DecodeMS   int64   `json:"decode_ms,omitempty"`
+	ComposeMS  int64   `json:"compose_ms,omitempty"`
+	EncodeMS   int64   `json:"encode_ms,omitempty"`
+	MuxMS      int64   `json:"mux_ms,omitempty"`
+	UploadMS   int64   `json:"upload_ms,omitempty"`
+	Frames     int64   `json:"frames,omitempty"`
+	EncodeFPS  float64 `json:"encode_fps,omitempty"`
+}
+
+// Merge combines the phases observed by two sides of the handoff. The handoff
+// is measured before PREPARE/FINALIZE; queue/execution/wait/poll arrive from a
+// later attach. Neither may erase the other, and a phase a side did not report
+// (0) never overwrites a measured one.
+func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJobTiming {
+	if t == nil {
+		t = &RemoteFinalJobTiming{}
+	}
+	if other == nil {
+		return t
+	}
+	if other.MasterCreatedAt != "" {
+		t.MasterCreatedAt = other.MasterCreatedAt
+	}
+	if other.MasterStartedAt != "" {
+		t.MasterStartedAt = other.MasterStartedAt
+	}
+	if other.MasterCompletedAt != "" {
+		t.MasterCompletedAt = other.MasterCompletedAt
+	}
+	for _, phase := range []struct {
+		dst *int64
+		src int64
+	}{{&t.QueueMS, other.QueueMS}, {&t.ExecutionMS, other.ExecutionMS}, {&t.HandoffMS, other.HandoffMS}, {&t.HandoffResolveMS, other.HandoffResolveMS}, {&t.WaitMS, other.WaitMS}, {&t.PollLagMS, other.PollLagMS}} {
+		if phase.src > 0 {
+			*phase.dst = phase.src
+		}
+	}
+	if other.Polls > t.Polls {
+		t.Polls = other.Polls
+	}
+	// The worker block is one atomic observation: a later report replaces the
+	// previous one instead of being merged field by field, so a resumed attach
+	// cannot mix phases from two different renders.
+	if other.Worker != nil {
+		t.Worker = other.Worker
+	}
+	// The local preparation block is also one atomic observation: it describes
+	// a single payload build, so it is replaced whole, never field by field.
+	if other.SegmentPrep != nil {
+		t.SegmentPrep = other.SegmentPrep
+	}
+	return t
 }
 
 // enforceFinalJobPreflight is the deterministic pre-enqueue gate: predictable
@@ -403,6 +524,10 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		}
 		remote, err := attacher.AttachFinalJob(ctx, jobID, receipt.Yields > 0)
 		remote.Attempt = receipt.Attempt
+		// The durable receipt already carries the locally measured handoff (and,
+		// on a resumed job, possibly earlier Master phases); keep them when the
+		// attach result only reports its own side.
+		remote.Timing = receipt.Timing.Merge(remote.Timing)
 		return r.settleFinalJob(ctx, runID, result, remote, receipt.Yields, err)
 	}
 	if starter, ok := r.finalJobSubmitter.(FinalJobStarter); ok {
@@ -433,6 +558,9 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 		}
 		attached, err := attacher.AttachFinalJob(ctx, remote.JobID, false)
 		attached.Attempt = attempt
+		// StartFinalJob measured the local handoff; the attach result knows the
+		// Master phases. The persisted receipt must carry both.
+		attached.Timing = remote.Timing.Merge(attached.Timing)
 		return r.settleFinalJob(ctx, runID, result, attached, 0, err)
 	}
 	remote, err := r.finalJobSubmitter.SubmitFinalJob(ctx, runID, req, result)

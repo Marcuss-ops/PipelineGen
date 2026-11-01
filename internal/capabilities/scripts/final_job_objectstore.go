@@ -83,6 +83,14 @@ func publishFinalJobLocalObject(ctx context.Context, path, sha string, sizeBytes
 	if path == "" {
 		return fmt.Errorf("Creator-local asset path is required for direct Objectstore publication")
 	}
+	// The object is addressed by its SHA-256: if that address already holds
+	// exactly these bytes, the remote will fetch THOSE bytes and re-reading the
+	// local file answers nothing new. Checking the address first turns a
+	// per-run re-hash of every source into a HEAD, and only a real upload still
+	// verifies the file it is about to send.
+	if err := ensureFinalJobObjectStored(ctx, strings.ToLower(strings.TrimSpace(sha)), sizeBytes); err == nil {
+		return nil
+	}
 	actualSHA, actualSize, err := digest.SHA256File(path)
 	if err != nil {
 		return fmt.Errorf("hash Creator-local asset: %w", err)
@@ -90,6 +98,16 @@ func publishFinalJobLocalObject(ctx context.Context, path, sha string, sizeBytes
 	if !strings.EqualFold(actualSHA, strings.TrimSpace(sha)) || actualSize != sizeBytes {
 		return fmt.Errorf("Creator-local asset does not match certified hash/size")
 	}
+	return publishFinalJobVerifiedObject(ctx, path, sha, sizeBytes)
+}
+
+// publishFinalJobVerifiedObject uploads bytes whose SHA-256 and size the caller
+// computed from this exact file in this process, immediately before the call.
+// Re-hashing here would read and digest the same fragment a second time for no
+// new information: the fragment was just produced and nobody else can write it.
+// Every path that does NOT already hold that identity goes through
+// publishFinalJobLocalObject, which always re-hashes.
+func publishFinalJobVerifiedObject(ctx context.Context, path, sha string, sizeBytes int64) error {
 	if err := ensureFinalJobObjectStored(ctx, strings.ToLower(sha), sizeBytes); err == nil {
 		return nil
 	}
@@ -124,6 +142,18 @@ func publishFinalJobLocalObject(ctx context.Context, path, sha string, sizeBytes
 // It is exported for the composition root's media resolver adapter.
 func PublishFinalJobLocalObject(ctx context.Context, preferredID, path, sha string, sizeBytes int64) (map[string]any, error) {
 	if err := publishFinalJobLocalObject(ctx, path, sha, sizeBytes); err != nil {
+		return nil, err
+	}
+	return finalJobObjectStoreRef(ctx, preferredID, sha, sha, sizeBytes)
+}
+
+// PublishFinalJobLocalObjectVerified publishes a file whose SHA-256 and size the
+// caller just computed from that file itself (a freshly encoded fragment, or a
+// cache hit re-hashed on the way in). It exists so one fragment is hashed once
+// instead of twice; any caller that cannot point at the exact bytes it hashed
+// must use PublishFinalJobLocalObject, which always verifies.
+func PublishFinalJobLocalObjectVerified(ctx context.Context, preferredID, path, sha string, sizeBytes int64) (map[string]any, error) {
+	if err := publishFinalJobVerifiedObject(ctx, path, sha, sizeBytes); err != nil {
 		return nil, err
 	}
 	return finalJobObjectStoreRef(ctx, preferredID, sha, sha, sizeBytes)

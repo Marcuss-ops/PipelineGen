@@ -29,6 +29,54 @@ type Result struct {
 	WorkerID    string
 	ArtifactURL string
 	SHA256      string
+	// Timing decomposes the wait on the Master clock. Zero fields mean the
+	// Master did not report that phase (or the job never reached it); they are
+	// never inferred from local wall time, because the render outlives any one
+	// attempt and a local clock cannot prove where the time went.
+	Timing Timing
+}
+
+// WorkerTiming is the worker-side split of one remote render, relayed by the
+// Master as `worker_timing` on GET /api/v1/jobs/{id}.
+type WorkerTiming struct {
+	LeasedAt   time.Time
+	StartedAt  time.Time
+	FinishedAt time.Time
+	Download   time.Duration
+	Decode     time.Duration
+	Compose    time.Duration
+	Encode     time.Duration
+	Mux        time.Duration
+	Upload     time.Duration
+	Frames     int64
+	EncodeFPS  float64
+}
+
+// Timing is what a final-job wait is actually made of:
+//
+//	queue      created_at → started_at   (waiting for a worker/lease)
+//	execution  started_at → completed_at (the remote render itself)
+//	wait       the local attach wall    (polling, resumption, transport)
+//	poll lag   terminal observation − completed_at (poll interval, not render)
+//
+// Queue+execution are the Master's numbers; wait+poll lag are what the pipeline
+// adds on top. The worker-internal split (download/decode/compose/encode/mux/
+// upload) is not exposed by GET /api/v1/jobs/{id} and therefore stays a
+// documented gap rather than a guessed number.
+type Timing struct {
+	CreatedAt   time.Time
+	StartedAt   time.Time
+	CompletedAt time.Time
+	QueueWait   time.Duration
+	Execution   time.Duration
+	Wait        time.Duration
+	PollLag     time.Duration
+	Polls       int
+	// Worker is the remote worker's own phase report, when the Master relays
+	// it. It is the only way to see inside `execution_ms`: download, decode,
+	// composition, encode, mux and upload all happen after the lease, so a
+	// local clock cannot attribute them. Zero means "not reported".
+	Worker WorkerTiming
 }
 
 type jobEnvelope struct {
@@ -44,6 +92,31 @@ type jobEnvelope struct {
 	ArtifactURL    string `json:"artifact_url"`
 	ArtifactSHA256 string `json:"sha256"`
 	Error          string `json:"error"`
+	// Master-clock phase boundaries. GET /api/v1/jobs/{id} exposes created_at,
+	// started_at and completed_at; a pre-only job keeps started_at null, which
+	// is exactly why an unstarted phase must stay zero here.
+	CreatedAt   string `json:"created_at"`
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at"`
+	// WorkerTiming is relayed verbatim: the worker owns its phase names, and a
+	// Master that has not implemented the report simply omits the key.
+	WorkerTiming json.RawMessage `json:"worker_timing"`
+}
+
+// workerTimingWire is the on-the-wire worker report. Durations are integer
+// milliseconds and times are RFC3339Nano, matching the Master contract.
+type workerTimingWire struct {
+	LeasedAt   string  `json:"leased_at"`
+	StartedAt  string  `json:"started_at"`
+	FinishedAt string  `json:"finished_at"`
+	DownloadMS int64   `json:"download_ms"`
+	DecodeMS   int64   `json:"decode_ms"`
+	ComposeMS  int64   `json:"compose_ms"`
+	EncodeMS   int64   `json:"encode_ms"`
+	MuxMS      int64   `json:"mux_ms"`
+	UploadMS   int64   `json:"upload_ms"`
+	Frames     int64   `json:"frames"`
+	EncodeFPS  float64 `json:"encode_fps"`
 }
 
 func New(baseURL, token string) *Client {
@@ -259,30 +332,61 @@ func (c *Client) Attach(ctx context.Context, jobID string, budget time.Duration)
 	}
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	// The first observation is immediate; the gaps after it start short and back
+	// off to the configured interval. A render that ends in seconds must not be
+	// observed a whole interval later (that delay lands in poll_lag, not in the
+	// render), and a 50 minute one must still not hammer the Master.
+	next := interval / 8
+	if next < 10*time.Millisecond {
+		next = 10 * time.Millisecond
+	}
+	started := time.Now()
+	polls := 0
 	var last Result
+	finish := func(result Result, err error) (Result, error) {
+		result.Timing.Polls = polls
+		result.Timing.Wait = nonNegative(time.Since(started))
+		if !result.Timing.CompletedAt.IsZero() {
+			// Poll lag is local observation minus the Master's own completion
+			// time: it is the polling interval and transport, never render work.
+			result.Timing.PollLag = nonNegative(time.Since(result.Timing.CompletedAt))
+		}
+		return result, err
+	}
 	for {
 		result, err := c.Poll(ctx, jobID)
+		polls++
 		last = result
 		if err == nil {
-			return result, nil
+			return finish(result, nil)
 		}
 		if !errors.Is(err, ErrRemotePending) {
 			// Terminal failure or a transport fault: the wait is over either way.
-			return result, err
+			return finish(result, err)
 		}
 		select {
 		case <-ctx.Done():
-			return last, ctx.Err()
+			return finish(last, ctx.Err())
 		case <-deadline.C:
 			if budget <= 0 {
-				return last, fmt.Errorf("remote job %s exceeded poll timeout: %w", jobID, ErrRemotePending)
+				return finish(last, fmt.Errorf("remote job %s exceeded poll timeout: %w", jobID, ErrRemotePending))
 			}
-			return last, fmt.Errorf("remote job %s still %s after %s: %w", jobID, last.Status, wait, ErrRemotePending)
-		case <-ticker.C:
+			return finish(last, fmt.Errorf("remote job %s still %s after %s: %w", jobID, last.Status, wait, ErrRemotePending))
+		case <-time.After(next):
+		}
+		if next *= 2; next > interval {
+			next = interval
 		}
 	}
+}
+
+// nonNegative clamps a local delta so a Master clock ahead of this host cannot
+// produce a negative phase duration.
+func nonNegative(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	return d
 }
 
 // WaitTerminal waits for a job with the client's full poll timeout.
@@ -345,12 +449,98 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 func unwrap(in jobEnvelope) jobEnvelope {
 	var wrapped jobEnvelope
 	if len(in.Job) > 0 && json.Unmarshal(in.Job, &wrapped) == nil && wrapped.Status != "" {
-		return wrapped
+		return withOuterTiming(wrapped, in)
 	}
 	if json.Unmarshal(in.Result, &wrapped) == nil && wrapped.Status != "" {
-		return wrapped
+		return withOuterTiming(wrapped, in)
 	}
 	return in
+}
+
+// withOuterTiming keeps the envelope's phase boundaries when the nested job
+// object does not repeat them: older Masters wrap status in job/result while
+// still exposing the timestamps at the top level.
+func withOuterTiming(inner, outer jobEnvelope) jobEnvelope {
+	if inner.CreatedAt == "" {
+		inner.CreatedAt = outer.CreatedAt
+	}
+	if inner.StartedAt == "" {
+		inner.StartedAt = outer.StartedAt
+	}
+	if inner.CompletedAt == "" {
+		inner.CompletedAt = outer.CompletedAt
+	}
+	if len(inner.WorkerTiming) == 0 {
+		inner.WorkerTiming = outer.WorkerTiming
+	}
+	return inner
+}
+
+// workerTimingFrom decodes the relayed worker report. A malformed or absent
+// block is "not reported": the breakdown is observability and must never fail
+// a render the Master already completed.
+func workerTimingFrom(raw json.RawMessage) WorkerTiming {
+	if len(raw) == 0 {
+		return WorkerTiming{}
+	}
+	var wire workerTimingWire
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return WorkerTiming{}
+	}
+	return WorkerTiming{
+		LeasedAt:   parseMasterTime(wire.LeasedAt),
+		StartedAt:  parseMasterTime(wire.StartedAt),
+		FinishedAt: parseMasterTime(wire.FinishedAt),
+		Download:   nonNegativeMS(wire.DownloadMS),
+		Decode:     nonNegativeMS(wire.DecodeMS),
+		Compose:    nonNegativeMS(wire.ComposeMS),
+		Encode:     nonNegativeMS(wire.EncodeMS),
+		Mux:        nonNegativeMS(wire.MuxMS),
+		Upload:     nonNegativeMS(wire.UploadMS),
+		Frames:     wire.Frames,
+		EncodeFPS:  wire.EncodeFPS,
+	}
+}
+
+// nonNegativeMS refuses a negative worker phase: a worker clock cannot produce
+// a negative duration, so such a value is a malformed report, not data.
+func nonNegativeMS(ms int64) time.Duration {
+	if ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// parseMasterTime reads a Master phase boundary. A malformed or absent value is
+// "not reported", never an error: the timing breakdown is observability and
+// must not fail a render that otherwise succeeded.
+func parseMasterTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "null" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+// timingFromState derives the Master-side phases, refusing negative intervals
+// (clock skew) instead of reporting a nonsensical duration.
+func timingFromState(state jobEnvelope) Timing {
+	created := parseMasterTime(state.CreatedAt)
+	started := parseMasterTime(state.StartedAt)
+	completed := parseMasterTime(state.CompletedAt)
+	timing := Timing{CreatedAt: created, StartedAt: started, CompletedAt: completed}
+	if !created.IsZero() && !started.IsZero() && started.After(created) {
+		timing.QueueWait = started.Sub(created)
+	}
+	if !started.IsZero() && !completed.IsZero() && completed.After(started) {
+		timing.Execution = completed.Sub(started)
+	}
+	timing.Worker = workerTimingFrom(state.WorkerTiming)
+	return timing
 }
 
 func resultFrom(jobID string, state jobEnvelope) Result {
@@ -368,5 +558,5 @@ func resultFrom(jobID string, state jobEnvelope) Result {
 	if artifact.SHA256 == "" {
 		artifact.SHA256 = state.ArtifactSHA256
 	}
-	return Result{JobID: jobID, Status: state.Status, WorkerID: state.WorkerID, ArtifactURL: artifact.URL, SHA256: artifact.SHA256}
+	return Result{JobID: jobID, Status: state.Status, WorkerID: state.WorkerID, ArtifactURL: artifact.URL, SHA256: artifact.SHA256, Timing: timingFromState(state)}
 }
