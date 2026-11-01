@@ -254,15 +254,24 @@ func TestRenderOverlayPlanAtBoundaryFallsBackOnSplitError(t *testing.T) {
 	}
 }
 
-func TestRenderOverlayPlanAtBoundaryFinalJobNeverSplits(t *testing.T) {
+// A final job splits like any other run: the worker's final manifest carries
+// artifacts[] and the V2 plan binds one asset per byte-set, so several certified
+// overlay artifacts are a supported shape. Rendering the same 24 items as one
+// whole-timeline pass instead of nine scene batches was 76 s against 26 s of
+// render work on the biggest block of the run.
+func TestRenderOverlayPlanAtBoundaryFinalJobSplits(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_PER_SCENE", "enabled")
 	stub := &splitEnqueuerStub{splitRef: RenderReference{JobID: "split-job", Status: "completed"}}
 	runner := &Runner{overlayRenderEnqueuer: stub, log: zap.NewNop()}
-	if _, err := runner.renderOverlayPlanAtBoundary(context.Background(), GenerateRequest{FinalJob: true}, multiScenePointerFor(t)); err != nil {
-		t.Fatalf("final job must submit through the single path: %v", err)
+	ref, err := runner.renderOverlayPlanAtBoundary(context.Background(), GenerateRequest{FinalJob: true}, multiScenePointerFor(t))
+	if err != nil {
+		t.Fatalf("final job must satisfy the boundary: %v", err)
 	}
-	if stub.splitCalls != 0 || stub.singleCalls != 1 {
-		t.Fatalf("final job split=0 single=1, got split=%d single=%d", stub.splitCalls, stub.singleCalls)
+	if stub.splitCalls != 1 || stub.singleCalls != 0 {
+		t.Fatalf("final job split=1 single=0, got split=%d single=%d", stub.splitCalls, stub.singleCalls)
+	}
+	if ref.JobID != "split-job" {
+		t.Fatalf("reference = %q, want the split submission", ref.JobID)
 	}
 }
 
