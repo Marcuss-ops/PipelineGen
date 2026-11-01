@@ -79,7 +79,17 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 	result.RemoteFinalJob = &remote
 	r.checkpoint(ctx, runID, result)
 	if r.log != nil {
-		r.log.Info("remote final job completed", zap.String("run_id", runID), zap.String("remote_job_id", remote.JobID), zap.String("worker_id", remote.WorkerID))
+		fields := []zap.Field{zap.String("run_id", runID), zap.String("remote_job_id", remote.JobID), zap.String("worker_id", remote.WorkerID)}
+		if timing := remote.Timing; timing != nil {
+			fields = append(fields,
+				zap.Int64("queue_ms", timing.QueueMS),
+				zap.Int64("execution_ms", timing.ExecutionMS),
+				zap.Int64("handoff_ms", timing.HandoffMS),
+				zap.Int64("wait_ms", timing.WaitMS),
+				zap.Int64("poll_lag_ms", timing.PollLagMS),
+				zap.Int("polls", timing.Polls))
+		}
+		r.log.Info("remote final job completed", fields...)
 	}
 	return true
 }

@@ -137,6 +137,85 @@ func TestPollSeparatesTerminalFailureFromPending(t *testing.T) {
 	}
 }
 
+// TestAttachDecomposesQueueExecutionAndPollLag pins the phase decomposition the
+// remote-final-job stage relies on: the Master's created_at/started_at/
+// completed_at produce queue and execution, while the attach loop reports its
+// own poll count and poll lag. Missing boundaries stay zero, never negative.
+func TestAttachDecomposesQueueExecutionAndPollLag(t *testing.T) {
+	now := time.Now().UTC()
+	created := now.Add(-120 * time.Second).Format(time.RFC3339Nano)
+	startedAt := now.Add(-100 * time.Second).Format(time.RFC3339Nano)
+	completedAt := now.Add(-2 * time.Second).Format(time.RFC3339Nano)
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/jobs/master-job-1" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		polls++
+		switch polls {
+		case 1:
+			_, _ = w.Write([]byte(`{"job_id":"master-job-1","status":"QUEUED","created_at":"` + created + `"}`))
+		case 2:
+			_, _ = w.Write([]byte(`{"job_id":"master-job-1","status":"RUNNING","created_at":"` + created + `","started_at":"` + startedAt + `"}`))
+		default:
+			_, _ = w.Write([]byte(`{"job_id":"master-job-1","status":"SUCCEEDED","artifact_url":"http://master/final.mp4","created_at":"` + created + `","started_at":"` + startedAt + `","completed_at":"` + completedAt + `"}`))
+		}
+	}))
+	defer server.Close()
+	client := New(server.URL, "test-token")
+	client.PollInterval = time.Millisecond
+	client.PollTimeout = 5 * time.Second
+
+	got, err := client.Attach(context.Background(), "master-job-1", 5*time.Second)
+	if err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	if got.Status != "SUCCEEDED" {
+		t.Fatalf("Attach result = %#v", got)
+	}
+	if got.Timing.QueueWait != 20*time.Second {
+		t.Fatalf("queue wait = %s, want 20s (created_at → started_at)", got.Timing.QueueWait)
+	}
+	if got.Timing.Execution != 98*time.Second {
+		t.Fatalf("execution = %s, want 98s (started_at → completed_at)", got.Timing.Execution)
+	}
+	if got.Timing.Polls != 3 {
+		t.Fatalf("polls = %d, want 3", got.Timing.Polls)
+	}
+	if got.Timing.Wait <= 0 {
+		t.Fatalf("wait = %s, want the attach wall", got.Timing.Wait)
+	}
+	if got.Timing.PollLag < time.Second {
+		t.Fatalf("poll lag = %s, want the observed completion delay", got.Timing.PollLag)
+	}
+	if got.Timing.CreatedAt.IsZero() || !got.Timing.CreatedAt.Before(got.Timing.StartedAt) {
+		t.Fatalf("Master boundaries were not parsed: created=%s started=%s", got.Timing.CreatedAt, got.Timing.StartedAt)
+	}
+}
+
+// TestTimingWithoutMasterBoundariesStaysZero pins the fallback: a Master that
+// exposes only a status cannot produce a phase, and an unstarted phase must not
+// turn into a negative duration.
+func TestTimingWithoutMasterBoundariesStaysZero(t *testing.T) {
+	server, _, _, _ := masterStub(t, "SUCCEEDED")
+	defer server.Close()
+	client := New(server.URL, "test-token")
+	client.PollInterval = time.Millisecond
+	client.PollTimeout = time.Second
+	got, err := client.Attach(context.Background(), "master-job-1", time.Second)
+	if err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	if got.Timing.QueueWait != 0 || got.Timing.Execution != 0 || got.Timing.PollLag != 0 {
+		t.Fatalf("timing = %#v, want zero phases when the Master reports none", got.Timing)
+	}
+	if got.Timing.Polls != 1 {
+		t.Fatalf("polls = %d, want 1", got.Timing.Polls)
+	}
+}
+
 func TestSubmitPerformsCompleteMasterHandoff(t *testing.T) {
 	prepares, finalizes, gets := 0, 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,5 +286,101 @@ func TestPollReadsFlatMasterArtifactFields(t *testing.T) {
 	}
 	if got.ArtifactURL != "http://master/artifacts/final.mp4" || got.SHA256 != "deadbeef" {
 		t.Fatalf("Poll receipt = %#v, want the flat artifact URL and checksum", got)
+	}
+}
+
+// TestWorkerTimingIsRelayed pins the worker-side split: the Master relays the
+// worker's own phases verbatim, so a render's execution time can be attributed
+// to download/decode/compose/encode/mux/upload instead of staying one number.
+func TestWorkerTimingIsRelayed(t *testing.T) {
+	body := `{
+  "job_id": "job_worker_1",
+  "status": "SUCCEEDED",
+  "worker_id": "velox-worker-523925eb",
+  "artifact_url": "https://objectstore/final.mp4",
+  "sha256": "abc",
+  "created_at": "2026-11-01T08:00:00Z",
+  "started_at": "2026-11-01T08:00:30Z",
+  "completed_at": "2026-11-01T08:05:00Z",
+  "worker_timing": {
+    "leased_at": "2026-11-01T08:00:30Z",
+    "started_at": "2026-11-01T08:00:32Z",
+    "finished_at": "2026-11-01T08:04:59Z",
+    "download_ms": 1200,
+    "decode_ms": 3400,
+    "compose_ms": 182000,
+    "encode_ms": 96000,
+    "mux_ms": 900,
+    "upload_ms": 14800,
+    "frames": 6550,
+    "encode_fps": 68.2
+  }
+}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+	client := New(server.URL, "test-token")
+	got, err := client.Poll(context.Background(), "job_worker_1")
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if got.Timing.Worker.Compose != 182*time.Second || got.Timing.Worker.Encode != 96*time.Second {
+		t.Fatalf("worker phases = %#v, want compose 182s encode 96s", got.Timing.Worker)
+	}
+	if got.Timing.Worker.Upload != 14800*time.Millisecond || got.Timing.Worker.Decode != 3400*time.Millisecond {
+		t.Fatalf("worker transfer phases = %#v", got.Timing.Worker)
+	}
+	if got.Timing.Worker.Frames != 6550 || got.Timing.Worker.EncodeFPS != 68.2 {
+		t.Fatalf("worker frames = %d fps = %v", got.Timing.Worker.Frames, got.Timing.Worker.EncodeFPS)
+	}
+	if !got.Timing.Worker.StartedAt.Equal(time.Date(2026, 11, 1, 8, 0, 32, 0, time.UTC)) {
+		t.Fatalf("worker started_at = %s", got.Timing.Worker.StartedAt)
+	}
+}
+
+// TestWorkerTimingSurvivesTheJobWrapper pins the older-Master shape: the status
+// object is nested while worker_timing stays at the top level. Dropping it there
+// would silently lose the only worker-side telemetry.
+func TestWorkerTimingSurvivesTheJobWrapper(t *testing.T) {
+	body := `{
+  "job": {"job_id": "job_wrapped", "status": "SUCCEEDED"},
+  "worker_timing": {"encode_ms": 4200, "frames": 120}
+}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer server.Close()
+	client := New(server.URL, "test-token")
+	got, err := client.Poll(context.Background(), "job_wrapped")
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if got.Timing.Worker.Encode != 4200*time.Millisecond || got.Timing.Worker.Frames != 120 {
+		t.Fatalf("worker timing = %#v, want the top-level block kept", got.Timing.Worker)
+	}
+}
+
+// TestMalformedWorkerTimingStaysUnknown pins the observability contract: a
+// garbled or negative worker report is "not reported", never an error and never
+// a negative duration that would corrupt the total.
+func TestMalformedWorkerTimingStaysUnknown(t *testing.T) {
+	cases := []string{
+		`{"status":"SUCCEEDED","worker_timing":"nope"}`,
+		`{"status":"SUCCEEDED","worker_timing":{"encode_ms":-5000,"upload_ms":-1}}`,
+	}
+	for _, body := range cases {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(body))
+		}))
+		client := New(server.URL, "test-token")
+		got, err := client.Poll(context.Background(), "job_bad")
+		server.Close()
+		if err != nil {
+			t.Fatalf("Poll(%s): %v", body, err)
+		}
+		if got.Timing.Worker.Encode < 0 || got.Timing.Worker.Upload < 0 {
+			t.Fatalf("worker timing(%s) = %#v, want no negative phase", body, got.Timing.Worker)
+		}
 	}
 }

@@ -2,15 +2,19 @@ package wiring
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -64,6 +68,18 @@ type remoteFinalJobAdapter struct {
 	// attachBudget bounds a single attempt's wait on the Master render; see
 	// defaultFinalJobAttachBudget and finalJobAttachBudget.
 	attachBudget time.Duration
+	// resolverNS is the accumulated runtime-asset resolution time reported in
+	// the receipt as handoff_resolve_ms (diagnostics only).
+	resolverNS atomic.Int64
+	// resolved caches one handoff's runtime-asset resolution by identity. The
+	// payload builder asks for the SAME source once per timeline window (85
+	// windows over ~13 sources in r50, 65,1 s of resolution); publishing and
+	// signing those bytes again per window answers a question the identity has
+	// already answered. Cleared when a new handoff starts, never shared across
+	// runs, and only ever stores a reference to immutable content.
+	resolvedMu sync.Mutex
+	resolved   map[string]map[string]any
+	hits       int
 }
 
 func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error) {
@@ -111,7 +127,11 @@ func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string
 		return started, err
 	}
 	remote, waitErr := a.client.Attach(ctx, started.JobID, a.attachBudget)
-	return finalJobResult(started.JobID, remote), finalJobWaitError(waitErr)
+	receipt := finalJobResult(started.JobID, remote)
+	// The attach result only knows Master-clock phases; the locally measured
+	// handoff belongs to the receipt the submission produced.
+	receipt.Timing = mergeFinalJobTiming(started.Timing, receipt.Timing)
+	return receipt, finalJobWaitError(waitErr)
 }
 
 // StartFinalJob creates the Master job and returns its durable handle without
@@ -128,10 +148,44 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	if a.segments == nil {
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job local segment preparation is not configured; refusing to dispatch raw video sources")
 	}
+	handoffStarted := time.Now()
+	// The segment preparation measured by THIS build, never the preparer's
+	// process-wide total: a resumed or concurrent run must not inherit it.
+	var segmentPrep *scriptgen.RemoteFinalJobSegmentPrepTiming
+	var resolveMS int64
+	handoffTiming := func() *scriptgen.RemoteFinalJobTiming {
+		timing := &scriptgen.RemoteFinalJobTiming{
+			HandoffMS:        time.Since(handoffStarted).Milliseconds(),
+			HandoffResolveMS: resolveMS,
+		}
+		if segmentPrep != nil && segmentPrep.Segments > 0 {
+			timing.SegmentPrep = segmentPrep
+		}
+		return timing
+	}
+	a.resolverNS.Store(0)
+	a.resolvedMu.Lock()
+	a.resolved = nil
+	a.hits = 0
+	a.resolvedMu.Unlock()
+	segmentsBefore := a.segments.Totals()
 	pre, finalize, err := scriptgen.BuildFinalJobPayloads(ctx, runID, req, result, a, a.segments)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
 	}
+	if prep := a.segments.Totals().minus(segmentsBefore); prep.Segments > 0 {
+		segmentPrep = &prep
+	}
+	resolveMS = a.resolverNS.Load() / int64(time.Millisecond)
+	a.resolvedMu.Lock()
+	uniqueResolved, dedupHits := len(a.resolved), a.hits
+	a.resolvedMu.Unlock()
+	var encodeMS, verifyMS int64
+	if segmentPrep != nil {
+		encodeMS, verifyMS = segmentPrep.EncodeMS, segmentPrep.VerifyMS
+	}
+	log.Printf("final_job handoff resolve_ms=%d unique_resolved=%d dedup_hits=%d encode_ms=%d verify_ms=%d",
+		resolveMS, uniqueResolved, dedupHits, encodeMS, verifyMS)
 	workerID := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_WORKER_ID"))
 	if workerID == "" {
 		workerID = finalJobWorker51ID
@@ -146,7 +200,7 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	prepared, err := a.client.PrepareJob(ctx, pre)
 	if err != nil {
 		if errors.Is(err, remotejob.ErrRemoteStaleJob) {
-			return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: staleReceiptStatus(prepared.Status)},
+			return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: staleReceiptStatus(prepared.Status), Timing: handoffTiming()},
 				fmt.Errorf("remote preparation %s is stale and must be replaced: %w: %w", prepared.JobID, scriptgen.ErrFinalJobStaleReceipt, err)
 		}
 		return scriptgen.RemoteFinalJobResult{}, err
@@ -156,18 +210,18 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 		// running. Finalizing it is forbidden (and would fail with
 		// job_already_leased); handing the handle back lets the next attempt
 		// attach to the render that already exists.
-		return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: prepared.Status},
+		return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: prepared.Status, Timing: handoffTiming()},
 			fmt.Errorf("remote job %s is already leased and %s: %w", prepared.JobID, prepared.Status, scriptgen.ErrFinalJobPending)
 	}
 	if err := a.client.Finalize(ctx, prepared.JobID, finalize); err != nil {
-		receipt := scriptgen.RemoteFinalJobResult{JobID: prepared.JobID}
+		receipt := scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Timing: handoffTiming()}
 		if errors.Is(err, remotejob.ErrRemoteStaleJob) {
 			receipt.Status = staleReceiptStatus("")
 			return receipt, fmt.Errorf("remote finalize of %s is stale and must be replaced: %w: %w", prepared.JobID, scriptgen.ErrFinalJobStaleReceipt, err)
 		}
 		return receipt, err
 	}
-	return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: "RUNNING"}, nil
+	return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: "RUNNING", Timing: handoffTiming()}, nil
 }
 
 // staleReceiptStatus projects a stale transport outcome onto the capability's
@@ -226,7 +280,76 @@ func finalJobResult(jobID string, remote remotejob.Result) scriptgen.RemoteFinal
 	if id == "" {
 		id = strings.TrimSpace(jobID)
 	}
-	return scriptgen.RemoteFinalJobResult{JobID: id, Status: remote.Status, WorkerID: remote.WorkerID, ArtifactURL: remote.ArtifactURL, SHA256: remote.SHA256}
+	return scriptgen.RemoteFinalJobResult{JobID: id, Status: remote.Status, WorkerID: remote.WorkerID, ArtifactURL: remote.ArtifactURL, SHA256: remote.SHA256, Timing: finalJobTiming(remote.Timing)}
+}
+
+// finalJobTiming projects the transport's Master-clock timing onto the durable
+// receipt. A wait with no reported boundaries yields nil so an unmeasured
+// receipt never claims zero queue/execution time; the poll count alone is still
+// useful while a job is pending, so it is kept when there was at least one poll.
+func finalJobTiming(timing remotejob.Timing) *scriptgen.RemoteFinalJobTiming {
+	worker := finalJobWorkerTiming(timing.Worker)
+	if worker == nil && timing.CreatedAt.IsZero() && timing.StartedAt.IsZero() && timing.CompletedAt.IsZero() &&
+		timing.QueueWait == 0 && timing.Execution == 0 && timing.Wait == 0 && timing.Polls == 0 {
+		return nil
+	}
+	projected := &scriptgen.RemoteFinalJobTiming{
+		QueueMS:     timing.QueueWait.Milliseconds(),
+		ExecutionMS: timing.Execution.Milliseconds(),
+		WaitMS:      timing.Wait.Milliseconds(),
+		PollLagMS:   timing.PollLag.Milliseconds(),
+		Polls:       timing.Polls,
+		Worker:      worker,
+	}
+	if !timing.CreatedAt.IsZero() {
+		projected.MasterCreatedAt = timing.CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !timing.StartedAt.IsZero() {
+		projected.MasterStartedAt = timing.StartedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !timing.CompletedAt.IsZero() {
+		projected.MasterCompletedAt = timing.CompletedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return projected
+}
+
+// finalJobWorkerTiming projects the worker's own phase report. nil means the
+// Master relayed no worker block, which must stay distinguishable from a worker
+// that reported zeroes (a render with no download, e.g. a cached source).
+func finalJobWorkerTiming(worker remotejob.WorkerTiming) *scriptgen.RemoteFinalJobWorkerTiming {
+	if worker.LeasedAt.IsZero() && worker.StartedAt.IsZero() && worker.FinishedAt.IsZero() &&
+		worker.Download == 0 && worker.Decode == 0 && worker.Compose == 0 && worker.Encode == 0 &&
+		worker.Mux == 0 && worker.Upload == 0 && worker.Frames == 0 && worker.EncodeFPS == 0 {
+		return nil
+	}
+	projected := &scriptgen.RemoteFinalJobWorkerTiming{
+		DownloadMS: worker.Download.Milliseconds(),
+		DecodeMS:   worker.Decode.Milliseconds(),
+		ComposeMS:  worker.Compose.Milliseconds(),
+		EncodeMS:   worker.Encode.Milliseconds(),
+		MuxMS:      worker.Mux.Milliseconds(),
+		UploadMS:   worker.Upload.Milliseconds(),
+		Frames:     worker.Frames,
+		EncodeFPS:  worker.EncodeFPS,
+	}
+	if !worker.LeasedAt.IsZero() {
+		projected.LeasedAt = worker.LeasedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !worker.StartedAt.IsZero() {
+		projected.StartedAt = worker.StartedAt.UTC().Format(time.RFC3339Nano)
+	}
+	if !worker.FinishedAt.IsZero() {
+		projected.FinishedAt = worker.FinishedAt.UTC().Format(time.RFC3339Nano)
+	}
+	return projected
+}
+
+// mergeFinalJobTiming adds the phases only one side observed: the handoff is
+// measured locally, the queue/execution/poll phases come from the attach. The
+// capability owns the merge (see RemoteFinalJobTiming.Merge) so the runner's
+// resume path cannot drop the handoff.
+func mergeFinalJobTiming(base, extra *scriptgen.RemoteFinalJobTiming) *scriptgen.RemoteFinalJobTiming {
+	return base.Merge(extra)
 }
 
 // finalJobWaitError maps the transport's "not terminal yet" sentinel onto the
@@ -245,14 +368,154 @@ func finalJobWaitError(err error) error {
 	return err
 }
 
+// resolverClock accumulates the runtime-asset resolution time of one handoff.
+// It answers the only question the receipt could not: how much of handoff_ms is
+// spent finding and publishing sources rather than encoding fragments.
+func (a *remoteFinalJobAdapter) resolverClock() func() {
+	started := time.Now()
+	return func() {
+		if a != nil {
+			a.resolverNS.Add(time.Since(started).Nanoseconds())
+		}
+	}
+}
+
 func (a *remoteFinalJobAdapter) ResolveFinalJobAsset(ctx context.Context, id string) (map[string]any, error) {
-	return a.ResolveFinalJobObjectStoreAsset(ctx, id)
+	return a.resolveOnce("objectstore:"+strings.TrimSpace(id), func() (map[string]any, error) {
+		defer a.resolverClock()()
+		started := time.Now()
+		ref, err := a.ResolveFinalJobObjectStoreAsset(ctx, id)
+		log.Printf("final_job resolve kind=objectstore id=%s bytes=%v ms=%d err=%v",
+			id, ref["size_bytes"], time.Since(started).Milliseconds(), err != nil)
+		return ref, err
+	})
+}
+
+// resolveOnce answers a repeated resolution from the handoff's own cache. The
+// cached reference is copied on the way out so a caller cannot mutate the entry
+// (the payload builder stamps roles and durations onto the map it receives).
+func (a *remoteFinalJobAdapter) resolveOnce(key string, build func() (map[string]any, error)) (map[string]any, error) {
+	if a == nil {
+		return nil, fmt.Errorf("final-job adapter is not configured")
+	}
+	a.resolvedMu.Lock()
+	if cached, ok := a.resolved[key]; ok {
+		a.hits++
+		a.resolvedMu.Unlock()
+		return copyFinalJobRef(cached), nil
+	}
+	a.resolvedMu.Unlock()
+	ref, err := build()
+	if err != nil {
+		return nil, err
+	}
+	a.resolvedMu.Lock()
+	if a.resolved == nil {
+		a.resolved = make(map[string]map[string]any, 16)
+	}
+	a.resolved[key] = copyFinalJobRef(ref)
+	a.resolvedMu.Unlock()
+	return ref, nil
+}
+
+func copyFinalJobRef(ref map[string]any) map[string]any {
+	if ref == nil {
+		return nil
+	}
+	out := make(map[string]any, len(ref))
+	for key, value := range ref {
+		out[key] = value
+	}
+	return out
+}
+
+// resolveHits reports the resolutions answered from the handoff cache, so a
+// receipt can tell deduplicated work from work that never happened.
+func (a *remoteFinalJobAdapter) resolveHits() int {
+	if a == nil {
+		return 0
+	}
+	a.resolvedMu.Lock()
+	defer a.resolvedMu.Unlock()
+	return a.hits
+}
+
+// finalJobStockCacheDir is where a Drive stock file is kept between runs. The
+// handoff publishes every source it sends, and publishing needs the bytes; the
+// same file id with the same byte size is the same bytes, so the next run must
+// not pay the network again. VELOX_FINAL_JOB_STOCK_CACHE_DIR relocates it.
+func finalJobStockCacheDir() string {
+	if dir := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_STOCK_CACHE_DIR")); dir != "" {
+		return dir
+	}
+	return filepath.Join("data", "cache", "final_job_stock")
+}
+
+// stagedStockPath returns a local copy of one Drive stock file, downloading it
+// only when the cache does not already hold exactly that many bytes. The size is
+// part of the cache key: a file that changed identity cannot be served stale.
+func (a *remoteFinalJobAdapter) stagedStockPath(ctx context.Context, id string, size int64) (string, func(), error) {
+	dir := finalJobStockCacheDir()
+	cached := filepath.Join(dir, fmt.Sprintf("%s-%d.bin", id, size))
+	if info, err := os.Stat(cached); err == nil && info.Size() == size {
+		return cached, func() {}, nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", nil, fmt.Errorf("create stock cache %q: %w", dir, err)
+	}
+	tmp, err := os.CreateTemp(dir, ".stock-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("stage stock file in %q: %w", dir, err)
+	}
+	tmpPath := tmp.Name()
+	discard := func() { _ = os.Remove(tmpPath) }
+	reader, _, err := a.stock.DownloadFile(ctx, id)
+	if err != nil {
+		_ = tmp.Close()
+		discard()
+		return "", nil, fmt.Errorf("download stock Drive file %q: %w", id, err)
+	}
+	written, copyErr := io.Copy(tmp, reader)
+	readerErr := reader.Close()
+	fileErr := tmp.Close()
+	if copyErr != nil {
+		discard()
+		return "", nil, fmt.Errorf("copy stock Drive file %q: %w", id, copyErr)
+	}
+	if readerErr != nil {
+		discard()
+		return "", nil, fmt.Errorf("close stock Drive response %q: %w", id, readerErr)
+	}
+	if fileErr != nil {
+		discard()
+		return "", nil, fmt.Errorf("close staged stock file %q: %w", id, fileErr)
+	}
+	if written != size {
+		discard()
+		return "", nil, fmt.Errorf("stock Drive file %q downloaded %d bytes, expected %d", id, written, size)
+	}
+	if err := os.Rename(tmpPath, cached); err != nil {
+		discard()
+		return "", nil, fmt.Errorf("commit stock cache entry %q: %w", cached, err)
+	}
+	return cached, func() {}, nil
 }
 
 // ResolveFinalJobStockAsset retains the explicitly allowed Drive path for
 // selected stock-folder videos. Every other final-job asset goes through the
 // HTTPS Objectstore resolver above.
 func (a *remoteFinalJobAdapter) ResolveFinalJobStockAsset(ctx context.Context, id string) (map[string]any, error) {
+	return a.resolveOnce("drive:"+strings.TrimSpace(id), func() (map[string]any, error) {
+		return a.resolveStockAssetOnce(ctx, id)
+	})
+}
+
+func (a *remoteFinalJobAdapter) resolveStockAssetOnce(ctx context.Context, id string) (map[string]any, error) {
+	defer a.resolverClock()()
+	started := time.Now()
+	defer func() {
+		log.Printf("final_job resolve kind=drive id=%s ms=%d", id, time.Since(started).Milliseconds())
+	}()
 	if a == nil || a.stock == nil {
 		return nil, fmt.Errorf("final-job stock Drive reader is not configured")
 	}
@@ -268,35 +531,24 @@ func (a *remoteFinalJobAdapter) ResolveFinalJobStockAsset(ctx context.Context, i
 		return nil, fmt.Errorf("stock Drive file %q has no positive byte size", id)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "velox-final-job-stock-")
+	path, cleanup, err := a.stagedStockPath(ctx, id, meta.Size)
 	if err != nil {
-		return nil, fmt.Errorf("create temporary stock staging directory: %w", err)
+		return nil, err
 	}
-	defer os.RemoveAll(tmpDir)
-	path := filepath.Join(tmpDir, "stock-video")
-	reader, _, err := a.stock.DownloadFile(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("download stock Drive file %q: %w", id, err)
-	}
-	file, err := os.Create(path)
-	if err != nil {
-		_ = reader.Close()
-		return nil, fmt.Errorf("create staged stock file: %w", err)
-	}
-	written, copyErr := io.Copy(file, reader)
-	readerErr := reader.Close()
-	fileErr := file.Close()
-	if copyErr != nil {
-		return nil, fmt.Errorf("copy stock Drive file %q: %w", id, copyErr)
-	}
-	if readerErr != nil {
-		return nil, fmt.Errorf("close stock Drive response %q: %w", id, readerErr)
-	}
-	if fileErr != nil {
-		return nil, fmt.Errorf("close staged stock file %q: %w", id, fileErr)
-	}
-	if written != meta.Size {
-		return nil, fmt.Errorf("stock Drive file %q downloaded %d bytes, expected %d", id, written, meta.Size)
+	defer cleanup()
+	// A staged stock file is written once, by us, from the Drive bytes of that
+	// exact id and size — the same identity the staging cache already trusts to
+	// serve the file without downloading it again. Hashing, probing and signing
+	// those same bytes on every later handoff is therefore repeated work, not
+	// verification: the receipt written next to the file answers all three.
+	// Fail-closed: a receipt that does not describe exactly this file is dropped
+	// and the bytes are re-derived.
+	if receipt, ok := readFinalJobStockReceipt(path, meta.Size); ok {
+		ref, publishErr := scriptgen.PublishFinalJobLocalObjectVerified(ctx, "stock-sha256-"+receipt.SHA256[:24], path, receipt.SHA256, receipt.SizeBytes)
+		if publishErr == nil {
+			ref["duration_ms"] = receipt.DurationMS
+			return ref, nil
+		}
 	}
 	hash, size, err := digest.SHA256File(path)
 	if err != nil {
@@ -320,7 +572,45 @@ func (a *remoteFinalJobAdapter) ResolveFinalJobStockAsset(ctx context.Context, i
 		return nil, fmt.Errorf("publish stock Drive file %q to HTTPS Objectstore: %w", id, err)
 	}
 	ref["duration_ms"] = durationMS
+	writeFinalJobStockReceipt(path, finalJobStockReceipt{SHA256: hash, SizeBytes: size, DurationMS: durationMS})
 	return ref, nil
+}
+
+// finalJobStockReceipt is what resolving a staged stock file produced: its
+// content address and the duration the probe reported. It is bound to the exact
+// staged file (size) so a re-downloaded or replaced file can never be served
+// from a stale receipt.
+type finalJobStockReceipt struct {
+	SHA256     string `json:"sha256"`
+	SizeBytes  int64  `json:"size_bytes"`
+	DurationMS int64  `json:"duration_ms"`
+}
+
+func finalJobStockReceiptPath(staged string) string { return staged + ".resolve.json" }
+
+func readFinalJobStockReceipt(staged string, size int64) (finalJobStockReceipt, bool) {
+	payload, err := os.ReadFile(finalJobStockReceiptPath(staged))
+	if err != nil {
+		return finalJobStockReceipt{}, false
+	}
+	var receipt finalJobStockReceipt
+	if err := json.Unmarshal(payload, &receipt); err != nil {
+		return finalJobStockReceipt{}, false
+	}
+	if len(receipt.SHA256) != 64 || receipt.SizeBytes != size || receipt.DurationMS <= 0 {
+		return finalJobStockReceipt{}, false
+	}
+	return receipt, true
+}
+
+// writeFinalJobStockReceipt is best-effort: a handoff that cannot persist the
+// receipt is slower next time, never wrong.
+func writeFinalJobStockReceipt(staged string, receipt finalJobStockReceipt) {
+	payload, err := json.Marshal(receipt)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(finalJobStockReceiptPath(staged), payload, 0o644)
 }
 
 // FinalJobPublishedFileSize is retained for the capability port's legacy
@@ -330,6 +620,7 @@ func (a *remoteFinalJobAdapter) FinalJobPublishedFileSize(context.Context, strin
 }
 
 func (a *remoteFinalJobAdapter) ListFinalJobStockFolder(ctx context.Context, folderID string) ([]scriptgen.FinalJobStockFile, error) {
+	defer a.resolverClock()()
 	if a == nil || a.stock == nil {
 		return nil, fmt.Errorf("remote final-job stock Drive reader is not configured")
 	}

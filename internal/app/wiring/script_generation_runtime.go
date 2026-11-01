@@ -155,7 +155,16 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	} else if remoteFinalJob, remoteErr := newRemoteFinalJobAdapter(root); remoteErr != nil {
 		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(remoteErr))
 	} else {
-		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, root.MediaExec.Policy)
+		fragmentLanes, lanesErr := finalJobFragmentLanes()
+		if lanesErr != nil {
+			return nil, lanesErr
+		}
+		fragmentCacheDir := finalJobFragmentCacheDir(cfg.Storage.DataDir)
+		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, root.MediaExec.Policy, fragmentCacheDir, fragmentLanes)
+		log.Info("final-job fragment preparation configured",
+			zap.Int("lanes", fragmentLanes),
+			zap.Bool("cache", fragmentCacheDir != ""),
+			zap.String("cache_dir", fragmentCacheDir))
 		// Use the same configured media processor for stock staging and
 		// certification. Without this probe the remote final-job path can
 		// download a stock clip but cannot verify its video stream/duration.

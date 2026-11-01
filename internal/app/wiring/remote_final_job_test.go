@@ -202,6 +202,57 @@ func TestAttachFinalJobProjectsACompletedRender(t *testing.T) {
 	}
 }
 
+// TestAttachFinalJobProjectsMasterTiming: the durable receipt must carry the
+// phase split, not only the total. The Master reports its own boundaries; the
+// adapter maps them onto the capability type and adds the poll count.
+func TestAttachFinalJobProjectsMasterTiming(t *testing.T) {
+	now := time.Now().UTC()
+	created := now.Add(-140 * time.Second).Format(time.RFC3339Nano)
+	startedAt := now.Add(-120 * time.Second).Format(time.RFC3339Nano)
+	completedAt := now.Add(-10 * time.Second).Format(time.RFC3339Nano)
+	server, _ := finalJobMasterStub(t, "SUCCEEDED",
+		`{"job_id":"master-9","status":"SUCCEEDED","artifact_url":"https://master/final.mp4",`+
+			`"created_at":"`+created+`","started_at":"`+startedAt+`","completed_at":"`+completedAt+`"}`)
+	adapter := newAttachTestAdapter(t, server.URL, time.Second, time.Second)
+
+	receipt, err := adapter.AttachFinalJob(context.Background(), "master-9", false)
+	if err != nil {
+		t.Fatalf("AttachFinalJob: %v", err)
+	}
+	if receipt.Timing == nil {
+		t.Fatal("receipt has no timing block")
+	}
+	if receipt.Timing.QueueMS != 20_000 {
+		t.Fatalf("queue_ms = %d, want 20000 (created_at → started_at)", receipt.Timing.QueueMS)
+	}
+	if receipt.Timing.ExecutionMS != 110_000 {
+		t.Fatalf("execution_ms = %d, want 110000 (started_at → completed_at)", receipt.Timing.ExecutionMS)
+	}
+	if receipt.Timing.Polls < 1 {
+		t.Fatalf("polls = %d, want at least one", receipt.Timing.Polls)
+	}
+	if receipt.Timing.MasterCompletedAt == "" {
+		t.Fatal("master_completed_at was not persisted; the phase split cannot be audited")
+	}
+}
+
+// TestMergeFinalJobTimingKeepsBothSides: the handoff is measured locally and
+// the Master phases arrive from the attach. Neither may erase the other, and an
+// unknown phase stays absent instead of becoming a fake zero measurement.
+func TestMergeFinalJobTimingKeepsBothSides(t *testing.T) {
+	local := &scriptgen.RemoteFinalJobTiming{HandoffMS: 4200}
+	merged := mergeFinalJobTiming(local, &scriptgen.RemoteFinalJobTiming{QueueMS: 30_000, ExecutionMS: 260_000, Polls: 9})
+	if merged.HandoffMS != 4200 || merged.QueueMS != 30_000 || merged.ExecutionMS != 260_000 || merged.Polls != 9 {
+		t.Fatalf("merged = %+v, want the local handoff plus the Master phases", merged)
+	}
+	if merged.WaitMS != 0 || merged.PollLagMS != 0 {
+		t.Fatalf("merged = %+v, want absent phases to stay zero", merged)
+	}
+	if finalJobTiming(remotejob.Timing{}) != nil {
+		t.Fatal("an unmeasured wait must not project a timing block")
+	}
+}
+
 func TestAttachFinalJobRequiresAJobID(t *testing.T) {
 	adapter := &remoteFinalJobAdapter{client: remotejob.New("http://127.0.0.1:1", "t")}
 	if _, err := adapter.AttachFinalJob(context.Background(), "  ", false); err == nil {
@@ -256,5 +307,37 @@ func TestRemoteFinalJobAdapterFailsClosedWithoutCredentials(t *testing.T) {
 	}
 	if _, attachErr := adapter.AttachFinalJob(context.Background(), "master-1", false); attachErr == nil {
 		t.Fatal("a nil adapter must refuse to attach")
+	}
+}
+
+// TestFinalJobTimingProjectsTheWorkerSplit is the projection proof: the worker
+// phases relayed by the Master must reach the durable receipt, and their
+// absence must stay nil instead of becoming a block of zeroes.
+func TestFinalJobTimingProjectsTheWorkerSplit(t *testing.T) {
+	timing := remotejob.Timing{
+		CreatedAt:   time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC),
+		StartedAt:   time.Date(2026, 11, 1, 8, 0, 30, 0, time.UTC),
+		CompletedAt: time.Date(2026, 11, 1, 8, 5, 0, 0, time.UTC),
+		Execution:   4*time.Minute + 30*time.Second,
+		Worker: remotejob.WorkerTiming{
+			Compose:   182 * time.Second,
+			Encode:    96 * time.Second,
+			Upload:    14800 * time.Millisecond,
+			Frames:    6550,
+			EncodeFPS: 68.2,
+		},
+	}
+	projected := finalJobTiming(timing)
+	if projected == nil || projected.Worker == nil {
+		t.Fatalf("projected = %#v, want a worker block", projected)
+	}
+	if projected.Worker.ComposeMS != 182000 || projected.Worker.EncodeMS != 96000 {
+		t.Fatalf("worker block = %#v, want compose 182000 encode 96000", projected.Worker)
+	}
+	if projected.Worker.Frames != 6550 || projected.Worker.EncodeFPS != 68.2 {
+		t.Fatalf("worker frames = %#v", projected.Worker)
+	}
+	if empty := finalJobTiming(remotejob.Timing{}); empty != nil {
+		t.Fatalf("empty timing = %#v, want nil (nothing was measured)", empty)
 	}
 }
