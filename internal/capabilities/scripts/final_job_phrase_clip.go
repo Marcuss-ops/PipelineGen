@@ -59,6 +59,17 @@ func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, scen
 		}
 	}
 	manifest := result.OverlayRender.Manifest
+	artifact := result.OverlayRender.Artifact
+	if manifest == nil {
+		for _, batch := range result.OverlayRender.Batches {
+			if _, found := manifestEntryForItem(batch.Manifest, strings.TrimSpace(phrase.ID)); found {
+				if manifest != nil {
+					return nil, 0, "", false, fmt.Errorf("final_job phrase %q belongs to multiple manifest batches", phrase.ID)
+				}
+				manifest, artifact = batch.Manifest, batch.Artifact
+			}
+		}
+	}
 	if manifest == nil {
 		return nil, 0, "", false, nil
 	}
@@ -66,7 +77,6 @@ func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, scen
 	if !found {
 		return nil, 0, "", false, fmt.Errorf("final_job phrase-only scene %q has no manifest entry for phrase %q", sceneID, phrase.ID)
 	}
-	artifact := result.OverlayRender.Artifact
 	if artifact == nil && len(result.OverlayRender.Batches) == 1 && result.OverlayRender.Batches[0].Artifact != nil {
 		artifact = result.OverlayRender.Batches[0].Artifact
 	}
@@ -88,8 +98,12 @@ func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, scen
 	// SubmitClip's strict Master DTO accepts source windows in milliseconds.
 	// Keep the exact microsecond window in overlay_manifest; the clip slot
 	// only needs the corresponding source trim to render the phrase visual.
-	asset["start_ms"] = entry.InUS / 1000
-	asset["end_ms"] = (entry.OutUS + 999) / 1000
+	startUS, endUS := entry.InUS, entry.OutUS
+	if entry.ArtifactInUS != nil && entry.ArtifactOutUS != nil {
+		startUS, endUS = *entry.ArtifactInUS, *entry.ArtifactOutUS
+	}
+	asset["start_ms"] = startUS / 1000
+	asset["end_ms"] = (endUS + 999) / 1000
 	return asset, durationMS, phrase.ID, true, nil
 }
 

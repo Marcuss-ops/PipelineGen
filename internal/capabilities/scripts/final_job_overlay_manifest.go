@@ -124,6 +124,48 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 		if err != nil {
 			return nil, nil, err
 		}
+	} else if len(result.OverlayRender.Batches) > 0 {
+		batchWires := make([]any, 0, len(result.OverlayRender.Batches))
+		owners := make(map[string]string)
+		contentOwners := make(map[string]string)
+		batchFrames := make(map[string]finalJobFrameWindow)
+		for _, batch := range result.OverlayRender.Batches {
+			if batch.Manifest == nil || batch.Artifact == nil {
+				return nil, nil, fmt.Errorf("final_job overlay batch %q lacks a certified manifest or artifact", batch.BatchID)
+			}
+			if !strings.EqualFold(strings.TrimSpace(batch.Manifest.TimelineSHA256), strings.TrimSpace(batch.Artifact.SHA256)) || batch.Artifact.SizeBytes <= 0 || batch.Artifact.FrameCount <= 0 || batch.Artifact.DurationUS <= 0 {
+				return nil, nil, fmt.Errorf("final_job overlay batch %q has inconsistent certification", batch.BatchID)
+			}
+			for _, entry := range batch.Manifest.Entries {
+				id := strings.TrimSpace(entry.ItemID)
+				if prior, exists := owners[id]; exists {
+					return nil, nil, fmt.Errorf("final_job overlay %q belongs to batches %q and %q", id, prior, batch.BatchID)
+				}
+				if prior, exists := contentOwners[entry.ContentHash]; exists {
+					return nil, nil, fmt.Errorf("final_job overlays %q and %q share content; one content one overlay", prior, id)
+				}
+				owners[id], contentOwners[entry.ContentHash] = batch.BatchID, id
+				manifestItems[id] = struct{}{}
+			}
+			for _, entry := range batch.Manifest.Entries {
+				start := entry.InUS * int64(fpsNum) / (1_000_000 * int64(fpsDen))
+				end := (entry.OutUS*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
+				for priorID, prior := range batchFrames {
+					if start < prior.end && prior.start < end && owners[priorID] != batch.BatchID {
+						return nil, nil, fmt.Errorf("final_job overlay %q overlaps %q across artifacts", entry.ItemID, priorID)
+					}
+				}
+				batchFrames[entry.ItemID] = finalJobFrameWindow{start: start, end: end}
+			}
+			copyResult := *result
+			copyResult.OverlayRender = &RenderReference{Manifest: batch.Manifest, Artifact: batch.Artifact}
+			wire, err := finalJobManifestWire(ctx, &copyResult, consumed, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
+			if err != nil {
+				return nil, nil, err
+			}
+			batchWires = append(batchWires, wire)
+		}
+		manifestWire = map[string]any{"schema_version": "pipelinegen.overlay-manifest-set.v1", "manifests": batchWires}
 	}
 	rows, err := finalJobDedicatedOverlayRows(ctx, result, consumed, manifestItems, baseFrameCount, fpsNum, fpsDen, admittedContent, admittedFrames)
 	if err != nil {

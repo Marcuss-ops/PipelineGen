@@ -191,15 +191,18 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 	if err != nil {
 		return RenderReference{}, err
 	}
-	key, ok := overlayManifestCompositionCacheKey(child, manifest, e.renderCacheEpochValue())
-	if !ok {
+	key, cacheable := overlayManifestCompositionCacheKey(child, manifest, e.renderCacheEpochValue())
+	if !cacheable && overlayPlanCacheAssetsIdentified(child) {
 		return RenderReference{}, fmt.Errorf("overlay manifest timeline has no content-addressed identity")
 	}
 	var artifact *RenderArtifact
 	var jobID, status string
-	if cached, hit, _ := e.lookupOverlayRenderCacheTimed(ctx, key); hit {
-		artifact, jobID, status = cached, work.id, "completed"
-	} else {
+	if cacheable {
+		if cached, hit, _ := e.lookupOverlayRenderCacheTimed(ctx, key); hit {
+			artifact, jobID, status = cached, work.id, "completed"
+		}
+	}
+	if artifact == nil {
 		metadata := &overlayItemPublicationMetadata{
 			ManifestOwnedCache: true,
 			JobID:              textutil.FirstNonEmpty(plan.DriveJobID, plan.PlanID),
@@ -222,7 +225,9 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 		if ref.Artifact == nil {
 			return RenderReference{}, fmt.Errorf("overlay manifest timeline completed without a certified artifact")
 		}
-		e.storeOverlayRenderCacheTimed(ctx, key, ref.Artifact)
+		if cacheable {
+			e.storeOverlayRenderCacheTimed(ctx, key, ref.Artifact)
+		}
 		artifact, jobID, status = ref.Artifact, ref.JobID, ref.Status
 	}
 	reference := assembleManifestTimelineReference(jobID, status, artifact, work, manifest)

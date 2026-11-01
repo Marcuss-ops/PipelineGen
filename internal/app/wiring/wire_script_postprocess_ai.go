@@ -130,10 +130,21 @@ func registerAIBackedProcessors(
 	imageSearcher := vidrushInternetImageSearcher(root, log)
 	if imageSearcher != nil {
 		var entityImageCatalogRepo entitycatalog.Repository
+
 		if root != nil && root.Repos != nil {
 			entityImageCatalogRepo = root.Repos.EntityImageCatalog
 		}
 		imageStage := adapters.NewMediaResolverImageStageWithCatalog(imageSearcher, vidRushCache, entityImageCatalogRepo, vidrushMetrics)
+		// Opt-in media_manifest fast-path: when VELOX_MEDIA_MANIFEST_PATH points
+		// at a verified manifest, pinned segment candidates bypass cache tiers
+		// and provider search entirely (zero network calls per run). Fail-open:
+		// a broken manifest must never fail a run.
+		if pins, pinsErr := adapters.LoadMediaManifestPinsFromEnv(); pinsErr != nil {
+			log.Warn("InternetImagesProcessor media_manifest fast-path disabled: manifest load failed", zap.String("error", pinsErr.Error()))
+		} else if pins != nil {
+			imageStage = imageStage.WithMediaManifestPins(pins)
+			log.Info("InternetImagesProcessor media_manifest fast-path enabled", zap.Int("pinned_entries", pins.EntryCount()))
+		}
 		if root != nil && root.AI != nil && root.AI.ScriptGen != nil {
 			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
 				imageStage.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))

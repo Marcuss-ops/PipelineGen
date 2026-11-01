@@ -47,6 +47,41 @@ func ssotTimelineArtifact(sha string) *RenderArtifact {
 	return &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: sha, SizeBytes: 50, FrameCount: 120, CopyEligible: true}
 }
 
+func TestFinalJobMultiArtifactManifestHandoff(t *testing.T) {
+	items := []capabilityoverlay.OverlayItem{
+		{ID: "a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 0, DurationUS: 1_000_000},
+		{ID: "b", SceneID: "scene-2", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 1_000_000},
+	}
+	a := ssotTimelineArtifact(strings.Repeat("a", 64))
+	b := ssotTimelineArtifact(strings.Repeat("b", 64))
+	a.DurationUS, b.DurationUS = 5_000_000, 5_000_000
+	b.ID = "second-artifact"
+	first := manifestOverlayRender(items[:1], a)
+	second := manifestOverlayRender(items[1:], b)
+	second.Manifest.Entries[0].ContentHash = manifestContentHash(1)
+	result := ssotGateResult(items, a)
+	result.OverlayRender = &RenderReference{Items: append(first.Items, second.Items...), Batches: []OverlayBatchRenderReference{
+		{BatchID: "one", Artifact: a, Manifest: first.Manifest},
+		{BatchID: "two", Artifact: b, Manifest: second.Manifest},
+	}}
+	rows, wire, err := finalJobOverlayHandoff(context.Background(), result, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 || wire["schema_version"] != "pipelinegen.overlay-manifest-set.v1" || len(wire["manifests"].([]any)) != 2 {
+		t.Fatalf("unexpected multi-artifact wire: rows=%v wire=%v", rows, wire)
+	}
+	second.Manifest.Entries[0].InUS = 500_000
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err == nil || !strings.Contains(err.Error(), "overlaps") {
+		t.Fatalf("overlapping artifacts must fail closed, got %v", err)
+	}
+	second.Manifest.Entries[0].InUS = 2_000_000
+	second.Manifest.Entries[0].ItemID = "a"
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err == nil {
+		t.Fatal("duplicate entry ownership must fail closed")
+	}
+}
+
 func TestFinalJobManifestPreservesPackedOffsetsAndRejectsPlacement(t *testing.T) {
 	item := capabilityoverlay.OverlayItem{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 1_000_000}
 	result := ssotGateResult([]capabilityoverlay.OverlayItem{item}, ssotTimelineArtifact(strings.Repeat("d", 64)))

@@ -373,6 +373,15 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		if asset, ok := overlayManifest["asset"].(map[string]any); ok {
 			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay_timeline", asset)
 		}
+		if manifests, ok := overlayManifest["manifests"].([]any); ok {
+			for _, raw := range manifests {
+				if manifest, ok := raw.(map[string]any); ok {
+					if asset, ok := manifest["asset"].(map[string]any); ok {
+						appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay_timeline", asset)
+					}
+				}
+			}
+		}
 	}
 	for _, raw := range remoteOverlays {
 		if asset, ok := raw.(map[string]any); ok {

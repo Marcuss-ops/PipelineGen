@@ -120,6 +120,18 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		updated.Cache.YouTube = "BYPASSED"
 		updated.Cache.Binding = "STOCK_BOUND"
 	}
+	// Pinned-media fast path (opt-in, see media_manifest_shim.go): a pinned
+	// segment is discovery-complete by construction, so it must return before
+	// ANY provider is scheduled (YouTube included), not merely before image
+	// search. Pins carry the durable verdicts the scorer would recompute.
+	if pinned := f.pinnedCandidates(plan, updated); len(pinned) > 0 {
+		updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, pinned)
+		updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, pinned)
+		updated.Cache.InternetImages = MediaManifestCacheState
+		updated.Cache.InternetImagesProviderSearches = 0
+		return updated, nil
+	}
+
 	// Provider work is represented by a small outcome value and merged only
 	// by the caller, keeping concurrent providers away from shared state.
 

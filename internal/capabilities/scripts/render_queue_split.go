@@ -42,6 +42,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strings"
@@ -149,6 +150,78 @@ func groupManifestCandidatesByScene(candidates []overlayItemCandidate) []sceneRe
 		return groups[i].groupFirstIndex < groups[j].groupFirstIndex
 	})
 	return groups
+}
+
+// mergeOverlappingSceneGroups keeps scene groups together when any of their
+// items share a frame. A layer can cross a scene boundary; rendering its two
+// scenes independently would omit the other scene's layers from that frame.
+// Merging whole groups also preserves transitive overlap and plan layer order.
+func mergeOverlappingSceneGroups(plan capoverlay.OverlayPlan, groups []sceneRenderGroup) ([]sceneRenderGroup, error) {
+	fpsNum, fpsDen := plan.FPSNum, plan.FPSDen
+	if fpsNum <= 0 || fpsDen <= 0 {
+		return nil, fmt.Errorf("overlay per-scene split: invalid frame rate %d/%d", fpsNum, fpsDen)
+	}
+	type frameWindow struct{ start, end int64 }
+	windows := make([][]frameWindow, len(groups))
+	parents := make([]int, len(groups))
+	for i, group := range groups {
+		parents[i] = i
+		for _, candidate := range group.candidates {
+			start, end, err := candidateLiteralWindow(plan, candidate)
+			if err != nil {
+				return nil, err
+			}
+			// Conservatively cover every frame touched by the literal window.
+			// This includes both RenderingGen's nearest-frame grid and the
+			// floor/ceil projection used by the worker manifest consumer.
+			frame := func(us int64) float64 {
+				return float64(us) * float64(fpsNum) / float64(fpsDen) / 1_000_000
+			}
+			windows[i] = append(windows[i], frameWindow{int64(math.Floor(frame(start))), int64(math.Ceil(frame(end)))})
+		}
+	}
+	root := func(i int) int {
+		for parents[i] != i {
+			i = parents[i]
+		}
+		return i
+	}
+	for i := range groups {
+		for j := 0; j < i; j++ {
+			shared := false
+			for _, a := range windows[i] {
+				for _, b := range windows[j] {
+					if a.start < b.end && b.start < a.end {
+						shared = true
+						break
+					}
+				}
+				if shared {
+					break
+				}
+			}
+			if shared {
+				parents[root(i)] = root(j)
+			}
+		}
+	}
+	indices := make(map[int]int, len(groups))
+	merged := make([]sceneRenderGroup, 0, len(groups))
+	for i, group := range groups {
+		r := root(i)
+		if index, ok := indices[r]; ok {
+			merged[index].candidates = append(merged[index].candidates, group.candidates...)
+		} else {
+			indices[r] = len(merged)
+			merged = append(merged, group)
+		}
+	}
+	for i := range merged {
+		sort.SliceStable(merged[i].candidates, func(a, b int) bool {
+			return merged[i].candidates[a].index < merged[i].candidates[b].index
+		})
+	}
+	return merged, nil
 }
 
 // groupManifestCandidatesIntoMicroBatches refines the scene groups into
@@ -332,7 +405,10 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlanSplit(ctx context.Context, plan 
 	// runtime base. The packed super-batch fold is opt-in: the live 30-10 A/B
 	// measured 43.7/min for 3 packed bins against 77.3/min for these scene
 	// groups, so the certified path stays the base.
-	groups := groupManifestCandidatesByScene(manifestCandidates)
+	groups, err := mergeOverlappingSceneGroups(plan, groupManifestCandidatesByScene(manifestCandidates))
+	if err != nil {
+		return RenderReference{}, fmt.Errorf("overlay per-scene split: %w", err)
+	}
 	if packed, packErr := packManifestGroupsIntoSuperBatches(plan, groups, overlayPerSceneSplitWorkers()); packErr == nil && len(packed) > 0 {
 		groups = packed
 	}

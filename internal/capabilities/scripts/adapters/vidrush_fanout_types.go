@@ -40,6 +40,9 @@ type VidRushProviderFanout struct {
 	catalog        entitycatalog.Repository
 	metrics        VidRushMetrics
 	log            zap.Logger
+	// manifestPins is the opt-in pinned-manifest fast path (see
+	// media_manifest_shim.go). Nil keeps every provider call unchanged.
+	manifestPins *MediaManifestPins
 }
 
 // WithSemanticScorer applies the same pixel-level person-image gate to
