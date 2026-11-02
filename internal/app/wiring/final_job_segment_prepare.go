@@ -4,12 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +17,7 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -27,9 +25,15 @@ const (
 	// asset, so VELOX_ASSEMBLY_READY_V1 (which pins one audio stream) would be a
 	// certificate nobody can honour. The registered video-only profile describes
 	// these bytes exactly; plan.Output keeps V1 for the assembled FILM.
-	finalJobSegmentProfile = kernelmedia.OverlayVideoOnlyProfileID
-	finalJobSegmentFPS     = int64(24)
-	finalJobSegmentGOP     = int64(48)
+	// The assembler's copy gate binds a prepared fragment to the profile IT
+	// certifies against (VELOX_ASSEMBLY_READY_V1). r90 proved the coupling: with
+	// VELOX_OVERLAY_VIDEO_ONLY_V1 on the fragment, the remote rejected the plan
+	// (`segment "segment-0000" manifest binding is not exact`) even though the
+	// bytes were exact (86/86 frame counts, durations, zero start). The
+	// video-only profile keeps describing the RENDER ARTIFACT (plan
+	// output_profile_id); the fragment certificate stays V1 until the gate
+	// learns the video-only profile.
+	finalJobSegmentProfile = kernelmedia.AssemblyMediaContractID
 	finalJobSegmentMaxSize = int64(2 << 30)
 	// Four lanes keep the fragment encode inside the CPU budget the map
 	// compositor and the GPU lanes already use on the same host while cutting
@@ -48,8 +52,44 @@ const (
 	// was a distinction without a difference for the certified bytes.
 	// v8: copy and remux force a zero start timestamp, so the same window can
 	// produce different container bytes than v7.
-	finalJobFragmentFormatVersion = 8
+	// v9: distinguish a copy-enabled request from encode-only work so an A/B
+	// cannot silently return a cached artifact produced by the other path.
+	finalJobFragmentFormatVersion = 9
 )
+
+// finalJobDelivery is the ONE declaration of a fragment's delivery geometry.
+// The encoder filters, the source census, the reuse gate and the receipt all
+// read it from the kernel media contract instead of restating 1920x1080 / 24 /
+// yuv420p: a second copy of that rule is exactly how a window and the
+// certificate that describes it drift apart.
+var finalJobDelivery = kernelmedia.DefaultAssemblyMediaContract()
+
+// The frame math derives from that same contract, so a change to the contract
+// moves the GOP grid and the microsecond conversion with it.
+var (
+	finalJobSegmentFPS = int64(finalJobDelivery.FPS.Num)
+	finalJobSegmentGOP = int64(finalJobDelivery.KeyframeInterval)
+)
+
+// finalJobDeliveryMatches reports whether an observed stream already carries the
+// contract's delivery geometry. The source census and the fragment probe share
+// this ONE comparison, so the encoder cannot "normalize" a source that the
+// reuse gate already accepted as conformant.
+// finalJobDeliveryLevelCode is the H.264 level as ffprobe reports it (40 for
+// "4.0"), derived from the contract so the census and the muxer share one level.
+func finalJobDeliveryLevelCode() int {
+	code, err := strconv.Atoi(strings.ReplaceAll(finalJobDelivery.VideoLevel, ".", ""))
+	if err != nil {
+		return 0
+	}
+	return code
+}
+
+func finalJobDeliveryMatches(width, height int, avgFPS, pixelFmt string) bool {
+	return width == finalJobDelivery.Width && height == finalJobDelivery.Height &&
+		avgFPS == fmt.Sprintf("%d/%d", finalJobDelivery.FPS.Num, finalJobDelivery.FPS.Den) &&
+		pixelFmt == finalJobDelivery.PixelFormat
+}
 
 // finalJobSegmentPreparer creates only timeline fragments, never the final
 // video. Inputs that already carry a complete, trusted assembly certificate
@@ -80,8 +120,9 @@ type finalJobSegmentPreparer struct {
 	// geometry memoizes whether a source already matches the delivery geometry
 	// (1920x1080, 24 fps, yuv420p). Probing it once per source is what lets the
 	// encoder skip rebuilding a picture that is already built.
-	geometryMu sync.Mutex
-	geometry   map[string]bool
+	geometryMu      sync.Mutex
+	geometry        map[string]bool
+	geometryFlights singleflight.Group
 	// certificates memoizes the source census by content hash. Every window of
 	// one source asks the same question ("are these bytes really
 	// VELOX_ASSEMBLY_READY_V1 with a closed fixed GOP?") and the answer cannot
@@ -89,6 +130,14 @@ type finalJobSegmentPreparer struct {
 	// source is what makes a copied window cheaper than an encoded one.
 	certificatesMu sync.Mutex
 	certificates   map[string]finalJobSourceCensus
+	// censusFlights makes the first probe for one content identity shared by
+	// all lanes. The map above handles completed results; this group handles
+	// callers that arrive while the same ffprobe is still running.
+	censusFlights singleflight.Group
+	// verifier is the shared digest policy applied to this preparer's
+	// local artifacts. It avoids rereading an immutable cache hit for every
+	// placement while invalidating whenever size or mtime changes.
+	verifier *digest.Verifier
 	// fragmentLocks coalesces identical cacheable work within this preparer.
 	// Entries are removed when the last holder or waiter leaves.
 	fragmentLocksMu sync.Mutex
@@ -99,47 +148,14 @@ type finalJobSegmentPreparer struct {
 	// never have to cross the network a second time.
 	pathsMu sync.Mutex
 	paths   map[string]string
-	// scopeSeq allocates the identity of one handoff, so the per-window
-	// attribution a receipt publishes cannot mix in another run's windows when
-	// two handoffs share this preparer.
+	// scopeSeq allocates the identity of one handoff, so the counters a receipt
+	// publishes cannot mix in another run's work when two handoffs share this
+	// preparer.
 	scopeSeq atomic.Uint64
-}
-
-// finalJobSegmentStats is the raw accumulator behind the receipt's
-// segment_prep block: it is only ever added to, and a handoff reports the
-// difference between the totals before and after its own payload build, so two
-// concurrent runs can never report each other's fragments as their own.
-type finalJobSegmentStats struct {
-	segments   int
-	reused     int
-	cached     int
-	derived    int
-	copied     int
-	downloadMS int64
-	encodeMS   int64
-	verifyMS   int64
-	publishMS  int64
-	bytes      int64
-	// windows is the per-fragment attribution behind the aggregate above.
-	windows []finalJobSegmentWindow
-}
-
-// finalJobSegmentWindow is one fragment's measured cost, tagged with the handoff
-// scope that asked for it. The aggregate accumulator cannot answer "was this
-// window copied or encoded?": `encode_ms` sums both, because a packet copy is
-// reported there to keep one meaning per field. These records keep the two
-// apart without changing that meaning.
-type finalJobSegmentWindow struct {
-	scope      uint64
-	segmentID  string
-	path       string
-	frames     int64
-	downloadMS int64
-	copyMS     int64
-	encodeMS   int64
-	verifyMS   int64
-	publishMS  int64
-	bytes      int64
+	// scoped holds one accumulator per live handoff. The aggregate above stays a
+	// log surface only: a receipt reads its own entry, never the difference of
+	// two process-wide snapshots that a concurrent handoff can move in between.
+	scoped map[uint64]finalJobSegmentStats
 }
 
 // The producing lanes a window can take. They are the receipt's vocabulary, so
@@ -151,111 +167,6 @@ const (
 	finalJobWindowEncode  = "encode"
 	finalJobWindowDerived = "derived"
 )
-
-// finalJobMaxReportedWindows bounds the per-window list a single receipt can
-// carry. It is a diagnostic surface: a run with more wins than this keeps the
-// most recent ones instead of growing the receipt without limit.
-const finalJobMaxReportedWindows = 4096
-
-// finalJobHandoffScopeKey carries the handoff identity to the prepare calls, so
-// a window is attributed to the run that asked for it rather than to whichever
-// run happened to snapshot the accumulator next.
-type finalJobHandoffScopeKey struct{}
-
-func withFinalJobHandoffScope(ctx context.Context, scope uint64) context.Context {
-	if scope == 0 || ctx == nil {
-		return ctx
-	}
-	return context.WithValue(ctx, finalJobHandoffScopeKey{}, scope)
-}
-
-func finalJobHandoffScope(ctx context.Context) uint64 {
-	if ctx == nil {
-		return 0
-	}
-	scope, _ := ctx.Value(finalJobHandoffScopeKey{}).(uint64)
-	return scope
-}
-
-// NewHandoffScope allocates the identity of one handoff and returns the totals
-// snapshot taken at the same instant: everything counted after this pair belongs
-// to (or is concurrent with) the handoff that owns the scope.
-func (p *finalJobSegmentPreparer) NewHandoffScope() (uint64, finalJobSegmentStats) {
-	if p == nil {
-		return 0, finalJobSegmentStats{}
-	}
-	scope := p.scopeSeq.Add(1)
-	return scope, p.Totals()
-}
-
-func (p *finalJobSegmentPreparer) recordWindow(ctx context.Context, window finalJobSegmentWindow) {
-	if p == nil {
-		return
-	}
-	window.scope = finalJobHandoffScope(ctx)
-	p.record(func(s *finalJobSegmentStats) {
-		s.windows = append(s.windows, window)
-		if over := len(s.windows) - finalJobMaxReportedWindows; over > 0 {
-			s.windows = append([]finalJobSegmentWindow(nil), s.windows[over:]...)
-		}
-	})
-}
-
-func (s finalJobSegmentStats) minus(base finalJobSegmentStats, scope uint64) scriptgen.RemoteFinalJobSegmentPrepTiming {
-	timing := scriptgen.RemoteFinalJobSegmentPrepTiming{
-		Segments:   s.segments - base.segments,
-		Reused:     s.reused - base.reused,
-		Cached:     s.cached - base.cached,
-		Derived:    s.derived - base.derived,
-		Copied:     s.copied - base.copied,
-		DownloadMS: s.downloadMS - base.downloadMS,
-		EncodeMS:   s.encodeMS - base.encodeMS,
-		VerifyMS:   s.verifyMS - base.verifyMS,
-		PublishMS:  s.publishMS - base.publishMS,
-		Bytes:      s.bytes - base.bytes,
-	}
-	for _, window := range s.windows {
-		if scope != 0 && window.scope != scope {
-			continue
-		}
-		timing.Windows = append(timing.Windows, scriptgen.RemoteFinalJobSegmentPrepWindow{
-			SegmentID:  window.segmentID,
-			Path:       window.path,
-			Frames:     window.frames,
-			DownloadMS: window.downloadMS,
-			CopyMS:     window.copyMS,
-			EncodeMS:   window.encodeMS,
-			VerifyMS:   window.verifyMS,
-			PublishMS:  window.publishMS,
-			Bytes:      window.bytes,
-		})
-	}
-	// Deterministic receipt: four lanes finish in whatever order the CPU
-	// decides, but the same work must serialize to the same payload.
-	sort.SliceStable(timing.Windows, func(i, j int) bool {
-		if timing.Windows[i].SegmentID != timing.Windows[j].SegmentID {
-			return timing.Windows[i].SegmentID < timing.Windows[j].SegmentID
-		}
-		return timing.Windows[i].Path < timing.Windows[j].Path
-	})
-	return timing
-}
-
-// Totals snapshots the accumulator (copy-on-read: the caller keeps a value).
-func (p *finalJobSegmentPreparer) Totals() finalJobSegmentStats {
-	if p == nil {
-		return finalJobSegmentStats{}
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.stats
-}
-
-func (p *finalJobSegmentPreparer) record(update func(*finalJobSegmentStats)) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	update(&p.stats)
-}
 
 // finalJobFragmentLanes reads VELOX_FINAL_JOB_PREPARE_LANES: how many fragments
 // are prepared at once. The work is independent per fragment, so lanes only
@@ -288,68 +199,6 @@ func finalJobCopyWindowsEnabled() bool {
 	}
 }
 
-// finalJobSourceCensus memoizes, per source hash, the three facts the copy and
-// encode paths need: how many frames the bytes hold, whether those bytes carry
-// the certified video-only stream contract with a closed fixed GOP, and whether
-// the delivery geometry still has to be rebuilt. The geometry rides the same probe: asking
-// ffprobe a second time for facts the census already read is duplicate work.
-type finalJobSourceCensus struct {
-	frames             int64
-	certified          bool
-	needsNormalization bool
-}
-
-// sourceCensus answers "can a window of this source be cut by
-// packet copy?" and it is derived, never declared: the frame count comes from
-// the packets, the GOP cadence from the packet flags, and the stream contract
-// from the stream header. A source whose metadata claims VELOX_ASSEMBLY_READY_V1
-// but whose bytes do not is not copyable, and a source that declares nothing
-// but whose bytes are conformant is.
-func (p *finalJobSegmentPreparer) sourceCensus(ctx context.Context, sha, path string) (finalJobSourceCensus, bool) {
-	key := strings.ToLower(strings.TrimSpace(sha))
-	p.certificatesMu.Lock()
-	census, ok := p.certificates[key]
-	p.certificatesMu.Unlock()
-	if ok {
-		return census, true
-	}
-	probe, err := probeFinalJobFragment(ctx, path)
-	if err != nil {
-		return finalJobSourceCensus{}, false
-	}
-	if err := ctx.Err(); err != nil {
-		// A cancelled context says nothing about the bytes: never memoize it.
-		return finalJobSourceCensus{}, false
-	}
-	census.frames, census.certified = probe.frames(), probe.certify(probe.frames()) == nil
-	census.needsNormalization = probe.needsDeliveryGeometry()
-	p.certificatesMu.Lock()
-	if p.certificates == nil {
-		p.certificates = make(map[string]finalJobSourceCensus)
-	}
-	p.certificates[key] = census
-	p.certificatesMu.Unlock()
-	return census, true
-}
-
-// finalJobFragmentCacheDir resolves where certified fragments are kept between
-// runs. "off" (or an explicit empty value) disables reuse: an A/B run needs a
-// way to measure the cache instead of trusting it.
-func finalJobFragmentCacheDir(dataDir string) string {
-	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR"))
-	switch strings.ToLower(raw) {
-	case "off", "disabled", "none":
-		return ""
-	case "":
-		if strings.TrimSpace(dataDir) == "" {
-			return ""
-		}
-		return filepath.Join(dataDir, "final-job-fragments")
-	default:
-		return raw
-	}
-}
-
 func newFinalJobSegmentPreparer(ffmpeg string, policy mediaexec.EncoderPolicy, cacheDir string, lanes int) *finalJobSegmentPreparer {
 	if lanes < 1 {
 		lanes = 1
@@ -360,6 +209,7 @@ func newFinalJobSegmentPreparer(ffmpeg string, policy mediaexec.EncoderPolicy, c
 		client:   &http.Client{Timeout: 20 * time.Minute},
 		cacheDir: strings.TrimSpace(cacheDir),
 		lanes:    lanes,
+		verifier: digest.NewVerifier(nil),
 	}
 }
 
@@ -370,149 +220,6 @@ func (p *finalJobSegmentPreparer) Parallelism() int {
 		return 1
 	}
 	return p.lanes
-}
-
-// finalJobFragmentCacheEntry is the sidecar of a cached fragment: the certified
-// identity of the bytes next to it. A missing or mismatched sidecar is a cache
-// miss, never a guess.
-type finalJobFragmentCacheEntry struct {
-	SHA256     string `json:"sha256"`
-	SizeBytes  int64  `json:"size_bytes"`
-	FrameCount int64  `json:"frame_count"`
-	DurationUS int64  `json:"duration_us"`
-	ProfileID  string `json:"profile_id"`
-}
-
-type finalJobFragmentLock struct {
-	ready chan struct{}
-	users int
-}
-
-// lockFragment waits only for identical cacheable work and honors cancellation.
-// A failed producer leaves no cache entry, so the next waiter retries normally.
-func (p *finalJobSegmentPreparer) lockFragment(ctx context.Context, key string) (func(), error) {
-	p.fragmentLocksMu.Lock()
-	if p.fragmentLocks == nil {
-		p.fragmentLocks = make(map[string]*finalJobFragmentLock)
-	}
-	lock := p.fragmentLocks[key]
-	if lock == nil {
-		lock = &finalJobFragmentLock{ready: make(chan struct{}, 1)}
-		lock.ready <- struct{}{}
-		p.fragmentLocks[key] = lock
-	}
-	lock.users++
-	p.fragmentLocksMu.Unlock()
-	releaseUser := func() {
-		p.fragmentLocksMu.Lock()
-		lock.users--
-		if lock.users == 0 {
-			delete(p.fragmentLocks, key)
-		}
-		p.fragmentLocksMu.Unlock()
-	}
-	select {
-	case <-ctx.Done():
-		releaseUser()
-		return nil, ctx.Err()
-	case <-lock.ready:
-		if err := ctx.Err(); err != nil {
-			lock.ready <- struct{}{}
-			releaseUser()
-			return nil, err
-		}
-		return func() { lock.ready <- struct{}{}; releaseUser() }, nil
-	}
-}
-
-// finalJobFragmentCacheKey is the WORK identity of a fragment: the same source
-// bytes, the same window inside them, the same encoder policy. It deliberately
-// excludes the timeline revision and the segment position, so re-running a film
-// after an editorial change reuses every window that did not move instead of
-// re-encoding the whole program.
-func (p *finalJobSegmentPreparer) fragmentCacheKey(request scriptgen.FinalJobVideoSegmentRequest, sourceSHA, codec string) string {
-	policy := strings.ToLower(strings.TrimSpace(codec)) + "|" +
-		strings.ToLower(strings.TrimSpace(p.policy.Preset)) + "|" + strconv.Itoa(p.policy.CRF)
-	// The placement tag is part of the work identity: a tagged re-prepare must
-	// produce its own object, never the untagged bytes that caused the
-	// collision. Without it, the r58-r62 retry was answered by the cache and the
-	// "same bytes, another placement" guard fired every time.
-	return digest.SHA256String(fmt.Sprintf("v%d|%s|%s|%d|%d|%s|%s", finalJobFragmentFormatVersion, finalJobSegmentProfile, strings.ToLower(sourceSHA), request.SourceInUS, request.FrameCount, policy, request.PlacementTag))
-}
-
-// cachedFragment returns the path and certified identity of a previously
-// prepared fragment. The bytes are re-hashed on every hit: a cache is only a
-// cache, it can never certify itself.
-func (p *finalJobSegmentPreparer) cachedFragment(key string, frameCount, durationUS int64) (string, string, int64, bool) {
-	if p.cacheDir == "" || len(key) < 2 {
-		return "", "", 0, false
-	}
-	base := filepath.Join(p.cacheDir, key[:2], key)
-	payload, err := os.ReadFile(base + ".json")
-	if err != nil {
-		return "", "", 0, false
-	}
-	var entry finalJobFragmentCacheEntry
-	if err := json.Unmarshal(payload, &entry); err != nil {
-		return "", "", 0, false
-	}
-	if entry.ProfileID != finalJobSegmentProfile || len(entry.SHA256) != 64 || entry.SizeBytes <= 0 ||
-		entry.FrameCount != frameCount || entry.DurationUS != durationUS {
-		return "", "", 0, false
-	}
-	path := base + ".mp4"
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() != entry.SizeBytes {
-		return "", "", 0, false
-	}
-	sha, size, err := digest.SHA256File(path)
-	if err != nil || size != entry.SizeBytes || !strings.EqualFold(sha, entry.SHA256) {
-		return "", "", 0, false
-	}
-	return path, entry.SHA256, entry.SizeBytes, true
-}
-
-// storeFragment keeps a certified fragment for the next run. Failures are
-// silent: the cache is an optimization and must never fail a render.
-func (p *finalJobSegmentPreparer) storeFragment(key, path, sha string, size, frameCount, durationUS int64) {
-	if p.cacheDir == "" || len(key) < 2 {
-		return
-	}
-	dir := filepath.Join(p.cacheDir, key[:2])
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return
-	}
-	source, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer func() { _ = source.Close() }()
-	dest, err := os.CreateTemp(dir, key+".mp4-*.tmp")
-	if err != nil {
-		return
-	}
-	tmp := dest.Name()
-	defer func() { _ = os.Remove(tmp) }()
-	if _, err := io.Copy(dest, source); err != nil {
-		_ = dest.Close()
-		_ = os.Remove(tmp)
-		return
-	}
-	if err := dest.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return
-	}
-	if err := os.Rename(tmp, filepath.Join(dir, key+".mp4")); err != nil {
-		_ = os.Remove(tmp)
-		return
-	}
-	payload, err := json.Marshal(finalJobFragmentCacheEntry{
-		SHA256: strings.ToLower(sha), SizeBytes: size, FrameCount: frameCount, DurationUS: durationUS, ProfileID: finalJobSegmentProfile,
-	})
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(filepath.Join(dir, key+".json"), payload, 0o644)
 }
 
 func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Context, source map[string]any, request scriptgen.FinalJobVideoSegmentRequest) (map[string]any, error) {
@@ -553,31 +260,25 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 			ref[key] = value
 		}
 		ref["asset_id"] = assetID
-		prepared := finalJobPreparedRef(ref, inputSHA, inputSize, durationUS, request)
-		prepared["role"] = stringValue(source["role"])
 		// Reuse costs no phase time, but it is counted so a handoff that
 		// prepared nothing cannot be mistaken for one that encoded cheaply.
-		p.record(func(s *finalJobSegmentStats) { s.segments++; s.reused++ })
-		p.recordWindow(ctx, finalJobSegmentWindow{
-			segmentID: request.SegmentID, path: finalJobWindowReuse,
-			frames: request.FrameCount, bytes: inputSize,
-		})
-		return prepared, nil
+		return p.finishFragment(ctx, request, ref, stringValue(source["role"]), inputSHA, inputSize, durationUS,
+			finalJobSegmentWindow{
+				segmentID: request.SegmentID, sourceSHA: inputSHA, path: finalJobWindowReuse,
+				frames: request.FrameCount, bytes: inputSize,
+			},
+			func(s *finalJobSegmentStats) { s.segments++; s.reused++ }), nil
 	}
-	// Cache: the same source bytes, the same window and the same encoder policy
-	// are the same fragment. Encoding it again is the most repeated useless
-	// operation of this stage — a retry or an editorial revision of an unmoved
-	// window must not pay for it a second time.
+	// Cache: the same source bytes, window, encoder policy and requested
+	// preparation path are the same fragment. Keeping copy-enabled and
+	// encode-only identities separate prevents a warm cache from masking an A/B
+	// change in the operation being measured.
 	codec, _, err := p.fragmentEncoderSettings()
 	if err != nil {
 		return nil, err
 	}
 	copyCandidate := finalJobWindowOnGOPGrid(request) && finalJobCopyWindowsEnabled()
-	// The cache key is the WORK identity, not the producing path: a copied and an
-	// encoded fragment are the same pictures, so whichever bytes were certified
-	// first answer for both. Splitting the key would encode the same window twice
-	// the first time an A/B toggles the lever.
-	cacheKey := p.fragmentCacheKey(request, inputSHA, codec)
+	cacheKey := p.fragmentWorkKey(request, inputSHA, codec)
 	if p.cacheDir != "" {
 		unlock, err := p.lockFragment(ctx, cacheKey)
 		if err != nil {
@@ -587,21 +288,19 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	}
 	cacheStarted := time.Now()
 	if cachedPath, cachedSHA, cachedSize, ok := p.cachedFragment(cacheKey, request.FrameCount, durationUS); ok {
-		// cachedFragment already re-hashed these exact bytes: publishing must
-		// not read and digest them a second time.
+		// cachedFragment already obtained the identity from the kernel verifier;
+		// publishing must not read and digest the same bytes a second time.
 		if ref, publishErr := scriptgen.PublishFinalJobLocalObjectVerified(ctx, assetID, cachedPath, cachedSHA, cachedSize); publishErr == nil {
-			prepared := finalJobPreparedRef(ref, cachedSHA, cachedSize, durationUS, request)
-			prepared["role"] = stringValue(source["role"])
 			elapsed := time.Since(cacheStarted).Milliseconds()
 			// The bytes are on this disk: a duplicate placement later in the
 			// same run derives its object from them, not from the network.
 			p.rememberFragmentPath(cachedSHA, cachedPath)
-			p.record(func(s *finalJobSegmentStats) { s.segments++; s.cached++; s.publishMS += elapsed })
-			p.recordWindow(ctx, finalJobSegmentWindow{
-				segmentID: request.SegmentID, path: finalJobWindowCache,
-				frames: request.FrameCount, publishMS: elapsed, bytes: cachedSize,
-			})
-			return prepared, nil
+			return p.finishFragment(ctx, request, ref, stringValue(source["role"]), cachedSHA, cachedSize, durationUS,
+				finalJobSegmentWindow{
+					segmentID: request.SegmentID, sourceSHA: inputSHA, path: finalJobWindowCache,
+					frames: request.FrameCount, publishMS: elapsed, bytes: cachedSize,
+				},
+				func(s *finalJobSegmentStats) { s.segments++; s.cached++; s.publishMS += elapsed }), nil
 		}
 	}
 
@@ -616,17 +315,18 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	}
 	outPath := filepath.Join(tmpDir, "fragment.mp4")
 	var encoded, verified time.Duration
+	var paddedFrames int64
 	copied := false
+	normalized := false
+	// The census is both the copy gate and the frame authority for padding, so
+	// it is asked once per source whether or not a packet copy is considered.
+	// Declarations are not proof: the bytes decide, not the metadata block.
+	censusStarted := time.Now()
+	census, censusOK := p.sourceCensus(ctx, inputSHA, sourcePath)
+	verified += time.Since(censusStarted)
 	if copyCandidate {
-		// Declarations are not proof. The source is probed once per content
-		// hash and the census — not its metadata block — decides whether a
-		// window at a GOP boundary is the same pictures with fewer packets.
-		// If the source is not certified, or the window does not fit, the
-		// existing encoder path runs instead of claiming copy safety.
-		probeStarted := time.Now()
-		census, ok := p.sourceCensus(ctx, inputSHA, sourcePath)
 		start := (request.SourceInUS / 2_000_000) * finalJobSegmentGOP
-		if ok && census.certified && start+request.FrameCount <= census.frames {
+		if censusOK && census.certified && start+request.FrameCount <= census.frames {
 			// The certificate of a copied window is DERIVED, never re-probed:
 			// the census already proved the closed fixed GOP, the first keyframe
 			// and the packet count of these bytes, and the window starts on a
@@ -638,19 +338,24 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 			encoded += time.Since(started)
 			copied = copyErr == nil
 		}
-		verified += time.Since(probeStarted) - encoded
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 	}
 	if !copied {
-		// The delivery geometry is inspected once per source.
+		// The delivery geometry is inspected once per source (the census above
+		// already answered it when it ran).
 		normalizeGeometry, err := p.sourceNeedsNormalization(ctx, sourcePath, inputSHA)
 		if err != nil {
 			return nil, err
 		}
+		normalized = normalizeGeometry
+		// Pad only what the source cannot supply. A window fully inside the
+		// source is encoded without tpad, so reaching the frame cap can no
+		// longer freeze a tail that was already there.
+		paddedFrames = finalJobSourceShortfall(census, censusOK, request)
 		encodeStarted := time.Now()
-		if err := p.encodeFragment(ctx, sourcePath, outPath, request, normalizeGeometry); err != nil {
+		if err := p.encodeFragment(ctx, sourcePath, outPath, request, normalizeGeometry, paddedFrames); err != nil {
 			return nil, err
 		}
 		encoded += time.Since(encodeStarted)
@@ -659,7 +364,7 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		// certify a real encoded fragment. Probing every encode at runtime
 		// repeats a build-time proof on our own output.
 	}
-	sha, size, err := digest.SHA256File(outPath)
+	sha, size, err := p.verifyLocalFile(outPath)
 	if err != nil {
 		return nil, fmt.Errorf("hash prepared fragment: %w", err)
 	}
@@ -676,24 +381,14 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	if p.cacheDir != "" {
 		p.rememberFragmentPath(sha, filepath.Join(p.cacheDir, cacheKey[:2], cacheKey+".mp4"))
 	}
-	p.record(func(s *finalJobSegmentStats) {
-		s.segments++
-		if copied {
-			s.copied++
-		}
-		s.downloadMS += downloaded.Milliseconds()
-		s.encodeMS += encoded.Milliseconds()
-		s.verifyMS += verified.Milliseconds()
-		s.publishMS += published.Milliseconds()
-		s.bytes += size
-	})
 	// One record per produced window. The producing lane is what separates the
 	// copy lever from the encoder; `encoded` above deliberately counts both so
 	// the aggregate keeps one meaning per field.
 	window := finalJobSegmentWindow{
-		segmentID: request.SegmentID, path: finalJobWindowEncode,
+		segmentID: request.SegmentID, sourceSHA: inputSHA, normalized: normalized, path: finalJobWindowEncode,
 		frames: request.FrameCount, downloadMS: downloaded.Milliseconds(),
 		verifyMS: verified.Milliseconds(), publishMS: published.Milliseconds(), bytes: size,
+		paddedFrames: paddedFrames,
 	}
 	if copied {
 		window.path = finalJobWindowCopy
@@ -701,700 +396,60 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	} else {
 		window.encodeMS = encoded.Milliseconds()
 	}
-	p.recordWindow(ctx, window)
-	prepared := finalJobPreparedRef(ref, sha, size, durationUS, request)
-	prepared["role"] = stringValue(source["role"])
-	return prepared, nil
+	return p.finishFragment(ctx, request, ref, stringValue(source["role"]), sha, size, durationUS, window,
+		func(s *finalJobSegmentStats) {
+			s.segments++
+			if copied {
+				s.copied++
+			}
+			s.paddedFrames += paddedFrames
+			s.downloadMS += downloaded.Milliseconds()
+			s.encodeMS += encoded.Milliseconds()
+			s.verifyMS += verified.Milliseconds()
+			s.publishMS += published.Milliseconds()
+			s.bytes += size
+		}), nil
 }
 
-// sourceNeedsNormalization probes a source ONCE and reports whether the encode
-// still has to rebuild the delivery geometry (resolution, frame rate, chroma)
-// or only has to cut the window. The answer is memoized by content hash: a
-// fragment is a window of bytes we already looked at, so paying a probe per
-// fragment would redo the same inspection N times.
-func (p *finalJobSegmentPreparer) sourceNeedsNormalization(ctx context.Context, path, sha string) (bool, error) {
-	if path == "" || sha == "" {
-		return true, nil
-	}
-	// The census probe already read width/height/fps/pix_fmt. On the copy
-	// fallback it has run moments earlier for the same bytes, so reuse its
-	// answer instead of spawning a second ffprobe for the same stream header.
-	key := strings.ToLower(strings.TrimSpace(sha))
-	p.certificatesMu.Lock()
-	if census, ok := p.certificates[key]; ok {
-		p.certificatesMu.Unlock()
-		return census.needsNormalization, nil
-	}
-	p.certificatesMu.Unlock()
-	p.geometryMu.Lock()
-	if p.geometry != nil {
-		if needs, ok := p.geometry[sha]; ok {
-			p.geometryMu.Unlock()
-			return needs, nil
-		}
-	}
-	p.geometryMu.Unlock()
-	ffprobe, err := exec.LookPath("ffprobe")
-	if err != nil {
-		return false, fmt.Errorf("ffprobe is required to inspect final-job sources: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "v:0",
-		"-show_entries", "stream=width,height,avg_frame_rate,pix_fmt", "-of", "json", path)
-	data, err := cmd.Output()
-	if err != nil {
-		return false, fmt.Errorf("probe final-job source: %w", err)
-	}
-	var probe struct {
-		Streams []struct {
-			Width    int    `json:"width"`
-			Height   int    `json:"height"`
-			AvgFPS   string `json:"avg_frame_rate"`
-			PixelFmt string `json:"pix_fmt"`
-		} `json:"streams"`
-	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false, fmt.Errorf("decode final-job source probe: %w", err)
-	}
-	if len(probe.Streams) != 1 {
-		return false, fmt.Errorf("final-job source must expose exactly one video stream")
-	}
-	stream := probe.Streams[0]
-	needs := !(stream.Width == 1920 && stream.Height == 1080 && stream.AvgFPS == "24/1" && stream.PixelFmt == "yuv420p")
-	p.geometryMu.Lock()
-	if p.geometry == nil {
-		p.geometry = make(map[string]bool)
-	}
-	p.geometry[sha] = needs
-	p.geometryMu.Unlock()
-	return needs, nil
-}
-
-// lockSource serializes preparation of the same source bytes across lanes: the
-// first fragment downloads them, every other lane waits and reads the verified
-// copy instead of asking for the same bytes a second time.
-func (p *finalJobSegmentPreparer) lockSource(key string) func() {
-	p.sourcesMu.Lock()
-	if p.sources == nil {
-		p.sources = make(map[string]*sync.Mutex)
-	}
-	lock := p.sources[key]
-	if lock == nil {
-		lock = &sync.Mutex{}
-		p.sources[key] = lock
-	}
-	p.sourcesMu.Unlock()
-	lock.Lock()
-	return lock.Unlock
-}
-
-// stagedSource returns a verified local copy of the source bytes and how long
-// obtaining it took. The bytes are hash-addressed, so they are fetched ONCE per
-// source: a source cache hit costs one stat and one hash, never a transfer.
-func (p *finalJobSegmentPreparer) stagedSource(ctx context.Context, sourceURL, expectedSHA string, expectedSize int64, workDir string) (string, time.Duration, error) {
-	stage := func(target string) (string, time.Duration, error) {
-		started := time.Now()
-		if err := p.downloadAndVerify(ctx, sourceURL, expectedSHA, expectedSize, target); err != nil {
-			return "", 0, err
-		}
-		return target, time.Since(started), nil
-	}
-	if p.cacheDir == "" || len(expectedSHA) < 2 {
-		return stage(filepath.Join(workDir, "source"))
-	}
-	dir := filepath.Join(p.cacheDir, "sources", expectedSHA[:2])
-	cached := filepath.Join(dir, expectedSHA+".mp4")
-	unlock := p.lockSource(expectedSHA)
-	defer unlock()
-	if info, err := os.Stat(cached); err == nil && info.Mode().IsRegular() && info.Size() == expectedSize {
-		// A cached source is only trusted after its bytes are re-hashed: the
-		// cache can never certify itself.
-		if sha, size, err := digest.SHA256File(cached); err == nil && size == expectedSize && strings.EqualFold(sha, expectedSHA) {
-			return cached, 0, nil
-		}
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return stage(filepath.Join(workDir, "source"))
-	}
-	tmp := cached + ".download"
-	_ = os.Remove(tmp)
-	staged, elapsed, err := stage(tmp)
-	if err != nil {
-		_ = os.Remove(tmp)
-		return "", 0, err
-	}
-	if err := os.Rename(staged, cached); err != nil {
-		// A cache that cannot commit is still a usable local copy for this
-		// fragment; the next run simply downloads again.
-		return staged, elapsed, nil
-	}
-	return cached, elapsed, nil
-}
-
-func (p *finalJobSegmentPreparer) downloadAndVerify(ctx context.Context, sourceURL, expectedSHA string, expectedSize int64, target string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
-	if err != nil {
-		return fmt.Errorf("build HTTPS source request: %w", err)
-	}
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("download source fragment over HTTPS: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTPS source returned status %d", resp.StatusCode)
-	}
-	if resp.ContentLength >= 0 && resp.ContentLength != expectedSize {
-		return fmt.Errorf("HTTPS source length %d does not match declared size %d", resp.ContentLength, expectedSize)
-	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("create staged source fragment: %w", err)
-	}
-	written, copyErr := io.Copy(file, io.LimitReader(resp.Body, finalJobSegmentMaxSize+1))
-	closeErr := file.Close()
-	if copyErr != nil {
-		return fmt.Errorf("stage source fragment: %w", copyErr)
-	}
-	if closeErr != nil {
-		return fmt.Errorf("close staged source fragment: %w", closeErr)
-	}
-	if written != expectedSize || written > finalJobSegmentMaxSize {
-		return fmt.Errorf("staged source size %d does not match declared size %d or exceeds limit", written, expectedSize)
-	}
-	sha, size, err := digest.SHA256File(target)
-	if err != nil {
-		return fmt.Errorf("verify staged source identity: %w", err)
-	}
-	if !strings.EqualFold(sha, expectedSHA) || size != expectedSize {
-		return fmt.Errorf("staged source bytes do not match the declared SHA-256 and size")
-	}
-	return nil
-}
-
-// derivePlacement certifies a second placement of already-certified bytes. The
-// assembler binds every placement to its OWN asset with the exact frame span
-// (r66: `manifest binding is not exact` when two placements shared one), and
-// the plan refuses two assets with one canonical identity (r55), so a duplicate
-// placement needs distinct bytes. It does NOT need a second encode: the
-// pictures already exist in the fragment this placement repeats, and copying
-// them into a tagged container costs a remux instead of a render.
-func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request scriptgen.FinalJobVideoSegmentRequest, assetID string, durationUS int64, role string) (map[string]any, error) {
-	reuseSHA := strings.ToLower(strings.TrimSpace(request.ReuseFromSHA256))
-	tag := strings.TrimSpace(request.PlacementTag)
-	// The certified input SHA fully identifies copied packets; no encoder runs.
-	cacheKey := p.fragmentCacheKey(request, reuseSHA, "packet-copy")
-	if p.cacheDir != "" {
-		unlock, err := p.lockFragment(ctx, cacheKey)
-		if err != nil {
-			return nil, err
-		}
-		defer unlock()
-	}
-	if cachedPath, cachedSHA, cachedSize, ok := p.cachedFragment(cacheKey, request.FrameCount, durationUS); ok {
-		ref, publishErr := scriptgen.PublishFinalJobLocalObjectVerified(ctx, assetID, cachedPath, cachedSHA, cachedSize)
-		if publishErr == nil {
-			p.rememberFragmentPath(cachedSHA, cachedPath)
-			p.record(func(s *finalJobSegmentStats) { s.segments++; s.derived++ })
-			p.recordWindow(ctx, finalJobSegmentWindow{
-				segmentID: request.SegmentID, path: finalJobWindowDerived,
-				frames: request.FrameCount, bytes: cachedSize,
-			})
-			prepared := finalJobPreparedRef(ref, cachedSHA, cachedSize, durationUS, request)
-			prepared["role"] = role
-			return prepared, nil
-		}
-	}
-	tmpDir, err := os.MkdirTemp("", "velox-final-derived-")
-	if err != nil {
-		return nil, fmt.Errorf("create derived placement staging directory: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-	downloaded := time.Duration(0)
-	sourcePath := p.fragmentPath(reuseSHA)
-	if sourcePath == "" {
-		// The reusable fragment came from an earlier run: its certified bytes
-		// are already published, so they are fetched once instead of encoded.
-		if strings.TrimSpace(request.ReuseFromURI) == "" {
-			return nil, fmt.Errorf("placement %q cannot reuse fragment %q: no local copy and no certified URI", tag, reuseSHA)
-		}
-		sourcePath = filepath.Join(tmpDir, "reused.mp4")
-		started := time.Now()
-		if err := p.downloadReusedFragment(ctx, request.ReuseFromURI, reuseSHA, sourcePath); err != nil {
-			return nil, err
-		}
-		downloaded = time.Since(started)
-	}
-	outPath := filepath.Join(tmpDir, "placement.mp4")
-	encodeStarted := time.Now()
-	if err := p.remuxTaggedFragment(ctx, sourcePath, outPath, tag); err != nil {
-		return nil, err
-	}
-	remuxed := time.Since(encodeStarted)
-	// The remux copies certified packets: the container is new, the frames are
-	// not. A probe here would re-certify the source it was copied from.
-	sha, size, err := digest.SHA256File(outPath)
-	if err != nil {
-		return nil, fmt.Errorf("hash derived placement: %w", err)
-	}
-	if strings.EqualFold(sha, reuseSHA) {
-		return nil, fmt.Errorf("derived placement %q still certifies the bytes of %q; the container tag did not reach the object", tag, reuseSHA)
-	}
-	publishStarted := time.Now()
-	ref, err := scriptgen.PublishFinalJobLocalObjectVerified(ctx, assetID, outPath, sha, size)
-	if err != nil {
-		return nil, fmt.Errorf("publish derived placement to HTTPS Objectstore: %w", err)
-	}
-	published := time.Since(publishStarted)
-	p.storeFragment(cacheKey, outPath, sha, size, request.FrameCount, durationUS)
-	if p.cacheDir != "" {
-		p.rememberFragmentPath(sha, filepath.Join(p.cacheDir, cacheKey[:2], cacheKey+".mp4"))
-	}
-	p.record(func(s *finalJobSegmentStats) {
-		s.segments++
-		s.derived++
-		s.downloadMS += downloaded.Milliseconds()
-		// The remux is reported as encode time so a run's receipt keeps one
-		// meaning per field: "time spent producing fragment bytes".
-		s.encodeMS += remuxed.Milliseconds()
-		s.publishMS += published.Milliseconds()
-		s.bytes += size
-	})
-	p.recordWindow(ctx, finalJobSegmentWindow{
-		segmentID: request.SegmentID, path: finalJobWindowDerived,
-		frames: request.FrameCount, downloadMS: downloaded.Milliseconds(),
-		// A remux is not an encode of new pictures, and saying so here is the
-		// point of the lane: new bytes, same frames.
-		encodeMS: remuxed.Milliseconds(), publishMS: published.Milliseconds(), bytes: size,
-	})
-	prepared := finalJobPreparedRef(ref, sha, size, durationUS, request)
+// finishFragment is the ONE exit of every fragment-producing lane: it stamps the
+// plan reference, names the producing role, and attributes the work to the
+// handoff that asked for it. Keeping reuse, cache, derived placement and fresh
+// production on this path is what stops the reference shape and the receipt
+// from drifting when one lane changes.
+func (p *finalJobSegmentPreparer) finishFragment(
+	ctx context.Context,
+	request scriptgen.FinalJobVideoSegmentRequest,
+	base map[string]any,
+	role, sha string,
+	size, durationUS int64,
+	window finalJobSegmentWindow,
+	update func(*finalJobSegmentStats),
+) map[string]any {
+	prepared := finalJobPreparedRef(base, sha, size, durationUS, request)
 	prepared["role"] = role
-	return prepared, nil
+	p.record(ctx, update)
+	p.recordWindow(ctx, window)
+	return prepared
 }
 
-// remuxTaggedFragment copies the certified bitstream into a distinct container.
-// No pixel is decoded: the tag lives in the container metadata, so the pictures,
-// the keyframes and the closed GOP are exactly the ones the source certified.
-func (p *finalJobSegmentPreparer) remuxTaggedFragment(ctx context.Context, source, output, tag string) error {
-	ffmpeg := p.ffmpeg
-	if ffmpeg == "" {
-		var err error
-		ffmpeg, err = exec.LookPath("ffmpeg")
-		if err != nil {
-			return fmt.Errorf("ffmpeg is required to derive a duplicate placement: %w", err)
-		}
+// finalJobSourceShortfall is how many tail frames a window asks for that the
+// source cannot supply. It is zero for a window fully inside the source, which
+// is the normal case; only a boundary window is padded, and only by its deficit.
+// Without a census the source length is unknown, so the historical full-length
+// tail is kept rather than cutting the plan's frame cap.
+func finalJobSourceShortfall(census finalJobSourceCensus, ok bool, request scriptgen.FinalJobVideoSegmentRequest) int64 {
+	if !ok {
+		return request.FrameCount
 	}
-	args := []string{
-		"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-		"-i", source,
-		"-map", "0:v:0", "-an", "-c", "copy",
-		// Same timing grid as the encoder path, so a downstream probe sees the
-		// certified fraction-of-a-second timing and not a rounded one.
-		"-video_track_timescale", "90000",
-		"-map_metadata", "-1",
-		"-metadata", "chronon_placement=" + tag,
-		// MP4 only writes a non-standard key when use_metadata_tags is set;
-		// without it the tag is silently dropped and the copy would certify the
-		// SAME bytes as its source, which the plan refuses.
-		"-avoid_negative_ts", "make_zero",
-		"-movflags", "+faststart+use_metadata_tags",
-		output,
+	startFrame := (request.SourceInUS*finalJobSegmentFPS + 500_000) / 1_000_000
+	available := census.frames - startFrame
+	if available < 0 {
+		available = 0
 	}
-	outputBytes, err := exec.CommandContext(ctx, ffmpeg, args...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("derive duplicate placement by packet copy: %w: %s", err, strings.TrimSpace(string(outputBytes)))
+	if available >= request.FrameCount {
+		return 0
 	}
-	return nil
-}
-
-// rememberFragmentPath records where a certified fragment's bytes live so a
-// duplicate placement in the same run can reuse them without a transfer.
-func (p *finalJobSegmentPreparer) rememberFragmentPath(sha, path string) {
-	sha = strings.ToLower(strings.TrimSpace(sha))
-	if len(sha) != 64 || strings.TrimSpace(path) == "" {
-		return
-	}
-	p.pathsMu.Lock()
-	defer p.pathsMu.Unlock()
-	if p.paths == nil {
-		p.paths = make(map[string]string)
-	}
-	p.paths[sha] = path
-}
-
-func (p *finalJobSegmentPreparer) fragmentPath(sha string) string {
-	p.pathsMu.Lock()
-	path := p.paths[strings.ToLower(strings.TrimSpace(sha))]
-	p.pathsMu.Unlock()
-	if path == "" {
-		return ""
-	}
-	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-		return ""
-	}
-	// The remembered path can outlive a cache write or be modified by another
-	// process. Never derive a certificate from bytes that no longer match the
-	// claimed fragment identity; the caller falls back to verified download.
-	actualSHA, _, err := digest.SHA256File(path)
-	if err != nil || !strings.EqualFold(actualSHA, sha) {
-		return ""
-	}
-	return path
-}
-
-// downloadReusedFragment stages a published fragment by its content address. It
-// has no declared size to compare against, so the digest is the only authority:
-// bytes that do not hash to the expected SHA-256 never reach the muxer.
-func (p *finalJobSegmentPreparer) downloadReusedFragment(ctx context.Context, sourceURL, expectedSHA, target string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
-	if err != nil {
-		return fmt.Errorf("build HTTPS fragment request: %w", err)
-	}
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("download certified fragment over HTTPS: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("certified fragment returned status %d", resp.StatusCode)
-	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return fmt.Errorf("create staged fragment: %w", err)
-	}
-	written, copyErr := io.Copy(file, io.LimitReader(resp.Body, finalJobSegmentMaxSize+1))
-	closeErr := file.Close()
-	if copyErr != nil {
-		return fmt.Errorf("stage certified fragment: %w", copyErr)
-	}
-	if closeErr != nil {
-		return fmt.Errorf("close staged fragment: %w", closeErr)
-	}
-	if written <= 0 || written > finalJobSegmentMaxSize {
-		return fmt.Errorf("staged fragment size %d is outside the accepted range", written)
-	}
-	sha, _, err := digest.SHA256File(target)
-	if err != nil {
-		return fmt.Errorf("hash staged fragment: %w", err)
-	}
-	if !strings.EqualFold(sha, expectedSHA) {
-		return fmt.Errorf("staged fragment bytes do not match the certified SHA-256")
-	}
-	return nil
-}
-
-func (p *finalJobSegmentPreparer) fragmentEncoderSettings() (string, string, error) {
-	codec := strings.TrimSpace(p.policy.Codec)
-	preset := strings.TrimSpace(p.policy.Preset)
-	if !strings.Contains(strings.ToLower(codec), "264") || preset == "" || p.policy.CRF <= 0 {
-		return "", "", fmt.Errorf("final-job fragment requires a resolved H.264 encoder policy")
-	}
-	if strings.Contains(strings.ToLower(codec), "nvenc") {
-		preset = nvencPresetFor(preset)
-	}
-	return codec, preset, nil
-}
-
-func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, output string, request scriptgen.FinalJobVideoSegmentRequest, normalizeGeometry bool) error {
-	ffmpeg := p.ffmpeg
-	if ffmpeg == "" {
-		var err error
-		ffmpeg, err = exec.LookPath("ffmpeg")
-		if err != nil {
-			return fmt.Errorf("ffmpeg is required to prepare local final-job fragments: %w", err)
-		}
-	}
-	codec, preset, err := p.fragmentEncoderSettings()
-	if err != nil {
-		return err
-	}
-	hardware := strings.Contains(strings.ToLower(codec), "nvenc")
-	start := float64(request.SourceInUS) / 1_000_000
-	padDuration := float64(request.FrameCount) / float64(finalJobSegmentFPS)
-	args := []string{
-		"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-		"-ss", strconv.FormatFloat(start, 'f', 6, 64), "-i", source,
-	}
-	tail := "tpad=stop_mode=clone:stop_duration=" + strconv.FormatFloat(padDuration, 'f', 6, 64)
-	videoFilter := tail
-	if normalizeGeometry {
-		videoFilter = "fps=24/1,scale=1920:1080:force_original_aspect_ratio=decrease:flags=lanczos,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p," + tail
-	}
-	args = append(args, "-map", "0:v:0", "-an", "-vf", videoFilter)
-	args = append(args,
-		// Bound output by the plan's exact frame count. Do not use -t here:
-		// timestamp rounding at a short source boundary can cut the last planned
-		// frame even with tpad enabled. tpad supplies enough cloned tail for the
-		// encoder to reach the frame cap; the cap prevents any longer freeze.
-		"-frames:v", strconv.FormatInt(request.FrameCount, 10), "-vsync", "cfr",
-		"-c:v", codec, "-preset", preset,
-	)
-	if hardware {
-		args = append(args, "-rc", "vbr", "-cq", strconv.Itoa(p.policy.CRF), "-b:v", "0")
-	} else {
-		args = append(args, "-crf", strconv.Itoa(p.policy.CRF))
-	}
-	args = append(args,
-		"-profile:v", "high", "-level:v", "4.0",
-		"-pix_fmt", "yuv420p", "-r", "24", "-g", strconv.FormatInt(finalJobSegmentGOP, 10),
-	)
-	// sc_threshold and keyint_min are libx264 private options; NVENC has its own
-	// scene-cut switch. The certified stream needs the same fixed GOP either way.
-	if hardware {
-		args = append(args, "-no-scenecut", "1")
-	} else {
-		args = append(args, "-keyint_min", strconv.FormatInt(finalJobSegmentGOP, 10), "-sc_threshold", "0")
-	}
-	args = append(args,
-		"-bf", "0", "-flags", "+cgop",
-		"-video_track_timescale", "90000", "-map_metadata", "-1",
-	)
-	movflags := "+faststart"
-	if tag := strings.TrimSpace(request.PlacementTag); tag != "" {
-		// Same pictures, distinct container: a placement tag gives a second
-		// placement its own certified object without touching a pixel. The
-		// metadata flag is required, or MP4 drops the key and the copy would
-		// certify the source bytes.
-		args = append(args, "-metadata", "chronon_placement="+tag)
-		movflags = "+faststart+use_metadata_tags"
-	}
-	args = append(args, "-movflags", movflags, output)
-	cmd := exec.CommandContext(ctx, ffmpeg, args...)
-	outputBytes, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("encode assembly-ready fragment: %w: %s", err, strings.TrimSpace(string(outputBytes)))
-	}
-	return nil
-}
-
-// Encoder presets are not portable between libx264 and NVENC. The resolved
-// media policy uses x264-style names, so translate those names at the local
-// fragment boundary where the configured codec is known to be NVENC.
-func nvencPresetFor(preset string) string {
-	switch strings.ToLower(strings.TrimSpace(preset)) {
-	case "ultrafast", "superfast", "veryfast", "faster":
-		return "p2"
-	case "fast", "medium", "slow":
-		return "p4"
-	case "slower", "veryslow":
-		return "p6"
-	default:
-		return strings.TrimSpace(preset)
-	}
-}
-
-// finalJobWindowOnGOPGrid reports whether the requested window starts exactly on
-// a GOP boundary. Only the geometry is checked here, because whether that
-// boundary is a real keyframe is a property of the bytes, not of the request:
-// it is answered by the source census immediately before the copy.
-func finalJobWindowOnGOPGrid(request scriptgen.FinalJobVideoSegmentRequest) bool {
-	return request.SourceInUS >= 0 && request.SourceInUS%2_000_000 == 0 && request.FrameCount > 0
-}
-
-func (p *finalJobSegmentPreparer) copyCertifiedWindow(ctx context.Context, source, output string, request scriptgen.FinalJobVideoSegmentRequest) error {
-	ffmpeg := p.ffmpeg
-	if ffmpeg == "" {
-		var err error
-		ffmpeg, err = exec.LookPath("ffmpeg")
-		if err != nil {
-			return fmt.Errorf("ffmpeg is required to copy final-job windows: %w", err)
-		}
-	}
-	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-		"-ss", strconv.FormatFloat(float64(request.SourceInUS)/1_000_000, 'f', 6, 64), "-i", source,
-		"-map", "0:v:0", "-an", "-c", "copy", "-frames:v", strconv.FormatInt(request.FrameCount, 10),
-		"-video_track_timescale", "90000", "-map_metadata", "-1",
-		// The certificate is derived, so the zero start it promises is forced
-		// by the muxer instead of being re-probed afterwards.
-		"-avoid_negative_ts", "make_zero", "-movflags", "+faststart", output}
-	out, err := exec.CommandContext(ctx, ffmpeg, args...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("copy certified final-job window: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func finalJobSourceIsExactPreparedFragment(source map[string]any, request scriptgen.FinalJobVideoSegmentRequest, durationUS int64) bool {
-	return strings.EqualFold(strings.TrimSpace(stringValue(source["profile_id"])), finalJobSegmentProfile) &&
-		boolFromAny(source["copy_eligible"]) && boolFromAny(source["first_frame_keyframe"]) && boolFromAny(source["closed_gop"]) &&
-		request.SourceInUS == 0 && int64Value(source["source_in_us"]) == 0 && int64Value(source["duration_us"]) == durationUS &&
-		int64Value(source["frame_count"]) == request.FrameCount &&
-		int64Value(source["width"]) == 1920 && int64Value(source["height"]) == 1080 &&
-		int64Value(source["fps_num"]) == finalJobSegmentFPS && int64Value(source["fps_den"]) == 1
-}
-
-func finalJobPreparedRef(base map[string]any, sha string, size, durationUS int64, request scriptgen.FinalJobVideoSegmentRequest) map[string]any {
-	ref := make(map[string]any, len(base)+13)
-	for key, value := range base {
-		ref[key] = value
-	}
-	ref["sha256"], ref["size_bytes"], ref["duration_us"] = strings.ToLower(sha), size, durationUS
-	ref["duration_ms"], ref["frame_count"] = (durationUS+999)/1000, request.FrameCount
-	ref["mime"], ref["kind"] = "video/mp4", "video"
-	ref["profile_id"], ref["copy_eligible"] = finalJobSegmentProfile, true
-	ref["first_frame_keyframe"], ref["closed_gop"] = true, true
-	ref["width"], ref["height"] = 1920, 1080
-	ref["fps_num"], ref["fps_den"] = finalJobSegmentFPS, int64(1)
-	ref["timeline_revision"], ref["timeline_sha256"] = request.TimelineRevision, strings.ToLower(request.TimelineSHA256)
-	ref["timeline_start_frame"] = request.TimelineStartFrame
-	return ref
-}
-
-// finalJobPreparedAssetID is the WORK identity of the published fragment: the
-// source bytes, the exact window inside them and the number of frames. It
-// deliberately excludes the segment id and the timeline position, because the
-// assembler binds a placement to the SEGMENT (unique segment_id + position) and
-// the asset to the BYTES (unique asset_id + asset_key). Two placements of the
-// same pictures are one asset referenced twice, not two assets that happen to
-// carry the same hash: the remote resolver rejects two ids sharing one asset_key
-// and the render plan refuses two assets with one canonical identity.
-func finalJobPreparedAssetID(request scriptgen.FinalJobVideoSegmentRequest, sourceSHA string) string {
-	material := fmt.Sprintf("%s\n%d\n%d", strings.ToLower(sourceSHA), request.SourceInUS, request.FrameCount)
-	if tag := strings.TrimSpace(request.PlacementTag); tag != "" {
-		// A tagged placement certifies DIFFERENT bytes, so it is a different
-		// object and must never reuse the untagged asset id.
-		material += "\nplacement:" + tag
-	}
-	return "final-fragment-" + digest.SHA256String(material)[:32]
-}
-
-func framesDurationUS(frames int64) int64 {
-	return (frames*1_000_000 + finalJobSegmentFPS/2) / finalJobSegmentFPS
-}
-
-// finalJobSourceTimeBaseCertified reports whether a source's video-track time
-// base is one a 24 fps assembly-ready source may legitimately carry. Two
-// authorities are accepted: the delivery grid (1/90000) and x264's container
-// time base (1/(fps*512) = 1/12288 at 24 fps), which is what the overlay batch
-// encoder writes unless a timescale override is requested. The track timescale
-// is metadata, not a copy-safety fact: every fragment is remuxed with
-// -video_track_timescale 90000 before it is published, while GOP, B-frames,
-// start time and duration remain the gate. Any other time base fails closed.
-func finalJobSourceTimeBaseCertified(timeBase string) bool {
-	timeBase = strings.TrimSpace(timeBase)
-	return timeBase == "1/90000" || timeBase == fmt.Sprintf("1/%d", finalJobSegmentFPS*512)
-}
-
-// finalJobFragmentProbe is the raw material of a certificate: one ffprobe run
-// over the container, without decoding a single frame. Every field is read from
-// the bytes, which is why the census derived from it can be trusted where a
-// metadata declaration cannot.
-//
-// ONE probe for the whole certificate. The keyframe layout is read from the
-// packet flags, not from decoded frames: `frame=key_frame` decodes every frame
-// of the fragment (~0,9 s for a 3 s clip) while the packet flags are container
-// metadata (~0,3 s). Same invariants, same fail-closed verdict, a fraction of
-// the cost — and the fragment bytes are never touched.
-type finalJobFragmentProbe struct {
-	streamOK       bool
-	startAtZero    bool
-	declaredFrames string
-	declaredCount  int64
-	declaredKnown  bool
-	durationUS     int64
-	keyframeAt     map[int64]bool
-	packets        int64
-	width          int
-	height         int
-	avgFPS         string
-	pixelFmt       string
-}
-
-// frames is the frame count the bytes prove: the certified encoder contract (no
-// B-frames) makes packet order equal display order, so the packet count IS the
-// frame count.
-func (p finalJobFragmentProbe) frames() int64 { return p.packets }
-
-// needsDeliveryGeometry reports whether the encode still has to rebuild the
-// delivery geometry (1920x1080, 24/1, yuv420p) or only has to cut the window.
-func (p finalJobFragmentProbe) needsDeliveryGeometry() bool {
-	return !(p.width == 1920 && p.height == 1080 && p.avgFPS == "24/1" && p.pixelFmt == "yuv420p")
-}
-
-func (p finalJobFragmentProbe) certify(frameCount int64) error {
-	if !p.streamOK {
-		return fmt.Errorf("prepared fragment stream does not match %s", finalJobSegmentProfile)
-	}
-	if !p.startAtZero {
-		return fmt.Errorf("prepared fragment does not start at timestamp zero")
-	}
-	if p.declaredKnown && p.declaredCount != frameCount {
-		return fmt.Errorf("prepared fragment has %q frames; expected %d", p.declaredFrames, frameCount)
-	}
-	if p.durationUS < framesDurationUS(frameCount)-1_000 || p.durationUS > framesDurationUS(frameCount)+1_000 {
-		return fmt.Errorf("prepared fragment duration does not match its frame count")
-	}
-	for index := int64(0); index < frameCount; index++ {
-		shouldKey := index == 0 || index%finalJobSegmentGOP == 0
-		if p.keyframeAt[index] != shouldKey {
-			return fmt.Errorf("prepared fragment GOP is not closed and fixed at frame %d", index)
-		}
-	}
-	if p.packets != frameCount {
-		return fmt.Errorf("prepared fragment keyframe probe returned %d frames; expected %d", p.packets, frameCount)
-	}
-	return nil
-}
-
-func probeFinalJobFragment(ctx context.Context, path string) (finalJobFragmentProbe, error) {
-	var probe finalJobFragmentProbe
-	ffprobe, err := exec.LookPath("ffprobe")
-	if err != nil {
-		return probe, fmt.Errorf("ffprobe is required to certify prepared final-job fragments: %w", err)
-	}
-	cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "v:0",
-		"-show_streams", "-show_format", "-show_entries", "packet=flags", "-of", "json", path)
-	data, err := cmd.Output()
-	if err != nil {
-		return probe, fmt.Errorf("probe prepared fragment: %w", err)
-	}
-	var decoded struct {
-		Streams []struct {
-			CodecName string `json:"codec_name"`
-			Profile   string `json:"profile"`
-			Level     int    `json:"level"`
-			Width     int    `json:"width"`
-			Height    int    `json:"height"`
-			PixelFmt  string `json:"pix_fmt"`
-			AvgFPS    string `json:"avg_frame_rate"`
-			Frames    string `json:"nb_frames"`
-			BFrames   int    `json:"has_b_frames"`
-			TimeBase  string `json:"time_base"`
-			StartTime string `json:"start_time"`
-		} `json:"streams"`
-		Format struct {
-			Duration string `json:"duration"`
-		} `json:"format"`
-		Packets []struct {
-			Flags string `json:"flags"`
-		} `json:"packets"`
-	}
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return probe, fmt.Errorf("decode prepared fragment probe: %w", err)
-	}
-	if len(decoded.Streams) != 1 {
-		return probe, fmt.Errorf("prepared fragment must contain one video stream and no audio streams")
-	}
-	s := decoded.Streams[0]
-	probe.width, probe.height = s.Width, s.Height
-	probe.avgFPS, probe.pixelFmt = s.AvgFPS, s.PixelFmt
-	probe.streamOK = s.CodecName == "h264" && s.Profile == "High" && s.Level == 40 && s.Width == 1920 && s.Height == 1080 &&
-		s.PixelFmt == "yuv420p" && s.AvgFPS == "24/1" && s.BFrames == 0 && finalJobSourceTimeBaseCertified(s.TimeBase)
-	probe.startAtZero = strings.TrimSpace(s.StartTime) == "0.000000"
-	probe.declaredFrames = strings.TrimSpace(s.Frames)
-	if count, parseErr := strconv.ParseInt(probe.declaredFrames, 10, 64); parseErr == nil {
-		probe.declaredCount, probe.declaredKnown = count, true
-	}
-	if seconds, parseErr := strconv.ParseFloat(strings.TrimSpace(decoded.Format.Duration), 64); parseErr == nil {
-		probe.durationUS = int64(seconds * float64(time.Second) / float64(time.Microsecond))
-	}
-	probe.keyframeAt = make(map[int64]bool, len(decoded.Packets))
-	for index, packet := range decoded.Packets {
-		if strings.Contains(strings.ToUpper(strings.TrimSpace(packet.Flags)), "K") {
-			probe.keyframeAt[int64(index)] = true
-		}
-	}
-	probe.packets = int64(len(decoded.Packets))
-	return probe, nil
+	return request.FrameCount - available
 }
 
 func stringValue(value any) string {
@@ -1429,3 +484,65 @@ func boolFromAny(value any) bool {
 }
 
 var _ scriptgen.FinalJobVideoSegmentPreparer = (*finalJobSegmentPreparer)(nil)
+
+// --- per-source census: one probe per content identity ---
+
+// The per-source census: the one probe that answers whether a window of these bytes can
+// be cut by packet copy, shared by every window of the same source.
+// sourceCensus answers "can a window of this source be cut by
+// packet copy?" and it is derived, never declared: the frame count comes from
+// the packets, the GOP cadence from the packet flags, and the stream contract
+// from the stream header. A source whose metadata claims VELOX_ASSEMBLY_READY_V1
+// but whose bytes do not is not copyable, and a source that declares nothing
+// but whose bytes are conformant is.
+func (p *finalJobSegmentPreparer) sourceCensus(ctx context.Context, sha, path string) (finalJobSourceCensus, bool) {
+	key := strings.ToLower(strings.TrimSpace(sha))
+	p.certificatesMu.Lock()
+	census, ok := p.certificates[key]
+	p.certificatesMu.Unlock()
+	if ok {
+		return census, true
+	}
+	value, err, _ := p.censusFlights.Do(key, func() (any, error) {
+		// Another lane may have completed the census after our first lookup.
+		p.certificatesMu.Lock()
+		cached, found := p.certificates[key]
+		p.certificatesMu.Unlock()
+		if found {
+			return cached, nil
+		}
+		probe, probeErr := probeFinalJobFragment(ctx, path)
+		if probeErr != nil {
+			return nil, probeErr
+		}
+		if err := ctx.Err(); err != nil {
+			// Cancellation says nothing about the bytes; do not memoize it.
+			return nil, err
+		}
+		result := finalJobSourceCensus{
+			frames: probe.frames(), certified: probe.certify(probe.frames()) == nil,
+			needsNormalization: probe.needsDeliveryGeometry(),
+		}
+		p.certificatesMu.Lock()
+		if p.certificates == nil {
+			p.certificates = make(map[string]finalJobSourceCensus)
+		}
+		p.certificates[key] = result
+		p.certificatesMu.Unlock()
+		return result, nil
+	})
+	if err != nil {
+		return finalJobSourceCensus{}, false
+	}
+	census, ok = value.(finalJobSourceCensus)
+	if !ok {
+		return finalJobSourceCensus{}, false
+	}
+	return census, true
+}
+
+type finalJobSourceCensus struct {
+	frames             int64
+	certified          bool
+	needsNormalization bool
+}
