@@ -25,6 +25,25 @@ func TestVideoEncoderPolicyPreservesRuntimePolicy(t *testing.T) {
 	}
 }
 
+func TestFinalJobFragmentEncoderPolicyResolvesScopedOverride(t *testing.T) {
+	base := VideoEncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}
+	for _, tc := range []struct{ override, codec string }{
+		{"", "libx264"}, {"policy", "libx264"}, {"nvenc", EncoderNVENCH264}, {"x264", "libx264"},
+	} {
+		t.Run(tc.override, func(t *testing.T) {
+			t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", tc.override)
+			got, err := FinalJobFragmentEncoderPolicy(base)
+			if err != nil || got.Codec != tc.codec || got.Preset != base.Preset || got.CRF != base.CRF {
+				t.Fatalf("policy = %+v, %v; want codec %q and unchanged quality", got, err, tc.codec)
+			}
+		})
+	}
+	t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", "invalid")
+	if _, err := FinalJobFragmentEncoderPolicy(base); err == nil {
+		t.Fatal("invalid codec override accepted")
+	}
+}
+
 func TestVideoConfigCanonicalClipPreservesLegacyCompositeCompatibility(t *testing.T) {
 	got := (VideoConfig{Codec: "h264_nvenc", Preset: "p1", CRF: 26, ClipDuration: 7}).CanonicalClip()
 	if got.Width != 1920 || got.Height != 1080 || got.FPSNum != 24 || got.FPSDen != 1 || got.KeyframeInterval != 48 {

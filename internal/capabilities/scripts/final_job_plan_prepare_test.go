@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 type preparedSegmentStub struct {
@@ -48,7 +49,7 @@ func (s *preparedSegmentStub) PrepareFinalJobVideoSegment(_ context.Context, sou
 		"role":   "stock",
 		"sha256": sha, "size_bytes": int64(1024),
 		"duration_us": int64(2_000_000), "frame_count": int64(48),
-		"profile_id": "VELOX_ASSEMBLY_READY_V1", "copy_eligible": true,
+		"profile_id": kernelmedia.OverlayVideoOnlyProfileID, "copy_eligible": true,
 		"first_frame_keyframe": true, "closed_gop": true,
 		"timeline_revision": request.TimelineRevision, "timeline_sha256": request.TimelineSHA256,
 		"timeline_start_frame": request.TimelineStartFrame,
@@ -284,7 +285,7 @@ func (s *concurrentSegmentStub) PrepareFinalJobVideoSegment(_ context.Context, _
 		"size_bytes":           int64(2048),
 		"duration_us":          finalJobFrameDurationUS(request.FrameCount, 24, 1),
 		"frame_count":          request.FrameCount,
-		"profile_id":           "VELOX_ASSEMBLY_READY_V1",
+		"profile_id":           kernelmedia.OverlayVideoOnlyProfileID,
 		"copy_eligible":        true,
 		"first_frame_keyframe": true,
 		"closed_gop":           true,

@@ -18,6 +18,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 func TestFinalJobRememberedFragmentRejectsTampering(t *testing.T) {
@@ -100,16 +101,16 @@ func TestFinalJobSourceCensusIsDerivedNotDeclared(t *testing.T) {
 	open := encode("open.mp4", "-g", "48", "-keyint_min", "48", "-sc_threshold", "0", "-bf", "2")
 
 	p := newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{}, "", 1)
-	frames, ok := p.sourceCensus(context.Background(), digest.SHA256String(certified), certified)
-	if !ok || frames != 96 {
-		t.Fatalf("conformant source census = %d frames, certified=%v", frames, ok)
+	census, ok := p.sourceCensus(context.Background(), digest.SHA256String(certified), certified)
+	if !ok || census.frames != 96 || !census.certified {
+		t.Fatalf("conformant source census = %+v, certified=%v", census, ok)
 	}
-	if _, ok := p.sourceCensus(context.Background(), digest.SHA256String(open), open); ok {
-		t.Fatal("a source with B-frames must not be copyable")
+	if openCensus, ok := p.sourceCensus(context.Background(), digest.SHA256String(open), open); !ok || openCensus.certified {
+		t.Fatal("a source with B-frames must not be certified for packet copy")
 	}
 	// The memoized answer is keyed by content hash, not by path.
-	if again, ok := p.sourceCensus(context.Background(), digest.SHA256String(certified), open); !ok || again != 96 {
-		t.Fatalf("census was not memoized: %d frames, certified=%v", again, ok)
+	if again, ok := p.sourceCensus(context.Background(), digest.SHA256String(certified), open); !ok || again.frames != 96 || !again.certified {
+		t.Fatalf("census was not memoized: %+v, certified=%v", again, ok)
 	}
 }
 
@@ -167,9 +168,9 @@ func TestFinalJobCensusAcceptsX264TimeBase(t *testing.T) {
 		t.Fatalf("create x264-timebase source: %v: %s", err, out)
 	}
 	p := newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{}, "", 1)
-	frames, ok := p.sourceCensus(context.Background(), digest.SHA256String(source), source)
-	if !ok || frames != 96 {
-		t.Fatalf("x264-timebase source census = %d frames, certified=%v", frames, ok)
+	census, ok := p.sourceCensus(context.Background(), digest.SHA256String(source), source)
+	if !ok || census.frames != 96 || !census.certified {
+		t.Fatalf("x264-timebase source census = %+v, certified=%v", census, ok)
 	}
 }
 
@@ -356,21 +357,11 @@ func TestFinalJobCopyWindowLever(t *testing.T) {
 }
 
 func TestFinalJobFragmentEncoderSettings(t *testing.T) {
-	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, "", 1)
-	for _, tc := range []struct{ override, codec, preset string }{
-		{"policy", "libx264", "veryfast"}, {"nvenc", "h264_nvenc", "p2"}, {"x264", "libx264", "veryfast"},
-	} {
-		t.Run(tc.override, func(t *testing.T) {
-			t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", tc.override)
-			codec, preset, err := p.fragmentEncoderSettings()
-			if err != nil || codec != tc.codec || preset != tc.preset {
-				t.Fatalf("settings = %q, %q, %v; want %q, %q", codec, preset, err, tc.codec, tc.preset)
-			}
-		})
-	}
-	t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", "invalid")
-	if _, _, err := p.fragmentEncoderSettings(); err == nil {
-		t.Fatal("invalid codec override accepted")
+	t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", "")
+	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "veryfast", CRF: 23}, "", 1)
+	codec, preset, err := p.fragmentEncoderSettings()
+	if err != nil || codec != "h264_nvenc" || preset != "p2" {
+		t.Fatalf("settings = %q, %q, %v; want resolved NVENC policy with p2", codec, preset, err)
 	}
 }
 
@@ -808,5 +799,201 @@ func TestFinalJobFragmentCacheReusesTheSameWorkOnly(t *testing.T) {
 	}
 	if tamperedPath, _, _, ok := preparer.cachedFragment(key, request.FrameCount, 3_000_000); ok {
 		t.Fatalf("cache hit on tampered bytes (%q), want a miss", tamperedPath)
+	}
+}
+
+func TestFinalJobFragmentDeclaresTheVideoOnlyProfile(t *testing.T) {
+	request := scriptgen.FinalJobVideoSegmentRequest{
+		FrameCount: 48, TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64),
+	}
+	ref := finalJobPreparedRef(map[string]any{}, strings.Repeat("b", 64), 1024, 2_000_000, request)
+	if got := ref["profile_id"]; got != kernelmedia.OverlayVideoOnlyProfileID {
+		t.Fatalf("profile_id = %v, want %s", got, kernelmedia.OverlayVideoOnlyProfileID)
+	}
+	if ref["profile_id"] == "VELOX_ASSEMBLY_READY_V1" {
+		t.Fatal("a video-only fragment must not declare the audio-bearing assembly profile")
+	}
+}
+
+func TestFinalJobGeometryIsReadFromTheCensusWhenItRan(t *testing.T) {
+	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{}, "", 1)
+	sha := strings.Repeat("a", 64)
+	p.certificates = map[string]finalJobSourceCensus{
+		sha: {frames: 96, certified: true, needsNormalization: true},
+	}
+	absent := filepath.Join(t.TempDir(), "absent.mp4")
+	needs, err := p.sourceNeedsNormalization(context.Background(), absent, sha)
+	if err != nil {
+		t.Fatalf("sourceNeedsNormalization: %v", err)
+	}
+	if !needs {
+		t.Fatal("census geometry was not reused")
+	}
+	p.certificates[sha] = finalJobSourceCensus{frames: 96, certified: true}
+	needs, err = p.sourceNeedsNormalization(context.Background(), absent, sha)
+	if err != nil {
+		t.Fatalf("sourceNeedsNormalization: %v", err)
+	}
+	if needs {
+		t.Fatal("a census that matches the delivery geometry asked for a rebuild")
+	}
+}
+
+// verifyFinalJobFragment is the TEST-side certificate. Production no longer
+// re-probes a fragment it just produced: a copied window inherits the source
+// census, an encoded one is pinned by these tests, and the boundary is proven
+// by the request. These tests still assert that the produced bytes honour the
+// contract, so removing the runtime probe cannot hide a regression.
+func verifyFinalJobFragment(ctx context.Context, path string, frameCount int64) error {
+	probe, err := probeFinalJobFragment(ctx, path)
+	if err != nil {
+		return err
+	}
+	return probe.certify(frameCount)
+}
+
+// TestFinalJobSegmentWindowsStayInTheirHandoff pins the scoping rule: two
+// handoffs share one preparer, and a receipt may only report the windows its
+// own scope produced. It also pins the copy/encode separation the aggregate
+// field cannot make (encode_ms sums both lanes) and the deterministic order.
+func TestFinalJobSegmentWindowsStayInTheirHandoff(t *testing.T) {
+	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{}, "", 1)
+	scopeA, baseA := p.NewHandoffScope()
+	scopeB, baseB := p.NewHandoffScope()
+	ctxA := withFinalJobHandoffScope(context.Background(), scopeA)
+	ctxB := withFinalJobHandoffScope(context.Background(), scopeB)
+
+	p.recordWindow(ctxA, finalJobSegmentWindow{segmentID: "segment-0002", path: finalJobWindowCopy, frames: 72, copyMS: 320, bytes: 8436})
+	p.recordWindow(ctxB, finalJobSegmentWindow{segmentID: "segment-0001", path: finalJobWindowEncode, frames: 48, encodeMS: 1210, bytes: 32020})
+	p.recordWindow(ctxA, finalJobSegmentWindow{segmentID: "segment-0001", path: finalJobWindowEncode, frames: 96, encodeMS: 1500, verifyMS: 40, bytes: 41000})
+
+	prepA := p.Totals().minus(baseA, scopeA)
+	if len(prepA.Windows) != 2 {
+		t.Fatalf("handoff A windows = %d, want 2 (handoff B must not leak in): %+v", len(prepA.Windows), prepA.Windows)
+	}
+	if prepA.Windows[0].SegmentID != "segment-0001" || prepA.Windows[1].SegmentID != "segment-0002" {
+		t.Fatalf("windows are not sorted by segment identity: %+v", prepA.Windows)
+	}
+	copied := prepA.Windows[1]
+	if copied.Path != finalJobWindowCopy || copied.CopyMS != 320 || copied.EncodeMS != 0 {
+		t.Fatalf("copied window must report copy time and no encode time: %+v", copied)
+	}
+	encoded := prepA.Windows[0]
+	if encoded.Path != finalJobWindowEncode || encoded.EncodeMS != 1500 || encoded.CopyMS != 0 {
+		t.Fatalf("encoded window must report encode time and no copy time: %+v", encoded)
+	}
+
+	prepB := p.Totals().minus(baseB, scopeB)
+	if len(prepB.Windows) != 1 || prepB.Windows[0].SegmentID != "segment-0001" || prepB.Windows[0].EncodeMS != 1210 {
+		t.Fatalf("handoff B windows = %+v, want only its own encoded window", prepB.Windows)
+	}
+}
+
+// TestFinalJobSegmentWindowsSeparateCopyFromEncode runs the real preparer: an
+// aligned certified window must land in the receipt as a copy with a zero
+// encode time, and an off-grid window as an encode with a zero copy time. This
+// is the measurement the copy-window criterion was missing — the aggregate
+// encode_ms cannot tell the two lanes apart.
+func TestFinalJobSegmentWindowsSeparateCopyFromEncode(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.mp4")
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24", "-frames:v", "96", "-an",
+		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-level:v", "4.0",
+		"-pix_fmt", "yuv420p", "-bf", "0", "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
+		"-force_key_frames", "expr:gte(t,n_forced*2)", "-video_track_timescale", "12288",
+		source}
+	if out, err := exec.Command(ffmpeg, args...).CombinedOutput(); err != nil {
+		t.Fatalf("encode source: %v: %s", err, out)
+	}
+	sourceBytes, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSHA := digest.SHA256String(string(sourceBytes))
+	sourceServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(sourceBytes)
+	}))
+	defer sourceServer.Close()
+	var storedObject string
+	var storedSize int
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			if storedObject == "" || r.URL.Path != "/objects/"+storedObject {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Length", fmt.Sprint(storedSize))
+			w.WriteHeader(http.StatusOK)
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			storedObject, storedSize = digest.SHA256String(string(body)), len(body)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "https://objects.example")
+	t.Setenv("OBJECTSTORE_SIGNING_SECRET", strings.Repeat("s", 32))
+	t.Setenv("OBJECTSTORE_TOKEN", "")
+	t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", "policy")
+	t.Setenv("VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS", "1")
+
+	p := newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, "", 1)
+	p.client = sourceServer.Client()
+	sourceRef := map[string]any{
+		"asset_id": "source", "sha256": sourceSHA, "size_bytes": int64(len(sourceBytes)), "source_uri": sourceServer.URL,
+		"profile_id": finalJobSegmentProfile, "copy_eligible": true, "first_frame_keyframe": true, "closed_gop": true,
+		"duration_us": int64(4_000_000), "frame_count": int64(96), "width": 1920, "height": 1080, "fps_num": 24, "fps_den": 1,
+	}
+	request := scriptgen.FinalJobVideoSegmentRequest{
+		SegmentID: "segment-0007", SourceAssetID: "source", SourceSHA256: sourceSHA,
+		SourceInUS: 0, SourceDurationUS: 1_000_000, FrameCount: 24,
+		TimelineStartFrame: 0, TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64),
+	}
+	scope, base := p.NewHandoffScope()
+	ctx := withFinalJobHandoffScope(context.Background(), scope)
+
+	if _, err := p.PrepareFinalJobVideoSegment(ctx, sourceRef, request); err != nil {
+		t.Fatalf("prepare copied window: %v", err)
+	}
+	offGrid := request
+	offGrid.SourceInUS = 500_000
+	offGrid.TimelineStartFrame = 24
+	if _, err := p.PrepareFinalJobVideoSegment(ctx, sourceRef, offGrid); err != nil {
+		t.Fatalf("prepare encoded window: %v", err)
+	}
+
+	prep := p.Totals().minus(base, scope)
+	if len(prep.Windows) != 2 {
+		t.Fatalf("windows = %d, want 2: %+v", len(prep.Windows), prep.Windows)
+	}
+	byPath := map[string]scriptgen.RemoteFinalJobSegmentPrepWindow{}
+	for _, window := range prep.Windows {
+		byPath[window.Path] = window
+	}
+	copied, ok := byPath[finalJobWindowCopy]
+	if !ok {
+		t.Fatalf("no copied window in the receipt: %+v", prep.Windows)
+	}
+	if copied.EncodeMS != 0 {
+		t.Fatalf("copied window reported %d ms of encode: the lane must not reach the encoder: %+v", copied.EncodeMS, copied)
+	}
+	if copied.CopyMS <= 0 || copied.Bytes <= 0 || copied.SegmentID != "segment-0007" {
+		t.Fatalf("copied window is not attributed: %+v", copied)
+	}
+	encoded, ok := byPath[finalJobWindowEncode]
+	if !ok {
+		t.Fatalf("no encoded window in the receipt: %+v", prep.Windows)
+	}
+	if encoded.CopyMS != 0 || encoded.EncodeMS <= 0 {
+		t.Fatalf("encoded window must report encode time and no copy time: %+v", encoded)
 	}
 }

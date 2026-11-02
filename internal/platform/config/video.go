@@ -1,6 +1,10 @@
 package config
 
 import (
+	"fmt"
+	"os"
+	"strings"
+
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -238,6 +242,23 @@ func (v VideoConfig) CanonicalVideoProfile() CanonicalVideoProfile {
 func (v VideoConfig) EncoderPolicy() VideoEncoderPolicy {
 	v = v.WithDefaults()
 	return VideoEncoderPolicy{Codec: v.Codec, Preset: v.Preset, CRF: v.CRF}
+}
+
+// FinalJobFragmentEncoderPolicy resolves the narrowly scoped encoder override
+// for the local final-job fragment boundary. Selection lives with platform
+// configuration so FFmpeg command builders receive a resolved policy and do
+// not choose concrete encoders themselves.
+func FinalJobFragmentEncoderPolicy(base VideoEncoderPolicy) (VideoEncoderPolicy, error) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CODEC"))) {
+	case "", "policy", "default":
+	case "nvenc", EncoderNVENCH264, "gpu":
+		base.Codec = EncoderNVENCH264
+	case "x264", "libx264", "cpu":
+		base.Codec = "libx264"
+	default:
+		return VideoEncoderPolicy{}, fmt.Errorf("VELOX_FINAL_JOB_FRAGMENT_CODEC must be policy, nvenc or x264, got %q", os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CODEC"))
+	}
+	return base, nil
 }
 
 // CanonicalClip is retained as a source-compatible legacy composite. New

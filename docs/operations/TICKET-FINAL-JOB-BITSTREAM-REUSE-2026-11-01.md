@@ -119,6 +119,15 @@ per l'emissione conforme.
   che ne chiede un altro. Il criterio live è **soddisfatto** (02-11, r80–r83).
   Nota operativa: il worker deve girare con `native_output_profiles=true`,
   altrimenti `pipeline.go:354` strippa il campo (con metrica e warning).
+
+  **Anche il frammento è video-only (02-11).** I frammenti del final job
+  dichiaravano `VELOX_ASSEMBLY_READY_V1` (che pinna `AudioStreams: 1`) pur
+  essendo `-an`. `finalJobSegmentProfile` usa ora
+  `VELOX_OVERLAY_VIDEO_ONLY_V1`; `plan.Output` resta V1 perché il film
+  assemblato ha l'audio. Il gate Rust richiede `contract_id =
+  VELOX_ASSEMBLY_READY_V1` ma solo un `profile_id` non vuoto, quindi il
+  contratto di assemblaggio non cambia; la chiave di cache (che include il
+  profilo) invalida i frammenti vecchi.
 - [x] **P2 — Il riuso deve valere per una finestra, non solo per la sorgente
   intera.** CHIUSO (01-11): `finalJobWindowOnGOPGrid()` decide se la finestra
   cade su un confine GOP, e la copia si fa con `-ss -c copy -frames:v` quando il
@@ -168,7 +177,9 @@ per l'emissione conforme.
   `TestFinalJobSegmentPreparerEncodesOneAssemblyReadyFragment`,
   `TestFinalJobSegmentPreparerPadsShortBoundaryToExactFrameCount`) restano la
   prova del contratto; un frammento non copiabile cade ancora nel percorso
-  encode e si conta. La cache v8 invalida i frammenti scritti prima di
+  encode e si conta. La geometria (width/height/fps/pix_fmt) viaggia nello
+  stesso census: il fallback encode non lancia una seconda `ffprobe` per gli
+  stessi fatti. La cache v8 invalida i frammenti scritti prima di
   `-avoid_negative_ts make_zero`, perché la copia può produrre byte diversi a
   parità di lavoro.
 - [x] **P4 — Attesa attach: 27,1 s per un render da 13,9 s.** CHIUSO come
