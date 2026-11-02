@@ -460,6 +460,13 @@ The observed stage is `handoff_ms + wait_ms`; queue and execution **decompose**
 the wait, so they are never added to it. A negative `wait − queue − execution`
 is normal when the queue elapsed before this attach.
 
+> **Live Master (2026-11-02).** `queue_ms` is dominated by the prefetch
+> preparation gate, not by the offer tick: with `VELOX_PREFETCH_STRICT_CLAIM`
+> enabled the claim waits for every future-plan asset (r99: 86 assets, 9.0 s),
+> with it disabled the claim starts at `created_at` and the executor fetches on
+> demand (r101: 0 ms queue, 8.25 s execution, SUCCEEDED). The setting lives in
+> `/etc/velox-server.env` and reaches the container through `--env-file`.
+
 ### Inside the render (`timing.worker`)
 
 `execution_ms` is one number, but a remote render is download → decode →
