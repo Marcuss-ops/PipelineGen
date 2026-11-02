@@ -35,9 +35,13 @@ produttore dell'overlay. Aggiornato il 2026-11-01 con i numeri reali:
   quindi una cache chiavata sulle sorgenti vale dentro una famiglia di run, non
   attraverso run che ri-renderizzano l'overlay. Logica: l'artefatto
   del batch overlay dichiara `copy_eligible=true`, `first_frame_keyframe=true`,
-  `closed_gop=true`, `frame_count=-1`, `profile_id` **assente**, mentre il
-  bitstream misurato è `h264 High 1920×1080 yuv420p 24 fps` con `has_b_frames=2`,
-  `time_base=1/12288` e **un solo keyframe**. La certificazione è una dichiarazione,
+  `closed_gop=true`, `frame_count=-1`, `profile_id` **assente**. **Misura
+  2026-11-02 sull'artefatto corrente** (`b1486eecefc5…`, quello di r64/r65/r78):
+  `h264 High 4.0 1920×1080 yuv420p 24 fps`, `has_b_frames=0`, **34 keyframe con
+  GOP esattamente 48** su 1607 frame, primo frame IDR, `time_base=1/12288`,
+  `nb_frames` assente. La descrizione precedente (`bf=2`, un solo keyframe) vale
+  per l'artefatto di r49 (`fcd8c52f…`), non per quello corrente: sul bitstream
+  il difetto è già chiuso. La certificazione è una dichiarazione,
   non una derivazione: finché resta così nessun consumatore può copiare e ogni
   consumatore deve ricostruire. Dove: emissione video del batch overlay (Chronon
   `native_av_encoder`, `keyframe_cadence.hpp`, opzioni GOP) + il punto che
@@ -47,6 +51,20 @@ produttore dell'overlay. Aggiornato il 2026-11-01 con i numeri reali:
   keyframe ogni 48 e `frame_count` corretto; l'artefatto porta
   `profile_id=VELOX_ASSEMBLY_READY_V1` **derivato da un probe unico per artefatto**
   (≈0,3 s, non per frammento).
+
+  **Il blocco era nel consumatore (corretto 2026-11-02).** Il censimento
+  pretendeva `time_base=1/90000` e un `nb_frames` dichiarato, quindi rifiutava
+  un artefatto con GOP chiuso e zero B-frame e pagava 85 encode.
+  `finalJobSourceTimeBaseCertified` accetta ora le due autorità (`1/90000` e il
+  timebase x264 `1/(fps·512)` = `1/12288` a 24 fps), il frame count usa i
+  pacchetti quando `nb_frames` è assente, e ogni frammento resta rimuxato a
+  `1/90000` prima della pubblicazione; GOP, B-frame, start a zero e durata
+  restano fail-closed. Test: `TestFinalJobSourceTimeBaseCertified`,
+  `TestFinalJobCertificateAcceptsUnknownDeclaredFrameCount`,
+  `TestFinalJobCensusAcceptsX264TimeBase`,
+  `TestFinalJobRealOverlayArtifactIsCopyable`. Resta al produttore la
+  dichiarazione (`profile_id`, `frame_count` derivato) e, opzionalmente,
+  `-video_track_timescale 90000`.
 - [x] **P2 — Il riuso deve valere per una finestra, non solo per la sorgente
   intera.** CHIUSO (01-11): `finalJobWindowOnGOPGrid()` decide se la finestra
   cade su un confine GOP, e la copia si fa con `-ss -c copy -frames:v` quando il
@@ -68,10 +86,13 @@ produttore dell'overlay. Aggiornato il 2026-11-01 con i numeri reali:
   probe del frammento **0,35 / 0,44 / 0,30 s**. Per finestra copiata il costo
   scende da encode+verifica (≈1,64 s) a copia+verifica (≈0,59 s): **−1,05 s per
   finestra**, ≈89 s su un handoff da 85 finestre a freddo.
-  **Condizione dichiarata:** il guadagno esiste solo se la sorgente è conforme.
-  L'artefatto overlay del batch (`bf=2`, un solo keyframe, `1/12288`,
-  `frame_count=-1`) **non** lo è, quindi la prep del final job continua a
-  ricadere sull'encode finché P1 non è chiuso dal produttore. Il riuso intero
+  **Misura 2026-11-02 sull'artefatto reale** (`b1486eecefc5…`, finestra 72
+  frame, 3 run): copia **0,31 / 0,34 / 0,31 s**, encode **1,21 / 1,18 / 1,25 s**
+  → **−0,89 s per finestra** (≈−76 s di somma su 85 finestre; ~19 s di muro
+  sulle 4 lane, proiezione). L'artefatto overlay corrente **è** conforme ai fatti
+  che il copiatore usa (bf=0, GOP 48, primo IDR): il censimento lo certifica,
+  quindi il guadagno non è più bloccato da P1. Resta fuori solo il riuso della
+  sorgente intera, che si fida della dichiarazione. Il riuso intero
   (`finalJobSourceIsExactPreparedFragment`) resta fidato sulla dichiarazione:
   quella sorgente non si scarica, e derivarne il certificato costerebbe il
   download dell'intero film che quel percorso esiste per evitare.
@@ -199,14 +220,14 @@ hash). Test: `TestPrepareFinalJobVideoSegmentsBindsEachPlacementToItsOwnAsset`.
 
 Run completo Garlasco, stesso payload (misure lette da `job-full-r*.json`):
 
-| | r49 | r53 | r57 | **r64** | **r65** | obiettivo |
-|---|---:|---:|---:|---:|---:|---:|
-| `handoff_ms` | 353,9 s | 43,4 s | 25,8 s | **13,2 s** | **13,7 s** | **<20 s** ✅ |
-| ├ `handoff_resolve_ms` | — | 30,3 s | 11,2 s | **10,3 s** | **10,6 s** | <12 s ✅ |
-| prep frammenti | 264,0 s | ~13 s | ~0 s (67/85 cache) | **~0 s (87/89 cache)** | ~0 s | **<20 s** ✅ |
-| run totale | 495,6 s | 184,0 s | 151,1 s | **73,4 s** | **69,7 s** | **<260 s** ✅ |
-| mediana delle run VERDI sul codice finale (n=2) | — | — | — | — | **71,6 s** | <260 s, **n≥3** ⚠️ |
-| output | — | master `fb275c38…` | `fb3d5e08…` | master certificato | master certificato | MP4 **byte-identico** o parità frame certificata |
+| | r49 | r53 | r57 | **r64** | **r65** | **r78** | obiettivo |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `handoff_ms` | 353,9 s | 43,4 s | 25,8 s | **13,2 s** | **13,7 s** | **1,6 s** | **<20 s** ✅ |
+| ├ `handoff_resolve_ms` | — | 30,3 s | 11,2 s | **10,3 s** | **10,6 s** | **0,427 s** | <12 s ✅ |
+| prep frammenti | 264,0 s | ~13 s | ~0 s (67/85 cache) | **~0 s (87/89 cache)** | ~0 s | ≈0 (85/89) | **<20 s** ✅ |
+| run totale | 495,6 s | 184,0 s | 151,1 s | **73,4 s** | **69,7 s** | **49,8 s** | **<260 s** ✅ |
+| mediana delle run VERDI sul codice finale (n=2) | — | — | — | — | **71,6 s** | — | <260 s, **n≥3** ⚠️ |
+| output | — | master `fb275c38…` | `fb3d5e08…` | master certificato | master certificato | master certificato | MP4 **byte-identico** o parità frame certificata |
 
 ### Cosa NON è ancora chiuso (agg. 2026-11-01, dopo r64/r65)
 
@@ -265,6 +286,13 @@ Run completo Garlasco, stesso payload (misure lette da `job-full-r*.json`):
 5. I ticket del motore (`FRAME-PROOF-CHEAP`, `TIMELINE-FLATBUFFER`,
    `GLOW-HALF-RES`) restano **non implementati**: valgono solo sulla run a
    freddo (overlay render ~80 s) e il loro gate è MP4 byte-identico.
+
+6. **Il produttore non dichiara ancora il contratto.** L'artefatto corrente
+   `b1486eecefc5…` è conforme sui fatti che il copiatore usa (bf=0, GOP 48,
+   1607 frame, primo IDR) ma dichiara `frame_count=-1` e nessun `profile_id`, e
+   il container usa `1/12288`. Il consumatore ora deriva ciò che serve e non
+   paga più gli 85 encode su questo artefatto; il produttore resta da
+   correggere per il riuso della sorgente intera e per la dichiarazione.
 
 Il gate "MP4 byte-identico" non è applicabile alla cache calda per costruzione:
 le finestre riusate sono **gli stessi byte** già certificati (lo SHA è nel
