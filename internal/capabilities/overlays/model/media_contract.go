@@ -258,6 +258,29 @@ func ContractIDForCanvas(width, height, fpsNum, fpsDen int, requiresAlpha bool) 
 	return OverlayContractForCanvas(width, height, fpsNum, fpsDen, requiresAlpha).ID
 }
 
+// RequiresAlphaForProfile reports whether artifacts produced under a RenderingGen
+// output profile carry an alpha channel. It is the single owner of the
+// profile → alpha mapping, so a plan can never declare a contract that
+// contradicts the profile it asks the renderer to certify.
+//
+// The video-only overlay profile (VELOX_OVERLAY_VIDEO_ONLY_V1) describes the
+// opaque H.264 composition the final job renders: no alpha. Every other or
+// empty profile keeps the overlay default (alpha), because an unset profile
+// must never silently weaken a contract that the renderer may honour.
+func RequiresAlphaForProfile(profileID string) bool {
+	return !strings.EqualFold(strings.TrimSpace(profileID), kernelmedia.OverlayVideoOnlyProfileID)
+}
+
+// ContractIDForProfile returns the contract ID that matches the plan's declared
+// output profile on the given canvas. A plan that asks for the video-only
+// profile therefore declares `overlay-v1-noalpha` (H.264/yuv420p, no audio)
+// instead of `overlay-v1` (ProRes 4444 with alpha): declaring alpha for an
+// artifact that has none was a false statement the consumers had to
+// reconstruct around.
+func ContractIDForProfile(width, height, fpsNum, fpsDen int, profileID string) string {
+	return ContractIDForCanvas(width, height, fpsNum, fpsDen, RequiresAlphaForProfile(profileID))
+}
+
 // firstContainerToken returns the first comma-separated token of an ffprobe
 // format_name string, trimmed. ffprobe reports container families as a
 // comma-joined list ("mov,mp4,m4a,3gp,3g2,mj2"); the first token is the

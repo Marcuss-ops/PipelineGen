@@ -103,6 +103,7 @@ var (
 	CoalesceChainedOverlays       = capmodel.CoalesceChainedOverlays
 	ComputeRenderKey              = capmodel.ComputeRenderKey
 	ContractIDForCanvas           = capmodel.ContractIDForCanvas
+	ContractIDForProfile          = capmodel.ContractIDForProfile
 	DecodeChainSegments           = capmodel.DecodeChainSegments
 	DefaultChrononOverlayRegistry = capmodel.DefaultChrononOverlayRegistry
 	DefaultOverlayContractNoAlpha = capmodel.DefaultOverlayContractNoAlpha
@@ -115,6 +116,7 @@ var (
 	PlanOverlayIntents            = capmodel.PlanOverlayIntents
 	RebaseChainSegments           = capmodel.RebaseChainSegments
 	RenderKey                     = capmodel.RenderKey
+	RequiresAlphaForProfile       = capmodel.RequiresAlphaForProfile
 	ResolveMediaContract          = capmodel.ResolveMediaContract
 	ValidateResultForPlan         = capmodel.ValidateResultForPlan
 )

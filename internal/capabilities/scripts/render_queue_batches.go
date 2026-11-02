@@ -172,6 +172,11 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 	// the profile that describes it, so the producer certifies the artifact at
 	// finalize instead of leaving every consumer to re-derive its facts.
 	child.OutputProfileID = kernelmedia.OverlayVideoOnlyProfileID
+	// The media contract follows the profile it was derived from, not the
+	// parent's: the parent is an alpha-bearing overlay plan, this batch is an
+	// opaque H.264 artifact. Declaring `overlay-v1` (ProRes 4444 + alpha) here
+	// described bytes nobody renders.
+	child.MediaContract = capoverlay.ContractIDForProfile(child.Width, child.Height, child.FPSNum, child.FPSDen, child.OutputProfileID)
 	child.Fingerprint = ""
 	child.Items = items
 	child.DurationMS = (endUS - work.startUS + 999) / 1000

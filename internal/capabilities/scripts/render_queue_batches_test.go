@@ -133,6 +133,12 @@ func TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile(t *testing.T) {
 	if child.OutputProfileID == kernelmedia.AssemblyMediaContractID {
 		t.Fatal("a silent artifact must not declare the audio-bearing assembly contract")
 	}
+	// The contract follows the declared profile: an opaque H.264 batch must not
+	// declare the alpha-bearing overlay-v1 (ProRes 4444) it inherits from the
+	// parent plan.
+	if got := child.MediaContract; got != capoverlay.DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("child media contract = %q, want %q", got, capoverlay.DefaultOverlayContractNoAlpha.ID)
+	}
 
 	raw, err := marshalRenderingGenOverlayPlan(child)
 	if err != nil {
@@ -297,4 +303,26 @@ func TestSingleMapPlanUsesDedicatedPreMaterializationAndFoldRoute(t *testing.T) 
 	if keyOne, keyMany := dynamicMapVideoFlightKey(oneNormalized), dynamicMapVideoFlightKey(manyNormalized); keyOne != keyMany {
 		t.Fatalf("single/multi normalized map cache-flight keys differ: %q != %q", keyOne, keyMany)
 	}
+}
+
+// TestStampFinalJobOpaqueContract pins the final-job half of the contract rule:
+// the packed timeline is composited onto the source video and rendered as
+// opaque H.264, so its plan must not keep the alpha-bearing overlay-v1 it
+// inherited from the overlay planner.
+func TestStampFinalJobOpaqueContract(t *testing.T) {
+	plan := &capoverlay.OverlayPlan{
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        "plan-opaque-contract",
+		VideoID:       "video-opaque-contract",
+		Width:         1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		MediaContract: capoverlay.DefaultOverlayContractV1.ID,
+	}
+	stampFinalJobOpaqueContract(plan)
+	if want := capoverlay.DefaultOverlayContractNoAlpha.ID; plan.MediaContract != want {
+		t.Fatalf("final-job plan contract = %q, want %q", plan.MediaContract, want)
+	}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("stamped plan must still validate: %v", err)
+	}
+	stampFinalJobOpaqueContract(nil) // a nil plan is not a crash
 }
