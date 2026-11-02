@@ -44,6 +44,16 @@ const (
 	// Legacy aliases kept for source compatibility during migration.
 	AssemblyReadyVideoContractID = AssemblyMediaContractID
 	AssemblyReadyVideoVersion    = AssemblyMediaContractVersion
+
+	// OverlayVideoOnlyProfileID is the RenderingGen output profile for the
+	// final job's opaque overlay compositions (packed manifest timeline):
+	// H.264 High 4.0, 1920x1080@24, yuv420p, closed GOP 48, first frame IDR,
+	// start PTS 0, and ZERO audio streams. It is a RENDER certification
+	// profile, not an assembly contract: an overlay is an input to the
+	// assembler, so ValidateExact keeps rejecting it on purpose. The value is
+	// declared here so the plan that requests it and the producer that
+	// certifies it name the same profile.
+	OverlayVideoOnlyProfileID = "VELOX_OVERLAY_VIDEO_ONLY_V1"
 )
 
 // FrameRate is a rational framerate. Exact equality via cross-multiplication

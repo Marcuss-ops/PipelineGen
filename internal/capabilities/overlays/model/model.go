@@ -75,6 +75,13 @@ type OverlayPlan struct {
 	// ResolveMediaContract; the compiled chronon output derives its
 	// container/codec/pixel format from the resolved contract.
 	MediaContract string `json:"media_contract,omitempty"`
+	// OutputProfileID is the RenderingGen certification profile the artifact
+	// must satisfy (`output_profile_id` on the wire). Empty leaves the
+	// renderer's overlay-contract check only. The final-job manifest batches
+	// declare OverlayVideoOnlyProfileID: their packed composition is H.264
+	// without audio, and VELOX_ASSEMBLY_READY_V1 requires one audio stream, so
+	// declaring V1 would be a certificate the artifact cannot honour.
+	OutputProfileID string `json:"output_profile_id,omitempty"`
 	// Source is the concrete video layer for opaque final-job compositions.
 	// LocalPath is producer-only; Path is the RenderingGen workspace path.
 	Source *OverlaySource `json:"source,omitempty"`

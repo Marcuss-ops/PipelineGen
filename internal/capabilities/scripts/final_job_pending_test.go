@@ -589,6 +589,39 @@ func TestRemoteFinalJobTimingKeepsTheSegmentPrepAcrossMerge(t *testing.T) {
 	}
 }
 
+// TestRemoteFinalJobTimingAttributesPayloadAndPrepare pins the fields that
+// close the handoff budget: the payload build and the PREPARE round-trip are
+// measured, survive a resumed attach (which measures neither), and make the
+// FINALIZE remainder arithmetic instead of an unexplained gap.
+func TestRemoteFinalJobTimingAttributesPayloadAndPrepare(t *testing.T) {
+	base := &RemoteFinalJobTiming{HandoffMS: 353_900, PayloadMS: 340_000, PrepareMS: 1_200}
+	merged := base.Merge(&RemoteFinalJobTiming{ExecutionMS: 13_900, WaitMS: 27_100})
+	if merged.PayloadMS != 340_000 || merged.PrepareMS != 1_200 {
+		t.Fatalf("timing = %#v, want the local attribution kept across the merge", merged)
+	}
+	if remainder := merged.HandoffMS - merged.PayloadMS - merged.PrepareMS; remainder != 12_700 {
+		t.Fatalf("finalize remainder = %d, want 12700 (handoff - payload - prepare)", remainder)
+	}
+	raw, err := json.Marshal(merged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"payload_ms":340000`, `"prepare_ms":1200`} {
+		if !strings.Contains(string(raw), key) {
+			t.Fatalf("receipt %s missing %s", raw, key)
+		}
+	}
+	// A phase that was never measured stays absent instead of becoming a fake
+	// zero: an attach-only receipt must not claim a payload build.
+	empty, err := json.Marshal(&RemoteFinalJobTiming{ExecutionMS: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(empty), "payload_ms") || strings.Contains(string(empty), "prepare_ms") {
+		t.Fatalf("receipt %s must omit unmeasured phases", empty)
+	}
+}
+
 func TestRemoteFinalJobTimingKeepsTheWorkerBlockAcrossMerge(t *testing.T) {
 	base := &RemoteFinalJobTiming{HandoffMS: 1200, Worker: &RemoteFinalJobWorkerTiming{EncodeMS: 10, Frames: 1}}
 	extra := &RemoteFinalJobTiming{ExecutionMS: 5000, Worker: &RemoteFinalJobWorkerTiming{EncodeMS: 90, Frames: 240}}

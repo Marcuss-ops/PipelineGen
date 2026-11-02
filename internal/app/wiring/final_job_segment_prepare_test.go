@@ -179,7 +179,7 @@ func TestFinalJobCensusAcceptsX264TimeBase(t *testing.T) {
 func TestFinalJobRealOverlayArtifactIsCopyable(t *testing.T) {
 	matches, _ := filepath.Glob("../../../data/final-job-fragments/sources/b1/b1486eecefc5*.mp4")
 	if len(matches) != 1 {
-		t.Skip("local r78 overlay artifact not present")
+		t.Skip("local r64/r65 overlay artifact not present")
 	}
 	probe, err := probeFinalJobFragment(context.Background(), matches[0])
 	if err != nil {

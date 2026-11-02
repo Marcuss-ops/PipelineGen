@@ -139,6 +139,17 @@ type RemoteFinalJobTiming struct {
 	// the sources. It is the part of handoff_ms that is neither fragment
 	// preparation nor the two Master calls, and it is measured, never inferred.
 	HandoffResolveMS int64 `json:"handoff_resolve_ms,omitempty"`
+	// PayloadMS is the local payload build, measured from the start of the
+	// handoff until the PREPARE body exists. It CONTAINS SegmentPrep and
+	// HandoffResolveMS (they run inside the build), so it is not a sibling of
+	// them; it is the phase that used to be the unexplained remainder of
+	// handoff_ms.
+	PayloadMS int64 `json:"payload_ms,omitempty"`
+	// PrepareMS is the PREPARE round-trip to the Master. Together with
+	// PayloadMS it closes the handoff budget: FINALIZE is the remainder
+	// (handoff_ms − payload_ms − prepare_ms), so a phase can no longer hide in
+	// a single opaque number.
+	PrepareMS int64 `json:"prepare_ms,omitempty"`
 }
 
 // RemoteFinalJobSegmentPrepTiming is the locally measured split of the one
@@ -207,7 +218,7 @@ func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJo
 	for _, phase := range []struct {
 		dst *int64
 		src int64
-	}{{&t.QueueMS, other.QueueMS}, {&t.ExecutionMS, other.ExecutionMS}, {&t.HandoffMS, other.HandoffMS}, {&t.HandoffResolveMS, other.HandoffResolveMS}, {&t.WaitMS, other.WaitMS}, {&t.PollLagMS, other.PollLagMS}} {
+	}{{&t.QueueMS, other.QueueMS}, {&t.ExecutionMS, other.ExecutionMS}, {&t.HandoffMS, other.HandoffMS}, {&t.HandoffResolveMS, other.HandoffResolveMS}, {&t.PayloadMS, other.PayloadMS}, {&t.PrepareMS, other.PrepareMS}, {&t.WaitMS, other.WaitMS}, {&t.PollLagMS, other.PollLagMS}} {
 		if phase.src > 0 {
 			*phase.dst = phase.src
 		}

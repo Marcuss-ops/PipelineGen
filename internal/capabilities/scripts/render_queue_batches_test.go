@@ -2,10 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 func manifestTestPlan() capoverlay.OverlayPlan {
@@ -101,6 +103,49 @@ func TestFusedOverlayBatchPlanAcceptsSingleVoice(t *testing.T) {
 	}
 	if len(fused.Items) != 1 {
 		t.Fatalf("fused.Items len = %d, want 1", len(fused.Items))
+	}
+}
+
+// TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile pins the producer
+// contract at the only place that can state it: the fused manifest-timeline
+// child. The artifact is an opaque, silent H.264 composition, so it declares
+// VELOX_OVERLAY_VIDEO_ONLY_V1 — never VELOX_ASSEMBLY_READY_V1, which requires
+// one audio stream and would be a certificate the artifact cannot honour. The
+// field must also survive the wire marshal, or the renderer never sees it.
+func TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile(t *testing.T) {
+	plan := manifestTestPlan()
+	candidates := overlayRenderableCandidates(plan)[:1]
+	_, end := overlayCandidateRenderWindow(plan, candidates[0])
+	work := overlayBatchWork{
+		sceneID:    "scene-01",
+		startUS:    0,
+		endUS:      overlayBatchWireEndUS(0, end),
+		candidates: candidates,
+	}
+	work.id = overlayBatchIdentity(plan, work)
+	child, err := fusedOverlayBatchPlan(plan, work)
+	if err != nil {
+		t.Fatalf("fusedOverlayBatchPlan failed: %v", err)
+	}
+	if got := child.OutputProfileID; got != kernelmedia.OverlayVideoOnlyProfileID {
+		t.Fatalf("child output profile = %q, want the video-only profile %q", got, kernelmedia.OverlayVideoOnlyProfileID)
+	}
+	if child.OutputProfileID == kernelmedia.AssemblyMediaContractID {
+		t.Fatal("a silent artifact must not declare the audio-bearing assembly contract")
+	}
+
+	raw, err := marshalRenderingGenOverlayPlan(child)
+	if err != nil {
+		t.Fatalf("marshal overlay plan: %v", err)
+	}
+	var wire struct {
+		OutputProfileID string `json:"output_profile_id"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("unmarshal overlay plan: %v", err)
+	}
+	if wire.OutputProfileID != kernelmedia.OverlayVideoOnlyProfileID {
+		t.Fatalf("wire output_profile_id = %q, want %q", wire.OutputProfileID, kernelmedia.OverlayVideoOnlyProfileID)
 	}
 }
 

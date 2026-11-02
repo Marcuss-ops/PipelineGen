@@ -173,11 +173,19 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	// The segment preparation measured by THIS build, never the preparer's
 	// process-wide total: a resumed or concurrent run must not inherit it.
 	var segmentPrep *scriptgen.RemoteFinalJobSegmentPrepTiming
-	var resolveMS int64
+	var resolveMS, prepareMS int64
+	var payloadBuiltAt time.Time
 	handoffTiming := func() *scriptgen.RemoteFinalJobTiming {
 		timing := &scriptgen.RemoteFinalJobTiming{
 			HandoffMS:        time.Since(handoffStarted).Milliseconds(),
 			HandoffResolveMS: resolveMS,
+			PrepareMS:        prepareMS,
+		}
+		if !payloadBuiltAt.IsZero() {
+			// The payload build is a SUBSET of handoff_ms that contains segment
+			// preparation and resolve; measuring its end is what makes the
+			// remainder attributable to FINALIZE instead of unknown.
+			timing.PayloadMS = payloadBuiltAt.Sub(handoffStarted).Milliseconds()
 		}
 		if segmentPrep != nil && segmentPrep.Segments > 0 {
 			timing.SegmentPrep = segmentPrep
@@ -194,6 +202,7 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	if prep := a.segments.Totals().minus(segmentsBefore); prep.Segments > 0 {
 		segmentPrep = &prep
 	}
+	payloadBuiltAt = time.Now()
 	resolveMS = a.resolverNS.Load() / int64(time.Millisecond)
 	a.resolvedMu.Lock()
 	uniqueResolved, dedupHits := len(a.resolved), a.hits
@@ -215,7 +224,9 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	// is kept between the two phases and through the wait, so a bounded wait that
 	// expires still reports a handle the next attempt can resume from — the job
 	// exists on the Master either way.
+	prepareStarted := time.Now()
 	prepared, err := a.client.PrepareJob(ctx, pre)
+	prepareMS = time.Since(prepareStarted).Milliseconds()
 	if err != nil {
 		if errors.Is(err, remotejob.ErrRemoteStaleJob) {
 			return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: staleReceiptStatus(prepared.Status), Timing: handoffTiming()},

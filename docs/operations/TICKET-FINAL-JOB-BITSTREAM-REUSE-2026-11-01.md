@@ -1,14 +1,19 @@
 # TICKET-FINAL-JOB-BITSTREAM-REUSE — il final job non deve ri-encodare l'overlay che ha già prodotto
 
-**Stato:** P0, P2 e P3 chiusi e misurati (P2 dal lato consumatore: la copia di
-una finestra è attiva di default e certificata da censimento derivato). P1 resta
-aperto perché appartiene al produttore dell'overlay. Il run verde più veloce è
-**r53: 184 s** (r49: 495 s, **−62,8%**, −311 s) con `remote_final_job`
-SUCCEEDED e master prodotto. P1/P2 restano aperti perché appartengono al
-produttore dell'overlay. Aggiornato il 2026-11-01 con i numeri reali:
+**Stato:** P0, P2 e P3 chiusi e misurati; P1 chiuso sul consumatore, sul
+`frame_count` derivato e sul `profile_id`: i batch manifest dichiarano
+`VELOX_OVERLAY_VIDEO_ONLY_V1`, il profilo dedicato che descrive un artefatto
+video-only (V1 richiede un audio stream e non era dichiarabile). Resta da
+verificare **sul campo** che una run con `native_output_profiles=true` pubblichi
+il campo (`profile_stripped_by_config=0`); non è una decisione di contratto
+ancora aperta. Il run verde più veloce è
+**r78: 49,8 s** (r49: 495,6 s, **−90%**) con `handoff` 1,6 s e `resolve`
+0,427 s. Aggiornato il 2026-11-02 con la misura sull'artefatto reale e la
+correzione del probe. Fonte tempi:
 `REPORT-2026-11-01-final-job-timing-map-cache.md` §6.
 **Owner:** `refactored` (`internal/app/wiring/`, `internal/capabilities/scripts/`)
-+ Chronon per l'emissione conforme.
++ RenderingGen (`internal/processor/`, certificazione dell'artefatto) + Chronon
+per l'emissione conforme.
 **Coordina:** [`TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE`](TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md)
 (§0/§10) e [`TICKET-VIDEO-CODEC-BOUNDARY`](../../../Chronon3d/docs/tickets/TICKET-VIDEO-CODEC-BOUNDARY.md).
 **Decisione:** [`ADR-DRAFT-DECIDE-BEFORE-EVALUATE`](../../../Chronon3d/docs/tickets/ADR-DRAFT-DECIDE-BEFORE-EVALUATE.md).
@@ -25,32 +30,45 @@ produttore dell'overlay. Aggiornato il 2026-11-01 con i numeri reali:
   stesso payload è ±90 s (r40 401,9 → r48 494,4 → r49 495,6). Senza questa
   attribuzione nessun guadagno sotto i 90 s è distinguibile dal rumore. Dove:
   `RemoteFinalJobTiming` + `finalJobSegmentPreparer.Totals()`
-  (`internal/app/wiring/final_job_segment_prepare.go:82-113`) — manca un
-  `payload_ms`/`prepare_ms`, il campo non esiste nel codice. Gate: budget chiuso
-  al 100% con n≥3 run per configurazione.
-- [ ] **P1 — L'overlay esce conforme, o il confine mente.** APERTO (produttore
-  esterno a questo repository). Misura aggiuntiva 01/11: l'artefatto del batch
+  (  `internal/app/wiring/final_job_segment_prepare.go:82-113`). **Aggiornamento
+  02-11:** i campi `payload_ms` e `prepare_ms` ora esistono in
+  `RemoteFinalJobTiming` e sono misurati nello handoff: `payload_ms` è la
+  costruzione locale del payload (contiene `segment_prep` e
+  `handoff_resolve_ms`), `prepare_ms` è il round-trip PREPARE, quindi FINALIZE è
+  il resto (`handoff − payload − prepare`) e il budget chiude per costruzione.
+  Test: `TestRemoteFinalJobTimingAttributesPayloadAndPrepare`. Gate residuo:
+  budget verificato con n≥3 run per configurazione (misura live).
+- [ ] **P1 — L'overlay esce conforme, o il confine mente.** CHIUSO NEL CODICE
+  (02-11): `frame_count` derivato e `profile_id=VELOX_OVERLAY_VIDEO_ONLY_V1`
+  dichiarato dai batch manifest. Resta la verifica live del campo. Misura
+  aggiuntiva 01/11: l'artefatto del batch
   **non è deterministico fra run** — r49 `fcd8c52f…` (9.227.633 B) vs r50
   `6e7305c1…` (9.234.231 B), stessa durata 66,958 s, PSNR 31,0 dB, SSIM 0,996 —
   quindi una cache chiavata sulle sorgenti vale dentro una famiglia di run, non
   attraverso run che ri-renderizzano l'overlay. Logica: l'artefatto
   del batch overlay dichiara `copy_eligible=true`, `first_frame_keyframe=true`,
   `closed_gop=true`, `frame_count=-1`, `profile_id` **assente**. **Misura
-  2026-11-02 sull'artefatto corrente** (`b1486eecefc5…`, quello di r64/r65/r78):
+  2026-11-02 sull'artefatto di r64/r65** (`b1486eecefc5…`):
   `h264 High 4.0 1920×1080 yuv420p 24 fps`, `has_b_frames=0`, **34 keyframe con
   GOP esattamente 48** su 1607 frame, primo frame IDR, `time_base=1/12288`,
   `nb_frames` assente. La descrizione precedente (`bf=2`, un solo keyframe) vale
   per l'artefatto di r49 (`fcd8c52f…`), non per quello corrente: sul bitstream
-  il difetto è già chiuso. La certificazione è una dichiarazione,
-  non una derivazione: finché resta così nessun consumatore può copiare e ogni
-  consumatore deve ricostruire. Dove: emissione video del batch overlay (Chronon
-  `native_av_encoder`, `keyframe_cadence.hpp`, opzioni GOP) + il punto che
-  popola l'artefatto (`output_profile_id` esiste già in
-  `internal/platform/renderinggen/overlay_plan_types.go:23` ma non arriva
-  nell'artefatto). Gate: `ffprobe` sull'artefatto mostra `bf=0`, `time_base=1/90000`,
-  keyframe ogni 48 e `frame_count` corretto; l'artefatto porta
-  `profile_id=VELOX_ASSEMBLY_READY_V1` **derivato da un probe unico per artefatto**
-  (≈0,3 s, non per frammento).
+  quel singolo bitstream è conforme. Il receipt r78 contiene invece nove batch
+  distinti, con primo SHA `227da1b914f2…`; le misure di `b1486eecefc5…` non ne
+  certificano i bitstream. Il consumatore non si fida più della dichiarazione:
+  deriva il frame count dai pacchetti, e il produttore ora lo deriva con un
+  probe quando il receipt non lo sa. Il `profile_id` non è più dichiarativo:
+  `capoverlay.OverlayPlan.OutputProfileID` esiste, il batch manifest fused lo
+  imposta a `kernelmedia.OverlayVideoOnlyProfileID` e il campo attraversa
+  `marshalRenderingGenOverlayPlan` fino a `semanticPlan.OutputProfileID`.
+  RenderingGen registra il profilo (`ProfileVeloxOverlayVideoOnlyV1`) con i
+  fatti misurati: 1920×1080@24, H.264 High 4.0, yuv420p, SAR 1:1, tv/bt709,
+  GOP chiuso 48, primo IDR, start PTS 0, **zero stream audio**. Gate: `ffprobe`
+  sull'artefatto mostra `bf=0`, keyframe ogni 48 e `frame_count` corretto;
+  `time_base=1/90000` è opzionale perché il consumatore accetta anche `1/12288`
+  e rimuxa. L'artefatto porta `profile_id=VELOX_OVERLAY_VIDEO_ONLY_V1`; la
+  certificazione usa il probe già fatto per il frame count, non un probe
+  aggiuntivo.
 
   **Il blocco era nel consumatore (corretto 2026-11-02).** Il censimento
   pretendeva `time_base=1/90000` e un `nb_frames` dichiarato, quindi rifiutava
@@ -62,9 +80,39 @@ produttore dell'overlay. Aggiornato il 2026-11-01 con i numeri reali:
   restano fail-closed. Test: `TestFinalJobSourceTimeBaseCertified`,
   `TestFinalJobCertificateAcceptsUnknownDeclaredFrameCount`,
   `TestFinalJobCensusAcceptsX264TimeBase`,
-  `TestFinalJobRealOverlayArtifactIsCopyable`. Resta al produttore la
-  dichiarazione (`profile_id`, `frame_count` derivato) e, opzionalmente,
-  `-video_track_timescale 90000`.
+  `TestFinalJobRealOverlayArtifactIsCopyable`. Resta al produttore solo il
+  `profile_id` (vedi blocker) e, opzionalmente, `-video_track_timescale 90000`;
+  il `frame_count` è ora derivato dal probe.
+
+  **Il `frame_count` ora è derivato, non fidato (02-11).** RenderingGen
+  preferisce il receipt canonico, ma un composito packed riporta
+  `frame_count=-1`: quel valore non è un conteggio e lasciava l'artefatto senza
+  la sola cifra che il certificato di finestra usa. `probeFactsForFinalize`
+  tratta ora un receipt senza frame count positivo come non descrittivo e fa
+  **una sola ffprobe** sull'artefatto (≈0,3 s), pubblicando il conteggio reale:
+  sull'artefatto `b1486eecefc5…` sono **1607** pacchetti, non `-1`. I render
+  normali restano sul receipt, senza probe. Test:
+  `TestProbeFactsProbeLocallyWhenReceiptOmitsFrameCount` (+ i due test che
+  pinnano receipt e fallback).
+
+  **La decisione di contratto è presa: profilo dedicato (02-11).** `ffprobe`
+  mostra **un solo stream video, zero audio**, mentre `assemblyReadyProfile()`
+  pinna `AudioStreams: 1`: assegnare V1 a un artefatto video-only sarebbe un
+  certificato falso. Invece di indebolire V1, `VELOX_OVERLAY_VIDEO_ONLY_V1`
+  descrive ciò che l'artefatto è. Il profilo **non** pinna il colour transfer
+  (l'artefatto riporta `iec61966-2-1`, V1 dichiara bt709: pinnare uno dei due
+  sarebbe una decisione che nessuno ha preso) né il video timebase (stessa
+  regola di V1: il consumatore accetta `1/12288` e rimuxa).
+  `TestOverlayVideoOnlyProfileCertifiesTheMeasuredArtifact` pinna entrambi i
+  lati: il profilo nuovo accetta i fatti reali, V1 continua a rifiutarli.
+  `TestOverlayVideoOnlyProfileFailsClosedOnAudioAndCopyDrift` pinna che audio,
+  GOP aperto, drift del GOP, start PTS e livello siano fail-closed.
+  `TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile` pinna il campo sul
+  piano e sul wire. `output_profile_id` entra anche nella chiave della cache di
+  render, così un artefatto certificato sotto un profilo non soddisfa un piano
+  che ne chiede un altro. Nota operativa: il worker deve girare con
+  `native_output_profiles=true`, altrimenti `pipeline.go:354` strippa il campo
+  (con metrica e warning) e il criterio live non è soddisfatto.
 - [x] **P2 — Il riuso deve valere per una finestra, non solo per la sorgente
   intera.** CHIUSO (01-11): `finalJobWindowOnGOPGrid()` decide se la finestra
   cade su un confine GOP, e la copia si fa con `-ss -c copy -frames:v` quando il
@@ -151,9 +199,10 @@ già prodotto in formato corretto.
 
 È lo stesso difetto dei due lati del confine, in due forme:
 
-1. il **produttore** non parla il contratto del consumatore (bf=2, un keyframe,
-   `1/12288`, `frame_count=-1`, `profile_id` assente) → il consumatore non può
-   fidarsi;
+1. il **produttore** non parlava il contratto del consumatore sull'artefatto di
+   r49 (bf=2, un keyframe, `1/12288`, `frame_count=-1`, `profile_id` assente) →
+   il consumatore non poteva fidarsi. Sull'artefatto corrente i fatti di copia
+   sono conformi, `frame_count` è derivato e `profile_id` è dichiarato;
 2. il **consumatore** non ha un modo di fidarsi di una finestra
    (`source_in_us == 0` obbligatorio) → anche un artefatto conforme verrebbe
    ri-encodato.
@@ -287,12 +336,17 @@ Run completo Garlasco, stesso payload (misure lette da `job-full-r*.json`):
    `GLOW-HALF-RES`) restano **non implementati**: valgono solo sulla run a
    freddo (overlay render ~80 s) e il loro gate è MP4 byte-identico.
 
-6. **Il produttore non dichiara ancora il contratto.** L'artefatto corrente
+6. **Il produttore dichiara frame count e profilo.** L'artefatto r64/r65
    `b1486eecefc5…` è conforme sui fatti che il copiatore usa (bf=0, GOP 48,
-   1607 frame, primo IDR) ma dichiara `frame_count=-1` e nessun `profile_id`, e
-   il container usa `1/12288`. Il consumatore ora deriva ciò che serve e non
-   paga più gli 85 encode su questo artefatto; il produttore resta da
-   correggere per il riuso della sorgente intera e per la dichiarazione.
+   1607 frame, primo IDR); il `frame_count` non è più `-1` perché RenderingGen
+   lo deriva con un probe unico quando il receipt non lo dichiara, e i batch
+   manifest dichiarano `profile_id=VELOX_OVERLAY_VIDEO_ONLY_V1`. Il profilo è
+   dedicato, non V1: l'artefatto è video-only e `VELOX_ASSEMBLY_READY_V1`
+   richiede 1 stream audio, quindi V1 sarebbe un certificato falso. Il
+   container usa ancora `1/12288`; il consumatore lo accetta e rimuxa a
+   `1/90000`. Il riuso della sorgente intera resta l'unico percorso che si fida
+   ancora della dichiarazione, e la pubblicazione del `profile_id` va verificata
+   su una run live con `native_output_profiles=true`.
 
 Il gate "MP4 byte-identico" non è applicabile alla cache calda per costruzione:
 le finestre riusate sono **gli stessi byte** già certificati (lo SHA è nel

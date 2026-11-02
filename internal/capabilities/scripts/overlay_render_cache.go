@@ -227,17 +227,22 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		renderer = "chronon"
 	}
 	context := struct {
-		CacheVersion    int                       `json:"cache_version"`
-		SchemaVersion   string                    `json:"schema_version"`
-		Renderer        string                    `json:"renderer"`
-		Width           int                       `json:"width"`
-		Height          int                       `json:"height"`
-		FPSNum          int                       `json:"fps_num"`
-		FPSDen          int                       `json:"fps_den"`
-		DurationMS      int64                     `json:"duration_ms"`
-		ForegroundScale int                       `json:"foreground_scale_percent"`
-		EntitySeed      string                    `json:"entity_variation_seed"`
-		MediaContract   string                    `json:"media_contract"`
+		CacheVersion    int    `json:"cache_version"`
+		SchemaVersion   string `json:"schema_version"`
+		Renderer        string `json:"renderer"`
+		Width           int    `json:"width"`
+		Height          int    `json:"height"`
+		FPSNum          int    `json:"fps_num"`
+		FPSDen          int    `json:"fps_den"`
+		DurationMS      int64  `json:"duration_ms"`
+		ForegroundScale int    `json:"foreground_scale_percent"`
+		EntitySeed      string `json:"entity_variation_seed"`
+		MediaContract   string `json:"media_contract"`
+		// OutputProfileID is part of the identity: an artifact certified under
+		// one profile must never satisfy a plan that requests another. Empty
+		// omits the key, so plans that declare no profile keep their historical
+		// render keys byte for byte.
+		OutputProfileID string                    `json:"output_profile_id,omitempty"`
 		Policies        string                    `json:"animation_policies"`
 		SourceSHA256    string                    `json:"source_sha256"`
 		Background      *overlayCacheBG           `json:"background"`
@@ -271,6 +276,7 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		ForegroundScale: plan.ForegroundScalePercent,
 		EntitySeed:      strings.TrimSpace(plan.EntityVariationSeed),
 		MediaContract:   strings.TrimSpace(plan.MediaContract),
+		OutputProfileID: strings.TrimSpace(plan.OutputProfileID),
 		Policies:        canonicalJSONString(plan.AnimationPolicies),
 		Background:      overlayCacheBackground(plan.Background),
 	}
