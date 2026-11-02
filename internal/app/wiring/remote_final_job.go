@@ -194,12 +194,14 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	}
 	a.beginHandoffCache(runID)
 	a.resolverNS.Store(0)
-	segmentsBefore := a.segments.Totals()
-	pre, finalize, err := scriptgen.BuildFinalJobPayloads(ctx, runID, req, result, a, a.segments)
+	// One scope per handoff: the per-window attribution must describe THIS
+	// payload, not whatever the preparer accumulated before it or beside it.
+	scope, segmentsBefore := a.segments.NewHandoffScope()
+	pre, finalize, err := scriptgen.BuildFinalJobPayloads(withFinalJobHandoffScope(ctx, scope), runID, req, result, a, a.segments)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
 	}
-	if prep := a.segments.Totals().minus(segmentsBefore); prep.Segments > 0 {
+	if prep := a.segments.Totals().minus(segmentsBefore, scope); prep.Segments > 0 {
 		segmentPrep = &prep
 	}
 	payloadBuiltAt = time.Now()

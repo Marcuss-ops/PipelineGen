@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -168,8 +169,16 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if lanesErr != nil {
 			return nil, lanesErr
 		}
+		fragmentPolicy, policyErr := config.FinalJobFragmentEncoderPolicy(config.VideoEncoderPolicy{
+			Codec: root.MediaExec.Policy.Codec, Preset: root.MediaExec.Policy.Preset, CRF: root.MediaExec.Policy.CRF,
+		})
+		if policyErr != nil {
+			return nil, policyErr
+		}
 		fragmentCacheDir := finalJobFragmentCacheDir(cfg.Storage.DataDir)
-		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, root.MediaExec.Policy, fragmentCacheDir, fragmentLanes)
+		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, mediaexec.EncoderPolicy{
+			Codec: fragmentPolicy.Codec, Preset: fragmentPolicy.Preset, CRF: fragmentPolicy.CRF,
+		}, fragmentCacheDir, fragmentLanes)
 		log.Info("final-job fragment preparation configured",
 			zap.Int("lanes", fragmentLanes),
 			zap.Bool("cache", fragmentCacheDir != ""),

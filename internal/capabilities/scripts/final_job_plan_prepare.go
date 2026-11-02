@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // prepareFinalJobVideoSegments replaces source-video references with verified
@@ -206,7 +207,7 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 	if id == "" || len(sha) != 64 || size <= 0 || !strings.HasPrefix(strings.ToLower(source), "https://") {
 		return finalJobPlanAsset{}, nil, fmt.Errorf("preparer must return an asset id, SHA-256, positive size, and HTTPS source_uri")
 	}
-	if finalJobStringValue(raw["profile_id"]) != "VELOX_ASSEMBLY_READY_V1" || !boolValue(raw["copy_eligible"]) || !boolValue(raw["first_frame_keyframe"]) || !boolValue(raw["closed_gop"]) {
+	if finalJobStringValue(raw["profile_id"]) != kernelmedia.OverlayVideoOnlyProfileID || !boolValue(raw["copy_eligible"]) || !boolValue(raw["first_frame_keyframe"]) || !boolValue(raw["closed_gop"]) {
 		return finalJobPlanAsset{}, nil, fmt.Errorf("preparer did not certify the assembly-ready V1 stream")
 	}
 	if frameCount != request.FrameCount || finalJobInt64(raw["timeline_revision"]) != request.TimelineRevision ||
@@ -230,7 +231,7 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 	asset := finalJobPlanAsset{
 		AssetID: id, AssetKey: "sha256:" + sha, SHA256: sha, SizeBytes: size,
 		Kind: "video", MIME: "video/mp4", DurationUS: durationUS, Width: 1920, Height: 1080,
-		ProfileID: "VELOX_ASSEMBLY_READY_V1", FrameCount: frameCount,
+		ProfileID: kernelmedia.OverlayVideoOnlyProfileID, FrameCount: frameCount,
 		TimelineRevision: request.TimelineRevision, TimelineSHA256: strings.ToLower(request.TimelineSHA256),
 		TimelineStartFrame: request.TimelineStartFrame, FirstFrameKeyframe: true, ClosedGOP: true,
 	}

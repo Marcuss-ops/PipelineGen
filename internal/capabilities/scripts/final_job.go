@@ -152,6 +152,36 @@ type RemoteFinalJobTiming struct {
 	PrepareMS int64 `json:"prepare_ms,omitempty"`
 }
 
+// RemoteFinalJobSegmentPrepWindow attributes the preparation cost of ONE
+// fragment. The aggregate block above says how much the stage cost; this says
+// where: which windows were copied and which were encoded, and what each one
+// paid. Path is the producing lane, so `copy` with a zero EncodeMS is the copy
+// lever working and `encode` is the encoder being asked for bytes — the
+// distinction the aggregate `encode_ms` cannot make, because it sums both.
+// Phase durations are milliseconds and are measured, never estimated: a phase
+// that did not run stays 0.
+type RemoteFinalJobSegmentPrepWindow struct {
+	// SegmentID is the plan's segment identity (empty when the caller did not
+	// provide one; the other fields still describe the work).
+	SegmentID string `json:"segment_id,omitempty"`
+	// Path is how the bytes were produced: reuse|cache|copy|encode|derived.
+	Path string `json:"path"`
+	// Frames is the requested window length in frames.
+	Frames int64 `json:"frames,omitempty"`
+	// DownloadMS is the source transfer this window paid (0 when the source was
+	// already staged by an earlier window of the same bytes).
+	DownloadMS int64 `json:"download_ms,omitempty"`
+	// CopyMS is the packet-copy time. EncodeMS is the encoder time. They are
+	// mutually exclusive by construction: a copied window never reaches the
+	// encoder, and CopyMS stays 0 on an encoded window.
+	CopyMS   int64 `json:"copy_ms,omitempty"`
+	EncodeMS int64 `json:"encode_ms,omitempty"`
+	// VerifyMS is the census/probe work this window paid.
+	VerifyMS  int64 `json:"verify_ms,omitempty"`
+	PublishMS int64 `json:"publish_ms,omitempty"`
+	Bytes     int64 `json:"bytes,omitempty"`
+}
+
 // RemoteFinalJobSegmentPrepTiming is the locally measured split of the one
 // stage the remote render does not explain: preparing assembly-ready fragments
 // (download the source, encode the window, verify the frame cap, publish to the
@@ -176,6 +206,11 @@ type RemoteFinalJobSegmentPrepTiming struct {
 	VerifyMS   int64 `json:"verify_ms,omitempty"`
 	PublishMS  int64 `json:"publish_ms,omitempty"`
 	Bytes      int64 `json:"bytes,omitempty"`
+	// Windows is the per-fragment attribution of this handoff, sorted by
+	// segment identity for determinism. It is scoped to the handoff that built
+	// this payload, so a concurrent or resumed run never contributes its
+	// windows to this receipt.
+	Windows []RemoteFinalJobSegmentPrepWindow `json:"windows,omitempty"`
 }
 
 // RemoteFinalJobWorkerTiming is what the remote worker reports about its own
