@@ -384,6 +384,23 @@ func TestNativeMapRenderEndToEnd(t *testing.T) {
 	path, err := renderDynamicMapVideoOnce(context.Background(), plan, nil, t.TempDir())
 	require.NoError(t, err, "the native renderer must execute the realtime wire contract")
 	require.FileExists(t, path)
+	// The artifact identity is the parity anchor for repeated runs: the same
+	// plan rendered twice (cache warm on the second) must produce the same
+	// bytes, so a cache hit can never silently change the picture.
+	firstHash, firstSize, err := digest.SHA256File(path)
+	require.NoError(t, err)
+	t.Logf("native map e2e artifact sha256=%s bytes=%d", firstHash, firstSize)
+	// VELOX_MAP_E2E_ARTIFACT_DIR keeps the rendered MP4 so an audit can compare
+	// the picture produced by two renderer builds (e.g. before and after a
+	// tile-cache change) instead of trusting the digest alone.
+	if dir := strings.TrimSpace(os.Getenv("VELOX_MAP_E2E_ARTIFACT_DIR")); dir != "" {
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		kept := filepath.Join(dir, "map-e2e.mp4")
+		data, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		require.NoError(t, os.WriteFile(kept, data, 0o644))
+		t.Logf("native map e2e artifact kept at %s", kept)
+	}
 
 	reportPath := filepath.Join(filepath.Dir(path), "map-e2e-item.map-decision.json")
 	require.FileExists(t, reportPath)
@@ -423,5 +440,19 @@ func TestNativeMapRenderEndToEnd(t *testing.T) {
 	}
 	for _, want := range []string{"per_pin_timing_not_ported", "area_glow_not_ported", "pin_presentation_simplified"} {
 		require.NotEmpty(t, declared[want], "degradation %q must be declared in the map decision report, got %v", want, declared)
+	}
+
+	// Opt-in second render: the same plan, a new process-local raster (cold
+	// tile cache) and the same encoder must be byte-identical. Run with
+	// VELOX_MAP_E2E_PARITY=1 after a tile-cache change; the default single
+	// render keeps the host-gated test at one render of cost.
+	if os.Getenv("VELOX_MAP_E2E_PARITY") == "1" {
+		second, err := renderDynamicMapVideoOnce(context.Background(), plan, nil, t.TempDir())
+		require.NoError(t, err, "the parity render must execute the same wire contract")
+		secondHash, secondSize, err := digest.SHA256File(second)
+		require.NoError(t, err)
+		require.Equal(t, firstSize, secondSize, "two renders of one plan must produce the same artifact size")
+		require.Equal(t, firstHash, secondHash, "two renders of one plan must be byte-identical (tile-cache parity)")
+		t.Logf("native map e2e parity sha256=%s bytes=%d", secondHash, secondSize)
 	}
 }

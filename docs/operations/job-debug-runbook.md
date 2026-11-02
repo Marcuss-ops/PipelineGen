@@ -440,6 +440,60 @@ a three-phase job, and the phase boundaries are what make the wait resumable:
 | FINALIZE | `POST /api/v1/jobs/{id}/finalize` | the submitting attempt |
 | poll | `GET /api/v1/jobs/{id}` (one read = one decision) | whoever holds the id |
 
+### Reading the phase split (`result.remote_final_job.timing`)
+
+The stage reports one wall number, which is not actionable on its own: queue,
+render and polling failures need different fixes. The durable receipt now
+carries the decomposition, in milliseconds, with 0 meaning "the Master did not
+report that boundary" (never an estimate):
+
+| field | source | meaning |
+|---|---|---|
+| `queue_ms` | Master `created_at` → `started_at` | waiting for a worker/lease |
+| `execution_ms` | Master `started_at` → `completed_at` | the remote render |
+| `handoff_ms` | local clock, PREPARE+FINALIZE | payload build, upload, acceptance |
+| `wait_ms` | local clock, attach wall | polling, resumption, transport |
+| `poll_lag_ms` | terminal observation − `completed_at` | polling interval, not render |
+| `polls` | attach loop | status reads |
+
+The observed stage is `handoff_ms + wait_ms`; queue and execution **decompose**
+the wait, so they are never added to it. A negative `wait − queue − execution`
+is normal when the queue elapsed before this attach.
+
+### Inside the render (`timing.worker`)
+
+`execution_ms` is one number, but a remote render is download → decode →
+compose → encode → mux → upload. When the Master relays the worker's own
+report (`worker_timing` on `GET /api/v1/jobs/{id}`), the receipt keeps it as
+`timing.worker`:
+
+| field | meaning |
+|---|---|
+| `leased_at` / `started_at` / `finished_at` | worker clock, UTC RFC3339 |
+| `download_ms` | fetching the scene media |
+| `decode_ms` | decode to frames |
+| `compose_ms` | timeline composition / overlays |
+| `encode_ms` | video encode |
+| `mux_ms` | audio/video mux |
+| `upload_ms` | artifact upload |
+| `frames`, `encode_fps` | render size and encoder rate |
+
+The block is atomic: a later attach replaces it whole, and a negative or
+malformed phase is clamped to "not reported" so a broken worker report can
+never make a render fail. `nil` means the Master relayed nothing — different
+from a worker that reported zeroes (e.g. a fully cached source with no
+download). The breakdown tool prints the phases, their share of the worker
+total, and the unaccounted residual versus `execution_ms`.
+
+Read it with `ops/tools/final_job_breakdown.py <job-full.json>` (exit 2 means
+the receipt predates the split; exit 1 with `no remote_final_job receipt found`
+means the run never reached the stage, e.g. `final_job=false`).
+
+**Known gap:** the worker-internal split (download, decode, composition,
+encode, mux, upload) is not exposed by `GET /api/v1/jobs/{id}`, so it is not
+represented here. Closing it needs worker telemetry on the Master side; a local
+clock cannot measure it and must not be used to guess it.
+
 The id is the only address of a render that outlives this process, so it is kept
 between PREPARE and the wait and **persisted in the run's durable result**
 (`result.remote_final_job`) before an attempt ends. The attach decision reads

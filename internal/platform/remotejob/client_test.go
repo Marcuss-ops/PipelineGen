@@ -384,3 +384,20 @@ func TestMalformedWorkerTimingStaysUnknown(t *testing.T) {
 		}
 	}
 }
+
+// TestBoundPollGapCapsTheStartedWait pins the poll_lag ceiling: r75 measured
+// 1,93 s over 11 polls at a 3 s interval, all of it after the Master had
+// already started the render. A queued job cannot finish, so its long gap costs
+// nothing and is kept; a started one is observed at least once per second.
+func TestBoundPollGapCapsTheStartedWait(t *testing.T) {
+	started := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	if got := boundPollGap(3*time.Second, started); got != startedPollInterval {
+		t.Fatalf("started gap = %v, want the %v ceiling", got, startedPollInterval)
+	}
+	if got := boundPollGap(3*time.Second, time.Time{}); got != 3*time.Second {
+		t.Fatalf("queued gap = %v, want the configured interval kept", got)
+	}
+	if got := boundPollGap(250*time.Millisecond, started); got != 250*time.Millisecond {
+		t.Fatalf("a faster configured interval was widened to %v", got)
+	}
+}

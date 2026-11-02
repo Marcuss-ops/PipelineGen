@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // normalizeFinalJobOverlayWindows applies the final-job placement policy to
@@ -67,6 +68,120 @@ func normalizeFinalJobOverlayWindows(plan *capoverlay.OverlayPlan, result *Gener
 		item.StartMs = startUS / 1000
 		item.EndMs = (endUS + 999) / 1000
 		item.RenderKey = ""
+	}
+	return nil
+}
+
+// certifyFinalJobOverlayBatch enforces the deliverable certificate of ONE
+// per-scene batch. It is the single authority for that decision: the final-job
+// handoff calls it per batch, and the split render calls it before accepting a
+// batch set, so the two can never drift.
+//
+// A batch is deliverable when its bytes are certified and its manifest names
+// them:
+//   - the manifest is a valid overlay-manifest document (one content one
+//     overlay, unique item ids, canonical timeline digest), and
+//   - the artifact carries a canonical SHA-256 and a positive size, and
+//   - when the manifest declares a timeline digest it names THIS artifact,
+//     because the artifact's bytes ARE the certified timeline, and
+//   - when the artifact reports a duration it covers every placement — read
+//     at the entry's ARTIFACT window (`artifact_in_us/artifact_out_us`, §3
+//     packed timeline), because on a packed canvas the plan receipt is a
+//     plan-absolute time that legitimately sits far past the artifact's own
+//     length. Comparing the plan receipt against the artifact duration is what
+//     rejected the r69 per-scene batch ("places ... at 28020500us but the
+//     artifact lasts 3000000us" on a 3 s packed scene canvas whose frames the
+//     entry addresses at 1275000us..3012500us), and
+//   - the frame count, when reported, is a count — `-1` is the wire's
+//     "unknown" for a packed scene composite whose frames are only addressable
+//     through the manifest windows. Requiring a positive frame count rejected
+//     exactly that artifact shape at r63, although the assembler places it by
+//     in_us/out_us and never reads a frame count.
+//
+// One frame of overhang is not a defect (see finalJobArtifactWindowTolerance).
+func certifyFinalJobOverlayBatch(batch OverlayBatchRenderReference, fpsNum, fpsDen int) error {
+	if batch.Manifest == nil || batch.Artifact == nil {
+		return fmt.Errorf("final_job overlay batch %q lacks a certified manifest or artifact", batch.BatchID)
+	}
+	sha := strings.TrimSpace(batch.Artifact.SHA256)
+	if !digest.IsCanonicalSHA256(sha) || batch.Artifact.SizeBytes <= 0 {
+		return fmt.Errorf("final_job overlay batch %q is not a certified artifact (sha=%q size=%d)", batch.BatchID, sha, batch.Artifact.SizeBytes)
+	}
+	if err := batch.Manifest.Validate(); err != nil {
+		return fmt.Errorf("final_job overlay batch %q: %w", batch.BatchID, err)
+	}
+	if timelineSHA := strings.TrimSpace(batch.Manifest.TimelineSHA256); timelineSHA != "" && !strings.EqualFold(timelineSHA, sha) {
+		return fmt.Errorf("final_job overlay batch %q certifies %s but its manifest names %s", batch.BatchID, sha, timelineSHA)
+	}
+	if batch.Artifact.FrameCount < -1 {
+		return fmt.Errorf("final_job overlay batch %q reports an impossible frame count %d", batch.BatchID, batch.Artifact.FrameCount)
+	}
+	if batch.Artifact.DurationUS < 0 {
+		return fmt.Errorf("final_job overlay batch %q reports a negative duration %dus", batch.BatchID, batch.Artifact.DurationUS)
+	}
+	if batch.Artifact.DurationUS > 0 {
+		// A manifest window is rounded UP to a frame boundary while the
+		// artifact's duration is a frame COUNT, so the last placement can end
+		// up to one frame past it: r70 asked for 3,012,500us on a 3,000,000us
+		// packed canvas (12,5 ms at 24 fps) and the bytes to serve it exist.
+		// Beyond one frame the window names frames the artifact cannot hold.
+		tolerance := finalJobArtifactWindowTolerance(fpsNum, fpsDen)
+		for _, entry := range batch.Manifest.Entries {
+			artifactIn, artifactOut := manifestEntryArtifactWindow(entry)
+			if artifactIn < 0 {
+				return fmt.Errorf("final_job overlay batch %q places %q at a negative artifact time %dus", batch.BatchID, entry.ItemID, artifactIn)
+			}
+			if artifactOut > batch.Artifact.DurationUS+tolerance {
+				return fmt.Errorf("final_job overlay batch %q places %q at %dus on the artifact but the artifact lasts %dus", batch.BatchID, entry.ItemID, artifactOut, batch.Artifact.DurationUS)
+			}
+		}
+	}
+	return nil
+}
+
+// finalJobArtifactWindowTolerance is how far a manifest window may overhang the
+// artifact's reported duration before the certificate calls it a defect. It is
+// exactly one frame: `out_us` is ceil'd to a frame edge, the duration is a frame
+// count, and neither side is allowed to grow past that rounding. An unknown
+// frame rate yields 0, which keeps the strict comparison.
+func finalJobArtifactWindowTolerance(fpsNum, fpsDen int) int64 {
+	if fpsNum <= 0 || fpsDen <= 0 {
+		return 0
+	}
+	return int64(1_000_000) * int64(fpsDen) / int64(fpsNum)
+}
+
+// manifestEntryArtifactWindow is the entry's span on the CERTIFIED artifact.
+// A packed entry (artifact_in_us/artifact_out_us set, §3 packed timeline)
+// addresses its frames there; an unpacked artifact is the plan canvas anchored
+// at 0, so the plan window IS the artifact window (§3.1).
+func manifestEntryArtifactWindow(entry capoverlay.OverlayManifestEntry) (int64, int64) {
+	if entry.ArtifactInUS != nil && entry.ArtifactOutUS != nil {
+		return *entry.ArtifactInUS, *entry.ArtifactOutUS
+	}
+	return entry.InUS, entry.OutUS
+}
+
+// manifestEntryArtifactPositions reports the entry's packed positions and
+// whether they are distinct from its plan receipt.
+func manifestEntryArtifactPositions(entry capoverlay.OverlayManifestEntry) (int64, int64, bool) {
+	if entry.ArtifactInUS == nil || entry.ArtifactOutUS == nil {
+		return 0, 0, false
+	}
+	return *entry.ArtifactInUS, *entry.ArtifactOutUS, true
+}
+
+// certifiableFinalJobOverlayBatches is the gate the per-scene SPLIT must pass
+// before its artifacts are accepted. Only final jobs consume the batch
+// certificate set; every other run keeps the reference untouched.
+func certifiableFinalJobOverlayBatches(finalJob bool, ref RenderReference, fpsNum, fpsDen int) error {
+	if !finalJob || len(ref.Batches) == 0 {
+		return nil
+	}
+	for _, batch := range ref.Batches {
+		if err := certifyFinalJobOverlayBatch(batch, fpsNum, fpsDen); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -130,11 +245,12 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 		contentOwners := make(map[string]string)
 		batchFrames := make(map[string]finalJobFrameWindow)
 		for _, batch := range result.OverlayRender.Batches {
-			if batch.Manifest == nil || batch.Artifact == nil {
-				return nil, nil, fmt.Errorf("final_job overlay batch %q lacks a certified manifest or artifact", batch.BatchID)
+			fpsNum, fpsDen := 0, 0
+			if result.OverlayPlan != nil {
+				fpsNum, fpsDen = result.OverlayPlan.FPSNum, result.OverlayPlan.FPSDen
 			}
-			if !strings.EqualFold(strings.TrimSpace(batch.Manifest.TimelineSHA256), strings.TrimSpace(batch.Artifact.SHA256)) || batch.Artifact.SizeBytes <= 0 || batch.Artifact.FrameCount <= 0 || batch.Artifact.DurationUS <= 0 {
-				return nil, nil, fmt.Errorf("final_job overlay batch %q has inconsistent certification", batch.BatchID)
+			if err := certifyFinalJobOverlayBatch(batch, fpsNum, fpsDen); err != nil {
+				return nil, nil, err
 			}
 			for _, entry := range batch.Manifest.Entries {
 				id := strings.TrimSpace(entry.ItemID)
@@ -208,6 +324,17 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 	if refErr != nil || len(sha) != 64 {
 		return nil, fmt.Errorf("final_job overlay timeline is not a certified downloadable artifact: %w", refErr)
 	}
+	// The asset facts are a contract, not decoration: a multi-artifact
+	// manifest set is refused by the worker unless frame_count is a positive
+	// count of the artifact it names. A packed canvas reports frame_count=-1
+	// in the render receipt (its frames are only addressable through the
+	// manifest windows), so the handoff derives the honest grid count from the
+	// certified duration — the same round(duration·fps) the worker probes on
+	// that very file.
+	assetFrames := int64(artifact.FrameCount)
+	if assetFrames <= 0 && artifact.DurationUS > 0 && fpsNum > 0 && fpsDen > 0 {
+		assetFrames = (artifact.DurationUS*int64(fpsNum) + 500_000*int64(fpsDen)) / (1_000_000 * int64(fpsDen))
+	}
 	if prior, exists := admittedContent[sha]; exists {
 		return nil, fmt.Errorf("final_job overlays %q and the overlay timeline render the same artifact %s; one image one overlay", prior, sha)
 	}
@@ -238,8 +365,23 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 				endFrame = baseFrameCount
 			}
 		}
-		if artifact.FrameCount > 0 && endFrame-startFrame > int64(artifact.FrameCount) {
-			return nil, fmt.Errorf("final_job overlay %q has %d certified frames for a %d-frame replace window", entry.ItemID, artifact.FrameCount, endFrame-startFrame)
+		// The artifact must own the frames the entry asks for. A packed entry
+		// reads its frames at its artifact window, so THAT is the span the
+		// artifact's frame count bounds — its plan receipt may legitimately sit
+		// far later on the timeline (the r69 batch: a 3 s canvas carrying a
+		// 28,020,500us plan receipt).
+		windowFrames := endFrame - startFrame
+		if artifactInUS, artifactOutUS, packed := manifestEntryArtifactPositions(entry); packed {
+			windowFrames = (artifactOutUS*int64(fpsNum)+frameDenominator-1)/frameDenominator - (artifactInUS * int64(fpsNum) / frameDenominator)
+		}
+		// One frame of slack, for the same reason the artifact certificate has
+		// it: the window is ceil'd on both edges while the certified count is a
+		// rounded frame count, so the same span can legitimately measure one
+		// frame wider than the artifact's frame budget (r71: 85 measured against
+		// 84 certified on a 24 fps grid). Two frames past the budget still name
+		// frames the artifact does not contain.
+		if assetFrames > 0 && windowFrames > assetFrames+1 {
+			return nil, fmt.Errorf("final_job overlay %q has %d certified frames for a %d-frame replace window", entry.ItemID, assetFrames, windowFrames)
 		}
 		// The artifact owns these frames whether or not the entry is emitted:
 		// seed the occupancy map for every entry so dedicated rows can never
@@ -269,7 +411,7 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 	}
 	asset := map[string]any{
 		"asset_id": assetRef["asset_id"], "sha256": sha,
-		"size_bytes": artifact.SizeBytes, "frame_count": artifact.FrameCount,
+		"size_bytes": artifact.SizeBytes, "frame_count": assetFrames,
 		"duration_ms": (artifact.DurationUS + 999) / 1000,
 		"mode":        "replace", "audio_mode": "preserve_final_audio",
 		"codec": artifact.Codec, "container": artifact.Container,
@@ -279,6 +421,13 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 	}
 	for key, value := range assetRef {
 		asset[key] = value
+	}
+	// The ref carries the render receipt's facts, including the -1 a packed
+	// canvas reports for frame_count. The handoff keeps the DERIVED count:
+	// the worker both validates (a set needs a positive count) and projects
+	// with it, and the derived grid is the one it probes on the same file.
+	if assetFrames > 0 {
+		asset["frame_count"] = assetFrames
 	}
 	return map[string]any{
 		"schema_version":  manifest.SchemaVersion,

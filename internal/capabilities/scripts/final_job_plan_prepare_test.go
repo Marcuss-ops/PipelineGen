@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 type preparedSegmentStub struct {
@@ -16,18 +18,35 @@ type preparedSegmentStub struct {
 	// identical makes every window certify the SAME bytes: two placements of one
 	// object, which is what a cache hit on identical work also produces.
 	identical bool
+	// distinct makes each placement certify its own bytes, the certified shape.
+	distinct bool
+	// tagChangesBytes makes a tagged re-prepare produce different bytes, exactly
+	// like the container tag in the real encoder; without it the tag is ignored
+	// and the collision cannot be resolved.
+	tagChangesBytes bool
+	tags            []string
 }
 
 func (s *preparedSegmentStub) PrepareFinalJobVideoSegment(_ context.Context, source map[string]any, request FinalJobVideoSegmentRequest) (map[string]any, error) {
 	s.request = request
 	s.called++
-	if !s.identical && source["asset_id"] != "stock-raw" {
+	if request.PlacementTag != "" {
+		s.tags = append(s.tags, request.PlacementTag)
+	}
+	if !s.identical && !s.distinct && !s.tagChangesBytes && source["asset_id"] != "stock-raw" {
 		return nil, context.Canceled
+	}
+	sha := strings.Repeat("b", 64)
+	switch {
+	case s.tagChangesBytes && request.PlacementTag != "":
+		sha = digest.SHA256String("tagged:" + request.PlacementTag)
+	case s.distinct:
+		sha = digest.SHA256String("segment:" + request.SegmentID)
 	}
 	return map[string]any{
 		"asset_id": "fragment-" + request.SegmentID, "source_uri": "https://objects.example/fragment",
 		"role":   "stock",
-		"sha256": strings.Repeat("b", 64), "size_bytes": int64(1024),
+		"sha256": sha, "size_bytes": int64(1024),
 		"duration_us": int64(2_000_000), "frame_count": int64(48),
 		"profile_id": "VELOX_ASSEMBLY_READY_V1", "copy_eligible": true,
 		"first_frame_keyframe": true, "closed_gop": true,
@@ -36,14 +55,15 @@ func (s *preparedSegmentStub) PrepareFinalJobVideoSegment(_ context.Context, sou
 	}, nil
 }
 
-// TestPrepareFinalJobVideoSegmentsSharesOneAssetAcrossIdenticalPlacements pins
-// the rule the assembler actually enforces: a placement is certified by its
-// SEGMENT (unique id, own timeline position) and an artifact by its BYTES. Two
-// placements of the same pictures are therefore one asset referenced twice — not
-// two objects forced to differ in the container, which is what used to make the
-// worker refuse the film (`segment-0017 still certifies the bytes of another
-// placement`).
-func TestPrepareFinalJobVideoSegmentsSharesOneAssetAcrossIdenticalPlacements(t *testing.T) {
+// TestPrepareFinalJobVideoSegmentsGivesEachPlacementItsOwnExactAsset pins the
+// rule the live assembler enforces, learned the expensive way in r66: a
+// placement is certified together with its OWN asset, so the asset must carry
+// the segment's exact identity (timeline start frame, frame count, bytes). An
+// asset shared by two placements can only certify one of them and the film dies
+// with `segment "…" manifest binding is not exact`. Two placements of the same
+// pictures therefore become TWO objects whose bytes differ by container tag —
+// never one object referenced twice.
+func TestPrepareFinalJobVideoSegmentsGivesEachPlacementItsOwnExactAsset(t *testing.T) {
 	timelineSHA := strings.Repeat("a", 64)
 	plan := finalJobCompiledPlan{
 		PlanVersion: 2, TimelineRevision: 1, TimelineSHA256: timelineSHA, DurationUS: 4_000_000,
@@ -67,13 +87,23 @@ func TestPrepareFinalJobVideoSegmentsSharesOneAssetAcrossIdenticalPlacements(t *
 		map[string]any{"asset_id": "second-raw", "sha256": strings.Repeat("e", 64), "size_bytes": int64(2048), "source_uri": "https://objects.example/second", "role": "stock"},
 		map[string]any{"asset_id": "audio-1", "sha256": strings.Repeat("c", 64), "size_bytes": int64(32), "source_uri": "https://objects.example/audio", "role": "final_audio"},
 	}
-	preparer := &preparedSegmentStub{identical: true}
+	preparer := &preparedSegmentStub{identical: true, tagChangesBytes: true}
 	prepared, runtimeAssets, err := prepareFinalJobVideoSegments(context.Background(), string(raw), refs, preparer)
 	if err != nil {
 		t.Fatalf("prepareFinalJobVideoSegments: %v", err)
 	}
-	if preparer.called != 2 {
-		t.Fatalf("preparer calls = %d, want one preparation per placement and no re-encode", preparer.called)
+	// Two placements are prepared, and the duplicate is derived a third time
+	// with the tag — never a shared asset, never a silent overwrite.
+	if preparer.called != 3 {
+		t.Fatalf("preparer calls = %d, want one preparation per placement plus the tagged derivation", preparer.called)
+	}
+	if len(preparer.tags) != 1 || preparer.tags[0] != "segment-0001" {
+		t.Fatalf("placement tags = %v, want the second placement tagged with its own segment id", preparer.tags)
+	}
+	// The tagged derivation must name the bytes it repeats, so the preparer can
+	// copy a certified bitstream instead of encoding the same window again.
+	if preparer.request.ReuseFromSHA256 != strings.Repeat("b", 64) || preparer.request.ReuseFromURI != "https://objects.example/fragment" {
+		t.Fatalf("derivation request = %+v, want the certified fragment it repeats", preparer.request)
 	}
 	var got finalJobCompiledPlan
 	if err := json.Unmarshal([]byte(prepared), &got); err != nil {
@@ -83,15 +113,15 @@ func TestPrepareFinalJobVideoSegmentsSharesOneAssetAcrossIdenticalPlacements(t *
 		t.Fatalf("segments = %d, want both placements kept", len(got.VideoTracks[0].Segments))
 	}
 	first, second := got.VideoTracks[0].Segments[0], got.VideoTracks[0].Segments[1]
-	if first.AssetID != second.AssetID {
-		t.Fatalf("identical pictures produced two assets %q and %q", first.AssetID, second.AssetID)
-	}
-	if first.SHA256 != second.SHA256 {
-		t.Fatalf("the same pictures must certify the same bytes: %q vs %q", first.SHA256, second.SHA256)
-	}
 	// The placement lives on the segment: unique id, own timeline position.
 	if first.SegmentID == second.SegmentID {
 		t.Fatalf("two placements share one segment id %q", first.SegmentID)
+	}
+	if first.AssetID == second.AssetID {
+		t.Fatalf("two placements share one asset %q, which the assembler refuses as an inexact binding", first.AssetID)
+	}
+	if first.SHA256 == second.SHA256 {
+		t.Fatalf("two placements certify the same bytes %q, which the plan refuses", first.SHA256)
 	}
 	if second.TimelineStartFrame != 48 || second.FrameCount != 48 {
 		t.Fatalf("second placement lost its timeline position: %+v", second)
@@ -103,22 +133,35 @@ func TestPrepareFinalJobVideoSegmentsSharesOneAssetAcrossIdenticalPlacements(t *
 			t.Fatalf("segment %q has an inexact binding: %+v", segment.SegmentID, segment)
 		}
 	}
+	assetsByID := make(map[string]finalJobPlanAsset, len(got.Assets))
+	for _, asset := range got.Assets {
+		assetsByID[asset.AssetID] = asset
+	}
+	// Every placement is certified by exactly the asset it names: the spans and
+	// the byte-set must match, or the remote admission rejects the film.
+	for _, segment := range got.VideoTracks[0].Segments {
+		asset, ok := assetsByID[segment.AssetID]
+		if !ok {
+			t.Fatalf("segment %q names asset %q, which the plan does not carry", segment.SegmentID, segment.AssetID)
+		}
+		if asset.Kind != "video" || asset.SHA256 != segment.SHA256 {
+			t.Fatalf("segment %q asset is not its video byte-set: %+v", segment.SegmentID, asset)
+		}
+		if asset.TimelineStartFrame != segment.TimelineStartFrame || asset.FrameCount != segment.FrameCount {
+			t.Fatalf("segment %q asset carries frames %d+%d, want %d+%d (exact binding)", segment.SegmentID, asset.TimelineStartFrame, asset.FrameCount, segment.TimelineStartFrame, segment.FrameCount)
+		}
+	}
 	videos := 0
 	for _, asset := range got.Assets {
-		if asset.Kind != "video" {
-			continue
-		}
-		videos++
-		// A shared asset has no single timeline position to certify.
-		if asset.TimelineStartFrame != 0 {
-			t.Fatalf("shared asset %q still carries placement %d", asset.AssetID, asset.TimelineStartFrame)
+		if asset.Kind == "video" {
+			videos++
 		}
 	}
-	if videos != 1 {
-		t.Fatalf("compiled assets carry %d video objects for one byte-set", videos)
+	if videos != 2 {
+		t.Fatalf("compiled assets carry %d video objects for two placements", videos)
 	}
-	if len(runtimeAssets) != 2 {
-		t.Fatalf("runtime assets = %d, want the shared fragment plus the final audio", len(runtimeAssets))
+	if len(runtimeAssets) != 3 {
+		t.Fatalf("runtime assets = %d, want one object per placement plus the final audio", len(runtimeAssets))
 	}
 	// The plan that leaves this process must pass the same admission rules the
 	// worker applies, or the film would fail on the far end instead.

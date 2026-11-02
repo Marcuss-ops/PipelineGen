@@ -46,14 +46,6 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 
 	preparedAssets := make(map[string]finalJobPlanAsset, len(plan.VideoTracks[0].Segments)+1)
 	preparedRefs := make([]any, 0, len(plan.VideoTracks[0].Segments)+1)
-	// The assembler binds a PLACEMENT to the segment and an ARTIFACT to its
-	// bytes: `assets[]` requires unique ids and unique asset keys, while several
-	// segments may reference one asset, each with its own segment id and
-	// timeline position. Two placements of the same pictures are therefore ONE
-	// asset referenced twice — never two objects forced to differ in the
-	// container.
-	refIndex := make(map[string]int, len(plan.VideoTracks[0].Segments)+1)
-	placements := make(map[string]int, len(plan.VideoTracks[0].Segments)+1)
 	// Phase 1 — validate every binding and describe the work. This is cheap and
 	// sequential, and it fails before any expensive preparation starts.
 	work := make([]finalJobSegmentWork, 0, len(plan.VideoTracks[0].Segments))
@@ -84,12 +76,16 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	if err != nil {
 		return "", nil, err
 	}
-	// Phase 3 — bind in plan order. Identical BYTES resolve to one asset; every
-	// placement keeps its own segment id, position and frame window. Canonical
-	// by sha, not by work identity: two different windows of a still source can
-	// encode to the same pictures, and the plan refuses two assets with one
-	// canonical identity while the resolver refuses two ids with one asset key.
-	canonical := make(map[string]string, len(work))
+	// Phase 3 — bind in plan order, ONE asset per placement. The assembler
+	// certifies each placement against the manifest of its OWN asset
+	// (`segment "…" manifest binding is not exact` — r66), so two placements can
+	// never share one object even when their pixels are identical. The
+	// collision is resolved on the OBJECT, never on the binding: the later
+	// placement is re-prepared with a placement tag (same pictures, different
+	// container, different bytes), which satisfies both the plan's unique
+	// canonical identity and the assembler's per-placement certificate.
+	usedSHA := make(map[string]string, len(work))
+	usedURI := make(map[string]string, len(work))
 	for _, item := range work {
 		segment := &plan.VideoTracks[0].Segments[item.index]
 		source := item.source
@@ -97,39 +93,41 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		if err != nil {
 			return "", nil, fmt.Errorf("prepared final_job segment %q: %w", segment.SegmentID, err)
 		}
-		if owner, exists := canonical[asset.SHA256]; exists {
-			// The bytes are already certified by that asset: publish nothing new
-			// and point this placement at it.
-			asset = preparedAssets[owner]
-		} else {
-			canonical[asset.SHA256] = asset.AssetID
-			preparedAssets[asset.AssetID] = asset
-			// One runtime reference per asset: FINALIZE requires unique ids, and a
-			// second copy of the same object is the same object.
-			if _, seen := refIndex[asset.AssetID]; !seen {
-				if strings.EqualFold(finalJobStringValue(source["role"]), "overlay_timeline") {
-					ref["role"] = "overlay"
-				}
-				refIndex[asset.AssetID] = len(preparedRefs)
-				preparedRefs = append(preparedRefs, ref)
+		if _, exists := usedSHA[asset.SHA256]; exists {
+			// Identical bytes for a second placement. Derive THIS placement from
+			// the certified object already produced above: the same bitstream in
+			// a distinct container is a naming problem, and re-encoding the same
+			// window would pay for pixels that already exist. The tag stays in
+			// the work identity, so the tagged object can never be answered with
+			// the untagged bytes.
+			item.request.PlacementTag = segment.SegmentID
+			item.request.ReuseFromSHA256 = asset.SHA256
+			item.request.ReuseFromURI = usedURI[asset.SHA256]
+			tagged, tagErr := preparer.PrepareFinalJobVideoSegment(ctx, source, item.request)
+			if tagErr != nil {
+				return "", nil, finalJobSegmentPrepareError(item, tagErr)
+			}
+			asset, ref, err = finalJobPreparedSegmentAsset(tagged, item.request)
+			if err != nil {
+				return "", nil, fmt.Errorf("prepared final_job segment %q: %w", segment.SegmentID, err)
+			}
+			if other, stillShared := usedSHA[asset.SHA256]; stillShared {
+				return "", nil, fmt.Errorf("final_job segment %q still certifies the bytes of another placement (%q); refusing to send a plan the assembler must reject", segment.SegmentID, other)
 			}
 		}
-		placements[asset.AssetID]++
+		usedSHA[asset.SHA256] = segment.SegmentID
+		usedURI[asset.SHA256] = finalJobStringValue(ref["source_uri"])
+		preparedAssets[asset.AssetID] = asset
+		if strings.EqualFold(finalJobStringValue(source["role"]), "overlay_timeline") {
+			ref["role"] = "overlay"
+		}
+		// One runtime reference per asset: every placement owns its own object,
+		// so FINALIZE receives unique ids without duplicating work.
+		preparedRefs = append(preparedRefs, ref)
 		segment.AssetID = asset.AssetID
 		segment.SHA256 = asset.SHA256
 		segment.SourceInUS = 0
 		segment.SourceDurationUS = asset.DurationUS
-	}
-	// An asset carries no placement: when two or more segments share it there is
-	// no single timeline position to certify, and the segment is the only place
-	// the worker reads that fact from.
-	for assetID, count := range placements {
-		if count < 2 {
-			continue
-		}
-		asset := preparedAssets[assetID]
-		asset.TimelineStartFrame = 0
-		preparedAssets[assetID] = asset
 	}
 
 	// Preserve the one final audio asset, then add only the fragments referenced

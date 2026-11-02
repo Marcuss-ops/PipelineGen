@@ -85,6 +85,12 @@ type overlayRenderOutcome struct {
 // audio stage (the render used to be part of that stage's work, so a resumed run
 // must not re-wait on it).
 func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, resumeIdx int, state audioCompileState, result *GenerateResult) bool {
+	// The stock sources the handoff will consume are resolved WHILE the render
+	// waits on the GPU: r75 spent 9,8 s of its 39,8 s `remote_final_job`
+	// resolving them serially, and the overlay render occupied 13,4 s of the
+	// same critical path with an idle CPU. Started before the render so the two
+	// windows overlap; the handoff then answers from the same cache.
+	r.startFinalJobStockPrewarm(ctx, runID, req, result)
 	outcomes, fanOutErr := r.renderOverlayPlans(ctx, req, resumeIdx, result)
 	if fanOutErr != nil {
 		r.failExecutionStepBestEffort(ctx, exec, state.Step, fanOutErr)
@@ -93,6 +99,51 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 	}
 	r.applyOverlayRenderOutcomes(runID, result, outcomes)
 	return true
+}
+
+// startFinalJobStockPrewarm overlaps the final-job stock resolution with the
+// overlay render. It never blocks the phase and never fails the run: the
+// prewarm goroutine only fills the submitter's per-handoff cache, and the
+// handoff re-walks the same selection through the same planner.
+//
+// The goroutine gets a SNAPSHOT of the result, not the live one: the overlay
+// phase writes result.OverlayRender / result.LocalizedOverlayRenders when it
+// joins, while the walk only reads the canonical timeline and the scenes — a
+// copy keeps those reads in one memory location the phase never writes.
+func (r *Runner) startFinalJobStockPrewarm(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) {
+	if !req.FinalJob || result == nil || r.finalJobSubmitter == nil {
+		return
+	}
+	prewarmer, ok := r.finalJobSubmitter.(FinalJobSourcePrewarmer)
+	if !ok {
+		return
+	}
+	// Once per run: the join branch and the serial phase are exclusive, but a
+	// resumed attempt or a re-entered phase must not walk twice.
+	r.prewarmMu.Lock()
+	already := r.prewarmRunID == runID
+	if !already {
+		r.prewarmRunID = runID
+	}
+	r.prewarmMu.Unlock()
+	if already {
+		return
+	}
+	snapshot := *result
+	workRes := &snapshot
+	startedAt := time.Now()
+	go func() {
+		err := prewarmer.PrewarmFinalJobStockSources(ctx, runID, req, workRes)
+		if r.log == nil {
+			return
+		}
+		fields := []zap.Field{zap.String("run_id", runID), zap.Duration("wall", time.Since(startedAt))}
+		if err != nil {
+			r.log.Warn("final-job stock prewarm stopped early; the handoff resolves the rest serially", append(fields, zap.Error(err))...)
+			return
+		}
+		r.log.Info("final-job stock prewarm finished", fields...)
+	}()
 }
 
 // renderOverlayPlanAtBoundary is the ONLY place that chooses the submission
@@ -109,22 +160,40 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 // every test mock, so flag OFF and capability-missing both reproduce the
 // single-timeline behaviour byte for byte.
 //
-// Fail-closed fallback: ANY split error falls back to the single-timeline
+// Fail-closed fallback: a SPLIT ERROR falls back to the single-timeline
 // submission, so a flag-ON run can only ever end up with more GPU work, never
-// a different failure surface than the certified path.
+// a different failure surface than the certified path. A split that RENDERS but
+// whose batch set cannot be certified is a different class: it is a defective
+// artifact, not a shape the plan cannot express, and re-rendering the whole
+// timeline to paper over it is exactly the double render r63 and r69 paid for.
+// The plan-level preflight (finalJobSplitPreflight) admits only shapes whose
+// batches can certify, and a post-render certificate failure then fails closed
+// with the batch named instead of buying a second GPU pass.
 func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRequest, plan *capabilityoverlay.OverlayPlan) (RenderReference, error) {
 	if plan == nil {
 		return RenderReference{}, nil
 	}
 	if overlayPerSceneSplitEnabled() && planSpansMultipleScenes(*plan) {
 		if splitter, ok := r.overlayRenderEnqueuer.(OverlayPlanSplitEnqueuer); ok {
-			ref, splitErr := splitter.EnqueueChrononPlanSplit(ctx, *plan)
-			if splitErr == nil {
-				return ref, nil
+			if preflightErr := finalJobSplitPreflight(req.FinalJob, *plan); preflightErr != nil {
+				// No split submission at all: the batch set could never be
+				// certified, so rendering it would only be thrown away.
+				r.log.Warn("overlay split skipped before any render: the batch set cannot be certified",
+					zap.String("plan_id", plan.PlanID),
+					zap.Error(preflightErr))
+			} else {
+				ref, splitErr := splitter.EnqueueChrononPlanSplit(ctx, *plan)
+				if splitErr != nil {
+					r.log.Warn("overlay per-scene split failed; falling back to the single-timeline submission",
+						zap.String("plan_id", plan.PlanID),
+						zap.Error(splitErr))
+				} else if certErr := certifiableFinalJobOverlayBatches(req.FinalJob, ref, plan.FPSNum, plan.FPSDen); certErr != nil {
+					// The plan passed the preflight, so the artifacts are wrong.
+					return RenderReference{}, fmt.Errorf("overlay split rendered a batch set the final-job handoff cannot consume (refusing a second render): %w", certErr)
+				} else {
+					return ref, nil
+				}
 			}
-			r.log.Warn("overlay per-scene split failed; falling back to the single-timeline submission",
-				zap.String("plan_id", plan.PlanID),
-				zap.Error(splitErr))
 		}
 	}
 	return r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *plan)

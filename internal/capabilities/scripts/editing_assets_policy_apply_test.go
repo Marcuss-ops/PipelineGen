@@ -66,6 +66,42 @@ func TestApplyEditingAssetPolicyIsDeterministic(t *testing.T) {
 	}
 }
 
+// TestApplyEditingAssetPolicySeedsOnProjectNotOnSubmit is the regression for the
+// measured defect: a retry or a revision of the same video re-submits with a new
+// idempotency key, and that used to reselect the BGM track (bgm3 vs bgm5 on the
+// Garlasco payload), which changed audio_plan_sha256 and defeated the plan-keyed
+// audio cache. The creative identity must be the project, not the submit.
+func TestApplyEditingAssetPolicySeedsOnProjectNotOnSubmit(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	first := combinedTimelineRequest("r67-20261101T142148Z")
+	first.Project = "garlasco-editorial-e2e"
+	second := combinedTimelineRequest("r68-20261101T153000Z")
+	second.Project = "garlasco-editorial-e2e"
+	if err := ApplyEditingAssetPolicy(&first, policy); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplyEditingAssetPolicy(&second, policy); err != nil {
+		t.Fatal(err)
+	}
+	if first.BackgroundMusic[0].AssetID != second.BackgroundMusic[0].AssetID {
+		t.Errorf("bgm selection follows the submit instead of the project: %q vs %q",
+			first.BackgroundMusic[0].AssetID, second.BackgroundMusic[0].AssetID)
+	}
+	if first.Render.Background.AssetID != second.Render.Background.AssetID {
+		t.Errorf("background selection follows the submit instead of the project: %q vs %q",
+			first.Render.Background.AssetID, second.Render.Background.AssetID)
+	}
+	// Different projects are different videos and must still be able to differ.
+	third := combinedTimelineRequest("r67-20261101T142148Z")
+	third.Project = "garlasco-editorial-e2e-second-story"
+	if err := ApplyEditingAssetPolicy(&third, policy); err != nil {
+		t.Fatal(err)
+	}
+	if len(third.BackgroundMusic) != 1 || third.BackgroundMusic[0].AssetID == "" {
+		t.Fatalf("a distinct project must still receive one BGM track: %+v", third.BackgroundMusic)
+	}
+}
+
 // TestApplyEditingAssetPolicyNeverOverridesCallerIntent is the guardrail that
 // keeps the policy opt-in: an explicit background mode, an explicit BGM list,
 // and a non-COMBINED_TIMELINE audio mode must all survive untouched.

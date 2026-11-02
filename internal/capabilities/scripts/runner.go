@@ -45,10 +45,17 @@ type Runner struct {
 	nlpGenerationGate       *GenerationGate
 	// jobStageSink mirrors durable run stages into job_stage_status rows of
 	// the single-item job; jobStages maps runID -> open job stage state.
-	jobStageSink          job.JobStageStatusStore
-	jobStages             sync.Map
-	vidRushPipeline       *VidRushPipeline
-	finalJobSubmitter     FinalJobSubmitter
+	jobStageSink      job.JobStageStatusStore
+	jobStages         sync.Map
+	vidRushPipeline   *VidRushPipeline
+	finalJobSubmitter FinalJobSubmitter
+	// prewarmRunID is the run whose final-job stock sources were already
+	// warmed. The two overlay paths (the concurrent audioCompile branch and the
+	// serial render phase) are mutually exclusive in one run, but the warm-up
+	// must be idempotent anyway: it is a best-effort fill of a cache, and a
+	// second walk would only repeat the folder listings.
+	prewarmMu             sync.Mutex
+	prewarmRunID          string
 	sceneSemanticAnalyzer SceneSemanticAnalyzer
 
 	// ttsConcurrency bounds the TTS voiceover worker pool: the voiceover
@@ -115,6 +122,13 @@ type Runner struct {
 	// durable checkpoint — input fingerprint + artifact verification +
 	// processor version — and completed units are recorded durably.
 	checkpoints *capcheckpoint.Resolver
+
+	// finalAudioCache reuses a certified master keyed by the audio PLAN, so a
+	// retry or a revision that leaves the plan untouched does not re-mix and
+	// re-encode it. The durable checkpoint above is job-scoped and can never
+	// hit across runs; this cache is content-scoped by construction. Nil
+	// disables reuse.
+	finalAudioCache *finalAudioCache
 
 	// localizedRenderMu fences appends of certified localized-render videos
 	// onto the run result. The fan-out enqueues from concurrent TTS workers

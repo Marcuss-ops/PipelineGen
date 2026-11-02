@@ -19,6 +19,20 @@ import (
 // directly. Creator and Objectstore share the signing secret; neither Velox
 // nor the Master needs credentials or a proxy path for the object bytes.
 func finalJobObjectStoreRef(ctx context.Context, preferredID, storageKey, sha string, sizeBytes int64) (map[string]any, error) {
+	ref, err := signStoredFinalJobObject(preferredID, storageKey, sha, sizeBytes)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureFinalJobObjectStored(ctx, strings.ToLower(strings.TrimSpace(sha)), sizeBytes); err != nil {
+		return nil, err
+	}
+	return ref, nil
+}
+
+// signStoredFinalJobObject is called only after this operation verified the
+// object's availability and size. It avoids repeating the same HEAD on every
+// publication while retaining the check at the external-reference boundary.
+func signStoredFinalJobObject(preferredID, storageKey, sha string, sizeBytes int64) (map[string]any, error) {
 	sha = strings.ToLower(strings.TrimSpace(sha))
 	storageKey = strings.ToLower(strings.TrimSpace(storageKey))
 	if len(sha) != 64 || storageKey != sha || sizeBytes <= 0 {
@@ -32,9 +46,6 @@ func finalJobObjectStoreRef(ctx context.Context, preferredID, storageKey, sha st
 	secret := strings.TrimSpace(os.Getenv("OBJECTSTORE_SIGNING_SECRET"))
 	if len(secret) < 32 {
 		return nil, fmt.Errorf("OBJECTSTORE_SIGNING_SECRET must contain at least 32 characters")
-	}
-	if err := ensureFinalJobObjectStored(ctx, sha, sizeBytes); err != nil {
-		return nil, err
 	}
 	expires := time.Now().Add(7 * 24 * time.Hour).Unix()
 	objectPath := "/objects/" + sha
@@ -144,7 +155,7 @@ func PublishFinalJobLocalObject(ctx context.Context, preferredID, path, sha stri
 	if err := publishFinalJobLocalObject(ctx, path, sha, sizeBytes); err != nil {
 		return nil, err
 	}
-	return finalJobObjectStoreRef(ctx, preferredID, sha, sha, sizeBytes)
+	return signStoredFinalJobObject(preferredID, sha, sha, sizeBytes)
 }
 
 // PublishFinalJobLocalObjectVerified publishes a file whose SHA-256 and size the
@@ -156,7 +167,7 @@ func PublishFinalJobLocalObjectVerified(ctx context.Context, preferredID, path, 
 	if err := publishFinalJobVerifiedObject(ctx, path, sha, sizeBytes); err != nil {
 		return nil, err
 	}
-	return finalJobObjectStoreRef(ctx, preferredID, sha, sha, sizeBytes)
+	return signStoredFinalJobObject(preferredID, sha, sha, sizeBytes)
 }
 
 func finalJobPrivateObjectStoreURL() string {

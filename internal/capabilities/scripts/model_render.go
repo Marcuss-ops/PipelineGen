@@ -392,6 +392,10 @@ type AudioPipelineMetrics struct {
 	// finalize). Warm identical runs report Generated == DBCacheHits and
 	// TTSCalls == 0.
 	VoiceoverDBCacheHits int `json:"voiceover_db_cache_hits,omitempty"`
+	// CacheOutcome names how this run obtained the master: "HIT_PLAN" when a
+	// previously certified artifact was reused for an identical plan, empty
+	// when the audio was rendered. It is evidence of reuse, not a decision.
+	CacheOutcome string `json:"cache_outcome,omitempty"`
 }
 
 type TTSSSceneMetric struct {

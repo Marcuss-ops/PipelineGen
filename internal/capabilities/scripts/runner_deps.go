@@ -287,6 +287,21 @@ func (r *Runner) SetFinalAudioPublisher(publisher FinalAudioPublisher) {
 	}
 }
 
+// SetFinalAudioCacheDir enables cross-run reuse of a certified master keyed by
+// the compiled audio plan. An empty directory (or an explicit "off") disables
+// the cache, which is how an A/B run measures it. Nil-safe.
+func (r *Runner) SetFinalAudioCacheDir(dir string) {
+	if r == nil {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(dir)) {
+	case "", "off", "disabled", "none":
+		r.finalAudioCache = nil
+	default:
+		r.finalAudioCache = newFinalAudioCache(dir)
+	}
+}
+
 // SetFinalJobSubmitter wires the optional two-stage remote render handoff.
 func (r *Runner) SetFinalJobSubmitter(submitter FinalJobSubmitter) {
 	if r != nil {

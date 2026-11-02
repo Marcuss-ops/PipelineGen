@@ -30,6 +30,7 @@ Revisione 2026-10-29 dopo verifica sui codici:
 - [ ] A3. Test di regressione (doctest) + suite mirate verdi. — Test presente: "Cross-item codec session reuse stays fail-closed" in `tests/video/test_native_av_encoder_teardown_stress.cpp` (26-10); rerun suite mirata da eseguire per chiudere A3. **Rerun 29-10: BLOCKED (cross-repo)** — `Chronon3d/` non ha alcun `CMakeCache.txt` né albero di build per i test (`build/` contiene solo `chronon` e `Testing/`): il target non è costruibile senza un configure+build completo fuori dal perimetro `refactored`. Nessun PASS dichiarato.
 - [ ] A4. Build `-j14`, commit mirato, deploy release, restart daemon. — **Parziale 29-10 (solo `refactored`)**: `go build -o bin/pipelinegen ./cmd/server` PASS, restart `systemd` PASS, `/ready` HTTP 200 e env verificato da `/proc/<pid>/environ`. Restano non eseguiti: build Chronon3d `-j14` (nessun build tree, come A3) e commit mirato (nessun commit richiesto/effettuato in questa sessione).
 - [ ] A5. Golden ×3 di confronto + mediana vs baseline 83,98/min; aggiornare il ticket. — **3 run closeout eseguite 30-10** (stesso payload v2.1-nomaps SHA `ad5e3468…`, 3 lane, host quiescente): 54,44 / 80,04 / 77,32 item/min → **mediana 77,32 item/min, gate ≥100 FAIL**; il mix 100 item con mappe resta NOT RUN. Le tre run del 29-10 (mediana 62,32) restano la serie precedente. Dettaglio in §9.10 e §11.
+- [ ] **01-11: il costo per frame non è la GPU.** Batch overlay r49: 46,06 ms/frame di cui `timeline_eval` 34,81 (75%), GPU 3,3 (7%), encode 0,18; 844 frame duplicati su 1607 costano 43,5 ms l'uno con 0 ms di render (29,8 s su 74,3). Schede: [`TICKET-PERF-FRAME-PROOF-CHEAP`](../../../Chronon3d/docs/tickets/TICKET-PERF-FRAME-PROOF-CHEAP.md), [`TICKET-PERF-TIMELINE-FLATBUFFER`](../../../Chronon3d/docs/tickets/TICKET-PERF-TIMELINE-FLATBUFFER.md), [`TICKET-FINAL-JOB-BITSTREAM-REUSE-2026-11-01`](TICKET-FINAL-JOB-BITSTREAM-REUSE-2026-11-01.md).
 - [ ] Aggiornare i MD di closeout con root cause motion-blur, fix e stato lavori.
 
 ## 1. Diagnosi del Collo di Bottiglia Storico e Risoluzioni Effettuate
@@ -1460,3 +1461,198 @@ misura sullo stesso binario. Per questo il default è stato **ripristinato a
 3** e non si dichiara alcuna promozione; serve un A/B controllato di 3 run su
 binario congelato. Evidenza:
 `ops/jobs/overlay_throughput_golden_100_20261022/results/pipeline-workers6-20261030/`.
+
+## 11.9 Cache tile mappe — ripetibilità, parità e costo (01-11-2026)
+
+**Costo per item.** Con la cache tile per-render (limite 1.024 tile) lo stesso
+piano `route_line` 6 s / 180 frame / 2 pin, eseguito cinque volte in processi
+nuovi sullo stesso host (RTX A4000), costa **mediana 11,18 s** (range
+9,79–16,88; `frame_pipeline` 10,32 s, encode 10,43 s, `plate_compose` 4,30 s).
+Dei 19.680 piazzamenti, **19.217 sono hit** e solo **463** richiedono
+rasterizzazione: il cold cost di §11.7 (~19 s/item) resta la baseline, ma non è
+più il costo del percorso caldo.
+
+**Parità.** L'artefatto è 429.383 byte con SHA-256
+`22499663a5763e856f0cfc76e5f1a3998545c9666741cf0882a96c88c8b01451` identico in
+tutte e cinque le run; `VELOX_MAP_E2E_PARITY=1` rende il piano due volte e
+pretende byte identici, quindi la parità della cache è un'asserzione, non
+un'inferenza. `maps_map_plate_raster_test` verifica a livello pixel la finestra
+mono-tile, quella multi-tile a offset frazionario e il wrap.
+
+**Pixel-exact, non solo ripetibile.** Lo stesso sorgente ricompilato con il
+lookup della tile cortocircuitato (`cache_hit=0 cache_miss=19680`) produce
+l'artefatto **byte-identico** (`22499663…`, 429.383 byte) e costa 29,80 s contro
+una mediana di 12,35 s con cache accesa (6 run): −17,5 s/item (−58,6%) a parità
+di pixel. Il renderer deployato in `/usr/local/bin` è però la build del 28/10
+(precede cache e lavoro mappe del 29/10) e disegna la mappa in modo diverso
+(PSNR Y 31,07 dB, SSIM 0,985): finché non si approva quel look, nei run live il
+guadagno resta 0 s.
+
+**Telemetria.** Il percorso editoriale scriveva `cache_hit=0` perché il campo
+`tile_disk_cache_hits` era alimentato solo dalla piramide satellite, mentre il
+balance check del validator (`required_tile_count = prefetched +
+prefetch_tiles_memory_hits`, 19.680 = 463 + 19.217) dimostrava già che la cache
+serviva. Il renderer nativo ora riporta gli hit raster in quel campo; contatori
+e balance check sono invariati.
+
+**Conseguenza.** Le 10 mappe del mix valgono ~112 s seriali (~37 s su 3 lane a
+bilanciamento perfetto) ai 11,18 s mediani, contro i ~190 s/~63 s stimati dal
+cold. Il gate ≥100 item/min resta **FAIL e non misurato sul mix**: questa serie
+misura una sola classe (mappe) e la varianza 9,79–16,88 s è più grande della
+differenza discussa, quindi vale la mediana e mai una run singola. Evidenza:
+`ops/jobs/map-cost-20261030/README.md` (sezione *Repeatability + parity*).
+
+## 11.10 Split overlay: niente doppio render (01-11-2026)
+
+**Il certificato confrontava la finestra sbagliata.** `certifyFinalJobOverlayBatch`
+(ora unica autorità, chiamata dal handoff e dal boundary) confrontava il receipt
+di **piano** con la durata dell'artefatto. Su una canvas packed da 3 s il receipt
+di piano è un tempo assoluto (`28020500us` in r69) mentre le stesse frame stanno
+sull'artefatto a `1275000us..3012500us`: il batch veniva rifiutato con
+*"places … at 28020500us but the artifact lasts 3000000us"* pur essendo corretto.
+Ora il gate legge `artifact_in_us/artifact_out_us` (fallback al receipt di piano
+solo per artefatti non packed), e `frame_count=-1` — il valore con cui il receipt
+descrive una composite packed — non è più un rifiuto: il handoff deriva il
+conteggio onesto dalla durata certificata (`round(duration·fps)`), che è la
+stessa cosa che il worker sonda su quel file. Un conteggio impossibile (`<-1`)
+resta un errore.
+
+**Il boundary non paga più due volte la GPU.** `finalJobSplitPreflight` decide
+**prima** di qualsiasi render, con la stessa partizione e lo stesso calcolo dei
+packed placements che usa la submission: se un batch non può essere certificato
+il piano va direttamente in single-timeline. Se invece il piano passa e il
+certificato post-render fallisce, il run **fallisce citando il batch** invece di
+ri-renderizzare la timeline intera. Prima di questo gate ogni rifiuto costava un
+secondo render completo (r63, r69). Il caso r69 è pinnato da
+`final_job_overlay_batch_certification_test.go`.
+
+**La coda di 12 s del final job non è nostra.** Verificato sui job document del
+master per r67/r68/r69 (`GET /api/v1/jobs/{id}`):
+
+| Run | remote job | created_at → started_at | `dispatch_status` | `future_asset_plan` |
+|---|---|---:|---|---|
+| r67 | `job_7b79412bda20ee06` | 14:23:57Z → 14:24:09Z = **12 s** | `prefetch_ready` | `prepared` |
+| r68 | `job_f5b4937f6f34012f` | 14:31:16Z → 14:31:28Z = **12 s** | `prefetch_ready` | `prepared` |
+| r69 | `job_213a2facc70ff1cd` | 14:34:29Z → 14:34:30Z = **1 s** | `prefetch_waiting_assets` | `applied` |
+
+I 12 s stanno tutti **prima** del lease (`leased_at == started_at`), quindi non
+sono polling nostro: i claim locali costano 0,2–1,0 s e il nostro attach poll
+(3 s di intervallo) ha un `poll_lag` di 0,1–3,2 s. Sono il **gate di prefetch del
+master**: quando lo stato è `prefetch_ready` il job aspetta il prefetch (12 s su
+86 asset ≈ 140 ms/asset, che a ~2 MB totali non è banda ma latenza/concorrenza),
+quando parte in `prefetch_waiting_assets` parte in 1 s e il worker scarica on
+demand — r69 ha girato così, con gli stessi 86 asset, `prefetch_issue` valorizzato
+e `SUCCEEDED` in 13 s di esecuzione. Il guadagno è quindi **~11 s per final job**
+e si ottiene solo sul master (dispatch anticipato o prefetch più concorrente):
+da lato `refactored` non c'è nulla da cambiare.
+
+### 11.10.1 Misure dopo il fix (run r70÷r75, stesso payload, 01-11-2026)
+
+**Overlay: da 60,2 s a 13 s, un solo pass.** `overlay render complete` riporta il
+wall del boundary: r69 **60,24 s** (split rifiutato alle 14:34:02 dopo ~48 s +
+secondo render della timeline singola da 12,2 s), r73 **12,84 s**, r74 **12,85 s**,
+r75 **13,35 s**. Il doppio render non c'è più: il boundary rende, certifica e
+consegna.
+
+Il set consegnato da r73/r75 è **9 batch, uno per scena** (`overlay_render.batches`,
+arrefatto per scena `227da1b914f2`, `total_ms` 2,84 s e 3,22 s, `render_ms` 1,47 s
+e 1,68 s a batch): lo split per-scena arriva al master come
+`pipelinegen.overlay-manifest-set.v1` e il job remoto chiude `SUCCEEDED`. Il
+costo residuo dei 12,8–13,3 s è la coda+render delle 9 composizioni, non un
+secondo pass della timeline intera.
+
+**Due gate hanno trovato due aritmetiche, non due difetti.** r70 (primo run con il
+preflight) ha fallito su `places … at 3012500us on the artifact but the artifact
+lasts 3000000us`: 12,5 ms, **meno di un frame** — la finestra del manifest è
+ceil'ata sul bordo frame mentre la durata è un *conteggio* di frame. r71 ha fallito
+su `has 84 certified frames for a 85-frame replace window`: stessa classe (43
+frame misurati ceil vs 42 arrotondati). Entrambi i gate ora tollerano **un frame**
+(`finalJobArtifactWindowTolerance`, `assetFrames+1`) e rifiutano il secondo frame:
+`TestCertifyFinalJobOverlayBatchToleratesOneFrameOverhang` e
+`TestFinalJobManifestWireToleratesOneFrameOfReplaceWindow` sono i pin.
+
+**Il `resolve` del handoff NON è parallelizzabile su questo stack.** Misura, non
+ipotesi:
+
+| Configurazione | Sorgenti risolte | Costo per sorgente | `resolve_ms` |
+|---|---:|---:|---:|
+| seriale (r69) | 56 | ~195 ms | **10.920** |
+| seriale (r75) | 56 | ~175 ms | **9.828** |
+| 6 worker, finestra 12 (r73) | 61 | ~180 ms | 10.950 (solo 12 scaldati) |
+| 6 worker, finestra 64 (r74) | 85 | **576 ms** (max 2.068) | **49.460** |
+
+Con 6 richieste in volo il costo per sorgente **triplica**: il percorso è
+throughput-bound (metadata Drive + publish/firma Objectstore), non latency-bound.
+Parallelizzare moltiplica il lavoro invece di nasconderlo. Il meccanismo resta
+(`VELOX_FINAL_JOB_RESOLVE_CONCURRENCY`, single-flight per identità, finestra sul
+cursore del folder) ma il **default è 1**: `TestFinalJobSourcePrefetch*` pinnano
+la semantica e il commento sul default porta questa tabella. Il guadagno vero qui
+è ridurre il lavoro (o spostarlo fuori dalla critical path), non la concorrenza.
+
+**Risultato sul final job.** Stesso payload, host quiescente:
+
+| | r69 (prima) | r75 (dopo) |
+|---|---:|---:|
+| overlay_render (boundary) | 60,24 s | **13,35 s** |
+| handoff | 14,44 s | 12,57 s |
+| queue (master) | 1,0 s | 13,0 s |
+| execution (master) | 13,04 s | 13,15 s |
+| wall del run | 103,33 s | **71,53 s** |
+
+`critical_path` di r75: `remote_final_job(55,6%) > overlay_render(18,7%) >
+generate(10,4%) > scene_analysis(11,8%) > prepare_join(14,5%)`. Il collo di
+bottiglia è ora l'attesa del render remoto (handoff 12,6 s + attach 27,0 s), e la
+sua prima voce resta il `resolve` seriale da 9,8 s. Evidenza: `r69`÷`r75` in
+`ops/jobs/garlasco_editorial_e2e_20261030/` (`*-submit-poll.log`, `job-full-rNN.json`).
+
+### 7.x Il `resolve` seriale esce dalla critical path (r78)
+
+Il `resolve` non si può accelerare (la tabella sopra: più concorrenza = più
+lavoro), quindi la sola leva rimasta è **spostarlo in una finestra già pagata**.
+La finestra esiste: l'overlay render tiene 13,2-12,6 s di critical path con la
+CPU ferma. La selezione dei sorgenti stock, però, non era disponibile fuori dal
+payload build: era scritta dentro `BuildFinalJobPayloads`, intrecciata con la
+costruzione di scene, runtime asset e testo.
+
+Ora vive in `final_job_stock_planner.go` (`finalJobStockPlanner`): il folder
+listing, il filtro delle sorgenti copy-incompatibili, il cursore per folder e la
+rotazione a chunk. Il payload build e il prewarm attraversano **la stessa**
+camminata, quindi il prewarm non può scaldare un set diverso da quello che
+l'handoff chiederà — un prewarm che ricalcola la regola sarebbe una seconda
+implementazione dello stesso contratto, libera di divergere in silenzio.
+
+Il prewarm parte su `OnPlanReady` di `audioCompile` — non all'ingresso della
+fase: lì `result.CanonicalTimeline` è ancora nil e la camminata trova **0**
+segmenti. È esattamente quello che r77 ha misurato (`windows=0,
+unique_resolved=0`) prima che l'aggancio fosse spostato. Le due ancore
+(`audioCompile` → ramo join e `runOverlayRenderPhase` → ramo seriale) sono
+mutuamente esclusive ma idempotenti per run (`prewarmRunID`).
+
+**Risultato (stesso payload, 56 sorgenti stock):**
+
+| | r75 | r76 | r77 (hook all'ingresso) | **r78 (hook su OnPlanReady)** |
+|---|---:|---:|---:|---:|
+| prewarm | — | — | 0 window, 0 ms | **56 window, 10.383 ms** |
+| `handoff_resolve_ms` | 9.828 | 11.497 | 11.223 | **427** |
+| `handoff_ms` | 12.574 | 14.885 | 12.501 | **1.628** |
+| `dedup_hits` | 0 | 0 | 0 | **56** |
+| `poll_lag_ms` | 1.932 | 869 | 888 | 969 |
+| `queue_ms` (master) | 13.000 | 12.000 | 12.000 | 1.000 |
+| `execution_ms` (master) | 13.149 | 13.917 | 15.453 | 13.539 |
+| wall del run | 71,53 s | 91,79 s | 75,96 s | **49,25 s** |
+
+Il prewarm (10,4 s) sta **dentro** la finestra del render (12,6 s in r78): 0 s di
+lavoro aggiunto, 10,8 s tolti dall'handoff. `queue_ms` a 1,0 s non è attribuibile
+a questa modifica (è il gate di prefetch del master): si registra come osservato,
+non come guadagno. `poll_lag` non è più misurato a 1,9 s perché l'attach
+`boundPollGap` limita il gap a 1 s da quando il master riporta il job **started**
+(un job QUEUED non può completare, quindi mantiene il tetto configurato): r78
+misura 969 ms, cioè il tetto, non mezzo intervallo.
+
+Test che pinnano il contratto: `TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes`
+(rotazione e chunk identici alla camminata inline), `TestPrewarmFinalJobStockSourcesLeavesNothingForTheHandoffToResolve`
+(il build successivo non risolve nulla di nuovo), `TestFinalJobStockPrewarmStartsInTheAudioOverlapBranch`
+(fallisce se l'aggancio viene tolto da `audioCompile` — verificato togliendolo),
+`TestFinalJobStockPrewarmStartsOncePerRun`, `TestHandoffCacheSurvivesThePrewarmOfTheSameRun`
+(lo start dell'handoff non butta la cache dello stesso run, ma un run diverso sì),
+`TestBoundPollGapCapsTheStartedWait`.
