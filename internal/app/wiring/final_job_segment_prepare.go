@@ -1110,6 +1110,19 @@ func framesDurationUS(frames int64) int64 {
 	return (frames*1_000_000 + finalJobSegmentFPS/2) / finalJobSegmentFPS
 }
 
+// finalJobSourceTimeBaseCertified reports whether a source's video-track time
+// base is one a 24 fps assembly-ready source may legitimately carry. Two
+// authorities are accepted: the delivery grid (1/90000) and x264's container
+// time base (1/(fps*512) = 1/12288 at 24 fps), which is what the overlay batch
+// encoder writes unless a timescale override is requested. The track timescale
+// is metadata, not a copy-safety fact: every fragment is remuxed with
+// -video_track_timescale 90000 before it is published, while GOP, B-frames,
+// start time and duration remain the gate. Any other time base fails closed.
+func finalJobSourceTimeBaseCertified(timeBase string) bool {
+	timeBase = strings.TrimSpace(timeBase)
+	return timeBase == "1/90000" || timeBase == fmt.Sprintf("1/%d", finalJobSegmentFPS*512)
+}
+
 // finalJobFragmentProbe is the raw material of a certificate: one ffprobe run
 // over the container, without decoding a single frame. Every field is read from
 // the bytes, which is why the census derived from it can be trusted where a
@@ -1125,6 +1138,7 @@ type finalJobFragmentProbe struct {
 	startAtZero    bool
 	declaredFrames string
 	declaredCount  int64
+	declaredKnown  bool
 	durationUS     int64
 	keyframeAt     map[int64]bool
 	packets        int64
@@ -1142,7 +1156,7 @@ func (p finalJobFragmentProbe) certify(frameCount int64) error {
 	if !p.startAtZero {
 		return fmt.Errorf("prepared fragment does not start at timestamp zero")
 	}
-	if p.declaredCount != frameCount {
+	if p.declaredKnown && p.declaredCount != frameCount {
 		return fmt.Errorf("prepared fragment has %q frames; expected %d", p.declaredFrames, frameCount)
 	}
 	if p.durationUS < framesDurationUS(frameCount)-1_000 || p.durationUS > framesDurationUS(frameCount)+1_000 {
@@ -1201,10 +1215,12 @@ func probeFinalJobFragment(ctx context.Context, path string) (finalJobFragmentPr
 	}
 	s := decoded.Streams[0]
 	probe.streamOK = s.CodecName == "h264" && s.Profile == "High" && s.Level == 40 && s.Width == 1920 && s.Height == 1080 &&
-		s.PixelFmt == "yuv420p" && s.AvgFPS == "24/1" && s.BFrames == 0 && s.TimeBase == "1/90000"
+		s.PixelFmt == "yuv420p" && s.AvgFPS == "24/1" && s.BFrames == 0 && finalJobSourceTimeBaseCertified(s.TimeBase)
 	probe.startAtZero = strings.TrimSpace(s.StartTime) == "0.000000"
-	probe.declaredFrames = s.Frames
-	probe.declaredCount, _ = strconv.ParseInt(strings.TrimSpace(s.Frames), 10, 64)
+	probe.declaredFrames = strings.TrimSpace(s.Frames)
+	if count, parseErr := strconv.ParseInt(probe.declaredFrames, 10, 64); parseErr == nil {
+		probe.declaredCount, probe.declaredKnown = count, true
+	}
 	if seconds, parseErr := strconv.ParseFloat(strings.TrimSpace(decoded.Format.Duration), 64); parseErr == nil {
 		probe.durationUS = int64(seconds * float64(time.Second) / float64(time.Microsecond))
 	}

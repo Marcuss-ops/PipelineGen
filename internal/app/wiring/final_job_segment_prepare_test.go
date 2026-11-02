@@ -113,6 +113,86 @@ func TestFinalJobSourceCensusIsDerivedNotDeclared(t *testing.T) {
 	}
 }
 
+// A source is not less copyable because its container uses x264's time base:
+// the fragment is remuxed onto the 1/90000 delivery grid before publication.
+func TestFinalJobSourceTimeBaseCertified(t *testing.T) {
+	for _, timeBase := range []string{"1/90000", "1/12288"} {
+		if !finalJobSourceTimeBaseCertified(timeBase) {
+			t.Fatalf("time base %q must certify a 24 fps assembly source", timeBase)
+		}
+	}
+	for _, timeBase := range []string{"", "1/1000", "1/12287", "1/180000", "24/1", "1/90000 extras"} {
+		if finalJobSourceTimeBaseCertified(timeBase) {
+			t.Fatalf("time base %q must fail closed", timeBase)
+		}
+	}
+}
+
+// The packet table is the frame-count authority: MP4 writers are allowed to
+// leave nb_frames absent (fragmented or concatenated overlays do), and a
+// probe of the bytes still proves every frame. A DECLARED count that
+// disagrees stays a rejection.
+func TestFinalJobCertificateAcceptsUnknownDeclaredFrameCount(t *testing.T) {
+	probe := finalJobFragmentProbe{
+		streamOK:    true,
+		startAtZero: true,
+		durationUS:  framesDurationUS(96),
+		keyframeAt:  map[int64]bool{0: true, 48: true},
+		packets:     96,
+	}
+	if err := probe.certify(96); err != nil {
+		t.Fatalf("an absent declared frame count must not reject certified bytes: %v", err)
+	}
+	probe.declaredKnown, probe.declaredCount = true, 95
+	if err := probe.certify(96); err == nil {
+		t.Fatal("a declared frame count that disagrees with the packets must still be rejected")
+	}
+}
+
+// The census must accept the real x264-container source shape (1/12288), not
+// only a source already written on the delivery grid.
+func TestFinalJobCensusAcceptsX264TimeBase(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	dir := t.TempDir()
+	source := filepath.Join(dir, "x264-timebase.mp4")
+	args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24", "-frames:v", "96", "-an",
+		"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-level:v", "4.0",
+		"-pix_fmt", "yuv420p", "-r", "24", "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
+		"-bf", "0", "-flags", "+cgop", source}
+	if out, err := exec.Command(ffmpeg, args...).CombinedOutput(); err != nil {
+		t.Fatalf("create x264-timebase source: %v: %s", err, out)
+	}
+	p := newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{}, "", 1)
+	frames, ok := p.sourceCensus(context.Background(), digest.SHA256String(source), source)
+	if !ok || frames != 96 {
+		t.Fatalf("x264-timebase source census = %d frames, certified=%v", frames, ok)
+	}
+}
+
+// Regression pin on the artifact that actually cost the r-series its copy
+// window: the real overlay batch (1607 frames, bf=0, GOP 48, 1/12288). It is
+// skipped in checkouts that never ran the job on this host.
+func TestFinalJobRealOverlayArtifactIsCopyable(t *testing.T) {
+	matches, _ := filepath.Glob("../../../data/final-job-fragments/sources/b1/b1486eecefc5*.mp4")
+	if len(matches) != 1 {
+		t.Skip("local r78 overlay artifact not present")
+	}
+	probe, err := probeFinalJobFragment(context.Background(), matches[0])
+	if err != nil {
+		t.Fatalf("probe real overlay artifact: %v", err)
+	}
+	if got, want := probe.frames(), int64(1607); got != want {
+		t.Fatalf("real overlay artifact frames = %d, want %d", got, want)
+	}
+	if err := probe.certify(probe.frames()); err != nil {
+		t.Fatalf("real overlay artifact must be copyable: %v", err)
+	}
+}
+
 func TestFinalJobCopyWindowPreservesFramesAndCertificate(t *testing.T) {
 	ffmpeg, err := exec.LookPath("ffmpeg")
 	if err != nil {
