@@ -15,6 +15,7 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // overlayBatchWork is one Chronon invocation: the manifest timeline
@@ -166,6 +167,11 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 	}
 	child.PlanID = overlayItemChildPlanID(parent.PlanID, work.candidates[0].index, "batch-"+work.id)
 	child.VideoID = child.PlanID
+	// The fused artifact is an opaque, SILENT composition: the batch muxes no
+	// audio (the master owns it) and the encoder writes H.264/yuv420p. Declare
+	// the profile that describes it, so the producer certifies the artifact at
+	// finalize instead of leaving every consumer to re-derive its facts.
+	child.OutputProfileID = kernelmedia.OverlayVideoOnlyProfileID
 	child.Fingerprint = ""
 	child.Items = items
 	child.DurationMS = (endUS - work.startUS + 999) / 1000
