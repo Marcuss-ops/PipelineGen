@@ -3,6 +3,8 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -291,42 +293,79 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 					metrics = *result.AudioMetrics
 				}
 			} else {
-				// rust.audio_render is the external Rust render boundary
-				// (pipelinegen-muscles). The canonical Run clock records the
-				// whole Render invocation as an OperationReport under
-				// audio_compile; mix/aac_encode/probe/hash remain the
-				// owner-measured subtimings inside it.
-				if opErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
-					Stage:     kernobs.StageName(audioCompileStage),
-					Component: kernobs.ComponentName("rust"),
-					Operation: kernobs.OperationName("audio_render"),
-				}, func(opCtx context.Context) error {
-					var renderErr error
-					finalAudio, metrics, renderErr = r.combinedAudioRenderer.Render(opCtx, compiledAudioPlan, audioAssets)
-					return renderErr
-				}); opErr != nil {
-					cause := fmt.Errorf("combined audio render failed: %w", opErr)
-					r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
-					r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
-					return false
+				// Cross-run reuse: the compiled plan hash is the work identity, so a
+				// retry or a revision that leaves the plan untouched must not pay
+				// mix + AAC again. The cache re-hashes the bytes before answering,
+				// and the certification below still runs on the reused reference.
+				if req.FinalJob {
+					cacheStarted := time.Now()
+					if cached, ok := r.finalAudioCache.take(compiledAudioPlan, os.TempDir()); ok {
+						// A cache hit is only accepted when it satisfies the SAME
+						// contract the renderer must satisfy: a stale or foreign entry
+						// costs one render, never a failed run.
+						if certErr := ValidateFinalAudioReference(cached, compiledAudioPlan); certErr != nil {
+							r.log.Warn("final audio cache entry does not satisfy the canonical contract; re-rendering",
+								zap.String("run_id", runID),
+								zap.String("plan_sha256", compiledAudioPlan.PlanSHA256),
+								zap.Error(certErr))
+						} else {
+							finalAudio = cached
+							if result.AudioMetrics != nil {
+								metrics = *result.AudioMetrics
+							}
+							cacheMS := time.Since(cacheStarted).Milliseconds()
+							metrics.CacheOutcome = finalAudioCacheHitPlan
+							metrics.TotalMS = cacheMS
+							metrics.AudioDurationMS = finalAudio.DurationMS
+							r.log.Info("final audio reused from the plan cache",
+								zap.String("run_id", runID),
+								zap.String("plan_sha256", compiledAudioPlan.PlanSHA256),
+								zap.Int64("lookup_ms", cacheMS))
+						}
+					}
+				}
+				if strings.TrimSpace(finalAudio.AssetID) == "" {
+					// rust.audio_render is the external Rust render boundary
+					// (pipelinegen-muscles). The canonical Run clock records the
+					// whole Render invocation as an OperationReport under
+					// audio_compile; mix/aac_encode/probe/hash remain the
+					// owner-measured subtimings inside it.
+					if opErr := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
+						Stage:     kernobs.StageName(audioCompileStage),
+						Component: kernobs.ComponentName("rust"),
+						Operation: kernobs.OperationName("audio_render"),
+					}, func(opCtx context.Context) error {
+						var renderErr error
+						finalAudio, metrics, renderErr = r.combinedAudioRenderer.Render(opCtx, compiledAudioPlan, audioAssets)
+						return renderErr
+					}); opErr != nil {
+						cause := fmt.Errorf("combined audio render failed: %w", opErr)
+						r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)
+						r.failRunWithRetry(ctx, runID, StageCompilingAudio, cause)
+						return false
+					}
+					r.recordAudioRenderOperations(ctx, metrics)
+					// Render correlation: the produced final_audio asset is
+					// traceable to the render operation via its asset_id.
+					if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
+						OperationID: artifactOperationID(exec.Attempt, OperationRender, "final_audio"),
+						Kind:        OperationRender,
+						Language:    req.SourceLanguage,
+						AssetID:     finalAudio.AssetID,
+						Status:      "COMPLETED",
+					}); err != nil {
+						r.failExecutionStepBestEffort(ctx, exec, audioStep, err)
+						r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
+						return false
+					}
+					if req.FinalJob {
+						r.finalAudioCache.put(compiledAudioPlan, finalAudio)
+					}
 				}
 				metrics.TimelineCompileMS = compileTimings.TimelineCompileMS
 				metrics.AudioPlanCompileMS = compileTimings.AudioPlanCompileMS
 				metrics.ClipAudioPrepareMS = compileTimings.ClipAudioPrepareMS
-				r.recordAudioRenderOperations(ctx, metrics)
-				// Render correlation: the produced final_audio asset is
-				// traceable to the render operation via its asset_id.
-				if err := r.recordArtifactOperation(ctx, exec, ArtifactOperation{
-					OperationID: artifactOperationID(exec.Attempt, OperationRender, "final_audio"),
-					Kind:        OperationRender,
-					Language:    req.SourceLanguage,
-					AssetID:     finalAudio.AssetID,
-					Status:      "COMPLETED",
-				}); err != nil {
-					r.failExecutionStepBestEffort(ctx, exec, audioStep, err)
-					r.failRunWithRetry(ctx, runID, StageCompilingAudio, err)
-					return false
-				}
+				// Reused or rendered, the reference is certified by the same gate.
 				if err := ValidateFinalAudioReference(finalAudio, compiledAudioPlan); err != nil {
 					cause := fmt.Errorf("final audio certification failed: %w", err)
 					r.failExecutionStepBestEffort(ctx, exec, audioStep, cause)

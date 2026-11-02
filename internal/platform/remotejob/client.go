@@ -364,6 +364,12 @@ func (c *Client) Attach(ctx context.Context, jobID string, budget time.Duration)
 			// Terminal failure or a transport fault: the wait is over either way.
 			return finish(result, err)
 		}
+		// A QUEUED job cannot complete, so a long gap there costs nothing; a
+		// STARTED one can finish at any moment, and every second after the start
+		// is a second the observation trails the artifact. r75 measured 1,93 s of
+		// poll_lag over 11 polls at a 3 s ceiling: bound the gap to one second
+		// for the rest of the wait, which is the window where it is measurable.
+		next = boundPollGap(next, result.Timing.StartedAt)
 		select {
 		case <-ctx.Done():
 			return finish(last, ctx.Err())
@@ -378,6 +384,23 @@ func (c *Client) Attach(ctx context.Context, jobID string, budget time.Duration)
 			next = interval
 		}
 	}
+}
+
+// startedPollInterval bounds the poll gap once the Master reports a STARTED
+// job. It is the whole of the observable poll_lag, so it is set from the
+// measured cost of trailing a 13 s render by half an interval (r75: 1,93 s),
+// not from a request-rate budget: a queued wait keeps the configured ceiling.
+const startedPollInterval = time.Second
+
+// boundPollGap applies that ceiling: a job the Master has not started yet keeps
+// whatever gap the backoff has reached, and a started one is observed at least
+// once per startedPollInterval. A configured interval below the ceiling is left
+// alone, so a caller that asked for faster polls still gets them.
+func boundPollGap(next time.Duration, startedAt time.Time) time.Duration {
+	if startedAt.IsZero() || next <= startedPollInterval {
+		return next
+	}
+	return startedPollInterval
 }
 
 // nonNegative clamps a local delta so a Master clock ahead of this host cannot

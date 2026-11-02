@@ -5,14 +5,81 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+func TestFinalJobObjectPublicationChecksAvailabilityOnce(t *testing.T) {
+	const body = "known object bytes"
+	sha := digest.SHA256String(body)
+	var heads, puts atomic.Int32
+	var present atomic.Bool
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+sha {
+			http.Error(w, "unexpected object", http.StatusNotFound)
+			return
+		}
+		switch r.Method {
+		case http.MethodHead:
+			heads.Add(1)
+			if !present.Load() {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+		case http.MethodPut:
+			puts.Add(1)
+			data, err := io.ReadAll(r.Body)
+			if err != nil || string(data) != body {
+				http.Error(w, "incorrect bytes", http.StatusBadRequest)
+				return
+			}
+			present.Store(true)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "https://objects.example")
+	t.Setenv("OBJECTSTORE_SIGNING_SECRET", strings.Repeat("s", 32))
+	t.Setenv("OBJECTSTORE_TOKEN", "")
+	path := filepath.Join(t.TempDir(), "fragment")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	present.Store(true)
+	ref, err := PublishFinalJobLocalObjectVerified(context.Background(), "fragment", path, sha, int64(len(body)))
+	if err != nil || ref["asset_id"] != "fragment" || heads.Load() != 1 {
+		t.Fatalf("existing object: ref=%v err=%v HEADs=%d", ref, err, heads.Load())
+	}
+	present.Store(false)
+	heads.Store(0)
+	if _, err := PublishFinalJobLocalObjectVerified(context.Background(), "fragment", path, sha, int64(len(body))); err != nil {
+		t.Fatal(err)
+	}
+	if heads.Load() != 2 || puts.Load() != 1 {
+		t.Fatalf("upload: HEADs=%d PUTs=%d, want 2 and 1", heads.Load(), puts.Load())
+	}
+	heads.Store(0)
+	present.Store(false)
+	if _, err := finalJobObjectStoreRef(context.Background(), "fragment", sha, sha, int64(len(body))); err == nil || heads.Load() != 1 {
+		t.Fatalf("external reference must check availability: err=%v HEADs=%d", err, heads.Load())
+	}
+}
 
 type finalJobPayloadResolver struct{}
 

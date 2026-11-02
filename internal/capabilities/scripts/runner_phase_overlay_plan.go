@@ -71,6 +71,17 @@ func (e *executionRun) audioCompile() bool {
 		// broker job identity at this hand-off so publication cannot fall back
 		// to the internal run/plan ID after JSON checkpointing.
 		setOverlayDriveJobID(snapshot, e.exec.JobID)
+		// The stock sources the final job will consume are resolved NOW, on the
+		// sibling goroutine below, while the overlay render waits on the GPU:
+		// r75/r76 paid 9,8-11,5 s of serial Drive resolution inside
+		// `remote_final_job` next to a 13 s render holding the critical path with
+		// an idle CPU. This is the moment BOTH halves are known — the canonical
+		// timeline exists (the overlay plan was just compiled from it) and the
+		// render has not started — and it is the only place the concurrent
+		// branch passes through: it renders via renderOverlayPlans directly and
+		// never enters runOverlayRenderPhase, which keeps its own hook for the
+		// serial path.
+		e.r.startFinalJobStockPrewarm(e.ctx, e.runID, e.req, result)
 		done = make(chan audioOverlayOutcome, 1)
 		// The P2 barrier (spun in runAudioCompilePhase off the P1 plan branch)
 		// may already have certified some languages while the master compiled.

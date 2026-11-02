@@ -146,6 +146,15 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	runner.SetCombinedAudioRenderer(audioRenderer)
 	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	if cfg != nil {
+		// Cross-run reuse of a certified master: the audio plan hash is the work
+		// identity, so an unchanged plan must not be re-mixed and re-encoded.
+		audioCacheDir := finalAudioCacheDir(cfg.Storage.DataDir)
+		runner.SetFinalAudioCacheDir(audioCacheDir)
+		if audioCacheDir != "" {
+			log.Info("final-audio plan cache configured", zap.String("cache_dir", audioCacheDir))
+		}
+	}
 	if fakeFinalJobRequested() {
 		// Local-only measurement mode: every local phase still runs, the remote
 		// render does not. The receipt is marked Simulated so nothing downstream
@@ -538,6 +547,25 @@ func mediaCheckpointArtifactVerifier(committer assetspersistence.AssetCommitter,
 		return nil
 	}
 	return verifier
+}
+
+// finalAudioCacheDir resolves where certified masters are reused between runs.
+// It mirrors the fragment-cache boundary: "off" disables reuse (an A/B run
+// needs a way to measure the cache instead of trusting it) and the default
+// lives under the same durable data directory as the rest of the state.
+func finalAudioCacheDir(dataDir string) string {
+	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_AUDIO_CACHE_DIR"))
+	switch strings.ToLower(raw) {
+	case "off", "disabled", "none":
+		return ""
+	case "":
+		if strings.TrimSpace(dataDir) == "" {
+			return ""
+		}
+		return filepath.Join(dataDir, "final-audio")
+	default:
+		return raw
+	}
 }
 
 func wireRenderAttemptRecorder(db *sql.DB, log *zap.Logger) scriptgen.RenderAttemptRecorder {

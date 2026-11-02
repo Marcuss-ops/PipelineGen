@@ -438,8 +438,16 @@ func resolveBackgroundReference(render *scriptpkg.VideoRenderSpec) error {
 //     timeline, which does not exist at request-build time. Callers that do
 //     have scene context use policy.SelectTransitionSFX directly.
 //
-// Determinism: the seed is the request's idempotency key, so retrying the same
-// job selects the same plate/track and the resulting plan stays byte-identical.
+// Determinism: the seed is the video's STABLE CREATIVE IDENTITY (Project), not
+// the submit. The idempotency key changes on every submission — a retry, a
+// revision or a second run of the same payload is a new key — so seeding from
+// it made the background plate and the BGM track change per run. Measured on
+// the Garlasco payload: identical duration, three different audio plans across
+// r64/r65/r67 (bgm3 vs bgm5), which re-mixed, re-encoded and could never hit
+// the plan-keyed audio cache. Project is set before this call (builder
+// request normalization) and is the same creative namespace the overlay style
+// sampling and the render-cache digest already use; the idempotency key stays
+// as the fallback for callers that declared no project.
 func ApplyEditingAssetPolicy(req *GenerateRequest, policy mediaregistry.EditingAssetsPolicy) error {
 	if req == nil {
 		return errors.New("apply editing asset policy: request is required")
@@ -447,7 +455,10 @@ func ApplyEditingAssetPolicy(req *GenerateRequest, policy mediaregistry.EditingA
 	if err := policy.Validate(); err != nil {
 		return fmt.Errorf("apply editing asset policy: %w", err)
 	}
-	seed := strings.TrimSpace(req.IdempotencyKey)
+	seed := strings.TrimSpace(req.Project)
+	if seed == "" {
+		seed = strings.TrimSpace(req.IdempotencyKey)
+	}
 	if err := applyBackgroundSelection(req, policy, seed); err != nil {
 		return err
 	}

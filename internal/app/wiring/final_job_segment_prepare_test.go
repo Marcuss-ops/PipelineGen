@@ -2,16 +2,447 @@ package wiring
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
+
+func TestFinalJobRememberedFragmentRejectsTampering(t *testing.T) {
+	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{}, t.TempDir(), 1)
+	path := filepath.Join(t.TempDir(), "fragment.mp4")
+	body := []byte("certified fragment")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sha := digest.SHA256String(string(body))
+	p.rememberFragmentPath(sha, path)
+	if got := p.fragmentPath(sha); got != path {
+		t.Fatalf("verified path = %q, want %q", got, path)
+	}
+	if err := os.WriteFile(path, []byte("tampered fragment!"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.fragmentPath(sha); got != "" {
+		t.Fatalf("tampered path %q accepted for certified digest", got)
+	}
+}
+
+func TestFinalJobExactFragmentReuseRequiresZeroRequestedInPoint(t *testing.T) {
+	source := map[string]any{
+		"profile_id": finalJobSegmentProfile, "copy_eligible": true, "first_frame_keyframe": true, "closed_gop": true,
+		"source_in_us": int64(0), "duration_us": int64(2_000_000), "frame_count": int64(48),
+		"width": 1920, "height": 1080, "fps_num": int64(24), "fps_den": int64(1),
+	}
+	request := scriptgen.FinalJobVideoSegmentRequest{SourceInUS: 0, FrameCount: 48}
+	if !finalJobSourceIsExactPreparedFragment(source, request, 2_000_000) {
+		t.Fatal("exact whole-source window should be eligible")
+	}
+	request.SourceInUS = 1_000_000
+	if finalJobSourceIsExactPreparedFragment(source, request, 2_000_000) {
+		t.Fatal("nonzero requested in-point must not reuse the whole source")
+	}
+	request.SourceInUS = 0
+	source["closed_gop"] = false
+	if finalJobSourceIsExactPreparedFragment(source, request, 2_000_000) {
+		t.Fatal("uncertified source must not be reused")
+	}
+}
+
+func TestFinalJobCopyWindowEligibility(t *testing.T) {
+	request := scriptgen.FinalJobVideoSegmentRequest{SourceInUS: 2_000_000, FrameCount: 24}
+	if !finalJobWindowOnGOPGrid(request) {
+		t.Fatal("aligned window should be eligible for the census")
+	}
+	for _, tc := range []struct{ start, frames int64 }{{2_000_001, 24}, {-1, 24}, {0, 0}} {
+		request.SourceInUS, request.FrameCount = tc.start, tc.frames
+		if finalJobWindowOnGOPGrid(request) {
+			t.Fatalf("off-grid window accepted: %+v", request)
+		}
+	}
+}
+
+// The census is derived from the bytes, so a conformant source is copyable even
+// when it declares nothing, and a source that declares conformance it does not
+// have is not copyable.
+func TestFinalJobSourceCensusIsDerivedNotDeclared(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	dir := t.TempDir()
+	encode := func(name string, extra ...string) string {
+		path := filepath.Join(dir, name)
+		args := []string{"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+			"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24", "-frames:v", "96", "-an",
+			"-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-level:v", "4.0",
+			"-pix_fmt", "yuv420p", "-r", "24", "-video_track_timescale", "90000"}
+		args = append(args, extra...)
+		args = append(args, path)
+		if out, err := exec.Command(ffmpeg, args...).CombinedOutput(); err != nil {
+			t.Fatalf("create %s: %v: %s", name, err, out)
+		}
+		return path
+	}
+	certified := encode("certified.mp4", "-g", "48", "-keyint_min", "48", "-sc_threshold", "0", "-bf", "0", "-flags", "+cgop")
+	open := encode("open.mp4", "-g", "48", "-keyint_min", "48", "-sc_threshold", "0", "-bf", "2")
+
+	p := newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{}, "", 1)
+	frames, ok := p.sourceCensus(context.Background(), digest.SHA256String(certified), certified)
+	if !ok || frames != 96 {
+		t.Fatalf("conformant source census = %d frames, certified=%v", frames, ok)
+	}
+	if _, ok := p.sourceCensus(context.Background(), digest.SHA256String(open), open); ok {
+		t.Fatal("a source with B-frames must not be copyable")
+	}
+	// The memoized answer is keyed by content hash, not by path.
+	if again, ok := p.sourceCensus(context.Background(), digest.SHA256String(certified), open); !ok || again != 96 {
+		t.Fatalf("census was not memoized: %d frames, certified=%v", again, ok)
+	}
+}
+
+func TestFinalJobCopyWindowPreservesFramesAndCertificate(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.mp4")
+	cmd := exec.Command(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24", "-frames:v", "96",
+		"-an", "-c:v", "libx264", "-preset", "veryfast", "-profile:v", "high", "-level:v", "4.0",
+		"-pix_fmt", "yuv420p", "-r", "24", "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
+		"-bf", "0", "-flags", "+cgop", "-video_track_timescale", "90000", "-movflags", "+faststart", source)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("create source: %v: %s", err, out)
+	}
+	if err := verifyFinalJobFragment(context.Background(), source, 96); err != nil {
+		t.Fatalf("source certificate: %v", err)
+	}
+	p := newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{}, "", 1)
+	window := filepath.Join(dir, "window.mp4")
+	request := scriptgen.FinalJobVideoSegmentRequest{SourceInUS: 2_000_000, FrameCount: 24}
+	if err := p.copyCertifiedWindow(context.Background(), source, window, request); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyFinalJobFragment(context.Background(), window, request.FrameCount); err != nil {
+		t.Fatalf("copied window certificate: %v", err)
+	}
+	decode := func(path string, start string) string {
+		args := []string{"-hide_banner", "-loglevel", "error", "-nostdin"}
+		if start != "" {
+			args = append(args, "-ss", start)
+		}
+		args = append(args, "-i", path, "-map", "0:v:0", "-frames:v", "24", "-f", "framemd5", "-")
+		out, err := exec.Command(ffmpeg, args...).Output()
+		if err != nil {
+			t.Fatalf("decode frames: %v", err)
+		}
+		var frames []string
+		for _, line := range strings.Split(string(out), "\n") {
+			if line != "" && !strings.HasPrefix(line, "#") {
+				parts := strings.Split(line, ",")
+				frames = append(frames, strings.TrimSpace(parts[len(parts)-1]))
+			}
+		}
+		if len(frames) != 24 {
+			t.Fatalf("decoded %d frames, want 24", len(frames))
+		}
+		return strings.Join(frames, ",")
+	}
+	if a, b := decode(source, "2"), decode(window, ""); a != b {
+		t.Fatal("copy changed the source window frames")
+	}
+
+	// Exercise the production preparer, including source verification, upload,
+	// the per-placement binding and the diagnostic count.
+	sourceBytes, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSHA := digest.SHA256String(string(sourceBytes))
+	sourceServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(sourceBytes)
+	}))
+	defer sourceServer.Close()
+	var stored []byte
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			if len(stored) == 0 || r.URL.Path != "/objects/"+digest.SHA256String(string(stored)) {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Length", fmt.Sprint(len(stored)))
+		case http.MethodPut:
+			stored, _ = io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "https://objects.example")
+	t.Setenv("OBJECTSTORE_SIGNING_SECRET", strings.Repeat("s", 32))
+	t.Setenv("OBJECTSTORE_TOKEN", "")
+	t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", "policy")
+	// No copy lever is set: copying an aligned certified window is the default.
+	if !finalJobCopyWindowsEnabled() {
+		t.Fatal("certified-window copy must be enabled by default")
+	}
+	p = newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, "", 1)
+	p.client = sourceServer.Client()
+	request.SourceDurationUS = 1_000_000
+	request.TimelineStartFrame = 72
+	request.TimelineRevision = 1
+	request.TimelineSHA256 = strings.Repeat("a", 64)
+	sourceRef := map[string]any{
+		"asset_id": "source", "sha256": sourceSHA, "size_bytes": int64(len(sourceBytes)), "source_uri": sourceServer.URL,
+		"profile_id": finalJobSegmentProfile, "copy_eligible": true, "first_frame_keyframe": true, "closed_gop": true,
+		"duration_us": int64(4_000_000), "frame_count": int64(96), "width": 1920, "height": 1080, "fps_num": 24, "fps_den": 1,
+	}
+	ref, err := p.PrepareFinalJobVideoSegment(context.Background(), sourceRef, request)
+	if err != nil {
+		t.Fatalf("prepare copied window: %v", err)
+	}
+	if p.Totals().copied != 1 || int64Value(ref["timeline_start_frame"]) != 72 || len(stored) == 0 {
+		t.Fatalf("copied=%d ref=%v uploaded=%d", p.Totals().copied, ref, len(stored))
+	}
+	uploaded := filepath.Join(dir, "uploaded.mp4")
+	if err := os.WriteFile(uploaded, stored, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if a, b := decode(source, "2"), decode(uploaded, ""); a != b {
+		t.Fatal("published fragment differs from the source window")
+	}
+	// An off-GOP request must use the encoder even with copy mode enabled.
+	request.SourceInUS = 500_000
+	if _, err := p.PrepareFinalJobVideoSegment(context.Background(), sourceRef, request); err != nil {
+		t.Fatalf("unaligned fallback: %v", err)
+	}
+	if p.Totals().segments != 2 || p.Totals().copied != 1 {
+		t.Fatalf("unaligned request did not fall back: %+v", p.Totals())
+	}
+	// Certificates are derived: with every declaration stripped from the source
+	// the aligned window is still copied, because the bytes are conformant.
+	request.SourceInUS = 0
+	undeclared := map[string]any{
+		"asset_id": "source", "sha256": sourceSHA, "size_bytes": int64(len(sourceBytes)), "source_uri": sourceServer.URL,
+	}
+	if _, err := p.PrepareFinalJobVideoSegment(context.Background(), undeclared, request); err != nil {
+		t.Fatalf("derived certificate copy: %v", err)
+	}
+	if p.Totals().segments != 3 || p.Totals().copied != 2 {
+		t.Fatalf("undeclared but conformant source did not copy: %+v", p.Totals())
+	}
+	// The explicit A/B lever must be able to turn the copy path off: with it
+	// disabled an aligned certified window is encoded, not copied.
+	t.Setenv("VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS", "0")
+	if finalJobCopyWindowsEnabled() {
+		t.Fatal("explicit disable must win")
+	}
+	request.SourceInUS = 2_000_000
+	if _, err := p.PrepareFinalJobVideoSegment(context.Background(), sourceRef, request); err != nil {
+		t.Fatalf("encoded fallback: %v", err)
+	}
+	if p.Totals().segments != 4 || p.Totals().copied != 2 {
+		t.Fatalf("disabled copy lever did not encode: %+v", p.Totals())
+	}
+}
+
+func TestFinalJobCopyWindowLever(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{{"", true}, {"1", true}, {"on", true}, {"0", false}, {"off", false}, {"garbage", false}} {
+		t.Setenv("VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS", tc.value)
+		if got := finalJobCopyWindowsEnabled(); got != tc.want {
+			t.Fatalf("lever %q = %v, want %v", tc.value, got, tc.want)
+		}
+	}
+}
+
+func TestFinalJobFragmentEncoderSettings(t *testing.T) {
+	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, "", 1)
+	for _, tc := range []struct{ override, codec, preset string }{
+		{"policy", "libx264", "veryfast"}, {"nvenc", "h264_nvenc", "p2"}, {"x264", "libx264", "veryfast"},
+	} {
+		t.Run(tc.override, func(t *testing.T) {
+			t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", tc.override)
+			codec, preset, err := p.fragmentEncoderSettings()
+			if err != nil || codec != tc.codec || preset != tc.preset {
+				t.Fatalf("settings = %q, %q, %v; want %q, %q", codec, preset, err, tc.codec, tc.preset)
+			}
+		})
+	}
+	t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", "invalid")
+	if _, _, err := p.fragmentEncoderSettings(); err == nil {
+		t.Fatal("invalid codec override accepted")
+	}
+}
+
+func TestFinalJobFragmentLockCancellationAndIndependence(t *testing.T) {
+	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{}, t.TempDir(), 2)
+	unlock, err := p.lockFragment(context.Background(), "same")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherUnlock, err := p.lockFragment(context.Background(), "different")
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherUnlock()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := p.lockFragment(ctx, "same"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("waiting on held lock = %v, want context canceled", err)
+	}
+	unlock()
+	nextUnlock, err := p.lockFragment(context.Background(), "same")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextUnlock()
+	if len(p.fragmentLocks) != 0 {
+		t.Fatalf("fragment locks retained after release: %d", len(p.fragmentLocks))
+	}
+}
+
+func TestFinalJobFragmentConcurrentWorkReusesCertifiedBytes(t *testing.T) {
+	dir := t.TempDir()
+	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, dir, 2)
+	t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", "policy")
+	body := []byte("already certified fragment")
+	sha := digest.SHA256String(string(body))
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead || r.URL.Path != "/objects/"+sha {
+			http.Error(w, "unexpected request", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "https://objects.example")
+	t.Setenv("OBJECTSTORE_SIGNING_SECRET", strings.Repeat("s", 32))
+	t.Setenv("OBJECTSTORE_TOKEN", "")
+	request := scriptgen.FinalJobVideoSegmentRequest{
+		SegmentID: "first", SourceInUS: 0, SourceDurationUS: 2_000_000, FrameCount: 48,
+		TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64),
+	}
+	sourceSHA := strings.Repeat("b", 64)
+	source := map[string]any{"asset_id": "source", "sha256": sourceSHA, "size_bytes": int64(42), "source_uri": "https://objects.example/source", "role": "stock"}
+	key := p.fragmentCacheKey(request, sourceSHA, "libx264")
+	unlock, err := p.lockFragment(context.Background(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type outcome struct {
+		ref map[string]any
+		err error
+	}
+	results := make(chan outcome, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			placement := request
+			placement.TimelineStartFrame = int64(i * 48)
+			ref, err := p.PrepareFinalJobVideoSegment(context.Background(), source, placement)
+			results <- outcome{ref, err}
+		}(i)
+	}
+	// The held work lock stands in for the first encoder. Both requests must
+	// wait until its verified bytes and certificate are in the cache.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		p.fragmentLocksMu.Lock()
+		users := p.fragmentLocks[key].users
+		p.fragmentLocksMu.Unlock()
+		if users == 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			unlock()
+			wg.Wait()
+			t.Fatalf("only %d callers reached the work lock", users)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	path := filepath.Join(dir, "fixture.mp4")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		unlock()
+		t.Fatal(err)
+	}
+	p.storeFragment(key, path, sha, int64(len(body)), 48, 2_000_000)
+	unlock()
+	wg.Wait()
+	close(results)
+	starts := make(map[int64]bool)
+	for result := range results {
+		if result.err != nil {
+			t.Fatal(result.err)
+		}
+		if result.ref["sha256"] != sha {
+			t.Fatalf("wrong reused bytes: %v", result.ref["sha256"])
+		}
+		starts[int64Value(result.ref["timeline_start_frame"])] = true
+	}
+	if !starts[0] || !starts[48] || p.Totals().cached != 2 {
+		t.Fatalf("placements = %v, cache hits = %d", starts, p.Totals().cached)
+	}
+}
+
+func TestFinalJobFragmentCacheConcurrentWriters(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("certified bytes")
+	sha := digest.SHA256String(string(body))
+	path := filepath.Join(dir, "input.mp4")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p1 := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{}, dir, 1)
+	p2 := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{}, dir, 1)
+	key := strings.Repeat("c", 64)
+	var wg sync.WaitGroup
+	for _, p := range []*finalJobSegmentPreparer{p1, p2} {
+		wg.Add(1)
+		go func(p *finalJobSegmentPreparer) {
+			defer wg.Done()
+			for i := 0; i < 20; i++ {
+				p.storeFragment(key, path, sha, int64(len(body)), 48, 2_000_000)
+			}
+		}(p)
+	}
+	wg.Wait()
+	cached, _, _, ok := p1.cachedFragment(key, 48, 2_000_000)
+	if !ok {
+		t.Fatal("concurrent writers lost or corrupted the cache entry")
+	}
+	f, err := os.Open(cached)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	got, err := io.ReadAll(f)
+	if err != nil || string(got) != string(body) {
+		t.Fatalf("cached bytes = %q, error = %v", got, err)
+	}
+}
 
 func TestNVENCPresetForMapsX264PresetNames(t *testing.T) {
 	cases := map[string]string{
@@ -155,6 +586,86 @@ func TestVerifyFinalJobFragmentRejectsAnOpenGOP(t *testing.T) {
 	}
 }
 
+// TestDerivePlacementCopiesTheCertifiedBitstream proves the duplicate-placement
+// path is a packet copy and not a second render: the derived object certifies
+// the same 48-frame assembly-ready stream, the coded video packets are
+// byte-identical to the fragment it repeats, and only the container differs —
+// which is exactly what the plan requires of a second placement (distinct bytes,
+// one canonical identity each).
+func TestDerivePlacementCopiesTheCertifiedBitstream(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	dir := t.TempDir()
+	source := filepath.Join(dir, "source.mp4")
+	fragment := filepath.Join(dir, "fragment.mp4")
+	derived := filepath.Join(dir, "placement.mp4")
+	create := exec.Command(ffmpeg,
+		"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24", "-t", "2",
+		"-an", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "48", "-sc_threshold", "0",
+		source,
+	)
+	if out, runErr := create.CombinedOutput(); runErr != nil {
+		t.Fatalf("make source fixture: %v: %s", runErr, out)
+	}
+	preparer := newFinalJobSegmentPreparer(ffmpeg, mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, "", 1)
+	request := scriptgen.FinalJobVideoSegmentRequest{
+		SegmentID: "segment-0000", SourceAssetID: "source-1", SourceSHA256: "sha",
+		SourceInUS: 0, SourceDurationUS: 2_000_000, TimelineStartFrame: 0, FrameCount: 48,
+		TimelineRevision: 1, TimelineSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+	}
+	if err := preparer.encodeFragment(context.Background(), source, fragment, request, false); err != nil {
+		t.Fatalf("encodeFragment: %v", err)
+	}
+	if err := preparer.remuxTaggedFragment(context.Background(), fragment, derived, "segment-0001"); err != nil {
+		t.Fatalf("remuxTaggedFragment: %v", err)
+	}
+	if err := verifyFinalJobFragment(context.Background(), derived, request.FrameCount); err != nil {
+		t.Fatalf("derived placement must certify the same assembly-ready stream: %v", err)
+	}
+	originalSHA, _, err := digest.SHA256File(fragment)
+	if err != nil {
+		t.Fatalf("hash fragment: %v", err)
+	}
+	derivedSHA, _, err := digest.SHA256File(derived)
+	if err != nil {
+		t.Fatalf("hash derived placement: %v", err)
+	}
+	if strings.EqualFold(originalSHA, derivedSHA) {
+		t.Fatal("derived placement certifies the same bytes as its source, which the plan refuses")
+	}
+	// The coded video packets must be untouched: extract both elementary
+	// streams by copy and compare them. A re-encode would change them.
+	extract := func(from, to string) []byte {
+		cmd := exec.Command(ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", from, "-map", "0:v:0", "-c", "copy", "-f", "h264", to)
+		if out, runErr := cmd.CombinedOutput(); runErr != nil {
+			t.Fatalf("extract elementary stream from %s: %v: %s", from, runErr, out)
+		}
+		data, readErr := os.ReadFile(to)
+		if readErr != nil {
+			t.Fatalf("read elementary stream %s: %v", to, readErr)
+		}
+		return data
+	}
+	original := extract(fragment, filepath.Join(dir, "original.h264"))
+	copied := extract(derived, filepath.Join(dir, "derived.h264"))
+	if digest.SHA256String(string(original)) != digest.SHA256String(string(copied)) {
+		t.Fatal("the derived placement carries different coded pictures, want the certified bitstream copied verbatim")
+	}
+	// The tag is what makes the bytes distinct, and it must travel in the
+	// container the assembler probes.
+	probe := exec.Command(ffmpeg, "-hide_banner", "-i", derived, "-f", "ffmetadata", "-")
+	metadata, probeErr := probe.Output()
+	if probeErr != nil {
+		t.Fatalf("read derived metadata: %v", probeErr)
+	}
+	if !strings.Contains(string(metadata), "chronon_placement=segment-0001") {
+		t.Fatalf("derived container lost its placement tag: %s", metadata)
+	}
+}
+
 func TestFinalJobFragmentCacheReusesTheSameWorkOnly(t *testing.T) {
 	dir := t.TempDir()
 	policy := mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}
@@ -165,7 +676,7 @@ func TestFinalJobFragmentCacheReusesTheSameWorkOnly(t *testing.T) {
 		TimelineRevision: 1, TimelineSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
 	sourceSHA := strings.Repeat("a", 64)
-	key := preparer.fragmentCacheKey(request, sourceSHA)
+	key := preparer.fragmentCacheKey(request, sourceSHA, "libx264")
 	if _, _, _, ok := preparer.cachedFragment(key, request.FrameCount, 3_000_000); ok {
 		t.Fatal("cache hit on an empty cache")
 	}
@@ -190,19 +701,22 @@ func TestFinalJobFragmentCacheReusesTheSameWorkOnly(t *testing.T) {
 	moved.TimelineStartFrame = 240
 	moved.TimelineRevision = 7
 	moved.TimelineSHA256 = strings.Repeat("f", 64)
-	if movedKey := preparer.fragmentCacheKey(moved, sourceSHA); movedKey != key {
+	if movedKey := preparer.fragmentCacheKey(moved, sourceSHA, "libx264"); movedKey != key {
 		t.Fatalf("cache key moved with the timeline (%s != %s), want work identity only", movedKey, key)
 	}
 	// A different window, a different source or a different encoder policy is a
 	// different fragment.
 	other := request
 	other.SourceInUS = 2_000_000
-	if otherKey := preparer.fragmentCacheKey(other, sourceSHA); otherKey == key {
+	if otherKey := preparer.fragmentCacheKey(other, sourceSHA, "libx264"); otherKey == key {
 		t.Fatal("cache key ignored the source in-point")
 	}
 	otherPolicy := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{Codec: "libx264", Preset: "medium", CRF: 20}, dir, 1)
-	if otherKey := otherPolicy.fragmentCacheKey(request, sourceSHA); otherKey == key {
+	if otherKey := otherPolicy.fragmentCacheKey(request, sourceSHA, "libx264"); otherKey == key {
 		t.Fatal("cache key ignored the encoder policy")
+	}
+	if gpuKey := preparer.fragmentCacheKey(request, sourceSHA, "h264_nvenc"); gpuKey == key {
+		t.Fatal("cache key ignored the effective encoder codec")
 	}
 	// Wrong frame count is a miss, not a guess.
 	if _, _, _, ok := preparer.cachedFragment(key, request.FrameCount+1, 3_000_000); ok {

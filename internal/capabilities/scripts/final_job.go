@@ -30,6 +30,23 @@ type FinalJobSubmitter interface {
 	SubmitFinalJob(context.Context, string, GenerateRequest, *GenerateResult) (RemoteFinalJobResult, error)
 }
 
+// FinalJobSourcePrewarmer is the OPTIONAL capability that resolves the stock
+// sources a final job will consume BEFORE the handoff asks for them.
+//
+// A handoff resolves its stock serially by contract (each source publishes its
+// own bytes), so on a 10-scene run it pays ~10 s inside `remote_final_job`
+// while the overlay render holds 13 s of the critical path with nothing queued
+// behind it. Warming the same sources during that render moves the cost into a
+// window that was already paid for; it does not make the resolution faster.
+//
+// It is optional and best-effort by construction: a submitter that cannot
+// prewarm keeps the serial handoff byte for byte, and the returned error is
+// logged by the runner — the handoff still walks and still reports its own
+// failure, so a prewarm miss can only cost the time it tried to save.
+type FinalJobSourcePrewarmer interface {
+	PrewarmFinalJobStockSources(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) error
+}
+
 // FinalJobStarter separates creating the remote render from waiting for it.
 // The runner checkpoints the returned job ID before it starts polling, so a
 // process restart can always reattach to the same render.
@@ -135,8 +152,14 @@ type RemoteFinalJobSegmentPrepTiming struct {
 	// fragment (nothing was produced). Cached counts fragments served from the
 	// local fragment cache: the same window of the same source bytes, encoded
 	// and certified by an earlier run.
-	Reused     int   `json:"reused,omitempty"`
-	Cached     int   `json:"cached,omitempty"`
+	Reused int `json:"reused,omitempty"`
+	Cached int `json:"cached,omitempty"`
+	// Derived counts duplicate placements certified by copying an already
+	// certified bitstream into a distinct container. They cost a remux, not a
+	// second encode, and their bytes are distinct by construction.
+	Derived int `json:"derived,omitempty"`
+	// Copied counts verified GOP-aligned windows copied without re-encoding.
+	Copied     int   `json:"copied,omitempty"`
 	DownloadMS int64 `json:"download_ms,omitempty"`
 	EncodeMS   int64 `json:"encode_ms,omitempty"`
 	VerifyMS   int64 `json:"verify_ms,omitempty"`

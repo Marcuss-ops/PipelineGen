@@ -24,12 +24,13 @@ package scriptgeneration
 //     N Batches (one per scene) and per-item Artifact rows so
 //     editing_timeline's overlayArtifactForItem resolves each item to the
 //     artifact that actually owns its frames;
-//   - FINAL jobs never take the split: the remote final worker consumes the
-//     single-timeline manifest wire today (results.OverlayRender.Manifest +
-//     one Artifact), so the split is callers-side gated to non-final jobs
-//     until the worker contract lands. render_queue_split stays
-//     fail-generic: the caller falls back to the single-timeline submission
-//     on ANY error, preserving today's exact behaviour.
+//   - FINAL jobs take the split too: the worker's final manifest carries
+//     artifacts[] and the V2 plan binds one asset per distinct byte-set, so N
+//     certified scene artifacts reach the payload as
+//     pipelinegen.overlay-manifest-set.v1. The caller accepts a batch set
+//     only when every batch passes certifyFinalJobOverlayBatch, and otherwise
+//     falls back to the single-timeline submission; render_queue_split stays
+//     fail-generic on ANY error, preserving today's exact behaviour.
 //
 // Feature gate: OVERLAY_RENDER_PER_SCENE, default ENABLED. The split is the
 // certified fast path (one composition and one cache row per scene window);
@@ -377,6 +378,50 @@ func planSpansMultipleScenes(plan capoverlay.OverlayPlan) bool {
 	return len(scenes) > 1
 }
 
+// finalJobSplitPreflight is the PRE-RENDER admission of the per-scene split for
+// a final job. It answers the only question that decides whether a split is
+// worth submitting: can every scene batch be certified as a final-job handoff
+// artifact?
+//
+// It runs the SAME grouping and packed-placement computation the submission
+// runs, so the answer is the submission's own shape and not an approximation:
+// a plan whose batches cannot certify is never submitted, and the run pays for
+// ONE render (the single-timeline shape) instead of two. Before this gate the
+// boundary rendered the split, discovered at certificate time that a batch
+// could not be consumed, and re-rendered the whole timeline (r63, r69).
+//
+// Non-final runs never consume the batch certificate set, so they always pass.
+// A dedicated-only plan takes the dedicated path verbatim and does not split.
+func finalJobSplitPreflight(finalJob bool, plan capoverlay.OverlayPlan) error {
+	if !finalJob {
+		return nil
+	}
+	manifestCandidates, _ := partitionOverlayRenderWork(plan)
+	if len(manifestCandidates) == 0 {
+		return nil
+	}
+	groups, err := mergeOverlappingSceneGroups(plan, groupManifestCandidatesByScene(manifestCandidates))
+	if err != nil {
+		return err
+	}
+	if len(groups) == 0 {
+		return fmt.Errorf("overlay per-scene split has no scene groups")
+	}
+	if !planSupportsPackedComposition(plan) {
+		// A plan-anchored canvas starts at plan t=0, so every plan receipt is
+		// also an artifact position and the certificate cannot disagree.
+		return nil
+	}
+	for _, group := range groups {
+		if _, end, err := computePackedPlacements(plan, group.candidates); err != nil {
+			return fmt.Errorf("scene %q: %w", group.sceneID, err)
+		} else if end <= 0 {
+			return fmt.Errorf("scene %q renders an empty packed canvas", group.sceneID)
+		}
+	}
+	return nil
+}
+
 // EnqueueChrononPlanSplit submits the plan as ONE composition per scene
 // window and assembles the per-scene artifacts into a single language
 // reference (N Batches, per-item Artifact rows). The DESIGN comment on top of
@@ -482,9 +527,9 @@ func runSplitOverlayWork(ctx context.Context, plan capoverlay.OverlayPlan,
 //     consumer change).
 //   - Artifact/JobID/Status at the top level: the FIRST scene's identity, so
 //     legacy top-level consumers keep a reference shape they already read.
-//     Manifest is deliberately nil: the single-timeline manifest wire is the
-//     final-job handoff, which stays on the single path until the worker
-//     contract lands.
+//     Manifest is deliberately nil: a split has no single-timeline document,
+//     so readers must use Batches (the final-job handoff emits one manifest
+//     per batch and would otherwise read only the first scene).
 func assembleSplitManifestReference(plan capoverlay.OverlayPlan, sceneRefs []RenderReference, dedicatedRef *RenderReference) (RenderReference, error) {
 	if len(sceneRefs) == 0 {
 		return RenderReference{}, fmt.Errorf("overlay per-scene split has no scene compositions")

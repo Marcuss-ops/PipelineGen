@@ -41,6 +41,31 @@ type finalJobStockAssetResolver interface {
 	ResolveFinalJobStockAsset(context.Context, string) (map[string]any, error)
 }
 
+// finalJobStockAssetPrefetcher is the OPTIONAL warm-up path of the Drive
+// resolver. The folder cursor decides which file a scene consumes only as the
+// walk reaches it, but the SET it can consume is the folder listing, so a
+// resolver is free to warm those identities concurrently. Absence is not an
+// error: a resolver without it keeps the serial handoff byte for byte.
+//
+// The contract is best-effort by construction — the method returns nothing, so
+// a caller cannot turn a warm-up miss into a failed run. The walk still
+// resolves every source it eventually needs and still reports its own error.
+type finalJobStockAssetPrefetcher interface {
+	PrefetchFinalJobStockAssets(context.Context, []string)
+}
+
+func prefetchFinalJobStockAssets(ctx context.Context, resolver FinalJobAssetResolver, files []FinalJobStockFile) {
+	prefetcher, ok := resolver.(finalJobStockAssetPrefetcher)
+	if !ok || len(files) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(files))
+	for _, file := range files {
+		ids = append(ids, file.ID)
+	}
+	prefetcher.PrefetchFinalJobStockAssets(ctx, ids)
+}
+
 // FinalJobVideoSegmentRequest is one exact, frame-aligned fragment that the
 // remote copy-only assembler will place on the final timeline. Preparation
 // happens before PREPARE/FINALIZE; the remote worker receives only the
@@ -55,6 +80,20 @@ type FinalJobVideoSegmentRequest struct {
 	FrameCount         int64
 	TimelineRevision   int64
 	TimelineSHA256     string
+	// PlacementTag is set ONLY when two placements would otherwise encode
+	// identical bytes. It gives this placement a distinct object with the same
+	// pictures (a container tag), because the plan refuses two assets with one
+	// canonical identity and the assembler certifies each placement against its
+	// own asset. It is part of the fragment work identity, so a tagged request
+	// can never be answered from the untagged cache entry.
+	PlacementTag string
+	// ReuseFromSHA256 names the certified fragment whose bytes this placement
+	// repeats, and ReuseFromURI is where those bytes already live. With both
+	// set, the preparer must DERIVE this placement by copying that bitstream
+	// into a distinct container instead of encoding the source window again: a
+	// duplicate placement is a naming problem, not a rendering problem.
+	ReuseFromSHA256 string
+	ReuseFromURI    string
 }
 
 // FinalJobVideoSegmentPreparer materializes each selected stock/clip/overlay
@@ -92,9 +131,11 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	for _, scene := range result.Scenes {
 		scenesByID[scene.ID] = scene
 	}
-	stockFiles := make(map[string][]FinalJobStockFile)
-	stockAssetCache := make(map[string]map[string]any)
-	stockFolderCursors := make(map[string]int)
+	// The stock selection rule lives in finalJobStockPlanner so the prewarm
+	// walk (during the overlay render) and this handoff resolve the SAME
+	// sources; one planner per handoff keeps the folder cursors shared across
+	// scenes exactly as the inline walk did.
+	stockPlanner := newFinalJobStockPlanner()
 	remoteScenes := make([]map[string]any, 0, len(result.CanonicalTimeline.Segments))
 	clipOrdinal := 0
 	var plannedDurationMS int64
@@ -280,62 +321,18 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			continue
 		}
 		folderID := strings.TrimSpace(localScene.Stock.FolderID)
-		files, ok := stockFiles[folderID]
-		if !ok {
-			listed, err := resolver.ListFinalJobStockFolder(ctx, folderID)
-			if err != nil {
-				return nil, nil, fmt.Errorf("list selected stock folder %s: %w", folderID, err)
-			}
-			files = listed
-			// Do not put a source whose required copy-only cut is known to fall
-			// between keyframes into the remote timeline. The next eligible file
-			// in this folder is selected in its place; if none remain, fail here
-			// on 77 instead of spending a remote worker attempt on a guaranteed
-			// mux rejection.
-			eligible := make([]FinalJobStockFile, 0, len(files))
-			for _, file := range files {
-				if finalJobStockFileAllowed(file) {
-					eligible = append(eligible, file)
-				}
-			}
-			files = eligible
-			if len(files) == 0 {
-				return nil, nil, fmt.Errorf("selected stock folder %s contains no copy-compatible video files after excluding known keyframe-incompatible sources", folderID)
-			}
-			stockFiles[folderID] = files
-		}
-		remainingMS := (segment.DurationUS + 999) / 1000
-		folderIndex := stockFolderCursors[folderID]
 		sceneText := firstFinalJobValue(localScene.Text[req.SourceLanguage], req.Title, localScene.ID)
-		for remainingMS > 0 {
-			file := files[folderIndex%len(files)]
-			folderIndex++
-			stockFolderCursors[folderID] = folderIndex
-			asset, ok := stockAssetCache[file.ID]
-			if !ok {
-				var err error
-				asset, err = resolveFinalJobStockAsset(ctx, resolver, file.ID)
-				if err != nil {
-					return nil, nil, fmt.Errorf("resolve stock file %s (%s): %w", file.Name, file.ID, err)
-				}
-				stockAssetCache[file.ID] = asset
-			}
-			durationMS, _ := asset["duration_ms"].(int64)
-			if durationMS <= 0 {
-				return nil, nil, fmt.Errorf("stock file %s has no canonical duration", file.Name)
-			}
-			chunkMS := durationMS
-			if chunkMS > remainingMS {
-				chunkMS = remainingMS
-			}
+		clips, err := stockPlanner.sceneClips(ctx, resolver, folderID, segment.DurationUS)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, clip := range clips {
 			// Stock may be sourced from Drive, but the worker only receives its
 			// immutable HTTPS Objectstore reference.
-			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", asset)
-			remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", asset, chunkMS, sceneText))
-			plannedDurationMS += chunkMS
+			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "stock", clip.Asset)
+			remoteScenes = append(remoteScenes, compositeVideoScene(fmt.Sprintf("scene-%04d", clipOrdinal), clipOrdinal, "stock", clip.Asset, clip.ChunkMS, sceneText))
+			plannedDurationMS += clip.ChunkMS
 			clipOrdinal++
-			remainingMS -= chunkMS
-			folderIndex++
 		}
 		if text := localScene.Text[req.SourceLanguage]; text != "" {
 			scriptText.WriteString(text)
