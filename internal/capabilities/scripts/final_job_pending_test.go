@@ -636,3 +636,64 @@ func TestRemoteFinalJobTimingKeepsTheWorkerBlockAcrossMerge(t *testing.T) {
 		t.Fatalf("worker block = %#v, want nil when the Master reports none", kept.Worker)
 	}
 }
+
+// TestRemoteFinalJobSegmentPrepCarriesPerWindowAttribution pins the receipt
+// contract for the per-fragment split: a copied window must serialize with its
+// copy time and NO encode time, an encoded window the opposite, and both must
+// survive the merge that a resumed attach performs. Without this the aggregate
+// encode_ms cannot answer "was this window copied or encoded?" because it sums
+// both lanes.
+func TestRemoteFinalJobSegmentPrepCarriesPerWindowAttribution(t *testing.T) {
+	prep := &RemoteFinalJobSegmentPrepTiming{
+		Segments: 2, Copied: 1, EncodeMS: 1520,
+		Windows: []RemoteFinalJobSegmentPrepWindow{
+			{SegmentID: "segment-0001", Path: "copy", Frames: 72, CopyMS: 320, Bytes: 8436},
+			{SegmentID: "segment-0002", Path: "encode", Frames: 48, EncodeMS: 1200, VerifyMS: 320, Bytes: 32020},
+		},
+	}
+	raw, err := json.Marshal(&RemoteFinalJobTiming{HandoffMS: 88_000, SegmentPrep: prep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{
+		`"windows":[`,
+		`"segment_id":"segment-0001"`,
+		`"path":"copy"`,
+		`"copy_ms":320`,
+		`"path":"encode"`,
+		`"encode_ms":1200`,
+	} {
+		if !strings.Contains(string(raw), key) {
+			t.Fatalf("receipt %s missing %s", raw, key)
+		}
+	}
+	// The copied window must not claim encode time: that is the distinction the
+	// copy-window criterion needs, and the aggregate field cannot express it.
+	var decoded RemoteFinalJobTiming
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.SegmentPrep == nil || len(decoded.SegmentPrep.Windows) != 2 {
+		t.Fatalf("windows did not round-trip: %#v", decoded.SegmentPrep)
+	}
+	for _, window := range decoded.SegmentPrep.Windows {
+		if window.Path == "copy" && window.EncodeMS != 0 {
+			t.Fatalf("copied window carries %d ms of encode", window.EncodeMS)
+		}
+		if window.Path == "encode" && window.CopyMS != 0 {
+			t.Fatalf("encoded window carries %d ms of copy", window.CopyMS)
+		}
+	}
+	merged := (&RemoteFinalJobTiming{HandoffMS: 1}).Merge(&RemoteFinalJobTiming{SegmentPrep: prep})
+	if merged.SegmentPrep == nil || len(merged.SegmentPrep.Windows) != 2 {
+		t.Fatalf("merge dropped the window attribution: %#v", merged.SegmentPrep)
+	}
+	// An old receipt carries no windows: the field stays absent, never empty.
+	legacy, err := json.Marshal(&RemoteFinalJobSegmentPrepTiming{Segments: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(legacy), "windows") {
+		t.Fatalf("legacy prep %s must not grow a windows field", legacy)
+	}
+}

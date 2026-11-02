@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 func TestOverlayRender_ValidatesMediaContract(t *testing.T) {
@@ -425,5 +427,49 @@ func TestNewOverlayAssetRefTakesLocationsAsExplicitArguments(t *testing.T) {
 	// cannot become a second, silently-different spelling of identity.
 	if back := built.Ref(); back != identity.Canonical() {
 		t.Errorf("build→project is lossy: got %+v, want %+v", back, identity.Canonical())
+	}
+}
+
+// TestContractForProfileFollowsAlpha pins the profile → contract mapping: the
+// video-only profile declares the no-alpha H.264 contract, every other (or
+// empty) profile keeps the alpha contract, and an unset profile never silently
+// weakens a contract the renderer may honour.
+func TestContractForProfileFollowsAlpha(t *testing.T) {
+	videoOnly := ContractIDForProfile(1920, 1080, 24, 1, kernelmedia.OverlayVideoOnlyProfileID)
+	if videoOnly != DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("video-only contract = %q, want %q", videoOnly, DefaultOverlayContractNoAlpha.ID)
+	}
+	if capmodel.RequiresAlphaForProfile(kernelmedia.OverlayVideoOnlyProfileID) {
+		t.Fatal("the video-only profile must not require alpha")
+	}
+	// The declared contract must actually describe the artifact: H.264/yuv420p
+	// in MP4, silent. A resolvable ID that still said ProRes would be the same
+	// false statement with a different name.
+	contract, err := ResolveMediaContract(videoOnly)
+	if err != nil {
+		t.Fatalf("video-only contract must resolve: %v", err)
+	}
+	if contract.RequiresAlpha || contract.Codec != "h264" || contract.PixelFormat != "yuv420p" || contract.Container != "mp4" || contract.AudioStreams != 0 {
+		t.Fatalf("video-only contract = %+v, want opaque silent H.264/mp4", contract)
+	}
+	for _, profile := range []string{"", kernelmedia.AssemblyMediaContractID, kernelmedia.AssemblyMediaContractV2ID, "velox-h264-1080p30-v1"} {
+		if !capmodel.RequiresAlphaForProfile(profile) {
+			t.Fatalf("profile %q must keep the alpha contract: an unset or assembly profile must not weaken it", profile)
+		}
+		if got := ContractIDForProfile(1920, 1080, 24, 1, profile); got != DefaultOverlayContractV1.ID {
+			t.Fatalf("contract for profile %q = %q, want %q", profile, got, DefaultOverlayContractV1.ID)
+		}
+	}
+	// The canvas is honoured: a 1080x1920 plan keeps its own geometry. The ID
+	// alone cannot carry it (ResolveMediaContract returns the registry
+	// defaults), so the canvas-specialised contract is the one to check.
+	if got := ContractIDForProfile(1080, 1920, 30, 1, kernelmedia.OverlayVideoOnlyProfileID); got != DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("portrait video-only contract = %q, want %q", got, DefaultOverlayContractNoAlpha.ID)
+	}
+	portrait := OverlayContractForCanvas(1080, 1920, 30, 1,
+		capmodel.RequiresAlphaForProfile(kernelmedia.OverlayVideoOnlyProfileID))
+	if portrait.Width != 1080 || portrait.Height != 1920 || portrait.FPSNum != 30 || portrait.RequiresAlpha {
+		t.Fatalf("contract canvas = %dx%d@%d alpha=%v, want the requested geometry without alpha",
+			portrait.Width, portrait.Height, portrait.FPSNum, portrait.RequiresAlpha)
 	}
 }
