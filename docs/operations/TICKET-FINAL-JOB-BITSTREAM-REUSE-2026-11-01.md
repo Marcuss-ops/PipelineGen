@@ -101,18 +101,24 @@ per l'emissione conforme.
   certificato falso. Invece di indebolire V1, `VELOX_OVERLAY_VIDEO_ONLY_V1`
   descrive ciò che l'artefatto è. Il profilo **non** pinna il colour transfer
   (l'artefatto riporta `iec61966-2-1`, V1 dichiara bt709: pinnare uno dei due
-  sarebbe una decisione che nessuno ha preso) né il video timebase (stessa
-  regola di V1: il consumatore accetta `1/12288` e rimuxa).
+  sarebbe una decisione che nessuno ha preso), il video timebase (stessa
+  regola di V1: il consumatore accetta `1/12288` e rimuxa) né il **closed GOP**
+  (vedi la verifica live del 02-11: una finestra batch da 0,54 s non può
+  dimostrare la cadenza, e il gate di copia resta il censimento del
+  consumatore).
   `TestOverlayVideoOnlyProfileCertifiesTheMeasuredArtifact` pinna entrambi i
   lati: il profilo nuovo accetta i fatti reali, V1 continua a rifiutarli.
   `TestOverlayVideoOnlyProfileFailsClosedOnAudioAndCopyDrift` pinna che audio,
-  GOP aperto, drift del GOP, start PTS e livello siano fail-closed.
+  drift del GOP, start PTS e livello siano fail-closed;
+  `TestOverlayVideoOnlyProfileCertifiesShortBatchWindows` pinna che una
+  finestra corta (cadenza non osservabile) sia certificata mentre un primo
+  frame non IDR o un drift di cadenza restano rifiutati.
   `TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile` pinna il campo sul
-  piano e sul wire. `output_profile_id` entra anche nella chiave della cache di
+  piano e sul wire.  `output_profile_id` entra anche nella chiave della cache di
   render, così un artefatto certificato sotto un profilo non soddisfa un piano
-  che ne chiede un altro. Nota operativa: il worker deve girare con
-  `native_output_profiles=true`, altrimenti `pipeline.go:354` strippa il campo
-  (con metrica e warning) e il criterio live non è soddisfatto.
+  che ne chiede un altro. Il criterio live è **soddisfatto** (02-11, r80–r83).
+  Nota operativa: il worker deve girare con `native_output_profiles=true`,
+  altrimenti `pipeline.go:354` strippa il campo (con metrica e warning).
 - [x] **P2 — Il riuso deve valere per una finestra, non solo per la sorgente
   intera.** CHIUSO (01-11): `finalJobWindowOnGOPGrid()` decide se la finestra
   cade su un confine GOP, e la copia si fa con `-ss -c copy -frames:v` quando il
@@ -144,18 +150,27 @@ per l'emissione conforme.
   (`finalJobSourceIsExactPreparedFragment`) resta fidato sulla dichiarazione:
   quella sorgente non si scarica, e derivarne il certificato costerebbe il
   download dell'intero film che quel percorso esiste per evitare.
-- [x] **P3 — Il certificato del frammento non si ripaga due volte.** CHIUSO:
-  una sola `ffprobe` per frammento sui `packet=flags` (niente decodifica),
-  **1,52 s → 0,30 s → 0,065 s** per frammento (r49 → r50 → r52); un solo
-  SHA-256 per frammento (`PublishFinalJobLocalObjectVerified`). Logica:
-  `verifyFinalJobFragment()` costa **1,52 s per frammento** su file da ~1,3 MB
-  (85 × 1,52 = 129,0 s, metà della prep): è avvio di processo + lettura di
-  metadata, non lavoro video. Se il taglio è una copia di byte certificati, il
-  certificato del frammento **è** il certificato della sorgente + la prova del
-  boundary. Dove: `final_job_segment_prepare.go:657` e la doppia lettura
-  `verifyFinalJobFragment` → `digest.SHA256File`. Gate: zero probe per frammento
-  copiato; un probe per sorgente; nessuna regressione fail-closed (un frammento
-  non copiabile deve cadere nel percorso costoso e contarsi).
+- [x] **P3 — Il certificato del frammento non si ripaga due volte.** CHIUSO
+  (02-11, seconda correzione): **zero probe per frammento**. La verifica runtime
+  per frammento è stata eliminata da tutti e tre i percorsi — copia, encode e
+  remux di un piazzamento duplicato. Il certificato è **derivato**: per la copia
+  è il census della sorgente (GOP chiuso e fisso, primo IDR, frame count dai
+  pacchetti) più la prova del boundary (inizio su multiplo di 48 frame); per
+  l'encode è il comando stesso (High 4.0, 1920×1080, yuv420p, 24/1, bf=0,
+  GOP 48, PTS 0), pinnato dai test su un frammento reale; per il remux sono i
+  byte certificati del piazzamento originale più il tag di container. Resta
+  **un probe per sorgente**, memoizzato per SHA: è l'unica derivazione che non
+  si può fare a priori. Storia: 1,52 s/frammento con la decodifica dei frame
+  (129,0 s su 85), 0,30 s con i `packet=flags`, 0,065 s in r52; ora 0 sul
+  percorso di produzione. Gate: zero probe per frammento; un probe per
+  sorgente; i test che decodificano il frammento prodotto
+  (`TestFinalJobCopyWindowPreservesFramesAndCertificate`,
+  `TestFinalJobSegmentPreparerEncodesOneAssemblyReadyFragment`,
+  `TestFinalJobSegmentPreparerPadsShortBoundaryToExactFrameCount`) restano la
+  prova del contratto; un frammento non copiabile cade ancora nel percorso
+  encode e si conta. La cache v8 invalida i frammenti scritti prima di
+  `-avoid_negative_ts make_zero`, perché la copia può produrre byte diversi a
+  parità di lavoro.
 - [x] **P4 — Attesa attach: 27,1 s per un render da 13,9 s.** CHIUSO come
   DIAGNOSI, non come risparmio: `wait_ms` = `queue_ms` (13,0 s) + `execution_ms`
   (13,9 s), delta +0,4 s. I 27,1 s **non sono polling**, quindi il gate
@@ -275,8 +290,44 @@ Run completo Garlasco, stesso payload (misure lette da `job-full-r*.json`):
 | ├ `handoff_resolve_ms` | — | 30,3 s | 11,2 s | **10,3 s** | **10,6 s** | **0,427 s** | <12 s ✅ |
 | prep frammenti | 264,0 s | ~13 s | ~0 s (67/85 cache) | **~0 s (87/89 cache)** | ~0 s | ≈0 (85/89) | **<20 s** ✅ |
 | run totale | 495,6 s | 184,0 s | 151,1 s | **73,4 s** | **69,7 s** | **49,8 s** | **<260 s** ✅ |
-| mediana delle run VERDI sul codice finale (n=2) | — | — | — | — | **71,6 s** | — | <260 s, **n≥3** ⚠️ |
+| mediana delle run VERDI sul codice finale (n=3, 02-11) | — | — | — | — | — | — | **63,2 s**, <260 s ✅ |
 | output | — | master `fb275c38…` | `fb3d5e08…` | master certificato | master certificato | master certificato | MP4 **byte-identico** o parità frame certificata |
+
+### Verifica live 2026-11-02 — gate chiuso (r79–r83)
+
+Stesso payload (`garlasco-editorial-r78-parallel-fragments.generate.json`),
+worker e Master ricostruiti dai sorgenti di questo commit. I quattro criteri
+che erano aperti:
+
+| criterio | esito misurato |
+|---|---|
+| run totale < 260 s, **n≥3** | r80 **67,2 s**, r81 **60,6 s**, r82 **63,2 s** → mediana **63,2 s** (varianza ±3,3 s, contro i ±90 s storici) |
+| `handoff_resolve_ms` assorbito e non aggiunto (freddo) | r83 a cache fredda: handoff **88,1 s**, `resolve` **0,645 s** = 0,7% del payload; nessun tempo aggiunto |
+| copy-window a freddo | r83: `segment_prep.copied = 11` su 86 segmenti, `derived = 1`, `cached = 0`; le finestre copiate non passano dall'encoder per costruzione (ramo `copied`), ma il receipt aggrega `encode_ms` e **non** lo attribuisce per finestra |
+| profilo live | `profile_id=VELOX_OVERLAY_VIDEO_ONLY_V1` su **tutti e 9 i batch** di r80/r81/r82/r83 (64 occorrenze per job); zero `output profile … stripped` nel log del worker |
+
+Artefatto verificato con `ffprobe` sul batch `9c5f0de9…` (3,000 s, 72 frame):
+h264 **High 4.0**, 1920×1080, yuv420p, SAR 1:1, tv/bt709/`iec61966-2-1`/bt709,
+keyframe a 0 e 2,0 s (GOP 48), **zero stream audio** — esattamente i fatti che il
+profilo dichiara.
+
+**Difetto trovato dalla verifica live (e corretto).** Il primo run col profilo
+nuovo (r79) ha fallito la certificazione di un batch con `closed GOP not
+certified`, facendo cadere il confine di render sul percorso single-timeline
+(r79: 113,3 s, `remote_final_job` 38%). La causa non era il bitstream: laregola di cadenza (`closedGOPPositionsCadence`) richiede almeno tre keyframe (due
+intervalli GOP completi), mentre i batche fusi di questo payload vanno da **72 a
+306 frame** (3,0–12,75 s, misurati sugli artefatti di r80/r82) e le due finestre
+più corte (**72 e 84 frame**) contengono un solo intervallo: la cadenza **non è
+dimostrabile** lì per costruzione. Pinnare `RequireClosedGOP` rendeva il
+certificato insoddisfacibile e peggiorava la latenza. Il profilo ora certifica
+solo ciò che ogni finestra può provare — primo frame IDR, start PTS 0, geometria,
+codice, zero audio e, **quando la cadenza è osservabile**, GOP 48 — mentre il
+closed GOP resta al censimento del consumatore, che lo deriva dalla tabella dei
+pacchetti dell'artefatto intero ed è il vero gate della copia. Regressione pinnata
+da `TestOverlayVideoOnlyProfileCertifiesShortBatchWindows` (finestra da 19 frame:
+certificata; primo frame non IDR o cadenza drift: rifiutati) e dal fatto che
+`TestOverlayVideoOnlyProfileCertifiesTheMeasuredArtifact` pretende
+`RequireClosedGOP == false`.
 
 ### Cosa NON è ancora chiuso (agg. 2026-11-01, dopo r64/r65)
 
