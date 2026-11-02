@@ -14,6 +14,13 @@ import (
 
 type Reader struct{ jobs, obs *sql.DB }
 
+// canonicalRunOrder puts the job's main workflow ahead of the finalize children
+// it spawns. Those children are recorded AFTER the job body and carry a small
+// report with no stages; ordering by created_at alone projected one of them and
+// zeroed the /full timing block (r92-r96: 5-7 s and no critical path instead of
+// the 70-141 s report the job actually produced).
+const canonicalRunOrder = `ORDER BY CASE WHEN job_type LIKE 'finalize.%' THEN 1 ELSE 0 END, created_at DESC`
+
 func NewReader(jobsDB, observabilityDB *sql.DB) (*Reader, error) {
 	if jobsDB == nil || observabilityDB == nil {
 		return nil, fmt.Errorf("history reader requires jobs and observability databases")
@@ -107,7 +114,7 @@ func (r *Reader) ListHistory(ctx context.Context, f appjobs.HistoryFilter) ([]ap
 	for i, id := range ids {
 		var runID, runStatus, started, finished, report string
 		var wall sql.NullInt64
-		err := r.obs.QueryRowContext(ctx, `SELECT run_id,status,started_at,finished_at,wall_time_ms,report_json FROM run_observability WHERE job_id=? ORDER BY created_at DESC LIMIT 1`, id).Scan(&runID, &runStatus, &started, &finished, &wall, &report)
+		err := r.obs.QueryRowContext(ctx, `SELECT run_id,status,started_at,finished_at,wall_time_ms,report_json FROM run_observability WHERE job_id=? `+canonicalRunOrder+` LIMIT 1`, id).Scan(&runID, &runStatus, &started, &finished, &wall, &report)
 		if err == sql.ErrNoRows {
 			continue
 		}
@@ -152,7 +159,7 @@ func (r *Reader) GetRunReport(ctx context.Context, jobID string) (json.RawMessag
 		return nil, fmt.Errorf("get run report: job id is required")
 	}
 	var report string
-	err := r.obs.QueryRowContext(ctx, `SELECT report_json FROM run_observability WHERE job_id=? ORDER BY created_at DESC LIMIT 1`, jobID).Scan(&report)
+	err := r.obs.QueryRowContext(ctx, `SELECT report_json FROM run_observability WHERE job_id=? `+canonicalRunOrder+` LIMIT 1`, jobID).Scan(&report)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

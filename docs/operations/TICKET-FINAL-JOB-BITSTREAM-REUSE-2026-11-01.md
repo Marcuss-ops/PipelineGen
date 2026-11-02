@@ -3,14 +3,16 @@
 **Stato:** P0, P2 e P3 chiusi e misurati; P1 chiuso sul consumatore, sul
 `frame_count` derivato e sul `profile_id`: i batch manifest dichiarano
 `VELOX_OVERLAY_VIDEO_ONLY_V1`, il profilo dedicato che descrive un artefatto
-video-only (V1 richiede un audio stream e non era dichiarabile). Resta da
-verificare **sul campo** che una run con `native_output_profiles=true` pubblichi
-il campo (`profile_stripped_by_config=0`); non è una decisione di contratto
-ancora aperta. Il run verde più veloce è
+video-only (V1 richiede un audio stream e non era dichiarabile). La verifica
+**sul campo** è chiusa: r80–r83 (9/9 batch) e r92–r94 pubblicano il campo con
+`native_output_profiles=true`; non resta una decisione di contratto aperta. Il run verde più veloce è
 **r78: 49,8 s** (r49: 495,6 s, **−90%**) con `handoff` 1,6 s e `resolve`
 0,427 s. Aggiornato il 2026-11-02 con la misura sull'artefatto reale e la
 correzione del probe. Fonte tempi:
-`REPORT-2026-11-01-final-job-timing-map-cache.md` §6.
+`REPORT-2026-11-01-final-job-timing-map-cache.md` §6. **Serata 02-11:** r96 a
+cache fredda chiude in **140,9 s** con `payload_ms` **70,3 s** (−19,5 s da r95) e
+il certificato del frammento riportato a `VELOX_ASSEMBLY_READY_V1` dopo il
+fallimento di r90 — evidenza in `REPORT-2026-11-02-r96-fragment-layer.md`.
 **Owner:** `refactored` (`internal/app/wiring/`, `internal/capabilities/scripts/`)
 + RenderingGen (`internal/processor/`, certificazione dell'artefatto) + Chronon
 per l'emissione conforme.
@@ -38,9 +40,9 @@ per l'emissione conforme.
   il resto (`handoff − payload − prepare`) e il budget chiude per costruzione.
   Test: `TestRemoteFinalJobTimingAttributesPayloadAndPrepare`. Gate residuo:
   budget verificato con n≥3 run per configurazione (misura live).
-- [ ] **P1 — L'overlay esce conforme, o il confine mente.** CHIUSO NEL CODICE
+- [x] **P1 — L'overlay esce conforme, o il confine mente.** CHIUSO NEL CODICE
   (02-11): `frame_count` derivato e `profile_id=VELOX_OVERLAY_VIDEO_ONLY_V1`
-  dichiarato dai batch manifest. Resta la verifica live del campo. Misura
+  dichiarato dai batch manifest. Verifica live chiusa (r80–r83, r92–r94). Misura
   aggiuntiva 01/11: l'artefatto del batch
   **non è deterministico fra run** — r49 `fcd8c52f…` (9.227.633 B) vs r50
   `6e7305c1…` (9.234.231 B), stessa durata 66,958 s, PSNR 31,0 dB, SSIM 0,996 —
@@ -120,14 +122,14 @@ per l'emissione conforme.
   Nota operativa: il worker deve girare con `native_output_profiles=true`,
   altrimenti `pipeline.go:354` strippa il campo (con metrica e warning).
 
-  **Anche il frammento è video-only (02-11).** I frammenti del final job
-  dichiaravano `VELOX_ASSEMBLY_READY_V1` (che pinna `AudioStreams: 1`) pur
-  essendo `-an`. `finalJobSegmentProfile` usa ora
-  `VELOX_OVERLAY_VIDEO_ONLY_V1`; `plan.Output` resta V1 perché il film
-  assemblato ha l'audio. Il gate Rust richiede `contract_id =
-  VELOX_ASSEMBLY_READY_V1` ma solo un `profile_id` non vuoto, quindi il
-  contratto di assemblaggio non cambia; la chiave di cache (che include il
-  profilo) invalida i frammenti vecchi.
+  **Il frammento resta V1 (corretto dopo r90).** Il tentativo di dichiarare il
+  frammento `VELOX_OVERLAY_VIDEO_ONLY_V1` è stato ritirato: il gate remoto lega
+  il frammento al profilo che esso certifica (V1), e r90 è fallita con
+  `segment "segment-0000" manifest binding is not exact`. `finalJobSegmentProfile`
+  è tornato `VELOX_ASSEMBLY_READY_V1`; il profilo video-only resta su
+  `plan.Output` e sui batch manifest. r91 (FAILED, 98,9 s) ha riprodotto lo
+  stesso errore prima del ripristino; r92–r94 (70,9 / 91,5 / 100,2 s) sono le
+  verdi a cache calda che lo confermano.
 - [x] **P2 — Il riuso deve valere per una finestra, non solo per la sorgente
   intera.** CHIUSO (01-11): `finalJobWindowOnGOPGrid()` decide se la finestra
   cade su un confine GOP, e la copia si fa con `-ss -c copy -frames:v` quando il
@@ -179,7 +181,10 @@ per l'emissione conforme.
   prova del contratto; un frammento non copiabile cade ancora nel percorso
   encode e si conta. La geometria (width/height/fps/pix_fmt) viaggia nello
   stesso census: il fallback encode non lancia una seconda `ffprobe` per gli
-  stessi fatti. La cache v8 invalida i frammenti scritti prima di
+  stessi fatti. Dal 02-11 la chiave è **v9** e distingue il percorso
+  `copy-enabled` da quello `encode-only`: il bump invalida per costruzione il
+  corpus precedente, quindi r95/r96 partono a cache fredda (`cached=0`). La
+  cache v8 invalida i frammenti scritti prima di
   `-avoid_negative_ts make_zero`, perché la copia può produrre byte diversi a
   parità di lavoro.
 - [x] **P4 — Attesa attach: 27,1 s per un render da 13,9 s.** CHIUSO come
@@ -413,6 +418,67 @@ certificata; primo frame non IDR o cadenza drift: rifiutati) e dal fatto che
 Il gate "MP4 byte-identico" non è applicabile alla cache calda per costruzione:
 le finestre riusate sono **gli stessi byte** già certificati (lo SHA è nel
 sidecar e viene ri-verificato a ogni hit), non un ri-encode «equivalente».
+
+## Aggiornamento 2026-11-02 (sera) — layer frammenti misurato su r96
+
+Run `r96` (`job_1793616110611675492_5c784cea`), stesso payload di r95,
+binario ricostruito e servizio riavviato, esito **SUCCEEDED** in **140,9 s**.
+È una run a cache frammenti **fredda** (`cached=0` dopo il bump a v9), quindi il
+confronto omogeneo è con r95 (fredda, binario precedente) e con r83 (freddo,
+164,2 s):
+
+| Voce | r95 | **r96** |
+|---|---:|---:|
+| run totale | 146,1 s | **140,9 s** |
+| `handoff_ms` | 90,6 s | **71,2 s** |
+| `payload_ms` | 89,8 s | **70,3 s** |
+| `encode_ms` accumulato | 301,3 s | **241,4 s** |
+| `verify_ms` | 33,5 s | 23,5 s |
+| `publish_ms` | 2,68 s | 0,23 s |
+| frammenti encode/copy/derived | 74/11/1 | 74/11/1 |
+
+Il guadagno di lavoro (−59,9 s di encode) vale −19,5 s di wall perché la prep
+gira su 4 lane già all'**85,8%** di utilizzo (241,4 s / (70,3 s × 4), floor
+60,3 s). Il resto del run è fuori dal layer: overlay 28,9 s (12,1 s di prewarm),
+generate 11,2 s, prepare_join 10,9 s, scene_analysis 9,0 s, coda Master 9,0 s,
+render remoto 7,7 s.
+
+Correzioni atterrate con la stessa misura:
+
+- le metriche dell'handoff sono ora **per scope** (un accumulatore per handoff,
+  `Timing(scope)`); prima gli scalari erano la differenza di due snapshot
+  globali e due run concorrenti si contaminavano (le finestre erano già
+  filtrate);
+- la geometria di delivery è **una sola dichiarazione** derivata dal contratto
+  kernel (`finalJobDelivery`, `finalJobDeliveryMatches`,
+  `finalJobDeliveryLevelCode`): filtro encoder, argomenti, census, probe e gate
+  di riuso non ripetono più 1920×1080/24/yuv420p/GOP 48;
+- la chiave del frammento ha una sola composizione (`fragmentWorkKey`), e
+  `fragmentPath` ri-hasha i byte invece di fidarsi della memo (size, mtime): una
+  riscrittura in place di pari dimensione nello stesso tick non è dimostrabile
+  da una stat.
+
+**Profilo del frammento — correzione al confine r90.** Il certificato del
+frammento è tornato `VELOX_ASSEMBLY_READY_V1`: r90 (02-11 09:32) è fallita con
+`segment "segment-0000" manifest binding is not exact` quando il frammento
+portava `VELOX_OVERLAY_VIDEO_ONLY_V1`. Il profilo video-only resta corretto per
+`plan.Output` e per i batch manifest (r80–r83); non è accettato dal gate di
+copia remoto per il frammento.
+
+**Ottimizzazioni residue — misurate (02-11, terza tornata).** Prewarm parallelo
+(`VELOX_FINAL_JOB_RESOLVE_CONCURRENCY=4`, r97): prewarm 12,11 → 7,85 s, ma
+`handoff` 3,2 → 36,8 s e `resolve` aggregato 115,8 s su 149 sorgenti;
+**rigettato**, default 1. Lane 4→6 (r99, cache fredda): 127,2 s contro 140,9 s
+di r96, utilizzo lane 83,8% vs 85,8%, CPU media 84,7% e picco 99%; **misurato,
+default 4 invariato** su n=1. Normalizzazione per sorgente: i tre outlier
+provengono da tre sorgenti distinte usate da una finestra ciascuna; a freddo
+solo `segment-0084` è `normalized=true` (10,9 s), gli altri due costano 4,5 s
+senza normalizzazione → **rigettata**. Coda Master 9,0 s resta esterna. La
+proiezione `timing` in `/full` è **corretta**: il reader preferisce il run
+`script.generate` ai figli `finalize.*`; r97/r98 mostrano `wall_ms`
+111.706/61.835 e 16 stage nel `critical_path`. Evidenza:
+`ops/jobs/garlasco_editorial_e2e_20261030/REPORT-2026-11-02-r96-fragment-layer.md`
+§8–§9.
 
 ## Non obiettivi
 
