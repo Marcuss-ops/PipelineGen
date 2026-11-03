@@ -125,10 +125,10 @@ drive:
   # media/artlist path any more). Legacy Artlist assets are moved into the
   # stock root once with `go run ./cmd/admin migrate-artlist-assets`.
   # Images: per-image SubFolder layout under the dedicated root.
-  # Root 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY; each image in
+  # Root 1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy; each image in
   # <root>/<SafeFolderName(subject)>/<file>, downloaded once at
   # runtime then reused permanently from Drive.
-  images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  images_root_folder: "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
   scripts_root_folder: ""
   overlay_render_root_folder: ""
   video_ai_root_folder: ""

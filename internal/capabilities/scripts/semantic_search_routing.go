@@ -14,7 +14,11 @@
 // attributed to a single class.
 package scriptgeneration
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
+)
 
 // SemanticSearchClass is the provider-routing class of one search query.
 type SemanticSearchClass string
@@ -41,20 +45,26 @@ const (
 // the routing classes. Unknown kinds are generic by design: a new kind must not
 // silently inherit a lane whose provider cannot answer it.
 func SearchClassForIdentityKind(kind string) SemanticSearchClass {
-	switch strings.ToUpper(strings.TrimSpace(kind)) {
-	case "PERSON":
+	switch entitytype.Fold(kind) {
+	case entitytype.Person:
 		return SearchClassPerson
-	case "ORG", "ORGANIZATION", "COMPANY", "INSTITUTION", "GOVERNMENT", "COURT", "AGENCY":
+	case entitytype.Org:
 		return SearchClassOrganization
-	case "LOCATION", "GPE", "PLACE", "CITY", "COUNTRY", "REGION", "ADDRESS", "FACILITY":
+	case entitytype.Place:
 		return SearchClassLocation
-	case "OBJECT", "PRODUCT", "WORK", "ARTIFACT", "VEHICLE", "DEVICE":
+	case entitytype.Product, entitytype.WorkOfArt:
 		return SearchClassObject
-	case "EVENT":
+	case entitytype.Event:
 		return SearchClassEvent
-	default:
-		return SearchClassGeneric
 	}
+	// Provider taxonomy that is not an entity family (the semantic engine's
+	// object vocabulary). It stays explicit because it is a routing class,
+	// not an extractor spelling of an entity type.
+	switch strings.ToUpper(strings.TrimSpace(kind)) {
+	case "OBJECT", "ARTIFACT", "VEHICLE", "DEVICE":
+		return SearchClassObject
+	}
+	return SearchClassGeneric
 }
 
 // ProviderLane is the budget lane a class consumes. It is a stable string so a

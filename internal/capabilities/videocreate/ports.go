@@ -164,6 +164,11 @@ type AssembleSegment struct {
 	// re-encodes, so an uncertified segment is a hard failure.
 	CopyCertified bool   `json:"copy_certified"`
 	ContractID    string `json:"contract_id,omitempty"`
+	// VideoExtradataSHA256 is the exact SPS/PPS (avcC) identity of the
+	// segment. The assembler refuses a batch whose segments disagree or whose
+	// identity is not the canonical one; profile/level/geometry alone do not
+	// prove packet-copy compatibility.
+	VideoExtradataSHA256 string `json:"video_extradata_sha256,omitempty"`
 	// Contract is the segment's reported output-contract block — the
 	// cross-input identity the assembly gate enforces before any
 	// packet-copy concatenation.

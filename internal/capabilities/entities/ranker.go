@@ -63,18 +63,20 @@ func ImportanceScore(in EntityRankInput) float64 {
 // ranking purposes, in [0,1]. People are the most valuable overlay subjects,
 // followed by organizations, then locations and concepts.
 func EntityTypeWeight(entityType string) float64 {
+	// The switch reads the CANONICAL type (NormalizeType folds the aliases),
+	// so a place spelled GPE, LOCATION or CITY weighs the same.
 	switch NormalizeType(entityType) {
-	case "PERSON", "CEO", "FOUNDER", "PRESIDENT":
+	case CanonicalTypePerson:
 		return 1.0
-	case "ORGANIZATION", "ORG", "COMPANY", "BRAND":
+	case CanonicalTypeOrg, CanonicalTypeLogo:
 		return 0.9
-	case "GPE", "LOCATION", "CITY", "COUNTRY":
+	case CanonicalTypePlace:
 		return 0.8
-	case "PRODUCT", "LOGO":
+	case CanonicalTypeProduct:
 		return 0.75
-	case "CONCEPT", "EVENT", "IDEA":
+	case CanonicalTypeConcept, CanonicalTypeEvent:
 		return 0.65
-	case "NUMBER", "MONEY", "PERCENT", "QUOTE":
+	case CanonicalTypeNumber, CanonicalTypeMoney, CanonicalTypePercent, CanonicalTypeQuote:
 		return 0.55
 	default:
 		return 0.5

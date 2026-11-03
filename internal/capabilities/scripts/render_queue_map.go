@@ -30,11 +30,8 @@ func (e *QueueRenderEnqueuer) renderDynamicMapVideo(ctx context.Context, plan ca
 }
 
 // dynamicMapSamplerForProfile names the map sampler for one render. The
-// single map lane is the native renderer of ChrononPlugin, whose certified
-// sampling path is CPU-only: the OpenCL sampler is demolition debt together
-// with the NVENC encoder family, so there is no sampler knob to override —
-// the declared profile and the sampler travel as one contract and both fail
-// closed at the boundary when they claim GPU work the renderer cannot do.
+// native vector plate sampler remains CPU-based; NVENC independently encodes
+// those frames on GPU.
 func dynamicMapSamplerForProfile(profile scriptoverlay.MapEncodeProfile) string {
 	return "cpu"
 }

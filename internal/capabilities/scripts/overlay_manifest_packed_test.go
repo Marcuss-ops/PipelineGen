@@ -107,14 +107,16 @@ func TestComputePackedPlacementsMergesOverlaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("computePackedPlacements: %v", err)
 	}
-	// Merged intervals: [1,4.5) (3.5s) plus [9,10) (1s) = 4.5s packed canvas.
-	if packedEnd != 4_500_000 {
-		t.Fatalf("packed end = %d, want 4_500_000", packedEnd)
+	// Merged intervals: [1,4.5) (3.5s) plus [9,10) (1s). The second interval
+	// starts on the next two-second closed-GOP boundary so the final-job worker
+	// can packet-copy it without a CPU re-encode.
+	if packedEnd != 5_000_000 {
+		t.Fatalf("packed end = %d, want 5_000_000", packedEnd)
 	}
 	want := map[string][2]int64{
 		"a": {0, 2_000_000},
 		"b": {1_500_000, 3_500_000},
-		"c": {3_500_000, 4_500_000},
+		"c": {4_000_000, 5_000_000},
 	}
 	for id, window := range want {
 		placement, ok := placements[id]
@@ -123,6 +125,9 @@ func TestComputePackedPlacementsMergesOverlaps(t *testing.T) {
 		}
 		if placement.ArtifactInUS != window[0] || placement.ArtifactOutUS != window[1] {
 			t.Fatalf("%q packed = [%d,%d), want [%d,%d)", id, placement.ArtifactInUS, placement.ArtifactOutUS, window[0], window[1])
+		}
+		if id == "c" && placement.ArtifactInUS%overlayPackedGOPGridUS() != 0 {
+			t.Fatalf("disjoint interval %q starts at %dus, not on the final-job GOP grid", id, placement.ArtifactInUS)
 		}
 	}
 }

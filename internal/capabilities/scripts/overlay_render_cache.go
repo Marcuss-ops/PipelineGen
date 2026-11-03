@@ -33,6 +33,7 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/rendercacheinfo"
@@ -242,13 +243,19 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		// one profile must never satisfy a plan that requests another. Empty
 		// omits the key, so plans that declare no profile keep their historical
 		// render keys byte for byte.
-		OutputProfileID string                    `json:"output_profile_id,omitempty"`
-		Policies        string                    `json:"animation_policies"`
-		SourceSHA256    string                    `json:"source_sha256"`
-		Background      *overlayCacheBG           `json:"background"`
-		ItemKind        string                    `json:"item_kind"`
-		CameraMotionID  string                    `json:"camera_motion_id"`
-		Items           []overlayCacheItemContext `json:"items,omitempty"`
+		OutputProfileID string `json:"output_profile_id,omitempty"`
+		// BitstreamLane is the canonical SPS/PPS lane identity. An overlay
+		// artifact is a SOURCE that the final-job fragment producer may
+		// normalize, so this is a lane fact, not a claim that these bytes
+		// already carry the hash. It still invalidates rows written before the
+		// canonical lane existed, which is the cache hazard being closed.
+		BitstreamLane  string                    `json:"bitstream_lane,omitempty"`
+		Policies       string                    `json:"animation_policies"`
+		SourceSHA256   string                    `json:"source_sha256"`
+		Background     *overlayCacheBG           `json:"background"`
+		ItemKind       string                    `json:"item_kind"`
+		CameraMotionID string                    `json:"camera_motion_id"`
+		Items          []overlayCacheItemContext `json:"items,omitempty"`
 		// MapBackend is the resolved dynamic-map backend. It is stamped onto
 		// the plan AFTER the item's RenderKey was computed, so it must be
 		// hashed here or a python-backend clip could satisfy a native-backend
@@ -264,8 +271,8 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		// the same plan, which is still the expensive case.
 		SamplingIdentity string `json:"sampling_identity,omitempty"`
 	}{
-		// Invalidate rows created before background asset order was preserved.
-		CacheVersion:    2,
+		// 3 also invalidates rows created before the canonical bitstream lane.
+		CacheVersion:    3,
 		SchemaVersion:   strings.TrimSpace(plan.SchemaVersion),
 		Renderer:        renderer,
 		Width:           plan.Width,
@@ -277,6 +284,7 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		EntitySeed:      strings.TrimSpace(plan.EntityVariationSeed),
 		MediaContract:   strings.TrimSpace(plan.MediaContract),
 		OutputProfileID: strings.TrimSpace(plan.OutputProfileID),
+		BitstreamLane:   kernelmedia.CanonicalVideoExtradataSHA256,
 		Policies:        canonicalJSONString(plan.AnimationPolicies),
 		Background:      overlayCacheBackground(plan.Background),
 	}

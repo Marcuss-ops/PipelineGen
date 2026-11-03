@@ -1,0 +1,292 @@
+package scriptgeneration
+
+// overlay_audit_images.go owns the two questions the r20minuti artifact could
+// not answer:
+//
+//  1. the image budget was 3, zero images were planned, and no surface said
+//     why a selected entity ended up as a text card;
+//  2. 39 intents were authored, 31 stayed PENDING, and nothing distinguished
+//     "the entity was never planned" from "the text was rewritten".
+//
+// Both are projections of facts the plan and the bundle already carry, so they
+// live beside overlay_audit.go instead of inside it (the file is at the strict
+// LOC cap) and they are computed once, from the artifact that is persisted.
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+)
+
+// Reasons an entity selected for the video has no bound image. They are the
+// contract the gate reports, so they are constants, not free text.
+const (
+	// EntityImageReasonBound is the success case: the plan carries at least
+	// one image for this entity.
+	EntityImageReasonBound = "bound"
+	// EntityImageReasonNoVerifiedAsset means the resolver left no verified
+	// content-addressed asset for this entity: discovery, download or the
+	// visual verdict did not produce one.
+	EntityImageReasonNoVerifiedAsset = "no_verified_asset"
+	// EntityImageReasonVerifiedNotBound means a verified asset EXISTS in the
+	// bundle but the plan did not bind it to this entity. That is a planner
+	// bug, not a media miss.
+	EntityImageReasonVerifiedNotBound = "verified_asset_not_bound"
+	// EntityImageReasonUnverifiedBound means the plan renders an image whose
+	// bytes are not certified as a verified entity asset.
+	EntityImageReasonUnverifiedBound = "unverified_asset_bound"
+)
+
+// Reasons an authored overlay intent never became a timed plan item.
+const (
+	// OverlayIntentReasonEntityNotPlanned means no item in the intent's scene
+	// references that entity: it lost admission (budget, group limit) or was
+	// never eligible.
+	OverlayIntentReasonEntityNotPlanned = "entity_not_planned"
+	// OverlayIntentReasonSourceTextNotInPlan means the plan carries no item
+	// with the intent's source text: the planner rewrote or shortened it.
+	OverlayIntentReasonSourceTextNotInPlan = "source_text_not_in_plan"
+	// OverlayIntentReasonTemplateNotMaterialized means the intent DID match a
+	// plan item but its timing could not be frozen. It is a lowering defect,
+	// never a normal outcome.
+	OverlayIntentReasonTemplateNotMaterialized = "template_not_materialized"
+)
+
+// ErrEntityImageGate is the typed failure of the opt-in strict entity-image
+// contract (VELOX_REQUIRE_ENTITY_IMAGES). It exists so a run can fail loudly
+// instead of delivering a video with text-only cards where the policy asked
+// for portraits.
+var ErrEntityImageGate = errors.New("entity image gate")
+
+const (
+	requireEntityImagesEnv = "VELOX_REQUIRE_ENTITY_IMAGES"
+	// maxAuditMissingEntities bounds the human-readable list; the counts stay
+	// complete.
+	maxAuditMissingEntities = 20
+	maxAuditUnresolvedItems = 100
+)
+
+// OverlayAuditEntityImages is the entity-image admission summary.
+type OverlayAuditEntityImages struct {
+	// Required echoes the policy: true only when the strict gate is on.
+	Required bool `json:"required"`
+	// Budget is the plan's image-overlay budget; Used is the number of
+	// planned items carrying image bytes, Unused the remainder.
+	Budget       int `json:"budget"`
+	BudgetUsed   int `json:"budget_used"`
+	BudgetUnused int `json:"budget_unused"`
+	// Selected is the number of entities selected for the video that are
+	// expected to carry an image (person/organization, or any entity whose
+	// planned kinds include an entity card/image).
+	Selected int `json:"selected_entities"`
+	Bound    int `json:"bound"`
+	Missing  int `json:"missing"`
+	// Reasons counts the outcome per entity, including "bound".
+	Reasons         map[string]int             `json:"reasons,omitempty"`
+	MissingEntities []OverlayAuditMissingImage `json:"missing_entities,omitempty"`
+}
+
+// OverlayAuditMissingImage names one selected entity whose image is absent and
+// the reason it is absent.
+type OverlayAuditMissingImage struct {
+	EntityID   string `json:"entity_id,omitempty"`
+	Entity     string `json:"entity"`
+	EntityType string `json:"entity_type,omitempty"`
+	SceneID    string `json:"scene_id,omitempty"`
+	Reason     string `json:"reason"`
+}
+
+// OverlayAuditOverlayTiming is the intent→plan lineage. Authored = Frozen +
+// Unresolved; an unresolved intent is a proposal, not a render instruction.
+type OverlayAuditOverlayTiming struct {
+	Authored        int                      `json:"authored_intents"`
+	Frozen          int                      `json:"frozen_intents"`
+	Unresolved      int                      `json:"unresolved_intents"`
+	BySource        map[string]int           `json:"by_source,omitempty"`
+	Reasons         map[string]int           `json:"reasons,omitempty"`
+	UnresolvedItems []OverlayAuditTimingItem `json:"unresolved_items,omitempty"`
+}
+
+// OverlayAuditTimingItem is one unresolved intent, kept readable so an operator
+// can tie it to a scene without loading the whole intent surface.
+type OverlayAuditTimingItem struct {
+	IntentID string `json:"intent_id"`
+	SceneID  string `json:"scene_id,omitempty"`
+	Source   string `json:"source,omitempty"`
+	Text     string `json:"text,omitempty"`
+	Entity   string `json:"entity,omitempty"`
+	Reason   string `json:"reason"`
+}
+
+// buildOverlayAuditEntityImages joins the plan's image items to the entities
+// that were selected for the video. It never invents an image: "bound" means
+// the plan carries image bytes for that entity.
+func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capabilityoverlay.OverlayPlan) *OverlayAuditEntityImages {
+	if audit == nil {
+		return nil
+	}
+	info := &OverlayAuditEntityImages{
+		Required: entityImageGateRequired(),
+		Reasons:  make(map[string]int),
+	}
+	if plan != nil && plan.Intake != nil {
+		info.Budget = plan.Intake.Budget.ImageOverlays
+	}
+	for _, item := range audit.PlannedOverlays {
+		if item.ImageCount > 0 {
+			info.BudgetUsed++
+		}
+	}
+	if info.Budget > info.BudgetUsed {
+		info.BudgetUnused = info.Budget - info.BudgetUsed
+	}
+	verified := make(map[string]bool, len(audit.DetectedEntities))
+	if bundle != nil {
+		for _, asset := range bundle.Assets {
+			if asset.Verified && strings.TrimSpace(asset.EntityID) != "" {
+				verified[asset.EntityID] = true
+			}
+		}
+	}
+	for _, entity := range audit.DetectedEntities {
+		if !entityExpectsImage(entity) {
+			continue
+		}
+		info.Selected++
+		reason := entityImageOutcome(entity, verified)
+		info.Reasons[reason]++
+		if reason == EntityImageReasonBound || reason == EntityImageReasonUnverifiedBound {
+			info.Bound++
+			continue
+		}
+		info.Missing++
+		if len(info.MissingEntities) < maxAuditMissingEntities {
+			info.MissingEntities = append(info.MissingEntities, OverlayAuditMissingImage{
+				EntityID:   entity.ID,
+				Entity:     firstNonEmptyAuditValue(entity.Text, entity.CanonicalText),
+				EntityType: entity.Type,
+				SceneID:    entity.SceneID,
+				Reason:     reason,
+			})
+		}
+	}
+	sort.SliceStable(info.MissingEntities, func(i, j int) bool {
+		left, right := info.MissingEntities[i], info.MissingEntities[j]
+		if left.Entity != right.Entity {
+			return left.Entity < right.Entity
+		}
+		return left.SceneID < right.SceneID
+	})
+	return info
+}
+
+// entityExpectsImage reports whether the compiled plan actually assigns this
+// entity an image-bearing overlay. Text entity cards and location/map overlays
+// are not image promises: counting them here made final jobs fail even when
+// every planned entity-image overlay had a verified asset.
+func entityExpectsImage(entity OverlayAuditEntity) bool {
+	if !entity.SelectedForVideo {
+		return false
+	}
+	for _, kind := range entity.PlannedKinds {
+		kind = strings.ToLower(strings.TrimSpace(kind))
+		if strings.Contains(kind, "image") {
+			return true
+		}
+	}
+	return false
+}
+
+// entityImageOutcome maps the audit's image_status onto the gate vocabulary.
+// The status already distinguishes "no asset" from "verified but not planned";
+// this keeps that distinction in the reason the gate reports.
+func entityImageOutcome(entity OverlayAuditEntity, verified map[string]bool) string {
+	switch entity.ImageStatus {
+	case "planned":
+		return EntityImageReasonBound
+	case "planned_without_verified_asset":
+		return EntityImageReasonUnverifiedBound
+	case "verified_asset_not_planned":
+		return EntityImageReasonVerifiedNotBound
+	}
+	if verified[entity.ID] {
+		return EntityImageReasonVerifiedNotBound
+	}
+	return EntityImageReasonNoVerifiedAsset
+}
+
+// buildOverlayAuditOverlayTiming projects the intent lineage. A nil lineage
+// (older call sites, tests of the plan projection alone) yields nil so the
+// audit never claims a lineage it did not compute.
+func buildOverlayAuditOverlayTiming(lineage *overlayIntentLineage) *OverlayAuditOverlayTiming {
+	if lineage == nil {
+		return nil
+	}
+	info := &OverlayAuditOverlayTiming{
+		Authored:   lineage.Authored,
+		Frozen:     lineage.Frozen,
+		Unresolved: lineage.Unresolved,
+		BySource:   lineage.BySource,
+		Reasons:    lineage.Reasons,
+	}
+	for _, item := range lineage.Items {
+		info.UnresolvedItems = append(info.UnresolvedItems, OverlayAuditTimingItem{
+			IntentID: item.IntentID,
+			SceneID:  item.SceneID,
+			Source:   item.Source,
+			Text:     item.Text,
+			Entity:   item.Entity,
+			Reason:   item.Reason,
+		})
+	}
+	return info
+}
+
+// entityImageGateRequired reports the strict contract. Off by default: the
+// audit is always emitted, the failure is opt-in so an existing run that
+// accepts text-only cards keeps working.
+func entityImageGateRequired() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(requireEntityImagesEnv))) {
+	case "1", "true", "on", "enabled", "yes", "strict":
+		return true
+	default:
+		return false
+	}
+}
+
+// enforceEntityImageGate fails the plan when the operator asked for images and
+// a selected entity has none. The message names the counts, the reasons and a
+// few entities, so the failure is actionable without opening the artifact.
+func enforceEntityImageGate(audit *OverlayAudit) error {
+	if audit == nil || audit.EntityImages == nil || !audit.EntityImages.Required {
+		return nil
+	}
+	info := audit.EntityImages
+	if info.Missing == 0 {
+		return nil
+	}
+	names := make([]string, 0, 3)
+	for _, item := range info.MissingEntities {
+		if name := strings.TrimSpace(item.Entity); name != "" {
+			names = append(names, name)
+		}
+		if len(names) == 3 {
+			break
+		}
+	}
+	reasons := make([]string, 0, len(info.Reasons))
+	for reason, count := range info.Reasons {
+		if reason == EntityImageReasonBound {
+			continue
+		}
+		reasons = append(reasons, fmt.Sprintf("%s=%d", reason, count))
+	}
+	sort.Strings(reasons)
+	return fmt.Errorf("%w: %d of %d selected entities have no bound image (%s); reasons: %s",
+		ErrEntityImageGate, info.Missing, info.Selected,
+		strings.Join(names, ", "), strings.Join(reasons, ", "))
+}

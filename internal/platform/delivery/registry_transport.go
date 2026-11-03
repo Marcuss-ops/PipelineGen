@@ -219,7 +219,7 @@ func StockPath(req PublishRequest) ([]string, error) {
 //	{subject}
 //
 // Every image lives in its own SubFolder directly under the dedicated
-// images root (1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY). The folder name is
+// images root (1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy). The folder name is
 // pathutil.SafeFolderName(subject) so an image is addressed as
 // <root>/<SafeFolderName(subject)>/<file> and is downloaded once at
 // runtime then reused permanently from Drive (ConflictSkip +

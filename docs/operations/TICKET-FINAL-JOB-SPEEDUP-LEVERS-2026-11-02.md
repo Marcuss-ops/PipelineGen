@@ -325,6 +325,14 @@ stesso asset e della stessa finestra sorgente. Nel caso r49: 85 frammenti,
 272,8 s / 85 ≈ 3,2 s per frammento. **Non** è il numero della r100: il JSON
 r100 non espone il conteggio dei frammenti.
 
+**Nota 2026-11-03.** Questi frammenti sono finestre disgiunte **dello stesso
+piano composto**, quindi la classe di ammissione corretta è
+`ChunkedDisjointSamePlan`, non `DifferentPlan`; e l'overlap dentro un daemon è
+stato misurato fallire (`Chronon3d/docs/evidence/gpu-admission-two-jobs-2026-11-02.md`
+§3: stallo a 75 s, morte del daemon), quindi la leva restante è
+**per-processo** (più runtime, 1,98× misurato), non per-slot. Non pianificare
+N frammenti in parallelo dentro lo stesso daemon finché quel gate non passa.
+
 **Passi**
 
 1. Contare i frammenti della run corrente dal piano compilato, non dal

@@ -180,6 +180,11 @@ type RemoteFinalJobSegmentPrepWindow struct {
 	// (resolution, frame rate, chroma) for this window instead of only cutting
 	// it. It separates a scale cost from a cut cost without a second probe.
 	Normalized bool `json:"normalized,omitempty"`
+	// CopyFailure explains why this window used the encoder instead of packet
+	// copy: for example, an unaligned start, an uncertified source, or a copy
+	// that failed verification. Every encode path names its reason so CPU work
+	// stays visible in the receipt.
+	CopyFailure string `json:"copy_failure,omitempty"`
 }
 
 // RemoteFinalJobSegmentPrepTiming is the locally measured split of the one
@@ -210,6 +215,12 @@ type RemoteFinalJobSegmentPrepTiming struct {
 	// exposed separately so a run can prove that reaching the exact frame cap
 	// did not silently freeze pictures.
 	PaddedFrames int64 `json:"padded_frames,omitempty"`
+	// EncodeFallbacks counts windows that were ELIGIBLE for a packet copy (GOP
+	// aligned, certified source) but reached the encoder anyway. It is the
+	// count the lenient mode used to hide: the run reported success and paid a
+	// full re-encode for a window the copy lever should have covered. Each one
+	// is also named in its window record through CopyFailure.
+	EncodeFallbacks int `json:"encode_fallbacks,omitempty"`
 	// Windows is the per-fragment attribution of this handoff, sorted by
 	// segment identity for determinism. It is scoped to the handoff that built
 	// this payload, so a concurrent or resumed run never contributes its

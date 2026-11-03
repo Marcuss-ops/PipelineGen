@@ -53,15 +53,21 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	if plan == nil {
 		return nil
 	}
-	if bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID); bundleErr != nil {
+	bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID)
+	if bundleErr != nil {
 		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
-	} else {
-		result.SemanticRenderBundle = bundle
-		result.OverlayAudit = buildOverlayAudit(bundle, plan)
 	}
+	result.SemanticRenderBundle = bundle
+	// The lineage is computed by the freeze pass itself, then projected into
+	// the audit: the audit must describe the plan that was lowered, not the
+	// pre-freeze intent set.
 	resolved := append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...)
-	freezeOverlayIntents(resolved, plan.Items)
+	lineage := freezeOverlayIntents(resolved, plan.Items)
 	result.ResolvedOverlayIntents = resolved
+	result.OverlayAudit = buildOverlayAuditWithLineage(bundle, plan, lineage)
+	if err := enforceEntityImageGate(result.OverlayAudit); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -131,11 +137,40 @@ func assetRefForImageLayer(item capabilityoverlay.OverlayItem, layer *capability
 	return nil
 }
 
+// overlayIntentLineage is the intent→plan join summary. It exists because
+// "PENDING" was an unexplained state in every artifact: 39 intents were
+// authored, 31 stayed PENDING, and nothing said whether the entity lost
+// admission or the planner rewrote the text. Authored = Frozen + Unresolved.
+type overlayIntentLineage struct {
+	Authored   int
+	Frozen     int
+	Unresolved int
+	BySource   map[string]int
+	Reasons    map[string]int
+	Items      []overlayIntentResolution
+}
+
+type overlayIntentResolution struct {
+	IntentID string
+	SceneID  string
+	Source   string
+	Text     string
+	Entity   string
+	Reason   string
+}
+
 // freezeOverlayIntents promotes the pre-timing authoring bindings to the
 // same certified timing/preset/asset facts emitted by OverlayPlan. The plan
 // remains the renderer input; this projection keeps the persisted intent
 // surface honest at the render boundary (no PENDING intents after lowering).
-func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) {
+//
+// It returns the lineage so an unresolved intent is reported with a reason
+// instead of being left in the array as if it were a render instruction.
+func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) *overlayIntentLineage {
+	lineage := &overlayIntentLineage{
+		BySource: make(map[string]int),
+		Reasons:  make(map[string]int),
+	}
 	for i := range intents {
 		intent := &intents[i]
 		for _, item := range items {
@@ -199,6 +234,73 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 			break
 		}
 	}
+	for _, intent := range intents {
+		lineage.record(intent, items)
+	}
+	return lineage
+}
+
+// record classifies one intent after the freeze pass. A FROZEN intent is a
+// rendered item; anything else is a proposal whose reason is derived from what
+// the plan actually contains.
+func (l *overlayIntentLineage) record(intent capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) {
+	if l == nil {
+		return
+	}
+	l.Authored++
+	source := string(intent.Source)
+	if strings.TrimSpace(source) == "" {
+		source = string(capabilityoverlay.IntentSourceEntity)
+	}
+	l.BySource[source]++
+	if intent.TimingState == capabilityoverlay.TimingStateFrozen {
+		l.Frozen++
+		return
+	}
+	l.Unresolved++
+	reason := overlayIntentUnresolvedReason(intent, items)
+	l.Reasons[reason]++
+	if len(l.Items) >= maxAuditUnresolvedItems {
+		return
+	}
+	text := strings.TrimSpace(intent.SourceText)
+	if text == "" {
+		text = strings.TrimSpace(intent.Payload.Text)
+	}
+	l.Items = append(l.Items, overlayIntentResolution{
+		IntentID: intent.IntentID,
+		SceneID:  intent.SceneID,
+		Source:   source,
+		Text:     text,
+		Entity:   strings.TrimSpace(intent.Entity.CanonicalName),
+		Reason:   reason,
+	})
+}
+
+// overlayIntentUnresolvedReason distinguishes the three ways an intent can
+// fail to freeze: the entity lost admission, the source text was rewritten, or
+// the join succeeded but the lowering did not freeze it (a defect, not a
+// normal outcome).
+func overlayIntentUnresolvedReason(intent capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) string {
+	entitySource := intent.Source == capabilityoverlay.IntentSourceEntity || intent.Source == capabilityoverlay.IntentSourceEntityImage
+	for _, item := range items {
+		if item.SceneID != intent.SceneID {
+			continue
+		}
+		if entitySource {
+			if intentMatchesEntityItem(intent, item) {
+				return OverlayIntentReasonTemplateNotMaterialized
+			}
+			continue
+		}
+		if text := strings.TrimSpace(intent.SourceText); text != "" && text == strings.TrimSpace(item.Text) {
+			return OverlayIntentReasonTemplateNotMaterialized
+		}
+	}
+	if entitySource {
+		return OverlayIntentReasonEntityNotPlanned
+	}
+	return OverlayIntentReasonSourceTextNotInPlan
 }
 
 // entityTimelineLanguage returns the language an EntityTimeline was certified

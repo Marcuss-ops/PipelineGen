@@ -4,10 +4,9 @@ package scriptgeneration
 // timeline (docs/operations/TICKET-MANIFEST-CONTRACT.md §3 "packed timeline",
 // TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE.md §3.4): the composition
 // renounces the empty plan-absolute frames. Items are re-timed on a packed
-// canvas — the union of their LITERAL rendered windows, laid out back to
-// back — so the GPU only ever encodes frames that carry real overlay pixels
-// instead of holding the plan's silent spans (the measured 27.864-frame
-// artifact of the gate-100-overlays-only-r2 run was ~80% empty frames).
+// canvas — the union of their LITERAL rendered windows, with disjoint spans
+// padded to closed-GOP boundaries — so the GPU avoids the plan's silent spans
+// while the final-job handoff can packet-copy each replacement window.
 //
 // The plan window (InUS/OutUS on the manifest entry) stays verbatim: it is
 // the receipt, and the same packed artifact serves the future final handoff
@@ -30,7 +29,28 @@ import (
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
+
+// overlayPackedGOPGridUS is the packet-copy start grid used by the final-job
+// assembler. Separate packed intervals may be separated by empty canvas time;
+// rounding each new interval up to this grid lets every replacement window
+// start at a closed GOP without re-encoding a fragment at handoff time.
+func overlayPackedGOPGridUS() int64 {
+	contract := kernelmedia.DefaultAssemblyMediaContract()
+	if contract.FPS.Num <= 0 || contract.FPS.Den <= 0 || contract.KeyframeInterval <= 0 {
+		return 2_000_000 // Keep the canonical 24 fps / 48 frame contract fail-safe.
+	}
+	return int64(contract.KeyframeInterval) * 1_000_000 * int64(contract.FPS.Den) / int64(contract.FPS.Num)
+}
+
+func alignOverlayPackedOffset(offsetUS int64) int64 {
+	grid := overlayPackedGOPGridUS()
+	if offsetUS <= 0 || grid <= 0 {
+		return 0
+	}
+	return ((offsetUS + grid - 1) / grid) * grid
+}
 
 // packedPlacement is one item's position on the packed composition canvas
 // (artifact-relative microseconds). The pair is always a positive window of
@@ -76,10 +96,11 @@ func candidateLiteralWindow(plan capoverlay.OverlayPlan, candidate overlayItemCa
 }
 
 // computePackedPlacements merges the candidates' literal windows into
-// disjoint packed intervals (the union of every real overlay span) and
-// returns each item's packed placement (keyed by ItemID) plus the packed
-// canvas end. A candidate listed with the same ItemID twice is impossible by
-// plan validation; a map item reaching this function is already rejected by
+// disjoint packed intervals (the union of every real overlay span), aligns
+// each disjoint interval start to the final-job GOP grid, and returns each
+// item's packed placement (keyed by ItemID) plus the packed canvas end. A
+// candidate listed with the same ItemID twice is impossible by plan
+// validation; a map item reaching this function is already rejected by
 // partitionOverlayRenderWork and fusedOverlayBatchPlan double-checks it.
 func computePackedPlacements(plan capoverlay.OverlayPlan, candidates []overlayItemCandidate) (map[string]packedPlacement, int64, error) {
 	type literalWindow struct {
@@ -125,6 +146,11 @@ func computePackedPlacements(plan capoverlay.OverlayPlan, candidates []overlayIt
 				break
 			}
 			intervalOffset += m.out - m.in
+			// A gap between literal intervals is free to the picture, so use it
+			// to move the next interval's first frame onto the assembler's GOP
+			// grid. This preserves each item's exact relative timing within its
+			// interval and makes its packed source window packet-copyable.
+			intervalOffset = alignOverlayPackedOffset(intervalOffset)
 		}
 		if !found {
 			return nil, 0, fmt.Errorf("overlay item %q: literal window [%d,%d) is not covered by the packed union", window.id, window.in, window.out)

@@ -244,20 +244,24 @@ func (v VideoConfig) EncoderPolicy() VideoEncoderPolicy {
 	return VideoEncoderPolicy{Codec: v.Codec, Preset: v.Preset, CRF: v.CRF}
 }
 
-// FinalJobFragmentEncoderPolicy resolves the narrowly scoped encoder override
-// for the local final-job fragment boundary. Selection lives with platform
-// configuration so FFmpeg command builders receive a resolved policy and do
-// not choose concrete encoders themselves.
+// FinalJobFragmentEncoderPolicy resolves the ONLY encoder that can produce the
+// canonical final-job fragment bitstream. The avcC (SPS/PPS) is encoder-family
+// specific: libx264 at veryfast with the fragment flags is the certified lane,
+// while NVENC emits different parameter sets under the same nominal profile.
+// This function therefore does not let the runtime media policy or an operator
+// override select a different vendor; policy/default and x264 all resolve to
+// the canonical lane, and NVENC fails closed instead of producing fragments the
+// assembler must reject.
 func FinalJobFragmentEncoderPolicy(base VideoEncoderPolicy) (VideoEncoderPolicy, error) {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CODEC"))) {
-	case "", "policy", "default":
+	case "", "policy", "default", "x264", "libx264", "cpu":
 	case "nvenc", EncoderNVENCH264, "gpu":
-		base.Codec = EncoderNVENCH264
-	case "x264", "libx264", "cpu":
-		base.Codec = "libx264"
+		return VideoEncoderPolicy{}, fmt.Errorf("VELOX_FINAL_JOB_FRAGMENT_CODEC=%q is incompatible with packet-copy assembly: NVENC SPS/PPS differ from the canonical libx264 lane", os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CODEC"))
 	default:
-		return VideoEncoderPolicy{}, fmt.Errorf("VELOX_FINAL_JOB_FRAGMENT_CODEC must be policy, nvenc or x264, got %q", os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CODEC"))
+		return VideoEncoderPolicy{}, fmt.Errorf("VELOX_FINAL_JOB_FRAGMENT_CODEC must be policy, default or x264, got %q", os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CODEC"))
 	}
+	base.Codec = "libx264"
+	base.Preset = "veryfast"
 	return base, nil
 }
 

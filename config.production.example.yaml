@@ -135,9 +135,9 @@ drive:
   # artlist_root_folder is RETIRED (see config.example.yaml): legacy
   # Artlist assets are migrated into the stock root with
   # `go run ./cmd/admin migrate-artlist-assets`.
-  # Images: per-image SubFolder layout (1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY /
+  # Images: per-image SubFolder layout (1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy /
   # <SafeFolderName(subject)>/<file>). Single-download, Drive-served.
-  images_root_folder: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  images_root_folder: "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
   scripts_root_folder: ""
   overlay_render_root_folder: ""
   video_ai_root_folder: ""

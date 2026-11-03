@@ -133,6 +133,10 @@ type RenderContractFacts struct {
 	VideoCodec  string `json:"video_codec,omitempty"`
 	AudioCodec  string `json:"audio_codec,omitempty"`
 	PixelFormat string `json:"pixel_format,omitempty"`
+	// VideoExtradataSHA256 is the exact SPS/PPS (avcC) identity. It travels
+	// with the contract so the assembler can reject a mixed batch before any
+	// packet copy; profile/level/geometry alone are not sufficient.
+	VideoExtradataSHA256 string `json:"video_extradata_sha256,omitempty"`
 }
 
 // RenderChildResult is one clip.render child result (§14: the render

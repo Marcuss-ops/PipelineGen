@@ -11,9 +11,44 @@ PROJECT="${2:?usage: submit-and-poll.sh PAYLOAD.json PROJECT [IDEMPOTENCY_KEY] [
 IDEMPOTENCY_KEY="${3:-$(basename "$PAYLOAD" .json)-$(date -u +%Y%m%dT%H%M%SZ)}"
 TIMEOUT_SECONDS="${4:-3600}"
 INTERVAL_SECONDS="${VELOX_POLL_INTERVAL_SECONDS:-3}"
+# The same floor the artifact staging layer enforces (2 GiB): submitting a run
+# that cannot stage its own output only burns a worker and ends in
+# `ErrDiskSpaceLow` after the render. Keep the two numbers aligned.
+MIN_FREE_BYTES="${VELOX_MIN_FREE_BYTES:-2147483648}"
+DF_BIN="${VELOX_DF_BIN:-df}"
+CURL_BIN="${VELOX_CURL_BIN:-curl}"
 
 [[ -r "$PAYLOAD" ]] || { echo "payload non leggibile: $PAYLOAD" >&2; exit 2; }
 [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || { echo "timeout non valido: $TIMEOUT_SECONDS" >&2; exit 2; }
+
+# Fail before the Master creates an attempt, not after the render. Both checks
+# are the failures that actually blocked the 2026-11-03 runs: a full disk
+# (`free disk space below minimum`) and a service that was not answering.
+preflight() {
+  local free_bytes
+  free_bytes="$("$DF_BIN" -Pk "$ROOT" | awk 'NR==2 {print $4 * 1024}')"
+  if [[ ! "$free_bytes" =~ ^[0-9]+$ ]]; then
+    echo "preflight: impossibile leggere lo spazio libero di $ROOT" >&2
+    return 2
+  fi
+  if (( free_bytes < MIN_FREE_BYTES )); then
+    printf 'preflight: solo %s byte liberi su %s (minimo %s); libera spazio prima del submit\n' \
+      "$free_bytes" "$ROOT" "$MIN_FREE_BYTES" >&2
+    return 3
+  fi
+  if ! "$CURL_BIN" -fsS --max-time 3 "$BASE_URL/health" >/dev/null; then
+    printf 'preflight: %s/health non risponde; avvia il servizio prima del submit\n' "$BASE_URL" >&2
+    return 3
+  fi
+  printf 'preflight: free=%s byte, health=OK, payload=%s\n' "$free_bytes" "$PAYLOAD" >&2
+}
+
+if [[ "${VELOX_SKIP_PREFLIGHT:-0}" != "1" ]]; then
+  preflight || exit $?
+fi
+if [[ "${VELOX_PREFLIGHT_ONLY:-0}" == "1" ]]; then
+  exit 0
+fi
 
 "$ROOT/scripts/with-velox-auth" bash -c '
   set -Eeuo pipefail

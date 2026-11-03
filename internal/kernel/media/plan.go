@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 )
 
 const (
@@ -242,19 +244,21 @@ func (p MediaExtractionPolicy) IncludesEntityType(entityType string) bool {
 	if len(p.Include) == 0 {
 		return true
 	}
-	kind := strings.ToUpper(strings.TrimSpace(entityType))
-	switch kind {
-	case "PERSON":
+	// Families come from kernel/entitytype: a policy that selects locations
+	// must select GPE, LOC, CITY and LANDMARK too, otherwise the same place
+	// is included or excluded depending on which extractor spelled it.
+	switch entitytype.Fold(entityType) {
+	case entitytype.Person:
 		return p.Includes(ExtractionIncludePersons)
-	case "BRAND", "LOGO":
+	case entitytype.Logo:
 		return p.Includes(ExtractionIncludeBrands)
-	case "DATE", "TIME":
+	case entitytype.Date, entitytype.Time:
 		return p.Includes(ExtractionIncludeDates)
-	case "MONEY":
+	case entitytype.Money:
 		return p.Includes(ExtractionIncludeMoney)
-	case "NUMBER", "CARDINAL", "ORDINAL", "PERCENT", "PERCENTAGE", "METRIC", "METRICS", "STATISTIC", "STATISTICS", "QUANTITY":
+	case entitytype.Number, entitytype.Percent:
 		return p.Includes(ExtractionIncludeMetrics)
-	case "GPE", "LOCATION", "PLACE", "CITY", "COUNTRY", "LANDMARK":
+	case entitytype.Place:
 		return p.Includes(ExtractionIncludeLocations)
 	default:
 		return false

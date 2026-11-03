@@ -5,23 +5,12 @@ import (
 	"fmt"
 	"strings"
 
+	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 type FinalJobStockFile struct{ ID, Name string }
-
-// finalJobRejectedStockDriveIDs contains stock files proven incompatible with
-// the remote copy-only packet mux. Keep these exclusions on the 77 side: the
-// 51 worker must reject an unsafe source window instead of snapping its cut.
-var finalJobRejectedStockDriveIDs = map[string]struct{}{
-	"1xvvjxin09xbwy7qqignzlmpjftckql_o": {},
-}
-
-func finalJobStockFileAllowed(file FinalJobStockFile) bool {
-	_, rejected := finalJobRejectedStockDriveIDs[strings.ToLower(strings.TrimSpace(file.ID))]
-	return !rejected
-}
 
 type FinalJobAssetResolver interface {
 	ResolveFinalJobAsset(context.Context, string) (map[string]any, error)
@@ -126,6 +115,23 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	}
 	if len(result.Scenes) == 0 {
 		return nil, nil, fmt.Errorf("final_job has no generated scenes")
+	}
+	imageRequested := finalJobImageRequested(req)
+	if err := finalJobEntityImageGate(result.OverlayAudit, imageRequested); err != nil {
+		return nil, nil, err
+	}
+	if imageRequested {
+		clipScenes := make(map[string]struct{})
+		for sceneID := range finalJobIntermediateClipWindows(result) {
+			clipScenes[sceneID] = struct{}{}
+		}
+		var overlayItems []capoverlay.OverlayItem
+		if result.OverlayPlan != nil {
+			overlayItems = result.OverlayPlan.Items
+		}
+		if err := finalJobImagePreflight(overlayItems, clipScenes, true); err != nil {
+			return nil, nil, err
+		}
 	}
 	scenesByID := make(map[string]Scene, len(result.Scenes))
 	for _, scene := range result.Scenes {
@@ -362,7 +368,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	} else if delta := plannedDurationMS*1000 - result.CanonicalTimeline.DurationUS; delta < -40_000 || delta > 40_000 {
 		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
 	}
-	remoteOverlays, overlayManifest, err := finalJobOverlayHandoff(ctx, result, consumedPhraseOverlays)
+	remoteOverlays, overlayManifest, err := finalJobOverlayHandoff(ctx, result, consumedPhraseOverlays, imageRequested)
 	if err != nil {
 		return nil, nil, err
 	}

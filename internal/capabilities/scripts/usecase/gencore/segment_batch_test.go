@@ -93,6 +93,49 @@ func TestEngineGenerate_BatchMismatchGetsBoundedRepair(t *testing.T) {
 	}
 }
 
+// TestEngineGenerate_R20MinutiShapeRejectsA26SceneAnswer pins the 2026-11-03
+// regression: the r20minuti payload declared FIVE compact segments (~520 words
+// each) and the model answered with 26 short paragraphs. A 5-segment plan fans
+// out one request per segment, and each request must yield exactly ONE
+// paragraph: a 26-paragraph answer cannot be smuggled into 26 micro-scenes.
+// The typed failure is what keeps the measured 26-scene cost driver out of the
+// job instead of silently shipping it.
+func TestEngineGenerate_R20MinutiShapeRejectsA26SceneAnswer(t *testing.T) {
+	segments := make([]scriptpkg.ScriptSegment, 0, 5)
+	for i := 1; i <= 5; i++ {
+		segments = append(segments, scriptpkg.ScriptSegment{
+			ID:          fmt.Sprintf("scene-%02d", i),
+			TargetWords: 520,
+		})
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:       "r20minuti",
+		Topic:       "r20minuti",
+		Language:    "it",
+		Mode:        "text",
+		TargetWords: 2600,
+		Segments:    segments,
+	}
+	microScenes := make([]string, 0, 26)
+	for i := 0; i < 26; i++ {
+		microScenes = append(microScenes, textOfNWords(8))
+	}
+	gen := &batchScriptedGenerator{fn: func(string) string { return strings.Join(microScenes, "\n\n") }}
+	engine := &Engine{ollamaGen: gen, log: nil}
+	engine.ConfigureSegmentValidation(15, 10, 1)
+
+	_, err := engine.Generate(context.Background(), plan)
+	if err == nil || !errors.Is(err, scriptpkg.ErrSegmentValidationFailed) {
+		t.Fatalf("a 26-paragraph answer to a 5-segment plan must fail closed, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "expected 1 paragraphs, got 26") {
+		t.Fatalf("failure must keep the one-paragraph-per-segment contract, got %v", err)
+	}
+	if gen.callCount() != 10 {
+		t.Fatalf("provider calls = %d, want 10 (5 segments, one bounded repair each)", gen.callCount())
+	}
+}
+
 // TestEngineGenerate_BatchMismatchStopsAtRepairLimit pins the bounded side of
 // the policy: a batch that never splits into the right paragraph count stops
 // after the configured repair budget and surfaces ErrSegmentValidationFailed.

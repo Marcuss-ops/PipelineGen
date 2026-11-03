@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 )
 
 // VidRush providers are intentionally a closed set. The application layer
@@ -128,75 +129,97 @@ type ExtractedEntity struct {
 // sceneAnnotations merger in capabilities/scripts/adapters and the runner
 // projectEntityAnnotations in capabilities/scripts) maps an extracted entity
 // type through this one function instead of scattering switch statements.
-// The overlay-kind translation (EntityTypeToKind in capabilities/overlays)
-// is a DIFFERENT mapping (annotation kind → overlay kind) and remains owned
-// there; this registry is only the extractor vocabulary bridge.
+//
+// The spelling table is NOT restated here: it is kernel/entitytype, the same
+// table capabilities/entities folds into identity. This function only projects
+// the family onto the annotation kind the overlay/media vocabulary speaks
+// (PLACE → GPE). The overlay-kind translation (EntityTypeToKind in
+// capabilities/overlays) is a DIFFERENT mapping (annotation kind → overlay
+// kind) and remains owned there.
 //
 //	PERSON            → PERSON            (primary, imageable entity card)
 //	ORG/COMPANY/...   → ORG               (primary, imageable)
-//	GPE/PLACE/...     → GPE               (primary, imageable)
+//	GPE/PLACE/LOC/... → GPE               (primary, imageable)
 //	PRODUCT           → PRODUCT           (primary/media, imageable)
-//	LOGO              → LOGO              (primary/media, imageable)
+//	LOGO/BRAND        → LOGO              (primary/media, imageable)
 //	DATE/TIME/CARDINAL/NUMBER/ORDINAL/MONEY/PERCENT → value kinds (secondary)
 //	QUOTE             → QUOTE
 //	EVENT/WORK_OF_ART → editorial kinds
 //	KEYWORD/VISUAL_SUBJECT → search/index surfaces, never spoken entities
 //	anything else     → CONCEPT
 func NormalizeAnnotationType(raw string) string {
-	switch strings.ToUpper(strings.TrimSpace(raw)) {
-	case "PERSON":
+	// CARDINAL and ORDINAL share the NUMBER identity (one number must not mint
+	// two ids) but stay distinct annotation kinds: the overlay puts them in
+	// different slots. The kind distinction is preserved here, on the raw
+	// spelling, instead of by splitting the identity table.
+	if folded := entitytype.Fold(raw); folded == entitytype.Number {
+		switch strings.ToUpper(strings.TrimSpace(raw)) {
+		case "CARDINAL":
+			return "CARDINAL"
+		case "ORDINAL":
+			return "ORDINAL"
+		}
+	}
+	switch entitytype.Fold(raw) {
+	case entitytype.Person:
 		return "PERSON"
-	case "BRAND":
-		return "LOGO"
-	case "LOGO":
-		return "LOGO"
-	case "ORG", "ORGANIZATION", "COMPANY", "CORP", "CORPORATION", "BUSINESS":
+	case entitytype.Org:
 		return "ORG"
-	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
+	case entitytype.Place:
 		return "GPE"
-	case "DATE", "DATETIME", "CALENDAR_DATE":
-		return "DATE"
-	case "METRIC", "METRICS", "STATISTIC", "STATISTICS", "QUANTITY":
-		return "NUMBER"
-	case "TIME":
-		return "TIME"
-	case "CARDINAL":
-		return "CARDINAL"
-	case "NUMBER", "NUM":
-		return "NUMBER"
-	case "ORDINAL":
-		return "ORDINAL"
-	case "MONEY":
-		return "MONEY"
-	case "PERCENT", "PERCENTAGE":
-		return "PERCENT"
-	case "QUOTE":
-		return "QUOTE"
-	case "PRODUCT":
+	case entitytype.Product:
 		return "PRODUCT"
-	case "EVENT":
+	case entitytype.Logo:
+		return "LOGO"
+	case entitytype.Event:
 		return "EVENT"
-	case "WORK_OF_ART", "WORK":
+	case entitytype.WorkOfArt:
 		return "WORK_OF_ART"
-	case "KEYWORD":
+	case entitytype.Date:
+		return "DATE"
+	case entitytype.Time:
+		return "TIME"
+	case entitytype.Number:
+		return "NUMBER"
+	case entitytype.Money:
+		return "MONEY"
+	case entitytype.Percent:
+		return "PERCENT"
+	case entitytype.Quote:
+		return "QUOTE"
+	case entitytype.Keyword:
 		return "KEYWORD"
-	case "VISUAL_SUBJECT":
+	case entitytype.VisualSubject:
 		return "VISUAL_SUBJECT"
 	default:
 		return "CONCEPT"
 	}
 }
 
-// IsAnnotationEntityKind reports whether a normalized annotation kind is a
-// primary entity-card / media kind (the kinds the entity image projection
-// binds images for by default and the entity timeline treats as spoken
-// entities): PERSON / ORG / GPE / PRODUCT / LOGO.
-func IsAnnotationEntityKind(kind string) bool {
-	switch kind {
-	case "PERSON", "ORG", "GPE", "PRODUCT", "LOGO":
-		return true
+// annotationEntityKinds is the ONE declaration of the primary entity-card /
+// media kinds (the kinds the entity image projection binds images for by
+// default and the entity timeline treats as spoken entities).
+var annotationEntityKinds = []string{"PERSON", "ORG", "GPE", "PRODUCT", "LOGO"}
+
+var annotationEntityKindSet = func() map[string]bool {
+	set := make(map[string]bool, len(annotationEntityKinds))
+	for _, kind := range annotationEntityKinds {
+		set[kind] = true
 	}
-	return false
+	return set
+}()
+
+// AnnotationEntityKinds returns a copy of the closed primary-kind set. Callers
+// that need the whole set (the media binding projection's default allow-list)
+// read it here instead of restating the kinds.
+func AnnotationEntityKinds() []string {
+	return append([]string(nil), annotationEntityKinds...)
+}
+
+// IsAnnotationEntityKind reports whether a normalized annotation kind is a
+// primary entity-card / media kind: PERSON / ORG / GPE / PRODUCT / LOGO.
+func IsAnnotationEntityKind(kind string) bool {
+	return annotationEntityKindSet[kind]
 }
 
 // EntityMediaLink joins an NLP surface entity to a canonical media identity.

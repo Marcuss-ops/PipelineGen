@@ -95,7 +95,7 @@ func buildDestinationPolicies(cfg *config.Config) map[DestinationKey]Destination
 			ConflictPolicy: ConflictOverwrite, // latest PDF/DOCX wins
 		},
 		// DestinationImage: per-image SubFolder layout under the dedicated
-		// images root 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY. Each image maps to
+		// images root 1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy. Each image maps to
 		// <root>/<SafeFolderName(subject)>/<file> (ImagePath = single
 		// segment) with ConflictSkip + DeriveIdempotencyKey so the image
 		// is downloaded once at runtime then reused permanently from Drive.

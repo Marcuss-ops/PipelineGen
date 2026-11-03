@@ -53,6 +53,7 @@ CURL_BIN="${DEPLOY_CURL_BIN:-curl}"
 SHA256_BIN="${DEPLOY_SHA256_BIN:-sha256sum}"
 SHA1_BIN="${DEPLOY_SHA1_BIN:-sha1sum}"
 SYSTEMCTL_BIN="${DEPLOY_SYSTEMCTL_BIN:-systemctl}"
+SUDO_BIN="${DEPLOY_SUDO_BIN:-sudo}"
 PIPELINEGENCTL_BIN="${DEPLOY_PIPELINEGENCTL_BIN:-$ROOT_DIR/scripts/systemd/pipelinegenctl}"
 PROC_ROOT="${DEPLOY_PROC_ROOT:-/proc}"
 
@@ -81,6 +82,24 @@ require_cmd() {
 file_sha256() { "$SHA256_BIN" "$1" | cut -d' ' -f1; }
 
 # ── 1. build ──────────────────────────────────────────────────────────
+# ── 0. preflight ──────────────────────────────────────────────────────
+# The 2026-11-03 deploy attempts failed for two avoidable reasons: the binary
+# was invoked as bare `pipelinegenctl` (not in PATH) and `sudo -n` had no
+# restricted rule, so the restart was denied only after a full build. Both are
+# now checked up front, before spending a build.
+step_preflight() {
+  if [ "$SKIP_RESTART" = "1" ]; then
+    log "preflight: restart skipped (--skip-restart)"
+    return 0
+  fi
+  [ -x "$PIPELINEGENCTL_BIN" ] || die "pipelinegenctl not found or not executable: $PIPELINEGENCTL_BIN (set DEPLOY_PIPELINEGENCTL_BIN or run from the repo)"
+  require_cmd "$SYSTEMCTL_BIN"
+  if ! "$SUDO_BIN" -n true 2>/dev/null; then
+    die "passwordless sudo is not available: add the restricted NOPASSWD rule for 'systemctl restart $SERVICE' (see scripts/systemd/pipelinegenctl) or run the deploy as root"
+  fi
+  log "preflight: pipelinegenctl present, sudo -n available"
+}
+
 step_build() {
   if [ "$SKIP_BUILD" = "1" ]; then
     log "build: skipped (--skip-build); using $BIN_PATH"
@@ -111,10 +130,6 @@ step_restart() {
     log "restart: skipped (--skip-restart)"
     return 0
   fi
-  if [ ! -x "$PIPELINEGENCTL_BIN" ]; then
-    die "pipelinegenctl not found or not executable: $PIPELINEGENCTL_BIN"
-  fi
-  require_cmd "$SYSTEMCTL_BIN"
   log "restart: pipelinegenctl restart (fail-closed sudo -n)"
   # IMPORTANT: never pipe this. A pipe would mask the exit code — the exact
   # failure that let a denied `sudo -n install` report success.
@@ -175,11 +190,24 @@ if [ "$DRY_RUN" = "1" ]; then
   log "  binary:       $BIN_PATH"
   log "  build:        $([ "$SKIP_BUILD" = "1" ] && echo skip || echo 'make build-server')"
   log "  restart:      $([ "$SKIP_RESTART" = "1" ] && echo skip || echo "$PIPELINEGENCTL_BIN restart")"
+  if [ "$SKIP_RESTART" = "1" ]; then
+    log "  preflight:    restart skipped, pipelinegenctl not required"
+  elif [ -x "$PIPELINEGENCTL_BIN" ]; then
+    log "  preflight:    pipelinegenctl present"
+  else
+    log "  preflight:    pipelinegenctl MISSING ($PIPELINEGENCTL_BIN)"
+  fi
+  if [ "$SKIP_RESTART" != "1" ] && "$SUDO_BIN" -n true 2>/dev/null; then
+    log "  preflight:    sudo -n available"
+  elif [ "$SKIP_RESTART" != "1" ]; then
+    log "  preflight:    sudo -n MISSING (restart will fail closed)"
+  fi
   log "  ready probe:  $BASE_URL/health (timeout ${HEALTH_TIMEOUT}s)"
   log "  identity:     sha256($PROC_ROOT/<MainPID>/exe) == sha256($BIN_PATH)"
   exit 0
 fi
 
+step_preflight
 step_build
 step_install
 step_restart

@@ -172,30 +172,37 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			}
 			continue
 		}
-		if fanoutAlreadyOwnsInternetImageDiscovery(plan, &updated) {
-			// The VidRush fan-out already discovered this segment's images
-			// (HIT_EXACT or a refresh it performed). Re-running discovery here
-			// was the second full provider/VLM pass on the same segment.
-			reuseFanoutInternetImageCandidates(&updated)
-			updated.Cache.InternetImagesProviderSearches = 0
+		entityPoolLookup := entityImagesEnabled && plan != nil && plan.MediaPlan.Extraction.EntityImages.PerScene()
+		catalogLimit := entityImageCatalogPoolSize
+		// Which queries this segment resolves and whether discovery already
+		// happened is one rule (identity beats topic, manual queries are always
+		// kept, a fan-out hit only covers contextual images). It lives in
+		// planInternetImageDiscovery so it can be tested without running the
+		// stage — the suppression bug this replaces was invisible here.
+		var entityQueries []string
+		if entityImagesEnabled {
+			entityQueries = scenePrimaryEntityQueries(input.SpecScene, sceneIdx, updated)
+		}
+		manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: updated.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
+		discovery := planInternetImageDiscovery(
+			updated.Insights.ImageQueries, entityQueries, manualImageQueries, entityImagesEnabled,
+			fanoutAlreadyOwnsInternetImageDiscovery(plan, &updated),
+			func(query string) bool { return len(entityImageMatches(normalizeEntityMatch(query), updated)) > 0 },
+		)
+		if discovery.Mode == internetImageDiscoveryBypass {
+			updated.Cache.InternetImages = "BYPASSED"
 			updatedSegments = append(updatedSegments, updated)
 			continue
 		}
-		imageQueries := updated.Insights.ImageQueries
-		entityPoolLookup := entityImagesEnabled && plan != nil && plan.MediaPlan.Extraction.EntityImages.PerScene()
-		catalogLimit := entityImageCatalogPoolSize
-		// Explicit media_plan.searches are the caller's retrieval intent and
-		// take precedence over entity-image expansion for the image slot.
-		manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: updated.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
-		if len(manualImageQueries) > 0 {
-			imageQueries = manualImageQueries
-		} else if entityImagesEnabled {
-			if entityQueries := scenePrimaryEntityQueries(input.SpecScene, sceneIdx, updated); len(entityQueries) > 0 {
-				imageQueries = entityQueries
-			}
-		}
-		if len(imageQueries) == 0 {
-			updated.Cache.InternetImages = "BYPASSED"
+		imageQueries := discovery.Queries
+		if discovery.Mode == internetImageDiscoveryReuse {
+			// A segment-level fan-out hit is sufficient for contextual images.
+			// Entity-image mode has a stricter identity contract: a warm generic
+			// scene image cannot satisfy a requested person/org/place portrait.
+			// Reuse fan-out only when every requested identity has a ready match;
+			// otherwise use the query-keyed entity cache/provider path below.
+			reuseFanoutInternetImageCandidates(&updated)
+			updated.Cache.InternetImagesProviderSearches = 0
 			updatedSegments = append(updatedSegments, updated)
 			continue
 		}

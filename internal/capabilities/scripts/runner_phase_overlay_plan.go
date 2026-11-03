@@ -10,6 +10,7 @@ import (
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 
@@ -353,12 +354,10 @@ func isGenericPlaceLabel(name string) bool {
 }
 
 func isPlaceEntityType(entityType string) bool {
-	switch scriptpkg.NormalizeAnnotationType(entityType) {
-	case "GPE", "LOCATION":
-		return true
-	default:
-		return false
-	}
+	// ONE table: GPE, LOC, LOCATION, PLACE, CITY, COUNTRY, REGION, LANDMARK …
+	// all describe the same real-world thing, so the overlay planner accepts
+	// every spelling instead of only the two it used to list.
+	return entitytype.Is(entityType, entitytype.Place)
 }
 
 // ResolveOverlayBackground preserves the scripts capability API while

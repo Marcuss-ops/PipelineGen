@@ -352,7 +352,12 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		materializationImageTarget++
 	}
 	discoveredCandidates := prioritizeExactVidRushImageCandidates(updated.Assets.Candidates, imageTarget, plan)
-	if p.catalog != nil && plan != nil && plan.MediaPlan.Extraction.EntityImages.Enabled {
+	// Same surface decision as the target multiplication above: a payload that
+	// asks for persons/entities through `include` (the r20minuti shape) has no
+	// legacy entity_images toggle, so reading the toggle here skipped the
+	// durable pool while the target was still multiplied for it. The pool must
+	// follow the surface, not the deprecated spelling.
+	if p.catalog != nil && plan != nil && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 		// Attach the durable per-person pool before acquisition so
 		// verified-but-never-downloaded catalog rows get a real
 		// Acquire → Verify → Finalize attempt in-run instead of arriving

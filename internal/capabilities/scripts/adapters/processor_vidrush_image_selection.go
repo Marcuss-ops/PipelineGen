@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -45,17 +46,19 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 	if maxPerEntity <= 0 {
 		maxPerEntity = 1
 	}
-	allowed := map[string]struct{}{"PERSON": {}, "LOGO": {}, "ORG": {}, "ORGANIZATION": {}}
+	// The set is keyed by identity family, not by spelling: a policy that
+	// allows ORGANIZATION must also allow COMPANY, and a segment annotated
+	// GPE is the same PLACE a later pass calls LOCATION.
+	allowed := map[string]bool{entitytype.Person: true, entitytype.Logo: true, entitytype.Org: true}
 	if len(plan.MediaPlan.Extraction.EntityImages.EntityTypes) > 0 {
-		allowed = make(map[string]struct{}, len(plan.MediaPlan.Extraction.EntityImages.EntityTypes))
+		allowed = make(map[string]bool, len(plan.MediaPlan.Extraction.EntityImages.EntityTypes))
 		for _, raw := range plan.MediaPlan.Extraction.EntityImages.EntityTypes {
-			allowed[strings.ToUpper(strings.TrimSpace(raw))] = struct{}{}
+			allowed[entitytype.Fold(raw)] = true
 		}
 	}
 	seen := make(map[string]struct{})
 	for _, entity := range segment.Insights.Entities {
-		kind := strings.ToUpper(strings.TrimSpace(entity.Type))
-		if _, ok := allowed[kind]; !ok {
+		if !allowed[entitytype.Fold(entity.Type)] {
 			continue
 		}
 		name := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(entity.Value)), " "))

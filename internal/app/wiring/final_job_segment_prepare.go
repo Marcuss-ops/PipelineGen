@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -54,7 +56,10 @@ const (
 	// produce different container bytes than v7.
 	// v9: distinguish a copy-enabled request from encode-only work so an A/B
 	// cannot silently return a cached artifact produced by the other path.
-	finalJobFragmentFormatVersion = 9
+	// v10: the canonical avcC (SPS/PPS) is part of the work identity, and the
+	// encoder now pins ref=1, so bytes produced before this change cannot
+	// answer for the stricter contract.
+	finalJobFragmentFormatVersion = 10
 )
 
 // finalJobDelivery is the ONE declaration of a fragment's delivery geometry.
@@ -72,9 +77,9 @@ var (
 )
 
 // finalJobDeliveryMatches reports whether an observed stream already carries the
-// contract's delivery geometry. The source census and the fragment probe share
-// this ONE comparison, so the encoder cannot "normalize" a source that the
-// reuse gate already accepted as conformant.
+// contract's delivery geometry, including square sample pixels. The source
+// census and fragment probe share this ONE comparison, so the encoder cannot
+// "normalize" a source the reuse gate already accepted as conformant.
 // finalJobDeliveryLevelCode is the H.264 level as ffprobe reports it (40 for
 // "4.0"), derived from the contract so the census and the muxer share one level.
 func finalJobDeliveryLevelCode() int {
@@ -85,10 +90,10 @@ func finalJobDeliveryLevelCode() int {
 	return code
 }
 
-func finalJobDeliveryMatches(width, height int, avgFPS, pixelFmt string) bool {
+func finalJobDeliveryMatches(width, height int, avgFPS, pixelFmt, sampleAspectRatio string) bool {
 	return width == finalJobDelivery.Width && height == finalJobDelivery.Height &&
 		avgFPS == fmt.Sprintf("%d/%d", finalJobDelivery.FPS.Num, finalJobDelivery.FPS.Den) &&
-		pixelFmt == finalJobDelivery.PixelFormat
+		pixelFmt == finalJobDelivery.PixelFormat && sampleAspectRatio == "1:1"
 }
 
 // finalJobSegmentPreparer creates only timeline fragments, never the final
@@ -173,7 +178,7 @@ const (
 // trade wall time for CPU; 0 or a malformed value is a configuration error, not
 // a silent default.
 func finalJobFragmentLanes() (int, error) {
-	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_PREPARE_LANES"))
+	raw := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_PREPARE_LANES"))
 	if raw == "" {
 		return defaultFinalJobFragmentLanes, nil
 	}
@@ -191,7 +196,7 @@ func finalJobFragmentLanes() (int, error) {
 // exists only to measure the two paths against each other in an A/B run.
 // A malformed value is not a silent enable: it falls back to the encoded path.
 func finalJobCopyWindowsEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS"))) {
+	switch strings.ToLower(strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS"))) {
 	case "", "1", "true", "on", "enabled", "yes":
 		return true
 	default:
@@ -318,15 +323,32 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	var paddedFrames int64
 	copied := false
 	normalized := false
+	var copyFailure error
 	// The census is both the copy gate and the frame authority for padding, so
 	// it is asked once per source whether or not a packet copy is considered.
 	// Declarations are not proof: the bytes decide, not the metadata block.
 	censusStarted := time.Now()
 	census, censusOK := p.sourceCensus(ctx, inputSHA, sourcePath)
 	verified += time.Since(censusStarted)
+	windowStart := (request.SourceInUS / 2_000_000) * finalJobSegmentGOP
+	if !copyCandidate {
+		switch {
+		case !finalJobWindowOnGOPGrid(request):
+			copyFailure = fmt.Errorf("window start is not on the 2-second GOP boundary")
+		case !finalJobCopyWindowsEnabled():
+			copyFailure = fmt.Errorf("certified-window packet-copy lane is disabled")
+		}
+	}
 	if copyCandidate {
-		start := (request.SourceInUS / 2_000_000) * finalJobSegmentGOP
-		if censusOK && census.certified && start+request.FrameCount <= census.frames {
+		start := windowStart
+		switch {
+		case !censusOK:
+			copyFailure = fmt.Errorf("source census could not be derived")
+		case !census.certified:
+			copyFailure = fmt.Errorf("source census is not certified (closed GOP, fixed keyframe cadence and no B-frames required)")
+		case start+request.FrameCount > census.frames:
+			copyFailure = fmt.Errorf("window ends at frame %d beyond the %d certified frames", start+request.FrameCount, census.frames)
+		default:
 			// The certificate of a copied window is DERIVED, never re-probed:
 			// the census already proved the closed fixed GOP, the first keyframe
 			// and the packet count of these bytes, and the window starts on a
@@ -334,9 +356,24 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 			// cadence or the frame count. A second ffprobe here would just
 			// repeat the census it ran one line above.
 			started := time.Now()
-			copyErr := p.copyCertifiedWindow(ctx, sourcePath, outPath, request)
+			copyErr := p.copyAVC3Window(ctx, sourcePath, outPath, request)
 			encoded += time.Since(started)
 			copied = copyErr == nil
+			copyFailure = copyErr
+			if copied {
+				// A packet copy preserves the source avcC. If those bytes are not
+				// the canonical identity, encoding is the only safe producer.
+				got, hashErr := readAVCDecoderConfigurationSHA256(outPath)
+				if hashErr != nil || got != finalJobDelivery.VideoExtradataSHA256 {
+					copied = false
+					if hashErr != nil {
+						copyFailure = fmt.Errorf("read copied fragment avcC: %w", hashErr)
+					} else {
+						copyFailure = fmt.Errorf("copied fragment avcC %s is not canonical %s", got, finalJobDelivery.VideoExtradataSHA256)
+					}
+					_ = os.Remove(outPath)
+				}
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -357,6 +394,11 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		encodeStarted := time.Now()
 		if err := p.encodeFragment(ctx, sourcePath, outPath, request, normalizeGeometry, paddedFrames); err != nil {
 			return nil, err
+		}
+		if got, hashErr := readAVCDecoderConfigurationSHA256(outPath); hashErr != nil {
+			return nil, fmt.Errorf("certify encoded fragment avcC: %w", hashErr)
+		} else if got != finalJobDelivery.VideoExtradataSHA256 {
+			return nil, fmt.Errorf("encoded fragment avcC %s != canonical %s: encoder output is not packet-copy compatible", got, finalJobDelivery.VideoExtradataSHA256)
 		}
 		encoded += time.Since(encodeStarted)
 		// No per-fragment probe: the command itself pins the contract (High 4.0,
@@ -395,12 +437,21 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		window.copyMS = encoded.Milliseconds()
 	} else {
 		window.encodeMS = encoded.Milliseconds()
+		// Every encoded fragment has a recorded cause. GOP-misaligned and
+		// uncertified source windows are expected lanes for arbitrary stock and
+		// overlay windows; a failed copy on an otherwise eligible window remains
+		// separately visible in encode_fallbacks.
+		window.copyFailure = finalJobCopyFailureReason(copyFailure)
+		log.Printf("final_job encode_fallback segment=%s window_start_us=%d frames=%d reason=%s",
+			request.SegmentID, request.SourceInUS, request.FrameCount, window.copyFailure)
 	}
 	return p.finishFragment(ctx, request, ref, stringValue(source["role"]), sha, size, durationUS, window,
 		func(s *finalJobSegmentStats) {
 			s.segments++
 			if copied {
 				s.copied++
+			} else if copyCandidate {
+				s.encodeFallbacks++
 			}
 			s.paddedFrames += paddedFrames
 			s.downloadMS += downloaded.Milliseconds()
@@ -409,6 +460,16 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 			s.publishMS += published.Milliseconds()
 			s.bytes += size
 		}), nil
+}
+
+// finalJobCopyFailureReason is the operator-facing reason a window reached
+// the encoder. The specific eligibility/copy error is preferred; the generic
+// text covers a copy that "succeeded" but could not be certified.
+func finalJobCopyFailureReason(err error) string {
+	if err != nil && strings.TrimSpace(err.Error()) != "" {
+		return strings.TrimSpace(err.Error())
+	}
+	return "packet copy produced no certified output"
 }
 
 // finishFragment is the ONE exit of every fragment-producing lane: it stamps the
@@ -519,9 +580,11 @@ func (p *finalJobSegmentPreparer) sourceCensus(ctx context.Context, sha, path st
 			// Cancellation says nothing about the bytes; do not memoize it.
 			return nil, err
 		}
+		videoExtradata, _ := readAVCDecoderConfigurationSHA256(path)
 		result := finalJobSourceCensus{
 			frames: probe.frames(), certified: probe.certify(probe.frames()) == nil,
-			needsNormalization: probe.needsDeliveryGeometry(),
+			needsNormalization:   probe.needsDeliveryGeometry(),
+			videoExtradataSHA256: videoExtradata,
 		}
 		p.certificatesMu.Lock()
 		if p.certificates == nil {
@@ -542,7 +605,8 @@ func (p *finalJobSegmentPreparer) sourceCensus(ctx context.Context, sha, path st
 }
 
 type finalJobSourceCensus struct {
-	frames             int64
-	certified          bool
-	needsNormalization bool
+	frames               int64
+	certified            bool
+	needsNormalization   bool
+	videoExtradataSHA256 string
 }

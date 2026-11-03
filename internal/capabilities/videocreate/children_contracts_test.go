@@ -302,6 +302,7 @@ func TestDecodeRenderChildResult_CopyCertificationDerived(t *testing.T) {
 	if !seg.CopyCertified || seg.LocalPath == "" || seg.Contract.Width != 1920 {
 		t.Errorf("segment = %+v, want copy-certified with contract facts", seg)
 	}
+	seg.VideoExtradataSHA256 = kernelmedia.CanonicalVideoExtradataSHA256
 	cert, err := CopyCertificationFor([]AssembleSegment{seg, seg})
 	if err != nil {
 		t.Fatalf("CopyCertificationFor: %v", err)

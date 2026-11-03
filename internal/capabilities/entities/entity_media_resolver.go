@@ -25,7 +25,6 @@ package entities
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // ErrEntityHasNoAssets is returned when an entity has no indexed assets and a
@@ -82,7 +81,11 @@ func (ix *EntityMediaIndex) IndexForCanonicalID(canonicalID string, asset Entity
 	if ix == nil || ix.repo == nil {
 		return fmt.Errorf("%w: media index is not configured", ErrInvalidEntityAsset)
 	}
-	if strings.TrimSpace(canonicalID) == "" {
+	// Fold at the write boundary as well: an id minted before the type-alias
+	// fold ("gpe:garlasco") and one minted now ("place:garlasco") must share
+	// ONE index key, otherwise the asset is verified but never found.
+	canonicalID = FoldCanonicalEntityID(canonicalID)
+	if canonicalID == "" {
 		return fmt.Errorf("%w: empty canonical entity id", ErrInvalidEntityAsset)
 	}
 	asset.EntityID = canonicalID
@@ -91,11 +94,22 @@ func (ix *EntityMediaIndex) IndexForCanonicalID(canonicalID string, asset Entity
 
 // Assets returns every asset of a canonical entity, best quality first (ties
 // broken by asset id) — deterministic, never map order.
+//
+// The lookup is the compatibility read for ids written before the fold: the
+// canonical spelling is tried first, then each legacy spelling of the same
+// type (FoldCanonicalEntityIDCandidates). A pre-migration asset stored under
+// "gpe:garlasco" therefore resolves for a "location:garlasco" request
+// instead of reporting ErrEntityHasNoAssets — the zero-image bug.
 func (ix *EntityMediaIndex) Assets(canonicalEntityID string) []EntityAsset {
 	if ix == nil || ix.repo == nil {
 		return nil
 	}
-	return ix.repo.All(canonicalEntityID)
+	for _, candidate := range FoldCanonicalEntityIDCandidates(canonicalEntityID) {
+		if all := ix.repo.All(candidate); len(all) > 0 {
+			return all
+		}
+	}
+	return nil
 }
 
 // Len returns the total number of indexed assets.

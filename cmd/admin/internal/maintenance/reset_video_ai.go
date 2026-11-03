@@ -35,7 +35,7 @@ func RunResetVideoAI(args []string) error {
 	fs := flag.NewFlagSet("reset-video-ai", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	apply := fs.Bool("apply", false, "Actually delete and create (default: dry-run only)")
-	sourceFolder := fs.String("folder", "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY", "Source Drive folder ID to clear")
+	sourceFolder := fs.String("folder", "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy", "Source Drive folder ID to clear")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

@@ -2,9 +2,11 @@ package scriptgeneration
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // final_job_image_preflight.go: the pre-enqueue entity-image gate (the r10
@@ -73,12 +75,72 @@ func finalJobImageVerifiedItem(item capoverlay.OverlayItem) bool {
 	return anyFinalJobImageVerifiedRef(item.AssetRefs)
 }
 
+// finalJobImageRequested reports whether the payload asked for entity images.
+//
+// The r20minuti artifact (2026-11-03) enabled images through the extraction
+// surface (`include: [persons, ...]`) and `max_image_overlays`, without the
+// legacy `entity_images.enabled` toggle. Reading only the toggle returned
+// false, the preflight was skipped, and the run shipped a silent image-free
+// render after a full remote attempt. EntityImageSurfaceEnabled is the
+// contract that already owns this question (see kernel/media plan.go); the
+// preflight must ask it instead of re-deriving a narrower condition.
+func finalJobImageRequested(req GenerateRequest) bool {
+	if !req.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
+		return false
+	}
+	if !req.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		return false
+	}
+	// Present 0 disables the group in the payload contract. Temporal absence
+	// is not a budget mismatch; the zero value keeps the certified default.
+	if limit, ok := req.OverlayGroupLimits[overlayGroupImages]; ok && limit == 0 {
+		return false
+	}
+	// The category is the feature toggle; an explicit images=disabled wins
+	// over a stale budget left in the payload.
+	toggle, hasCategory := req.OverlayCategories[scriptpkg.OverlayCategoryImages]
+	if hasCategory && toggle == scriptpkg.ToggleDisabled {
+		return false
+	}
+	if req.MaxImageOverlays > 0 {
+		return true
+	}
+	// Zero is the certified default (capabilityoverlay.MaxImageOverlaysPerRun,
+	// 20 images), not "off": the overlay canvas already reads it that way. A
+	// payload that enables the images category and omits the budget can still
+	// plan images, so it must arm the preflight.
+	return hasCategory && toggle != scriptpkg.ToggleDisabled
+}
+
 // finalJobImagePreflight errors when the plan promises entity-image overlays
 // but none carries a verified asset. Items scheduled on intermediate clip
 // scenes are excluded through clipScenes: image-style cards there are
 // dropped by the final-job handoff by design, so promising them is not a
 // broken run.
-func finalJobImagePreflight(items []capoverlay.OverlayItem, clipScenes map[string]struct{}) error {
+// finalJobEntityImageGate is the strict counterpart of the opt-in
+// VELOX_REQUIRE_ENTITY_IMAGES gate: a final job that requested images must not
+// ship text-only cards for some of its selected entities. Partial coverage is
+// the r20minuti failure mode that a zero-image check alone cannot see.
+func finalJobEntityImageGate(audit *OverlayAudit, imageRequested bool) error {
+	if !imageRequested || audit == nil || audit.EntityImages == nil {
+		return nil
+	}
+	info := audit.EntityImages
+	if info.Selected == 0 || info.Missing == 0 {
+		return nil
+	}
+	reasons := make([]string, 0, len(info.Reasons))
+	for reason, count := range info.Reasons {
+		if reason == EntityImageReasonBound || count == 0 {
+			continue
+		}
+		reasons = append(reasons, fmt.Sprintf("%s=%d", reason, count))
+	}
+	sort.Strings(reasons)
+	return fmt.Errorf("final_job preflight: %d of %d selected image entities have no verified asset (%s); refusing text-only cards for requested images", info.Missing, info.Selected, strings.Join(reasons, ", "))
+}
+
+func finalJobImagePreflight(items []capoverlay.OverlayItem, clipScenes map[string]struct{}, imageRequested bool) error {
 	expected, unverified := 0, 0
 	firstUnverified := ""
 	for _, item := range items {
@@ -97,6 +159,9 @@ func finalJobImagePreflight(items []capoverlay.OverlayItem, clipScenes map[strin
 		}
 	}
 	if expected == 0 {
+		if imageRequested {
+			return fmt.Errorf("final_job preflight: image overlays were enabled and requested, but the compiled plan contains zero verified image overlays; refusing a silent image-free render")
+		}
 		return nil
 	}
 	if unverified == expected {

@@ -81,6 +81,31 @@ func TestEntityMediaResolver_Deterministic(t *testing.T) {
 	}
 }
 
+// TestEntityMediaIndex_ResolvesPreFoldCanonicalIDs pins the compatibility read
+// that made the zero-image bug survivable: an asset written under the old
+// "gpe:" spelling must be found by a plan that asks for the canonical
+// "place:" identity (and vice versa), because the slug never changed.
+func TestEntityMediaIndex_ResolvesPreFoldCanonicalIDs(t *testing.T) {
+	ix := NewEntityMediaIndex()
+	require.NoError(t, ix.IndexForCanonicalID("gpe:garlasco", testAsset("garlasco_001", 0.9)))
+
+	require.Equal(t, []string{"garlasco_001"}, assetIDs(ix.Assets("place:garlasco")),
+		"the write boundary folds the legacy id onto the canonical key")
+	require.Equal(t, []string{"garlasco_001"}, assetIDs(ix.Assets("location:garlasco")),
+		"a legacy request spelling still resolves the same asset")
+	require.Equal(t, []string{"garlasco_001"}, assetIDs(ix.Assets("city:garlasco")))
+
+	// A canonical write is readable through every historical spelling too.
+	ix = NewEntityMediaIndex()
+	require.NoError(t, ix.IndexForCanonicalID("place:garlasco", testAsset("garlasco_002", 0.9)))
+	require.Equal(t, []string{"garlasco_002"}, assetIDs(ix.Assets("GPE:garlasco")))
+
+	// Unknown types are never guessed into another identity.
+	ix = NewEntityMediaIndex()
+	require.NoError(t, ix.IndexForCanonicalID("satellite:iss", testAsset("iss_001", 0.9)))
+	require.Empty(t, ix.Assets("place:iss"))
+}
+
 func assetIDs(assets []EntityAsset) []string {
 	out := make([]string, len(assets))
 	for i, a := range assets {

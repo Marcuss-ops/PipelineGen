@@ -47,14 +47,10 @@ func CanonicalEntityID(entityType, name string) string {
 	// person's identity: "Donald Trump's" must resolve to the same PERSON as
 	// "Donald Trump". Keep this normalization at the canonical owner so every
 	// caller (NLP, image search, catalog and indexing) agrees on the join key.
-	if strings.EqualFold(strings.TrimSpace(entityType), "PERSON") {
-		name = strings.TrimSpace(name)
-		for _, suffix := range []string{"'s", "’s"} {
-			if len(name) > len(suffix) && strings.EqualFold(name[len(name)-len(suffix):], suffix) {
-				name = strings.TrimSpace(name[:len(name)-len(suffix)])
-				break
-			}
-		}
+	// The type is folded FIRST, so every spelling of a person (PER, HUMAN,
+	// CEO, …) obeys the same rule.
+	if NormalizeType(entityType) == CanonicalTypePerson {
+		name = stripPersonPossessive(name)
 	}
 	slug := SafeEntityID(NormalizeName(name))
 	if slug == "" {

@@ -264,7 +264,7 @@ func TestIsAIImageSource(t *testing.T) {
 }
 
 func TestAIImageDriveRootForSource(t *testing.T) {
-	// Per-image Drive layout (1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY): all images
+	// Per-image Drive layout (1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy): all images
 	// — retrieved or generated — live under the single dedicated root as
 	// <root>/<SafeFolderName(subject)>/<file>. The former 17-entry per-style
 	// map is retired; aiImageDriveRootForSource must return "" for every

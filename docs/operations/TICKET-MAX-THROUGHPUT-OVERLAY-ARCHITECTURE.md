@@ -3,7 +3,7 @@
 - **Data:** 2026-10-26
 - **Autori:** Antigravity + Pierone
 - **Moduli interessati:** `refactored` (PipelineGen), `RenderingGen`, `Chronon3d`, `BrainRust` (pipelinegen-muscles)
-- **Stato:** ATTIVO / IN IMPLEMENTAZIONE — gate ≥100 overlay/min **FAIL**: mediana certificata **77,32 item/min** (3 run closeout 30-10, 65–70 item senza mappe), packed cross-scene 43,73 FAIL; split per-scena default-on ed epoch cache stabile. Mix 100 item con mappe NOT RUN.
+- **Stato:** ATTIVO / IN IMPLEMENTAZIONE — gate ≥100 overlay/min **FAIL**: mediana certificata **77,32 item/min** (3 run closeout 30-10, 65–70 item senza mappe), packed cross-scene 43,73 FAIL; split per-scena default-on ed epoch cache stabile. Mix 100 item con mappe NOT RUN. **20-min Garlasco (03-11):** preflight immagini armato e cardinalità segmenti coperta; materializzazione immagini e run live **NOT RUN**.
 - **Target Prestazionale:** Throughput overlay da ~80–100/min a **>2.500 overlay/min**; tempo di pianificazione da 4m45s a **<30s**; eliminazione del 90% dell'I/O disco.
 
 > **Lettura operativa (31-10-2026):** i target e i fattori delle sezioni
@@ -17,6 +17,46 @@
 > nuova architettura prima di CI e baseline same-SHA verdi. Le sezioni sotto
 > descrivono lavoro futuro, non autorizzano deploy o attivazioni live.
 
+### Chiusura 2026-11-03 — job Garlasco 20 minuti: perché usciva senza immagini
+
+- **Preflight immagini disarmato (FIXED).** `BuildFinalJobPayloads` decideva
+  `imageRequested` da `media_plan.extraction.entity_images.enabled`. Il payload
+  r20minuti abilita le immagini con `extraction.include: [persons, ...]`,
+  `overlay_categories.images=enabled` e `max_image_overlays=12`, senza il
+  toggle legacy: il preflight era quindi spento e il job consegnava zero
+  immagini dopo un render remoto completo. Ora usa
+  `EntityImageSurfaceEnabled()` (la stessa autorità del kernel) più budget e
+  provider; regressione `TestFinalJobImageRequested_R20MinutiPayloadShape`.
+  Questo arma il gate: **non** prova ancora che le immagini vengano
+  materializzate (vedi NOT RUN sotto).
+- **Ricerca immagini (coperta).** La regola pura
+  `planInternetImageDiscovery` — identità che batte il topic, query manuale
+  sempre tenuta, cache generica calda che non copre un'identità — non aveva
+  test. `TestPlanInternetImageDiscoveryPinsTheQueryRule` pinna 8 casi,
+  incluso lo scenario r20minuti. La suite `adapters` era inoltre bloccata da
+  un deadlock del fake in
+  `TestInternetImagesProcessorUsesManualSearchBeforeEntityExpansion`: il fake
+  scriveva su un canale da un solo slot mentre la regola emette due query
+  (manuale + identità), quindi il secondo invio attendeva per sempre. Il fake
+  ora registra su slice con lock e il test pinna che la query manuale non
+  venga persa accanto a quella di identità.
+- **Cardinalità segmenti (coperta).** Con 5 segmenti espliciti ogni richiesta
+  deve produrre UN paragrafo; una risposta da 26 paragrafi viene rifiutata con
+  `ErrSegmentValidationFailed` (`TestEngineGenerate_R20MinutiShapeRejectsA26SceneAnswer`)
+  invece di generare 26 micro-scene, che moltiplicavano ogni render per-scena.
+- **avcC/SPS-PPS (già chiuso, verificato).** `CanonicalVideoExtradataSHA256`
+  è confrontato sia sul path copy sia sul path encode in
+  `final_job_segment_prepare.go`; RenderingGen ricodifica le sorgenti overlay
+  non canoniche. Test `final_job_avcc_test.go` e i test profilo media PASS.
+- **Critical path (verificato, non duplicato).** Il manifest espone già
+  `timing.critical_path` e `bottleneck_stage`. Su r4/r8 il bottleneck è
+  `remote_final_job` (56,1% / 45,6%); `overlay_render` pesa 8,0% / 13,2%.
+  Sommare gli stage sovrastima: per attribuire il tempo si usa il campo.
+- **NOT RUN:** un job Garlasco 20 minuti dopo il fix. Il binario in esecuzione
+  (`bin/pipelinegen`, build 12:22) è precedente alle modifiche (sorgenti
+  12:44/12:46): servono rebuild e restart prima di una run valida. Nessun
+  PASS live è dichiarato.
+
 ---
 
 ## 0. TODO — cosa manca (agg. 2026-10-28; revisione 2026-10-29)
@@ -27,7 +67,7 @@ Revisione 2026-10-29 dopo verifica sui codici:
 
 - [x] A1. Mappare il ciclo di vita dell'encoder e il meccanismo encoder-reuse disabilitato (dove/why fail-closed). — `native_av_encoder_lifecycle.cpp`: cache single-entry `CodecSession`, `codec_session_reuse_enabled()` opt-in via `CHRONON_ENCODER_SESSION_REUSE=1`, gate di configurazione supportata (CQP NVENC / CQP software zero-latency), boundary «packet-complete» il close() non invia EOS e il codec resta UNFLUSHED. Fail-closed: EOS-flushed non si parca (AVERROR_EOF verificato empiricamente 26-10), fingerprint matching, CRF/x264 runner esclude il riuso (stato adattivo). Nota: il P4 one-session segmented writer è fuori dal meccanismo e non ne risente.
 - [x] A2. Implementare il riuso sessione sicuro + contratto mux/EOF nel percorso render. — Implementato lato Chronon3d (`park_codec_session_for_reuse` + `acquire/release_codec_session`, sessione adottata con fingerprint loggato). Opt-in: il flag NON è impostato nei drop-in systemd live (`/etc/systemd/system/chronon3d*.service.d/`); le unità production non attivano il riuso. Attivazione operativa separata dal codice: richiede restart dei daemon, è disabilitata di default per rispetto del boundary «un encoder per item» solo in fallback non-P4, e invalida la comparabilità con le run storiche se attivata a metà serie di gate.
-- [ ] A3. Test di regressione (doctest) + suite mirate verdi. — Test presente: "Cross-item codec session reuse stays fail-closed" in `tests/video/test_native_av_encoder_teardown_stress.cpp` (26-10); rerun suite mirata da eseguire per chiudere A3. **Rerun 29-10: BLOCKED (cross-repo)** — `Chronon3d/` non ha alcun `CMakeCache.txt` né albero di build per i test (`build/` contiene solo `chronon` e `Testing/`): il target non è costruibile senza un configure+build completo fuori dal perimetro `refactored`. Nessun PASS dichiarato.
+- [ ] A3. Test di regressione (doctest) + suite mirate verdi. — Test presente: "Cross-item codec session reuse stays fail-closed" in `tests/video/test_native_av_encoder_teardown_stress.cpp` (26-10); rerun suite mirata da eseguire per chiudere A3. **Rerun 29-10: non eseguito (cross-repo).** **Aggiornato 03-11:** gli alberi `build/chronon/linux-video-release` e `build/chronon/linux-video-test` sono configurati (`CMakeCache.txt` + `compile_commands.json`) e sono stati usati per verificare la compilazione di `src/media/video/encode/native_av_sink.cpp` (`-fsyntax-only`, exit 0). Il target della suite encoder-reuse non è stato ricostruito né eseguito in questa sessione: nessun PASS dichiarato.
 - [ ] A4. Build `-j14`, commit mirato, deploy release, restart daemon. — **Parziale 29-10 (solo `refactored`)**: `go build -o bin/pipelinegen ./cmd/server` PASS, restart `systemd` PASS, `/ready` HTTP 200 e env verificato da `/proc/<pid>/environ`. Restano non eseguiti: build Chronon3d `-j14` (nessun build tree, come A3) e commit mirato (nessun commit richiesto/effettuato in questa sessione).
 - [ ] A5. Golden ×3 di confronto + mediana vs baseline 83,98/min; aggiornare il ticket. — **3 run closeout eseguite 30-10** (stesso payload v2.1-nomaps SHA `ad5e3468…`, 3 lane, host quiescente): 54,44 / 80,04 / 77,32 item/min → **mediana 77,32 item/min, gate ≥100 FAIL**; il mix 100 item con mappe resta NOT RUN. Le tre run del 29-10 (mediana 62,32) restano la serie precedente. Dettaglio in §9.10 e §11.
 - [ ] **01-11: il costo per frame non è la GPU.** Batch overlay r49: 46,06 ms/frame di cui `timeline_eval` 34,81 (75%), GPU 3,3 (7%), encode 0,18; 844 frame duplicati su 1607 costano 43,5 ms l'uno con 0 ms di render (29,8 s su 74,3). Schede: [`TICKET-PERF-FRAME-PROOF-CHEAP`](../../../Chronon3d/docs/tickets/TICKET-PERF-FRAME-PROOF-CHEAP.md), [`TICKET-PERF-TIMELINE-FLATBUFFER`](../../../Chronon3d/docs/tickets/TICKET-PERF-TIMELINE-FLATBUFFER.md), [`TICKET-FINAL-JOB-BITSTREAM-REUSE-2026-11-01`](TICKET-FINAL-JOB-BITSTREAM-REUSE-2026-11-01.md).
@@ -877,8 +917,11 @@ di paragone.
    pianificazione intenti. È sulla critical path prima del branch P1; il
    candidato è la geocodifica seriale per scena/entità, ma non è provato da
    questa serie e non è stato modificato (nessuna ottimizzazione speculativa).
-3. **A3 (Chronon3d, suite encoder-reuse) — BLOCKED:** nessun `CMakeCache.txt`
-   né target test costruito nel workspace; richiede configure+build cross-repo.
+3. **A3 (Chronon3d, suite encoder-reuse) — non eseguito.** Gli alberi
+   `build/chronon/linux-video-release` e `build/chronon/linux-video-test`
+   esistono e sono configurati (`CMakeCache.txt`, `compile_commands.json`): la
+   TU `native_av_sink.cpp` compila con la loro command line. Resta da
+   ricostruire ed eseguire il target della suite encoder-reuse.
 4. **A4 — parziale:** build/deploy/restart `refactored` fatti; build Chronon3d
    `-j14` e commit mirato non eseguiti.
 5. **Run mix completo con mappe (v3.1/v4)** e shadow VRAM B3 restano gate
@@ -1290,9 +1333,12 @@ raggiungere un numero. I claim storici §3–§5 sono ipotesi, non criteri di PA
 17 batch per-scena, 85,8 s di `render_ms` cumulato su 3 lane (limite
 inferiore 28,6 s), attese di completamento fino a 8,8 s. `mean_frame_ms`
 6,6–24,4, frame NVENC 26–268 per batch, upload GPU 77–227 MB per batch.
-Il render è il critical path. `cache_outcome=not_applicable` su 16 batch su
-17 è corretto: la cache è interrogata una volta per composizione a livello
-manifest, non per ogni enqueue interno.
+Il render è il critical path. `cache_timing` della stessa run (verificato
+2026-11-03) riporta `lookup_us.count = 1` e `outcomes = {miss_stored: 1,
+not_applicable: 17}`: i 17 batch sono `not_applicable` **e** l'unico lookup è a
+livello manifest, non per ogni enqueue interno. Quindi `not_applicable` non è
+un sintomo di cache spenta e non va citato come tale: un ticket che sostiene
+«cache installata e spenta» deve portare `outcomes.hit`, non `not_applicable`.
 
 ### 11.2 Epoch cache: sorgente, non orologio
 
@@ -1391,6 +1437,11 @@ di controllo sullo stesso payload (job `job_1793370354032561836_73f99b55`,
 binario `8862fa3a…`) ha completato 70/70 item in **16 batch**, finestra
 **60,476 s**, **69,45 item/min**. È un smoke di non-regressione, non una nuova
 mediana: la mediana certificata resta **77,32 item/min** (closeout 30-10).
+
+**Delta packed (2026-11-03).** 43,73 vs 69,45 = **−37%** verso il controllo e
+**−57%** verso il picco 101,71; non «−43%»: 43,73 è item/min, non una
+percentuale. I due `summary.json` sono la fonte
+(`results/superpack-20261030-r1/`, `results/superpack-control-20261030-r1/`).
 
 ## 11.7 Mappe native e motore — misure 30-10-2026
 
@@ -1656,3 +1707,147 @@ Test che pinnano il contratto: `TestFinalJobStockPlannerKeepsChunkingAndFolderRo
 `TestFinalJobStockPrewarmStartsOncePerRun`, `TestHandoffCacheSurvivesThePrewarmOfTheSameRun`
 (lo start dell'handoff non butta la cache dello stesso run, ma un run diverso sì),
 `TestBoundPollGapCapsTheStartedWait`.
+
+## Regola operativa: blocchi editoriali compatti e fan-out (2026-11-03)
+
+Per i video lunghi, generare un numero piccolo di blocchi editoriali sostanziosi
+(in genere 500–700 parole ciascuno, circa cinque blocchi per un copione da
+2.500–3.500 parole), non decine di micro-scene da circa 100 parole. Ogni
+blocco riduce le invocazioni e il setup ripetuto di LLM, TTS, analisi
+semantica, ricerca/acquisizione media, rendering e persistenza. Le scene
+restano unità editoriali: non spezzare un paragrafo solo per riempire il
+parallelismo.
+
+Il blocco è una granularità consigliata, non un limite rigido. Mantenere la
+concorrenza bounded; il tetto iniziale è 3 blocchi indipendenti, se la capacità
+LLM/TTS/worker lo consente. **3× è il massimo teorico del solo tratto
+parallelizzato**, non un'accelerazione end-to-end promessa: vale la legge di
+Amdahl e le code condivise possono ridurre il guadagno. Salvaguardie:
+sequenza narrativa e word timing coerenti, limiti di rate del provider,
+backpressure, ordine deterministico degli asset e retry idempotenti.
+
+### Evidenza r20minuti (una run completata, non benchmark A/B)
+
+La richiesta completata ha 5 blocchi da 515–531 parole (2.606 in totale),
+`gemma4:e2b`, e produce 19:31,751 di video. Wall misurato: 425,227 s. Il
+precedente tentativo da 26 scene fu annullato prima del completamento: **non
+esiste una misura controllata del vantaggio 5-vs-26**, quindi la riduzione
+attesa di overhead va misurata con lo stesso copione, worker, modelli e stato
+cache.
+
+| Fase | Tempo wall | Quota del wall | Lettura |
+|---|---:|---:|---|
+| `overlay_render` | 173,914 s | 40,90% | Collo di bottiglia; `render_queue.wait_completion` 7 attese, `renderinggen.render` 5 chiamate (lavoro sovrapposto, non sommare). |
+| `remote_final_job` | 168,140 s | 39,54% | Secondo collo; queue 58 s, handoff 97,4 s, wait 70,5 s e solo 12,1 s di execution worker. |
+| `audio_compile` | 62,620 s | 14,73% | `rust.audio_render` 62,361 s, audio encode/mix. |
+| `generate` | 31,266 s | 7,35% | Generazione script. |
+| `scene_analysis` | 28,617 s | 6,73% | Stage wall include attese/barriere: il lavoro misurato NLP+resolver è 4,427 s (5 estrazioni NLP = 62 ms; 5 resolve provider = 4,365 s). |
+| `vidrush.acquire` | 19,406 s di lavoro | — | 30 chiamate; non è la causa principale del wall in questa run. |
+| `tts.synthesize` | 54,913 s di lavoro | — | 5 chiamate; wall voiceover 11,954 s grazie a sovrapposizione. |
+
+La telemetria di questa run non indica un collo BrainRust NLP: estrazione
+entità/frasi costa 62 ms. `scene_analysis` mostra 28,6 s di wall, ma solo 4,4 s
+di lavoro sommato delle operazioni NLP e resolver; investigare le sue barriere e
+attese è distinto dall'ottimizzare BrainRust. Il tempo dominante è la coda/render
+overlay e poi il final job remoto. L'etichetta generica “ricrea immagini con
+BrainRust” non descrive da sola il percorso: per localizzare il costo usare
+`render_queue.wait_completion`, `renderinggen.render`, `provider_resolver`,
+`vidrush.acquire`, TTS e `remote_final_job` separatamente.
+
+### Audit immagini ed entità della run r20minuti
+
+Il piano finale contiene 18 overlay: 10 date/numeri, 3 frasi lunghe, 2 mappe
+e 3 schede testuali di entità. Ha **zero overlay immagine** e zero entità
+immagine+testo. Le tre schede nominano “Alberto Stasi”, “Stasi” e “Chiara”, ma
+non hanno una foto. L'audit rileva 37 menzioni (25 identità uniche); le entità
+persona selezionate non hanno un'immagine verificata associata.
+
+La ricerca ha prodotto candidati, ma non immagini utilizzabili per quelle
+identità: nei primi tre segmenti sono registrati 14 candidati con stato
+`verification_status=verified`, tutti provenienti da query contestuali come
+“Garlasco town centre…”, “Tribunale di Vigevano…” e “Milan Court…”. Le query
+non identificano la persona e quindi il binding fail-closed li esclude
+correttamente. I candidati restanti risultano falliti in acquisizione; i due
+manifest pin negli ultimi segmenti non sono ritratti di entità. Quindi il
+problema non è “BrainRust non estrae entità”: è che una cache hit di ricerca
+contestuale faceva saltare il successivo lookup per identità.
+
+**Correzione codice implementata (2026-11-03):** `MediaResolverImageStage`
+calcola prima le query di entità. Riusa la discovery VidRush e salta il provider
+solo se ogni identità richiesta ha già un candidato pronto e corrispondente; una
+cache contestuale non soddisfa il requisito entity-image. Gli hit generici
+restano disponibili per il media plan, ma non vengono promossi a ritratti.
+L'audit del piano espone ora `plan_sha256`, `image_bindings`, `image_status`,
+`image_asset_ids` e `planned_kinds`, così si distingue un'entità senza immagine
+da un'immagine pianificata e da un asset verificato ma non entrato nel piano.
+I package `internal/capabilities/scripts` e `internal/app/wiring` sono verdi e
+`go build ./...` passa. `[NOT RUN]` job end-to-end dopo la correzione;
+`requested_entity_queries` e `ready_identity_matches` restano un gate di
+osservabilità, non sono ancora campi pubblicati. Gate di accettazione: almeno
+un'immagine con didascalia verificata quando la policy richiede entità immagine,
+oppure un errore esplicito che distingua query senza risultati, download
+fallito, verifica fallita, identità non corrispondente e mancata persistenza.
+
+**Vincolo no-reencode osservato:** nella stessa run il `segment_prep` remoto ha
+275 finestre: 113 cache hit, 20 derivate, 3 packet-copy esplicite e 139 con
+percorso `encode`; il tempo encode sommato è 296,859 s (lavoro concorrente, non
+wall). Il video finale non è stato ricodificato come un unico file, ma il
+percorso attuale **non** garantisce zero encode di segmenti. La sola
+normalizzazione degli overlay non risolve i tagli non allineati delle sorgenti
+stock; servono insieme il bitstream canonico e il boundary GOP.
+
+**Copy opportunistico con encode certificato (2026-11-03, aggiornato dopo r13):**
+il preparer copia le finestre allineate con census chiuso e avcC canonico;
+finestre non allineate, sorgenti stock non certificate e copie incompatibili
+passano a libx264/veryfast con `refs=1`. Anche l'output encodato deve avere
+l'avcC canonico prima della pubblicazione. Ogni encode registra `copy_failure`
+con la causa, così il video può completarsi senza nascondere il costo CPU.
+Evidenza live r13: `segment-0002` è una sorgente stock con GOP/B-frame non
+certificabile; il gate copy-only la fermava prima dell'unico percorso sicuro.
+Test: `TestFinalJobCopiedWindowTimingReceipt`,
+`TestFinalJobSegmentPreparerCopiesCertifiedWindows`,
+`TestFinalJobSegmentPreparerEncodesOneAssemblyReadyFragment`.
+
+**Quota date.** `overlay_group_limits["dates"]` è ora un gruppo riconosciuto e
+applica un cap run-level alle card `number`/`timeline_date` prima del budget
+editoriale. È opt-in: senza la chiave il comportamento resta quello storico.
+Serve a impedire che 10 date su 18 overlay occupino gli slot destinati a
+entità e immagini; il payload r20minuti non è stato rigenerato.
+
+**Next gate:** completare 3 run A/B a cache fredda e 3 a cache calda con lo
+stesso testo e gli stessi asset, confrontando 5 blocchi contro 20–26 scene;
+registrare chiamate/modello, queue wait e service time per sottosistema,
+cache hit/miss, numero di asset acquisiti, durata del video e wall end-to-end.
+Non attribuire un miglioramento ai blocchi più lunghi finché questi dati non
+sono raccolti. Separatamente, provare fan-out 1 vs 3: un 3× end-to-end è
+ammissibile solo se tutti i segmenti indipendenti scalano e non spostano la
+coda sul worker condiviso.
+
+### Bonifica incoerenze — 2026-11-03 (sera)
+
+Sei conflitti della stessa classe del bug immagini sono stati chiusi con test;
+due sono stati verificati come non applicabili; uno resta documentale.
+
+| # | Conflitto | Fix | Evidenza |
+|---|---|---|---|
+| 1 | `max_image_overlays=0` con `overlay_categories.images=enabled` pianificava 20 immagini ma spegneva il preflight | `finalJobImageRequested` legge il budget effettivo: categoria esplicita + default certificato; `images=disabled` e `overlay_group_limits.images=0` vincono | `TestFinalJobImageRequested_R20MinutiPayloadShape` |
+| 2 | 26 scene strutturate potevano sopravvivere a 5 segmenti espliciti | il processor ri-chiavea le scene sul numero di segmenti dichiarati (5), scartando il surplus in modo deterministico | `TestNormalizeScenesForExplicitSegmentsPinsFiveScenesToFiveSegments` |
+| 3 | 1 foto su 10 entità passava in silenzio (gate strict opt-in) | il final job che chiede immagini fallisce se `EntityImages.Missing > 0`, indipendentemente da `VELOX_REQUIRE_ENTITY_IMAGES` | `TestFinalJobEntityImageGateRejectsPartialCoverage` |
+| 4 | `max_image_overlays` e `overlay_group_limits.images` potevano divergere e il group vinceva in silenzio | `resolveImageOverlayCeiling` rifiuta i valori espliciti discordanti; zero resta il default | `TestResolveImageOverlayCeilingRejectsDisagreeingBudgets` |
+| 5 | il gate avcC cross-repo faceva `t.Skip` se il contratto refactored non era leggibile | `t.Fatalf` di default; skip solo con `VELOX_ALLOW_STANDALONE_CONTRACT=1` | `TestAssemblyReadyProfilesMirrorVeloxContract` |
+| 6 | `imageRequested` era variadico e poteva essere omesso | parametro obbligatorio in `finalJobImagePreflight` e `finalJobOverlayHandoff`; tutti i call site aggiornati | `go build ./...`, suite `scripts` |
+| 7 | `organizations` non era nella surface immagini | verificato: il catalogo `entitycatalog` indicizza solo persone; nessuna modifica | ricerca package |
+| 8 | timore di una lettura non normalizzata del provider | verificato: `GenerateRequest.MediaPlan` è il contratto diretto, nessuna chiamata a `MediaPlan.Normalize`; `AsBool` fallisce chiuso | lettura `model.go` / `plan.go` |
+| 9 | il ticket camera contraddiceva il checkpoint C3 | il vecchio bullet FAIL è marcato SUPERATO e resta come storia | `TICKET-CAMERA-DEFINITIVE-CLOSURE.md` |
+| 10 | CI | `.github/workflows/catalog-sync.yml` esiste ma esegue solo il catalogo, non le suite Go | non modificato: aggiungere un job Go richiede una decisione sul runner |
+
+**Copy e encode:** il copy resta la lane rapida per finestre certificate; le
+altre passano all'encoder libx264/veryfast con verifica avcC obbligatoria. I
+test coprono entrambe le lane e la motivazione per ogni encode.
+
+**Gate eseguiti:** `go build ./...` PASS; `go test
+./internal/capabilities/scripts/` PASS (15,5 s); `adapters` PASS (0,8 s);
+`adapters/processor` PASS; `internal/app/wiring` PASS (39,7 s); RenderingGen
+`internal/media` PASS (6,3 s); `go vet` PASS; `git diff --check` PASS.
+**Non eseguito:** un nuovo job live Garlasco 20 minuti; nessun PASS live è
+dichiarato.

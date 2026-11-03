@@ -1,0 +1,153 @@
+# GENERATED FILE — DO NOT EDIT. Run `go run ./cmd/velox-knobs -write` after editing internal/app/knobs/registry.go.
+#
+# Every VELOX_* knob the composition root reads or declares, with its
+# default and the value a production host should run. `kind: config`
+# means the value is bound through a config field env tag; `kind: env`
+# means the composition root (or the owning capability) reads the
+# environment directly. An unset variable uses `default`.
+
+knobs:
+  VELOX_CONCURRENT_OLLAMA_CALLS:
+    kind: config
+    default: "4"
+    safe_production: "4"
+    owner: "internal/platform/config/types.go"
+    description: "Parallel Ollama calls allowed per host."
+  VELOX_CONCURRENT_VIDEO_EXTRACTS:
+    kind: config
+    default: "5"
+    safe_production: "5"
+    owner: "internal/platform/config/types.go"
+    description: "Parallel stock-video extraction jobs."
+  VELOX_CREDENTIALS_FILE:
+    kind: config
+    default: "credentials.json"
+    safe_production: "/etc/pipelinegen/credentials.json"
+    owner: "internal/platform/config/types_misc.go"
+    description: "OAuth client credentials file used by the Drive publisher."
+  VELOX_DRIVE_STRICT_STARTUP_VALIDATION:
+    kind: config
+    default: "true"
+    safe_production: "true"
+    owner: "internal/app/wiring/build_bundles_drive_gates.go"
+    description: "Fail boot when Drive credentials/roots are invalid; false is the soft-mode escape hatch."
+  VELOX_EDITORIAL_BACKGROUNDS_DIR:
+    kind: env
+    default: ""
+    safe_production: "unset (plates are fetched and verified from Drive)"
+    owner: "internal/app/wiring/media/editorial_assets_bootstrap.go"
+    description: "Local directory of certified editorial plate fixtures; an optimization, not the authority."
+  VELOX_FAKE_FINAL_JOB:
+    kind: env
+    default: ""
+    safe_production: "unset"
+    owner: "internal/app/wiring/fake_final_job.go"
+    description: "Simulate the remote final-job handoff so a run measures only the local pipeline."
+  VELOX_FINAL_AUDIO_CACHE_DIR:
+    kind: env
+    default: ""
+    safe_production: "unset (default cache root)"
+    owner: "internal/app/wiring/script_generation_runtime.go"
+    description: "Relocates the per-run final-audio cache."
+  VELOX_FINAL_JOB_ATTACH_SECONDS:
+    kind: env
+    default: "3000"
+    safe_production: "3000"
+    owner: "internal/app/wiring/remote_final_job.go"
+    description: "Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait)."
+  VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS:
+    kind: env
+    default: "1"
+    safe_production: "1"
+    owner: "internal/app/wiring/final_job_segment_prepare.go"
+    description: "Prefer packet copy for certified windows; 0 routes windows through the verified encoder lane."
+  VELOX_FINAL_JOB_CREDENTIALS_FILE:
+    kind: env
+    default: ""
+    safe_production: "/etc/pipelinegen/final_job_credentials.json"
+    owner: "internal/app/wiring/remote_final_job.go"
+    description: "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset."
+  VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR:
+    kind: env
+    default: ""
+    safe_production: "unset (default cache root)"
+    owner: "internal/app/wiring/final_job_fragment_io.go"
+    description: "Relocates the prepared-fragment cache used by the final-job handoff."
+  VELOX_FINAL_JOB_M2M_SECRET:
+    kind: env
+    default: ""
+    safe_production: "64-hex secret from the host env file"
+    owner: "internal/app/wiring/remote_final_job.go"
+    description: "Per-client bearer secret for job.submit against the Master."
+  VELOX_FINAL_JOB_MASTER_URL:
+    kind: env
+    default: ""
+    safe_production: "https://<master-host>"
+    owner: "internal/app/wiring/remote_final_job.go"
+    description: "Master URL for the remote final-job handoff; unset falls back to the configured base URL."
+  VELOX_FINAL_JOB_PREPARE_LANES:
+    kind: env
+    default: "4"
+    safe_production: "4 (1..16)"
+    owner: "internal/app/wiring/final_job_segment_prepare.go"
+    description: "Fragments prepared in parallel per handoff."
+  VELOX_FINAL_JOB_QUEUE_SECONDS:
+    kind: env
+    default: "180"
+    safe_production: "180"
+    owner: "internal/app/wiring/remote_final_job.go"
+    description: "How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget)."
+  VELOX_FINAL_JOB_RESOLVE_CONCURRENCY:
+    kind: env
+    default: "1"
+    safe_production: "4 (1..16)"
+    owner: "internal/app/wiring/remote_final_job_resolve.go"
+    description: "Drive sources resolved in parallel while preparing a handoff."
+  VELOX_FINAL_JOB_STOCK_CACHE_DIR:
+    kind: env
+    default: ""
+    safe_production: "unset (default cache root)"
+    owner: "internal/app/wiring/remote_final_job_resolve.go"
+    description: "Relocates the resolved stock-asset cache used by the handoff."
+  VELOX_FINAL_JOB_WORKER_ID:
+    kind: env
+    default: ""
+    safe_production: "unset (Master places the job)"
+    owner: "internal/app/wiring/remote_final_job.go"
+    description: "Pins the handoff to one worker; the retired worker-51 id is rejected loudly."
+  VELOX_MEDIA_MANIFEST_PATH:
+    kind: env
+    default: ""
+    safe_production: "unset"
+    owner: "internal/capabilities/scripts/adapters/media_manifest_shim.go"
+    description: "Opt-in media_manifest fast-path used by the composition root."
+  VELOX_POLL_MAX_BACKOFF:
+    kind: config
+    default: "60s"
+    safe_production: "60s"
+    owner: "internal/platform/config/jobs.go"
+    description: "Ceiling of the job-runner poll backoff."
+  VELOX_PROGRESS_COALESCE_WINDOW:
+    kind: config
+    default: "100ms"
+    safe_production: "100ms"
+    owner: "internal/platform/config/jobs.go"
+    description: "Window over which job progress writes are coalesced (0 = passthrough)."
+  VELOX_SCHEDULER_INTERVAL:
+    kind: config
+    default: "30s"
+    safe_production: "30s"
+    owner: "internal/platform/config/jobs.go"
+    description: "Scheduler tick interval for background jobs."
+  VELOX_SCRIPTS_LOCALIZED_RENDER_GLOBAL_CONCURRENCY:
+    kind: config
+    default: "6"
+    safe_production: "6 (machine render ceiling)"
+    owner: "internal/platform/config/scripts.go"
+    description: "Machine-wide ceiling for localized render jobs."
+  VELOX_YOUTUBE_ASYNC_ENRICHMENT:
+    kind: env
+    default: ""
+    safe_production: "unset (inline enrichment) until the outbox worker is certified"
+    owner: "internal/capabilities/youtube/usecase/process_segment_step6to9.go"
+    description: "Commit YouTube clips before asynchronous metadata enrichment; boot refuses when the media outbox worker is unavailable."

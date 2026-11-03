@@ -29,14 +29,20 @@ func TestNormalizeName(t *testing.T) {
 	}
 }
 
-// TestNormalizeType pins the canonical entity type: trimmed and upper-cased.
-// The canonical type is part of the entity identity.
+// TestNormalizeType pins the canonical entity type: trimmed, upper-cased and
+// folded through the alias table. The canonical type is part of the entity
+// identity, so every spelling of one type must land on one value.
 func TestNormalizeType(t *testing.T) {
 	require.Equal(t, "PERSON", NormalizeType("person"))
 	require.Equal(t, "PERSON", NormalizeType(" PERSON "))
-	require.Equal(t, "ORGANIZATION", NormalizeType("organization"))
-	require.Equal(t, "GPE", NormalizeType("gpe"))
+	require.Equal(t, "ORG", NormalizeType("organization"))
+	require.Equal(t, "ORG", NormalizeType("company"))
+	require.Equal(t, "PLACE", NormalizeType("gpe"))
+	require.Equal(t, "PLACE", NormalizeType("location"))
+	require.Equal(t, "PLACE", NormalizeType("city"))
 	require.Equal(t, "", NormalizeType(""))
+	// A type nobody declared is not guessed: it keeps its upper-case spelling.
+	require.Equal(t, "SATELLITE", NormalizeType(" satellite "))
 }
 
 // TestCanonicalKey pins the dedup/cache key: "TYPE:name" with normalized
@@ -44,9 +50,9 @@ func TestNormalizeType(t *testing.T) {
 func TestCanonicalKey(t *testing.T) {
 	require.Equal(t, "PERSON:tim cook", CanonicalKey("PERSON", "Tim Cook"))
 	require.Equal(t, "PERSON:tim cook", CanonicalKey(" person ", "  TIM   COOK "))
-	require.Equal(t, "ORGANIZATION:apple inc", CanonicalKey("ORGANIZATION", "Apple Inc"))
+	require.Equal(t, "ORG:apple inc", CanonicalKey("ORGANIZATION", "Apple Inc"))
 	require.Equal(t, "PERSON:tim cook", CanonicalKey("PERSON", "Tim Cook"))
-	require.Equal(t, "GPE:los angeles", CanonicalKey("GPE", "Los Angeles"))
+	require.Equal(t, "PLACE:los angeles", CanonicalKey("GPE", "Los Angeles"))
 }
 
 // TestStableEntityID_Dedup pins the dedup contract (plan Test B): the same
@@ -96,7 +102,10 @@ func TestStableEntityID_DistinguishesName(t *testing.T) {
 // cached asset key.
 func TestStableEntityID_PinsCanonicalValues(t *testing.T) {
 	require.Equal(t, "ent_"+stableHex("PERSON:tom hanks"), StableEntityID("PERSON", "Tom Hanks"))
-	require.Equal(t, "ent_"+stableHex("GPE:los angeles"), StableEntityID("GPE", "Los Angeles"))
+	// Places are hashed under the canonical PLACE spelling: the old
+	// "GPE:…" key is translated by the catalog backfill (migration 290) and
+	// by FoldCanonicalEntityID on the read path.
+	require.Equal(t, "ent_"+stableHex("PLACE:los angeles"), StableEntityID("GPE", "Los Angeles"))
 	require.Equal(t, "ent_"+stableHex("PERSON:tim cook"), StableEntityID("PERSON", "Tim Cook"))
 }
 
@@ -113,7 +122,9 @@ func TestStableEntityID_GoldenOldNew(t *testing.T) {
 	}{
 		{"PERSON", "Tom Hanks", "ent_46579c59f05f045f"},
 		{"PERSON", "Tim Cook", "ent_52fd80dd0140190c"},
-		{"GPE", "Los Angeles", "ent_6bee252f34e49fa3"},
+		// Was ent_6bee252f34e49fa3 under the pre-fold "GPE:" key; the alias
+		// table moves places to PLACE, so the new literal is pinned here.
+		{"GPE", "Los Angeles", "ent_ba335769fd7eca16"},
 		{"PERSON", "Michael Jordan", "ent_8be57fefa2fac43f"},
 	}
 	for _, c := range cases {

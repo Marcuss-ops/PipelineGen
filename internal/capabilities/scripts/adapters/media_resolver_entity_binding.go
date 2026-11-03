@@ -19,6 +19,7 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -27,15 +28,29 @@ import (
 // explicitly relevant to the primary entity. Generic scene candidates are
 // never promoted to an entity image, preventing unrelated images from being
 // presented as a person/org/place match.
+// isPersonOrgOrPlace is the query-building subset of the imageable kinds:
+// people, organisations and places. The spellings come from
+// kernel/entitytype, so GPE, LOC, CITY and LOCATION all agree.
+func isPersonOrgOrPlace(raw string) bool {
+	switch entitytype.Fold(raw) {
+	case entitytype.Person, entitytype.Org, entitytype.Place:
+		return true
+	}
+	return false
+}
+
 func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scriptpkg.VidRushSegmentResult, policy mediadomain.EntityImagePolicy) scriptpkg.SpecSceneOutput {
 	if !policy.Enabled || len(spec.Scenes) == 0 {
 		return spec
 	}
 	out := cloneSpecSceneOutput(spec)
-	// The default imageable set mirrors the kernel taxonomy registry
-	// (script.IsAnnotationEntityKind): PERSON/ORG/GPE entity cards plus the
+	// The default imageable set IS the kernel taxonomy registry
+	// (script.AnnotationEntityKinds): PERSON/ORG/GPE entity cards plus the
 	// PRODUCT/LOGO media kinds. An explicit policy replaces the set.
-	allowed := map[string]bool{"PERSON": true, "ORG": true, "GPE": true, "PRODUCT": true, "LOGO": true}
+	allowed := make(map[string]bool, 5)
+	for _, kind := range scriptpkg.AnnotationEntityKinds() {
+		allowed[kind] = true
+	}
 	if len(policy.EntityTypes) > 0 {
 		allowed = make(map[string]bool, len(policy.EntityTypes))
 		for _, raw := range policy.EntityTypes {
@@ -255,15 +270,14 @@ func scenePrimaryEntityQueries(spec scriptpkg.SpecSceneOutput, idx sceneIdentity
 	// the lead person has been projected); using them as the sole source drops
 	// co-present entities before their image searches can run.
 	for _, entity := range segment.Insights.Entities {
-		kind := strings.ToUpper(strings.TrimSpace(entity.Type))
-		if kind != "PERSON" && kind != "ORG" && kind != "GPE" {
+		if !isPersonOrgOrPlace(entity.Type) {
 			continue
 		}
 		add(entity.Value)
 	}
 	if best >= 0 && spec.Scenes[best].Annotations != nil {
 		for _, entity := range spec.Scenes[best].Annotations.PrimaryEntities {
-			if entity.Type != "PERSON" && entity.Type != "ORG" && entity.Type != "GPE" {
+			if !isPersonOrgOrPlace(entity.Type) {
 				continue
 			}
 			query := strings.TrimSpace(entity.CanonicalName)

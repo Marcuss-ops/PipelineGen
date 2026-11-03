@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
@@ -85,7 +86,7 @@ func (p *finalJobSegmentPreparer) fragmentCacheKey(request scriptgen.FinalJobVid
 	// produce its own object, never the untagged bytes that caused the
 	// collision. Without it, the r58-r62 retry was answered by the cache and the
 	// "same bytes, another placement" guard fired every time.
-	return digest.SHA256String(fmt.Sprintf("v%d|%s|%s|%d|%d|%s|%s", finalJobFragmentFormatVersion, finalJobSegmentProfile, strings.ToLower(sourceSHA), request.SourceInUS, request.FrameCount, policy, request.PlacementTag))
+	return digest.SHA256String(fmt.Sprintf("v%d|%s|%s|%s|%d|%d|%s|%s", finalJobFragmentFormatVersion, finalJobSegmentProfile, finalJobDelivery.VideoExtradataSHA256, strings.ToLower(sourceSHA), request.SourceInUS, request.FrameCount, policy, request.PlacementTag))
 }
 
 // cachedFragment returns the path and certified identity of a previously
@@ -104,7 +105,7 @@ func (p *finalJobSegmentPreparer) cachedFragment(key string, frameCount, duratio
 	if err := json.Unmarshal(payload, &entry); err != nil {
 		return "", "", 0, false
 	}
-	if entry.ProfileID != finalJobSegmentProfile || len(entry.SHA256) != 64 || entry.SizeBytes <= 0 ||
+	if entry.ProfileID != finalJobSegmentProfile || entry.VideoExtradataSHA256 != finalJobDelivery.VideoExtradataSHA256 || len(entry.SHA256) != 64 || entry.SizeBytes <= 0 ||
 		entry.FrameCount != frameCount || entry.DurationUS != durationUS {
 		return "", "", 0, false
 	}
@@ -166,6 +167,7 @@ func (p *finalJobSegmentPreparer) storeFragment(key, path, sha string, size, fra
 	}
 	payload, err := json.Marshal(finalJobFragmentCacheEntry{
 		SHA256: strings.ToLower(sha), SizeBytes: size, FrameCount: frameCount, DurationUS: durationUS, ProfileID: finalJobSegmentProfile,
+		VideoExtradataSHA256: finalJobDelivery.VideoExtradataSHA256,
 	})
 	if err != nil {
 		return
@@ -211,7 +213,7 @@ func (p *finalJobSegmentPreparer) fragmentPath(sha string) string {
 }
 
 func finalJobFragmentCacheDir(dataDir string) string {
-	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR"))
+	raw := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR"))
 	switch strings.ToLower(raw) {
 	case "off", "disabled", "none":
 		return ""
@@ -229,11 +231,12 @@ func finalJobFragmentCacheDir(dataDir string) string {
 // identity of the bytes next to it. A missing or mismatched sidecar is a cache
 // miss, never a guess.
 type finalJobFragmentCacheEntry struct {
-	SHA256     string `json:"sha256"`
-	SizeBytes  int64  `json:"size_bytes"`
-	FrameCount int64  `json:"frame_count"`
-	DurationUS int64  `json:"duration_us"`
-	ProfileID  string `json:"profile_id"`
+	SHA256               string `json:"sha256"`
+	SizeBytes            int64  `json:"size_bytes"`
+	FrameCount           int64  `json:"frame_count"`
+	DurationUS           int64  `json:"duration_us"`
+	ProfileID            string `json:"profile_id"`
+	VideoExtradataSHA256 string `json:"video_extradata_sha256"`
 }
 
 type finalJobFragmentLock struct {
@@ -274,7 +277,7 @@ func (p *finalJobSegmentPreparer) sourceNeedsNormalization(ctx context.Context, 
 			return nil, fmt.Errorf("ffprobe is required to inspect final-job sources: %w", err)
 		}
 		cmd := exec.CommandContext(ctx, ffprobe, "-v", "error", "-select_streams", "v:0",
-			"-show_entries", "stream=width,height,avg_frame_rate,pix_fmt", "-of", "json", path)
+			"-show_entries", "stream=width,height,avg_frame_rate,pix_fmt,sample_aspect_ratio", "-of", "json", path)
 		data, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("probe final-job source: %w", err)
@@ -285,6 +288,7 @@ func (p *finalJobSegmentPreparer) sourceNeedsNormalization(ctx context.Context, 
 				Height   int    `json:"height"`
 				AvgFPS   string `json:"avg_frame_rate"`
 				PixelFmt string `json:"pix_fmt"`
+				SAR      string `json:"sample_aspect_ratio"`
 			} `json:"streams"`
 		}
 		if err := json.Unmarshal(data, &probe); err != nil {
@@ -294,7 +298,7 @@ func (p *finalJobSegmentPreparer) sourceNeedsNormalization(ctx context.Context, 
 			return nil, fmt.Errorf("final-job source must expose exactly one video stream")
 		}
 		stream := probe.Streams[0]
-		needs := !finalJobDeliveryMatches(stream.Width, stream.Height, stream.AvgFPS, stream.PixelFmt)
+		needs := !finalJobDeliveryMatches(stream.Width, stream.Height, stream.AvgFPS, stream.PixelFmt, stream.SAR)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

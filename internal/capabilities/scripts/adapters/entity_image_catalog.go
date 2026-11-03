@@ -170,6 +170,19 @@ func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Re
 	seenQueries := make(map[string]struct{})
 	seenIdentities := make(map[string]struct{})
 	var out []scriptpkg.SegmentAssetCandidate
+	appendIdentityPool := func(identity entitycatalog.PersonIdentity) {
+		if identity.CanonicalEntityID == "" {
+			return
+		}
+		if _, dup := seenIdentities[identity.CanonicalEntityID]; dup {
+			return
+		}
+		seenIdentities[identity.CanonicalEntityID] = struct{}{}
+		pool, err := entityImageCatalogCandidates(ctx, repo, identity, entityImageCatalogPoolSize)
+		if err == nil && len(pool.Candidates) > 0 {
+			out = append(out, pool.Candidates...)
+		}
+	}
 	for _, candidate := range segment.Assets.Candidates {
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 			continue
@@ -190,15 +203,21 @@ func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Re
 		if err != nil || !ok {
 			continue
 		}
-		if _, dup := seenIdentities[identity.CanonicalEntityID]; dup {
+		appendIdentityPool(identity)
+	}
+	// Incremental materialization can receive only a contextual query result
+	// (or no provider candidate at all). Seed the durable pool from the scene's
+	// typed PERSON entities too, so a stock-bound scene can reuse its accepted
+	// catalog images without depending on the batch-only post-materialization
+	// projection.
+	for _, entity := range segment.Insights.Entities {
+		if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") {
 			continue
 		}
-		seenIdentities[identity.CanonicalEntityID] = struct{}{}
-		pool, err := entityImageCatalogCandidates(ctx, repo, identity, entityImageCatalogPoolSize)
-		if err != nil || len(pool.Candidates) == 0 {
-			continue
+		identity, err := entitycatalog.CanonicalizePersonName(entity.Value)
+		if err == nil {
+			appendIdentityPool(identity)
 		}
-		out = append(out, pool.Candidates...)
 	}
 	return out
 }

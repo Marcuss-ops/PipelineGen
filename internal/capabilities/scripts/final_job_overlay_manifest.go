@@ -190,7 +190,7 @@ func certifiableFinalJobOverlayBatches(finalJob bool, ref RenderReference, fpsNu
 // and the overlay_manifest wire document for the composition. Either side
 // may be empty (a plan with no maps/chain emits no rows; a plan with only
 // maps/chain emits no manifest), but never both when semantic overlays exist.
-func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consumed map[string]struct{}) ([]any, map[string]any, error) {
+func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consumed map[string]struct{}, imageRequested bool) ([]any, map[string]any, error) {
 	if result == nil || result.OverlayPlan == nil || len(result.OverlayPlan.Items) == 0 {
 		return []any{}, nil, nil
 	}
@@ -203,7 +203,7 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 	for sceneID := range finalJobIntermediateClipWindows(result) {
 		clipScenes[sceneID] = struct{}{}
 	}
-	if err := finalJobImagePreflight(result.OverlayPlan.Items, clipScenes); err != nil {
+	if err := finalJobImagePreflight(result.OverlayPlan.Items, clipScenes, imageRequested); err != nil {
 		return nil, nil, err
 	}
 	fpsNum, fpsDen := result.OverlayPlan.FPSNum, result.OverlayPlan.FPSDen
