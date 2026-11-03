@@ -437,3 +437,6 @@ tests/operational/results/
 # carrying tens of MB of run artifacts (e.g. garlasco_batch_10 v7).
 ops/jobs/*/results/
 ops/jobs/*/drive_upload/
+
+# Local build artifact (2026-11-03): the velox-knobs CLI is compiled, not source.
+/velox-knobs
