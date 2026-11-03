@@ -380,6 +380,12 @@ func (p *OverlayPlan) Validate() error {
 			return fmt.Errorf("overlay plan: %w", err)
 		}
 	}
+	// The media contract is DERIVED from the output profile (one stamping
+	// point, OverlayPlan.StampOutputProfile). A hand-set contract that does not
+	// follow its profile is a claim about an artifact nobody renders.
+	if err := p.validateOutputIdentity(); err != nil {
+		return fmt.Errorf("overlay plan: %w", err)
+	}
 	if source := p.Source; source != nil {
 		if strings.TrimSpace(source.AssetID) == "" || strings.TrimSpace(source.SHA256) == "" || (strings.TrimSpace(source.Path) == "" && strings.TrimSpace(source.LocalPath) == "") {
 			return fmt.Errorf("overlay plan: source requires asset_id, sha256 and a path")

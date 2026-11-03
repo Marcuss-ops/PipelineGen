@@ -1,6 +1,8 @@
 package renderinggen
 
 import (
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 	"encoding/json"
 	"os"
 	"strings"
@@ -67,20 +69,9 @@ func compositeFinalClipPlan(t *testing.T) (cliprender.ClipRenderPlanV1, string) 
 			StartMS: 1000,
 			EndMS:   3000,
 		}}},
-		Contract: &cliprender.ResolvedContract{
-			ContractID:   cliprender.OutputContractVeloxAssemblyReadyV1,
-			Container:    "mp4",
-			VideoCodec:   "h264",
-			VideoProfile: "high",
-			PixelFormat:  "yuv420p",
-			Width:        1920,
-			Height:       1080,
-			FPSNum:       24,
-			FPSDen:       1,
-			AudioCodec:   "aac",
-			SampleRate:   48000,
-			Channels:     2,
-		},
+		Contract: cliprender.NewResolvedContract(func(c *kernelmedia.AssemblyMediaContract) {
+			c.ID = cliprender.OutputContractVeloxAssemblyReadyV1
+		}),
 		AudioMode:  cliprender.AudioModeCopyIfCompatible,
 		OutputPath: dir + "/out.mp4",
 	})

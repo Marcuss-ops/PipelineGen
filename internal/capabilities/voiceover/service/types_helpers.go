@@ -62,14 +62,6 @@ func normalizeBatchRequest(req_in BatchRequest) BatchRequest {
 	return normalizeBatchRequestWithDefaults(req_in, config.DefaultVoiceoverDefaults())
 }
 
-func normalizeBatchRequestWithConfig(req_in BatchRequest, cfg *config.Config) BatchRequest {
-	defaults := config.DefaultVoiceoverDefaults()
-	if cfg != nil {
-		defaults = cfg.Voiceover.Defaults
-	}
-	return normalizeBatchRequestWithDefaults(req_in, defaults)
-}
-
 func normalizeBatchRequestWithDefaults(req_in BatchRequest, defaults config.VoiceoverDefaultsConfig) BatchRequest {
 	// INPUT-IMMUTABILITY-COPY-ON-WRITE-MIGRATION: see architecture/
 	// deprecations.yaml for the godlike/07 audit-pin + the godlike
@@ -139,10 +131,6 @@ func voiceOverridesFromMetadata(metadata map[string]any) map[string]string {
 		return nil
 	}
 	return out
-}
-
-func buildRequestID() string {
-	return "vo_" + time.Now().Format("20060102_150405") + "_" + randomSuffix(6)
 }
 
 func randomSuffix(n int) string {

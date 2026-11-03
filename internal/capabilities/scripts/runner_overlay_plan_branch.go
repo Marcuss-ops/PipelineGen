@@ -39,6 +39,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"go.uber.org/zap"
@@ -66,6 +67,15 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas := r.overlayCanvas
 	canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
 	canvas.Background = overlayBackgroundFromPayload(background)
+	// The final job composites this plan onto the source video and encodes it
+	// opaque (H.264/yuv420p, no audio), so that is the profile the artifact
+	// will be certified against — declared HERE, with the other output-shape
+	// facts and before the plan is sealed, so the plan's media contract is
+	// derived from the same answer and no consumer has to re-derive it. An
+	// intermediate (non-final-job) overlay keeps the alpha default.
+	if req.FinalJob {
+		canvas.OutputProfileID = kernelmedia.OverlayVideoOnlyProfileID
+	}
 	canvas.Style = req.OverlayStyle
 	canvas.PhraseMotions = req.PhraseMotions
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
@@ -313,6 +323,7 @@ func applyOverlayPlanProjection(result *GenerateResult, branchInput *GenerateRes
 	result.PhraseOverlayBudget = branchInput.PhraseOverlayBudget
 	result.LocalizedOverlayPlans = branchInput.LocalizedOverlayPlans
 	result.SemanticRenderBundle = branchInput.SemanticRenderBundle
+	result.OverlayAudit = branchInput.OverlayAudit
 	result.ResolvedOverlayIntents = branchInput.ResolvedOverlayIntents
 }
 

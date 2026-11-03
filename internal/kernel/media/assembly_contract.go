@@ -292,35 +292,6 @@ func (s StreamSignature) Fingerprint() string {
 	return digest.SHA256Bytes(b)
 }
 
-// FromContract builds the expected signature from the frozen contract.
-func StreamSignatureFromContract(c AssemblyMediaContract) StreamSignature {
-	return StreamSignature{
-		VideoCodec:         c.VideoCodec,
-		VideoProfile:       c.VideoProfile,
-		VideoLevel:         c.VideoLevel,
-		PixelFormat:        c.PixelFormat,
-		Width:              c.Width,
-		Height:             c.Height,
-		SAR:                c.SAR,
-		FPS:                c.FPS,
-		VideoTimeBase:      c.VideoTimeBase,
-		AudioTimeBase:      c.AudioTimeBase,
-		ColorRange:         c.ColorRange,
-		ColorSpace:         c.ColorSpace,
-		ColorTransfer:      c.ColorTransfer,
-		ColorPrimaries:     c.ColorPrimaries,
-		FieldOrder:         c.FieldOrder,
-		AudioCodec:         c.AudioCodec,
-		AudioProfile:       c.AudioProfile,
-		AudioSampleRate:    c.AudioSampleRate,
-		AudioChannels:      c.AudioChannels,
-		AudioChannelLayout: c.AudioChannelLayout,
-		VideoStreams:       1,
-		AudioStreams:       1,
-		StreamOrder:        "v:0,a:1",
-	}
-}
-
 // ── CompositionContract ───────────────────────────────────────────────
 //
 // CompositionContract describes what is VISUALLY in the video — the editorial
@@ -344,34 +315,3 @@ type CompositionContract struct {
 // for an assembly-ready clip: watermark applied, subtitles burned, no overlay.
 
 // Validate checks the composition fields are populated with valid values.
-
-// StreamSignatureFromProbe builds the actual signature from a probed output.
-// It is the canonical "probe → signature" derivation consumed by the
-// AssemblyCompatibilityGate before concat -c copy.
-func StreamSignatureFromProbe(p ProbeFacts) StreamSignature {
-	return StreamSignature{
-		VideoCodec:         p.VideoCodec,
-		VideoProfile:       p.VideoProfile,
-		VideoLevel:         p.VideoLevel,
-		PixelFormat:        p.PixelFormat,
-		Width:              p.Width,
-		Height:             p.Height,
-		SAR:                Rational{Num: p.SARNum, Den: p.SARDen},
-		FPS:                FrameRate{Num: p.FPSNum, Den: p.FPSDen},
-		VideoTimeBase:      Rational{Num: p.VideoTimeBaseNum, Den: p.VideoTimeBaseDen},
-		AudioTimeBase:      Rational{Num: p.AudioTimeBaseNum, Den: p.AudioTimeBaseDen},
-		ColorRange:         p.ColorRange,
-		ColorSpace:         p.ColorSpace,
-		ColorTransfer:      p.ColorTransfer,
-		ColorPrimaries:     p.ColorPrimaries,
-		FieldOrder:         p.FieldOrder,
-		AudioCodec:         p.AudioCodec,
-		AudioProfile:       p.AudioProfile,
-		AudioSampleRate:    p.AudioSampleRate,
-		AudioChannels:      p.Channels,
-		AudioChannelLayout: p.AudioChannelLayout,
-		VideoStreams:       p.VideoStreams,
-		AudioStreams:       p.AudioStreams,
-		StreamOrder:        "v:0,a:1",
-	}
-}

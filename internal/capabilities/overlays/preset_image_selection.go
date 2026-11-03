@@ -166,12 +166,6 @@ func ImageMotionAtOffset(offset, ordinal int) string {
 // randomly rotated certified catalog for generated overlays. The
 // offset is the plan-level entropy value sampled by RandomImageMotionOffset;
 // the pool reduces it modulo its own size.
-// EntitySequenceCameraMotion returns the shared camera path used by grouped
-// portraits. The track derives each direction from the portrait positions.
-func EntitySequenceCameraMotion() string {
-	return entitySequenceCameraMotion
-}
-
 func EntityImageMotionAtOffset(offset, ordinal int) string {
 	return rotateMotionAtOffset(offset, ordinal, generatedEntityImageMotionCandidates)
 }

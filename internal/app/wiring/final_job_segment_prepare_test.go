@@ -416,7 +416,7 @@ func TestFinalJobFragmentConcurrentWorkReusesCertifiedBytes(t *testing.T) {
 	}
 	sourceSHA := strings.Repeat("b", 64)
 	source := map[string]any{"asset_id": "source", "sha256": sourceSHA, "size_bytes": int64(42), "source_uri": "https://objects.example/source", "role": "stock"}
-	key := p.fragmentCacheKey(request, sourceSHA, "libx264")
+	key := p.fragmentWorkKey(request, sourceSHA, "libx264")
 	unlock, err := p.lockFragment(context.Background(), key)
 	if err != nil {
 		t.Fatal(err)
@@ -550,11 +550,34 @@ func TestFinalJobSegmentPreparerEncodesOneAssemblyReadyFragment(t *testing.T) {
 		SourceInUS: 0, SourceDurationUS: 2_000_000, TimelineStartFrame: 0, FrameCount: 48,
 		TimelineRevision: 1, TimelineSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
-	if err := preparer.encodeFragment(context.Background(), source, output, request, true); err != nil {
+	if err := preparer.encodeFragment(context.Background(), source, output, request, true, 0); err != nil {
 		t.Fatalf("encodeFragment: %v", err)
 	}
 	if err := verifyFinalJobFragment(context.Background(), output, request.FrameCount); err != nil {
 		t.Fatalf("verifyFinalJobFragment: %v", err)
+	}
+}
+
+// TestFinalJobFragmentVideoFilterPadsOnlyTheMeasuredShortfall pins the padding
+// contract without running ffmpeg: a window the source can supply has no tpad at
+// all, and a short window clones exactly its deficit. The old filter always
+// carried a full-window tpad, which made a frozen tail indistinguishable from a
+// rounding artifact.
+func TestFinalJobFragmentVideoFilterPadsOnlyTheMeasuredShortfall(t *testing.T) {
+	if got := finalJobFragmentVideoFilter(false, 0); got != "" {
+		t.Fatalf("complete window filter = %q, want no filter (and therefore no tpad)", got)
+	}
+	geometry := finalJobFragmentVideoFilter(true, 0)
+	if !strings.Contains(geometry, "scale=1920:1080") || strings.Contains(geometry, "tpad") {
+		t.Fatalf("geometry-only filter = %q, want geometry without tpad", geometry)
+	}
+	short := finalJobFragmentVideoFilter(false, 12)
+	if !strings.Contains(short, "tpad=stop_mode=clone:stop_duration=0.500000") {
+		t.Fatalf("short window filter = %q, want tpad for exactly 12 frames", short)
+	}
+	both := finalJobFragmentVideoFilter(true, 12)
+	if !strings.Contains(both, "fps=24/1") || !strings.Contains(both, "tpad=stop_mode=clone:stop_duration=0.500000") {
+		t.Fatalf("geometry+short filter = %q, want both parts", both)
 	}
 }
 
@@ -592,7 +615,7 @@ func TestFinalJobSegmentPreparerSkipsRebuildingTheDeliveryGeometry(t *testing.T)
 		SourceInUS: 500_000, SourceDurationUS: 1_500_000, TimelineStartFrame: 12, FrameCount: 36,
 		TimelineRevision: 1, TimelineSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
-	if err := preparer.encodeFragment(context.Background(), source, output, request, needs); err != nil {
+	if err := preparer.encodeFragment(context.Background(), source, output, request, needs, 0); err != nil {
 		t.Fatalf("encodeFragment: %v", err)
 	}
 	if err := verifyFinalJobFragment(context.Background(), output, request.FrameCount); err != nil {
@@ -622,7 +645,7 @@ func TestFinalJobSegmentPreparerPadsShortBoundaryToExactFrameCount(t *testing.T)
 		SourceInUS: 0, SourceDurationUS: 2_750_000, TimelineStartFrame: 65, FrameCount: 66,
 		TimelineRevision: 1, TimelineSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
-	if err := preparer.encodeFragment(context.Background(), source, output, request, true); err != nil {
+	if err := preparer.encodeFragment(context.Background(), source, output, request, true, 1); err != nil {
 		t.Fatalf("encodeFragment: %v", err)
 	}
 	if err := verifyFinalJobFragment(context.Background(), output, request.FrameCount); err != nil {
@@ -687,7 +710,7 @@ func TestDerivePlacementCopiesTheCertifiedBitstream(t *testing.T) {
 		SourceInUS: 0, SourceDurationUS: 2_000_000, TimelineStartFrame: 0, FrameCount: 48,
 		TimelineRevision: 1, TimelineSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
-	if err := preparer.encodeFragment(context.Background(), source, fragment, request, false); err != nil {
+	if err := preparer.encodeFragment(context.Background(), source, fragment, request, false, 0); err != nil {
 		t.Fatalf("encodeFragment: %v", err)
 	}
 	if err := preparer.remuxTaggedFragment(context.Background(), fragment, derived, "segment-0001"); err != nil {
@@ -802,16 +825,24 @@ func TestFinalJobFragmentCacheReusesTheSameWorkOnly(t *testing.T) {
 	}
 }
 
-func TestFinalJobFragmentDeclaresTheVideoOnlyProfile(t *testing.T) {
+// TestFinalJobFragmentCertifiesTheProfileTheAssemblerBinds pins the profile the
+// prepared fragment declares. It is NOT the video-only artifact profile: r90
+// sent fragments certified VELOX_OVERLAY_VIDEO_ONLY_V1 and the remote assemble
+// gate rejected the plan (`segment "segment-0000" manifest binding is not
+// exact`) while the bytes were exact (86/86 frame counts, durations, zero start,
+// 1920x1080 yuv420p High 4.0). The fragment certificate therefore stays on the
+// profile that gate binds against, and the video-only profile keeps describing
+// the render artifact (plan output_profile_id).
+func TestFinalJobFragmentCertifiesTheProfileTheAssemblerBinds(t *testing.T) {
 	request := scriptgen.FinalJobVideoSegmentRequest{
 		FrameCount: 48, TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64),
 	}
 	ref := finalJobPreparedRef(map[string]any{}, strings.Repeat("b", 64), 1024, 2_000_000, request)
-	if got := ref["profile_id"]; got != kernelmedia.OverlayVideoOnlyProfileID {
-		t.Fatalf("profile_id = %v, want %s", got, kernelmedia.OverlayVideoOnlyProfileID)
+	if got := ref["profile_id"]; got != kernelmedia.AssemblyMediaContractID {
+		t.Fatalf("profile_id = %v, want %s", got, kernelmedia.AssemblyMediaContractID)
 	}
-	if ref["profile_id"] == "VELOX_ASSEMBLY_READY_V1" {
-		t.Fatal("a video-only fragment must not declare the audio-bearing assembly profile")
+	if ref["profile_id"] == kernelmedia.OverlayVideoOnlyProfileID {
+		t.Fatal("the fragment certificate must not declare the artifact profile the assemble gate rejects")
 	}
 }
 
@@ -853,21 +884,30 @@ func verifyFinalJobFragment(ctx context.Context, path string, frameCount int64) 
 }
 
 // TestFinalJobSegmentWindowsStayInTheirHandoff pins the scoping rule: two
-// handoffs share one preparer, and a receipt may only report the windows its
-// own scope produced. It also pins the copy/encode separation the aggregate
-// field cannot make (encode_ms sums both lanes) and the deterministic order.
+// handoffs share one preparer, and a receipt may only report the counters and
+// windows its own scope produced. It also pins the copy/encode separation the
+// aggregate field cannot make (encode_ms sums both lanes) and the deterministic
+// order.
 func TestFinalJobSegmentWindowsStayInTheirHandoff(t *testing.T) {
 	p := newFinalJobSegmentPreparer("", mediaexec.EncoderPolicy{}, "", 1)
-	scopeA, baseA := p.NewHandoffScope()
-	scopeB, baseB := p.NewHandoffScope()
+	scopeA := p.NewHandoffScope()
+	scopeB := p.NewHandoffScope()
 	ctxA := withFinalJobHandoffScope(context.Background(), scopeA)
 	ctxB := withFinalJobHandoffScope(context.Background(), scopeB)
 
+	// Scalars, not just windows: a receipt that reports the difference of two
+	// process-wide snapshots would let handoff B's work appear in A's totals.
+	p.record(ctxA, func(s *finalJobSegmentStats) { s.segments++; s.copied++; s.encodeMS += 320; s.bytes += 8436 })
 	p.recordWindow(ctxA, finalJobSegmentWindow{segmentID: "segment-0002", path: finalJobWindowCopy, frames: 72, copyMS: 320, bytes: 8436})
-	p.recordWindow(ctxB, finalJobSegmentWindow{segmentID: "segment-0001", path: finalJobWindowEncode, frames: 48, encodeMS: 1210, bytes: 32020})
+	p.record(ctxB, func(s *finalJobSegmentStats) { s.segments++; s.encodeMS += 1210; s.bytes += 32020; s.paddedFrames += 2 })
+	p.recordWindow(ctxB, finalJobSegmentWindow{segmentID: "segment-0001", path: finalJobWindowEncode, frames: 48, encodeMS: 1210, bytes: 32020, paddedFrames: 2})
+	p.record(ctxA, func(s *finalJobSegmentStats) { s.segments++; s.encodeMS += 1500; s.verifyMS += 40; s.bytes += 41000 })
 	p.recordWindow(ctxA, finalJobSegmentWindow{segmentID: "segment-0001", path: finalJobWindowEncode, frames: 96, encodeMS: 1500, verifyMS: 40, bytes: 41000})
 
-	prepA := p.Totals().minus(baseA, scopeA)
+	prepA := p.Timing(scopeA)
+	if prepA.Segments != 2 || prepA.Copied != 1 || prepA.EncodeMS != 1820 || prepA.VerifyMS != 40 || prepA.Bytes != 49436 {
+		t.Fatalf("handoff A totals = %+v, want only its own two fragments", prepA)
+	}
 	if len(prepA.Windows) != 2 {
 		t.Fatalf("handoff A windows = %d, want 2 (handoff B must not leak in): %+v", len(prepA.Windows), prepA.Windows)
 	}
@@ -883,9 +923,58 @@ func TestFinalJobSegmentWindowsStayInTheirHandoff(t *testing.T) {
 		t.Fatalf("encoded window must report encode time and no copy time: %+v", encoded)
 	}
 
-	prepB := p.Totals().minus(baseB, scopeB)
+	prepB := p.Timing(scopeB)
 	if len(prepB.Windows) != 1 || prepB.Windows[0].SegmentID != "segment-0001" || prepB.Windows[0].EncodeMS != 1210 {
 		t.Fatalf("handoff B windows = %+v, want only its own encoded window", prepB.Windows)
+	}
+	if prepB.Segments != 1 || prepB.Copied != 0 || prepB.EncodeMS != 1210 || prepB.Bytes != 32020 || prepB.PaddedFrames != 2 {
+		t.Fatalf("handoff B totals = %+v, want only its own fragment with its padding", prepB)
+	}
+	if len(prepB.Windows) != 1 || prepB.Windows[0].PaddedFrames != 2 {
+		t.Fatalf("handoff B windows = %+v, want the measured padding", prepB.Windows)
+	}
+	// The aggregate still sees everything; only the receipts are scoped.
+	if total := p.Totals(); total.segments != 3 || total.copied != 1 || total.encodeMS != 3030 {
+		t.Fatalf("process aggregate = %+v, want 3 fragments", total)
+	}
+}
+
+// TestFinalJobFragmentGeometryComesFromTheContract pins the single source of
+// truth: the encoder filters, the source census and the reuse gate must all
+// describe the SAME delivery geometry the kernel media contract declares. A
+// second copy of 1920x1080/yuv420p/24 is how a certified fragment and the
+// certificate that describes it drift apart.
+func TestFinalJobFragmentGeometryComesFromTheContract(t *testing.T) {
+	contract := kernelmedia.DefaultAssemblyMediaContract()
+	if finalJobSegmentFPS != int64(contract.FPS.Num) || contract.FPS.Den != 1 {
+		t.Fatalf("fragment fps = %d, contract = %d/%d: the frame math assumes the contract's integer rate",
+			finalJobSegmentFPS, contract.FPS.Num, contract.FPS.Den)
+	}
+	if finalJobSegmentGOP != int64(contract.KeyframeInterval) {
+		t.Fatalf("fragment GOP = %d, contract = %d", finalJobSegmentGOP, contract.KeyframeInterval)
+	}
+	if finalJobSegmentProfile != contract.ID {
+		t.Fatalf("fragment profile = %q, contract = %q", finalJobSegmentProfile, contract.ID)
+	}
+	avgFPS := fmt.Sprintf("%d/%d", contract.FPS.Num, contract.FPS.Den)
+	if !finalJobDeliveryMatches(contract.Width, contract.Height, avgFPS, contract.PixelFormat) {
+		t.Fatal("the contract's own geometry is reported as non-conformant")
+	}
+	for _, tc := range []struct {
+		width, height int
+		fps, pixel    string
+	}{
+		{contract.Width - 2, contract.Height, avgFPS, contract.PixelFormat},
+		{contract.Width, contract.Height - 2, avgFPS, contract.PixelFormat},
+		{contract.Width, contract.Height, "30/1", contract.PixelFormat},
+		{contract.Width, contract.Height, avgFPS, "yuv422p"},
+	} {
+		if finalJobDeliveryMatches(tc.width, tc.height, tc.fps, tc.pixel) {
+			t.Fatalf("non-conformant geometry accepted: %dx%d %s %s", tc.width, tc.height, tc.fps, tc.pixel)
+		}
+	}
+	if got := finalJobDeliveryLevelCode(); got != 40 {
+		t.Fatalf("contract level %q maps to %d, want 40", contract.VideoLevel, got)
 	}
 }
 
@@ -958,7 +1047,7 @@ func TestFinalJobSegmentWindowsSeparateCopyFromEncode(t *testing.T) {
 		SourceInUS: 0, SourceDurationUS: 1_000_000, FrameCount: 24,
 		TimelineStartFrame: 0, TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64),
 	}
-	scope, base := p.NewHandoffScope()
+	scope := p.NewHandoffScope()
 	ctx := withFinalJobHandoffScope(context.Background(), scope)
 
 	if _, err := p.PrepareFinalJobVideoSegment(ctx, sourceRef, request); err != nil {
@@ -971,7 +1060,7 @@ func TestFinalJobSegmentWindowsSeparateCopyFromEncode(t *testing.T) {
 		t.Fatalf("prepare encoded window: %v", err)
 	}
 
-	prep := p.Totals().minus(base, scope)
+	prep := p.Timing(scope)
 	if len(prep.Windows) != 2 {
 		t.Fatalf("windows = %d, want 2: %+v", len(prep.Windows), prep.Windows)
 	}

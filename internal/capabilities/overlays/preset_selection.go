@@ -29,7 +29,6 @@ var (
 	centeredImageMotionCandidates          = AnimationCandidates("image.map_centered")
 	generatedEntityImageMotionCandidates   = AnimationCandidates("image.entity")
 	generatedEntityCaptionMotionCandidates = AnimationCandidates("entity.caption")
-	entitySequenceCameraMotion             = firstAnimationCandidate("entity.sequence_camera")
 	datePresentationMotionCandidates       = AnimationCandidates("entity.date")
 	metricPresentationMotionCandidates     = AnimationCandidates("entity.metric")
 	classicAppleMotionCandidates           = AnimationCandidates("phrase.classic_apple")

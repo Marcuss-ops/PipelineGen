@@ -1,5 +1,9 @@
 package cliprender
 
+import (
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+)
+
 // prepared.go owns the typed result of the parallel preparation phase:
 // the resolved asset identities, the materialized local artifacts, the
 // canonical transcript, the resolved output contract, and the wall-vs-work
@@ -92,50 +96,20 @@ func (t *TranscriptResult) HasText() bool {
 	return t != nil && (t.Text != "" || len(t.Cues) > 0)
 }
 
-// ResolvedContract is the fully-resolved VeloxEditing output contract. The
-// precise codec/pixel/timebase values are owned here (single canonical
-// owner); the render pass and contract validator consume this verbatim.
+// ResolvedContract IS the canonical assembly contract: the clip.render
+// capability holds the kernel value instead of mirroring it in a second flat
+// struct. Every dimension the render pass and the contract validator read is a
+// kernel/media field, so a dimension cannot be added on one side only and no
+// conversion exists to drift from the values it copies.
 //
-// SSOT: kernel/media.VideoContract (AssemblyReadyVideoContractID). This struct
-// is the clip.render working copy with flat int fields. Frozen values live in
-// kernel/media.DefaultAssemblyReadyVideoContract(). Use ToVideoContract() /
-// FromVideoContract() bridges (contract_ssot.go) to convert.
+// The resolver starts from kernel/media.DefaultAssemblyMediaContract[V2]() and
+// overrides only what the request selects (geometry/fps on the legacy V1
+// path); everything else is the frozen kernel value.
 //
 // Audio profile follows the canonical audio SSOT: audio.DefaultAudioProfile()
-// (aac, LC, 48000 Hz, 2 channels, stereo, 192k). If that SSOT changes, the
-// Resolve implementation and ValidateContract must be updated together.
+// (aac, LC, 48000 Hz, 2 channels, stereo, 192k).
 type ResolvedContract struct {
-	ContractID         string
-	Container          string
-	VideoCodec         string
-	VideoProfile       string
-	VideoLevel         string
-	PixelFormat        string
-	Width              int
-	Height             int
-	FPSNum             int
-	FPSDen             int
-	VideoTimeBaseNum   int
-	VideoTimeBaseDen   int
-	AudioTimeBaseNum   int
-	AudioTimeBaseDen   int
-	SARNum             int
-	SARDen             int
-	ColorRange         string
-	ColorSpace         string
-	ColorTransfer      string
-	ColorPrimaries     string
-	FieldOrder         string
-	KeyframeInterval   int
-	AudioCodec         string
-	AudioProfile       string
-	SampleRate         int
-	Channels           int
-	AudioChannelLayout string
-	AudioBitrate       string
-	VideoStreams       int
-	AudioStreams       int
-	StartPTS           int64
+	kernelmedia.AssemblyMediaContract
 }
 
 // PhaseTiming records one preparation phase. WorkMS is the phase's own

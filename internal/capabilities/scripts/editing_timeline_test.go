@@ -6,6 +6,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // Type aliases to reference entity types without polluting the test namespace.
@@ -507,5 +508,79 @@ func capabilityEntityTimeline(t *testing.T) testEntityTimeline {
 				},
 			},
 		},
+	}
+}
+
+// TestEditingTimeline_CarriesTheStampedOutputContract pins the residue every
+// final-job receipt used to carry: the timeline copies the plan's media
+// contract BY VALUE, and the render phase used to restate that contract after
+// the timeline had already been built. The projection therefore kept
+// `overlay-v1` (ProRes 4444 with alpha) on artifacts the renderer actually
+// wrote as H.264/yuv420p, 24 spans per run. The contract is now stamped once,
+// at the seal, from the same profile the renderer will be held to, so this
+// projection can only ever read the plan's own derivation.
+func TestEditingTimeline_CarriesTheStampedOutputContract(t *testing.T) {
+	newPlan := func(profileID string) *capabilityoverlay.OverlayPlan {
+		plan := &capabilityoverlay.OverlayPlan{
+			SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+			PlanID:        "test-plan-contract",
+			VideoID:       "test-video-contract",
+			Width:         1920,
+			Height:        1080,
+			FPSNum:        24, FPSDen: 1,
+			Items: []capabilityoverlay.OverlayItem{
+				{
+					ID:         "overlay-scene-01-phrase",
+					SceneID:    "scene-01",
+					Kind:       "text_phrase",
+					TemplateID: "IMPORTANT_PHRASE",
+					Text:       "a phrase",
+					StartMs:    3240,
+					EndMs:      5100,
+				},
+			},
+		}
+		plan.StampOutputProfile(profileID)
+		if err := plan.Validate(); err != nil {
+			t.Fatalf("stamped plan must validate: %v", err)
+		}
+		return plan
+	}
+	newResult := func(plan *capabilityoverlay.OverlayPlan) *GenerateResult {
+		return &GenerateResult{
+			CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
+				Version:    capabilityaudio.TimelineVersion,
+				DurationUS: 30000000,
+				Segments: []capabilityaudio.TimelineSegment{
+					{ID: "scene-01", Index: 0, TimelineStartUS: 0, DurationUS: 30000000},
+				},
+			},
+			FinalAudio: &FinalAudioReference{
+				AssetID:          "final-audio-001",
+				FinalAudioSHA256: "abc123",
+				DurationUS:       30000000,
+				DurationMS:       30000,
+			},
+			OverlayPlan: plan,
+		}
+	}
+
+	opaque, err := BuildEditingTimeline(newResult(newPlan(kernelmedia.OverlayVideoOnlyProfileID)))
+	if err != nil {
+		t.Fatalf("BuildEditingTimeline (video-only plan) failed: %v", err)
+	}
+	if len(opaque.Overlays) != 1 {
+		t.Fatalf("expected 1 overlay span, got %d", len(opaque.Overlays))
+	}
+	if want := capabilityoverlay.DefaultOverlayContractNoAlpha.ID; opaque.Overlays[0].MediaContract != want {
+		t.Fatalf("video-only overlay span contract = %q, want %q", opaque.Overlays[0].MediaContract, want)
+	}
+
+	alpha, err := BuildEditingTimeline(newResult(newPlan("")))
+	if err != nil {
+		t.Fatalf("BuildEditingTimeline (unprofiled plan) failed: %v", err)
+	}
+	if want := capabilityoverlay.DefaultOverlayContractV1.ID; alpha.Overlays[0].MediaContract != want {
+		t.Fatalf("unprofiled overlay span contract = %q, want %q", alpha.Overlays[0].MediaContract, want)
 	}
 }

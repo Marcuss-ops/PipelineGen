@@ -173,3 +173,66 @@ chiudono con una decisione (accept/reject), non con un commit di codice.
 - `BLOCKED` richiede: criterio residuo nominato + perché non è eseguibile qui.
 - Un test verde su fixture non chiude un gate che parla di throughput o di
   pixel: sono livelli di evidenza diversi e vanno tenuti separati.
+
+## 7. Audit architetturale esterno — stato verificato al 2026-11-02
+
+Mappa unica dei 12 punti dell'audit (PipelineGen + RenderingGen + Chronon3d) sul
+codice corrente. «Chiuso» significa che il criterio è nel codice e pinnato da un
+test; «bloccato» significa che il criterio vive fuori da questi tre repository o
+richiede una misura su GPU.
+
+| # | Punto | Stato | Evidenza |
+|---|---|---|---|
+| 1 | Preparazione troppo tardiva | **Parziale** | `prepareFinalJobVideoSegments` è ancora obbligatorio in `final_job_payload.go:433`; cache, riuso e copy-window hanno rimosso il costo per le finestre già calde. |
+| 2 | Identità contenuto = identità segmento | **Bloccato** | `derivePlacement` rimuxa e pubblica un contenitore distinto (`final_job_placement.go`); il vincolo è del Master (r55/r66). |
+| 3 | Concorrenza GPU | **Chiuso 2026-11-02 con misura** | Misurati due job batch indipendenti: multi-runtime **1,98×**, ~764 MiB/job, artefatti identici; nello stesso daemon gli stessi job in `parallel_disjoint` mandavano in stallo (stesso piano) o uccidevano il daemon (piani diversi). Fix: `extract_plan_admission_shape` rifiuta il dominio condiviso ai piani compositi (`daemon_service_ipc_protocol.cpp`, `daemon_service_ipc_render_job.cpp`). Evidenza: `Chronon3d/docs/evidence/gpu-admission-two-jobs-2026-11-02.md`. |
+| 4 | Hash ripetuti sulla stessa sorgente | **Chiuso** | `digest.Verifier` memoizza per path+size+mtime con singleflight (`kernel/digest/verifier.go`); `stagedSource` non ri-hasha a ogni finestra. |
+| 5 | Probe concorrenti duplicati | **Chiuso** | `sourceCensus` passa da `censusFlights.Do` (`final_job_source_census.go`): un `ffprobe` per SHA. |
+| 6 | Cache copy/encode | **Chiuso** | `fragmentWorkKey` include `copy-enabled`/`encode-only` e `finalJobFragmentFormatVersion = 9`. |
+| 7 | Conversioni e trasferimenti ripetuti | **Parziale** | Sorgente una volta (`lockSource`), frammenti in cache, `rememberFragmentPath`; il piazzamento duplicato resta remux+publish. |
+| 8 | Finalizzazione per segmento sequenziale | **Chiuso** | Pool bounded a 4 con ordine di piano preservato (`RenderingGen/.../segments.go`). |
+| 9 | Contratti video distribuiti | **Parziale** | Dentro PipelineGen `finalJobDelivery` deriva da `kernelmedia.DefaultAssemblyMediaContract`; RenderingGen e Chronon hanno ancora i propri registry. |
+| 10 | Segmentazione subordinata al layout | **Non verificabile qui** | Il mux segmentato vive nel worker remoto, fuori da questi tre repo. |
+| 11 | Congelamento frame con `tpad` | **Chiuso 2026-11-02** | `finalJobFragmentVideoFilter` aggiunge `tpad` solo per il deficit misurato dal census; `padded_frames` è nel receipt per finestra e per handoff. |
+| 12 | Metriche aggregate contaminate | **Chiuso** | Contatori per scope handoff (`final_job_fragment_pipeline.go`, già `final_job_segment_stats.go`). |
+
+**Correzione all'audit — profilo del frammento.** L'audit afferma che il profilo
+dei frammenti è tornato `VELOX_OVERLAY_VIDEO_ONLY_V1`. Non è così: in
+`final_job_segment_prepare.go` `finalJobSegmentProfile` è
+`kernelmedia.AssemblyMediaContractID` (V1) perché r90 è fallita con
+`manifest binding is not exact` quando il frammento portava il profilo
+video-only. `VELOX_OVERLAY_VIDEO_ONLY_V1` resta corretto per `plan.Output` e per
+i batch manifest (r80–r83); non per il certificato del frammento. L'audit ha
+confuso le due identità.
+
+**Gate dei tre punti bloccati (non si chiudono con un test su fixture):**
+
+1. *Preparazione a monte* — criterio: una run in cui `segment_prep` non esegue
+   alcun encode per finestra (`encode = 0`, `copied + reused + cached = 100%`)
+   con le sorgenti prodotte dallo step di render, non dal final job. Richiede il
+   cambio del producer, fuori da questi repo.
+2. *Multi-placement* — criterio: due piazzamenti dello stesso SHA referenziano
+   **un** asset e il Master accetta il piano (nessun
+   `manifest binding is not exact`). Richiede il contratto dell'assembler.
+3. *GPU* — **chiuso il 2026-11-02** (evidenza
+   `Chronon3d/docs/evidence/gpu-admission-two-jobs-2026-11-02.md`). Misura: due
+   job FullGraph 1080p indipendenti su due runtime caldi, **1,98×** (1 476 ms
+   seriali → 1 040 ms concorrenti), **~764 MiB per job** (1 527 MiB per la
+   coppia). `admitted_slots ≥ 2` è stato **osservato solo dentro un daemon**, e
+   l'esito è il fallimento — stallo con lo stesso piano, morte del processo con
+   piani diversi — perché una richiesta senza `composition_required` veniva
+   chargiata come DirectYUV (1 GiB) mentre il piano composito eseguiva su
+   FullGraph. Il floor 8,8 GB **non** è stato abbassato: non era il collo di
+   bottiglia. Fix pinnato: un piano composito non entra mai nel dominio
+   condiviso, qualunque hint dichiari (`extract_plan_admission_shape`),
+   verificato live: i due job completano serializzati e il rifiuto è loggato;
+   31 casi / 177 asserzioni verdi in
+   `chronon3d_daemon_render_concurrency_tests`. La concorrenza reale resta
+   multi-runtime, che è già la topologia del deployment
+   (`socket_paths` con tre socket).
+
+Il taglio del 02-11 ha anche unificato l'uscita dei quattro esiti del frammento
+(`finishFragment`: reuse, cache, derivato, prodotto) e rimosso 9 funzioni del
+pool dead-code; dettagli in `deadcode-residuals-classification-2026-10-28.md`.
+Verifica eseguita: `go build ./...`, `go test ./internal/app/wiring
+./internal/capabilities/scripts`, `go test ./internal/processor` in RenderingGen.

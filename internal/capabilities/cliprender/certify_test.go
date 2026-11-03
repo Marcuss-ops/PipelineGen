@@ -1,6 +1,8 @@
 package cliprender
 
 import (
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 	"errors"
 	"testing"
 )
@@ -143,16 +145,11 @@ func TestOutputProbeFromCertified_LegacyFlatSummary(t *testing.T) {
 // ValidateContract actually enforce the previously-skipped dimensions: a render
 // that violates colour/GOP now FAILS the contract gate.
 func TestCertifiedFactsFillTheContractGateway(t *testing.T) {
-	contract := &ResolvedContract{
-		Container: "mp4", VideoCodec: "h264", VideoProfile: "high", VideoLevel: "4.1",
-		PixelFormat: "yuv420p", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
-		VideoTimeBaseNum: 1, VideoTimeBaseDen: 12288, AudioTimeBaseNum: 1, AudioTimeBaseDen: 48000,
-		SARNum: 1, SARDen: 1, ColorRange: "tv", ColorSpace: "bt709", ColorTransfer: "bt709",
-		ColorPrimaries: "bt709", FieldOrder: "progressive", KeyframeInterval: 48,
-		AudioCodec: "aac", AudioProfile: "LC", SampleRate: 48000,
-		Channels: 2, AudioChannelLayout: "stereo", AudioBitrate: "128000", AudioStreams: 1,
-		VideoStreams: 1, StartPTS: 0,
-	}
+	contract := NewResolvedContract(func(c *kernelmedia.AssemblyMediaContract) {
+		c.VideoLevel = "4.1"
+		c.VideoTimeBase = kernelmedia.Rational{Num: 1, Den: 12288}
+		c.AudioBitrate = "128000"
+	})
 	outcome := &RenderOutcome{Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Facts: fullFacts()}
 	probe, err := OutputProbeFromCertified(outcome)
 	if err != nil {

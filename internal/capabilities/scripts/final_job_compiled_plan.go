@@ -1,6 +1,8 @@
 package scriptgeneration
 
 import (
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 	"encoding/json"
 	"fmt"
 	"math"
@@ -126,12 +128,14 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		return "", "", fmt.Errorf("final_job V2 final audio duration %dus does not match canonical timeline %dus", audio.DurationUS, timelineDurationUS)
 	}
 	timelineDurationUS = audio.DurationUS
-	const fpsNum, fpsDen = int64(24), int64(1)
-	base, assets, err := finalJobPlanBaseSegments(scenes)
+	delivery := finalJobPlanDelivery()
+	fpsNum, fpsDen := int64(delivery.FPS.Num), int64(delivery.FPS.Den)
+	assets := &finalJobPlanAssets{}
+	base, err := finalJobPlanBaseSegments(scenes, assets)
 	if err != nil {
 		return "", "", err
 	}
-	if err := finalJobPlanAddAsset(&assets, audioRef, "final_audio", audio.DurationUS, 0, 0, 0); err != nil {
+	if err := assets.addRaw(audioRef, "final_audio", audio.DurationUS, 0, 0, 0); err != nil {
 		return "", "", fmt.Errorf("final_job V2 final audio: %w", err)
 	}
 	baseEnd := base[len(base)-1].endUS
@@ -178,7 +182,7 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 			durationUS = timelineDurationUS
 		}
 		frameCount := finalJobInt64(asset["frame_count"])
-		if err := finalJobPlanAddAsset(&assets, asset, "video", durationUS, 1920, 1080, frameCount); err != nil {
+		if err := assets.addRaw(asset, "video", durationUS, delivery.Width, delivery.Height, frameCount); err != nil {
 			return "", "", fmt.Errorf("final_job overlay timeline asset: %w", err)
 		}
 		entries, ok := manifest["entries"].([]any)
@@ -234,7 +238,7 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		if durationUS <= 0 {
 			durationUS = endUS - startUS
 		}
-		if err := finalJobPlanAddAsset(&assets, row, "video", durationUS, 1920, 1080, finalJobInt64(row["frame_count"])); err != nil {
+		if err := assets.addRaw(row, "video", durationUS, delivery.Width, delivery.Height, finalJobInt64(row["frame_count"])); err != nil {
 			return "", "", fmt.Errorf("final_job dedicated overlay row %d: %w", i, err)
 		}
 		windows = append(windows, finalJobOverlayWindow{startUS: startUS, endUS: endUS, artifactInUS: 0, assetID: assetID, sha256: sha})
@@ -277,22 +281,17 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	plan := finalJobCompiledPlan{
 		PlanVersion: 2, TimelineRevision: timelineRevision, TimelineSHA256: timelineSHA,
 		DurationUS: timelineDurationUS,
-		Output: finalJobPlanOutput{
-			Container: "mp4", VideoCodec: "h264", Width: 1920, Height: 1080,
-			FPSNum: 24, FPSDen: 1, PixelFormat: "yuv420p",
-			ProfileID: "VELOX_ASSEMBLY_READY_V1", CodecProfile: "high", CodecLevel: "4.0",
-			GOPSize: 48, BFrames: 0, ClosedGOP: true, TimeBaseNum: 1, TimeBaseDen: 90000,
-		},
+		Output:     finalJobPlanOutputBlock(),
 		FinalAudio: finalJobPlanAudio{
 			Mode: "FINAL_AUDIO_COPY", AssetID: finalJobStringValue(audioRef["asset_id"]),
 			SHA256: strings.ToLower(finalJobStringValue(audioRef["sha256"])), SizeBytes: finalJobInt64(audioRef["size_bytes"]),
-			Codec: "aac", SampleRateHz: 48000, Channels: 2, DurationUS: audio.DurationUS,
+			Codec: delivery.AudioCodec, SampleRateHz: delivery.AudioSampleRate, Channels: delivery.AudioChannels,
+			DurationUS:       audio.DurationUS,
 			TimelineRevision: timelineRevision, TimelineSHA256: timelineSHA,
 		},
 		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: segments}},
-		Assets:      assets,
+		Assets:      assets.sorted(),
 	}
-	sort.Slice(plan.Assets, func(i, j int) bool { return plan.Assets[i].AssetID < plan.Assets[j].AssetID })
 	canonical, err := json.Marshal(plan)
 	if err != nil {
 		return "", "", fmt.Errorf("marshal final_job canonical V2 render plan: %w", err)
@@ -300,23 +299,24 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	return string(canonical), digest.SHA256String(string(canonical)), nil
 }
 
-func finalJobPlanBaseSegments(scenes []map[string]any) ([]finalJobBaseSegment, []finalJobPlanAsset, error) {
+// finalJobPlanBaseSegments describes one source segment per scene and types
+// every stock asset INTO the shared registry the caller already owns.
+func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAssets) ([]finalJobBaseSegment, error) {
 	base := make([]finalJobBaseSegment, 0, len(scenes))
-	assets := make([]finalJobPlanAsset, 0, len(scenes)+2)
 	var cursorUS int64
 	for i, scene := range scenes {
 		asset, ok := scene["stock"].(map[string]any)
 		if !ok {
-			return nil, nil, fmt.Errorf("final_job scene %d has no video asset", i)
+			return nil, fmt.Errorf("final_job scene %d has no video asset", i)
 		}
 		durationSeconds, ok := scene["duration_seconds"].(float64)
 		if !ok || math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) || durationSeconds <= 0 {
-			return nil, nil, fmt.Errorf("final_job scene %d has an invalid duration", i)
+			return nil, fmt.Errorf("final_job scene %d has an invalid duration", i)
 		}
 		durationUS := int64(math.Round(durationSeconds * 1_000_000))
 		assetDurationUS := finalJobInt64(asset["duration_ms"]) * 1000
-		if err := finalJobPlanAddAsset(&assets, asset, "video", assetDurationUS, finalJobInt(asset["width"]), finalJobInt(asset["height"]), finalJobInt64(asset["frame_count"])); err != nil {
-			return nil, nil, fmt.Errorf("final_job scene %d: %w", i, err)
+		if err := assets.addRaw(asset, "video", assetDurationUS, finalJobInt(asset["width"]), finalJobInt(asset["height"]), finalJobInt64(asset["frame_count"])); err != nil {
+			return nil, fmt.Errorf("final_job scene %d: %w", i, err)
 		}
 		sourceInUS := finalJobInt64(asset["start_ms"]) * 1000
 		assetID := finalJobStringValue(asset["asset_id"])
@@ -324,31 +324,7 @@ func finalJobPlanBaseSegments(scenes []map[string]any) ([]finalJobBaseSegment, [
 		base = append(base, finalJobBaseSegment{startUS: cursorUS, endUS: cursorUS + durationUS, sourceInUS: sourceInUS, assetID: assetID, sha256: sha})
 		cursorUS += durationUS
 	}
-	sort.Slice(assets, func(i, j int) bool { return assets[i].AssetID < assets[j].AssetID })
-	return base, assets, nil
-}
-
-func finalJobPlanAddAsset(assets *[]finalJobPlanAsset, raw map[string]any, kind string, durationUS int64, width, height int, frameCount int64) error {
-	assetID := finalJobStringValue(raw["asset_id"])
-	sha := strings.ToLower(finalJobStringValue(raw["sha256"]))
-	size := finalJobInt64(raw["size_bytes"])
-	if assetID == "" || len(sha) != 64 || size <= 0 || durationUS <= 0 {
-		return fmt.Errorf("asset requires id, 64-character SHA-256, positive size, and duration")
-	}
-	for _, prior := range *assets {
-		if prior.AssetID == assetID {
-			if prior.SHA256 != sha || prior.SizeBytes != size || prior.Kind != kind {
-				return fmt.Errorf("asset %q was referenced with conflicting identity", assetID)
-			}
-			return nil
-		}
-	}
-	*assets = append(*assets, finalJobPlanAsset{
-		AssetID: assetID, SHA256: sha, SizeBytes: size, Kind: kind,
-		MIME:       map[string]string{"video": "video/mp4", "final_audio": "audio/mp4"}[kind],
-		DurationUS: durationUS, Width: width, Height: height, FrameCount: frameCount,
-	})
-	return nil
+	return base, nil
 }
 
 func finalJobMergeOverlayWindows(input []finalJobOverlayWindow) ([]finalJobOverlayWindow, error) {
@@ -499,4 +475,99 @@ func finalJobInt64(value any) int64 {
 
 func finalJobInt(value any) int {
 	return int(finalJobInt64(value))
+}
+
+// --- the asset registry both plan builders share ---
+
+// finalJobPlanAssets is the ONE registry a CompiledRenderPlanV2 is built
+// through. The payload builder (scenes + overlay manifests) and the producer
+// (prepared fragments replacing those sources) both add their assets here, so
+// the identity rule, the duplicate rule, the MIME mapping, the sort order and
+// the output block exist once instead of in two builders that must agree.
+//
+// Adding a raw (map-shaped) asset and adding an already-typed asset are the
+// same operation on the same identity; only the parsing differs.
+type finalJobPlanAssets struct {
+	items []finalJobPlanAsset
+}
+
+// finalJobPlanDelivery is the delivery identity the plan describes. It is the
+// kernel assembly contract, not a copy: geometry, cadence, GOP, timebase and
+// audio layout move together when the contract moves.
+func finalJobPlanDelivery() kernelmedia.AssemblyMediaContract {
+	return kernelmedia.DefaultAssemblyMediaContract()
+}
+
+// finalJobPlanOutputBlock is the plan's output block, derived from that contract.
+func finalJobPlanOutputBlock() finalJobPlanOutput {
+	delivery := finalJobPlanDelivery()
+	return finalJobPlanOutput{
+		Container: delivery.Container, VideoCodec: delivery.VideoCodec,
+		Width: delivery.Width, Height: delivery.Height,
+		FPSNum: delivery.FPS.Num, FPSDen: delivery.FPS.Den, PixelFormat: delivery.PixelFormat,
+		ProfileID: delivery.ID, CodecProfile: delivery.VideoProfile, CodecLevel: delivery.VideoLevel,
+		GOPSize: delivery.KeyframeInterval, BFrames: delivery.BFrames, ClosedGOP: delivery.ClosedGOP,
+		TimeBaseNum: delivery.VideoTimeBase.Num, TimeBaseDen: delivery.VideoTimeBase.Den,
+	}
+}
+
+func finalJobPlanAssetMIME(kind string) string {
+	switch kind {
+	case "final_audio":
+		return "audio/mp4"
+	default:
+		return "video/mp4"
+	}
+}
+
+// add types one asset into the plan. A repeated asset id must describe the same
+// bytes, size and kind: the plan is an immutable document, so a second
+// reference that disagrees is a producer bug, not an update.
+func (a *finalJobPlanAssets) add(asset finalJobPlanAsset) error {
+	if asset.AssetID == "" || len(asset.SHA256) != 64 || asset.SizeBytes <= 0 || asset.DurationUS <= 0 {
+		return fmt.Errorf("asset requires id, 64-character SHA-256, positive size, and duration")
+	}
+	for _, prior := range a.items {
+		if prior.AssetID != asset.AssetID {
+			continue
+		}
+		if prior.SHA256 != asset.SHA256 || prior.SizeBytes != asset.SizeBytes || prior.Kind != asset.Kind {
+			return fmt.Errorf("asset %q was referenced with conflicting identity", asset.AssetID)
+		}
+		return nil
+	}
+	a.items = append(a.items, asset)
+	return nil
+}
+
+// addRaw types a map-shaped source reference (stock scene, overlay artifact or
+// final audio) into the same registry.
+func (a *finalJobPlanAssets) addRaw(raw map[string]any, kind string, durationUS int64, width, height int, frameCount int64) error {
+	return a.add(finalJobPlanAsset{
+		AssetID: finalJobStringValue(raw["asset_id"]),
+		SHA256:  strings.ToLower(finalJobStringValue(raw["sha256"])),
+		// SizeBytes is checked by add; the raw map spells it in bytes already.
+		SizeBytes: finalJobInt64(raw["size_bytes"]),
+		Kind:      kind, MIME: finalJobPlanAssetMIME(kind),
+		DurationUS: durationUS, Width: width, Height: height, FrameCount: frameCount,
+	})
+}
+
+// set replaces the registry contents (the producer re-binds every source to a
+// prepared fragment, so its result is the complete list, not an increment).
+func (a *finalJobPlanAssets) set(assets []finalJobPlanAsset) error {
+	a.items = nil
+	for _, asset := range assets {
+		if err := a.add(asset); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sorted returns the plan's asset list in the canonical order (asset id), which
+// is what the plan digest covers.
+func (a *finalJobPlanAssets) sorted() []finalJobPlanAsset {
+	sort.Slice(a.items, func(i, j int) bool { return a.items[i].AssetID < a.items[j].AssetID })
+	return a.items
 }

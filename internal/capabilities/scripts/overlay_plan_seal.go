@@ -97,12 +97,7 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capa
 		ForegroundScalePercent: canvas.ForegroundScalePercent,
 		Background:             canvas.Background,
 		AnimationPolicies:      scriptoverlay.ToOverlayAnimationPolicies(canvas.AnimationPolicies),
-		// Overlays are composited over the master video, so they require an
-		// alpha channel. The contract travels with the plan (never re-derived
-		// downstream); the compiled chronon output derives container/codec/
-		// pixel format from it.
-		MediaContract: capabilityoverlay.ContractIDForCanvas(canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen, true),
-		Items:         items,
+		Items:                  items,
 		// Carry the planner's recap observability into the sealed plan:
 		// plannerPlan itself is superseded here by post-processing (entity
 		// overlays, budgets, chain fusion). RecapCards is recounted on the
@@ -113,6 +108,14 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capa
 		ChartCards:      countChartItems(items),
 		TimedScenes:     plannerPlan.TimedScenes,
 	}
+	// The output identity is stamped in ONE place: the certification profile the
+	// renderer will be held to, and the media contract derived from it. The
+	// contract travels with the plan (never re-derived downstream) and the
+	// compiled chronon output derives container/codec/pixel format from it, so
+	// the sealed plan carries one statement about the artifact instead of two
+	// that can disagree. The stamp runs BEFORE Validate because the plan
+	// fingerprint is computed from its contents.
+	plan.StampOutputProfile(canvas.OutputProfileID)
 	if err := plan.Validate(); err != nil {
 		return nil, fmt.Errorf("overlay plan: seal: %w", err)
 	}

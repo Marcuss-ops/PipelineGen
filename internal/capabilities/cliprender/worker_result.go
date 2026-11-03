@@ -50,16 +50,8 @@ func renderedResult(j *job.Job, req *RenderRequest, prepared *Prepared, plan Cli
 		"source_asset_id": req.SourceAssetID,
 		"phase":           "rendered",
 		"transcript_mode": req.Transcript.Mode,
-		"contract_id":     prepared.Contract.ContractID,
-		"contract": map[string]any{
-			"width":        prepared.Contract.Width,
-			"height":       prepared.Contract.Height,
-			"fps_num":      prepared.Contract.FPSNum,
-			"fps_den":      prepared.Contract.FPSDen,
-			"video_codec":  prepared.Contract.VideoCodec,
-			"audio_codec":  prepared.Contract.AudioCodec,
-			"pixel_format": prepared.Contract.PixelFormat,
-		},
+		"contract_id":     prepared.Contract.ID,
+		"contract":        ContractWireBlock(prepared.Contract),
 		"plan": map[string]any{
 			"version":     plan.Version,
 			"plan_sha256": plan.PlanSHA256,

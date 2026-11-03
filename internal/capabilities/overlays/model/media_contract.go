@@ -281,6 +281,47 @@ func ContractIDForProfile(width, height, fpsNum, fpsDen int, profileID string) s
 	return ContractIDForCanvas(width, height, fpsNum, fpsDen, RequiresAlphaForProfile(profileID))
 }
 
+// StampOutputProfile records the plan's output identity in ONE place: the
+// RenderingGen certification profile the artifact must satisfy AND the media
+// contract derived from it. Callers cannot set one without the other, because
+// a plan that declares a profile and a contradicting contract describes two
+// different artifacts (that is exactly how `overlay-v1`, ProRes 4444 with
+// alpha, ended up on H.264/yuv420p artifacts: the contract was stamped by hand
+// while the profile was decided elsewhere).
+//
+// The derivation is total: an empty profileID means "no certification profile"
+// and keeps the alpha-bearing default, because an unset profile must never
+// silently weaken a contract the renderer may honour.
+//
+// Callers must stamp BEFORE Validate, so the fingerprint (computed from the
+// plan contents) covers the stamped pair.
+func (p *OverlayPlan) StampOutputProfile(profileID string) {
+	if p == nil {
+		return
+	}
+	p.OutputProfileID = strings.TrimSpace(profileID)
+	p.MediaContract = ContractIDForProfile(p.Width, p.Height, p.FPSNum, p.FPSDen, p.OutputProfileID)
+}
+
+// validateOutputIdentity fails closed when the stored contract is not the one
+// the declared profile derives. It is the check that makes the single stamping
+// point enforceable: a hand-set media_contract that disagrees with the profile
+// is never shipped.
+func (p *OverlayPlan) validateOutputIdentity() error {
+	// An empty contract is the documented "renderer default" state of legacy
+	// plans; there is nothing to contradict. Every plan this producer seals
+	// carries one, so the check below covers the production surface.
+	if strings.TrimSpace(p.MediaContract) == "" {
+		return nil
+	}
+	want := ContractIDForProfile(p.Width, p.Height, p.FPSNum, p.FPSDen, p.OutputProfileID)
+	if p.MediaContract == want {
+		return nil
+	}
+	return fmt.Errorf("media_contract %q does not match output_profile_id %q (want %q): stamp both with OverlayPlan.StampOutputProfile",
+		p.MediaContract, p.OutputProfileID, want)
+}
+
 // firstContainerToken returns the first comma-separated token of an ffprobe
 // format_name string, trimmed. ffprobe reports container families as a
 // comma-joined list ("mov,mp4,m4a,3gp,3g2,mj2"); the first token is the

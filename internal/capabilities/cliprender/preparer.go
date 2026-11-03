@@ -421,22 +421,22 @@ func (p *Preparer) instrumentedResolveContract(ctx context.Context, runID string
 		return nil, fmt.Errorf("clip.render: resolve output contract: %w", err)
 	}
 	tracker.recordWith("resolve_contract", time.Since(t0), map[string]any{
-		"contract_id": c.ContractID,
+		"contract_id": c.ID,
 		"video_codec": c.VideoCodec,
 		"audio_codec": c.AudioCodec,
 		"width":       c.Width,
 		"height":      c.Height,
-		"fps_num":     c.FPSNum,
-		"fps_den":     c.FPSDen,
+		"fps_num":     c.FPS.Num,
+		"fps_den":     c.FPS.Den,
 	})
 	p.log.Debug("clip.render.prepare.phase",
 		zap.String("subsystem", "cliprender_preparer"),
 		zap.String("phase", "resolve_contract_done"),
 		zap.String("run_id", runID),
-		zap.String("contract_id", c.ContractID),
+		zap.String("contract_id", c.ID),
 		zap.Int("width", c.Width),
 		zap.Int("height", c.Height),
-		zap.Int("fps_num", c.FPSNum),
+		zap.Int("fps_num", c.FPS.Num),
 		zap.String("video_codec", c.VideoCodec),
 		zap.String("audio_codec", c.AudioCodec),
 		zap.Int64("phase_ms", time.Since(t0).Milliseconds()),

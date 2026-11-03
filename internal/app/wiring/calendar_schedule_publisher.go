@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/videocreate"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
+	scheduling "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 )
 
 type calendarScheduledPublisher struct {

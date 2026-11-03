@@ -57,6 +57,7 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
 	} else {
 		result.SemanticRenderBundle = bundle
+		result.OverlayAudit = buildOverlayAudit(bundle, plan)
 	}
 	resolved := append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...)
 	freezeOverlayIntents(resolved, plan.Items)
