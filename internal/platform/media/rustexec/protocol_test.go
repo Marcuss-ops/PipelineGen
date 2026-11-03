@@ -1,6 +1,8 @@
 package rustexec
 
 import (
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 	"encoding/json"
 	"strings"
 	"testing"
@@ -80,20 +82,11 @@ func sealedClipRenderPlan(t *testing.T) cliprender.ClipRenderPlanV1 {
 			LocalPath: "/tmp/source.mp4",
 			SHA256:    strings.Repeat("a", 64),
 		},
-		Contract: &cliprender.ResolvedContract{
-			ContractID:   cliprender.OutputContractVeloxAssemblyReadyV1,
-			Container:    "mp4",
-			VideoCodec:   "h264",
-			VideoProfile: "high",
-			PixelFormat:  "yuv420p",
-			Width:        1080,
-			Height:       1920,
-			FPSNum:       60,
-			FPSDen:       1,
-			AudioCodec:   "aac",
-			SampleRate:   48000,
-			Channels:     2,
-		},
+		Contract: cliprender.NewResolvedContract(func(c *kernelmedia.AssemblyMediaContract) {
+			c.ID = cliprender.OutputContractVeloxAssemblyReadyV1
+			c.Width, c.Height = 1080, 1920
+			c.FPS = kernelmedia.FrameRate{Num: 60, Den: 1}
+		}),
 		AudioMode:  cliprender.AudioModeCopyIfCompatible,
 		OutputPath: "/tmp/out.mp4",
 	})

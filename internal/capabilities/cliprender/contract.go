@@ -141,10 +141,10 @@ var contractChecks = []contractCheck{
 		// FPS: exact rational via cross-multiplication — no float epsilon.
 		dim: "fps",
 		apply: func(c *ResolvedContract, p *OutputProbe) (bool, string) {
-			if c.FPSNum > 0 && c.FPSDen > 0 &&
-				p.FPSNum*c.FPSDen != c.FPSNum*p.FPSDen {
+			if c.FPS.Num > 0 && c.FPS.Den > 0 &&
+				p.FPSNum*c.FPS.Den != c.FPS.Num*p.FPSDen {
 				return true, "fps " + ui(uint64(p.FPSNum)) + "/" + ui(uint64(p.FPSDen)) +
-					" != " + ui(uint64(c.FPSNum)) + "/" + ui(uint64(c.FPSDen))
+					" != " + ui(uint64(c.FPS.Num)) + "/" + ui(uint64(c.FPS.Den))
 			}
 			return false, ""
 		},
@@ -153,14 +153,14 @@ var contractChecks = []contractCheck{
 		// Timebase: exact rational.
 		dim: "video-timebase",
 		apply: func(c *ResolvedContract, p *OutputProbe) (bool, string) {
-			if c.VideoTimeBaseNum > 0 && c.VideoTimeBaseDen > 0 &&
+			if c.VideoTimeBase.Num > 0 && c.VideoTimeBase.Den > 0 &&
 				p.VideoTimeBaseNum != 0 && p.VideoTimeBaseDen != 0 &&
-				p.VideoTimeBaseNum*c.VideoTimeBaseDen != c.VideoTimeBaseNum*p.VideoTimeBaseDen {
+				p.VideoTimeBaseNum*c.VideoTimeBase.Den != c.VideoTimeBase.Num*p.VideoTimeBaseDen {
 				if p.VideoTimeBaseNum == 1 && (p.VideoTimeBaseDen == 12288 || p.VideoTimeBaseDen == 90000 || p.VideoTimeBaseDen == 24000 || p.VideoTimeBaseDen == 15360 || p.VideoTimeBaseDen == 12800) {
 					return false, ""
 				}
 				return true, "video timebase " + ui(uint64(p.VideoTimeBaseNum)) + "/" + ui(uint64(p.VideoTimeBaseDen)) +
-					" != " + ui(uint64(c.VideoTimeBaseNum)) + "/" + ui(uint64(c.VideoTimeBaseDen))
+					" != " + ui(uint64(c.VideoTimeBase.Num)) + "/" + ui(uint64(c.VideoTimeBase.Den))
 			}
 			return false, ""
 		},
@@ -168,11 +168,11 @@ var contractChecks = []contractCheck{
 	{
 		dim: "audio-timebase",
 		apply: func(c *ResolvedContract, p *OutputProbe) (bool, string) {
-			if c.AudioTimeBaseNum > 0 && c.AudioTimeBaseDen > 0 &&
+			if c.AudioTimeBase.Num > 0 && c.AudioTimeBase.Den > 0 &&
 				p.AudioTimeBaseNum != 0 && p.AudioTimeBaseDen != 0 &&
-				p.AudioTimeBaseNum*c.AudioTimeBaseDen != c.AudioTimeBaseNum*p.AudioTimeBaseDen {
+				p.AudioTimeBaseNum*c.AudioTimeBase.Den != c.AudioTimeBase.Num*p.AudioTimeBaseDen {
 				return true, "audio timebase " + ui(uint64(p.AudioTimeBaseNum)) + "/" + ui(uint64(p.AudioTimeBaseDen)) +
-					" != " + ui(uint64(c.AudioTimeBaseNum)) + "/" + ui(uint64(c.AudioTimeBaseDen))
+					" != " + ui(uint64(c.AudioTimeBase.Num)) + "/" + ui(uint64(c.AudioTimeBase.Den))
 			}
 			return false, ""
 		},
@@ -181,10 +181,10 @@ var contractChecks = []contractCheck{
 		// SAR: exact rational.
 		dim: "sar",
 		apply: func(c *ResolvedContract, p *OutputProbe) (bool, string) {
-			if c.SARNum > 0 && c.SARDen > 0 && p.SARNum != 0 && p.SARDen != 0 &&
-				p.SARNum*c.SARDen != c.SARNum*p.SARDen {
+			if c.SAR.Num > 0 && c.SAR.Den > 0 && p.SARNum != 0 && p.SARDen != 0 &&
+				p.SARNum*c.SAR.Den != c.SAR.Num*p.SARDen {
 				return true, "SAR " + ui(uint64(p.SARNum)) + "/" + ui(uint64(p.SARDen)) +
-					" != " + ui(uint64(c.SARNum)) + "/" + ui(uint64(c.SARDen))
+					" != " + ui(uint64(c.SAR.Num)) + "/" + ui(uint64(c.SAR.Den))
 			}
 			return false, ""
 		},
@@ -295,7 +295,7 @@ func checkAudioBlock(c *ResolvedContract, p *OutputProbe) (bool, string) {
 	}
 	if !p.HasAudio {
 		return true, "output has no audio stream (contract requires " +
-			c.AudioCodec + "/" + strconv.Itoa(c.SampleRate) + "Hz/" + strconv.Itoa(c.Channels) + "ch)"
+			c.AudioCodec + "/" + strconv.Itoa(c.AudioSampleRate) + "Hz/" + strconv.Itoa(c.AudioChannels) + "ch)"
 	}
 	if p.AudioCodec != c.AudioCodec {
 		return true, "audio codec " + quote(p.AudioCodec) + " != " + quote(c.AudioCodec)
@@ -303,11 +303,11 @@ func checkAudioBlock(c *ResolvedContract, p *OutputProbe) (bool, string) {
 	if c.AudioProfile != "" && p.AudioProfile != "" && p.AudioProfile != c.AudioProfile {
 		return true, "audio profile " + quote(p.AudioProfile) + " != " + quote(c.AudioProfile)
 	}
-	if p.SampleRate != c.SampleRate {
-		return true, "sample rate " + strconv.Itoa(p.SampleRate) + " != " + strconv.Itoa(c.SampleRate)
+	if p.SampleRate != c.AudioSampleRate {
+		return true, "sample rate " + strconv.Itoa(p.SampleRate) + " != " + strconv.Itoa(c.AudioSampleRate)
 	}
-	if p.Channels != c.Channels {
-		return true, "channels " + strconv.Itoa(p.Channels) + " != " + strconv.Itoa(c.Channels)
+	if p.Channels != c.AudioChannels {
+		return true, "channels " + strconv.Itoa(p.Channels) + " != " + strconv.Itoa(c.AudioChannels)
 	}
 	if c.AudioChannelLayout != "" && p.ChannelLayout != "" && p.ChannelLayout != c.AudioChannelLayout {
 		return true, "channel_layout " + quote(p.ChannelLayout) + " != " + quote(c.AudioChannelLayout)
@@ -452,12 +452,11 @@ func (defaultContractResolver) Resolve(_ context.Context, req *RenderRequest) (*
 // inputs for legacy V1 compatibility; V2 is expected to be validated against
 // its exact canonical dimensions by the request boundary.
 func resolveAssemblyContract(req *RenderRequest, c kernelmedia.AssemblyMediaContract) (*ResolvedContract, error) {
-	resolved := FromVideoContract(c)
+	resolved := &ResolvedContract{AssemblyMediaContract: c}
 	if req != nil && req.Output != nil {
 		resolved.Width = req.Output.Width
 		resolved.Height = req.Output.Height
-		resolved.FPSNum = req.Output.FPSNum
-		resolved.FPSDen = req.Output.FPSDen
+		resolved.FPS = kernelmedia.FrameRate{Num: req.Output.FPSNum, Den: req.Output.FPSDen}
 	}
 	return resolved, nil
 }

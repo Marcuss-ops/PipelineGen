@@ -1,6 +1,8 @@
 package cliprender
 
 import (
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 	"context"
 	"errors"
 	"strings"
@@ -40,8 +42,8 @@ func TestV2ResolverAcceptsCanonicalFPS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canonical FPS must resolve: %v", err)
 	}
-	if resolved.FPSNum != 24 || resolved.FPSDen != 1 {
-		t.Fatalf("unexpected resolved FPS: %d/%d", resolved.FPSNum, resolved.FPSDen)
+	if resolved.FPS.Num != 24 || resolved.FPS.Den != 1 {
+		t.Fatalf("unexpected resolved FPS: %d/%d", resolved.FPS.Num, resolved.FPS.Den)
 	}
 }
 
@@ -60,11 +62,19 @@ func TestV2ResolverAcceptsCanonicalFPS(t *testing.T) {
 // alternatives): an audio timebase of 1/<rate> IS the sample rate, so a
 // mismatch is a real, audible contract violation.
 func TestAudioTimebaseRejectsNonContractSampleRate(t *testing.T) {
-	contract := &ResolvedContract{
-		AudioCodec: "aac", AudioProfile: "LC", SampleRate: 48000,
-		Channels: 2, AudioChannelLayout: "stereo", AudioStreams: 1,
-		AudioTimeBaseNum: 1, AudioTimeBaseDen: 48000,
-	}
+	// This case isolates the audio block, so the video dimensions are blanked
+	// on purpose: with the canonical contract embedded whole, every video
+	// dimension would be enforced too and the probe below (audio-only) could
+	// never conform.
+	contract := NewResolvedContract(func(c *kernelmedia.AssemblyMediaContract) {
+		c.Container, c.VideoCodec, c.VideoProfile, c.VideoLevel, c.PixelFormat = "", "", "", "", ""
+		c.Width, c.Height = 0, 0
+		c.FPS = kernelmedia.FrameRate{}
+		c.VideoTimeBase = kernelmedia.Rational{}
+		c.SAR = kernelmedia.Rational{}
+		c.ColorRange, c.ColorSpace, c.ColorTransfer, c.ColorPrimaries, c.FieldOrder = "", "", "", "", ""
+		c.KeyframeInterval, c.VideoStreams = 0, 0
+	})
 	conforming := &OutputProbe{
 		HasVideo: true, HasAudio: true, AudioCodec: "aac", AudioProfile: "LC",
 		SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", AudioStreams: 1,

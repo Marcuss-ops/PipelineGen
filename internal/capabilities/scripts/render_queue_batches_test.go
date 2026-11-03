@@ -305,24 +305,58 @@ func TestSingleMapPlanUsesDedicatedPreMaterializationAndFoldRoute(t *testing.T) 
 	}
 }
 
-// TestStampFinalJobOpaqueContract pins the final-job half of the contract rule:
-// the packed timeline is composited onto the source video and rendered as
-// opaque H.264, so its plan must not keep the alpha-bearing overlay-v1 it
-// inherited from the overlay planner.
-func TestStampFinalJobOpaqueContract(t *testing.T) {
+// TestStampOutputProfileIsTheSingleOutputIdentity pins the final-job half of
+// the contract rule: the packed timeline is composited onto the source video
+// and rendered as opaque H.264, so its plan must not keep the alpha-bearing
+// overlay-v1 the overlay planner inherited. Both halves of the identity — the
+// certification profile AND the media contract derived from it — come from one
+// call, and a plan whose stored contract disagrees with its profile must fail
+// validation instead of shipping a false statement.
+func TestStampOutputProfileIsTheSingleOutputIdentity(t *testing.T) {
 	plan := &capoverlay.OverlayPlan{
 		SchemaVersion: capoverlay.SchemaVersionPlan,
 		PlanID:        "plan-opaque-contract",
 		VideoID:       "video-opaque-contract",
 		Width:         1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+		// The planner's alpha-bearing default, as sealed before this stamp.
 		MediaContract: capoverlay.DefaultOverlayContractV1.ID,
 	}
-	stampFinalJobOpaqueContract(plan)
+	plan.StampOutputProfile(kernelmedia.OverlayVideoOnlyProfileID)
+	if got := plan.OutputProfileID; got != kernelmedia.OverlayVideoOnlyProfileID {
+		t.Fatalf("output_profile_id = %q, want %q", got, kernelmedia.OverlayVideoOnlyProfileID)
+	}
 	if want := capoverlay.DefaultOverlayContractNoAlpha.ID; plan.MediaContract != want {
 		t.Fatalf("final-job plan contract = %q, want %q", plan.MediaContract, want)
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("stamped plan must still validate: %v", err)
 	}
-	stampFinalJobOpaqueContract(nil) // a nil plan is not a crash
+
+	// The alpha default is the other half of the same derivation: an empty
+	// profile keeps overlay-v1, so the non-final-job path is unchanged.
+	alpha := &capoverlay.OverlayPlan{
+		SchemaVersion: capoverlay.SchemaVersionPlan,
+		PlanID:        "plan-alpha-contract",
+		VideoID:       "video-alpha-contract",
+		Width:         1920, Height: 1080, FPSNum: 24, FPSDen: 1,
+	}
+	alpha.StampOutputProfile("")
+	if want := capoverlay.DefaultOverlayContractV1.ID; alpha.MediaContract != want {
+		t.Fatalf("unprofiled plan contract = %q, want %q", alpha.MediaContract, want)
+	}
+	if err := alpha.Validate(); err != nil {
+		t.Fatalf("unprofiled plan must still validate: %v", err)
+	}
+
+	// A hand-set contradiction (profile says video-only, contract says ProRes
+	// with alpha) is the exact false certificate this rule exists to reject.
+	contradicting := *plan
+	contradicting.MediaContract = capoverlay.DefaultOverlayContractV1.ID
+	contradicting.Fingerprint = ""
+	if err := contradicting.Validate(); err == nil {
+		t.Fatalf("a contract contradicting output_profile_id %q must not validate", contradicting.OutputProfileID)
+	}
+
+	var nilPlan *capoverlay.OverlayPlan
+	nilPlan.StampOutputProfile(kernelmedia.OverlayVideoOnlyProfileID) // a nil plan is not a crash
 }

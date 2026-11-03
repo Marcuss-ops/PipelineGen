@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 	"sync"
 
@@ -145,13 +144,18 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	if audioAsset == nil {
 		return "", nil, fmt.Errorf("final_job compiled plan has no final audio asset")
 	}
-	assets := make([]finalJobPlanAsset, 0, len(preparedAssets)+1)
-	assets = append(assets, *audioAsset)
-	for _, asset := range preparedAssets {
-		assets = append(assets, asset)
+	// The producer re-binds the plan through the SAME asset registry the
+	// payload builder filled: one identity rule, one dedupe rule, one order.
+	assets := &finalJobPlanAssets{}
+	if err := assets.set([]finalJobPlanAsset{*audioAsset}); err != nil {
+		return "", nil, fmt.Errorf("final_job compiled plan final audio: %w", err)
 	}
-	sort.Slice(assets, func(i, j int) bool { return assets[i].AssetID < assets[j].AssetID })
-	plan.Assets = assets
+	for _, asset := range preparedAssets {
+		if err := assets.add(asset); err != nil {
+			return "", nil, fmt.Errorf("prepared final_job asset: %w", err)
+		}
+	}
+	plan.Assets = assets.sorted()
 	// Every video reference in the plan must now bind to one of the freshly
 	// prepared fragments with the exact frame identity. The timeline position
 	// belongs to the segment (and may be shared by several placements of one
@@ -207,7 +211,7 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 	if id == "" || len(sha) != 64 || size <= 0 || !strings.HasPrefix(strings.ToLower(source), "https://") {
 		return finalJobPlanAsset{}, nil, fmt.Errorf("preparer must return an asset id, SHA-256, positive size, and HTTPS source_uri")
 	}
-	if finalJobStringValue(raw["profile_id"]) != kernelmedia.OverlayVideoOnlyProfileID || !boolValue(raw["copy_eligible"]) || !boolValue(raw["first_frame_keyframe"]) || !boolValue(raw["closed_gop"]) {
+	if finalJobStringValue(raw["profile_id"]) != kernelmedia.AssemblyMediaContractID || !boolValue(raw["copy_eligible"]) || !boolValue(raw["first_frame_keyframe"]) || !boolValue(raw["closed_gop"]) {
 		return finalJobPlanAsset{}, nil, fmt.Errorf("preparer did not certify the assembly-ready V1 stream")
 	}
 	if frameCount != request.FrameCount || finalJobInt64(raw["timeline_revision"]) != request.TimelineRevision ||
@@ -215,7 +219,10 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 		finalJobInt64(raw["timeline_start_frame"]) != request.TimelineStartFrame {
 		return finalJobPlanAsset{}, nil, fmt.Errorf("preparer returned frame/timeline metadata that does not match the requested segment")
 	}
-	expectedDurationUS := finalJobFrameDurationUS(request.FrameCount, 24, 1)
+	// Frame math and geometry come from the assembly contract, not from a
+	// second copy of 24/1 and 1920x1080 in the client plan builder.
+	delivery := kernelmedia.DefaultAssemblyMediaContract()
+	expectedDurationUS := finalJobFrameDurationUS(request.FrameCount, int64(delivery.FPS.Num), int64(delivery.FPS.Den))
 	if durationUS != expectedDurationUS {
 		return finalJobPlanAsset{}, nil, fmt.Errorf("prepared duration is %dus, expected %dus for %d frames", durationUS, expectedDurationUS, request.FrameCount)
 	}
@@ -230,8 +237,8 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 	delete(ref, "local_path")
 	asset := finalJobPlanAsset{
 		AssetID: id, AssetKey: "sha256:" + sha, SHA256: sha, SizeBytes: size,
-		Kind: "video", MIME: "video/mp4", DurationUS: durationUS, Width: 1920, Height: 1080,
-		ProfileID: kernelmedia.OverlayVideoOnlyProfileID, FrameCount: frameCount,
+		Kind: "video", MIME: "video/mp4", DurationUS: durationUS, Width: delivery.Width, Height: delivery.Height,
+		ProfileID: delivery.ID, FrameCount: frameCount,
 		TimelineRevision: request.TimelineRevision, TimelineSHA256: strings.ToLower(request.TimelineSHA256),
 		TimelineStartFrame: request.TimelineStartFrame, FirstFrameKeyframe: true, ClosedGOP: true,
 	}

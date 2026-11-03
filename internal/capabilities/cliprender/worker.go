@@ -21,6 +21,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
@@ -298,9 +299,11 @@ func (w *Worker) Handle(ctx context.Context, j *job.Job, tools *job.JobExecution
 				}
 				// Fabricate a minimal Prepared for result projection.
 				synthPrepared := &Prepared{
-					RunID:      j.ID,
-					Source:     &MaterializedAsset{AssetID: req.SourceAssetID, Title: "cached"},
-					Contract:   &ResolvedContract{ContractID: string(rec.Backend)},
+					RunID:  j.ID,
+					Source: &MaterializedAsset{AssetID: req.SourceAssetID, Title: "cached"},
+					Contract: &ResolvedContract{AssemblyMediaContract: kernelmedia.AssemblyMediaContract{
+						ID: string(rec.Backend),
+					}},
 					Transcript: &TranscriptResult{},
 				}
 				// Produce a sealed-like plan shell for the result shape.

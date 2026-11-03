@@ -152,6 +152,10 @@ type GenerateResult struct {
 	// the same certified surfaces as OverlayPlan. It is a projection, never a
 	// second extraction, resolver or timing source.
 	SemanticRenderBundle *capabilityoverlay.SemanticRenderBundleV1 `json:"semantic_render_bundle,omitempty"`
+	// OverlayAudit is the human-readable inventory of detected entities and
+	// the semantic overlays admitted to the render plan. It is derived from
+	// the same sealed bundle and plan; it does not perform a second extraction.
+	OverlayAudit *OverlayAudit `json:"overlay_audit,omitempty"`
 
 	// OverlayRender is populated after the timing-frozen Chronon render has
 	// completed and its media contract has been certified.

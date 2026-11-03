@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"go.uber.org/zap"
 )
 
@@ -232,20 +233,19 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 	// The output contract is pinned by the composition-root profile + the
 	// plan's nominal frame rate (the render plan carries no geometry/pixel
 	// facts — those are the profile's single canonical owner).
-	contract := &cliprender.ResolvedContract{
-		ContractID:   cliprender.OutputContractVeloxAssemblyReadyV1,
-		Container:    "mp4",
-		VideoCodec:   "h264",
-		VideoProfile: "high",
-		PixelFormat:  "yuv420p",
-		Width:        a.profile.Width,
-		Height:       a.profile.Height,
-		FPSNum:       int(plan.FPSNumerator),
-		FPSDen:       int(plan.FPSDenominator),
-		AudioCodec:   a.profile.AudioCodec,
-		SampleRate:   a.profile.SampleRate,
-		Channels:     a.profile.Channels,
-	}
+	// Start from the canonical assembly contract and override only the
+	// dimensions this composition profile owns: restating container/codec/
+	// profile/pixel-format here is how a second copy of the delivery identity
+	// enters the tree.
+	delivery := kernelmedia.DefaultAssemblyMediaContract()
+	delivery.ID = cliprender.OutputContractVeloxAssemblyReadyV1
+	delivery.Width = a.profile.Width
+	delivery.Height = a.profile.Height
+	delivery.FPS = kernelmedia.FrameRate{Num: int(plan.FPSNumerator), Den: int(plan.FPSDenominator)}
+	delivery.AudioCodec = a.profile.AudioCodec
+	delivery.AudioSampleRate = a.profile.SampleRate
+	delivery.AudioChannels = a.profile.Channels
+	contract := &cliprender.ResolvedContract{AssemblyMediaContract: delivery}
 
 	overlay, err := a.resolveOverlays(ctx, opts.Overlays)
 	if err != nil {
@@ -277,8 +277,8 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		zap.Bool("has_subtitle_style", opts.SubtitlesStyle != nil),
 		zap.Int("width", contract.Width),
 		zap.Int("height", contract.Height),
-		zap.Int("fps_num", contract.FPSNum),
-		zap.Int("fps_den", contract.FPSDen),
+		zap.Int("fps_num", contract.FPS.Num),
+		zap.Int("fps_den", contract.FPS.Den),
 		zap.String("video_codec", contract.VideoCodec),
 		zap.String("audio_codec", contract.AudioCodec),
 	)

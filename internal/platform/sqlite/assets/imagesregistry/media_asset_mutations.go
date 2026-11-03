@@ -67,13 +67,6 @@ func execAssetUpdate(ctx context.Context, exec mediaAssetSQLExecutor, assetID, o
 // writer gate exempts as canonical owner ("non-media mutation primitives":
 // lifecycle/enrich/index-state machines, admin console, maintenance).
 
-// UpdateMediaAssetContentHashesTx persists the paired content/binary digest
-// projection for an existing asset inside a caller-owned transaction.
-
-func UpdateMediaAssetContentHashesTx(ctx context.Context, tx *sql.Tx, assetID, contentSHA256, binarySHA256 string) error {
-	return execAssetUpdate(ctx, tx, assetID, "content hash backfill", `UPDATE media_assets SET content_sha256 = ?, binary_sha256 = ? WHERE id = ?`, contentSHA256, binarySHA256, assetID)
-}
-
 // UpdateMediaAssetTaxonomyTx applies taxonomy dimensions in a caller-owned
 // transaction. It is the bridge used by the media registry adapter.
 

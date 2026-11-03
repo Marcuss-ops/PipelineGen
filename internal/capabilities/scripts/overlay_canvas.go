@@ -38,6 +38,15 @@ type OverlayCanvasSpec struct {
 	ForegroundScalePercent int
 	Background             *capabilityoverlay.OverlayBackground
 	Style                  *scriptpkg.OverlayStyleSpec
+	// OutputProfileID is the RenderingGen certification profile that will
+	// describe the rendered artifact, and therefore the ONE input the sealed
+	// plan derives its media contract from (OverlayPlan.StampOutputProfile).
+	// It lives with the other output-shape facts because both are properties
+	// of the artifact, not of the editorial content: a final-job composition is
+	// opaque H.264 without audio, while an intermediate overlay is the
+	// alpha-bearing ProRes the contract defaults to. Empty keeps the alpha
+	// default.
+	OutputProfileID string
 	// PhraseMotions is the run's phrase-motion rotation pool, carried from
 	// the request's channel profile (empty = the certified default pool). It
 	// lives here because the canvas is the run-level render context this

@@ -1,103 +1,124 @@
 package cliprender
 
 import (
+	"encoding/json"
+
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
-// ── Assembly-ready contract SSOT bridge ───────────────────────────────
+// ResolvedContract holds the canonical assembly contract by value: there is no
+// second flat schema to convert to and from, so the two representations cannot
+// drift and a new dimension has exactly one declaration site.
 //
-// ResolvedContract is the clip.render capability's working representation of
-// the assembly-ready video contract. The single source of truth for the
-// frozen values is kernel/media.VideoContract (AssemblyReadyVideoContractID =
-// "VELOX_ASSEMBLY_READY_V2"). This bridge keeps the two representations in
-// sync without a hard type dependency in every consumer.
-//
-// All frozen values are canonically owned by kernel/media. ResolvedContract
-// mirrors them with flat int fields for ergonomic consumption inside the
-// clip.render capability (performance + simpler struct literals). Future
-// changes to the assembly-ready spec MUST be reflected in
-// kernel/media.DefaultAssemblyMediaContractV2() FIRST, then propagated
-// here via ToVideoContract ↔ FromVideoContract.
+// What this file owns is the WIRE adapter for documents written before that
+// unification. A resume document carries the contract as JSON, and a document
+// persisted by an earlier build spells the compound dimensions as flat keys
+// (FPSNum, SampleRate, ...). The adapter is read-only: it accepts both
+// spellings and never emits the legacy one, so anything this build writes uses
+// the canonical shape.
 
-// ToVideoContract converts the clip.render working contract to the canonical
-// kernel/media.VideoContract SSOT.
-func (c *ResolvedContract) ToVideoContract() kernelmedia.VideoContract {
+// NewResolvedContract is the only sanctioned way to build a contract that is
+// not the frozen default: it starts from the kernel value and lets the caller
+// override the dimensions the caller actually selects. Nothing else may
+// assemble a contract field by field, so a restated codec/geometry cannot be
+// reintroduced through a literal.
+func NewResolvedContract(apply func(*kernelmedia.AssemblyMediaContract)) *ResolvedContract {
+	contract := kernelmedia.DefaultAssemblyMediaContract()
+	if apply != nil {
+		apply(&contract)
+	}
+	return &ResolvedContract{AssemblyMediaContract: contract}
+}
+
+// legacyResolvedContract is the retired flat schema, read only to accept a
+// document produced by a build that still mirrored the contract. Every field is
+// a pointer so that "absent" stays distinguishable from "zero".
+type legacyResolvedContract struct {
+	ContractID       *string
+	FPSNum           *int
+	FPSDen           *int
+	VideoTimeBaseNum *int
+	VideoTimeBaseDen *int
+	AudioTimeBaseNum *int
+	AudioTimeBaseDen *int
+	SARNum           *int
+	SARDen           *int
+	SampleRate       *int
+}
+
+// UnmarshalJSON reads a resolved contract in either spelling. The canonical
+// keys win; the legacy flat keys only fill the dimensions the canonical shape
+// cannot express under the same name.
+func (c *ResolvedContract) UnmarshalJSON(data []byte) error {
+	type canonical kernelmedia.AssemblyMediaContract
+	var base canonical
+	if err := json.Unmarshal(data, &base); err != nil {
+		return err
+	}
+	c.AssemblyMediaContract = kernelmedia.AssemblyMediaContract(base)
+
+	var legacy legacyResolvedContract
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return err
+	}
+	if legacy.ContractID != nil {
+		c.ID = *legacy.ContractID
+	}
+	if legacy.FPSNum != nil {
+		c.FPS.Num = *legacy.FPSNum
+	}
+	if legacy.FPSDen != nil {
+		c.FPS.Den = *legacy.FPSDen
+	}
+	if legacy.VideoTimeBaseNum != nil {
+		c.VideoTimeBase.Num = *legacy.VideoTimeBaseNum
+	}
+	if legacy.VideoTimeBaseDen != nil {
+		c.VideoTimeBase.Den = *legacy.VideoTimeBaseDen
+	}
+	if legacy.AudioTimeBaseNum != nil {
+		c.AudioTimeBase.Num = *legacy.AudioTimeBaseNum
+	}
+	if legacy.AudioTimeBaseDen != nil {
+		c.AudioTimeBase.Den = *legacy.AudioTimeBaseDen
+	}
+	if legacy.SARNum != nil {
+		c.SAR.Num = *legacy.SARNum
+	}
+	if legacy.SARDen != nil {
+		c.SAR.Den = *legacy.SARDen
+	}
+	if legacy.SampleRate != nil {
+		c.AudioSampleRate = *legacy.SampleRate
+	}
+	if c.Version == 0 {
+		c.Version = kernelmedia.AssemblyMediaContractVersion
+		if c.ID == kernelmedia.AssemblyMediaContractV2ID {
+			c.Version = kernelmedia.AssemblyMediaContractV2Version
+		}
+	}
+	return nil
+}
+
+// ContractWireBlock is the flat contract block the clip.render result reports
+// to its workflow boundary. It is the ONLY place that projection is written: the
+// values come from the canonical contract, so the wire keys cannot describe a
+// different stream than the one the renderer was held to.
+//
+// The flat spelling is a published wire shape (videocreate decodes it into its
+// own facts and the assembler gate compares it segment to segment); keeping the
+// projection in one function is what stops it from being restated per call site.
+func ContractWireBlock(c *ResolvedContract) map[string]any {
 	if c == nil {
-		return kernelmedia.DefaultAssemblyReadyVideoContract()
+		return map[string]any{}
 	}
-	return kernelmedia.VideoContract{
-		ID:                 c.ContractID,
-		Version:            contractVersion(c.ContractID),
-		Container:          c.Container,
-		VideoCodec:         c.VideoCodec,
-		VideoProfile:       c.VideoProfile,
-		VideoLevel:         c.VideoLevel,
-		PixelFormat:        c.PixelFormat,
-		Width:              c.Width,
-		Height:             c.Height,
-		FPS:                kernelmedia.FrameRate{Num: c.FPSNum, Den: c.FPSDen},
-		VideoTimeBase:      kernelmedia.Rational{Num: c.VideoTimeBaseNum, Den: c.VideoTimeBaseDen},
-		AudioTimeBase:      kernelmedia.Rational{Num: c.AudioTimeBaseNum, Den: c.AudioTimeBaseDen},
-		SAR:                kernelmedia.Rational{Num: c.SARNum, Den: c.SARDen},
-		ColorRange:         c.ColorRange,
-		ColorSpace:         c.ColorSpace,
-		ColorTransfer:      c.ColorTransfer,
-		ColorPrimaries:     c.ColorPrimaries,
-		FieldOrder:         c.FieldOrder,
-		KeyframeInterval:   c.KeyframeInterval,
-		AudioCodec:         c.AudioCodec,
-		AudioProfile:       c.AudioProfile,
-		AudioSampleRate:    c.SampleRate,
-		AudioChannels:      c.Channels,
-		AudioChannelLayout: c.AudioChannelLayout,
-		AudioBitrate:       c.AudioBitrate,
-		VideoStreams:       c.VideoStreams,
-		AudioStreams:       c.AudioStreams,
-		StartPTS:           c.StartPTS,
-	}
-}
-
-func contractVersion(id string) int {
-	if id == kernelmedia.AssemblyMediaContractV2ID {
-		return kernelmedia.AssemblyMediaContractV2Version
-	}
-	return kernelmedia.AssemblyMediaContractVersion
-}
-
-// FromVideoContract populates a ResolvedContract from the canonical
-// kernel/media.VideoContract SSOT.
-func FromVideoContract(vc kernelmedia.VideoContract) *ResolvedContract {
-	return &ResolvedContract{
-		ContractID:         vc.ID,
-		Container:          vc.Container,
-		VideoCodec:         vc.VideoCodec,
-		VideoProfile:       vc.VideoProfile,
-		VideoLevel:         vc.VideoLevel,
-		PixelFormat:        vc.PixelFormat,
-		Width:              vc.Width,
-		Height:             vc.Height,
-		FPSNum:             vc.FPS.Num,
-		FPSDen:             vc.FPS.Den,
-		VideoTimeBaseNum:   vc.VideoTimeBase.Num,
-		VideoTimeBaseDen:   vc.VideoTimeBase.Den,
-		AudioTimeBaseNum:   vc.AudioTimeBase.Num,
-		AudioTimeBaseDen:   vc.AudioTimeBase.Den,
-		SARNum:             vc.SAR.Num,
-		SARDen:             vc.SAR.Den,
-		ColorRange:         vc.ColorRange,
-		ColorSpace:         vc.ColorSpace,
-		ColorTransfer:      vc.ColorTransfer,
-		ColorPrimaries:     vc.ColorPrimaries,
-		FieldOrder:         vc.FieldOrder,
-		KeyframeInterval:   vc.KeyframeInterval,
-		AudioCodec:         vc.AudioCodec,
-		AudioProfile:       vc.AudioProfile,
-		SampleRate:         vc.AudioSampleRate,
-		Channels:           vc.AudioChannels,
-		AudioChannelLayout: vc.AudioChannelLayout,
-		AudioBitrate:       vc.AudioBitrate,
-		VideoStreams:       vc.VideoStreams,
-		AudioStreams:       vc.AudioStreams,
-		StartPTS:           vc.StartPTS,
+	return map[string]any{
+		"width":        c.Width,
+		"height":       c.Height,
+		"fps_num":      c.FPS.Num,
+		"fps_den":      c.FPS.Den,
+		"video_codec":  c.VideoCodec,
+		"audio_codec":  c.AudioCodec,
+		"pixel_format": c.PixelFormat,
 	}
 }

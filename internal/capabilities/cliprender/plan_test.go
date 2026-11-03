@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -18,24 +19,9 @@ func baseCompileInput() CompileInput {
 			SHA256:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			SizeBytes: 1024,
 		},
-		Contract: &ResolvedContract{
-			ContractID:         OutputContractVeloxAssemblyReadyV1,
-			Container:          "mp4",
-			VideoCodec:         "h264",
-			VideoProfile:       "high",
-			PixelFormat:        "yuv420p",
-			Width:              1920,
-			Height:             1080,
-			FPSNum:             24,
-			FPSDen:             1,
-			KeyframeInterval:   48,
-			AudioCodec:         "aac",
-			AudioProfile:       "LC",
-			SampleRate:         48000,
-			Channels:           2,
-			AudioChannelLayout: "stereo",
-			AudioBitrate:       "128k",
-		},
+		Contract: NewResolvedContract(func(c *kernelmedia.AssemblyMediaContract) {
+			c.ID = OutputContractVeloxAssemblyReadyV1
+		}),
 		AudioMode:  AudioModeCopyIfCompatible,
 		OutputPath: "/scratch/run-1/rendered-clip.mp4",
 	}

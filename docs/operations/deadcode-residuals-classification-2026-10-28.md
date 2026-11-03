@@ -2,8 +2,12 @@
 
 Risponde a «Serve: classificare i residui per consumatori e contratti, non
 eliminare in massa il risultato di `deadcode`» (`docs/stato/refactored.md` §5,
-workspace root). **Questa è solo una classificazione: nessuna funzione è stata
-rimossa.**
+workspace root).
+
+**Aggiornamento 2026-11-02:** il pool di funzioni ordinarie è stato eseguito.
+Sono state rimosse 9 delle 11 voci; le 2 rimaste hanno una ragione verificabile
+(§«Pool eseguito»). La misura è stata rigenerata dopo il taglio, non ereditata
+dal 28-10.
 
 ## Misure (riproducibili)
 
@@ -14,7 +18,10 @@ deadcode ./cmd/server ./cmd/worker ./cmd/admin      # 482 righe (produzione)
 deadcode -test ./...                                # 141 righe (produzione+test)
 ```
 
-Le due misure si compongono così (482 voci prod uniche per coppia file/funzione):
+Le due misure si compongono così (482 voci prod uniche per coppia file/funzione).
+La tabella è la fotografia del 28-10 e resta come storia: dopo il taglio del
+02-11 la misura è **483 righe di produzione / 134 con i test**, e il pool di
+funzioni ordinarie è sceso da 11 a 2 voci (vedi §«Pool eseguito»).
 
 | Classe | Conteggio | Policy |
 |---|---:|---|
@@ -50,21 +57,32 @@ prima di toccarli. Da ispezionare caso per caso:
 | `internal/kernel/models/registry.go` | `Model.Identity` | metodo di modello/registry |
 | `internal/kernel/models/registry.go` | `Model.Validate` | validatore di modello/registry |
 
-## Morti ovunque — funzioni ordinarie (11): pool di futura rimozione
+## Pool eseguito — 9 rimosse, 2 trattenute (2026-11-02)
+
+Rimosse (nessun consumatore di produzione, di test o di interfaccia):
 
 | File | Funzione |
 |---|---|
-| `internal/capabilities/overlays/preset_image_selection.go` | `EntitySequenceCameraMotion` |
-| `internal/capabilities/translation/types.go` | `DefaultPromoLanguages` |
-| `internal/capabilities/voiceover/service/filename.go` | `SanitizeFilename` |
-| `internal/capabilities/voiceover/service/service.go` | `NewService` |
+| `internal/capabilities/overlays/preset_image_selection.go` | `EntitySequenceCameraMotion` (+ la var `entitySequenceCameraMotion`, rimasta senza lettori) |
+| `internal/capabilities/translation/types.go` | `DefaultPromoLanguages` (+ il tipo `LanguageTarget`, usato solo da lei) |
 | `internal/capabilities/voiceover/service/types_helpers.go` | `buildRequestID` |
 | `internal/capabilities/voiceover/service/types_helpers.go` | `normalizeBatchRequestWithConfig` |
 | `internal/kernel/media/assembly_contract.go` | `StreamSignatureFromContract` |
 | `internal/kernel/media/assembly_contract.go` | `StreamSignatureFromProbe` |
-| `internal/platform/ptrutil/ptrutil.go` | `Bool` |
 | `internal/platform/ptrutil/ptrutil.go` | `Ptr` |
+| `internal/platform/ptrutil/ptrutil.go` | `Bool` (+ il commento orfano di `Str`) |
 | `internal/platform/sqlite/assets/imagesregistry/media_asset_mutations.go` | `UpdateMediaAssetContentHashesTx` |
+
+Trattenute, con la ragione che il tool non può vedere:
+
+| File | Funzione | Perché resta |
+|---|---|---|
+| `internal/capabilities/voiceover/service/filename.go` | `SanitizeFilename` | È irraggiungibile dai main, ma `process.go:193` (catena `processLanguage`, a sua volta irraggiungibile) la chiama: rimuoverla richiede prima la revisione della classe «metodi su tipi nominati» qui sopra, non un taglio isolato. |
+| `internal/capabilities/voiceover/service/service.go` | `NewService` | Compare nella misura di produzione ma **non** in `deadcode -test ./...`: è un oracolo di test, e la policy lo trattiene. |
+
+`BoolDefault` (stessa area di `Ptr`/`Bool`) resta per lo stesso motivo: è usato
+solo da un test (`youtube/usecase/service_test.go`) ed è quindi un oracolo, non
+dead code.
 
 ## Morti ovunque — superficie `pkg/` (1): non rimuovere
 
@@ -83,7 +101,11 @@ sottraendo l'intersezione con `deadcode -test ./...` (righe 1–45 del generato
 
 ## Cosa NON è stato fatto (deliberatamente)
 
-- Nessuna rimozione: la classificazione è il deliverable richiesto; il pool di
-  rimozione andrà rieseguito con build+vet+test dopo ogni futuro taglio.
-- `pkg/veloxclient` (19 voci) non è stato toccato.
-- Nessun cambiamento ai file di test o ai fixture.
+- I 13 metodi su tipi nominati non sono stati toccati: implementano porte,
+  validatori o deserializzatori e richiedono la verifica dei consumatori
+  esterni prima di un taglio.
+- `SanitizeFilename` resta finché resta la catena irraggiungibile che la chiama.
+- `pkg/veloxclient` (19 voci) e la superficie `pkg/` non sono stati toccati.
+- Nessun cambiamento ai fixture.
+- Verifica del taglio: `go build ./...`, `go vet` sui package toccati e le suite
+  mirate sono verdi; la misura `deadcode` è stata rigenerata dopo la rimozione.

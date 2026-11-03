@@ -199,22 +199,6 @@ func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRe
 	return r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *plan)
 }
 
-// stampFinalJobOpaqueContract declares, on the plan, the media contract the
-// final-job renderer actually produces. The packed timeline is composited onto
-// the source video and encoded as H.264/yuv420p with NO alpha, so the
-// alpha-bearing `overlay-v1` (ProRes 4444) described an artifact this path has
-// never rendered. The contract travels with the plan (the consumers read it
-// from the payload), and it is derived here, next to the decision to render a
-// final-job composition, rather than re-derived by each consumer.
-func stampFinalJobOpaqueContract(plan *capabilityoverlay.OverlayPlan) {
-	if plan == nil {
-		return
-	}
-	plan.MediaContract = capabilityoverlay.ContractIDForCanvas(
-		plan.Width, plan.Height, plan.FPSNum, plan.FPSDen, false,
-	)
-}
-
 // renderOverlayPlans computes against a private snapshot. It never writes the
 // durable run or execution step; the joined caller owns failures and results.
 func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, resumeIdx int, result *GenerateResult) ([]overlayRenderOutcome, error) {
@@ -230,11 +214,18 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, re
 		// wire freezes placement at render time, so phrase callouts on
 		// intermediate clip scenes are moved before their clip here (the
 		// per-item handoff used to move them at payload time).
+		//
+		// The output identity (certification profile + the media contract
+		// derived from it) is NOT decided here: it is stamped once, at the
+		// plan seal, from the canvas the runner built (see
+		// OverlayPlan.StampOutputProfile). Restating it in the render phase
+		// is how the plan came to declare `overlay-v1` — ProRes 4444 with
+		// alpha — on H.264/yuv420p artifacts: the timeline had already
+		// copied the contract by value before this phase ran.
 		for _, item := range pending {
 			if err := normalizeFinalJobOverlayWindows(item.plan, result); err != nil {
 				return nil, err
 			}
-			stampFinalJobOpaqueContract(item.plan)
 		}
 	}
 	return concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
