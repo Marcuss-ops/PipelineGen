@@ -263,12 +263,14 @@ func ContractIDForCanvas(width, height, fpsNum, fpsDen int, requiresAlpha bool) 
 // profile → alpha mapping, so a plan can never declare a contract that
 // contradicts the profile it asks the renderer to certify.
 //
-// The video-only overlay profile (VELOX_OVERLAY_VIDEO_ONLY_V1) describes the
+// The current video-only overlay profile (VELOX_OVERLAY_VIDEO_ONLY_V2) describes the
 // opaque H.264 composition the final job renders: no alpha. Every other or
 // empty profile keeps the overlay default (alpha), because an unset profile
 // must never silently weaken a contract that the renderer may honour.
 func RequiresAlphaForProfile(profileID string) bool {
-	return !strings.EqualFold(strings.TrimSpace(profileID), kernelmedia.OverlayVideoOnlyProfileID)
+	profileID = strings.TrimSpace(profileID)
+	return !strings.EqualFold(profileID, kernelmedia.OverlayVideoOnlyProfileID) &&
+		!strings.EqualFold(profileID, kernelmedia.OverlayVideoOnlyLegacyID)
 }
 
 // ContractIDForProfile returns the contract ID that matches the plan's declared

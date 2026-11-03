@@ -21,6 +21,13 @@ type Client struct {
 	HTTP         *http.Client
 	PollInterval time.Duration
 	PollTimeout  time.Duration
+	// QueueTimeout bounds only the NOT-STARTED portion of a BOUNDED attach.
+	// A job the Master has not started cannot finish, so waiting the whole
+	// render budget for it changes nothing: r9 sat PENDING for 46 minutes and
+	// was then cancelled. Zero disables the rule. An unbounded attach
+	// (budget <= 0, the resume path) ignores it deliberately: by then the
+	// render exists and abandoning it would only duplicate the wait.
+	QueueTimeout time.Duration
 }
 
 type Result struct {
@@ -363,6 +370,15 @@ func (c *Client) Attach(ctx context.Context, jobID string, budget time.Duration)
 		if !errors.Is(err, ErrRemotePending) {
 			// Terminal failure or a transport fault: the wait is over either way.
 			return finish(result, err)
+		}
+		// A job that has not been STARTED cannot finish, so a bounded wait must
+		// not spend the render budget on it. This is the r9 failure mode: the
+		// Master kept the job PENDING for 46 minutes and then cancelled it, and
+		// the local run held its worker for the whole time. The handle is still
+		// returned, so the next attempt resumes the SAME Master job.
+		if budget > 0 && c.QueueTimeout > 0 && result.Timing.StartedAt.IsZero() && time.Since(started) > c.QueueTimeout {
+			return finish(last, fmt.Errorf("remote job %s still %s after %s in queue (queue budget): %w",
+				jobID, last.Status, c.QueueTimeout, ErrRemotePending))
 		}
 		// A QUEUED job cannot complete, so a long gap there costs nothing; a
 		// STARTED one can finish at any moment, and every second after the start

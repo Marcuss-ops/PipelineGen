@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -193,40 +194,15 @@ func utf8ByteOffsets(text string) []int {
 }
 
 func normalizeSpacyLabel(label string) string {
-	switch strings.ToUpper(strings.TrimSpace(label)) {
-	case "PER", "PERSON":
-		return "PERSON"
-	case "ORG", "ORGANIZATION", "COMPANY", "CORP", "CORPORATION", "BUSINESS":
-		return "ORG"
-	case "LOC", "GPE", "LOCATION", "PLACE", "CITY", "COUNTRY", "FAC", "FACILITY":
-		return "GPE"
-	case "DATE", "DATETIME", "CALENDAR_DATE":
-		return "DATE"
-	case "TIME":
-		return "TIME"
-	case "CARDINAL":
-		return "CARDINAL"
-	case "ORDINAL":
-		return "ORDINAL"
-	case "MONEY":
-		return "MONEY"
-	case "PERCENT", "PERCENTAGE":
-		return "PERCENT"
-	case "QUANTITY", "METRIC", "METRICS", "STATISTIC", "STATISTICS", "NUMBER", "NUM":
-		return "NUMBER"
-	case "PRODUCT":
-		return "PRODUCT"
-	case "EVENT":
-		return "EVENT"
-	case "WORK", "WORK_OF_ART":
-		return "WORK_OF_ART"
-	case "BRAND", "LOGO":
-		return "LOGO"
-	case "MISC", "NORP", "LAW", "LANGUAGE", "CONCEPT", "VISUAL_CONCEPT":
-		return "CONCEPT"
-	default:
+	// The spaCy/GPE/LOC spelling table is NOT restated here: it is
+	// kernel/entitytype, the same table capabilities/entities folds into
+	// identity and kernel/script projects onto annotation kinds. A label
+	// outside that table is DROPPED (""), because a sidecar token the
+	// pipeline has no vocabulary for is not evidence of a CONCEPT entity.
+	if !entitytype.IsCanonical(entitytype.Fold(label)) {
 		return ""
 	}
+	return scriptpkg.NormalizeAnnotationType(label)
 }
 
 var _ scriptgen.NERBackend = (*SpacyNERAdapter)(nil)

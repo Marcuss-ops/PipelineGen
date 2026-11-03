@@ -42,10 +42,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
@@ -87,6 +89,13 @@ import (
 // glance and the gates (validateQdrantIndexerCompatibility +
 // CollectionManager-nil) are consolidated.
 func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
+	// The knob inventory is the first thing a boot says: every non-default
+	// override is named, and a VELOX_* variable the registry does not know is
+	// warned about instead of silently changing behaviour. Both reads come
+	// from internal/app/knobs — the ONE table — not from scattered os.Getenv.
+	knobs.LogNonDefault(log)
+	knobs.LogUnregisteredEnv(log, os.Environ())
+
 	if err := initLinguistics(cfg, log); err != nil {
 		return nil, fmt.Errorf("wire services: %w", err)
 	}

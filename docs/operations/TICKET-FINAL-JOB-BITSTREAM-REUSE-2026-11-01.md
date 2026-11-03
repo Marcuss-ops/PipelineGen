@@ -1,6 +1,9 @@
 # TICKET-FINAL-JOB-BITSTREAM-REUSE — il final job non deve ri-encodare l'overlay che ha già prodotto
 
-**Stato:** P0, P2 e P3 chiusi e misurati; P1 chiuso sul consumatore, sul
+**Stato (aggiornato 2026-11-03):** P0, P2 e P3 chiusi e misurati; P1 resta
+chiuso per il certificato di singolo artefatto ma **riaperto per la compatibilità
+bitstream tra segmenti** (nuovo blocker P5, evidenza P4 sotto); il solo
+`profile_id` non autorizza più il packet-copy tra sorgenti diverse. P1 chiuso sul consumatore, sul
 `frame_count` derivato e sul `profile_id`: i batch manifest dichiarano
 `VELOX_OVERLAY_VIDEO_ONLY_V1`, il profilo dedicato che descrive un artefatto
 video-only (V1 richiede un audio stream e non era dichiarabile). La verifica
@@ -493,3 +496,99 @@ proiezione `timing` in `/full` è **corretta**: il reader preferisce il run
   per-processo, non per-CPU.
 - Non dedurre il guadagno dalla singola run: la varianza end-to-end sullo stesso
   payload è +23% (r40 → r49). Ogni riga della tabella dei gate richiede n≥3.
+
+## P5 — Compatibilità SPS/PPS tra segmenti copy-only (RIAPERTO, 2026-11-03)
+
+**Vincolo prodotto:** l'assemblaggio finale resta packet-copy. Il gate di copia
+deve confrontare i parametri reali del bitstream di ogni segmento, non fidarsi
+di `profile_id`, risoluzione, fps o nome del profilo.
+
+**Evidenza sul job P4 r101-like:** gli 85 frammenti sorgente sono integri
+(SHA-256 verificato e decodifica senza errori), ma `ffmpeg/ffprobe` distinguono
+tre famiglie H.264. Tutte dichiarano High, level 4.0, 1920×1080, yuv420p e
+24 fps; i parametri codificati sono diversi. Dei tre gruppi, **due sono
+famiglie overlay** (9 render Chronon nella famiglia B, 2 mappe importate nella
+famiglia C); la terza è stock/clip:
+
+| Famiglia | Provenienza | SPS/PPS osservati | Conseguenza |
+|---|---|---|---|
+| A | stock e clip | `pic_order_cnt_type=2`, `max_num_ref_frames=1`, PPS `weighted_pred=1`, `weighted_bipred_idc=0`, liste ref L0/L1 default 0; `has_b_frames=0` | Bitstream di riferimento condiviso da stock e clip. |
+| B | overlay generati da Chronon (`VELOX_OVERLAY_VIDEO_ONLY_V1`) | POC type 2 come A, ma `max_num_ref_frames=3`; PPS L0 default 2 e `weighted_pred=0` | Profilo nominale uguale, SPS/PPS diversi. |
+| C | mappe importate (`overlay_import`) | `pic_order_cnt_type=0`, `log2_max_pic_order_cnt_lsb_minus4=2`, max ref 4; PPS `weighted_bipred_idc=2`; `has_b_frames=2`, reorder 2, decoder buffer 4 | Differenza strutturale, non correggibile dichiarando un altro profilo. |
+
+Dimensioni, crop, crominanza e livello sono uguali nei campioni esaminati; la
+causa specifica è la diversa configurazione di reference/POC e PPS, con B-frame
+nelle mappe. Il decoder del file concatenato conserva il parametro del primo
+segmento e incontra i cambi ai confini: questo spiega i flash verdi/arcobaleno
+osservati. Le sorgenti non risultano corrotte.
+
+**Come adattare gli overlay senza ricodificare il video finale:**
+
+1. Fissare la famiglia A come bitstream canonico, estratto da una sorgente
+   stock/clip certificata, e registrarne i fingerprint SPS e PPS.
+2. Per Chronon, configurare encoder e muxer affinché emettano gli stessi campi
+   della famiglia A: POC type 2, un reference frame, nessun B-frame, PPS con
+   gli stessi reference default e weighted prediction, VUI/SAR/colour/crop
+   equivalenti. Rigenerare il solo overlay dalla scena grafica con quelle
+   impostazioni. Il solo `profile_id` non adatta un bitstream esistente.
+3. Le mappe importate non sono copy-eligible finché restano codificate nella
+   famiglia C. Fornirle come sorgenti non codificate e renderizzarle con la
+   configurazione canonica, oppure rifiutarle prima dell'assemblaggio. Il
+   secondo ramo non è valido se il final job dovrebbe convertirle.
+4. Non riscrivere SPS/PPS a livello di byte negli MP4 esistenti: le slice sono
+   state codificate assumendo quei parametri (POC, reference list e B-frame);
+   una sostituzione può invalidare il flusso o produrre immagini errate.
+
+**Gate fail-closed richiesto prima del final job:** estrarre SPS e PPS da ogni
+segmento copy-eligible; confrontarne i fingerprint con la famiglia A; al primo
+mismatch fermare il job e indicare asset, hash e campi divergenti. Poi
+decodificare l'output completo e verificare i frame ai confini. Questo gate
+non ricodifica il video finale. La rigenerazione conforme opera soltanto sugli
+asset overlay a monte.
+
+**Implementazione (2026-11-03, gate chiuso):** la famiglia A è il bitstream
+canonico, con fingerprint avcC/SPS/PPS
+`7201ce80a2b2b32a0c1a89501851099f267c1767d59ff799db744f72032aae5a`. Il producer
+dei frammenti usa esclusivamente libx264/veryfast con `refs=1`, B-frame 0, GOP
+chiuso 48 e colore bt709; NVENC e ogni altro encoder sono rifiutati in
+configurazione, perché emettono parameter set diversi sotto lo stesso profilo
+nominale. Ogni frammento copiato o encodato viene misurato: una copia con avcC
+diverso viene scartata e ricodificata, un encode che non produce l'hash canonico
+fallisce. RenderingGen pinna lo stesso hash sul profilo assembly-ready e propaga
+`codec_config_sha256` nei fatti certificati; il profilo overlay V2 è una nuova
+lane di cache per la SORGENTE, non una promessa sull'avcC, perché il producer
+normalizza la sorgente prima dell'assemblaggio. Il gate Go e il gate Rust
+richiedono e confrontano l'hash su ogni input; il mux finale forza timescale
+90000 e decodifica l'intero file. Test eseguiti: gate Go/Rust, producer dei
+frammenti, parser avcC e concat packet-copy di due frammenti canonici con
+decodifica completa pulita e hash preservato. `[NOT RUN]` run end-to-end del job
+P4 sul worker e confronto dei confini del filmato finale. Le mappe importate
+(`overlay_import`) restano un gate di lavoro separato: le sorgenti non canoniche
+vengono ricodificate dal producer, non dichiarate risolte.
+
+### Copy opportunistico con encode certificato (2026-11-03)
+
+Il requisito zero-encode è stato ritirato dopo il run live r13: una sorgente
+stock non aveva closed GOP e B-frame zero, quindi la modalità copy-only
+obbligatoria interrompeva il job senza produrre video. Le finestre allineate e
+certificate restano packet-copy; quelle off-GOP, non certificate o con copia
+non verificabile passano a libx264/veryfast con `refs=1`. Ogni output, copiato
+o encodato, deve avere l'avcC canonico prima della pubblicazione. Ogni percorso
+encode registra `copy_failure` con la ragione e mantiene `encode_ms` separato
+da `copy_ms`. Test: `TestFinalJobCopiedWindowTimingReceipt`,
+`TestFinalJobSegmentPreparerCopiesCertifiedWindows`,
+`TestFinalJobSegmentPreparerEncodesOneAssemblyReadyFragment`.
+
+**Producer C++.** `NativeAvSink` ora pinna `profile=High`, `level=4.0`,
+`refs=1` e `AV_CODEC_FLAG_CLOSED_GOP` per **tutti** i producer H.264, non solo
+NVENC; il ramo libx264 non è più quello che può divergere. `[VERIFICATO
+2026-11-03]` compilazione: la TU `src/media/video/encode/native_av_sink.cpp`
+compila con la command line reale di `build/chronon/linux-video-release`
+(`CHRONON3D_ENABLE_NATIVE_FFMPEG=ON`, `ENABLE_VIDEO=ON`) e `-fsyntax-only`
+esce 0. La prima compilazione ha trovato un errore reale: questa generazione
+FFmpeg dichiara `FF_PROFILE_H264_HIGH`, non `AV_PROFILE_H264_HIGH`; il profilo
+ora usa la stessa guardia di
+`apps/chronon3d_cli/utils/video/ffmpeg_profile_constants.hpp`. `[NOT RUN]` link
+della build completa e run su GPU: il gate Go continua a verificare l'avcC
+reale, quindi un producer non conforme viene rifiutato a valle e non è mai
+dichiarato conforme per configurazione.

@@ -30,29 +30,34 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
 	profile := segment.CanonicalSemanticProfile()
-	decision := buildSegmentProviderDecision(plan, segment, "video")
-	if hasCanonicalSourceForSegment(plan, segment.SegmentID) {
+	manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: segment.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
+	perSceneImages := plan.MediaPlan.Extraction.EntityImages.PerScene()
+	imageSidecarRequested := plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() &&
+		(len(manualImageQueries) > 0 || perSceneImages || len(segment.Insights.ImageQueries) > 0)
+	contentType := "video"
+	if imageSidecarRequested {
+		contentType = "image"
+	}
+	decision := buildSegmentProviderDecision(plan, segment, contentType)
+	if hasCanonicalSourceForSegment(plan, segment.SegmentID) && !imageSidecarRequested {
 		// A caller-supplied canonical asset is complete at the source
-		// boundary; no external provider should be queried for this segment.
+		// boundary when no still-image sidecar was requested. A stock video
+		// does not satisfy an explicit image/identity search request.
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
 	imageQueries := append([]string(nil), segment.Insights.ImageQueries...)
 	// Explicit media-plan searches are the caller's retrieval intent. Apply
-	// them at fanout planning too, so certification and the later materializer
-	// search the same per-scene image subjects.
-	manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: segment.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
-	if len(manualImageQueries) > 0 {
-		imageQueries = manualImageQueries
-	}
-	perSceneImages := plan.MediaPlan.Extraction.EntityImages.PerScene()
-	if len(manualImageQueries) > 0 {
-		// The explicit image queries above are already scene scoped.
-	} else if perSceneImages {
+	// them at fanout planning too, but keep them alongside identity-scoped
+	// searches. A courthouse/town query cannot retrieve a verified portrait,
+	// and replacing the identity queries here silently removed every entity
+	// image whenever a caller also supplied contextual image searches.
+	if perSceneImages {
 		// Entity-image searches use the canonical person identity. Adding the
 		// scene's opening prose created queries like "Chiara Poggi Presenta ..."
 		// and let collages/news cards bind as identity portraits. Variant
-		// selection happens within the canonical entity pool downstream.
-		if queries := sceneScopedImageQueries(segment); len(queries) > 0 {
+		// selection happens within the canonical entity pool downstream. Caller
+		// supplied contextual searches are appended below and remain distinct.
+		if queries := sceneScopedImageQueriesForTypes(segment, plan.MediaPlan.Extraction.EntityImages.EntityTypes); len(queries) > 0 {
 			imageQueries = queries
 		}
 	}
@@ -129,6 +134,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		}
 		imageQueries = filtered
 	}
+	imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
 	// A complete source sentence is a final provider fallback for scenes whose
 	// extracted entity terms are too generic (for example "wide pan"). It is
 	// still source-grounded and bounded by the same provider result limit.
@@ -143,6 +149,9 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		if !duplicate {
 			imageQueries = append(imageQueries, source)
 		}
+	}
+	if maxQueries := plan.MediaPlan.Extraction.MaxImageQueriesPerSegment; maxQueries > 0 && len(imageQueries) > maxQueries {
+		imageQueries = imageQueries[:maxQueries]
 	}
 	limit := 10
 	if plan.MediaPlan.Planner.CandidateLimit > 0 {
@@ -166,6 +175,47 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		imagesEnabled:  effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderInternetImages) && images != nil && len(imageQueries) > 0,
 		youtubeEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderYouTube) && youtube != nil,
 	}
+}
+
+func appendUniqueImageQueries(existing, extra []string) []string {
+	seen := make(map[string]struct{}, len(existing)+len(extra))
+	for _, query := range existing {
+		if key := strings.ToLower(strings.TrimSpace(query)); key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	for _, query := range extra {
+		query = strings.TrimSpace(query)
+		key := strings.ToLower(query)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		existing = append(existing, query)
+	}
+	return existing
+}
+
+func sceneScopedImageQueriesForTypes(segment scriptpkg.VidRushSegmentResult, entityTypes []string) []string {
+	allowed := make(map[string]struct{}, len(entityTypes))
+	for _, kind := range entityTypes {
+		allowed[normalizeAnnotationType(kind)] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		allowed["PERSON"] = struct{}{}
+	}
+	queries := make([]string, 0, len(segment.Insights.Entities))
+	for _, entity := range segment.Insights.Entities {
+		kind := normalizeAnnotationType(entity.Type)
+		if _, ok := allowed[kind]; !ok {
+			continue
+		}
+		queries = appendUniqueImageQueries(queries, []string{entity.Value})
+	}
+	return queries
 }
 
 // sceneScopedImageQueries retains every imageable person in the scene. The

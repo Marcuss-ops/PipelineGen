@@ -44,9 +44,9 @@ export VELOX_FEATURE_IMAGES_ENABLED=true
 if [[ -x "$DIR/bin/maps_dynamic_map_render" ]]; then
     export VELOX_MAP_NATIVE_RENDERER_PATH="$DIR/bin/maps_dynamic_map_render"
 fi
-# (The DYNAMIC_MAP_GPU_SAMPLER knob is RETIRED with the Python map renderer:
-# the single native map lane is CPU-sampled and its profile/sampler travel as
-# one closed contract — see scripts/overlay/map_encode_profile.go.)
+# Dynamic map vector sampling currently runs on CPU; the declared production
+# encoder is NVENC and is admitted through the shared GPU gate. These are
+# separate stages; see scripts/overlay/map_encode_profile.go.
 # Bounded GPU render concurrency. Three persistent Rust runners overlap
 # independent NVDEC/NVENC jobs without allowing an unbounded FFmpeg burst;
 # override this in the environment for a measured 1..4 worker canary.

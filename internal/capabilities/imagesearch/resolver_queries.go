@@ -3,6 +3,8 @@ package imagesearch
 import (
 	"sort"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 )
 
 func personQuery(e ResolvedEntity, pair bool) string {
@@ -81,7 +83,7 @@ func coOccurringPlace(entities []ResolvedEntity, primary *ResolvedEntity) string
 		if canonicalValue(e.Type, e.Text) == canonicalValue(primary.Type, primary.Text) {
 			continue
 		}
-		if e.Type == "GPE" || e.Type == "LOCATION" {
+		if entitytype.Is(e.Type, entitytype.Place) {
 			return e.Text
 		}
 	}

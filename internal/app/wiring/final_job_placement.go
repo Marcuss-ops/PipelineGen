@@ -73,6 +73,11 @@ func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request s
 	if err := p.remuxTaggedFragment(ctx, sourcePath, outPath, tag); err != nil {
 		return nil, err
 	}
+	if got, hashErr := readAVCDecoderConfigurationSHA256(outPath); hashErr != nil {
+		return nil, fmt.Errorf("certify derived placement avcC: %w", hashErr)
+	} else if got != finalJobDelivery.VideoExtradataSHA256 {
+		return nil, fmt.Errorf("derived placement avcC %s != canonical %s", got, finalJobDelivery.VideoExtradataSHA256)
+	}
 	remuxed := time.Since(encodeStarted)
 	// The remux copies certified packets: the container is new, the frames are
 	// not. A probe here would re-certify the source it was copied from.
@@ -115,6 +120,7 @@ func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request s
 
 func finalJobSourceIsExactPreparedFragment(source map[string]any, request scriptgen.FinalJobVideoSegmentRequest, durationUS int64) bool {
 	return strings.EqualFold(strings.TrimSpace(stringValue(source["profile_id"])), finalJobSegmentProfile) &&
+		strings.EqualFold(strings.TrimSpace(stringValue(source["video_extradata_sha256"])), finalJobDelivery.VideoExtradataSHA256) &&
 		boolFromAny(source["copy_eligible"]) && boolFromAny(source["first_frame_keyframe"]) && boolFromAny(source["closed_gop"]) &&
 		request.SourceInUS == 0 && int64Value(source["source_in_us"]) == 0 && int64Value(source["duration_us"]) == durationUS &&
 		int64Value(source["frame_count"]) == request.FrameCount &&
@@ -131,6 +137,7 @@ func finalJobPreparedRef(base map[string]any, sha string, size, durationUS int64
 	ref["duration_ms"], ref["frame_count"] = (durationUS+999)/1000, request.FrameCount
 	ref["mime"], ref["kind"] = "video/mp4", "video"
 	ref["profile_id"], ref["copy_eligible"] = finalJobSegmentProfile, true
+	ref["video_extradata_sha256"] = finalJobDelivery.VideoExtradataSHA256
 	ref["first_frame_keyframe"], ref["closed_gop"] = true, true
 	ref["width"], ref["height"] = finalJobDelivery.Width, finalJobDelivery.Height
 	ref["fps_num"], ref["fps_den"] = finalJobSegmentFPS, int64(1)
@@ -184,9 +191,9 @@ func finalJobSourceTimeBaseCertified(timeBase string) bool {
 func (p finalJobFragmentProbe) frames() int64 { return p.packets }
 
 // needsDeliveryGeometry reports whether the encode still has to rebuild the
-// delivery geometry (1920x1080, 24/1, yuv420p) or only has to cut the window.
+// delivery geometry (1920x1080, 24/1, yuv420p, square pixels) or only has to cut the window.
 func (p finalJobFragmentProbe) needsDeliveryGeometry() bool {
-	return !finalJobDeliveryMatches(p.width, p.height, p.avgFPS, p.pixelFmt)
+	return !finalJobDeliveryMatches(p.width, p.height, p.avgFPS, p.pixelFmt, p.sampleAspectRatio)
 }
 
 func (p finalJobFragmentProbe) certify(frameCount int64) error {
@@ -215,18 +222,19 @@ func (p finalJobFragmentProbe) certify(frameCount int64) error {
 }
 
 type finalJobFragmentProbe struct {
-	streamOK       bool
-	startAtZero    bool
-	declaredFrames string
-	declaredCount  int64
-	declaredKnown  bool
-	durationUS     int64
-	keyframeAt     map[int64]bool
-	packets        int64
-	width          int
-	height         int
-	avgFPS         string
-	pixelFmt       string
+	streamOK          bool
+	startAtZero       bool
+	declaredFrames    string
+	declaredCount     int64
+	declaredKnown     bool
+	durationUS        int64
+	keyframeAt        map[int64]bool
+	packets           int64
+	width             int
+	height            int
+	avgFPS            string
+	pixelFmt          string
+	sampleAspectRatio string
 }
 
 func probeFinalJobFragment(ctx context.Context, path string) (finalJobFragmentProbe, error) {
@@ -249,6 +257,7 @@ func probeFinalJobFragment(ctx context.Context, path string) (finalJobFragmentPr
 			Width     int    `json:"width"`
 			Height    int    `json:"height"`
 			PixelFmt  string `json:"pix_fmt"`
+			SAR       string `json:"sample_aspect_ratio"`
 			AvgFPS    string `json:"avg_frame_rate"`
 			Frames    string `json:"nb_frames"`
 			BFrames   int    `json:"has_b_frames"`
@@ -271,9 +280,10 @@ func probeFinalJobFragment(ctx context.Context, path string) (finalJobFragmentPr
 	s := decoded.Streams[0]
 	probe.width, probe.height = s.Width, s.Height
 	probe.avgFPS, probe.pixelFmt = s.AvgFPS, s.PixelFmt
+	probe.sampleAspectRatio = s.SAR
 	probe.streamOK = strings.EqualFold(s.CodecName, finalJobDelivery.VideoCodec) &&
 		strings.EqualFold(s.Profile, finalJobDelivery.VideoProfile) && s.Level == finalJobDeliveryLevelCode() &&
-		finalJobDeliveryMatches(s.Width, s.Height, s.AvgFPS, s.PixelFmt) && s.BFrames == 0 &&
+		finalJobDeliveryMatches(s.Width, s.Height, s.AvgFPS, s.PixelFmt, s.SAR) && s.BFrames == 0 &&
 		finalJobSourceTimeBaseCertified(s.TimeBase)
 	probe.startAtZero = strings.TrimSpace(s.StartTime) == "0.000000"
 	probe.declaredFrames = strings.TrimSpace(s.Frames)

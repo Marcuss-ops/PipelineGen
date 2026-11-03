@@ -43,10 +43,9 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	if err != nil {
 		return "", err
 	}
-	// The execution profile is DECLARED up front and must be servable by the
-	// single native renderer: its certified closed profile is libx264/veryfast/
-	// CRF23, and the NVENC family (OpenCL sampler) is demolition debt that
-	// fails closed here — never a silent encoder substitution.
+	// The execution profile is declared up front. The native vector sampler
+	// currently rasterizes on CPU, while the declared NVENC profile encodes on
+	// GPU; neither stage silently substitutes its backend.
 	if err := scriptoverlay.RequireNativeServableProfile(profile); err != nil {
 		return "", err
 	}
@@ -404,7 +403,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 		return "", fmt.Errorf("dynamic map renderer used sampler=%q, but the declared render requires sampler=%q", summary.GPUMapSampler, sampler)
 	}
 	if !cacheHit && (renderWidth != plan.Width || renderHeight != plan.Height) {
-		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos", plan.Width, plan.Height)
+		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos,setsar=1", plan.Width, plan.Height)
 		upscaleArgs := []string{"/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
 			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen)}
 		upscaleArgs = append(upscaleArgs, scriptoverlay.MapEncodeVideoArgs(encodeProfile)...)

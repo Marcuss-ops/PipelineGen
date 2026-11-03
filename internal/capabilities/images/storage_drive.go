@@ -133,7 +133,7 @@ func (s *ImageStorageService) syncFolderRecursive(ctx context.Context, folderID,
 // aiImageDriveRootForSource previously mapped AI styles to 17 hard-coded
 // Drive folder IDs (per-style roots). Per-image layout requires EVERY
 // image — retrieved or generated — to live under the single dedicated
-// images root 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY as
+// images root 1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy as
 // <root>/<SafeFolderName(subject)>/<file> with ImagePath = [subject].
 // Returning "" opts into the registry's DestinationImage policy (which
 // resolves to ImagesFolder() → DefaultImagesRootFolderID) so the style

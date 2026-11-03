@@ -25,6 +25,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
@@ -503,20 +504,20 @@ func isNamedVisualEntity(kind scriptpkg.EntityType) bool {
 }
 
 func localizedSourceEntityType(raw string) scriptpkg.EntityType {
-	switch scriptpkg.NormalizeAnnotationType(raw) {
-	case "PERSON":
+	switch entitytype.Fold(raw) {
+	case entitytype.Person:
 		return scriptpkg.EntityTypePerson
-	case "GPE", "LOCATION":
+	case entitytype.Place:
 		return scriptpkg.EntityTypeLocation
-	case "ORG", "ORGANIZATION":
+	case entitytype.Org:
 		return scriptpkg.EntityTypeOrganization
-	case "BRAND", "LOGO":
+	case entitytype.Logo:
 		return scriptpkg.EntityType("BRAND")
-	case "EVENT":
+	case entitytype.Event:
 		return scriptpkg.EntityTypeEvent
-	case "WORK":
+	case entitytype.WorkOfArt:
 		return scriptpkg.EntityTypeWork
-	case "PRODUCT":
+	case entitytype.Product:
 		return scriptpkg.EntityTypeProduct
 	default:
 		return ""

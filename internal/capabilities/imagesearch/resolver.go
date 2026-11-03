@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -397,7 +398,7 @@ func buildQueries(dec ImageSearchDecision, text, lower string, lang string) []st
 		}
 		// A place that was already folded into the primary query ("Eiffel
 		// Tower Paris") never repeats as a standalone query.
-		if (e.Type == "GPE" || e.Type == "LOCATION") && strings.Contains(queries[0], e.Text) {
+		if entitytype.Is(e.Type, entitytype.Place) && strings.Contains(queries[0], e.Text) {
 			continue
 		}
 		if q := entityQuery(e, pair, text); q != "" {
@@ -481,12 +482,18 @@ func primaryQuery(dec ImageSearchDecision, text, lower string, pair bool, lang s
 // entityQuery is the secondary-entity query. Persons follow the pair rule;
 // orgs use their hint; everything else uses its surface.
 func entityQuery(e ResolvedEntity, pair bool, text string) string {
-	switch e.Type {
-	case "PERSON":
+	switch entitytype.Fold(e.Type) {
+	case entitytype.Person:
 		return personQuery(e, pair)
-	case "ORG":
+	case entitytype.Org:
 		return orgQuery(e)
-	case "LANDMARK", "LOCATION", "GPE", "PRODUCT", "ANIMAL", "OBJECT", "CATEGORY":
+	case entitytype.Place, entitytype.Product:
+		return e.querySurface()
+	}
+	// Provider taxonomy that is not an entity family (animal/object searches
+	// use the surface like a place does).
+	switch strings.ToUpper(strings.TrimSpace(e.Type)) {
+	case "ANIMAL", "OBJECT", "CATEGORY":
 		return e.querySurface()
 	default:
 		return ""

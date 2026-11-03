@@ -8,7 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-const testImagesRoot = "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+const testImagesRoot = "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
 
 // TestEntityImageLibraryDestinationPinsCanonicalSlugUnderTheImagesRoot pins the
 // library layout an entity image must land in:

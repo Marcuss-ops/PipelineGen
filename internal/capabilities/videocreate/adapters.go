@@ -347,25 +347,33 @@ func CopyCertificationFor(segments []AssembleSegment) (mediaexec.CopyCertificati
 	if first.ContractID != kernelmedia.AssemblyMediaContractID {
 		return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment contract %q is not the assembly-ready contract %s", first.ContractID, kernelmedia.AssemblyMediaContractID)
 	}
+	extradata := strings.ToLower(strings.TrimSpace(first.VideoExtradataSHA256))
+	if extradata != kernelmedia.CanonicalVideoExtradataSHA256 {
+		return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment avcC %q is not the canonical bitstream identity %s (ASSEMBLY_INPUT_CONTRACT_MISMATCH)", first.VideoExtradataSHA256, kernelmedia.CanonicalVideoExtradataSHA256)
+	}
 	for i, seg := range segments {
 		if seg.ContractID != first.ContractID {
 			return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment %d contract %q != %q (ASSEMBLY_INPUT_CONTRACT_MISMATCH)", i, seg.ContractID, first.ContractID)
+		}
+		if sig := strings.ToLower(strings.TrimSpace(seg.VideoExtradataSHA256)); sig != extradata {
+			return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment %d avcC %q != %q (ASSEMBLY_INPUT_CONTRACT_MISMATCH)", i, seg.VideoExtradataSHA256, extradata)
 		}
 		if seg.Contract != first.Contract {
 			return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: segment %d contract block %+v != %+v (ASSEMBLY_INPUT_CONTRACT_MISMATCH)", i, seg.Contract, first.Contract)
 		}
 	}
 	cert := mediaexec.CopyCertification{
-		CopyEligible:       true,
-		ProfileID:          first.ContractID,
-		Codec:              first.Contract.VideoCodec,
-		Width:              uint32(first.Contract.Width),
-		Height:             uint32(first.Contract.Height),
-		FPSNum:             uint32(first.Contract.FPSNum),
-		FPSDen:             uint32(first.Contract.FPSDen),
-		ClosedGOP:          true,
-		FirstFrameKeyframe: true,
-		ContractID:         first.ContractID,
+		CopyEligible:         true,
+		ProfileID:            first.ContractID,
+		Codec:                first.Contract.VideoCodec,
+		Width:                uint32(first.Contract.Width),
+		Height:               uint32(first.Contract.Height),
+		FPSNum:               uint32(first.Contract.FPSNum),
+		FPSDen:               uint32(first.Contract.FPSDen),
+		ClosedGOP:            true,
+		FirstFrameKeyframe:   true,
+		ContractID:           first.ContractID,
+		VideoExtradataSHA256: extradata,
 	}
 	if err := cert.Validate(); err != nil {
 		return mediaexec.CopyCertification{}, fmt.Errorf("videocreate: assemble: %w", err)

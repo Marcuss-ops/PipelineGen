@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -58,10 +59,10 @@ func aggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg
 				continue
 			}
 			entity := scriptpkg.Entity{Value: value, Type: ent.Type, Score: float32(ent.Confidence)}
-			switch strings.ToUpper(strings.TrimSpace(ent.Type)) {
-			case "PERSON":
+			switch {
+			case entitytype.Is(ent.Type, entitytype.Person):
 				agg.Persons = append(agg.Persons, entity)
-			case "LOCATION", "PLACE", "COUNTRY", "CITY":
+			case entitytype.Is(ent.Type, entitytype.Place):
 				agg.Places = append(agg.Places, entity)
 			default:
 				agg.Concepts = append(agg.Concepts, entity)

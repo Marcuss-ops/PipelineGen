@@ -17,6 +17,7 @@ import (
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -146,7 +147,7 @@ func isTextOnlyLocationCard(item capabilityoverlay.OverlayItem) bool {
 	if len(item.AssetRefs) != 0 {
 		return false
 	}
-	if item.EntityRef != nil && strings.EqualFold(strings.TrimSpace(item.EntityRef.Type), "LOCATION") {
+	if item.EntityRef != nil && entitytype.Is(item.EntityRef.Type, entitytype.Place) {
 		return true
 	}
 	return strings.EqualFold(strings.TrimSpace(item.Kind), "location")
@@ -462,10 +463,10 @@ func projectSceneEntityResult(seg scriptpkg.VidRushSegmentResult) *scriptpkg.Ent
 			continue
 		}
 		entity := scriptpkg.Entity{Value: value, Type: ent.Type, Score: float32(ent.Confidence)}
-		switch strings.ToUpper(strings.TrimSpace(ent.Type)) {
-		case "PERSON":
+		switch {
+		case entitytype.Is(ent.Type, entitytype.Person):
 			res.Persons = append(res.Persons, entity)
-		case "LOCATION", "PLACE", "COUNTRY", "CITY":
+		case entitytype.Is(ent.Type, entitytype.Place):
 			res.Places = append(res.Places, entity)
 		default:
 			res.Concepts = append(res.Concepts, entity)

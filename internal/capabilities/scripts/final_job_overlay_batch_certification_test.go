@@ -124,7 +124,7 @@ func TestFinalJobOverlayHandoffMakesThePackedSceneBatchConsumable(t *testing.T) 
 	result.FinalAudio.DurationMS = 30_000
 	ref := garlascoPackedBatchReference(t, item, 3_000_000)
 	result.OverlayRender = &ref
-	_, wire, err := finalJobOverlayHandoff(context.Background(), result, nil)
+	_, wire, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
 	if err != nil {
 		t.Fatalf("the packed scene batch must reach the final-job handoff: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestFinalJobOverlayHandoffCertifiesSplitSetAndIsDeterministic(t *testing.T)
 		result := ssotGateResult(items, artifact)
 		ref := packedBatchReference(t, items, artifact)
 		result.OverlayRender = &ref
-		rows, wire, err := finalJobOverlayHandoff(context.Background(), result, nil)
+		rows, wire, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
 		if err != nil {
 			t.Fatalf("finalJobOverlayHandoff: %v", err)
 		}
@@ -432,14 +432,14 @@ func TestFinalJobManifestWireToleratesOneFrameOfReplaceWindow(t *testing.T) {
 	ref.Batches[0].Manifest.TimelineSHA256 = ref.Batches[0].Artifact.SHA256
 	result := ssotGateResult([]capoverlay.OverlayItem{item}, ref.Batches[0].Artifact)
 	result.OverlayRender = &RenderReference{Manifest: ref.Batches[0].Manifest, Batches: ref.Batches}
-	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err != nil {
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false); err != nil {
 		t.Fatalf("a one-frame replace-window rounding must reach the wire: %v", err)
 	}
 	// Two frames past the budget: the artifact genuinely cannot serve it.
 	beyond := artifactOut + 2*finalJobArtifactWindowTolerance(24, 1)
 	ref.Batches[0].Manifest.Entries[0].ArtifactOutUS = &beyond
 	result.OverlayRender = &RenderReference{Manifest: ref.Batches[0].Manifest, Batches: ref.Batches}
-	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err == nil {
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false); err == nil {
 		t.Fatal("a replace window two frames past the artifact budget must fail closed")
 	}
 }

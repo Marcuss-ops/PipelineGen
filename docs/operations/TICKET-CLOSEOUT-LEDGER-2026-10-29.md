@@ -135,7 +135,7 @@ ticket stesso.
 | Ticket | Blocco |
 |---|---|
 | `Chronon3d/docs/tickets/TICKET-100X-PERF-WAVES.md` | B2 sotto il gate 300 render-loop fps; sidecar NVENC null; golden MTSDF e gate VRAM non verificati |
-| `Chronon3d/docs/tickets/TICKET-PERFORMANCE-AUDIT-2026-10.md` | Misure native GPU/CI esterne |
+| `Chronon3d/docs/tickets/archive/TICKET-PERFORMANCE-AUDIT-2026-10.md` | Misure native GPU/CI esterne |
 | `Chronon3d/docs/tickets/TICKET-AUDIT-ROADMAP-WAVES.md` | CI exact-SHA ed evidenza render GPU |
 | `Chronon3d/docs/tickets/TICKET-MAIN-TRUTH-STAGE-1-2.md` | Certificazione same-SHA non verde |
 | `Chronon3d/docs/tickets/TICKET-FFMPEG-PIPE-SINK-DEMOLITION.md` | Encoder pipe diagnostico ancora presente; gate nativi non verdi |

@@ -345,12 +345,13 @@ func (r RenderChildResult) assembleSegment() (AssembleSegment, error) {
 		return AssembleSegment{}, fmt.Errorf("videocreate: render segment contract %q is not the assembly-ready contract %s (no copy certification)", r.ContractID, kernelmedia.AssemblyMediaContractID)
 	}
 	return AssembleSegment{
-		AssetID:       r.AssetID,
-		DurationMS:    r.DurationMS,
-		CopyCertified: true,
-		ContractID:    r.ContractID,
-		Contract:      r.Contract,
-		LocalRef:      r.LocalRef,
+		AssetID:              r.AssetID,
+		DurationMS:           r.DurationMS,
+		CopyCertified:        true,
+		ContractID:           r.ContractID,
+		Contract:             r.Contract,
+		VideoExtradataSHA256: r.Contract.VideoExtradataSHA256,
+		LocalRef:             r.LocalRef,
 	}, nil
 }
 

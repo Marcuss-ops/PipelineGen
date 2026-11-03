@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 )
 
 // OverlayIntentVersion is the schema version of the OverlayIntent. Bump it
@@ -336,24 +337,29 @@ func canonicalVisualEntityKey(canonicalID, name string) string {
 //	QUOTE → quote, PRODUCT → product, LOGO/BRAND → logo,
 //	CHAPTER → chapter_card, everything else → concept.
 func EntityTypeToKind(entityType string) OverlayKind {
-	switch strings.ToUpper(strings.TrimSpace(entityType)) {
-	case "PERSON":
-		return KindEntityCard
-	case "ORG", "ORGANIZATION":
-		return KindOrganization
-	case "GPE", "PLACE", "LOCATION", "CITY", "COUNTRY":
-		return KindLocation
-	case "NUMBER", "NUM", "CARDINAL", "ORDINAL", "MONEY", "PERCENT", "PERCENTAGE", "METRIC", "METRICS", "STATISTIC", "STATISTICS", "QUANTITY", "DATE", "TIME":
-		return KindNumber
-	case "QUOTE":
-		return KindQuote
-	case "PRODUCT":
-		return KindProduct
-	case "LOGO":
-		return KindLogo
-	case "BRAND":
+	// BRAND and LOGO share one identity (kernel/entitytype folds BRAND onto
+	// LOGO) but render differently: a brand is wordmark text, a logo is a
+	// mark. That is the ONLY distinction kept on the raw spelling; every
+	// other spelling is resolved through the one table.
+	if entitytype.Is(entityType, entitytype.Logo) && strings.EqualFold(strings.TrimSpace(entityType), "BRAND") {
 		return KindBrandText
-	case "CHAPTER":
+	}
+	switch entitytype.Fold(entityType) {
+	case entitytype.Person:
+		return KindEntityCard
+	case entitytype.Org:
+		return KindOrganization
+	case entitytype.Place:
+		return KindLocation
+	case entitytype.Number, entitytype.Money, entitytype.Percent, entitytype.Date, entitytype.Time:
+		return KindNumber
+	case entitytype.Quote:
+		return KindQuote
+	case entitytype.Product:
+		return KindProduct
+	case entitytype.Logo:
+		return KindLogo
+	case entitytype.Chapter:
 		return KindChapterCard
 	default:
 		return KindConcept

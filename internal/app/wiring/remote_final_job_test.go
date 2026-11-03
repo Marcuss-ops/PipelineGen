@@ -53,6 +53,67 @@ func TestFinalJobAttachBudgetKnob(t *testing.T) {
 	}
 }
 
+func TestFinalJobQueueBudgetKnob(t *testing.T) {
+	cases := []struct {
+		name    string
+		env     string
+		want    time.Duration
+		wantErr bool
+	}{
+		{name: "unset uses the default", env: "", want: defaultFinalJobQueueBudget},
+		{name: "explicit seconds", env: "120", want: 2 * time.Minute},
+		{name: "zero disables the queue budget", env: "0", want: 0},
+		{name: "malformed fails closed", env: "soon", wantErr: true},
+		{name: "negative fails closed", env: "-1", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("VELOX_FINAL_JOB_QUEUE_SECONDS", tc.env)
+			got, err := finalJobQueueBudget()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("queue budget = %v, want a configuration error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("finalJobQueueBudget: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("queue budget = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFinalJobWorkerPinIsOptIn pins the r9 remediation: there is no built-in
+// worker pin. An empty setting means the Master places the job, and the
+// retired worker-51 default is rejected instead of silently re-applied.
+func TestFinalJobWorkerPinIsOptIn(t *testing.T) {
+	t.Setenv("VELOX_FINAL_JOB_WORKER_ID", "")
+	pin, err := finalJobWorkerPin()
+	if err != nil {
+		t.Fatalf("unset pin: %v", err)
+	}
+	if pin != "" {
+		t.Fatalf("unset pin = %q, want master placement", pin)
+	}
+
+	t.Setenv("VELOX_FINAL_JOB_WORKER_ID", "  host_57_129_132_133  ")
+	pin, err = finalJobWorkerPin()
+	if err != nil {
+		t.Fatalf("explicit pin: %v", err)
+	}
+	if pin != "host_57_129_132_133" {
+		t.Fatalf("explicit pin = %q, want the trimmed worker id", pin)
+	}
+
+	t.Setenv("VELOX_FINAL_JOB_WORKER_ID", "velox-worker-523925eb")
+	if _, err := finalJobWorkerPin(); err == nil {
+		t.Fatal("the retired worker-51 pin must be rejected, not silently honoured")
+	}
+}
+
 func TestFinalJobWaitErrorMapsTheTransportSentinel(t *testing.T) {
 	if err := finalJobWaitError(nil); err != nil {
 		t.Fatalf("nil must stay nil, got %v", err)

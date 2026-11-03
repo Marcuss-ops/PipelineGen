@@ -378,10 +378,18 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 			if outUS <= inUS {
 				continue
 			}
+			startFrame := finalJobFrameAtUS(inUS, fpsNum, fpsDen)
+			endFrame := finalJobFrameAtUS(outUS, fpsNum, fpsDen)
+			// The compiled timeline is frame-quantized. A positive microsecond
+			// interval shorter than half a frame can round to no output frame;
+			// omit it instead of emitting an invalid zero-frame worker segment.
+			if endFrame <= startFrame {
+				continue
+			}
 			segments = append(segments, finalJobPlanSegment{
 				SegmentID: fmt.Sprintf("segment-%04d", len(segments)), AssetID: source.assetID, SHA256: source.sha256,
-				TimelineStartFrame: finalJobFrameAtUS(inUS, fpsNum, fpsDen),
-				FrameCount:         finalJobFrameAtUS(outUS, fpsNum, fpsDen) - finalJobFrameAtUS(inUS, fpsNum, fpsDen),
+				TimelineStartFrame: startFrame,
+				FrameCount:         endFrame - startFrame,
 				SourceInUS:         source.sourceInUS + (inUS - source.startUS), SourceDurationUS: outUS - inUS,
 			})
 		}
@@ -396,11 +404,13 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 		}
 		startFrame := finalJobFrameAtUS(overlay.startUS, fpsNum, fpsDen)
 		endFrame := finalJobFrameAtUS(overlay.endUS, fpsNum, fpsDen)
-		segments = append(segments, finalJobPlanSegment{
-			SegmentID: fmt.Sprintf("segment-%04d", len(segments)), AssetID: overlay.assetID, SHA256: overlay.sha256,
-			TimelineStartFrame: startFrame, FrameCount: endFrame - startFrame,
-			SourceInUS: overlay.artifactInUS, SourceDurationUS: overlay.endUS - overlay.startUS,
-		})
+		if endFrame > startFrame {
+			segments = append(segments, finalJobPlanSegment{
+				SegmentID: fmt.Sprintf("segment-%04d", len(segments)), AssetID: overlay.assetID, SHA256: overlay.sha256,
+				TimelineStartFrame: startFrame, FrameCount: endFrame - startFrame,
+				SourceInUS: overlay.artifactInUS, SourceDurationUS: overlay.endUS - overlay.startUS,
+			})
+		}
 		cursorUS = overlay.endUS
 	}
 	if err := appendBase(cursorUS, durationUS); err != nil {
@@ -409,7 +419,7 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 	segments = finalJobMergeContiguousSegments(segments)
 	for i, segment := range segments {
 		if segment.FrameCount <= 0 || segment.SourceDurationUS <= 0 {
-			return nil, fmt.Errorf("final_job V2 segment %d has an empty frame or source window", i)
+			return nil, fmt.Errorf("final_job V2 segment %d has an empty frame or source window (frames=%d source_duration_us=%d asset=%q)", i, segment.FrameCount, segment.SourceDurationUS, segment.AssetID)
 		}
 	}
 	return segments, nil

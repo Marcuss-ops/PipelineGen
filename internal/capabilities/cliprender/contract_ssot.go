@@ -113,12 +113,13 @@ func ContractWireBlock(c *ResolvedContract) map[string]any {
 		return map[string]any{}
 	}
 	return map[string]any{
-		"width":        c.Width,
-		"height":       c.Height,
-		"fps_num":      c.FPS.Num,
-		"fps_den":      c.FPS.Den,
-		"video_codec":  c.VideoCodec,
-		"audio_codec":  c.AudioCodec,
-		"pixel_format": c.PixelFormat,
+		"width":                  c.Width,
+		"height":                 c.Height,
+		"fps_num":                c.FPS.Num,
+		"fps_den":                c.FPS.Den,
+		"video_codec":            c.VideoCodec,
+		"audio_codec":            c.AudioCodec,
+		"pixel_format":           c.PixelFormat,
+		"video_extradata_sha256": c.VideoExtradataSHA256,
 	}
 }

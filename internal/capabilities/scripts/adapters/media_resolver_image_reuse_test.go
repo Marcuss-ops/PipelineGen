@@ -151,3 +151,92 @@ func TestEntityImageCatalogCandidatesBoundsMaterializationLookups(t *testing.T) 
 	require.Equal(t, 5, counting.materializationLookups,
 		"materialization lookups must stop at the requested candidate limit")
 }
+
+// TestPlanInternetImageDiscoveryPinsTheQueryRule certifies the pure decision
+// that replaced the inline block in the segment loop: identity beats topic, an
+// operator query is always kept, and a fan-out hit only suppresses the search
+// when it actually covers every requested identity. The last case is the
+// r20minuti regression: a warm generic scene image must not stand in for a
+// portrait, or the segment silently plans a text card instead of a photo.
+func TestPlanInternetImageDiscoveryPinsTheQueryRule(t *testing.T) {
+	coversAll := func(string) bool { return true }
+	coversNone := func(string) bool { return false }
+
+	cases := []struct {
+		name        string
+		contextual  []string
+		entity      []string
+		manual      []string
+		entityMode  bool
+		fanoutOwned bool
+		covers      func(string) bool
+		wantMode    internetImageDiscoveryMode
+		wantQueries []string
+	}{
+		{
+			name:        "contextual search without entity mode",
+			contextual:  []string{"Garlasco piazza"},
+			wantMode:    internetImageDiscoverySearch,
+			wantQueries: []string{"Garlasco piazza"},
+		},
+		{
+			name:        "entity identity replaces the topic query",
+			contextual:  []string{"Garlasco piazza"},
+			entity:      []string{"Enzo Boschetti"},
+			entityMode:  true,
+			wantMode:    internetImageDiscoverySearch,
+			wantQueries: []string{"Enzo Boschetti"},
+		},
+		{
+			name:        "no identity keeps the contextual query",
+			contextual:  []string{"Garlasco piazza"},
+			entityMode:  true,
+			covers:      coversNone,
+			wantMode:    internetImageDiscoverySearch,
+			wantQueries: []string{"Garlasco piazza"},
+		},
+		{
+			name:        "manual query is kept and deduped case-insensitively",
+			contextual:  []string{" Garlasco piazza "},
+			manual:      []string{"garlasco PIAZZA", "chiesa di San Rocco", "  "},
+			wantMode:    internetImageDiscoverySearch,
+			wantQueries: []string{"Garlasco piazza", "chiesa di San Rocco"},
+		},
+		{
+			name:     "no query at all bypasses discovery",
+			wantMode: internetImageDiscoveryBypass,
+		},
+		{
+			name:        "fan-out hit suppresses a contextual search",
+			contextual:  []string{"Garlasco piazza"},
+			fanoutOwned: true,
+			wantMode:    internetImageDiscoveryReuse,
+			wantQueries: []string{"Garlasco piazza"},
+		},
+		{
+			name:        "fan-out hit covers every requested identity",
+			entity:      []string{"Enzo Boschetti"},
+			entityMode:  true,
+			fanoutOwned: true,
+			covers:      coversAll,
+			wantMode:    internetImageDiscoveryReuse,
+			wantQueries: []string{"Enzo Boschetti"},
+		},
+		{
+			name:        "a generic scene image must not suppress the identity search",
+			entity:      []string{"Enzo Boschetti"},
+			entityMode:  true,
+			fanoutOwned: true,
+			covers:      coversNone,
+			wantMode:    internetImageDiscoverySearch,
+			wantQueries: []string{"Enzo Boschetti"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := planInternetImageDiscovery(tc.contextual, tc.entity, tc.manual, tc.entityMode, tc.fanoutOwned, tc.covers)
+			require.Equal(t, tc.wantMode, plan.Mode)
+			require.Equal(t, tc.wantQueries, plan.Queries)
+		})
+	}
+}

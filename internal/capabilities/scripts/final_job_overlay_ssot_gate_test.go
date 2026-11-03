@@ -64,7 +64,7 @@ func TestFinalJobMultiArtifactManifestHandoff(t *testing.T) {
 		{BatchID: "one", Artifact: a, Manifest: first.Manifest},
 		{BatchID: "two", Artifact: b, Manifest: second.Manifest},
 	}}
-	rows, wire, err := finalJobOverlayHandoff(context.Background(), result, nil)
+	rows, wire, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,12 +72,12 @@ func TestFinalJobMultiArtifactManifestHandoff(t *testing.T) {
 		t.Fatalf("unexpected multi-artifact wire: rows=%v wire=%v", rows, wire)
 	}
 	second.Manifest.Entries[0].InUS = 500_000
-	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err == nil || !strings.Contains(err.Error(), "overlaps") {
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false); err == nil || !strings.Contains(err.Error(), "overlaps") {
 		t.Fatalf("overlapping artifacts must fail closed, got %v", err)
 	}
 	second.Manifest.Entries[0].InUS = 2_000_000
 	second.Manifest.Entries[0].ItemID = "a"
-	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err == nil {
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false); err == nil {
 		t.Fatal("duplicate entry ownership must fail closed")
 	}
 }
@@ -88,7 +88,7 @@ func TestFinalJobManifestPreservesPackedOffsetsAndRejectsPlacement(t *testing.T)
 	in, out := int64(0), int64(1_000_000)
 	result.OverlayRender.Manifest.Entries[0].ArtifactInUS = &in
 	result.OverlayRender.Manifest.Entries[0].ArtifactOutUS = &out
-	_, manifest, err := finalJobOverlayHandoff(context.Background(), result, nil)
+	_, manifest, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestFinalJobManifestPreservesPackedOffsetsAndRejectsPlacement(t *testing.T)
 		t.Fatalf("packed offsets lost at final handoff: %#v", entry)
 	}
 	result.OverlayRender.Manifest.Entries[0].Placement = &overlaymodel.ManifestPlacement{WPx: 10, HPx: 10}
-	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil); err == nil {
+	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false); err == nil {
 		t.Fatal("unsupported spatial placement must fail closed")
 	}
 }

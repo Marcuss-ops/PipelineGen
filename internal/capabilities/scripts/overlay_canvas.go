@@ -291,6 +291,11 @@ const (
 	overlayGroupLocations        = "locations"
 	overlayGroupImages           = "images"
 	overlayGroupBullets          = "bullets"
+	// overlayGroupDates caps the number/date card lane. Date cards are easy to
+	// extract and otherwise crowd out the entity/image lanes an editorial run
+	// actually asked for. The group is opt-in: an absent key preserves the
+	// historical per-scene MaxNumbers behavior.
+	overlayGroupDates = "dates"
 )
 
 var overlayGroupKeys = map[string]bool{
@@ -301,6 +306,7 @@ var overlayGroupKeys = map[string]bool{
 	overlayGroupLocations:        true,
 	overlayGroupImages:           true,
 	overlayGroupBullets:          true,
+	overlayGroupDates:            true,
 }
 
 func cloneOverlayGroupLimits(src map[string]int) map[string]int {
@@ -348,6 +354,11 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 		return overlayGroupMaps
 	case item.Kind == string(capabilityoverlay.KindLocation):
 		return overlayGroupLocations
+	case item.Kind == "number" || item.Kind == "timeline_date":
+		// Number cards share one run-level lane. The planner emits dates and
+		// metrics as kind="number" with different templates, so the group must
+		// key the lane, not a single template id.
+		return overlayGroupDates
 	case item.Kind == string(capabilityoverlay.KindEntityImage) && (strings.TrimSpace(item.EntityCaption) != "" || overlayImageLayersHaveCaptions(item)):
 		return overlayGroupEntitiesWithText
 	case entityCardKind(capabilityoverlay.OverlayKind(item.Kind)):

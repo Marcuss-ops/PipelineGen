@@ -1,6 +1,7 @@
 package wiring
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 
 	"context"
@@ -137,7 +138,7 @@ const (
 // means the measured default, 1 means the pre-2026-11-01 serial handoff, and a
 // malformed value degrades to serial rather than inventing parallelism.
 func finalJobResolveConcurrency() int {
-	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_RESOLVE_CONCURRENCY"))
+	raw := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_RESOLVE_CONCURRENCY"))
 	if raw == "" {
 		return defaultFinalJobResolveConcurrency
 	}
@@ -300,7 +301,7 @@ func (a *remoteFinalJobAdapter) resolveHits() int {
 // same file id with the same byte size is the same bytes, so the next run must
 // not pay the network again. VELOX_FINAL_JOB_STOCK_CACHE_DIR relocates it.
 func finalJobStockCacheDir() string {
-	if dir := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_STOCK_CACHE_DIR")); dir != "" {
+	if dir := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_STOCK_CACHE_DIR")); dir != "" {
 		return dir
 	}
 	return filepath.Join("data", "cache", "final_job_stock")

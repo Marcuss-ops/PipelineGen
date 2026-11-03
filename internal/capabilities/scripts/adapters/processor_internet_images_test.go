@@ -133,15 +133,34 @@ func (multipleInternetImageSearcher) SearchImages(_ context.Context, req Interne
 	return out, nil
 }
 
-type recordingInternetImageSearcher struct{ queries chan string }
+// recordingInternetImageSearcher records every provider query in a locked
+// slice. It used to write to a one-slot channel: once the discovery rule
+// emits BOTH the manual and the identity query (the r20minuti contract), the
+// second send blocked forever and the whole adapters suite hung at 45s.
+type recordingInternetImageSearcher struct {
+	mu      sync.Mutex
+	queries []string
+}
 
-func (s recordingInternetImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
-	s.queries <- req.Query
+func (s *recordingInternetImageSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.mu.Lock()
+	s.queries = append(s.queries, req.Query)
+	s.mu.Unlock()
 	return []scriptpkg.SegmentAssetCandidate{{AssetID: "manual-image", Provider: "internet_images", Query: req.Query, SourceURL: "https://images.example/manual.jpg"}}, nil
 }
 
-func TestInternetImagesProcessorUsesManualSearchBeforeEntityExpansion(t *testing.T) {
-	searcher := recordingInternetImageSearcher{queries: make(chan string, 1)}
+func (s *recordingInternetImageSearcher) recorded() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.queries...)
+}
+
+// TestInternetImagesProcessorKeepsManualSearchWithEntityExpansion pins the
+// merged discovery contract: an operator's manual query is always kept, and
+// the identity query is searched alongside it. The previous harness asserted
+// "manual only" and could not survive the identity query at all.
+func TestInternetImagesProcessorKeepsManualSearchWithEntityExpansion(t *testing.T) {
+	searcher := &recordingInternetImageSearcher{}
 	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ForceRefresh: true,
@@ -159,8 +178,18 @@ func TestInternetImagesProcessorUsesManualSearchBeforeEntityExpansion(t *testing
 	if _, err := processor.Process(context.Background(), plan, input); err != nil {
 		t.Fatalf("process failed: %v", err)
 	}
-	if got := <-searcher.queries; got != "Chichen Itza Maya pyramid Yucatan" {
-		t.Fatalf("provider query = %q, want manual image query", got)
+	queries := searcher.recorded()
+	if len(queries) == 0 {
+		t.Fatal("the provider was never called")
+	}
+	manual := false
+	for _, query := range queries {
+		if query == "Chichen Itza Maya pyramid Yucatan" {
+			manual = true
+		}
+	}
+	if !manual {
+		t.Fatalf("provider queries = %q, want the manual image query kept", queries)
 	}
 }
 

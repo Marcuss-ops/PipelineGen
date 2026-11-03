@@ -121,15 +121,21 @@ func TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes(t *testi
 	}
 }
 
-// TestFinalJobStockPlannerFailsClosedOnRejectedSource pins the keyframe guard:
-// a folder whose only file is copy-incompatible fails the walk instead of
-// handing the worker a source it must reject.
-func TestFinalJobStockPlannerFailsClosedOnRejectedSource(t *testing.T) {
-	for rejected := range finalJobRejectedStockDriveIDs {
-		resolver := newCountingStockResolver([]FinalJobStockFile{{ID: rejected, Name: "bad.mp4"}}, map[string]int64{rejected: 5_000})
-		if _, err := newFinalJobStockPlanner().sceneClips(context.Background(), resolver, "folder-1", 5_000_000); err == nil {
-			t.Fatal("a folder with only the rejected source must fail closed")
-		}
+// TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource ensures a stock
+// source that cannot be packet-copied remains available to the local preparer,
+// which re-encodes and certifies the exact requested window before handoff.
+func TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource(t *testing.T) {
+	const formerRejected = "1xvvjxin09xbwy7qqignzlmpjftckql_o"
+	resolver := newCountingStockResolver(
+		[]FinalJobStockFile{{ID: formerRejected, Name: "stock.mp4"}},
+		map[string]int64{formerRejected: 5_000},
+	)
+	clips, err := newFinalJobStockPlanner().sceneClips(context.Background(), resolver, "folder-1", 5_000_000)
+	if err != nil {
+		t.Fatalf("GOP-incompatible source should reach the certified preparer: %v", err)
+	}
+	if len(clips) != 1 || clips[0].Asset["drive_file_id"] != formerRejected {
+		t.Fatalf("clips = %+v, want the former GOP-rejected stock source", clips)
 	}
 }
 

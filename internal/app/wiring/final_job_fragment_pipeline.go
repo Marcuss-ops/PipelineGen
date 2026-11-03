@@ -58,17 +58,18 @@ func (p *finalJobSegmentPreparer) recordWindow(ctx context.Context, window final
 // recorded under this scope, so there is nothing to filter out here.
 func (s finalJobSegmentStats) timing() scriptgen.RemoteFinalJobSegmentPrepTiming {
 	timing := scriptgen.RemoteFinalJobSegmentPrepTiming{
-		Segments:     s.segments,
-		Reused:       s.reused,
-		Cached:       s.cached,
-		Derived:      s.derived,
-		Copied:       s.copied,
-		DownloadMS:   s.downloadMS,
-		EncodeMS:     s.encodeMS,
-		VerifyMS:     s.verifyMS,
-		PublishMS:    s.publishMS,
-		Bytes:        s.bytes,
-		PaddedFrames: s.paddedFrames,
+		Segments:        s.segments,
+		Reused:          s.reused,
+		Cached:          s.cached,
+		Derived:         s.derived,
+		Copied:          s.copied,
+		EncodeFallbacks: s.encodeFallbacks,
+		DownloadMS:      s.downloadMS,
+		EncodeMS:        s.encodeMS,
+		VerifyMS:        s.verifyMS,
+		PublishMS:       s.publishMS,
+		Bytes:           s.bytes,
+		PaddedFrames:    s.paddedFrames,
 	}
 	for _, window := range s.windows {
 		timing.Windows = append(timing.Windows, scriptgen.RemoteFinalJobSegmentPrepWindow{
@@ -84,6 +85,7 @@ func (s finalJobSegmentStats) timing() scriptgen.RemoteFinalJobSegmentPrepTiming
 			PublishMS:    window.publishMS,
 			Bytes:        window.bytes,
 			PaddedFrames: window.paddedFrames,
+			CopyFailure:  window.copyFailure,
 		})
 	}
 	// Deterministic receipt: four lanes finish in whatever order the CPU
@@ -155,16 +157,20 @@ const finalJobMaxScopedHandoffs = 64
 // field is only ever added to by work recorded under that scope, so two
 // concurrent runs can never report each other's fragments as their own.
 type finalJobSegmentStats struct {
-	segments   int
-	reused     int
-	cached     int
-	derived    int
-	copied     int
-	downloadMS int64
-	encodeMS   int64
-	verifyMS   int64
-	publishMS  int64
-	bytes      int64
+	segments int
+	reused   int
+	cached   int
+	derived  int
+	copied   int
+	// encodeFallbacks counts GOP-aligned windows with a certified source that
+	// were encoded after copy failed or produced incompatible bytes. Unaligned
+	// and uncertified windows are planned encoder work, described per window.
+	encodeFallbacks int
+	downloadMS      int64
+	encodeMS        int64
+	verifyMS        int64
+	publishMS       int64
+	bytes           int64
 	// paddedFrames counts tail frames cloned to reach a window the source could
 	// not supply. It stays zero when every requested frame existed.
 	paddedFrames int64
@@ -197,6 +203,9 @@ type finalJobSegmentWindow struct {
 	publishMS    int64
 	bytes        int64
 	paddedFrames int64
+	// copyFailure names why an eligible window was encoded; empty when no copy
+	// was attempted or the copy succeeded.
+	copyFailure string
 }
 
 // finalJobMaxReportedWindows bounds the per-window list a single receipt can
@@ -267,8 +276,15 @@ func (p *finalJobSegmentPreparer) fragmentEncoderSettings() (string, string, err
 	if !strings.Contains(strings.ToLower(codec), "264") || preset == "" || p.policy.CRF <= 0 {
 		return "", "", fmt.Errorf("final-job fragment requires a resolved H.264 encoder policy")
 	}
-	if strings.Contains(strings.ToLower(codec), "nvenc") {
-		preset = nvencPresetFor(preset)
+	// One canonical encoder, not a family of "H.264" producers. The certified
+	// avcC is libx264's exact SPS/PPS; NVENC emits a different parameter-set
+	// family with the same profile/level, which is precisely the defect this
+	// contract exists to stop. Fail before any expensive work.
+	if !strings.EqualFold(codec, "libx264") {
+		return "", "", fmt.Errorf("final-job fragments require the canonical libx264 encoder, got %q", codec)
+	}
+	if !strings.EqualFold(preset, "veryfast") {
+		return "", "", fmt.Errorf("final-job fragments require the certified veryfast preset, got %q", preset)
 	}
 	return codec, preset, nil
 }
@@ -307,7 +323,6 @@ func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, ou
 	if err != nil {
 		return err
 	}
-	hardware := strings.Contains(strings.ToLower(codec), "nvenc")
 	start := float64(request.SourceInUS) / 1_000_000
 	args := []string{
 		"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
@@ -325,25 +340,21 @@ func (p *finalJobSegmentPreparer) encodeFragment(ctx context.Context, source, ou
 		"-frames:v", strconv.FormatInt(request.FrameCount, 10), "-vsync", "cfr",
 		"-c:v", codec, "-preset", preset,
 	)
-	if hardware {
-		args = append(args, "-rc", "vbr", "-cq", strconv.Itoa(p.policy.CRF), "-b:v", "0")
-	} else {
-		args = append(args, "-crf", strconv.Itoa(p.policy.CRF))
-	}
+	args = append(args, "-crf", strconv.Itoa(p.policy.CRF))
 	args = append(args,
 		"-profile:v", finalJobDelivery.VideoProfile, "-level:v", finalJobDelivery.VideoLevel,
 		"-pix_fmt", finalJobDelivery.PixelFormat, "-r", strconv.Itoa(finalJobDelivery.FPS.Num),
+		// The canonical avcC carries bt709 VUI. Force it from the contract
+		// instead of inheriting whatever colour tags a source happens to carry.
+		"-color_primaries", finalJobDelivery.ColorPrimaries, "-color_trc", finalJobDelivery.ColorTransfer,
+		"-colorspace", finalJobDelivery.ColorSpace, "-color_range", finalJobDelivery.ColorRange,
 		"-g", strconv.FormatInt(finalJobSegmentGOP, 10),
 	)
-	// sc_threshold and keyint_min are libx264 private options; NVENC has its own
-	// scene-cut switch. The certified stream needs the same fixed GOP either way.
-	if hardware {
-		args = append(args, "-no-scenecut", "1")
-	} else {
-		args = append(args, "-keyint_min", strconv.FormatInt(finalJobSegmentGOP, 10), "-sc_threshold", "0")
-	}
 	args = append(args,
-		"-bf", "0", "-flags", "+cgop",
+		"-keyint_min", strconv.FormatInt(finalJobSegmentGOP, 10), "-sc_threshold", "0",
+		// ref=1 is part of the certified SPS (max_num_ref_frames). Leaving it
+		// to the preset changes the avcC while all nominal facts stay equal.
+		"-bf", "0", "-refs", "1", "-flags", "+cgop",
 		"-video_track_timescale", strconv.Itoa(finalJobDelivery.VideoTimeBase.Den), "-map_metadata", "-1",
 	)
 	movflags := "+faststart"
@@ -385,19 +396,6 @@ func (p *finalJobSegmentPreparer) copyCertifiedWindow(ctx context.Context, sourc
 		return fmt.Errorf("copy certified final-job window: %w: %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
-}
-
-func nvencPresetFor(preset string) string {
-	switch strings.ToLower(strings.TrimSpace(preset)) {
-	case "ultrafast", "superfast", "veryfast", "faster":
-		return "p2"
-	case "fast", "medium", "slow":
-		return "p4"
-	case "slower", "veryslow":
-		return "p6"
-	default:
-		return strings.TrimSpace(preset)
-	}
 }
 
 // finalJobWindowOnGOPGrid reports whether the requested window starts exactly on

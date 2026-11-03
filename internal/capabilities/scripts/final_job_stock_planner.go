@@ -57,8 +57,10 @@ func newFinalJobStockPlanner() *finalJobStockPlanner {
 	}
 }
 
-// folder returns the copy-compatible files of one stock folder, listing it once
-// per handoff and warming the sources it will offer.
+// folder returns the video files of one stock folder, listing it once per
+// handoff and warming the sources it will offer. The final-job preparer
+// normalizes sources that do not qualify for packet copy before publishing
+// them to the remote assembler.
 func (p *finalJobStockPlanner) folder(ctx context.Context, resolver FinalJobAssetResolver, folderID string) ([]FinalJobStockFile, error) {
 	if files, ok := p.files[folderID]; ok {
 		return files, nil
@@ -67,29 +69,18 @@ func (p *finalJobStockPlanner) folder(ctx context.Context, resolver FinalJobAsse
 	if err != nil {
 		return nil, fmt.Errorf("list selected stock folder %s: %w", folderID, err)
 	}
-	// Do not put a source whose required copy-only cut is known to fall
-	// between keyframes into the remote timeline. The next eligible file in
-	// this folder is selected in its place; if none remain, fail here on 77
-	// instead of spending a remote worker attempt on a guaranteed mux
-	// rejection.
-	eligible := make([]FinalJobStockFile, 0, len(listed))
-	for _, file := range listed {
-		if finalJobStockFileAllowed(file) {
-			eligible = append(eligible, file)
-		}
+	if len(listed) == 0 {
+		return nil, fmt.Errorf("selected stock folder %s contains no video files", folderID)
 	}
-	if len(eligible) == 0 {
-		return nil, fmt.Errorf("selected stock folder %s contains no copy-compatible video files after excluding known keyframe-incompatible sources", folderID)
-	}
-	p.files[folderID] = eligible
+	p.files[folderID] = listed
 	// Warm the sources this folder can offer BEFORE the walk asks for them. A
 	// scene at 10-14 s spends 195 ms per uncached Drive source (metadata,
 	// staged bytes, publish, signature) and r69's handoff paid 56 of those
 	// serially: 10,9 s of its 14,4 s. The set is known here and the identities
 	// are independent, so the only reason to stay serial was that nobody had
 	// asked for them concurrently.
-	prefetchFinalJobStockAssets(ctx, resolver, eligible)
-	return eligible, nil
+	prefetchFinalJobStockAssets(ctx, resolver, listed)
+	return listed, nil
 }
 
 // sceneClips consumes one scene's canonical duration from its stock folder and

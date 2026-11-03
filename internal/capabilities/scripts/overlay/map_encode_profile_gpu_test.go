@@ -73,9 +73,8 @@ func executeProfile(t *testing.T, ffmpeg, ffprobe string, profile MapEncodeProfi
 // TestMapLegacyGPUProfileExecutesOnGPU certifies the closed legacy NVENC
 // profile's ffmpeg shaping against real hardware: the exact arguments
 // MapEncodeVideoArgs emits must encode H.264 on this host's NVIDIA encoder.
-// Hosts without NVENC skip — the profile is a hardware contract. It stays
-// declarable and executable as WIRE CONTRACT for the future OpenCL-sampler
-// port, while the native render boundary rejects it (demolition debt).
+// Hosts without NVENC skip — the profile is a hardware contract. CPU map
+// sampling does not disable the GPU encoder.
 func TestMapLegacyGPUProfileExecutesOnGPU(t *testing.T) {
 	ffmpeg, ffprobe, ok := ffmpegAvailable()
 	if !ok {
@@ -91,8 +90,8 @@ func TestMapLegacyGPUProfileExecutesOnGPU(t *testing.T) {
 	if profile.Codec != MapLegacyGPUCodec || !profile.ExpectGPU {
 		t.Fatalf("legacy GPU profile = %+v, want the closed NVENC contract", profile)
 	}
-	if err := RequireNativeServableProfile(profile); err == nil {
-		t.Fatal("the legacy GPU profile must fail closed at the native render boundary")
+	if err := RequireNativeServableProfile(profile); err != nil {
+		t.Fatalf("NVENC must be servable by the native renderer: %v", err)
 	}
 	out := executeProfile(t, ffmpeg, ffprobe, profile)
 	t.Logf("legacy GPU profile shaping certified on host GPU: %s", out)
@@ -100,8 +99,7 @@ func TestMapLegacyGPUProfileExecutesOnGPU(t *testing.T) {
 
 // TestMapCPUProfileExecutesWithoutGPU certifies the native renderer's
 // production profile the same way: the declared libx264 arguments must encode
-// H.264 with no GPU on any host carrying the ffmpeg toolchain, and the
-// profile must be servable by the native render boundary.
+// H.264 on the explicit CPU diagnostic profile.
 func TestMapCPUProfileExecutesWithoutGPU(t *testing.T) {
 	ffmpeg, ffprobe, ok := ffmpegAvailable()
 	if !ok {
@@ -112,7 +110,7 @@ func TestMapCPUProfileExecutesWithoutGPU(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := RequireNativeServableProfile(profile); err != nil {
-		t.Fatalf("the production CPU profile must be servable by the native renderer: %v", err)
+		t.Fatalf("the CPU diagnostic profile must be servable by the native renderer: %v", err)
 	}
 	out := executeProfile(t, ffmpeg, ffprobe, profile)
 	t.Logf("CPU profile certified without GPU: %s", out)

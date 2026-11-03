@@ -80,6 +80,7 @@ run_deploy() {
     DEPLOY_BIN_PATH="$BIN" \
     DEPLOY_SYSTEMCTL_BIN="$TMP/systemctl" \
     DEPLOY_PIPELINEGENCTL_BIN="$TMP/pipelinegenctl" \
+    DEPLOY_SUDO_BIN=true \
     DEPLOY_CURL_BIN="$TMP/curl" \
     DEPLOY_HEALTH_TIMEOUT=10 \
     DEPLOY_READY_TIMEOUT=5 \

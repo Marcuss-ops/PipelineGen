@@ -466,6 +466,15 @@ is normal when the queue elapsed before this attach.
 > with it disabled the claim starts at `created_at` and the executor fetches on
 > demand (r101: 0 ms queue, 8.25 s execution, SUCCEEDED). The setting lives in
 > `/etc/velox-server.env` and reaches the container through `--env-file`.
+>
+> **Operational rule (2026-11-03).** For a final job, leave
+> `VELOX_PREFETCH_STRICT_CLAIM=true`. Disabling it is a measurement-only lever:
+> a worker can lease a task whose runtime assets are still between PREPARE and
+> FINALIZE and receive `409 job_already_leased`. The worker pin, when present,
+> must be a preference with fallback, not a hardcoded ID: a quarantined pinned
+> worker leaves the job PENDING even when another worker is healthy. Both
+> settings are owned by the Master configuration, not by this repository; this
+> note is the handoff contract for that external gate.
 
 ### Inside the render (`timing.worker`)
 
@@ -535,6 +544,84 @@ mechanism from the JOB-level deferral in §11: here the run fails with
   root fails closed instead of silently falling back.
 - A receipt already `SUCCEEDED` (a later phase failed the run) is reused as-is —
   the step is a no-op, not a resubmit.
+
+### Placement and the queue budget
+
+| setting | default | meaning |
+|---|---|---|
+| `VELOX_FINAL_JOB_WORKER_ID` | unset | **optional** placement pin. Unset means the Master places the job. |
+| `VELOX_FINAL_JOB_QUEUE_SECONDS` | `180` | how long a bounded wait tolerates the job NOT starting; `0` disables |
+
+- The pin used to default to worker 51 (`velox-worker-523925eb`). That worker was
+  quarantined on 2026-11-02 and r9 sat `PENDING` for 43 minutes against it, so the
+  default is gone. Naming that retired id explicitly is a **configuration error**
+  (`VELOX_FINAL_JOB_WORKER_ID pins the retired worker …`), not a silent fallback.
+- Every handoff logs its placement: `final_job placement pin=<id>` or
+  `final_job placement pin=<master>`. The same value travels in the payload as
+  `placement_pin_worker_id`, so the artifact says who was asked.
+- The queue budget is a *not-started* budget: a job the Master has not leased
+  cannot finish, so spending the whole 50-minute render budget on it only pins a
+  local worker for nothing. On expiry the wait ends with `ErrRemotePending` and
+  the handle is still persisted — the next attempt resumes the **same** Master
+  job. The rule applies only to the first, bounded wait; `VELOX_FINAL_JOB_ATTACH_SECONDS=0`
+  (the resume path) ignores it, because by then the render exists.
+- Triage: `REMOTE_RENDER_PENDING` with `timing.queue_ms` frozen and
+  `timing.started_at` empty is a placement/lease problem on the Master — check
+  `final_job placement pin=` in the log and the worker's health, not the renderer.
+
+### Copy vs encode in the fragment receipt
+
+`timing.segment_prep.windows[]` names the producing lane of every fragment
+(`reuse|cache|copy|encode|derived`). Packet copy is the fast path for GOP-
+aligned windows with a certified source. An unaligned window, an uncertified
+stock source, a disabled copy lane, a failed packet copy or non-canonical
+`avcC` uses the libx264/veryfast encoder path; the encoded fragment is still
+rejected unless its `avcC` matches the canonical assembly identity. Every
+encode path reports `copy_failure` and its reason in the receipt.
+
+The receipt keeps copy and encode work separate so a green run cannot hide
+CPU encoding inside `encode_ms` (which sums both lanes):
+
+- `timing.segment_prep.encode_fallbacks` counts them;
+- the affected window carries `copy_failure` (the measured reason) on an
+  `encode` path;
+- the log gets `final_job copy_fallback segment=… window_start_us=… frames=… reason=…`.
+
+A non-zero `encode_fallbacks` with zero `copy_failure` values would be a
+reporting defect; a non-zero count with reasons is the copy lever failing on
+specific bytes.
+
+### Overlay audit: entity images and intent lineage
+
+`result.overlay_audit` answers two questions the r20minuti artifact could not:
+the image budget was 3, no image was planned, and 31 of 39 intents stayed
+`PENDING` with no explanation.
+
+`overlay_audit.entity_images`:
+
+| field | meaning |
+|---|---|
+| `budget` / `budget_used` / `budget_unused` | plan image allowance vs items carrying image bytes |
+| `selected_entities` | entities planned for the video that expect an image (person/org, or a planned card/image kind) |
+| `bound` / `missing` | how many of those carry an image |
+| `reasons` | per-entity outcome counts, including `bound` |
+| `missing_entities[]` | up to 20 named entities with `reason` |
+
+The reasons have different owners: `no_verified_asset` is media resolution
+(discovery, download, visual verdict), `verified_asset_not_bound` is a planner
+defect (the bytes existed and were not used), `unverified_asset_bound` renders
+bytes that were never certified.
+
+`overlay_audit.overlay_timing` is the intent→plan lineage:
+`authored_intents = frozen_intents + unresolved_intents`. An unresolved intent is
+a **proposal**, not a render instruction, and its reason says which:
+`entity_not_planned` (lost admission), `source_text_not_in_plan` (the planner
+rewrote the text), `template_not_materialized` (it matched but could not be
+timed — always a defect). `unresolved_items[]` names up to 100 of them.
+
+`VELOX_REQUIRE_ENTITY_IMAGES=true` makes a missing image a terminal error
+(`entity image gate: 2 of 3 selected entities have no bound image (…)`). It is
+off by default: the audit is always emitted, the failure is opt-in.
 
 ### When the hand-off is not provisioned (no credentials)
 

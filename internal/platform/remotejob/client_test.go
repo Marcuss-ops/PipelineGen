@@ -116,6 +116,66 @@ func TestAttachBudgetYieldsTheJobHandle(t *testing.T) {
 	}
 }
 
+// TestAttachQueueBudgetYieldsAJobThatNeverStarts pins the r9 failure mode: a
+// job the Master never leases cannot finish, so a bounded wait must hand the
+// handle back when the QUEUE budget expires instead of spending the whole
+// render budget on it. The job id survives, so the next attempt resumes the
+// same Master job rather than creating a second render.
+func TestAttachQueueBudgetYieldsAJobThatNeverStarts(t *testing.T) {
+	server, _, _, _ := masterStub(t, "PENDING")
+	defer server.Close()
+	client := New(server.URL, "test-token")
+	client.PollInterval = time.Millisecond
+	client.PollTimeout = time.Hour
+	client.QueueTimeout = 40 * time.Millisecond
+
+	started := time.Now()
+	result, err := client.Attach(context.Background(), "master-job-1", 30*time.Second)
+	elapsed := time.Since(started)
+	if !errors.Is(err, ErrRemotePending) {
+		t.Fatalf("queue-bounded Attach = %v, want ErrRemotePending", err)
+	}
+	if !strings.Contains(err.Error(), "queue budget") {
+		t.Fatalf("error %q does not identify the queue budget", err)
+	}
+	if result.JobID != "master-job-1" {
+		t.Fatalf("yielded result = %#v, want the job handle preserved", result)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("queue-bounded Attach held the caller for %s, want about the 40ms queue budget", elapsed)
+	}
+}
+
+// TestAttachQueueBudgetDoesNotCutAStartedRender pins the other half: once the
+// Master reports started_at, the queue rule must not fire, even with a tiny
+// budget. A started render is exactly the wait the long attach budget exists
+// for.
+func TestAttachQueueBudgetDoesNotCutAStartedRender(t *testing.T) {
+	startedAt := time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano)
+	polls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		polls++
+		if polls < 3 {
+			_, _ = w.Write([]byte(`{"job_id":"master-job-1","status":"RUNNING","started_at":"` + startedAt + `"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"job_id":"master-job-1","status":"SUCCEEDED","artifact_url":"http://master/final.mp4","started_at":"` + startedAt + `"}`))
+	}))
+	defer server.Close()
+	client := New(server.URL, "test-token")
+	client.PollInterval = time.Millisecond
+	client.PollTimeout = 5 * time.Second
+	client.QueueTimeout = time.Nanosecond
+
+	got, err := client.Attach(context.Background(), "master-job-1", 5*time.Second)
+	if err != nil {
+		t.Fatalf("Attach on a started render: %v", err)
+	}
+	if got.Status != "SUCCEEDED" {
+		t.Fatalf("Attach result = %#v, want the completed render", got)
+	}
+}
+
 // TestPollSeparatesTerminalFailureFromPending pins that a dead job is NOT
 // reported as "still running": the two decisions need different handling, and
 // only one of them is worth retrying.

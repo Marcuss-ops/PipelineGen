@@ -237,8 +237,7 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 	delete(ref, "local_path")
 	asset := finalJobPlanAsset{
 		AssetID: id, AssetKey: "sha256:" + sha, SHA256: sha, SizeBytes: size,
-		Kind: "video", MIME: "video/mp4", DurationUS: durationUS, Width: delivery.Width, Height: delivery.Height,
-		ProfileID: delivery.ID, FrameCount: frameCount,
+		Kind: "video", MIME: "video/mp4", DurationUS: durationUS, Width: delivery.Width, Height: delivery.Height, ProfileID: delivery.ID, FrameCount: frameCount,
 		TimelineRevision: request.TimelineRevision, TimelineSHA256: strings.ToLower(request.TimelineSHA256),
 		TimelineStartFrame: request.TimelineStartFrame, FirstFrameKeyframe: true, ClosedGOP: true,
 	}

@@ -9,11 +9,11 @@
 #   1. case-insensitive lookup of the key in this YAML
 #   2. if absent OR mapped to empty string -> constructor fallback
 #      (currently cfg.Drive.ImagesFolder() →
-#       DefaultImagesRootFolderID = 1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY)
+#       DefaultImagesRootFolderID = 1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy)
 #
 # Per-image Drive layout (AC-compliant): every image — retrieved or
 # generated — lives under the single dedicated root as
-# <1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY>/<SafeFolderName(subject)>/<file>
+# <1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy>/<SafeFolderName(subject)>/<file>
 # with ImagePath = [subject] and ConflictSkip. The 17 per-style entries
 # below are RETIRED: they previously mirrored
 # internal/capabilities/images/storage_drive.go::aiImageDriveRootForSource;
@@ -29,23 +29,23 @@ destinations:
   # Every style now points to the canonical per-image root so a new style
   # never silently re-creates a style-scoped tree. The file is retained as an
   # explicit allowlist with post-migration documentation.
-  ai-images/realistic:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/cartoon:          "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/medieval:         "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/cyberpunk:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/watercolor:       "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/3d-render:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/sketch:           "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/cinematic:        "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/whiteboard:       "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/kawaii:           "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/anime:            "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/retro-print:      "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/heritage:         "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/papercraft:       "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/professional-doc: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/gothic:           "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
-  ai-images/oil-painting:     "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/realistic:        "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/cartoon:          "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/medieval:         "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/cyberpunk:        "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/watercolor:       "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/3d-render:        "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/sketch:           "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/cinematic:        "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/whiteboard:       "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/kawaii:           "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/anime:            "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/retro-print:      "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/heritage:         "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/papercraft:       "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/professional-doc: "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/gothic:           "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
+  ai-images/oil-painting:     "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
 
   # ── Default fallback key — resolves to the same per-image root via fallback
-  ai-images/default: "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+  ai-images/default: "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"

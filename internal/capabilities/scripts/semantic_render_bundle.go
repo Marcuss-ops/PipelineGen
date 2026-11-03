@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -187,18 +188,22 @@ func runeSpanBytes(source string, startRune, endRune int) int {
 }
 
 func bundlePresetForType(entityType string) string {
-	role := strings.ToUpper(strings.TrimSpace(entityType))
-	switch role {
-	case "GPE", "PLACE", "CITY", "COUNTRY":
+	// Resolve the family through kernel/entitytype so a place spelled GPE,
+	// LOC, CITY or LANDMARK picks the same preset; BRAND keeps its wordmark
+	// preset even though it shares the LOGO identity.
+	var role string
+	switch entitytype.Fold(entityType) {
+	case entitytype.Place:
 		role = "LOCATION"
-	case "ORG":
+	case entitytype.Org:
 		role = "ORGANIZATION"
-	case "LOGO", "PRODUCT":
+	case entitytype.Logo, entitytype.Product:
 		role = "IMAGE_ENTITY"
-	case "BRAND":
-		role = "logo_default"
-	case "CONCEPT", "VISUAL_CONCEPT":
+	case entitytype.Concept:
 		role = "IMPORTANT_PHRASE"
+	}
+	if entitytype.Is(entityType, entitytype.Logo) && strings.EqualFold(strings.TrimSpace(entityType), "BRAND") {
+		role = "logo_default"
 	}
 	if preset, ok := capabilityoverlay.DefaultSemanticOverlayResolver.PresetFor(role); ok {
 		return preset

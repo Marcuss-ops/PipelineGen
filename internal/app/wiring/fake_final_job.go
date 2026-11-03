@@ -3,9 +3,9 @@ package wiring
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
@@ -25,7 +25,7 @@ const fakeFinalJobEnv = "VELOX_FAKE_FINAL_JOB"
 
 // fakeFinalJobRequested reports whether the simulated handoff was requested.
 func fakeFinalJobRequested() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(fakeFinalJobEnv))) {
+	switch strings.ToLower(strings.TrimSpace(knobs.String(fakeFinalJobEnv))) {
 	case "1", "true", "yes", "on":
 		return true
 	default:

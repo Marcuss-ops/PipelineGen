@@ -44,38 +44,39 @@ var ErrUncertifiedOutput = errors.New("clip.render: rendered output is uncertifi
 // Zero/empty means "the boundary did not report this dimension" and is never
 // treated as a violation.
 type OutputFacts struct {
-	Container        string `json:"container,omitempty"`
-	HasVideo         bool   `json:"has_video,omitempty"`
-	VideoStreams     int    `json:"video_streams,omitempty"`
-	VideoCodec       string `json:"video_codec,omitempty"`
-	VideoProfile     string `json:"video_profile,omitempty"`
-	VideoLevel       string `json:"video_level,omitempty"`
-	PixelFormat      string `json:"pixel_format,omitempty"`
-	Width            int    `json:"width,omitempty"`
-	Height           int    `json:"height,omitempty"`
-	FPSNum           int    `json:"fps_num,omitempty"`
-	FPSDen           int    `json:"fps_den,omitempty"`
-	VideoTimeBaseNum int    `json:"video_timebase_num,omitempty"`
-	VideoTimeBaseDen int    `json:"video_timebase_den,omitempty"`
-	AudioTimeBaseNum int    `json:"audio_timebase_num,omitempty"`
-	AudioTimeBaseDen int    `json:"audio_timebase_den,omitempty"`
-	SARNum           int    `json:"sar_num,omitempty"`
-	SARDen           int    `json:"sar_den,omitempty"`
-	ColorRange       string `json:"color_range,omitempty"`
-	ColorSpace       string `json:"color_space,omitempty"`
-	ColorTransfer    string `json:"color_transfer,omitempty"`
-	ColorPrimaries   string `json:"color_primaries,omitempty"`
-	FieldOrder       string `json:"field_order,omitempty"`
-	KeyframeInterval int    `json:"keyframe_interval,omitempty"`
-	StartPTS         int64  `json:"start_pts,omitempty"`
-	HasAudio         bool   `json:"has_audio,omitempty"`
-	AudioStreams     int    `json:"audio_streams,omitempty"`
-	AudioCodec       string `json:"audio_codec,omitempty"`
-	AudioProfile     string `json:"audio_profile,omitempty"`
-	SampleRate       int    `json:"sample_rate,omitempty"`
-	Channels         int    `json:"channels,omitempty"`
-	ChannelLayout    string `json:"channel_layout,omitempty"`
-	AudioBitrate     string `json:"audio_bitrate,omitempty"`
+	Container         string `json:"container,omitempty"`
+	HasVideo          bool   `json:"has_video,omitempty"`
+	VideoStreams      int    `json:"video_streams,omitempty"`
+	VideoCodec        string `json:"video_codec,omitempty"`
+	VideoProfile      string `json:"video_profile,omitempty"`
+	VideoLevel        string `json:"video_level,omitempty"`
+	CodecConfigSHA256 string `json:"codec_config_sha256,omitempty"`
+	PixelFormat       string `json:"pixel_format,omitempty"`
+	Width             int    `json:"width,omitempty"`
+	Height            int    `json:"height,omitempty"`
+	FPSNum            int    `json:"fps_num,omitempty"`
+	FPSDen            int    `json:"fps_den,omitempty"`
+	VideoTimeBaseNum  int    `json:"video_timebase_num,omitempty"`
+	VideoTimeBaseDen  int    `json:"video_timebase_den,omitempty"`
+	AudioTimeBaseNum  int    `json:"audio_timebase_num,omitempty"`
+	AudioTimeBaseDen  int    `json:"audio_timebase_den,omitempty"`
+	SARNum            int    `json:"sar_num,omitempty"`
+	SARDen            int    `json:"sar_den,omitempty"`
+	ColorRange        string `json:"color_range,omitempty"`
+	ColorSpace        string `json:"color_space,omitempty"`
+	ColorTransfer     string `json:"color_transfer,omitempty"`
+	ColorPrimaries    string `json:"color_primaries,omitempty"`
+	FieldOrder        string `json:"field_order,omitempty"`
+	KeyframeInterval  int    `json:"keyframe_interval,omitempty"`
+	StartPTS          int64  `json:"start_pts,omitempty"`
+	HasAudio          bool   `json:"has_audio,omitempty"`
+	AudioStreams      int    `json:"audio_streams,omitempty"`
+	AudioCodec        string `json:"audio_codec,omitempty"`
+	AudioProfile      string `json:"audio_profile,omitempty"`
+	SampleRate        int    `json:"sample_rate,omitempty"`
+	Channels          int    `json:"channels,omitempty"`
+	ChannelLayout     string `json:"channel_layout,omitempty"`
+	AudioBitrate      string `json:"audio_bitrate,omitempty"`
 }
 
 // RenderOutcomeFacts resolves the effective certified fact set for an outcome.
@@ -138,38 +139,39 @@ func OutputProbeFromCertified(outcome *RenderOutcome) (*OutputProbe, error) {
 		audioStreams = 1
 	}
 	probe := &OutputProbe{
-		Container:        normalizeContainer(certified.Container),
-		HasVideo:         hasVideo,
-		VideoStreams:     videoStreams,
-		VideoCodec:       certified.VideoCodec,
-		VideoProfile:     normalizeVideoProfile(certified.VideoProfile),
-		VideoLevel:       certified.VideoLevel,
-		PixelFormat:      certified.PixelFormat,
-		Width:            certified.Width,
-		Height:           certified.Height,
-		FPSNum:           certified.FPSNum,
-		FPSDen:           certified.FPSDen,
-		VideoTimeBaseNum: certified.VideoTimeBaseNum,
-		VideoTimeBaseDen: certified.VideoTimeBaseDen,
-		AudioTimeBaseNum: certified.AudioTimeBaseNum,
-		AudioTimeBaseDen: certified.AudioTimeBaseDen,
-		SARNum:           certified.SARNum,
-		SARDen:           certified.SARDen,
-		ColorRange:       certified.ColorRange,
-		ColorSpace:       certified.ColorSpace,
-		ColorTransfer:    certified.ColorTransfer,
-		ColorPrimaries:   certified.ColorPrimaries,
-		FieldOrder:       certified.FieldOrder,
-		KeyframeInterval: certified.KeyframeInterval,
-		StartPTS:         certified.StartPTS,
-		HasAudio:         hasAudio,
-		AudioStreams:     audioStreams,
-		AudioCodec:       certified.AudioCodec,
-		AudioProfile:     certified.AudioProfile,
-		SampleRate:       certified.SampleRate,
-		Channels:         certified.Channels,
-		ChannelLayout:    certified.ChannelLayout,
-		AudioBitrate:     certified.AudioBitrate,
+		Container:         normalizeContainer(certified.Container),
+		HasVideo:          hasVideo,
+		VideoStreams:      videoStreams,
+		VideoCodec:        certified.VideoCodec,
+		VideoProfile:      normalizeVideoProfile(certified.VideoProfile),
+		VideoLevel:        certified.VideoLevel,
+		CodecConfigSHA256: certified.CodecConfigSHA256,
+		PixelFormat:       certified.PixelFormat,
+		Width:             certified.Width,
+		Height:            certified.Height,
+		FPSNum:            certified.FPSNum,
+		FPSDen:            certified.FPSDen,
+		VideoTimeBaseNum:  certified.VideoTimeBaseNum,
+		VideoTimeBaseDen:  certified.VideoTimeBaseDen,
+		AudioTimeBaseNum:  certified.AudioTimeBaseNum,
+		AudioTimeBaseDen:  certified.AudioTimeBaseDen,
+		SARNum:            certified.SARNum,
+		SARDen:            certified.SARDen,
+		ColorRange:        certified.ColorRange,
+		ColorSpace:        certified.ColorSpace,
+		ColorTransfer:     certified.ColorTransfer,
+		ColorPrimaries:    certified.ColorPrimaries,
+		FieldOrder:        certified.FieldOrder,
+		KeyframeInterval:  certified.KeyframeInterval,
+		StartPTS:          certified.StartPTS,
+		HasAudio:          hasAudio,
+		AudioStreams:      audioStreams,
+		AudioCodec:        certified.AudioCodec,
+		AudioProfile:      certified.AudioProfile,
+		SampleRate:        certified.SampleRate,
+		Channels:          certified.Channels,
+		ChannelLayout:     certified.ChannelLayout,
+		AudioBitrate:      certified.AudioBitrate,
 	}
 	if probe.FPSNum > 0 && probe.FPSDen > 0 {
 		probe.FPS = float64(probe.FPSNum) / float64(probe.FPSDen)

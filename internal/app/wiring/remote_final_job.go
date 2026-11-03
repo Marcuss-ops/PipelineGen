@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -32,16 +33,56 @@ const defaultFinalJobMasterURL = "https://veloxmanager.duckdns.org"
 // VELOX_FINAL_JOB_ATTACH_SECONDS.
 const defaultFinalJobAttachBudget = 50 * time.Minute
 
-// finalJobWorker51ID is Worker 51's registered Master ID. The human-readable
-// worker name is velox_worker_51_222_204_158; placement pins use the distinct
-// registered ID. Operators can override it when the worker is reprovisioned.
-const finalJobWorker51ID = "velox-worker-523925eb"
+// deprecatedFinalJobWorker51ID is the pin this build used to apply when no
+// operator override was configured. Worker 51 was quarantined on 2026-11-02, so
+// a hardcoded default silently routed every handoff to an unhealthy worker: r9
+// sat PENDING for 43 minutes against it. The pin is now opt-in
+// (VELOX_FINAL_JOB_WORKER_ID); with no override, the Master places the job.
+const deprecatedFinalJobWorker51ID = "velox-worker-523925eb"
+
+// finalJobWorkerPin is the placement pin for a handoff, or "" when the Master
+// must place the job itself. There is deliberately no default: an operator pin
+// is a deployment fact (which worker is healthy), not something this binary can
+// know. The retired worker-51 default is rejected loudly instead of silently
+// resurrected by a stale environment file.
+func finalJobWorkerPin() (string, error) {
+	pin := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_WORKER_ID"))
+	if pin == "" {
+		return "", nil
+	}
+	if pin == deprecatedFinalJobWorker51ID {
+		return "", fmt.Errorf("VELOX_FINAL_JOB_WORKER_ID pins the retired worker %s; unset it to let the Master place the job", pin)
+	}
+	return pin, nil
+}
+
+// finalJobQueueBudget reads VELOX_FINAL_JOB_QUEUE_SECONDS: how long a handoff
+// may wait for the Master to lease and START the job before the wait is handed
+// back. It bounds the failure mode r9 exposed (46 minutes in PENDING, then a
+// cancellation): a queued job cannot finish, so holding the local worker for
+// the whole render budget buys nothing. 0 disables the queue budget. A
+// malformed value is a configuration error, not a silent default.
+func finalJobQueueBudget() (time.Duration, error) {
+	raw := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_QUEUE_SECONDS"))
+	if raw == "" {
+		return defaultFinalJobQueueBudget, nil
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds < 0 {
+		return 0, fmt.Errorf("VELOX_FINAL_JOB_QUEUE_SECONDS must be a non-negative integer number of seconds, got %q", raw)
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
+// defaultFinalJobQueueBudget is generous for a healthy Master (r101 leased in
+// 0 s, r103 in 58 s) and far below the 46-minute stall that motivated it.
+const defaultFinalJobQueueBudget = 3 * time.Minute
 
 // finalJobAttachBudget reads VELOX_FINAL_JOB_ATTACH_SECONDS. 0 disables the
 // hand-off (every wait runs to completion: the pre-split blocking contract).
 // A malformed value is a configuration error, not a silent default.
 func finalJobAttachBudget() (time.Duration, error) {
-	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_ATTACH_SECONDS"))
+	raw := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_ATTACH_SECONDS"))
 	if raw == "" {
 		return defaultFinalJobAttachBudget, nil
 	}
@@ -63,6 +104,10 @@ type remoteFinalJobAdapter struct {
 	// attachBudget bounds a single attempt's wait on the Master render; see
 	// defaultFinalJobAttachBudget and finalJobAttachBudget.
 	attachBudget time.Duration
+	// queueBudget bounds the NOT-STARTED portion of that wait; see
+	// defaultFinalJobQueueBudget and finalJobQueueBudget. It is carried on the
+	// transport client so the resume path shares the same rule.
+	queueBudget time.Duration
 	// resolverNS is the accumulated runtime-asset resolution time reported in
 	// the receipt as handoff_resolve_ms (diagnostics only).
 	resolverNS atomic.Int64
@@ -105,9 +150,9 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error)
 	if strings.TrimSpace(os.Getenv("OBJECTSTORE_PUBLIC_URL")) == "" {
 		return nil, fmt.Errorf("remote final-job HTTPS handoff requires OBJECTSTORE_PUBLIC_URL; only stock assets may use Drive")
 	}
-	token := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_M2M_SECRET"))
+	token := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_M2M_SECRET"))
 	if token == "" {
-		path := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_CREDENTIALS_FILE"))
+		path := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_CREDENTIALS_FILE"))
 		if path == "" {
 			home, _ := os.UserHomeDir()
 			path = filepath.Join(home, "creator-77-master.env")
@@ -119,7 +164,7 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error)
 		}
 	}
 	base := ""
-	if v := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_MASTER_URL")); v != "" {
+	if v := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_MASTER_URL")); v != "" {
 		base = v
 	}
 	if base == "" {
@@ -133,8 +178,13 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error)
 	if err != nil {
 		return nil, err
 	}
+	queueBudget, err := finalJobQueueBudget()
+	if err != nil {
+		return nil, err
+	}
 	client := remotejob.New(base, token)
-	return &remoteFinalJobAdapter{media: pgmedia.NewMediaSearcher(root.MediaPostgres), stock: root.Drive.Reader, client: client, attachBudget: budget}, nil
+	client.QueueTimeout = queueBudget
+	return &remoteFinalJobAdapter{media: pgmedia.NewMediaSearcher(root.MediaPostgres), stock: root.Drive.Reader, client: client, attachBudget: budget, queueBudget: queueBudget}, nil
 }
 
 func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) (scriptgen.RemoteFinalJobResult, error) {
@@ -210,11 +260,16 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	}
 	log.Printf("final_job handoff resolve_ms=%d unique_resolved=%d dedup_hits=%d encode_ms=%d verify_ms=%d",
 		resolveMS, uniqueResolved, dedupHits, encodeMS, verifyMS)
-	workerID := strings.TrimSpace(os.Getenv("VELOX_FINAL_JOB_WORKER_ID"))
-	if workerID == "" {
-		workerID = finalJobWorker51ID
+	workerID, err := finalJobWorkerPin()
+	if err != nil {
+		return scriptgen.RemoteFinalJobResult{}, err
 	}
-	pre["placement_pin_worker_id"] = workerID
+	if workerID != "" {
+		pre["placement_pin_worker_id"] = workerID
+		log.Printf("final_job placement pin=%s", workerID)
+	} else {
+		log.Printf("final_job placement pin=<master> (VELOX_FINAL_JOB_WORKER_ID unset)")
+	}
 	// final_job=true on the local script request triggers this Master handoff.
 	// PREPARE carries the scene plan; FINALIZE attaches runtime assets and
 	// overlays so the Master refreshes prefetch before the worker starts. The id

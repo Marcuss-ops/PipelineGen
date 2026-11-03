@@ -15,7 +15,7 @@ const DefaultOverlayRenderRootFolderID = "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
 // thereafter served from Drive without re-download.
 // Keeping the default in code guarantees the per-image layout holds
 // even when the local config.yaml is absent or ignored by Git.
-const DefaultImagesRootFolderID = "1kr8c1KZmUus10mkIdqJlYqAzXDyoNZeY"
+const DefaultImagesRootFolderID = "1-jaglYikruz_OkXlg_L07ZcU-ii5fiRy"
 
 // DefaultMediaRootFolderID is the canonical Drive "Media" root used by
 // read-only operator tooling (drive-ls, list-drive-folder, drive-doctor,

@@ -214,7 +214,7 @@ ffmpeg -hide_banner -nostdin -y -v error "${INPUTS[@]}" -filter_complex "$FILTER
 
 # ── copy mux, then prove the video was copied and not re-encoded ───────────
 ffmpeg -hide_banner -nostdin -y -v error -i "$VIDEO" -i "$AUDIO_OUT" \
-  -map 0:v:0 -map 1:a:0 -c:v copy -c:a copy -movflags +faststart "$OUT" \
+  -map 0:v:0 -map 1:a:0 -c:v copy -c:a copy -video_track_timescale 90000 -movflags +faststart "$OUT" \
   || { echo "mux-final-audio: FAIL — mux failed" >&2; exit 3; }
 
 md5_of() { ffmpeg -v error -nostdin -i "$1" -map 0:v:0 -c copy -f md5 - 2>&1 | tail -1; }
@@ -224,6 +224,18 @@ if [[ "$BEFORE" != "$AFTER" ]]; then
   exit 3
 fi
 echo "mux-final-audio: video stream copied unchanged ($AFTER)"
+# Full decode gate: a bitstream that only probes cleanly can still be
+# undecodable at a parameter-set boundary. The final artifact is the one file
+# whose decode matters, so pay for one complete pass instead of discovering
+# the defect in the published video.
+ffmpeg -v error -nostdin -i "$OUT" -map 0:v:0 -f null - 2>"$TMP/decode.log" \
+  || { echo "mux-final-audio: FAIL — final video did not decode" >&2; exit 3; }
+if [[ -s "$TMP/decode.log" ]]; then
+  cat "$TMP/decode.log" >&2
+  echo "mux-final-audio: FAIL — decoder reported errors in the final video" >&2
+  exit 3
+fi
+echo "mux-final-audio: full decode PASS"
 echo "mux-final-audio: audio=$(basename "$AUDIO_OUT") sha256=$(sha256sum "$AUDIO_OUT" | cut -d' ' -f1)"
 
 gate "$OUT" muxed

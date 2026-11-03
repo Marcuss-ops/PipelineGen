@@ -13,11 +13,34 @@ func NormalizeName(name string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(name))), " ")
 }
 
-// NormalizeType returns the canonical entity type: trimmed and upper-cased.
-// "person" → "PERSON". The canonical type is part of the entity identity, so
-// the same surface name with a different type is a DIFFERENT entity.
+// NormalizeType returns the canonical entity type: trimmed, upper-cased, then
+// folded through the alias table owned by type_aliases.go.
+//
+//	"person"     → "PERSON"
+//	"gpe"        → "PLACE"
+//	"LOCATION"   → "PLACE"
+//	"city"       → "PLACE"
+//	"organization" → "ORG"
+//
+// The canonical type is part of the entity identity, so the same surface name
+// with a genuinely different type stays a different entity (PERSON ≠ ORG).
+// Two SPELLINGS of the same type, however, must never mint two ids: that is
+// what made a place verified as GPE invisible to a plan written as LOCATION.
+// An unknown type is upper-cased and trimmed, never guessed.
 func NormalizeType(entityType string) string {
-	return strings.ToUpper(strings.TrimSpace(entityType))
+	return foldEntityType(entityType)
+}
+
+// stripPersonPossessive removes an English possessive suffix ("'s" / "’s")
+// from a person's name: grammatical attachment is not part of the identity.
+func stripPersonPossessive(name string) string {
+	name = strings.TrimSpace(name)
+	for _, suffix := range []string{"'s", "’s"} {
+		if len(name) > len(suffix) && strings.EqualFold(name[len(name)-len(suffix):], suffix) {
+			return strings.TrimSpace(name[:len(name)-len(suffix)])
+		}
+	}
+	return name
 }
 
 // CanonicalKey builds the canonical identity string of an entity:

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
@@ -563,7 +564,7 @@ func mediaCheckpointArtifactVerifier(committer assetspersistence.AssetCommitter,
 // needs a way to measure the cache instead of trusting it) and the default
 // lives under the same durable data directory as the rest of the state.
 func finalAudioCacheDir(dataDir string) string {
-	raw := strings.TrimSpace(os.Getenv("VELOX_FINAL_AUDIO_CACHE_DIR"))
+	raw := strings.TrimSpace(knobs.String("VELOX_FINAL_AUDIO_CACHE_DIR"))
 	switch strings.ToLower(raw) {
 	case "off", "disabled", "none":
 		return ""
