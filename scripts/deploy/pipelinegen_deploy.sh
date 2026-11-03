@@ -87,6 +87,17 @@ file_sha256() { "$SHA256_BIN" "$1" | cut -d' ' -f1; }
 # was invoked as bare `pipelinegenctl` (not in PATH) and `sudo -n` had no
 # restricted rule, so the restart was denied only after a full build. Both are
 # now checked up front, before spending a build.
+systemctl_path() {
+  command -v "$SYSTEMCTL_BIN" 2>/dev/null || printf '%s' "$SYSTEMCTL_BIN"
+}
+
+# `sudo -n -l <cmd>` checks the exact restricted rule, not general NOPASSWD.
+# `sudo -n true` would reject a correct per-service rule and send operators
+# looking for a broader privilege they do not need.
+sudo_can_restart() {
+  "$SUDO_BIN" -n -l "$(systemctl_path)" restart "$SERVICE" >/dev/null 2>&1
+}
+
 step_preflight() {
   if [ "$SKIP_RESTART" = "1" ]; then
     log "preflight: restart skipped (--skip-restart)"
@@ -94,10 +105,10 @@ step_preflight() {
   fi
   [ -x "$PIPELINEGENCTL_BIN" ] || die "pipelinegenctl not found or not executable: $PIPELINEGENCTL_BIN (set DEPLOY_PIPELINEGENCTL_BIN or run from the repo)"
   require_cmd "$SYSTEMCTL_BIN"
-  if ! "$SUDO_BIN" -n true 2>/dev/null; then
-    die "passwordless sudo is not available: add the restricted NOPASSWD rule for 'systemctl restart $SERVICE' (see scripts/systemd/pipelinegenctl) or run the deploy as root"
+  if ! sudo_can_restart; then
+    die "restricted passwordless sudo is not configured for '$(systemctl_path) restart $SERVICE': add the NOPASSWD rule (see scripts/systemd/pipelinegenctl) or run the deploy as root"
   fi
-  log "preflight: pipelinegenctl present, sudo -n available"
+  log "preflight: pipelinegenctl present, sudo -n can restart $SERVICE"
 }
 
 step_build() {
@@ -197,10 +208,10 @@ if [ "$DRY_RUN" = "1" ]; then
   else
     log "  preflight:    pipelinegenctl MISSING ($PIPELINEGENCTL_BIN)"
   fi
-  if [ "$SKIP_RESTART" != "1" ] && "$SUDO_BIN" -n true 2>/dev/null; then
-    log "  preflight:    sudo -n available"
+  if [ "$SKIP_RESTART" != "1" ] && sudo_can_restart; then
+    log "  preflight:    sudo -n can restart $SERVICE"
   elif [ "$SKIP_RESTART" != "1" ]; then
-    log "  preflight:    sudo -n MISSING (restart will fail closed)"
+    log "  preflight:    sudo -n CANNOT restart $SERVICE (deploy will fail closed)"
   fi
   log "  ready probe:  $BASE_URL/health (timeout ${HEALTH_TIMEOUT}s)"
   log "  identity:     sha256($PROC_ROOT/<MainPID>/exe) == sha256($BIN_PATH)"
