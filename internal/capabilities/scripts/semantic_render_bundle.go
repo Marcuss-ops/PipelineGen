@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -41,7 +42,7 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 		Version:        capabilityoverlay.SemanticRenderBundleVersion,
 		RunID:          runID,
 		Scene:          scene,
-		OverlayIntents: append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...),
+		OverlayIntents: append([]capmodel.OverlayIntent(nil), result.OverlayIntents...),
 	}
 	sceneScopedImages := len(perSceneImages) > 0 && perSceneImages[0]
 	for _, timelineScene := range result.EntityTimeline.Scenes {

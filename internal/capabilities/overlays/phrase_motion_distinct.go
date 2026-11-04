@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 )
 
@@ -39,16 +40,12 @@ func IsRemovedGeneratedPhraseMotion(motionID string) bool {
 // EnsureDistinctPhraseMotions applies the run-wide no-repeat rule after
 // scene-local plans have been joined. It is safe to call both during plan
 // construction and at the final run boundary.
-func EnsureDistinctPhraseMotions(items []OverlayItem, input PlanInput) {
-	EnsureDistinctPhraseMotionsPinned(items, input, nil)
-}
-
 // EnsureDistinctPhraseMotionsPinned is the policy-aware form: indexes in
-// pinned keep their MotionID verbatim (explicit animation_policies choices
-// outrank automatic rotation) while their motions are pre-registered as used
+// pinned keep their MotionID verbatim (an explicit motion pin outranks
+// automatic rotation) while their motions are pre-registered as used
 // so unpinned items rotate away from them. Duplicate motions between two
 // pinned items are the caller's explicit responsibility and are left alone.
-func EnsureDistinctPhraseMotionsPinned(items []OverlayItem, input PlanInput, pinned map[int]bool) {
+func EnsureDistinctPhraseMotionsPinned(items []capmodel.OverlayItem, input PlanInput, pinned map[int]bool) {
 	// Documentary preset IDs are public aliases, not renderer motion IDs. They
 	// can reach this final run-wide pass after scene planning, so canonicalize
 	// both the candidate pool and assigned items before duplicate resolution.
@@ -108,23 +105,36 @@ func EnsureDistinctPhraseMotionsPinned(items []OverlayItem, input PlanInput, pin
 		if len(candidates) == 0 {
 			continue
 		}
-		start := 0
-		for n, candidate := range candidates {
-			if candidate == item.MotionID {
-				start = n + 1
-				break
-			}
-		}
-		for n := 0; n < len(candidates); n++ {
-			candidate := candidates[(start+n)%len(candidates)]
-			if _, exists := used[candidate]; exists {
-				continue
-			}
-			item.MotionID = candidate
-			used[candidate] = struct{}{}
+		rotateMotionPastUsed(item, candidates, used)
+	}
+}
+
+// rotateMotionPastUsed advances from the item's current position in candidates
+// and assigns the first id the caller has not used yet. Phrase and number
+// rotation share this single implementation; returning false leaves the
+// duplicate in place, which is the documented fail-open behaviour when the
+// candidate pool is exhausted.
+func rotateMotionPastUsed(item *capmodel.OverlayItem, candidates []string, used map[string]struct{}) bool {
+	if item == nil || len(candidates) == 0 {
+		return false
+	}
+	start := 0
+	for n, candidate := range candidates {
+		if candidate == item.MotionID {
+			start = n + 1
 			break
 		}
 	}
+	for n := 0; n < len(candidates); n++ {
+		candidate := candidates[(start+n)%len(candidates)]
+		if _, exists := used[candidate]; exists {
+			continue
+		}
+		item.MotionID = candidate
+		used[candidate] = struct{}{}
+		return true
+	}
+	return false
 }
 
 func excludeRemovedGeneratedPhraseMotions(candidates []string) []string {
@@ -141,14 +151,10 @@ func excludeRemovedGeneratedPhraseMotions(candidates []string) []string {
 // EnsureDistinctNumberMotions rotates date and metric presentation recipes
 // across the complete plan. Their stable per-item selector can otherwise
 // choose the same motion independently in separate scenes.
-func EnsureDistinctNumberMotions(items []OverlayItem, animationCounts map[string]int) {
-	EnsureDistinctNumberMotionsPinned(items, animationCounts, nil)
-}
-
 // EnsureDistinctNumberMotionsPinned is the policy-aware form for date/metric
 // cards: pinned indexes keep their MotionID while unpinned duplicates rotate
 // away. See EnsureDistinctPhraseMotionsPinned.
-func EnsureDistinctNumberMotionsPinned(items []OverlayItem, animationCounts map[string]int, pinned map[int]bool) {
+func EnsureDistinctNumberMotionsPinned(items []capmodel.OverlayItem, animationCounts map[string]int, pinned map[int]bool) {
 	used := map[string]map[string]struct{}{}
 	for i := range items {
 		if !pinned[i] || items[i].Kind != "number" {
@@ -192,26 +198,11 @@ func EnsureDistinctNumberMotionsPinned(items []OverlayItem, animationCounts map[
 			continue
 		}
 		candidates = limitedMotionPool(candidates, limit)
-		start := 0
-		for n, candidate := range candidates {
-			if candidate == item.MotionID {
-				start = n + 1
-				break
-			}
-		}
-		for n := 0; n < len(candidates); n++ {
-			candidate := candidates[(start+n)%len(candidates)]
-			if _, exists := used[key][candidate]; exists {
-				continue
-			}
-			item.MotionID = candidate
-			used[key][candidate] = struct{}{}
-			break
-		}
+		rotateMotionPastUsed(item, candidates, used[key])
 	}
 }
 
-func phraseMotionCandidatesForItem(item OverlayItem, input PlanInput, seed string, shortLimit, phraseLimit int) []string {
+func phraseMotionCandidatesForItem(item capmodel.OverlayItem, input PlanInput, seed string, shortLimit, phraseLimit int) []string {
 	words := len(strings.Fields(item.Text))
 	var candidates []string
 	switch {

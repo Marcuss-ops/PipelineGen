@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 
@@ -16,7 +17,7 @@ import (
 // invalid or missing certified timing are ignored, never given guessed timing.
 // An image must carry an explicit window and a content identity because it is
 // later materialized by RenderingGen from the asset manifest.
-func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
+func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, error) {
 	config = config.withDefaults()
 	// Documentary Highlighting showcase IDs are accepted at the generation
 	// boundary, then lowered to phrase-relative renderer motions before pool
@@ -50,14 +51,14 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		return rotateMotionAtOffset(imageMotionOffset, ordinal, pool)
 	}
 	if err := validatePhraseMotionPool(input.PhraseMotions); err != nil {
-		return OverlayPlan{}, err
+		return capmodel.OverlayPlan{}, err
 	}
 	if err := validateImageMotionPool(input.ImageMotions); err != nil {
-		return OverlayPlan{}, err
+		return capmodel.OverlayPlan{}, err
 	}
 	entityStyleSelector := strings.TrimSpace(input.EntityStyleID)
 	if entityStyleSelector != "" && !IsValidEntityStyleSelector(entityStyleSelector) {
-		return OverlayPlan{}, fmt.Errorf("overlay planner: entity_style_id %q is not a certified selector (random, a tag such as badge/camera/side, or a 01..25 variant)", input.EntityStyleID)
+		return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: entity_style_id %q is not a certified selector (random, a tag such as badge/camera/side, or a 01..25 variant)", input.EntityStyleID)
 	}
 	imageMotionLimit := laneAnimationCount(input.AnimationCounts, laneImages)
 	input.ImageMotions = limitedMotionPool(input.ImageMotions, imageMotionLimit)
@@ -67,7 +68,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	if input.PhraseMotionFamily != "" {
 		familyPool := certifiedPhraseFamily(input.PhraseMotionFamily)
 		if len(familyPool) == 0 {
-			return OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion family %q has no certified motions", input.PhraseMotionFamily)
+			return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion family %q has no certified motions", input.PhraseMotionFamily)
 		}
 		if len(input.PhraseMotions) > 0 {
 			allowed := make(map[string]bool, len(familyPool))
@@ -76,7 +77,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 			for _, id := range input.PhraseMotions {
 				if !allowed[id] {
-					return OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion %q is outside family %q", id, input.PhraseMotionFamily)
+					return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: phrase motion %q is outside family %q", id, input.PhraseMotionFamily)
 				}
 			}
 			familyPool = input.PhraseMotions
@@ -87,8 +88,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	// applied its compatibility rules. Trimming here used the global count as
 	// a catalog-size limit, so a 15-motion sample from the 122-entry mixed
 	// family almost always lost Brush and rarely retained any spatial 3D IDs.
-	plan := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        input.PlanID, VideoID: input.VideoID, ProjectID: input.ProjectID,
 		Width: input.Width, Height: input.Height, FPSNum: input.FPSNum, FPSDen: input.FPSDen,
 		RendererVersion: input.RendererVersion,
@@ -107,7 +108,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 	imageOrdinal := 0
 	for _, scene := range input.Scenes {
 		if strings.TrimSpace(scene.ID) == "" {
-			return OverlayPlan{}, fmt.Errorf("overlay planner: scene id is required")
+			return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: scene id is required")
 		}
 		images := rankedImages(scene.Images)
 		if len(images) > config.MaxImages {
@@ -124,52 +125,27 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			}
 		}
 		autoGroups, groupedAssets := AutoImageGroups(scene.ID, images, explicitAssets)
-		for _, image := range images {
-			if _, grouped := groupedAssets[strings.TrimSpace(image.AssetID)]; grouped {
-				continue
-			}
-			image = clampImageWindow(image)
-			id := itemID(scene.ID, "image", image.AssetID)
-			plan.Items = append(plan.Items, OverlayItem{
-				ID: id, SceneID: scene.ID, PresetID: selectImagePreset(input.PlanID, scene.ID, id),
-				Kind: "image", TemplateID: "IMAGE_OVERLAY",
-				StartMs: image.StartMs, EndMs: image.EndMs, StartUS: image.StartUS, DurationUS: image.DurationUS,
-				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)},
-				Params:    map[string]any{"position": "center", "style": "popup", "priority": image.Score},
-			})
-		}
+		appendVisualLane(&plan, scene.ID, visualLane{
+			kind: "image", templateID: "IMAGE_OVERLAY", position: "center", style: "popup",
+			limit: config.MaxImages,
+			presetFor: func(sceneID, itemID string) string {
+				return selectImagePreset(input.PlanID, sceneID, itemID)
+			},
+			skip: func(assetID string) bool {
+				_, grouped := groupedAssets[assetID]
+				return grouped
+			},
+		}, images)
 
-		products := rankedImages(scene.Products)
-		if len(products) > config.MaxProducts {
-			products = products[:config.MaxProducts]
-		}
-		for _, product := range products {
-			product = clampImageWindow(product)
-			id := itemID(scene.ID, "product", product.AssetID)
-			plan.Items = append(plan.Items, OverlayItem{
-				ID: id, SceneID: scene.ID,
-				Kind: "product", TemplateID: "PRODUCT",
-				StartMs: product.StartMs, EndMs: product.EndMs, StartUS: product.StartUS, DurationUS: product.DurationUS,
-				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(product.AssetID, product.SHA256, product.MediaType, 0), product.URL, product.LocalPath)},
-				Params:    map[string]any{"position": "right", "style": "popup", "priority": product.Score},
-			})
-		}
+		appendVisualLane(&plan, scene.ID, visualLane{
+			kind: "product", templateID: "PRODUCT", position: "right", style: "popup",
+			limit: config.MaxProducts,
+		}, rankedImages(scene.Products))
 
-		logos := rankedImages(scene.Logos)
-		if len(logos) > config.MaxLogos {
-			logos = logos[:config.MaxLogos]
-		}
-		for _, logo := range logos {
-			logo = clampImageWindow(logo)
-			id := itemID(scene.ID, "logo", logo.AssetID)
-			plan.Items = append(plan.Items, OverlayItem{
-				ID: id, SceneID: scene.ID,
-				Kind: "logo", TemplateID: "LOGO",
-				StartMs: logo.StartMs, EndMs: logo.EndMs, StartUS: logo.StartUS, DurationUS: logo.DurationUS,
-				AssetRefs: []OverlayAssetRef{NewOverlayAssetRef(asset.New(logo.AssetID, logo.SHA256, logo.MediaType, 0), logo.URL, logo.LocalPath)},
-				Params:    map[string]any{"position": "corner", "style": "logo", "priority": logo.Score},
-			})
-		}
+		appendVisualLane(&plan, scene.ID, visualLane{
+			kind: "logo", templateID: "LOGO", position: "corner", style: "logo",
+			limit: config.MaxLogos,
+		}, rankedImages(scene.Logos))
 
 		numbers := rankedValid(scene.Numbers, 0)
 		if len(numbers) > config.MaxNumbers {
@@ -187,7 +163,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		for _, brand := range brandTexts {
 			id := itemID(scene.ID, "brand-text", brand.Text)
-			plan.Items = append(plan.Items, OverlayItem{
+			plan.Items = append(plan.Items, capmodel.OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
 				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
 				Kind:     "brand_text", TemplateID: "logo_default", Text: brand.Text,
@@ -202,7 +178,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		for _, quote := range quotes {
 			id := itemID(scene.ID, "quote", quote.Text)
-			plan.Items = append(plan.Items, OverlayItem{
+			plan.Items = append(plan.Items, capmodel.OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
 				Kind:     "quote", TemplateID: "QUOTE", Text: quote.Text,
@@ -217,7 +193,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 		}
 		for _, candidate := range keywords {
 			id := itemID(scene.ID, "keyword", candidate.Text)
-			plan.Items = append(plan.Items, OverlayItem{
+			plan.Items = append(plan.Items, capmodel.OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectWordPreset(input.PlanID, scene.ID, id),
 				MotionID: SelectTextMotion(input.PlanID, scene.ID, id),
 				Kind:     "keyword", TemplateID: "IMPORTANT_WORD", Text: candidate.Text,
@@ -263,7 +239,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				params["style"] = "headline"
 				params["editorial_role"] = ChapterBulletRole
 			}
-			plan.Items = append(plan.Items, OverlayItem{
+			plan.Items = append(plan.Items, capmodel.OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,
 				StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
@@ -281,17 +257,17 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 				groupLane = laneImages
 			}
 			if group.SceneID != "" && group.SceneID != scene.ID {
-				return OverlayPlan{}, fmt.Errorf("overlay planner: multi-entity group %q belongs to scene %q, not %q", group.GroupID, group.SceneID, scene.ID)
+				return capmodel.OverlayPlan{}, fmt.Errorf("overlay planner: multi-entity group %q belongs to scene %q, not %q", group.GroupID, group.SceneID, scene.ID)
 			}
 			if group.SceneID == "" {
 				group.SceneID = scene.ID
 			}
 			groupItems, err := WireMultiEntityOverlays(group, input.Width, input.Height)
 			if err != nil {
-				return OverlayPlan{}, err
+				return capmodel.OverlayPlan{}, err
 			}
 			for _, item := range groupItems {
-				if item.Kind == string(KindEntityImage) {
+				if item.Kind == string(capmodel.KindEntityImage) {
 					if len(item.ImageLayers) > 0 {
 						for layerIndex := range item.ImageLayers {
 							layer := &item.ImageLayers[layerIndex]
@@ -438,122 +414,7 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			plan.ChartCards++
 		}
 	}
-	// Assign the phrase motion sequence AFTER run-level ranking and dedupe.
-	// Every admitted phrase gets a distinct, visible catalog motion, even when
-	// phrases span different scenes or the winning candidates were not the
-	// first annotations supplied by NLP.
-	// A declared heavy-phrase priority splits the phrase lane in two: the
-	// phrases at or above that priority take a prominent entrance from their own
-	// rotation, and only the rest walk the calm sequence. Two rotations rather
-	// than one is why the two ordinals advance independently; the calm lane's
-	// no-repeat walk is otherwise untouched.
-	phraseOrdinal := 0
-	shortPhraseOrdinal := 0
-	heavyOrdinal := 0
-	chapterOrdinal := 0
-	imageOrdinal = 0
-	for i := range plan.Items {
-		switch plan.Items[i].Kind {
-		case "text_phrase":
-			if plan.Items[i].Params != nil && plan.Items[i].Params["editorial_role"] == ChapterBulletRole {
-				// Chapter openings keep the text_3d family and rotate one distinct
-				// entrance per chapter, regardless of copy length.
-				plan.Items[i].MotionID = selectMotionFromPool(motionSeed, "chapter_bullet", "chapter_bullet", chapterOrdinal, text3DMotionCandidates)
-				chapterOrdinal++
-				continue
-			}
-			if EditorialSectionForItem(plan.Items[i]) == EditorialSectionShortPhrase {
-				// Short phrases use the renderer-supported phrase entrance pool.
-				// Keep selection seeded per run, but advance the ordinal so each
-				// phrase gets a different entrance until the pool is exhausted.
-				words := len(strings.Fields(plan.Items[i].Text))
-				plan.Items[i].MotionID = selectShortPhraseMotionLimited(
-					motionSeed,
-					"short_phrase_group",
-					shortPhraseOrdinal,
-					words,
-					input.PhraseMotions,
-					laneAnimationCount(input.AnimationCounts, laneShortPhrase),
-				)
-				phraseOrdinal++
-				shortPhraseOrdinal++
-				continue
-			}
-			if len(input.PhraseMotions) == 0 {
-				words := len(strings.Fields(plan.Items[i].Text))
-				switch {
-				case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
-					plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
-					heavyOrdinal++
-				case words >= 6:
-					plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
-				default:
-					// Ordinary generated phrases walk the entire certified catalog;
-					// only an explicit AnimationCounts value narrows this pool.
-					plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
-				}
-				phraseOrdinal++
-				continue
-			}
-			switch {
-			case input.HeavyPhrasePriority > 0 && itemPriority(plan.Items[i]) >= input.HeavyPhrasePriority:
-				plan.Items[i].MotionID = selectHeavyPhraseMotionLimited(motionSeed, "run", heavyOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
-				heavyOrdinal++
-			case len(input.PhraseMotions) == 1:
-				// A caller-supplied singleton pool is an explicit motion choice;
-				// keep it stable across all long bullets in the run. The one
-				// exception is a long-copy motion proven to crash the render
-				// daemon: fall back to the long-copy whitelist instead of
-				// failing the whole run at render time.
-				if len(strings.Fields(plan.Items[i].Text)) >= 6 && isLongCopyCrashingMotion(input.PhraseMotions[0]) {
-					plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, nil, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
-				} else {
-					plan.Items[i].MotionID = input.PhraseMotions[0]
-				}
-			case len(strings.Fields(plan.Items[i].Text)) >= 6:
-				plan.Items[i].MotionID = selectLongPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
-			default:
-				plan.Items[i].MotionID = selectPhraseMotionLimited(motionSeed, "run", phraseOrdinal, input.PhraseMotions, laneAnimationCount(input.AnimationCounts, laneImportantPhrase))
-			}
-			phraseOrdinal++
-		case "image", "entity_image", "product", "logo":
-			if plan.Items[i].Kind == "entity_image" && len(plan.Items[i].ImageLayers) > 0 {
-				plan.Items[i].MotionID = "" // each child layer owns its selected motion
-			} else {
-				if plan.Items[i].Kind == "entity_image" {
-					if plan.Items[i].EntityCaption != "" {
-						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
-						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
-						plan.Items[i].CaptionMotionID = SelectEntityCaptionMotionAt(imageSeed, input.VideoID, imageOrdinal)
-					} else {
-						plan.Items[i].MotionID = entityImageMotionForPlan(imageOrdinal, laneAnimationCount(input.AnimationCounts, laneEntities))
-					}
-				} else {
-					if plan.Items[i].EntityCaption != "" {
-						pool := ImageWithTextMotionPool(laneAnimationCount(input.AnimationCounts, laneImagesWithText))
-						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, pool)
-					} else {
-						plan.Items[i].MotionID = selectImageMotion(imageSeed, input.VideoID, imageOrdinal, input.ImageMotions)
-					}
-				}
-				if plan.Items[i].Kind == "entity_image" && plan.Items[i].EntityCaption != "" && len(plan.Items[i].AssetRefs) > 0 {
-					if entityStyleSelector != "" {
-						plan.Items[i].EntityStyleID = entityStyleSelector
-					}
-				}
-				imageOrdinal++
-			}
-			if plan.Items[i].Kind == "image" {
-				params := ImageOverlayParams(plan.Width, plan.Height)
-				if plan.Items[i].Params == nil {
-					plan.Items[i].Params = map[string]any{}
-				}
-				for key, value := range params {
-					plan.Items[i].Params[key] = value
-				}
-			}
-		}
-	}
+	assignPlannerItemMotions(&plan, input, motionSeed, imageSeed, entityStyleSelector, entityImageMotionForPlan)
 	// Renderer catalog defaults may use a 4-second entrance, longer than the
 	// certified spoken window of a short phrase. Clamp every phrase family to
 	// one third of its own window so the selected treatment settles in time and
@@ -574,26 +435,55 @@ func BuildPlan(input PlanInput, config PlannerConfig) (OverlayPlan, error) {
 			if item.MotionParams == nil {
 				item.MotionParams = make(map[string]any)
 			}
-			item.MotionParams["enter_frames"] = int(phraseEntranceFrames(durationUS, input.FPSNum, input.FPSDen))
+			item.MotionParams["enter_frames"] = int(PhraseEntranceFrames(durationUS, input.FPSNum, input.FPSDen))
 			item.MotionParams["exit_frames"] = 0
 		}
 	}
 	input.MotionSeed = motionSeed
-	EnsureDistinctPhraseMotions(plan.Items, input)
-	EnsureDistinctNumberMotions(plan.Items, input.AnimationCounts)
-	MoveImagesAsideForOverlappingDateCards(plan.Items)
-	// Multi-Animations Runtime: fuse nearby overlays into single chain items
-	// (phrase_chain / image_chain) with concatenated motions and a fly-under
-	// + fade transition, driven by AnimationCounts chain_gap_ms /
-	// chain_max_segments. Legacy items pass through untouched.
-	plan.Items = CoalesceChainedOverlays(plan.Items, input.AnimationCounts)
-	// Co-present items share the same visual beat: cascade their entrance
-	// settles so a phrase, a portrait and a number card do not fire on one
-	// frame. Certified windows never move, only explicit entrances lengthen.
-	CascadeClusteredEntrances(plan.Items, input.FPSNum, input.FPSDen)
+	// Nearby-animation layout has one owner (animation_layout.go): duplicate
+	// rotation, image/date placement, chain fusion and the entrance cascade.
+	plan.Items = FinalizePlannerAnimationLayout(plan.Items, input, input.FPSNum, input.FPSDen)
 	plan.Items = PruneOrphanChartBars(plan.Items)
 	if err := plan.Validate(); err != nil {
-		return OverlayPlan{}, err
+		return capmodel.OverlayPlan{}, err
 	}
 	return plan, nil
+}
+
+// visualLane is the shared lowering of one ranked image-like candidate list.
+// Images, products and logos differ only in kind, template, placement and the
+// optional per-item preset; window clamping, id derivation and the asset
+// reference are identical, so they live here exactly once.
+type visualLane struct {
+	kind       string
+	templateID string
+	position   string
+	style      string
+	limit      int
+	presetFor  func(sceneID, itemID string) string
+	skip       func(assetID string) bool
+}
+
+func appendVisualLane(plan *capmodel.OverlayPlan, sceneID string, lane visualLane, candidates []ImageCandidate) {
+	if len(candidates) > lane.limit {
+		candidates = candidates[:lane.limit]
+	}
+	for _, candidate := range candidates {
+		if lane.skip != nil && lane.skip(strings.TrimSpace(candidate.AssetID)) {
+			continue
+		}
+		candidate = clampImageWindow(candidate)
+		id := itemID(sceneID, lane.kind, candidate.AssetID)
+		item := capmodel.OverlayItem{
+			ID: id, SceneID: sceneID,
+			Kind: lane.kind, TemplateID: lane.templateID,
+			StartMs: candidate.StartMs, EndMs: candidate.EndMs, StartUS: candidate.StartUS, DurationUS: candidate.DurationUS,
+			AssetRefs: []capmodel.OverlayAssetRef{capmodel.NewOverlayAssetRef(asset.New(candidate.AssetID, candidate.SHA256, candidate.MediaType, 0), candidate.URL, candidate.LocalPath)},
+			Params:    map[string]any{"position": lane.position, "style": lane.style, "priority": candidate.Score},
+		}
+		if lane.presetFor != nil {
+			item.PresetID = lane.presetFor(sceneID, id)
+		}
+		plan.Items = append(plan.Items, item)
+	}
 }

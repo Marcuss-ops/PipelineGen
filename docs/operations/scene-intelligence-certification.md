@@ -309,8 +309,9 @@ notes are not claimed as measurements from this execution.
   disk and /health agree, `git_dirty:true` from the working tree below)
 
   - 52-check core re-verified `-count=1`: Rust SI lib **38 passed**,
-    Level-C unseen eval **3 passed**; Go kernel/script, overlays,
-    scripts/overlay, rustexec gates **all ok** (rustexec incl. X07
+    Level-C unseen eval **3 passed**; Go kernel/script, overlays (the
+    package formerly split as scripts/overlay), rustexec gates **all ok**
+    (rustexec incl. X07
     fail-soft, ~170s suite); scripts SI integration (X01/X02/X10,
     projection, admission) **passed**; RenderingGen overlay/processor and
     full queue suites **passed**.

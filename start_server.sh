@@ -46,7 +46,7 @@ if [[ -x "$DIR/bin/maps_dynamic_map_render" ]]; then
 fi
 # Dynamic map vector sampling currently runs on CPU; the declared production
 # encoder is NVENC and is admitted through the shared GPU gate. These are
-# separate stages; see scripts/overlay/map_encode_profile.go.
+# separate stages; see internal/capabilities/overlays/map_encode_profile.go.
 # Bounded GPU render concurrency. Three persistent Rust runners overlap
 # independent NVDEC/NVENC jobs without allowing an unbounded FFmpeg burst;
 # override this in the environment for a measured 1..4 worker canary.

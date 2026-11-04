@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 
@@ -186,7 +187,7 @@ func TestProjectChapterBulletsMergedSpanOpensChapter(t *testing.T) {
 }
 
 func TestChapterBulletRoleMapsToBulletsCategory(t *testing.T) {
-	item := capabilityoverlay.OverlayItem{ID: "c1", SceneID: "s1", Kind: "text_phrase",
+	item := capmodel.OverlayItem{ID: "c1", SceneID: "s1", Kind: "text_phrase",
 		TemplateID: "IMPORTANT_PHRASE", Params: map[string]any{"editorial_role": ChapterBulletRole}}
 	category, ok := overlayItemCategory(item)
 	require.True(t, ok, "chapter role must categorize")
@@ -198,7 +199,7 @@ func TestChapterBulletFontBumpOverPhraseSize(t *testing.T) {
 	canvas := OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{
 		Size: &scriptpkg.OverlaySizeSpec{FontSize: &fontSize},
 	}}
-	items := []capabilityoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "c1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Chapter card",
 			Params: map[string]any{"editorial_role": ChapterBulletRole}},
 		{ID: "p1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Ordinary phrase",

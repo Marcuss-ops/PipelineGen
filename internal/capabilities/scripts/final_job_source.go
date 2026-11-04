@@ -1,7 +1,7 @@
 package scriptgeneration
 
 import (
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"context"
 	"errors"
@@ -91,7 +91,7 @@ func restoreFinalJobFixedMedia(result *GenerateResult, timeline *capabilityaudio
 // composite's expected format) AND the remuxed first packet actually lands on
 // zero; every other case falls back to the pre-existing re-encode, so the
 // correctness contract is unchanged.
-func normalizeFinalJobVideoBackground(ctx context.Context, plan capoverlay.OverlayPlan) (capoverlay.OverlayPlan, func(), error) {
+func normalizeFinalJobVideoBackground(ctx context.Context, plan capmodel.OverlayPlan) (capmodel.OverlayPlan, func(), error) {
 	if plan.Source == nil {
 		return plan, nil, nil
 	}
@@ -144,7 +144,7 @@ func normalizeFinalJobVideoBackground(ctx context.Context, plan capoverlay.Overl
 // commitNormalizedFinalJobSource hashes the normalized artifact, rejects an
 // empty result, and rewrites the plan's source to point at it. Both the remux
 // fast path and the re-encode fallback end here so the two cannot drift.
-func commitNormalizedFinalJobSource(plan capoverlay.OverlayPlan, sourceAssetID, output string, cleanup func()) (capoverlay.OverlayPlan, func(), error) {
+func commitNormalizedFinalJobSource(plan capmodel.OverlayPlan, sourceAssetID, output string, cleanup func()) (capmodel.OverlayPlan, func(), error) {
 	hash, size, hashErr := digest.SHA256File(output)
 	if hashErr != nil {
 		cleanup()
@@ -154,7 +154,7 @@ func commitNormalizedFinalJobSource(plan capoverlay.OverlayPlan, sourceAssetID, 
 		cleanup()
 		return plan, nil, fmt.Errorf("normalized source asset %q is empty", sourceAssetID)
 	}
-	plan.Source = &capoverlay.OverlaySource{
+	plan.Source = &capmodel.OverlaySource{
 		AssetID:   "finaljob-video-" + hash[:16],
 		Path:      "assets/semantic/finaljob-video-" + hash + ".mp4",
 		LocalPath: output, SHA256: hash,

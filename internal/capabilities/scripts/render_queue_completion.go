@@ -14,16 +14,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"log"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // RenderingGen queue job states are wire facts owned by the queue.
@@ -440,7 +439,7 @@ func RearmFailedRenderJob(ctx context.Context, client RenderQueueClient, id stri
 
 var semanticAssetIDSanitizer = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
-func semanticAssetLogicalPath(ref capoverlay.OverlayAssetRef) string {
+func semanticAssetLogicalPath(ref capmodel.OverlayAssetRef) string {
 	if strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/") {
 		return filepath.ToSlash(strings.TrimSpace(ref.URL))
 	}
@@ -498,7 +497,7 @@ func optionalTimePointer(value time.Time) *time.Time {
 func (e *QueueRenderEnqueuer) recordQueueAttempt(
 	ctx context.Context,
 	jobID string,
-	plan capoverlay.OverlayPlan,
+	plan capmodel.OverlayPlan,
 	metadata *overlayItemPublicationMetadata,
 	wait RenderCompletionMetrics,
 	submitStartedAt time.Time,

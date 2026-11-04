@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -48,18 +49,18 @@ func TestApplyEditorialOverlayBudgetClampsOversizedPhraseRequest(t *testing.T) {
 	}
 }
 
-func limitTestItems(phrases int) []OverlayItem {
-	items := make([]OverlayItem, 0, 20+phrases)
+func limitTestItems(phrases int) []capmodel.OverlayItem {
+	items := make([]capmodel.OverlayItem, 0, 20+phrases)
 	for i := 0; i < 20; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID:        fmt.Sprintf("image-%d", i),
 			Kind:      "entity_image",
-			AssetRefs: []OverlayAssetRef{{SHA256: fmt.Sprintf("hash-%d", i)}},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: fmt.Sprintf("hash-%d", i)}},
 			Params:    map[string]any{"priority": float64(i)},
 		})
 	}
 	for i := 0; i < phrases; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID:     fmt.Sprintf("phrase-%d", i),
 			Kind:   "text_phrase",
 			Text:   fmt.Sprintf("Grounded phrase %d", i),
@@ -69,7 +70,7 @@ func limitTestItems(phrases int) []OverlayItem {
 	return items
 }
 
-func countPhraseItems(items []OverlayItem) int {
+func countPhraseItems(items []capmodel.OverlayItem) int {
 	count := 0
 	for _, item := range items {
 		if item.Kind == "text_phrase" {
@@ -79,7 +80,7 @@ func countPhraseItems(items []OverlayItem) int {
 	return count
 }
 
-func phraseItemIDs(items []OverlayItem) map[string]bool {
+func phraseItemIDs(items []capmodel.OverlayItem) map[string]bool {
 	ids := map[string]bool{}
 	for _, item := range items {
 		if item.Kind == "text_phrase" {
@@ -164,11 +165,11 @@ func TestApplyEditorialOverlayBudgetHonoursImageLimitAboveDefault(t *testing.T) 
 	const requestedImages = MaxImageOverlaysPerRun + 5
 	items := limitTestItems(0)
 	for i := MaxImageOverlaysPerRun; i < requestedImages; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID:        fmt.Sprintf("extra-image-%d", i),
 			Kind:      "image",
 			SceneID:   fmt.Sprintf("scene-%d", i),
-			AssetRefs: []OverlayAssetRef{{SHA256: fmt.Sprintf("extra-hash-%d", i)}},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: fmt.Sprintf("extra-hash-%d", i)}},
 		})
 	}
 
@@ -185,11 +186,11 @@ func TestApplyEditorialOverlayBudgetHonoursImageLimitAboveDefault(t *testing.T) 
 }
 
 func TestApplyEditorialOverlayBudgetAdmitsAtMostThreeGroundedMaps(t *testing.T) {
-	items := make([]OverlayItem, 0, MaxMapOverlaysPerRun+2)
+	items := make([]capmodel.OverlayItem, 0, MaxMapOverlaysPerRun+2)
 	for i := 0; i < MaxMapOverlaysPerRun+2; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("map-%d", i), SceneID: fmt.Sprintf("scene-%d", i), Kind: "map",
-			Map:    &MapOverlay{Provider: "local", SourceID: fmt.Sprintf("plate-%d", i)},
+			Map:    &capmodel.MapOverlay{Provider: "local", SourceID: fmt.Sprintf("plate-%d", i)},
 			Params: map[string]any{"priority": float64(i)},
 		})
 	}
@@ -210,7 +211,7 @@ func TestLimitOverlayItemsPerSceneCountsChartAsOneUnit(t *testing.T) {
 		SceneID: "scene-1", WindowStartUS: 0, WindowEndUS: 4_000_000,
 		Values: []float64{42, 18}, Labels: []string{"42%", "18%"},
 	}}, 1920, 1080)
-	items := append(chartItems, OverlayItem{ID: "extra", SceneID: "scene-1", Kind: "number", TemplateID: "METRIC_STAT_CARD", StartMs: 0, EndMs: 4000, Params: map[string]any{"priority": -1.0}})
+	items := append(chartItems, capmodel.OverlayItem{ID: "extra", SceneID: "scene-1", Kind: "number", TemplateID: "METRIC_STAT_CARD", StartMs: 0, EndMs: 4000, Params: map[string]any{"priority": -1.0}})
 	got := LimitOverlayItemsPerScene(items, 1)
 	if len(got) != 3 {
 		t.Fatalf("one per-scene chart unit should retain its label + two bars: %+v", got)
@@ -221,11 +222,11 @@ func TestLimitOverlayItemsPerSceneCountsChartAsOneUnit(t *testing.T) {
 }
 
 func TestApplyEditorialOverlayBudgetKeepsThreeHighestPriorityMaps(t *testing.T) {
-	items := make([]OverlayItem, 0, MaxMapOverlaysPerRun+2)
+	items := make([]capmodel.OverlayItem, 0, MaxMapOverlaysPerRun+2)
 	for i := 0; i < MaxMapOverlaysPerRun+2; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("map-%d", i), Kind: "map", SceneID: fmt.Sprintf("scene-%d", i),
-			Map:    &MapOverlay{SourceID: fmt.Sprintf("plate-%d", i)},
+			Map:    &capmodel.MapOverlay{SourceID: fmt.Sprintf("plate-%d", i)},
 			Params: map[string]any{"priority": float64(i)},
 		})
 	}
@@ -241,23 +242,23 @@ func TestApplyEditorialOverlayBudgetKeepsThreeHighestPriorityMaps(t *testing.T) 
 }
 
 func TestApplyEditorialOverlayBudgetCombinesContextAndEntityImageKinds(t *testing.T) {
-	items := make([]OverlayItem, 0, 30)
+	items := make([]capmodel.OverlayItem, 0, 30)
 	for i := 0; i < 8; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("context-%d", i), Kind: "image", SceneID: fmt.Sprintf("scene-%d", i),
-			AssetRefs: []OverlayAssetRef{{SHA256: fmt.Sprintf("context-hash-%d", i)}},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: fmt.Sprintf("context-hash-%d", i)}},
 			Params:    map[string]any{"priority": float64(20 - i)},
 		})
 	}
 	for i := 0; i < 8; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("entity-%d", i), Kind: "entity_image", SceneID: fmt.Sprintf("scene-%d", i),
-			AssetRefs: []OverlayAssetRef{{SHA256: fmt.Sprintf("entity-hash-%d", i)}},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: fmt.Sprintf("entity-hash-%d", i)}},
 			Params:    map[string]any{"priority": float64(10 - i)},
 		})
 	}
 	for i := 0; i < 15; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("phrase-%d", i), Kind: "text_phrase", Text: fmt.Sprintf("Grounded phrase %d", i),
 			Params: map[string]any{"priority": float64(i)},
 		})
@@ -289,25 +290,25 @@ func TestApplyEditorialOverlayBudgetCombinesContextAndEntityImageKinds(t *testin
 // genuinely different image.
 func TestImageBudgetDedupesSameBytesAcrossEntityAndContextArms(t *testing.T) {
 	sameBytes := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		// The entity card carries the portrait first (canonical timeline order).
 		{ID: "entity-card", Kind: "entity_image", SceneID: "scene-0",
-			EntityRef: &OverlayEntityRef{CanonicalEntityID: "person:milton-leite"},
-			AssetRefs: []OverlayAssetRef{{AssetID: "asset-milton", SHA256: sameBytes}},
+			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-milton", SHA256: sameBytes}},
 			Params:    map[string]any{"priority": float64(90)}},
 		// A second scene's context query answered with the SAME bytes.
 		{ID: "context-dup-1", Kind: "image", SceneID: "scene-1",
-			AssetRefs: []OverlayAssetRef{{AssetID: "asset-milton", SHA256: sameBytes}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-milton", SHA256: sameBytes}},
 			Params:    map[string]any{"priority": float64(85)}},
 		{ID: "context-dup-2", Kind: "image", SceneID: "scene-2",
-			AssetRefs: []OverlayAssetRef{{AssetID: "asset-milton-copy", SHA256: sameBytes}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-milton-copy", SHA256: sameBytes}},
 			Params:    map[string]any{"priority": float64(80)}},
 		// Distinct images must survive and fill the freed slots.
 		{ID: "context-other-1", Kind: "image", SceneID: "scene-3",
-			AssetRefs: []OverlayAssetRef{{AssetID: "asset-bus", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-bus", SHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}},
 			Params:    map[string]any{"priority": float64(60)}},
 		{ID: "context-other-2", Kind: "image", SceneID: "scene-4",
-			AssetRefs: []OverlayAssetRef{{AssetID: "asset-office", SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-office", SHA256: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}},
 			Params:    map[string]any{"priority": float64(50)}},
 	}
 	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, MaxPhraseOverlaysHardLimit, 10, 0)
@@ -335,10 +336,10 @@ func TestImageBudgetDedupesSameBytesAcrossEntityAndContextArms(t *testing.T) {
 
 func TestImageBudgetAllowsRepeatedEntityImageAcrossPerSceneScope(t *testing.T) {
 	hash := strings.Repeat("d", 64)
-	items := []OverlayItem{
-		{ID: "entity-scene-1", SceneID: "scene-1", Kind: string(KindEntityImage), AssetRefs: []OverlayAssetRef{{SHA256: hash}}},
-		{ID: "entity-scene-2", SceneID: "scene-2", Kind: string(KindEntityImage), AssetRefs: []OverlayAssetRef{{SHA256: hash}}},
-		{ID: "context-duplicate", SceneID: "scene-3", Kind: "image", AssetRefs: []OverlayAssetRef{{SHA256: hash}}},
+	items := []capmodel.OverlayItem{
+		{ID: "entity-scene-1", SceneID: "scene-1", Kind: string(capmodel.KindEntityImage), AssetRefs: []capmodel.OverlayAssetRef{{SHA256: hash}}},
+		{ID: "entity-scene-2", SceneID: "scene-2", Kind: string(capmodel.KindEntityImage), AssetRefs: []capmodel.OverlayAssetRef{{SHA256: hash}}},
+		{ID: "context-duplicate", SceneID: "scene-3", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{SHA256: hash}}},
 	}
 
 	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 5, 10, 0, true)
@@ -362,7 +363,7 @@ func TestPhraseReservationNeverClobbersTheLongCandidatesItDidNotReserve(t *testi
 	longText := func(i int) string {
 		return fmt.Sprintf("long candidate %d carries eight words right here", i)
 	}
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "long-1", Kind: "text_phrase", Text: longText(1), Params: map[string]any{"priority": 0.9}},
 		{ID: "long-2", Kind: "text_phrase", Text: longText(2), Params: map[string]any{"priority": 0.8}},
 		{ID: "long-3", Kind: "text_phrase", Text: longText(3), Params: map[string]any{"priority": 0.7}},
@@ -421,7 +422,7 @@ func TestPhraseReservationNeverClobbersTheLongCandidatesItDidNotReserve(t *testi
 // the planner's overlap budget, and comparing windows ACROSS scenes is never
 // valid — scene 2's 100-300ms phrase must not evict scene 1's.
 func TestRunLevelBudgetDoesNotLetAnotherSceneEvictAHigherRankedPhrase(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "scene-1-higher", SceneID: "scene-1", Kind: "text_phrase", Text: "higher ranked phrase", StartMs: 100, EndMs: 300, Params: map[string]any{"priority": 0.9}},
 		{ID: "scene-2-same-window", SceneID: "scene-2", Kind: "text_phrase", Text: "other scene phrase", StartMs: 100, EndMs: 300, Params: map[string]any{"priority": 0.8}},
 	}
@@ -436,7 +437,7 @@ func TestRunLevelBudgetDoesNotLetAnotherSceneEvictAHigherRankedPhrase(t *testing
 }
 
 func TestRunLevelBudgetReplacesOverlappingPhraseFragmentsWithLongPhrase(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "fragment", SceneID: "scene-1", Kind: "text_phrase", Text: "mandados de prisão temporária", StartMs: 200, EndMs: 300, Params: map[string]any{"priority": 0.99}},
 		{ID: "long", SceneID: "scene-1", Kind: "text_phrase", Text: "emitidos dezesseis mandados de prisão temporária e mais dezoito mandados de busca", StartMs: 100, EndMs: 500, Params: map[string]any{"priority": 0.5}},
 		{ID: "backup", SceneID: "scene-1", Kind: "text_phrase", Text: "a defesa contesta a necessidade e a proporcionalidade da prisão", StartMs: 600, EndMs: 800, Params: map[string]any{"priority": 0.4}},
@@ -453,10 +454,10 @@ func TestRunLevelBudgetReplacesOverlappingPhraseFragmentsWithLongPhrase(t *testi
 
 func TestRunLevelImageBudgetKeepsPerSceneOccurrences(t *testing.T) {
 	shared := strings.Repeat("a", 64)
-	items := []OverlayItem{
-		{ID: "scene-1-image", SceneID: "scene-1", Kind: "image", AssetRefs: []OverlayAssetRef{{SHA256: shared}}},
-		{ID: "scene-2-image", SceneID: "scene-2", Kind: "image", AssetRefs: []OverlayAssetRef{{SHA256: shared}}},
-		{ID: "scene-2-duplicate", SceneID: "scene-2", Kind: "image", AssetRefs: []OverlayAssetRef{{SHA256: shared}}},
+	items := []capmodel.OverlayItem{
+		{ID: "scene-1-image", SceneID: "scene-1", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{SHA256: shared}}},
+		{ID: "scene-2-image", SceneID: "scene-2", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{SHA256: shared}}},
+		{ID: "scene-2-duplicate", SceneID: "scene-2", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{SHA256: shared}}},
 	}
 	got, _ := ApplyEditorialOverlayBudgetWithLimit(items, 5)
 	var ids []string
@@ -471,18 +472,18 @@ func TestRunLevelImageBudgetKeepsPerSceneOccurrences(t *testing.T) {
 }
 
 func TestEditorialOverlayBudgetRetainsValueAndBrandCalloutsWithoutCrowdingExistingArms(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "image", SceneID: "scene-1", Kind: "entity_image", EntityRef: &OverlayEntityRef{CanonicalEntityID: "person:ada"}},
+	items := []capmodel.OverlayItem{
+		{ID: "image", SceneID: "scene-1", Kind: "entity_image", EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:ada"}},
 		{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", Text: "A grounded editorial phrase"},
-		{ID: "map", SceneID: "scene-1", Kind: "map", Map: &MapOverlay{SourceID: "plate-rome"}},
+		{ID: "map", SceneID: "scene-1", Kind: "map", Map: &capmodel.MapOverlay{SourceID: "plate-rome"}},
 	}
 	for i := 0; i < MaxNumberOverlaysPerRun+2; i++ {
-		items = append(items, OverlayItem{ID: fmt.Sprintf("number-%d", i), Kind: "number", Text: fmt.Sprintf("%d percent", i), Params: map[string]any{"priority": float64(i)}})
+		items = append(items, capmodel.OverlayItem{ID: fmt.Sprintf("number-%d", i), Kind: "number", Text: fmt.Sprintf("%d percent", i), Params: map[string]any{"priority": float64(i)}})
 	}
 	for i := 0; i < MaxBrandTextOverlaysPerRun+2; i++ {
-		items = append(items, OverlayItem{ID: fmt.Sprintf("brand-%d", i), Kind: "brand_text", Text: fmt.Sprintf("Brand %d", i), Params: map[string]any{"priority": float64(i)}})
+		items = append(items, capmodel.OverlayItem{ID: fmt.Sprintf("brand-%d", i), Kind: "brand_text", Text: fmt.Sprintf("Brand %d", i), Params: map[string]any{"priority": float64(i)}})
 	}
-	items = append(items, OverlayItem{ID: "brand-6-preferred", Kind: "brand_text", Text: "  Brand   6  ", Params: map[string]any{"priority": float64(10)}})
+	items = append(items, capmodel.OverlayItem{ID: "brand-6-preferred", Kind: "brand_text", Text: "  Brand   6  ", Params: map[string]any{"priority": float64(10)}})
 	got, _ := ApplyEditorialOverlayBudgetWithLimits(items, 1, 1)
 	counts := map[string]int{}
 	for _, item := range got {
@@ -506,15 +507,15 @@ func TestEditorialOverlayBudgetRetainsValueAndBrandCalloutsWithoutCrowdingExisti
 }
 
 func TestEditorialOverlayBudgetPreservesPreviouslyBudgetedDateChain(t *testing.T) {
-	chain := OverlayItem{
-		ID: "date-chain", SceneID: "scene-1", Kind: KindPhraseChain,
+	chain := capmodel.OverlayItem{
+		ID: "date-chain", SceneID: "scene-1", Kind: capmodel.KindPhraseChain,
 		StartMs: 1700, EndMs: 6900, StartUS: 1_700_000, DurationUS: 5_200_000,
 		Params: map[string]any{"chain_count": 2, "chain_segments": []any{
 			map[string]any{"kind": "number", "template_id": "TIMELINE_DATE_CARD", "text": "2025"},
 			map[string]any{"kind": "number", "template_id": "TIMELINE_DATE_CARD", "text": "March 5, 2026"},
 		}},
 	}
-	got, _ := ApplyEditorialOverlayBudgetWithImageLimit([]OverlayItem{chain}, 1, 1, 1)
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit([]capmodel.OverlayItem{chain}, 1, 1, 1)
 	if len(got) != 1 || got[0].ID != chain.ID || got[0].EndMs != 6900 {
 		t.Fatalf("date chain after budget = %+v, want the original chain and full 6900ms tail", got)
 	}
@@ -523,7 +524,7 @@ func TestEditorialOverlayBudgetPreservesPreviouslyBudgetedDateChain(t *testing.T
 // TestApplyPhraseOverlayBudgetHonoursCallerPhraseLimit covers the non-run-level
 // entry point (RunLevelEditorialBudget=false) with the same payload ceiling.
 func TestApplyPhraseOverlayBudgetHonoursCallerPhraseLimit(t *testing.T) {
-	items := append(limitTestItems(9), OverlayItem{ID: "keyword-1", Kind: "keyword", Text: "keyword"})
+	items := append(limitTestItems(9), capmodel.OverlayItem{ID: "keyword-1", Kind: "keyword", Text: "keyword"})
 
 	got, budget := ApplyPhraseOverlayBudgetWithLimit(items, 2)
 	if phrases := countPhraseItems(got); phrases != 2 {

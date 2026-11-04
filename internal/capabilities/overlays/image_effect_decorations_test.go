@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 )
 
@@ -91,17 +92,17 @@ func TestSelectImageEffectDecorationIsDeterministicButVaried(t *testing.T) {
 // TestIsImageOverlayItemVocabulary proves the canonical predicate covers the
 // image surfaces and nothing else, with or without explicit kind.
 func TestIsImageOverlayItemVocabulary(t *testing.T) {
-	image := OverlayItem{Kind: "image", AssetRefs: []OverlayAssetRef{{AssetID: "a"}}}
+	image := capmodel.OverlayItem{Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}}
 	if !IsImageOverlayItem(image) {
 		t.Fatal("kind image must be an image surface")
 	}
-	if !IsImageOverlayItem(OverlayItem{Kind: "", TemplateID: "IMAGE_POPUP", ImageLayers: []OverlayImageLayer{{ID: "l"}}}) {
+	if !IsImageOverlayItem(capmodel.OverlayItem{Kind: "", TemplateID: "IMAGE_POPUP", ImageLayers: []capmodel.OverlayImageLayer{{ID: "l"}}}) {
 		t.Fatal("image templates with layers must be image surfaces")
 	}
-	if IsImageOverlayItem(OverlayItem{Kind: "phrase", AssetRefs: []OverlayAssetRef{{AssetID: "a"}}}) {
+	if IsImageOverlayItem(capmodel.OverlayItem{Kind: "phrase", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}}) {
 		t.Fatal("phrase items must not be image surfaces")
 	}
-	if IsImageOverlayItem(OverlayItem{Kind: "image"}) {
+	if IsImageOverlayItem(capmodel.OverlayItem{Kind: "image"}) {
 		t.Fatal("assetless image items must not be image surfaces")
 	}
 }

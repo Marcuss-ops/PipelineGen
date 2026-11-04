@@ -9,20 +9,22 @@
 // never supplied the candidates" from "a budget admitted only N of them".
 package scriptgeneration
 
-import capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+)
 
 // overlayPlanIntakeTracker accumulates the per-stage admission loss. It is
 // result telemetry only: it never reads or writes plan content.
 type overlayPlanIntakeTracker struct {
-	intake capabilityoverlay.OverlayPlanIntake
+	intake capmodel.OverlayPlanIntake
 }
 
-func newOverlayPlanIntakeTracker(scenes, timedScenes int, budget capabilityoverlay.OverlayIntakeBudget) *overlayPlanIntakeTracker {
+func newOverlayPlanIntakeTracker(scenes, timedScenes int, budget capmodel.OverlayIntakeBudget) *overlayPlanIntakeTracker {
 	untimed := scenes - timedScenes
 	if untimed < 0 {
 		untimed = 0
 	}
-	return &overlayPlanIntakeTracker{intake: capabilityoverlay.OverlayPlanIntake{
+	return &overlayPlanIntakeTracker{intake: capmodel.OverlayPlanIntake{
 		Scenes: scenes, TimedScenes: timedScenes, UntimedScenes: untimed, Budget: budget,
 	}}
 }
@@ -44,7 +46,7 @@ func (t *overlayPlanIntakeTracker) stage(reason string, before, after int) {
 }
 
 // finish seals the planner-side counters and returns the completed report.
-func (t *overlayPlanIntakeTracker) finish(items []capabilityoverlay.OverlayItem) *capabilityoverlay.OverlayPlanIntake {
+func (t *overlayPlanIntakeTracker) finish(items []capmodel.OverlayItem) *capmodel.OverlayPlanIntake {
 	if t == nil {
 		return nil
 	}

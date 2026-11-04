@@ -1,6 +1,8 @@
 // planner_input.go — planner input types, split out of planner.go (600-line file gate).
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 // are the integer-microsecond canonical timing (authoritative); StartMs/EndMs
 // are their millisecond projection.
 type TimedAnnotation struct {
@@ -118,7 +120,7 @@ type PlanInput struct {
 	RendererVersion string
 	// Background is copied verbatim into the sealed overlay plan when the
 	// script/render payload explicitly requests one.
-	Background *OverlayBackground
+	Background *capmodel.OverlayBackground
 	// MapGroups is the map-grouping policy resolved from the unified
 	// map_presentation contract. The zero value keeps the certified defaults.
 	MapGroups MapGroupConfig

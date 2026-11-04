@@ -121,6 +121,35 @@ func rowsAffected(res sql.Result) (int64, error) {
 	return n, nil
 }
 
+// requireTransitionRows turns a zero-row conditional UPDATE into the ownership
+// conflict every transition reports. Zero rows is a semantic outcome (wrong
+// state or wrong worker), never a storage failure.
+func requireTransitionRows(res sql.Result, id, workerID string) error {
+	n, err := rowsAffected(res)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("job %s is not running or not owned by %s", id, workerID)
+	}
+	return nil
+}
+
+// withTx runs fn in one transaction: commit only when fn returns nil, otherwise
+// roll back. Every transition shares this preamble instead of restating the
+// BeginTx/Rollback/Commit triple, and fn must not commit the transaction itself.
+func (r *Repository) withTx(ctx context.Context, fn func(context.Context, *sql.Tx) error) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := fn(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // Compile-time check that Repository satisfies the repository contract.
 var _ repository.JobRepository = (*Repository)(nil)
 
@@ -134,48 +163,62 @@ type inputManifest struct {
 	Assets []model.AssetRef `json:"assets"`
 }
 
-// Submit enqueues a job. The ID is required and must be unique.
-func (r *Repository) Submit(ctx context.Context, job model.Job) error {
-	if job.ID == "" {
-		return fmt.Errorf("job id is required")
+// jobRow carries the wire defaults and encoded JSONB columns of one job row.
+// Submit and SubmitBatch must produce byte-identical rows, so the encoding is
+// computed in one place instead of once per insert path.
+type jobRow struct {
+	jobType  string
+	schema   string
+	version  int
+	plan     []byte
+	manifest []byte
+}
+
+func prepareJobRow(job model.Job) (jobRow, error) {
+	row := jobRow{schema: job.Schema, version: job.Version}
+	if row.schema == "" {
+		row.schema = model.JobSchemaV1
 	}
-	if err := model.ValidateChunk(job); err != nil {
-		return err
-	}
-	schema := job.Schema
-	if schema == "" {
-		schema = model.JobSchemaV1
-	}
-	version := job.Version
-	if version == 0 {
-		version = model.JobSchemaVersionV1
+	if row.version == 0 {
+		row.version = model.JobSchemaVersionV1
 	}
 	plan, err := normalizeJSON(job.RenderPlan)
 	if err != nil {
-		return fmt.Errorf("render_plan: %w", err)
+		return jobRow{}, fmt.Errorf("render_plan: %w", err)
 	}
+	row.plan = plan
 	manifest, err := json.Marshal(inputManifest{Assets: job.Assets})
 	if err != nil {
-		return fmt.Errorf("input_manifest: %w", err)
+		return jobRow{}, fmt.Errorf("input_manifest: %w", err)
 	}
-	jobType, err := normalizeJobType(job.JobType)
+	row.manifest = manifest
+	row.jobType, err = normalizeJobType(job.JobType)
 	if err != nil {
-		return err
+		return jobRow{}, err
 	}
+	return row, nil
+}
 
-	ctx, cancel := r.opContext(ctx)
-	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	res, err := tx.ExecContext(ctx, `
+const insertJobSQL = `
 		INSERT INTO render_jobs (id, job_type, job_schema, job_schema_version, render_plan, input_manifest, max_attempts, idempotency_key, parent_job_id, chunk_index, frame_range, not_before, publication_policy, daemon_admission_wait_ms)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, ''), $10, $11, $12, $13, $14)
-		ON CONFLICT (id) DO NOTHING`,
-		job.ID, jobType, schema, version, plan, manifest, r.maxAttempts, job.IdempotencyKey, job.ParentJobID, job.ChunkIndex, job.FrameRange, job.NotBefore, job.PublicationPolicy, job.DaemonAdmissionWaitMS)
+		ON CONFLICT (id) DO NOTHING`
+
+// insertJobRowOnly inserts one job row without its creation event.
+// ON CONFLICT DO NOTHING makes the duplicate id the idempotency signal.
+//
+// Splitting the row from the event lets SubmitBatch stage N JOB_CREATED rows
+// and flush them with ONE multi-row INSERT (recordEvents) at the end of the
+// transaction, instead of one statement per job. Submit and SubmitBatch keep
+// producing byte-identical rows: the event VALUES are the same, only the
+// statement shape differs.
+func (r *Repository) insertJobRowOnly(ctx context.Context, tx *sql.Tx, job model.Job) error {
+	row, err := prepareJobRow(job)
+	if err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, insertJobSQL,
+		job.ID, row.jobType, row.schema, row.version, row.plan, row.manifest, r.maxAttempts, job.IdempotencyKey, job.ParentJobID, job.ChunkIndex, job.FrameRange, job.NotBefore, job.PublicationPolicy, job.DaemonAdmissionWaitMS)
 	if err != nil {
 		return err
 	}
@@ -186,11 +229,31 @@ func (r *Repository) Submit(ctx context.Context, job model.Job) error {
 	if n == 0 {
 		return fmt.Errorf("%w: job %s", repository.ErrJobExists, job.ID)
 	}
+	return nil
+}
 
-	if err := recordEvent(ctx, tx, eventJobCreated, job.ID, "", "", nil); err != nil {
+// insertJobRow inserts one job and records its creation event inside tx.
+func (r *Repository) insertJobRow(ctx context.Context, tx *sql.Tx, job model.Job) error {
+	if err := r.insertJobRowOnly(ctx, tx, job); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return recordEvent(ctx, tx, eventJobCreated, job.ID, "", "", nil)
+}
+
+// Submit enqueues a job. The ID is required and must be unique.
+func (r *Repository) Submit(ctx context.Context, job model.Job) error {
+	if job.ID == "" {
+		return fmt.Errorf("job id is required")
+	}
+	if err := model.ValidateChunk(job); err != nil {
+		return err
+	}
+
+	ctx, cancel := r.opContext(ctx)
+	defer cancel()
+	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		return r.insertJobRow(ctx, tx, job)
+	})
 }
 
 // SubmitBatch atomically inserts an anchor and its chunk children. The queue
@@ -198,73 +261,30 @@ func (r *Repository) Submit(ctx context.Context, job model.Job) error {
 // closes the otherwise real window between creating the anchor and creating
 // its first child.
 func (r *Repository) SubmitBatch(ctx context.Context, jobs []model.Job) error {
-	if len(jobs) == 0 {
-		return fmt.Errorf("job batch is empty")
+	if err := model.ValidateJobBatch(jobs); err != nil {
+		return err
 	}
-	seen := make(map[string]struct{}, len(jobs))
 	for _, job := range jobs {
-		if job.ID == "" {
-			return fmt.Errorf("job id is required")
-		}
-		if _, ok := seen[job.ID]; ok {
-			return fmt.Errorf("duplicate job id %s", job.ID)
-		}
-		seen[job.ID] = struct{}{}
-		if err := model.ValidateChunk(job); err != nil {
-			return err
-		}
 		if _, err := normalizeJobType(job.JobType); err != nil {
 			return err
 		}
 	}
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	for _, job := range jobs {
-		schema := job.Schema
-		if schema == "" {
-			schema = model.JobSchemaV1
+	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		// One creation event per job, flushed as a single multi-row INSERT:
+		// a batch submit pays one event statement instead of one per job. The
+		// persisted rows are identical to the per-job path (same VALUES, same
+		// BIGSERIAL order = jobs order).
+		events := make([]eventRow, 0, len(jobs))
+		for _, job := range jobs {
+			if err := r.insertJobRowOnly(ctx, tx, job); err != nil {
+				return err
+			}
+			events = append(events, eventRow{eventType: eventJobCreated, jobID: job.ID})
 		}
-		version := job.Version
-		if version == 0 {
-			version = model.JobSchemaVersionV1
-		}
-		plan, err := normalizeJSON(job.RenderPlan)
-		if err != nil {
-			return fmt.Errorf("render_plan: %w", err)
-		}
-		manifest, err := json.Marshal(inputManifest{Assets: job.Assets})
-		if err != nil {
-			return fmt.Errorf("input_manifest: %w", err)
-		}
-		jobType, err := normalizeJobType(job.JobType)
-		if err != nil {
-			return err
-		}
-		res, err := tx.ExecContext(ctx, `
-			INSERT INTO render_jobs (id, job_type, job_schema, job_schema_version, render_plan, input_manifest, max_attempts, idempotency_key, parent_job_id, chunk_index, frame_range, not_before, publication_policy, daemon_admission_wait_ms)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, ''), NULLIF($9, ''), $10, $11, $12, $13, $14)
-			ON CONFLICT (id) DO NOTHING`,
-			job.ID, jobType, schema, version, plan, manifest, r.maxAttempts, job.IdempotencyKey, job.ParentJobID, job.ChunkIndex, job.FrameRange, job.NotBefore, job.PublicationPolicy, job.DaemonAdmissionWaitMS)
-		if err != nil {
-			return err
-		}
-		n, err := rowsAffected(res)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return fmt.Errorf("%w: job %s", repository.ErrJobExists, job.ID)
-		}
-		if err := recordEvent(ctx, tx, eventJobCreated, job.ID, "", "", nil); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+		return recordEvents(ctx, tx, events)
+	})
 }
 
 // SubmitIdempotent uses the database uniqueness constraint as the race-safe

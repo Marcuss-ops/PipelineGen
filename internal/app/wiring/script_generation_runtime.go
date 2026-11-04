@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,6 @@ import (
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -253,7 +253,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	} else {
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
 	}
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
 		queueClient := renderinggen.New(queueURL)
 		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))

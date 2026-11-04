@@ -20,61 +20,43 @@ import (
 func (r *Repository) Fail(ctx context.Context, id, workerID, reason string) error {
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		attempts, maxAttempts, err := lockRunningJobAttempts(ctx, tx, id, workerID)
+		if err != nil {
+			return err
+		}
 
-	var attempts, maxAttempts int
-	err = tx.QueryRowContext(ctx, `
-		SELECT attempt_count, max_attempts
-		FROM render_jobs
-		WHERE id = $1 AND state = `+stateLiteral(model.StateRunning)+` AND current_worker_id = $2
-		FOR UPDATE`, id, workerID).Scan(&attempts, &maxAttempts)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("job %s is not running or not owned by %s", id, workerID)
-	}
-	if err != nil {
-		return err
-	}
+		permanent := model.ShouldFailPermanently(attempts, maxAttempts)
 
-	permanent := model.ShouldFailPermanently(attempts, maxAttempts)
+		attempt, err := runningAttemptID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := finishAttempt(ctx, tx, attempt, attemptStatusFailed, "", reason); err != nil {
+			return err
+		}
 
-	attempt, err := runningAttemptID(ctx, tx, id)
-	if err != nil {
-		return err
-	}
-	if err := finishAttempt(ctx, tx, attempt, attemptStatusFailed, "", reason); err != nil {
-		return err
-	}
-
-	var update string
-	if permanent {
-		update = `
+		if permanent {
+			if err := markFailedTx(ctx, tx, id, reason); err != nil {
+				return err
+			}
+		} else if _, err := tx.ExecContext(ctx, `
 			UPDATE render_jobs
-			SET state = ` + stateLiteral(model.StateFailed) + `, failed_at = now(), error_message = $2,
+			SET state = `+stateLiteral(model.StatePending)+`, error_message = $2, queued_at = now(),
 			    current_worker_id = NULL, lease_until = NULL
-			WHERE id = $1`
-	} else {
-		update = `
-			UPDATE render_jobs
-			SET state = ` + stateLiteral(model.StatePending) + `, error_message = $2, queued_at = now(),
-			    current_worker_id = NULL, lease_until = NULL
-			WHERE id = $1`
-	}
-	if _, err := tx.ExecContext(ctx, update, id, reason); err != nil {
-		return err
-	}
+			WHERE id = $1`, id, reason); err != nil {
+			return err
+		}
 
-	eventType := eventJobRequeued
-	if permanent {
-		eventType = eventJobFailed
-	}
-	if err := recordEvent(ctx, tx, eventType, id, attempt, workerID, map[string]any{"reason": reason}); err != nil {
-		return err
-	}
-	return tx.Commit()
+		eventType := eventJobRequeued
+		if permanent {
+			eventType = eventJobFailed
+		}
+		if err := recordEvent(ctx, tx, eventType, id, attempt, workerID, map[string]any{"reason": reason}); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // FailPermanently marks a running job terminally failed regardless of its
@@ -83,121 +65,138 @@ func (r *Repository) Fail(ctx context.Context, id, workerID, reason string) erro
 func (r *Repository) FailPermanently(ctx context.Context, id, workerID, reason string) error {
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	var attemptCount int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT attempt_count FROM render_jobs
-		WHERE id = $1 AND state = `+stateLiteral(model.StateRunning)+` AND current_worker_id = $2
-		FOR UPDATE`, id, workerID).Scan(&attemptCount); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("job %s is not running or not owned by %s", id, workerID)
+	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if _, _, err := lockRunningJobAttempts(ctx, tx, id, workerID); err != nil {
+			return err
 		}
-		return err
+		attempt, err := runningAttemptID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := finishAttempt(ctx, tx, attempt, attemptStatusFailed, "", reason); err != nil {
+			return err
+		}
+		if err := markFailedTx(ctx, tx, id, reason); err != nil {
+			return err
+		}
+		if err := recordEvent(ctx, tx, eventJobFailed, id, attempt, workerID, map[string]any{"reason": reason, "permanent": true}); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// lockRunningJobAttempts locks the job row and returns its attempt budget. Both
+// Fail paths must confirm ownership under the same row lock before closing the
+// attempt, so the SELECT ... FOR UPDATE lives here once.
+func lockRunningJobAttempts(ctx context.Context, tx *sql.Tx, id, workerID string) (int, int, error) {
+	var attempts, maxAttempts int
+	err := tx.QueryRowContext(ctx, `
+		SELECT attempt_count, max_attempts
+		FROM render_jobs
+		WHERE id = $1 AND state = `+stateLiteral(model.StateRunning)+` AND current_worker_id = $2
+		FOR UPDATE`, id, workerID).Scan(&attempts, &maxAttempts)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, fmt.Errorf("job %s is not running or not owned by %s", id, workerID)
 	}
-	attempt, err := runningAttemptID(ctx, tx, id)
-	if err != nil {
-		return err
+	return attempts, maxAttempts, err
+}
+
+// lockJobState locks the job row and returns its current state. Retry and
+// Cancel both read the pre-transition state under the same row lock.
+func lockJobState(ctx context.Context, tx *sql.Tx, id string) (string, error) {
+	var state string
+	err := tx.QueryRowContext(ctx, `SELECT state FROM render_jobs WHERE id = $1 FOR UPDATE`, id).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("job %s: %w", id, repository.ErrNotFound)
 	}
-	if err := finishAttempt(ctx, tx, attempt, attemptStatusFailed, "", reason); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
+	return state, err
+}
+
+// markFailedTx moves the job row to failed and releases the lease. The
+// exhausted-retry path and FailPermanently record the same terminal row shape,
+// so the statement lives here once.
+func markFailedTx(ctx context.Context, tx *sql.Tx, id, reason string) error {
+	_, err := tx.ExecContext(ctx, `
 		UPDATE render_jobs
 		SET state = `+stateLiteral(model.StateFailed)+`, failed_at = now(), error_message = $2,
 		    current_worker_id = NULL, lease_until = NULL
-		WHERE id = $1`, id, reason); err != nil {
-		return err
-	}
-	if err := recordEvent(ctx, tx, eventJobFailed, id, attempt, workerID, map[string]any{"reason": reason, "permanent": true}); err != nil {
-		return err
-	}
-	return tx.Commit()
+		WHERE id = $1`, id, reason)
+	return err
 }
 
 // Renew extends the lease for a running job owned by workerID.
 func (r *Repository) Renew(ctx context.Context, id, workerID string) error {
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE render_jobs
+			SET lease_until = $3
+			WHERE id = $1 AND state IN `+stateIn(model.StateRunning, model.StateFinalizing)+` AND current_worker_id = $2`,
+			id, workerID, time.Now().Add(r.lease))
+		if err != nil {
+			return err
+		}
+		if err := requireTransitionRows(res, id, workerID); err != nil {
+			return err
+		}
 
-	res, err := tx.ExecContext(ctx, `
-		UPDATE render_jobs
-		SET lease_until = $3
-		WHERE id = $1 AND state IN `+stateIn(model.StateRunning, model.StateFinalizing)+` AND current_worker_id = $2`,
-		id, workerID, time.Now().Add(r.lease))
-	if err != nil {
-		return err
-	}
-	n, err := rowsAffected(res)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return fmt.Errorf("job %s is not running or not owned by %s", id, workerID)
-	}
-
-	attempt, err := runningAttemptID(ctx, tx, id)
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE render_attempts
-		SET last_renewed_at = now()
-		WHERE id = $1`, attempt); err != nil {
-		return err
-	}
-	if err := recordEvent(ctx, tx, eventLeaseRenewed, id, attempt, workerID, nil); err != nil {
-		return err
-	}
-	return tx.Commit()
+		attempt, err := runningAttemptID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE render_attempts
+			SET last_renewed_at = now()
+			WHERE id = $1`, attempt); err != nil {
+			return err
+		}
+		if err := recordEvent(ctx, tx, eventLeaseRenewed, id, attempt, workerID, nil); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // Retry resets a failed job back to pending state for re-execution.
-func (r *Repository) Retry(ctx context.Context, id string) error {
+// withJobState runs fn inside one bounded transaction after locking the job
+// row, and hands fn the pre-transition state. Retry and Cancel share the
+// context, the transaction and the not-found mapping; only their state rules
+// differ.
+func (r *Repository) withJobState(ctx context.Context, id string, fn func(context.Context, *sql.Tx, string) error) error {
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		state, err := lockJobState(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		return fn(ctx, tx, state)
+	})
+}
 
-	var state string
-	err = tx.QueryRowContext(ctx, `SELECT state FROM render_jobs WHERE id = $1 FOR UPDATE`, id).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("job %s: %w", id, repository.ErrNotFound)
-	}
-	if err != nil {
-		return err
-	}
-	if state != string(model.StateFailed) {
-		return fmt.Errorf("job %s is in state %q, cannot retry non-failed job", id, state)
-	}
+func (r *Repository) Retry(ctx context.Context, id string) error {
+	return r.withJobState(ctx, id, func(ctx context.Context, tx *sql.Tx, state string) error {
+		if state != string(model.StateFailed) {
+			return fmt.Errorf("job %s is in state %q, cannot retry non-failed job", id, state)
+		}
 
-	_, err = tx.ExecContext(ctx, `
-		UPDATE render_jobs
-		SET state = `+stateLiteral(model.StatePending)+`, error_message = NULL, queued_at = now(),
-		    current_worker_id = NULL, lease_until = NULL,
-		    progress_frames_done = 0, progress_total_frames = 0,
-		    progress_last_frame_at = NULL, progress_worker = ''
-		WHERE id = $1`, id)
-	if err != nil {
-		return err
-	}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE render_jobs
+			SET state = `+stateLiteral(model.StatePending)+`, error_message = NULL, queued_at = now(),
+			    current_worker_id = NULL, lease_until = NULL,
+			    progress_frames_done = 0, progress_total_frames = 0,
+			    progress_last_frame_at = NULL, progress_worker = ''
+			WHERE id = $1`, id); err != nil {
+			return err
+		}
 
-	if err := recordEvent(ctx, tx, eventJobRequeued, id, "", "", map[string]any{"action": "retry"}); err != nil {
-		return err
-	}
-	return tx.Commit()
+		if err := recordEvent(ctx, tx, eventJobRequeued, id, "", "", map[string]any{"action": "retry"}); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // Cancel moves a job that has not reached a terminal state to cancelled.
@@ -210,56 +209,42 @@ func (r *Repository) Retry(ctx context.Context, id string) error {
 // ended without a re-render. Attempts are deliberately NOT incremented: every
 // claim that would have invoked Chronon already happened.
 func (r *Repository) Cancel(ctx context.Context, id string) error {
-	ctx, cancel := r.opContext(ctx)
-	defer cancel()
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return r.withJobState(ctx, id, func(ctx context.Context, tx *sql.Tx, state string) error {
+		if state == string(model.StateCancelled) {
+			// Idempotent: the producer already cancelled this job.
+			return nil
+		}
+		if model.IsTerminalState(model.State(state)) {
+			return fmt.Errorf("job %s is in state %q, cannot cancel terminal job", id, state)
+		}
 
-	var state string
-	err = tx.QueryRowContext(ctx, `SELECT state FROM render_jobs WHERE id = $1 FOR UPDATE`, id).Scan(&state)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("job %s: %w", id, repository.ErrNotFound)
-	}
-	if err != nil {
-		return err
-	}
-	if state == string(model.StateCancelled) {
-		// Idempotent: the producer already cancelled this job.
-		return tx.Commit()
-	}
-	if model.IsTerminalState(model.State(state)) {
-		return fmt.Errorf("job %s is in state %q, cannot cancel terminal job", id, state)
-	}
-
-	// Close any in-flight attempt (running/finalizing rows) as cancelled so
-	// the append-only attempt history explains the terminal state.
-	attempt, err := runningAttemptID(ctx, tx, id)
-	if err != nil {
-		return err
-	}
-	if attempt != "" {
-		if err := finishAttempt(ctx, tx, attempt, attemptStatusCancelled, "cancelled", "cancelled by producer"); err != nil {
+		// Close any in-flight attempt (running/finalizing rows) as cancelled so
+		// the append-only attempt history explains the terminal state.
+		attempt, err := runningAttemptID(ctx, tx, id)
+		if err != nil {
 			return err
 		}
-	}
+		if attempt != "" {
+			if err := finishAttempt(ctx, tx, attempt, attemptStatusCancelled, "cancelled", "cancelled by producer"); err != nil {
+				return err
+			}
+		}
 
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE render_jobs
-		SET state = `+stateLiteral(model.StateCancelled)+`, current_worker_id = NULL, lease_until = NULL,
-		    error_message = NULL,
-		    progress_frames_done = 0, progress_total_frames = 0,
-		    progress_last_frame_at = NULL, progress_worker = ''
-		WHERE id = $1`, id); err != nil {
-		return err
-	}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE render_jobs
+			SET state = `+stateLiteral(model.StateCancelled)+`, current_worker_id = NULL, lease_until = NULL,
+			    error_message = NULL,
+			    progress_frames_done = 0, progress_total_frames = 0,
+			    progress_last_frame_at = NULL, progress_worker = ''
+			WHERE id = $1`, id); err != nil {
+			return err
+		}
 
-	if err := recordEvent(ctx, tx, eventJobCancelled, id, attempt, "", map[string]any{"from": state}); err != nil {
-		return err
-	}
-	return tx.Commit()
+		if err := recordEvent(ctx, tx, eventJobCancelled, id, attempt, "", map[string]any{"from": state}); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // SetProgress stores the latest render progress from the lease-owning worker.

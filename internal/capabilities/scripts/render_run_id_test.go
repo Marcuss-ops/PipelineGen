@@ -1,9 +1,8 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // TestRenderRunIDDerivation pins the run-identity derivation shared with the
@@ -31,15 +30,15 @@ func TestRenderRunIDDerivation(t *testing.T) {
 // TestBuildRenderAttemptAnalyticsProjectsRunID pins that the builder projects
 // the run identity from the job id (plan id) without inventing one.
 func TestBuildRenderAttemptAnalyticsProjectsRunID(t *testing.T) {
-	perItem := capoverlay.OverlayPlan{PlanID: "run_x:item:001:phrase"}
+	perItem := capmodel.OverlayPlan{PlanID: "run_x:item:001:phrase"}
 	if got := BuildRenderAttemptAnalytics("attempt-1", perItem, nil).RunID; got != "run_x" {
 		t.Errorf("per-item plan: RunID = %q, want %q", got, "run_x")
 	}
-	legacy := capoverlay.OverlayPlan{PlanID: "run_1788527686642826949_3182094a7b5e"}
+	legacy := capmodel.OverlayPlan{PlanID: "run_1788527686642826949_3182094a7b5e"}
 	if got := BuildRenderAttemptAnalytics("attempt-2", legacy, nil).RunID; got != "run_1788527686642826949_3182094a7b5e" {
 		t.Errorf("legacy run_ plan: RunID = %q, want the plan id itself", got)
 	}
-	other := capoverlay.OverlayPlan{PlanID: "trump-final-render"}
+	other := capmodel.OverlayPlan{PlanID: "trump-final-render"}
 	if got := BuildRenderAttemptAnalytics("attempt-3", other, nil).RunID; got != "" {
 		t.Errorf("unattributable plan: RunID = %q, want empty", got)
 	}

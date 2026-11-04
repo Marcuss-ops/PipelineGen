@@ -1,16 +1,15 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // manifestKeyTimelineEntryA/B are the two stable slot entries whose
 // composition identity is exercised below: ids reused verbatim across
 // regenerations, a content address each, and one entry with a placement.
-func manifestKeyTimelineEntries() []capoverlay.OverlayManifestEntry {
-	return []capoverlay.OverlayManifestEntry{
+func manifestKeyTimelineEntries() []capmodel.OverlayManifestEntry {
+	return []capmodel.OverlayManifestEntry{
 		{
 			ItemID:      "metric-marcus__number__01",
 			Track:       1,
@@ -24,23 +23,23 @@ func manifestKeyTimelineEntries() []capoverlay.OverlayManifestEntry {
 			InUS:        2_000_000,
 			OutUS:       6_000_000,
 			ContentHash: "2222222222222222222222222222222222222222222222222222222222222222",
-			Placement:   &capoverlay.ManifestPlacement{WPx: 10, HPx: 10},
+			Placement:   &capmodel.ManifestPlacement{WPx: 10, HPx: 10},
 		},
 	}
 }
 
-func manifestKeyTimeline(planID string) capoverlay.OverlayManifest {
-	return capoverlay.OverlayManifest{
-		SchemaVersion: capoverlay.SchemaVersionManifest,
+func manifestKeyTimeline(planID string) capmodel.OverlayManifest {
+	return capmodel.OverlayManifest{
+		SchemaVersion: capmodel.SchemaVersionManifest,
 		PlanID:        planID,
 		VideoID:       "video-run-" + planID,
 		Entries:       manifestKeyTimelineEntries(),
 	}
 }
 
-func manifestKeyChildPlan() capoverlay.OverlayPlan {
-	return capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+func manifestKeyChildPlan() capmodel.OverlayPlan {
+	return capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "run-999",
 		VideoID:       "video-run-999",
 		Width:         1920,
@@ -86,7 +85,7 @@ func TestOverlayManifestCacheKeyIgnoresRunIdentity(t *testing.T) {
 
 	// Same pixels at a different placement are a different composition.
 	moved := manifestKeyTimeline("run-111")
-	moved.Entries[1].Placement = &capoverlay.ManifestPlacement{WPx: 20, HPx: 10}
+	moved.Entries[1].Placement = &capmodel.ManifestPlacement{WPx: 20, HPx: 10}
 	differentPlacement, ok := overlayManifestCompositionCacheKey(manifestKeyChildPlan(), moved, "epoch-1")
 	if !ok || differentPlacement == first {
 		t.Fatal("a different placement rect must name a different cache row")

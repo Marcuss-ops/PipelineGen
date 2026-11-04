@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -21,15 +22,15 @@ func TestValidateOverlayGroupLimitsRejectsUnknownAndNegative(t *testing.T) {
 func TestApplyOverlayGroupLimitsCapsAndDisables(t *testing.T) {
 	// Phrase groups follow spoken word count, independently of the animation
 	// selected for the overlay.
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "m1", Kind: "map", Map: &capabilityoverlay.MapOverlay{}},
-		{ID: "m2", Kind: "map", Map: &capabilityoverlay.MapOverlay{}},
-		{ID: "m3", Kind: "map", Map: &capabilityoverlay.MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "m1", Kind: "map", Map: &capmodel.MapOverlay{}},
+		{ID: "m2", Kind: "map", Map: &capmodel.MapOverlay{}},
+		{ID: "m3", Kind: "map", Map: &capmodel.MapOverlay{}},
 		{ID: "s1", Kind: "text_phrase", Text: "two word phrase", MotionID: "phrase_apple_clean_07_slide_up_soft"},
 		{ID: "l1", Kind: "text_phrase", MotionID: "slide_in"},
 		{ID: "l2", Kind: "text_phrase", MotionID: "slide_in"},
 	}
-	got := applyOverlayGroupLimits(append([]capabilityoverlay.OverlayItem(nil), items...), map[string]int{
+	got := applyOverlayGroupLimits(append([]capmodel.OverlayItem(nil), items...), map[string]int{
 		"maps":          2,
 		"short_phrases": 1,
 		"long_phrases":  0,
@@ -50,11 +51,11 @@ func TestApplyOverlayGroupLimitsCapsAndDisables(t *testing.T) {
 }
 
 func TestApplyOverlayGroupLimitsAbsentKeyKeepsDefault(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "l1", Kind: "text_phrase", MotionID: "slide_in"},
 		{ID: "l2", Kind: "text_phrase", MotionID: "slide_in"},
 	}
-	got := applyOverlayGroupLimits(append([]capabilityoverlay.OverlayItem(nil), items...), map[string]int{"maps": 0})
+	got := applyOverlayGroupLimits(append([]capmodel.OverlayItem(nil), items...), map[string]int{"maps": 0})
 	if len(got) != 2 {
 		t.Fatalf("absent long_phrases key must keep all items, got %d", len(got))
 	}

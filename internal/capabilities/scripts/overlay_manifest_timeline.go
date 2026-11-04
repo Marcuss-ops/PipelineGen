@@ -30,19 +30,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"strconv"
+	"strings"
 )
 
 // partitionOverlayRenderWork splits a plan's renderable items between the
 // manifest timeline composition (everything the single certified artifact
 // covers) and the dedicated per-item paths (maps and chain items keep their
 // own render pipelines and their own certified artifacts).
-func partitionOverlayRenderWork(plan capoverlay.OverlayPlan) (manifest, dedicated []overlayItemCandidate) {
+func partitionOverlayRenderWork(plan capmodel.OverlayPlan) (manifest, dedicated []overlayItemCandidate) {
 	type captionWindow struct {
 		inUS  int64
 		outUS int64
@@ -50,7 +49,7 @@ func partitionOverlayRenderWork(plan capoverlay.OverlayPlan) (manifest, dedicate
 	var acceptedCaptions []captionWindow
 
 	for _, candidate := range overlayRenderableCandidates(plan) {
-		if candidate.source.Map != nil || capoverlay.IsChainItemKind(candidate.source.Kind) {
+		if candidate.source.Map != nil || capmodel.IsChainItemKind(candidate.source.Kind) {
 			dedicated = append(dedicated, candidate)
 			continue
 		}
@@ -85,7 +84,7 @@ func partitionOverlayRenderWork(plan capoverlay.OverlayPlan) (manifest, dedicate
 // share a frame — ceil projection is monotone — so they can never collide,
 // with any fitted geometry. Overlapping caption windows are refused here,
 // deterministically and before any render.
-func admitManifestCaptionWindows(candidates []overlayItemCandidate, plan capoverlay.OverlayPlan) error {
+func admitManifestCaptionWindows(candidates []overlayItemCandidate, plan capmodel.OverlayPlan) error {
 	type captionWindow struct {
 		id    string
 		inUS  int64
@@ -112,7 +111,7 @@ func admitManifestCaptionWindows(candidates []overlayItemCandidate, plan capover
 // reuses the certified artifact and never renders nor stores again. Map and
 // chain items render through their dedicated per-item paths and merge into
 // the same reference.
-func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context, plan capoverlay.OverlayPlan, candidates, dedicated []overlayItemCandidate) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context, plan capmodel.OverlayPlan, candidates, dedicated []overlayItemCandidate) (RenderReference, error) {
 	if len(candidates) == 0 {
 		return RenderReference{}, fmt.Errorf("overlay manifest timeline has no composition candidates")
 	}
@@ -144,11 +143,11 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 		packedPlacements = placements
 		packedEnd = end
 	}
-	manifest := capoverlay.OverlayManifest{
-		SchemaVersion: capoverlay.SchemaVersionManifest,
+	manifest := capmodel.OverlayManifest{
+		SchemaVersion: capmodel.SchemaVersionManifest,
 		PlanID:        strings.TrimSpace(plan.PlanID),
 		VideoID:       strings.TrimSpace(plan.VideoID),
-		Entries:       make([]capoverlay.OverlayManifestEntry, 0, len(works)),
+		Entries:       make([]capmodel.OverlayManifestEntry, 0, len(works)),
 	}
 	ordered := make([]overlayItemCandidate, 0, len(works))
 	for _, work := range works {
@@ -245,7 +244,7 @@ func (e *QueueRenderEnqueuer) enqueueOverlayManifestTimeline(ctx context.Context
 // mergeRenderItemsByPlanOrder folds the dedicated-path item rows into the
 // manifest reference's rows and restores the parent plan's editorial order
 // (child plan identity depends on the original plan index).
-func mergeRenderItemsByPlanOrder(manifestItems, dedicatedItems []OverlayItemRenderReference, plan capoverlay.OverlayPlan) []OverlayItemRenderReference {
+func mergeRenderItemsByPlanOrder(manifestItems, dedicatedItems []OverlayItemRenderReference, plan capmodel.OverlayPlan) []OverlayItemRenderReference {
 	order := make(map[string]int, len(plan.Items))
 	for index, item := range plan.Items {
 		order[item.ID] = index
@@ -259,7 +258,7 @@ func mergeRenderItemsByPlanOrder(manifestItems, dedicatedItems []OverlayItemRend
 // manifest and the per-voice identity rows. The manifest digest is the
 // receipt: entries keep their editorial identity and all point at the single
 // timeline artifact.
-func assembleManifestTimelineReference(jobID, status string, artifact *RenderArtifact, work overlayBatchWork, manifest capoverlay.OverlayManifest) RenderReference {
+func assembleManifestTimelineReference(jobID, status string, artifact *RenderArtifact, work overlayBatchWork, manifest capmodel.OverlayManifest) RenderReference {
 	manifest.TimelineSHA256 = strings.ToLower(strings.TrimSpace(artifact.SHA256))
 	batchID := manifest.Digest()
 	items := make([]OverlayItemRenderReference, 0, len(work.candidates))
@@ -298,7 +297,7 @@ func assembleManifestTimelineReference(jobID, status string, artifact *RenderArt
 // the run-scoped recipients stay in the publication path, not in the cache
 // identity. The packed positions stay part of the key so a packed timeline
 // (different artifact frame grid) can never alias a plan-absolute row.
-func overlayManifestCompositionCacheKey(child capoverlay.OverlayPlan, manifest capoverlay.OverlayManifest, epoch string) (OverlayRenderCacheKey, bool) {
+func overlayManifestCompositionCacheKey(child capmodel.OverlayPlan, manifest capmodel.OverlayManifest, epoch string) (OverlayRenderCacheKey, bool) {
 	// A distinct digest domain keeps these rows from aliasing the legacy
 	// manifest-digest rows (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE) or the
 	// fused batch rows: same tag philosophy as overlayBatchIdentity.
@@ -345,7 +344,7 @@ func overlayManifestCompositionCacheKey(child capoverlay.OverlayPlan, manifest c
 // ManifestPlacement fields in declaration order with no map ambiguity, so the
 // same placement composes one digest and a different rect composes another
 // (two rects are two compositions — the pixels differ).
-func manifestEntryPlacementDigest(placement *capoverlay.ManifestPlacement) string {
+func manifestEntryPlacementDigest(placement *capmodel.ManifestPlacement) string {
 	if placement == nil {
 		return ""
 	}
@@ -359,7 +358,7 @@ func manifestEntryPlacementDigest(placement *capoverlay.ManifestPlacement) strin
 // manifestEntryPackedDigest carries the entry's OPTIONAL packed positions into
 // the cache identity. Nil stays distinct from zero (both may be 0 on a packed
 // timeline), so a packed composition and an absent projection never alias.
-func manifestEntryPackedDigest(entry capoverlay.OverlayManifestEntry) string {
+func manifestEntryPackedDigest(entry capmodel.OverlayManifestEntry) string {
 	if entry.ArtifactInUS == nil && entry.ArtifactOutUS == nil {
 		return ""
 	}

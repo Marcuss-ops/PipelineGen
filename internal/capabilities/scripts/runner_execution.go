@@ -325,11 +325,12 @@ func (e *executionRun) parallelFanOut() bool {
 	defer cancelPrepare()
 	// Start semantic enrichment first and independently. Audio prefetch runs on
 	// its own branch so it overlaps both NLP and TTS.
+	branchStart := time.Now()
 	semanticDone := make(chan vidRushPrepareOutcome, 1)
 	go func() {
 		res, err := e.r.runVidRushJoinAndPrepare(prepareCtx, e.runID, e.req, e.snapshot)
 		if err != nil {
-			semanticDone <- vidRushPrepareOutcome{err: err}
+			semanticDone <- vidRushPrepareOutcome{err: err, completedAt: time.Now()}
 			return
 		}
 		// Translated NLP rides the SAME branch as the prepare it depends on.
@@ -343,7 +344,7 @@ func (e *executionRun) parallelFanOut() bool {
 		// (localizedRenderClipFields) and marshals the result per unit, so any
 		// concurrent write onto result.Scenes would be a data race.
 		localized, nlpErr := e.r.computeLocalizedAnnotations(prepareCtx, e.req, nlpInput, res.annotations)
-		semanticDone <- vidRushPrepareOutcome{result: res, localizedAnnotations: localized, nlpErr: nlpErr}
+		semanticDone <- vidRushPrepareOutcome{result: res, localizedAnnotations: localized, nlpErr: nlpErr, completedAt: time.Now()}
 	}()
 
 	// Audio prefetch is independent of semantic enrichment; keep it on a
@@ -418,7 +419,8 @@ func (e *executionRun) parallelFanOut() bool {
 			}
 		}
 		assetsDone <- vidRushPrepareOutcome{
-			prefetched: prefetched,
+			prefetched:  prefetched,
+			completedAt: time.Now(),
 		}
 	}()
 
@@ -435,12 +437,18 @@ func (e *executionRun) parallelFanOut() bool {
 	// so its start is never delayed by document rendering or audio prefetch.
 	var semanticOutcome vidRushPrepareOutcome
 	var assetsOutcome vidRushPrepareOutcome
+	joinStart := time.Now()
 	if err := kernobs.MeasureStage(e.ctx, "prepare_join", func(stageCtx context.Context) error {
 		semanticOutcome = <-semanticDone
 		assetsOutcome = <-assetsDone
 		return semanticOutcome.err
 	}); err != nil && semanticOutcome.err == nil {
 		semanticOutcome.err = err
+	}
+	if e.result != nil {
+		e.result.PrepareJoin = buildPrepareJoinBreakdown(
+			branchStart, joinStart, time.Now(),
+			semanticOutcome.completedAt, assetsOutcome.completedAt)
 	}
 	if semanticOutcome.err != nil {
 		return e.fail(StageGeneratingSceneText, semanticOutcome.err)

@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
@@ -105,7 +106,7 @@ type OverlayAuditItem struct {
 // overlay_timing, which reads as "every intent was fine" instead of "the
 // lineage was not measured". A caller that genuinely has no lineage passes
 // nil, and the field is then omitted rather than fabricated.
-func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capabilityoverlay.OverlayPlan, lineage *overlayIntentLineage) *OverlayAudit {
+func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, lineage *overlayIntentLineage) *OverlayAudit {
 	if bundle == nil && plan == nil {
 		return nil
 	}
@@ -291,7 +292,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 // the item-level entity id, the producer-only EntityRef id, and the canonical
 // identity the media resolver selected. Keeping all three prevents a plan item
 // from looking "missing" merely because one projection used a different id.
-func overlayAuditIdentityKeys(entityID string, ref *capabilityoverlay.OverlayEntityRef) []string {
+func overlayAuditIdentityKeys(entityID string, ref *capmodel.OverlayEntityRef) []string {
 	keys := make([]string, 0, 4)
 	keys = appendUniqueAuditValue(keys, entityID)
 	if ref != nil {

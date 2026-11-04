@@ -3,14 +3,14 @@ package overlays
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-var _ capoverlay.MediaProber = (*MediaContractProber)(nil)
+var _ capmodel.MediaProber = (*MediaContractProber)(nil)
 
 // MediaContractProber adapts the canonical media probe capability
 // (rustexec.VideoProcessor.Probe) into the overlay MediaProber port. It
@@ -36,26 +36,26 @@ func NewMediaContractProber(proc interface {
 	return p
 }
 
-func (p *MediaContractProber) ProbeOverlay(ctx context.Context, path string) (capoverlay.OverlayProbeResult, error) {
+func (p *MediaContractProber) ProbeOverlay(ctx context.Context, path string) (capmodel.OverlayProbeResult, error) {
 	if p == nil || p.probe == nil {
-		return capoverlay.OverlayProbeResult{}, fmt.Errorf("overlay media prober is not configured")
+		return capmodel.OverlayProbeResult{}, fmt.Errorf("overlay media prober is not configured")
 	}
 	info, err := p.probe(ctx, path)
 	if err != nil {
-		return capoverlay.OverlayProbeResult{}, fmt.Errorf("overlay media probe: %w", err)
+		return capmodel.OverlayProbeResult{}, fmt.Errorf("overlay media probe: %w", err)
 	}
 	if info == nil {
-		return capoverlay.OverlayProbeResult{}, fmt.Errorf("overlay media probe: nil MediaInfo")
+		return capmodel.OverlayProbeResult{}, fmt.Errorf("overlay media probe: nil MediaInfo")
 	}
 	sha, _, err := digest.SHA256File(path)
 	if err != nil {
-		return capoverlay.OverlayProbeResult{}, fmt.Errorf("overlay media hash: %w", err)
+		return capmodel.OverlayProbeResult{}, fmt.Errorf("overlay media hash: %w", err)
 	}
 	stat, err := os.Stat(path)
 	if err != nil {
-		return capoverlay.OverlayProbeResult{}, fmt.Errorf("overlay media stat: %w", err)
+		return capmodel.OverlayProbeResult{}, fmt.Errorf("overlay media stat: %w", err)
 	}
-	return capoverlay.OverlayProbeResult{
+	return capmodel.OverlayProbeResult{
 		Width:        info.Width,
 		Height:       info.Height,
 		DurationUS:   info.Duration.Microseconds(),

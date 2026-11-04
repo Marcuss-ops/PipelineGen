@@ -1,9 +1,11 @@
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "testing"
 
 func TestMoveEntityImageAsideFromOverlappingTimelineDate(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{
 			ID: "alberto", Kind: "entity_image", StartMs: 46_582, EndMs: 48_320,
 			Params: map[string]any{"position_x": float64(0), "position_y": float64(0)},

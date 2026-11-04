@@ -17,6 +17,7 @@ package overlays
 
 import (
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 )
@@ -61,7 +62,7 @@ func EffectivePhraseOverlayLimit(requested int) int {
 // are excluded; structural background layers are not represented as
 // OverlayItems and remain intact. When there are fewer valid candidates, it
 // returns fewer items rather than inventing content.
-func ApplyEditorialOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyEditorialOverlayBudget(items []capmodel.OverlayItem) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	return ApplyEditorialOverlayBudgetWithLimit(items, MaxPhraseOverlaysPerRun)
 }
 
@@ -89,21 +90,21 @@ const MaxBrandTextOverlaysPerRun = 5
 // ApplyEditorialOverlayBudgetWithLimits is the map-aware editorial budget:
 // unique maps, value cards, images and grounded phrases each have an
 // independent bounded allowance. Categories do not evict one another.
-func ApplyEditorialOverlayBudgetWithLimits(items []OverlayItem, phraseLimit, mapLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyEditorialOverlayBudgetWithLimits(items []capmodel.OverlayItem, phraseLimit, mapLimit int) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	return ApplyEditorialOverlayBudgetWithImageLimit(items, phraseLimit, 0, mapLimit)
 }
 
 // ApplyEditorialOverlayBudgetWithImageLimit applies independent run-level
 // ceilings for phrases, combined image kinds, and maps. A nonpositive image
 // limit keeps the certified default.
-func ApplyEditorialOverlayBudgetWithImageLimit(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, allowRepeatedEntityImagesPerScene ...bool) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyEditorialOverlayBudgetWithImageLimit(items []capmodel.OverlayItem, phraseLimit, imageLimit, mapLimit int, allowRepeatedEntityImagesPerScene ...bool) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	perSceneEntityImages := len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0]
 	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, 0, 0, 0)
 }
 
 // ApplyEditorialOverlayBudgetWithPhraseLanes applies the same run-level
 // budget while honoring explicit short/long phrase group limits.
-func ApplyEditorialOverlayBudgetWithPhraseLanes(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyEditorialOverlayBudgetWithPhraseLanes(items []capmodel.OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit int) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, shortPhraseLimit, longPhraseLimit, 0)
 }
 
@@ -112,11 +113,11 @@ func ApplyEditorialOverlayBudgetWithPhraseLanes(items []OverlayItem, phraseLimit
 // ceiling and are excluded from the short/long phrase lanes, so enabling them
 // cannot evict a requested narration phrase. A nonpositive bulletLimit keeps
 // the legacy behavior (chapter cards ride the phrase lane).
-func ApplyEditorialOverlayBudgetWithBulletLane(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit, bulletLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyEditorialOverlayBudgetWithBulletLane(items []capmodel.OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit, bulletLimit int) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	return applyEditorialOverlayBudget(items, phraseLimit, imageLimit, mapLimit, perSceneEntityImages, shortPhraseLimit, longPhraseLimit, bulletLimit)
 }
 
-func applyEditorialOverlayBudget(items []OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit, bulletLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+func applyEditorialOverlayBudget(items []capmodel.OverlayItem, phraseLimit, imageLimit, mapLimit int, perSceneEntityImages bool, shortPhraseLimit, longPhraseLimit, bulletLimit int) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	effectiveImageLimit := imageLimit
 	if effectiveImageLimit <= 0 {
@@ -171,7 +172,7 @@ func applyEditorialOverlayBudget(items []OverlayItem, phraseLimit, imageLimit, m
 
 // rankedUniqueKindIndices ranks and deduplicates one text-based overlay kind
 // by normalized text. Each kind's cap is independent of the other overlay arms.
-func chartBarIndices(items []OverlayItem) []int {
+func chartBarIndices(items []capmodel.OverlayItem) []int {
 	admittedGroups := make(map[string]struct{})
 	for _, index := range chartLabelIndices(items) {
 		if group, ok := items[index].Params["chart_group_id"].(string); ok && group != "" {
@@ -191,7 +192,7 @@ func chartBarIndices(items []OverlayItem) []int {
 	return indices
 }
 
-func chartLabelIndices(items []OverlayItem) []int {
+func chartLabelIndices(items []capmodel.OverlayItem) []int {
 	indices := make([]int, 0)
 	seenScenes := make(map[string]struct{})
 	for i, item := range items {
@@ -211,7 +212,7 @@ func chartLabelIndices(items []OverlayItem) []int {
 	return indices
 }
 
-func editorialLabelIndices(items []OverlayItem) []int {
+func editorialLabelIndices(items []capmodel.OverlayItem) []int {
 	return editorialLabelIndicesExcludingBullets(items, false)
 }
 
@@ -220,7 +221,7 @@ func editorialLabelIndices(items []OverlayItem) []int {
 // chapter_bullet) is admitted by rankedUniqueBulletIndices instead, so one
 // explicit quota governs bullets and the title lane cannot keep an extra
 // unbudgeted card.
-func editorialLabelIndicesExcludingBullets(items []OverlayItem, excludeBullets bool) []int {
+func editorialLabelIndicesExcludingBullets(items []capmodel.OverlayItem, excludeBullets bool) []int {
 	indices := make([]int, 0)
 	for i, item := range items {
 		if item.Params == nil {
@@ -242,17 +243,17 @@ func editorialLabelIndicesExcludingBullets(items []OverlayItem, excludeBullets b
 // budgets. A later budget pass (after entity media is attached) must not drop
 // fused dates, metrics, or phrases just because their child categories are
 // represented inside chain_segments instead of the top-level item kind.
-func chainItemIndices(items []OverlayItem) []int {
+func chainItemIndices(items []capmodel.OverlayItem) []int {
 	indices := make([]int, 0)
 	for i := range items {
-		if IsChainItemKind(items[i].Kind) {
+		if capmodel.IsChainItemKind(items[i].Kind) {
 			indices = append(indices, i)
 		}
 	}
 	return indices
 }
 
-func rankedUniqueKindIndices(items []OverlayItem, kind string, cap int) []int {
+func rankedUniqueKindIndices(items []capmodel.OverlayItem, kind string, cap int) []int {
 	if cap <= 0 {
 		return nil
 	}
@@ -265,7 +266,7 @@ func rankedUniqueKindIndices(items []OverlayItem, kind string, cap int) []int {
 		if key == "" {
 			continue
 		}
-		if current, ok := seen[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[current]) {
+		if current, ok := seen[key]; !ok || itemPriority(item) > itemPriority(items[current]) {
 			seen[key] = i
 		}
 	}
@@ -275,7 +276,7 @@ func rankedUniqueKindIndices(items []OverlayItem, kind string, cap int) []int {
 	}
 	sort.SliceStable(indices, func(i, j int) bool {
 		left, right := indices[i], indices[j]
-		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+		if lp, rp := itemPriority(items[left]), itemPriority(items[right]); lp != rp {
 			return lp > rp
 		}
 		return left < right
@@ -291,7 +292,7 @@ func rankedUniqueKindIndices(items []OverlayItem, kind string, cap int) []int {
 // in another scene is a distinct map, and the cap bounds the total unique
 // count. The returned indices are deterministic: descending priority, ties
 // broken by ascending original index.
-func rankedUniqueMapIndices(items []OverlayItem, cap int) []int {
+func rankedUniqueMapIndices(items []capmodel.OverlayItem, cap int) []int {
 	if cap <= 0 {
 		return nil
 	}
@@ -307,7 +308,7 @@ func rankedUniqueMapIndices(items []OverlayItem, cap int) []int {
 		}
 		key := sceneKey{scene: strings.TrimSpace(item.SceneID), plate: plate}
 		if current, ok := seen[key]; ok {
-			if overlayItemPriority(item) > overlayItemPriority(items[current]) {
+			if itemPriority(item) > itemPriority(items[current]) {
 				seen[key] = i
 			}
 			continue
@@ -320,7 +321,7 @@ func rankedUniqueMapIndices(items []OverlayItem, cap int) []int {
 	}
 	sort.SliceStable(indices, func(i, j int) bool {
 		left, right := indices[i], indices[j]
-		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+		if lp, rp := itemPriority(items[left]), itemPriority(items[right]); lp != rp {
 			return lp > rp
 		}
 		return left < right
@@ -334,7 +335,7 @@ func rankedUniqueMapIndices(items []OverlayItem, cap int) []int {
 // ApplyEditorialOverlayBudgetWithLimit is ApplyEditorialOverlayBudget with a
 // caller-selected phrase ceiling (the request's max_phrase_overlays). The
 // image ceiling stays fixed; phraseLimit <= 0 keeps the default ceiling.
-func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyEditorialOverlayBudgetWithLimit(items []capmodel.OverlayItem, phraseLimit int) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	imageIndices := rankedUniqueOverlayIndices(items, true, MaxImageOverlaysPerRun)
 	phraseIndices := rankedUniqueOverlayIndices(items, false, limit)
@@ -348,7 +349,7 @@ func ApplyEditorialOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) 
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }
 
-func retainOverlayItems(items []OverlayItem, indexGroups ...[]int) []OverlayItem {
+func retainOverlayItems(items []capmodel.OverlayItem, indexGroups ...[]int) []capmodel.OverlayItem {
 	capacity := 0
 	for _, indices := range indexGroups {
 		capacity += len(indices)
@@ -359,7 +360,7 @@ func retainOverlayItems(items []OverlayItem, indexGroups ...[]int) []OverlayItem
 			keep[index] = struct{}{}
 		}
 	}
-	out := make([]OverlayItem, 0, len(keep))
+	out := make([]capmodel.OverlayItem, 0, len(keep))
 	for index, item := range items {
 		if _, ok := keep[index]; ok {
 			out = append(out, item)
@@ -486,19 +487,12 @@ type PhraseOverlayBudget struct {
 	Shortfall    int `json:"phrase_overlay_shortfall"`
 }
 
-func overlayItemPriority(item OverlayItem) float64 {
-	if value, ok := item.Params["priority"].(float64); ok {
-		return value
-	}
-	return 0
-}
-
 // LimitOverlayItemsPerScene admits at most limit overlay items in each scene,
 // preferring higher editorial priority and retaining source order for ties.
 // A nonpositive limit leaves the plan unchanged. Survivors remain in timeline
 // order so the chain composer can hand off between them deterministically.
 // Keep chart label/bar groups atomic: selecting a label also reserves its bars.
-func LimitOverlayItemsPerScene(items []OverlayItem, limit int) []OverlayItem {
+func LimitOverlayItemsPerScene(items []capmodel.OverlayItem, limit int) []capmodel.OverlayItem {
 	if limit <= 0 || len(items) == 0 {
 		return items
 	}
@@ -527,7 +521,7 @@ func LimitOverlayItemsPerScene(items []OverlayItem, limit int) []OverlayItem {
 			if item.Params != nil && item.Params["chart_bar"] == true {
 				continue // the chart label owns its bars as one visual unit
 			}
-			unit := sceneOverlayUnit{indices: []int{index}, priority: overlayItemPriority(item), first: index}
+			unit := sceneOverlayUnit{indices: []int{index}, priority: itemPriority(item), first: index}
 			if item.Params != nil && item.Params["chart_card"] == true {
 				group, _ := item.Params["chart_group_id"].(string)
 				if group != "" {
@@ -555,7 +549,7 @@ func LimitOverlayItemsPerScene(items []OverlayItem, limit int) []OverlayItem {
 			}
 		}
 	}
-	out := make([]OverlayItem, 0, len(keep))
+	out := make([]capmodel.OverlayItem, 0, len(keep))
 	for i, item := range items {
 		if _, ok := keep[i]; ok {
 			out = append(out, item)

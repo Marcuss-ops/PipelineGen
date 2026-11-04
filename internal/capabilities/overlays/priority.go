@@ -13,6 +13,8 @@
 // same items on every host.
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "sort"
 
 // Canonical content priorities (the GOLDEN 08 editorial table).
@@ -48,10 +50,10 @@ func ContentPriority(templateID string) int {
 }
 
 func contentPriorityForTemplate(templateID string) int {
-	return contentPriorityForItem(OverlayItem{TemplateID: templateID})
+	return contentPriorityForItem(capmodel.OverlayItem{TemplateID: templateID})
 }
 
-func contentPriorityForTemplateLegacy(item OverlayItem) int {
+func contentPriorityForTemplateLegacy(item capmodel.OverlayItem) int {
 	switch item.TemplateID {
 	case "BACKGROUND", "VIDEO_BACKGROUND":
 		return PriorityStructural
@@ -80,7 +82,7 @@ func contentPriorityForTemplateLegacy(item OverlayItem) int {
 // order ascending (stable ties), so the same item list always degrades to the
 // same survivors. The returned items preserve their original relative order
 // (the z-index order is unaffected by a drop).
-func DegradeOverlaps(items []OverlayItem, budget int) []OverlayItem {
+func DegradeOverlaps(items []capmodel.OverlayItem, budget int) []capmodel.OverlayItem {
 	if budget <= 0 {
 		budget = DefaultOverlapBudget
 	}
@@ -91,7 +93,7 @@ func DegradeOverlaps(items []OverlayItem, budget int) []OverlayItem {
 	type candidate struct {
 		idx      int
 		priority int
-		item     OverlayItem
+		item     capmodel.OverlayItem
 	}
 
 	kept := make([]bool, len(items))
@@ -118,7 +120,7 @@ func DegradeOverlaps(items []OverlayItem, budget int) []OverlayItem {
 	// carries budget concurrent accepted items; accepted items are the ones a
 	// lower-priority candidate later measures against, so the final max
 	// concurrency never exceeds budget.
-	var keptContent []OverlayItem
+	var keptContent []capmodel.OverlayItem
 	for _, c := range content {
 		if maxConcurrentWithin(keptContent, c.item.StartMs, c.item.EndMs) >= budget {
 			continue
@@ -127,7 +129,7 @@ func DegradeOverlaps(items []OverlayItem, budget int) []OverlayItem {
 		kept[c.idx] = true
 	}
 
-	out := make([]OverlayItem, 0, len(items))
+	out := make([]capmodel.OverlayItem, 0, len(items))
 	for i, item := range items {
 		if kept[i] {
 			out = append(out, item)
@@ -154,11 +156,11 @@ type ContentCounts struct {
 // Structural layers (background / video background / shape) are excluded:
 // they are not content. Unknown templates are excluded too — the census
 // reports what it understands, never a fabricated class.
-func CountContent(plan OverlayPlan) ContentCounts {
+func CountContent(plan capmodel.OverlayPlan) ContentCounts {
 	var c ContentCounts
 	for _, item := range plan.Items {
 		switch {
-		case item.TemplateID == "NUMBER" || item.Kind == string(KindNumber):
+		case item.TemplateID == "NUMBER" || item.Kind == string(capmodel.KindNumber):
 			c.Numbers++
 			continue
 		}
@@ -182,7 +184,7 @@ func CountContent(plan OverlayPlan) ContentCounts {
 // maxConcurrentWithin returns the max number of items simultaneously active
 // inside the half-open window [start, end). It counts only items that overlap
 // the window (a sweep over sorted start/end points).
-func maxConcurrentWithin(items []OverlayItem, start, end int64) int {
+func maxConcurrentWithin(items []capmodel.OverlayItem, start, end int64) int {
 	var starts, ends []int64
 	for _, it := range items {
 		if it.StartMs < end && start < it.EndMs {

@@ -3,7 +3,6 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -12,13 +11,24 @@ import (
 	"github.com/Marcuss-ops/RenderingGen/queue/internal/repository"
 )
 
+// validateSubmittedJob runs the three fail-at-ingress checks in order, so a
+// malformed producer payload never becomes a stored job.
+func validateSubmittedJob(job model.Job) error {
+	if err := client.ValidateJobID(job.ID); err != nil {
+		return err
+	}
+	if err := client.ValidateJobMetadata(job); err != nil {
+		return err
+	}
+	return client.ValidateJobEnvelope(job)
+}
+
 func (s *Server) submitBatch(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxSubmitBytes)
 	var req struct {
 		Jobs []model.Job `json:"jobs"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	if len(req.Jobs) == 0 {
@@ -26,17 +36,7 @@ func (s *Server) submitBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, job := range req.Jobs {
-		if err := client.ValidateJobID(job.ID); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if err := client.ValidateJobMetadata(job); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		// Fail-at-ingress: validate the job.v1 envelope before touching the
-		// store, so a malformed producer payload never becomes a stored job.
-		if err := client.ValidateJobEnvelope(job); err != nil {
+		if err := validateSubmittedJob(job); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -62,8 +62,7 @@ func parseJobID(r *http.Request) string {
 func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxSubmitBytes)
 	var job model.Job
-	if err := json.NewDecoder(r.Body).Decode(&job); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &job) {
 		return
 	}
 	if job.ID == "" {
@@ -74,17 +73,9 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 		}
 		job.ID = id
 	}
-	if err := client.ValidateJobID(job.ID); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := client.ValidateJobMetadata(job); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	// Fail-at-ingress, before SubmitIdempotent: an invalid envelope must be a
+	// Fail-at-ingress, before SubmitIdempotent: an invalid payload must be a
 	// 400, never a stored job and never an idempotent replay.
-	if err := client.ValidateJobEnvelope(job); err != nil {
+	if err := validateSubmittedJob(job); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

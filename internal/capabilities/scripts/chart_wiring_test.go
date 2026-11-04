@@ -5,6 +5,7 @@ package scriptgeneration
 // validation) like any other overlay item.
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,7 @@ func TestChartWiringComparisonReachesPlan(t *testing.T) {
 	}, capabilityoverlay.PlannerConfig{})
 	require.NoError(t, err, "chart items pass plan validation")
 	require.Equal(t, 1, plan.ChartCards, "chart cards reach the compiled plan")
-	var chart *capabilityoverlay.OverlayItem
+	var chart *capmodel.OverlayItem
 	for i := range plan.Items {
 		if v, ok := plan.Items[i].Params["chart_card"]; ok && v == true {
 			chart = &plan.Items[i]

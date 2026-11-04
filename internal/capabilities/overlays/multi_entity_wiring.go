@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"sort"
 	"strings"
@@ -36,7 +37,7 @@ func AutoImageGroups(sceneID string, images []ImageCandidate, exclude map[string
 			continue
 		}
 		seen[assetID] = struct{}{}
-		ref := NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)
+		ref := capmodel.NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)
 		candidates = append(candidates, MultiEntityCandidate{
 			ID: assetID, SceneID: sceneID, Kind: MultiEntityKindImage, Name: assetID,
 			AssetRef: &ref, StartMS: image.StartMs, EndMS: image.EndMs,
@@ -75,7 +76,7 @@ type MultiEntityCandidate struct {
 	Kind     MultiEntityKind
 	Name     string
 	Text     string
-	AssetRef *OverlayAssetRef
+	AssetRef *capmodel.OverlayAssetRef
 	StartMS  int64
 	EndMS    int64
 	Priority int
@@ -223,12 +224,12 @@ func createGroupFromCluster(items []MultiEntityCandidate) MultiEntityGroup {
 // Image children use image_layers with independent certified motions. Phrase
 // children remain separate IMPORTANT_PHRASE items to preserve their own timing.
 // Mixed groups produce both types rather than inventing a composite renderer.
-func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight int) ([]OverlayItem, error) {
+func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight int) ([]capmodel.OverlayItem, error) {
 	if strings.TrimSpace(group.GroupID) == "" || strings.TrimSpace(group.SceneID) == "" || group.StartMS < 0 || group.EndMS <= group.StartMS || len(group.Items) == 0 || len(group.Items) > 5 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil, fmt.Errorf("multi-entity wiring: invalid group identity, timing, or contents")
 	}
-	assets := make([]OverlayAssetRef, 0, len(group.Items))
-	layers := make([]OverlayImageLayer, 0, len(group.Items))
+	assets := make([]capmodel.OverlayAssetRef, 0, len(group.Items))
+	layers := make([]capmodel.OverlayImageLayer, 0, len(group.Items))
 	phrases := make([]MultiEntityCandidate, 0, len(group.Items))
 	layerIDs := make(map[string]struct{}, len(group.Items))
 	imageStartOffset, imageEndOffset := int64(math.MaxInt64), int64(0)
@@ -278,7 +279,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 			// the scripts-layer assignEntityImageMotions path): a hardcoded 0
 			// gave every group in every job the identical entrances.
 			motionOffset := ImageMotionOffsetForSeed(group.GroupID + "\x00" + group.SceneID)
-			layers = append(layers, OverlayImageLayer{
+			layers = append(layers, capmodel.OverlayImageLayer{
 				ID: layerID, GroupID: group.GroupID, SubgroupID: layerID, AssetID: ref.AssetID,
 				StartMS: candidate.StartMS - group.StartMS, EndMS: endMS - group.StartMS,
 				PresetID:          selectImagePreset(group.GroupID, group.SceneID, layerID),
@@ -307,14 +308,14 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 			layers[index].EndMS -= imageStartOffset
 		}
 	}
-	var out []OverlayItem
+	var out []capmodel.OverlayItem
 	if len(layers) > 0 {
 		imageID := group.GroupID + "-images"
 		imageWindowStart := group.StartMS + imageStartOffset
 		imageWindowEnd := group.StartMS + imageEndOffset
-		imageItem := OverlayItem{
+		imageItem := capmodel.OverlayItem{
 			ID: imageID, SceneID: group.SceneID, GroupID: group.GroupID,
-			Kind: string(KindEntityImage), TemplateID: "IMAGE_OVERLAY",
+			Kind: string(capmodel.KindEntityImage), TemplateID: "IMAGE_OVERLAY",
 			PresetID: selectImagePreset(group.GroupID, group.SceneID, imageID),
 			StartMs:  imageWindowStart, EndMs: imageWindowEnd, StartUS: imageWindowStart * 1000, DurationUS: (imageWindowEnd - imageWindowStart) * 1000,
 			AssetRefs: assets,
@@ -334,7 +335,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 	}
 	for index, candidate := range phrases {
 		phraseID := fmt.Sprintf("%s-phrase-%d", group.GroupID, index+1)
-		item := OverlayItem{
+		item := capmodel.OverlayItem{
 			ID: phraseID, SceneID: group.SceneID, GroupID: group.GroupID, SubgroupID: phraseID,
 			Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 			PresetID: selectPhrasePreset(group.GroupID, group.SceneID, phraseID),

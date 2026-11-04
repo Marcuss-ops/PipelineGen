@@ -21,14 +21,14 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType, cameraAnimation, labelAnimation, mapAnimation string) error {
+func applyMapPresentationToItems(items []capmodel.OverlayItem, mapType, cameraAnimation, labelAnimation, mapAnimation string) error {
 	mapType = strings.ToLower(strings.TrimSpace(mapType))
 	if mapType == "" {
 		// The native renderer's certified basemap: the raster tile families
@@ -38,7 +38,7 @@ func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType,
 	if !capabilityoverlay.AnimationSupportsMapType(mapType) {
 		return fmt.Errorf("map_type %q is unsupported; choose chronon_editorial (aliases chronon, editorial), satellite, roadmap, terrain, or random", mapType)
 	}
-	if basemap, ok := capabilityoverlay.AnimationMapTypeBasemap(mapType); ok && !scriptoverlay.NativeMapBasemaps()[basemap] {
+	if basemap, ok := capabilityoverlay.AnimationMapTypeBasemap(mapType); ok && !capabilityoverlay.NativeMapBasemaps()[basemap] {
 		return fmt.Errorf("map_type %q selects basemap %q: the raster tile family is not ported to the native map renderer (demolition debt, TICKET-MAPS-NATIVE-PORT); declare chronon_editorial or random", mapType, basemap)
 	}
 	if err := validateRuntimeMapAnimation("map_camera_animation", cameraAnimation, mapCameraAnimationsCertified()); err != nil {
@@ -62,13 +62,13 @@ func applyMapPresentationToItems(items []capabilityoverlay.OverlayItem, mapType,
 		// by the seeded sampler at the render boundary: only CONCRETE ids are
 		// written to the plan params, so the plan never claims a presentation
 		// it did not choose and downstream validators only ever see ids.
-		if cameraAnimation != "" && !scriptoverlay.MapAnimationPlaceholder(cameraAnimation) {
+		if cameraAnimation != "" && !capabilityoverlay.MapAnimationPlaceholder(cameraAnimation) {
 			items[i].Params["map_camera_animation"] = cameraAnimation
 		}
-		if labelAnimation != "" && !scriptoverlay.MapAnimationPlaceholder(labelAnimation) {
+		if labelAnimation != "" && !capabilityoverlay.MapAnimationPlaceholder(labelAnimation) {
 			items[i].Params["map_label_animation"] = labelAnimation
 		}
-		if mapAnimation != "" && !scriptoverlay.MapAnimationPlaceholder(mapAnimation) {
+		if mapAnimation != "" && !capabilityoverlay.MapAnimationPlaceholder(mapAnimation) {
 			items[i].Params["map_animation"] = mapAnimation
 		}
 	}
@@ -96,7 +96,7 @@ func validateRuntimeMapAnimation(field, value string, certified []string) error 
 
 // countRecapItems counts final recap survivors, including cards preserved
 // inside a fused chain item.
-func countRecapItems(items []capabilityoverlay.OverlayItem) int {
+func countRecapItems(items []capmodel.OverlayItem) int {
 	n := 0
 	for i := range items {
 		if v, ok := items[i].Params["recap_count"].(int); ok {
@@ -106,7 +106,7 @@ func countRecapItems(items []capabilityoverlay.OverlayItem) int {
 		if items[i].Params["recap"] == true {
 			n++
 		}
-		if segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params); ok {
+		if segments, ok := capmodel.DecodeChainSegments(items[i].Params); ok {
 			for _, segment := range segments {
 				if segment.Params["recap"] == true {
 					n++
@@ -118,13 +118,13 @@ func countRecapItems(items []capabilityoverlay.OverlayItem) int {
 }
 
 // countChartItems includes charts preserved inside fused chain items.
-func countChartItems(items []capabilityoverlay.OverlayItem) int {
+func countChartItems(items []capmodel.OverlayItem) int {
 	n := 0
 	for i := range items {
 		if items[i].Params["chart_card"] == true || items[i].Params["chart_bar"] == true {
 			n++
 		}
-		if segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params); ok {
+		if segments, ok := capmodel.DecodeChainSegments(items[i].Params); ok {
 			for _, segment := range segments {
 				if segment.Params["chart_card"] == true || segment.Params["chart_bar"] == true {
 					n++
@@ -136,7 +136,7 @@ func countChartItems(items []capabilityoverlay.OverlayItem) int {
 }
 
 // recapItemsByScene counts the recap cards that survive chain coalescing.
-func recapItemsByScene(items []capabilityoverlay.OverlayItem) map[string]int {
+func recapItemsByScene(items []capmodel.OverlayItem) map[string]int {
 	counts := make(map[string]int)
 	for i := range items {
 		if v, ok := items[i].Params["recap_count"].(int); ok {
@@ -146,7 +146,7 @@ func recapItemsByScene(items []capabilityoverlay.OverlayItem) map[string]int {
 		if items[i].Params["recap"] == true {
 			counts[items[i].SceneID]++
 		}
-		if segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params); ok {
+		if segments, ok := capmodel.DecodeChainSegments(items[i].Params); ok {
 			for _, segment := range segments {
 				if segment.Params["recap"] == true {
 					counts[items[i].SceneID]++
@@ -161,7 +161,7 @@ func recapItemsByScene(items []capabilityoverlay.OverlayItem) map[string]int {
 // item: font size for phrases and presentation cards, the image frame, and the
 // per-image-layer params for composite entity images. Extracted verbatim from
 // the sealing path so the file-size split changes no behaviour.
-func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas OverlayCanvasSpec) {
+func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
 	styleParams := overlayStyleParams(canvas.Style)
 	runGlowDisabled := canvas.Style != nil && canvas.Style.GlowSize != nil && *canvas.Style.GlowSize <= 0
 	for i := range items {
@@ -213,7 +213,7 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 			}
 		}
 		items[i].Params = merged
-		if items[i].Kind == "text_phrase" || items[i].Kind == string(capabilityoverlay.KindImportantPhrase) {
+		if items[i].Kind == "text_phrase" || items[i].Kind == string(capmodel.KindImportantPhrase) {
 			phraseFontSize := float64(capabilityoverlay.PresentationPhraseFontMinimumPX)
 			if configured, ok := styleParams["font_size_px"].(float64); ok && configured > phraseFontSize {
 				phraseFontSize = configured
@@ -273,13 +273,13 @@ func applyOverlayStyleToItems(items []capabilityoverlay.OverlayItem, canvas Over
 }
 
 // applyCompositeRuntimeStyle projects text and image settings into chain children.
-func applyCompositeRuntimeStyle(items []capabilityoverlay.OverlayItem, canvas OverlayCanvasSpec) {
+func applyCompositeRuntimeStyle(items []capmodel.OverlayItem, canvas OverlayCanvasSpec) {
 	styleParams := overlayStyleParams(canvas.Style)
-	captionColor := scriptoverlay.StyleFontColor(canvas.Style)
+	captionColor := capabilityoverlay.StyleFontColor(canvas.Style)
 	if captionColor != "" || len(styleParams) > 0 {
 		for i := range items {
-			if capabilityoverlay.IsChainItemKind(items[i].Kind) {
-				segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params)
+			if capmodel.IsChainItemKind(items[i].Kind) {
+				segments, ok := capmodel.DecodeChainSegments(items[i].Params)
 				if !ok {
 					continue // Validate below rejects malformed chain payloads.
 				}
@@ -294,7 +294,7 @@ func applyCompositeRuntimeStyle(items []capabilityoverlay.OverlayItem, canvas Ov
 					}
 					for key, value := range segmentStyle {
 						if key == "style" {
-							segment.Style[key] = scriptoverlay.MergeStyleParam(segment.Style[key], value.(map[string]any))
+							segment.Style[key] = capabilityoverlay.MergeStyleParam(segment.Style[key], value.(map[string]any))
 						} else {
 							segment.Style[key] = value
 						}
@@ -303,10 +303,10 @@ func applyCompositeRuntimeStyle(items []capabilityoverlay.OverlayItem, canvas Ov
 						if captionColor != "" {
 							segment.CaptionColor = captionColor
 						}
-						scriptoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
+						capabilityoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
 					}
 					if isImageOverlayKind(segment.Kind) {
-						scriptoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
+						capabilityoverlay.MergeCaptionStyleIntoLayers(segment.ImageLayers, styleParams)
 					}
 				}
 				items[i].Params["chain_segments"] = segments
@@ -314,21 +314,21 @@ func applyCompositeRuntimeStyle(items []capabilityoverlay.OverlayItem, canvas Ov
 				continue
 			}
 			if isEntityOverlayKind(items[i].Kind) {
-				items[i].Params = scriptoverlay.MergeRuntimeTextStyleParams(items[i].Params, styleParams)
+				items[i].Params = capabilityoverlay.MergeRuntimeTextStyleParams(items[i].Params, styleParams)
 				if captionColor != "" {
 					items[i].CaptionColor = captionColor
 				}
 			}
 			if isImageOverlayItem(items[i]) {
-				scriptoverlay.MergeCaptionStyleIntoLayers(items[i].ImageLayers, styleParams)
+				capabilityoverlay.MergeCaptionStyleIntoLayers(items[i].ImageLayers, styleParams)
 			}
 			items[i].RenderKey = ""
 		}
 	}
 	if canvas.Style != nil && canvas.Style.Image != nil {
 		for i := range items {
-			if capabilityoverlay.IsChainItemKind(items[i].Kind) {
-				segments, ok := capabilityoverlay.DecodeChainSegments(items[i].Params)
+			if capmodel.IsChainItemKind(items[i].Kind) {
+				segments, ok := capmodel.DecodeChainSegments(items[i].Params)
 				if !ok {
 					continue // Validate below rejects malformed chain payloads.
 				}

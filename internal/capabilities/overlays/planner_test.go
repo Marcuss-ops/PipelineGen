@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -136,7 +137,7 @@ func TestBuildPlanAppliesRunLevelPhraseBudgetAcrossScenes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	phrases := make([]OverlayItem, 0, MaxPhraseOverlaysPerRun)
+	phrases := make([]capmodel.OverlayItem, 0, MaxPhraseOverlaysPerRun)
 	for _, item := range plan.Items {
 		if item.Kind == "text_phrase" {
 			phrases = append(phrases, item)
@@ -168,7 +169,7 @@ func TestBuildPlanAppliesRunLevelPhraseBudgetAcrossScenes(t *testing.T) {
 }
 
 func TestApplyPhraseOverlayBudgetReportsShortfallWithoutInventingItems(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "phrase-1", Kind: "text_phrase", Text: "Grounded phrase", Params: map[string]any{"priority": 0.9}},
 		{ID: "phrase-2", Kind: "text_phrase", Text: "  GROUNDED   PHRASE ", Params: map[string]any{"priority": 0.2}},
 		{ID: "keyword-1", Kind: "keyword", Text: "keyword"},
@@ -183,24 +184,24 @@ func TestApplyPhraseOverlayBudgetReportsShortfallWithoutInventingItems(t *testin
 }
 
 func TestApplyEditorialOverlayBudgetEnforcesRunLevelTwentyImagesAndFivePhrases(t *testing.T) {
-	items := make([]OverlayItem, 0, 40)
+	items := make([]capmodel.OverlayItem, 0, 40)
 	for i := 0; i < 20; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID:        fmt.Sprintf("image-%d", i),
 			Kind:      "entity_image",
-			AssetRefs: []OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("hash-%d", i)}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("hash-%d", i)}},
 			Params:    map[string]any{"priority": float64(i)},
 		})
 	}
 	for i := 0; i < 17; i++ {
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID:     fmt.Sprintf("phrase-%d", i),
 			Kind:   "text_phrase",
 			Text:   fmt.Sprintf("Grounded phrase %d", i),
 			Params: map[string]any{"priority": float64(i)},
 		})
 	}
-	items = append(items, OverlayItem{ID: "location-1", Kind: "location", Text: "Brooklyn"})
+	items = append(items, capmodel.OverlayItem{ID: "location-1", Kind: "location", Text: "Brooklyn"})
 
 	got, budget := ApplyEditorialOverlayBudget(items)
 	images, phrases := 0, 0
@@ -231,9 +232,9 @@ func TestApplyEditorialOverlayBudgetEnforcesRunLevelTwentyImagesAndFivePhrases(t
 }
 
 func TestApplyEditorialOverlayBudgetDoesNotInventPhraseShortfall(t *testing.T) {
-	got, budget := ApplyEditorialOverlayBudget([]OverlayItem{
+	got, budget := ApplyEditorialOverlayBudget([]capmodel.OverlayItem{
 		{ID: "phrase-1", Kind: "text_phrase", Text: "Grounded phrase"},
-		{ID: "image-1", Kind: "entity_image", AssetRefs: []OverlayAssetRef{{SHA256: "image-hash"}}},
+		{ID: "image-1", Kind: "entity_image", AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "image-hash"}}},
 		{ID: "location-1", Kind: "location", Text: "Brooklyn"},
 	})
 	if len(got) != 2 || got[0].ID != "phrase-1" || got[1].ID != "image-1" {
@@ -442,7 +443,7 @@ func TestBuildPlanExtendedEntities(t *testing.T) {
 	if len(plan.Items) != 4 {
 		t.Fatalf("items = %d, want number + quote + product + logo", len(plan.Items))
 	}
-	byKind := map[string]OverlayItem{}
+	byKind := map[string]capmodel.OverlayItem{}
 	for _, item := range plan.Items {
 		byKind[item.Kind] = item
 	}

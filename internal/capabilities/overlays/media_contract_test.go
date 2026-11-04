@@ -11,8 +11,8 @@ import (
 )
 
 func TestOverlayRender_ValidatesMediaContract(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -30,8 +30,8 @@ func TestOverlayRender_ValidatesMediaContract(t *testing.T) {
 }
 
 func TestOverlayRender_RejectsInvalidMedia(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1280, // wrong width
 		Height:       720,  // wrong height
 		DurationUS:   5000000,
@@ -49,8 +49,8 @@ func TestOverlayRender_RejectsInvalidMedia(t *testing.T) {
 }
 
 func TestOverlayRender_HasZeroAudioStreams(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -68,8 +68,8 @@ func TestOverlayRender_HasZeroAudioStreams(t *testing.T) {
 }
 
 func TestOverlayRender_RejectsWrongCodec(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -87,8 +87,8 @@ func TestOverlayRender_RejectsWrongCodec(t *testing.T) {
 }
 
 func TestOverlayRender_RejectsWrongPixelFormat(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -106,7 +106,7 @@ func TestOverlayRender_RejectsWrongPixelFormat(t *testing.T) {
 }
 
 func TestOverlayRender_RejectsAlphaRequiredButMissing(t *testing.T) {
-	contract := OverlayMediaContract{
+	contract := capmodel.OverlayMediaContract{
 		ID:            "test-alpha",
 		Version:       1,
 		RequiresAlpha: true,
@@ -117,7 +117,7 @@ func TestOverlayRender_RejectsAlphaRequiredButMissing(t *testing.T) {
 		AudioStreams:  0,
 		PixelFormat:   "yuv420p", // no alpha
 	}
-	probed := OverlayProbeResult{
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -135,7 +135,7 @@ func TestOverlayRender_RejectsAlphaRequiredButMissing(t *testing.T) {
 }
 
 func TestOverlayRender_AcceptsAlphaInPixelFormat(t *testing.T) {
-	contract := OverlayMediaContract{
+	contract := capmodel.OverlayMediaContract{
 		ID:            "test-alpha",
 		Version:       1,
 		RequiresAlpha: true,
@@ -146,7 +146,7 @@ func TestOverlayRender_AcceptsAlphaInPixelFormat(t *testing.T) {
 		AudioStreams:  0,
 		PixelFormat:   "yuva444p",
 	}
-	probed := OverlayProbeResult{
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -164,8 +164,8 @@ func TestOverlayRender_AcceptsAlphaInPixelFormat(t *testing.T) {
 }
 
 func TestOverlayRender_RejectsZeroDuration(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   0, // zero duration
@@ -183,8 +183,8 @@ func TestOverlayRender_RejectsZeroDuration(t *testing.T) {
 }
 
 func TestOverlayRender_RejectsZeroFileSize(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -202,7 +202,7 @@ func TestOverlayRender_RejectsZeroFileSize(t *testing.T) {
 }
 
 func TestOverlayContractForCanvas_Alpha(t *testing.T) {
-	c := OverlayContractForCanvas(1280, 720, 24, 1, true)
+	c := capmodel.OverlayContractForCanvas(1280, 720, 24, 1, true)
 	if c.Width != 1280 || c.Height != 720 {
 		t.Errorf("canvas = %dx%d, want 1280x720", c.Width, c.Height)
 	}
@@ -218,7 +218,7 @@ func TestOverlayContractForCanvas_Alpha(t *testing.T) {
 }
 
 func TestOverlayContractForCanvas_NoAlpha(t *testing.T) {
-	c := OverlayContractForCanvas(1920, 1080, 24, 1, false)
+	c := capmodel.OverlayContractForCanvas(1920, 1080, 24, 1, false)
 	if c.RequiresAlpha {
 		t.Error("requires_alpha should be false")
 	}
@@ -228,16 +228,16 @@ func TestOverlayContractForCanvas_NoAlpha(t *testing.T) {
 }
 
 func TestResolveMediaContract_KnownIDs(t *testing.T) {
-	for _, id := range []string{"", "overlay-v1", DefaultOverlayContractV1.ID} {
-		c, err := ResolveMediaContract(id)
+	for _, id := range []string{"", "overlay-v1", capmodel.DefaultOverlayContractV1.ID} {
+		c, err := capmodel.ResolveMediaContract(id)
 		if err != nil {
 			t.Fatalf("ResolveMediaContract(%q): %v", id, err)
 		}
-		if c.ID != DefaultOverlayContractV1.ID {
-			t.Fatalf("ResolveMediaContract(%q).ID = %q, want %q", id, c.ID, DefaultOverlayContractV1.ID)
+		if c.ID != capmodel.DefaultOverlayContractV1.ID {
+			t.Fatalf("ResolveMediaContract(%q).ID = %q, want %q", id, c.ID, capmodel.DefaultOverlayContractV1.ID)
 		}
 	}
-	c, err := ResolveMediaContract(DefaultOverlayContractNoAlpha.ID)
+	c, err := capmodel.ResolveMediaContract(capmodel.DefaultOverlayContractNoAlpha.ID)
 	if err != nil {
 		t.Fatalf("ResolveMediaContract(no-alpha): %v", err)
 	}
@@ -247,28 +247,28 @@ func TestResolveMediaContract_KnownIDs(t *testing.T) {
 }
 
 func TestResolveMediaContract_UnknownFailsClosed(t *testing.T) {
-	if _, err := ResolveMediaContract("overlay-v99"); err == nil {
+	if _, err := capmodel.ResolveMediaContract("overlay-v99"); err == nil {
 		t.Fatal("unknown contract id must fail closed")
 	}
 }
 
 func TestContractIDForCanvas(t *testing.T) {
-	if id := ContractIDForCanvas(1280, 720, 24, 1, true); id != DefaultOverlayContractV1.ID {
-		t.Fatalf("alpha contract id = %q, want %q", id, DefaultOverlayContractV1.ID)
+	if id := capmodel.ContractIDForCanvas(1280, 720, 24, 1, true); id != capmodel.DefaultOverlayContractV1.ID {
+		t.Fatalf("alpha contract id = %q, want %q", id, capmodel.DefaultOverlayContractV1.ID)
 	}
-	if id := ContractIDForCanvas(1280, 720, 24, 1, false); id != DefaultOverlayContractNoAlpha.ID {
-		t.Fatalf("no-alpha contract id = %q, want %q", id, DefaultOverlayContractNoAlpha.ID)
+	if id := capmodel.ContractIDForCanvas(1280, 720, 24, 1, false); id != capmodel.DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("no-alpha contract id = %q, want %q", id, capmodel.DefaultOverlayContractNoAlpha.ID)
 	}
 }
 
 func TestOverlayMediaContract_FPSComparisonRational(t *testing.T) {
-	contract := OverlayMediaContract{
+	contract := capmodel.OverlayMediaContract{
 		ID:      "test-fps",
 		Version: 1,
 		Width:   1920, Height: 1080,
 		FPSNum: 24000, FPSDen: 1001, // 23.976
 	}
-	probed := OverlayProbeResult{
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -286,10 +286,10 @@ func TestOverlayMediaContract_FPSComparisonRational(t *testing.T) {
 }
 
 func TestOverlayMediaContract_ContainerCommaTokenAware(t *testing.T) {
-	contract := DefaultOverlayContractV1
+	contract := capmodel.DefaultOverlayContractV1
 	// ffprobe's format_name is a comma-joined container family list; the
 	// first token is the canonical container identity.
-	probed := OverlayProbeResult{
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -307,8 +307,8 @@ func TestOverlayMediaContract_ContainerCommaTokenAware(t *testing.T) {
 }
 
 func TestOverlayMediaContract_RejectsZeroFPS(t *testing.T) {
-	contract := DefaultOverlayContractV1
-	probed := OverlayProbeResult{
+	contract := capmodel.DefaultOverlayContractV1
+	probed := capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   5000000,
@@ -337,7 +337,7 @@ func TestOverlayMediaContract_RejectsZeroFPS(t *testing.T) {
 // obligations: it carries the identity half (asset_id + content address) and it
 // is unable to carry the location half.
 func TestOverlayAssetRefProjectsOntoCanonicalIdentity(t *testing.T) {
-	ref := OverlayAssetRef{
+	ref := capmodel.OverlayAssetRef{
 		AssetID:   "person:michael-jordan",
 		URL:       "https://cdn.example/jordan.jpg",
 		LocalPath: "/tmp/producer-only/jordan.jpg",
@@ -378,14 +378,14 @@ func TestOverlayAssetRefProjectsOntoCanonicalIdentity(t *testing.T) {
 // Ref() ever starts folding a location into the identity, this fails.
 func TestOverlayAssetRefIdentityIsIndependentOfLocation(t *testing.T) {
 	digest := "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef"
-	viaDrive := OverlayAssetRef{
+	viaDrive := capmodel.OverlayAssetRef{
 		AssetID:   "person:michael-jordan",
 		SHA256:    digest,
 		MediaType: "image/jpeg",
 		URL:       "https://drive.google.com/file/d/drive-file-id/view",
 		LocalPath: "/mnt/drive/jordan.jpg",
 	}
-	viaCdn := OverlayAssetRef{
+	viaCdn := capmodel.OverlayAssetRef{
 		AssetID:   "person:michael-jordan",
 		SHA256:    digest,
 		MediaType: "image/jpeg",
@@ -412,7 +412,7 @@ func TestOverlayAssetRefIdentityIsIndependentOfLocation(t *testing.T) {
 // caller cannot smuggle one in through the identity.
 func TestNewOverlayAssetRefTakesLocationsAsExplicitArguments(t *testing.T) {
 	identity := asset.New("person:michael-jordan", "C4813C9D7D4F0F6B1A2C3D4E5F60718293A4B5C6D7E8F9012345678901ABCDEF", "image/jpeg", 0)
-	built := NewOverlayAssetRef(identity, "https://cdn.example/jordan.jpg", "/tmp/jordan.jpg")
+	built := capmodel.NewOverlayAssetRef(identity, "https://cdn.example/jordan.jpg", "/tmp/jordan.jpg")
 
 	if built.SHA256 != "c4813c9d7d4f0f6b1a2c3d4e5f60718293a4b5c6d7e8f9012345678901abcdef" {
 		t.Errorf("builder did not canonicalise the digest: %q", built.SHA256)
@@ -435,9 +435,9 @@ func TestNewOverlayAssetRefTakesLocationsAsExplicitArguments(t *testing.T) {
 // empty) profile keeps the alpha contract, and an unset profile never silently
 // weakens a contract the renderer may honour.
 func TestContractForProfileFollowsAlpha(t *testing.T) {
-	videoOnly := ContractIDForProfile(1920, 1080, 24, 1, kernelmedia.OverlayVideoOnlyProfileID)
-	if videoOnly != DefaultOverlayContractNoAlpha.ID {
-		t.Fatalf("video-only contract = %q, want %q", videoOnly, DefaultOverlayContractNoAlpha.ID)
+	videoOnly := capmodel.ContractIDForProfile(1920, 1080, 24, 1, kernelmedia.OverlayVideoOnlyProfileID)
+	if videoOnly != capmodel.DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("video-only contract = %q, want %q", videoOnly, capmodel.DefaultOverlayContractNoAlpha.ID)
 	}
 	if capmodel.RequiresAlphaForProfile(kernelmedia.OverlayVideoOnlyProfileID) {
 		t.Fatal("the video-only profile must not require alpha")
@@ -445,7 +445,7 @@ func TestContractForProfileFollowsAlpha(t *testing.T) {
 	// The declared contract must actually describe the artifact: H.264/yuv420p
 	// in MP4, silent. A resolvable ID that still said ProRes would be the same
 	// false statement with a different name.
-	contract, err := ResolveMediaContract(videoOnly)
+	contract, err := capmodel.ResolveMediaContract(videoOnly)
 	if err != nil {
 		t.Fatalf("video-only contract must resolve: %v", err)
 	}
@@ -456,17 +456,17 @@ func TestContractForProfileFollowsAlpha(t *testing.T) {
 		if !capmodel.RequiresAlphaForProfile(profile) {
 			t.Fatalf("profile %q must keep the alpha contract: an unset or assembly profile must not weaken it", profile)
 		}
-		if got := ContractIDForProfile(1920, 1080, 24, 1, profile); got != DefaultOverlayContractV1.ID {
-			t.Fatalf("contract for profile %q = %q, want %q", profile, got, DefaultOverlayContractV1.ID)
+		if got := capmodel.ContractIDForProfile(1920, 1080, 24, 1, profile); got != capmodel.DefaultOverlayContractV1.ID {
+			t.Fatalf("contract for profile %q = %q, want %q", profile, got, capmodel.DefaultOverlayContractV1.ID)
 		}
 	}
 	// The canvas is honoured: a 1080x1920 plan keeps its own geometry. The ID
 	// alone cannot carry it (ResolveMediaContract returns the registry
 	// defaults), so the canvas-specialised contract is the one to check.
-	if got := ContractIDForProfile(1080, 1920, 30, 1, kernelmedia.OverlayVideoOnlyProfileID); got != DefaultOverlayContractNoAlpha.ID {
-		t.Fatalf("portrait video-only contract = %q, want %q", got, DefaultOverlayContractNoAlpha.ID)
+	if got := capmodel.ContractIDForProfile(1080, 1920, 30, 1, kernelmedia.OverlayVideoOnlyProfileID); got != capmodel.DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("portrait video-only contract = %q, want %q", got, capmodel.DefaultOverlayContractNoAlpha.ID)
 	}
-	portrait := OverlayContractForCanvas(1080, 1920, 30, 1,
+	portrait := capmodel.OverlayContractForCanvas(1080, 1920, 30, 1,
 		capmodel.RequiresAlphaForProfile(kernelmedia.OverlayVideoOnlyProfileID))
 	if portrait.Width != 1080 || portrait.Height != 1920 || portrait.FPSNum != 30 || portrait.RequiresAlpha {
 		t.Fatalf("contract canvas = %dx%d@%d alpha=%v, want the requested geometry without alpha",

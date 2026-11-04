@@ -2,9 +2,11 @@
 
 **Stato:** APERTO. Una leva è misurata (multi-daemon **1,98x** sullo shape
 overlay), una è già chiusa sul consumatore (copy/cache), tre richiedono una
-misura o un cambio al producer. Il fix di ammissione del 02-11 è nel working
-tree di `Chronon3d` ma **non è formalizzato**: test non eseguito nell'export,
-ledger §7 ancora «Bloccato», evidence doc assente.
+misura o un cambio al producer. **L1 passo 1 misurato (2026-11-03):** r100 =
+86 frammenti (83 cache, 2 encode, 1 derived), 0 copy, 0 padded, encode 3.428 ms.
+Il fix di ammissione del 02-11 è nel working tree di `Chronon3d` ma **non è
+formalizzato**: test non eseguito nell'export, ledger §7 ancora «Bloccato»,
+evidence doc assente.
 **Creato:** 2026-11-02.
 **Owner:** `refactored` (PipelineGen, `internal/app/wiring/`,
 `internal/capabilities/scripts/`) + RenderingGen (`internal/chronon/`,
@@ -169,9 +171,18 @@ colloca fuori da questi tre repo.
 
 **Passi**
 
-1. Instrumentare il receipt: contare per run `copy`, `encode`, `cache`, `reuse`
-   e `padded_frames` (i campi esistono in `finalJobSegmentWindow`). Oggi il
-   ticket non ha il conteggio r100: va estratto prima di stimare.
+1. [x] **Conteggio r100 estratto (2026-11-03).** Il receipt espone già
+   `segments/reused/cached/derived/copied/encode_fallbacks/padded_frames`
+   (`RemoteFinalJobSegmentPrepTiming`, proiettato da
+   `finalJobSegmentStats.timing`). Su `job-full-r100.json`: **86 frammenti =
+   83 `cache` + 2 `encode` + 1 `derived`**, `copied=0`, `reused=0`,
+   `encode_fallbacks=0`, `padded_frames=0`, `encode_ms=3.428`, `verify_ms=546`,
+   `publish_ms=803`. I due encode sono `segment-0005` (39 frame, 1.348 ms) e
+   `segment-0007` (192 frame, 2.080 ms); nessuno dei due dichiara un
+   `copy_failure`, quindi sono lavoro di encoder pianificato (sorgente fuori
+   griglia/non certificata), non fallback del copy. Il conteggio non è il
+   collo di r100: 83/86 sono cache hit, e il residuo L1 è la copertura del
+   producer (passo 3), non il gate del consumatore.
 2. Per ogni `encode`, loggare il motivo del fallback: time base non
    certificata, GOP non allineato, `start + frames > census.frames`, sorgente
    non certificata. Il predicato è in `finalJobWindowOnGOPGrid` e
@@ -198,6 +209,14 @@ il fallback abbassando il gate. Il criterio del ledger è esplicito.
 ## 4. L2 — Preparazione fuori dal critical path (P0/P1)
 
 **Obiettivo:** ridurre `prepare_join` (10,7 s in r100) senza cambiare il piano.
+
+**Nota 2026-11-03 (A14).** Il campo `prepare_join` di `timing.stages` (r100
+10,7 s; r101/r102 2,0/12,3 s) è lo stage del runner script
+(`runner_execution.go`), non `prepareFinalJobVideoSegments`. Due run Garlasco
+20 min lo attribuiscono al ramo semantico (`last_branch=semantic`, 86,9/60,0 s)
+e non agli asset (264/3 ms); il gate ±10% non passa. Questa misura **non
+chiude L2**: la preparazione frammenti del final job resta da decomporre nel
+receipt `segment_prep`/`prepare_ms`.
 
 **Cosa c'è oggi**
 

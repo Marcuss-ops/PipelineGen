@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
 
@@ -42,15 +43,15 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 	// the automatic caption pool, plus one composite pair whose children rotate
 	// separately.
 	portraitCount := len(automaticCaptions) - 2
-	items := make([]capabilityoverlay.OverlayItem, 0, portraitCount+1)
+	items := make([]capmodel.OverlayItem, 0, portraitCount+1)
 	for i := 0; i < portraitCount; i++ {
-		items = append(items, capabilityoverlay.OverlayItem{
-			ID: fmt.Sprintf("portrait-%d", i), Kind: string(capabilityoverlay.KindEntityImage), EntityCaption: fmt.Sprintf("Person %d", i),
+		items = append(items, capmodel.OverlayItem{
+			ID: fmt.Sprintf("portrait-%d", i), Kind: string(capmodel.KindEntityImage), EntityCaption: fmt.Sprintf("Person %d", i),
 		})
 	}
-	items = append(items, capabilityoverlay.OverlayItem{
-		ID: "pair", Kind: string(capabilityoverlay.KindEntityImage),
-		ImageLayers: []capabilityoverlay.OverlayImageLayer{{ID: "a", Caption: "Person A"}, {ID: "b", Caption: "Person B"}},
+	items = append(items, capmodel.OverlayItem{
+		ID: "pair", Kind: string(capmodel.KindEntityImage),
+		ImageLayers: []capmodel.OverlayImageLayer{{ID: "a", Caption: "Person A"}, {ID: "b", Caption: "Person B"}},
 	})
 	if err := assignEntityImageMotions(items, 0, 1920, 1080, ""); err != nil {
 		t.Fatalf("assign entity image motions: %v", err)
@@ -122,7 +123,7 @@ func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
 }
 
 func TestAssignEntityImageMotionsUsesSeparatePoolForImagesWithText(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "named-image-a", Kind: "image", EntityCaption: "São Paulo", CaptionMotionID: "text_word_rise"},
 		{ID: "named-image-b", Kind: "image", EntityCaption: "Brasília", CaptionMotionID: "text_yaw_in"},
 	}

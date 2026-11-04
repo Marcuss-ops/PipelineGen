@@ -3,6 +3,7 @@ package overlays
 import (
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 )
 
@@ -116,7 +117,7 @@ func TestExplicitCoherenceSeedGovernsCompiledPlanMotions(t *testing.T) {
 		start := int64(i * 2_000)
 		images[i] = ImageCandidate{AssetID: fmt.Sprintf("asset-%d", i), URL: fmt.Sprintf("https://example.test/%d.jpg", i), SHA256: fmt.Sprintf("%064x", i+1), MediaType: "image/jpeg", StartMs: start, EndMs: start + 1_500, Score: 1 - float64(i)*.01}
 	}
-	build := func() OverlayPlan {
+	build := func() capmodel.OverlayPlan {
 		input := PlanInput{PlanID: "coherence-plan", VideoID: "coherence-plan", Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1,
 			MotionSeed: "run-coherence", CoherenceSeed: "explicit-dominance",
 			Scenes: []SceneInput{{ID: "scene", Images: images}}}

@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -43,31 +44,31 @@ func TestEditorialSectionsHaveStableOrderAndDistinctIDs(t *testing.T) {
 func TestEditorialSectionForItemUsesRenderShapeNotDuplicateKinds(t *testing.T) {
 	cases := []struct {
 		name string
-		item OverlayItem
+		item capmodel.OverlayItem
 		want EditorialSectionID
 	}{
-		{"portrait with caption", OverlayItem{Kind: "entity_image", TemplateID: "image_popup", EntityCaption: "Ada Lovelace", AssetRefs: []OverlayAssetRef{{AssetID: "portrait"}}}, EditorialSectionEntityTextImage},
-		{"entity image and text", OverlayItem{Kind: "entity_image", TemplateID: "image_popup", Text: "Ada Lovelace", AssetRefs: []OverlayAssetRef{{AssetID: "portrait"}}}, EditorialSectionEntityTextImage},
-		{"single portrait image without caption", OverlayItem{Kind: "entity_image", TemplateID: "image_popup", AssetRefs: []OverlayAssetRef{{AssetID: "portrait"}}}, EditorialSectionSingleImage},
-		{"single image", OverlayItem{Kind: "entity_image", TemplateID: "image_popup", AssetRefs: []OverlayAssetRef{{AssetID: "image"}}}, EditorialSectionSingleImage},
-		{"single generic image", OverlayItem{Kind: "image", TemplateID: "IMAGE_OVERLAY", AssetRefs: []OverlayAssetRef{{AssetID: "image"}}}, EditorialSectionSingleImage},
-		{"two image layers", OverlayItem{Kind: "entity_image", TemplateID: "image_popup", ImageLayers: []OverlayImageLayer{{ID: "a"}, {ID: "b"}}}, EditorialSectionImageStack},
-		{"three image layers", OverlayItem{Kind: "entity_image", ImageLayers: []OverlayImageLayer{{ID: "a"}, {ID: "b"}, {ID: "c"}}, AssetRefs: []OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}, {AssetID: "c"}}}, EditorialSectionImageStack},
-		{"four image layers", OverlayItem{Kind: "entity_image", ImageLayers: []OverlayImageLayer{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}}, AssetRefs: []OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}, {AssetID: "c"}, {AssetID: "d"}}}, EditorialSectionImageStack},
-		{"five image layers", OverlayItem{Kind: "entity_image", ImageLayers: []OverlayImageLayer{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}, {ID: "e"}}, AssetRefs: []OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}, {AssetID: "c"}, {AssetID: "d"}, {AssetID: "e"}}}, EditorialSectionImageStack},
-		{"short phrase", OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Una frase breve"}, EditorialSectionShortPhrase},
-		{"short scene bullet follows word count", OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo margini", Params: map[string]any{"editorial_role": "scene_bullet"}}, EditorialSectionShortPhrase},
-		{"long scene bullet stays important", OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Una frase editoriale lunga di sei parole", Params: map[string]any{"editorial_role": "scene_bullet"}}, EditorialSectionImportantPhrase},
-		{"scene title keeps important lane", OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo", Params: map[string]any{"editorial_role": "scene_title"}}, EditorialSectionImportantPhrase},
-		{"important phrase", OverlayItem{Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Una frase editoriale lunga di sei parole"}, EditorialSectionImportantPhrase},
-		{"phrase at six words", OverlayItem{Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Uno due tre quattro cinque sei"}, EditorialSectionImportantPhrase},
-		{"phrase beyond six words", OverlayItem{Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Uno due tre quattro cinque sei sette"}, EditorialSectionImportantPhrase},
-		{"date", OverlayItem{Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "2026"}, EditorialSectionNumbersAndDates},
-		{"semantic date", OverlayItem{Kind: "date", TemplateID: "DATE", Text: "October 6, 2026"}, EditorialSectionNumbersAndDates},
-		{"metric", OverlayItem{Kind: "number", TemplateID: "METRIC_STAT_CARD", Text: "42"}, EditorialSectionNumbersAndDates},
-		{"percent", OverlayItem{Kind: "number", TemplateID: "PERCENT", Text: "42%"}, EditorialSectionNumbersAndDates},
-		{"map", OverlayItem{Kind: "map", TemplateID: "MAP", AssetRefs: []OverlayAssetRef{{AssetID: "basemap"}}}, EditorialSectionMap},
-		{"other", OverlayItem{Kind: "quote", TemplateID: "QUOTE", Text: "Citazione"}, EditorialSectionOther},
+		{"portrait with caption", capmodel.OverlayItem{Kind: "entity_image", TemplateID: "image_popup", EntityCaption: "Ada Lovelace", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "portrait"}}}, EditorialSectionEntityTextImage},
+		{"entity image and text", capmodel.OverlayItem{Kind: "entity_image", TemplateID: "image_popup", Text: "Ada Lovelace", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "portrait"}}}, EditorialSectionEntityTextImage},
+		{"single portrait image without caption", capmodel.OverlayItem{Kind: "entity_image", TemplateID: "image_popup", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "portrait"}}}, EditorialSectionSingleImage},
+		{"single image", capmodel.OverlayItem{Kind: "entity_image", TemplateID: "image_popup", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "image"}}}, EditorialSectionSingleImage},
+		{"single generic image", capmodel.OverlayItem{Kind: "image", TemplateID: "IMAGE_OVERLAY", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "image"}}}, EditorialSectionSingleImage},
+		{"two image layers", capmodel.OverlayItem{Kind: "entity_image", TemplateID: "image_popup", ImageLayers: []capmodel.OverlayImageLayer{{ID: "a"}, {ID: "b"}}}, EditorialSectionImageStack},
+		{"three image layers", capmodel.OverlayItem{Kind: "entity_image", ImageLayers: []capmodel.OverlayImageLayer{{ID: "a"}, {ID: "b"}, {ID: "c"}}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}, {AssetID: "c"}}}, EditorialSectionImageStack},
+		{"four image layers", capmodel.OverlayItem{Kind: "entity_image", ImageLayers: []capmodel.OverlayImageLayer{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}, {AssetID: "c"}, {AssetID: "d"}}}, EditorialSectionImageStack},
+		{"five image layers", capmodel.OverlayItem{Kind: "entity_image", ImageLayers: []capmodel.OverlayImageLayer{{ID: "a"}, {ID: "b"}, {ID: "c"}, {ID: "d"}, {ID: "e"}}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}, {AssetID: "c"}, {AssetID: "d"}, {AssetID: "e"}}}, EditorialSectionImageStack},
+		{"short phrase", capmodel.OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Una frase breve"}, EditorialSectionShortPhrase},
+		{"short scene bullet follows word count", capmodel.OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo margini", Params: map[string]any{"editorial_role": "scene_bullet"}}, EditorialSectionShortPhrase},
+		{"long scene bullet stays important", capmodel.OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Una frase editoriale lunga di sei parole", Params: map[string]any{"editorial_role": "scene_bullet"}}, EditorialSectionImportantPhrase},
+		{"scene title keeps important lane", capmodel.OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Crollo", Params: map[string]any{"editorial_role": "scene_title"}}, EditorialSectionImportantPhrase},
+		{"important phrase", capmodel.OverlayItem{Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Una frase editoriale lunga di sei parole"}, EditorialSectionImportantPhrase},
+		{"phrase at six words", capmodel.OverlayItem{Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Uno due tre quattro cinque sei"}, EditorialSectionImportantPhrase},
+		{"phrase beyond six words", capmodel.OverlayItem{Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Uno due tre quattro cinque sei sette"}, EditorialSectionImportantPhrase},
+		{"date", capmodel.OverlayItem{Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "2026"}, EditorialSectionNumbersAndDates},
+		{"semantic date", capmodel.OverlayItem{Kind: "date", TemplateID: "DATE", Text: "October 6, 2026"}, EditorialSectionNumbersAndDates},
+		{"metric", capmodel.OverlayItem{Kind: "number", TemplateID: "METRIC_STAT_CARD", Text: "42"}, EditorialSectionNumbersAndDates},
+		{"percent", capmodel.OverlayItem{Kind: "number", TemplateID: "PERCENT", Text: "42%"}, EditorialSectionNumbersAndDates},
+		{"map", capmodel.OverlayItem{Kind: "map", TemplateID: "MAP", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "basemap"}}}, EditorialSectionMap},
+		{"other", capmodel.OverlayItem{Kind: "quote", TemplateID: "QUOTE", Text: "Citazione"}, EditorialSectionOther},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,10 +80,10 @@ func TestEditorialSectionForItemUsesRenderShapeNotDuplicateKinds(t *testing.T) {
 }
 
 func TestEditorialSectionsDoNotEnterRenderWireOrFingerprint(t *testing.T) {
-	plan := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "editorial-wire", VideoID: "editorial-wire", Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1,
-		Items: []OverlayItem{{ID: "phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "A short phrase", StartMs: 0, EndMs: 1000}},
+		Items: []capmodel.OverlayItem{{ID: "phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "A short phrase", StartMs: 0, EndMs: 1000}},
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatal(err)
@@ -110,10 +111,10 @@ func TestEditorialSectionsDoNotEnterRenderWireOrFingerprint(t *testing.T) {
 }
 
 func TestOrganizeEditorialPlanPlacesEveryItemExactlyOnce(t *testing.T) {
-	plan := OverlayPlan{Items: []OverlayItem{
-		{ID: "portrait", Kind: "entity_image", TemplateID: "image_popup", EntityCaption: "Ada", AssetRefs: []OverlayAssetRef{{AssetID: "portrait"}}},
-		{ID: "image", Kind: "image", TemplateID: "IMAGE_OVERLAY", AssetRefs: []OverlayAssetRef{{AssetID: "image"}}},
-		{ID: "stack", Kind: "entity_image", TemplateID: "image_popup", ImageLayers: []OverlayImageLayer{{ID: "a"}, {ID: "b"}}},
+	plan := capmodel.OverlayPlan{Items: []capmodel.OverlayItem{
+		{ID: "portrait", Kind: "entity_image", TemplateID: "image_popup", EntityCaption: "Ada", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "portrait"}}},
+		{ID: "image", Kind: "image", TemplateID: "IMAGE_OVERLAY", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "image"}}},
+		{ID: "stack", Kind: "entity_image", TemplateID: "image_popup", ImageLayers: []capmodel.OverlayImageLayer{{ID: "a"}, {ID: "b"}}},
 		{ID: "phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "La storia cambia"},
 		{ID: "headline", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Una storia editoriale molto importante oggi"},
 		{ID: "date", Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "2026"},

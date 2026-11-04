@@ -3,16 +3,15 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"strings"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
-func manifestTestPlan() capoverlay.OverlayPlan {
-	return capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+func manifestTestPlan() capmodel.OverlayPlan {
+	return capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "test-manifest-timeline",
 		VideoID:       "test-manifest-timeline",
 		Width:         1920,
@@ -20,7 +19,7 @@ func manifestTestPlan() capoverlay.OverlayPlan {
 		FPSNum:        30,
 		FPSDen:        1,
 		DurationMS:    100000,
-		Items: []capoverlay.OverlayItem{
+		Items: []capmodel.OverlayItem{
 			{
 				ID: "item-01", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 				StartUS: 10_000_000, DurationUS: 2_000_000,
@@ -136,8 +135,8 @@ func TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile(t *testing.T) {
 	// The contract follows the declared profile: an opaque H.264 batch must not
 	// declare the alpha-bearing overlay-v1 (ProRes 4444) it inherits from the
 	// parent plan.
-	if got := child.MediaContract; got != capoverlay.DefaultOverlayContractNoAlpha.ID {
-		t.Fatalf("child media contract = %q, want %q", got, capoverlay.DefaultOverlayContractNoAlpha.ID)
+	if got := child.MediaContract; got != capmodel.DefaultOverlayContractNoAlpha.ID {
+		t.Fatalf("child media contract = %q, want %q", got, capmodel.DefaultOverlayContractNoAlpha.ID)
 	}
 
 	raw, err := marshalRenderingGenOverlayPlan(child)
@@ -161,13 +160,13 @@ func TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile(t *testing.T) {
 func TestPartitionOverlayRenderWork(t *testing.T) {
 	plan := manifestTestPlan()
 	plan.Items = append(plan.Items,
-		capoverlay.OverlayItem{
+		capmodel.OverlayItem{
 			ID: "map-01", SceneID: "scene-02", Kind: "dynamic_map",
 			StartUS: 5_000_000, DurationUS: 4_000_000,
-			Map: &capoverlay.MapOverlay{},
+			Map: &capmodel.MapOverlay{},
 		},
-		capoverlay.OverlayItem{
-			ID: "chain-01", SceneID: "scene-02", Kind: string(capoverlay.KindPhraseChain),
+		capmodel.OverlayItem{
+			ID: "chain-01", SceneID: "scene-02", Kind: string(capmodel.KindPhraseChain),
 			StartUS: 60_000_000, DurationUS: 4_000_000,
 		},
 	)
@@ -179,7 +178,7 @@ func TestPartitionOverlayRenderWork(t *testing.T) {
 		t.Fatalf("dedicated candidates = %d, want 2", len(dedicated))
 	}
 	for _, candidate := range dedicated {
-		if candidate.source.Map == nil && !capoverlay.IsChainItemKind(candidate.source.Kind) {
+		if candidate.source.Map == nil && !capmodel.IsChainItemKind(candidate.source.Kind) {
 			t.Errorf("dedicated candidate %q is neither map nor chain", candidate.source.ID)
 		}
 	}
@@ -218,7 +217,7 @@ func TestAdmitManifestCaptionWindows(t *testing.T) {
 func TestEnqueueChrononPlanRejectsBackgroundOnlyPlan(t *testing.T) {
 	e := &QueueRenderEnqueuer{}
 	plan := manifestTestPlan()
-	plan.Items = []capoverlay.OverlayItem{
+	plan.Items = []capmodel.OverlayItem{
 		{ID: "bg-01", SceneID: "scene-01", Kind: "background", TemplateID: "BACKGROUND",
 			StartUS: 0, DurationUS: plan.DurationMS * 1000},
 	}
@@ -240,14 +239,14 @@ func TestEnqueueChrononPlanRejectsBackgroundOnlyPlan(t *testing.T) {
 // parent plan shape only; map submission never escapes the dedicated path.
 func TestSingleMapPlanUsesDedicatedPreMaterializationAndFoldRoute(t *testing.T) {
 	one := manifestTestPlan()
-	mapOverlay := &capoverlay.MapOverlay{
+	mapOverlay := &capmodel.MapOverlay{
 		Provider: "local", SourceID: "test-map", SourceLicense: "operator-supplied",
-		Center: capoverlay.MapCenter{Latitude: 0, Longitude: 0}, Zoom: 8,
+		Center: capmodel.MapCenter{Latitude: 0, Longitude: 0}, Zoom: 8,
 		Width: 1920, Height: 1080, Attribution: "Map data supplied by operator",
 		DynamicRendererOnly: true,
 	}
-	one.Items = []capoverlay.OverlayItem{{
-		ID: "map-01", SceneID: "scene-01", Kind: string(capoverlay.KindMap), TemplateID: "MAP",
+	one.Items = []capmodel.OverlayItem{{
+		ID: "map-01", SceneID: "scene-01", Kind: string(capmodel.KindMap), TemplateID: "MAP",
 		StartMs: 1_000, EndMs: 3_000, StartUS: 1_000_000, DurationUS: 2_000_000, Map: mapOverlay,
 	}}
 	manifest, dedicated := partitionOverlayRenderWork(one)
@@ -273,7 +272,7 @@ func TestSingleMapPlanUsesDedicatedPreMaterializationAndFoldRoute(t *testing.T) 
 	}
 
 	many := one
-	many.Items = append(append([]capoverlay.OverlayItem(nil), one.Items...), capoverlay.OverlayItem{
+	many.Items = append(append([]capmodel.OverlayItem(nil), one.Items...), capmodel.OverlayItem{
 		ID: "phrase-02", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 		StartMs: 5_000, EndMs: 7_000, StartUS: 5_000_000, DurationUS: 2_000_000,
 	})
@@ -313,19 +312,19 @@ func TestSingleMapPlanUsesDedicatedPreMaterializationAndFoldRoute(t *testing.T) 
 // call, and a plan whose stored contract disagrees with its profile must fail
 // validation instead of shipping a false statement.
 func TestStampOutputProfileIsTheSingleOutputIdentity(t *testing.T) {
-	plan := &capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+	plan := &capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "plan-opaque-contract",
 		VideoID:       "video-opaque-contract",
 		Width:         1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 		// The planner's alpha-bearing default, as sealed before this stamp.
-		MediaContract: capoverlay.DefaultOverlayContractV1.ID,
+		MediaContract: capmodel.DefaultOverlayContractV1.ID,
 	}
 	plan.StampOutputProfile(kernelmedia.OverlayVideoOnlyProfileID)
 	if got := plan.OutputProfileID; got != kernelmedia.OverlayVideoOnlyProfileID {
 		t.Fatalf("output_profile_id = %q, want %q", got, kernelmedia.OverlayVideoOnlyProfileID)
 	}
-	if want := capoverlay.DefaultOverlayContractNoAlpha.ID; plan.MediaContract != want {
+	if want := capmodel.DefaultOverlayContractNoAlpha.ID; plan.MediaContract != want {
 		t.Fatalf("final-job plan contract = %q, want %q", plan.MediaContract, want)
 	}
 	if err := plan.Validate(); err != nil {
@@ -334,14 +333,14 @@ func TestStampOutputProfileIsTheSingleOutputIdentity(t *testing.T) {
 
 	// The alpha default is the other half of the same derivation: an empty
 	// profile keeps overlay-v1, so the non-final-job path is unchanged.
-	alpha := &capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+	alpha := &capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "plan-alpha-contract",
 		VideoID:       "video-alpha-contract",
 		Width:         1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 	}
 	alpha.StampOutputProfile("")
-	if want := capoverlay.DefaultOverlayContractV1.ID; alpha.MediaContract != want {
+	if want := capmodel.DefaultOverlayContractV1.ID; alpha.MediaContract != want {
 		t.Fatalf("unprofiled plan contract = %q, want %q", alpha.MediaContract, want)
 	}
 	if err := alpha.Validate(); err != nil {
@@ -351,12 +350,12 @@ func TestStampOutputProfileIsTheSingleOutputIdentity(t *testing.T) {
 	// A hand-set contradiction (profile says video-only, contract says ProRes
 	// with alpha) is the exact false certificate this rule exists to reject.
 	contradicting := *plan
-	contradicting.MediaContract = capoverlay.DefaultOverlayContractV1.ID
+	contradicting.MediaContract = capmodel.DefaultOverlayContractV1.ID
 	contradicting.Fingerprint = ""
 	if err := contradicting.Validate(); err == nil {
 		t.Fatalf("a contract contradicting output_profile_id %q must not validate", contradicting.OutputProfileID)
 	}
 
-	var nilPlan *capoverlay.OverlayPlan
+	var nilPlan *capmodel.OverlayPlan
 	nilPlan.StampOutputProfile(kernelmedia.OverlayVideoOnlyProfileID) // a nil plan is not a crash
 }

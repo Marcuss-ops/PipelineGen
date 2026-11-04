@@ -13,6 +13,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,7 +43,7 @@ type OverlayPrepareEnqueuer interface {
 // RenderingGen and returns the certified Chronon artifact. Prepare is
 // fire-and-forget; render is allowed only after canonical timing exists.
 type OverlayRenderEnqueuer interface {
-	EnqueueChrononPlan(context.Context, capabilityoverlay.OverlayPlan) (RenderReference, error)
+	EnqueueChrononPlan(context.Context, capmodel.OverlayPlan) (RenderReference, error)
 }
 
 // LocalizedRenderInput is one ready-to-render localized unit: a scene whose

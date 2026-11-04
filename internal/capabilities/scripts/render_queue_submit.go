@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,6 @@ import (
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
@@ -22,7 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan, metadata *overlayItemPublicationMetadata) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan, metadata *overlayItemPublicationMetadata) (RenderReference, error) {
 	if e == nil || e.client == nil {
 		return RenderReference{}, fmt.Errorf("queue render enqueuer is not configured")
 	}
@@ -54,7 +54,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	mapItemCount := len(decisions)
 	pythonMapCount := 0
 	for _, decision := range decisions {
-		if decision.backend == scriptoverlay.MapBackendDynamic {
+		if decision.backend == capoverlay.MapBackendDynamic {
 			pythonMapCount++
 		}
 	}
@@ -88,16 +88,16 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		if err := json.Unmarshal(telemetry, &mapFacts); err != nil {
 			return RenderReference{}, fmt.Errorf("decode dynamic map producer telemetry for import: %w", err)
 		}
-		itemDurationUS := scriptoverlay.MapItemDurationMS(semanticPlan.Items[0], semanticPlan.DurationMS) * 1000
+		itemDurationUS := capoverlay.MapItemDurationMS(semanticPlan.Items[0], semanticPlan.DurationMS) * 1000
 		dynamicMapImportSpec, err = marshalDynamicMapImport(semanticPlan, sha, size, mapFacts.Frames, itemDurationUS, telemetry)
 		if err != nil {
 			return RenderReference{}, err
 		}
-		assetRef := capoverlay.NewOverlayAssetRef(
+		assetRef := capmodel.NewOverlayAssetRef(
 			kernelasset.Ref{AssetID: "chronon:dynamic-map:" + sha, SHA256: sha, SizeBytes: size, MediaType: "video/mp4"},
 			"", videoPath,
 		)
-		semanticPlan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{assetRef}, Fit: "cover"}
+		semanticPlan.Background = &capmodel.OverlayBackground{Kind: "video", AssetRefs: []capmodel.OverlayAssetRef{assetRef}, Fit: "cover"}
 		semanticPlan.Items = nil
 	}
 	for _, item := range semanticPlan.Items {
@@ -126,7 +126,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 	}
 	assets := make([]RenderQueueAsset, 0, len(plan.Items)+1)
 	seen := make(map[string]struct{})
-	addAsset := func(ref capoverlay.OverlayAssetRef) {
+	addAsset := func(ref capmodel.OverlayAssetRef) {
 		// Identity comes from the canonical kernel type: the digest is
 		// canonicalised exactly once, by its owner, instead of by every caller
 		// that happens to compare hashes.
@@ -159,7 +159,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		}
 	}
 	if semanticPlan.Source != nil && len(dynamicMapImportSpec) == 0 {
-		addAsset(capoverlay.OverlayAssetRef{
+		addAsset(capmodel.OverlayAssetRef{
 			AssetID: semanticPlan.Source.AssetID, URL: semanticPlan.Source.Path,
 			LocalPath: semanticPlan.Source.LocalPath, SHA256: semanticPlan.Source.SHA256,
 			MediaType: "video/mp4",
@@ -210,15 +210,15 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 		return RenderReference{}, fmt.Errorf("dynamic map import must stage exactly its producer MP4 asset")
 	}
 	jobID := plan.PlanID
-	jobType := capoverlay.JobTypeRender
+	jobType := capmodel.JobTypeRender
 	if len(dynamicMapImportSpec) > 0 {
-		jobType = capoverlay.JobTypeImport
+		jobType = capmodel.JobTypeImport
 		jobID = fmt.Sprintf("%s:map-import:%s", plan.PlanID, digest.SHA256String(string(dynamicMapImportSpec))[:16])
 	}
 	if e.freshRender {
 		seq := e.freshSeq.Add(1)
 		jobID = fmt.Sprintf("%s:render:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), seq)
-		if jobType == capoverlay.JobTypeImport {
+		if jobType == capmodel.JobTypeImport {
 			jobID = fmt.Sprintf("%s:map-import:%d:%d", plan.PlanID, time.Now().UTC().UnixNano(), seq)
 		}
 	}
@@ -386,7 +386,7 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capov
 					spec.OverlayBatchID, spec.OverlayBatchItemIDs = "", nil
 					for _, item := range semanticPlan.Items {
 						if item.ID == output.ItemID {
-							spec.SourceStartUS, spec.SourceEndUS = overlayItemWindow(item)
+							spec.SourceStartUS, spec.SourceEndUS = capoverlay.OverlayItemWindowUS(item)
 							if metadata != nil && metadata.BatchID != "" {
 								spec.SourceStartUS += metadata.SourceStartUS
 								spec.SourceEndUS += metadata.SourceStartUS

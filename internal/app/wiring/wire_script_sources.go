@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -300,7 +301,7 @@ func (r mapPlateResolver) ResolvePlate(latitude, longitude float64) (capabilityo
 		ID:          plate.ID,
 		License:     plate.License,
 		Attribution: plate.Attribution,
-		Center: capabilityoverlay.MapCenter{
+		Center: capmodel.MapCenter{
 			Latitude:  plate.Center.Latitude,
 			Longitude: plate.Center.Longitude,
 		},
@@ -312,7 +313,7 @@ func (r mapPlateResolver) ResolvePlate(latitude, longitude float64) (capabilityo
 		// renderer is through the content-addressed prefetch of the local
 		// plate, so no deployment can turn a map into a network fetch by
 		// filling in a URL.
-		Asset: capabilityoverlay.NewOverlayAssetRef(
+		Asset: capmodel.NewOverlayAssetRef(
 			asset.New(plate.ID, plate.SHA256(), mapPlateMediaType, 0),
 			"",
 			plate.Path(),
@@ -323,7 +324,7 @@ func (r mapPlateResolver) ResolvePlate(latitude, longitude float64) (capabilityo
 // ResolveFlyover chooses complete offline raster coverage for the route. The
 // coarsest certified window is the base plate; subsequent zooms become ordered
 // LOD assets only when their provenance matches the base exactly.
-func (r mapPlateResolver) ResolveFlyover(from, to capabilityoverlay.MapCenter, canvasWidth, canvasHeight int) (capabilityoverlay.MapPlate, bool) {
+func (r mapPlateResolver) ResolveFlyover(from, to capmodel.MapCenter, canvasWidth, canvasHeight int) (capabilityoverlay.MapPlate, bool) {
 	if canvasWidth <= 0 || canvasHeight <= 0 {
 		return capabilityoverlay.MapPlate{}, false
 	}
@@ -350,9 +351,9 @@ func (r mapPlateResolver) ResolveFlyover(from, to capabilityoverlay.MapCenter, c
 func mapPlateFromManifest(plate maps.Plate) capabilityoverlay.MapPlate {
 	return capabilityoverlay.MapPlate{
 		ID: plate.ID, License: plate.License, Attribution: plate.Attribution,
-		Center: capabilityoverlay.MapCenter{Latitude: plate.Center.Latitude, Longitude: plate.Center.Longitude},
+		Center: capmodel.MapCenter{Latitude: plate.Center.Latitude, Longitude: plate.Center.Longitude},
 		Zoom:   plate.Zoom, Width: plate.Width, Height: plate.Height, Window: plate.Window(),
-		Asset: capabilityoverlay.NewOverlayAssetRef(
+		Asset: capmodel.NewOverlayAssetRef(
 			asset.New(plate.ID, plate.SHA256(), mapPlateMediaType, 0), "", plate.Path(),
 		),
 	}

@@ -1,11 +1,12 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 )
 
-func cascadeItem(kind, id string, startMs, endMs int64, enter any) OverlayItem {
-	item := OverlayItem{
+func cascadeItem(kind, id string, startMs, endMs int64, enter any) capmodel.OverlayItem {
+	item := capmodel.OverlayItem{
 		ID: id, SceneID: "scene-1", Kind: kind,
 		StartMs: startMs, EndMs: endMs,
 	}
@@ -15,7 +16,7 @@ func cascadeItem(kind, id string, startMs, endMs int64, enter any) OverlayItem {
 	return item
 }
 
-func cascadeEnter(t *testing.T, item OverlayItem) (int, bool) {
+func cascadeEnter(t *testing.T, item capmodel.OverlayItem) (int, bool) {
 	t.Helper()
 	if item.MotionParams == nil {
 		return 0, false
@@ -28,7 +29,7 @@ func cascadeEnter(t *testing.T, item OverlayItem) (int, bool) {
 // later, and items without an explicit entrance plus all certified windows
 // stay untouched.
 func TestCascadeClusteredEntrancesStaggersCoPresentSettles(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		cascadeItem("text_phrase", "phrase", 1000, 5000, 32),
 		cascadeItem("entity_image", "portrait", 1000, 5000, 8),
 		cascadeItem("image", "photo", 1000, 5000, nil),
@@ -57,7 +58,7 @@ func TestCascadeClusteredEntrancesStaggersCoPresentSettles(t *testing.T) {
 // Priority decides the order inside one beat, not plan order: the phrase
 // keeps rank zero even when listed after the portrait.
 func TestCascadeClusteredEntrancesOrdersByPriority(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		cascadeItem("entity_image", "portrait", 1000, 5000, 8),
 		cascadeItem("text_phrase", "phrase", 1000, 5000, 32),
 	}
@@ -73,7 +74,7 @@ func TestCascadeClusteredEntrancesOrdersByPriority(t *testing.T) {
 // Beats farther apart than the epsilon read as intentional sequencing and
 // keep their authored entrances.
 func TestCascadeClusteredEntrancesSeparatesBeats(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		cascadeItem("text_phrase", "early", 1000, 3000, 24),
 		cascadeItem("entity_image", "late", 3000, 6000, 8),
 	}
@@ -89,7 +90,7 @@ func TestCascadeClusteredEntrancesSeparatesBeats(t *testing.T) {
 // The cascade never shortens, never exceeds the renderer ceiling or the
 // item's own window, and converges instead of drifting on repeat passes.
 func TestCascadeClusteredEntrancesNeverShortensAndConverges(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		cascadeItem("text_phrase", "phrase", 1000, 9000, 32),
 		// Already settles later than the cascade target: keep it.
 		cascadeItem("entity_image", "slow", 1000, 9000, 200),
@@ -104,7 +105,7 @@ func TestCascadeClusteredEntrancesNeverShortensAndConverges(t *testing.T) {
 	if got, _ := cascadeEnter(t, items[2]); got != 12 {
 		t.Fatalf("brief portrait enter = %d, want duration-clamped 12", got)
 	}
-	again := []OverlayItem{
+	again := []capmodel.OverlayItem{
 		cascadeItem("text_phrase", "phrase", 1000, 9000, 32),
 		cascadeItem("entity_image", "ranked", 1000, 9000, 8),
 	}
@@ -121,11 +122,11 @@ func TestCascadeClusteredEntrancesNeverShortensAndConverges(t *testing.T) {
 // camera_move timeline. All three stay untouched.
 func TestCascadeClusteredEntrancesSkipsCompositeChainAndMap(t *testing.T) {
 	composite := cascadeItem("entity_image", "group", 1000, 5000, nil)
-	composite.ImageLayers = []OverlayImageLayer{{ID: "a"}, {ID: "b"}}
-	items := []OverlayItem{
+	composite.ImageLayers = []capmodel.OverlayImageLayer{{ID: "a"}, {ID: "b"}}
+	items := []capmodel.OverlayItem{
 		cascadeItem("text_phrase", "phrase", 1000, 5000, 32),
 		composite,
-		cascadeItem(string(KindPhraseChain), "chain", 1000, 5000, 16),
+		cascadeItem(string(capmodel.KindPhraseChain), "chain", 1000, 5000, 16),
 		{ID: "map", SceneID: "scene-1", Kind: "map", StartMs: 1000, EndMs: 5000,
 			MotionParams: map[string]any{"enter_frames": 8}},
 	}
@@ -144,7 +145,7 @@ func TestCascadeClusteredEntrancesSkipsCompositeChainAndMap(t *testing.T) {
 // JSON checkpointing decodes numbers as float64: the cascade must still read
 // the authored entrance instead of treating it as absent.
 func TestCascadeClusteredEntrancesReadsFloatEnters(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		cascadeItem("text_phrase", "phrase", 1000, 5000, float64(32)),
 		cascadeItem("entity_image", "portrait", 1000, 5000, float64(8)),
 	}

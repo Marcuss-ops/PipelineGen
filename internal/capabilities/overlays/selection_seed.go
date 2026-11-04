@@ -1,7 +1,7 @@
 // Package overlays — selection_seed.go: single owner for deterministic seeding.
 //
 // P1-2: un unico helper di seeding/ordinamento/rotazione/no-repeat.
-// Tutti i sampler (planner, animation_policy legacy, AnimationSelector)
+// Tutti i sampler (planner, animation_policy legacy)
 // usano queste primitive: stesso hash SHA256, stesso walk no-repeat.
 // I piani sigillati storici restano byte-identici perché l'algoritmo è
 // estratto verbatim, non reinventato.

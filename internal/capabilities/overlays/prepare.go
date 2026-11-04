@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 )
 
@@ -17,15 +18,15 @@ const SchemaVersionPrepare = "renderinggen.overlay-prepare.v1"
 // state), never a timed OverlayPlan: prepare is the deterministic
 // template/asset warm-up phase that precedes the timing-frozen render.
 type PrepareRequest struct {
-	SchemaVersion string          `json:"schema_version"`
-	PlanID        string          `json:"plan_id"`
-	VideoID       string          `json:"video_id"`
-	ProjectID     string          `json:"project_id,omitempty"`
-	Width         int             `json:"width"`
-	Height        int             `json:"height"`
-	FPSNum        int             `json:"fps_num"`
-	FPSDen        int             `json:"fps_den"`
-	Intents       []OverlayIntent `json:"intents"`
+	SchemaVersion string                   `json:"schema_version"`
+	PlanID        string                   `json:"plan_id"`
+	VideoID       string                   `json:"video_id"`
+	ProjectID     string                   `json:"project_id,omitempty"`
+	Width         int                      `json:"width"`
+	Height        int                      `json:"height"`
+	FPSNum        int                      `json:"fps_num"`
+	FPSDen        int                      `json:"fps_den"`
+	Intents       []capmodel.OverlayIntent `json:"intents"`
 }
 
 // Validate enforces the prepare contract: supported schema, non-empty
@@ -49,7 +50,7 @@ func (p PrepareRequest) Validate() error {
 		if err := p.Intents[i].Validate(); err != nil {
 			return fmt.Errorf("overlay prepare: intent[%d]: %w", i, err)
 		}
-		if p.Intents[i].TimingState != TimingStatePending {
+		if p.Intents[i].TimingState != capmodel.TimingStatePending {
 			return fmt.Errorf("overlay prepare: intent[%d] is not PENDING (got %q)", i, p.Intents[i].TimingState)
 		}
 	}

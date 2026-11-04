@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 
@@ -17,23 +18,23 @@ func TestBuildOverlayAuditExposesImageBindingsAndStableDigest(t *testing.T) {
 			EntityID: "person:ada", AssetID: "asset-ada", ContentHash: strings.Repeat("a", 64), Verified: true,
 		}},
 	}
-	plan := &capabilityoverlay.OverlayPlan{
+	plan := &capmodel.OverlayPlan{
 		PlanID:  "plan-audit",
 		VideoID: "video-audit",
-		Items: []capabilityoverlay.OverlayItem{
+		Items: []capmodel.OverlayItem{
 			{
 				ID: "overlay-ada", SceneID: "scene-1", Kind: "entity_image",
 				EntityID: "entity-ada",
-				EntityRef: &capabilityoverlay.OverlayEntityRef{
+				EntityRef: &capmodel.OverlayEntityRef{
 					EntityID: "item-ada", CanonicalEntityID: "person:ada",
 					Type: "PERSON", Name: "Ada Lovelace", SurfaceText: "Ada",
 				},
-				AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-ada"}},
+				AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-ada"}},
 			},
 			{
 				ID: "overlay-grace", SceneID: "scene-1", Kind: "entity_card",
 				EntityID: "entity-grace",
-				EntityRef: &capabilityoverlay.OverlayEntityRef{
+				EntityRef: &capmodel.OverlayEntityRef{
 					EntityID: "item-grace", CanonicalEntityID: "person:grace",
 					Type: "PERSON", Name: "Grace Hopper", SurfaceText: "Grace",
 				},

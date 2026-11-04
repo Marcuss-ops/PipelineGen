@@ -15,6 +15,7 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"time"
 
@@ -169,7 +170,7 @@ type RenderAttemptRecorder interface {
 // same inputs always produce the same record. A nil artifact is treated as an
 // empty artifact (no certified output yet) — the content census is still
 // recorded.
-func BuildRenderAttemptAnalytics(attemptID string, plan capoverlay.OverlayPlan, artifact *RenderArtifact) RenderAttemptAnalytics {
+func BuildRenderAttemptAnalytics(attemptID string, plan capmodel.OverlayPlan, artifact *RenderArtifact) RenderAttemptAnalytics {
 	return BuildRenderAttemptAnalyticsWithWait(attemptID, plan, artifact, RenderCompletionMetrics{})
 }
 
@@ -177,7 +178,7 @@ func BuildRenderAttemptAnalytics(attemptID string, plan capoverlay.OverlayPlan, 
 // authorities into one analytics record: RenderMS/EncodeMS come from the
 // RenderingGen artifact, while the completion/polling metrics come from the
 // PipelineGen queue observer.
-func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capoverlay.OverlayPlan, artifact *RenderArtifact, wait RenderCompletionMetrics) RenderAttemptAnalytics {
+func BuildRenderAttemptAnalyticsWithWait(attemptID string, plan capmodel.OverlayPlan, artifact *RenderArtifact, wait RenderCompletionMetrics) RenderAttemptAnalytics {
 	rec := RenderAttemptAnalytics{
 		AttemptID:         attemptID,
 		JobID:             plan.PlanID,

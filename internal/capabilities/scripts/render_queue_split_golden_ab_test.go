@@ -2,12 +2,11 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // TestGoldenPlanPackedAB is a host-gated offline A/B on a frozen job.full.json.
@@ -49,7 +48,7 @@ func TestGoldenPlanPackedAB(t *testing.T) {
 	if len(planRaw) == 0 {
 		t.Fatal("golden job carries no overlay_plan")
 	}
-	var plan capoverlay.OverlayPlan
+	var plan capmodel.OverlayPlan
 	if err := json.Unmarshal(planRaw, &plan); err != nil {
 		t.Fatalf("parse overlay plan: %v", err)
 	}

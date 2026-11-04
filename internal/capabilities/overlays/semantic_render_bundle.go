@@ -3,6 +3,7 @@ package overlays
 import (
 	"encoding/hex"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"regexp"
 	"strings"
 
@@ -69,14 +70,14 @@ type TimelineEvent struct {
 }
 
 type SemanticRenderBundleV1 struct {
-	Version         string           `json:"version"`
-	RunID           string           `json:"run_id"`
-	Scene           SceneIR          `json:"scene"`
-	Entities        []ResolvedEntity `json:"entities"`
-	OverlayIntents  []OverlayIntent  `json:"overlay_intents"`
-	Timeline        []TimelineEvent  `json:"timeline"`
-	Assets          []BoundAsset     `json:"assets"`
-	OverlayPlanHash string           `json:"overlay_plan_hash,omitempty"`
+	Version         string                   `json:"version"`
+	RunID           string                   `json:"run_id"`
+	Scene           SceneIR                  `json:"scene"`
+	Entities        []ResolvedEntity         `json:"entities"`
+	OverlayIntents  []capmodel.OverlayIntent `json:"overlay_intents"`
+	Timeline        []TimelineEvent          `json:"timeline"`
+	Assets          []BoundAsset             `json:"assets"`
+	OverlayPlanHash string                   `json:"overlay_plan_hash,omitempty"`
 }
 
 func NewSceneIR(segmentID string, position int, sourceText, narrationText string, profile SegmentSemanticProfile) SceneIR {

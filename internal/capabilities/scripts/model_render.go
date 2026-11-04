@@ -23,10 +23,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"time"
 )
 
 // RenderReference identifies a completed RenderingGen queue job (the future
@@ -412,7 +411,7 @@ type TTSSSceneMetric struct {
 // resolves the canonical font assets the queue job must carry. Both are wire-
 // model conversions, so they live next to RenderQueueJob/RenderQueueAsset.
 
-func marshalRenderingGenOverlayPlan(plan capoverlay.OverlayPlan) ([]byte, error) {
+func marshalRenderingGenOverlayPlan(plan capmodel.OverlayPlan) ([]byte, error) {
 	raw, err := json.Marshal(plan)
 	if err != nil {
 		return nil, err

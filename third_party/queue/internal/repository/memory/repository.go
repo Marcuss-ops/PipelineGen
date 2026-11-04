@@ -96,6 +96,74 @@ func (s *Repository) removeOrderLocked(id string) {
 	}
 }
 
+// insertLocked stores an already-validated job, indexes its family and appends
+// it to the FIFO. Every insert path (single, idempotent, batch) shares this
+// write side.
+func (s *Repository) insertLocked(job *model.Job, now time.Time) {
+	job.State, job.CreatedAt, job.QueuedAt = model.StatePending, now, now
+	s.jobs[job.ID] = job
+	s.indexChildLocked(*job)
+	s.appendOrderLocked(job.ID)
+}
+
+// artifactCopyLocked returns a copy of the stored artifact, or nil when the job
+// has none. The caller holds s.mu.
+func (s *Repository) artifactCopyLocked(id string) *model.Artifact {
+	artifact, ok := s.artifacts[id]
+	if !ok {
+		return nil
+	}
+	return &artifact
+}
+
+// jobCopyWithArtifactLocked returns a caller-owned copy of job with its
+// artifact attached. Reads return copies so a caller cannot mutate queue state
+// through a pointer. The caller holds s.mu.
+func (s *Repository) jobCopyWithArtifactLocked(job *model.Job) *model.Job {
+	copy := *job
+	copy.Artifact = s.artifactCopyLocked(job.ID)
+	return &copy
+}
+
+// jobsByParentLocked materializes the parent's indexed jobs as caller-owned
+// copies. Children and ByParent differ only in the ordering they apply. The
+// caller holds s.mu.
+func (s *Repository) jobsByParentLocked(parentJobID string) []*model.Job {
+	ids := s.children[parentJobID]
+	jobs := make([]*model.Job, 0, len(ids))
+	for id := range ids {
+		if job := s.jobs[id]; job != nil {
+			jobs = append(jobs, s.jobCopyWithArtifactLocked(job))
+		}
+	}
+	return jobs
+}
+
+// claimCandidateLocked claims id when it is still claimable. The snapshot pass
+// and the concurrent-tail pass in ClaimState must apply identical rules, so the
+// predicate lives here once. The caller holds s.mu for writing.
+func (s *Repository) claimCandidateLocked(id, workerID string, state model.State, now time.Time) (*model.Job, bool) {
+	job := s.jobs[id]
+	if job == nil || (state != "" && job.State != state) ||
+		(state == "" && !model.IsClaimable(job.State)) {
+		return nil, false
+	}
+	if job.NotBefore != nil && job.NotBefore.After(now) {
+		return nil, false
+	}
+	if s.hasChildrenLocked(id) {
+		return nil, false
+	}
+	s.removeOrderLocked(id)
+	job.State = model.StateRunning
+	job.Worker = workerID
+	job.Attempts++
+	job.StartedAt = now
+	job.LeaseUntil = job.StartedAt.Add(s.lease)
+	job.Artifact = s.artifactCopyLocked(id)
+	return job, true
+}
+
 // indexChildLocked records job as a child of its declared parent. The caller
 // holds s.mu for writing. It is the in-memory mirror of the postgres child
 // lookup (children.go), and the single place the children index is grown: every
@@ -136,10 +204,7 @@ func (s *Repository) SubmitIdempotent(_ context.Context, job model.Job) (*model.
 	if err := model.ValidateChunk(job); err != nil {
 		return nil, false, err
 	}
-	job.State, job.CreatedAt, job.QueuedAt = model.StatePending, now, now
-	s.jobs[job.ID] = &job
-	s.indexChildLocked(job)
-	s.appendOrderLocked(job.ID)
+	s.insertLocked(&job, now)
 	if job.IdempotencyKey != "" {
 		s.idem[job.IdempotencyKey] = job.ID
 	}
@@ -161,12 +226,7 @@ func (s *Repository) Submit(_ context.Context, job model.Job) error {
 	if err := model.ValidateChunk(job); err != nil {
 		return err
 	}
-	job.State = model.StatePending
-	job.CreatedAt = now
-	job.QueuedAt = now
-	s.jobs[job.ID] = &job
-	s.indexChildLocked(job)
-	s.appendOrderLocked(job.ID)
+	s.insertLocked(&job, now)
 	return nil
 }
 
@@ -174,34 +234,20 @@ func (s *Repository) Submit(_ context.Context, job model.Job) error {
 // repository lock. Validation happens before mutation, so a malformed child
 // or duplicate never leaves a partial family behind.
 func (s *Repository) SubmitBatch(_ context.Context, jobs []model.Job) error {
-	if len(jobs) == 0 {
-		return fmt.Errorf("job batch is empty")
+	if err := model.ValidateJobBatch(jobs); err != nil {
+		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	seen := make(map[string]struct{}, len(jobs))
 	for _, job := range jobs {
-		if job.ID == "" {
-			return fmt.Errorf("job id is required")
-		}
-		if _, ok := seen[job.ID]; ok {
-			return fmt.Errorf("duplicate job id %s", job.ID)
-		}
-		seen[job.ID] = struct{}{}
 		if _, ok := s.jobs[job.ID]; ok {
 			return fmt.Errorf("%w: job %s", repository.ErrJobExists, job.ID)
-		}
-		if err := model.ValidateChunk(job); err != nil {
-			return err
 		}
 	}
 	now := time.Now()
 	for _, job := range jobs {
-		job.State, job.CreatedAt, job.QueuedAt = model.StatePending, now, now
 		copy := job
-		s.jobs[job.ID] = &copy
-		s.indexChildLocked(copy)
-		s.appendOrderLocked(job.ID)
+		s.insertLocked(&copy, now)
 		if job.IdempotencyKey != "" {
 			s.idem[job.IdempotencyKey] = job.ID
 		}
@@ -256,35 +302,9 @@ func (s *Repository) ClaimState(_ context.Context, workerID string, state model.
 		if _, ok := s.orderIdx[id]; !ok {
 			continue
 		}
-		job := s.jobs[id]
-		if job == nil || (state != "" && job.State != state) ||
-			(state == "" && !model.IsClaimable(job.State)) {
-			continue
+		if job, ok := s.claimCandidateLocked(id, workerID, state, now); ok {
+			return job, s.lease, nil
 		}
-		// Deferred jobs (not_before in the future) are NOT claimable yet. The
-		// job keeps its FIFO slot and its pending state; the next claim after
-		// the due time picks it up. This mirrors the postgres claim predicate
-		// so the two backends cannot disagree about when a job is available.
-		if job.NotBefore != nil && job.NotBefore.After(now) {
-			continue
-		}
-		// Assembly anchors (model/lifecycle.go) are not render work: a job that
-		// owns chunk children is assembled FROM them, so claiming it here would
-		// re-render a range its children already cover.
-		if s.hasChildrenLocked(id) {
-			continue
-		}
-		s.removeOrderLocked(id)
-		job.State = model.StateRunning
-		job.Worker = workerID
-		job.Attempts++
-		job.StartedAt = now
-		job.LeaseUntil = job.StartedAt.Add(s.lease)
-		if artifact, ok := s.artifacts[id]; ok {
-			copy := artifact
-			job.Artifact = &copy
-		}
-		return job, s.lease, nil
 	}
 	// Snapshot missed a job submitted concurrently between RUnlock and Lock
 	// (tail growth). One live scan under the already-held write lock closes
@@ -305,28 +325,9 @@ func (s *Repository) ClaimState(_ context.Context, workerID string, state model.
 		if claimed {
 			continue
 		}
-		job := s.jobs[id]
-		if job == nil || (state != "" && job.State != state) ||
-			(state == "" && !model.IsClaimable(job.State)) {
-			continue
+		if job, ok := s.claimCandidateLocked(id, workerID, state, now); ok {
+			return job, s.lease, nil
 		}
-		if job.NotBefore != nil && job.NotBefore.After(now) {
-			continue
-		}
-		if s.hasChildrenLocked(id) {
-			continue
-		}
-		s.removeOrderLocked(id)
-		job.State = model.StateRunning
-		job.Worker = workerID
-		job.Attempts++
-		job.StartedAt = now
-		job.LeaseUntil = job.StartedAt.Add(s.lease)
-		if artifact, ok := s.artifacts[id]; ok {
-			copy := artifact
-			job.Artifact = &copy
-		}
-		return job, s.lease, nil
 	}
 	return nil, 0, nil
 }
@@ -351,11 +352,7 @@ func (s *Repository) Get(_ context.Context, id string) (*model.Job, error) {
 	if job == nil {
 		return nil, fmt.Errorf("job %s: %w", id, repository.ErrNotFound)
 	}
-	copy := *job
-	if artifact, ok := s.artifacts[id]; ok {
-		copy.Artifact = &artifact
-	}
-	return &copy, nil
+	return s.jobCopyWithArtifactLocked(job), nil
 }
 
 // Children returns child chunks in deterministic chunk order.
@@ -368,20 +365,7 @@ func (s *Repository) Children(_ context.Context, parentJobID string) ([]*model.J
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	ids := s.children[parentJobID]
-	children := make([]*model.Job, 0, len(ids))
-	for id := range ids {
-		job := s.jobs[id]
-		if job == nil {
-			continue
-		}
-		copy := *job
-		if artifact, ok := s.artifacts[id]; ok {
-			artifactCopy := artifact
-			copy.Artifact = &artifactCopy
-		}
-		children = append(children, &copy)
-	}
+	children := s.jobsByParentLocked(parentJobID)
 	sort.Slice(children, func(i, j int) bool {
 		return children[i].ChunkIndex < children[j].ChunkIndex
 	})
@@ -400,20 +384,7 @@ func (s *Repository) ByParent(_ context.Context, parentJobID string) ([]*model.J
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	ids := s.children[parentJobID]
-	jobs := make([]*model.Job, 0, len(ids))
-	for id := range ids {
-		job := s.jobs[id]
-		if job == nil {
-			continue
-		}
-		copy := *job
-		if artifact, ok := s.artifacts[id]; ok {
-			artifactCopy := artifact
-			copy.Artifact = &artifactCopy
-		}
-		jobs = append(jobs, &copy)
-	}
+	jobs := s.jobsByParentLocked(parentJobID)
 	sort.Slice(jobs, func(i, j int) bool {
 		if !jobs[i].QueuedAt.Equal(jobs[j].QueuedAt) {
 			return jobs[i].QueuedAt.Before(jobs[j].QueuedAt)

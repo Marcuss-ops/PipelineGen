@@ -23,9 +23,8 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // isOverlayBackgroundTemplate is the single source of truth for the legacy
@@ -44,7 +43,7 @@ func isOverlayBackgroundTemplate(templateID string) bool {
 // overlayRenderableCandidates is the single admission list for overlay render
 // work: every plan item except background canvas primitives, in plan order
 // with its original plan index preserved (child plan identity depends on it).
-func overlayRenderableCandidates(plan capoverlay.OverlayPlan) []overlayItemCandidate {
+func overlayRenderableCandidates(plan capmodel.OverlayPlan) []overlayItemCandidate {
 	candidates := make([]overlayItemCandidate, 0, len(plan.Items))
 	for index, item := range plan.Items {
 		if isOverlayBackgroundTemplate(item.TemplateID) {
@@ -61,8 +60,8 @@ type manifestEntryWork struct {
 	// Index is the item's position in the parent plan, preserved so child
 	// plan identity and error attribution stay stable across retries.
 	Index int
-	Item  capoverlay.OverlayItem
-	Entry capoverlay.OverlayManifestEntry
+	Item  capmodel.OverlayItem
+	Entry capmodel.OverlayManifestEntry
 	// Key is the content-addressed cache identity of the entry's rendered
 	// content — the exact identity the per-item path certifies.
 	Key OverlayRenderCacheKey
@@ -76,7 +75,7 @@ type manifestEntryWork struct {
 // excludes maps and chain items, which keep their dedicated render paths).
 // Track is computed across the whole subset so z-order survives the manifest
 // projection unchanged.
-func buildManifestEntryWorks(parent capoverlay.OverlayPlan, candidates []overlayItemCandidate, epoch string) ([]manifestEntryWork, error) {
+func buildManifestEntryWorks(parent capmodel.OverlayPlan, candidates []overlayItemCandidate, epoch string) ([]manifestEntryWork, error) {
 	works := make([]manifestEntryWork, 0, len(candidates))
 	type entryWindow struct{ in, out int64 }
 	windows := make([]entryWindow, 0, len(candidates))
@@ -98,7 +97,7 @@ func buildManifestEntryWorks(parent capoverlay.OverlayPlan, candidates []overlay
 			}
 			renderKey := strings.ToLower(strings.TrimSpace(child.Items[0].RenderKey))
 			if renderKey == "" {
-				renderKey = capoverlay.ComputeRenderKey(child, child.Items[0])
+				renderKey = capmodel.ComputeRenderKey(child, child.Items[0])
 			}
 			if len(renderKey) == 64 && isLowerHex(renderKey) {
 				key.RenderKey, ok = renderKey, true
@@ -113,7 +112,7 @@ func buildManifestEntryWorks(parent capoverlay.OverlayPlan, candidates []overlay
 				track = tracks[prior] + 1
 			}
 		}
-		entry := capoverlay.OverlayManifestEntry{
+		entry := capmodel.OverlayManifestEntry{
 			ItemID:      strings.TrimSpace(item.ID),
 			Track:       track,
 			InUS:        metadata.SourceStartUS,

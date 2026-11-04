@@ -11,9 +11,8 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // finalJobPhraseOverlayClip projects the rendered full-frame phrase animation
@@ -24,7 +23,7 @@ func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, scen
 	if result == nil || result.OverlayPlan == nil || result.OverlayRender == nil {
 		return nil, 0, "", false, nil
 	}
-	var phrase *capoverlay.OverlayItem
+	var phrase *capmodel.OverlayItem
 	for i := range result.OverlayPlan.Items {
 		item := &result.OverlayPlan.Items[i]
 		if item.SceneID == sceneID && finalJobPhraseVisualItem(*item) {
@@ -40,7 +39,7 @@ func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, scen
 	// A fused text chain has its own certified child render rather than one
 	// manifest window. Reference those bytes directly through Objectstore; the
 	// item is marked consumed so it is not emitted again as an overlay row.
-	if strings.EqualFold(strings.TrimSpace(phrase.Kind), capoverlay.KindPhraseChain) {
+	if strings.EqualFold(strings.TrimSpace(phrase.Kind), capmodel.KindPhraseChain) {
 		for _, rendered := range result.OverlayRender.Items {
 			if strings.TrimSpace(rendered.ItemID) != strings.TrimSpace(phrase.ID) || rendered.Artifact == nil {
 				continue
@@ -107,14 +106,14 @@ func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, scen
 	return asset, durationMS, phrase.ID, true, nil
 }
 
-func finalJobPhraseVisualItem(item capoverlay.OverlayItem) bool {
+func finalJobPhraseVisualItem(item capmodel.OverlayItem) bool {
 	if strings.EqualFold(strings.TrimSpace(item.Kind), "text_phrase") {
 		return true
 	}
-	if !strings.EqualFold(strings.TrimSpace(item.Kind), capoverlay.KindPhraseChain) {
+	if !strings.EqualFold(strings.TrimSpace(item.Kind), capmodel.KindPhraseChain) {
 		return false
 	}
-	segments, ok := capoverlay.DecodeChainSegments(item.Params)
+	segments, ok := capmodel.DecodeChainSegments(item.Params)
 	if !ok || len(segments) == 0 {
 		return false
 	}
@@ -127,14 +126,14 @@ func finalJobPhraseVisualItem(item capoverlay.OverlayItem) bool {
 }
 
 // manifestEntryForItem resolves one manifest entry by semantic item identity.
-func manifestEntryForItem(manifest *capoverlay.OverlayManifest, itemID string) (capoverlay.OverlayManifestEntry, bool) {
+func manifestEntryForItem(manifest *capmodel.OverlayManifest, itemID string) (capmodel.OverlayManifestEntry, bool) {
 	if manifest == nil {
-		return capoverlay.OverlayManifestEntry{}, false
+		return capmodel.OverlayManifestEntry{}, false
 	}
 	for _, entry := range manifest.Entries {
 		if strings.TrimSpace(entry.ItemID) == itemID {
 			return entry, true
 		}
 	}
-	return capoverlay.OverlayManifestEntry{}, false
+	return capmodel.OverlayManifestEntry{}, false
 }

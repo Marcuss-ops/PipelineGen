@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"image"
 	"image/color"
 	"image/png"
@@ -46,12 +47,12 @@ func newOrleansPlate(t *testing.T) capabilityoverlay.MapPlate {
 		ID:          "plate-new-orleans",
 		License:     "operator-supplied",
 		Attribution: "© OpenStreetMap contributors",
-		Center:      capabilityoverlay.MapCenter{Latitude: newOrleansLat, Longitude: newOrleansLon},
+		Center:      capmodel.MapCenter{Latitude: newOrleansLat, Longitude: newOrleansLon},
 		Zoom:        10,
 		Width:       GoldenOverlayCanvas.Width,
 		Height:      GoldenOverlayCanvas.Height,
 		Window:      geodesy.CenteredOn(newOrleansLat, newOrleansLon, 10, GoldenOverlayCanvas.Width, GoldenOverlayCanvas.Height),
-		Asset: capabilityoverlay.OverlayAssetRef{
+		Asset: capmodel.OverlayAssetRef{
 			AssetID: "plate-new-orleans", SHA256: digest.SHA256Bytes(buf.Bytes()),
 			MediaType: "image/png", LocalPath: path,
 		},
@@ -62,7 +63,7 @@ func newOrleansPlate(t *testing.T) capabilityoverlay.MapPlate {
 // composition-root adapter does.
 type plateStub struct{ plates []capabilityoverlay.MapPlate }
 
-func (s plateStub) ResolveFlyover(from, to capabilityoverlay.MapCenter, _, _ int) (capabilityoverlay.MapPlate, bool) {
+func (s plateStub) ResolveFlyover(from, to capmodel.MapCenter, _, _ int) (capabilityoverlay.MapPlate, bool) {
 	if len(s.plates) == 0 || len(s.plates[0].LODs) == 0 {
 		return capabilityoverlay.MapPlate{}, false
 	}
@@ -87,12 +88,12 @@ func newOrleansFlyoverPlates(t *testing.T) []capabilityoverlay.MapPlate {
 		require.NoError(t, png.Encode(&buf, img))
 		path := filepath.Join(t.TempDir(), id+".png")
 		require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
-		center := capabilityoverlay.MapCenter{Latitude: newOrleansLat, Longitude: newOrleansLon}
+		center := capmodel.MapCenter{Latitude: newOrleansLat, Longitude: newOrleansLon}
 		return capabilityoverlay.MapPlate{
 			ID: id, License: "operator-supplied", Attribution: "© OpenStreetMap contributors",
 			Center: center, Zoom: zoom, Width: size, Height: size,
 			Window: geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, size, size),
-			Asset: capabilityoverlay.OverlayAssetRef{
+			Asset: capmodel.OverlayAssetRef{
 				AssetID: id, SHA256: digest.SHA256Bytes(buf.Bytes()), MediaType: "image/png", LocalPath: path,
 			},
 		}
@@ -164,7 +165,7 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 
-	var maps []capabilityoverlay.OverlayItem
+	var maps []capmodel.OverlayItem
 	for _, item := range plan.Items {
 		if item.Kind == "map" {
 			maps = append(maps, item)
@@ -259,7 +260,7 @@ func TestCompileOverlayPlanEmitsExplicitShortPhraseScene(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, plan)
-	var phrases []capabilityoverlay.OverlayItem
+	var phrases []capmodel.OverlayItem
 	for _, item := range plan.Items {
 		if item.Kind == "text_phrase" {
 			phrases = append(phrases, item)
@@ -278,7 +279,7 @@ func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, plan)
-	maps := make([]capabilityoverlay.OverlayItem, 0, 1)
+	maps := make([]capmodel.OverlayItem, 0, 1)
 	for _, item := range plan.Items {
 		if item.Kind == "map" {
 			maps = append(maps, item)
@@ -288,7 +289,7 @@ func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {
 	item := maps[0]
 	require.NotNil(t, item.Map)
 	require.NotNil(t, item.Map.CameraMove)
-	require.Equal(t, capabilityoverlay.MapCenter{Latitude: newOrleansLat, Longitude: newOrleansLon}, item.Map.CameraMove.From)
+	require.Equal(t, capmodel.MapCenter{Latitude: newOrleansLat, Longitude: newOrleansLon}, item.Map.CameraMove.From)
 	require.Equal(t, item.Map.CameraMove.From, item.Map.CameraMove.To)
 	require.Equal(t, 4.0, item.Map.CameraMove.StartZoom)
 	require.Equal(t, 6.0, item.Map.CameraMove.EndZoom)
@@ -321,7 +322,7 @@ func TestCompileOverlayPlanWithoutPlatesEmitsNoMap(t *testing.T) {
 func TestCompileOverlayPlanWithPlatesIgnoresUncoveredPlace(t *testing.T) {
 	plate := newOrleansPlate(t)
 	plate.Window = geodesy.CenteredOn(48.8566, 2.3522, plate.Zoom, plate.Width, plate.Height)
-	plate.Center = capabilityoverlay.MapCenter{Latitude: 48.8566, Longitude: 2.3522}
+	plate.Center = capmodel.MapCenter{Latitude: 48.8566, Longitude: 2.3522}
 
 	plan, err := CompileOverlayPlanWithPlates(
 		groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
@@ -333,7 +334,7 @@ func TestCompileOverlayPlanWithPlatesIgnoresUncoveredPlace(t *testing.T) {
 	}
 }
 
-func countKind(items []capabilityoverlay.OverlayItem, kind string) int {
+func countKind(items []capmodel.OverlayItem, kind string) int {
 	count := 0
 	for _, item := range items {
 		if item.Kind == kind {
@@ -358,14 +359,14 @@ func TestNativeMapRenderEndToEnd(t *testing.T) {
 	if renderer == "" {
 		t.Skip("VELOX_MAP_NATIVE_RENDERER_PATH not configured; native map render e2e is host-gated")
 	}
-	plan := capabilityoverlay.OverlayPlan{
+	plan := capmodel.OverlayPlan{
 		PlanID: "map-e2e", VideoID: "map-e2e-video", Fingerprint: "map-e2e-fingerprint",
 		Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, DurationMS: 6000,
-		Items: []capabilityoverlay.OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "map-e2e-item", Kind: "map",
 			StartMs: 0, EndMs: 6000, StartUS: 0, DurationUS: 6_000_000,
-			Map: &capabilityoverlay.MapOverlay{
-				Pins: []capabilityoverlay.MapOverlayPin{
+			Map: &capmodel.MapOverlay{
+				Pins: []capmodel.MapOverlayPin{
 					{ID: "city:rome", Label: "Rome", Latitude: 41.9028, Longitude: 12.4964, Color: "#FF3B30"},
 					{ID: "city:naples", Label: "Naples", Latitude: 40.8518, Longitude: 14.2681},
 				},

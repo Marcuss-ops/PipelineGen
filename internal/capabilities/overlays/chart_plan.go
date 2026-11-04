@@ -29,6 +29,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"strconv"
 	"strings"
@@ -170,11 +171,11 @@ func ChartPlacementsForScenes(scenes []SceneInput) []ChartPlacement {
 // shape.chart; each rectangle and text layer is a certified primitive and all
 // layers retain the exact grounded comparison window. Invalid placements are
 // skipped, never guessed.
-func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvasH int) []OverlayItem {
+func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvasH int) []capmodel.OverlayItem {
 	if canvasW <= 0 || canvasH <= 0 {
-		return []OverlayItem{}
+		return []capmodel.OverlayItem{}
 	}
-	var out []OverlayItem
+	var out []capmodel.OverlayItem
 	usedIDs := map[string]struct{}{}
 	for _, p := range placements {
 		sceneID := strings.TrimSpace(p.SceneID)
@@ -214,7 +215,7 @@ func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvas
 		for i, label := range p.Labels {
 			labelTexts[i] = strings.TrimSpace(label)
 		}
-		labelItem := OverlayItem{
+		labelItem := capmodel.OverlayItem{
 			ID: chartKey, SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 			// IMPORTANT_PHRASE is a preset-driven template: RenderingGen rejects a
 			// label without a preset_id, so the shared label card carries the same
@@ -247,7 +248,7 @@ func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvas
 			// vertically within its row.
 			barX := left + chartW*0.52 + barWidth/2
 			barY := top + rowH*(float64(i)+0.5)
-			out = append(out, OverlayItem{
+			out = append(out, capmodel.OverlayItem{
 				ID: barID, SceneID: sceneID, Kind: "shape", TemplateID: "SHAPE",
 				// Bars must enter, not pop: a static rect reads as a still image
 				// and the certification contract asks for a visible chart
@@ -265,7 +266,7 @@ func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvas
 		}
 	}
 	if out == nil {
-		return []OverlayItem{}
+		return []capmodel.OverlayItem{}
 	}
 	return out
 }
@@ -273,7 +274,7 @@ func BuildChartItems(planID string, placements []ChartPlacement, canvasW, canvas
 // PruneOrphanChartBars keeps a comparison atomic after overlap or budget
 // admission removes its label card. Rectangles without an admitted label are
 // visual clutter and are therefore removed as a group.
-func PruneOrphanChartBars(items []OverlayItem) []OverlayItem {
+func PruneOrphanChartBars(items []capmodel.OverlayItem) []capmodel.OverlayItem {
 	admittedGroups := make(map[string]struct{})
 	barCounts := make(map[string]int)
 	for _, item := range items {
@@ -291,7 +292,7 @@ func PruneOrphanChartBars(items []OverlayItem) []OverlayItem {
 			barCounts[group]++
 		}
 	}
-	out := make([]OverlayItem, 0, len(items))
+	out := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if item.Params != nil && item.Params["chart_card"] == true {
 			group, _ := item.Params["chart_group_id"].(string)
@@ -314,7 +315,7 @@ func PruneOrphanChartBars(items []OverlayItem) []OverlayItem {
 // more competing content items. A chart's bars are structural rects, while its
 // single label card is the admitted content unit; this keeps the comparison
 // atomic while allowing it to compete like ordinary content.
-func chartWindowCrowded(items []OverlayItem, startUS, endUS int64, budget int) bool {
+func chartWindowCrowded(items []capmodel.OverlayItem, startUS, endUS int64, budget int) bool {
 	if budget <= 0 {
 		budget = DefaultOverlapBudget
 	}

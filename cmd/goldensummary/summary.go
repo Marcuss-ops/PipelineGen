@@ -236,6 +236,54 @@ type batchAttemptSample struct {
 	EndUS       int64
 }
 
+// allocateBatchItemSamples expands the final batch attempts onto their semantic
+// plan IDs. A manifest row has one worker-measured render_ms for the whole
+// batch and batch_item_ids_json names the members; none of them carries an
+// individual timing. The only honest per-item projection is therefore an
+// explicit equal share, flagged Allocated, with the remainder on the last
+// projected member so the shares sum exactly to the measured batch total.
+// Members that already have a measured per-item row win and are not allocated
+// again; the denominator remains the full batch membership.
+func allocateBatchItemSamples(batches []batchBlock, planItems, renderItems map[string]string, seen map[string]struct{}) []rendermetrics.ItemSample {
+	var samples []rendermetrics.ItemSample
+	for _, batch := range batches {
+		if batch.RenderMS <= 0 || len(batch.ItemIDs) == 0 {
+			continue
+		}
+		members := make([]string, 0, len(batch.ItemIDs))
+		for _, itemID := range batch.ItemIDs {
+			if itemID == "" {
+				continue
+			}
+			if _, measured := seen[itemID]; measured {
+				continue
+			}
+			members = append(members, itemID)
+		}
+		if len(members) == 0 {
+			continue
+		}
+		share := batch.RenderMS / int64(len(batch.ItemIDs))
+		remainder := batch.RenderMS % int64(len(batch.ItemIDs))
+		for index, itemID := range members {
+			ms := share
+			if index == len(members)-1 {
+				ms += remainder
+			}
+			samples = append(samples, rendermetrics.ItemSample{
+				ItemID:    itemID,
+				Class:     planItems[itemID],
+				Status:    renderItems[itemID],
+				RenderMS:  ms,
+				BatchID:   batch.BatchID,
+				Allocated: true,
+			})
+			seen[itemID] = struct{}{}
+		}
+	}
+	return samples
+}
+
 func loadBatchSamples(dbPath, runID string) ([]batchAttemptSample, error) {
 	db, err := sql.Open("sqlite3", readOnlyDSN(dbPath))
 	if err != nil {

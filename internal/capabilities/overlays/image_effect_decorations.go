@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 )
 
@@ -129,7 +130,7 @@ func ImageEffectDecorationEffect(name string, seed uint32) map[string]any {
 // image treatments and effects. It is the canonical predicate shared by every
 // image-decoration policy (SFX, runtime effects); no caller keeps a private
 // copy of the kind vocabulary.
-func IsImageOverlayItem(item OverlayItem) bool {
+func IsImageOverlayItem(item capmodel.OverlayItem) bool {
 	kind := strings.ToLower(strings.TrimSpace(item.Kind))
 	return (kind == "image" || kind == "entity_image" || kind == "image_popup" || kind == "product" || kind == "logo" ||
 		kind == "" && IsImageOverlayTemplate(item.TemplateID)) && (len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0)

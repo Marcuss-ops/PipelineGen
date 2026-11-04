@@ -5,13 +5,13 @@ package wiring
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
-	capoverlays "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
@@ -124,16 +124,16 @@ func BuildRenderingRuntime(cfg *config.Config, log *zap.Logger) (*RenderingRunti
 		return nil, nil, err
 	}
 	reg := worker.NewRegistry()
-	if err := reg.Register(capoverlays.JobTypePrepare, handlers.Prepare); err != nil {
+	if err := reg.Register(capmodel.JobTypePrepare, handlers.Prepare); err != nil {
 		return nil, nil, err
 	}
 	// P3-5: il render locale si disattiva solo via gate esplicito dopo
 	// verifica consumer (durable resolver). Default ancora abilitato.
 	if LocalOverlayRenderEnabled() {
-		if err := reg.Register(capoverlays.JobTypeRender, handlers.Render); err != nil {
+		if err := reg.Register(capmodel.JobTypeRender, handlers.Render); err != nil {
 			return nil, nil, err
 		}
-		reg.SetProducesArtifacts(capoverlays.JobTypeRender, true).Freeze()
+		reg.SetProducesArtifacts(capmodel.JobTypeRender, true).Freeze()
 	} else {
 		log.Info("local overlay.render disabled: renders go through RenderingGen queue/worker only")
 		reg.Freeze()

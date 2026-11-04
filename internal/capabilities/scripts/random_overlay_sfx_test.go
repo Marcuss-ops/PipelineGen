@@ -5,12 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 type captureSFXQueueClient struct {
@@ -71,13 +70,13 @@ func TestAttachRandomOverlaySFXIsDeterministicAndVisibleWindowBounded(t *testing
 		t.Fatal(err)
 	}
 	assets := []randomOverlaySFXAsset{{path: localPath, sha256: assetHash}}
-	newPlan := func() *capoverlay.OverlayPlan {
-		plan := &capoverlay.OverlayPlan{
-			SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "plan-stable", VideoID: "video",
+	newPlan := func() *capmodel.OverlayPlan {
+		plan := &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-stable", VideoID: "video",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
-			Items: []capoverlay.OverlayItem{{
+			Items: []capmodel.OverlayItem{{
 				ID: "img", Kind: "image", TemplateID: "image_popup", StartMs: 1000, EndMs: 1800,
-				AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "image", SHA256: strings.Repeat("a", 64), URL: "assets/image.png"}},
+				AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "image", SHA256: strings.Repeat("a", 64), URL: "assets/image.png"}},
 			}},
 		}
 		if err := plan.Validate(); err != nil {
@@ -86,10 +85,10 @@ func TestAttachRandomOverlaySFXIsDeterministicAndVisibleWindowBounded(t *testing
 		return plan
 	}
 	first, second := newPlan(), newPlan()
-	if err := attachRandomOverlaySFXFromAssets([]*capoverlay.OverlayPlan{first}, assets); err != nil {
+	if err := attachRandomOverlaySFXFromAssets([]*capmodel.OverlayPlan{first}, assets); err != nil {
 		t.Fatal(err)
 	}
-	if err := attachRandomOverlaySFXFromAssets([]*capoverlay.OverlayPlan{second}, assets); err != nil {
+	if err := attachRandomOverlaySFXFromAssets([]*capmodel.OverlayPlan{second}, assets); err != nil {
 		t.Fatal(err)
 	}
 	cue := first.Items[0].SoundEffect
@@ -125,16 +124,16 @@ func TestAttachRandomOverlaySFXUsesEarliestCompositeLayerWindow(t *testing.T) {
 	assetBytes := []byte("composite-audio")
 	sum := sha256.Sum256(assetBytes)
 	assetHash := hex.EncodeToString(sum[:])
-	plan := &capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "composite-plan", VideoID: "video",
+	plan := &capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "composite-plan", VideoID: "video",
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
-		Items: []capoverlay.OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "composite", Kind: "entity_image", TemplateID: "image_popup", StartMs: 0, EndMs: 2000,
-			AssetRefs: []capoverlay.OverlayAssetRef{
+			AssetRefs: []capmodel.OverlayAssetRef{
 				{AssetID: "late", SHA256: strings.Repeat("b", 64), URL: "late.png"},
 				{AssetID: "early", SHA256: strings.Repeat("c", 64), URL: "early.png"},
 			},
-			ImageLayers: []capoverlay.OverlayImageLayer{
+			ImageLayers: []capmodel.OverlayImageLayer{
 				{ID: "late", AssetID: "late", StartMS: 500, EndMS: 1500},
 				{ID: "early", AssetID: "early", StartMS: 100, EndMS: 220},
 			},
@@ -143,7 +142,7 @@ func TestAttachRandomOverlaySFXUsesEarliestCompositeLayerWindow(t *testing.T) {
 	if err := plan.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := attachRandomOverlaySFXFromAssets([]*capoverlay.OverlayPlan{plan}, []randomOverlaySFXAsset{{path: "cue.m4a", sha256: assetHash}}); err != nil {
+	if err := attachRandomOverlaySFXFromAssets([]*capmodel.OverlayPlan{plan}, []randomOverlaySFXAsset{{path: "cue.m4a", sha256: assetHash}}); err != nil {
 		t.Fatal(err)
 	}
 	cue := plan.Items[0].SoundEffect

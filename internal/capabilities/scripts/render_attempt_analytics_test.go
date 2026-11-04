@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"reflect"
 	"testing"
 	"time"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact pins the builder:
@@ -16,7 +15,7 @@ import (
 // SHA-256/Drive identity come verbatim from the certified artifact, and a nil
 // artifact yields an empty-output record without error.
 func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
-	plan := capoverlay.OverlayPlan{PlanID: "plan-1", Items: []capoverlay.OverlayItem{
+	plan := capmodel.OverlayPlan{PlanID: "plan-1", Items: []capmodel.OverlayItem{
 		{ID: "p", TemplateID: "IMPORTANT_PHRASE"},
 		{ID: "w", TemplateID: "IMPORTANT_WORD"},
 		{ID: "n", TemplateID: "NUMBER"},
@@ -73,7 +72,7 @@ func TestBuildRenderAttemptAnalyticsProjectsContentAndArtifact(t *testing.T) {
 // TestBuildRenderAttemptAnalyticsDeterministic pins re-record determinism: two
 // builds over the same inputs produce identical records.
 func TestBuildRenderAttemptAnalyticsDeterministic(t *testing.T) {
-	plan := capoverlay.OverlayPlan{PlanID: "p", Items: []capoverlay.OverlayItem{
+	plan := capmodel.OverlayPlan{PlanID: "p", Items: []capmodel.OverlayItem{
 		{ID: "l", TemplateID: "LIGHT_LEAK"},
 	}}
 	art := &RenderArtifact{SHA256: "x", RenderMS: 1}
@@ -90,7 +89,7 @@ func TestBuildRenderAttemptAnalyticsDeterministic(t *testing.T) {
 // every worker-reported phase and profile field verbatim, and marshals the
 // bounded Chronon telemetry + metrics map without re-derivation.
 func TestBuildRenderAttemptAnalyticsPerOverlayProjectsItemIdentityAndPhases(t *testing.T) {
-	plan := capoverlay.OverlayPlan{PlanID: "plan-1", Items: []capoverlay.OverlayItem{
+	plan := capmodel.OverlayPlan{PlanID: "plan-1", Items: []capmodel.OverlayItem{
 		{ID: "phrase-hello", TemplateID: "IMPORTANT_PHRASE"},
 	}}
 	telemetry := json.RawMessage(`{"job":{"plan_compile_ms":4.1},"summary":{"p50_frame_ms":12.3}}`)
@@ -158,7 +157,7 @@ func TestBuildRenderAttemptAnalyticsPerOverlayProjectsItemIdentityAndPhases(t *t
 	}
 	// Multi-item (full-timeline legacy) path keeps item_id empty: the row
 	// is not attributable to one overlay.
-	multi := capoverlay.OverlayPlan{PlanID: "plan-multi", Items: []capoverlay.OverlayItem{
+	multi := capmodel.OverlayPlan{PlanID: "plan-multi", Items: []capmodel.OverlayItem{
 		{ID: "a", TemplateID: "IMPORTANT_PHRASE"},
 		{ID: "b", TemplateID: "IMPORTANT_WORD"},
 	}}
@@ -196,7 +195,7 @@ func TestQueueAttemptRecorderPreservesObservedAndMissingTimes(t *testing.T) {
 	queueStarted := queued.Add(1500 * time.Millisecond)
 	completed := queueStarted.Add(500 * time.Millisecond)
 	job := &RenderQueueJob{ID: "queue-1", QueuedAt: queued, StartedAt: queueStarted, CompletedAt: completed}
-	plan := capoverlay.OverlayPlan{PlanID: "plan-1", Items: []capoverlay.OverlayItem{{ID: "item-7", TemplateID: "IMPORTANT_PHRASE"}}}
+	plan := capmodel.OverlayPlan{PlanID: "plan-1", Items: []capmodel.OverlayItem{{ID: "item-7", TemplateID: "IMPORTANT_PHRASE"}}}
 
 	if err := enqueuer.recordQueueAttempt(context.Background(), "queue-1", plan, &overlayItemPublicationMetadata{ItemID: "item-7"}, RenderCompletionMetrics{
 		CompletionWait: 3 * time.Second,
@@ -232,7 +231,7 @@ func TestQueueAttemptRecorderPreservesObservedAndMissingTimes(t *testing.T) {
 func TestQueueAttemptRecorderReturnsPersistenceError(t *testing.T) {
 	wantErr := context.DeadlineExceeded
 	enqueuer := &QueueRenderEnqueuer{recorder: &fakeAttemptRecorder{err: wantErr}}
-	err := enqueuer.recordQueueAttempt(context.Background(), "queue-1", capoverlay.OverlayPlan{PlanID: "plan-1"}, nil, RenderCompletionMetrics{}, time.Now(), time.Time{}, nil, time.Time{}, "failure")
+	err := enqueuer.recordQueueAttempt(context.Background(), "queue-1", capmodel.OverlayPlan{PlanID: "plan-1"}, nil, RenderCompletionMetrics{}, time.Now(), time.Time{}, nil, time.Time{}, "failure")
 	if err == nil || !errors.Is(err, wantErr) {
 		t.Fatalf("recording error=%v, want wrapped %v", err, wantErr)
 	}

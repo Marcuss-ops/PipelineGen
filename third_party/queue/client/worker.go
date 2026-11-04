@@ -363,46 +363,12 @@ func (c *Client) HeartbeatWorker(ctx context.Context, workerID string) error {
 
 // ListWorkers returns all currently registered workers.
 func (c *Client) ListWorkers(ctx context.Context) ([]Worker, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/workers", nil)
-	if err != nil {
-		return nil, fmt.Errorf("queue list workers request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("queue list workers do: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("queue list workers: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
-	}
-	var workers []Worker
-	if err := json.NewDecoder(resp.Body).Decode(&workers); err != nil {
-		return nil, fmt.Errorf("queue list workers decode: %w", err)
-	}
-	return workers, nil
+	return getJSON[[]Worker](ctx, c, "/workers", "list workers")
 }
 
 // WorkerHealth queries the worker health stats.
 func (c *Client) WorkerHealth(ctx context.Context) (WorkerHealth, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/workers/health", nil)
-	if err != nil {
-		return WorkerHealth{}, fmt.Errorf("queue worker health request: %w", err)
-	}
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return WorkerHealth{}, fmt.Errorf("queue worker health do: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
-		return WorkerHealth{}, fmt.Errorf("queue worker health: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
-	}
-	var health WorkerHealth
-	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
-		return WorkerHealth{}, fmt.Errorf("queue worker health decode: %w", err)
-	}
-	return health, nil
+	return getJSON[WorkerHealth](ctx, c, "/workers/health", "worker health")
 }
 
 // Retry resets a failed job back to pending state so it can be re-claimed.

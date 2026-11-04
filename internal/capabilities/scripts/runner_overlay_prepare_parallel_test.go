@@ -7,6 +7,7 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestOverlayPrepare_EnqueuedWhileTTSBlocked(t *testing.T) {
 
 	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO)
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
 
 	req := defaultTestRequest()
@@ -102,6 +103,6 @@ func TestOverlayPrepare_EnqueuedWhileTTSBlocked(t *testing.T) {
 	// The same intents are applied to the durable result after the join.
 	require.NotEmpty(t, final.Result.OverlayIntents, "overlay intents must be persisted on the durable result")
 	for _, intent := range final.Result.OverlayIntents {
-		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "intent %q must be pre-timing (PENDING)", intent.IntentID)
+		require.Equal(t, capmodel.TimingStatePending, intent.TimingState, "intent %q must be pre-timing (PENDING)", intent.IntentID)
 	}
 }

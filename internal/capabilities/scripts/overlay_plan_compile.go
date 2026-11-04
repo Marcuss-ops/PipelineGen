@@ -3,12 +3,12 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -33,7 +33,7 @@ func resolveImageOverlayCeiling(maxImageOverlays int, limits map[string]int) (in
 // compile byte-identical plans and retries stay bit-identical; a new plan ID
 // rotates the certified motion pools. chooseOffset stays in the internal API
 // for source compatibility, but the plan identity is the entropy source.
-func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -135,7 +135,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// Recap briefs run parallel to timedScenes: each scene's top-score phrase
 	// stands in for its chapter bullet. Scenes without phrases contribute no
 	// recap source — the builder invents nothing.
-	recapBriefs := make([]scriptoverlay.RecapSceneBrief, 0, len(timedScenes))
+	recapBriefs := make([]capabilityoverlay.RecapSceneBrief, 0, len(timedScenes))
 	for _, scene := range timedScenes {
 		ref, hasVoiceover := scene.Voiceover[language]
 		noWordTiming := !hasVoiceover || ref.Timing == nil
@@ -234,7 +234,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				genericImageCount++
 			}
 		}
-		brief := scriptoverlay.RecapSceneBrief{ID: scene.ID}
+		brief := capabilityoverlay.RecapSceneBrief{ID: scene.ID}
 		if start, ok := timelineStartUS[scene.ID]; ok {
 			brief.StartUS = start
 			brief.EndUS = timelineEndUS[scene.ID]
@@ -284,7 +284,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// kill-switch; placements that cannot contribute stay no-ops.
 	var recapPlacements []capabilityoverlay.RecapPlacement
 	if !canvas.DisableRecapOverlays {
-		recapPlacements = scriptoverlay.RecapPlacementsForScenes(recapBriefs)
+		recapPlacements = capabilityoverlay.RecapPlacementsForScenes(recapBriefs)
 	}
 	// Charts lower grounded numeric comparisons to native bar rectangles and
 	// a text-label item; scenes without strict numeric data yield no placement.
@@ -356,9 +356,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	plannerPlan.TimedScenes = len(timedScenes)
 	items := plannerPlan.Items
 	if canvas.RandomLightLeakOnClipStart {
-		items = append(items, scriptoverlay.ClipStartLightLeakItems(planID, result.CanonicalTimeline)...)
+		items = append(items, capabilityoverlay.ClipStartLightLeakItems(planID, result.CanonicalTimeline)...)
 	}
-	intake := newOverlayPlanIntakeTracker(len(result.Scenes), len(timedScenes), capabilityoverlay.OverlayIntakeBudget{
+	intake := newOverlayPlanIntakeTracker(len(result.Scenes), len(timedScenes), capmodel.OverlayIntakeBudget{
 		PhraseOverlays: phraseCeiling, ImageOverlays: imageCeiling, MapOverlays: mapLimit, MaxPerScene: canvas.MaxOverlaysPerScene,
 	})
 	intake.addCandidates(len(items))
@@ -380,10 +380,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			filteredItems = append(filteredItems, item)
 		}
 	}
-	intake.stage(capabilityoverlay.OverlayDropUnmaterialized, len(items), len(filteredItems))
+	intake.stage(capmodel.OverlayDropUnmaterialized, len(items), len(filteredItems))
 	items = filteredItems
 	if canvas.RandomLightLeakOnOverlayStart {
-		items = append(items, scriptoverlay.OverlayStartLightLeakItems(planID, items)...)
+		items = append(items, capabilityoverlay.OverlayStartLightLeakItems(planID, items)...)
 	}
 	// Run-level style projection (text sizing, image frame/layer params) is
 	// owned by overlay_plan_finalize.go so this file stays inside the strict
@@ -409,7 +409,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		owned := plannerOwnedEntityIDs(result, language)
 		media, canonicalByStable := entityCardMediaIndex(result, len(perSceneImages) > 0 && perSceneImages[0])
 		perSceneEntityImages := len(perSceneImages) > 0 && perSceneImages[0]
-		var entityPlanItems []capabilityoverlay.OverlayItem
+		var entityPlanItems []capmodel.OverlayItem
 		if perSceneEntityImages {
 			// The resolver's run-level novelty context intentionally collapses
 			// repeated canonical identities. Per-scene imagery has a different
@@ -432,7 +432,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			}
 			entityPlanItems = entityPlan.Items
 		}
-		namedCardItems := make([]capabilityoverlay.OverlayItem, 0, len(entityPlanItems))
+		namedCardItems := make([]capmodel.OverlayItem, 0, len(entityPlanItems))
 		for _, item := range entityPlanItems {
 			if !entityCardTemplate(item.TemplateID) {
 				continue
@@ -465,7 +465,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		entityImageCeiling = capabilityoverlay.MaxEntityImageOverlaysPerRun
 	}
 	cappedEntityImages := capEntityImageOverlays(items, entityImageCeiling, len(perSceneImages) > 0 && perSceneImages[0])
-	intake.stage(capabilityoverlay.OverlayDropEntityImageBudget, len(items), len(cappedEntityImages))
+	intake.stage(capmodel.OverlayDropEntityImageBudget, len(items), len(cappedEntityImages))
 	items = cappedEntityImages
 	// MapsOnly is a final semantic filter: entity-card resolution above can
 	// append text-only named entities after BuildPlan, and those are not maps.
@@ -477,18 +477,18 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				kept = append(kept, item)
 			}
 		}
-		intake.stage(capabilityoverlay.OverlayDropMapsOnly, len(items), len(kept))
+		intake.stage(capmodel.OverlayDropMapsOnly, len(items), len(kept))
 		items = kept
 	}
 	// Apply category controls before budgeting and chain composition so filtered
 	// overlays do not consume capacity and the remaining items can still fuse.
 	categoryItems := filterOverlayItemsByCategory(items, result.Scenes, canvas)
-	intake.stage(capabilityoverlay.OverlayDropCategoryDisabled, len(items), len(categoryItems))
+	intake.stage(capmodel.OverlayDropCategoryDisabled, len(items), len(categoryItems))
 	items = categoryItems
 	// Enforce per-group quotas before the shared visual budget so image and
 	// captioned identity-image allowances remain independently available.
 	groupItems := applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
-	intake.stage(capabilityoverlay.OverlayDropGroupLimit, len(items), len(groupItems))
+	intake.stage(capmodel.OverlayDropGroupLimit, len(items), len(groupItems))
 	items = groupItems
 	// The map-aware editorial budget keeps the certified run ceilings: images,
 	// grounded phrases and one composed location map.
@@ -501,11 +501,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		// chapter cards spend the long-phrase slots again.
 		bulletCap, _ := overlayGroupLimit(canvas.OverlayGroupLimits, overlayGroupBullets)
 		budgeted, _ := capabilityoverlay.ApplyEditorialOverlayBudgetWithBulletLane(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages, shortPhraseCap, longPhraseCap, bulletCap)
-		intake.stage(capabilityoverlay.OverlayDropEditorialBudget, len(items), len(budgeted))
+		intake.stage(capmodel.OverlayDropEditorialBudget, len(items), len(budgeted))
 		items = budgeted
 	} else {
 		budgeted, _ := capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(items, phraseCeiling, imageCeiling, mapLimit, perSceneEntityImages)
-		intake.stage(capabilityoverlay.OverlayDropEditorialBudget, len(items), len(budgeted))
+		intake.stage(capmodel.OverlayDropEditorialBudget, len(items), len(budgeted))
 		items = budgeted
 	}
 	if len(items) == 0 {
@@ -519,20 +519,20 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// fuse and every animation stays a singolo overlay.
 	if canvas.AnimationCounts["chain_disabled"] == 0 {
 		composed := composeNearbyEntityImages(items, canvas.Width, canvas.Height)
-		intake.stage(capabilityoverlay.OverlayDropCompositionMerged, len(items), len(composed))
+		intake.stage(capmodel.OverlayDropCompositionMerged, len(items), len(composed))
 		items = composed
 	}
 	groupItems = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
-	intake.stage(capabilityoverlay.OverlayDropGroupLimit, len(items), len(groupItems))
+	intake.stage(capmodel.OverlayDropGroupLimit, len(items), len(groupItems))
 	items = groupItems
 	sceneItems := capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
-	intake.stage(capabilityoverlay.OverlayDropPerSceneCap, len(items), len(sceneItems))
+	intake.stage(capmodel.OverlayDropPerSceneCap, len(items), len(sceneItems))
 	items = sceneItems
 	// Apply effects after entity assets are attached and nearby images have
 	// been composed, so the random policy covers both generic images and every
 	// entity-image child while respecting the final admitted render set.
 	if canvas.RandomImageEffects {
-		scriptoverlay.AttachRandomImageEffects(planID, items)
+		capabilityoverlay.AttachRandomImageEffects(planID, items)
 	}
 	if limit, capped := canvas.OverlayGroupLimits[overlayGroupEntitiesWithText]; capped && limit == 0 {
 		// Composition creates caption text from entity names, so reapply the
@@ -544,35 +544,30 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: entity image motions: %w", err)
 	}
 	// assignEntityImageMotions re-seeds entity entrances to the fast 8-frame
-	// snap: re-cascade co-present settles after it so the phrase keeps the
-	// beat and the supporting cast follows. Idempotent with the planner pass.
-	capabilityoverlay.CascadeClusteredEntrances(items, canvas.FPSNum, canvas.FPSDen)
-	capabilityoverlay.EnsureDistinctPhraseMotions(items, capabilityoverlay.PlanInput{
+	// snap. The pre-policy layout stage re-cascades the co-present settles and
+	// rotates duplicate motions; the cascade must run before a policy can
+	// replace MotionParams.
+	animationLayoutInput := capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, CoherenceSeed: strings.TrimSpace(canvas.CoherenceSeed),
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily,
 		AnimationCounts: canvas.AnimationCounts,
-	})
-	capabilityoverlay.EnsureDistinctNumberMotions(items, nil)
-	// Policy/directive projection lives in the overlay subpackage (P2-5):
-	// canonical v2 validates directives without resampling, legacy keeps
-	// dual-read. Same behavior, keeps this file under the 600-line cap.
-	if err := scriptoverlay.ApplyPoliciesOrDirectives(items, scriptoverlay.PolicyApplicationInput{
-		PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, CoherenceSeed: strings.TrimSpace(canvas.CoherenceSeed),
-		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily,
-		EntityImageMotions: canvas.EntityImageMotions, EntityCaptionMotions: canvas.EntityCaptionMotions,
+	}
+	items = capabilityoverlay.PrepareCompiledAnimationLayout(items, animationLayoutInput, canvas.FPSNum, canvas.FPSDen)
+	// Canonical animation contract lives in the overlay subpackage: validate
+	// the typed v2 directives without resampling. Legacy animation_policies
+	// fails closed there.
+	if err := capabilityoverlay.ApplyAnimationDirectives(items, capabilityoverlay.PolicyApplicationInput{
 		AnimationPolicies: canvas.AnimationPolicies, AnimationDirectives: canvas.AnimationDirectives,
 		AnimationContractVersion: canvas.AnimationContractVersion, AnimationCatalogDigest: canvas.AnimationCatalogDigest,
-		AnimationCounts: canvas.AnimationCounts,
 	}); err != nil {
 		return nil, fmt.Errorf("overlay plan: %w", err)
 	}
-	coalesced := capabilityoverlay.CoalesceChainedOverlays(items, canvas.AnimationCounts)
-	intake.stage(capabilityoverlay.OverlayDropCompositionMerged, len(items), len(coalesced))
-	items = coalesced
 	// EntityTimeline cards are resolved after the core BuildPlan call, so its
-	// date/image collision pass cannot see them. Repeat the layout check on the
-	// final combined render set before it is sealed for RenderingGen.
-	capabilityoverlay.MoveImagesAsideForOverlappingDateCards(items)
+	// date/image collision pass cannot see them; the finalizer repeats it on
+	// the combined render set together with chain fusion.
+	coalesced := capabilityoverlay.FinalizeCompiledAnimationLayout(items, animationLayoutInput)
+	intake.stage(capmodel.OverlayDropCompositionMerged, len(items), len(coalesced))
+	items = coalesced
 	// Single-owner boundary (§3 step 5→6): ResolveAnimationSelections valida
 	// che chain container e composite parent non portino MotionID proprie e che
 	// ogni child/segmento conservi la scelta. Validazione, mai ricampionamento.
@@ -581,7 +576,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}
 	// Owned by the overlay subpackage: the root package is the compatibility
 	// facade, so the naming rule has exactly one home.
-	scriptoverlay.NameItemsForReview(items)
+	capabilityoverlay.NameItemsForReview(items)
 	applyCompositeRuntimeStyle(items, canvas)
 
 	// The master audio/timeline extent derivation and the plan sealing live in

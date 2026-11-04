@@ -1,12 +1,13 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
 
 func TestRankedNonOverlappingPhraseLanesFillsShortAndLongTargets(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "short-a", SceneID: "scene-a", Kind: "text_phrase", Text: "two words", StartUS: 0, DurationUS: 2_000_000},
 		{ID: "short-overlap", SceneID: "scene-a", Kind: "text_phrase", Text: "three short words", StartUS: 1_000_000, DurationUS: 2_000_000},
 		{ID: "short-b", SceneID: "scene-a", Kind: "text_phrase", Text: "four small short words", StartUS: 2_000_000, DurationUS: 2_000_000},

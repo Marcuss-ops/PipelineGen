@@ -3,15 +3,14 @@ package overlayrendercache_test
 import (
 	"context"
 	"database/sql"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/overlayrendercache"
 	migration "github.com/Marcuss-ops/PipelineGen/migrations/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const integrationArtifactSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -46,9 +45,9 @@ func (c *countingQueueClient) submitCount() int {
 
 // integrationPlan is the minimum single-item plan that exercises the real
 // per-item enqueue path (the child plan carries a single RenderKey).
-func integrationPlan(text string) capoverlay.OverlayPlan {
-	plan := capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+func integrationPlan(text string) capmodel.OverlayPlan {
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "integration-plan",
 		VideoID:       "integration-video",
 		Width:         1920,
@@ -56,13 +55,13 @@ func integrationPlan(text string) capoverlay.OverlayPlan {
 		FPSNum:        30,
 		FPSDen:        1,
 		DurationMS:    3500,
-		Items: []capoverlay.OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "phrase-1", TemplateID: "IMPORTANT_PHRASE", Kind: "text_phrase",
 			StartMs: 0, EndMs: 3500, StartUS: 0, DurationUS: 3_500_000,
 			Text: text,
 		}},
 	}
-	plan.Items[0].RenderKey = capoverlay.ComputeRenderKey(plan, plan.Items[0])
+	plan.Items[0].RenderKey = capmodel.ComputeRenderKey(plan, plan.Items[0])
 	return plan
 }
 

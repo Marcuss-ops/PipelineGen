@@ -114,13 +114,16 @@ func TestEveryRepositoryOperationIsBounded(t *testing.T) {
 	// (3) A bounded method that no contract declares is either a missing
 	// contract entry or a helper that should not be exported.
 	for method, entry := range bounded {
+		if !entry.exported {
+			continue // unexported helpers are delegation targets, not contract methods
+		}
 		if _, declared := contract[method]; !declared {
 			t.Errorf("%s is bounded but is not declared by any repository contract; add it to a contract or unexport it", entry.where)
 		}
 	}
 
 	for method, entry := range methods {
-		if entry.callsOpContext {
+		if entry.exported && entry.callsOpContext {
 			t.Logf("deadline source: %s (%s)", method, entry.where)
 		}
 	}
@@ -177,16 +180,21 @@ func assertOpDeadlineWithin(t *testing.T, ctx context.Context, max time.Duration
 	}
 }
 
-// repositoryMethod is one exported *Repository method in this package.
+// repositoryMethod is one *Repository method in this package. Unexported
+// helpers are recorded too: they are legitimate delegation targets (ByParent
+// and Children both delegate their context management to parentJobRows), and
+// the point of the check is that the work reaches a deadline, not that the
+// deadline is written in the method that a contract names.
 type repositoryMethod struct {
 	where           string
+	exported        bool
 	callsOpContext  bool
 	callsRepository map[string]bool // other *Repository methods it delegates to
 	exists          bool
 }
 
 // repositoryMethods parses every non-test file of this package and describes
-// each exported *Repository method.
+// each *Repository method.
 func repositoryMethods(dir string) (map[string]*repositoryMethod, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -205,11 +213,12 @@ func repositoryMethods(dir string) (map[string]*repositoryMethod, error) {
 		}
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Recv == nil || !fn.Name.IsExported() || !repositoryReceiver(fn.Recv) {
+			if !ok || fn.Recv == nil || !repositoryReceiver(fn.Recv) {
 				continue
 			}
 			entry := &repositoryMethod{
 				where:           fmt.Sprintf("%s:%d", name, fset.Position(fn.Pos()).Line),
+				exported:        fn.Name.IsExported(),
 				callsRepository: map[string]bool{},
 				exists:          true,
 			}

@@ -8,11 +8,10 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"sort"
 	"strings"
-
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -26,14 +25,14 @@ import (
 // while image-backed entities can still form groups of two to five. Resolver
 // items arrive importance-ranked, so retaining the earliest two is deterministic
 // and preserves the canonical ranker's choice.
-func capNamedEntityCardsPerScene(items []capabilityoverlay.OverlayItem, max int) []capabilityoverlay.OverlayItem {
+func capNamedEntityCardsPerScene(items []capmodel.OverlayItem, max int) []capmodel.OverlayItem {
 	if max <= 0 {
 		return items
 	}
 	counts := make(map[string]int)
-	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
+	out := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
-		if entityCardKind(capabilityoverlay.OverlayKind(item.Kind)) && len(item.AssetRefs) == 0 && strings.TrimSpace(item.SceneID) != "" {
+		if entityCardKind(capmodel.OverlayKind(item.Kind)) && len(item.AssetRefs) == 0 && strings.TrimSpace(item.SceneID) != "" {
 			sceneID := strings.TrimSpace(item.SceneID)
 			if counts[sceneID] >= max {
 				continue
@@ -50,7 +49,7 @@ func capNamedEntityCardsPerScene(items []capabilityoverlay.OverlayItem, max int)
 // Entity portraits and contextual images share the same composite so each
 // enters on its own anchor without covering the earlier images. Every child
 // keeps its own caption, asset, preset and certified motion.
-func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, height int) []capabilityoverlay.OverlayItem {
+func composeNearbyEntityImages(items []capmodel.OverlayItem, width, height int) []capmodel.OverlayItem {
 	indices := make([]int, 0, len(items))
 	for index := range items {
 		if isComposableImageItem(items[index]) {
@@ -70,7 +69,7 @@ func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, hei
 	for _, index := range indices {
 		candidateIndexes[index] = true
 	}
-	var out []capabilityoverlay.OverlayItem
+	var out []capmodel.OverlayItem
 	for cursor := 0; cursor < len(indices); {
 		firstIndex := indices[cursor]
 		first := items[firstIndex]
@@ -127,14 +126,14 @@ func composeNearbyEntityImages(items []capabilityoverlay.OverlayItem, width, hei
 	return out
 }
 
-func isComposableImageItem(item capabilityoverlay.OverlayItem) bool {
+func isComposableImageItem(item capmodel.OverlayItem) bool {
 	if len(item.AssetRefs) != 1 {
 		return false
 	}
 	switch item.Kind {
-	case string(capabilityoverlay.KindEntityImage), "image":
+	case string(capmodel.KindEntityImage), "image":
 		return true
-	case string(capabilityoverlay.KindEntityCard):
+	case string(capmodel.KindEntityCard):
 		// Image-backed person cards carry a verified photo but still need to
 		// join the same camera sequence as entity_image items.
 		return item.EntityRef != nil && strings.EqualFold(strings.TrimSpace(item.EntityRef.Type), "PERSON")
@@ -143,7 +142,7 @@ func isComposableImageItem(item capabilityoverlay.OverlayItem) bool {
 	}
 }
 
-func isTextOnlyLocationCard(item capabilityoverlay.OverlayItem) bool {
+func isTextOnlyLocationCard(item capmodel.OverlayItem) bool {
 	if len(item.AssetRefs) != 0 {
 		return false
 	}
@@ -153,12 +152,12 @@ func isTextOnlyLocationCard(item capabilityoverlay.OverlayItem) bool {
 	return strings.EqualFold(strings.TrimSpace(item.Kind), "location")
 }
 
-func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int, width, height int) capabilityoverlay.OverlayItem {
+func composeEntityImageGroup(items []capmodel.OverlayItem, group []int, width, height int) capmodel.OverlayItem {
 	first := items[group[0]]
 	parentStart, parentEnd := first.StartMs, first.EndMs
 	parent := first
-	assetRefs := make([]capabilityoverlay.OverlayAssetRef, 0, len(group))
-	layers := make([]capabilityoverlay.OverlayImageLayer, 0, len(group))
+	assetRefs := make([]capmodel.OverlayAssetRef, 0, len(group))
+	layers := make([]capmodel.OverlayImageLayer, 0, len(group))
 	for _, itemIndex := range group {
 		if items[itemIndex].EndMs > parentEnd {
 			parentEnd = items[itemIndex].EndMs
@@ -171,7 +170,7 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	for slot, itemIndex := range group {
 		child := items[itemIndex]
 		assetRefs = append(assetRefs, child.AssetRefs[0])
-		layers = append(layers, capabilityoverlay.OverlayImageLayer{
+		layers = append(layers, capmodel.OverlayImageLayer{
 			ID: child.ID, AssetID: child.AssetRefs[0].AssetID, EntityID: stableIDForOverlayItem(child),
 			StartMS: 0, EndMS: groupDuration, CaptionStartMS: 0, CaptionEndMS: groupDuration, PresetID: child.PresetID,
 			CaptionLayout: "below",
@@ -189,7 +188,7 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	parent.AssetRefs = assetRefs
 	// image_layers are carried by the entity_image semantic primitive even
 	// when the group contains contextual images without entity captions.
-	parent.Kind = string(capabilityoverlay.KindEntityImage)
+	parent.Kind = string(capmodel.KindEntityImage)
 	parent.TemplateID = "image_popup"
 	// The sequence owns the single shared camera rig; a sampled single-entity
 	// composition must not layer a second camera animation onto the group.
@@ -219,7 +218,7 @@ func composeEntityImageGroup(items []capabilityoverlay.OverlayItem, group []int,
 	return parent
 }
 
-func stableIDForOverlayItem(item capabilityoverlay.OverlayItem) string {
+func stableIDForOverlayItem(item capmodel.OverlayItem) string {
 	if strings.TrimSpace(item.EntityID) != "" {
 		return item.EntityID
 	}
@@ -232,7 +231,7 @@ func stableIDForOverlayItem(item capabilityoverlay.OverlayItem) string {
 	return ""
 }
 
-func entityImageCaption(item capabilityoverlay.OverlayItem) string {
+func entityImageCaption(item capmodel.OverlayItem) string {
 	if item.EntityRef != nil {
 		if name := strings.TrimSpace(item.EntityRef.Name); name != "" {
 			return name
@@ -291,7 +290,7 @@ func entityImageLayerParams(width, height, count, slot int) map[string]any {
 // entity-caption pool (entity_caption_motions), restricted to the
 // camera-safe automatic caption catalog because it drives automatic
 // assignment. Both are validated fail-closed.
-func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, width, height int, entityStyleID string, requestedPools ...[]string) error {
+func assignEntityImageMotions(items []capmodel.OverlayItem, offset, width, height int, entityStyleID string, requestedPools ...[]string) error {
 	imageOrdinal, captionOrdinal := 0, 0
 	// Composite groups draw from a per-size entrance pool (see
 	// caprender.CompositeImageMotionPool); each size rotates its own ordinal so a 2-, 3-,
@@ -397,7 +396,7 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		if item.Kind == "image" {
 			continue
 		}
-		if item.Kind != string(capabilityoverlay.KindEntityImage) {
+		if item.Kind != string(capmodel.KindEntityImage) {
 			continue
 		}
 		if len(item.ImageLayers) > 0 {
@@ -434,7 +433,7 @@ func assignEntityImageMotions(items []capabilityoverlay.OverlayItem, offset, wid
 		// them from Params. Re-seed geometry, carry the text style through.
 		geometry := capabilityoverlay.EntityImageParams(width, height)
 		for key, value := range item.Params {
-			if scriptoverlay.IsRuntimeTextStyleParam(key) {
+			if capabilityoverlay.IsRuntimeTextStyleParam(key) {
 				geometry[key] = value
 			}
 		}

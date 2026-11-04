@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 )
 
@@ -11,7 +12,7 @@ import (
 // early between shift/shorten/merge-or-error instead of failing at final
 // publication after rendering. fpsNum/fpsDen convert microsecond windows to
 // frames; items must carry StartUS/DurationUS (or StartMs/EndMs fallback).
-func AdmitOverlayTimeline(items []OverlayItem, fpsNum, fpsDen int) error {
+func AdmitOverlayTimeline(items []capmodel.OverlayItem, fpsNum, fpsDen int) error {
 	if len(items) < 2 {
 		return nil
 	}

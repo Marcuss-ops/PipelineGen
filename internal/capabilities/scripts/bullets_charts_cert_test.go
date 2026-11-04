@@ -15,6 +15,7 @@ package scriptgeneration
 //   C4 scene separate: 42% in una scena, 18% in un'altra → nessun confronto.
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"strings"
 	"testing"
@@ -67,8 +68,8 @@ func TestCertC1ChartPositive(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, plan.ChartCards)
 
-	var label *capabilityoverlay.OverlayItem
-	bars := []capabilityoverlay.OverlayItem{}
+	var label *capmodel.OverlayItem
+	bars := []capmodel.OverlayItem{}
 	for i := range plan.Items {
 		if plan.Items[i].Params["chart_card"] == true {
 			label = &plan.Items[i]
@@ -211,16 +212,16 @@ func TestCertB2BulletsDisabled(t *testing.T) {
 	// level; the bullet role lives on the segment params. The category
 	// filter must inspect the children, otherwise `bullets: disabled`
 	// renders the fused bullet anyway.
-	chain := capabilityoverlay.OverlayItem{
-		ID: "b2-chain", SceneID: "s1", Kind: capabilityoverlay.KindPhraseChain, TemplateID: "PHRASE_CHAIN",
+	chain := capmodel.OverlayItem{
+		ID: "b2-chain", SceneID: "s1", Kind: capmodel.KindPhraseChain, TemplateID: "PHRASE_CHAIN",
 		StartMs: 0, EndMs: 6000, StartUS: 0, DurationUS: 6_000_000,
-		Params: map[string]any{"chain_segments": []capabilityoverlay.ChainSegment{
+		Params: map[string]any{"chain_segments": []capmodel.ChainSegment{
 			{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Il debito pubblico sale al nord", StartUS: 0, DurationUS: 4_000_000,
 				Params: map[string]any{"editorial_role": "scene_bullet"}},
 			{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "nuove misure per contenere la spesa", StartUS: 4_000_000, DurationUS: 2_000_000},
 		}},
 	}
-	kept = filterOverlayItemsByCategory([]capabilityoverlay.OverlayItem{chain}, []Scene{{ID: "s1"}}, canvas)
+	kept = filterOverlayItemsByCategory([]capmodel.OverlayItem{chain}, []Scene{{ID: "s1"}}, canvas)
 	assert.Empty(t, kept, "B2: una catena con un segmento bullet è un gesto atomico e cade con bullets disabled")
 }
 

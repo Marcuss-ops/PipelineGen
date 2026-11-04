@@ -3,12 +3,11 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
 // QueueRenderEnqueuer adapts the central RenderingGen queue for the Chronon
@@ -109,7 +108,7 @@ type QueueRenderEnqueuer struct {
 // the concrete plan it actually executes. Keeping this boundary semantic is
 // important: sending PipelineGen's old v1 concrete document makes the worker
 // validate it against the v2 schema and fail before Chronon starts.
-func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	manifestCandidates, dedicatedCandidates := partitionOverlayRenderWork(plan)
 	if len(manifestCandidates) == 0 {
 		if len(dedicatedCandidates) == 0 {

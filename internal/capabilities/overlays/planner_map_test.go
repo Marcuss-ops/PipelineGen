@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"bytes"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"image"
 	"image/color"
 	"image/png"
@@ -23,7 +24,7 @@ const (
 // content-addressed asset ref over those bytes. The planner's map items are
 // validated against the bytes on disk (digest + PNG magic), so the fixture is a
 // real raster rather than a mocked digest.
-func writeMapPlateRaster(t *testing.T, width, height int) OverlayAssetRef {
+func writeMapPlateRaster(t *testing.T, width, height int) capmodel.OverlayAssetRef {
 	t.Helper()
 	var buf bytes.Buffer
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -35,7 +36,7 @@ func writeMapPlateRaster(t *testing.T, width, height int) OverlayAssetRef {
 	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		t.Fatalf("write plate raster: %v", err)
 	}
-	return OverlayAssetRef{
+	return capmodel.OverlayAssetRef{
 		AssetID:   "operator-plate",
 		SHA256:    digest.SHA256Bytes(buf.Bytes()),
 		MediaType: "image/png",
@@ -52,7 +53,7 @@ func testMapPlate(t *testing.T, id string, lat, lon float64, width, height int) 
 		ID:          id,
 		License:     "operator-supplied",
 		Attribution: "© OpenStreetMap contributors",
-		Center:      MapCenter{Latitude: lat, Longitude: lon},
+		Center:      capmodel.MapCenter{Latitude: lat, Longitude: lon},
 		Zoom:        mapTestZoom,
 		Width:       width,
 		Height:      height,
@@ -80,7 +81,7 @@ type flyoverPlateResolver struct {
 	ok      bool
 }
 
-func (r flyoverPlateResolver) ResolveFlyover(_, _ MapCenter, _, _ int) (MapPlate, bool) {
+func (r flyoverPlateResolver) ResolveFlyover(_, _ capmodel.MapCenter, _, _ int) (MapPlate, bool) {
 	return r.flyover, r.ok
 }
 
@@ -277,7 +278,7 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 		{ID: "scene-1", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 0, 1_000_000)}},
 		{ID: "scene-2", Maps: []MapCandidate{groundedCandidate(t, "city:paris", "Paris", parisLat, parisLon, 0, 1_000_000)}},
 	}
-	build := func() OverlayPlan {
+	build := func() capmodel.OverlayPlan {
 		// Exercise a caller-selected ceiling below the default three-map budget.
 		config := AllCandidatesPlannerConfig(scenes)
 		config.RunLevelMapOverlayLimit = 2
@@ -315,7 +316,7 @@ func TestBuildPlanMapMotionsAreCertifiedAndDeterministic(t *testing.T) {
 // TestMapMotionForCenterVariesWithinOneRegion verifies automatic map picks
 // rotate through safe centered recipes instead of always rendering statically.
 func TestMapMotionForCenterVariesWithinOneRegion(t *testing.T) {
-	usa := MapCenter{Latitude: 39.0, Longitude: -98.0}
+	usa := capmodel.MapCenter{Latitude: 39.0, Longitude: -98.0}
 	first := mapMotionForCenter(0, usa)
 	if !containsString(mapMotionIDs(), first) {
 		t.Fatalf("ordinal 0 in the USA region = %q, want a centered map-safe motion", first)
@@ -337,7 +338,7 @@ func TestMapMotionForCenterVariesWithinOneRegion(t *testing.T) {
 }
 
 func TestMapMotionHonorsRuntimeFamilyCount(t *testing.T) {
-	center := MapCenter{Latitude: 37.7, Longitude: -122.4}
+	center := capmodel.MapCenter{Latitude: 37.7, Longitude: -122.4}
 	seen := map[string]bool{}
 	for ordinal := 0; ordinal < 12; ordinal++ {
 		seen[mapMotionForCenterWithLimit(ordinal, center, 3)] = true
@@ -463,7 +464,7 @@ func TestBuildPlanEmitsNativeFlyToFromCertifiedOfflineLODs(t *testing.T) {
 		t.Fatalf("grounded route did not produce a camera_move: %+v", item.Map)
 	}
 	move := item.Map.CameraMove
-	if move.From != (MapCenter{Latitude: 0, Longitude: 0}) || move.To != (MapCenter{Latitude: 0, Longitude: 0.2}) {
+	if move.From != (capmodel.MapCenter{Latitude: 0, Longitude: 0}) || move.To != (capmodel.MapCenter{Latitude: 0, Longitude: 0.2}) {
 		t.Fatalf("camera endpoints = %+v → %+v, want chronological grounded endpoints", move.From, move.To)
 	}
 	if move.StartZoom != 4 || move.EndZoom != 6 || len(item.Map.LODs) != 2 || len(item.AssetRefs) != 2 {
@@ -507,14 +508,14 @@ func TestBuildPlanFallsBackToStaticMapWhenFlyoverCoverageIsUnavailable(t *testin
 }
 
 func TestRankedUniqueMapIndicesDeduplicatesPerScene(t *testing.T) {
-	makeItem := func(id, sceneID, plateID string, priority float64) OverlayItem {
-		return OverlayItem{
+	makeItem := func(id, sceneID, plateID string, priority float64) capmodel.OverlayItem {
+		return capmodel.OverlayItem{
 			ID: id, SceneID: sceneID, Kind: "map", TemplateID: "MAP",
-			Map:    &MapOverlay{Provider: "local", SourceID: plateID},
+			Map:    &capmodel.MapOverlay{Provider: "local", SourceID: plateID},
 			Params: map[string]any{"priority": priority},
 		}
 	}
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		makeItem("low", "scene-1", "plate-a", 0.1),
 		makeItem("high", "scene-1", "plate-a", 0.9),
 		makeItem("other-scene", "scene-2", "plate-a", 0.5),
@@ -575,7 +576,7 @@ func TestBuildPlanMergesCrossSceneRouteIntoOneMapItem(t *testing.T) {
 		t.Fatalf("build plan: %v", err)
 	}
 	mapCount := 0
-	var route *OverlayItem
+	var route *capmodel.OverlayItem
 	for i := range plan.Items {
 		if plan.Items[i].Kind != "map" {
 			continue
@@ -636,7 +637,7 @@ func TestBuildPlanExplicitMultiMapRequestScopesMapsToScenes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
-	var maps []OverlayItem
+	var maps []capmodel.OverlayItem
 	for _, item := range plan.Items {
 		if item.Kind == "map" {
 			maps = append(maps, item)
@@ -673,7 +674,7 @@ func TestBuildPlanMultiMapRequestUsesBudgetForDistinctPlaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build plan: %v", err)
 	}
-	var maps []OverlayItem
+	var maps []capmodel.OverlayItem
 	for _, item := range plan.Items {
 		if item.Kind == "map" {
 			maps = append(maps, item)
@@ -713,7 +714,7 @@ func TestBuildPlanPreservesThreeDistinctSceneMapsAtRequestedLimit(t *testing.T) 
 	if err != nil {
 		t.Fatalf("build three-scene map plan: %v", err)
 	}
-	var maps []OverlayItem
+	var maps []capmodel.OverlayItem
 	for _, item := range plan.Items {
 		if item.Kind == "map" {
 			maps = append(maps, item)

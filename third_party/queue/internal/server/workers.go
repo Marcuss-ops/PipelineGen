@@ -26,8 +26,7 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Worker string `json:"worker"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	if err := s.svc.WorkerHeartbeat(r.Context(), req.Worker); err != nil {

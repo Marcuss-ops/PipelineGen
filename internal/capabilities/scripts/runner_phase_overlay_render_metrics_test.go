@@ -18,17 +18,16 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
 
 // chrononVulkanBackend is the backend literal the CERTIFIED artifacts actually
@@ -43,7 +42,7 @@ type gpuTelemetryRenderEnqueuer struct {
 	items []OverlayItemRenderReference
 }
 
-func (e *gpuTelemetryRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (e *gpuTelemetryRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	ref := RenderReference{JobID: plan.PlanID, Status: "COMPLETED", Items: e.items}
 	// The real wire duplicates the FIRST item's artifact onto Artifact for the
 	// legacy document consumers — the shape that would double-count.
@@ -56,7 +55,7 @@ func (e *gpuTelemetryRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan 
 // failingRenderEnqueuer stands in for a render that fails remotely.
 type failingRenderEnqueuer struct{ err error }
 
-func (e *failingRenderEnqueuer) EnqueueChrononPlan(context.Context, capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (e *failingRenderEnqueuer) EnqueueChrononPlan(context.Context, capmodel.OverlayPlan) (RenderReference, error) {
 	return RenderReference{}, e.err
 }
 
@@ -104,9 +103,9 @@ func TestOverlayRenderPhaseRecordsBoundaryAndGpuMetrics(t *testing.T) {
 	req := defaultTestRequest()
 	req.Render.Enabled = true
 	result := &GenerateResult{
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-metrics", VideoID: "video-metrics",
-			Items: []capabilityoverlay.OverlayItem{{ID: "a"}, {ID: "b"}},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-metrics", VideoID: "video-metrics",
+			Items: []capmodel.OverlayItem{{ID: "a"}, {ID: "b"}},
 		},
 	}
 
@@ -152,9 +151,9 @@ func TestOverlayRenderPhaseFailureRecordsOutcomeWithoutGpuMetrics(t *testing.T) 
 		repo:                  repo,
 	}
 	result := &GenerateResult{
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-failure", VideoID: "video-failure",
-			Items: []capabilityoverlay.OverlayItem{{ID: "a"}},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-failure", VideoID: "video-failure",
+			Items: []capmodel.OverlayItem{{ID: "a"}},
 		},
 	}
 
@@ -228,9 +227,9 @@ func TestOverlayRenderPhaseSkipRecordsNothing(t *testing.T) {
 	req := defaultTestRequest()
 	req.Render.Enabled = true
 	result := &GenerateResult{
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-skip", VideoID: "video-skip",
-			Items: []capabilityoverlay.OverlayItem{{ID: "a"}},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-skip", VideoID: "video-skip",
+			Items: []capmodel.OverlayItem{{ID: "a"}},
 		},
 	}
 	itemsSamplesBefore := histogramSampleTotal(t, observability.OverlayRenderItems)
@@ -252,7 +251,7 @@ type languageCapturingRenderEnqueuer struct {
 	maxInFlgt int
 }
 
-func (e *languageCapturingRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (e *languageCapturingRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.mu.Lock()
 	e.languages = append(e.languages, plan.Language)
 	e.planIDs = append(e.planIDs, plan.PlanID)
@@ -289,13 +288,13 @@ func TestOverlayRenderPhaseRendersEveryLocalizedPlanInRequestOrder(t *testing.T)
 	enqueuer := &languageCapturingRenderEnqueuer{}
 	runner := &Runner{overlayRenderEnqueuer: enqueuer, log: zap.NewNop()}
 	result := &GenerateResult{
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-en", VideoID: "video-en", Language: "en",
-			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-en"}},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "run-en", VideoID: "video-en", Language: "en",
+			Items: []capmodel.OverlayItem{{ID: "phrase-en"}},
 		},
-		LocalizedOverlayPlans: map[Language]*capabilityoverlay.OverlayPlan{
-			"it": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-it", VideoID: "video-it", Language: "it", Items: []capabilityoverlay.OverlayItem{{ID: "phrase-it"}}},
-			"fr": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-fr", VideoID: "video-fr", Language: "fr", Items: []capabilityoverlay.OverlayItem{{ID: "phrase-fr"}}},
+		LocalizedOverlayPlans: map[Language]*capmodel.OverlayPlan{
+			"it": {SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "run-it", VideoID: "video-it", Language: "it", Items: []capmodel.OverlayItem{{ID: "phrase-it"}}},
+			"fr": {SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "run-fr", VideoID: "video-fr", Language: "fr", Items: []capmodel.OverlayItem{{ID: "phrase-fr"}}},
 		},
 	}
 	req := defaultTestRequest()
@@ -333,14 +332,14 @@ func TestOverlayRenderPhaseFansOutLanguagesInParallel(t *testing.T) {
 	require.Equal(t, DefaultOverlayRenderConcurrency, runner.overlayRenderWorkers())
 
 	result := &GenerateResult{
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-en", VideoID: "video-en", Language: "en",
-			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-en"}},
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "run-en", VideoID: "video-en", Language: "en",
+			Items: []capmodel.OverlayItem{{ID: "phrase-en"}},
 		},
-		LocalizedOverlayPlans: map[Language]*capabilityoverlay.OverlayPlan{
-			"it": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-it", Language: "it", Items: []capabilityoverlay.OverlayItem{{ID: "p-it"}}},
-			"de": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-de", Language: "de", Items: []capabilityoverlay.OverlayItem{{ID: "p-de"}}},
-			"fr": {SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "run-fr", Language: "fr", Items: []capabilityoverlay.OverlayItem{{ID: "p-fr"}}},
+		LocalizedOverlayPlans: map[Language]*capmodel.OverlayPlan{
+			"it": {SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "run-it", Language: "it", Items: []capmodel.OverlayItem{{ID: "p-it"}}},
+			"de": {SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "run-de", Language: "de", Items: []capmodel.OverlayItem{{ID: "p-de"}}},
+			"fr": {SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "run-fr", Language: "fr", Items: []capmodel.OverlayItem{{ID: "p-fr"}}},
 		},
 	}
 	req := defaultTestRequest()

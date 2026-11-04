@@ -6,13 +6,14 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-func filterOverlayItemsByCategory(items []capabilityoverlay.OverlayItem, scenes []Scene, canvas OverlayCanvasSpec) []capabilityoverlay.OverlayItem {
+func filterOverlayItemsByCategory(items []capmodel.OverlayItem, scenes []Scene, canvas OverlayCanvasSpec) []capmodel.OverlayItem {
 	if len(canvas.OverlayCategories) == 0 && !hasSegmentOverlayCategories(canvas.OverlayCategorySegments) {
 		return items
 	}
@@ -20,7 +21,7 @@ func filterOverlayItemsByCategory(items []capabilityoverlay.OverlayItem, scenes 
 	for _, scene := range scenes {
 		indexes[scene.ID] = scene.Index
 	}
-	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
+	out := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if overlayItemCategoryDisabled(item, indexes[item.SceneID], canvas) {
 			continue
@@ -53,7 +54,7 @@ func filterScenePhrasesByCategory(inputs []capabilityoverlay.SceneInput, scenes 
 			if role := strings.TrimSpace(phrase.PresentationRole); role != "" {
 				params["editorial_role"] = role
 			}
-			item := capabilityoverlay.OverlayItem{
+			item := capmodel.OverlayItem{
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", SceneID: inputs[sceneIndex].ID, Params: params,
 			}
 			if !overlayItemCategoryDisabled(item, indexes[item.SceneID], canvas) {
@@ -74,16 +75,16 @@ func filterScenePhrasesByCategory(inputs []capabilityoverlay.SceneInput, scenes 
 // disabling is atomic for a composed gesture — the whole container is dropped
 // rather than rendering a partial chain whose siblings were authored as one
 // visual unit.
-func overlayItemCategoryDisabled(item capabilityoverlay.OverlayItem, sceneIndex int, canvas OverlayCanvasSpec) bool {
+func overlayItemCategoryDisabled(item capmodel.OverlayItem, sceneIndex int, canvas OverlayCanvasSpec) bool {
 	if category, ok := overlayItemCategory(item); ok && !overlayCategoryEnabled(category, item.SceneID, sceneIndex, canvas) {
 		return true
 	}
-	segments, ok := capabilityoverlay.DecodeChainSegments(item.Params)
+	segments, ok := capmodel.DecodeChainSegments(item.Params)
 	if !ok {
 		return false
 	}
 	for _, segment := range segments {
-		probe := capabilityoverlay.OverlayItem{Kind: segment.Kind, TemplateID: segment.TemplateID, Params: segment.Params}
+		probe := capmodel.OverlayItem{Kind: segment.Kind, TemplateID: segment.TemplateID, Params: segment.Params}
 		if category, ok := overlayItemCategory(probe); ok && !overlayCategoryEnabled(category, item.SceneID, sceneIndex, canvas) {
 			return true
 		}
@@ -110,7 +111,7 @@ func overlayCategoryEnabled(category scriptpkg.OverlayCategory, sceneID string, 
 	return value != scriptpkg.ToggleDisabled
 }
 
-func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayCategory, bool) {
+func overlayItemCategory(item capmodel.OverlayItem) (scriptpkg.OverlayCategory, bool) {
 	kind := strings.ToLower(strings.TrimSpace(item.Kind))
 	template := strings.ToLower(strings.TrimSpace(item.TemplateID))
 	role, _ := item.Params["editorial_role"].(string)
@@ -156,7 +157,7 @@ func overlayItemCategory(item capabilityoverlay.OverlayItem) (scriptpkg.OverlayC
 		return scriptpkg.OverlayCategoryBrandText, true
 	case kind == "text_phrase" || strings.Contains(template, "phrase"):
 		return scriptpkg.OverlayCategoryPhrases, true
-	case kind == string(capabilityoverlay.KindEntityCard) && !isImageOverlayItem(item):
+	case kind == string(capmodel.KindEntityCard) && !isImageOverlayItem(item):
 		// A text-only named entity card is NOT imagery, whatever entity type it
 		// names: the planner caps these cards per scene and the payload controls
 		// them through the `entities_with_text` group limit, exactly like the

@@ -52,6 +52,19 @@
   `timing.critical_path` e `bottleneck_stage`. Su r4/r8 il bottleneck è
   `remote_final_job` (56,1% / 45,6%); `overlay_render` pesa 8,0% / 13,2%.
   Sommare gli stage sovrastima: per attribuire il tempo si usa il campo.
+- **Geocoder transiente (FIXED, 2026-11-03).** r106 è morto dopo 216 s su un
+  singolo `context deadline exceeded` di Nominatim (`La Cassazione`, scena 8).
+  `Nominatim.Geocode` ora ritenta i guasti transitori (timeout di trasporto,
+  408/425/429/5xx) con backoff limitato (3 tentativi, 300 ms→2 s, jitter) e
+  classificazione tipizzata, senza ritentare i 4xx terminali. Test:
+  `TestNominatimRetriesTransientHTTPFailures` e
+  `TestNominatimDoesNotRetryTerminalClientErrors` in
+  `internal/platform/geocoding/nominatim_test.go`. La causa a monte è già
+  coperta dal chiamante: `ignoredMapCandidate`
+  (`runner_phase_overlay_plan.go:239`) scarta i candidati istituzionali con
+  articolo («La Cassazione», «La Corte», «Il Tribunale») e il test
+  `TestIgnoredMapCandidateRejectsArticlePrefixedInstitutions` passa. Questo
+  non certifica il job 20 minuti: la run live resta NOT RUN.
 - **NOT RUN:** un job Garlasco 20 minuti dopo il fix. Il binario in esecuzione
   (`bin/pipelinegen`, build 12:22) è precedente alle modifiche (sorgenti
   12:44/12:46): servono rebuild e restart prima di una run valida. Nessun
@@ -391,7 +404,7 @@ v3-maps ha completato le fasi `script` e `translation` senza più quel falliment
 UNBLOCKED a compile/plan:** il producer Go ora risolve ADM3 `territory_feature`
 e raggio area glow seguendo il contratto del renderer.
 
-- `internal/capabilities/scripts/overlay/map_territory.go` (nuovo): resolver
+- `internal/capabilities/overlays/map_territory.go` (nuovo): resolver
   `ResolveMapTerritoryFeature` sullo STESSO catalogo del renderer
   (`CHRONON_MAPS_CATALOG_DIR` + `italy_admin/geoBoundaries_ITA_ADM3.simplified.geojson`,
   match esatto dello `shapeName`, point-in-ring even-odd); fail-closed senza
@@ -1059,6 +1072,11 @@ in questa sessione non sono stati effettuati submit, restart o deploy.
 `go test ./internal/capabilities/scripts -run 'TestRunSplitOverlayWork|TestAssembleSplitManifestReference|TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items' -count=1 -race`
 PASS; test mirati di risoluzione e ammissione mappe PASS
 (`TestMicroBatchesNeverSplitOverlappingItems` incluso).
+
+> **Aggiornamento 2026-11-03.** `verify-overlay-model-alias`,
+> `model_alias.go` e `cmd/overlay-model-alias-gen` sono stati rimossi; gli
+> import puntano direttamente a `internal/capabilities/overlays/model`. Il
+> passaggio che segue è storico.
 
 **`make verify-agent` ora PASS (2026-10-29, `verify_exit=0`).** Il gate
 falliva su `verify-overlay-model-alias`: il facade generato

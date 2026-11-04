@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -14,7 +15,7 @@ func TestGroupNearbyEntities_DuoImages(t *testing.T) {
 			Name:     "Entity Alpha",
 			StartMS:  1000,
 			EndMS:    2500,
-			AssetRef: &OverlayAssetRef{AssetID: "asset_alpha", SHA256: strings.Repeat("a", 64)},
+			AssetRef: &capmodel.OverlayAssetRef{AssetID: "asset_alpha", SHA256: strings.Repeat("a", 64)},
 		},
 		{
 			ID:       "ent_2",
@@ -23,7 +24,7 @@ func TestGroupNearbyEntities_DuoImages(t *testing.T) {
 			Name:     "Entity Beta",
 			StartMS:  2800, // gap = 300ms <= 1800ms
 			EndMS:    4500,
-			AssetRef: &OverlayAssetRef{AssetID: "asset_beta", SHA256: strings.Repeat("b", 64)},
+			AssetRef: &capmodel.OverlayAssetRef{AssetID: "asset_beta", SHA256: strings.Repeat("b", 64)},
 		},
 	}
 
@@ -44,7 +45,7 @@ func TestGroupNearbyEntities_DuoImages(t *testing.T) {
 		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want one canonical image-stack item", len(items), err)
 	}
 	item := items[0]
-	if item.Kind != string(KindEntityImage) || item.TemplateID != "IMAGE_OVERLAY" {
+	if item.Kind != string(capmodel.KindEntityImage) || item.TemplateID != "IMAGE_OVERLAY" {
 		t.Errorf("group must lower to the canonical entity_image primitive, got kind/template %q/%q", item.Kind, item.TemplateID)
 	}
 	if len(item.ImageLayers) != 2 {
@@ -72,7 +73,7 @@ func TestGroupNearbyEntities_TrioQuadPenta(t *testing.T) {
 			Kind:     MultiEntityKindImage,
 			StartMS:  int64(i * 900),
 			EndMS:    int64((i + 1) * 900),
-			AssetRef: &OverlayAssetRef{AssetID: string(rune('A' + i)), SHA256: strings.Repeat("a", 64)},
+			AssetRef: &capmodel.OverlayAssetRef{AssetID: string(rune('A' + i)), SHA256: strings.Repeat("a", 64)},
 		})
 	}
 
@@ -165,8 +166,8 @@ func TestGroupNearbyEntitiesKeepsMixedScenesAndImageWindowSeparate(t *testing.T)
 	candidates := []MultiEntityCandidate{
 		{ID: "one", SceneID: "scene-one", Kind: MultiEntityKindPhrase, Text: "First insight", StartMS: 0, EndMS: 1000},
 		{ID: "two", SceneID: "scene-two", Kind: MultiEntityKindPhrase, Text: "Second insight", StartMS: 1000, EndMS: 2000},
-		{ID: "image-a", SceneID: "scene-images", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 1200, AssetRef: &OverlayAssetRef{AssetID: "a", SHA256: strings.Repeat("a", 64)}},
-		{ID: "image-b", SceneID: "scene-images", Kind: MultiEntityKindImage, StartMS: 4500, EndMS: 5700, AssetRef: &OverlayAssetRef{AssetID: "b", SHA256: strings.Repeat("b", 64)}},
+		{ID: "image-a", SceneID: "scene-images", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 1200, AssetRef: &capmodel.OverlayAssetRef{AssetID: "a", SHA256: strings.Repeat("a", 64)}},
+		{ID: "image-b", SceneID: "scene-images", Kind: MultiEntityKindImage, StartMS: 4500, EndMS: 5700, AssetRef: &capmodel.OverlayAssetRef{AssetID: "b", SHA256: strings.Repeat("b", 64)}},
 	}
 	groups := GroupNearbyEntities(candidates, 5000)
 	if len(groups) != 4 {
@@ -222,8 +223,8 @@ func TestBuildPlanLowersEditorialGroupsToCanonicalRenderPrimitives(t *testing.T)
 		GroupID: "plan-group", SceneID: "scene-plan", GroupType: MultiEntityKindImage,
 		Count: 2, StartMS: 100, EndMS: 5100,
 		Items: []MultiEntityCandidate{
-			{ID: "image-a", SceneID: "scene-plan", Kind: MultiEntityKindImage, StartMS: 100, EndMS: 3000, AssetRef: &OverlayAssetRef{AssetID: "a", SHA256: strings.Repeat("a", 64)}},
-			{ID: "image-b", SceneID: "scene-plan", Kind: MultiEntityKindImage, StartMS: 2200, EndMS: 5100, AssetRef: &OverlayAssetRef{AssetID: "b", SHA256: strings.Repeat("b", 64)}},
+			{ID: "image-a", SceneID: "scene-plan", Kind: MultiEntityKindImage, StartMS: 100, EndMS: 3000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "a", SHA256: strings.Repeat("a", 64)}},
+			{ID: "image-b", SceneID: "scene-plan", Kind: MultiEntityKindImage, StartMS: 2200, EndMS: 5100, AssetRef: &capmodel.OverlayAssetRef{AssetID: "b", SHA256: strings.Repeat("b", 64)}},
 		},
 	}
 	plan, err := BuildPlan(PlanInput{
@@ -236,7 +237,7 @@ func TestBuildPlanLowersEditorialGroupsToCanonicalRenderPrimitives(t *testing.T)
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("canonical grouped plan failed validation: %v", err)
 	}
-	if len(plan.Items) != 1 || plan.Items[0].Kind != string(KindEntityImage) || len(plan.Items[0].ImageLayers) != 2 {
+	if len(plan.Items) != 1 || plan.Items[0].Kind != string(capmodel.KindEntityImage) || len(plan.Items[0].ImageLayers) != 2 {
 		t.Fatalf("group plan emitted a noncanonical image primitive: %+v", plan.Items)
 	}
 	if plan.Items[0].MotionID != "" {
@@ -257,7 +258,7 @@ func TestWireMultiEntityOverlaysSeparatesMixedContentIntoExistingKinds(t *testin
 		GroupID: "mixed-group", SceneID: "scene-mixed", GroupType: MultiEntityKindMixed,
 		Count: 2, StartMS: 0, EndMS: 5000,
 		Items: []MultiEntityCandidate{
-			{ID: "photo", SceneID: "scene-mixed", Kind: MultiEntityKindImage, Name: "Ada", StartMS: 0, EndMS: 2500, AssetRef: &OverlayAssetRef{AssetID: "portrait", SHA256: strings.Repeat("a", 64)}},
+			{ID: "photo", SceneID: "scene-mixed", Kind: MultiEntityKindImage, Name: "Ada", StartMS: 0, EndMS: 2500, AssetRef: &capmodel.OverlayAssetRef{AssetID: "portrait", SHA256: strings.Repeat("a", 64)}},
 			{ID: "phrase", SceneID: "scene-mixed", Kind: MultiEntityKindPhrase, Text: "A remarkable idea", StartMS: 2500, EndMS: 5000},
 		},
 	}
@@ -268,7 +269,7 @@ func TestWireMultiEntityOverlaysSeparatesMixedContentIntoExistingKinds(t *testin
 	if len(items) != 2 {
 		t.Fatalf("mixed group produced %d items, want one image + one phrase", len(items))
 	}
-	if items[0].Kind != string(KindEntityImage) || items[1].Kind != "text_phrase" || items[0].EntityCaption != "Ada" {
+	if items[0].Kind != string(capmodel.KindEntityImage) || items[1].Kind != "text_phrase" || items[0].EntityCaption != "Ada" {
 		t.Fatalf("mixed group kinds/caption = %q/%q/%q, want entity_image with caption + canonical text_phrase", items[0].Kind, items[1].Kind, items[0].EntityCaption)
 	}
 	if EditorialSectionForItem(items[0]) != EditorialSectionEntityTextImage || EditorialSectionForItem(items[1]) != EditorialSectionShortPhrase {
@@ -284,12 +285,12 @@ func TestWireMultiEntityMotionsSeededByGroup(t *testing.T) {
 		return MultiEntityGroup{
 			GroupID: groupID, SceneID: "scene-1", StartMS: 0, EndMS: 5000,
 			Items: []MultiEntityCandidate{
-				{ID: "a", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &OverlayAssetRef{AssetID: "img-a", SHA256: strings.Repeat("a", 64)}, Name: "Ada"},
-				{ID: "b", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &OverlayAssetRef{AssetID: "img-b", SHA256: strings.Repeat("b", 64)}, Name: "Grace"},
+				{ID: "a", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "img-a", SHA256: strings.Repeat("a", 64)}, Name: "Ada"},
+				{ID: "b", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "img-b", SHA256: strings.Repeat("b", 64)}, Name: "Grace"},
 			},
 		}
 	}
-	wire := func(groupID string) []OverlayImageLayer {
+	wire := func(groupID string) []capmodel.OverlayImageLayer {
 		t.Helper()
 		items, err := WireMultiEntityOverlays(mkGroup(groupID), 1280, 720)
 		if err != nil {

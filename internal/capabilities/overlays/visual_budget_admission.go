@@ -1,11 +1,12 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 )
 
-func rankedUniqueOverlayIndices(items []OverlayItem, images bool, limit int, perSceneEntityImages ...bool) []int {
+func rankedUniqueOverlayIndices(items []capmodel.OverlayItem, images bool, limit int, perSceneEntityImages ...bool) []int {
 	if limit <= 0 {
 		return nil
 	}
@@ -24,7 +25,7 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, limit int, per
 			if item.Kind == "image" && strings.TrimSpace(item.SceneID) != "" {
 				key = strings.TrimSpace(item.SceneID) + ":" + key
 			}
-			if item.Kind == string(KindEntityImage) && len(perSceneEntityImages) > 0 && perSceneEntityImages[0] && strings.TrimSpace(item.SceneID) != "" {
+			if item.Kind == string(capmodel.KindEntityImage) && len(perSceneEntityImages) > 0 && perSceneEntityImages[0] && strings.TrimSpace(item.SceneID) != "" {
 				key = strings.TrimSpace(item.SceneID) + ":" + key
 			}
 		} else {
@@ -37,7 +38,7 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, limit int, per
 			continue
 		}
 		if current, ok := seen[key]; ok {
-			if overlayItemPriority(item) > overlayItemPriority(items[current]) {
+			if itemPriority(item) > itemPriority(items[current]) {
 				seen[key] = i
 			}
 			continue
@@ -56,7 +57,7 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, limit int, per
 				return leftLong
 			}
 		}
-		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+		if lp, rp := itemPriority(items[left]), itemPriority(items[right]); lp != rp {
 			return lp > rp
 		}
 		return left < right
@@ -148,9 +149,9 @@ func rankedUniqueOverlayIndices(items []OverlayItem, images bool, limit int, per
 	return indices
 }
 
-func overlayWindowsOverlap(a, b OverlayItem) bool {
-	aStart, aEnd := overlayItemWindowUS(a)
-	bStart, bEnd := overlayItemWindowUS(b)
+func overlayWindowsOverlap(a, b capmodel.OverlayItem) bool {
+	aStart, aEnd := OverlayItemWindowUS(a)
+	bStart, bEnd := OverlayItemWindowUS(b)
 	return aStart < bEnd && bStart < aEnd
 }
 
@@ -158,7 +159,7 @@ func overlayWindowsOverlap(a, b OverlayItem) bool {
 // when a caller configures both short_phrases and long_phrases caps. The
 // default phrase admission policy remains unchanged for jobs without those
 // explicit editorial quotas.
-func rankedUniqueOverlayPhraseLanes(items []OverlayItem, shortLimit, longLimit int) []int {
+func rankedUniqueOverlayPhraseLanes(items []capmodel.OverlayItem, shortLimit, longLimit int) []int {
 	return rankedUniqueOverlayPhraseLanesExcludingBullets(items, shortLimit, longLimit, false)
 }
 
@@ -167,7 +168,7 @@ func rankedUniqueOverlayPhraseLanes(items []OverlayItem, shortLimit, longLimit i
 // caller has opened the independent bullet lane those cards are admitted on
 // their own quota, and counting them here would make the requested short/long
 // ceilings unreachable.
-func rankedUniqueOverlayPhraseLanesExcludingBullets(items []OverlayItem, shortLimit, longLimit int, excludeBullets bool) []int {
+func rankedUniqueOverlayPhraseLanesExcludingBullets(items []capmodel.OverlayItem, shortLimit, longLimit int, excludeBullets bool) []int {
 	seen := make(map[string]int)
 	for i, item := range items {
 		if item.Kind != "text_phrase" || item.Params != nil && (item.Params["chart_card"] == true || item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
@@ -180,7 +181,7 @@ func rankedUniqueOverlayPhraseLanesExcludingBullets(items []OverlayItem, shortLi
 		if key == "" {
 			continue
 		}
-		if prior, ok := seen[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[prior]) {
+		if prior, ok := seen[key]; !ok || itemPriority(item) > itemPriority(items[prior]) {
 			seen[key] = i
 		}
 	}
@@ -199,7 +200,7 @@ func rankedUniqueOverlayPhraseLanesExcludingBullets(items []OverlayItem, shortLi
 // Bullets are text_phrase items distinguished only by editorial_role. Both
 // roles are covered: scene_bullet (per-scene editorial opening) and
 // chapter_bullet (chapter manifest card).
-func overlayItemIsBullet(item OverlayItem) bool {
+func overlayItemIsBullet(item capmodel.OverlayItem) bool {
 	if item.Params == nil {
 		return false
 	}
@@ -209,7 +210,7 @@ func overlayItemIsBullet(item OverlayItem) bool {
 
 // removeBulletIndices drops bullet items from a phrase selection and keeps the
 // original order.
-func removeBulletIndices(items []OverlayItem, indices []int) []int {
+func removeBulletIndices(items []capmodel.OverlayItem, indices []int) []int {
 	out := indices[:0]
 	for _, index := range indices {
 		if index < 0 || index >= len(items) || overlayItemIsBullet(items[index]) {
@@ -224,7 +225,7 @@ func removeBulletIndices(items []OverlayItem, indices []int) []int {
 // one card per scene, ordered by narration window and then priority, capped by
 // the caller's explicit quota. It is only called when the lane is enabled, so
 // a run without a bullets cap keeps the legacy admission unchanged.
-func rankedUniqueBulletIndices(items []OverlayItem, limit int) []int {
+func rankedUniqueBulletIndices(items []capmodel.OverlayItem, limit int) []int {
 	if limit <= 0 {
 		return nil
 	}
@@ -237,7 +238,7 @@ func rankedUniqueBulletIndices(items []OverlayItem, limit int) []int {
 		if key == "" {
 			continue
 		}
-		if prior, ok := best[key]; !ok || overlayItemPriority(item) > overlayItemPriority(items[prior]) {
+		if prior, ok := best[key]; !ok || itemPriority(item) > itemPriority(items[prior]) {
 			best[key] = i
 		}
 	}
@@ -246,12 +247,12 @@ func rankedUniqueBulletIndices(items []OverlayItem, limit int) []int {
 		candidates = append(candidates, index)
 	}
 	sort.SliceStable(candidates, func(i, j int) bool {
-		leftStart, _ := overlayItemWindowUS(items[candidates[i]])
-		rightStart, _ := overlayItemWindowUS(items[candidates[j]])
+		leftStart, _ := OverlayItemWindowUS(items[candidates[i]])
+		rightStart, _ := OverlayItemWindowUS(items[candidates[j]])
 		if leftStart != rightStart {
 			return leftStart < rightStart
 		}
-		if lp, rp := overlayItemPriority(items[candidates[i]]), overlayItemPriority(items[candidates[j]]); lp != rp {
+		if lp, rp := itemPriority(items[candidates[i]]), itemPriority(items[candidates[j]]); lp != rp {
 			return lp > rp
 		}
 		return candidates[i] < candidates[j]
@@ -274,7 +275,7 @@ func rankedUniqueBulletIndices(items []OverlayItem, limit int) []int {
 	return selected
 }
 
-func selectNonOverlappingPhraseLane(indices []int, items []OverlayItem, short bool, limit int, blocked []int) []int {
+func selectNonOverlappingPhraseLane(indices []int, items []capmodel.OverlayItem, short bool, limit int, blocked []int) []int {
 	if limit <= 0 {
 		return nil
 	}
@@ -295,12 +296,12 @@ func selectNonOverlappingPhraseLane(indices []int, items []OverlayItem, short bo
 	for _, scene := range scenes {
 		candidates := byScene[scene]
 		sort.SliceStable(candidates, func(i, j int) bool {
-			_, leftEnd := overlayItemWindowUS(items[candidates[i]])
-			_, rightEnd := overlayItemWindowUS(items[candidates[j]])
+			_, leftEnd := OverlayItemWindowUS(items[candidates[i]])
+			_, rightEnd := OverlayItemWindowUS(items[candidates[j]])
 			if leftEnd != rightEnd {
 				return leftEnd < rightEnd
 			}
-			if lp, rp := overlayItemPriority(items[candidates[i]]), overlayItemPriority(items[candidates[j]]); lp != rp {
+			if lp, rp := itemPriority(items[candidates[i]]), itemPriority(items[candidates[j]]); lp != rp {
 				return lp > rp
 			}
 			return candidates[i] < candidates[j]
@@ -334,14 +335,18 @@ func selectNonOverlappingPhraseLane(indices []int, items []OverlayItem, short bo
 	return selected
 }
 
-func overlayItemWindowUS(item OverlayItem) (int64, int64) {
-	if item.DurationUS > 0 {
-		return item.StartUS, item.StartUS + item.DurationUS
-	}
-	return item.StartMs * 1_000, item.EndMs * 1_000
+// overlayItemWindowUS is the start/end projection of the package's single
+// start/duration window helper, so the two cannot disagree on which field is
+// authoritative.
+// OverlayItemWindowUS is the canonical start/end projection. It is exported
+// because the render-queue boundary must not re-derive which timing field is
+// authoritative.
+func OverlayItemWindowUS(item capmodel.OverlayItem) (int64, int64) {
+	start, duration := itemWindowUS(item)
+	return start, start + duration
 }
 
-func imageOverlayIdentity(item OverlayItem) string {
+func imageOverlayIdentity(item capmodel.OverlayItem) string {
 	if item.EntityRef != nil {
 		if id := strings.TrimSpace(item.EntityRef.CanonicalEntityID); id != "" {
 			return "entity:" + id
@@ -370,7 +375,7 @@ func imageOverlayIdentity(item OverlayItem) string {
 // sha256 first (bytes, never wrong), then asset id, and only then the
 // arm-local identity so a keyless item cannot erase its peers. Highest-ranked
 // (earliest in imageIndices) wins; the function never reorders survivors.
-func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int, allowRepeatedEntityImagesPerScene ...bool) []int {
+func dedupeImageIndicesByContent(items []capmodel.OverlayItem, imageIndices []int, allowRepeatedEntityImagesPerScene ...bool) []int {
 	if len(imageIndices) <= 1 {
 		return imageIndices
 	}
@@ -402,7 +407,7 @@ func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int, allowR
 		duplicate := false
 		for _, key := range keys {
 			if _, exists := seen[key]; exists {
-				if len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0] && item.Kind == string(KindEntityImage) && strings.TrimSpace(item.SceneID) != "" {
+				if len(allowRepeatedEntityImagesPerScene) > 0 && allowRepeatedEntityImagesPerScene[0] && item.Kind == string(capmodel.KindEntityImage) && strings.TrimSpace(item.SceneID) != "" {
 					if entityScenes[key] == nil {
 						entityScenes[key] = make(map[string]struct{})
 					}
@@ -419,7 +424,7 @@ func dedupeImageIndicesByContent(items []OverlayItem, imageIndices []int, allowR
 		}
 		for _, key := range keys {
 			seen[key] = struct{}{}
-			if item.Kind == string(KindEntityImage) && strings.TrimSpace(item.SceneID) != "" {
+			if item.Kind == string(capmodel.KindEntityImage) && strings.TrimSpace(item.SceneID) != "" {
 				if entityScenes[key] == nil {
 					entityScenes[key] = make(map[string]struct{})
 				}

@@ -1,5 +1,7 @@
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "sort"
 
 // mapFadeHalfBandZoom is the planner's half-width (in zoom stops) of every LOD
@@ -35,7 +37,7 @@ func flyoverActiveZoomRange(index int, zooms []int, startZoom, endZoom float64) 
 // one grounded place intentionally becomes a stationary zoom-to, while a
 // multi-place route follows spoken order. It never invents geography from
 // spatial sorting or arithmetic averages.
-func routeEndpoints(places []MapCandidate, fallback MapCenter) (MapCenter, MapCenter) {
+func routeEndpoints(places []MapCandidate, fallback capmodel.MapCenter) (capmodel.MapCenter, capmodel.MapCenter) {
 	if len(places) == 0 {
 		return fallback, fallback
 	}
@@ -46,8 +48,8 @@ func routeEndpoints(places []MapCandidate, fallback MapCenter) (MapCenter, MapCe
 		}
 		return ordered[i].EntityID < ordered[j].EntityID
 	})
-	return MapCenter{Latitude: ordered[0].Latitude, Longitude: ordered[0].Longitude},
-		MapCenter{Latitude: ordered[len(ordered)-1].Latitude, Longitude: ordered[len(ordered)-1].Longitude}
+	return capmodel.MapCenter{Latitude: ordered[0].Latitude, Longitude: ordered[0].Longitude},
+		capmodel.MapCenter{Latitude: ordered[len(ordered)-1].Latitude, Longitude: ordered[len(ordered)-1].Longitude}
 }
 
 // plateFitsCanvas reports whether the plate's certified raster is exactly the
@@ -58,5 +60,5 @@ func plateFitsCanvas(plate MapPlate, canvasWidth, canvasHeight int) bool {
 		return plate.Width == canvasWidth && plate.Height == canvasHeight
 	}
 	return plate.Width >= canvasWidth && plate.Height >= canvasHeight &&
-		plate.Width <= maxMapRasterWidth && plate.Height <= maxMapRasterHeight
+		plate.Width <= capmodel.MaxMapRasterWidth && plate.Height <= capmodel.MaxMapRasterHeight
 }

@@ -2,11 +2,12 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strconv"
 	"strings"
 )
 
-func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int, dateWindowCapUS ...int64) OverlayItem {
+func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int, dateWindowCapUS ...int64) capmodel.OverlayItem {
 	id := itemID(sceneID, "number", number.Text)
 	templateID, motionID := "NUMBER", SelectTextMotion(planID, sceneID, id)
 	if numberType := strings.TrimSpace(number.Type); numberType != "" {
@@ -30,7 +31,7 @@ func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animation
 	case "METRIC_STAT_CARD":
 		params["font_size_px"] = float64(SharedTextFontSizePX + PresentationTextFontIncreasePX)
 	}
-	return OverlayItem{
+	return capmodel.OverlayItem{
 		ID: id, SceneID: sceneID, PresetID: selectWordPreset(planID, sceneID, id),
 		MotionID: motionID, Kind: "number", TemplateID: templateID, Text: normalizeItalianNumberWords(number.Text),
 		StartMs: number.StartMs, EndMs: number.EndMs, StartUS: number.StartUS, DurationUS: number.DurationUS,

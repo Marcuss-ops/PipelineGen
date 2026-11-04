@@ -1,11 +1,11 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
@@ -71,14 +71,14 @@ func TestEditingTimeline_OverlayTimesMatchCanonicalTimeline(t *testing.T) {
 			tl := capabilityEntityTimeline(t)
 			return &tl
 		}(),
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan,
 			PlanID:        "test-plan",
 			VideoID:       "test-video",
 			Width:         1920,
 			Height:        1080,
 			FPSNum:        30, FPSDen: 1,
-			Items: []capabilityoverlay.OverlayItem{
+			Items: []capmodel.OverlayItem{
 				{
 					ID:         "overlay-scene-01-tom-hanks",
 					SceneID:    "scene-01",
@@ -191,15 +191,15 @@ func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t 
 			DurationUS:       15000000,
 			DurationMS:       15000,
 		},
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan,
 			PlanID:        "test-plan",
 			VideoID:       "test-video",
 			Width:         1920,
 			Height:        1080,
 			FPSNum:        30, FPSDen: 1,
 			MediaContract: "overlay-v1",
-			Items: []capabilityoverlay.OverlayItem{
+			Items: []capmodel.OverlayItem{
 				{
 					ID:         "overlay-scene-01-tom-hanks",
 					SceneID:    "scene-01",
@@ -247,15 +247,15 @@ func TestEditingTimeline_OverlaySpansCarryRenderedArtifactIdentityAndContract(t 
 // output contains exactly this overlay (render job → plan version → item → source
 // video → Drive artifact) without re-deriving anything.
 func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
-	plan := &capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+	plan := &capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "test-plan",
 		VideoID:       "source-video-asset-001",
 		Width:         1920,
 		Height:        1080,
 		FPSNum:        30, FPSDen: 1,
 		MediaContract: "overlay-v1",
-		Items: []capabilityoverlay.OverlayItem{
+		Items: []capmodel.OverlayItem{
 			{
 				ID:         "overlay-scene-01-tom-hanks",
 				SceneID:    "scene-01",
@@ -271,16 +271,16 @@ func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
 		t.Fatalf("seal plan: %v", err)
 	}
 
-	intent := capabilityoverlay.OverlayIntent{
-		Version:     capabilityoverlay.OverlayIntentVersion,
+	intent := capmodel.OverlayIntent{
+		Version:     capmodel.OverlayIntentVersion,
 		IntentID:    "intent-scene-01-tom-hanks",
 		SceneID:     "scene-01",
 		SceneIndex:  0,
-		Entity:      capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
-		Source:      capabilityoverlay.IntentSourceEntity,
+		Entity:      capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+		Source:      capmodel.IntentSourceEntity,
 		Kind:        "entity_card",
 		TemplateID:  "person_default",
-		TimingState: capabilityoverlay.TimingStatePending,
+		TimingState: capmodel.TimingStatePending,
 	}
 
 	result := &GenerateResult{
@@ -298,7 +298,7 @@ func TestEditingTimeline_OverlaySpansCarryFullLineage(t *testing.T) {
 			DurationMS:       15000,
 		},
 		OverlayPlan:    plan,
-		OverlayIntents: []capabilityoverlay.OverlayIntent{intent},
+		OverlayIntents: []capmodel.OverlayIntent{intent},
 		OverlayRender: &RenderReference{
 			JobID:  "render-job-001",
 			Status: "COMPLETED",
@@ -359,14 +359,14 @@ func TestEditingTimeline_OverlaySpansWithoutRenderLeaveIdentityEmpty(t *testing.
 			DurationUS:       15000000,
 			DurationMS:       15000,
 		},
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan,
 			PlanID:        "test-plan",
 			VideoID:       "test-video",
 			Width:         1920,
 			Height:        1080,
 			FPSNum:        30, FPSDen: 1,
-			Items: []capabilityoverlay.OverlayItem{
+			Items: []capmodel.OverlayItem{
 				{
 					ID:         "overlay-scene-01-tom-hanks",
 					SceneID:    "scene-01",
@@ -520,15 +520,15 @@ func capabilityEntityTimeline(t *testing.T) testEntityTimeline {
 // at the seal, from the same profile the renderer will be held to, so this
 // projection can only ever read the plan's own derivation.
 func TestEditingTimeline_CarriesTheStampedOutputContract(t *testing.T) {
-	newPlan := func(profileID string) *capabilityoverlay.OverlayPlan {
-		plan := &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+	newPlan := func(profileID string) *capmodel.OverlayPlan {
+		plan := &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan,
 			PlanID:        "test-plan-contract",
 			VideoID:       "test-video-contract",
 			Width:         1920,
 			Height:        1080,
 			FPSNum:        24, FPSDen: 1,
-			Items: []capabilityoverlay.OverlayItem{
+			Items: []capmodel.OverlayItem{
 				{
 					ID:         "overlay-scene-01-phrase",
 					SceneID:    "scene-01",
@@ -546,7 +546,7 @@ func TestEditingTimeline_CarriesTheStampedOutputContract(t *testing.T) {
 		}
 		return plan
 	}
-	newResult := func(plan *capabilityoverlay.OverlayPlan) *GenerateResult {
+	newResult := func(plan *capmodel.OverlayPlan) *GenerateResult {
 		return &GenerateResult{
 			CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
 				Version:    capabilityaudio.TimelineVersion,
@@ -572,7 +572,7 @@ func TestEditingTimeline_CarriesTheStampedOutputContract(t *testing.T) {
 	if len(opaque.Overlays) != 1 {
 		t.Fatalf("expected 1 overlay span, got %d", len(opaque.Overlays))
 	}
-	if want := capabilityoverlay.DefaultOverlayContractNoAlpha.ID; opaque.Overlays[0].MediaContract != want {
+	if want := capmodel.DefaultOverlayContractNoAlpha.ID; opaque.Overlays[0].MediaContract != want {
 		t.Fatalf("video-only overlay span contract = %q, want %q", opaque.Overlays[0].MediaContract, want)
 	}
 
@@ -580,7 +580,7 @@ func TestEditingTimeline_CarriesTheStampedOutputContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildEditingTimeline (unprofiled plan) failed: %v", err)
 	}
-	if want := capabilityoverlay.DefaultOverlayContractV1.ID; alpha.Overlays[0].MediaContract != want {
+	if want := capmodel.DefaultOverlayContractV1.ID; alpha.Overlays[0].MediaContract != want {
 		t.Fatalf("unprofiled overlay span contract = %q, want %q", alpha.Overlays[0].MediaContract, want)
 	}
 }

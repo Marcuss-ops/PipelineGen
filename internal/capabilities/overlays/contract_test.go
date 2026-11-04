@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -13,15 +14,15 @@ import (
 // overlay-plan.v1 wire. The in-memory plan keeps it for the document/editing
 // projections.
 func TestOverlayPlanContract_EntityRefNotSerialized(t *testing.T) {
-	plan := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "plan-001", VideoID: "video-001",
 		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
-		Items: []OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "overlay-scene-0-tim-cook", SceneID: "scene-0",
-			EntityID: "ent_abc123", Kind: string(KindEntityCard),
+			EntityID: "ent_abc123", Kind: string(capmodel.KindEntityCard),
 			StartMs: 0, EndMs: 200, TemplateID: "person_default", Text: "Tim Cook",
-			EntityRef: &OverlayEntityRef{
+			EntityRef: &capmodel.OverlayEntityRef{
 				EntityID: "ent_abc123", Type: "PERSON", Name: "Tim Cook", SurfaceText: "Tim Cook",
 			},
 		}},
@@ -48,11 +49,11 @@ func TestOverlayPlanContract_EntityRefNotSerialized(t *testing.T) {
 // JSON; the value space is opaque (resolved by the preset registry
 // downstream — never validated against a local table here).
 func TestOverlayPlanContract_PresetIDSerialized(t *testing.T) {
-	plan := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "plan-002", VideoID: "video-002",
 		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
-		Items: []OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "ov_001", StartMs: 1500, EndMs: 3700,
 			TemplateID: "IMPORTANT_PHRASE", PresetID: "phrase_default",
 			Text: "QUESTO CAMBIA TUTTO",
@@ -75,20 +76,20 @@ func TestOverlayPlanContract_PresetIDSerialized(t *testing.T) {
 // an entity_ref must carry entity_id, type and name — a partial ref is
 // rejected instead of reaching RenderingGen incomplete.
 func TestOverlayPlanContract_EntityRefValidation(t *testing.T) {
-	base := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
+	base := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "plan-003", VideoID: "video-003",
 		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
-		Items: []OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "ov_001", StartMs: 0, EndMs: 200, TemplateID: "person_default", Text: "Tim Cook",
 		}},
 	}
 	partial := base
-	partial.Items[0].EntityRef = &OverlayEntityRef{EntityID: "ent_x", Type: "PERSON"} // missing name
+	partial.Items[0].EntityRef = &capmodel.OverlayEntityRef{EntityID: "ent_x", Type: "PERSON"} // missing name
 	require.Error(t, partial.Validate(), "entity_ref without name must be rejected")
 
 	partial = base
-	partial.Items[0].EntityRef = &OverlayEntityRef{Type: "PERSON", Name: "Tim Cook"} // missing entity_id
+	partial.Items[0].EntityRef = &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Tim Cook"} // missing entity_id
 	require.Error(t, partial.Validate(), "entity_ref without entity_id must be rejected")
 }
 
@@ -97,10 +98,10 @@ func TestOverlayPlanContract_EntityRefValidation(t *testing.T) {
 // same render key and fingerprint as before the contract existed — the new
 // fields are omitempty, so legacy plans are byte-identical.
 func TestOverlayPlanContract_PresetDoesNotChangeLegacyRenderKey(t *testing.T) {
-	plan := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "p", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
-		Items: []OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "o", TemplateID: "entity-card@1", StartMs: 10, EndMs: 20,
 			Text: "Ada",
 		}},
@@ -124,18 +125,18 @@ func TestOverlayPlanContract_PresetDoesNotChangeLegacyRenderKey(t *testing.T) {
 // (same template/text/assets) share the same render key even with different
 // entity refs — the ref never invalidates the cache.
 func TestOverlayPlanContract_EntityRefNotInRenderKey(t *testing.T) {
-	plan := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "p", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
 	}
-	a := OverlayItem{
+	a := capmodel.OverlayItem{
 		ID: "o1", TemplateID: "person_default", StartMs: 0, EndMs: 200, Text: "Tim Cook",
-		EntityRef: &OverlayEntityRef{EntityID: "ent_tim", Type: "PERSON", Name: "Tim Cook"},
+		EntityRef: &capmodel.OverlayEntityRef{EntityID: "ent_tim", Type: "PERSON", Name: "Tim Cook"},
 	}
-	b := OverlayItem{
+	b := capmodel.OverlayItem{
 		ID: "o2", TemplateID: "person_default", StartMs: 0, EndMs: 200, Text: "Tim Cook",
-		EntityRef: &OverlayEntityRef{EntityID: "ent_other", Type: "PERSON", Name: "Tim Cook"},
+		EntityRef: &capmodel.OverlayEntityRef{EntityID: "ent_other", Type: "PERSON", Name: "Tim Cook"},
 	}
-	require.Equal(t, RenderKey(plan, a), RenderKey(plan, b),
+	require.Equal(t, capmodel.RenderKey(plan, a), capmodel.RenderKey(plan, b),
 		"entity_ref is identity metadata and must not change the render key")
 }

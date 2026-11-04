@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 )
@@ -9,13 +10,13 @@ import (
 // chooses the highest-priority unique phrases up to the default cap, and
 // retains the input ordering among admitted items. Ties preserve the original
 // order. Non-phrase items are copied through unchanged.
-func ApplyPhraseOverlayBudget(items []OverlayItem) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyPhraseOverlayBudget(items []capmodel.OverlayItem) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	return ApplyPhraseOverlayBudgetWithLimit(items, MaxPhraseOverlaysPerRun)
 }
 
 // ApplyPhraseOverlayBudgetWithLimit is ApplyPhraseOverlayBudget with a
 // caller-selected phrase ceiling. phraseLimit <= 0 keeps the default ceiling.
-func ApplyPhraseOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]OverlayItem, PhraseOverlayBudget) {
+func ApplyPhraseOverlayBudgetWithLimit(items []capmodel.OverlayItem, phraseLimit int) ([]capmodel.OverlayItem, PhraseOverlayBudget) {
 	limit := EffectivePhraseOverlayLimit(phraseLimit)
 	phraseIndices := make([]int, 0, len(items))
 	bestByText := make(map[string]int)
@@ -28,7 +29,7 @@ func ApplyPhraseOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]
 			continue
 		}
 		if existing, ok := bestByText[key]; ok {
-			if overlayItemPriority(item) > overlayItemPriority(items[existing]) {
+			if itemPriority(item) > itemPriority(items[existing]) {
 				bestByText[key] = i
 			}
 			continue
@@ -40,7 +41,7 @@ func ApplyPhraseOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]
 	}
 	sort.SliceStable(phraseIndices, func(i, j int) bool {
 		left, right := phraseIndices[i], phraseIndices[j]
-		if lp, rp := overlayItemPriority(items[left]), overlayItemPriority(items[right]); lp != rp {
+		if lp, rp := itemPriority(items[left]), itemPriority(items[right]); lp != rp {
 			return lp > rp
 		}
 		return left < right
@@ -52,7 +53,7 @@ func ApplyPhraseOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]
 	for _, index := range phraseIndices {
 		keep[index] = struct{}{}
 	}
-	out := make([]OverlayItem, 0, len(items))
+	out := make([]capmodel.OverlayItem, 0, len(items))
 	seenPhraseText := make(map[string]struct{}, len(bestByText))
 	for i, item := range items {
 		if item.Kind != "text_phrase" {
@@ -74,7 +75,7 @@ func ApplyPhraseOverlayBudgetWithLimit(items []OverlayItem, phraseLimit int) ([]
 
 // MeasurePhraseOverlayBudgetWithLimit is MeasurePhraseOverlayBudget with a
 // caller-selected ceiling. requested <= 0 keeps the default ceiling.
-func MeasurePhraseOverlayBudgetWithLimit(items []OverlayItem, requested int) PhraseOverlayBudget {
+func MeasurePhraseOverlayBudgetWithLimit(items []capmodel.OverlayItem, requested int) PhraseOverlayBudget {
 	budget := PhraseOverlayBudget{Requested: EffectivePhraseOverlayLimit(requested)}
 	seen := make(map[string]struct{})
 	add := func(text string) {
@@ -86,10 +87,10 @@ func MeasurePhraseOverlayBudgetWithLimit(items []OverlayItem, requested int) Phr
 		switch item.Kind {
 		case "text_phrase":
 			add(item.Text)
-		case KindPhraseChain:
+		case capmodel.KindPhraseChain:
 			// Fused phrase chains carry their phrases per segment; count them
 			// so the reported materialization matches the rendered plan.
-			if segments, ok := DecodeChainSegments(item.Params); ok {
+			if segments, ok := capmodel.DecodeChainSegments(item.Params); ok {
 				for _, segment := range segments {
 					add(segment.Text)
 				}

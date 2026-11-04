@@ -9,7 +9,7 @@ import (
 
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -229,7 +229,7 @@ func mapPlaceCandidateIgnoredWords(registry *linguistics.LexiconRegistry, langua
 		ignored["infine"] = struct{}{}
 		// These common Italian discourse words were misclassified as place
 		// entities and geocoded to unrelated homonymous settlements.
-		for _, word := range []string{"tale", "tali", "ciò", "cio", "egli", "ella", "esso", "essa", "essi", "esse", "lui", "lei", "loro", "questo", "questa", "questi", "queste", "quello", "quella", "quelli", "quelle", "primo", "prima", "secondo", "seconda", "solo", "usare", "dunque", "inoltre", "durante", "corte", "procura", "cassazione", "stasi", "sempio", "poggi", "alberto", "andrea", "chiara"} {
+		for _, word := range []string{"tale", "tali", "ciò", "cio", "egli", "ella", "esso", "essa", "essi", "esse", "lui", "lei", "loro", "questo", "questa", "questi", "queste", "quello", "quella", "quelli", "quelle", "primo", "prima", "secondo", "seconda", "solo", "usare", "dunque", "inoltre", "durante", "corte", "procura", "cassazione", "tribunale", "stasi", "sempio", "poggi", "alberto", "andrea", "chiara"} {
 			ignored[word] = struct{}{}
 		}
 	}
@@ -246,9 +246,11 @@ func ignoredMapCandidate(ignored map[string]struct{}, candidate, language string
 		return true
 	}
 	// A multiword extraction can bypass the exact-word discourse list even
-	// though one of its tokens is a known person name.
+	// though one of its tokens is a known institution or person name. The
+	// article is not part of the name: "La Cassazione" is the court, not a
+	// geocodable place, and "Suprema Corte" is the same office.
 	if strings.EqualFold(language, "it") || strings.HasPrefix(strings.ToLower(language), "it-") {
-		for _, word := range []string{"stasi", "sempio", "poggi", "alberto", "andrea", "chiara"} {
+		for _, word := range []string{"corte", "cassazione", "procura", "tribunale", "stasi", "sempio", "poggi", "alberto", "andrea", "chiara"} {
 			if strings.Contains(" "+key+" ", " "+word+" ") {
 				return true
 			}

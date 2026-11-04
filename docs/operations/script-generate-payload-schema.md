@@ -47,9 +47,10 @@ lives **inside an item**; there are no top-level shortcut keys.
       "map_camera_animation": "slow_approach",
       "map_label_animation": "none",
       "map_animation": "random",
-      "animation_policies": [
-        {"target":"important_phrase","group_id":"scene-1","motion_id":"phrase_apple_clean_07_slide_up_soft"},
-        {"target":"image","group_id":"scene-1","subgroup_id":"hero","motion_id":"image_focus_reveal"}
+      "animation_contract_version": 2,
+      "animation_directives": [
+        {"scope":"element","scene_ref":"scene-1","target":"important_phrase","mode":"exact","motion_id":"phrase_apple_clean_07_slide_up_soft"},
+        {"scope":"element","scene_ref":"scene-1","target":"image","mode":"prefer","motion_id":"image_focus_reveal"}
       ],
       "random_light_leak_on_clip_start": true,
       "phrase_motions": ["phrase_apple_clean_07_slide_up_soft"],
@@ -85,7 +86,8 @@ composition styles only supply layout, motion, and fallback color.
   `map_type`, `map_camera_animation`, `map_label_animation`,
   `map_animation`,
   `phrase_motions`, `image_motions`, `entity_image_motions`,
-  `phrase_motion_family`, `animation_policies`,
+  `phrase_motion_family`, `animation_contract_version`,
+  `animation_directives`, `animation_catalog_digest`,
   `random_light_leak_on_clip_start`, `max_phrase_overlays`,
   `video_metadata`, `intro`, `outro`) is optional unless its own
   validator says otherwise (`source` is required).
@@ -188,38 +190,33 @@ Chains retain each segment's own text/image/map content and selected motion;
 `animation_counts.chain_disabled: 1` opts out. RenderingGen lowers the chain as
 one overlay render instead of one MP4 per member.
 
-Use `animation_policies` when one motion should be chosen explicitly for each
-animation group (or subgroup), instead of the planner's normal per-overlay
-rotation. Each entry has `target` (`important_phrase`, `image`, `caption`,
-`date`, or `metric`),
-`group_id`, optional `subgroup_id`, optional `motion_id`, and optional
-`motion_params`. Omit `motion_id` (or provide it as an empty string) to keep the
-group declaration but have the runtime choose one random certified motion for
-all matching items; this choice is seeded and stable on retry. `motion_params`
-requires an explicit `motion_id`. The group selector matches a producer-supplied
-group ID, or a `scene_id` when no explicit group ID exists; an item's ID is the
-default subgroup, and image composite children may specify their own subgroup
-IDs. A subgroup policy takes precedence over a group policy; a matching group
-policy applies to every compatible item in that group. Explicit item/child
-motion IDs remain higher priority. Groups not mentioned by this payload retain
-their existing automatic per-overlay rotation. Motion IDs must be certified for
-their target; `date` applies to `TIMELINE_DATE_CARD` and `metric` to
-`METRIC_STAT_CARD`. Duplicate selectors and invalid timing params fail closed.
+Use `animation_directives` with `animation_contract_version: 2` for the
+canonical typed selection contract. Each entry requires `scope`, `scene_ref`
+and `target` (`important_phrase`, `entity_image`, `caption`, `image`,
+`map_camera`, `map_composition`, `map_label`, `date`, or `metric`); `mode` is
+`auto`, `prefer`, or `exact`, and `exact` requires a non-empty `motion_id`.
+`family` and `params` are optional. The compile boundary validates the
+directives fail-closed and stamps the resolution provenance; an exact choice is
+never silently replaced. The legacy `animation_policies` field is retired: a
+non-empty value is rejected with an explicit error, so callers must migrate.
+Historical plans that already carry the legacy wire remain readable by
+RenderingGen.
 
 `random_light_leak_on_clip_start: true` adds a short certified light-leak
 overlay at the beginning of each real video clip (synthetic freeze tails are
 skipped). Light leaks on image overlays can be selected with an `image` motion
-policy and a `lightleak_*` motion ID. Pair clip-start accents with
+directive and a `lightleak_*` motion ID. Pair clip-start accents with
 `audio.random_sfx_on_clip_start` for a deterministic whoosh, or use explicit
 `audio.sound_effects` to place a chosen SFX; image overlay SFX remain controlled
 by `audio.random_sfx_on_image_overlay`.
 
 ```json
 {
-  "animation_policies": [
-    {"target":"important_phrase", "group_id":"scene-1", "motion_id":"phrase_apple_clean_07_slide_up_soft"},
-    {"target":"image", "group_id":"people", "subgroup_id":"hero", "motion_id":"image_focus_reveal"},
-    {"target":"caption", "group_id":"people"}
+  "animation_contract_version": 2,
+  "animation_directives": [
+    {"scope":"element", "scene_ref":"scene-1", "target":"important_phrase", "mode":"exact", "motion_id":"phrase_apple_clean_07_slide_up_soft"},
+    {"scope":"element", "scene_ref":"scene-1", "target":"image", "mode":"prefer", "motion_id":"image_focus_reveal"},
+    {"scope":"element", "scene_ref":"scene-1", "target":"caption", "mode":"auto"}
   ]
 }
 ```

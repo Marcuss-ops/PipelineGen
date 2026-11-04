@@ -1,18 +1,17 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // packedSuperBatchPlan has six disjoint two-second items across three scenes:
 // two micro-batches per scene, six in total. With three lanes the packed
 // grouping must produce three balanced bins, never drop or duplicate an item.
-func packedSuperBatchPlan() capoverlay.OverlayPlan {
-	return capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+func packedSuperBatchPlan() capmodel.OverlayPlan {
+	return capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "test-packed-superbatch",
 		VideoID:       "test-packed-superbatch",
 		Width:         1920,
@@ -20,7 +19,7 @@ func packedSuperBatchPlan() capoverlay.OverlayPlan {
 		FPSNum:        30,
 		FPSDen:        1,
 		DurationMS:    100000,
-		Items: []capoverlay.OverlayItem{
+		Items: []capmodel.OverlayItem{
 			{ID: "s1a", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 0, DurationUS: 2_000_000},
 			{ID: "s1b", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 2_000_000, DurationUS: 2_000_000},
 			{ID: "s2a", SceneID: "scene-02", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 4_000_000, DurationUS: 2_000_000},
@@ -106,7 +105,7 @@ func TestPackManifestGroupsIntoSuperBatchesKeepsOverlapTogether(t *testing.T) {
 func TestPackManifestGroupsIntoSuperBatchesFallsBackOnUnsupportedPlan(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_PACK_SUPERBATCH", "enabled")
 	plan := packedSuperBatchPlan()
-	plan.Background = &capoverlay.OverlayBackground{Kind: "video", AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "bg", URL: "file:///bg.mp4"}}}
+	plan.Background = &capmodel.OverlayBackground{Kind: "video", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "bg", URL: "file:///bg.mp4"}}}
 	candidates := overlayRenderableCandidates(plan)
 	micro, err := groupManifestCandidatesIntoMicroBatches(plan, candidates)
 	if err != nil {

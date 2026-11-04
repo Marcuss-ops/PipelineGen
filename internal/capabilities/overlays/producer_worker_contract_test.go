@@ -26,6 +26,7 @@ package overlays
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -68,7 +69,7 @@ func loadOverlayPlanItemSchema(t *testing.T) map[string]any {
 // on-wire names and producer-only (`json:"-"`) names.
 func producerWireFields(t *testing.T) (wire []string, producerOnly []string) {
 	t.Helper()
-	typ := reflect.TypeOf(OverlayItem{})
+	typ := reflect.TypeOf(capmodel.OverlayItem{})
 	for i := 0; i < typ.NumField(); i++ {
 		tag := typ.Field(i).Tag.Get("json")
 		if tag == "" {
@@ -113,10 +114,10 @@ func TestOverlayItemWireFieldsAreDeclaredByWorkerSchema(t *testing.T) {
 }
 
 func TestOverlayItemProducerOnlyFieldsNeverSerialize(t *testing.T) {
-	item := OverlayItem{
+	item := capmodel.OverlayItem{
 		ID: "wire-check", SceneID: "scene-0", Kind: "shape", TemplateID: "SHAPE",
 		StartMs: 0, EndMs: 5000, StartUS: 0, DurationUS: 5_000_000,
-		EntityRef: &OverlayEntityRef{EntityID: "ent_1", Type: "PERSON", Name: "Ada Lovelace"},
+		EntityRef: &capmodel.OverlayEntityRef{EntityID: "ent_1", Type: "PERSON", Name: "Ada Lovelace"},
 	}
 	raw, err := json.Marshal(item)
 	require.NoError(t, err)
@@ -160,7 +161,7 @@ func TestProducerSchemaVersionMatchesSharedWorkerSchema(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(raw, &schema))
 	require.Contains(t, schema.ID, ".v1.")
-	require.Equal(t, "renderinggen.overlay-plan.v1", SchemaVersionPlan)
+	require.Equal(t, "renderinggen.overlay-plan.v1", capmodel.SchemaVersionPlan)
 	require.Contains(t, schema.ID, "overlay-plan.v1.schema.json")
 }
 
@@ -178,7 +179,7 @@ func TestChainSegmentFieldsMatchRenderingGenMirror(t *testing.T) {
 	for _, match := range tag.FindAllSubmatch(raw, -1) {
 		workerFields[string(match[1])] = true
 	}
-	typ := reflect.TypeOf(ChainSegment{})
+	typ := reflect.TypeOf(capmodel.ChainSegment{})
 	for i := 0; i < typ.NumField(); i++ {
 		name := strings.Split(typ.Field(i).Tag.Get("json"), ",")[0]
 		if name == "" || name == "-" {

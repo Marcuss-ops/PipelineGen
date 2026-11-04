@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -14,9 +15,9 @@ import (
 // hard phrase limit (20), the map run ceiling (3) and the number ceiling (5)
 // clamped the same candidate set to 36–41 items.
 func TestGoldenThroughputMixBudgetAdmitsOneHundredItems(t *testing.T) {
-	items := make([]OverlayItem, 0, 100)
+	items := make([]capmodel.OverlayItem, 0, 100)
 	slot := 0
-	next := func(item OverlayItem) OverlayItem {
+	next := func(item capmodel.OverlayItem) capmodel.OverlayItem {
 		// Distinct non-overlapping word-aligned windows: phrase lane
 		// admission drops same-lane overlaps.
 		item.StartUS = int64(slot) * 10_000
@@ -31,34 +32,34 @@ func TestGoldenThroughputMixBudgetAdmitsOneHundredItems(t *testing.T) {
 		return item
 	}
 	for i := 0; i < 25; i++ {
-		items = append(items, next(OverlayItem{
+		items = append(items, next(capmodel.OverlayItem{
 			ID: fmt.Sprintf("short-%02d", i), SceneID: fmt.Sprintf("scene-%02d", i),
 			Kind: "text_phrase", Text: fmt.Sprintf("short phrase %02d alpha", i),
 		}))
 	}
 	for i := 0; i < 25; i++ {
-		items = append(items, next(OverlayItem{
+		items = append(items, next(capmodel.OverlayItem{
 			ID: fmt.Sprintf("long-%02d", i), SceneID: fmt.Sprintf("scene-%02d", i),
 			Kind: "text_phrase", Text: fmt.Sprintf("long phrase %02d alpha bravo charlie delta echo", i),
 		}))
 	}
 	for i := 0; i < 30; i++ {
-		items = append(items, next(OverlayItem{
+		items = append(items, next(capmodel.OverlayItem{
 			ID: fmt.Sprintf("image-%02d", i), SceneID: fmt.Sprintf("image-scene-%02d", i),
 			Kind:      "entity_image",
-			AssetRefs: []OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%02d", i), SHA256: fmt.Sprintf("%02x", i) + strings.Repeat("a", 62)}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%02d", i), SHA256: fmt.Sprintf("%02x", i) + strings.Repeat("a", 62)}},
 		}))
 	}
 	for i := 0; i < 10; i++ {
-		items = append(items, next(OverlayItem{
+		items = append(items, next(capmodel.OverlayItem{
 			ID: fmt.Sprintf("number-%02d", i), SceneID: fmt.Sprintf("number-scene-%02d", i),
 			Kind: "number", Text: fmt.Sprintf("12 march 20%02d", i),
 		}))
 	}
 	for i := 0; i < 10; i++ {
-		items = append(items, next(OverlayItem{
+		items = append(items, next(capmodel.OverlayItem{
 			ID: fmt.Sprintf("map-%02d", i), SceneID: fmt.Sprintf("map-scene-%02d", i),
-			Kind: "map", Map: &MapOverlay{Provider: "local", SourceID: fmt.Sprintf("plate-%02d", i)},
+			Kind: "map", Map: &capmodel.MapOverlay{Provider: "local", SourceID: fmt.Sprintf("plate-%02d", i)},
 		}))
 	}
 

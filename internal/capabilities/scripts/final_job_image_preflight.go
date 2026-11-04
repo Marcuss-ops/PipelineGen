@@ -2,11 +2,10 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"sort"
 	"strings"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // final_job_image_preflight.go: the pre-enqueue entity-image gate (the r10
@@ -26,7 +25,7 @@ import (
 // finalJobImageVerifiedRef reports whether one asset reference is a
 // verified, renderable identity: a 64-hex content address plus a locator
 // (Drive/public URL or a usable local path) the worker can actually fetch.
-func finalJobImageVerifiedRef(ref capoverlay.OverlayAssetRef) bool {
+func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
 	sha := strings.TrimSpace(ref.SHA256)
 	if len(sha) != 64 {
 		return false
@@ -42,7 +41,7 @@ func finalJobImageVerifiedRef(ref capoverlay.OverlayAssetRef) bool {
 	return usableLocalAssetPath(ref.LocalPath)
 }
 
-func anyFinalJobImageVerifiedRef(refs []capoverlay.OverlayAssetRef) bool {
+func anyFinalJobImageVerifiedRef(refs []capmodel.OverlayAssetRef) bool {
 	for _, ref := range refs {
 		if finalJobImageVerifiedRef(ref) {
 			return true
@@ -59,7 +58,7 @@ func anyFinalJobImageVerifiedRef(refs []capoverlay.OverlayAssetRef) bool {
 //     for every layer: one unsupported layer would render a partial card.
 //     The composite's structural multiplicity (>=2 layers, >=2 refs) is
 //     already the model validator's contract; this checks content identity.
-func finalJobImageVerifiedItem(item capoverlay.OverlayItem) bool {
+func finalJobImageVerifiedItem(item capmodel.OverlayItem) bool {
 	if len(item.ImageLayers) > 0 {
 		if len(item.AssetRefs) < len(item.ImageLayers) {
 			return false
@@ -140,11 +139,11 @@ func finalJobEntityImageGate(audit *OverlayAudit, imageRequested bool) error {
 	return fmt.Errorf("final_job preflight: %d of %d selected image entities have no verified asset (%s); refusing text-only cards for requested images", info.Missing, info.Selected, strings.Join(reasons, ", "))
 }
 
-func finalJobImagePreflight(items []capoverlay.OverlayItem, clipScenes map[string]struct{}, imageRequested bool) error {
+func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]struct{}, imageRequested bool) error {
 	expected, unverified := 0, 0
 	firstUnverified := ""
 	for _, item := range items {
-		if item.Kind != string(capoverlay.KindEntityImage) {
+		if item.Kind != string(capmodel.KindEntityImage) {
 			continue
 		}
 		if _, dropped := clipScenes[strings.TrimSpace(item.SceneID)]; dropped {

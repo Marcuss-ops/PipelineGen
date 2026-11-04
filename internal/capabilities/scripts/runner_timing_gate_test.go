@@ -11,6 +11,7 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,7 +21,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // blockingTimingVoiceoverGenerator blocks every TTS call until released, then
@@ -141,10 +141,10 @@ func TestCanonicalTimeline_WaitsForTTS(t *testing.T) {
 // submits to overlay.render.
 type recordingOverlayRenderEnqueuer struct {
 	mu   sync.Mutex
-	plan *capabilityoverlay.OverlayPlan
+	plan *capmodel.OverlayPlan
 }
 
-func (e *recordingOverlayRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (e *recordingOverlayRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.mu.Lock()
 	cp := plan
 	e.plan = &cp
@@ -152,7 +152,7 @@ func (e *recordingOverlayRenderEnqueuer) EnqueueChrononPlan(_ context.Context, p
 	return RenderReference{JobID: plan.PlanID, Status: "COMPLETED"}, nil
 }
 
-func (e *recordingOverlayRenderEnqueuer) captured() *capabilityoverlay.OverlayPlan {
+func (e *recordingOverlayRenderEnqueuer) captured() *capmodel.OverlayPlan {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.plan == nil {
@@ -180,7 +180,7 @@ func TestOverlayRender_WaitsForFrozenTimingNotPrepare(t *testing.T) {
 	renderEnq := &recordingOverlayRenderEnqueuer{}
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetLocalizedRenderEnqueuer(&recordingLocalizedRenderEnqueuer{})
 	// Deliberately NO overlay.prepare enqueuer: render must not wait for it.
 	runner.SetOverlayRenderEnqueuer(renderEnq)
@@ -236,7 +236,7 @@ func TestOverlayRender_DisabledKeepsSemanticPlanWithoutEnqueue(t *testing.T) {
 	renderEnq := &recordingOverlayRenderEnqueuer{}
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayRenderEnqueuer(renderEnq)
 
 	req := defaultTestRequest()

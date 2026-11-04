@@ -1,18 +1,17 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // basePackedTestPlan mirrors manifestTestPlan but with items whose literal
 // windows carry large empty spans: item-01 [10s,12s), item-02 [30s,32s),
 // item-03 [50s,52s). Packed, the composition covers 6 seconds total instead
 // of 52.
-func basePackedTestPlan() capoverlay.OverlayPlan {
-	return capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+func basePackedTestPlan() capmodel.OverlayPlan {
+	return capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        "test-packed-timeline",
 		VideoID:       "test-packed-timeline",
 		Width:         1920,
@@ -20,7 +19,7 @@ func basePackedTestPlan() capoverlay.OverlayPlan {
 		FPSNum:        30,
 		FPSDen:        1,
 		DurationMS:    100000,
-		Items: []capoverlay.OverlayItem{
+		Items: []capmodel.OverlayItem{
 			{ID: "item-01", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 10_000_000, DurationUS: 2_000_000},
 			{ID: "item-02", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 30_000_000, DurationUS: 2_000_000},
 			{ID: "item-03", SceneID: "scene-02", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 50_000_000, DurationUS: 2_000_000},
@@ -40,19 +39,19 @@ func TestPlanSupportsPackedComposition(t *testing.T) {
 	}
 
 	colorPlan := plan
-	colorPlan.Background = &capoverlay.OverlayBackground{Kind: "color"}
+	colorPlan.Background = &capmodel.OverlayBackground{Kind: "color"}
 	if !planSupportsPackedComposition(colorPlan) {
 		t.Fatal("a color background covers any canvas span and must not block packing")
 	}
 
 	videoPlan := plan
-	videoPlan.Background = &capoverlay.OverlayBackground{Kind: "video"}
+	videoPlan.Background = &capmodel.OverlayBackground{Kind: "video"}
 	if planSupportsPackedComposition(videoPlan) {
 		t.Fatal("a video background is aligned to plan time and must never pack")
 	}
 
 	sourcePlan := plan
-	sourcePlan.Source = &capoverlay.OverlaySource{AssetID: "asset-01", SHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+	sourcePlan.Source = &capmodel.OverlaySource{AssetID: "asset-01", SHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
 	if planSupportsPackedComposition(sourcePlan) {
 		t.Fatal("an opaque source composition is aligned to plan time and must never pack")
 	}
@@ -97,7 +96,7 @@ func TestComputePackedPlacementsUnion(t *testing.T) {
 // with them the rendered z-order) survive the packing unchanged.
 func TestComputePackedPlacementsMergesOverlaps(t *testing.T) {
 	plan := basePackedTestPlan()
-	plan.Items = []capoverlay.OverlayItem{
+	plan.Items = []capmodel.OverlayItem{
 		{ID: "a", SceneID: "s1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 1_000_000, DurationUS: 2_000_000}, // [1,3)
 		{ID: "b", SceneID: "s1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 2_500_000, DurationUS: 2_000_000}, // [2.5,4.5) overlaps a
 		{ID: "c", SceneID: "s1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 9_000_000, DurationUS: 1_000_000}, // [9,10) disjoint
@@ -141,8 +140,8 @@ func TestStampPackedPlacementsFailsClosed(t *testing.T) {
 		"item-02": "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
 	}
 	works := []manifestEntryWork{
-		{Entry: capoverlay.OverlayManifestEntry{ItemID: "item-01", Track: 0, InUS: 10_000_000, OutUS: 12_000_000, ContentHash: contents["item-01"]}},
-		{Entry: capoverlay.OverlayManifestEntry{ItemID: "item-02", Track: 0, InUS: 30_000_000, OutUS: 32_000_000, ContentHash: contents["item-02"]}},
+		{Entry: capmodel.OverlayManifestEntry{ItemID: "item-01", Track: 0, InUS: 10_000_000, OutUS: 12_000_000, ContentHash: contents["item-01"]}},
+		{Entry: capmodel.OverlayManifestEntry{ItemID: "item-02", Track: 0, InUS: 30_000_000, OutUS: 32_000_000, ContentHash: contents["item-02"]}},
 	}
 	err := stampPackedPlacements(works, map[string]packedPlacement{"item-01": {ArtifactInUS: 0, ArtifactOutUS: 2_000_000}})
 	if err == nil {
@@ -226,11 +225,11 @@ func TestPackedFusedOverlayBatchPlanFailsWithoutPlacement(t *testing.T) {
 // validation of the packed fields: the pair must be set together, ordered,
 // and never exceed the entry's literal window.
 func TestPackedManifestEntryRejectsBadArtifactWindows(t *testing.T) {
-	base := capoverlay.OverlayManifestEntry{
+	base := capmodel.OverlayManifestEntry{
 		ItemID: "item-01", Track: 0, InUS: 10_000_000, OutUS: 12_000_000,
 		ContentHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
-	onlyIn := func() capoverlay.OverlayManifestEntry {
+	onlyIn := func() capmodel.OverlayManifestEntry {
 		entry := base
 		in := int64(0)
 		entry.ArtifactInUS = &in
@@ -239,7 +238,7 @@ func TestPackedManifestEntryRejectsBadArtifactWindows(t *testing.T) {
 	if onlyIn().Validate() == nil {
 		t.Fatal("artifact_in_us without artifact_out_us must be rejected")
 	}
-	negative := func() capoverlay.OverlayManifestEntry {
+	negative := func() capmodel.OverlayManifestEntry {
 		entry := base
 		in, out := int64(-1), int64(1_000_000)
 		entry.ArtifactInUS, entry.ArtifactOutUS = &in, &out
@@ -248,7 +247,7 @@ func TestPackedManifestEntryRejectsBadArtifactWindows(t *testing.T) {
 	if negative().Validate() == nil {
 		t.Fatal("negative artifact_in_us must be rejected")
 	}
-	inverted := func() capoverlay.OverlayManifestEntry {
+	inverted := func() capmodel.OverlayManifestEntry {
 		entry := base
 		in, out := int64(2_000_000), int64(0)
 		entry.ArtifactInUS, entry.ArtifactOutUS = &in, &out
@@ -257,7 +256,7 @@ func TestPackedManifestEntryRejectsBadArtifactWindows(t *testing.T) {
 	if inverted().Validate() == nil {
 		t.Fatal("artifact_out_us must be greater than artifact_in_us")
 	}
-	tooLong := func() capoverlay.OverlayManifestEntry {
+	tooLong := func() capmodel.OverlayManifestEntry {
 		entry := base
 		in, out := int64(0), int64(3_000_000)
 		entry.ArtifactInUS, entry.ArtifactOutUS = &in, &out
@@ -266,7 +265,7 @@ func TestPackedManifestEntryRejectsBadArtifactWindows(t *testing.T) {
 	if tooLong().Validate() == nil {
 		t.Fatal("a packed window longer than the entry window must be rejected")
 	}
-	valid := func() capoverlay.OverlayManifestEntry {
+	valid := func() capmodel.OverlayManifestEntry {
 		entry := base
 		in, out := int64(0), int64(2_000_000)
 		entry.ArtifactInUS, entry.ArtifactOutUS = &in, &out

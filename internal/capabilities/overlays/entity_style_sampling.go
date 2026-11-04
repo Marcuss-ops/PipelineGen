@@ -13,6 +13,8 @@
 // camera compositions included).
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "strings"
 
 // IdentityEntityStyleSelector is the certified entity_style_id value stamped
@@ -110,7 +112,7 @@ func IsValidEntityStyleSelector(styleID string) bool {
 // that carries BOTH the required content (a portrait asset and a name
 // caption): RenderingGen refuses entity_style_id on an item without an image
 // and entity_caption, so the stamp keeps the same fail-closed precondition.
-func stampEntityStyle(item *OverlayItem) {
+func stampEntityStyle(item *capmodel.OverlayItem) {
 	if item == nil {
 		return
 	}
@@ -124,7 +126,7 @@ func stampEntityStyle(item *OverlayItem) {
 // generated selector on every entity-image item that satisfies RenderingGen's
 // style precondition (portrait + entity caption), leaving text-only and map
 // items untouched.
-func StampEntityStyle(items []OverlayItem) {
+func StampEntityStyle(items []capmodel.OverlayItem) {
 	for index := range items {
 		stampEntityStyle(&items[index])
 	}

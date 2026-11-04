@@ -5,7 +5,7 @@ import "strings"
 // Map composition families: the editorial look one composition draws. The
 // random draw is family-first, so one job varies across looks instead of
 // deepening one of them. These constants are the SINGLE spelling of the family
-// names: the resolver facade (scripts/overlay MapCompositionFamily) aliases
+// names: the typed resolver projection (map_composition.go) aliases
 // them and the classification below is the only switch.
 const (
 	MapFamilyLocationFocus = "location_focus"
@@ -34,7 +34,7 @@ type mapCompositionFamily struct {
 // MapCompositionFamilyOf classifies one certified composition id by the look
 // it draws (the family is not a registry field: the registry owns identity and
 // servability, this switch owns editorial grouping). The resolver facade
-// (scripts/overlay MapCompositionFamilyOf) wraps it, so planner and resolver
+// (map_composition.go MapCompositionFamilyKindOf) wraps it, so planner and
 // can never disagree about a family. Unknown ids stay in location_focus.
 func MapCompositionFamilyOf(id string) string {
 	switch strings.TrimSpace(id) {
@@ -52,7 +52,7 @@ func MapCompositionFamilyOf(id string) string {
 // showcases remain in the plugin archive and cannot be selected by the planner.
 //
 // This is the SINGLE ported-subset declaration: the resolver's random pool
-// (scripts/overlay MapCompositionRandomPool) and the backend capability
+// (map_composition.go MapCompositionRandomPool) and the backend capability
 // resolution project this same list.
 func PortedMapCompositions() []string {
 	return []string{

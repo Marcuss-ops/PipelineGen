@@ -3,15 +3,14 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 	"time"
 
-	"go.uber.org/zap"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"go.uber.org/zap"
 )
 
 // Bounded outcome vocabulary of the overlay render boundary. These are the
@@ -169,7 +168,7 @@ func (r *Runner) startFinalJobStockPrewarm(ctx context.Context, runID string, re
 // The plan-level preflight (finalJobSplitPreflight) admits only shapes whose
 // batches can certify, and a post-render certificate failure then fails closed
 // with the batch named instead of buying a second GPU pass.
-func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRequest, plan *capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRequest, plan *capmodel.OverlayPlan) (RenderReference, error) {
 	if plan == nil {
 		return RenderReference{}, nil
 	}
@@ -302,7 +301,7 @@ func pendingOverlayPlans(result *GenerateResult, req GenerateRequest) []language
 
 type languageOverlayPlan struct {
 	language Language
-	plan     *capabilityoverlay.OverlayPlan
+	plan     *capmodel.OverlayPlan
 }
 
 func (r *GenerateResult) overlayPlanLanguage() Language {

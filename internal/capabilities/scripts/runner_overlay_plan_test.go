@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 	"time"
@@ -47,9 +48,9 @@ func requireReviewName(t *testing.T, id, subjectSlug string, categories ...strin
 // overlayItemByText finds the single item of a kind carrying text. It is the
 // stable lookup now that compiled IDs are review names (motion-derived) rather
 // than planner content addresses.
-func overlayItemByText(t *testing.T, items []capabilityoverlay.OverlayItem, kind, text string) capabilityoverlay.OverlayItem {
+func overlayItemByText(t *testing.T, items []capmodel.OverlayItem, kind, text string) capmodel.OverlayItem {
 	t.Helper()
-	var found []capabilityoverlay.OverlayItem
+	var found []capmodel.OverlayItem
 	for _, item := range items {
 		if item.Kind == kind && item.Text == text {
 			found = append(found, item)
@@ -60,35 +61,35 @@ func overlayItemByText(t *testing.T, items []capabilityoverlay.OverlayItem, kind
 }
 
 func TestFreezeOverlayIntentsPromotesVerifiedEntityImageToImageOnly(t *testing.T) {
-	asset := capabilityoverlay.OverlayAssetRef{
+	asset := capmodel.OverlayAssetRef{
 		AssetID: "portrait-sha", URL: "https://images.example.test/jordan.jpg",
 		SHA256:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		MediaType: "image/jpeg",
 	}
-	intents := []capabilityoverlay.OverlayIntent{{
-		Version:  capabilityoverlay.OverlayIntentVersion,
+	intents := []capmodel.OverlayIntent{{
+		Version:  capmodel.OverlayIntentVersion,
 		IntentID: "intent-scene-0-michael-jordan", SceneID: "scene-0",
-		Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan"},
-		Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
-		Payload: capabilityoverlay.IntentPayload{Name: "Michael Jordan"}, TimingState: capabilityoverlay.TimingStatePending,
+		Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan"},
+		Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+		Payload: capmodel.IntentPayload{Name: "Michael Jordan"}, TimingState: capmodel.TimingStatePending,
 	}}
-	items := []capabilityoverlay.OverlayItem{{
+	items := []capmodel.OverlayItem{{
 		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0", EntityID: frozenTestEntityID,
-		Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup",
+		Kind: string(capmodel.KindEntityImage), TemplateID: "image_popup",
 		StartMs: 100, EndMs: 5100, StartUS: 100000, DurationUS: 5000000,
-		PresetID: "image_fast_fade", AssetRefs: []capabilityoverlay.OverlayAssetRef{asset},
-		EntityRef: &capabilityoverlay.OverlayEntityRef{Name: "Michael Jordan"},
+		PresetID: "image_fast_fade", AssetRefs: []capmodel.OverlayAssetRef{asset},
+		EntityRef: &capmodel.OverlayEntityRef{Name: "Michael Jordan"},
 	}}
 
 	freezeOverlayIntents(intents, items)
 	got := intents[0]
-	if got.Kind != string(capabilityoverlay.KindEntityImage) || got.TemplateID != "image_popup" {
+	if got.Kind != string(capmodel.KindEntityImage) || got.TemplateID != "image_popup" {
 		t.Fatalf("resolved intent kind/template = %q/%q, want entity_image/image_popup", got.Kind, got.TemplateID)
 	}
 	if got.Payload.Name != "" || got.Payload.Text != "" {
 		t.Fatalf("image-only intent retained display text: %#v", got.Payload)
 	}
-	if got.TimingState != capabilityoverlay.TimingStateFrozen || len(got.AssetRefs) != 1 {
+	if got.TimingState != capmodel.TimingStateFrozen || len(got.AssetRefs) != 1 {
 		t.Fatalf("resolved image intent lost timing/assets: %#v", got)
 	}
 }
@@ -108,23 +109,23 @@ var frozenTestEntityID = capabilityentities.StableEntityID("PERSON", "Michael Jo
 func TestFreezeOverlayIntentsFreezesEveryCompositeEntityChild(t *testing.T) {
 	adaID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
 	graceID := capabilityentities.StableEntityID("PERSON", "Grace Hopper")
-	assetA := capabilityoverlay.OverlayAssetRef{AssetID: "ada", SHA256: strings.Repeat("a", 64)}
-	assetB := capabilityoverlay.OverlayAssetRef{AssetID: "grace", SHA256: strings.Repeat("b", 64)}
-	intents := []capabilityoverlay.OverlayIntent{
-		{Version: capabilityoverlay.OverlayIntentVersion, IntentID: "ada-intent", SceneID: "scene-0",
-			Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Ada Lovelace"},
-			Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
-			Payload: capabilityoverlay.IntentPayload{Name: "Ada Lovelace"}, TimingState: capabilityoverlay.TimingStatePending},
-		{Version: capabilityoverlay.OverlayIntentVersion, IntentID: "grace-intent", SceneID: "scene-0",
-			Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Grace Hopper"},
-			Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
-			Payload: capabilityoverlay.IntentPayload{Name: "Grace Hopper"}, TimingState: capabilityoverlay.TimingStatePending},
+	assetA := capmodel.OverlayAssetRef{AssetID: "ada", SHA256: strings.Repeat("a", 64)}
+	assetB := capmodel.OverlayAssetRef{AssetID: "grace", SHA256: strings.Repeat("b", 64)}
+	intents := []capmodel.OverlayIntent{
+		{Version: capmodel.OverlayIntentVersion, IntentID: "ada-intent", SceneID: "scene-0",
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Ada Lovelace"},
+			Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+			Payload: capmodel.IntentPayload{Name: "Ada Lovelace"}, TimingState: capmodel.TimingStatePending},
+		{Version: capmodel.OverlayIntentVersion, IntentID: "grace-intent", SceneID: "scene-0",
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Grace Hopper"},
+			Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+			Payload: capmodel.IntentPayload{Name: "Grace Hopper"}, TimingState: capmodel.TimingStatePending},
 	}
-	items := []capabilityoverlay.OverlayItem{{
-		ID: "ada+grace", SceneID: "scene-0", Kind: string(capabilityoverlay.KindEntityImage),
+	items := []capmodel.OverlayItem{{
+		ID: "ada+grace", SceneID: "scene-0", Kind: string(capmodel.KindEntityImage),
 		TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: 1000, EndMs: 6500,
-		AssetRefs: []capabilityoverlay.OverlayAssetRef{assetA, assetB},
-		ImageLayers: []capabilityoverlay.OverlayImageLayer{
+		AssetRefs: []capmodel.OverlayAssetRef{assetA, assetB},
+		ImageLayers: []capmodel.OverlayImageLayer{
 			{ID: "ada", EntityID: adaID, AssetID: "ada", StartMS: 0, EndMS: 5000, PresetID: "image_scale_in", Caption: "Ada Lovelace"},
 			{ID: "grace", EntityID: graceID, AssetID: "grace", StartMS: 1500, EndMS: 5500, PresetID: "image_focus_in", Caption: "Grace Hopper"},
 		},
@@ -141,7 +142,7 @@ func TestFreezeOverlayIntentsFreezesEveryCompositeEntityChild(t *testing.T) {
 		{name: "Grace Hopper", preset: "image_focus_in", assetID: "grace", start: 2500, end: 6500},
 	} {
 		got := intents[index]
-		if got.TimingState != capabilityoverlay.TimingStateFrozen || got.StartMs != want.start || got.EndMs != want.end {
+		if got.TimingState != capmodel.TimingStateFrozen || got.StartMs != want.start || got.EndMs != want.end {
 			t.Errorf("%s intent timing/state = [%d,%d)/%s, want [%d,%d)/FROZEN", want.name, got.StartMs, got.EndMs, got.TimingState, want.start, want.end)
 		}
 		if got.PresetID != want.preset || len(got.AssetRefs) != 1 || got.AssetRefs[0].AssetID != want.assetID {
@@ -154,22 +155,22 @@ func TestFreezeOverlayIntentsFreezesEveryCompositeEntityChild(t *testing.T) {
 }
 
 func TestFreezeOverlayIntentsJoinsByEntityIdentity(t *testing.T) {
-	intents := []capabilityoverlay.OverlayIntent{{
-		Version:  capabilityoverlay.OverlayIntentVersion,
+	intents := []capmodel.OverlayIntent{{
+		Version:  capmodel.OverlayIntentVersion,
 		IntentID: "intent-scene-0-michael-jordan", SceneID: "scene-0",
-		Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan", CanonicalEntityID: "person:michael-jordan"},
-		Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
-		Payload: capabilityoverlay.IntentPayload{Name: "Michael Jordan"}, TimingState: capabilityoverlay.TimingStatePending,
+		Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan", CanonicalEntityID: "person:michael-jordan"},
+		Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+		Payload: capmodel.IntentPayload{Name: "Michael Jordan"}, TimingState: capmodel.TimingStatePending,
 	}}
-	items := []capabilityoverlay.OverlayItem{{
+	items := []capmodel.OverlayItem{{
 		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0", EntityID: frozenTestEntityID,
-		Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default",
+		Kind: string(capmodel.KindEntityCard), TemplateID: "person_default",
 		StartMs: 0, EndMs: 2500, StartUS: 0, DurationUS: 2500000,
-		Text: "MJ", EntityRef: &capabilityoverlay.OverlayEntityRef{Name: "MJ"},
+		Text: "MJ", EntityRef: &capmodel.OverlayEntityRef{Name: "MJ"},
 	}}
 
 	freezeOverlayIntents(intents, items)
-	if intents[0].TimingState != capabilityoverlay.TimingStateFrozen {
+	if intents[0].TimingState != capmodel.TimingStateFrozen {
 		t.Fatalf("timing state = %q, want FROZEN: the join must use the entity identity, not the display name", intents[0].TimingState)
 	}
 	if intents[0].EndMs != 2500 {
@@ -181,29 +182,29 @@ func TestFreezeOverlayIntentsJoinsByEntityIdentity(t *testing.T) {
 // path: a legacy plan item with no entity id still joins by canonical name, so
 // old persisted plans keep resolving instead of losing their timing.
 func TestFreezeOverlayIntentsKeepsNameFallbackForLegacyItems(t *testing.T) {
-	intents := []capabilityoverlay.OverlayIntent{{
-		Version:  capabilityoverlay.OverlayIntentVersion,
+	intents := []capmodel.OverlayIntent{{
+		Version:  capmodel.OverlayIntentVersion,
 		IntentID: "intent-scene-0-michael-jordan", SceneID: "scene-0",
-		Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan"},
-		Source: capabilityoverlay.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
-		Payload: capabilityoverlay.IntentPayload{Name: "Michael Jordan"}, TimingState: capabilityoverlay.TimingStatePending,
+		Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Michael Jordan"},
+		Source: capmodel.IntentSourceEntity, Kind: "entity_card", TemplateID: "person_default",
+		Payload: capmodel.IntentPayload{Name: "Michael Jordan"}, TimingState: capmodel.TimingStatePending,
 	}}
-	items := []capabilityoverlay.OverlayItem{{
+	items := []capmodel.OverlayItem{{
 		ID: "overlay-scene-0-michael-jordan", SceneID: "scene-0",
-		Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default",
+		Kind: string(capmodel.KindEntityCard), TemplateID: "person_default",
 		StartMs: 0, EndMs: 2500, StartUS: 0, DurationUS: 2500000,
 		Text: "Michael Jordan",
 	}}
 
 	freezeOverlayIntents(intents, items)
-	if intents[0].TimingState != capabilityoverlay.TimingStateFrozen {
+	if intents[0].TimingState != capmodel.TimingStateFrozen {
 		t.Fatalf("timing state = %q, want FROZEN via the canonical-name fallback", intents[0].TimingState)
 	}
 }
 
 func TestOverlayCanvasDefaultsPreserveBackgroundAndStyle(t *testing.T) {
 	style := &scriptpkg.OverlayStyleSpec{Color: []float64{0.1, 0.2, 0.3, 1}}
-	background := &capabilityoverlay.OverlayBackground{Kind: "video", Fit: "cover", Loop: true}
+	background := &capmodel.OverlayBackground{Kind: "video", Fit: "cover", Loop: true}
 	got := (OverlayCanvasSpec{Background: background, Style: style}).withDefaults()
 
 	if got.Width != 1920 || got.Height != 1080 || got.FPSNum != 24 || got.FPSDen != 1 {
@@ -370,7 +371,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.Equal(t, finalAudioDurationUS, editingTimeline.Audio.DurationUS, "visual tail must not pad audio")
 	require.NoError(t, res.OverlayPlan.Validate())
 
-	byID := map[string]capabilityoverlay.OverlayItem{}
+	byID := map[string]capmodel.OverlayItem{}
 	images, phrases, numbers, brands, namedCards := 0, 0, 0, 0, 0
 	for _, item := range res.OverlayPlan.Items {
 		byID[item.ID] = item
@@ -420,7 +421,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	require.Equal(t, int64(2900), scene1Phrase.StartMs)
 	require.Equal(t, int64(3200), scene1Phrase.EndMs)
 
-	var person capabilityoverlay.OverlayItem
+	var person capmodel.OverlayItem
 	personFound := false
 	for _, item := range res.OverlayPlan.Items {
 		if item.EntityRef != nil && item.EntityRef.CanonicalEntityID == "person:tim-cook" {
@@ -450,7 +451,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 		{"25%", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2300, 2400},
 		{"$2 million", "METRIC_STAT_CARD", capabilityoverlay.MetricPresentationMotionCandidates(), 2500, 2700},
 	} {
-		var item capabilityoverlay.OverlayItem
+		var item capmodel.OverlayItem
 		for _, candidate := range res.OverlayPlan.Items {
 			if candidate.Text == tc.text {
 				item = candidate
@@ -501,7 +502,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	// The canonical registry is wired the same way the composition root does.
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
 	req := defaultTestRequest()
@@ -523,7 +524,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 	require.NotEmpty(t, res.OverlayIntents, "overlay intents must be created immediately after extraction")
 	templateByEntity := map[string]string{}
 	for _, intent := range res.OverlayIntents {
-		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "intent %q must be pre-timing (PENDING)", intent.IntentID)
+		require.Equal(t, capmodel.TimingStatePending, intent.TimingState, "intent %q must be pre-timing (PENDING)", intent.IntentID)
 		require.NoError(t, intent.Validate())
 		if intent.Entity.CanonicalName != "" {
 			templateByEntity[intent.Entity.CanonicalName] = intent.TemplateID
@@ -586,7 +587,7 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
 
 	req := defaultTestRequest()
@@ -621,7 +622,7 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	}
 	seen := 0
 	for _, intent := range prep.Intents {
-		require.Equal(t, capabilityoverlay.TimingStatePending, intent.TimingState, "prepare must carry PENDING intents")
+		require.Equal(t, capmodel.TimingStatePending, intent.TimingState, "prepare must carry PENDING intents")
 		if tmpl, ok := want[intent.Entity.CanonicalName]; ok {
 			require.Equal(t, tmpl, intent.TemplateID, "entity %q must bind to the canonical template", intent.Entity.CanonicalName)
 			seen++
@@ -651,7 +652,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(&fakeOverlayPrepareEnqueuer{failErr: errors.New("renderinggen queue down")})
 
 	req := defaultTestRequest()
@@ -999,12 +1000,12 @@ func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) 
 	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
 	require.NoError(t, err)
 	require.NotNil(t, plan, "the spoken entity must still produce a plan")
-	byID := map[string]capabilityoverlay.OverlayItem{}
+	byID := map[string]capmodel.OverlayItem{}
 	for _, item := range plan.Items {
 		byID[item.ID] = item
 		require.NotEqual(t, "person_default", item.TemplateID, "an entity with an image must not fall back to a text card")
 	}
-	var card capabilityoverlay.OverlayItem
+	var card capmodel.OverlayItem
 	cardFound := false
 	for _, item := range plan.Items {
 		if item.EntityRef != nil && item.EntityRef.CanonicalEntityID == "person:tim-cook" {

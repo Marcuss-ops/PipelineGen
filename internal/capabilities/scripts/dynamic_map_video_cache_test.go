@@ -2,13 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // fakeDynamicMapGPUGate is the shared RenderingGen GPU admission double: it
@@ -47,7 +46,7 @@ func TestDynamicMapVideoCacheRoundTripAndRejectsCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	telemetry := []byte(`{"schema":"chronon.dynamic-map-telemetry.v1","frames":42}`)
-	key := dynamicMapVideoCacheKey([]byte(`{"pins":["a"]}`), "script-hash", scriptoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
+	key := dynamicMapVideoCacheKey([]byte(`{"pins":["a"]}`), "script-hash", capabilityoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
 	if err := storeDynamicMapVideoCache(key, source, telemetry); err != nil {
 		t.Fatalf("store cache entry: %v", err)
 	}
@@ -89,8 +88,8 @@ func TestDynamicMapVideoCachePrunesOldestVideoAtConfiguredBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	telemetry := []byte(`{"schema":"chronon.dynamic-map-telemetry.v1"}`)
-	firstKey := dynamicMapVideoCacheKey([]byte("first"), "script", scriptoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
-	secondKey := dynamicMapVideoCacheKey([]byte("second"), "script", scriptoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
+	firstKey := dynamicMapVideoCacheKey([]byte("first"), "script", capabilityoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
+	secondKey := dynamicMapVideoCacheKey([]byte("second"), "script", capabilityoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
 	if err := storeDynamicMapVideoCache(firstKey, source, telemetry); err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +112,7 @@ func TestDynamicMapVideoCachePrunesOldestVideoAtConfiguredBound(t *testing.T) {
 func TestDynamicMapVideoCacheMissIsReportedAndDoesNotClaimIdentity(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(dynamicMapVideoCacheDirEnv, root)
-	key := dynamicMapVideoCacheKey([]byte("cache-miss"), "renderer", scriptoverlay.DefaultMapEncodeProfile(), "opencv_opencl", 1920, 1080)
+	key := dynamicMapVideoCacheKey([]byte("cache-miss"), "renderer", capabilityoverlay.DefaultMapEncodeProfile(), "opencv_opencl", 1920, 1080)
 	telemetry, sha, size, hit := loadDynamicMapVideoCacheVerified(key, filepath.Join(t.TempDir(), "absent.mp4"))
 	if hit || len(telemetry) != 0 || sha != "" || size != 0 {
 		t.Fatalf("cache miss identity = telemetry:%q sha:%q size:%d hit:%t", telemetry, sha, size, hit)
@@ -121,7 +120,7 @@ func TestDynamicMapVideoCacheMissIsReportedAndDoesNotClaimIdentity(t *testing.T)
 }
 
 func TestDynamicMapVideoCacheKeyFencesPayloadRendererProfileAndEpoch(t *testing.T) {
-	profile := scriptoverlay.DefaultMapEncodeProfile()
+	profile := capabilityoverlay.DefaultMapEncodeProfile()
 	t.Setenv(dynamicMapVideoCacheEpochEnv, "")
 	base := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", profile, "cpu", 1920, 1080)
 	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"b"}`), "script-a", profile, "cpu", 1920, 1080); changed == base {
@@ -130,34 +129,34 @@ func TestDynamicMapVideoCacheKeyFencesPayloadRendererProfileAndEpoch(t *testing.
 	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-b", profile, "cpu", 1920, 1080); changed == base {
 		t.Fatal("different renderer script shared cache identity")
 	}
-	cpuDiagnostic, err := scriptoverlay.ResolveMapEncodeProfile(scriptoverlay.MapCPUCodec)
+	cpuDiagnostic, err := capabilityoverlay.ResolveMapEncodeProfile(capabilityoverlay.MapCPUCodec)
 	if err != nil {
 		t.Fatalf("resolve diagnostic CPU profile: %v", err)
 	}
 	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", cpuDiagnostic, "cpu", 1920, 1080); changed == base {
 		t.Fatal("different encoder profile shared cache identity")
 	}
-	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", scriptoverlay.DefaultMapEncodeProfile(), "opencv_opencl", 1920, 1080); changed == base {
+	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", capabilityoverlay.DefaultMapEncodeProfile(), "opencv_opencl", 1920, 1080); changed == base {
 		t.Fatal("different map sampler shared cache identity")
 	}
-	if same := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", scriptoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080); same != base {
+	if same := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", capabilityoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080); same != base {
 		t.Fatal("same renderer inputs must produce a deterministic cache key")
 	}
-	profile = scriptoverlay.DefaultMapEncodeProfile()
+	profile = capabilityoverlay.DefaultMapEncodeProfile()
 	profile.Preset = "p4"
 	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", profile, "cpu", 1920, 1080); changed == base {
 		t.Fatal("different encoder preset shared cache identity")
 	}
-	profile = scriptoverlay.DefaultMapEncodeProfile()
+	profile = capabilityoverlay.DefaultMapEncodeProfile()
 	profile.Quality = 18
 	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", profile, "cpu", 1920, 1080); changed == base {
 		t.Fatal("different encoder quality shared cache identity")
 	}
-	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", scriptoverlay.DefaultMapEncodeProfile(), "cpu", 2560, 1440); changed == base {
+	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", capabilityoverlay.DefaultMapEncodeProfile(), "cpu", 2560, 1440); changed == base {
 		t.Fatal("different output dimensions shared cache identity")
 	}
 	t.Setenv(dynamicMapVideoCacheEpochEnv, "deployment-2")
-	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", scriptoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080); changed == base {
+	if changed := dynamicMapVideoCacheKey([]byte(`{"camera":"a"}`), "script-a", capabilityoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080); changed == base {
 		t.Fatal("different cache epoch shared cache identity")
 	}
 }
@@ -171,7 +170,7 @@ func TestDynamicMapCacheStoreUsesTheExistingVerifiedIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	sha := digest.SHA256String(string(body))
-	key := dynamicMapVideoCacheKey([]byte("identity"), "renderer", scriptoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
+	key := dynamicMapVideoCacheKey([]byte("identity"), "renderer", capabilityoverlay.DefaultMapEncodeProfile(), "cpu", 1920, 1080)
 	gotSHA, gotSize, err := storeDynamicMapVideoCacheWithIdentity(key, source, []byte(`{"schema":"telemetry"}`), sha, int64(len(body)))
 	if err != nil {
 		t.Fatal(err)

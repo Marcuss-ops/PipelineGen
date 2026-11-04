@@ -20,11 +20,6 @@ func isShortPhraseRecipe(motionID string) bool {
 				return true
 			}
 		}
-		for _, id := range capanimreg.Canonical().Candidates(group) {
-			if id == motionID {
-				return true
-			}
-		}
 	}
 	return false
 }

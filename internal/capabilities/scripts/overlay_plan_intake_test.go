@@ -7,6 +7,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,7 @@ func TestOverlayPlanIntakeAttributesEditorialBudgetDrop(t *testing.T) {
 	require.Equal(t, 3, intake.Budget.PhraseOverlays)
 	require.Equal(t, len(plan.Items), intake.Planned)
 	require.Equal(t, 3, intake.PlannedByKind["text_phrase"])
-	require.GreaterOrEqual(t, intake.DroppedByReason[capabilityoverlay.OverlayDropEditorialBudget], 5,
+	require.GreaterOrEqual(t, intake.DroppedByReason[capmodel.OverlayDropEditorialBudget], 5,
 		"the eight candidates minus three admitted phrases must be attributed to the editorial budget")
 	require.GreaterOrEqual(t, intake.Candidates, 8, "the intake must count the produced candidates, not only survivors")
 }

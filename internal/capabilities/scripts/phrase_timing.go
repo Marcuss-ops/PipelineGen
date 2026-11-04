@@ -3,11 +3,11 @@ package scriptgeneration
 import (
 	"errors"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -300,8 +300,8 @@ func plannerOwnedEntityIDs(result *GenerateResult, language Language) map[string
 			continue
 		}
 		for _, entity := range append(ann.PrimaryEntities, ann.SecondaryEntities...) {
-			switch capabilityoverlay.EntityTypeToKind(entity.Type) {
-			case capabilityoverlay.KindNumber, capabilityoverlay.KindQuote, capabilityoverlay.KindProduct, capabilityoverlay.KindLogo, capabilityoverlay.KindBrandText:
+			switch capmodel.EntityTypeToKind(entity.Type) {
+			case capmodel.KindNumber, capmodel.KindQuote, capmodel.KindProduct, capmodel.KindLogo, capmodel.KindBrandText:
 				owned[capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)] = true
 			}
 		}

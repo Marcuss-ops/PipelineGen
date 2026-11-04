@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 
@@ -9,10 +10,10 @@ import (
 )
 
 func TestEntityStyleIdRidesTheOverlayPlanWire(t *testing.T) {
-	item := capabilityoverlay.OverlayItem{
-		ID: "ada-card", Kind: string(capabilityoverlay.KindEntityImage),
+	item := capmodel.OverlayItem{
+		ID: "ada-card", Kind: string(capmodel.KindEntityImage),
 		TemplateID: "image_popup", EntityCaption: "Ada Lovelace",
-		AssetRefs:     []capabilityoverlay.OverlayAssetRef{{AssetID: "ada", SHA256: "ada-sha"}},
+		AssetRefs:     []capmodel.OverlayAssetRef{{AssetID: "ada", SHA256: "ada-sha"}},
 		EntityStyleID: capabilityoverlay.IdentityEntityStyleSelector,
 	}
 	wire, err := json.Marshal(item)
@@ -24,10 +25,10 @@ func TestEntityStyleIdRidesTheOverlayPlanWire(t *testing.T) {
 	}
 	// The renderer contract field must round-trip through the queue wire
 	// conversion, which strips producer-only keys but keeps contract fields.
-	wirePlan, err := marshalRenderingGenOverlayPlan(capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "style-wire", VideoID: "video",
+	wirePlan, err := marshalRenderingGenOverlayPlan(capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "style-wire", VideoID: "video",
 		Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
-		Items: []capabilityoverlay.OverlayItem{item},
+		Items: []capmodel.OverlayItem{item},
 	})
 	if err != nil {
 		t.Fatalf("marshal semantic chronon plan: %v", err)
@@ -38,23 +39,23 @@ func TestEntityStyleIdRidesTheOverlayPlanWire(t *testing.T) {
 }
 
 func TestEntityStyleIdChangesTheRenderKey(t *testing.T) {
-	plan := capabilityoverlay.OverlayPlan{PlanID: "style-key", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1}
-	item := capabilityoverlay.OverlayItem{
-		ID: "ada-card", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup",
-		EntityCaption: "Ada", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "ada"}},
+	plan := capmodel.OverlayPlan{PlanID: "style-key", VideoID: "v", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1}
+	item := capmodel.OverlayItem{
+		ID: "ada-card", Kind: string(capmodel.KindEntityImage), TemplateID: "image_popup",
+		EntityCaption: "Ada", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "ada"}},
 	}
-	keyWithout := capabilityoverlay.ComputeRenderKey(plan, item)
+	keyWithout := capmodel.ComputeRenderKey(plan, item)
 	item.EntityStyleID = capabilityoverlay.IdentityEntityStyleSelector
-	keyWith := capabilityoverlay.ComputeRenderKey(plan, item)
+	keyWith := capmodel.ComputeRenderKey(plan, item)
 	if keyWithout == keyWith {
 		t.Fatal("entity_style_id must participate in the render key")
 	}
 }
 
 func TestAssignEntityImageMotionsStampsTheStyleSelector(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "portrait", Kind: string(capabilityoverlay.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "ada"}}},
-		{ID: "silent", Kind: string(capabilityoverlay.KindEntityImage), AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "b"}}},
+	items := []capmodel.OverlayItem{
+		{ID: "portrait", Kind: string(capmodel.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "ada"}}},
+		{ID: "silent", Kind: string(capmodel.KindEntityImage), AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "b"}}},
 	}
 	if err := assignEntityImageMotions(items, 0, 1920, 1080, ""); err != nil {
 		t.Fatalf("assign entity image motions: %v", err)
@@ -72,8 +73,8 @@ func TestAssignEntityImageMotionsStampsTheStyleSelector(t *testing.T) {
 // …) survives the motion-assignment pass instead of being reset to "random".
 func TestAssignEntityImageMotionsKeepsAPinnedSelector(t *testing.T) {
 	for _, pinned := range []string{"badge", "camera", "typewriter"} {
-		items := []capabilityoverlay.OverlayItem{
-			{ID: "portrait", Kind: string(capabilityoverlay.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "ada"}}},
+		items := []capmodel.OverlayItem{
+			{ID: "portrait", Kind: string(capmodel.KindEntityImage), EntityCaption: "Ada", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "ada"}}},
 		}
 		if err := assignEntityImageMotions(items, 0, 1920, 1080, pinned); err != nil {
 			t.Fatalf("assign entity image motions (%s): %v", pinned, err)

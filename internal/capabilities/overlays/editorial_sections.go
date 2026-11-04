@@ -1,5 +1,7 @@
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "strings"
 
 // EditorialSectionID is an editor-facing grouping, not a renderer kind. A
@@ -46,7 +48,7 @@ func EditorialSections() []EditorialSection {
 // original plan order and are not copied into multiple sections.
 type EditorialPlanSection struct {
 	EditorialSection
-	Items []OverlayItem `json:"items"`
+	Items []capmodel.OverlayItem `json:"items"`
 }
 
 // EditorialSectionForItem classifies an item using the existing kind,
@@ -58,7 +60,7 @@ type EditorialPlanSection struct {
 // other, so it follows the word-count split below: a 2-word bullet rotates
 // with the short-phrase catalog instead of bypassing it while occupying the
 // planner's reserved phrase slot.
-func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
+func EditorialSectionForItem(item capmodel.OverlayItem) EditorialSectionID {
 	if item.Params != nil {
 		if item.Params["editorial_role"] == "scene_title" {
 			return EditorialSectionImportantPhrase
@@ -72,7 +74,7 @@ func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
 	kind := strings.ToLower(strings.TrimSpace(item.Kind))
 	template := strings.ToUpper(strings.TrimSpace(item.TemplateID))
 
-	if kind == string(KindMap) || template == "MAP" {
+	if kind == string(capmodel.KindMap) || template == "MAP" {
 		return EditorialSectionMap
 	}
 	if len(item.ImageLayers) > 1 || len(item.AssetRefs) > 1 {
@@ -82,13 +84,13 @@ func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
 		return EditorialSectionSingleImage
 	}
 	if len(item.AssetRefs) == 1 {
-		isEntity := kind == string(KindEntityImage) || kind == string(KindEntityCard) ||
-			kind == string(KindOrganization) || kind == string(KindLocation) || kind == string(KindConcept)
+		isEntity := kind == string(capmodel.KindEntityImage) || kind == string(capmodel.KindEntityCard) ||
+			kind == string(capmodel.KindOrganization) || kind == string(capmodel.KindLocation) || kind == string(capmodel.KindConcept)
 		if isEntity && (strings.TrimSpace(item.EntityCaption) != "" || strings.TrimSpace(item.Text) != "") {
 			return EditorialSectionEntityTextImage
 		}
 	}
-	if template == "IMPORTANT_PHRASE" || kind == "text_phrase" || kind == string(KindImportantPhrase) {
+	if template == "IMPORTANT_PHRASE" || kind == "text_phrase" || kind == string(capmodel.KindImportantPhrase) {
 		if words := len(strings.Fields(item.Text)); words > 0 && words < 6 {
 			return EditorialSectionShortPhrase
 		}
@@ -101,7 +103,7 @@ func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
 	switch kind {
 	case "number", "metric_stat", "timeline_date", "date", "time":
 		return EditorialSectionNumbersAndDates
-	case "image", string(KindEntityImage), string(KindImagePopup), string(KindProduct), string(KindLogo):
+	case "image", string(capmodel.KindEntityImage), string(capmodel.KindImagePopup), string(capmodel.KindProduct), string(capmodel.KindLogo):
 		return EditorialSectionSingleImage
 	}
 	switch template {
@@ -114,7 +116,7 @@ func EditorialSectionForItem(item OverlayItem) EditorialSectionID {
 // OrganizeEditorialPlan presents every plan item in exactly one editor
 // section. Empty sections are retained so the editor has a stable navigation
 // structure as content appears and disappears between plans.
-func OrganizeEditorialPlan(plan OverlayPlan) []EditorialPlanSection {
+func OrganizeEditorialPlan(plan capmodel.OverlayPlan) []EditorialPlanSection {
 	sections := EditorialSections()
 	byID := make(map[EditorialSectionID]int, len(sections))
 	organized := make([]EditorialPlanSection, len(sections))
@@ -135,7 +137,7 @@ func OrganizeEditorialPlan(plan OverlayPlan) []EditorialPlanSection {
 // contentPriorityForItem keeps overlap degradation aligned with the editor
 // classification while retaining the established priority for other known
 // content kinds. The section is derived (not stored as a second item field).
-func contentPriorityForItem(item OverlayItem) int {
+func contentPriorityForItem(item capmodel.OverlayItem) int {
 	if item.Params != nil && (item.Params["editorial_role"] == "scene_title" || item.Params["editorial_role"] == "scene_bullet") {
 		return PriorityPhrase
 	}
@@ -151,9 +153,9 @@ func contentPriorityForItem(item OverlayItem) int {
 		return priority
 	}
 	switch strings.ToLower(strings.TrimSpace(item.Kind)) {
-	case string(KindEntityCard), string(KindOrganization), string(KindLocation), string(KindConcept), string(KindLowerThird), string(KindQuote), string(KindImportantWord), string(KindNumber):
+	case string(capmodel.KindEntityCard), string(capmodel.KindOrganization), string(capmodel.KindLocation), string(capmodel.KindConcept), string(capmodel.KindLowerThird), string(capmodel.KindQuote), string(capmodel.KindImportantWord), string(capmodel.KindNumber):
 		return PriorityWord
-	case string(KindProduct), string(KindLogo), string(KindImagePopup), string(KindEntityImage):
+	case string(capmodel.KindProduct), string(capmodel.KindLogo), string(capmodel.KindImagePopup), string(capmodel.KindEntityImage):
 		return PriorityImage
 	case "brand_text":
 		return PriorityWord

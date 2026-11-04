@@ -1,13 +1,13 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -193,7 +193,7 @@ func numericEntityGroundedForLanguage(scene Scene, language, sourceLanguage Lang
 	}
 	allowed := make(map[int64]struct{})
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), source.PrimaryEntities...), source.SecondaryEntities...) {
-		if capabilityoverlay.EntityTypeToKind(entity.Type) != capabilityoverlay.KindNumber {
+		if capmodel.EntityTypeToKind(entity.Type) != capmodel.KindNumber {
 			continue
 		}
 		for _, number := range numericValues(entity.CanonicalName) {

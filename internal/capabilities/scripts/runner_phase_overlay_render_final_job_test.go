@@ -1,13 +1,12 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 func TestPendingOverlayPlansRequireObjectStoreForFinalJobHandoff(t *testing.T) {
-	plan := &capabilityoverlay.OverlayPlan{PlanID: "plan-1", Language: "pt"}
+	plan := &capmodel.OverlayPlan{PlanID: "plan-1", Language: "pt"}
 	result := &GenerateResult{OverlayPlan: plan}
 
 	pendingOverlayPlans(result, GenerateRequest{FinalJob: true})

@@ -64,6 +64,56 @@ func TestOverlayRenderBatchesChecksWorkerItemCount(t *testing.T) {
 	}
 }
 
+// TestAllocateBatchItemSamplesJoinsManifestMembersToPlan pins the fix for a
+// fully batched run: the manifest row carries the semantic member IDs, so the
+// batch's render_ms must reach the plan classes as an explicit equal share,
+// not disappear behind the manifest:<digest> item id.
+func TestAllocateBatchItemSamplesJoinsManifestMembersToPlan(t *testing.T) {
+	planItems := map[string]string{
+		"phrase-a": "text_phrase",
+		"number-b": "number",
+		"map-c":    "map",
+	}
+	renderItems := map[string]string{
+		"phrase-a": "COMPLETED",
+		"number-b": "COMPLETED",
+		"map-c":    "COMPLETED",
+	}
+	batches := []batchBlock{{
+		BatchID:  "manifest:abc",
+		RenderMS: 1001,
+		ItemIDs:  []string{"phrase-a", "number-b"},
+	}}
+	seen := map[string]struct{}{"map-c": {}}
+	samples := allocateBatchItemSamples(batches, planItems, renderItems, seen)
+	if len(samples) != 2 {
+		t.Fatalf("samples = %d, want 2", len(samples))
+	}
+	if samples[0].ItemID != "phrase-a" || samples[0].Class != "text_phrase" || samples[0].Status != "COMPLETED" || samples[0].RenderMS != 500 || !samples[0].Allocated || samples[0].BatchID != "manifest:abc" {
+		t.Fatalf("first member = %+v", samples[0])
+	}
+	if samples[1].ItemID != "number-b" || samples[1].Class != "number" || samples[1].RenderMS != 501 {
+		t.Fatalf("second member = %+v", samples[1])
+	}
+	if samples[0].RenderMS+samples[1].RenderMS != 1001 {
+		t.Fatalf("allocated total = %d, want exact batch total 1001", samples[0].RenderMS+samples[1].RenderMS)
+	}
+	if _, ok := seen["number-b"]; !ok {
+		t.Fatal("allocated member must be marked seen to prevent a duplicate fallback sample")
+	}
+}
+
+func TestAllocateBatchItemSamplesPrefersMeasuredMember(t *testing.T) {
+	planItems := map[string]string{"phrase-a": "text_phrase", "number-b": "number"}
+	renderItems := map[string]string{"phrase-a": "COMPLETED", "number-b": "COMPLETED"}
+	batches := []batchBlock{{BatchID: "manifest:abc", RenderMS: 1000, ItemIDs: []string{"phrase-a", "number-b"}}}
+	seen := map[string]struct{}{"phrase-a": {}}
+	samples := allocateBatchItemSamples(batches, planItems, renderItems, seen)
+	if len(samples) != 1 || samples[0].ItemID != "number-b" || samples[0].RenderMS != 500 || !samples[0].Allocated {
+		t.Fatalf("measured member must win without inflating the unmeasured one: %+v", samples)
+	}
+}
+
 func TestOverlayRenderBatchesFallsBackToDurableAnalyticsMembership(t *testing.T) {
 	result := map[string]any{"overlay_render": map[string]any{"batches": []any{map[string]any{"batch_id": "batch-2"}}}}
 	samples := []batchAttemptSample{{

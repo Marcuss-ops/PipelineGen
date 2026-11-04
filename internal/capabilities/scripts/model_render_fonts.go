@@ -2,11 +2,10 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
 
@@ -15,7 +14,7 @@ import (
 // caprender.CanonicalFontAssetsByFamily registry. Every supported family is
 // staged — never a hardcoded subset — so the family a payload selects is the
 // family the worker materializes. Assets are deduplicated and stably ordered.
-func runtimeFontAssets(plan capoverlay.OverlayPlan) ([]RenderQueueAsset, error) {
+func runtimeFontAssets(plan capmodel.OverlayPlan) ([]RenderQueueAsset, error) {
 	seen := map[string]struct{}{}
 	var assets []RenderQueueAsset
 	add := func(family string) error {
@@ -61,10 +60,10 @@ func runtimeFontAssets(plan capoverlay.OverlayPlan) ([]RenderQueueAsset, error) 
 				}
 			}
 		}
-		if !capoverlay.IsChainItemKind(item.Kind) {
+		if !capmodel.IsChainItemKind(item.Kind) {
 			continue
 		}
-		segments, ok := capoverlay.DecodeChainSegments(item.Params)
+		segments, ok := capmodel.DecodeChainSegments(item.Params)
 		if !ok {
 			continue // malformed chains are rejected by plan validation
 		}

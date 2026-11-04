@@ -6,18 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-	"sync"
-	"time"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 )
 
 // settleFinalJob is the SINGLE interpretation of a remote final-job outcome.
@@ -223,7 +222,7 @@ func snapshotGenerateResult(result *GenerateResult) (*GenerateResult, error) {
 	return &snapshot, nil
 }
 
-func restoreOverlayPlanRuntimeAssetLocations(source, target *capabilityoverlay.OverlayPlan) {
+func restoreOverlayPlanRuntimeAssetLocations(source, target *capmodel.OverlayPlan) {
 	if source == nil || target == nil {
 		return
 	}

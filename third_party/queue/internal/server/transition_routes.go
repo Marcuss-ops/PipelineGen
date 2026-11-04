@@ -14,21 +14,35 @@ import (
 	"github.com/Marcuss-ops/RenderingGen/queue/internal/repository"
 )
 
+// decodeRequestBody decodes a JSON request body and reports whether the caller
+// may proceed. A malformed body must surface as a 400 with the real cause,
+// never as a misleading 409 ("job X is not running or not owned by ”"), so
+// the guard lives in one place instead of once per handler.
+func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+// requireWorker rejects a transition that names no worker before it reaches the
+// ownership check, where the missing worker would otherwise read as a conflict.
+func requireWorker(w http.ResponseWriter, worker string) bool {
+	if worker == "" {
+		http.Error(w, "worker is required", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
 func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	var req struct {
 		Worker string         `json:"worker"`
 		Data   model.Artifact `json:"data"`
 	}
-	// Strict decode + explicit worker check: a malformed body or a missing
-	// worker must surface as a 400 with the real cause, never as a misleading
-	// 409 ("job X is not running or not owned by ''").
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-	if req.Worker == "" {
-		http.Error(w, "worker is required", http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
 		return
 	}
 
@@ -47,12 +61,7 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request) {
 			Reason string `json:"reason"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-	if req.Worker == "" {
-		http.Error(w, "worker is required", http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
 		return
 	}
 
@@ -71,8 +80,7 @@ func (s *Server) failPermanently(w http.ResponseWriter, r *http.Request) {
 			Reason string `json:"reason"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	if req.Worker == "" || req.Data.Reason == "" {
@@ -86,14 +94,21 @@ func (s *Server) failPermanently(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// writeTransitionError keeps the not-found/conflict mapping identical across
+// the transition handlers. A missing job is always 404; every other ownership
+// or state failure uses the handler's declared conflict status.
+func writeTransitionError(w http.ResponseWriter, err error, fallback int) {
+	if errors.Is(err, repository.ErrNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	http.Error(w, err.Error(), fallback)
+}
+
 func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	if err := s.svc.Retry(r.Context(), id); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeTransitionError(w, err, http.StatusBadRequest)
 		return
 	}
 	// service.Retry already notified claim waiters.
@@ -109,11 +124,7 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	if err := s.svc.Cancel(r.Context(), id); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusConflict)
+		writeTransitionError(w, err, http.StatusConflict)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -128,12 +139,7 @@ func (s *Server) rendered(w http.ResponseWriter, r *http.Request) {
 			Artifact model.Artifact `json:"artifact"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-	if req.Worker == "" {
-		http.Error(w, "worker is required", http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
 		return
 	}
 
@@ -153,20 +159,11 @@ func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
 		Worker string         `json:"worker"`
 		Data   model.Progress `json:"data"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if req.Worker == "" {
-		http.Error(w, "worker is required", http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
 		return
 	}
 	if err := s.svc.SetProgress(r.Context(), id, req.Worker, req.Data); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusConflict)
+		writeTransitionError(w, err, http.StatusConflict)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -177,12 +174,7 @@ func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Worker string `json:"worker"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
-	}
-	if req.Worker == "" {
-		http.Error(w, "worker is required", http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
 		return
 	}
 
@@ -197,8 +189,7 @@ func (s *Server) claimFinalization(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Worker string `json:"worker"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) {
 		return
 	}
 	job, claimed, err := s.svc.ClaimFinalization(r.Context(), parseJobID(r), req.Worker)

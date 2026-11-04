@@ -1,11 +1,10 @@
 package entities
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // TestImportanceScore_PinsCanonicalFormula pins the plan's ranking formula:
@@ -232,7 +231,7 @@ func TestResolveRankedEntityOverlayPlan_TemplateResolution(t *testing.T) {
 		// The resolver stamps the kind (EntityTypeToKind result) on the item;
 		// the template must resolve through the single registry from that
 		// kind, exactly like the unlimited path.
-		entry, err := capabilityoverlay.DefaultChrononOverlayRegistry.Resolve(item.Kind)
+		entry, err := capmodel.DefaultChrononOverlayRegistry.Resolve(item.Kind)
 		require.NoError(t, err)
 		require.Equal(t, entry.Template, item.TemplateID, "item %q must resolve through the registry", item.ID)
 	}

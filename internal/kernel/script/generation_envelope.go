@@ -148,24 +148,25 @@ type GenerationItemV2 struct {
 	// automatic entity-caption assignment. Empty keeps the certified
 	// camera-safe automatic pool. Entries must name automatic-pool motions.
 	EntityCaptionMotions []string `json:"entity_caption_motions,omitempty"`
-	// AnimationPolicies explicitly selects one catalog motion per semantic
-	// animation group. group_id can match a producer group or scene_id; an
-	// optional subgroup_id narrows the selection to one item/layer. Omit
-	// motion_id to request one stable random choice for that group/subgroup.
+	// AnimationPolicies is the retired pre-v2 contract. It is retained only
+	// so a payload that still sends it fails closed at the compile boundary;
+	// no producer path applies or normalizes it. Use AnimationDirectives.
 	AnimationPolicies []AnimationPolicy `json:"animation_policies,omitempty"`
 	// AnimationDirectives è il contratto canonico tipizzato (P2-1, v2).
 	// Precedenza: exact elemento > exact scena > prefer richiesta > profilo
-	// canale > auto. I vecchi campi restano accettati e normalizzati una
-	// sola volta in direttive; exact incompatibile = errore, mai fallback.
+	// canale > auto. Richiede AnimationContractVersion >= 2; exact
+	// incompatibile = errore, mai fallback. I campi legacy non vengono
+	// normalizzati.
 	AnimationDirectives []AnimationDirective `json:"animation_directives,omitempty"`
 	// AnimationContractVersion pinna il contratto (P2-6): 0/1 = legacy
-	// dual-read, 2 = canonico risolto prima del seal con provenance.
+	// ritirato (fallisce se arrivano direttive o animation_policies),
+	// 2 = canonico risolto prima del seal con provenance.
 	AnimationContractVersion int `json:"animation_contract_version,omitempty"`
 	// AnimationCatalogDigest pinna la vista capacità runtime versionata (P0-3).
 	AnimationCatalogDigest string `json:"animation_catalog_digest,omitempty"`
 	// RandomLightLeakOnClipStart emits a short, deterministic LIGHT_LEAK overlay
-	// at the beginning of each real video clip segment. Image-overlay light leaks
-	// can be selected through animation_policies target=image. Pair with
+	// at the beginning of each real video clip segment. Image-overlay light
+	// leaks can be selected through an image animation directive. Pair with
 	// audio.random_sfx_on_clip_start or explicit audio.sound_effects for sound.
 	RandomLightLeakOnClipStart bool `json:"random_light_leak_on_clip_start,omitempty"`
 	// RandomLightLeakOnOverlayStart emits a deterministic short leak at each
@@ -287,10 +288,10 @@ type GenerationItemV2 struct {
 	Outro *FixedSection `json:"outro,omitempty"`
 }
 
-// AnimationPolicy selects a renderer-catalog motion for a semantic group.
-// Target is important_phrase, image, caption, date, or metric, matching
-// RenderingGen's overlay-plan.v1 contract. An empty MotionID requests a stable random choice
-// shared by every compatible item in the selected group/subgroup.
+// AnimationPolicy is the retired pre-v2 per-group contract. It is retained
+// only so historical payloads decode and fail closed; new callers must use
+// AnimationDirective. Target, GroupID, SubgroupID, MotionID and MotionParams
+// keep their historical wire meaning.
 type AnimationPolicy struct {
 	Target       string         `json:"target"`
 	GroupID      string         `json:"group_id"`
@@ -328,8 +329,8 @@ const (
 
 // AnimationDirective è la rappresentazione canonica: dichiara scena,
 // contenuto, entità opzionale, preferenza e parametri — mai il futuro item.ID.
-// I vecchi campi (phrase_motions, animation_policies, map_*_animation)
-// restano ingressi compatibili normalizzati una sola volta in direttive.
+// I campi legacy (phrase_motions, animation_policies, map_*_animation) non
+// vengono più normalizzati in direttive.
 type AnimationDirective struct {
 	Scope    string                   `json:"scope"`
 	SceneRef string                   `json:"scene_ref"`
@@ -341,8 +342,9 @@ type AnimationDirective struct {
 }
 
 // AnimationContractVersion versiona il contratto risolto (P2-6).
-// 1 = legacy (vecchi campi + animation_policies con doppio sampling);
-// 2 = canonico (direttive risolte prima del seal + provenance, no resample).
+// 0/1 = legacy ritirato: le direttive richiedono >= 2 e animation_policies
+// fallisce sempre; 2 = canonico (direttive validate prima del seal +
+// provenance, no resample).
 const AnimationContractVersion = 2
 
 // MapPresentationSpec is the unified map configuration contract: minimal

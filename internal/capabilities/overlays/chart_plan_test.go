@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"testing"
 
@@ -38,7 +39,7 @@ func chartNumbers(texts ...string) []TimedAnnotation {
 	return out
 }
 
-func countNativeChartItems(items []OverlayItem) int {
+func countNativeChartItems(items []capmodel.OverlayItem) int {
 	count := 0
 	for _, item := range items {
 		if item.Params["chart_card"] == true || item.Params["chart_bar"] == true {
@@ -191,10 +192,10 @@ func TestChartGroupAdmissionIsAtomicAndRequiresItsLabel(t *testing.T) {
 	// A failed label admission removes the whole comparison.
 	assert.Empty(t, PruneOrphanChartBars(bars))
 	// A fully admitted label+bar group is retained intact.
-	admitted := append([]OverlayItem{label}, bars...)
+	admitted := append([]capmodel.OverlayItem{label}, bars...)
 	require.Len(t, PruneOrphanChartBars(admitted), 3)
 	// A barless label is invalid/incomplete and cannot be left as a chart.
-	assert.Empty(t, PruneOrphanChartBars([]OverlayItem{label}))
+	assert.Empty(t, PruneOrphanChartBars([]capmodel.OverlayItem{label}))
 }
 
 func TestChartPlanValidationFailClosed(t *testing.T) {
@@ -208,10 +209,10 @@ func TestChartPlanValidationFailClosed(t *testing.T) {
 	}, PlannerConfig{})
 	require.NoError(t, err, "invalid placement is skipped at build, never validated")
 	assert.Equal(t, 0, plan.ChartCards)
-	bad := OverlayPlan{
-		SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v",
+	bad := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "p", VideoID: "v",
 		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
-		Items: []OverlayItem{{
+		Items: []capmodel.OverlayItem{{
 			ID: "c1", SceneID: "s", Kind: "shape", TemplateID: "SHAPE",
 			StartMs: 0, EndMs: 5000, StartUS: 0, DurationUS: 5_000_000,
 			Params: map[string]any{"shape": "chart", "chart": map[string]any{"chart_type": "candles", "data": []any{1.0, 2.0}}},
@@ -246,7 +247,7 @@ func TestChartEmissionBudgetGate(t *testing.T) {
 	}, PlannerConfig{})
 	require.NoError(t, err)
 	require.Equal(t, 1, free.ChartCards, "free window: chart reaches the compiled plan")
-	var chart *OverlayItem
+	var chart *capmodel.OverlayItem
 	for i := range free.Items {
 		if v, ok := free.Items[i].Params["chart_card"]; ok && v == true {
 			chart = &free.Items[i]
