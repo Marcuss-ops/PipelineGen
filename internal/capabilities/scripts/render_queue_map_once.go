@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"log"
 	"os"
 	"os/exec"
@@ -12,11 +13,10 @@ import (
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 )
 
 // cameraMoveZoom reads one grounded zoom of the planner's camera move.
-func cameraMoveZoom(move *capoverlay.MapCameraMove, start bool) float64 {
+func cameraMoveZoom(move *capmodel.MapCameraMove, start bool) float64 {
 	if move == nil {
 		return 0
 	}
@@ -29,7 +29,7 @@ func cameraMoveZoom(move *capoverlay.MapCameraMove, start bool) float64 {
 // hasPinAccent reports whether any pin carries per-pin presentation the
 // native base flyover does not draw (accent color), so the decision report
 // declares the simplification once.
-func hasPinAccent(pins []capoverlay.MapOverlayPin) bool {
+func hasPinAccent(pins []capmodel.MapOverlayPin) bool {
 	for _, pin := range pins {
 		if strings.TrimSpace(pin.Color) != "" {
 			return true
@@ -38,15 +38,15 @@ func hasPinAccent(pins []capoverlay.MapOverlayPin) bool {
 	return false
 }
 
-func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
-	profile, err := scriptoverlay.ResolveMapEncodeProfile(os.Getenv(scriptoverlay.MapEncodeProfileEnv))
+func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
+	profile, err := capoverlay.ResolveMapEncodeProfile(os.Getenv(capoverlay.MapEncodeProfileEnv))
 	if err != nil {
 		return "", err
 	}
 	// The execution profile is declared up front. The native vector sampler
 	// currently rasterizes on CPU, while the declared NVENC profile encodes on
 	// GPU; neither stage silently substitutes its backend.
-	if err := scriptoverlay.RequireNativeServableProfile(profile); err != nil {
+	if err := capoverlay.RequireNativeServableProfile(profile); err != nil {
 		return "", err
 	}
 	if len(plan.Items) != 1 || plan.Items[0].Map == nil {
@@ -113,18 +113,18 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	// params (map_pin_timing / map_group / map_group_strategy) and enter the
 	// renderer payload so the camera activates each place exactly when the
 	// voiceover names it. The renderer never re-derives editorial timing.
-	pinTiming := scriptoverlay.MapPinTimingPayload(plan.Items[0].Params, pins)
+	pinTiming := capoverlay.MapPinTimingPayload(plan.Items[0].Params, pins)
 	// The single-anchor native camera framing: the anchor is the mean of the
 	// drawn places, and the zoom interval is either the planner's grounded
 	// camera move or a deterministic fit keeping every place in frame. The
 	// certified product dive (5.2→17.8) stays the renderer's own default for
 	// a single place with no grounded move — its zoom keys are omitted.
 	cameraMove := plan.Items[0].Map.CameraMove
-	anchorLat, anchorLon, cameraStartZoom, cameraEndZoom, sendZooms := scriptoverlay.MapNativeCameraFraming(
+	anchorLat, anchorLon, cameraStartZoom, cameraEndZoom, sendZooms := capoverlay.MapNativeCameraFraming(
 		pins, renderWidth, renderHeight, cameraMove != nil,
 		cameraMoveZoom(cameraMove, true), cameraMoveZoom(cameraMove, false))
-	mapGroup := scriptoverlay.MapGroupPayload(plan.Items[0].Params)
-	mapGroupStrategy := scriptoverlay.MapGroupStrategyParam(plan.Items[0].Params)
+	mapGroup := capoverlay.MapGroupPayload(plan.Items[0].Params)
+	mapGroupStrategy := capoverlay.MapGroupStrategyParam(plan.Items[0].Params)
 	seed := mapRunSeed(plan)
 	// Select the map treatment once per map ITEM, not once per parent run.
 	// A video holding several maps can vary compositions and basemaps instead
@@ -157,14 +157,14 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	territoryFeature := ""
 	if len(plan.Items[0].Map.Pins) > 0 {
 		pin := plan.Items[0].Map.Pins[0]
-		if resolved, ok := scriptoverlay.ResolveMapTerritoryFeature(scriptoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude); ok {
+		if resolved, ok := capoverlay.ResolveMapTerritoryFeature(capoverlay.MapTerritoryCatalogDir(), pin.Latitude, pin.Longitude); ok {
 			territoryFeature = resolved
 		}
 	}
 	mapAnimation, mapFallbackReason, err := resolveMapCompositionFor(compositionChoice, seed, mapStyleSlot, mapCompositionInput{
 		PinCount:         len(plan.Items[0].Map.Pins),
 		Pins:             pins,
-		DurationUS:       scriptoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000,
+		DurationUS:       capoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000,
 		Strategy:         mapGroupStrategy,
 		Camera:           cameraAnimation,
 		Label:            labelAnimation,
@@ -191,7 +191,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	// render — places, exclusions, composition, seed, backend, fallback and
 	// phase timings — so an unexpected map is explainable without chasing logs
 	// across three repositories.
-	report := scriptoverlay.NewMapDecisionReport(plan.PlanID, plan.Items[0].ID, seed)
+	report := capoverlay.NewMapDecisionReport(plan.PlanID, plan.Items[0].ID, seed)
 	report.Requested = compositionChoice
 	report.Composition = mapAnimation
 	report.CompositionFamily = string(mapCompositionFamily(mapAnimation))
@@ -201,22 +201,22 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	report.Basemap = basemapStyle
 	report.MapGroup = mapGroup
 	report.Strategy = mapGroupStrategy
-	if backend, backendReason, backendErr := scriptoverlay.ResolveMapItemBackend(plan.Items[0]); backendErr == nil {
+	if backend, backendReason, backendErr := capoverlay.ResolveMapItemBackend(plan.Items[0]); backendErr == nil {
 		report.Backend = string(backend)
 		report.BackendReason = backendReason
 	} else {
 		return "", backendErr
 	}
 	for _, pin := range plan.Items[0].Map.Pins {
-		place := scriptoverlay.MapDecisionPlace{
+		place := capoverlay.MapDecisionPlace{
 			EntityID: pin.ID, Label: pin.Label, Scope: pin.Scope,
 			Latitude: pin.Latitude, Longitude: pin.Longitude,
 			Geocoded: true, State: "eligible",
 		}
 		for _, entry := range pinTiming {
 			if entryID, _ := entry["id"].(string); entryID == pin.ID {
-				place.StartUS = int64(scriptoverlay.MustFloat(entry["start_s"]) * 1_000_000)
-				place.DurationUS = int64(scriptoverlay.MustFloat(entry["duration_s"]) * 1_000_000)
+				place.StartUS = int64(capoverlay.MustFloat(entry["start_s"]) * 1_000_000)
+				place.DurationUS = int64(capoverlay.MustFloat(entry["duration_s"]) * 1_000_000)
 			}
 		}
 		if place.DurationUS == 0 {
@@ -247,7 +247,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	payload := map[string]any{
 		"width": renderWidth, "height": renderHeight,
 		"fps_num": plan.FPSNum, "fps_den": plan.FPSDen,
-		"duration_us": scriptoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000, "pins": pins,
+		"duration_us": capoverlay.MapItemDurationMS(plan.Items[0], plan.DurationMS) * 1000, "pins": pins,
 		"camera_anchor": []float64{anchorLat, anchorLon},
 		// Pin timing is grounded DATA: the report carries it (Places), but the
 		// base flyover presents every place continuously and the renderer
@@ -276,7 +276,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 	// Native-payload DATA fields (parity landed): the wire carries exactly
 	// what the composition was admitted for — the renderer validates them at
 	// its boundary and refuses silently-absent requirements.
-	if scriptoverlay.MapTerritoryOverlayRequired(mapAnimation) {
+	if capoverlay.MapTerritoryOverlayRequired(mapAnimation) {
 		payload["territory_feature"] = territoryFeature
 	}
 	if mapAnimation == "area_glow_pulse" {
@@ -396,7 +396,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 			summary.Dimensions.Width, summary.Dimensions.Height, summary.FPS.Num, summary.FPS.Den,
 			renderWidth, renderHeight, plan.FPSNum, plan.FPSDen)
 	}
-	if err := scriptoverlay.ValidateMapEncoderTelemetry(summary.VideoEncoder, summary.GPUEncoder, summary.EncoderPreset, summary.EncoderQuality, encodeProfile); err != nil {
+	if err := capoverlay.ValidateMapEncoderTelemetry(summary.VideoEncoder, summary.GPUEncoder, summary.EncoderPreset, summary.EncoderQuality, encodeProfile); err != nil {
 		return "", err
 	}
 	if summary.GPUMapSampler != sampler {
@@ -406,7 +406,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 		scale := fmt.Sprintf("scale=%d:%d:flags=lanczos,setsar=1", plan.Width, plan.Height)
 		upscaleArgs := []string{"/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
 			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen)}
-		upscaleArgs = append(upscaleArgs, scriptoverlay.MapEncodeVideoArgs(encodeProfile)...)
+		upscaleArgs = append(upscaleArgs, capoverlay.MapEncodeVideoArgs(encodeProfile)...)
 		upscaleArgs = append(upscaleArgs, "-pix_fmt", "yuv420p", "-movflags", "+faststart", encodedOutputPath)
 		upscale := exec.CommandContext(ctx, upscaleArgs[0], upscaleArgs[1:]...)
 		if output, err := upscale.CombinedOutput(); err != nil {
@@ -490,11 +490,11 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capoverlay.OverlayPlan,
 		return "", fmt.Errorf("encode map decision report: %w", err)
 	}
 	log.Printf("map decision report: %s", encodedReport)
-	if _, err := scriptoverlay.WriteMapDecisionReport(tmpDir, report); err != nil {
+	if _, err := capoverlay.WriteMapDecisionReport(tmpDir, report); err != nil {
 		return "", fmt.Errorf("write map decision report: %w", err)
 	}
 	if reportDir := strings.TrimSpace(os.Getenv("PIPELINEGEN_MAP_REPORT_DIR")); reportDir != "" {
-		if _, err := scriptoverlay.WriteMapDecisionReport(reportDir, report); err != nil {
+		if _, err := capoverlay.WriteMapDecisionReport(reportDir, report); err != nil {
 			return "", fmt.Errorf("write map decision report: %w", err)
 		}
 	}

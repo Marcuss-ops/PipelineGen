@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strconv"
 	"strings"
 	"testing"
@@ -63,7 +64,7 @@ func TestRandomImageEffectsReachMultipleEntityImagesAtFullHD(t *testing.T) {
 	require.Equal(t, 1080, plan.Height)
 	require.NoError(t, plan.Validate())
 
-	var composite *capabilityoverlay.OverlayItem
+	var composite *capmodel.OverlayItem
 	for index := range plan.Items {
 		if len(plan.Items[index].ImageLayers) > 0 {
 			composite = &plan.Items[index]

@@ -2,10 +2,9 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // A composite group of n images must draw every layer's motion from the pool
@@ -13,15 +12,15 @@ import (
 // share an entrance family.
 func TestCompositeLayersUseTheirGroupSizePool(t *testing.T) {
 	for size := 2; size <= 5; size++ {
-		layers := make([]capabilityoverlay.OverlayImageLayer, size)
-		assets := make([]capabilityoverlay.OverlayAssetRef, size)
+		layers := make([]capmodel.OverlayImageLayer, size)
+		assets := make([]capmodel.OverlayAssetRef, size)
 		for i := range layers {
 			id := fmt.Sprintf("layer-%d", i)
-			layers[i] = capabilityoverlay.OverlayImageLayer{ID: id, AssetID: id, StartMS: 0, EndMS: 3000, PresetID: "image_focus_in"}
-			assets[i] = capabilityoverlay.OverlayAssetRef{AssetID: id, SHA256: fmt.Sprintf("%064x", i+1)}
+			layers[i] = capmodel.OverlayImageLayer{ID: id, AssetID: id, StartMS: 0, EndMS: 3000, PresetID: "image_focus_in"}
+			assets[i] = capmodel.OverlayAssetRef{AssetID: id, SHA256: fmt.Sprintf("%064x", i+1)}
 		}
-		items := []capabilityoverlay.OverlayItem{{
-			ID: fmt.Sprintf("group-%d", size), SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage),
+		items := []capmodel.OverlayItem{{
+			ID: fmt.Sprintf("group-%d", size), SceneID: "scene", Kind: string(capmodel.KindEntityImage),
 			TemplateID: "image_popup", StartMs: 0, EndMs: 3000, AssetRefs: assets, ImageLayers: layers,
 		}}
 		if err := assignEntityImageMotions(items, 0, 1920, 1080, ""); err != nil {

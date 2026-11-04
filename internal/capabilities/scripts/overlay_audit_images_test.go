@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 
@@ -23,21 +24,21 @@ func auditTestEntity(name string) capabilityoverlay.ResolvedEntity {
 	}
 }
 
-func auditTestEntityCard(id, sceneID, name string) capabilityoverlay.OverlayItem {
-	return capabilityoverlay.OverlayItem{
+func auditTestEntityCard(id, sceneID, name string) capmodel.OverlayItem {
+	return capmodel.OverlayItem{
 		ID: id, SceneID: sceneID, Kind: "entity_card", TemplateID: "person_default",
 		EntityID: auditPersonID(name), StartMs: 1000, EndMs: 4000,
-		EntityRef: &capabilityoverlay.OverlayEntityRef{
+		EntityRef: &capmodel.OverlayEntityRef{
 			EntityID: auditPersonID(name), Type: "PERSON", Name: name, SurfaceText: name,
 		},
 	}
 }
 
-func auditTestImageItem(id, sceneID, name string) capabilityoverlay.OverlayItem {
+func auditTestImageItem(id, sceneID, name string) capmodel.OverlayItem {
 	item := auditTestEntityCard(id, sceneID, name)
 	item.Kind = "entity_image"
 	item.TemplateID = "image_popup"
-	item.AssetRefs = []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-" + auditPersonID(name)}}
+	item.AssetRefs = []capmodel.OverlayAssetRef{{AssetID: "asset-" + auditPersonID(name)}}
 	return item
 }
 
@@ -47,12 +48,12 @@ func auditTestImageItem(id, sceneID, name string) capabilityoverlay.OverlayItem 
 // the planner failed to bind one it had. Those are different owners and
 // different fixes, so they are different reasons.
 func TestOverlayAuditEntityImagesExplainsEveryMissingImage(t *testing.T) {
-	plan := &capabilityoverlay.OverlayPlan{
+	plan := &capmodel.OverlayPlan{
 		PlanID: "plan-1", VideoID: "video-1",
-		Intake: &capabilityoverlay.OverlayPlanIntake{
-			Budget: capabilityoverlay.OverlayIntakeBudget{ImageOverlays: 3},
+		Intake: &capmodel.OverlayPlanIntake{
+			Budget: capmodel.OverlayIntakeBudget{ImageOverlays: 3},
 		},
-		Items: []capabilityoverlay.OverlayItem{
+		Items: []capmodel.OverlayItem{
 			auditTestImageItem("ov-1", "scene-1", "Enzo Boschetti"),
 			// Text cards are not image promises; only image-bearing plan items
 			// participate in the image coverage gate.
@@ -105,30 +106,30 @@ func TestOverlayAuditEntityImagesExplainsEveryMissingImage(t *testing.T) {
 // distinguishes "the entity was never planned" from "the planner rewrote the
 // text". Before this, 31 of 39 intents stayed PENDING with no explanation.
 func TestFreezeOverlayIntentsReportsWhyAnIntentDidNotFreeze(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		auditTestImageItem("ov-1", "scene-1", "Enzo Boschetti"),
 		{ID: "ov-2", SceneID: "scene-2", Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "un testo riscritto", StartMs: 5000, EndMs: 7000},
 	}
-	intents := []capabilityoverlay.OverlayIntent{
+	intents := []capmodel.OverlayIntent{
 		{
-			IntentID: "intent-frozen", SceneID: "scene-1", Source: capabilityoverlay.IntentSourceEntity,
-			Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Enzo Boschetti"},
-			Kind:   "entity_card", TemplateID: "person_default", TimingState: capabilityoverlay.TimingStatePending,
+			IntentID: "intent-frozen", SceneID: "scene-1", Source: capmodel.IntentSourceEntity,
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Enzo Boschetti"},
+			Kind:   "entity_card", TemplateID: "person_default", TimingState: capmodel.TimingStatePending,
 		},
 		{
-			IntentID: "intent-entity-missing", SceneID: "scene-3", Source: capabilityoverlay.IntentSourceEntity,
-			Entity: capabilityoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Maria Rossi"},
-			Kind:   "entity_card", TemplateID: "person_default", TimingState: capabilityoverlay.TimingStatePending,
+			IntentID: "intent-entity-missing", SceneID: "scene-3", Source: capmodel.IntentSourceEntity,
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Maria Rossi"},
+			Kind:   "entity_card", TemplateID: "person_default", TimingState: capmodel.TimingStatePending,
 		},
 		{
-			IntentID: "intent-text-rewritten", SceneID: "scene-2", Source: capabilityoverlay.IntentSourceImportantPhrase,
+			IntentID: "intent-text-rewritten", SceneID: "scene-2", Source: capmodel.IntentSourceImportantPhrase,
 			SourceText: "testo originale", Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE",
-			TimingState: capabilityoverlay.TimingStatePending,
+			TimingState: capmodel.TimingStatePending,
 		},
 		{
-			IntentID: "intent-text-kept", SceneID: "scene-2", Source: capabilityoverlay.IntentSourceImportantPhrase,
+			IntentID: "intent-text-kept", SceneID: "scene-2", Source: capmodel.IntentSourceImportantPhrase,
 			SourceText: "un testo riscritto", Kind: "important_phrase", TemplateID: "IMPORTANT_PHRASE",
-			TimingState: capabilityoverlay.TimingStatePending,
+			TimingState: capmodel.TimingStatePending,
 		},
 	}
 
@@ -139,7 +140,7 @@ func TestFreezeOverlayIntentsReportsWhyAnIntentDidNotFreeze(t *testing.T) {
 	require.Equal(t, 2, lineage.Unresolved)
 	require.Equal(t, lineage.Authored, lineage.Frozen+lineage.Unresolved,
 		"every authored intent is either rendered or explained")
-	require.Equal(t, 2, lineage.BySource[string(capabilityoverlay.IntentSourceEntity)])
+	require.Equal(t, 2, lineage.BySource[string(capmodel.IntentSourceEntity)])
 	require.Equal(t, 1, lineage.Reasons[OverlayIntentReasonEntityNotPlanned])
 	require.Equal(t, 1, lineage.Reasons[OverlayIntentReasonSourceTextNotInPlan])
 	require.Len(t, lineage.Items, 2)
@@ -152,12 +153,12 @@ func TestFreezeOverlayIntentsReportsWhyAnIntentDidNotFreeze(t *testing.T) {
 
 	// The frozen intents carry the plan's certified facts, so the persisted
 	// surface cannot disagree with what RenderingGen renders.
-	require.Equal(t, capabilityoverlay.TimingStateFrozen, intents[0].TimingState)
+	require.Equal(t, capmodel.TimingStateFrozen, intents[0].TimingState)
 	require.Equal(t, "entity_image", intents[0].Kind)
 	require.Equal(t, int64(1000), intents[0].StartMs)
 
 	// The audit projects the lineage instead of re-deriving it.
-	audit := buildOverlayAuditWithLineage(&capabilityoverlay.SemanticRenderBundleV1{}, &capabilityoverlay.OverlayPlan{Items: items}, lineage)
+	audit := buildOverlayAuditWithLineage(&capabilityoverlay.SemanticRenderBundleV1{}, &capmodel.OverlayPlan{Items: items}, lineage)
 	require.NotNil(t, audit.OverlayTiming)
 	require.Equal(t, 4, audit.OverlayTiming.Authored)
 	require.Equal(t, 2, audit.OverlayTiming.Frozen)
@@ -172,15 +173,15 @@ func TestOverlayAuditEntityImagesCountsOnlyImagePlans(t *testing.T) {
 	for _, spelling := range []string{"GPE", "LOCATION", "CITY", "COUNTRY", "PLACE"} {
 		t.Run(spelling, func(t *testing.T) {
 			placeID := capabilityentities.StableEntityID(spelling, "Garlasco")
-			plan := &capabilityoverlay.OverlayPlan{
+			plan := &capmodel.OverlayPlan{
 				PlanID: "plan-place",
-				Intake: &capabilityoverlay.OverlayPlanIntake{
-					Budget: capabilityoverlay.OverlayIntakeBudget{ImageOverlays: 2},
+				Intake: &capmodel.OverlayPlanIntake{
+					Budget: capmodel.OverlayIntakeBudget{ImageOverlays: 2},
 				},
-				Items: []capabilityoverlay.OverlayItem{{
+				Items: []capmodel.OverlayItem{{
 					ID: "ov-place", SceneID: "scene-1", Kind: "location", TemplateID: "LOCATION",
 					EntityID: placeID, StartMs: 1000, EndMs: 4000,
-					EntityRef: &capabilityoverlay.OverlayEntityRef{
+					EntityRef: &capmodel.OverlayEntityRef{
 						EntityID: placeID, CanonicalEntityID: strings.ToLower(spelling) + ":garlasco",
 						Type: spelling, Name: "Garlasco", SurfaceText: "Garlasco",
 					},
@@ -200,7 +201,7 @@ func TestOverlayAuditEntityImagesCountsOnlyImagePlans(t *testing.T) {
 				"a location label is not an image promise")
 			require.Equal(t, 0, audit.EntityImages.Missing)
 
-			plan.Items = append(plan.Items, capabilityoverlay.OverlayItem{
+			plan.Items = append(plan.Items, capmodel.OverlayItem{
 				ID: "ov-place-image", SceneID: "scene-1", Kind: "entity_image", TemplateID: "image_popup",
 				EntityID: placeID, EntityRef: plan.Items[0].EntityRef,
 			})
@@ -210,7 +211,7 @@ func TestOverlayAuditEntityImagesCountsOnlyImagePlans(t *testing.T) {
 
 			// A verified asset bound by the plan flips the same expectation to
 			// "bound" — the place is counted, not merely flagged.
-			plan.Items[0].AssetRefs = []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-garlasco"}}
+			plan.Items[0].AssetRefs = []capmodel.OverlayAssetRef{{AssetID: "asset-garlasco"}}
 			bundle.Assets = []capabilityoverlay.BoundAsset{{EntityID: placeID, AssetID: "asset-garlasco", Verified: true}}
 			audit = buildOverlayAuditWithLineage(bundle, plan, nil)
 			require.Equal(t, 1, audit.EntityImages.Selected)

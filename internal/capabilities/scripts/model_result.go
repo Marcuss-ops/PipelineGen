@@ -3,6 +3,7 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"strconv"
 	"strings"
@@ -130,13 +131,13 @@ type GenerateResult struct {
 	// semantic renderinggen.overlay-plan.v1 PipelineGen submits to the
 	// RenderingGen queue; lowercasing to chronon.render-plan.v2 is owned by
 	// RenderingGen. Nil when the run carried no derivable overlay surface.
-	OverlayPlan *capabilityoverlay.OverlayPlan `json:"overlay_plan,omitempty"`
+	OverlayPlan *capmodel.OverlayPlan `json:"overlay_plan,omitempty"`
 	// LocalizedOverlayPlans carries the equivalent plans for translated
 	// voiceover languages. The source-language plan remains in OverlayPlan for
 	// compatibility; these plans are keyed by their target language and contain
 	// phrases and timing derived from that language's translated annotations and
 	// certified speech timing.
-	LocalizedOverlayPlans map[Language]*capabilityoverlay.OverlayPlan `json:"localized_overlay_plans,omitempty"`
+	LocalizedOverlayPlans map[Language]*capmodel.OverlayPlan `json:"localized_overlay_plans,omitempty"`
 	// PhraseOverlayBudget records the global editorial ceiling and the number
 	// of unique grounded phrases materialized into OverlayPlan. It is result
 	// telemetry and is deliberately excluded from the renderer wire contract.
@@ -146,7 +147,7 @@ type GenerateResult struct {
 	// producer supplied, how many the plan kept, and which admission stage
 	// removed the rest. It is result telemetry and is deliberately excluded
 	// from the renderer wire contract, so it never changes render identity.
-	OverlayPlanIntake *capabilityoverlay.OverlayPlanIntake `json:"overlay_plan_intake,omitempty"`
+	OverlayPlanIntake *capmodel.OverlayPlanIntake `json:"overlay_plan_intake,omitempty"`
 
 	// SemanticRenderBundle is the cross-stage audit contract assembled from
 	// the same certified surfaces as OverlayPlan. It is a projection, never a
@@ -166,6 +167,11 @@ type GenerateResult struct {
 	// RemoteFinalJobHistory retains terminal Master receipts when a new remote
 	// attempt is allocated for the same logical render.
 	RemoteFinalJobHistory []RemoteFinalJobResult `json:"remote_final_job_history,omitempty"`
+	// PrepareJoin is result telemetry for the SceneTextReady fan-out join. It
+	// records which branch (semantic or assets) was still running at the join
+	// and how long each branch took, so the stage stops being opaque. It is
+	// deliberately not part of render identity.
+	PrepareJoin *PrepareJoinBreakdown `json:"prepare_join,omitempty"`
 	// LocalizedOverlayRenders contains certified Chronon outputs for the
 	// translated plans above. OverlayRender remains the source-language
 	// compatibility projection.
@@ -176,11 +182,11 @@ type GenerateResult struct {
 	// occurrence to its resolved template without timing dependency,
 	// enabling overlay.prepare to start template resolution and asset
 	// prefetch in parallel with TTS. Empty when no entities were extracted.
-	OverlayIntents []capabilityoverlay.OverlayIntent `json:"overlay_intents,omitempty"`
+	OverlayIntents []capmodel.OverlayIntent `json:"overlay_intents,omitempty"`
 	// ResolvedOverlayIntents is the render-boundary projection of the same
 	// intents after certified timing, preset and asset lowering. The original
 	// OverlayIntents remains immutable for the parallel overlay.prepare stage.
-	ResolvedOverlayIntents []capabilityoverlay.OverlayIntent `json:"resolved_overlay_intents,omitempty"`
+	ResolvedOverlayIntents []capmodel.OverlayIntent `json:"resolved_overlay_intents,omitempty"`
 
 	// EditingTimeline is the canonical editing projection built from frozen
 	// facts (CanonicalTimeline + FinalAudio + OverlayPlan + EntityTimeline).
@@ -477,7 +483,7 @@ type RenderReference struct {
 	// Manifest is the P5 overlay manifest (item_id → track/in_us/out_us/
 	// content-hash) that indexes a single certified timeline artifact. It is
 	// the manifest+timeline render path's identity document and receipt:	// non-nil only when this reference was produced by that path.
-	Manifest *capabilityoverlay.OverlayManifest `json:"manifest,omitempty"`
+	Manifest *capmodel.OverlayManifest `json:"manifest,omitempty"`
 }
 
 // OverlayItemRenderReference binds one semantic overlay item to the queue job
@@ -504,7 +510,7 @@ type OverlayBatchRenderReference struct {
 	Artifact *RenderArtifact `json:"artifact,omitempty"`
 	// Manifest preserves the certified per-batch timing and packed mapping.
 	// A split reference cannot safely reconstruct these facts from item rows.
-	Manifest *capabilityoverlay.OverlayManifest `json:"manifest,omitempty"`
+	Manifest *capmodel.OverlayManifest `json:"manifest,omitempty"`
 }
 
 // overlayArtifactForItem resolves the certified clip for a semantic item from

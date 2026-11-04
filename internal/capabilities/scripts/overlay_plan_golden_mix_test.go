@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"image"
 	"image/color"
 	"image/png"
@@ -68,10 +69,10 @@ func goldenMixPlate(t *testing.T, id string, lat, lon float64) capabilityoverlay
 	require.NoError(t, os.WriteFile(path, buf.Bytes(), 0o600))
 	return capabilityoverlay.MapPlate{
 		ID: id, License: "operator-supplied", Attribution: "© OpenStreetMap contributors",
-		Center: capabilityoverlay.MapCenter{Latitude: lat, Longitude: lon}, Zoom: 10,
+		Center: capmodel.MapCenter{Latitude: lat, Longitude: lon}, Zoom: 10,
 		Width: GoldenOverlayCanvas.Width, Height: GoldenOverlayCanvas.Height,
 		Window: geodesy.CenteredOn(lat, lon, 10, GoldenOverlayCanvas.Width, GoldenOverlayCanvas.Height),
-		Asset: capabilityoverlay.OverlayAssetRef{
+		Asset: capmodel.OverlayAssetRef{
 			AssetID: id, SHA256: digest.SHA256Bytes(buf.Bytes()),
 			MediaType: "image/png", LocalPath: path,
 		},
@@ -334,7 +335,7 @@ func TestCompileOverlayPlanMovesResolvedEntityImageAsideFromDate(t *testing.T) {
 		"plan-date-entity-collision", "video-date-entity-collision", "project-date-entity-collision", resolver, true, true)
 	require.NoError(t, err)
 	require.NotNil(t, plan)
-	var date, portrait *capabilityoverlay.OverlayItem
+	var date, portrait *capmodel.OverlayItem
 	for i := range plan.Items {
 		item := &plan.Items[i]
 		if item.TemplateID == "TIMELINE_DATE_CARD" {

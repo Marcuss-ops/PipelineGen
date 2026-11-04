@@ -10,6 +10,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"sync"
 
@@ -28,7 +29,7 @@ import (
 // so the GPU lane and the per-item pre/post chain overlap exactly as they did
 // before the cutover. Failure is FAIL-FAST: the pool cancels the remaining
 // items and the error names the item it came from.
-func (e *QueueRenderEnqueuer) enqueueDedicatedOverlayItems(ctx context.Context, plan capoverlay.OverlayPlan, candidates []overlayItemCandidate) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) enqueueDedicatedOverlayItems(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (RenderReference, error) {
 	if len(candidates) == 0 {
 		return RenderReference{}, nil
 	}
@@ -37,10 +38,10 @@ func (e *QueueRenderEnqueuer) enqueueDedicatedOverlayItems(ctx context.Context, 
 	// frame windows must not share even one frame. Fail early instead of
 	// rendering artifacts the final job will reject. The final publication
 	// gate remains as defense-in-depth.
-	admissionItems := make([]capoverlay.OverlayItem, 0, len(candidates))
+	admissionItems := make([]capmodel.OverlayItem, 0, len(candidates))
 	for _, candidate := range candidates {
-		start, end := overlayItemWindow(candidate.source)
-		admissionItems = append(admissionItems, capoverlay.OverlayItem{
+		start, end := capoverlay.OverlayItemWindowUS(candidate.source)
+		admissionItems = append(admissionItems, capmodel.OverlayItem{
 			ID: candidate.source.ID, SceneID: candidate.source.SceneID,
 			StartUS: start, DurationUS: end - start,
 		})

@@ -2,22 +2,21 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"testing"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // imageOnlyItems builds count image-only entity items in one scene, starting
 // at startMs and spaced stepMs apart, each with its own asset.
-func imageOnlyItems(count int, startMs, stepMs int64) []capabilityoverlay.OverlayItem {
-	items := make([]capabilityoverlay.OverlayItem, 0, count)
+func imageOnlyItems(count int, startMs, stepMs int64) []capmodel.OverlayItem {
+	items := make([]capmodel.OverlayItem, 0, count)
 	for i := 0; i < count; i++ {
 		start := startMs + int64(i)*stepMs
-		items = append(items, capabilityoverlay.OverlayItem{
-			ID: fmt.Sprintf("img-%d", i), SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage),
+		items = append(items, capmodel.OverlayItem{
+			ID: fmt.Sprintf("img-%d", i), SceneID: "scene", Kind: string(capmodel.KindEntityImage),
 			TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: start, EndMs: start + 2000,
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("%064x", i+1), URL: fmt.Sprintf("https://example.test/%d.jpg", i)}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("%064x", i+1), URL: fmt.Sprintf("https://example.test/%d.jpg", i)}},
 		})
 	}
 	return items

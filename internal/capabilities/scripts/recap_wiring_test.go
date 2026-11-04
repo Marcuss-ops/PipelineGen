@@ -6,16 +6,16 @@ package scriptgeneration
 // overlay item.
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 )
 
-func recapBriefs5() []scriptoverlay.RecapSceneBrief {
+func recapBriefs5() []capabilityoverlay.RecapSceneBrief {
 	titles := []string{
 		"Nel 2020 fu annunciato il progetto",
 		"L'aumento dei costi ha ridotto i margini",
@@ -23,9 +23,9 @@ func recapBriefs5() []scriptoverlay.RecapSceneBrief {
 		"Nel 2024 il progetto venne completato",
 		"La ripresa supera le attese",
 	}
-	briefs := make([]scriptoverlay.RecapSceneBrief, 0, 5)
+	briefs := make([]capabilityoverlay.RecapSceneBrief, 0, 5)
 	for i, title := range titles {
-		briefs = append(briefs, scriptoverlay.RecapSceneBrief{
+		briefs = append(briefs, capabilityoverlay.RecapSceneBrief{
 			ID: title[:2] + string(rune('1'+i)), Title: title, Score: 0.8,
 			StartUS: int64(i) * 20_000_000, EndUS: int64(i+1) * 20_000_000,
 		})
@@ -34,7 +34,7 @@ func recapBriefs5() []scriptoverlay.RecapSceneBrief {
 }
 
 func TestRecapWiringFiveScenesOnePlacement(t *testing.T) {
-	got := scriptoverlay.RecapPlacementsForScenes(recapBriefs5())
+	got := capabilityoverlay.RecapPlacementsForScenes(recapBriefs5())
 	require.Len(t, got, 1, "5 scenes → recap after chapter 3")
 	p := got[0]
 	assert.Equal(t, 2, p.NarratedThrough, "covers scenes 0..2, never the scene being entered")
@@ -50,12 +50,12 @@ func TestRecapWiringFiveScenesOnePlacement(t *testing.T) {
 }
 
 func TestRecapWiringShortRunNoPlacement(t *testing.T) {
-	assert.Empty(t, scriptoverlay.RecapPlacementsForScenes(recapBriefs5()[:2]), "short run → no recap")
-	assert.Empty(t, scriptoverlay.RecapPlacementsForScenes(nil))
+	assert.Empty(t, capabilityoverlay.RecapPlacementsForScenes(recapBriefs5()[:2]), "short run → no recap")
+	assert.Empty(t, capabilityoverlay.RecapPlacementsForScenes(nil))
 }
 
 func TestRecapWiringPlanValidation(t *testing.T) {
-	placements := scriptoverlay.RecapPlacementsForScenes(recapBriefs5())
+	placements := capabilityoverlay.RecapPlacementsForScenes(recapBriefs5())
 	require.NotEmpty(t, placements)
 	plan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
 		PlanID: "recap-wire", VideoID: "v1", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -63,7 +63,7 @@ func TestRecapWiringPlanValidation(t *testing.T) {
 		Recap:  placements,
 	}, capabilityoverlay.PlannerConfig{})
 	require.NoError(t, err, "recap items pass plan validation")
-	var recaps []capabilityoverlay.OverlayItem
+	var recaps []capmodel.OverlayItem
 	for _, it := range plan.Items {
 		if it.Kind == "quote" {
 			if v, ok := it.Params["recap"]; ok && v == true {
@@ -81,9 +81,9 @@ func TestRecapWiringPlanValidation(t *testing.T) {
 }
 
 func TestRecapMetricsCountCardsPreservedInFusedChain(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{{
+	items := []capmodel.OverlayItem{{
 		SceneID: "display-scene",
-		Params: map[string]any{"chain_segments": []capabilityoverlay.ChainSegment{
+		Params: map[string]any{"chain_segments": []capmodel.ChainSegment{
 			{Params: map[string]any{"recap": true}},
 			{Params: map[string]any{"recap": true}},
 			{Params: map[string]any{"chart_card": true}},

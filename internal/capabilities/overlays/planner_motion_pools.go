@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 )
 
@@ -12,7 +13,7 @@ import (
 // item's params. A missing or non-numeric value is 0, which never satisfies a
 // positive HeavyPhrasePriority: an unweighted item can never be promoted into
 // the heavy lane by accident.
-func itemPriority(item OverlayItem) float64 {
+func itemPriority(item capmodel.OverlayItem) float64 {
 	if item.Params == nil {
 		return 0
 	}
@@ -30,9 +31,11 @@ func itemPriority(item OverlayItem) float64 {
 	}
 }
 
-// phraseEntranceFrames keeps one third of the certified phrase window for
-// entrance and leaves the remaining two thirds settled and readable.
-func phraseEntranceFrames(durationUS int64, fpsNum, fpsDen int) int64 {
+// PhraseEntranceFrames keeps one third of the certified phrase window for
+// entrance and leaves the remaining two thirds settled and readable. It is the
+// single owner of the one-third rule: the script-generation render boundary
+// uses it too instead of carrying a second implementation.
+func PhraseEntranceFrames(durationUS int64, fpsNum, fpsDen int) int64 {
 	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
 		return 0
 	}
@@ -56,7 +59,7 @@ func phraseMotionParams(phrase TimedAnnotation, fpsNum, fpsDen int) map[string]a
 	if phraseDurationUS <= 0 && phrase.EndMs > phrase.StartMs {
 		phraseDurationUS = (phrase.EndMs - phrase.StartMs) * 1_000
 	}
-	frames := phraseEntranceFrames(phraseDurationUS, fpsNum, fpsDen)
+	frames := PhraseEntranceFrames(phraseDurationUS, fpsNum, fpsDen)
 	if frames < 1 {
 		frames = 1
 	}

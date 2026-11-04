@@ -2,13 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // These tests exercise the real ffmpeg/ffprobe binaries; they are skipped when
@@ -92,7 +91,7 @@ func TestNormalizeFinalJobVideoBackground_RemuxFastPathZeroesPositivePTS(t *test
 		t.Fatalf("fixture must start at a positive PTS, got %v", pts)
 	}
 
-	plan := capabilityoverlay.OverlayPlan{Source: &capabilityoverlay.OverlaySource{AssetID: "drive-background-05", LocalPath: source}}
+	plan := capmodel.OverlayPlan{Source: &capmodel.OverlaySource{AssetID: "drive-background-05", LocalPath: source}}
 	normalized, cleanup, err := normalizeFinalJobVideoBackground(context.Background(), plan)
 	if err != nil {
 		t.Fatalf("normalize: %v", err)
@@ -122,7 +121,7 @@ func TestNormalizeFinalJobVideoBackground_ReencodesNonCanonicalCodec(t *testing.
 		t.Fatalf("fixture must start at a positive PTS, got %v", pts)
 	}
 
-	plan := capabilityoverlay.OverlayPlan{Source: &capabilityoverlay.OverlaySource{AssetID: "drive-background-06", LocalPath: source}}
+	plan := capmodel.OverlayPlan{Source: &capmodel.OverlaySource{AssetID: "drive-background-06", LocalPath: source}}
 	normalized, cleanup, err := normalizeFinalJobVideoBackground(context.Background(), plan)
 	if err != nil {
 		t.Fatalf("normalize: %v", err)

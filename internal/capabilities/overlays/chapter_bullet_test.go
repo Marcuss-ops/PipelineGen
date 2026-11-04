@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -85,7 +86,7 @@ func TestChapterBulletShortCopyStaysIn3DFamily(t *testing.T) {
 	// Four words would take the short-phrase catalog as an ordinary phrase;
 	// as a chapter card it must keep the 3D family and the long section.
 	short := chapterTestPhrase("Quattro parole capitolo qui")
-	item := OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: short.Text,
+	item := capmodel.OverlayItem{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: short.Text,
 		Params: map[string]any{"editorial_role": ChapterBulletRole}}
 	if got := EditorialSectionForItem(item); got != EditorialSectionImportantPhrase {
 		t.Fatalf("chapter section = %v, want ImportantPhrase", got)

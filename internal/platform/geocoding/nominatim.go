@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +23,7 @@ import (
 
 	capgeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 const (
@@ -57,6 +59,10 @@ type Nominatim struct {
 	minimumInterval time.Duration
 	mu              sync.Mutex
 	lastRequest     time.Time
+	// retryOptions bounds the retries of one search against a transient
+	// provider failure. Tests shrink the backoff; production keeps a short,
+	// bounded wait so one Nominatim timeout no longer fails an entire job.
+	retryOptions retry.Options
 }
 
 // NewNominatim validates production identity/cache configuration and creates
@@ -95,6 +101,14 @@ func NewNominatim(cfg NominatimConfig) (*Nominatim, error) {
 	return &Nominatim{
 		baseURL: baseURL, userAgent: userAgent, cacheDir: cacheDir,
 		client: client, minimumInterval: minimumInterval,
+		retryOptions: retry.Options{
+			MaxAttempts:    3,
+			InitialBackoff: 300 * time.Millisecond,
+			MaxBackoff:     2 * time.Second,
+			BackoffFactor:  2,
+			JitterFraction: 0.25,
+			IsRetryable:    isRetryableNominatimError,
+		},
 	}, nil
 }
 
@@ -139,31 +153,16 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 	values.Set("accept-language", req.Language)
 	values.Set("addressdetails", "1")
 	query.RawQuery = values.Encode()
-	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, query.String(), nil)
+	// A transient provider failure (timeout, 429, 5xx) is retried with bounded
+	// backoff INSIDE this lookup: the alternative is losing an entire render job
+	// to one unanswerable HTTP request (measured on r106, 2026-11-03). The
+	// cache is still written only for a validated positive hit, so an outage
+	// never poisons the cache.
+	body, err := retry.DoWithValue(ctx, func() ([]byte, error) {
+		return n.fetchSearch(ctx, query.String())
+	}, n.retryOptions)
 	if err != nil {
-		return capgeocoding.Result{}, fmt.Errorf("nominatim: build request: %w", err)
-	}
-	httpRequest.Header.Set("User-Agent", n.userAgent)
-	httpRequest.Header.Set("Accept", "application/json")
-
-	if err := n.waitForPermit(ctx); err != nil {
 		return capgeocoding.Result{}, err
-	}
-	response, err := n.client.Do(httpRequest)
-	if err != nil {
-		return capgeocoding.Result{}, fmt.Errorf("nominatim: request: %w", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-		return capgeocoding.Result{}, fmt.Errorf("nominatim: search returned HTTP %d", response.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if err != nil {
-		return capgeocoding.Result{}, fmt.Errorf("nominatim: read response: %w", err)
-	}
-	if len(body) > maxResponseBytes {
-		return capgeocoding.Result{}, fmt.Errorf("nominatim: response exceeds %d bytes", maxResponseBytes)
 	}
 	var hits []searchHit
 	if err := json.Unmarshal(body, &hits); err != nil {
@@ -199,6 +198,83 @@ func (n *Nominatim) Geocode(ctx context.Context, request capgeocoding.Request) (
 		return capgeocoding.Result{}, err
 	}
 	return result, nil
+}
+
+// fetchSearch performs one paced search request. Transient transport and HTTP
+// failures keep their type so Geocode's retry loop can tell them apart from a
+// terminal client error; the request is rebuilt per attempt because a Request
+// is single-use.
+func (n *Nominatim) fetchSearch(ctx context.Context, endpoint string) ([]byte, error) {
+	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("nominatim: build request: %w", err)
+	}
+	httpRequest.Header.Set("User-Agent", n.userAgent)
+	httpRequest.Header.Set("Accept", "application/json")
+
+	if err := n.waitForPermit(ctx); err != nil {
+		return nil, err
+	}
+	response, err := n.client.Do(httpRequest)
+	if err != nil {
+		return nil, fmt.Errorf("nominatim: request: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+		return nil, &nominatimHTTPError{StatusCode: response.StatusCode}
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("nominatim: read response: %w", err)
+	}
+	if len(body) > maxResponseBytes {
+		return nil, fmt.Errorf("nominatim: response exceeds %d bytes", maxResponseBytes)
+	}
+	return body, nil
+}
+
+// nominatimHTTPError carries the status code so retryability is a property of
+// the response, not of its message string.
+type nominatimHTTPError struct{ StatusCode int }
+
+func (e *nominatimHTTPError) Error() string {
+	return fmt.Sprintf("nominatim: search returned HTTP %d", e.StatusCode)
+}
+
+// IsRetryable marks only the statuses a later attempt can plausibly fix:
+// request timeout, throttling and server-side failures. 400/404 and the rest
+// of the client-error family are terminal.
+func (e *nominatimHTTPError) IsRetryable() bool {
+	switch {
+	case e.StatusCode == http.StatusRequestTimeout, e.StatusCode == http.StatusTooEarly:
+		return true
+	case e.StatusCode == http.StatusTooManyRequests:
+		return true
+	case e.StatusCode >= 500:
+		return true
+	default:
+		return false
+	}
+}
+
+// isRetryableNominatimError classifies a failed fetch for the bounded retry
+// loop. It is fully typed: a RetryableError (the HTTP status carrier) or a
+// net.Error that reports a timeout/temporary transport failure. A canceled
+// caller context is not retryable.
+func isRetryableNominatimError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var retryable retry.RetryableError
+	if errors.As(err, &retryable) {
+		return retryable.IsRetryable()
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
+	}
+	return false
 }
 
 // nominatimCandidateLimit is how many provider candidates the adapter fetches

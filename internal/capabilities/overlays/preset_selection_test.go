@@ -3,6 +3,7 @@ package overlays
 import (
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -216,7 +217,7 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 	if len(plan.Items) != len(cases) {
 		t.Fatalf("routed value items=%d, want %d: %+v", len(plan.Items), len(cases), plan.Items)
 	}
-	byText := make(map[string]OverlayItem, len(plan.Items))
+	byText := make(map[string]capmodel.OverlayItem, len(plan.Items))
 	for _, item := range plan.Items {
 		byText[item.Text] = item
 	}

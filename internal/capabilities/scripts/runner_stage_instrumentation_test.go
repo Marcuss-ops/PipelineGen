@@ -5,14 +5,13 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/stretchr/testify/require"
 )
 
 // TestSceneAnalysisRecordsNLPExtract pins that a per-scene VidRush enrichment
@@ -59,12 +58,12 @@ func TestOverlayPrepareEnqueueRecordsStage(t *testing.T) {
 
 	enqueuer := &fakeOverlayPrepareEnqueuer{}
 	runner := &Runner{overlayPrepareEnqueuer: enqueuer}
-	intents := []capabilityoverlay.OverlayIntent{{
-		Version: capabilityoverlay.OverlayIntentVersion, IntentID: "intent-scene-0",
-		SceneID: "scene-0", SceneIndex: 0, Source: capabilityoverlay.IntentSourceEntity,
-		Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default",
-		Payload:     capabilityoverlay.IntentPayload{AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "person-asset", SHA256: "person-sha"}}},
-		TimingState: capabilityoverlay.TimingStatePending,
+	intents := []capmodel.OverlayIntent{{
+		Version: capmodel.OverlayIntentVersion, IntentID: "intent-scene-0",
+		SceneID: "scene-0", SceneIndex: 0, Source: capmodel.IntentSourceEntity,
+		Kind: string(capmodel.KindEntityCard), TemplateID: "person_default",
+		Payload:     capmodel.IntentPayload{AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "person-asset", SHA256: "person-sha"}}},
+		TimingState: capmodel.TimingStatePending,
 	}}
 
 	require.NoError(t, runner.enqueueOverlayPrepare(ctx, "run-001", defaultTestRequest(), intents))

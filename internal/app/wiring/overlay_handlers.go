@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"log"
 	"os"
 	"os/exec"
@@ -27,11 +28,11 @@ type HandlerSet struct {
 	AssetPreparer   *overlays.AssetPreparer
 	Renderer        overlays.Renderer
 	GPUGate         *overlays.GPUGate
-	Prober          capoverlay.MediaProber
+	Prober          capmodel.MediaProber
 	RendererVersion string
 }
 
-func NewHandlerSet(cache *overlays.Cache, renderer overlays.Renderer, gate *overlays.GPUGate, prober capoverlay.MediaProber, version string) (*HandlerSet, error) {
+func NewHandlerSet(cache *overlays.Cache, renderer overlays.Renderer, gate *overlays.GPUGate, prober capmodel.MediaProber, version string) (*HandlerSet, error) {
 	if cache == nil || renderer == nil || gate == nil || prober == nil {
 		return nil, fmt.Errorf("overlay handlers: cache, renderer, gpu gate and media prober are required")
 	}
@@ -90,7 +91,7 @@ func (h *HandlerSet) Prepare(ctx context.Context, j *job.Job, _ *job.JobExecutio
 }
 
 func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecutionTools) (map[string]any, error) {
-	var req capoverlay.RenderRequest
+	var req capmodel.RenderRequest
 	if err := json.Unmarshal(j.Payload, &req); err != nil {
 		return nil, fmt.Errorf("overlay.render payload: %w", err)
 	}
@@ -98,8 +99,8 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 	// resolved before any pixel work. Mapped as the RenderingGen "plan"
 	// phase operation on the canonical run.
 	var (
-		item     *capoverlay.OverlayItem
-		contract capoverlay.OverlayMediaContract
+		item     *capmodel.OverlayItem
+		contract capmodel.OverlayMediaContract
 	)
 	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
 		Stage:     kernobs.StageProcess,
@@ -122,13 +123,13 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 			return fmt.Errorf("overlay.render: overlay_id %q not found", req.OverlayID)
 		}
 		if item.RenderKey == "" {
-			item.RenderKey = capoverlay.ComputeRenderKey(req.Plan, *item)
+			item.RenderKey = capmodel.ComputeRenderKey(req.Plan, *item)
 		}
 		// The render container/codec/alpha come from the plan's media
 		// contract — never a hardcoded .mov guess. The contract is the
 		// single owner of the output format; the worker only materializes
 		// it.
-		c, err := capoverlay.ResolveMediaContract(req.Plan.MediaContract)
+		c, err := capmodel.ResolveMediaContract(req.Plan.MediaContract)
 		if err != nil {
 			return err
 		}
@@ -207,7 +208,7 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 	// or stub render that still exited 0 fails closed here. The probe+hash
 	// call is the RenderingGen "sha256" phase, mapped as one canonical
 	// operation.
-	var probed capoverlay.OverlayProbeResult
+	var probed capmodel.OverlayProbeResult
 	if err := kernobs.MeasureOperation(ctx, kernobs.OperationInfo{
 		Stage:     kernobs.StageProcess,
 		Component: kernobs.ComponentRenderingGen,
@@ -235,11 +236,11 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 	// The result is stamped READY only here — after render + probe + contract
 	// validation + hash have all succeeded. The probed facts travel with the
 	// result so the Sender can persist them durably.
-	result := capoverlay.RenderResult{SchemaVersion: capoverlay.SchemaVersionResult, OverlayID: item.ID, PlanID: req.Plan.PlanID, PlanFingerprint: req.Plan.Fingerprint, RenderKey: item.RenderKey, ArtifactID: j.ID + ":" + item.ID, Filename: safeName(j.ID) + "_" + safeName(item.ID) + "." + container, LocalPath: output, SHA256: probed.SHA256, SizeBytes: probed.SizeBytes, MIMEType: mime, Width: probed.Width, Height: probed.Height, FPSNum: req.Plan.FPSNum, FPSDen: req.Plan.FPSDen, DurationMs: (durationUS + 999) / 1000, HasAlpha: contract.RequiresAlpha, RendererVersion: h.RendererVersion, SceneID: item.SceneID, TemplateID: item.TemplateID, MediaContract: contract.ID, Container: probed.Container, Codec: probed.Codec, PixelFormat: probed.PixelFormat, AudioStreams: probed.AudioStreams, Status: capoverlay.OverlayStatusReady}
+	result := capmodel.RenderResult{SchemaVersion: capmodel.SchemaVersionResult, OverlayID: item.ID, PlanID: req.Plan.PlanID, PlanFingerprint: req.Plan.Fingerprint, RenderKey: item.RenderKey, ArtifactID: j.ID + ":" + item.ID, Filename: safeName(j.ID) + "_" + safeName(item.ID) + "." + container, LocalPath: output, SHA256: probed.SHA256, SizeBytes: probed.SizeBytes, MIMEType: mime, Width: probed.Width, Height: probed.Height, FPSNum: req.Plan.FPSNum, FPSDen: req.Plan.FPSDen, DurationMs: (durationUS + 999) / 1000, HasAlpha: contract.RequiresAlpha, RendererVersion: h.RendererVersion, SceneID: item.SceneID, TemplateID: item.TemplateID, MediaContract: contract.ID, Container: probed.Container, Codec: probed.Codec, PixelFormat: probed.PixelFormat, AudioStreams: probed.AudioStreams, Status: capmodel.OverlayStatusReady}
 	return artifactResult(j.ID, req.Plan.VideoID, req.Plan.ProjectID, req.Plan.ScriptName, req.Plan.Language, result)
 }
 
-func artifactResult(jobID, videoID, projectID, scriptName, language string, result capoverlay.RenderResult) (map[string]any, error) {
+func artifactResult(jobID, videoID, projectID, scriptName, language string, result capmodel.RenderResult) (map[string]any, error) {
 	driveSubpath := []string{finalization.OverlayChildFolder}
 	manifest := job.ArtifactManifest{SchemaVersion: job.SchemaVersionArtifactManifestV1, JobID: jobID, Artifacts: []job.Artifact{{
 		ID:        result.ArtifactID,
@@ -287,7 +288,7 @@ func artifactResult(jobID, videoID, projectID, scriptName, language string, resu
 	if strings.TrimSpace(language) != "" {
 		manifest.Artifacts[0].ArtifactMetadata["language"] = language
 	}
-	return map[string]any{"schema_version": capoverlay.SchemaVersionResult, "overlay_result": result, job.ManifestKey: manifest}, nil
+	return map[string]any{"schema_version": capmodel.SchemaVersionResult, "overlay_result": result, job.ManifestKey: manifest}, nil
 }
 
 func safeName(v string) string {
@@ -337,14 +338,14 @@ func newChrononTemplateMapPlateResolver(generator, cacheDir string, deferRaster 
 
 func (r *chrononTemplateMapPlateResolver) ResolvePlate(latitude, longitude float64) (capoverlay.MapPlate, bool) {
 	plate, ok := r.ResolveFlyover(
-		capoverlay.MapCenter{Latitude: latitude, Longitude: longitude},
-		capoverlay.MapCenter{Latitude: latitude, Longitude: longitude},
+		capmodel.MapCenter{Latitude: latitude, Longitude: longitude},
+		capmodel.MapCenter{Latitude: latitude, Longitude: longitude},
 		1920, 1080,
 	)
 	return plate, ok
 }
 
-func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capoverlay.MapCenter, width, height int) (capoverlay.MapPlate, bool) {
+func (r *chrononTemplateMapPlateResolver) ResolveFlyover(from, to capmodel.MapCenter, width, height int) (capoverlay.MapPlate, bool) {
 	if r == nil || r.generator == "" || r.cacheDir == "" || width <= 0 || height <= 0 {
 		return capoverlay.MapPlate{}, false
 	}
@@ -429,7 +430,7 @@ const mapPlateFadeHalfBandZoom = 0.5
 // surviving LOD covers the camera viewport across its active interval (the
 // worker's mapLODWindowCoversMove contract, mirrored here). Returns nil when
 // fewer than two zooms survive — the caller fails closed.
-func trimZoomsToViewport(covered []int, plateWidth, plateHeight int, center, from, to capoverlay.MapCenter) []int {
+func trimZoomsToViewport(covered []int, plateWidth, plateHeight int, center, from, to capmodel.MapCenter) []int {
 	for len(covered) >= 2 {
 		startZoom := float64(covered[0])
 		endZoom := float64(covered[len(covered)-1])
@@ -468,7 +469,7 @@ func trimZoomsToViewport(covered []int, plateWidth, plateHeight int, center, fro
 	return nil
 }
 
-func routeMapCenter(from, to capoverlay.MapCenter) capoverlay.MapCenter {
+func routeMapCenter(from, to capmodel.MapCenter) capmodel.MapCenter {
 	lonTo := to.Longitude
 	delta := lonTo - from.Longitude
 	if delta > 180 {
@@ -483,10 +484,10 @@ func routeMapCenter(from, to capoverlay.MapCenter) capoverlay.MapCenter {
 	for lon < -180 {
 		lon += 360
 	}
-	return capoverlay.MapCenter{Latitude: (from.Latitude + to.Latitude) / 2, Longitude: lon}
+	return capmodel.MapCenter{Latitude: (from.Latitude + to.Latitude) / 2, Longitude: lon}
 }
 
-func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, zoom, width, height int) (capoverlay.MapPlate, bool) {
+func (r *chrononTemplateMapPlateResolver) generate(center capmodel.MapCenter, zoom, width, height int) (capoverlay.MapPlate, bool) {
 	// The raster is the declared window; keep the legacy 2x-split keys out of
 	// the same cache namespace so stale stretched plates cannot be reused.
 	key := fmt.Sprintf("%.6f_%.6f_z%d_%dx%d", center.Latitude, center.Longitude, zoom, width, height)
@@ -502,7 +503,7 @@ func (r *chrononTemplateMapPlateResolver) generate(center capoverlay.MapCenter, 
 	return plate, ok
 }
 
-func (r *chrononTemplateMapPlateResolver) plateDescriptor(center capoverlay.MapCenter, zoom, width, height int) capoverlay.MapPlate {
+func (r *chrononTemplateMapPlateResolver) plateDescriptor(center capmodel.MapCenter, zoom, width, height int) capoverlay.MapPlate {
 	key := fmt.Sprintf("%.6f_%.6f_z%d_%dx%d", center.Latitude, center.Longitude, zoom, width, height)
 	key = strings.NewReplacer("-", "m", ".", "p").Replace(key)
 	id := fmt.Sprintf("chronontemplate-esri-%s-z%d", key, zoom)
@@ -516,7 +517,7 @@ func (r *chrononTemplateMapPlateResolver) plateDescriptor(center capoverlay.MapC
 // generateCached owns only one cache key at a time: independent geographic
 // plates can be prepared concurrently, while duplicate requests share one
 // generator process and one verified cache artifact.
-func (r *chrononTemplateMapPlateResolver) generateCached(path string, center capoverlay.MapCenter, zoom, width, height int, key string) (capoverlay.MapPlate, error) {
+func (r *chrononTemplateMapPlateResolver) generateCached(path string, center capmodel.MapCenter, zoom, width, height int, key string) (capoverlay.MapPlate, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return capoverlay.MapPlate{}, err
 	}
@@ -569,7 +570,7 @@ func (r *chrononTemplateMapPlateResolver) generateCached(path string, center cap
 		ID: id, License: chrononMapLicense, Attribution: chrononMapAttribution,
 		Center: center, Zoom: zoom, Width: width, Height: height,
 		Window: geodesy.CenteredOn(center.Latitude, center.Longitude, zoom, width, height),
-		Asset: capoverlay.NewOverlayAssetRef(
+		Asset: capmodel.NewOverlayAssetRef(
 			asset.New(id, assetDigest, "image/png", 0), "", path,
 		),
 	}, nil

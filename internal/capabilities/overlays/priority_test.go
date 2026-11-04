@@ -2,6 +2,8 @@
 // priority table and the deterministic overlap degradation.
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "testing"
 
 // TestContentPriorityCanonicalTable pins the editorial priority of every
@@ -34,7 +36,7 @@ func TestContentPriorityCanonicalTable(t *testing.T) {
 			t.Errorf("ContentPriority(%q) = %d, want %d", tc.template, got, tc.want)
 		}
 	}
-	chartBar := OverlayItem{TemplateID: "SHAPE", Params: map[string]any{"chart_bar": true}}
+	chartBar := capmodel.OverlayItem{TemplateID: "SHAPE", Params: map[string]any{"chart_bar": true}}
 	if got := contentPriorityForItem(chartBar); got != PriorityStructural {
 		t.Errorf("chart bar keeps the SHAPE structural priority = %d, want %d", got, PriorityStructural)
 	}
@@ -49,7 +51,7 @@ func TestContentPriorityCanonicalTable(t *testing.T) {
 // overlapping content items (phrase + word + image + leak) with the default
 // budget 3 drop exactly the light leak (lowest priority), deterministically.
 func TestDegradeOverlapsDropsLowestPriority(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "bg", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 5000},
 		{ID: "img", TemplateID: "IMAGE_OVERLAY", StartMs: 1000, EndMs: 3000},
 		{ID: "leak", TemplateID: "LIGHT_LEAK", StartMs: 1000, EndMs: 3000},
@@ -78,7 +80,7 @@ func TestDegradeOverlapsDropsLowestPriority(t *testing.T) {
 // background/shape layers are never counted toward the budget, so a scene
 // with a background + 3 overlapping content items degrades nothing.
 func TestDegradeOverlapsStructuralNeverDropped(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "bg", TemplateID: "BACKGROUND", StartMs: 0, EndMs: 5000},
 		{ID: "img", TemplateID: "IMAGE_OVERLAY", StartMs: 1000, EndMs: 3000},
 		{ID: "word", TemplateID: "IMPORTANT_WORD", StartMs: 1000, EndMs: 3000},
@@ -94,7 +96,7 @@ func TestDegradeOverlapsStructuralNeverDropped(t *testing.T) {
 // that do not overlap in time are never degraded, even when the same content
 // types would exceed the budget if they overlapped.
 func TestDegradeOverlapsNonOverlappingKept(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "a", TemplateID: "LIGHT_LEAK", StartMs: 0, EndMs: 1000},
 		{ID: "b", TemplateID: "LIGHT_LEAK", StartMs: 1000, EndMs: 2000}, // touches at 1000, half-open → no overlap
 		{ID: "c", TemplateID: "LIGHT_LEAK", StartMs: 2000, EndMs: 3000},
@@ -109,7 +111,7 @@ func TestDegradeOverlapsNonOverlappingKept(t *testing.T) {
 // TestDegradeOverlapsDeterministic pins re-render determinism: two runs over
 // the same item list produce byte-identical survivor sequences.
 func TestDegradeOverlapsDeterministic(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "leak1", TemplateID: "LIGHT_LEAK", StartMs: 0, EndMs: 1000},
 		{ID: "leak2", TemplateID: "LIGHT_LEAK", StartMs: 500, EndMs: 1500},
 		{ID: "img1", TemplateID: "IMAGE_OVERLAY", StartMs: 400, EndMs: 900},
@@ -134,7 +136,7 @@ func TestDegradeOverlapsDeterministic(t *testing.T) {
 // structural layers (background/shape) plus unknown templates are never
 // counted as content.
 func TestCountContentCensus(t *testing.T) {
-	plan := OverlayPlan{Items: []OverlayItem{
+	plan := capmodel.OverlayPlan{Items: []capmodel.OverlayItem{
 		{ID: "bg", TemplateID: "BACKGROUND"},
 		{ID: "p1", TemplateID: "IMPORTANT_PHRASE"},
 		{ID: "p2", TemplateID: "IMPORTANT_PHRASE"},

@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -27,7 +28,7 @@ func (r *Runner) SetOverlayCanvas(canvas OverlayCanvasSpec) {
 // SetOverlayRegistry wires the canonical entity type→template registry used
 // by the EntityOverlayPlanner. Nil-safe; nil means overlay intent planning
 // is skipped.
-func (r *Runner) SetOverlayRegistry(registry *capabilityoverlay.ChrononOverlayRegistry) {
+func (r *Runner) SetOverlayRegistry(registry *capmodel.ChrononOverlayRegistry) {
 	if r != nil {
 		r.overlayRegistry = registry
 	}

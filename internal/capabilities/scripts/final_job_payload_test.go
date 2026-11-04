@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,6 @@ import (
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -104,19 +104,19 @@ func manifestContentHash(seed int) string {
 // manifestOverlayRender builds the RenderReference the manifest-timeline path
 // produces: ONE certified timeline artifact plus the typed manifest, with one
 // identity row per voice (no per-item artifacts).
-func manifestOverlayRender(items []capabilityoverlay.OverlayItem, artifact *RenderArtifact) *RenderReference {
-	entries := make([]capabilityoverlay.OverlayManifestEntry, 0, len(items))
+func manifestOverlayRender(items []capmodel.OverlayItem, artifact *RenderArtifact) *RenderReference {
+	entries := make([]capmodel.OverlayManifestEntry, 0, len(items))
 	rows := make([]OverlayItemRenderReference, 0, len(items))
 	for index, item := range items {
-		entries = append(entries, capabilityoverlay.OverlayManifestEntry{
+		entries = append(entries, capmodel.OverlayManifestEntry{
 			ItemID: item.ID, Track: index,
 			InUS: item.StartUSValue(), OutUS: item.EndUSValue(),
 			ContentHash: manifestContentHash(index),
 		})
 		rows = append(rows, OverlayItemRenderReference{ItemID: item.ID, JobID: "manifest-job", Status: "SUCCEEDED", BatchID: "manifest-batch"})
 	}
-	manifest := capabilityoverlay.OverlayManifest{
-		SchemaVersion:  capabilityoverlay.SchemaVersionManifest,
+	manifest := capmodel.OverlayManifest{
+		SchemaVersion:  capmodel.SchemaVersionManifest,
 		PlanID:         "plan-manifest",
 		VideoID:        "run-manifest",
 		TimelineSHA256: strings.ToLower(strings.TrimSpace(artifact.SHA256)),
@@ -140,13 +140,13 @@ func decodeFinalJobPlanForTest(t *testing.T, payload map[string]any) finalJobCom
 
 func phraseOnlyFinalJobResult(sceneID string) *GenerateResult {
 	artifact := certifiedPhraseVideoArtifact()
-	item := capabilityoverlay.OverlayItem{ID: "phrase-item", SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Garlasco, provincia di Pavia.", StartUS: 0, DurationUS: 5_000_000}
+	item := capmodel.OverlayItem{ID: "phrase-item", SceneID: sceneID, Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Garlasco, provincia di Pavia.", StartUS: 0, DurationUS: 5_000_000}
 	return &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: sceneID, DurationUS: 5_000_000}}},
 		FinalAudio:        certifiedFinalAudio(5000),
 		Scenes:            []Scene{{ID: sceneID, Text: map[Language]string{"it": "Garlasco, provincia di Pavia."}}},
-		OverlayPlan:       &capabilityoverlay.OverlayPlan{SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-phrase", VideoID: "run-phrase", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{item}},
-		OverlayRender:     manifestOverlayRender([]capabilityoverlay.OverlayItem{item}, artifact),
+		OverlayPlan:       &capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-phrase", VideoID: "run-phrase", Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{item}},
+		OverlayRender:     manifestOverlayRender([]capmodel.OverlayItem{item}, artifact),
 	}
 }
 
@@ -232,7 +232,7 @@ func TestFinalJobOverlayHandoffConsumedPhraseDoesNotDuplicateTheVideo(t *testing
 
 func TestFinalJobOverlayHandoffStillRejectsUncoveredItems(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
-	result.OverlayPlan.Items = append(result.OverlayPlan.Items, capabilityoverlay.OverlayItem{ID: "other-item", SceneID: "scene-phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Altra frase", StartUS: 0, DurationUS: 5_000_000})
+	result.OverlayPlan.Items = append(result.OverlayPlan.Items, capmodel.OverlayItem{ID: "other-item", SceneID: "scene-phrase", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "Altra frase", StartUS: 0, DurationUS: 5_000_000})
 	_, _, err := finalJobOverlayHandoff(context.Background(), result, map[string]struct{}{"phrase-item": {}}, false)
 	if err == nil || !strings.Contains(err.Error(), `overlay "other-item" has no manifest entry`) {
 		t.Fatalf("finalJobOverlayHandoff error = %v, want missing manifest entry rejection", err)
@@ -277,14 +277,14 @@ func TestFinalJobManifestAdmitsOverlappingEntriesWithTracks(t *testing.T) {
 	// (both read from one artifact, so placement is idempotent) and the baked
 	// z-order (track) is authoritative. The per-item handoff had to move the
 	// second card out of the way for mode=replace; that scheduling is gone.
-	items := []capabilityoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "date-tick", SceneID: "scene-1", Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "28 settembre", StartUS: 5_000_000, DurationUS: 5_000_000},
 		{ID: "date-month", SceneID: "scene-1", Kind: "number", TemplateID: "TIMELINE_DATE_CARD", Text: "28 settembre 2026", StartUS: 5_000_000, DurationUS: 5_000_000},
 	}
 	artifact := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("d", 64), SizeBytes: 100, FrameCount: 480}
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 20_000_000}}},
-		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
+		OverlayPlan:       &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
 		OverlayRender:     manifestOverlayRender(items, artifact),
 	}
 	overlays, manifestWire, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
@@ -316,12 +316,12 @@ func TestFinalJobManifestKeepsRenderedWindowPastCertifiedBaseEnd(t *testing.T) {
 	// the receipt from the artifact — and the projection clamps the tail to
 	// the certified base on the worker (contract §3). An entry that STARTS
 	// past the base is still fail-closed.
-	item := capabilityoverlay.OverlayItem{ID: "last-date", SceneID: "scene-1", Kind: "number", StartUS: 29_939_000_000 / 24, DurationUS: 5_000_000}
+	item := capmodel.OverlayItem{ID: "last-date", SceneID: "scene-1", Kind: "number", StartUS: 29_939_000_000 / 24, DurationUS: 5_000_000}
 	artifact := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("a", 64), SizeBytes: 100, FrameCount: 719_808}
 	result := &GenerateResult{
 		FinalAudio:    &FinalAudioReference{DurationMS: 1_249_708}, // floor to complete frames at 24 fps
-		OverlayPlan:   &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{item}},
-		OverlayRender: manifestOverlayRender([]capabilityoverlay.OverlayItem{item}, artifact),
+		OverlayPlan:   &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{item}},
+		OverlayRender: manifestOverlayRender([]capmodel.OverlayItem{item}, artifact),
 	}
 	_, manifestWire, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
 	if err != nil {
@@ -338,14 +338,14 @@ func TestFinalJobRejectsDedicatedRowsThatCannotFitBesideComposition(t *testing.T
 	// a frame with composition frames (those belong to the timeline artifact).
 	// When the scene has no free window left, the handoff fails closed before
 	// any remote attempt.
-	phrase := capabilityoverlay.OverlayItem{ID: "date-a", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000}
-	mapItem := capabilityoverlay.OverlayItem{ID: "map-a", SceneID: "scene-1", Kind: "dynamic_map", StartUS: 0, DurationUS: 5_000_000, Map: &capabilityoverlay.MapOverlay{}}
+	phrase := capmodel.OverlayItem{ID: "date-a", SceneID: "scene-1", Kind: "number", StartUS: 0, DurationUS: 5_000_000}
+	mapItem := capmodel.OverlayItem{ID: "map-a", SceneID: "scene-1", Kind: "dynamic_map", StartUS: 0, DurationUS: 5_000_000, Map: &capmodel.MapOverlay{}}
 	timeline := &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: strings.Repeat("f", 64), SizeBytes: 100, FrameCount: 120}
 	mapArtifact := &RenderArtifact{ID: "map-artifact", DriveFileID: "map-drive", SHA256: strings.Repeat("g", 64), SizeBytes: 100, FrameCount: 120}
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", TimelineStartUS: 0, DurationUS: 5_000_000}}},
-		OverlayPlan:       &capabilityoverlay.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{phrase, mapItem}},
-		OverlayRender:     manifestOverlayRender([]capabilityoverlay.OverlayItem{phrase}, timeline),
+		OverlayPlan:       &capmodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{phrase, mapItem}},
+		OverlayRender:     manifestOverlayRender([]capmodel.OverlayItem{phrase}, timeline),
 	}
 	result.OverlayRender.Items = append(result.OverlayRender.Items, OverlayItemRenderReference{ItemID: "map-a", Status: "SUCCEEDED", Artifact: mapArtifact})
 	_, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false)
@@ -366,10 +366,10 @@ func TestBuildFinalJobPayloadsRequiresPublishedOverlayAssets(t *testing.T) {
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 1_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 1_000_000}}},
 		FinalAudio:        &FinalAudioReference{AssetID: "audio-1", DriveLink: "https://drive.google.com/file/d/audio-drive-id/view", FinalAudioSHA256: strings.Repeat("a", 64), SizeBytes: 12, DurationMS: 1000, Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", FinalMix: true, CopyEligible: true},
 		Scenes:            []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
-			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 500}},
+			Items: []capmodel.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 500}},
 		},
 	}
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
@@ -921,13 +921,13 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
 		FinalAudio:        certifiedFinalAudio(5000),
 		Scenes:            []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
+		OverlayPlan: &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
-			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 4500, Text: "hello"}},
+			Items: []capmodel.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 4500, Text: "hello"}},
 		},
 		OverlayRender: manifestOverlayRender(
-			[]capabilityoverlay.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 4500, Text: "hello"}},
+			[]capmodel.OverlayItem{{ID: "phrase-overlay", SceneID: "scene-1", TemplateID: "phrase", StartMs: 100, EndMs: 4500, Text: "hello"}},
 			&RenderArtifact{ID: "overlay-1", DriveFileID: "overlay-drive-1", SHA256: strings.Repeat("d", 64), SizeBytes: 50, FrameCount: 105, CopyEligible: true},
 		),
 	}

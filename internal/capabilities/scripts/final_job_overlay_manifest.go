@@ -16,10 +16,9 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"strings"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"strings"
 )
 
 // normalizeFinalJobOverlayWindows applies the final-job placement policy to
@@ -35,7 +34,7 @@ import (
 // the clip, never over it — replace-mode frames would cover the source video
 // that has to stay visible. Image-style cards on those scenes are dropped at
 // handoff time instead (their frames are simply never placed).
-func normalizeFinalJobOverlayWindows(plan *capoverlay.OverlayPlan, result *GenerateResult) error {
+func normalizeFinalJobOverlayWindows(plan *capmodel.OverlayPlan, result *GenerateResult) error {
 	if plan == nil {
 		return nil
 	}
@@ -155,7 +154,7 @@ func finalJobArtifactWindowTolerance(fpsNum, fpsDen int) int64 {
 // A packed entry (artifact_in_us/artifact_out_us set, §3 packed timeline)
 // addresses its frames there; an unpacked artifact is the plan canvas anchored
 // at 0, so the plan window IS the artifact window (§3.1).
-func manifestEntryArtifactWindow(entry capoverlay.OverlayManifestEntry) (int64, int64) {
+func manifestEntryArtifactWindow(entry capmodel.OverlayManifestEntry) (int64, int64) {
 	if entry.ArtifactInUS != nil && entry.ArtifactOutUS != nil {
 		return *entry.ArtifactInUS, *entry.ArtifactOutUS
 	}
@@ -164,7 +163,7 @@ func manifestEntryArtifactWindow(entry capoverlay.OverlayManifestEntry) (int64, 
 
 // manifestEntryArtifactPositions reports the entry's packed positions and
 // whether they are distinct from its plan receipt.
-func manifestEntryArtifactPositions(entry capoverlay.OverlayManifestEntry) (int64, int64, bool) {
+func manifestEntryArtifactPositions(entry capmodel.OverlayManifestEntry) (int64, int64, bool) {
 	if entry.ArtifactInUS == nil || entry.ArtifactOutUS == nil {
 		return 0, 0, false
 	}
@@ -340,7 +339,7 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 	}
 	admittedContent[sha] = "overlay_timeline"
 
-	itemsByID := make(map[string]capoverlay.OverlayItem, len(result.OverlayPlan.Items))
+	itemsByID := make(map[string]capmodel.OverlayItem, len(result.OverlayPlan.Items))
 	for _, item := range result.OverlayPlan.Items {
 		itemsByID[strings.TrimSpace(item.ID)] = item
 	}

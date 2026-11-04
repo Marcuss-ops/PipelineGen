@@ -66,10 +66,12 @@ type GenerateRequest struct {
 	MotionSeed string `json:"motion_seed,omitempty"`
 	// CoherenceSeed picks the run's dominant horizontal direction; empty derives
 	// it from MotionSeed. Opt-in: omitting it keeps plans byte-identical.
-	CoherenceSeed                 string                                         `json:"coherence_seed,omitempty"`
-	ImageMotions                  []string                                       `json:"image_motions,omitempty"`
-	EntityImageMotions            []string                                       `json:"entity_image_motions,omitempty"`
-	EntityCaptionMotions          []string                                       `json:"entity_caption_motions,omitempty"`
+	CoherenceSeed        string   `json:"coherence_seed,omitempty"`
+	ImageMotions         []string `json:"image_motions,omitempty"`
+	EntityImageMotions   []string `json:"entity_image_motions,omitempty"`
+	EntityCaptionMotions []string `json:"entity_caption_motions,omitempty"`
+	// AnimationPolicies is the retired pre-v2 contract, carried only so the
+	// compile boundary can reject a non-empty legacy payload.
 	AnimationPolicies             []scriptpkg.AnimationPolicy                    `json:"animation_policies,omitempty"`
 	RandomLightLeakOnClipStart    bool                                           `json:"random_light_leak_on_clip_start,omitempty"`
 	RandomLightLeakOnOverlayStart bool                                           `json:"random_light_leak_on_overlay_start,omitempty"`

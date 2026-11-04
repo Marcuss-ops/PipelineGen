@@ -2,11 +2,10 @@ package scriptgeneration
 
 import (
 	"context"
-	"strings"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
+	"strings"
 )
 
 // audioCompileStage is the canonical observability stage under which the
@@ -63,7 +62,7 @@ func (r *Runner) recordAudioRenderOperations(ctx context.Context, m AudioPipelin
 // logPhraseMotionSelections records the phrase animation that was actually
 // assigned to each phrase in the compiled plan, making repeated selections
 // visible when comparing generated jobs.
-func (r *Runner) logPhraseMotionSelections(runID string, plan *capabilityoverlay.OverlayPlan) {
+func (r *Runner) logPhraseMotionSelections(runID string, plan *capmodel.OverlayPlan) {
 	if r == nil || r.log == nil || plan == nil {
 		return
 	}

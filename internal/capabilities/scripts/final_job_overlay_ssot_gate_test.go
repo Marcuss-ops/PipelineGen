@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	overlaymodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -29,13 +28,13 @@ import (
 
 // ssotGateResult builds a minimal certified run whose finalize payload places
 // the given overlay items through ONE timeline artifact plus its manifest.
-func ssotGateResult(items []capabilityoverlay.OverlayItem, artifact *RenderArtifact) *GenerateResult {
+func ssotGateResult(items []overlaymodel.OverlayItem, artifact *RenderArtifact) *GenerateResult {
 	return &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
 		FinalAudio:        certifiedFinalAudio(5000),
 		Scenes:            []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
-		OverlayPlan: &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
+		OverlayPlan: &overlaymodel.OverlayPlan{
+			SchemaVersion: overlaymodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
 			Items: items,
 		},
@@ -48,7 +47,7 @@ func ssotTimelineArtifact(sha string) *RenderArtifact {
 }
 
 func TestFinalJobMultiArtifactManifestHandoff(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []overlaymodel.OverlayItem{
 		{ID: "a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 0, DurationUS: 1_000_000},
 		{ID: "b", SceneID: "scene-2", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 1_000_000},
 	}
@@ -83,8 +82,8 @@ func TestFinalJobMultiArtifactManifestHandoff(t *testing.T) {
 }
 
 func TestFinalJobManifestPreservesPackedOffsetsAndRejectsPlacement(t *testing.T) {
-	item := capabilityoverlay.OverlayItem{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 1_000_000}
-	result := ssotGateResult([]capabilityoverlay.OverlayItem{item}, ssotTimelineArtifact(strings.Repeat("d", 64)))
+	item := overlaymodel.OverlayItem{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 1_000_000}
+	result := ssotGateResult([]overlaymodel.OverlayItem{item}, ssotTimelineArtifact(strings.Repeat("d", 64)))
 	in, out := int64(0), int64(1_000_000)
 	result.OverlayRender.Manifest.Entries[0].ArtifactInUS = &in
 	result.OverlayRender.Manifest.Entries[0].ArtifactOutUS = &out
@@ -107,7 +106,7 @@ func TestFinalJobManifestPreservesPackedOffsetsAndRejectsPlacement(t *testing.T)
 // image incident in miniature — the run must fail closed instead of shipping
 // the same visual twice (manifest validation: one content one overlay).
 func TestFinalJobManifestRejectsDuplicateContentHash(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []overlaymodel.OverlayItem{
 		{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 100, EndMs: 2100, Text: "first"},
 		{ID: "overlay-b", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 3000, EndMs: 5000, Text: "second"},
 	}
@@ -126,9 +125,9 @@ func TestFinalJobManifestRejectsDuplicateContentHash(t *testing.T) {
 // artifact is admitted exactly once on the handoff.
 func TestFinalJobHandoffRejectsRowSharingTimelineArtifact(t *testing.T) {
 	sha := strings.Repeat("d", 64)
-	phrase := capabilityoverlay.OverlayItem{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 100, EndMs: 2100, Text: "first"}
-	mapItem := capabilityoverlay.OverlayItem{ID: "map-a", SceneID: "scene-1", Kind: "dynamic_map", StartMs: 3000, EndMs: 5000, Map: &capabilityoverlay.MapOverlay{}}
-	result := ssotGateResult([]capabilityoverlay.OverlayItem{phrase}, ssotTimelineArtifact(sha))
+	phrase := overlaymodel.OverlayItem{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 100, EndMs: 2100, Text: "first"}
+	mapItem := overlaymodel.OverlayItem{ID: "map-a", SceneID: "scene-1", Kind: "dynamic_map", StartMs: 3000, EndMs: 5000, Map: &overlaymodel.MapOverlay{}}
+	result := ssotGateResult([]overlaymodel.OverlayItem{phrase}, ssotTimelineArtifact(sha))
 	result.OverlayPlan.Items = append(result.OverlayPlan.Items, mapItem)
 	result.OverlayRender.Items = append(result.OverlayRender.Items, OverlayItemRenderReference{
 		ItemID: "map-a", Status: "SUCCEEDED",
@@ -146,7 +145,7 @@ func TestFinalJobHandoffRejectsRowSharingTimelineArtifact(t *testing.T) {
 // clips cannot share a replace frame); one artifact resolves the overlap in
 // its own pixels, so the placement is documented, not scheduled away.
 func TestFinalJobManifestAdmitsOverlappingEntriesInShortScene(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []overlaymodel.OverlayItem{
 		{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 0, EndMs: 2000, Text: "first"},
 		{ID: "overlay-b", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 1950, EndMs: 3950, Text: "second"},
 	}
@@ -168,7 +167,7 @@ func TestFinalJobManifestAdmitsOverlappingEntriesInShortScene(t *testing.T) {
 // the gates must never break: distinct voices with disjoint windows inside the
 // certified output duration are placed verbatim.
 func TestFinalJobManifestAdmitsDistinctEntriesOnTheFrameGrid(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []overlaymodel.OverlayItem{
 		{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 10_000, EndMs: 12_000, Text: "first"},
 		{ID: "overlay-b", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 12_500, EndMs: 14_500, Text: "second"},
 	}
@@ -200,7 +199,7 @@ func TestFinalJobManifestAdmitsDistinctEntriesOnTheFrameGrid(t *testing.T) {
 // non-intersection; the manifest documents both voices with their baked
 // z-order instead.
 func TestFinalJobManifestKeepsEntityCardOverDateCard(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []overlaymodel.OverlayItem{
 		{ID: "date-13-august", SceneID: "scene-1", Kind: "number", StartMs: 275, EndMs: 5275, Text: "13 August 2007"},
 		{ID: "entity-chiara", SceneID: "scene-1", Kind: "entity_card", StartMs: 1725, EndMs: 3050, TemplateID: "person_default"},
 	}
@@ -242,7 +241,7 @@ func TestFinalJobManifestKeepsEntityCardOverDateCard(t *testing.T) {
 // demanded — so the group can never reach the worker as separate replace
 // clips and no gate is needed.
 func TestFinalJobChartGroupArrivesPreComposed(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []overlaymodel.OverlayItem{
 		{ID: "chart-card", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 			StartMs: 500, EndMs: 4000, Text: "42%\n18%",
 			Params: map[string]any{"chart_card": true, "chart_group_id": "chart-scene-1-42-18"}},
@@ -277,8 +276,8 @@ func TestFinalJobChartGroupArrivesPreComposed(t *testing.T) {
 // base bound: an entry that starts after the certified output ends can never
 // be placed, so the handoff fails before any remote attempt.
 func TestFinalJobManifestRejectsEntryStartingAfterBaseEnd(t *testing.T) {
-	item := capabilityoverlay.OverlayItem{ID: "late-card", SceneID: "scene-1", Kind: "number", StartMs: 5_000, EndMs: 7_000, Text: "too late"}
-	result := ssotGateResult([]capabilityoverlay.OverlayItem{item}, ssotTimelineArtifact(strings.Repeat("d", 64)))
+	item := overlaymodel.OverlayItem{ID: "late-card", SceneID: "scene-1", Kind: "number", StartMs: 5_000, EndMs: 7_000, Text: "too late"}
+	result := ssotGateResult([]overlaymodel.OverlayItem{item}, ssotTimelineArtifact(strings.Repeat("d", 64)))
 	_, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err == nil || !strings.Contains(err.Error(), "starts at frame") {
 		t.Fatalf("BuildFinalJobPayloads error = %v, want fail-closed past-base entry", err)

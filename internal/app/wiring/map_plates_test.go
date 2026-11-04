@@ -3,6 +3,7 @@ package wiring
 import (
 	"bytes"
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"image"
 	"image/png"
 	"net/http"
@@ -255,8 +256,8 @@ func TestWireMapPlatesResolvesOfflineFlyoverLODs(t *testing.T) {
 		t.Fatal("wired resolver does not expose the flyover port")
 	}
 	plate, ok := resolver.ResolveFlyover(
-		capabilityoverlay.MapCenter{Latitude: 0, Longitude: 0},
-		capabilityoverlay.MapCenter{Latitude: 0, Longitude: 0.2}, 640, 360,
+		capmodel.MapCenter{Latitude: 0, Longitude: 0},
+		capmodel.MapCenter{Latitude: 0, Longitude: 0.2}, 640, 360,
 	)
 	if !ok {
 		t.Fatal("certified route should resolve a camera-backed local plate")

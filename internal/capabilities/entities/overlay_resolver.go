@@ -2,6 +2,7 @@ package entities
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -62,7 +63,7 @@ func EntitySpokenWindowDuration(audioStartUS, audioEndUS int64) int64 {
 // item strictly covers the certified microsecond span. The plan is sealed
 // (render keys + fingerprint) by its own Validate, so the caller can enqueue
 // it directly.
-func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int) (capabilityoverlay.OverlayPlan, error) {
+func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int) (capmodel.OverlayPlan, error) {
 	return ResolveRankedEntityOverlayPlan(timeline, planID, videoID, projectID, width, height, fpsNum, fpsDen, RankConfig{})
 }
 
@@ -76,15 +77,15 @@ func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectI
 // never renders every extracted entity. Distinct entities are ranked by their
 // highest-scoring occurrence, then the top-N survive per scene
 // (cfg.MaxEntityOverlaysPerScene) with that occurrence's certified timing.
-func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int, cfg RankConfig) (capabilityoverlay.OverlayPlan, error) {
+func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int, cfg RankConfig) (capmodel.OverlayPlan, error) {
 	if err := timeline.Validate(); err != nil {
-		return capabilityoverlay.OverlayPlan{}, err
+		return capmodel.OverlayPlan{}, err
 	}
 	if strings.TrimSpace(planID) == "" || strings.TrimSpace(videoID) == "" {
-		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: plan_id and video_id are required")
+		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: plan_id and video_id are required")
 	}
 	if width <= 0 || height <= 0 || fpsNum <= 0 || fpsDen <= 0 {
-		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: width, height and frame rate must be positive")
+		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: width, height and frame rate must be positive")
 	}
 
 	// Run-level context: frequency / novelty / asset quality are derived
@@ -92,7 +93,7 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 	allOccurrences := allOccurrences(timeline)
 	ctx := NewRankContext(allOccurrences)
 
-	var items []capabilityoverlay.OverlayItem
+	var items []capmodel.OverlayItem
 	for _, scene := range timeline.Scenes {
 		// Apply the resolver's cap after semantic deduplication. Passing it into
 		// RankScene would let repeated mentions of one entity consume several
@@ -133,12 +134,12 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 			// microsecond projection to that same boundary so the dynamic
 			// editorial window remains internally consistent.
 			startUS := startMS * 1000
-			kind := capabilityoverlay.EntityTypeToKind(occurrence.Type)
-			entry, err := capabilityoverlay.DefaultChrononOverlayRegistry.Resolve(string(kind))
+			kind := capmodel.EntityTypeToKind(occurrence.Type)
+			entry, err := capmodel.DefaultChrononOverlayRegistry.Resolve(string(kind))
 			if err != nil {
-				return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
+				return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
 			}
-			items = append(items, capabilityoverlay.OverlayItem{
+			items = append(items, capmodel.OverlayItem{
 				ID:       identity,
 				SceneID:  occurrence.SceneID,
 				EntityID: occurrence.EntityID,
@@ -165,7 +166,7 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				// The plan's entity_ref: RenderingGen receives WHO the overlay is
 				// about (stable content-addressed id + type + canonical name +
 				// surface text), never a bare name.
-				EntityRef: &capabilityoverlay.OverlayEntityRef{
+				EntityRef: &capmodel.OverlayEntityRef{
 					EntityID:    occurrence.EntityID,
 					Type:        occurrence.Type,
 					Name:        occurrence.Name,
@@ -175,11 +176,11 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 		}
 	}
 	if len(items) == 0 {
-		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: timeline carries no entity occurrences")
+		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: timeline carries no entity occurrences")
 	}
 
-	plan := capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        planID,
 		VideoID:       videoID,
 		ProjectID:     strings.TrimSpace(projectID),
@@ -190,7 +191,7 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 		Items:         items,
 	}
 	if err := plan.Validate(); err != nil {
-		return capabilityoverlay.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
+		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: %w", err)
 	}
 	return plan, nil
 }

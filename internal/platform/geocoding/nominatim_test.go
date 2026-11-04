@@ -14,6 +14,7 @@ import (
 	"time"
 
 	capgeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 func TestNominatimGeocodeCachesValidatedPositiveResult(t *testing.T) {
@@ -250,6 +251,73 @@ func TestNominatimRejectsInvalidGeocodingResultsAndHTTPErrors(t *testing.T) {
 				t.Fatal("expected fail-closed geocoding error")
 			}
 		})
+	}
+}
+
+// retryingTestAdapter builds an adapter whose retries are immediate, so the
+// retry contract is pinned without sleeping through the production backoff.
+func retryingTestAdapter(t *testing.T, serverURL string, client *http.Client) *Nominatim {
+	t.Helper()
+	adapter, err := NewNominatim(NominatimConfig{
+		BaseURL: serverURL, UserAgent: "PipelineGen-test", CacheDir: t.TempDir(),
+		HTTPClient: client, MinimumInterval: time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter.retryOptions = retry.Options{
+		MaxAttempts: 3, InitialBackoff: time.Millisecond, MaxBackoff: 2 * time.Millisecond,
+		BackoffFactor: 2, DisableJitter: true, IsRetryable: isRetryableNominatimError,
+	}
+	return adapter
+}
+
+// TestNominatimRetriesTransientHTTPFailures pins the r106 fix: a transient
+// provider failure must not end the lookup on the first attempt. r106 lost a
+// 216 s job to one Nominatim timeout on 2026-11-03.
+func TestNominatimRetriesTransientHTTPFailures(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("temporarily unavailable"))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"lat":"45.4642","lon":"9.1900","name":"Milano","display_name":"Milano, Italia"}]`))
+	}))
+	defer server.Close()
+
+	adapter := retryingTestAdapter(t, server.URL, server.Client())
+	result, err := adapter.Geocode(context.Background(), capgeocoding.Request{Query: "Milano", Language: "it"})
+	if err != nil {
+		t.Fatalf("a transient 503 must be retried, got %v", err)
+	}
+	if result.Latitude != 45.4642 || result.Longitude != 9.1900 {
+		t.Fatalf("result = %+v", result)
+	}
+	if got := calls.Load(); got != 3 {
+		t.Fatalf("network calls = %d, want 3 (two transient failures then success)", got)
+	}
+}
+
+// TestNominatimDoesNotRetryTerminalClientErrors proves the retry budget cannot
+// turn a producer defect (400) into repeated load: only transient statuses are
+// retried.
+func TestNominatimDoesNotRetryTerminalClientErrors(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("bad request"))
+	}))
+	defer server.Close()
+
+	adapter := retryingTestAdapter(t, server.URL, server.Client())
+	if _, err := adapter.Geocode(context.Background(), capgeocoding.Request{Query: "Milano"}); err == nil {
+		t.Fatal("expected the terminal 400 to be returned")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("network calls = %d, want 1: a 400 must not consume the retry budget", got)
 	}
 }
 

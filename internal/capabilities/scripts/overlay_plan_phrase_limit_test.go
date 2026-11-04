@@ -6,6 +6,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,7 +64,7 @@ func phraseCeilingFixture(t *testing.T) *GenerateResult {
 	}
 }
 
-func countPlanPhrases(plan *capabilityoverlay.OverlayPlan) int {
+func countPlanPhrases(plan *capmodel.OverlayPlan) int {
 	if plan == nil {
 		return 0
 	}

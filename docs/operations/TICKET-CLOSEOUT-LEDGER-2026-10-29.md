@@ -18,6 +18,11 @@ quando il criterio di accettazione dichiarato è verificato.
 
 ### 1.1 `make verify-agent` — di nuovo verde
 
+> **Aggiornamento 2026-11-03.** `verify-overlay-model-alias`, la facade
+> `model_alias.go` e `cmd/overlay-model-alias-gen` sono stati rimossi; gli
+> import puntano direttamente a `internal/capabilities/overlays/model`. Le
+> righe seguenti restano come evidenza storica del 29-10.
+
 Il gate falliva su `verify-overlay-model-alias`: il facade generato
 `refactored/internal/capabilities/overlays/model_alias.go` era disallineato dal
 pacchetto `overlays/model` (mancava l'alias `ManifestPlacement`).

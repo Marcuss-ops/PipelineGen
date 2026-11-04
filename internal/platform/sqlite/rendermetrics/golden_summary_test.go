@@ -60,6 +60,26 @@ func TestBuildGoldenSummary_PerClassServiceStats(t *testing.T) {
 	}
 }
 
+func TestBuildGoldenSummary_AllocatedBatchSamplesAreCountedAndFlagged(t *testing.T) {
+	s := BuildGoldenSummary([]ItemSample{
+		{ItemID: "p1", Class: "text_phrase", Status: "COMPLETED", RenderMS: 500, BatchID: "b", Allocated: true},
+		{ItemID: "p2", Class: "text_phrase", Status: "COMPLETED", RenderMS: 501, BatchID: "b", Allocated: true},
+		{ItemID: "m1", Class: "map", Status: "COMPLETED"},
+	})
+	if s.PerItemServiceMS.Count != 2 || s.PerItemServiceMS.AllocatedCount != 2 || s.PerItemServiceMS.AvgMS != 501 {
+		t.Fatalf("aggregate allocated stat = %+v", s.PerItemServiceMS)
+	}
+	if got := s.PerClass["text_phrase"].ServiceMS; got.Count != 2 || got.AllocatedCount != 2 || got.AvgMS != 501 {
+		t.Fatalf("class allocated stat = %+v", got)
+	}
+	if s.PerClass["map"].ServiceMS.AllocatedCount != 0 {
+		t.Fatalf("unmeasured map must not be marked allocated: %+v", s.PerClass["map"])
+	}
+	if s.TotalServiceMS != 1001 {
+		t.Fatalf("total service = %d, want 1001", s.TotalServiceMS)
+	}
+}
+
 func TestBuildGoldenSummary_UnknownClassIsCountedNotDropped(t *testing.T) {
 	s := BuildGoldenSummary([]ItemSample{
 		{ItemID: "x", Status: "COMPLETED", RenderMS: 100},

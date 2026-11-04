@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -50,11 +51,11 @@ func TestValidateEntityStyleSelector(t *testing.T) {
 }
 
 func TestStampEntityStyleOnlyStampsPortraitCardsWithCaption(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		// Satisfies the precondition: stamped.
-		{ID: "portrait", Kind: "entity_image", EntityCaption: "Ada", AssetRefs: []OverlayAssetRef{{AssetID: "a"}}},
+		{ID: "portrait", Kind: "entity_image", EntityCaption: "Ada", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}},
 		// No caption: untouched (RenderingGen refuses the field).
-		{ID: "silent", Kind: "entity_image", AssetRefs: []OverlayAssetRef{{AssetID: "a"}}},
+		{ID: "silent", Kind: "entity_image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}},
 		// No asset: untouched.
 		{ID: "textcard", Kind: "entity_image", EntityCaption: "Ada"},
 		// Phrase: untouched.
@@ -112,7 +113,7 @@ func TestPlannerDefaultImageWithTextRotationUsesFullIndependentPools(t *testing.
 			Items: []MultiEntityCandidate{{
 				ID: fmt.Sprintf("img-%d", i), SceneID: fmt.Sprintf("scene-%d", i), Kind: MultiEntityKindImage,
 				Name: "Ada", StartMS: int64(1000 * (i + 1)), EndMS: int64(1000*(i+1) + 5000),
-				AssetRef: &OverlayAssetRef{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("hash-%d", i)},
+				AssetRef: &capmodel.OverlayAssetRef{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("hash-%d", i)},
 			}},
 		}}})
 	}
@@ -126,7 +127,7 @@ func TestPlannerDefaultImageWithTextRotationUsesFullIndependentPools(t *testing.
 	motions := map[string]struct{}{}
 	styled := 0
 	for _, item := range plan.Items {
-		if item.Kind != string(KindEntityImage) {
+		if item.Kind != string(capmodel.KindEntityImage) {
 			continue
 		}
 		if item.MotionID != "" {
@@ -144,7 +145,7 @@ func TestPlannerDefaultImageWithTextRotationUsesFullIndependentPools(t *testing.
 	}
 	captions := map[string]bool{}
 	for _, item := range plan.Items {
-		if item.Kind == string(KindEntityImage) && item.EntityCaption != "" {
+		if item.Kind == string(capmodel.KindEntityImage) && item.EntityCaption != "" {
 			if item.CaptionMotionID == "" || captions[item.CaptionMotionID] {
 				t.Fatalf("caption motion empty or repeated across images: %q", item.CaptionMotionID)
 			}
@@ -166,7 +167,7 @@ func threeCaptionedScenes() []SceneInput {
 			Items: []MultiEntityCandidate{{
 				ID: fmt.Sprintf("img-%d", i), SceneID: fmt.Sprintf("scene-%d", i), Kind: MultiEntityKindImage,
 				Name: "Ada", StartMS: int64(1000 * (i + 1)), EndMS: int64(1000*(i+1) + 5000),
-				AssetRef: &OverlayAssetRef{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("hash-%d", i)},
+				AssetRef: &capmodel.OverlayAssetRef{AssetID: fmt.Sprintf("asset-%d", i), SHA256: fmt.Sprintf("hash-%d", i)},
 			}},
 		}}})
 	}
@@ -185,7 +186,7 @@ func TestPlanInputEntityStylePinsTagSelectors(t *testing.T) {
 			}
 			styled := 0
 			for _, item := range plan.Items {
-				if item.Kind == string(KindEntityImage) && item.EntityStyleID != "" {
+				if item.Kind == string(capmodel.KindEntityImage) && item.EntityStyleID != "" {
 					styled++
 					if item.EntityStyleID != selector {
 						t.Fatalf("entity_style_id = %q, want the pinned selector %q", item.EntityStyleID, selector)
@@ -221,7 +222,7 @@ func TestPlanInputDefaultEntityStyleIsRandom(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, item := range plan.Items {
-		if item.Kind == string(KindEntityImage) && item.EntityStyleID != "" && item.EntityStyleID != IdentityEntityStyleSelector {
+		if item.Kind == string(capmodel.KindEntityImage) && item.EntityStyleID != "" && item.EntityStyleID != IdentityEntityStyleSelector {
 			t.Fatalf("default selector = %q, want %q", item.EntityStyleID, IdentityEntityStyleSelector)
 		}
 	}

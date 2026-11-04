@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,13 +36,13 @@ func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *te
 	}
 	media, canonicalByStable := entityCardMediaIndex(result)
 	stableID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
-	item := attachEntityCardAsset(capabilityoverlay.OverlayItem{
-		ID: "ada-card", EntityID: stableID, Kind: string(capabilityoverlay.KindEntityCard),
-		EntityRef:    &capabilityoverlay.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Ada Lovelace"},
+	item := attachEntityCardAsset(capmodel.OverlayItem{
+		ID: "ada-card", EntityID: stableID, Kind: string(capmodel.KindEntityCard),
+		EntityRef:    &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Ada Lovelace"},
 		MotionID:     "phrase_apple_clean_01_blur_soft_reveal",
 		MotionParams: map[string]any{"stagger": 3},
 	}, media, canonicalByStable, "plan-1")
-	if item.Kind != string(capabilityoverlay.KindEntityImage) || len(item.AssetRefs) != 1 {
+	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
 		t.Fatalf("entity image = %#v, want resolved image card", item)
 	}
 	if item.MotionID != "" || item.MotionParams != nil {
@@ -84,10 +85,10 @@ func TestAttachEntityCardAssetResolvesLocalizedStableIdentity(t *testing.T) {
 
 	media, canonicalByStable := entityCardMediaIndex(result)
 	localizedStableID := capabilityentities.StableEntityID("PERSON", "Mike’a Tysona")
-	item := attachEntityCardAsset(capabilityoverlay.OverlayItem{
-		ID: "localized-mike-card", EntityID: localizedStableID, Kind: string(capabilityoverlay.KindEntityCard),
+	item := attachEntityCardAsset(capmodel.OverlayItem{
+		ID: "localized-mike-card", EntityID: localizedStableID, Kind: string(capmodel.KindEntityCard),
 	}, media, canonicalByStable, "plan-1")
-	if item.Kind != string(capabilityoverlay.KindEntityImage) || len(item.AssetRefs) != 1 {
+	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
 		t.Fatalf("localized entity image = %#v, want resolved image card", item)
 	}
 	if item.EntityRef == nil || item.EntityRef.CanonicalEntityID != "person:mike-tyson" {
@@ -97,19 +98,19 @@ func TestAttachEntityCardAssetResolvesLocalizedStableIdentity(t *testing.T) {
 
 func TestCapEntityImageOverlaysKeepsDistinctIdentitiesUpToRunCeiling(t *testing.T) {
 	maxImages := capabilityoverlay.MaxEntityImageOverlaysPerRun
-	items := make([]capabilityoverlay.OverlayItem, 0, maxImages+4)
+	items := make([]capmodel.OverlayItem, 0, maxImages+4)
 	for i := 0; i < maxImages+3; i++ {
 		entityID := fmt.Sprintf("entity-%d", i)
-		items = append(items, capabilityoverlay.OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID:   "image-" + entityID,
-			Kind: string(capabilityoverlay.KindEntityImage), EntityID: entityID,
+			Kind: string(capmodel.KindEntityImage), EntityID: entityID,
 		})
 	}
 	// A repeated occurrence must not consume a second slot.
-	items = append(items, capabilityoverlay.OverlayItem{
-		ID: "image-entity-0-repeat", Kind: string(capabilityoverlay.KindEntityImage), EntityID: "entity-0",
+	items = append(items, capmodel.OverlayItem{
+		ID: "image-entity-0-repeat", Kind: string(capmodel.KindEntityImage), EntityID: "entity-0",
 	})
-	items = append(items, capabilityoverlay.OverlayItem{ID: "phrase", Kind: "text_phrase"})
+	items = append(items, capmodel.OverlayItem{ID: "phrase", Kind: "text_phrase"})
 
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
 	if len(got) != maxImages+1 {
@@ -117,7 +118,7 @@ func TestCapEntityImageOverlaysKeepsDistinctIdentitiesUpToRunCeiling(t *testing.
 	}
 	seen := map[string]bool{}
 	for _, item := range got {
-		if item.Kind == string(capabilityoverlay.KindEntityImage) {
+		if item.Kind == string(capmodel.KindEntityImage) {
 			seen[item.EntityID] = true
 		}
 	}
@@ -127,10 +128,10 @@ func TestCapEntityImageOverlaysKeepsDistinctIdentitiesUpToRunCeiling(t *testing.
 }
 
 func TestCapEntityImageOverlaysPerSceneKeepsEntityOnlyOnceAcrossRun(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "scene-1-milton", SceneID: "scene-1", EntityID: "milton", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
-		{ID: "scene-2-milton", SceneID: "scene-2", EntityID: "milton", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
-		{ID: "scene-2-other", SceneID: "scene-2", EntityID: "other", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:other"}},
+	items := []capmodel.OverlayItem{
+		{ID: "scene-1-milton", SceneID: "scene-1", EntityID: "milton", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
+		{ID: "scene-2-milton", SceneID: "scene-2", EntityID: "milton", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:milton-leite"}},
+		{ID: "scene-2-other", SceneID: "scene-2", EntityID: "other", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:other"}},
 		{ID: "phrase", SceneID: "scene-2", Kind: "text_phrase"},
 	}
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
@@ -140,11 +141,11 @@ func TestCapEntityImageOverlaysPerSceneKeepsEntityOnlyOnceAcrossRun(t *testing.T
 }
 
 func TestCapEntityImageOverlaysPerSceneOnlyDropsRepeatedPhotoHashWithinScene(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "scene-1-first", SceneID: "scene-1", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-a", SHA256: "same-photo"}}},
-		{ID: "scene-1-duplicate", SceneID: "scene-1", EntityID: "person-a-copy", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a-copy"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-a-copy", SHA256: "same-photo"}}},
-		{ID: "scene-2-second", SceneID: "scene-2", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-b", SHA256: "same-photo"}}},
-		{ID: "scene-3-third", SceneID: "scene-3", EntityID: "person-a", Kind: string(capabilityoverlay.KindEntityImage), EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-c", SHA256: "different-photo"}}},
+	items := []capmodel.OverlayItem{
+		{ID: "scene-1-first", SceneID: "scene-1", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-a", SHA256: "same-photo"}}},
+		{ID: "scene-1-duplicate", SceneID: "scene-1", EntityID: "person-a-copy", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a-copy"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-a-copy", SHA256: "same-photo"}}},
+		{ID: "scene-2-second", SceneID: "scene-2", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-b", SHA256: "same-photo"}}},
+		{ID: "scene-3-third", SceneID: "scene-3", EntityID: "person-a", Kind: string(capmodel.KindEntityImage), EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:a"}, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-c", SHA256: "different-photo"}}},
 	}
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)
 	if len(got) != 3 || got[0].ID != "scene-1-first" || got[1].ID != "scene-2-second" || got[2].ID != "scene-3-third" {
@@ -153,22 +154,22 @@ func TestCapEntityImageOverlaysPerSceneOnlyDropsRepeatedPhotoHashWithinScene(t *
 }
 
 func TestComposeNearbyEntityImagesCreatesOneSimultaneousComposite(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "second", SceneID: "scene-1", EntityID: "stable-second", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: 2500, EndMs: 7500,
-			EntityRef: &capabilityoverlay.OverlayEntityRef{EntityID: "stable-second", Type: "PERSON", Name: "Second Person", CanonicalEntityID: "person:second"},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-b", SHA256: "hash-b"}}},
+	items := []capmodel.OverlayItem{
+		{ID: "second", SceneID: "scene-1", EntityID: "stable-second", Kind: string(capmodel.KindEntityImage), TemplateID: "image_popup", PresetID: "image_focus_in", StartMs: 2500, EndMs: 7500,
+			EntityRef: &capmodel.OverlayEntityRef{EntityID: "stable-second", Type: "PERSON", Name: "Second Person", CanonicalEntityID: "person:second"},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-b", SHA256: "hash-b"}}},
 		{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", StartMs: 4000, EndMs: 5000},
-		{ID: "first", SceneID: "scene-1", EntityID: "stable-first", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup", PresetID: "image_scale_in", StartMs: 1000, EndMs: 6000,
+		{ID: "first", SceneID: "scene-1", EntityID: "stable-first", Kind: string(capmodel.KindEntityImage), TemplateID: "image_popup", PresetID: "image_scale_in", StartMs: 1000, EndMs: 6000,
 			StartUS: 1_000_000, DurationUS: 5_000_000,
-			EntityRef: &capabilityoverlay.OverlayEntityRef{EntityID: "stable-first", Type: "PERSON", Name: "First Person", CanonicalEntityID: "person:first"},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-a", SHA256: "hash-a"}}},
+			EntityRef: &capmodel.OverlayEntityRef{EntityID: "stable-first", Type: "PERSON", Name: "First Person", CanonicalEntityID: "person:first"},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-a", SHA256: "hash-a"}}},
 	}
 
 	got := composeNearbyEntityImages(items, 1920, 1080)
 	if len(got) != 2 {
 		t.Fatalf("composed items = %d, want one composite and the phrase", len(got))
 	}
-	var composite *capabilityoverlay.OverlayItem
+	var composite *capmodel.OverlayItem
 	for i := range got {
 		if len(got[i].ImageLayers) > 0 {
 			composite = &got[i]
@@ -221,9 +222,9 @@ func TestComposeNearbyEntityImagesCreatesOneSimultaneousComposite(t *testing.T) 
 	if !containsString(capabilityoverlay.CertifiedImageMotions(), firstMotion) || !containsString(capabilityoverlay.CertifiedImageMotions(), secondMotion) {
 		t.Fatalf("composite motions are not certified: %q / %q", firstMotion, secondMotion)
 	}
-	plan := capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "composite-plan", VideoID: "composite-video",
-		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capabilityoverlay.OverlayItem{*composite},
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "composite-plan", VideoID: "composite-video",
+		Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1, Items: []capmodel.OverlayItem{*composite},
 	}
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("composite overlay plan does not satisfy its wire contract: %v", err)
@@ -234,7 +235,7 @@ func TestComposeNearbyEntityImagesCreatesOneSimultaneousComposite(t *testing.T) 
 	}
 	var document struct {
 		Items []struct {
-			ImageLayers []capabilityoverlay.OverlayImageLayer `json:"image_layers"`
+			ImageLayers []capmodel.OverlayImageLayer `json:"image_layers"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(wire, &document); err != nil {
@@ -249,19 +250,19 @@ func TestComposeNearbyEntityImagesCreatesOneSimultaneousComposite(t *testing.T) 
 }
 
 func TestComposeNearbyEntityCardsIntoSimultaneousGroupAndDropPlaceTitle(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "garlasco", SceneID: "scene", Kind: "location", Text: "Garlasco", StartMs: 0, EndMs: 3000,
-			EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "LOCATION", Name: "Garlasco"}},
-		{ID: "chiara", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default", Text: "Chiara Poggi", StartMs: 1000, EndMs: 6000,
-			EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "PERSON", Name: "Chiara Poggi"},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "chiara-photo", SHA256: "chiara-hash"}}},
-		{ID: "alberto", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityCard), TemplateID: "person_default", Text: "Alberto Stasi", StartMs: 2500, EndMs: 7500,
-			EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "PERSON", Name: "Alberto Stasi"},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "alberto-photo", SHA256: "alberto-hash"}}},
+			EntityRef: &capmodel.OverlayEntityRef{Type: "LOCATION", Name: "Garlasco"}},
+		{ID: "chiara", SceneID: "scene", Kind: string(capmodel.KindEntityCard), TemplateID: "person_default", Text: "Chiara Poggi", StartMs: 1000, EndMs: 6000,
+			EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Chiara Poggi"},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "chiara-photo", SHA256: "chiara-hash"}}},
+		{ID: "alberto", SceneID: "scene", Kind: string(capmodel.KindEntityCard), TemplateID: "person_default", Text: "Alberto Stasi", StartMs: 2500, EndMs: 7500,
+			EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Alberto Stasi"},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "alberto-photo", SHA256: "alberto-hash"}}},
 	}
 
 	got := composeNearbyEntityImages(items, 1920, 1080)
-	if len(got) != 1 || got[0].Kind != string(capabilityoverlay.KindEntityImage) || len(got[0].ImageLayers) != 2 {
+	if len(got) != 1 || got[0].Kind != string(capmodel.KindEntityImage) || len(got[0].ImageLayers) != 2 {
 		t.Fatalf("image-backed person cards should form one simultaneous group and suppress the place title: %+v", got)
 	}
 	if got[0].ImageLayers[0].Caption != "Chiara Poggi" || got[0].ImageLayers[1].Caption != "Alberto Stasi" {
@@ -285,20 +286,20 @@ func TestComposeNearbyEntityCardsIntoSimultaneousGroupAndDropPlaceTitle(t *testi
 }
 
 func TestComposeNearbyEntityImagesHonorsFiveSecondMentionGap(t *testing.T) {
-	makeItem := func(id, scene string, start int64) capabilityoverlay.OverlayItem {
-		return capabilityoverlay.OverlayItem{ID: id, SceneID: scene, EntityID: "ent-" + id, Kind: string(capabilityoverlay.KindEntityImage),
+	makeItem := func(id, scene string, start int64) capmodel.OverlayItem {
+		return capmodel.OverlayItem{ID: id, SceneID: scene, EntityID: "ent-" + id, Kind: string(capmodel.KindEntityImage),
 			StartMs: start, EndMs: start + 5000, PresetID: "image_focus_in",
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: id, SHA256: id}}}
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: id, SHA256: id}}}
 	}
-	within := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", "scene", 0), makeItem("b", "scene", 5000)}, 1280, 720)
+	within := composeNearbyEntityImages([]capmodel.OverlayItem{makeItem("a", "scene", 0), makeItem("b", "scene", 5000)}, 1280, 720)
 	if len(within) != 1 || len(within[0].ImageLayers) != 2 {
 		t.Fatalf("5s gap should compose to one item, got %+v", within)
 	}
-	outside := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", "scene", 0), makeItem("b", "scene", 5001)}, 1280, 720)
+	outside := composeNearbyEntityImages([]capmodel.OverlayItem{makeItem("a", "scene", 0), makeItem("b", "scene", 5001)}, 1280, 720)
 	if len(outside) != 2 || len(outside[0].ImageLayers) != 0 || len(outside[1].ImageLayers) != 0 {
 		t.Fatalf("gap over 5s must remain separate, got %+v", outside)
 	}
-	crossScene := composeNearbyEntityImages([]capabilityoverlay.OverlayItem{makeItem("a", "scene-1", 0), makeItem("b", "scene-2", 1000)}, 1280, 720)
+	crossScene := composeNearbyEntityImages([]capmodel.OverlayItem{makeItem("a", "scene-1", 0), makeItem("b", "scene-2", 1000)}, 1280, 720)
 	if len(crossScene) != 2 || len(crossScene[0].ImageLayers) != 0 || len(crossScene[1].ImageLayers) != 0 {
 		t.Fatalf("entities from different scenes must remain separate, got %+v", crossScene)
 	}
@@ -307,15 +308,15 @@ func TestComposeNearbyEntityImagesHonorsFiveSecondMentionGap(t *testing.T) {
 func TestComposeNearbyEntityImagesGroupsTwoThroughFiveWithDeterministicRemainders(t *testing.T) {
 	for _, count := range []int{2, 3, 4, 5, 6, 10, 11} {
 		t.Run(fmt.Sprintf("images-%d", count), func(t *testing.T) {
-			items := make([]capabilityoverlay.OverlayItem, count)
+			items := make([]capmodel.OverlayItem, count)
 			for index := range items {
 				id := fmt.Sprintf("image-%02d", index)
-				items[index] = capabilityoverlay.OverlayItem{
+				items[index] = capmodel.OverlayItem{
 					ID: id, SceneID: "scene", EntityID: "entity-" + id,
-					Kind: string(capabilityoverlay.KindEntityImage), PresetID: "image_focus_in",
+					Kind: string(capmodel.KindEntityImage), PresetID: "image_focus_in",
 					StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
-					EntityRef: &capabilityoverlay.OverlayEntityRef{EntityID: "entity-" + id, Type: "PERSON", Name: "Person " + id},
-					AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "hash-" + id}},
+					EntityRef: &capmodel.OverlayEntityRef{EntityID: "entity-" + id, Type: "PERSON", Name: "Person " + id},
+					AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "hash-" + id}},
 				}
 			}
 			got := composeNearbyEntityImages(items, 1920, 1080)
@@ -346,13 +347,13 @@ func TestComposeNearbyEntityImagesGroupsTwoThroughFiveWithDeterministicRemainder
 }
 
 func TestComposeNearbyEntityImagesPreservesMoreThanFiveInSameScene(t *testing.T) {
-	items := make([]capabilityoverlay.OverlayItem, 7)
+	items := make([]capmodel.OverlayItem, 7)
 	for index := range items {
 		id := fmt.Sprintf("entity-%d", index)
-		items[index] = capabilityoverlay.OverlayItem{
-			ID: id, SceneID: "same-scene", EntityID: id, Kind: string(capabilityoverlay.KindEntityImage),
+		items[index] = capmodel.OverlayItem{
+			ID: id, SceneID: "same-scene", EntityID: id, Kind: string(capmodel.KindEntityImage),
 			StartMs: int64(index * 400), EndMs: int64(index*400 + 5000),
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: id, SHA256: id}},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: id, SHA256: id}},
 		}
 	}
 	got := composeNearbyEntityImages(items, 1920, 1080)
@@ -362,13 +363,13 @@ func TestComposeNearbyEntityImagesPreservesMoreThanFiveInSameScene(t *testing.T)
 }
 
 func TestCompositeChildIdentityRemainsProducerOnlyAndNotRenderKeyInput(t *testing.T) {
-	plan := capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "identity-wire", VideoID: "video",
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "identity-wire", VideoID: "video",
 		Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1,
-		Items: []capabilityoverlay.OverlayItem{{
-			ID: "pair", Kind: string(capabilityoverlay.KindEntityImage), TemplateID: "image_popup",
-			StartMs: 0, EndMs: 5000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}},
-			ImageLayers: []capabilityoverlay.OverlayImageLayer{
+		Items: []capmodel.OverlayItem{{
+			ID: "pair", Kind: string(capmodel.KindEntityImage), TemplateID: "image_popup",
+			StartMs: 0, EndMs: 5000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}},
+			ImageLayers: []capmodel.OverlayImageLayer{
 				{ID: "a", EntityID: "stable-a", AssetID: "a", StartMS: 0, EndMS: 5000},
 				{ID: "b", EntityID: "stable-b", AssetID: "b", StartMS: 0, EndMS: 5000},
 			},
@@ -379,7 +380,7 @@ func TestCompositeChildIdentityRemainsProducerOnlyAndNotRenderKeyInput(t *testin
 	}
 	key := plan.Items[0].RenderKey
 	plan.Items[0].ImageLayers[0].EntityID = "different-producer-identity"
-	if got := capabilityoverlay.ComputeRenderKey(plan, plan.Items[0]); got != key {
+	if got := capmodel.ComputeRenderKey(plan, plan.Items[0]); got != key {
 		t.Fatalf("producer-only child identity changed render key %q to %q", key, got)
 	}
 	wire, err := json.Marshal(plan)
@@ -392,10 +393,10 @@ func TestCompositeChildIdentityRemainsProducerOnlyAndNotRenderKeyInput(t *testin
 }
 
 func TestComposeNearbyEntityImagesGroupsContextualImagesWithEntityImages(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "a", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage), StartMs: 0, EndMs: 5000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "a"}}},
-		{ID: "b", SceneID: "scene", Kind: string(capabilityoverlay.KindEntityImage), StartMs: 1000, EndMs: 6000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "b"}}},
-		{ID: "photo", SceneID: "scene", Kind: "image", StartMs: 500, EndMs: 2000, AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "photo"}}},
+	items := []capmodel.OverlayItem{
+		{ID: "a", SceneID: "scene", Kind: string(capmodel.KindEntityImage), StartMs: 0, EndMs: 5000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}},
+		{ID: "b", SceneID: "scene", Kind: string(capmodel.KindEntityImage), StartMs: 1000, EndMs: 6000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "b"}}},
+		{ID: "photo", SceneID: "scene", Kind: "image", StartMs: 500, EndMs: 2000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "photo"}}},
 	}
 	got := composeNearbyEntityImages(items, 1920, 1080)
 	if len(got) != 1 || len(got[0].ImageLayers) != 3 {
@@ -404,20 +405,20 @@ func TestComposeNearbyEntityImagesGroupsContextualImagesWithEntityImages(t *test
 }
 
 func TestEditorialImageBudgetRunsBeforeCompositionAndKeepsUniqueChildren(t *testing.T) {
-	items := make([]capabilityoverlay.OverlayItem, 0, capabilityoverlay.MaxEntityImageOverlaysPerRun+4)
+	items := make([]capmodel.OverlayItem, 0, capabilityoverlay.MaxEntityImageOverlaysPerRun+4)
 	for index := 0; index < capabilityoverlay.MaxEntityImageOverlaysPerRun; index++ {
 		id := fmt.Sprintf("entity-%02d", index)
-		items = append(items, capabilityoverlay.OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: id, SceneID: "scene", EntityID: id,
-			Kind: string(capabilityoverlay.KindEntityImage), StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: id}},
+			Kind: string(capmodel.KindEntityImage), StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: id}},
 		})
 	}
 	// A context hit for one child must be deduped before composition, not cause
 	// the whole composite to be discarded after its asset list is merged.
-	items = append(items, capabilityoverlay.OverlayItem{
+	items = append(items, capmodel.OverlayItem{
 		ID: "duplicate-context", SceneID: "other", Kind: "image",
-		AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-entity-00", SHA256: "entity-00"}},
+		AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-entity-00", SHA256: "entity-00"}},
 	})
 	capped := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
 	budgeted, _ := capabilityoverlay.ApplyEditorialOverlayBudgetWithImageLimit(capped, 0, capabilityoverlay.MaxImageOverlaysPerRun, capabilityoverlay.MaxMapOverlaysPerRun)
@@ -427,7 +428,7 @@ func TestEditorialImageBudgetRunsBeforeCompositionAndKeepsUniqueChildren(t *test
 	for _, item := range grouped {
 		if len(item.ImageLayers) > 0 {
 			children += len(item.ImageLayers)
-		} else if item.Kind == string(capabilityoverlay.KindEntityImage) {
+		} else if item.Kind == string(capmodel.KindEntityImage) {
 			children++
 		} else if item.ID == "duplicate-context" {
 			duplicateContextSurvived = true
@@ -439,29 +440,29 @@ func TestEditorialImageBudgetRunsBeforeCompositionAndKeepsUniqueChildren(t *test
 }
 
 func TestNamedEntityCardCeilingDoesNotLimitImageCompositeChildren(t *testing.T) {
-	items := make([]capabilityoverlay.OverlayItem, 0, 8)
+	items := make([]capmodel.OverlayItem, 0, 8)
 	for index := 0; index < 5; index++ {
 		id := fmt.Sprintf("image-%d", index)
-		items = append(items, capabilityoverlay.OverlayItem{
-			ID: id, SceneID: "scene", EntityID: id, Kind: string(capabilityoverlay.KindEntityImage),
+		items = append(items, capmodel.OverlayItem{
+			ID: id, SceneID: "scene", EntityID: id, Kind: string(capmodel.KindEntityImage),
 			StartMs: int64(index * 100), EndMs: int64(index*100 + 5000),
-			EntityRef: &capabilityoverlay.OverlayEntityRef{EntityID: id, Type: "PERSON", Name: id},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "sha-" + id}},
+			EntityRef: &capmodel.OverlayEntityRef{EntityID: id, Type: "PERSON", Name: id},
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "sha-" + id}},
 		})
 	}
 	for index := 0; index < 3; index++ {
-		items = append(items, capabilityoverlay.OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("card-%d", index), SceneID: "scene", EntityID: fmt.Sprintf("card-ent-%d", index),
-			Kind: string(capabilityoverlay.KindEntityCard), Text: fmt.Sprintf("Named entity %d", index),
+			Kind: string(capmodel.KindEntityCard), Text: fmt.Sprintf("Named entity %d", index),
 		})
 	}
 	items = capNamedEntityCardsPerScene(items, maxNamedEntityCardsPerScene)
 	cards := 0
 	images := 0
 	for _, item := range items {
-		if item.Kind == string(capabilityoverlay.KindEntityCard) {
+		if item.Kind == string(capmodel.KindEntityCard) {
 			cards++
-		} else if item.Kind == string(capabilityoverlay.KindEntityImage) {
+		} else if item.Kind == string(capmodel.KindEntityImage) {
 			images++
 		}
 	}
@@ -479,16 +480,16 @@ func TestNamedEntityCardCeilingDoesNotLimitImageCompositeChildren(t *testing.T) 
 }
 
 func TestCapEntityImageOverlaysDeduplicatesSameCanonicalEntity(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "scene-1", EntityID: "occurrence-1", Kind: string(capabilityoverlay.KindEntityImage),
-			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:mike-tyson"},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{SHA256: "portrait-sha"}}},
-		{ID: "scene-2", EntityID: "occurrence-2", Kind: string(capabilityoverlay.KindEntityImage),
-			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:mike-tyson"},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{SHA256: "portrait-sha"}}},
-		{ID: "scene-3", EntityID: "occurrence-3", Kind: string(capabilityoverlay.KindEntityImage),
-			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:evander-holyfield"},
-			AssetRefs: []capabilityoverlay.OverlayAssetRef{{SHA256: "other-sha"}}},
+	items := []capmodel.OverlayItem{
+		{ID: "scene-1", EntityID: "occurrence-1", Kind: string(capmodel.KindEntityImage),
+			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:mike-tyson"},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "portrait-sha"}}},
+		{ID: "scene-2", EntityID: "occurrence-2", Kind: string(capmodel.KindEntityImage),
+			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:mike-tyson"},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "portrait-sha"}}},
+		{ID: "scene-3", EntityID: "occurrence-3", Kind: string(capmodel.KindEntityImage),
+			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:evander-holyfield"},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "other-sha"}}},
 	}
 
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun)
@@ -501,11 +502,11 @@ func TestCapEntityImageOverlaysDeduplicatesSameCanonicalEntity(t *testing.T) {
 }
 
 func TestCapEntityImageOverlaysDeduplicatesIdentityInPerSceneScope(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{
-		{ID: "scene-1", SceneID: "scene-1", EntityID: "occurrence-1", Kind: string(capabilityoverlay.KindEntityImage),
-			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
-		{ID: "scene-2", SceneID: "scene-2", EntityID: "occurrence-2", Kind: string(capabilityoverlay.KindEntityImage),
-			EntityRef: &capabilityoverlay.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
+	items := []capmodel.OverlayItem{
+		{ID: "scene-1", SceneID: "scene-1", EntityID: "occurrence-1", Kind: string(capmodel.KindEntityImage),
+			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
+		{ID: "scene-2", SceneID: "scene-2", EntityID: "occurrence-2", Kind: string(capmodel.KindEntityImage),
+			EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:isabelle-caracristi"}},
 	}
 
 	got := capEntityImageOverlays(items, capabilityoverlay.MaxEntityImageOverlaysPerRun, true)

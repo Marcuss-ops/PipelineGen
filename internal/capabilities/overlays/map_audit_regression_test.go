@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/geodesy"
@@ -8,10 +9,10 @@ import (
 
 func testPlate() MapPlate {
 	return MapPlate{
-		ID: "p1", License: "l", Attribution: "a", Center: MapCenter{Latitude: 48.85, Longitude: 2.35},
+		ID: "p1", License: "l", Attribution: "a", Center: capmodel.MapCenter{Latitude: 48.85, Longitude: 2.35},
 		Zoom: 10, Width: 1920, Height: 1080,
 		Window: geodesy.CenteredOn(48.85, 2.35, 10, 1920, 1080),
-		Asset:  OverlayAssetRef{AssetID: "a1"},
+		Asset:  capmodel.OverlayAssetRef{AssetID: "a1"},
 	}
 }
 
@@ -38,19 +39,19 @@ func TestMapPinTimingOverflowFailsClosed(t *testing.T) {
 }
 
 func TestTimelineAdmissionCollision(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "m1", Kind: "map", StartUS: 0, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "m1", Kind: "map", StartUS: 0, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 		{ID: "t1", Kind: "text_phrase", StartUS: 5_000_000, DurationUS: 3_000_000},
 	}
 	if err := AdmitOverlayTimeline(items, 24, 1); err == nil {
 		t.Fatal("8s map + phrase at 5s must collide")
 	}
-	ok := []OverlayItem{
-		{ID: "m1", Kind: "map", StartUS: 0, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	ok := []capmodel.OverlayItem{
+		{ID: "m1", Kind: "map", StartUS: 0, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 		{ID: "t1", Kind: "text_phrase", StartUS: 8_000_000, DurationUS: 3_000_000},
 	}
 	// Phrase-phrase overlaps stay allowed (text layers, not map collisions).
-	phrases := []OverlayItem{
+	phrases := []capmodel.OverlayItem{
 		{ID: "p1", Kind: "text_phrase", StartUS: 0, DurationUS: 5_000_000},
 		{ID: "p2", Kind: "text_phrase", StartUS: 2_000_000, DurationUS: 5_000_000},
 	}

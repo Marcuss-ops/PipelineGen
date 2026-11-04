@@ -2,18 +2,17 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // cacheIdentityPlan builds the minimal plan whose render context digest is
 // exercised below: one entity-style item, the only class whose pixels depend
 // on the worker's sampling identity.
-func cacheIdentityPlan(planID, projectID string) capoverlay.OverlayPlan {
-	return capoverlay.OverlayPlan{
-		SchemaVersion: capoverlay.SchemaVersionPlan,
+func cacheIdentityPlan(planID, projectID string) capmodel.OverlayPlan {
+	return capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        planID,
 		VideoID:       "video-1",
 		ProjectID:     projectID,
@@ -21,7 +20,7 @@ func cacheIdentityPlan(planID, projectID string) capoverlay.OverlayPlan {
 		Height:        1080,
 		FPSNum:        24,
 		FPSDen:        1,
-		Items: []capoverlay.OverlayItem{
+		Items: []capmodel.OverlayItem{
 			{
 				ID:            "image-focus-reveal__chiara-poggi__entity_image__01",
 				Kind:          "entity_image",
@@ -33,8 +32,8 @@ func cacheIdentityPlan(planID, projectID string) capoverlay.OverlayPlan {
 
 func TestOverlayRenderCacheRejectsUnidentifiedSourceAndBackground(t *testing.T) {
 	plan := cacheIdentityPlan("run-1", "project-1")
-	plan.Background = &capoverlay.OverlayBackground{
-		Kind: "image", AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "bg", URL: "https://example.com/a.png"}},
+	plan.Background = &capmodel.OverlayBackground{
+		Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "bg", URL: "https://example.com/a.png"}},
 	}
 	if got := overlayPlanRenderContextDigest(plan); got != "" {
 		t.Fatal("a URL-only background must not name a reusable cache row")
@@ -46,7 +45,7 @@ func TestOverlayRenderCacheRejectsUnidentifiedSourceAndBackground(t *testing.T) 
 	if got := overlayPlanRenderContextDigest(plan); got == "" {
 		t.Fatal("a content-addressed background must be cacheable")
 	}
-	plan.Source = &capoverlay.OverlaySource{AssetID: "source", SHA256: "not-a-hash", Path: "source.mp4"}
+	plan.Source = &capmodel.OverlaySource{AssetID: "source", SHA256: "not-a-hash", Path: "source.mp4"}
 	if got := overlayPlanRenderContextDigest(plan); got != "" {
 		t.Fatal("an invalid source digest must not name a reusable cache row")
 	}
@@ -54,7 +53,7 @@ func TestOverlayRenderCacheRejectsUnidentifiedSourceAndBackground(t *testing.T) 
 	if got := overlayPlanRenderContextDigest(plan); got == "" {
 		t.Fatal("content-addressed source and background must be cacheable")
 	}
-	plan.Items[0].AssetRefs = []capoverlay.OverlayAssetRef{{AssetID: "item", URL: "https://example.com/item.png"}}
+	plan.Items[0].AssetRefs = []capmodel.OverlayAssetRef{{AssetID: "item", URL: "https://example.com/item.png"}}
 	if got := overlayPlanRenderContextDigest(plan); got != "" {
 		t.Fatal("a URL-only item asset must not name a reusable cache row")
 	}
@@ -67,8 +66,8 @@ func TestOverlayRenderCacheRejectsUnidentifiedSourceAndBackground(t *testing.T) 
 func TestManifestWithUnidentifiedBackgroundStillReachesRender(t *testing.T) {
 	plan := manifestTestPlan()
 	plan.Items = plan.Items[:1]
-	plan.Background = &capoverlay.OverlayBackground{
-		Kind: "image", AssetRefs: []capoverlay.OverlayAssetRef{{AssetID: "bg", URL: "https://example.com/a.png"}},
+	plan.Background = &capmodel.OverlayBackground{
+		Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "bg", URL: "https://example.com/a.png"}},
 	}
 	e := &QueueRenderEnqueuer{}
 	_, err := e.enqueueOverlayManifestTimeline(context.Background(), plan, overlayRenderableCandidates(plan), nil)
@@ -80,7 +79,7 @@ func TestManifestWithUnidentifiedBackgroundStillReachesRender(t *testing.T) {
 func TestManifestRejectsUnidentifiedItemAsset(t *testing.T) {
 	plan := manifestTestPlan()
 	plan.Items = plan.Items[:1]
-	plan.Items[0].AssetRefs = []capoverlay.OverlayAssetRef{{AssetID: "item", URL: "https://example.com/item.png"}}
+	plan.Items[0].AssetRefs = []capmodel.OverlayAssetRef{{AssetID: "item", URL: "https://example.com/item.png"}}
 	_, err := buildManifestEntryWorks(plan, overlayRenderableCandidates(plan), "epoch")
 	if err == nil || !strings.Contains(err.Error(), "asset has no content-addressed identity") {
 		t.Fatalf("unidentified item must not produce a certified manifest content hash, got %v", err)
@@ -89,17 +88,17 @@ func TestManifestRejectsUnidentifiedItemAsset(t *testing.T) {
 
 func TestOverlayRenderCacheIdentityPreservesBackgroundAssetOrder(t *testing.T) {
 	first := cacheIdentityPlan("run-1", "project-1")
-	first.Background = &capoverlay.OverlayBackground{
+	first.Background = &capmodel.OverlayBackground{
 		Kind: "image",
-		AssetRefs: []capoverlay.OverlayAssetRef{
+		AssetRefs: []capmodel.OverlayAssetRef{
 			{AssetID: "first", SHA256: strings.Repeat("a", 64)},
 			{AssetID: "second", SHA256: strings.Repeat("b", 64)},
 		},
 	}
 	second := cacheIdentityPlan("run-1", "project-1")
-	second.Background = &capoverlay.OverlayBackground{
+	second.Background = &capmodel.OverlayBackground{
 		Kind: "image",
-		AssetRefs: []capoverlay.OverlayAssetRef{
+		AssetRefs: []capmodel.OverlayAssetRef{
 			first.Background.AssetRefs[1], first.Background.AssetRefs[0],
 		},
 	}

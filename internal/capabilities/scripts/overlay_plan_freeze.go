@@ -20,6 +20,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
@@ -37,7 +38,7 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 		return err
 	}
 	result.OverlayPlan = plan
-	var phraseItems []capabilityoverlay.OverlayItem
+	var phraseItems []capmodel.OverlayItem
 	if plan != nil {
 		phraseItems = plan.Items
 		// Intake is planner-side telemetry carried beside the wire plan: it
@@ -61,7 +62,7 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	// The lineage is computed by the freeze pass itself, then projected into
 	// the audit: the audit must describe the plan that was lowered, not the
 	// pre-freeze intent set.
-	resolved := append([]capabilityoverlay.OverlayIntent(nil), result.OverlayIntents...)
+	resolved := append([]capmodel.OverlayIntent(nil), result.OverlayIntents...)
 	lineage := freezeOverlayIntents(resolved, plan.Items)
 	result.ResolvedOverlayIntents = resolved
 	result.OverlayAudit = buildOverlayAuditWithLineage(bundle, plan, lineage)
@@ -97,7 +98,7 @@ func setOverlayDriveJobID(result *GenerateResult, jobID string) {
 // normalized spelling or a localized card can no longer mis-join. Only a
 // legacy plan item with no entity id falls back to the canonical-name
 // comparison.
-func intentMatchesEntityItem(intent capabilityoverlay.OverlayIntent, item capabilityoverlay.OverlayItem) bool {
+func intentMatchesEntityItem(intent capmodel.OverlayIntent, item capmodel.OverlayItem) bool {
 	if _, ok := entityImageLayerForIntent(intent, item); ok {
 		return true
 	}
@@ -112,7 +113,7 @@ func intentMatchesEntityItem(intent capabilityoverlay.OverlayIntent, item capabi
 	return intent.Entity.CanonicalName == entityName
 }
 
-func entityImageLayerForIntent(intent capabilityoverlay.OverlayIntent, item capabilityoverlay.OverlayItem) (*capabilityoverlay.OverlayImageLayer, bool) {
+func entityImageLayerForIntent(intent capmodel.OverlayIntent, item capmodel.OverlayItem) (*capmodel.OverlayImageLayer, bool) {
 	stable := capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName)
 	if stable == "" {
 		return nil, false
@@ -125,13 +126,13 @@ func entityImageLayerForIntent(intent capabilityoverlay.OverlayIntent, item capa
 	return nil, false
 }
 
-func assetRefForImageLayer(item capabilityoverlay.OverlayItem, layer *capabilityoverlay.OverlayImageLayer) []capabilityoverlay.OverlayAssetRef {
+func assetRefForImageLayer(item capmodel.OverlayItem, layer *capmodel.OverlayImageLayer) []capmodel.OverlayAssetRef {
 	if layer == nil {
 		return nil
 	}
 	for _, asset := range item.AssetRefs {
 		if asset.AssetID == layer.AssetID {
-			return []capabilityoverlay.OverlayAssetRef{asset}
+			return []capmodel.OverlayAssetRef{asset}
 		}
 	}
 	return nil
@@ -166,7 +167,7 @@ type overlayIntentResolution struct {
 //
 // It returns the lineage so an unresolved intent is reported with a reason
 // instead of being left in the array as if it were a render instruction.
-func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) *overlayIntentLineage {
+func freezeOverlayIntents(intents []capmodel.OverlayIntent, items []capmodel.OverlayItem) *overlayIntentLineage {
 	lineage := &overlayIntentLineage{
 		BySource: make(map[string]int),
 		Reasons:  make(map[string]int),
@@ -175,7 +176,7 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 		intent := &intents[i]
 		for _, item := range items {
 			matches := intent.SceneID == item.SceneID
-			if intent.Source == capabilityoverlay.IntentSourceEntity {
+			if intent.Source == capmodel.IntentSourceEntity {
 				if layer, ok := entityImageLayerForIntent(*intent, item); ok && intent.SceneID == item.SceneID {
 					// A composite is one render artifact but can represent several
 					// entity intents. Freeze each intent against its own child asset,
@@ -184,7 +185,7 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 					intent.TemplateID = item.TemplateID
 					intent.PresetID = layer.PresetID
 					intent.AssetRefs = assetRefForImageLayer(item, layer)
-					intent.Payload.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), intent.AssetRefs...)
+					intent.Payload.AssetRefs = append([]capmodel.OverlayAssetRef(nil), intent.AssetRefs...)
 					caption := strings.TrimSpace(layer.Caption)
 					if caption == "" {
 						caption = intent.Entity.CanonicalName
@@ -193,7 +194,7 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 					intent.Payload.Text = caption
 					intent.StartMs = item.StartMs + layer.StartMS
 					intent.EndMs = item.StartMs + layer.EndMS
-					intent.TimingState = capabilityoverlay.TimingStateFrozen
+					intent.TimingState = capmodel.TimingStateFrozen
 					break
 				}
 				if len(item.ImageLayers) > 0 {
@@ -201,7 +202,7 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 				} else {
 					matches = matches && intentMatchesEntityItem(*intent, item)
 				}
-				if matches && intent.TimingState == capabilityoverlay.TimingStateFrozen {
+				if matches && intent.TimingState == capmodel.TimingStateFrozen {
 					break
 				}
 			} else {
@@ -220,9 +221,9 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 			intent.Kind = item.Kind
 			intent.TemplateID = item.TemplateID
 			intent.PresetID = item.PresetID
-			intent.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
-			intent.Payload.AssetRefs = append([]capabilityoverlay.OverlayAssetRef(nil), item.AssetRefs...)
-			if item.Kind == string(capabilityoverlay.KindEntityImage) {
+			intent.AssetRefs = append([]capmodel.OverlayAssetRef(nil), item.AssetRefs...)
+			intent.Payload.AssetRefs = append([]capmodel.OverlayAssetRef(nil), item.AssetRefs...)
+			if item.Kind == string(capmodel.KindEntityImage) {
 				intent.Payload.Name = ""
 				intent.Payload.Text = ""
 			} else if strings.TrimSpace(item.Text) != "" {
@@ -230,7 +231,7 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 			}
 			intent.StartMs = item.StartMs
 			intent.EndMs = item.EndMs
-			intent.TimingState = capabilityoverlay.TimingStateFrozen
+			intent.TimingState = capmodel.TimingStateFrozen
 			break
 		}
 	}
@@ -243,17 +244,17 @@ func freezeOverlayIntents(intents []capabilityoverlay.OverlayIntent, items []cap
 // record classifies one intent after the freeze pass. A FROZEN intent is a
 // rendered item; anything else is a proposal whose reason is derived from what
 // the plan actually contains.
-func (l *overlayIntentLineage) record(intent capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) {
+func (l *overlayIntentLineage) record(intent capmodel.OverlayIntent, items []capmodel.OverlayItem) {
 	if l == nil {
 		return
 	}
 	l.Authored++
 	source := string(intent.Source)
 	if strings.TrimSpace(source) == "" {
-		source = string(capabilityoverlay.IntentSourceEntity)
+		source = string(capmodel.IntentSourceEntity)
 	}
 	l.BySource[source]++
-	if intent.TimingState == capabilityoverlay.TimingStateFrozen {
+	if intent.TimingState == capmodel.TimingStateFrozen {
 		l.Frozen++
 		return
 	}
@@ -281,8 +282,8 @@ func (l *overlayIntentLineage) record(intent capabilityoverlay.OverlayIntent, it
 // fail to freeze: the entity lost admission, the source text was rewritten, or
 // the join succeeded but the lowering did not freeze it (a defect, not a
 // normal outcome).
-func overlayIntentUnresolvedReason(intent capabilityoverlay.OverlayIntent, items []capabilityoverlay.OverlayItem) string {
-	entitySource := intent.Source == capabilityoverlay.IntentSourceEntity || intent.Source == capabilityoverlay.IntentSourceEntityImage
+func overlayIntentUnresolvedReason(intent capmodel.OverlayIntent, items []capmodel.OverlayItem) string {
+	entitySource := intent.Source == capmodel.IntentSourceEntity || intent.Source == capmodel.IntentSourceEntityImage
 	for _, item := range items {
 		if item.SceneID != intent.SceneID {
 			continue
@@ -316,7 +317,7 @@ func entityTimelineLanguage(timeline *capabilityentities.EntityTimeline) string 
 // boundary shared by the source-language compatibility plan and translated
 // plans. Drive routing stays in the application-only plan field and never
 // crosses the RenderingGen queue contract.
-func compileOverlayPlanForLanguage(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+func compileOverlayPlanForLanguage(result *GenerateResult, language Language, planID, projectID, driveFolderID string, canvas OverlayCanvasSpec, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
 	plan, err := CompileOverlayPlanWithPlates(result, language, canvas, planID, planID, projectID, plates, perSceneImages...)
 	if err != nil {
 		return nil, err
@@ -348,7 +349,7 @@ func buildLocalizedOverlayPlans(result *GenerateResult, sourceLanguage Language,
 	if len(seen) <= 1 {
 		return nil
 	}
-	result.LocalizedOverlayPlans = make(map[Language]*capabilityoverlay.OverlayPlan, len(seen)-1)
+	result.LocalizedOverlayPlans = make(map[Language]*capmodel.OverlayPlan, len(seen)-1)
 	for language := range seen {
 		if language == sourceLanguage {
 			continue

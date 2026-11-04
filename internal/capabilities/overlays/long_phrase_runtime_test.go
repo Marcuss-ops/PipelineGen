@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -64,7 +65,7 @@ func TestBuildPlanAutomaticLongPhrasesUseLongRotation(t *testing.T) {
 }
 
 func TestAutomaticLongPhraseMotionSeedIncludesVideoID(t *testing.T) {
-	makePlan := func(videoID string) OverlayPlan {
+	makePlan := func(videoID string) capmodel.OverlayPlan {
 		input := PlanInput{
 			PlanID: "same-plan", VideoID: videoID, Width: 1280, Height: 720, FPSNum: 24, FPSDen: 1,
 			Scenes: []SceneInput{{ID: "scene", Phrases: []TimedAnnotation{{

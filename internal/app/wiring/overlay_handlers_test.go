@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,16 +31,16 @@ func (f *fakeRenderer) Render(_ context.Context, _ []byte, output string) error 
 // media — it stands in for the canonical rustexec probe.
 type fakeProber struct{ err error }
 
-func (f *fakeProber) ProbeOverlay(_ context.Context, path string) (capoverlay.OverlayProbeResult, error) {
+func (f *fakeProber) ProbeOverlay(_ context.Context, path string) (capmodel.OverlayProbeResult, error) {
 	if f.err != nil {
-		return capoverlay.OverlayProbeResult{}, f.err
+		return capmodel.OverlayProbeResult{}, f.err
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return capoverlay.OverlayProbeResult{}, err
+		return capmodel.OverlayProbeResult{}, err
 	}
 	sum := sha256.Sum256(b)
-	return capoverlay.OverlayProbeResult{
+	return capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   1_000_000,
@@ -54,8 +55,8 @@ func (f *fakeProber) ProbeOverlay(_ context.Context, path string) (capoverlay.Ov
 	}, nil
 }
 
-func testPlan() capoverlay.OverlayPlan {
-	return capoverlay.OverlayPlan{SchemaVersion: capoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Items: []capoverlay.OverlayItem{{ID: "overlay-1", TemplateID: "entity-card@1", StartMs: 100, EndMs: 1100, Text: "Ada"}}}
+func testPlan() capmodel.OverlayPlan {
+	return capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1", Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1, Items: []capmodel.OverlayItem{{ID: "overlay-1", TemplateID: "entity-card@1", StartMs: 100, EndMs: 1100, Text: "Ada"}}}
 }
 
 func TestRenderHandlerEmitsManifestWithDriveOverlayMetadata(t *testing.T) {
@@ -73,8 +74,8 @@ func TestRenderHandlerEmitsManifestWithDriveOverlayMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := testPlan()
-	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
-	result, err := h.Render(context.Background(), &job.Job{ID: "job-1", Type: capoverlay.JobTypeRender, Payload: payload}, nil)
+	payload, _ := json.Marshal(capmodel.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	result, err := h.Render(context.Background(), &job.Job{ID: "job-1", Type: capmodel.JobTypeRender, Payload: payload}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,8 +119,8 @@ func TestRenderHandlerEmitsManifestWithDriveOverlayMetadata(t *testing.T) {
 	// Probed media-contract facts + READY certification must be durable on
 	// the manifest: the overlay is READY only after render + probe + contract
 	// validation + hash (upload + persist complete on the Sender side).
-	if meta["status"] != capoverlay.OverlayStatusReady {
-		t.Fatalf("status=%v, want %q", meta["status"], capoverlay.OverlayStatusReady)
+	if meta["status"] != capmodel.OverlayStatusReady {
+		t.Fatalf("status=%v, want %q", meta["status"], capmodel.OverlayStatusReady)
 	}
 	if meta["container"] != "mov" || meta["codec"] != "prores" || meta["pixel_format"] != "yuva444p" {
 		t.Fatalf("probed contract facts = container=%v codec=%v pixel_format=%v, want mov/prores/yuva444p", meta["container"], meta["codec"], meta["pixel_format"])
@@ -127,8 +128,8 @@ func TestRenderHandlerEmitsManifestWithDriveOverlayMetadata(t *testing.T) {
 	if meta["audio_streams"] != 0 {
 		t.Fatalf("audio_streams=%v, want 0 (video-only overlay)", meta["audio_streams"])
 	}
-	if meta["media_contract"] != capoverlay.DefaultOverlayContractV1.ID {
-		t.Fatalf("media_contract=%v, want %q", meta["media_contract"], capoverlay.DefaultOverlayContractV1.ID)
+	if meta["media_contract"] != capmodel.DefaultOverlayContractV1.ID {
+		t.Fatalf("media_contract=%v, want %q", meta["media_contract"], capmodel.DefaultOverlayContractV1.ID)
 	}
 	if meta["template_id"] != "entity-card@1" {
 		t.Fatalf("template_id=%v, want entity-card@1", meta["template_id"])
@@ -157,8 +158,8 @@ func TestRenderHandler_ProbeSHA256AndSizeMatchFileBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := testPlan()
-	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
-	result, err := h.Render(context.Background(), &job.Job{ID: "job-probe", Type: capoverlay.JobTypeRender, Payload: payload}, nil)
+	payload, _ := json.Marshal(capmodel.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	result, err := h.Render(context.Background(), &job.Job{ID: "job-probe", Type: capmodel.JobTypeRender, Payload: payload}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,16 +215,16 @@ func TestPrepareHandlerConsumesPrepareRequest(t *testing.T) {
 		PlanID:        "run-001",
 		VideoID:       "run-001",
 		Width:         1280, Height: 720, FPSNum: 30, FPSDen: 1,
-		Intents: []capoverlay.OverlayIntent{{
-			Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
-			SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,
-			Entity: capoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
-			Kind:   string(capoverlay.KindEntityCard), TemplateID: "person_default",
-			Payload: capoverlay.IntentPayload{Name: "Tom Hanks"}, TimingState: capoverlay.TimingStatePending,
+		Intents: []capmodel.OverlayIntent{{
+			Version: capmodel.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
+			SceneID: "scene-0", SceneIndex: 0, Source: capmodel.IntentSourceEntity,
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+			Kind:   string(capmodel.KindEntityCard), TemplateID: "person_default",
+			Payload: capmodel.IntentPayload{Name: "Tom Hanks"}, TimingState: capmodel.TimingStatePending,
 		}},
 	}
 	payload, _ := json.Marshal(req)
-	result, err := h.Prepare(context.Background(), &job.Job{ID: "prepare-run-001", Type: capoverlay.JobTypePrepare, Payload: payload}, nil)
+	result, err := h.Prepare(context.Background(), &job.Job{ID: "prepare-run-001", Type: capmodel.JobTypePrepare, Payload: payload}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,16 +258,16 @@ func TestPrepareHandlerRejectsFrozenIntent(t *testing.T) {
 	req := capoverlay.PrepareRequest{
 		SchemaVersion: capoverlay.SchemaVersionPrepare,
 		PlanID:        "run-001", VideoID: "run-001", Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
-		Intents: []capoverlay.OverlayIntent{{
-			Version: capoverlay.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
-			SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity,
-			Entity: capoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
-			Kind:   string(capoverlay.KindEntityCard), TemplateID: "person_default",
-			Payload: capoverlay.IntentPayload{Name: "Tom Hanks"}, TimingState: capoverlay.TimingStateFrozen,
+		Intents: []capmodel.OverlayIntent{{
+			Version: capmodel.OverlayIntentVersion, IntentID: "intent-scene-0-tom",
+			SceneID: "scene-0", SceneIndex: 0, Source: capmodel.IntentSourceEntity,
+			Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+			Kind:   string(capmodel.KindEntityCard), TemplateID: "person_default",
+			Payload: capmodel.IntentPayload{Name: "Tom Hanks"}, TimingState: capmodel.TimingStateFrozen,
 		}},
 	}
 	payload, _ := json.Marshal(req)
-	if _, err := h.Prepare(context.Background(), &job.Job{ID: "prepare-run-001", Type: capoverlay.JobTypePrepare, Payload: payload}, nil); err == nil {
+	if _, err := h.Prepare(context.Background(), &job.Job{ID: "prepare-run-001", Type: capmodel.JobTypePrepare, Payload: payload}, nil); err == nil {
 		t.Fatal("a FROZEN intent must be rejected")
 	}
 }
@@ -286,8 +287,8 @@ func TestRenderHandlerAlwaysRendersFreshOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := testPlan()
-	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
-	j := &job.Job{ID: "job-cache", Type: capoverlay.JobTypeRender, Payload: payload}
+	payload, _ := json.Marshal(capmodel.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	j := &job.Job{ID: "job-cache", Type: capmodel.JobTypeRender, Payload: payload}
 	if _, err := h.Render(context.Background(), j, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -319,8 +320,8 @@ func TestRenderHandler_RejectsMediaContractViolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := testPlan()
-	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
-	if _, err := h.Render(context.Background(), &job.Job{ID: "job-invalid", Type: capoverlay.JobTypeRender, Payload: payload}, nil); err == nil {
+	payload, _ := json.Marshal(capmodel.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	if _, err := h.Render(context.Background(), &job.Job{ID: "job-invalid", Type: capmodel.JobTypeRender, Payload: payload}, nil); err == nil {
 		t.Fatal("a contract-violating render must fail closed")
 	}
 }
@@ -343,8 +344,8 @@ func TestRenderHandler_ProbeFailureFailsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan := testPlan()
-	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
-	if _, err := h.Render(context.Background(), &job.Job{ID: "job-probe-fail", Type: capoverlay.JobTypeRender, Payload: payload}, nil); err == nil {
+	payload, _ := json.Marshal(capmodel.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	if _, err := h.Render(context.Background(), &job.Job{ID: "job-probe-fail", Type: capmodel.JobTypeRender, Payload: payload}, nil); err == nil {
 		t.Fatal("a probe failure must fail closed")
 	}
 }
@@ -353,10 +354,10 @@ func TestRenderHandler_ProbeFailureFailsClosed(t *testing.T) {
 // audio stream, which violates the video-only OverlayMediaContract.
 type audioViolatingProber struct{}
 
-func (audioViolatingProber) ProbeOverlay(_ context.Context, path string) (capoverlay.OverlayProbeResult, error) {
+func (audioViolatingProber) ProbeOverlay(_ context.Context, path string) (capmodel.OverlayProbeResult, error) {
 	b, _ := os.ReadFile(path)
 	sum := sha256.Sum256(b)
-	return capoverlay.OverlayProbeResult{
+	return capmodel.OverlayProbeResult{
 		Width:        1920,
 		Height:       1080,
 		DurationUS:   1_000_000,
@@ -397,12 +398,12 @@ func TestOverlayHandlersMapRenderingGenPhasesToCanonicalRun(t *testing.T) {
 	}
 
 	obs := kernobs.NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-overlay", JobType: capoverlay.JobTypeRender, AttemptID: "attempt-overlay"})
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-overlay", JobType: capmodel.JobTypeRender, AttemptID: "attempt-overlay"})
 	ctx := kernobs.WithRun(context.Background(), run)
 
 	plan := testPlan()
-	payload, _ := json.Marshal(capoverlay.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
-	if _, err := h.Render(ctx, &job.Job{ID: "job-overlay", Type: capoverlay.JobTypeRender, Payload: payload}, nil); err != nil {
+	payload, _ := json.Marshal(capmodel.RenderRequest{Plan: plan, OverlayID: "overlay-1"})
+	if _, err := h.Render(ctx, &job.Job{ID: "job-overlay", Type: capmodel.JobTypeRender, Payload: payload}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if r.calls != 1 {
@@ -451,16 +452,16 @@ func TestOverlayPrepareMapsMaterializeToCanonicalRun(t *testing.T) {
 	}
 
 	obs := kernobs.NewRunObserver(nil)
-	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-prepare", JobType: capoverlay.JobTypePrepare, AttemptID: "attempt-prepare"})
+	run := obs.StartRun(context.Background(), kernobs.RunInfo{JobID: "job-prepare", JobType: capmodel.JobTypePrepare, AttemptID: "attempt-prepare"})
 	ctx := kernobs.WithRun(context.Background(), run)
 
 	req := capoverlay.PrepareRequest{
 		SchemaVersion: capoverlay.SchemaVersionPrepare, PlanID: "run-001", VideoID: "run-001",
 		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
-		Intents: []capoverlay.OverlayIntent{{Version: capoverlay.OverlayIntentVersion, IntentID: "intent-1", SceneID: "scene-0", SceneIndex: 0, Source: capoverlay.IntentSourceEntity, Entity: capoverlay.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"}, Kind: string(capoverlay.KindEntityCard), TemplateID: "person_default", Payload: capoverlay.IntentPayload{Name: "Tom"}, TimingState: capoverlay.TimingStatePending}},
+		Intents: []capmodel.OverlayIntent{{Version: capmodel.OverlayIntentVersion, IntentID: "intent-1", SceneID: "scene-0", SceneIndex: 0, Source: capmodel.IntentSourceEntity, Entity: capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"}, Kind: string(capmodel.KindEntityCard), TemplateID: "person_default", Payload: capmodel.IntentPayload{Name: "Tom"}, TimingState: capmodel.TimingStatePending}},
 	}
 	payload, _ := json.Marshal(req)
-	if _, err := h.Prepare(ctx, &job.Job{ID: "prepare-run-001", Type: capoverlay.JobTypePrepare, Payload: payload}, nil); err != nil {
+	if _, err := h.Prepare(ctx, &job.Job{ID: "prepare-run-001", Type: capmodel.JobTypePrepare, Payload: payload}, nil); err != nil {
 		t.Fatal(err)
 	}
 

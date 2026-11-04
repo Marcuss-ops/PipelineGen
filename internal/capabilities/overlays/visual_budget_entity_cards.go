@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 )
@@ -38,7 +39,7 @@ const (
 // kinds EntityTypeToKind produces for PERSON / ORG / GPE / concept entities.
 func namedEntityCardKind(kind string) bool {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case string(KindEntityCard), string(KindOrganization), string(KindLocation), string(KindConcept):
+	case string(capmodel.KindEntityCard), string(capmodel.KindOrganization), string(capmodel.KindLocation), string(capmodel.KindConcept):
 		return true
 	}
 	return false
@@ -48,7 +49,7 @@ func namedEntityCardKind(kind string) bool {
 // Image-backed cards are KindEntityImage after promotion and belong to the
 // image arm, so the two arms never double-count the same item. Map plans are
 // excluded explicitly so an entity card can never be admitted as a map.
-func isTextOnlyNamedEntityCard(item OverlayItem) bool {
+func isTextOnlyNamedEntityCard(item capmodel.OverlayItem) bool {
 	if item.Map != nil || len(item.AssetRefs) > 0 {
 		return false
 	}
@@ -61,7 +62,7 @@ func isTextOnlyNamedEntityCard(item OverlayItem) bool {
 // the scene, so one entity yields one card per scene even when two producers
 // spell the same identity differently. Highest priority wins a collision, and
 // the run allowance is applied to the ranked survivors.
-func rankedNamedEntityCardIndices(items []OverlayItem) []int {
+func rankedNamedEntityCardIndices(items []capmodel.OverlayItem) []int {
 	indices := make([]int, 0)
 	seen := make(map[string]int)
 	for i, item := range items {
@@ -73,7 +74,7 @@ func rankedNamedEntityCardIndices(items []OverlayItem) []int {
 			continue
 		}
 		if current, ok := seen[key]; ok {
-			if overlayItemPriority(item) > overlayItemPriority(items[current]) {
+			if itemPriority(item) > itemPriority(items[current]) {
 				seen[key] = i
 			}
 			continue
@@ -84,7 +85,7 @@ func rankedNamedEntityCardIndices(items []OverlayItem) []int {
 		indices = append(indices, index)
 	}
 	sort.SliceStable(indices, func(i, j int) bool {
-		if left, right := overlayItemPriority(items[indices[i]]), overlayItemPriority(items[indices[j]]); left != right {
+		if left, right := itemPriority(items[indices[i]]), itemPriority(items[indices[j]]); left != right {
 			return left > right
 		}
 		return indices[i] < indices[j]
@@ -124,7 +125,7 @@ func rankedNamedEntityCardIndices(items []OverlayItem) []int {
 // namedEntityCardIdentity returns the scene-scoped identity of one named entity
 // card, or "" when the card carries no usable identity (such a card is never
 // admitted: an anonymous name card has nothing to render).
-func namedEntityCardIdentity(item OverlayItem) string {
+func namedEntityCardIdentity(item capmodel.OverlayItem) string {
 	identity := ""
 	if item.EntityRef != nil {
 		identity = strings.TrimSpace(item.EntityRef.CanonicalEntityID)

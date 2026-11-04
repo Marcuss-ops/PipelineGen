@@ -3,12 +3,11 @@ package scriptgeneration
 import (
 	"context"
 	"encoding/json"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 
 	"go.uber.org/zap"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // The per-scene split produces one composition per scene window, so the
@@ -33,7 +32,7 @@ func packedBatchArtifact(t *testing.T, durationUS int64) *RenderArtifact {
 	}
 }
 
-func packedBatchReference(t *testing.T, items []capoverlay.OverlayItem, artifact *RenderArtifact) RenderReference {
+func packedBatchReference(t *testing.T, items []capmodel.OverlayItem, artifact *RenderArtifact) RenderReference {
 	t.Helper()
 	ref := manifestOverlayRender(items, artifact)
 	batch := OverlayBatchRenderReference{
@@ -59,10 +58,10 @@ func packedBatchReference(t *testing.T, items []capoverlay.OverlayItem, artifact
 // the certificate rejected: a 3 s packed scene canvas holding an overlay whose
 // PLAN receipt is 26,283,000us..28,020,000us while its frames live at
 // 1,263,000us..3,000,000us on that canvas.
-func garlascoPackedBatchReference(t *testing.T, item capoverlay.OverlayItem, canvasUS int64) RenderReference {
+func garlascoPackedBatchReference(t *testing.T, item capmodel.OverlayItem, canvasUS int64) RenderReference {
 	t.Helper()
 	artifact := packedBatchArtifact(t, canvasUS)
-	ref := manifestOverlayRender([]capoverlay.OverlayItem{item}, artifact)
+	ref := manifestOverlayRender([]capmodel.OverlayItem{item}, artifact)
 	entry := &ref.Manifest.Entries[0]
 	artifactIn, artifactOut := int64(1_263_000), int64(3_000_000)
 	entry.ArtifactInUS, entry.ArtifactOutUS = &artifactIn, &artifactOut
@@ -82,7 +81,7 @@ func garlascoPackedBatchReference(t *testing.T, item capoverlay.OverlayItem, can
 // 28,020,500us on a 3,000,000us canvas, which is only an error if the plan time
 // is mistaken for an artifact position.
 func TestCertifyFinalJobOverlayBatchAcceptsTheR69PackedSceneBatch(t *testing.T) {
-	item := capoverlay.OverlayItem{
+	item := capmodel.OverlayItem{
 		ID:      "phrase-apple-clean-25-opacity-soft-reveal__pavia-identifica-la-provincia__phrase__01",
 		SceneID: "scene-01", Kind: "text_phrase", StartUS: 26_283_000, DurationUS: 1_737_000,
 	}
@@ -94,7 +93,7 @@ func TestCertifyFinalJobOverlayBatchAcceptsTheR69PackedSceneBatch(t *testing.T) 
 	// past the canvas: the relaxation is about which window is measured, not
 	// about trusting the manifest. The plan receipt is widened first so the
 	// manifest's own §3 span rule cannot be the thing that rejects this case.
-	longer := capoverlay.OverlayItem{
+	longer := capmodel.OverlayItem{
 		ID:      "phrase-apple-clean-25-opacity-soft-reveal__pavia-identifica-la-provincia__phrase__01",
 		SceneID: "scene-01", Kind: "text_phrase", StartUS: 26_000_000, DurationUS: 3_000_000,
 	}
@@ -114,11 +113,11 @@ func TestCertifyFinalJobOverlayBatchAcceptsTheR69PackedSceneBatch(t *testing.T) 
 // positions, and the asset facts carry a POSITIVE frame count even though the
 // render receipt reported -1 (a multi-artifact manifest is refused otherwise).
 func TestFinalJobOverlayHandoffMakesThePackedSceneBatchConsumable(t *testing.T) {
-	item := capoverlay.OverlayItem{
+	item := capmodel.OverlayItem{
 		ID:      "phrase-apple-clean-25-opacity-soft-reveal__pavia-identifica-la-provincia__phrase__01",
 		SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 26_283, EndMs: 28_020, Text: "pavia",
 	}
-	result := ssotGateResult([]capoverlay.OverlayItem{item}, packedBatchArtifact(t, 3_000_000))
+	result := ssotGateResult([]capmodel.OverlayItem{item}, packedBatchArtifact(t, 3_000_000))
 	// The certified base is the final audio: r69's last overlay sits at 28 s of
 	// a 272 s film, so the fixture needs a base long enough to admit it.
 	result.FinalAudio.DurationMS = 30_000
@@ -148,7 +147,7 @@ func TestFinalJobOverlayHandoffMakesThePackedSceneBatchConsumable(t *testing.T) 
 }
 
 func TestCertifyFinalJobOverlayBatchAcceptsPackedSceneComposite(t *testing.T) {
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 0, DurationUS: 1_000_000},
 	}
 	artifact := packedBatchArtifact(t, 6_000_000)
@@ -171,7 +170,7 @@ func TestCertifyFinalJobOverlayBatchAcceptsPackedSceneComposite(t *testing.T) {
 
 func TestCertifyFinalJobOverlayBatchFailsClosed(t *testing.T) {
 	base := func(t *testing.T) RenderReference {
-		items := []capoverlay.OverlayItem{
+		items := []capmodel.OverlayItem{
 			{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", StartUS: 0, DurationUS: 2_000_000},
 		}
 		return packedBatchReference(t, items, packedBatchArtifact(t, 6_000_000))
@@ -215,7 +214,7 @@ func TestCertifyFinalJobOverlayBatchFailsClosed(t *testing.T) {
 // every attempt — the content address is the cache key, so a re-run must not
 // be able to produce a different document from the same certified bytes.
 func TestFinalJobOverlayHandoffCertifiesSplitSetAndIsDeterministic(t *testing.T) {
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 100, EndMs: 2100, Text: "first"},
 		{ID: "overlay-b", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 3000, EndMs: 5000, Text: "second"},
 	}
@@ -262,7 +261,7 @@ func TestFinalJobOverlayHandoffCertifiesSplitSetAndIsDeterministic(t *testing.T)
 	// overlays in another order still addresses the same stored artifact.
 	reference := manifestOverlayRender(items, packedBatchArtifact(t, 6_000_000))
 	reordered := *reference.Manifest
-	reordered.Entries = []capoverlay.OverlayManifestEntry{reference.Manifest.Entries[1], reference.Manifest.Entries[0]}
+	reordered.Entries = []capmodel.OverlayManifestEntry{reference.Manifest.Entries[1], reference.Manifest.Entries[0]}
 	if reference.Manifest.Digest() != reordered.Digest() {
 		t.Fatal("the manifest content address must not depend on entry order")
 	}
@@ -305,7 +304,7 @@ func TestRenderOverlayPlanAtBoundaryNeverRendersTwiceForAnUncertifiableSet(t *te
 func TestRenderOverlayPlanAtBoundaryUsesACertifiedSplitWithoutARerender(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_PER_SCENE", "enabled")
 	plan := multiScenePointerFor(t)
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "phrase-a", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 26_283_000, DurationUS: 1_737_000},
 		{ID: "phrase-b", SceneID: "scene-02", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 50_000_000, DurationUS: 2_000_000},
 	}
@@ -338,7 +337,7 @@ func TestRenderOverlayPlanAtBoundaryUsesACertifiedSplitWithoutARerender(t *testi
 func TestFinalJobSplitPreflightRefusesAPlanWhoseBatchesCannotBePlaced(t *testing.T) {
 	t.Setenv("OVERLAY_RENDER_PER_SCENE", "enabled")
 	plan := splitTestPlan()
-	plan.Items = append(plan.Items, capoverlay.OverlayItem{
+	plan.Items = append(plan.Items, capmodel.OverlayItem{
 		ID: "empty-window", SceneID: "scene-02", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 	})
 	if err := finalJobSplitPreflight(true, plan); err == nil {
@@ -389,7 +388,7 @@ func TestRenderOverlayPlanAtBoundaryKeepsSplitForNonFinalRun(t *testing.T) {
 // to a frame edge while the duration is a frame count, so one frame of overhang
 // is the largest honest rounding error. Anything past that frame still fails.
 func TestCertifyFinalJobOverlayBatchToleratesOneFrameOverhang(t *testing.T) {
-	item := capoverlay.OverlayItem{ID: "phrase-overlay", SceneID: "scene-01", Kind: "text_phrase", StartUS: 0, DurationUS: 3_000_000}
+	item := capmodel.OverlayItem{ID: "phrase-overlay", SceneID: "scene-01", Kind: "text_phrase", StartUS: 0, DurationUS: 3_000_000}
 	ref := garlascoPackedBatchReference(t, item, 3_000_000)
 	artifactIn, artifactOut := int64(1_275_000), int64(3_012_500)
 	ref.Batches[0].Manifest.Entries[0].ArtifactInUS = &artifactIn
@@ -418,7 +417,7 @@ func TestCertifyFinalJobOverlayBatchToleratesOneFrameOverhang(t *testing.T) {
 // difference is arithmetic, not an artifact that cannot serve the window.
 // Two frames past the budget still fail closed.
 func TestFinalJobManifestWireToleratesOneFrameOfReplaceWindow(t *testing.T) {
-	item := capoverlay.OverlayItem{
+	item := capmodel.OverlayItem{
 		ID: "phrase-overlay", SceneID: "scene-1", Kind: "text_phrase",
 		StartUS: 1_275_000, DurationUS: 1_737_500,
 	}
@@ -430,7 +429,7 @@ func TestFinalJobManifestWireToleratesOneFrameOfReplaceWindow(t *testing.T) {
 	ref.Batches[0].Artifact.DurationUS = 3_500_000
 	ref.Batches[0].Artifact.SHA256 = strings.Repeat("d", 64)
 	ref.Batches[0].Manifest.TimelineSHA256 = ref.Batches[0].Artifact.SHA256
-	result := ssotGateResult([]capoverlay.OverlayItem{item}, ref.Batches[0].Artifact)
+	result := ssotGateResult([]capmodel.OverlayItem{item}, ref.Batches[0].Artifact)
 	result.OverlayRender = &RenderReference{Manifest: ref.Batches[0].Manifest, Batches: ref.Batches}
 	if _, _, err := finalJobOverlayHandoff(context.Background(), result, nil, false); err != nil {
 		t.Fatalf("a one-frame replace-window rounding must reach the wire: %v", err)

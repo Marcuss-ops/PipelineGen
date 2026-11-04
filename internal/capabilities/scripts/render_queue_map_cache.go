@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -23,8 +23,8 @@ import (
 // sampler and the whole plan). False splits are harmless (the durable cache
 // still de-duplicates the store); false joins are impossible because the plan
 // itself is in the key.
-func dynamicMapVideoFlightKey(plan capoverlay.OverlayPlan) string {
-	profile, _ := scriptoverlay.ResolveMapEncodeProfile(os.Getenv(scriptoverlay.MapEncodeProfileEnv))
+func dynamicMapVideoFlightKey(plan capmodel.OverlayPlan) string {
+	profile, _ := capoverlay.ResolveMapEncodeProfile(os.Getenv(capoverlay.MapEncodeProfileEnv))
 	sampler := ""
 	if len(plan.Items) == 1 && plan.Items[0].Map != nil {
 		sampler = dynamicMapSamplerForProfile(profile)
@@ -44,7 +44,7 @@ func dynamicMapVideoFlightKey(plan capoverlay.OverlayPlan) string {
 // leader's workspace is private and removed by its own caller), on leader
 // failure it is an independent retry — one transient failure never fails two
 // callers.
-func joinDynamicMapVideoRender(ctx context.Context, plan capoverlay.OverlayPlan, render func() (string, error)) (string, error) {
+func joinDynamicMapVideoRender(ctx context.Context, plan capmodel.OverlayPlan, render func() (string, error)) (string, error) {
 	key := dynamicMapVideoFlightKey(plan)
 	promise := &dynamicMapVideoPromise{done: make(chan struct{})}
 	existing, loaded := dynamicMapVideoRenders.LoadOrStore(key, promise)
@@ -64,7 +64,7 @@ func joinDynamicMapVideoRender(ctx context.Context, plan capoverlay.OverlayPlan,
 	return path, err
 }
 
-func dynamicMapVideoCacheKey(payload []byte, scriptDigest string, profile scriptoverlay.MapEncodeProfile, sampler string, outputWidth, outputHeight int) string {
+func dynamicMapVideoCacheKey(payload []byte, scriptDigest string, profile capoverlay.MapEncodeProfile, sampler string, outputWidth, outputHeight int) string {
 	epoch := strings.TrimSpace(os.Getenv(dynamicMapVideoCacheEpochEnv))
 	if epoch == "" {
 		epoch = "dynamic-map-video-cache/v1"

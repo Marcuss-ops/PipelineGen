@@ -11,6 +11,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -43,17 +44,13 @@ func overlayBatchWireEndUS(startUS, endUS int64) int64 {
 	return startUS + ((durationUS+999)/1000)*1000
 }
 
-func overlayItemWindow(item capoverlay.OverlayItem) (int64, int64) {
-	return item.StartUSValue(), item.EndUSValue()
-}
-
 // overlayCandidateRenderWindow shares the same duration/timing normalization
 // used by the single-item renderer, including phrase tails and composite spans.
-func overlayCandidateRenderWindow(plan capoverlay.OverlayPlan, candidate overlayItemCandidate) (int64, int64) {
+func overlayCandidateRenderWindow(plan capmodel.OverlayPlan, candidate overlayItemCandidate) (int64, int64) {
 	if _, metadata, err := separateOverlayItemPlan(plan, candidate.source, candidate.index); err == nil && metadata != nil && metadata.TargetDurationUS > 0 {
 		return metadata.SourceStartUS, metadata.SourceStartUS + metadata.TargetDurationUS
 	}
-	return overlayItemWindow(candidate.source)
+	return capoverlay.OverlayItemWindowUS(candidate.source)
 }
 
 // overlayItemMayCompileLinkedCaption reports whether the item can compile a
@@ -62,7 +59,7 @@ func overlayCandidateRenderWindow(plan capoverlay.OverlayPlan, candidate overlay
 // explicit caption fields — item.EntityCaption (semantic image caption) and
 // ImageLayers[].Caption (composite image children); an item without either
 // cannot join the collision class no matter its kind.
-func overlayItemMayCompileLinkedCaption(item capoverlay.OverlayItem) bool {
+func overlayItemMayCompileLinkedCaption(item capmodel.OverlayItem) bool {
 	if strings.TrimSpace(item.EntityCaption) != "" {
 		return true
 	}
@@ -74,7 +71,7 @@ func overlayItemMayCompileLinkedCaption(item capoverlay.OverlayItem) bool {
 	return false
 }
 
-func overlayBatchIdentity(plan capoverlay.OverlayPlan, work overlayBatchWork) string {
+func overlayBatchIdentity(plan capmodel.OverlayPlan, work overlayBatchWork) string {
 	// The schema tag keeps composition identities in their historical digest
 	// domain: renaming it would orphan every cached timeline artifact.
 	schema := "pipelinegen.overlay-window-batch.v1"
@@ -89,7 +86,7 @@ func overlayBatchIdentity(plan capoverlay.OverlayPlan, work overlayBatchWork) st
 		item := candidate.source
 		itemKey := strings.ToLower(strings.TrimSpace(item.RenderKey))
 		if itemKey == "" {
-			itemKey = capoverlay.ComputeRenderKey(plan, item)
+			itemKey = capmodel.ComputeRenderKey(plan, item)
 		}
 		// BatchID is a durable semantic reference used by publication and the
 		// final-job handoff. Include content identity as well as membership and
@@ -105,18 +102,18 @@ func overlayBatchIdentity(plan capoverlay.OverlayPlan, work overlayBatchWork) st
 // candidate's item at its plan-absolute window on the parent's canvas (the
 // artifact is anchored at plan t=0). One candidate is valid — a single voice
 // still composes one manifest timeline artifact.
-func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork) (capoverlay.OverlayPlan, error) {
+func fusedOverlayBatchPlan(parent capmodel.OverlayPlan, work overlayBatchWork) (capmodel.OverlayPlan, error) {
 	if len(work.candidates) == 0 || work.endUS <= work.startUS {
-		return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q is not a positive window", work.id)
+		return capmodel.OverlayPlan{}, fmt.Errorf("overlay batch %q is not a positive window", work.id)
 	}
 	if len(work.packed) > 0 && len(work.packed) != len(work.candidates) {
-		return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q packed placements (%d) do not match its candidates (%d)", work.id, len(work.packed), len(work.candidates))
+		return capmodel.OverlayPlan{}, fmt.Errorf("overlay batch %q packed placements (%d) do not match its candidates (%d)", work.id, len(work.packed), len(work.candidates))
 	}
 	child, _, err := separateOverlayItemPlan(parent, work.candidates[0].source, work.candidates[0].index)
 	if err != nil {
-		return capoverlay.OverlayPlan{}, err
+		return capmodel.OverlayPlan{}, err
 	}
-	items := make([]capoverlay.OverlayItem, 0, len(work.candidates))
+	items := make([]capmodel.OverlayItem, 0, len(work.candidates))
 	endUS := work.endUS
 	for _, candidate := range work.candidates {
 		// Maps and chain items never enter the composition: they keep their
@@ -126,14 +123,14 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 		// (OVERLAY-MANIFEST-CONTRACT.md §3) — so scene-local batch boundaries
 		// do not apply here.
 		if candidate.source.Map != nil {
-			return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q contains a map item", work.id)
+			return capmodel.OverlayPlan{}, fmt.Errorf("overlay batch %q contains a map item", work.id)
 		}
 		itemPlan, metadata, itemErr := separateOverlayItemPlan(parent, candidate.source, candidate.index)
 		if itemErr != nil {
-			return capoverlay.OverlayPlan{}, itemErr
+			return capmodel.OverlayPlan{}, itemErr
 		}
 		if metadata.SourceStartUS < work.startUS {
-			return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q has item %q before its start", work.id, candidate.source.ID)
+			return capmodel.OverlayPlan{}, fmt.Errorf("overlay batch %q has item %q before its start", work.id, candidate.source.ID)
 		}
 		item := itemPlan.Items[0]
 		if work.packed != nil {
@@ -142,7 +139,7 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 			// reaches the composition.
 			placement, ok := work.packed[strings.TrimSpace(candidate.source.ID)]
 			if !ok {
-				return capoverlay.OverlayPlan{}, fmt.Errorf("overlay batch %q has no packed placement for item %q", work.id, candidate.source.ID)
+				return capmodel.OverlayPlan{}, fmt.Errorf("overlay batch %q has no packed placement for item %q", work.id, candidate.source.ID)
 			}
 			item.StartUS = placement.ArtifactInUS
 			endUS = work.endUS
@@ -177,7 +174,7 @@ func fusedOverlayBatchPlan(parent capoverlay.OverlayPlan, work overlayBatchWork)
 	child.Items = items
 	child.DurationMS = (endUS - work.startUS + 999) / 1000
 	if err := child.Validate(); err != nil {
-		return capoverlay.OverlayPlan{}, fmt.Errorf("validate fused overlay batch %q: %w", work.id, err)
+		return capmodel.OverlayPlan{}, fmt.Errorf("validate fused overlay batch %q: %w", work.id, err)
 	}
 	return child, nil
 }

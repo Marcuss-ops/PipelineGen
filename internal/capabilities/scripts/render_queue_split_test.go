@@ -10,23 +10,22 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"go.uber.org/zap"
 	"strings"
 	"testing"
 	"time"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"go.uber.org/zap"
 )
 
 // splitTestPlan builds a two-scene plan whose ordinary items are split across
 // scene-01 and scene-02, plus one plan-scoped map (dedicated path) in scene-01.
-func splitTestPlan() capoverlay.OverlayPlan {
+func splitTestPlan() capmodel.OverlayPlan {
 	plan := manifestTestPlan()
-	plan.Items = append(plan.Items, capoverlay.OverlayItem{
-		ID: "map-01", SceneID: "scene-01", Kind: string(capoverlay.KindMap), TemplateID: "MAP",
+	plan.Items = append(plan.Items, capmodel.OverlayItem{
+		ID: "map-01", SceneID: "scene-01", Kind: string(capmodel.KindMap), TemplateID: "MAP",
 		StartUS: 20_000_000, DurationUS: 3_000_000,
-		Map: &capoverlay.MapOverlay{Provider: "local", SourceID: "test-map", SourceLicense: "operator-supplied",
-			Center: capoverlay.MapCenter{Latitude: 0, Longitude: 0}, Zoom: 8,
+		Map: &capmodel.MapOverlay{Provider: "local", SourceID: "test-map", SourceLicense: "operator-supplied",
+			Center: capmodel.MapCenter{Latitude: 0, Longitude: 0}, Zoom: 8,
 			Width: 1920, Height: 1080, Attribution: "Map data supplied by operator",
 			DynamicRendererOnly: true},
 	})
@@ -38,7 +37,7 @@ func splitTestPlan() capoverlay.OverlayPlan {
 // disjoint windows become separate batches in plan order.
 func TestMicroBatchesNeverSplitOverlappingItems(t *testing.T) {
 	plan := manifestTestPlan()
-	plan.Items = []capoverlay.OverlayItem{
+	plan.Items = []capmodel.OverlayItem{
 		{ID: "a", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "uno due tre", StartUS: 0, DurationUS: 4_000_000},
 		{ID: "b", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "quattro cinque sei", StartUS: 3_000_000, DurationUS: 4_000_000},
 		{ID: "c", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: "sette otto nove", StartUS: 20_000_000, DurationUS: 2_000_000},
@@ -61,7 +60,7 @@ func TestMicroBatchesNeverSplitOverlappingItems(t *testing.T) {
 
 func TestMergeOverlappingSceneGroups(t *testing.T) {
 	plan := packedSuperBatchPlan()
-	plan.Items = []capoverlay.OverlayItem{
+	plan.Items = []capmodel.OverlayItem{
 		{ID: "a", SceneID: "scene-a", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 0, DurationUS: 3_000_000},
 		{ID: "b", SceneID: "scene-b", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 2_000_000, DurationUS: 3_000_000},
 		{ID: "c", SceneID: "scene-c", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 4_000_000, DurationUS: 3_000_000},
@@ -87,7 +86,7 @@ func TestMergeOverlappingSceneGroups(t *testing.T) {
 func TestMergeOverlappingSceneGroupsHandlesFrameRounding(t *testing.T) {
 	plan := packedSuperBatchPlan()
 	plan.FPSNum, plan.FPSDen = 30000, 1001
-	plan.Items = []capoverlay.OverlayItem{
+	plan.Items = []capmodel.OverlayItem{
 		{ID: "a", SceneID: "a", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 0, DurationUS: 1_001_000},
 		{ID: "b", SceneID: "b", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", StartUS: 1_000_000, DurationUS: 1_000_000},
 	}
@@ -131,7 +130,7 @@ func TestPlanSpansMultipleScenesOnlyCountsManifestWork(t *testing.T) {
 		t.Fatal("single-scene manifest plan must not split")
 	}
 	empty := manifestTestPlan()
-	empty.Items = []capoverlay.OverlayItem{{ID: "bg-01", SceneID: "scene-01", Kind: "background", TemplateID: "BACKGROUND", StartUS: 0, DurationUS: 1_000_000}}
+	empty.Items = []capmodel.OverlayItem{{ID: "bg-01", SceneID: "scene-01", Kind: "background", TemplateID: "BACKGROUND", StartUS: 0, DurationUS: 1_000_000}}
 	if planSpansMultipleScenes(empty) {
 		t.Fatal("background-only plan has no work at all and must never split")
 	}
@@ -185,7 +184,7 @@ func TestEnqueueChrononPlanSplitRoutesBackgroundOnlyPlanFailClosed(t *testing.T)
 	t.Setenv("OVERLAY_RENDER_PER_SCENE", "enabled")
 	e := &QueueRenderEnqueuer{}
 	plan := manifestTestPlan()
-	plan.Items = []capoverlay.OverlayItem{{ID: "bg-01", SceneID: "scene-01", Kind: "background", TemplateID: "BACKGROUND", StartUS: 0, DurationUS: 1_000_000}}
+	plan.Items = []capmodel.OverlayItem{{ID: "bg-01", SceneID: "scene-01", Kind: "background", TemplateID: "BACKGROUND", StartUS: 0, DurationUS: 1_000_000}}
 	_, err := e.EnqueueChrononPlanSplit(context.Background(), plan)
 	if err == nil || !strings.Contains(err.Error(), "Background block") {
 		t.Fatalf("background-only plan must fail closed naming the SSOT rule, got %v", err)
@@ -203,17 +202,17 @@ type splitEnqueuerStub struct {
 	singleCalls int
 }
 
-func (e *splitEnqueuerStub) EnqueueChrononPlanSplit(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+func (e *splitEnqueuerStub) EnqueueChrononPlanSplit(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.splitCalls++
 	return e.splitRef, e.splitErr
 }
 
-func (e *splitEnqueuerStub) EnqueueChrononPlan(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+func (e *splitEnqueuerStub) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.singleCalls++
 	return e.singleRef, e.singleErr
 }
 
-func multiScenePointerFor(t *testing.T) *capoverlay.OverlayPlan {
+func multiScenePointerFor(t *testing.T) *capmodel.OverlayPlan {
 	t.Helper()
 	plan := splitTestPlan()
 	return &plan
@@ -469,7 +468,7 @@ func TestAssembleSplitManifestReference(t *testing.T) {
 	plan := splitTestPlan()
 	scene01Artifact := &RenderArtifact{ID: "a-scene-01", SHA256: strings.Repeat("a", 64)}
 	scene02Artifact := &RenderArtifact{ID: "a-scene-02", SHA256: strings.Repeat("b", 64)}
-	sceneManifest := &capoverlay.OverlayManifest{PlanID: "plan-01"}
+	sceneManifest := &capmodel.OverlayManifest{PlanID: "plan-01"}
 	scene01 := RenderReference{
 		JobID: "j1", Status: "completed", Artifact: scene01Artifact, Manifest: sceneManifest,
 		Items: []OverlayItemRenderReference{

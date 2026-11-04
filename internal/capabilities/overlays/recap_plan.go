@@ -22,6 +22,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 )
 
@@ -50,8 +51,8 @@ type RecapPlacement struct {
 // certified quote primitive. Items are returned in placement order with
 // sequential, non-overlapping windows; placements that cannot contribute
 // are skipped silently.
-func BuildRecapPlanItems(planID string, placements []RecapPlacement) []OverlayItem {
-	var out []OverlayItem
+func BuildRecapPlanItems(planID string, placements []RecapPlacement) []capmodel.OverlayItem {
+	var out []capmodel.OverlayItem
 	usedIDs := map[string]struct{}{}
 	for _, p := range placements {
 		sceneID := strings.TrimSpace(p.SceneID)
@@ -92,7 +93,7 @@ func BuildRecapPlanItems(planID string, placements []RecapPlacement) []OverlayIt
 				}
 			}
 			usedIDs[id] = struct{}{}
-			out = append(out, OverlayItem{
+			out = append(out, capmodel.OverlayItem{
 				ID: id, SceneID: sceneID,
 				PresetID: selectPhrasePreset(planID, sceneID, id),
 				MotionID: SelectTextMotion(planID, sceneID, id),
@@ -104,7 +105,7 @@ func BuildRecapPlanItems(planID string, placements []RecapPlacement) []OverlayIt
 		}
 	}
 	if out == nil {
-		return []OverlayItem{}
+		return []capmodel.OverlayItem{}
 	}
 	return out
 }

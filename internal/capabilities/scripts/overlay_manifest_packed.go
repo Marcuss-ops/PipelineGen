@@ -25,6 +25,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 
@@ -64,7 +65,7 @@ type packedPlacement struct {
 // packed for this plan: no source video layer, and no background that is
 // aligned to plan time. A color background covers any span, so it packs
 // safely; image/video backgrounds and opaque source compositions do not.
-func planSupportsPackedComposition(plan capoverlay.OverlayPlan) bool {
+func planSupportsPackedComposition(plan capmodel.OverlayPlan) bool {
 	if plan.Source != nil {
 		return false
 	}
@@ -80,13 +81,13 @@ func planSupportsPackedComposition(plan capoverlay.OverlayPlan) bool {
 // target is deliberately NOT used: the fused item renders only its literal
 // window, and the packed canvas renounces exactly those never-rendered
 // padding holds.
-func candidateLiteralWindow(plan capoverlay.OverlayPlan, candidate overlayItemCandidate) (int64, int64, error) {
+func candidateLiteralWindow(plan capmodel.OverlayPlan, candidate overlayItemCandidate) (int64, int64, error) {
 	_, metadata, err := separateOverlayItemPlan(plan, candidate.source, candidate.index)
 	if err != nil {
 		return 0, 0, fmt.Errorf("overlay item %q: %w", candidate.source.ID, err)
 	}
 	if metadata == nil || metadata.SourceEndUS <= metadata.SourceStartUS {
-		startUS, endUS := overlayItemWindow(candidate.source)
+		startUS, endUS := capoverlay.OverlayItemWindowUS(candidate.source)
 		if endUS <= startUS {
 			return 0, 0, fmt.Errorf("overlay item %q has no positive certified window", candidate.source.ID)
 		}
@@ -102,7 +103,7 @@ func candidateLiteralWindow(plan capoverlay.OverlayPlan, candidate overlayItemCa
 // candidate listed with the same ItemID twice is impossible by plan
 // validation; a map item reaching this function is already rejected by
 // partitionOverlayRenderWork and fusedOverlayBatchPlan double-checks it.
-func computePackedPlacements(plan capoverlay.OverlayPlan, candidates []overlayItemCandidate) (map[string]packedPlacement, int64, error) {
+func computePackedPlacements(plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (map[string]packedPlacement, int64, error) {
 	type literalWindow struct {
 		id      string
 		in, out int64

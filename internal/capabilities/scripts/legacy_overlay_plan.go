@@ -8,10 +8,10 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -28,7 +28,7 @@ func CompileOverlayPlanFromGenerationResultWithStyle(
 	style *scriptpkg.OverlayStyleSpec,
 	planID string,
 	projectID string,
-) (*capabilityoverlay.OverlayPlan, error) {
+) (*capmodel.OverlayPlan, error) {
 	return CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
 		result, language, timingArtifacts, background, style, 0, planID, projectID)
 }
@@ -46,7 +46,7 @@ func CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
 	maxPhraseOverlays int,
 	planID string,
 	projectID string,
-) (*capabilityoverlay.OverlayPlan, error) {
+) (*capmodel.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}

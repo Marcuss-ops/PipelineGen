@@ -22,7 +22,6 @@ run_group 'PipelineGen SI / timeline / admission / RenderingGen bridge Go packag
   ./internal/kernel/script/ \
   ./internal/capabilities/overlays/ \
   ./internal/capabilities/scripts/ \
-  ./internal/capabilities/scripts/overlay/ \
   ./internal/platform/media/rustexec/
 
 cd "${WORKSPACE_ROOT}/RenderingGen/renderinggen"

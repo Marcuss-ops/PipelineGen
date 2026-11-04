@@ -25,15 +25,14 @@
 package wiring
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
-
-	capoverlays "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 )
 
 // ── 1. import-allowlist freeze test ────────────────────────────
@@ -141,13 +140,13 @@ func TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers(t *testing.T) {
 
 	// Exactly the two overlay job types — no more, no fewer.
 	jobs := rt.Registry.JobTypes()
-	require.ElementsMatch(t, []string{capoverlays.JobTypePrepare, capoverlays.JobTypeRender}, jobs,
+	require.ElementsMatch(t, []string{capmodel.JobTypePrepare, capmodel.JobTypeRender}, jobs,
 		"RenderingGen registry must register exactly overlay.prepare + overlay.render")
 
 	// overlay.render produces artifacts (drives CompleteWithArtifacts).
-	require.True(t, rt.Registry.ProducesArtifacts(capoverlays.JobTypeRender),
+	require.True(t, rt.Registry.ProducesArtifacts(capmodel.JobTypeRender),
 		"overlay.render must be marked as artifact-producing")
-	require.False(t, rt.Registry.ProducesArtifacts(capoverlays.JobTypePrepare),
+	require.False(t, rt.Registry.ProducesArtifacts(capmodel.JobTypePrepare),
 		"overlay.prepare must NOT be marked as artifact-producing")
 
 	// Negative contract: no creator/TTS/NLP/Qdrant job types.
@@ -156,7 +155,7 @@ func TestBuildRenderingRuntime_RegistersOnlyOverlayHandlers(t *testing.T) {
 	}
 
 	// Caps derive from the registry (single source of truth).
-	require.ElementsMatch(t, []string{capoverlays.JobTypePrepare, capoverlays.JobTypeRender}, rt.Caps.JobTypes,
+	require.ElementsMatch(t, []string{capmodel.JobTypePrepare, capmodel.JobTypeRender}, rt.Caps.JobTypes,
 		"Caps.JobTypes must derive from the registry")
 	require.True(t, rt.Caps.GPU, "renderer profile requires GPU")
 	require.True(t, rt.Caps.FFmpeg, "renderer profile requires FFmpeg")

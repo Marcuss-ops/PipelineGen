@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -51,7 +52,7 @@ func (e *QueuePrepareEnqueuer) EnqueuePrepare(ctx context.Context, req capoverla
 	}
 	job := RenderQueueJob{
 		ID:      "prepare-" + req.PlanID,
-		JobType: capoverlay.JobTypePrepare,
+		JobType: capmodel.JobTypePrepare,
 		// Same correlation contract as the overlay render job: the queue
 		// entry carries the id of the run that asked for it.
 		ParentJobID: corid.FromContext(ctx),
@@ -103,7 +104,7 @@ func newOverlayPrepareWire(req capoverlay.PrepareRequest) overlayPrepareWire {
 // prepareAssets collects the entity-image assets referenced by the intents,
 // deduplicated by content hash, so the queue worker can prefetch them during
 // the prepare phase.
-func prepareAssets(intents []capoverlay.OverlayIntent) []RenderQueueAsset {
+func prepareAssets(intents []capmodel.OverlayIntent) []RenderQueueAsset {
 	var assets []RenderQueueAsset
 	seen := make(map[string]bool)
 	for _, intent := range intents {

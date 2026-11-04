@@ -15,7 +15,9 @@
 package scriptgeneration
 
 import (
+	"strconv"
 	"strings"
+	"unicode"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
@@ -25,16 +27,40 @@ import (
 // aggregateEntityResult merges the fenced per-scene VidRush segment results
 // into one canonical EntityResult. Classification is deterministic and matches
 // the legacy batch projection: PERSON → persons; LOCATION/PLACE/COUNTRY/CITY →
-// places; every other type → concepts. Returns nil when no segment produced
+// places; every other type → concepts. Repeated mentions collapse onto one row
+// per canonical (type, value), and a surname-only PERSON mention resolves onto
+// the grounded full name of its segment. Returns nil when no segment produced
 // any entity (or no segments were passed), so the durable surface omits the
 // block instead of exposing an empty aggregate.
 func aggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg.EntityResult {
 	agg := &scriptpkg.EntityResult{}
 	seenPhrases := make(map[string]struct{})
 	seenWords := make(map[string]struct{})
+	seenPersons := make(map[string]int)
+	seenPlaces := make(map[string]int)
+	seenConcepts := make(map[string]int)
+	// addEntity keeps ONE row per canonical (type, value). A repeated mention
+	// is not a second entity: the strongest score wins and the row keeps its
+	// first position, so the aggregate stays deterministic across arrival
+	// order.
+	addEntity := func(bucket *[]scriptpkg.Entity, seen map[string]int, entity scriptpkg.Entity) {
+		key := entitytype.Fold(entity.Type) + "\x00" + strings.ToLower(entity.Value)
+		if index, exists := seen[key]; exists {
+			if entity.Score > (*bucket)[index].Score {
+				(*bucket)[index] = entity
+			}
+			return
+		}
+		seen[key] = len(*bucket)
+		*bucket = append(*bucket, entity)
+	}
 	for _, seg := range segments {
+		text := strings.TrimSpace(seg.Text)
+		if text == "" {
+			text = seg.SourceText
+		}
 		for _, phrase := range seg.Insights.ImportantPhrases {
-			phrase = strings.TrimSpace(phrase)
+			phrase = normalizeImportantPhrase(text, phrase)
 			key := strings.ToLower(phrase)
 			if phrase != "" {
 				if _, exists := seenPhrases[key]; !exists {
@@ -58,22 +84,326 @@ func aggregateEntityResult(segments []scriptpkg.VidRushSegmentResult) *scriptpkg
 			if value == "" {
 				continue
 			}
+			if entitytype.Is(ent.Type, entitytype.Person) {
+				// One identity per person: a surname-only mention that this
+				// segment resolves to a grounded full name collapses onto it,
+				// exactly like the annotation projection.
+				value = expandPersonName(text, value)
+			}
 			entity := scriptpkg.Entity{Value: value, Type: ent.Type, Score: float32(ent.Confidence)}
 			switch {
 			case entitytype.Is(ent.Type, entitytype.Person):
-				agg.Persons = append(agg.Persons, entity)
+				addEntity(&agg.Persons, seenPersons, entity)
 			case entitytype.Is(ent.Type, entitytype.Place):
-				agg.Places = append(agg.Places, entity)
+				addEntity(&agg.Places, seenPlaces, entity)
 			default:
-				agg.Concepts = append(agg.Concepts, entity)
+				addEntity(&agg.Concepts, seenConcepts, entity)
 			}
 		}
 	}
+	// Cross-segment pass: a scene that says only "Stasi" cannot resolve the
+	// surname inside its own text, so the aggregate must match it against the
+	// unique grounded full name elsewhere in the run.
+	agg.Persons = unifySurnameOnlyPersons(agg.Persons)
+	agg.Concepts = canonicalizeDateConcepts(agg.Concepts)
 	if len(agg.Persons)+len(agg.Places)+len(agg.Concepts)+
 		len(agg.ImportantPhrases)+len(agg.ImportantWords) == 0 {
 		return nil
 	}
 	return agg
+}
+
+// unifySurnameOnlyPersons collapses a surname-only PERSON onto the unique
+// grounded full name that ends with that surname anywhere in the run. The
+// same-segment expansion cannot see scenes that mention only the surname
+// ("Stasi" in scene 03 and 10); this pass closes that gap without inventing an
+// identity: with zero or multiple full-name candidates the surname stays
+// untouched.
+func unifySurnameOnlyPersons(persons []scriptpkg.Entity) []scriptpkg.Entity {
+	fullBySurname := make(map[string]map[string]string)
+	for _, person := range persons {
+		fields := strings.Fields(strings.TrimSpace(person.Value))
+		if len(fields) < 2 {
+			continue
+		}
+		surname := normalizePersonToken(fields[len(fields)-1])
+		if surname == "" {
+			continue
+		}
+		if fullBySurname[surname] == nil {
+			fullBySurname[surname] = make(map[string]string)
+		}
+		full := strings.Join(fields, " ")
+		fullBySurname[surname][strings.ToLower(full)] = full
+	}
+	out := make([]scriptpkg.Entity, 0, len(persons))
+	seen := make(map[string]int, len(persons))
+	for _, person := range persons {
+		fields := strings.Fields(strings.TrimSpace(person.Value))
+		if len(fields) == 1 {
+			if names := fullBySurname[normalizePersonToken(fields[0])]; len(names) == 1 {
+				for _, full := range names {
+					person.Value = full
+				}
+			}
+		}
+		key := strings.ToLower(strings.TrimSpace(person.Value))
+		if index, exists := seen[key]; exists {
+			if person.Score > out[index].Score {
+				out[index].Score = person.Score
+			}
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, person)
+	}
+	return out
+}
+
+var italianMonthNumbers = map[string]int{
+	"gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+	"maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+	"settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+}
+
+type parsedItalianDate struct {
+	Day, Month, Year int
+	Surface          string
+}
+
+// parseItalianDate recognizes the exact Italian date surfaces the extractor
+// emits: day month year, day month, month year and a bare four-digit year.
+// Anything else stays an opaque DATE rather than being guessed.
+func parseItalianDate(value string) (parsedItalianDate, bool) {
+	surface := strings.TrimSpace(value)
+	fields := strings.Fields(strings.ToLower(strings.Trim(surface, ".,;:")))
+	parsed := parsedItalianDate{Surface: surface}
+	number := func(token string) (int, bool) {
+		n, err := strconv.Atoi(token)
+		return n, err == nil
+	}
+	switch len(fields) {
+	case 1:
+		if year, ok := number(fields[0]); ok && year >= 1000 && year <= 2100 {
+			parsed.Year = year
+			return parsed, true
+		}
+	case 2:
+		if day, ok := number(fields[0]); ok {
+			month, ok := italianMonthNumbers[fields[1]]
+			if !ok || day < 1 || day > 31 {
+				return parsedItalianDate{}, false
+			}
+			parsed.Day, parsed.Month = day, month
+			return parsed, true
+		}
+		if month, ok := italianMonthNumbers[fields[0]]; ok {
+			year, ok := number(fields[1])
+			if !ok || year < 1000 || year > 2100 {
+				return parsedItalianDate{}, false
+			}
+			parsed.Month, parsed.Year = month, year
+			return parsed, true
+		}
+	case 3:
+		day, ok := number(fields[0])
+		if !ok {
+			return parsedItalianDate{}, false
+		}
+		month, ok := italianMonthNumbers[fields[1]]
+		if !ok {
+			return parsedItalianDate{}, false
+		}
+		year, ok := number(fields[2])
+		if !ok || day < 1 || day > 31 || year < 1000 || year > 2100 {
+			return parsedItalianDate{}, false
+		}
+		parsed.Day, parsed.Month, parsed.Year = day, month, year
+		return parsed, true
+	}
+	return parsedItalianDate{}, false
+}
+
+// canonicalizeDateConcepts maps partial DATE surfaces onto the unique full
+// date that contains them and drops a partial when the match is ambiguous or
+// absent. A bare year remains a distinct display unit. This is the aggregate
+// cleanup for the 22-row DATE list: six full dates plus five years, instead of
+// the same facts repeated as day/month fragments.
+func canonicalizeDateConcepts(concepts []scriptpkg.Entity) []scriptpkg.Entity {
+	fullDates := make([]parsedItalianDate, 0, len(concepts))
+	for _, concept := range concepts {
+		if !strings.EqualFold(concept.Type, "DATE") {
+			continue
+		}
+		if parsed, ok := parseItalianDate(concept.Value); ok && parsed.Day > 0 && parsed.Month > 0 && parsed.Year > 0 {
+			fullDates = append(fullDates, parsed)
+		}
+	}
+	out := make([]scriptpkg.Entity, 0, len(concepts))
+	seen := make(map[string]int, len(concepts))
+	for _, concept := range concepts {
+		if strings.EqualFold(concept.Type, "DATE") {
+			parsed, ok := parseItalianDate(concept.Value)
+			if ok {
+				switch {
+				case parsed.Day > 0 && parsed.Month > 0 && parsed.Year > 0:
+					// canonical full date: keep
+				case parsed.Day > 0 && parsed.Month > 0:
+					canonical, found := uniqueFullDate(fullDates, parsed.Day, parsed.Month, 0)
+					if !found {
+						continue
+					}
+					concept.Value = canonical
+				case parsed.Month > 0 && parsed.Year > 0:
+					canonical, found := uniqueFullDate(fullDates, 0, parsed.Month, parsed.Year)
+					if !found {
+						continue
+					}
+					concept.Value = canonical
+				case parsed.Year > 0:
+					// A year is a distinct display unit; keep it.
+				default:
+					continue
+				}
+			}
+		}
+		key := entitytype.Fold(concept.Type) + "\x00" + strings.ToLower(concept.Value)
+		if index, exists := seen[key]; exists {
+			if concept.Score > out[index].Score {
+				out[index].Score = concept.Score
+			}
+			continue
+		}
+		seen[key] = len(out)
+		out = append(out, concept)
+	}
+	return out
+}
+
+func uniqueFullDate(dates []parsedItalianDate, day, month, year int) (string, bool) {
+	matches := make(map[string]struct{})
+	for _, date := range dates {
+		if day > 0 && date.Day != day {
+			continue
+		}
+		if month > 0 && date.Month != month {
+			continue
+		}
+		if year > 0 && date.Year != year {
+			continue
+		}
+		matches[date.Surface] = struct{}{}
+	}
+	if len(matches) != 1 {
+		return "", false
+	}
+	for surface := range matches {
+		return surface, true
+	}
+	return "", false
+}
+
+// normalizeImportantPhrase repairs the two selector artefacts that reached the
+// durable surface: a lowercase sentence start and a phrase that begins in the
+// middle of its sentence ("rinvio significa…"). It prepends at most two words
+// from the sentence start and capitalizes the first rune; the result remains a
+// verbatim span of the source text.
+func normalizeImportantPhrase(text, phrase string) string {
+	phrase = strings.TrimSpace(phrase)
+	if phrase == "" {
+		return ""
+	}
+	span, ok := findEntitySpan(text, phrase)
+	if !ok {
+		return capitalizeFirstRune(phrase)
+	}
+	runes := []rune(text)
+	sentenceStart := 0
+scan:
+	for i := span.StartRune - 1; i >= 0; i-- {
+		switch runes[i] {
+		case '.', '!', '?', '\n':
+			sentenceStart = i + 1
+			break scan
+		}
+	}
+	candidate := span.Text
+	if prefix := strings.TrimSpace(string(runes[sentenceStart:span.StartRune])); prefix != "" {
+		words := strings.Fields(prefix)
+		if len(words) <= 2 {
+			candidate = strings.Join(words, " ") + " " + span.Text
+		}
+	}
+	return capitalizeFirstRune(candidate)
+}
+
+func capitalizeFirstRune(value string) string {
+	runes := []rune(value)
+	if len(runes) == 0 {
+		return value
+	}
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
+}
+
+// dropSurnameOnlyAnnotationDuplicates removes a one-token PERSON annotation
+// when exactly one grounded multi-token PERSON in the run ends with that
+// token. The full name is already spoken and annotated elsewhere; keeping the
+// surname-only copy would mint a second identity and an extra entity card.
+// With zero or multiple candidate full names the surname is preserved.
+func dropSurnameOnlyAnnotationDuplicates(annotations map[int]*scriptpkg.SceneAnnotations) {
+	fullBySurname := make(map[string]map[string]struct{})
+	for _, ann := range annotations {
+		if ann == nil {
+			continue
+		}
+		for _, entity := range ann.PrimaryEntities {
+			if !strings.EqualFold(entity.Type, "PERSON") {
+				continue
+			}
+			name := strings.TrimSpace(entity.CanonicalName)
+			if name == "" {
+				name = strings.TrimSpace(entity.Text)
+			}
+			fields := strings.Fields(name)
+			if len(fields) < 2 {
+				continue
+			}
+			surname := normalizePersonToken(fields[len(fields)-1])
+			if surname == "" {
+				continue
+			}
+			if fullBySurname[surname] == nil {
+				fullBySurname[surname] = make(map[string]struct{})
+			}
+			fullBySurname[surname][strings.ToLower(strings.Join(fields, " "))] = struct{}{}
+		}
+	}
+	for _, ann := range annotations {
+		if ann == nil {
+			continue
+		}
+		kept := ann.PrimaryEntities[:0]
+		for _, entity := range ann.PrimaryEntities {
+			if strings.EqualFold(entity.Type, "PERSON") {
+				name := strings.TrimSpace(entity.CanonicalName)
+				if name == "" {
+					name = strings.TrimSpace(entity.Text)
+				}
+				fields := strings.Fields(name)
+				if len(fields) == 1 {
+					if names := fullBySurname[normalizePersonToken(fields[0])]; len(names) == 1 {
+						continue
+					}
+				}
+			}
+			kept = append(kept, entity)
+		}
+		// Keep the annotation object even when the dropped surname was its only
+		// entity: downstream geocoding uses the scene annotation as its carrier
+		// and must still be able to add a place from the same text.
+		ann.PrimaryEntities = kept
+	}
 }
 
 // GenerateArtifacts contains compatibility projections that are derived from

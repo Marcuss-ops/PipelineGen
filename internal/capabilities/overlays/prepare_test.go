@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 )
 
@@ -12,17 +13,17 @@ func validPrepareRequest() PrepareRequest {
 		Width:         1280,
 		Height:        720,
 		FPSNum:        30, FPSDen: 1,
-		Intents: []OverlayIntent{{
-			Version:     OverlayIntentVersion,
+		Intents: []capmodel.OverlayIntent{{
+			Version:     capmodel.OverlayIntentVersion,
 			IntentID:    "intent-scene-0-tom-hanks",
 			SceneID:     "scene-0",
 			SceneIndex:  0,
-			Entity:      EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
-			Source:      IntentSourceEntity,
-			Kind:        string(KindEntityCard),
+			Entity:      capmodel.EntityBinding{Type: "PERSON", CanonicalName: "Tom Hanks"},
+			Source:      capmodel.IntentSourceEntity,
+			Kind:        string(capmodel.KindEntityCard),
 			TemplateID:  "person_default",
-			Payload:     IntentPayload{Name: "Tom Hanks"},
-			TimingState: TimingStatePending,
+			Payload:     capmodel.IntentPayload{Name: "Tom Hanks"},
+			TimingState: capmodel.TimingStatePending,
 		}},
 	}
 }
@@ -36,7 +37,7 @@ func TestPrepareRequest_ValidatePass(t *testing.T) {
 
 func TestPrepareRequest_ValidateRejectsWrongSchema(t *testing.T) {
 	req := validPrepareRequest()
-	req.SchemaVersion = SchemaVersionPlan
+	req.SchemaVersion = capmodel.SchemaVersionPlan
 	if err := req.Validate(); err == nil {
 		t.Fatal("wrong schema version must fail validation")
 	}
@@ -75,7 +76,7 @@ func TestPrepareRequest_ValidateRejectsNoIntents(t *testing.T) {
 
 func TestPrepareRequest_ValidateRejectsFrozenIntent(t *testing.T) {
 	req := validPrepareRequest()
-	req.Intents[0].TimingState = TimingStateFrozen
+	req.Intents[0].TimingState = capmodel.TimingStateFrozen
 	if err := req.Validate(); err == nil {
 		t.Fatal("a FROZEN intent must never be re-prepared")
 	}

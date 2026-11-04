@@ -2,15 +2,16 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-func chapterBulletTestItems(bullets, longPhrases int) []capabilityoverlay.OverlayItem {
-	var items []capabilityoverlay.OverlayItem
+func chapterBulletTestItems(bullets, longPhrases int) []capmodel.OverlayItem {
+	var items []capmodel.OverlayItem
 	for i := 0; i < bullets; i++ {
-		items = append(items, capabilityoverlay.OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("bullet-%02d", i), Kind: "text_phrase",
 			SceneID: fmt.Sprintf("scene-%02d", i), StartUS: int64(i) * 10_000_000, DurationUS: 4_000_000,
 			Text:   fmt.Sprintf("punto saliente numero %02d della scena", i),
@@ -18,7 +19,7 @@ func chapterBulletTestItems(bullets, longPhrases int) []capabilityoverlay.Overla
 		})
 	}
 	for i := 0; i < longPhrases; i++ {
-		items = append(items, capabilityoverlay.OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("long-%02d", i), Kind: "text_phrase",
 			SceneID: fmt.Sprintf("scene-%02d", i), StartUS: int64(i)*10_000_000 + 5_000_000, DurationUS: 4_000_000,
 			Text: fmt.Sprintf("questa e la frase lunga numero %02d con tutte le parole necessarie", i),
@@ -35,7 +36,7 @@ func TestOverlayGroupOfSeparatesBullets(t *testing.T) {
 	if got := overlayGroupOf(items[0]); got != overlayGroupBullets {
 		t.Fatalf("chapter bullet group = %q, want %q", got, overlayGroupBullets)
 	}
-	sceneBullet := capabilityoverlay.OverlayItem{
+	sceneBullet := capmodel.OverlayItem{
 		Kind: "text_phrase", Text: "un punto saliente", SceneID: "s",
 		Params: map[string]any{"editorial_role": "scene_bullet"},
 	}

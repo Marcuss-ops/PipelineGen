@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -41,6 +40,47 @@ func claimStateErrorIsBadRequest(err error) bool {
 		strings.Contains(msg, "max_wait")
 }
 
+// checkClaimRequest applies the producer-input rules shared by both claim
+// endpoints: an unknown state is a typo and a negative wait is a bug, and both
+// must be rejected before any storage call. Only the wait field name differs on
+// the wire (wait_ms vs max_wait_ms).
+func checkClaimRequest(w http.ResponseWriter, state string, waitMS int64, waitField string) bool {
+	if !validClaimState(state) {
+		http.Error(w, "unknown state "+state, http.StatusBadRequest)
+		return false
+	}
+	if waitMS < 0 {
+		http.Error(w, waitField+" must be >= 0", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
+// writeClaimError maps a claim failure onto the wire: a producer input error is
+// a 400, an expired or cancelled wait is an empty 204, anything else is a 500.
+func writeClaimError(w http.ResponseWriter, err error) {
+	if claimStateErrorIsBadRequest(err) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+// writeClaimResult emits the canonical claim envelope: an empty claim is a 204,
+// a claim carries the lease the worker must renew.
+func writeClaimResult(w http.ResponseWriter, job *model.Job, lease time.Duration) {
+	if job == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	job.Lease = lease
+	writeJSON(w, http.StatusOK, job)
+}
+
 // claim is the thin polling endpoint. With wait_ms==0 it is a single atomic
 // ClaimState; with wait_ms>0 it delegates to the single Notifier-backed
 // WaitAndClaim so both claim endpoints share one wake-up path. The wait never
@@ -51,26 +91,13 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 		State  string `json:"state,omitempty"`
 		WaitMS int64  `json:"wait_ms,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if !validClaimState(req.State) {
-		http.Error(w, "unknown state "+req.State, http.StatusBadRequest)
-		return
-	}
-	if req.WaitMS < 0 {
-		http.Error(w, "wait_ms must be >= 0", http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) || !checkClaimRequest(w, req.State, req.WaitMS, "wait_ms") {
 		return
 	}
 
 	job, lease, err := s.svc.ClaimState(r.Context(), req.Worker, model.State(req.State))
 	if err != nil {
-		if claimStateErrorIsBadRequest(err) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeClaimError(w, err)
 		return
 	}
 	if job == nil && req.WaitMS > 0 {
@@ -87,28 +114,11 @@ func (s *Server) claim(w http.ResponseWriter, r *http.Request) {
 			if r.Context().Err() != nil {
 				return // client disconnected; nothing to write
 			}
-			if claimStateErrorIsBadRequest(err) {
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeClaimError(w, err)
 			return
 		}
 	}
-	if job == nil {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	// The claim response is the canonical Job envelope plus the lease the
-	// worker must renew. There is no separate claim-response type: the wire
-	// contract exists once, in queue/client, and every layer aliases it.
-	job.Lease = lease
-	writeJSON(w, http.StatusOK, job)
+	writeClaimResult(w, job, lease)
 }
 
 // claimWait is the dedicated long-poll endpoint. It is a thin wrapper over
@@ -121,16 +131,7 @@ func (s *Server) claimWait(w http.ResponseWriter, r *http.Request) {
 		State     string `json:"state,omitempty"`
 		MaxWaitMs int64  `json:"max_wait_ms,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if !validClaimState(req.State) {
-		http.Error(w, "unknown state "+req.State, http.StatusBadRequest)
-		return
-	}
-	if req.MaxWaitMs < 0 {
-		http.Error(w, "max_wait_ms must be >= 0", http.StatusBadRequest)
+	if !decodeRequestBody(w, r, &req) || !checkClaimRequest(w, req.State, req.MaxWaitMs, "max_wait_ms") {
 		return
 	}
 	maxWait := time.Duration(req.MaxWaitMs) * time.Millisecond
@@ -138,24 +139,8 @@ func (s *Server) claimWait(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	job, lease, err := s.svc.WaitAndClaim(ctx, req.Worker, model.State(req.State), maxWait)
 	if err != nil {
-		if claimStateErrorIsBadRequest(err) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeClaimError(w, err)
 		return
 	}
-	if job == nil {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	// The claim response is the canonical Job envelope plus the lease the
-	// worker must renew. There is no separate claim-response type: the wire
-	// contract exists once, in queue/client, and every layer aliases it.
-	job.Lease = lease
-	writeJSON(w, http.StatusOK, job)
+	writeClaimResult(w, job, lease)
 }

@@ -1,5 +1,7 @@
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "testing"
 
 // TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane pins goal E2's motion
@@ -27,13 +29,13 @@ func TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane(t *testing.T) {
 		HeavyPhrasePriority: 0.85,
 		Scenes:              []SceneInput{{ID: "scene-1", Phrases: phrases}},
 	}
-	byText := func(plan PlanInput) map[string]OverlayItem {
+	byText := func(plan PlanInput) map[string]capmodel.OverlayItem {
 		t.Helper()
 		built, err := BuildPlan(plan, AllCandidatesPlannerConfig(plan.Scenes))
 		if err != nil {
 			t.Fatalf("BuildPlan: %v", err)
 		}
-		items := map[string]OverlayItem{}
+		items := map[string]capmodel.OverlayItem{}
 		for _, item := range built.Items {
 			if item.Kind == "text_phrase" {
 				items[item.Text] = item

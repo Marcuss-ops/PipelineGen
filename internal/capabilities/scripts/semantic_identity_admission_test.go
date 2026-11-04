@@ -1,20 +1,19 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
-func identityImageItem(name string) capabilityoverlay.OverlayItem {
-	return capabilityoverlay.OverlayItem{
-		Kind:     string(capabilityoverlay.KindEntityImage),
+func identityImageItem(name string) capmodel.OverlayItem {
+	return capmodel.OverlayItem{
+		Kind:     string(capmodel.KindEntityImage),
 		EntityID: "ent-" + name,
-		EntityRef: &capabilityoverlay.OverlayEntityRef{
+		EntityRef: &capmodel.OverlayEntityRef{
 			EntityID: "ent-" + name, Type: "PERSON", Name: name,
 		},
 		EntityCaption: name,
-		AssetRefs:     []capabilityoverlay.OverlayAssetRef{{URL: "https://assets.invalid/" + name + ".jpg"}},
+		AssetRefs:     []capmodel.OverlayAssetRef{{URL: "https://assets.invalid/" + name + ".jpg"}},
 	}
 }
 
@@ -34,8 +33,8 @@ func admissionPlan(t *testing.T) *SemanticProductionPlan {
 
 func TestIdentityImagesAreAdmittedByTheProductionPlan(t *testing.T) {
 	plan := admissionPlan(t)
-	textOnly := capabilityoverlay.OverlayItem{Kind: string(capabilityoverlay.KindEntityCard), EntityCaption: "Andrea Sempio"}
-	items := []capabilityoverlay.OverlayItem{
+	textOnly := capmodel.OverlayItem{Kind: string(capmodel.KindEntityCard), EntityCaption: "Andrea Sempio"}
+	items := []capmodel.OverlayItem{
 		identityImageItem("Alberto Stasi"),
 		identityImageItem("Andrea Sempio"),
 		textOnly,
@@ -53,7 +52,7 @@ func TestIdentityImagesAreAdmittedByTheProductionPlan(t *testing.T) {
 }
 
 func TestIdentityImagesAreUntouchedWithoutAPlan(t *testing.T) {
-	items := []capabilityoverlay.OverlayItem{identityImageItem("Chiara Poggi")}
+	items := []capmodel.OverlayItem{identityImageItem("Chiara Poggi")}
 	if got := admitIdentityImagesByProductionPlan(items, nil); len(got) != 1 {
 		t.Fatalf("a nil plan must not gate identities: %+v", got)
 	}

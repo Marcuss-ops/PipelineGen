@@ -27,16 +27,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"strings"
-	"time"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/buildinfo"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/rendercacheinfo"
+	"os"
+	"strings"
+	"time"
 )
 
 // OverlayRenderCacheKillSwitch disables the cache when set to 0/false/no/off.
@@ -162,7 +161,7 @@ func overlayRenderCacheEpochFromIdentity(identity buildinfo.Identity) string {
 // both individual items and fused compositions. A batch key includes every
 // ordered item identity/render key plus the shared plan context, so a cached
 // composition can never satisfy a different grouping or z-order.
-func overlayRenderCacheKeyForPlan(plan capoverlay.OverlayPlan, epoch string) (OverlayRenderCacheKey, bool) {
+func overlayRenderCacheKeyForPlan(plan capmodel.OverlayPlan, epoch string) (OverlayRenderCacheKey, bool) {
 	if len(plan.Items) == 0 {
 		return OverlayRenderCacheKey{}, false
 	}
@@ -171,14 +170,14 @@ func overlayRenderCacheKeyForPlan(plan capoverlay.OverlayPlan, epoch string) (Ov
 		item := plan.Items[0]
 		renderKey = strings.ToLower(strings.TrimSpace(item.RenderKey))
 		if renderKey == "" {
-			renderKey = capoverlay.ComputeRenderKey(plan, item)
+			renderKey = capmodel.ComputeRenderKey(plan, item)
 		}
 	} else {
 		parts := []string{"overlay-render-batch/v1"}
 		for index, item := range plan.Items {
 			itemKey := strings.ToLower(strings.TrimSpace(item.RenderKey))
 			if itemKey == "" {
-				itemKey = capoverlay.ComputeRenderKey(plan, item)
+				itemKey = capmodel.ComputeRenderKey(plan, item)
 			}
 			if len(itemKey) != 64 || !isLowerHex(itemKey) {
 				return OverlayRenderCacheKey{}, false
@@ -209,8 +208,9 @@ func overlayRenderCacheKeyForPlan(plan capoverlay.OverlayPlan, epoch string) (Ov
 }
 
 // overlayPlanRenderContextDigest hashes the plan-level facts that change the
-// pixels but are NOT part of an item's RenderKey: background/source, animation
-// policies, canvas floor, foreground scale, entity variation seed, media
+// pixels but are NOT part of an item's RenderKey: background/source, the
+// retired animation-policy wire (historical plans), canvas floor, foreground
+// scale, entity variation seed, media
 // contract, and the two item fields RenderKey does not carry (Kind and
 // CameraMotionID). It deliberately excludes plan identity, Drive routing and
 // producer-only fields, so two runs that render the same clip agree.
@@ -219,7 +219,7 @@ func overlayRenderCacheKeyForPlan(plan capoverlay.OverlayPlan, epoch string) (Ov
 // durable checkpoints and Validate re-computes it, so extending that hash would
 // invalidate every stored plan. The context digest is where new render inputs
 // are added safely.
-func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
+func overlayPlanRenderContextDigest(plan capmodel.OverlayPlan) string {
 	if !overlayPlanCacheAssetsIdentified(plan) {
 		return ""
 	}
@@ -249,7 +249,9 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		// normalize, so this is a lane fact, not a claim that these bytes
 		// already carry the hash. It still invalidates rows written before the
 		// canonical lane existed, which is the cache hazard being closed.
-		BitstreamLane  string                    `json:"bitstream_lane,omitempty"`
+		BitstreamLane string `json:"bitstream_lane,omitempty"`
+		// Policies keeps the retired pre-v2 wire in the cache identity so a
+		// historical plan cannot alias one that never carried it.
 		Policies       string                    `json:"animation_policies"`
 		SourceSHA256   string                    `json:"source_sha256"`
 		Background     *overlayCacheBG           `json:"background"`
@@ -272,7 +274,16 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 		SamplingIdentity string `json:"sampling_identity,omitempty"`
 	}{
 		// 3 also invalidates rows created before the canonical bitstream lane.
-		CacheVersion:    3,
+		// 4 invalidates renders produced before the corrected text/shape
+		// canvas-coordinate conversion was deployed. A renderer code change
+		// must advance this identity whenever the environment epoch cannot be
+		// updated in lockstep with the pipeline service. 9 invalidates the
+		// screen-space TextRun placement that dropped explicit canvas anchors.
+		// 10 invalidates corrected overlay text alignment; 11 converts
+		// documentary marker positions from canvas pixels to centre-relative
+		// screen coordinates; 12 keeps screen-space phrase motion off glyph
+		// transforms that move the text box out of frame.
+		CacheVersion:    12,
 		SchemaVersion:   strings.TrimSpace(plan.SchemaVersion),
 		Renderer:        renderer,
 		Width:           plan.Width,
@@ -328,7 +339,7 @@ func overlayPlanRenderContextDigest(plan capoverlay.OverlayPlan) string {
 // overlayPlanCacheAssetsIdentified prevents mutable URLs or incomplete hashes
 // from aliasing different source, background or item pixels in a reusable row.
 // Rendering remains available when an asset lacks a content address.
-func overlayPlanCacheAssetsIdentified(plan capoverlay.OverlayPlan) bool {
+func overlayPlanCacheAssetsIdentified(plan capmodel.OverlayPlan) bool {
 	valid := func(raw string) bool {
 		sha := strings.ToLower(strings.TrimSpace(raw))
 		return len(sha) == 64 && isLowerHex(sha)
@@ -359,7 +370,7 @@ func overlayPlanCacheAssetsIdentified(plan capoverlay.OverlayPlan) bool {
 // plan id — never the run identity. Plan ids are per-run (run_f…), so hashing
 // them here would name the same pixels differently on every retry and defeat
 // the reuse this cache exists for.
-func samplingPlanIdentity(plan capoverlay.OverlayPlan) string {
+func samplingPlanIdentity(plan capmodel.OverlayPlan) string {
 	if id := strings.TrimSpace(plan.ProjectID); id != "" {
 		return id
 	}
@@ -387,7 +398,7 @@ type overlayCacheBG struct {
 	Assets  []string  `json:"assets,omitempty"`
 }
 
-func overlayCacheBackground(bg *capoverlay.OverlayBackground) *overlayCacheBG {
+func overlayCacheBackground(bg *capmodel.OverlayBackground) *overlayCacheBG {
 	if bg == nil {
 		return nil
 	}

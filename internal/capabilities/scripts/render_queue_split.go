@@ -43,20 +43,19 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"math"
 	"os"
 	"sort"
 	"strings"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
 // OverlayPlanSplitEnqueuer is the optional capability of an enqueuer that can
 // submit one composition per scene window. Capability-checked by the caller;
 // enqueuers without it keep the single-timeline submission.
 type OverlayPlanSplitEnqueuer interface {
-	EnqueueChrononPlanSplit(context.Context, capoverlay.OverlayPlan) (RenderReference, error)
+	EnqueueChrononPlanSplit(context.Context, capmodel.OverlayPlan) (RenderReference, error)
 }
 
 // overlayPerSceneSplitEnabled reads the feature gate once per call. It is
@@ -157,7 +156,7 @@ func groupManifestCandidatesByScene(candidates []overlayItemCandidate) []sceneRe
 // items share a frame. A layer can cross a scene boundary; rendering its two
 // scenes independently would omit the other scene's layers from that frame.
 // Merging whole groups also preserves transitive overlap and plan layer order.
-func mergeOverlappingSceneGroups(plan capoverlay.OverlayPlan, groups []sceneRenderGroup) ([]sceneRenderGroup, error) {
+func mergeOverlappingSceneGroups(plan capmodel.OverlayPlan, groups []sceneRenderGroup) ([]sceneRenderGroup, error) {
 	fpsNum, fpsDen := plan.FPSNum, plan.FPSDen
 	if fpsNum <= 0 || fpsDen <= 0 {
 		return nil, fmt.Errorf("overlay per-scene split: invalid frame rate %d/%d", fpsNum, fpsDen)
@@ -231,7 +230,7 @@ func mergeOverlappingSceneGroups(plan capoverlay.OverlayPlan, groups []sceneRend
 // never overlap each other in time, so no item's frames can be split across
 // two independently rendered compositions, and each item keeps its plan order
 // (candidate.index) inside its component.
-func groupManifestCandidatesIntoMicroBatches(plan capoverlay.OverlayPlan, candidates []overlayItemCandidate) ([]sceneRenderGroup, error) {
+func groupManifestCandidatesIntoMicroBatches(plan capmodel.OverlayPlan, candidates []overlayItemCandidate) ([]sceneRenderGroup, error) {
 	var out []sceneRenderGroup
 	for _, scene := range groupManifestCandidatesByScene(candidates) {
 		type windowed struct {
@@ -286,7 +285,7 @@ func groupManifestCandidatesIntoMicroBatches(plan capoverlay.OverlayPlan, candid
 // fixed rendezvous/setup cost paid once per batch. It is fail-safe: any
 // admission or placement error returns the original groups, and the feature
 // is opt-in (OVERLAY_RENDER_PACK_SUPERBATCH).
-func packManifestGroupsIntoSuperBatches(plan capoverlay.OverlayPlan, groups []sceneRenderGroup, lanes int) ([]sceneRenderGroup, error) {
+func packManifestGroupsIntoSuperBatches(plan capmodel.OverlayPlan, groups []sceneRenderGroup, lanes int) ([]sceneRenderGroup, error) {
 	if !overlayPackedSuperBatchesEnabled() || lanes < 1 || len(groups) <= lanes {
 		return groups, nil
 	}
@@ -366,7 +365,7 @@ func packManifestGroupsIntoSuperBatches(plan capoverlay.OverlayPlan, groups []sc
 // items; maps and chains keep their dedicated per-item paths) covers more
 // than one scene. Plans whose manifest work is single-scene never split: the
 // single submission is then exactly the split's degenerate case.
-func planSpansMultipleScenes(plan capoverlay.OverlayPlan) bool {
+func planSpansMultipleScenes(plan capmodel.OverlayPlan) bool {
 	manifestCandidates, dedicatedCandidates := partitionOverlayRenderWork(plan)
 	if len(manifestCandidates) == 0 && len(dedicatedCandidates) == 0 {
 		return false
@@ -392,7 +391,7 @@ func planSpansMultipleScenes(plan capoverlay.OverlayPlan) bool {
 //
 // Non-final runs never consume the batch certificate set, so they always pass.
 // A dedicated-only plan takes the dedicated path verbatim and does not split.
-func finalJobSplitPreflight(finalJob bool, plan capoverlay.OverlayPlan) error {
+func finalJobSplitPreflight(finalJob bool, plan capmodel.OverlayPlan) error {
 	if !finalJob {
 		return nil
 	}
@@ -426,7 +425,7 @@ func finalJobSplitPreflight(finalJob bool, plan capoverlay.OverlayPlan) error {
 // window and assembles the per-scene artifacts into a single language
 // reference (N Batches, per-item Artifact rows). The DESIGN comment on top of
 // this file owns the contract; the caller owns the fallback on any error.
-func (e *QueueRenderEnqueuer) EnqueueChrononPlanSplit(ctx context.Context, plan capoverlay.OverlayPlan) (RenderReference, error) {
+func (e *QueueRenderEnqueuer) EnqueueChrononPlanSplit(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	manifestCandidates, dedicatedCandidates := partitionOverlayRenderWork(plan)
 	if len(manifestCandidates) == 0 {
 		// Dedicated-only plans take the existing dedicated path verbatim —
@@ -487,7 +486,7 @@ func (e *QueueRenderEnqueuer) EnqueueChrononPlanSplit(ctx context.Context, plan 
 // compositions. Both paths use the existing GPU admission authority; the
 // split pool and dedicated pool retain their own bounded submission widths.
 // No partial reference escapes if either branch fails or is cancelled.
-func runSplitOverlayWork(ctx context.Context, plan capoverlay.OverlayPlan,
+func runSplitOverlayWork(ctx context.Context, plan capmodel.OverlayPlan,
 	scenes func(context.Context) ([]RenderReference, error),
 	dedicated func(context.Context) (*RenderReference, error),
 ) (RenderReference, error) {
@@ -530,7 +529,7 @@ func runSplitOverlayWork(ctx context.Context, plan capoverlay.OverlayPlan,
 //     Manifest is deliberately nil: a split has no single-timeline document,
 //     so readers must use Batches (the final-job handoff emits one manifest
 //     per batch and would otherwise read only the first scene).
-func assembleSplitManifestReference(plan capoverlay.OverlayPlan, sceneRefs []RenderReference, dedicatedRef *RenderReference) (RenderReference, error) {
+func assembleSplitManifestReference(plan capmodel.OverlayPlan, sceneRefs []RenderReference, dedicatedRef *RenderReference) (RenderReference, error) {
 	if len(sceneRefs) == 0 {
 		return RenderReference{}, fmt.Errorf("overlay per-scene split has no scene compositions")
 	}
@@ -569,7 +568,7 @@ func assembleSplitManifestReference(plan capoverlay.OverlayPlan, sceneRefs []Ren
 
 // planItemOrderIndex maps item id → plan position for the editorial-order
 // restore of the assembled rows.
-func planItemOrderIndex(plan capoverlay.OverlayPlan) map[string]int {
+func planItemOrderIndex(plan capmodel.OverlayPlan) map[string]int {
 	order := make(map[string]int, len(plan.Items))
 	for index, item := range plan.Items {
 		order[item.ID] = index

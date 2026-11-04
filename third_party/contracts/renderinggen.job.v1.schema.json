@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://renderinggen.dev/schemas/renderinggen.job.v1.schema.json",
+  "title": "RenderingGen Job V1",
+  "description": "Envelope contract for a RenderingGen render job. One job corresponds to one video SEGMENT (never a single overlay): the render_plan contains every element of the segment — base video, background, phrases, keywords, images and animations — as the semantic renderinggen.overlay-plan.v1 document, which RenderingGen compiles exclusively into chronon.render-plan.v2 before execution. A concrete chronon render plan is NOT a valid render_plan on this boundary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "schema", "version", "render_plan", "assets"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "description": "Job identifier, 1–256 bytes, using safe ASCII filename characters. Producer scopes use colon or dash separators."
+    },
+    "schema": {
+      "const": "renderinggen.job",
+      "description": "Envelope schema name, following the same schema+version convention as the Chronon3d render-plan schema."
+    },
+    "version": {
+      "const": 1,
+      "description": "Envelope schema version."
+    },
+    "publication_policy": {
+      "type": "string",
+      "enum": ["object_store_only", "object_store_and_drive"],
+      "default": "object_store_only",
+      "description": "Optional external delivery policy. Omitted jobs remain object-store-only; object_store_and_drive asks the worker to publish the artifact to its configured Drive destination."
+    },
+    "daemon_admission_wait_ms": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1.7976931348623157e+308,
+      "description": "Optional Chronon daemon-side admission delay in milliseconds. Worker-owned value copied into artifact metrics; not part of gpu_lane_wait."
+    },
+    "render_plan": {
+      "$ref": "https://renderinggen.dev/schemas/overlay-plan.v1.schema.json",
+      "description": "The semantic renderinggen.overlay-plan.v1 emitted by PipelineGen. It is the ONLY accepted render_plan; RenderingGen compiles it exclusively to chronon.render-plan.v2. A concrete Chronon plan is rejected fail-closed (see CONFORMANCE.md)."
+    },
+    "assets": {
+      "type": "array",
+      "description": "Assets referenced by the render_plan, addressed by content hash and the logical path they must be materialized at inside the job workspace.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["hash", "logical_path"],
+        "properties": {
+          "hash": {
+            "type": "string",
+            "minLength": 1,
+            "description": "SHA-256 of the asset bytes in the artifact store (used for L1/L2/L3 resolution)."
+          },
+          "logical_path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Path relative to the job assets root where the asset must be materialized, e.g. videos/base.mp4 or images/apple.png. This is the path the render_plan layer sources/asset fields refer to."
+          },
+          "source_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Optional durable HTTP(S) location used by RenderingGen to self-heal a cache miss. It is never used as the workspace logical path."
+          }
+        }
+      }
+    }
+  }
+}

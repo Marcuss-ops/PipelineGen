@@ -1,11 +1,10 @@
 package entities
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // TestOverlayResolverEndMsIsCeilProjection pins the millisecond projection the
@@ -30,15 +29,15 @@ func TestOverlayResolverEndMsIsCeilProjection(t *testing.T) {
 			startUS := startMS * 1000
 			endMS := overlayEndMs(startUS, tc.durationUS)
 			require.Equal(t, tc.wantEndMS, endMS, "end_ms is the ceiling projection")
-			plan := capabilityoverlay.OverlayPlan{
-				SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+			plan := capmodel.OverlayPlan{
+				SchemaVersion: capmodel.SchemaVersionPlan,
 				PlanID:        "plan-end-ms",
 				VideoID:       "video-end-ms",
 				Width:         1920,
 				Height:        1080,
 				FPSNum:        30,
 				FPSDen:        1,
-				Items: []capabilityoverlay.OverlayItem{{
+				Items: []capmodel.OverlayItem{{
 					ID:         "overlay-scene-0-sao-paulo",
 					TemplateID: "person_default",
 					StartMs:    startMS,
@@ -53,7 +52,7 @@ func TestOverlayResolverEndMsIsCeilProjection(t *testing.T) {
 			require.Equal(t, tc.wantEndMS, item.EndMs)
 			require.Equal(t, (item.StartUS+item.DurationUS+999)/1000, item.EndMs,
 				"end_ms must ceil the authoritative microsecond endpoint")
-			require.Equal(t, capabilityoverlay.SchemaVersionPlan, plan.SchemaVersion)
+			require.Equal(t, capmodel.SchemaVersionPlan, plan.SchemaVersion)
 		})
 	}
 

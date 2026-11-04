@@ -9,6 +9,7 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"testing"
 	"time"
@@ -106,7 +107,7 @@ func TestOverlayPrepare_DoesNotBlockTTSOrNLP(t *testing.T) {
 	prepEnq := &blockingPrepareEnqueuer{release: make(chan struct{})}
 
 	runner := NewRunner(repo, textGen, newStubTranslator(), voGen)
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
 	enricher := wireCountingVidRush(runner)
 

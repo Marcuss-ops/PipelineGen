@@ -12,10 +12,10 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -36,7 +36,7 @@ type OverlayCanvasSpec struct {
 	FPSNum                 int
 	FPSDen                 int
 	ForegroundScalePercent int
-	Background             *capabilityoverlay.OverlayBackground
+	Background             *capmodel.OverlayBackground
 	Style                  *scriptpkg.OverlayStyleSpec
 	// OutputProfileID is the RenderingGen certification profile that will
 	// describe the rendered artifact, and therefore the ONE input the sealed
@@ -67,12 +67,12 @@ type OverlayCanvasSpec struct {
 	// the canvas is the run-level render context this function already
 	// receives; assignment validates the ids fail-closed.
 	EntityCaptionMotions []string
-	AnimationPolicies    []scriptpkg.AnimationPolicy
+	// AnimationPolicies is a retired contract (< v2): non-empty fails closed.
+	AnimationPolicies []scriptpkg.AnimationPolicy
 	// AnimationDirectives è il contratto canonico v2 (P2-1): tipizzato per
-	// scena/entità/elemento, con mode auto/prefer/exact. I vecchi campi
-	// restano ingressi compatibili normalizzati una sola volta.
+	// scena/entità/elemento, con mode auto/prefer/exact.
 	AnimationDirectives []scriptpkg.AnimationDirective
-	// AnimationContractVersion: 0/1 legacy dual-read, 2 canonico (P2-6).
+	// AnimationContractVersion must be >= 2 when directives are present.
 	AnimationContractVersion int
 	// AnimationCatalogDigest pinna la vista capacità runtime (P0-3).
 	AnimationCatalogDigest        string
@@ -147,16 +147,16 @@ func (c OverlayCanvasSpec) withDefaults() OverlayCanvasSpec {
 	return c
 }
 
-func overlayBackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capabilityoverlay.OverlayBackground {
-	return scriptoverlay.BackgroundFromPayload(src)
+func overlayBackgroundFromPayload(src *scriptpkg.OverlayBackgroundSpec) *capmodel.OverlayBackground {
+	return capabilityoverlay.BackgroundFromPayload(src)
 }
 
 func overlayStyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
-	return scriptoverlay.StyleParams(style)
+	return capabilityoverlay.StyleParams(style)
 }
 
-func overlayImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capabilityoverlay.OverlayItemFrame {
-	return scriptoverlay.ImageFrame(effectiveImageStyle(style))
+func overlayImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capmodel.OverlayItemFrame {
+	return capabilityoverlay.ImageFrame(effectiveImageStyle(style))
 }
 
 func effectiveImageStyle(style *scriptpkg.OverlayImageStyleSpec) *scriptpkg.OverlayImageStyleSpec {
@@ -183,40 +183,40 @@ func effectiveImageStyle(style *scriptpkg.OverlayImageStyleSpec) *scriptpkg.Over
 
 func float64Pointer(value float64) *float64 { return &value }
 
-func isImageOverlayItem(item capabilityoverlay.OverlayItem) bool {
-	return scriptoverlay.IsImageOverlayItem(item)
+func isImageOverlayItem(item capmodel.OverlayItem) bool {
+	return capabilityoverlay.IsAssetImageOverlayItem(item)
 }
 
 func isImageOverlayKind(kind string) bool {
-	return scriptoverlay.IsImageOverlayKind(kind)
+	return capabilityoverlay.IsImageOverlayKind(kind)
 }
 
 func imageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
-	return scriptoverlay.ImageStyleParams(effectiveImageStyle(style))
+	return capabilityoverlay.ImageStyleParams(effectiveImageStyle(style))
 }
 
-func applyOverlayImageStyle(item *capabilityoverlay.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
-	scriptoverlay.ApplyImageStyle(item, effectiveImageStyle(style))
+func applyOverlayImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageStyleSpec) {
+	capabilityoverlay.ApplyImageStyle(item, effectiveImageStyle(style))
 }
 
-func normalizeEntityImageLayer(item *capabilityoverlay.OverlayItem) {
-	scriptoverlay.NormalizeEntityImageLayer(item)
+func normalizeEntityImageLayer(item *capmodel.OverlayItem) {
+	capabilityoverlay.NormalizeEntityImageLayer(item)
 }
 
 func isRuntimeTextStyleParam(key string) bool {
-	return scriptoverlay.IsRuntimeTextStyleParam(key)
+	return capabilityoverlay.IsRuntimeTextStyleParam(key)
 }
 
 func isTextOverlayKind(kind string) bool {
-	return scriptoverlay.IsTextOverlayKind(kind)
+	return capabilityoverlay.IsTextOverlayKind(kind)
 }
 
 func isEntityOverlayKind(kind string) bool {
-	return scriptoverlay.IsEntityOverlayKind(kind)
+	return capabilityoverlay.IsEntityOverlayKind(kind)
 }
 
 func mergeStyleParam(existing any, add map[string]any) map[string]any {
-	return scriptoverlay.MergeStyleParam(existing, add)
+	return capabilityoverlay.MergeStyleParam(existing, add)
 }
 
 // ── Overlay category filter (merged from overlay_category_filter.go) ──
@@ -336,7 +336,7 @@ func validateOverlayGroupLimits(limits map[string]int) error {
 // overlayImageLayersHaveCaptions reports whether a composite carries any
 // per-layer caption text. Composite parents clear EntityCaption to avoid
 // duplicating the first name, so the group classifier must look at layers.
-func overlayImageLayersHaveCaptions(item capabilityoverlay.OverlayItem) bool {
+func overlayImageLayersHaveCaptions(item capmodel.OverlayItem) bool {
 	for _, layer := range item.ImageLayers {
 		if strings.TrimSpace(layer.Caption) != "" {
 			return true
@@ -348,20 +348,20 @@ func overlayImageLayersHaveCaptions(item capabilityoverlay.OverlayItem) bool {
 // overlayGroupOf assigns one overlay to exactly one group. Maps, images,
 // entity cards and phrases are disjoint; short phrases use the exact-cardinality
 // short recipes, every other grounded phrase counts as long.
-func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
+func overlayGroupOf(item capmodel.OverlayItem) string {
 	switch {
 	case item.Kind == "map" && item.Map != nil:
 		return overlayGroupMaps
-	case item.Kind == string(capabilityoverlay.KindLocation):
+	case item.Kind == string(capmodel.KindLocation):
 		return overlayGroupLocations
 	case item.Kind == "number" || item.Kind == "timeline_date":
 		// Number cards share one run-level lane. The planner emits dates and
 		// metrics as kind="number" with different templates, so the group must
 		// key the lane, not a single template id.
 		return overlayGroupDates
-	case item.Kind == string(capabilityoverlay.KindEntityImage) && (strings.TrimSpace(item.EntityCaption) != "" || overlayImageLayersHaveCaptions(item)):
+	case item.Kind == string(capmodel.KindEntityImage) && (strings.TrimSpace(item.EntityCaption) != "" || overlayImageLayersHaveCaptions(item)):
 		return overlayGroupEntitiesWithText
-	case entityCardKind(capabilityoverlay.OverlayKind(item.Kind)):
+	case entityCardKind(capmodel.OverlayKind(item.Kind)):
 		return overlayGroupEntitiesWithText
 	case isImageOverlayItem(item):
 		return overlayGroupImages
@@ -371,7 +371,7 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 		// one). Without this case a 10 long-phrase cap silently included the
 		// chapter bullets and the requested 10+10+bullets never coexisted.
 		return overlayGroupBullets
-	case item.Kind == "text_phrase" || item.Kind == string(capabilityoverlay.KindImportantPhrase):
+	case item.Kind == "text_phrase" || item.Kind == string(capmodel.KindImportantPhrase):
 		// Phrase lane is a content property. Visible motion IDs are often
 		// shared by both lanes, so using recipe membership here misclassifies
 		// every short phrase that received a standard entrance.
@@ -396,7 +396,7 @@ func overlayGroupOf(item capabilityoverlay.OverlayItem) string {
 // the first overlay of every scene in plan order, then the ranked remainder —
 // while the emitted items still follow plan order, so the render plan's
 // z-order and content identity are unchanged.
-func applyOverlayGroupLimits(items []capabilityoverlay.OverlayItem, limits map[string]int) []capabilityoverlay.OverlayItem {
+func applyOverlayGroupLimits(items []capmodel.OverlayItem, limits map[string]int) []capmodel.OverlayItem {
 	if len(limits) == 0 {
 		return items
 	}
@@ -457,7 +457,7 @@ func applyOverlayGroupLimits(items []capabilityoverlay.OverlayItem, limits map[s
 	return out
 }
 
-func stripOverlayImageCaptions(items []capabilityoverlay.OverlayItem) {
+func stripOverlayImageCaptions(items []capmodel.OverlayItem) {
 	for i := range items {
 		items[i].EntityCaption = ""
 		items[i].CaptionMotionID = ""

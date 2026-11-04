@@ -3,11 +3,11 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -204,7 +204,7 @@ func (e *QueueRenderEnqueuer) Wait(ctx context.Context) error {
 // the first free frame interval after its planned start, constrained to the
 // source scene. This preserves every overlay while making the final payload
 // conform to Master 51's non-overlapping mode=replace contract.
-func scheduleFinalJobOverlayFrames(result *GenerateResult, item capabilityoverlay.OverlayItem, startFrame, endFrame int64, fpsNum, fpsDen int, occupied map[string]finalJobFrameWindow) (int64, int64, error) {
+func scheduleFinalJobOverlayFrames(result *GenerateResult, item capmodel.OverlayItem, startFrame, endFrame int64, fpsNum, fpsDen int, occupied map[string]finalJobFrameWindow) (int64, int64, error) {
 	if fpsNum <= 0 || fpsDen <= 0 || endFrame <= startFrame {
 		return 0, 0, fmt.Errorf("final_job overlay %q has an invalid frame window [%d,%d)", item.ID, startFrame, endFrame)
 	}
@@ -256,7 +256,7 @@ func scheduleFinalJobOverlayFrames(result *GenerateResult, item capabilityoverla
 // move within their scene to avoid the Master rejecting intersecting overlay
 // frame windows. Entity cards render a full-frame image just like generic image
 // overlays, even though their semantic kind is "entity_card".
-func finalJobOverlayIsImageStyle(item capabilityoverlay.OverlayItem) bool {
+func finalJobOverlayIsImageStyle(item capmodel.OverlayItem) bool {
 	return item.Kind == "image" || item.Kind == "entity_card"
 }
 

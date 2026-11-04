@@ -3,11 +3,10 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
-	"strings"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"strings"
 )
 
 type FinalJobStockFile struct{ ID, Name string }
@@ -125,7 +124,7 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		for sceneID := range finalJobIntermediateClipWindows(result) {
 			clipScenes[sceneID] = struct{}{}
 		}
-		var overlayItems []capoverlay.OverlayItem
+		var overlayItems []capmodel.OverlayItem
 		if result.OverlayPlan != nil {
 			overlayItems = result.OverlayPlan.Items
 		}

@@ -7,7 +7,11 @@
 // compare two runs with different mixes. The canonical metric is therefore
 // PER CLASS: the worker-measured render service (`render_ms`, the same field
 // the run summaries called `per_item_render_service_ms`) grouped by the
-// semantic overlay-plan item kind, plus the derived window capacity.
+// semantic overlay-plan item kind, plus the derived window capacity. A fully
+// batched run joins its members through the manifest's semantic ids and carries
+// an explicit equal share of the batch total, flagged Allocated, so the class
+// projection is not empty while staying distinguishable from a single-item
+// measurement.
 //
 // This package is pure computation over already-loaded samples: the CLI
 // (cmd/goldensummary) owns the job.full.json / SQLite loading. Nothing here
@@ -24,10 +28,16 @@ import (
 // entity_image, number, ...); empty means the item could not be joined to a
 // plan entry and is counted under "unknown" rather than dropped.
 type ItemSample struct {
-	ItemID        string
-	Class         string
-	Status        string // overlay_render status: COMPLETED | FAILED | ...
-	RenderMS      int64  // worker-measured Chronon render service (per_item_render_service_ms)
+	ItemID string
+	Class  string
+	Status string // overlay_render status: COMPLETED | FAILED | ...
+	// RenderMS is the worker-measured Chronon render service, or — for a
+	// member of a batch — the explicit equal share of the batch's measured
+	// total. Allocated marks the latter so consumers never mistake an
+	// attribution for an individual measurement.
+	RenderMS      int64
+	BatchID       string // batch that produced this sample, empty for a single-item render
+	Allocated     bool   // RenderMS is a share of a batch total, not a per-item measurement
 	EncodeMS      int64  // worker-measured encode service
 	QueuedMS      int64  // cumulative queue wait observed for the item (0 = unmeasured)
 	CacheLookupUS int64
@@ -43,11 +53,12 @@ type ItemSample struct {
 // rounded to the nearest millisecond. A population with no samples reports
 // Count 0 and zero values — never a fabricated estimate.
 type ServiceStat struct {
-	Count int   `json:"count"`
-	AvgMS int64 `json:"avg_ms"`
-	P50MS int64 `json:"p50_ms"`
-	MinMS int64 `json:"min_ms"`
-	MaxMS int64 `json:"max_ms"`
+	Count          int   `json:"count"`
+	AllocatedCount int   `json:"allocated_count,omitempty"`
+	AvgMS          int64 `json:"avg_ms"`
+	P50MS          int64 `json:"p50_ms"`
+	MinMS          int64 `json:"min_ms"`
+	MaxMS          int64 `json:"max_ms"`
 }
 
 // ClassStat is the per-class projection of the golden run. ServiceSharePct
@@ -113,6 +124,8 @@ func BuildGoldenSummary(samples []ItemSample) Summary {
 	perClassMS := map[string][]int64{}
 	perClassDone := map[string]int{}
 	var allMS []int64
+	allocatedSamples := 0
+	perClassAllocated := map[string]int{}
 	var cacheLookupUS, cacheProbeUS, cacheStoreUS []int64
 	cacheOutcomes := map[string]int{}
 	for _, s := range samples {
@@ -133,6 +146,10 @@ func BuildGoldenSummary(samples []ItemSample) Summary {
 		if s.RenderMS > 0 {
 			allMS = append(allMS, s.RenderMS)
 			perClassMS[class] = append(perClassMS[class], s.RenderMS)
+			if s.Allocated {
+				allocatedSamples++
+				perClassAllocated[class]++
+			}
 		}
 		if s.CacheLookupUS > 0 {
 			cacheLookupUS = append(cacheLookupUS, s.CacheLookupUS)
@@ -148,6 +165,7 @@ func BuildGoldenSummary(samples []ItemSample) Summary {
 		}
 	}
 	summary.PerItemServiceMS = serviceStat(allMS)
+	summary.PerItemServiceMS.AllocatedCount = allocatedSamples
 	summary.TotalServiceMS = sum(allMS)
 	summary.CacheTiming = CacheTimingSummary{
 		LookupUS: durationStatUS(cacheLookupUS),
@@ -162,6 +180,7 @@ func BuildGoldenSummary(samples []ItemSample) Summary {
 			Completed: perClassDone[class],
 			ServiceMS: serviceStat(ms),
 		}
+		stat.ServiceMS.AllocatedCount = perClassAllocated[class]
 		if summary.TotalServiceMS > 0 {
 			stat.ServiceSharePct = math.Round(
 				float64(sum(ms))/float64(summary.TotalServiceMS)*1000) / 10

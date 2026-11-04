@@ -1,10 +1,12 @@
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "testing"
 
 // buildSingleMapPlan runs the full planner (BuildPlan) for one grounded place
 // covered by a certified plate, using the given job seed.
-func buildSingleMapPlan(t *testing.T, seed string) OverlayPlan {
+func buildSingleMapPlan(t *testing.T, seed string) capmodel.OverlayPlan {
 	t.Helper()
 	plate := testMapPlate(t, "plate-rome", romeLat, romeLon, mapTestWidth, mapTestHeight)
 	scene := SceneInput{
@@ -27,7 +29,7 @@ func buildSingleMapPlan(t *testing.T, seed string) OverlayPlan {
 }
 
 // mapCompositionOf returns the composition recorded on the single map item.
-func mapCompositionOf(t *testing.T, plan OverlayPlan) string {
+func mapCompositionOf(t *testing.T, plan capmodel.OverlayPlan) string {
 	t.Helper()
 	var found string
 	count := 0

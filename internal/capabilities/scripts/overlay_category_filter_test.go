@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -8,7 +9,7 @@ import (
 )
 
 func TestOverlayCategoryFilterAppliesRunDefaultsAndSceneOverrides(t *testing.T) {
-	items := []overlays.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "date", SceneID: "scene-0", Kind: "number", TemplateID: "TIMELINE_DATE_CARD"},
 		{ID: "image", SceneID: "scene-1", Kind: "entity_image", TemplateID: "person_default"},
 	}
@@ -23,7 +24,7 @@ func TestOverlayCategoryFilterAppliesRunDefaultsAndSceneOverrides(t *testing.T) 
 }
 
 func TestOverlayCategoryFilterUsesPositionForIDLessSegments(t *testing.T) {
-	items := []overlays.OverlayItem{{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE"}}
+	items := []capmodel.OverlayItem{{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE"}}
 	canvas := OverlayCanvasSpec{OverlayCategorySegments: []scriptpkg.ScriptSegment{{OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleDisabled}}}}
 	got := filterOverlayItemsByCategory(items, []Scene{{ID: "scene-1", Index: 0}}, canvas)
 	if len(got) != 0 {
@@ -68,12 +69,12 @@ func TestPhraseCategoryFilteringRunsBeforePhraseBudget(t *testing.T) {
 // The GPE/LOCATION alias matters here: the normalized place type produces the
 // same text-only `location` card as an entity_card, and both must survive.
 func TestOverlayCategoryFilterKeepsTextOnlyNamedEntityCards(t *testing.T) {
-	items := []overlays.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "person-card", SceneID: "scene-0", Kind: "entity_card", TemplateID: "person_default", Text: "Ada Lovelace"},
 		{ID: "place-card", SceneID: "scene-0", Kind: "location", TemplateID: "gpe_default", Text: "Roma"},
 		{ID: "org-card", SceneID: "scene-0", Kind: "organization", TemplateID: "org_default", Text: "ESA"},
 		{ID: "photo", SceneID: "scene-0", Kind: "entity_image", TemplateID: "person_default",
-			AssetRefs: []overlays.OverlayAssetRef{{SHA256: "hash-photo"}}},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "hash-photo"}}},
 	}
 	canvas := OverlayCanvasSpec{OverlayCategories: map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
 		scriptpkg.OverlayCategoryImages: scriptpkg.ToggleDisabled,
@@ -98,19 +99,19 @@ func TestOverlayCategoryFilterKeepsTextOnlyNamedEntityCards(t *testing.T) {
 // text-only name cards: a present zero drops them, so the lane is still
 // fully controllable from the payload.
 func TestOverlayGroupLimitsDisableTextOnlyNamedEntityCards(t *testing.T) {
-	items := []overlays.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "person-card", SceneID: "scene-0", Kind: "entity_card", TemplateID: "person_default", Text: "Ada Lovelace"},
 		{ID: "photo", SceneID: "scene-0", Kind: "entity_image", TemplateID: "person_default",
-			AssetRefs: []overlays.OverlayAssetRef{{SHA256: "hash-photo"}}},
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "hash-photo"}}},
 	}
-	got := applyOverlayGroupLimits(append([]overlays.OverlayItem(nil), items...), map[string]int{"entities_with_text": 0})
+	got := applyOverlayGroupLimits(append([]capmodel.OverlayItem(nil), items...), map[string]int{"entities_with_text": 0})
 	if len(got) != 1 || got[0].ID != "photo" {
 		t.Fatalf("kept %#v, want only the image-backed card", got)
 	}
 }
 
 func TestOverlayCategoryFilterRecognizesSceneTitlesAndBullets(t *testing.T) {
-	items := []overlays.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "title", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Params: map[string]any{"editorial_role": "scene_title"}},
 		{ID: "bullet", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Params: map[string]any{"editorial_role": "scene_bullet"}},
 	}
@@ -139,7 +140,7 @@ func TestOverlayCategoryFilterRecognizesSceneTitlesAndBullets(t *testing.T) {
 // toggle that disables ordinary bullets must remove it, even though its
 // template is the shared IMPORTANT_PHRASE card.
 func TestOverlayCategoryFilterDropsChapterBulletsWhenBulletsDisabled(t *testing.T) {
-	items := []overlays.OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "chapter", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
 			Params: map[string]any{"editorial_role": "chapter_bullet"}},
 		{ID: "phrase", SceneID: "scene-0", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE"},

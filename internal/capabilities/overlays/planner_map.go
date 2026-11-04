@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"encoding/binary"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"log"
 	"sort"
 	"strconv"
@@ -49,10 +50,10 @@ type MapPlate struct {
 	ID            string
 	License       string
 	Attribution   string
-	Center        MapCenter
+	Center        capmodel.MapCenter
 	Zoom          int
 	Width, Height int
-	Asset         OverlayAssetRef
+	Asset         capmodel.OverlayAssetRef
 	Window        geodesy.Window
 	// RasterDeferred means this map is planned for the dynamic map renderer,
 	// which fetches and certifies its own tiles. The descriptor still carries
@@ -88,7 +89,7 @@ type PlateResolver interface {
 // no plan. The returned order is the caller's candidate order; mapItemsForScene
 // imposes the final deterministic (plate id) order.
 type FlyoverPlateResolver interface {
-	ResolveFlyover(from, to MapCenter, canvasWidth, canvasHeight int) (MapPlate, bool)
+	ResolveFlyover(from, to capmodel.MapCenter, canvasWidth, canvasHeight int) (MapPlate, bool)
 }
 
 func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasWidth, canvasHeight int, grouping MapGroupConfig) []MapPlan {
@@ -140,7 +141,7 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 		return nil
 	}
 	if flyovers, ok := resolver.(FlyoverPlateResolver); ok && !grouping.NoRoutes && len(valid) > 0 && canvasWidth > 0 && canvasHeight > 0 {
-		from, to := routeEndpoints(valid, MapCenter{Latitude: valid[0].Latitude, Longitude: valid[0].Longitude})
+		from, to := routeEndpoints(valid, capmodel.MapCenter{Latitude: valid[0].Latitude, Longitude: valid[0].Longitude})
 		if plate, ok := flyovers.ResolveFlyover(from, to, canvasWidth, canvasHeight); ok && strings.TrimSpace(plate.ID) != "" && len(plate.LODs) > 0 {
 			log.Printf("map resolver trace: flyover resolved candidates=%v plate=%s lods=%d", mapCandidateTrace(valid), plate.ID, len(plate.LODs))
 			plans := make([]MapPlan, 0, len(valid))
@@ -253,11 +254,11 @@ func deterministicMapMotionStart(planID string, limit int) int {
 // mapMotionForCenter selects from only map-safe centered treatments. The
 // plan-level ordinal rotates maps so adjacent plates vary; regional bounds no
 // longer select deprecated country recipes for arbitrary local rasters.
-func mapMotionForCenter(ordinal int, _ MapCenter) string {
-	return mapMotionForCenterWithLimit(ordinal, MapCenter{}, len(mapMotionIDs()))
+func mapMotionForCenter(ordinal int, _ capmodel.MapCenter) string {
+	return mapMotionForCenterWithLimit(ordinal, capmodel.MapCenter{}, len(mapMotionIDs()))
 }
 
-func mapMotionForCenterWithLimit(ordinal int, _ MapCenter, limit int) string {
+func mapMotionForCenterWithLimit(ordinal int, _ capmodel.MapCenter, limit int) string {
 	pool := mapMotionIDs()
 	if len(pool) == 0 {
 		return ""
@@ -276,7 +277,7 @@ func mapMotionForCenterWithLimit(ordinal int, _ MapCenter, limit int) string {
 // plate or a place, a plate whose raster is not the canvas size, a place
 // outside the plate's window, or an empty audio span produces no item — never
 // a map pinned at a guessed location.
-func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []OverlayItem {
+func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight, ordinal, motionLimit int, seed string, grouping MapGroupConfig) []capmodel.OverlayItem {
 	if len(plans) == 0 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil
 	}
@@ -342,18 +343,18 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			units = append(units, unit{key: unitKey, plate: entry.plate, places: chunk})
 		}
 	}
-	items := make([]OverlayItem, 0, len(units))
+	items := make([]capmodel.OverlayItem, 0, len(units))
 	for unitIndex, u := range units {
 		entry := &group{plate: u.plate, places: u.places}
 		pins, pinTiming, startUS, durationUS, score, ok := mapPinsFor(entry.plate, entry.places)
 		if !ok {
 			continue
 		}
-		mapAssets := make([]OverlayAssetRef, 0, len(entry.plate.LODs)+1)
+		mapAssets := make([]capmodel.OverlayAssetRef, 0, len(entry.plate.LODs)+1)
 		if entry.plate.Asset.AssetID != "" {
 			mapAssets = append(mapAssets, entry.plate.Asset)
 		}
-		lods := []MapOverlayLOD{{
+		lods := []capmodel.MapOverlayLOD{{
 			AssetID:       entry.plate.Asset.AssetID,
 			SourceID:      entry.plate.ID,
 			SourceLicense: entry.plate.License,
@@ -367,7 +368,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 			if lod.Asset.AssetID != "" {
 				mapAssets = append(mapAssets, lod.Asset)
 			}
-			lods = append(lods, MapOverlayLOD{
+			lods = append(lods, capmodel.MapOverlayLOD{
 				AssetID:       lod.Asset.AssetID,
 				SourceID:      lod.ID,
 				SourceLicense: lod.License,
@@ -386,7 +387,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 		if len(lods) < 2 {
 			motionID = mapMotionForCenter(ordinal, entry.plate.Center)
 		}
-		mapOverlay := &MapOverlay{
+		mapOverlay := &capmodel.MapOverlay{
 			Provider: "local", SourceID: entry.plate.ID, SourceLicense: entry.plate.License,
 			Center: entry.plate.Center, Zoom: entry.plate.Zoom,
 			Width: entry.plate.Width, Height: entry.plate.Height,
@@ -399,7 +400,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 		if len(lods) >= 2 {
 			mapOverlay.LODs = lods
 			from, to := routeEndpoints(entry.places, entry.plate.Center)
-			mapOverlay.CameraMove = &MapCameraMove{
+			mapOverlay.CameraMove = &capmodel.MapCameraMove{
 				From: from, To: to,
 				StartZoom: float64(entry.plate.Zoom), EndZoom: float64(lods[len(lods)-1].Zoom),
 			}
@@ -424,7 +425,7 @@ func mapItemsForScene(sceneID string, plans []MapPlan, canvasWidth, canvasHeight
 		// only when the spoken span can carry it, otherwise a declared
 		// multi-pin composition — never a silently dropped place.
 		strategy := mapGroupTourStrategy(len(pins), durationUS)
-		items = append(items, OverlayItem{
+		items = append(items, capmodel.OverlayItem{
 			ID: itemID(sceneID, "map", u.key), SceneID: sceneID,
 			Kind: "map", TemplateID: "MAP",
 			StartMs: startUS / 1000, EndMs: (startUS + durationUS + 999) / 1000,

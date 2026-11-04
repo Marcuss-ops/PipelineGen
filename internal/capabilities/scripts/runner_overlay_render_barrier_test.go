@@ -19,6 +19,7 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,6 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -56,7 +56,7 @@ func newBarrierOverlayTestRenderer() *barrierOverlayTestRenderer {
 	}
 }
 
-func (r *barrierOverlayTestRenderer) EnqueueChrononPlan(ctx context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (r *barrierOverlayTestRenderer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	r.calls.Add(1)
 	r.startedOnce.Do(func() { close(r.started) })
 	select {
@@ -198,15 +198,15 @@ func barrierOverlaySeed(input *GenerateResult, err error) *overlayPlanBranch {
 
 func barrierOverlayLanguagePlans(source Language, targets ...Language) *GenerateResult {
 	input := &GenerateResult{SourceLanguage: source}
-	input.OverlayPlan = &capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-" + string(source) + "-src", VideoID: "video-src", Language: string(source),
-		Items: []capabilityoverlay.OverlayItem{{ID: "phrase-" + string(source)}},
+	input.OverlayPlan = &capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-" + string(source) + "-src", VideoID: "video-src", Language: string(source),
+		Items: []capmodel.OverlayItem{{ID: "phrase-" + string(source)}},
 	}
-	input.LocalizedOverlayPlans = make(map[Language]*capabilityoverlay.OverlayPlan)
+	input.LocalizedOverlayPlans = make(map[Language]*capmodel.OverlayPlan)
 	for _, lang := range targets {
-		input.LocalizedOverlayPlans[lang] = &capabilityoverlay.OverlayPlan{
-			SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-" + string(lang), VideoID: "video-" + string(lang), Language: string(lang),
-			Items: []capabilityoverlay.OverlayItem{{ID: "phrase-" + string(lang)}},
+		input.LocalizedOverlayPlans[lang] = &capmodel.OverlayPlan{
+			SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-" + string(lang), VideoID: "video-" + string(lang), Language: string(lang),
+			Items: []capmodel.OverlayItem{{ID: "phrase-" + string(lang)}},
 		}
 	}
 	return input

@@ -15,10 +15,10 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -398,8 +398,8 @@ func overlayIntentIDKey(sceneID, stableEntityID string) string {
 // depends on the two surfaces spelling a name identically. The normalized
 // (scene id + canonical name) key is still indexed for annotation-sourced
 // (phrase/word) intents and for legacy plans whose items carry no entity id.
-func overlayIntentIndex(intents []capabilityoverlay.OverlayIntent) map[string]capabilityoverlay.OverlayIntent {
-	index := make(map[string]capabilityoverlay.OverlayIntent, len(intents))
+func overlayIntentIndex(intents []capmodel.OverlayIntent) map[string]capmodel.OverlayIntent {
+	index := make(map[string]capmodel.OverlayIntent, len(intents))
 	for _, intent := range intents {
 		name := strings.TrimSpace(intent.Entity.CanonicalName)
 		if name == "" {
@@ -409,7 +409,7 @@ func overlayIntentIndex(intents []capabilityoverlay.OverlayIntent) map[string]ca
 			continue
 		}
 		index[overlayIntentKey(intent.SceneID, name)] = intent
-		if intent.Source == capabilityoverlay.IntentSourceEntity {
+		if intent.Source == capmodel.IntentSourceEntity {
 			if stable := capabilityentities.StableEntityID(intent.Entity.Type, intent.Entity.CanonicalName); stable != "" {
 				index[overlayIntentIDKey(intent.SceneID, stable)] = intent
 			}
@@ -422,7 +422,7 @@ func overlayIntentIndex(intents []capabilityoverlay.OverlayIntent) map[string]ca
 // materialized from. The stable entity id is tried first (exact, spelling
 // independent); the normalized (scene, canonical name) pair is the documented
 // fallback for legacy items without an entity id and for annotation intents.
-func lookupOverlayIntent(index map[string]capabilityoverlay.OverlayIntent, sceneID, stableEntityID, name string) (capabilityoverlay.OverlayIntent, bool) {
+func lookupOverlayIntent(index map[string]capmodel.OverlayIntent, sceneID, stableEntityID, name string) (capmodel.OverlayIntent, bool) {
 	if strings.TrimSpace(stableEntityID) != "" {
 		if intent, ok := index[overlayIntentIDKey(sceneID, stableEntityID)]; ok {
 			return intent, true
@@ -455,40 +455,40 @@ type OverlayArtifactRef struct {
 // snapshot + the per-scene computed annotations (keyed by scene index). It is
 // the pure counterpart of planOverlayIntents used by the concurrent
 // overlay.prepare branch, which never reads the mutable Scene struct.
-func planOverlayIntentsForAnnotations(snapshot []sceneTextSnapshot, annotations map[int]*scriptpkg.SceneAnnotations, registry *capabilityoverlay.ChrononOverlayRegistry) []capabilityoverlay.OverlayIntent {
-	var inputs []capabilityoverlay.SceneEntityInput
+func planOverlayIntentsForAnnotations(snapshot []sceneTextSnapshot, annotations map[int]*scriptpkg.SceneAnnotations, registry *capmodel.ChrononOverlayRegistry) []capmodel.OverlayIntent {
+	var inputs []capmodel.SceneEntityInput
 	for i, s := range snapshot {
 		if input, ok := sceneEntityInput(s.ID, i, annotations[i]); ok {
 			inputs = append(inputs, input)
 		}
 	}
-	return capabilityoverlay.PlanOverlayIntents(inputs, registry)
+	return capmodel.PlanOverlayIntents(inputs, registry)
 }
 
 // sceneEntityInput projects one scene's grounded annotations onto the neutral
 // input types the overlay planner consumes. It returns false when the scene
 // has no annotations (or no derivable entities/phrases/words), so the caller
 // can skip it.
-func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnotations) (capabilityoverlay.SceneEntityInput, bool) {
+func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnotations) (capmodel.SceneEntityInput, bool) {
 	if ann == nil {
-		return capabilityoverlay.SceneEntityInput{}, false
+		return capmodel.SceneEntityInput{}, false
 	}
-	var entities []capabilityoverlay.EntityOverlayInput
+	var entities []capmodel.EntityOverlayInput
 	appendEntity := func(entity scriptpkg.AnnotatedEntity) {
 		name := strings.TrimSpace(entity.CanonicalName)
 		if name == "" {
 			return
 		}
-		var image *capabilityoverlay.EntityImageOverlayInput
+		var image *capmodel.EntityImageOverlayInput
 		if entity.Image != nil && strings.TrimSpace(entity.Image.AssetID) != "" && strings.TrimSpace(entity.Image.SHA256) != "" {
-			image = &capabilityoverlay.EntityImageOverlayInput{
+			image = &capmodel.EntityImageOverlayInput{
 				EntityName: name,
 				AssetID:    entity.Image.AssetID,
 				URL:        entity.Image.PreviewURL,
 				SHA256:     entity.Image.SHA256,
 			}
 		}
-		entities = append(entities, capabilityoverlay.EntityOverlayInput{
+		entities = append(entities, capmodel.EntityOverlayInput{
 			Name:       name,
 			Type:       strings.TrimSpace(entity.Type),
 			Confidence: entity.Confidence,
@@ -505,15 +505,15 @@ func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnota
 	for _, entity := range ann.SecondaryEntities {
 		appendEntity(entity)
 	}
-	var phrases []capabilityoverlay.OverlayAnnotationInput
+	var phrases []capmodel.OverlayAnnotationInput
 	for _, phrase := range ann.ImportantPhrases {
-		phrases = append(phrases, capabilityoverlay.OverlayAnnotationInput{ID: phrase.ID, Text: phrase.Text})
+		phrases = append(phrases, capmodel.OverlayAnnotationInput{ID: phrase.ID, Text: phrase.Text})
 	}
-	var words []capabilityoverlay.OverlayAnnotationInput
+	var words []capmodel.OverlayAnnotationInput
 	for _, word := range ann.ImportantWords {
-		words = append(words, capabilityoverlay.OverlayAnnotationInput{ID: word.ID, Text: word.Text})
+		words = append(words, capmodel.OverlayAnnotationInput{ID: word.ID, Text: word.Text})
 	}
-	return capabilityoverlay.SceneEntityInput{
+	return capmodel.SceneEntityInput{
 		SceneID:    sceneID,
 		SceneIndex: sceneIndex,
 		Entities:   entities,

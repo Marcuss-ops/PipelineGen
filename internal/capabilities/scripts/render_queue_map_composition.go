@@ -3,12 +3,12 @@ package scriptgeneration
 import (
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"strings"
 	"sync"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -20,23 +20,23 @@ import (
 // migration target). These thin wrappers keep the root package as the
 // compatibility facade for existing callers and tests.
 
-type mapCompositionInput = scriptoverlay.MapCompositionInput
+type mapCompositionInput = capoverlay.MapCompositionInput
 
 const (
-	MapFamilyLocationFocus = scriptoverlay.MapFamilyLocationFocus
-	MapFamilyMultiPin      = scriptoverlay.MapFamilyMultiPin
-	MapFamilyJourney       = scriptoverlay.MapFamilyJourney
-	MapFamilyRegion        = scriptoverlay.MapFamilyRegion
-	MapFamilyComparison    = scriptoverlay.MapFamilyComparison
-	MapFamilyEditorial     = scriptoverlay.MapFamilyEditorial
+	MapFamilyLocationFocus = capoverlay.MapFamilyLocationFocus
+	MapFamilyMultiPin      = capoverlay.MapFamilyMultiPin
+	MapFamilyJourney       = capoverlay.MapFamilyJourney
+	MapFamilyRegion        = capoverlay.MapFamilyRegion
+	MapFamilyComparison    = capoverlay.MapFamilyComparison
+	MapFamilyEditorial     = capoverlay.MapFamilyEditorial
 )
 
-func mapCompositionFamily(id string) scriptoverlay.MapCompositionFamily {
-	return scriptoverlay.MapCompositionFamilyOf(id)
+func mapCompositionFamily(id string) capoverlay.MapCompositionFamily {
+	return capoverlay.MapCompositionFamilyKindOf(id)
 }
 
 func resolveMapCompositionFor(requested, seed, slot string, input mapCompositionInput) (string, string, error) {
-	return scriptoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
+	return capoverlay.ResolveMapCompositionFor(requested, seed, slot, input)
 }
 
 // mapMapAnimationsCertified lists only the map animations exposed by the
@@ -57,7 +57,7 @@ func mapLabelAnimationsCertified() []string {
 // variant — with PlanID/VideoID as fallbacks for a plan stamped before the
 // fingerprint was computed. It never reads wall-clock or process state, so the
 // same run always resolves the same map presentation.
-func mapRunSeed(plan capoverlay.OverlayPlan) string {
+func mapRunSeed(plan capmodel.OverlayPlan) string {
 	// Child render plans get their own fingerprint and ID. Prefer the parent
 	// job identity so a run-level style choice remains the same across all map
 	// clips belonging to that video.
@@ -132,7 +132,7 @@ var dynamicMapVideoRenders sync.Map // flight key -> *dynamicMapVideoPromise
 // requirements, never from the plan's item count).
 type planMapBackend struct {
 	itemID  string
-	backend scriptoverlay.MapBackend
+	backend capoverlay.MapBackend
 	reason  string
 }
 
@@ -144,26 +144,26 @@ type planMapBackend struct {
 // The prepare phase (PreMaterializeDynamicMapVideo) and the submission's
 // background fold MUST render through this same normalization, or their cache
 // keys differ and one of them pays a second Chronon map render.
-func normalizeDynamicMapFoldPlan(plan capoverlay.OverlayPlan) (capoverlay.OverlayPlan, []planMapBackend, error) {
+func normalizeDynamicMapFoldPlan(plan capmodel.OverlayPlan) (capmodel.OverlayPlan, []planMapBackend, error) {
 	semanticPlan := plan
 	if strings.TrimSpace(semanticPlan.VideoID) == "" {
 		semanticPlan.VideoID = semanticPlan.PlanID
 	}
 	decisions, err := resolvePlanMapBackends(semanticPlan)
 	if err != nil {
-		return capoverlay.OverlayPlan{}, nil, err
+		return capmodel.OverlayPlan{}, nil, err
 	}
 	annotatePlanMapBackends(&semanticPlan, decisions)
 	return semanticPlan, decisions, nil
 }
 
-func resolvePlanMapBackends(plan capoverlay.OverlayPlan) ([]planMapBackend, error) {
+func resolvePlanMapBackends(plan capmodel.OverlayPlan) ([]planMapBackend, error) {
 	var decisions []planMapBackend
 	for i := range plan.Items {
 		if plan.Items[i].Map == nil {
 			continue
 		}
-		backend, reason, err := scriptoverlay.ResolveMapItemBackend(plan.Items[i])
+		backend, reason, err := capoverlay.ResolveMapItemBackend(plan.Items[i])
 		if err != nil {
 			return nil, fmt.Errorf("resolve map backend for item %q: %w", plan.Items[i].ID, err)
 		}
@@ -182,7 +182,7 @@ func resolvePlanMapBackends(plan capoverlay.OverlayPlan) ([]planMapBackend, erro
 // annotation into a CLONED params map, never the shared one — the same rule
 // as enter_frames in separateOverlayItemPlan: a child-only decision must not
 // mutate state other goroutines are fingerprinting and marshaling.
-func annotatePlanMapBackends(plan *capoverlay.OverlayPlan, decisions []planMapBackend) {
+func annotatePlanMapBackends(plan *capmodel.OverlayPlan, decisions []planMapBackend) {
 	if plan == nil {
 		return
 	}
@@ -210,7 +210,7 @@ func annotatePlanMapBackends(plan *capoverlay.OverlayPlan, decisions []planMapBa
 
 // ── map item lineage (moved from render_queue_items.go) ─────────────
 
-func mapEntityLineage(mapOverlay *capoverlay.MapOverlay) ([]string, []string) {
+func mapEntityLineage(mapOverlay *capmodel.MapOverlay) ([]string, []string) {
 	if mapOverlay == nil {
 		return nil, nil
 	}
@@ -276,7 +276,7 @@ type dynamicMapImportRequest struct {
 	ProducerTelemetry json.RawMessage `json:"producer_telemetry,omitempty"`
 }
 
-func marshalDynamicMapImport(plan capoverlay.OverlayPlan, sha string, size int64, frameCount int, durationUS int64, telemetry []byte) ([]byte, error) {
+func marshalDynamicMapImport(plan capmodel.OverlayPlan, sha string, size int64, frameCount int, durationUS int64, telemetry []byte) ([]byte, error) {
 	if len(telemetry) == 0 || !json.Valid(telemetry) {
 		return nil, fmt.Errorf("dynamic map import requires valid producer telemetry")
 	}

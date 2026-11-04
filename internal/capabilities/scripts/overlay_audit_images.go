@@ -15,6 +15,7 @@ package scriptgeneration
 import (
 	"errors"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"sort"
 	"strings"
@@ -125,7 +126,7 @@ type OverlayAuditTimingItem struct {
 // buildOverlayAuditEntityImages joins the plan's image items to the entities
 // that were selected for the video. It never invents an image: "bound" means
 // the plan carries image bytes for that entity.
-func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capabilityoverlay.OverlayPlan) *OverlayAuditEntityImages {
+func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan) *OverlayAuditEntityImages {
 	if audit == nil {
 		return nil
 	}

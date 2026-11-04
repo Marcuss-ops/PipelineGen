@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"sort"
@@ -110,7 +111,7 @@ func loadRandomOverlaySFXAssetsFromManifest(manifestPath string) ([]randomOverla
 // attachRandomOverlaySFX selects cues from stable plan/item/content identity.
 // The duration is capped by both the cue's certified minimum source length
 // (250ms; all bundle assets were probed >=395ms) and the visible image window.
-func attachRandomOverlaySFX(plans []*capoverlay.OverlayPlan) error {
+func attachRandomOverlaySFX(plans []*capmodel.OverlayPlan) error {
 	needsAssets := false
 	for _, plan := range plans {
 		if plan == nil {
@@ -133,11 +134,11 @@ func attachRandomOverlaySFX(plans []*capoverlay.OverlayPlan) error {
 	return attachRandomOverlaySFXFromAssets(plans, assets)
 }
 
-func attachRandomOverlaySFXToPlan(plan *capoverlay.OverlayPlan) error {
-	return attachRandomOverlaySFX([]*capoverlay.OverlayPlan{plan})
+func attachRandomOverlaySFXToPlan(plan *capmodel.OverlayPlan) error {
+	return attachRandomOverlaySFX([]*capmodel.OverlayPlan{plan})
 }
 
-func attachRandomOverlaySFXFromAssets(plans []*capoverlay.OverlayPlan, assets []randomOverlaySFXAsset) error {
+func attachRandomOverlaySFXFromAssets(plans []*capmodel.OverlayPlan, assets []randomOverlaySFXAsset) error {
 	if len(assets) == 0 {
 		return fmt.Errorf("random overlay SFX asset set is empty")
 	}
@@ -196,8 +197,8 @@ func attachRandomOverlaySFXFromAssets(plans []*capoverlay.OverlayPlan, assets []
 			if strings.TrimSpace(item.Kind) == "" && isImageOverlayTemplate(item.TemplateID) {
 				item.Kind = "image"
 			}
-			item.SoundEffect = &capoverlay.OverlaySoundEffect{
-				AssetRef: capoverlay.OverlayAssetRef{
+			item.SoundEffect = &capmodel.OverlaySoundEffect{
+				AssetRef: capmodel.OverlayAssetRef{
 					AssetID: assetID, URL: logicalPath, LocalPath: localPath,
 					SHA256: asset.sha256, MediaType: "audio/mp4",
 				},
@@ -218,7 +219,7 @@ func attachRandomOverlaySFXFromAssets(plans []*capoverlay.OverlayPlan, assets []
 	return nil
 }
 
-func isImageOverlaySemanticItem(item capoverlay.OverlayItem) bool {
+func isImageOverlaySemanticItem(item capmodel.OverlayItem) bool {
 	return capoverlay.IsImageOverlayItem(item)
 }
 

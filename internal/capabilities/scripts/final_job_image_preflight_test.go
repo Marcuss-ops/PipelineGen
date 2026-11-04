@@ -1,12 +1,11 @@
 package scriptgeneration
 
 import (
-	"strings"
-	"testing"
-
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"strings"
+	"testing"
 )
 
 // The r10 incident class: the plan promised entity-image overlays whose
@@ -16,16 +15,16 @@ import (
 // remote attempt, without introducing false positives for the documented
 // fail-open (partial miss) and clip-window (dropped by design) behaviors.
 
-func imagePreflightItem(id, kind, sha, url string) capoverlay.OverlayItem {
-	item := capoverlay.OverlayItem{ID: id, Kind: kind, SceneID: "scene-1"}
+func imagePreflightItem(id, kind, sha, url string) capmodel.OverlayItem {
+	item := capmodel.OverlayItem{ID: id, Kind: kind, SceneID: "scene-1"}
 	if sha != "" || url != "" {
-		item.AssetRefs = []capoverlay.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: sha, URL: url}}
+		item.AssetRefs = []capmodel.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: sha, URL: url}}
 	}
 	return item
 }
 
 func TestFinalJobImagePreflight_UnverifiedPromisedImagesFailClosed(t *testing.T) {
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		imagePreflightItem("img-1", "entity_image", "", ""),
 		imagePreflightItem("img-2", "entity_image", "", ""),
 	}
@@ -43,7 +42,7 @@ func TestFinalJobImagePreflight_UnverifiedPromisedImagesFailClosed(t *testing.T)
 }
 
 func TestFinalJobImagePreflight_VerifiedAssetsAdmitted(t *testing.T) {
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		imagePreflightItem("img-1", "entity_image",
 			"1111111111111111111111111111111111111111111111111111111111111111",
 			"https://drive.example.com/download/asset"),
@@ -57,7 +56,7 @@ func TestFinalJobImagePreflight_VerifiedAssetsAdmitted(t *testing.T) {
 }
 
 func TestFinalJobImagePreflight_NoImagesPlannedPasses(t *testing.T) {
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		imagePreflightItem("date-1", "number", "", ""),
 		imagePreflightItem("phrase-1", "text_phrase", "", ""),
 	}
@@ -69,7 +68,7 @@ func TestFinalJobImagePreflight_NoImagesPlannedPasses(t *testing.T) {
 func TestFinalJobImagePreflight_PartialUnverifiedStaysFailOpen(t *testing.T) {
 	// One of two promised cards is verified: the documented fail-open policy
 	// (one invalid binding keeps its card text-only) must keep the run going.
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		imagePreflightItem("img-1", "entity_image",
 			"1111111111111111111111111111111111111111111111111111111111111111",
 			"https://drive.example.com/download/asset"),
@@ -86,35 +85,35 @@ func TestFinalJobImagePreflight_VerifiedLocalPathAdmitted(t *testing.T) {
 	item := imagePreflightItem("img-1", "entity_image",
 		"3333333333333333333333333333333333333333333333333333333333333333", "")
 	item.AssetRefs[0].LocalPath = "final_job_image_preflight_test.go"
-	if err := finalJobImagePreflight([]capoverlay.OverlayItem{item}, nil, false); err != nil {
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{item}, nil, false); err != nil {
 		t.Fatalf("a usable local path is a verified locator: %v", err)
 	}
 	nonFile := item
 	nonFile.AssetRefs[0].LocalPath = "/definitely/not/a/real/path/for/preflight-test.png"
-	if err := finalJobImagePreflight([]capoverlay.OverlayItem{nonFile}, nil, false); err == nil {
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{nonFile}, nil, false); err == nil {
 		t.Fatal("a dangling local path is not a verified locator")
 	}
 }
 
 func TestFinalJobImagePreflight_CompositeRequiresEveryLayerVerified(t *testing.T) {
-	base := capoverlay.OverlayItem{
+	base := capmodel.OverlayItem{
 		ID: "group-1", Kind: "entity_image", SceneID: "scene-1",
-		ImageLayers: []capoverlay.OverlayImageLayer{{ID: "l-1", AssetID: "a-1"}, {ID: "l-2", AssetID: "a-2"}},
+		ImageLayers: []capmodel.OverlayImageLayer{{ID: "l-1", AssetID: "a-1"}, {ID: "l-2", AssetID: "a-2"}},
 	}
-	verifiedRef := func(sha string) capoverlay.OverlayAssetRef {
-		return capoverlay.OverlayAssetRef{AssetID: "a", SHA256: sha, URL: "https://drive.example.com/download/asset"}
+	verifiedRef := func(sha string) capmodel.OverlayAssetRef {
+		return capmodel.OverlayAssetRef{AssetID: "a", SHA256: sha, URL: "https://drive.example.com/download/asset"}
 	}
 	full := base
-	full.AssetRefs = []capoverlay.OverlayAssetRef{
+	full.AssetRefs = []capmodel.OverlayAssetRef{
 		verifiedRef("4444444444444444444444444444444444444444444444444444444444444444"),
 		verifiedRef("5555555555555555555555555555555555555555555555555555555555555555"),
 	}
-	if err := finalJobImagePreflight([]capoverlay.OverlayItem{full}, nil, false); err != nil {
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{full}, nil, false); err != nil {
 		t.Fatalf("a fully verified composite group must be admitted: %v", err)
 	}
 	half := base
-	half.AssetRefs = []capoverlay.OverlayAssetRef{verifiedRef("4444444444444444444444444444444444444444444444444444444444444444")}
-	if err := finalJobImagePreflight([]capoverlay.OverlayItem{half}, nil, false); err == nil {
+	half.AssetRefs = []capmodel.OverlayAssetRef{verifiedRef("4444444444444444444444444444444444444444444444444444444444444444")}
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{half}, nil, false); err == nil {
 		t.Fatal("a composite group missing a verified layer must be unverified")
 	}
 }
@@ -122,7 +121,7 @@ func TestFinalJobImagePreflight_CompositeRequiresEveryLayerVerified(t *testing.T
 func TestFinalJobImagePreflight_ClipSceneCardsExcluded(t *testing.T) {
 	// Image-style cards on intermediate clip scenes are dropped by the
 	// final-job handoff by design; promising one there is not a broken run.
-	items := []capoverlay.OverlayItem{imagePreflightItem("img-1", "entity_image", "", "")}
+	items := []capmodel.OverlayItem{imagePreflightItem("img-1", "entity_image", "", "")}
 	items[0].SceneID = "scene-clip"
 	if err := finalJobImagePreflight(items, map[string]struct{}{"scene-clip": {}}, false); err != nil {
 		t.Fatalf("clip-scene image cards are dropped by design, got: %v", err)
@@ -187,7 +186,7 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 	}
 	// The same payload with the legacy toggle absent must still reach the
 	// preflight with zero planned images: that is the fail-closed path.
-	if err := finalJobImagePreflight([]capoverlay.OverlayItem{{ID: "phrase-1", Kind: "text_phrase"}}, nil, finalJobImageRequested(req)); err == nil {
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{{ID: "phrase-1", Kind: "text_phrase"}}, nil, finalJobImageRequested(req)); err == nil {
 		t.Fatal("a requested image class with zero image overlays must fail closed")
 	} else if !strings.Contains(err.Error(), "zero verified image overlays") {
 		t.Fatalf("error must name the silent image-free class, got: %v", err)
@@ -222,7 +221,7 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 }
 
 func TestFinalJobImagePreflight_NonHexHashIsNotVerified(t *testing.T) {
-	items := []capoverlay.OverlayItem{
+	items := []capmodel.OverlayItem{
 		imagePreflightItem("img-1", "entity_image",
 			strings.Repeat("g", 64),
 			"https://drive.example.com/download/asset"),

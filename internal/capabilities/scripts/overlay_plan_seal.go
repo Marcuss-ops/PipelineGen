@@ -8,18 +8,18 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // sealOverlayPlan derives the master render extent, resets provisional
 // render keys after post-processing and assembles + validates the final
 // OverlayPlan. Split from compileOverlayPlanWithMotionOffset (same behavior).
-func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capabilityoverlay.OverlayPlan, resolved []ResolvedScene, items []capabilityoverlay.OverlayItem, canvas OverlayCanvasSpec, planID, videoID, projectID string) (*capabilityoverlay.OverlayPlan, error) {
+func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capmodel.OverlayPlan, resolved []ResolvedScene, items []capmodel.OverlayItem, canvas OverlayCanvasSpec, planID, videoID, projectID string) (*capmodel.OverlayPlan, error) {
 	// Maps are composited in replace mode, so any shared frame makes the final
 	// plan invalid. Resolve those collisions while scene timing is still in
 	// scope: shift ordinary cards after the map within their scene, and drop
@@ -78,8 +78,8 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capa
 		items[i].RenderKey = ""
 	}
 
-	plan := capabilityoverlay.OverlayPlan{
-		SchemaVersion: capabilityoverlay.SchemaVersionPlan,
+	plan := capmodel.OverlayPlan{
+		SchemaVersion: capmodel.SchemaVersionPlan,
 		PlanID:        planID,
 		VideoID:       videoID,
 		ProjectID:     strings.TrimSpace(projectID),
@@ -96,7 +96,6 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capa
 		DurationMS:             durationMS,
 		ForegroundScalePercent: canvas.ForegroundScalePercent,
 		Background:             canvas.Background,
-		AnimationPolicies:      scriptoverlay.ToOverlayAnimationPolicies(canvas.AnimationPolicies),
 		Items:                  items,
 		// Carry the planner's recap observability into the sealed plan:
 		// plannerPlan itself is superseded here by post-processing (entity
@@ -136,7 +135,7 @@ func entityVariationSeedForCanvas(canvas OverlayCanvasSpec) string {
 // identity/provenance fields, but it is no longer rendered as a second lower
 // third below the portrait. An entity without an indexed asset is returned
 // unchanged (text-only card).
-func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string, planID string) capabilityoverlay.OverlayItem {
+func attachEntityCardAsset(item capmodel.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string, planID string) capmodel.OverlayItem {
 	lookupID := canonicalByStable[item.ID]
 	if lookupID == "" {
 		lookupID = canonicalByStable[item.EntityID]
@@ -155,12 +154,12 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	if strings.TrimSpace(ref.URL) == "" || strings.TrimSpace(ref.SHA256) == "" || strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") {
 		return item
 	}
-	item.AssetRefs = []capabilityoverlay.OverlayAssetRef{{
+	item.AssetRefs = []capmodel.OverlayAssetRef{{
 		AssetID: ref.SHA256, URL: ref.URL, LocalPath: ref.LocalPath, SHA256: ref.SHA256, MediaType: ref.MediaType,
 	}}
 	// A resolved portrait is a distinct visual capability: use the official
 	// image preset/motion path and do not compile the text-card layer as well.
-	item.Kind = string(capabilityoverlay.KindEntityImage)
+	item.Kind = string(capmodel.KindEntityImage)
 	item.TemplateID = "image_popup"
 	item.PresetID = capabilityoverlay.SelectEntityImagePreset(planID, item.SceneID, item.ID)
 	// Preserve the entity name as a real caption layer. Text is cleared below
@@ -181,7 +180,7 @@ func attachEntityCardAsset(item capabilityoverlay.OverlayItem, media *capability
 	item.Text = ""
 	item.Params = nil
 	if item.EntityRef == nil {
-		item.EntityRef = &capabilityoverlay.OverlayEntityRef{}
+		item.EntityRef = &capmodel.OverlayEntityRef{}
 	}
 	canonicalID := lookupID
 	if separator := strings.Index(canonicalID, "::"); separator >= 0 {

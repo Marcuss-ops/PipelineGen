@@ -1,12 +1,12 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
 	"sort"
 	"testing"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -40,7 +40,7 @@ func TestCanonicalFontAssetsParity(t *testing.T) {
 }
 
 func TestRunTypographyOverridesChildAnimationDefaults(t *testing.T) {
-	layers := []capoverlay.OverlayImageLayer{{
+	layers := []capmodel.OverlayImageLayer{{
 		Caption: "Ada Lovelace", CaptionFontFamily: "bricolage_grotesque",
 		Params: map[string]any{
 			"font_family": "inter_bold", "glow_size": 3.0,
@@ -51,7 +51,7 @@ func TestRunTypographyOverridesChildAnimationDefaults(t *testing.T) {
 		"font_family": "poppins", "glow_size": 0.0, "stroke_size": 2.0,
 		"style": map[string]any{"fill": "#FFFFFF", "shadow": map[string]any{"blur": 8.0}},
 	}
-	scriptoverlay.MergeCaptionStyleIntoLayers(layers, canonical)
+	capoverlay.MergeCaptionStyleIntoLayers(layers, canonical)
 	if got := layers[0].Params["font_family"]; got != "poppins" {
 		t.Fatalf("caption font = %v, want canonical run font poppins", got)
 	}
@@ -68,7 +68,7 @@ func TestRunTypographyOverridesChildAnimationDefaults(t *testing.T) {
 }
 
 func TestExplicitRunShadowSettingsResolveOneCanonicalRuntimeStyle(t *testing.T) {
-	disabled := scriptoverlay.StyleParams(&scriptpkg.OverlayStyleSpec{Shadow: &scriptpkg.OverlayShadowSpec{Enabled: false}})
+	disabled := capoverlay.StyleParams(&scriptpkg.OverlayStyleSpec{Shadow: &scriptpkg.OverlayShadowSpec{Enabled: false}})
 	for key, want := range map[string]float64{
 		"shadow_opacity": 0, "shadow_blur_px": 0,
 		"shadow_offset_x_px": 0, "shadow_offset_y_px": 0,
@@ -77,7 +77,7 @@ func TestExplicitRunShadowSettingsResolveOneCanonicalRuntimeStyle(t *testing.T) 
 			t.Errorf("disabled shadow %s = %v, want %v", key, got, want)
 		}
 	}
-	enabled := scriptoverlay.StyleParams(&scriptpkg.OverlayStyleSpec{Shadow: &scriptpkg.OverlayShadowSpec{Enabled: true}})
+	enabled := capoverlay.StyleParams(&scriptpkg.OverlayStyleSpec{Shadow: &scriptpkg.OverlayShadowSpec{Enabled: true}})
 	for key, want := range map[string]float64{
 		"shadow_opacity": 0.7, "shadow_blur_px": 8,
 		"shadow_offset_x_px": 0, "shadow_offset_y_px": 4,
@@ -90,7 +90,7 @@ func TestExplicitRunShadowSettingsResolveOneCanonicalRuntimeStyle(t *testing.T) 
 
 func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 	zero, stroke := 0.0, 3.0
-	items := []capoverlay.OverlayItem{{
+	items := []capmodel.OverlayItem{{
 		ID: "motion-text", Kind: "text_phrase",
 		Params: map[string]any{
 			"font_family": "inter_bold", "glow_size": 12.0, "stroke_size": 1.0,
@@ -127,7 +127,7 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 		t.Errorf("run nested shadow = %v, want disabled zero shadow", shadow)
 	}
 
-	entityParams := scriptoverlay.MergeRuntimeTextStyleParams(map[string]any{
+	entityParams := capoverlay.MergeRuntimeTextStyleParams(map[string]any{
 		"font_family": "inter_bold", "position_x": 10.0, "glow_size": 8.0,
 	}, overlayStyleParams(canvas.Style))
 	// The merge applies canonical runtime keys only; a disabled glow is omitted
@@ -141,12 +141,12 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 }
 
 func TestRuntimeFontAssetsStagesEverySelectedFamily(t *testing.T) {
-	plan := capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{
+	plan := capmodel.OverlayPlan{Items: []capmodel.OverlayItem{
 		{ID: "a", Params: map[string]any{"font_family": "bricolage_grotesque"}},
 		{ID: "b", Params: map[string]any{"font_family": "bricolage_grotesque"}},
 		{ID: "c", CaptionFontFamily: "inter_bold"},
-		{ID: "d", ImageLayers: []capoverlay.OverlayImageLayer{{Params: map[string]any{"font_family": "inter"}}}},
-		{ID: "e", ImageLayers: []capoverlay.OverlayImageLayer{{Caption: "child", CaptionFontFamily: "playfair_display_italic"}}},
+		{ID: "d", ImageLayers: []capmodel.OverlayImageLayer{{Params: map[string]any{"font_family": "inter"}}}},
+		{ID: "e", ImageLayers: []capmodel.OverlayImageLayer{{Caption: "child", CaptionFontFamily: "playfair_display_italic"}}},
 	}}
 	assets, err := runtimeFontAssets(plan)
 	if err != nil {
@@ -171,20 +171,20 @@ func TestRuntimeFontAssetsStagesEverySelectedFamily(t *testing.T) {
 	if _, ok := byRef["assets/fonts/PlayfairDisplay-Italic.ttf"]; !ok {
 		t.Errorf("child caption Playfair font missing: %v", byRef)
 	}
-	if got, err := runtimeFontAssets(capoverlay.OverlayPlan{}); err != nil || len(got) != 0 {
+	if got, err := runtimeFontAssets(capmodel.OverlayPlan{}); err != nil || len(got) != 0 {
 		t.Errorf("empty plan staged %d assets, want 0", len(got))
 	}
 }
 
 func TestRuntimeFontAssetsStagesFontsSelectedInsideChains(t *testing.T) {
-	segments := []capoverlay.ChainSegment{{
+	segments := []capmodel.ChainSegment{{
 		CaptionFontFamily: "inter_bold",
 		Params:            map[string]any{"font_family": "bricolage_grotesque"},
 		Style:             map[string]any{"font_family": "inter"},
-		ImageLayers:       []capoverlay.OverlayImageLayer{{Caption: "child", CaptionFontFamily: "dejavu_sans", Params: map[string]any{"font_family": "inter_bold"}}},
+		ImageLayers:       []capmodel.OverlayImageLayer{{Caption: "child", CaptionFontFamily: "dejavu_sans", Params: map[string]any{"font_family": "inter_bold"}}},
 	}}
-	plan := capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{{
-		ID: "chain", Kind: capoverlay.KindMixedChain,
+	plan := capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
+		ID: "chain", Kind: capmodel.KindMixedChain,
 		Params: map[string]any{"chain_segments": segments},
 	}}}
 	assets, err := runtimeFontAssets(plan)
@@ -197,7 +197,7 @@ func TestRuntimeFontAssetsStagesFontsSelectedInsideChains(t *testing.T) {
 }
 
 func TestRuntimeFontAssetsRejectsUnknownSelectedFamily(t *testing.T) {
-	plan := capoverlay.OverlayPlan{Items: []capoverlay.OverlayItem{{
+	plan := capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
 		ID: "bad-font", Params: map[string]any{"font_family": "not-a-family"},
 	}}}
 	if _, err := runtimeFontAssets(plan); err == nil {

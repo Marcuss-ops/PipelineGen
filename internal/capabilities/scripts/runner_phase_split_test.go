@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +16,6 @@ import (
 	"go.uber.org/zap"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 )
 
@@ -26,7 +26,7 @@ type sleepingRenderEnqueuer struct {
 	calls int
 }
 
-func (e *sleepingRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (e *sleepingRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.calls++
 	if e.delay > 0 {
 		select {
@@ -68,7 +68,7 @@ func TestOverlayRenderPhaseOwnsItsStageAndNotTheAudioStage(t *testing.T) {
 	req := defaultTestRequest()
 	req.Render.Enabled = true
 	result := &GenerateResult{
-		OverlayPlan: &capabilityoverlay.OverlayPlan{SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1"},
+		OverlayPlan: &capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "video-1"},
 	}
 
 	// Exercised exactly as the pipeline does: audioCompile() runs this phase
@@ -114,7 +114,7 @@ func TestOverlayRenderPhaseSkipsWithoutWork(t *testing.T) {
 
 	// Frozen plan but the request did not enable the render.
 	req.Render.Enabled = false
-	result := &GenerateResult{OverlayPlan: &capabilityoverlay.OverlayPlan{PlanID: "plan-1"}}
+	result := &GenerateResult{OverlayPlan: &capmodel.OverlayPlan{PlanID: "plan-1"}}
 	require.True(t, runner.runOverlayRenderPhase(context.Background(), "run-1", req, ExecutionContext{}, 0, audioCompileState{}, result))
 
 	// Frozen plan but the run already resumed past the audio stage: the render
@@ -180,7 +180,7 @@ type barrierOverlayRenderer struct {
 	calls                     atomic.Int32
 }
 
-func (r *barrierOverlayRenderer) EnqueueChrononPlan(ctx context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (r *barrierOverlayRenderer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	r.calls.Add(1)
 	// Mutate the private transport snapshot to prove no alias to the
 	// caller's result survives the launch boundary.

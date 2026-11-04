@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"testing"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 // blockingRenderEnqueuer holds the render open until the test releases it, so
@@ -22,7 +22,7 @@ type blockingRenderEnqueuer struct {
 	release chan struct{}
 }
 
-func (e *blockingRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capabilityoverlay.OverlayPlan) (RenderReference, error) {
+func (e *blockingRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.once.Do(func() { close(e.started) })
 	select {
 	case <-e.release:
@@ -69,7 +69,7 @@ func TestFinalJobStockPrewarmRunsWhileTheOverlayRenderIsBlocked(t *testing.T) {
 	req.FinalJob = true
 	req.Render.Enabled = true
 	result := &GenerateResult{
-		OverlayPlan:       &capabilityoverlay.OverlayPlan{SchemaVersion: capabilityoverlay.SchemaVersionPlan, PlanID: "plan-1"},
+		OverlayPlan:       &capmodel.OverlayPlan{SchemaVersion: capmodel.SchemaVersionPlan, PlanID: "plan-1"},
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000},
 	}
 
@@ -114,7 +114,7 @@ func TestFinalJobStockPrewarmSkippedWithoutAFinalJob(t *testing.T) {
 
 	req := defaultTestRequest()
 	req.Render.Enabled = true
-	result := &GenerateResult{OverlayPlan: &capabilityoverlay.OverlayPlan{PlanID: "plan-1"}}
+	result := &GenerateResult{OverlayPlan: &capmodel.OverlayPlan{PlanID: "plan-1"}}
 	require.True(t, runner.runOverlayRenderPhase(context.Background(), "run-local", req, ExecutionContext{}, 0, audioCompileState{}, result))
 	select {
 	case <-submitter.finished:

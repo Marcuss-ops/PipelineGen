@@ -23,6 +23,7 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -47,7 +48,7 @@ import (
 //
 // The returned plan is sealed (render keys + fingerprint) and ready to
 // enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
-func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
 	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, nil, nil, perSceneImages...)
 }
 
@@ -55,7 +56,7 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 // basemap plate resolver wired: grounded place annotations covered by a plate
 // become map overlay items. A nil resolver behaves exactly like
 // CompileOverlayPlan (no maps — the fail-closed default deployment).
-func CompileOverlayPlanWithPlates(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, resolver capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capabilityoverlay.OverlayPlan, error) {
+func CompileOverlayPlanWithPlates(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, resolver capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
 	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, nil, resolver, perSceneImages...)
 }
 

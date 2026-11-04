@@ -7,6 +7,7 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"strings"
 
@@ -34,9 +35,9 @@ func entityCardTemplate(templateID string) bool {
 // (PERSON / ORGANIZATION / LOCATION / CONCEPT) — the kinds that resolve from
 // the EntityTimeline; a bound image is promoted to the image-only capability
 // later in the plan projection.
-func entityCardKind(kind capabilityoverlay.OverlayKind) bool {
+func entityCardKind(kind capmodel.OverlayKind) bool {
 	switch kind {
-	case capabilityoverlay.KindEntityCard, capabilityoverlay.KindOrganization, capabilityoverlay.KindLocation, capabilityoverlay.KindConcept:
+	case capmodel.KindEntityCard, capmodel.KindOrganization, capmodel.KindLocation, capmodel.KindConcept:
 		return true
 	}
 	return false
@@ -49,12 +50,12 @@ func entityCardKind(kind capabilityoverlay.OverlayKind) bool {
 // Text-only cards are unaffected because they spend no search. A nil or empty
 // plan is a no-op, so deployments without the consolidated view keep producing
 // exactly the plans they produced before.
-func admitIdentityImagesByProductionPlan(items []capabilityoverlay.OverlayItem, plan *SemanticProductionPlan) []capabilityoverlay.OverlayItem {
+func admitIdentityImagesByProductionPlan(items []capmodel.OverlayItem, plan *SemanticProductionPlan) []capmodel.OverlayItem {
 	if plan == nil || len(plan.Identity) == 0 || len(items) == 0 {
 		return items
 	}
 	admitted := plan.IdentitiesAdmittedForMedia()
-	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
+	out := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if len(item.AssetRefs) == 0 {
 			out = append(out, item)
@@ -117,7 +118,7 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capa
 				return
 			}
 			for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
-				if !entityCardKind(capabilityoverlay.EntityTypeToKind(entity.Type)) {
+				if !entityCardKind(capmodel.EntityTypeToKind(entity.Type)) {
 					continue
 				}
 				binding := entity.Image
@@ -234,16 +235,16 @@ func entityImageAssetType(binding *scriptpkg.EntityImageBinding) string {
 // first occurrence is deterministic and preserves the earliest spoken
 // identities. Later occurrences of a retained identity do not consume a
 // second image slot.
-func capEntityImageOverlays(items []capabilityoverlay.OverlayItem, max int, perScene ...bool) []capabilityoverlay.OverlayItem {
+func capEntityImageOverlays(items []capmodel.OverlayItem, max int, perScene ...bool) []capmodel.OverlayItem {
 	if max <= 0 || len(items) == 0 {
 		return items
 	}
 	seen := make(map[string]struct{}, max)
 	seenAssetHashes := make(map[string]struct{}, max)
 	perSceneImages := len(perScene) > 0 && perScene[0]
-	out := make([]capabilityoverlay.OverlayItem, 0, len(items))
+	out := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
-		if item.Kind != string(capabilityoverlay.KindEntityImage) {
+		if item.Kind != string(capmodel.KindEntityImage) {
 			out = append(out, item)
 			continue
 		}
@@ -367,8 +368,8 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 		}
 	}
 	for _, entity := range append(append([]scriptpkg.AnnotatedEntity(nil), ann.PrimaryEntities...), ann.SecondaryEntities...) {
-		kind := capabilityoverlay.EntityTypeToKind(entity.Type)
-		if kind == capabilityoverlay.KindBrandText {
+		kind := capmodel.EntityTypeToKind(entity.Type)
+		if kind == capmodel.KindBrandText {
 			if p, err := locate(entity.CanonicalName); err == nil {
 				score := entity.Confidence
 				if score <= 0 {
@@ -387,7 +388,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 			score = 0.9
 		}
 		switch kind {
-		case capabilityoverlay.KindNumber:
+		case capmodel.KindNumber:
 			// Entity extraction occasionally wraps the number in prose on
 			// either side ("8 ottobre 2026 per", live C1 "si attesta
 			// sull'18"). Clean to the biggest valid numeric/date surface,
@@ -409,13 +410,13 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 				// instead of dropping a real, grounded value.
 			}
 			out.Numbers = append(out.Numbers, capabilityoverlay.TimedAnnotation{Text: value, Type: entity.Type, StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000, StartUS: startUS, DurationUS: endUS - startUS, Score: score})
-		case capabilityoverlay.KindQuote:
+		case capmodel.KindQuote:
 			out.Quotes = append(out.Quotes, capabilityoverlay.TimedAnnotation{Text: entity.CanonicalName, Type: entity.Type, StartMs: occ.AudioStartUS / 1000, EndMs: (occ.AudioEndUS + 999) / 1000, StartUS: occ.AudioStartUS, DurationUS: occ.AudioEndUS - occ.AudioStartUS, Score: score})
-		case capabilityoverlay.KindProduct:
+		case capmodel.KindProduct:
 			if entity.Image != nil {
 				out.Products = append(out.Products, imageCandidate(entity.Image, occ, score))
 			}
-		case capabilityoverlay.KindLogo:
+		case capmodel.KindLogo:
 			if entity.Image == nil {
 				if p, err := locate(entity.CanonicalName); err == nil {
 					out.BrandTexts = append(out.BrandTexts, timed(p, score))
@@ -423,7 +424,7 @@ func overlaySceneInput(scene Scene, language, sourceLanguage Language, timing ca
 				continue
 			}
 			out.Logos = append(out.Logos, imageCandidate(entity.Image, occ, score))
-		case capabilityoverlay.KindLocation:
+		case capmodel.KindLocation:
 			if entity.Geo == nil {
 				continue
 			}

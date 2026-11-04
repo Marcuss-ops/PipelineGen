@@ -5,13 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
 
 type fakeMediaProbe struct {
@@ -68,7 +68,7 @@ func TestMediaContractProber_MapsProbeFactsAndHashesFile(t *testing.T) {
 		t.Fatalf("unexpected probe result: %+v", got)
 	}
 	// The full contract must then validate against the probed facts.
-	if err := capoverlay.DefaultOverlayContractV1.Validate(got); err != nil {
+	if err := capmodel.DefaultOverlayContractV1.Validate(got); err != nil {
 		t.Fatalf("probed facts should satisfy the contract: %v", err)
 	}
 }

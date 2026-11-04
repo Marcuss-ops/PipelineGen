@@ -4,9 +4,10 @@
 // It replaces the ad-hoc heredocs that produced ops/jobs/**/summary.json: the
 // item classes come from the semantic overlay plan in job.full.json, the
 // per-item render service comes from render_attempt_analytics (render_ms — the
-// same field the historical summaries called per_item_render_service_ms), and
-// the per-class statistics come from the pure projection in the rendermetrics
-// package.
+// same field the historical summaries called per_item_render_service_ms); a
+// batch member carries an explicit equal share of its batch's measured total,
+// flagged allocated_count, and the per-class statistics come from the pure
+// projection in the rendermetrics package.
 //
 // Usage:
 //
@@ -83,14 +84,16 @@ func main() {
 	batches := overlayRenderBatches(result, batchSamples)
 
 	// Batch members keep their semantic IDs in the render reference even though
-	// only one worker attempt exists. Include those IDs in class/status counts,
-	// while leaving their per-item service time empty: the measured batch cost
-	// is reported separately below and cannot be attributed to one member.
+	// only one worker attempt exists. Join them to the plan and project the
+	// batch's measured render_ms as an explicit equal share per member; the
+	// summary flags those samples as allocated and still reports the batch total
+	// separately below.
 	semanticSamples := append([]rendermetrics.ItemSample(nil), samples...)
 	seenItems := make(map[string]struct{}, len(samples))
 	for _, sample := range samples {
 		seenItems[sample.ItemID] = struct{}{}
 	}
+	semanticSamples = append(semanticSamples, allocateBatchItemSamples(batches, planItems, renderItems, seenItems)...)
 	for itemID, status := range renderItems {
 		if _, seen := seenItems[itemID]; seen {
 			continue

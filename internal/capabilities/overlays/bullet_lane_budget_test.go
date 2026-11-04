@@ -2,6 +2,7 @@ package overlays
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -9,8 +10,8 @@ import (
 // chapterBulletLaneItems builds 10 short + 10 long narration phrases plus one
 // chapter bullet per scene, the exact shape a 16-scene Garlasco-like run has
 // when bullets are enabled next to the 10+10 phrase contract.
-func chapterBulletLaneItems(scenes int) []OverlayItem {
-	var items []OverlayItem
+func chapterBulletLaneItems(scenes int) []capmodel.OverlayItem {
+	var items []capmodel.OverlayItem
 	for scene := 0; scene < scenes; scene++ {
 		sceneID := fmt.Sprintf("scene-%02d", scene)
 		base := int64(scene) * 20_000_000
@@ -18,9 +19,9 @@ func chapterBulletLaneItems(scenes int) []OverlayItem {
 		long := fmt.Sprintf("questa e la frase lunga numero %02d con tutte le parole necessarie", scene)
 		bullet := fmt.Sprintf("punto saliente numero %02d estratto dalla narrazione della scena", scene)
 		items = append(items,
-			OverlayItem{Kind: "text_phrase", Text: short, SceneID: sceneID, StartUS: base, DurationUS: 2_000_000},
-			OverlayItem{Kind: "text_phrase", Text: long, SceneID: sceneID, StartUS: base + 3_000_000, DurationUS: 4_000_000},
-			OverlayItem{
+			capmodel.OverlayItem{Kind: "text_phrase", Text: short, SceneID: sceneID, StartUS: base, DurationUS: 2_000_000},
+			capmodel.OverlayItem{Kind: "text_phrase", Text: long, SceneID: sceneID, StartUS: base + 3_000_000, DurationUS: 4_000_000},
+			capmodel.OverlayItem{
 				Kind: "text_phrase", Text: bullet, SceneID: sceneID,
 				StartUS: base + 8_000_000, DurationUS: 4_000_000,
 				Params: map[string]any{"editorial_role": ChapterBulletRole},
@@ -90,7 +91,7 @@ func TestBulletLaneRespectsQuotaAndLegacyPath(t *testing.T) {
 // TestBulletLaneDeduplicatesCopy ensures the same bullet text cannot arrive
 // twice from the chapter manifest and consume two quota slots.
 func TestBulletLaneDeduplicatesCopy(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{Kind: "text_phrase", Text: "stesso punto saliente della narrazione", SceneID: "a", StartUS: 0, DurationUS: 4_000_000, Params: map[string]any{"editorial_role": ChapterBulletRole}},
 		{Kind: "text_phrase", Text: "stesso punto saliente della narrazione", SceneID: "b", StartUS: 5_000_000, DurationUS: 4_000_000, Params: map[string]any{"editorial_role": ChapterBulletRole}},
 	}
@@ -105,7 +106,7 @@ func TestBulletLaneDeduplicatesCopy(t *testing.T) {
 // like a chapter card. Previously the editorial title lane retained every
 // scene_bullet outside the quota, so bullets:2 could still emit three cards.
 func TestBulletLaneQuotaGovernsSceneBulletsToo(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{Kind: "text_phrase", Text: "primo punto saliente della narrazione", SceneID: "a", StartUS: 0, DurationUS: 4_000_000, Params: map[string]any{"editorial_role": "scene_bullet"}},
 		{Kind: "text_phrase", Text: "secondo punto saliente della narrazione", SceneID: "b", StartUS: 5_000_000, DurationUS: 4_000_000, Params: map[string]any{"editorial_role": ChapterBulletRole}},
 		{Kind: "text_phrase", Text: "terzo punto saliente della narrazione", SceneID: "c", StartUS: 10_000_000, DurationUS: 4_000_000, Params: map[string]any{"editorial_role": ChapterBulletRole}},

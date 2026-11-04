@@ -1,11 +1,11 @@
 package scriptgeneration
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -36,26 +36,26 @@ func TestEntityCardMediaIndexFallsBackToRunLevelBinding(t *testing.T) {
 	if canonicalByStable[stable] == "" {
 		t.Fatalf("run-level fallback key missing: %v", canonicalByStable)
 	}
-	card := capabilityoverlay.OverlayItem{
+	card := capmodel.OverlayItem{
 		ID:      "overlay-scene-b-" + capabilityentities.SafeEntityID("Andrea Sempio"),
 		SceneID: "scene-b", EntityID: stable, TemplateID: "person_default",
-		Kind:      string(capabilityoverlay.KindEntityCard),
-		EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "PERSON", Name: "Andrea Sempio"},
+		Kind:      string(capmodel.KindEntityCard),
+		EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Andrea Sempio"},
 	}
 	got := attachEntityCardAsset(card, media, canonicalByStable, "plan")
-	if got.Kind != string(capabilityoverlay.KindEntityImage) {
+	if got.Kind != string(capmodel.KindEntityImage) {
 		t.Fatalf("unbound scene card kind = %q, want entity_image via run-level fallback", got.Kind)
 	}
 	if len(got.AssetRefs) != 1 || !strings.EqualFold(got.AssetRefs[0].SHA256, fallbackTestSHA) {
 		t.Fatalf("unbound scene card refs = %+v, want the bound portrait", got.AssetRefs)
 	}
 	// A scene with its own binding still resolves its own scene-scoped key.
-	boundCard := capabilityoverlay.OverlayItem{
+	boundCard := capmodel.OverlayItem{
 		ID: sceneAOverlayID, SceneID: "scene-a", EntityID: stable, TemplateID: "person_default",
-		Kind:      string(capabilityoverlay.KindEntityCard),
-		EntityRef: &capabilityoverlay.OverlayEntityRef{Type: "PERSON", Name: "Andrea Sempio"},
+		Kind:      string(capmodel.KindEntityCard),
+		EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Andrea Sempio"},
 	}
-	if got := attachEntityCardAsset(boundCard, media, canonicalByStable, "plan"); got.Kind != string(capabilityoverlay.KindEntityImage) {
+	if got := attachEntityCardAsset(boundCard, media, canonicalByStable, "plan"); got.Kind != string(capmodel.KindEntityImage) {
 		t.Fatalf("bound scene card kind = %q, want entity_image", got.Kind)
 	}
 }

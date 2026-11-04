@@ -1,11 +1,13 @@
 package overlays
 
+import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+
 import "strings"
 
 // mapPinsFor projects the grounded places that fall inside the plate's window
 // into deterministic pins plus the item's audio window. ok is false when no
 // place lands inside the plate or no place carries a usable span.
-func mapAreaGlowRadiusKM(pins []MapOverlayPin) float64 {
+func mapAreaGlowRadiusKM(pins []capmodel.MapOverlayPin) float64 {
 	if len(pins) == 0 {
 		return 0
 	}
@@ -23,7 +25,7 @@ func mapAreaGlowRadiusKM(pins []MapOverlayPin) float64 {
 	}
 }
 
-func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, pinTiming map[string]map[string]any, startUS, durationUS int64, score float64, ok bool) {
+func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []capmodel.MapOverlayPin, pinTiming map[string]map[string]any, startUS, durationUS int64, score float64, ok bool) {
 	// A multi-stop map is a journey, so its camera order follows the first
 	// spoken occurrence rather than provider/entity extraction order.
 	places = sortedMapPlacesSpokenOrder(places)
@@ -45,7 +47,7 @@ func mapPinsFor(plate MapPlate, places []MapCandidate) (pins []MapOverlayPin, pi
 			continue
 		}
 		seen[id] = struct{}{}
-		pins = append(pins, MapOverlayPin{
+		pins = append(pins, capmodel.MapOverlayPin{
 			ID: id, Label: place.Label,
 			Latitude: place.Latitude, Longitude: place.Longitude,
 			Scope: place.Scope,

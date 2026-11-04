@@ -27,7 +27,6 @@
 	go-version-guard go-version-check build rust-fetch build-server clean rebuild run dev \
 	test test-all test-unit coverage coverage-check lint fmt vet \
 	verify-go-core verify-go-infrastructure verify-go-api verify-go-commands verify-go-tests verify-go verify-unit verify-unit-fast \
-	verify-overlay-model-alias \
 	verify-audio-chunked verify-audio-combined verify-audio-copy verify-audio-benchmark verify-audio-release \
 	verify-rust-muscles verify-rust-fetch verify-rust-contract verify-no-secrets verify-repository-integrity verify-base verify-foundation verify-static verify-fast verify-dev verify-agent verify-push verify-changed verify-changed-components verify-components verify-race-components verify-unit-race verify-race verify-full \
 	verify-integration verify-architecture \

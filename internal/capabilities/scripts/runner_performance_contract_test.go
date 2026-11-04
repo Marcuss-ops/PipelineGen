@@ -11,6 +11,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sync"
 	"testing"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -206,7 +206,7 @@ func TestOverlayPrepare_StartsBeforeTTSCompletes(t *testing.T) {
 
 	runner := NewRunner(repo, textGen, newStubTranslator(), blockingVO)
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
-	runner.SetOverlayRegistry(capabilityoverlay.DefaultChrononOverlayRegistry)
+	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayPrepareEnqueuer(prepEnq)
 
 	req := defaultTestRequest()

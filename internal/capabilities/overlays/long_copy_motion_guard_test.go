@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 )
@@ -220,11 +221,11 @@ func TestHistoricalLongcatPoolNeverDealsCrashingMotion(t *testing.T) {
 
 func TestUniquenessGuardFallsBackFromCrashingOnlyPool(t *testing.T) {
 	validLong := longPhraseMotionCandidates[0]
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "a", SceneID: "s1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: longCopyGuardText, MotionID: validLong},
 		{ID: "b", SceneID: "s1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: strings.Replace(longCopyGuardText, "chiusura", "riapertura", 1), MotionID: validLong},
 	}
-	EnsureDistinctPhraseMotions(items, PlanInput{
+	ApplyAnimationConsistency(items, PlanInput{
 		PlanID: "long-guard", VideoID: "video-long-guard",
 		PhraseMotions: []string{longCopyCrashProbeMotion},
 	})

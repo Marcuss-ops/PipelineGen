@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 	"strings"
 )
@@ -25,7 +26,7 @@ import (
 // Only forward moves: a card may appear after its spoken moment, never before
 // it. Deterministic: same items → same items. An already collision-free plan
 // is returned unchanged.
-func ResolveMapOverlaps(items []OverlayItem, sceneWindows map[string][2]int64, fpsNum, fpsDen int) []OverlayItem {
+func ResolveMapOverlaps(items []capmodel.OverlayItem, sceneWindows map[string][2]int64, fpsNum, fpsDen int) []capmodel.OverlayItem {
 	if len(items) < 2 {
 		return items
 	}
@@ -61,7 +62,7 @@ func ResolveMapOverlaps(items []OverlayItem, sceneWindows map[string][2]int64, f
 	// mapKept tracks kept-slice indices of map items: mapIdx addresses the
 	// input slice, but shifting decisions must read the kept slice (which
 	// grows as items resolve).
-	kept := make([]OverlayItem, 0, len(items))
+	kept := make([]capmodel.OverlayItem, 0, len(items))
 	mapKept := make([]int, 0, len(mapIdx))
 	// Register every map before resolving any other item. Plans are grouped by
 	// overlay type in some callers, so a later slice position can still be an
@@ -115,7 +116,7 @@ func ResolveMapOverlaps(items []OverlayItem, sceneWindows map[string][2]int64, f
 // planner calls it before editorial overlap budgets so scene-synced maps are
 // not discarded merely because their default camera duration spans a scene
 // boundary. Final sealing applies the same trim plus exact scene bounds.
-func TrimMapWindowsBeforeBudget(items []OverlayItem, fpsNum, fpsDen int) []OverlayItem {
+func TrimMapWindowsBeforeBudget(items []capmodel.OverlayItem, fpsNum, fpsDen int) []capmodel.OverlayItem {
 	if fpsNum <= 0 || fpsDen <= 0 {
 		fpsNum, fpsDen = 24, 1
 	}
@@ -129,7 +130,7 @@ func TrimMapWindowsBeforeBudget(items []OverlayItem, fpsNum, fpsDen int) []Overl
 		return startFrame, endFrame
 	}
 	mapKept := make([]int, 0, len(items))
-	kept := make([]OverlayItem, 0, len(items))
+	kept := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		if item.Map == nil || isBackgroundItem(item) {
 			continue
@@ -141,11 +142,11 @@ func TrimMapWindowsBeforeBudget(items []OverlayItem, fpsNum, fpsDen int) []Overl
 	if len(mapKept) == 0 {
 		return items
 	}
-	byID := make(map[string]OverlayItem, len(mapKept))
+	byID := make(map[string]capmodel.OverlayItem, len(mapKept))
 	for _, index := range mapKept {
 		byID[kept[index].ID] = kept[index]
 	}
-	out := append([]OverlayItem(nil), items...)
+	out := append([]capmodel.OverlayItem(nil), items...)
 	for i := range out {
 		if replacement, ok := byID[out[i].ID]; ok {
 			out[i] = replacement
@@ -154,7 +155,7 @@ func TrimMapWindowsBeforeBudget(items []OverlayItem, fpsNum, fpsDen int) []Overl
 	return out
 }
 
-func trimMapWindows(kept []OverlayItem, mapKept []int, sceneWindows map[string][2]int64, toFrames func(int64, int64) (int64, int64), fpsNum, fpsDen int) {
+func trimMapWindows(kept []capmodel.OverlayItem, mapKept []int, sceneWindows map[string][2]int64, toFrames func(int64, int64) (int64, int64), fpsNum, fpsDen int) {
 	// Maps are scene-bound visual treatments. Keep each inside its scene, and
 	// before the next map when the next scene starts earlier than its minimum
 	// presentation window. Preserve spoken pin timing: shorten only when every
@@ -193,7 +194,7 @@ func trimMapWindows(kept []OverlayItem, mapKept []int, sceneWindows map[string][
 	}
 }
 
-func mapPinsFitDuration(item OverlayItem, durationUS int64) bool {
+func mapPinsFitDuration(item capmodel.OverlayItem, durationUS int64) bool {
 	if item.Params == nil {
 		return true
 	}
@@ -207,11 +208,11 @@ func mapPinsFitDuration(item OverlayItem, durationUS int64) bool {
 // shiftPastMaps moves it after every overlapping map (bounded passes: each
 // pass clears at least the earliest overlap, and passes never exceed the map
 // count plus one). Anchored and chain items are dropped instead of shifted.
-func shiftPastMaps(it OverlayItem, kept []OverlayItem, mapKept []int, sceneWindows map[string][2]int64, toFrames func(int64, int64) (int64, int64), fpsNum, fpsDen int) (OverlayItem, bool) {
-	if isAnchoredItem(it) || IsChainItemKind(it.Kind) {
+func shiftPastMaps(it capmodel.OverlayItem, kept []capmodel.OverlayItem, mapKept []int, sceneWindows map[string][2]int64, toFrames func(int64, int64) (int64, int64), fpsNum, fpsDen int) (capmodel.OverlayItem, bool) {
+	if isAnchoredItem(it) || capmodel.IsChainItemKind(it.Kind) {
 		for _, m := range mapKept {
 			if framesOverlap(it, kept[m], toFrames) {
-				return OverlayItem{}, false
+				return capmodel.OverlayItem{}, false
 			}
 		}
 		return it, true
@@ -235,31 +236,31 @@ func shiftPastMaps(it OverlayItem, kept []OverlayItem, mapKept []int, sceneWindo
 		durUS := current.DurationUS
 		if window, ok := sceneWindows[strings.TrimSpace(current.SceneID)]; ok {
 			if startUS >= window[1] {
-				return OverlayItem{}, false
+				return capmodel.OverlayItem{}, false
 			}
 			if startUS+durUS > window[1] {
 				// Preserve the animation's authored duration. Shrinking a phrase
 				// to the scene's remaining sliver can produce invalid renderer
 				// geometry (including NaN); drop it when it no longer fits.
-				return OverlayItem{}, false
+				return capmodel.OverlayItem{}, false
 			}
 		} else if strings.TrimSpace(current.SceneID) != "" {
 			// A scene-bound card without a known scene window cannot prove
 			// it still fits: fail-soft drops it instead of guessing.
-			return OverlayItem{}, false
+			return capmodel.OverlayItem{}, false
 		}
 		if durUS <= 0 {
-			return OverlayItem{}, false
+			return capmodel.OverlayItem{}, false
 		}
 		current.StartUS = startUS
 		current.DurationUS = durUS
 		current.StartMs = startUS / 1000
 		current.EndMs = (startUS + durUS + 999) / 1000
 	}
-	return OverlayItem{}, false
+	return capmodel.OverlayItem{}, false
 }
 
-func itemWindowUS(it OverlayItem) (int64, int64) {
+func itemWindowUS(it capmodel.OverlayItem) (int64, int64) {
 	startUS, durUS := it.StartUS, it.DurationUS
 	if durUS <= 0 {
 		startUS = it.StartMs * 1000
@@ -268,7 +269,7 @@ func itemWindowUS(it OverlayItem) (int64, int64) {
 	return startUS, durUS
 }
 
-func framesOverlap(a, b OverlayItem, toFrames func(int64, int64) (int64, int64)) bool {
+func framesOverlap(a, b capmodel.OverlayItem, toFrames func(int64, int64) (int64, int64)) bool {
 	astart, adur := itemWindowUS(a)
 	bstart, bdur := itemWindowUS(b)
 	if adur <= 0 || bdur <= 0 {
@@ -279,7 +280,7 @@ func framesOverlap(a, b OverlayItem, toFrames func(int64, int64) (int64, int64))
 	return as < be && bs < ae
 }
 
-func isBackgroundItem(it OverlayItem) bool {
+func isBackgroundItem(it capmodel.OverlayItem) bool {
 	template := strings.ToLower(strings.TrimSpace(it.TemplateID))
 	return template == "background" || template == "video_background"
 }
@@ -288,7 +289,7 @@ func isBackgroundItem(it OverlayItem) bool {
 // titles/bullets against word-level TTS timing (shifting breaks the proof),
 // and chapter cards against their chapter opening (shifting breaks the
 // chapter-link contract). All of them yield by absence instead.
-func isAnchoredItem(it OverlayItem) bool {
+func isAnchoredItem(it capmodel.OverlayItem) bool {
 	if it.Params == nil {
 		return false
 	}

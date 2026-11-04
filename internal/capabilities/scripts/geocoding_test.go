@@ -379,6 +379,26 @@ func TestGroundedMapFallbackIgnoresSentenceAdverbsAndUppercaseOrganizations(t *t
 	}
 }
 
+// TestIgnoredMapCandidateRejectsArticlePrefixedInstitutions certifies that a
+// courthouse is not a map stop just because the article is attached to it.
+// The exact-word set already lists "cassazione"/"corte"; the multi-word
+// candidate must still resolve to that set instead of reaching Nominatim.
+func TestIgnoredMapCandidateRejectsArticlePrefixedInstitutions(t *testing.T) {
+	ignored := map[string]struct{}{
+		"cassazione": {}, "corte": {}, "procura": {}, "tribunale": {},
+	}
+	for _, candidate := range []string{
+		"La Cassazione", "La Corte", "Suprema Corte", "La Procura", "Il Tribunale",
+	} {
+		if !ignoredMapCandidate(ignored, candidate, "it") {
+			t.Errorf("institution %q must not be a map candidate", candidate)
+		}
+	}
+	if ignoredMapCandidate(ignored, "Garlasco", "it") {
+		t.Fatal("a real place must remain a map candidate")
+	}
+}
+
 func TestMapPlaceCandidateIgnoredWordsUsesConfiguredLexicon(t *testing.T) {
 	registry, err := linguistics.NewLexiconRegistry("../../../config/lexicons")
 	if err != nil {

@@ -3,6 +3,7 @@ package overlays
 import (
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 )
 
@@ -130,7 +131,7 @@ func TestBuildPlanHonorsRuntimeStyleCountsPerSubfamily(t *testing.T) {
 // imageOverlayMotions returns the motion of every image overlay in a plan:
 // standalone image items plus each layer of a composite entity_image group.
 // Composite parents carry no motion of their own; their layers do.
-func imageOverlayMotions(items []OverlayItem) []string {
+func imageOverlayMotions(items []capmodel.OverlayItem) []string {
 	var out []string
 	for _, item := range items {
 		switch item.Kind {

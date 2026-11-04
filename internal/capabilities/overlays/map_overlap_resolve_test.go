@@ -1,12 +1,13 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
 )
 
 func TestResolveMapOverlapsShiftsPhraseAfterMap(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 		{ID: "loc1", Kind: "location", SceneID: "s1", StartUS: 81_000_000, DurationUS: 1_000_000, Text: "Pavia"},
 	}
 	scenes := map[string][2]int64{"s1": {81_000_000, 95_000_000}}
@@ -26,9 +27,9 @@ func TestResolveMapOverlapsShiftsPhraseAfterMap(t *testing.T) {
 }
 
 func TestResolveMapOverlapsSeesMapsListedAfterPhrase(t *testing.T) {
-	items := []OverlayItem{
+	items := []capmodel.OverlayItem{
 		{ID: "phrase1", Kind: "text_phrase", SceneID: "s1", StartUS: 81_000_000, DurationUS: 1_000_000, Text: "Pavia"},
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 	}
 	scenes := map[string][2]int64{"s1": {81_000_000, 95_000_000}}
 	got := ResolveMapOverlaps(items, scenes, 24, 1)
@@ -41,8 +42,8 @@ func TestResolveMapOverlapsSeesMapsListedAfterPhrase(t *testing.T) {
 }
 
 func TestResolveMapOverlapsDropsWhenNoRoom(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 81_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 		{ID: "loc1", Kind: "location", SceneID: "s1", StartUS: 81_000_000, DurationUS: 1_000_000, Text: "Pavia"},
 	}
 	// Scene ends with the map: nothing fits after it.
@@ -54,8 +55,8 @@ func TestResolveMapOverlapsDropsWhenNoRoom(t *testing.T) {
 }
 
 func TestResolveMapOverlapsDoesNotShrinkItemToSceneSliver(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 		{ID: "phrase1", Kind: "text_phrase", SceneID: "s1", StartUS: 0, DurationUS: 4_000_000, Text: "A complete phrase"},
 	}
 	scenes := map[string][2]int64{"s1": {0, 9_000_000}}
@@ -66,8 +67,8 @@ func TestResolveMapOverlapsDoesNotShrinkItemToSceneSliver(t *testing.T) {
 }
 
 func TestResolveMapOverlapsDropsAnchoredInsteadOfShifting(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 		{ID: "b1", Kind: "text_phrase", SceneID: "s1", StartUS: 0, DurationUS: 4_000_000,
 			Text: "Certified bullet", Params: map[string]any{"editorial_role": "scene_bullet"}},
 	}
@@ -79,8 +80,8 @@ func TestResolveMapOverlapsDropsAnchoredInsteadOfShifting(t *testing.T) {
 }
 
 func TestResolveMapOverlapsLeavesCleanPlanUntouched(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 0, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 		{ID: "p1", Kind: "text_phrase", SceneID: "s1", StartUS: 9_000_000, DurationUS: 2_000_000, Text: "Later"},
 		{ID: "p2", Kind: "text_phrase", SceneID: "s1", StartUS: 2_000_000, DurationUS: 2_000_000, Text: "Phrase"},
 	}
@@ -90,7 +91,7 @@ func TestResolveMapOverlapsLeavesCleanPlanUntouched(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("expected shift, not drop: %+v", got)
 	}
-	byID := map[string]OverlayItem{}
+	byID := map[string]capmodel.OverlayItem{}
 	for _, it := range got {
 		byID[it.ID] = it
 	}
@@ -103,9 +104,9 @@ func TestResolveMapOverlapsLeavesCleanPlanUntouched(t *testing.T) {
 }
 
 func TestResolveMapOverlapsKeepsMapInsideSceneWindow(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 1_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
-		{ID: "map2", Kind: "map", SceneID: "s2", StartUS: 4_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 1_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
+		{ID: "map2", Kind: "map", SceneID: "s2", StartUS: 4_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 	}
 	scenes := map[string][2]int64{
 		"s1": {0, 4_000_000},
@@ -124,10 +125,10 @@ func TestResolveMapOverlapsKeepsMapInsideSceneWindow(t *testing.T) {
 }
 
 func TestTrimMapWindowsBeforeBudgetPreservesSequentialMaps(t *testing.T) {
-	items := []OverlayItem{
-		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 1_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
-		{ID: "map2", Kind: "map", SceneID: "s2", StartUS: 4_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
-		{ID: "map3", Kind: "map", SceneID: "s3", StartUS: 8_000_000, DurationUS: 8_000_000, Map: &MapOverlay{}},
+	items := []capmodel.OverlayItem{
+		{ID: "map1", Kind: "map", SceneID: "s1", StartUS: 1_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
+		{ID: "map2", Kind: "map", SceneID: "s2", StartUS: 4_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
+		{ID: "map3", Kind: "map", SceneID: "s3", StartUS: 8_000_000, DurationUS: 8_000_000, Map: &capmodel.MapOverlay{}},
 	}
 	got := TrimMapWindowsBeforeBudget(items, 24, 1)
 	if len(got) != 3 {

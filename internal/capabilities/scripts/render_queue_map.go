@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	scriptoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlay"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	infraoverlays "github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
 )
@@ -22,7 +22,7 @@ func NewDynamicMapGPUAdmission() (DynamicMapGPUAdmission, error) {
 	return gate, err
 }
 
-func (e *QueueRenderEnqueuer) renderDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) (string, error) {
+func (e *QueueRenderEnqueuer) renderDynamicMapVideo(ctx context.Context, plan capmodel.OverlayPlan) (string, error) {
 	if e == nil {
 		return "", fmt.Errorf("dynamic map renderer enqueuer is nil")
 	}
@@ -32,11 +32,11 @@ func (e *QueueRenderEnqueuer) renderDynamicMapVideo(ctx context.Context, plan ca
 // dynamicMapSamplerForProfile names the map sampler for one render. The
 // native vector plate sampler remains CPU-based; NVENC independently encodes
 // those frames on GPU.
-func dynamicMapSamplerForProfile(profile scriptoverlay.MapEncodeProfile) string {
+func dynamicMapSamplerForProfile(profile capoverlay.MapEncodeProfile) string {
 	return "cpu"
 }
 
-func mapRenderRequiresGPU(profile scriptoverlay.MapEncodeProfile, sampler, composition string) bool {
+func mapRenderRequiresGPU(profile capoverlay.MapEncodeProfile, sampler, composition string) bool {
 	return profile.ExpectGPU || sampler != "cpu" || strings.HasPrefix(composition, "ed_")
 }
 
@@ -117,7 +117,7 @@ func projectMapRendererPhases(ctx context.Context, tilePrefetchMS, platePrepareM
 // plan's shape. The render workspace is released here once the durable cache
 // entry is stored: the cache entry is the only deliverable (each fold
 // materializes its own private workspace from the cache).
-func (e *QueueRenderEnqueuer) PreMaterializeDynamicMapVideo(ctx context.Context, plan capoverlay.OverlayPlan) error {
+func (e *QueueRenderEnqueuer) PreMaterializeDynamicMapVideo(ctx context.Context, plan capmodel.OverlayPlan) error {
 	if e == nil {
 		return fmt.Errorf("queue render enqueuer is not configured")
 	}
@@ -155,10 +155,10 @@ func (e *QueueRenderEnqueuer) PreMaterializeDynamicMapVideo(ctx context.Context,
 // preMaterializeMapUnit prepares ONE single-map unit (already normalized)
 // into the durable cache and releases its render workspace. A native-backend
 // map renders on the worker and has no cache entry to prepare.
-func (e *QueueRenderEnqueuer) preMaterializeMapUnit(ctx context.Context, semanticPlan capoverlay.OverlayPlan, decisions []planMapBackend) error {
+func (e *QueueRenderEnqueuer) preMaterializeMapUnit(ctx context.Context, semanticPlan capmodel.OverlayPlan, decisions []planMapBackend) error {
 	pythonMaps := 0
 	for _, decision := range decisions {
-		if decision.backend == scriptoverlay.MapBackendDynamic {
+		if decision.backend == capoverlay.MapBackendDynamic {
 			pythonMaps++
 		}
 	}
@@ -179,7 +179,7 @@ func (e *QueueRenderEnqueuer) preMaterializeMapUnit(ctx context.Context, semanti
 
 // renderDynamicMapVideoWithGate de-duplicates concurrent renders of the same
 // map video around renderDynamicMapVideoOnce (the render body).
-func renderDynamicMapVideoWithGate(ctx context.Context, plan capoverlay.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
+func renderDynamicMapVideoWithGate(ctx context.Context, plan capmodel.OverlayPlan, gate DynamicMapGPUAdmission, cacheDirs ...string) (string, error) {
 	return joinDynamicMapVideoRender(ctx, plan, func() (string, error) {
 		return renderDynamicMapVideoOnce(ctx, plan, gate, cacheDirs...)
 	})
@@ -187,13 +187,13 @@ func renderDynamicMapVideoWithGate(ctx context.Context, plan capoverlay.OverlayP
 
 // resolveMapBasemap maps the runtime map_type through the shared map registry
 // and the single native renderer's certified basemap subset
-// (scriptoverlay.NativeMapBasemaps). The retired Python renderer fetched Esri
+// (capoverlay.NativeMapBasemaps). The retired Python renderer fetched Esri
 // raster tiles; the native renderer draws the editorial vector basemap only,
 // so a raster style fails closed by name (never a silent style swap) and
 // "random" draws from the servable subset. The registry vocabulary stays
 // cross-repo canonical; servability is decided here, at execution.
 func resolveMapBasemap(mapType, seed, slot string) (string, error) {
-	servable := scriptoverlay.NativeMapBasemaps()
+	servable := capoverlay.NativeMapBasemaps()
 	// Empty means "no map_type requested": the registry's default is an Esri
 	// raster style (cross-repo canonical, unchanged), which the native renderer
 	// does not draw — so the empty request takes the servable draw, exactly

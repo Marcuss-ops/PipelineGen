@@ -6,6 +6,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"sync"
 	"time"
@@ -102,7 +103,7 @@ type Runner struct {
 	// overlayRegistry is the canonical entity type→template registry used
 	// by the EntityOverlayPlanner. Nil means overlay intent planning is
 	// skipped (no overlay intents created).
-	overlayRegistry *capabilityoverlay.ChrononOverlayRegistry
+	overlayRegistry *capmodel.ChrononOverlayRegistry
 
 	// overlayPrepareEnqueuer submits the overlay.prepare job for the run's
 	// pre-timing OverlayIntents. Nil means prepare is not registered (a

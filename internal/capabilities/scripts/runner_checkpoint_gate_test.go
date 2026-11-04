@@ -23,14 +23,13 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/stretchr/testify/require"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 )
@@ -266,14 +265,14 @@ func TestCheckpointCrashInEveryWindowKeepsTheLastCompleteSnapshot(t *testing.T) 
 // concurrent workers mutating the live result cannot reach a queued snapshot.
 func TestCheckpointSnapshotIsADeepCopy(t *testing.T) {
 	live := newCheckpointResult(2)
-	live.OverlayPlan = &capabilityoverlay.OverlayPlan{Items: []capabilityoverlay.OverlayItem{{
-		ID: "map-item", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "lod-0", LocalPath: "/cache/lod-0.png"}},
-		SoundEffect: &capabilityoverlay.OverlaySoundEffect{AssetRef: capabilityoverlay.OverlayAssetRef{AssetID: "overlay-sfx:primary", LocalPath: "/cache/primary.m4a"}},
+	live.OverlayPlan = &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
+		ID: "map-item", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "lod-0", LocalPath: "/cache/lod-0.png"}},
+		SoundEffect: &capmodel.OverlaySoundEffect{AssetRef: capmodel.OverlayAssetRef{AssetID: "overlay-sfx:primary", LocalPath: "/cache/primary.m4a"}},
 	}}}
-	live.LocalizedOverlayPlans = map[Language]*capabilityoverlay.OverlayPlan{
-		"es": {Items: []capabilityoverlay.OverlayItem{{
-			ID: "map-item-es", AssetRefs: []capabilityoverlay.OverlayAssetRef{{AssetID: "lod-0-es", LocalPath: "/cache/lod-0-es.png"}},
-			SoundEffect: &capabilityoverlay.OverlaySoundEffect{AssetRef: capabilityoverlay.OverlayAssetRef{AssetID: "overlay-sfx:localized", LocalPath: "/cache/localized.m4a"}},
+	live.LocalizedOverlayPlans = map[Language]*capmodel.OverlayPlan{
+		"es": {Items: []capmodel.OverlayItem{{
+			ID: "map-item-es", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "lod-0-es", LocalPath: "/cache/lod-0-es.png"}},
+			SoundEffect: &capmodel.OverlaySoundEffect{AssetRef: capmodel.OverlayAssetRef{AssetID: "overlay-sfx:localized", LocalPath: "/cache/localized.m4a"}},
 		}}},
 	}
 	snapshot, err := snapshotGenerateResult(live)

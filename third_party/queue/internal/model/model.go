@@ -116,6 +116,30 @@ func ValidateChunk(job Job) error {
 	return nil
 }
 
+// ValidateJobBatch applies the batch-level ingress rules shared by every
+// backend: a non-empty batch, a required unique id per job, and a chunk whose
+// frame range is well-formed. Validation is complete before any mutation, so a
+// bad child never leaves a partial family behind.
+func ValidateJobBatch(jobs []Job) error {
+	if len(jobs) == 0 {
+		return fmt.Errorf("job batch is empty")
+	}
+	seen := make(map[string]struct{}, len(jobs))
+	for _, job := range jobs {
+		if job.ID == "" {
+			return fmt.Errorf("job id is required")
+		}
+		if _, ok := seen[job.ID]; ok {
+			return fmt.Errorf("duplicate job id %s", job.ID)
+		}
+		seen[job.ID] = struct{}{}
+		if err := ValidateChunk(job); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // AssetRef points at an asset in the central artifact store by content hash
 // and the logical path it must be materialized at in the job workspace. It is
 // an ALIAS of the public wire type, not a second declaration.

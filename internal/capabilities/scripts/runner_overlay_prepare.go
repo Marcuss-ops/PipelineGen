@@ -17,7 +17,9 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
+	"time"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -74,7 +76,7 @@ type vidRushPrepareResult struct {
 	segments       []scriptpkg.VidRushSegmentResult
 	annotations    map[int]*scriptpkg.SceneAnnotations
 	disabledScenes map[int]bool
-	intents        []capabilityoverlay.OverlayIntent
+	intents        []capmodel.OverlayIntent
 }
 
 // vidRushPrepareOutcome is the channel payload the prepare branch sends back
@@ -95,6 +97,10 @@ type vidRushPrepareOutcome struct {
 	// worker writes onto result.Scenes while TTS is running.
 	localizedAnnotations map[int]map[Language]*scriptpkg.SceneAnnotations
 	nlpErr               error
+	// completedAt is set by the producing goroutine at the instant it sends
+	// the outcome. The join uses it to attribute the wall to the branch that
+	// actually finished last instead of reporting an opaque prepare_join.
+	completedAt time.Time
 }
 
 // runVidRushJoinAndPrepare is the background branch of the SceneTextReady
@@ -153,7 +159,7 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 			stripPersonNameMapCandidates(annotation, snapshot[index].Text)
 		}
 	}
-	var intents []capabilityoverlay.OverlayIntent
+	var intents []capmodel.OverlayIntent
 	if r.overlayRegistry != nil {
 		intents = planOverlayIntentsForAnnotations(snapshot, annotations, r.overlayRegistry)
 		if err := r.enqueueOverlayPrepare(ctx, runID, req, intents); err != nil {
@@ -412,6 +418,7 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 			}
 		}
 	}
+	dropSurnameOnlyAnnotationDuplicates(annotations)
 	return annotations
 }
 
@@ -419,7 +426,7 @@ func computeSegmentEntityAnnotations(snapshot []sceneTextSnapshot, language Lang
 // pre-timing OverlayIntents and submits it (fire-and-forget). The plan id is
 // the run id — the same idempotency key the overlay plan uses — so a retry
 // never double-prepares.
-func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req GenerateRequest, intents []capabilityoverlay.OverlayIntent) error {
+func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req GenerateRequest, intents []capmodel.OverlayIntent) error {
 	if r.overlayPrepareEnqueuer == nil || len(intents) == 0 {
 		return nil
 	}
@@ -453,7 +460,7 @@ func (r *Runner) enqueueOverlayPrepare(ctx context.Context, runID string, req Ge
 	return nil
 }
 
-func overlayPrepareNeedsAssetPrefetch(intents []capabilityoverlay.OverlayIntent) bool {
+func overlayPrepareNeedsAssetPrefetch(intents []capmodel.OverlayIntent) bool {
 	for _, intent := range intents {
 		if len(intent.AssetRefs) > 0 || len(intent.Payload.AssetRefs) > 0 {
 			return true

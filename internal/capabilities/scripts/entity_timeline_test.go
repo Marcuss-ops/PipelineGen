@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +11,6 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -179,7 +179,7 @@ func TestRunner_EntityTimelineDerivedFromRealWordTiming(t *testing.T) {
 	require.Len(t, res.OverlayPlan.Items, 2, "one coalesced entity-name chain per scene")
 	for _, item := range res.OverlayPlan.Items {
 		require.Empty(t, item.AssetRefs, "the narrated entities have no verified media")
-		segments, ok := capabilityoverlay.DecodeChainSegments(item.Params)
+		segments, ok := capmodel.DecodeChainSegments(item.Params)
 		require.True(t, ok, "entity-name chain must carry its decoded segments: %+v", item.Params)
 		require.Len(t, segments, 2, "Tom Hanks and Los Angeles share the scene")
 		kinds := []string{segments[0].Kind, segments[1].Kind}

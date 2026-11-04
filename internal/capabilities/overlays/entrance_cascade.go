@@ -1,6 +1,7 @@
 package overlays
 
 import (
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"sort"
 )
 
@@ -44,10 +45,10 @@ const (
 // share one camera rig that must stay synchronized.
 type cascadeCandidate struct {
 	index int
-	item  *OverlayItem
+	item  *capmodel.OverlayItem
 }
 
-func CascadeClusteredEntrances(items []OverlayItem, fpsNum, fpsDen int) {
+func CascadeClusteredEntrances(items []capmodel.OverlayItem, fpsNum, fpsDen int) {
 	if len(items) < 2 {
 		return
 	}
@@ -119,7 +120,7 @@ func cascadeCluster(group []cascadeCandidate, step, fpsNum, fpsDen int) {
 // keeps its entrance), never exceeds the renderer ceiling or the item's own
 // duration, and leaves items without an explicit entrance on the slow catalog
 // default.
-func cascadeEntrance(item *OverlayItem, base, rank, step, fpsNum, fpsDen int) {
+func cascadeEntrance(item *capmodel.OverlayItem, base, rank, step, fpsNum, fpsDen int) {
 	if item == nil || item.MotionParams == nil {
 		return
 	}
@@ -148,11 +149,11 @@ func cascadeEntrance(item *OverlayItem, base, rank, step, fpsNum, fpsDen int) {
 // rig, chains carry fused segment timing, and maps carry their own camera
 // timeline: shaping any of them would desynchronize what the cascade cannot
 // see.
-func cascadeEligible(item *OverlayItem) bool {
+func cascadeEligible(item *capmodel.OverlayItem) bool {
 	if item == nil || len(item.ImageLayers) > 0 {
 		return false
 	}
-	if IsChainItemKind(item.Kind) {
+	if capmodel.IsChainItemKind(item.Kind) {
 		return false
 	}
 	switch item.Kind {
@@ -199,7 +200,7 @@ func cascadeEnterFrames(params map[string]any) (int, bool) {
 
 // cascadeDurationFrames converts the certified millisecond window to frames.
 // A missing or inverted window cannot host a shaped entrance.
-func cascadeDurationFrames(item *OverlayItem, fpsNum, fpsDen int) int {
+func cascadeDurationFrames(item *capmodel.OverlayItem, fpsNum, fpsDen int) int {
 	if fpsNum <= 0 || fpsDen <= 0 || item.EndMs <= item.StartMs {
 		return 0
 	}

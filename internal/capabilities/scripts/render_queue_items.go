@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -45,7 +46,7 @@ func resolveOverlayItemWorkers(requested int) int {
 // renumber items.
 type overlayItemCandidate struct {
 	index  int
-	source capoverlay.OverlayItem
+	source capmodel.OverlayItem
 }
 
 // overlayItemRenderResult carries both the per-item reference the caller
@@ -114,7 +115,7 @@ const (
 // start (or the plan end), floored at the certified spoken window so the
 // interval itself is never truncated. A phrase with no free space returns the
 // spoken window, i.e. it keeps its current length instead of growing.
-func phraseWindowLimitUS(parent capoverlay.OverlayPlan, sourceID string, startUS, spokenUS int64) int64 {
+func phraseWindowLimitUS(parent capmodel.OverlayPlan, sourceID string, startUS, spokenUS int64) int64 {
 	limit := int64(0)
 	if next := nextPlanItemStartUS(parent, sourceID, startUS); next > 0 {
 		limit = next - startUS
@@ -132,7 +133,7 @@ func phraseWindowLimitUS(parent capoverlay.OverlayPlan, sourceID string, startUS
 
 // nextPlanItemStartUS is the start of the next overlay in the parent plan
 // (absolute microseconds), or 0 when the source is the last timed item.
-func nextPlanItemStartUS(parent capoverlay.OverlayPlan, sourceID string, startUS int64) int64 {
+func nextPlanItemStartUS(parent capmodel.OverlayPlan, sourceID string, startUS int64) int64 {
 	next := int64(0)
 	for _, item := range parent.Items {
 		if item.ID == sourceID {
@@ -147,23 +148,6 @@ func nextPlanItemStartUS(parent capoverlay.OverlayPlan, sourceID string, startUS
 		}
 	}
 	return next
-}
-
-// phraseEntranceFrames is the phrase entrance window: one third of the clip in
-// output frames, never zero. Deriving it from the final clip keeps the contract
-// "the text is settled for the last two thirds of its window" true whatever the
-// planner granted the phrase, instead of summing a per-call padding into an
-// entrance computed for a shorter clip.
-func phraseEntranceFrames(clipUS int64, fpsNum, fpsDen int) int {
-	if clipUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
-		return 0
-	}
-	denominator := 3 * 1_000_000 * int64(fpsDen)
-	frames := (clipUS*int64(fpsNum) + denominator - 1) / denominator
-	if frames < 1 {
-		frames = 1
-	}
-	return int(frames)
 }
 
 // plannedEnterFrames reads an enter_frames value the planner stamped, whatever
@@ -181,18 +165,18 @@ func plannedEnterFrames(params map[string]any) int {
 	}
 }
 
-func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.OverlayItem, index int) (capoverlay.OverlayPlan, *overlayItemPublicationMetadata, error) {
+func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.OverlayItem, index int) (capmodel.OverlayPlan, *overlayItemPublicationMetadata, error) {
 	startUS, durationUS := source.StartUS, source.DurationUS
 	if durationUS <= 0 {
 		startUS = source.StartMs * 1000
 		durationUS = (source.EndMs - source.StartMs) * 1000
 	}
 	if startUS < 0 || durationUS <= 0 {
-		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("overlay item %q has no positive certified duration", source.ID)
+		return capmodel.OverlayPlan{}, nil, fmt.Errorf("overlay item %q has no positive certified duration", source.ID)
 	}
 	targetUS := durationUS + overlayItemPaddingUS
 	maxDurationUS := maxOverlayItemDurationUS
-	if strings.EqualFold(strings.TrimSpace(source.TemplateID), "IMPORTANT_PHRASE") || source.Kind == "text_phrase" || source.Kind == string(capoverlay.KindImportantPhrase) {
+	if strings.EqualFold(strings.TrimSpace(source.TemplateID), "IMPORTANT_PHRASE") || source.Kind == "text_phrase" || source.Kind == string(capmodel.KindImportantPhrase) {
 		// A short phrase holds a settled tail after the spoken window and never
 		// renders shorter than the minimum, so the entrance is visible instead of
 		// being cut the moment the voice stops. The entrance is then one third of
@@ -224,7 +208,10 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		// Preserve the planner's entrance when the final clip is shorter, while
 		// allowing the clip's one-third window to slow an entrance if the phrase
 		// can safely hold a longer settled tail.
-		entrance := phraseEntranceFrames(targetUS, fpsNum, fpsDen)
+		entrance := int(capoverlay.PhraseEntranceFrames(targetUS, fpsNum, fpsDen))
+		if entrance < 1 {
+			entrance = 1
+		}
 		if planned := plannedEnterFrames(source.MotionParams); planned > entrance {
 			entrance = planned
 		}
@@ -244,7 +231,7 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		targetUS = durationUS
 		maxDurationUS = maxCompositeOverlayDurationUS
 	}
-	if capoverlay.IsChainItemKind(source.Kind) {
+	if capmodel.IsChainItemKind(source.Kind) {
 		// A chain item carries its segments at absolute plan times, but the
 		// child plan is rebased to start at zero: rebase a COPY of the
 		// segments (the parent plan's Params map must not be mutated) so
@@ -252,9 +239,9 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		// child-local times. Keep the full span: truncating a chain to the
 		// 5s single-item cap would push later segments outside the child
 		// window and fail validation downstream.
-		rebased, ok := capoverlay.RebaseChainSegments(source.Params, startUS)
+		rebased, ok := capmodel.RebaseChainSegments(source.Params, startUS)
 		if !ok {
-			return capoverlay.OverlayPlan{}, nil, fmt.Errorf("overlay item %q chain segments are not decodable", source.ID)
+			return capmodel.OverlayPlan{}, nil, fmt.Errorf("overlay item %q chain segments are not decodable", source.ID)
 		}
 		params := make(map[string]any, len(source.Params))
 		for k, v := range source.Params {
@@ -269,21 +256,21 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		targetUS = maxDurationUS
 	}
 	if targetUS <= 0 {
-		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("overlay item %q has invalid target duration", source.ID)
+		return capmodel.OverlayPlan{}, nil, fmt.Errorf("overlay item %q has invalid target duration", source.ID)
 	}
 	child := parent
 	child.PlanID = overlayItemChildPlanID(parent.PlanID, index, source.ID)
 	child.VideoID = child.PlanID
 	child.DurationMS = (targetUS + 999) / 1000
 	child.Fingerprint = ""
-	child.Items = []capoverlay.OverlayItem{source}
+	child.Items = []capmodel.OverlayItem{source}
 	child.Items[0].StartUS = 0
 	child.Items[0].DurationUS = targetUS
 	child.Items[0].StartMs = 0
 	child.Items[0].EndMs = child.DurationMS
 	child.Items[0].RenderKey = ""
 	if err := child.Validate(); err != nil {
-		return capoverlay.OverlayPlan{}, nil, fmt.Errorf("build child plan for %q: %w", source.ID, err)
+		return capmodel.OverlayPlan{}, nil, fmt.Errorf("build child plan for %q: %w", source.ID, err)
 	}
 	metadata := &overlayItemPublicationMetadata{
 		JobID:       textutil.FirstNonEmpty(parent.DriveJobID, parent.PlanID),
@@ -292,10 +279,10 @@ func separateOverlayItemPlan(parent capoverlay.OverlayPlan, source capoverlay.Ov
 		Text: source.Text, SourceStartUS: startUS, SourceEndUS: startUS + durationUS,
 		TargetDurationUS: targetUS,
 	}
-	if capoverlay.IsChainItemKind(source.Kind) {
-		if segments, ok := capoverlay.DecodeChainSegments(source.Params); ok {
+	if capmodel.IsChainItemKind(source.Kind) {
+		if segments, ok := capmodel.DecodeChainSegments(source.Params); ok {
 			for _, segment := range segments {
-				if segment.Kind != string(capoverlay.KindEntityImage) && segment.Kind != string(capoverlay.KindEntityCard) {
+				if segment.Kind != string(capmodel.KindEntityImage) && segment.Kind != string(capmodel.KindEntityCard) {
 					continue
 				}
 				metadata.ItemKind = segment.Kind
