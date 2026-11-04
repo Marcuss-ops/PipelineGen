@@ -10,8 +10,6 @@ repositories as `docs/WORKER-CALENDAR-EVENTS.md`.
 - The Job Master worker reports progress, lease heartbeats, terminal status,
   and structured errors automatically.
 - Added owner-scoped M2M job cancellation and Calendar cancellation signals.
-- The video.create delivery stage re-reads the Calendar schedule before upload
-  and observes later reschedules while waiting.
 - Calendar event creation now uses a native PostgreSQL `ON CONFLICT` upsert.
 
 ## v1.0.1

@@ -328,13 +328,13 @@ Canonical owners (godlike/06 SSOT — update these together):
 ```bash
 # Single deferred job (any type the catalog accepts).
 curl -sS -X POST "$API/api/jobs" -H 'Content-Type: application/json' \
-  -d '{"type":"video.create","payload":{"...":"..."},"scheduled_at":"2026-10-02T16:00:00Z","idempotency_key":"day1-item1"}'
+  -d '{"type":"script.generate","payload":{"...":"..."},"scheduled_at":"2026-10-02T16:00:00Z","idempotency_key":"day1-item1"}'
 
 # Batch (up to 500 items = 10 requests for a 5000-job day). Fail-soft per item:
 # the response is 202 with the per-item outcome, so one malformed entry never
 # rejects the other 499.
 curl -sS -X POST "$API/api/jobs/schedule" -H 'Content-Type: application/json' \
-  -d '{"jobs":[{"type":"video.create","scheduled_at":"2026-10-02T16:00:00Z","idempotency_key":"day1-item1"}]}'
+  -d '{"jobs":[{"type":"script.generate","scheduled_at":"2026-10-02T16:00:00Z","idempotency_key":"day1-item1"}]}'
 ```
 
 Idempotency is unchanged from the immediate path: replaying the same
@@ -380,39 +380,9 @@ curl -sS "$API/api/jobs/$JOB_ID/stages"
 
 #### Producers: the table is written by the work, not by hand
 
-`video.create` is a PRODUCER of this table. Its coordinator emits one row per
-step transition (`running` at the step's band-start, then `completed` /
-`skipped` / `failed` with the failure reason), so a render populates its own
-stage rows and PATCH is only needed for out-of-band reporting.
-
-Canonical owner: `internal/capabilities/videocreate/stage_status.go`
-(`stepCanonicalStage` = the ONE step → canonical-stage mapping). The mapping is
-MANY-TO-ONE because the kernel vocabulary is coarser than the workflow ladder;
-each canonical stage row always shows the LATEST producing step:
-
-| video.create step | canonical stage | why |
-| --- | --- | --- |
-| `01_script` | `script` | the script + scene plan IS the script stage |
-| `02_media_search` | `stock` | discovery searches the stock/asset plane |
-| `03_media_acquire` | `clips` | download + cut + normalize + register |
-| `04_voiceover` | `voiceover` | the voiceover stage proper |
-| `05_audio_master` | `voiceover` | the audio master belongs to that stage |
-| `06_overlay_plan` | `overlay` | the overlay layer plan |
-| `07_render` | `render` | localized render fan-out |
-| `08_assemble` | `render` | assembly completes the rendered artifact |
-| `09_audio_mux` | `voiceover` | the final mux concludes the audio |
-| `10_verify` | `persistence` | ffprobe + SHA-256 = the artifact's durable proof |
-| `11_publish` | `upload` | Drive publication + media-registry registration |
-
-`translation` is absent on purpose: no video.create step translates (that is a
-child-job projection owned by the script capability), and a row for work nobody
-performs would be fake availability.
-
-The emission is **fail-soft** by contract: a locked database or a cancelled
-context logs a warning and never fails the render. A resumed job re-emits the
-rows of the steps that were already durable (without touching the progress
-bar), so a restarted render still shows a complete table instead of only the
-stages that ran after the restart.
+A staged workflow emits its own stage rows as it transitions; PATCH is only
+needed for out-of-band reporting. The canonical vocabulary remains owned by
+the kernel stage contract, and each executing capability owns its mapping.
 
 ### Failure modes
 

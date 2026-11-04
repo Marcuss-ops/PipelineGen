@@ -58,8 +58,8 @@ it does not cancel a remote execution-plane job already submitted by a worker; c
 ```
 
 Kinds: `script.generate`, `media.stock`, `youtube_clip.extract`,
-`voiceover.generate`, `image.generate.google`, `clip.render`, `video.assemble`,
-and `video.create`. Statuses: `QUEUED`, `RUNNING`, `SUCCEEDED`, `COMPLETED`,
+`voiceover.generate`, `image.generate.google`, `clip.render`, and
+`video.assemble`. Statuses: `QUEUED`, `RUNNING`, `SUCCEEDED`, `COMPLETED`,
 `FAILED`, and `CANCELLED`. Progress is optional and ranges from 0 to 100.
 Updates are scoped to the API key's workspace and a worker-created event key;
 per-kind snapshots are retained in the Calendar card so concurrent stages do

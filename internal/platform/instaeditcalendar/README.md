@@ -22,7 +22,7 @@ Report status for each pipeline kind with a JSON file:
 go run ./cmd/instaedit-scheduling progress worker77-video-001 progress.json
 ```
 
-Supported kinds: `script.generate`, `media.stock`, `youtube_clip.extract`, `voiceover.generate`, `image.generate.google`, `clip.render`, `video.assemble`, `video.create`. Supported statuses: `QUEUED`, `RUNNING`, `SUCCEEDED`, `COMPLETED`, `FAILED`, `CANCELLED`.
+Supported kinds: `script.generate`, `media.stock`, `youtube_clip.extract`, `voiceover.generate`, `image.generate.google`, `clip.render`, `video.assemble`. Supported statuses: `QUEUED`, `RUNNING`, `SUCCEEDED`, `COMPLETED`, `FAILED`, `CANCELLED`.
 
 Creating these events creates Calendar draft cards and does not itself dispatch or execute a pipeline job. Retain each `event_key` in the worker's local job record and PATCH it as each job kind advances.
 
@@ -45,9 +45,7 @@ An event may include the remote `job_id`; it is stored with the Calendar metadat
 local outbox and returns without network I/O. `Reporter.Run(ctx)` retries the
 oldest records in the background; failed records survive a process restart.
 The Job Master worker pool wires this reporter when the protected InstaEdit
-`.env` is present. Lease-renewal ticks produce heartbeat reports, terminal
-outcomes include structured errors, and the video.create delivery stage reads
-the current Calendar schedule immediately before upload, polling again while a
-future date is pending. `GET /api/v1/agent/calendar/events/by-job/{jobID}`
+`.env` is present. Lease-renewal ticks produce heartbeat reports, and terminal outcomes include
+structured errors. `GET /api/v1/agent/calendar/events/by-job/{jobID}`
 returns the latest linked event. `POST .../{eventKey}/cancel` signals the Job
 Master; its cancellation travels through the existing lease-renewal context.

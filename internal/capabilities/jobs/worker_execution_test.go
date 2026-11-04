@@ -75,7 +75,7 @@ func TestWorkerProgressCalendarReportsIndependentlyAndIncludesSnapshot(t *testin
 	}()
 
 	phase := "RENDERING: render (RenderingGen → Chronon): completed"
-	worker.reportJobProgress(context.Background(), &job.Job{ID: "job-progress", Type: job.TypeVideoCreate}, 87, phase)
+	worker.reportJobProgress(context.Background(), &job.Job{ID: "job-progress", Type: job.TypeScriptGenerate}, 87, phase)
 
 	var update instaeditcalendar.Progress
 	select {
@@ -83,8 +83,8 @@ func TestWorkerProgressCalendarReportsIndependentlyAndIncludesSnapshot(t *testin
 	case <-time.After(2 * time.Second):
 		t.Fatal("Calendar did not receive progress while the broker progress write failed")
 	}
-	if update.Kind != job.TypeVideoCreate || update.Status != "RUNNING" {
-		t.Fatalf("Calendar kind/status = %q/%q, want %q/RUNNING", update.Kind, update.Status, job.TypeVideoCreate)
+	if update.Kind != job.TypeScriptGenerate || update.Status != "RUNNING" {
+		t.Fatalf("Calendar kind/status = %q/%q, want %q/RUNNING", update.Kind, update.Status, job.TypeScriptGenerate)
 	}
 	if update.Phase != phase || update.Progress == nil || *update.Progress != 87 {
 		t.Fatalf("Calendar phase/progress = %q/%v, want %q/87", update.Phase, update.Progress, phase)

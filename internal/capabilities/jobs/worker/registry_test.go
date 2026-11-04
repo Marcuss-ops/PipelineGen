@@ -58,12 +58,12 @@ func TestStageStatusIsDerivedFromTheWiredBroker(t *testing.T) {
 		t.Fatal("a stage-aware broker must expose its sink")
 	}
 
-	tools := translateToolsToExecutionTools(context.Background(), &Tools{broker: aware}, appjobs.TypeVideoCreate)
+	tools := translateToolsToExecutionTools(context.Background(), &Tools{broker: aware}, appjobs.TypeScriptGenerate)
 	if tools == nil || tools.StageStatus == nil {
 		t.Fatal("JobExecutionTools must expose the stage sink to handlers")
 	}
 
-	notAware := translateToolsToExecutionTools(context.Background(), &Tools{broker: plain}, appjobs.TypeVideoCreate)
+	notAware := translateToolsToExecutionTools(context.Background(), &Tools{broker: plain}, appjobs.TypeScriptGenerate)
 	if notAware == nil || notAware.StageStatus != nil {
 		t.Fatal("handlers on a broker without the port must get a nil sink, not a broken one")
 	}

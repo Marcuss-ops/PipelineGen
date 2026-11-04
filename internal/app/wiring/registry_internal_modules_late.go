@@ -11,20 +11,11 @@ package wiring
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"time"
 
-	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	delivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/videocreate"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
-	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	executionsteps "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/executionsteps"
 
 	"go.uber.org/zap"
 )
@@ -78,84 +69,4 @@ func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, r
 		})
 	}
 	return prepared, nil
-}
-
-// registerVideoCreate wires the durable video.create workflow parent.
-//
-// There is deliberately NO dedicated HTTP endpoint (§2): the surface is
-// POST /api/v1/jobs with type=video.create, filtered by the same M2M
-// AutomationCatalog gate as every other job. Every dependency binds to
-// a canonical implementation the composition root already owns (job
-// registry, search aggregator, rustexec media plane, execution/steps
-// resumable store, canonical assembly children, delivery publisher).
-// Registration is fail-closed: a missing dependency is a startup error,
-// never a half-wired handler (godlike/05).
-func registerVideoCreate(root *ComposeRoot, log *zap.Logger, rustMusclesPath, ffmpegPath string, searchAgg *search.Aggregator) error {
-	if root == nil || root.Jobs == nil || root.Jobs.Facade == nil {
-		return fmt.Errorf("registerVideoCreate: jobs facade is not wired")
-	}
-	if root.DB == nil || root.DB.DB == nil {
-		return fmt.Errorf("registerVideoCreate: sqlite db is not wired")
-	}
-	if root.Drive == nil || root.Drive.Publisher == nil {
-		return fmt.Errorf("registerVideoCreate: delivery publisher is not wired")
-	}
-	if searchAgg == nil {
-		return fmt.Errorf("registerVideoCreate: media search aggregator is not wired")
-	}
-	// The canonical media plane (rustexec) is the ONLY owner of media
-	// binaries: the workflow reaches render_audio_plan / mux_audio_copy /
-	// ffprobe through it and never spawns anything itself.
-	executor := rustexec.NewConfiguredVideoProcessor(rustMusclesPath, ffmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log)
-	audioMaster, prober, assembler := videocreate.NewMediaPlane(executor)
-	children := videocreate.NewChildJobs(root.Jobs.Facade)
-	workspace := os.Getenv("VIDEO_CREATE_WORKSPACE_ROOT")
-	if workspace == "" {
-		workspace = filepath.Join("data", "video-create", "workspaces")
-	}
-	if root.Repos == nil || root.Repos.TextTrackRepo == nil {
-		return fmt.Errorf("registerVideoCreate: text track repository is not wired")
-	}
-	var scheduleGate instaeditcalendar.ScheduleGate
-	if calendarURL, calendarKey := instaeditcalendar.LoadConfig(); calendarURL != "" && calendarKey != "" {
-		calendarClient, clientErr := instaeditcalendar.NewClient(calendarURL, calendarKey)
-		if clientErr != nil {
-			return fmt.Errorf("registerVideoCreate: build InstaEdit calendar client: %w", clientErr)
-		}
-		scheduleGate = instaeditcalendar.ScheduleGate{Client: calendarClient, PollInterval: 15 * time.Second}
-	}
-	publisher := videocreate.ArtifactPublisher(videocreate.NewDeliveryPublisher(root.Drive.Publisher, delivery.DestinationRenderedClip))
-	if scheduleGate.Client != nil {
-		publisher = calendarScheduledPublisher{next: publisher, gate: scheduleGate}
-	}
-	handler, err := videocreate.NewHandler(videocreate.Deps{
-		Steps:     executionsteps.NewSQLiteStore(root.DB.DB),
-		Children:  children,
-		Search:    videocreate.NewMediaSearch(searchAgg),
-		Audio:     audioMaster,
-		Probe:     prober,
-		Assembler: assembler,
-		Publish:   publisher,
-		Texts:     videocreate.NewTranscriptReadiness(root.Repos.TextTrackRepo),
-		// NOTE: the durable per-stage sink is intentionally NOT passed here.
-		// The workflow receives it through the execution tools
-		// (kernel JobExecutionTools.StageStatus, derived by the worker from
-		// the wired jobs broker), so the stage table needs no extra wiring
-		// and Deps keeps only the mandatory ports of the work.
-		Workspace: workspace,
-		Log:       log,
-	})
-	if err != nil {
-		return fmt.Errorf("registerVideoCreate: %w", err)
-	}
-	if err := root.Jobs.Facade.RegisterHandler(capjobs.TypeVideoCreate, capjobs.HandlerFunc(handler)); err != nil {
-		return fmt.Errorf("registerVideoCreate: bind %q to dispatcher: %w", capjobs.TypeVideoCreate, err)
-	}
-	// §21 honesty about the ASSEMBLY lane: 08_assemble runs on the
-	// VeloxEditing media plane (assemble_copy / video.assemble.copy.v1,
-	// rustexec → pipelinegen-muscles) — packet-copy over copy-certified
-	// segments, no child job types and no re-encode fallback. The final
-	// mux is the same plane's mux_audio_copy.
-	log.Info("created video.create workflow handler (durable parent: script/media/voiceover/audio/render/assemble@VeloxEditing/mux/verify/publish)")
-	return nil
 }

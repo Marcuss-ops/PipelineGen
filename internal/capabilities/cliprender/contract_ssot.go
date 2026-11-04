@@ -105,9 +105,9 @@ func (c *ResolvedContract) UnmarshalJSON(data []byte) error {
 // values come from the canonical contract, so the wire keys cannot describe a
 // different stream than the one the renderer was held to.
 //
-// The flat spelling is a published wire shape (videocreate decodes it into its
-// own facts and the assembler gate compares it segment to segment); keeping the
-// projection in one function is what stops it from being restated per call site.
+// The flat spelling is a published wire shape (the final-job handoff carries it
+// into the remote assembler gate, which compares it segment to segment); keeping
+// the projection in one function is what stops it from being restated per site.
 func ContractWireBlock(c *ResolvedContract) map[string]any {
 	if c == nil {
 		return map[string]any{}

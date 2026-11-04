@@ -194,11 +194,6 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	if err := registerClipRender(registry, log, cfg, root, idemHandler); err != nil {
 		return registryCrossStepState{}, err
 	}
-	// video.create durable workflow parent (POST /api/v1/jobs, no dedicated endpoint).
-	if err := registerVideoCreate(root, log, cfg.External.RustMusclesPath, cfg.External.FfmpegPath, searchAgg); err != nil {
-		return registryCrossStepState{}, err
-	}
-
 	mediaIngestCommitter, mediaIngestErr2 := newCanonicalAssetCommitter(root.MediaPostgres, log)
 	if mediaIngestErr2 != nil {
 		return registryCrossStepState{}, fmt.Errorf("wire registry: media ingest committer: %w", mediaIngestErr2)
