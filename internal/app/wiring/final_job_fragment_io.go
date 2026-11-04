@@ -472,3 +472,33 @@ func (p *finalJobSegmentPreparer) downloadReusedFragment(ctx context.Context, so
 	}
 	return nil
 }
+
+// finalJobCopyFailureReason is the operator-facing reason a window reached
+// the encoder. The specific eligibility/copy error is preferred; the generic
+// text covers a copy that "succeeded" but could not be certified.
+func finalJobCopyFailureReason(err error) string {
+	if err != nil && strings.TrimSpace(err.Error()) != "" {
+		return strings.TrimSpace(err.Error())
+	}
+	return "packet copy produced no certified output"
+}
+
+// finalJobSourceShortfall is how many tail frames a window asks for that the
+// source cannot supply. It is zero for a window fully inside the source, which
+// is the normal case; only a boundary window is padded, and only by its deficit.
+// Without a census the source length is unknown, so the historical full-length
+// tail is kept rather than cutting the plan's frame cap.
+func finalJobSourceShortfall(census finalJobSourceCensus, ok bool, request scriptgen.FinalJobVideoSegmentRequest) int64 {
+	if !ok {
+		return request.FrameCount
+	}
+	startFrame := (request.SourceInUS*finalJobSegmentFPS + 500_000) / 1_000_000
+	available := census.frames - startFrame
+	if available < 0 {
+		available = 0
+	}
+	if available >= request.FrameCount {
+		return 0
+	}
+	return request.FrameCount - available
+}

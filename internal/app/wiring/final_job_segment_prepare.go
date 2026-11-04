@@ -462,16 +462,6 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		}), nil
 }
 
-// finalJobCopyFailureReason is the operator-facing reason a window reached
-// the encoder. The specific eligibility/copy error is preferred; the generic
-// text covers a copy that "succeeded" but could not be certified.
-func finalJobCopyFailureReason(err error) string {
-	if err != nil && strings.TrimSpace(err.Error()) != "" {
-		return strings.TrimSpace(err.Error())
-	}
-	return "packet copy produced no certified output"
-}
-
 // finishFragment is the ONE exit of every fragment-producing lane: it stamps the
 // plan reference, names the producing role, and attributes the work to the
 // handoff that asked for it. Keeping reuse, cache, derived placement and fresh
@@ -491,26 +481,6 @@ func (p *finalJobSegmentPreparer) finishFragment(
 	p.record(ctx, update)
 	p.recordWindow(ctx, window)
 	return prepared
-}
-
-// finalJobSourceShortfall is how many tail frames a window asks for that the
-// source cannot supply. It is zero for a window fully inside the source, which
-// is the normal case; only a boundary window is padded, and only by its deficit.
-// Without a census the source length is unknown, so the historical full-length
-// tail is kept rather than cutting the plan's frame cap.
-func finalJobSourceShortfall(census finalJobSourceCensus, ok bool, request scriptgen.FinalJobVideoSegmentRequest) int64 {
-	if !ok {
-		return request.FrameCount
-	}
-	startFrame := (request.SourceInUS*finalJobSegmentFPS + 500_000) / 1_000_000
-	available := census.frames - startFrame
-	if available < 0 {
-		available = 0
-	}
-	if available >= request.FrameCount {
-		return 0
-	}
-	return request.FrameCount - available
 }
 
 func stringValue(value any) string {
