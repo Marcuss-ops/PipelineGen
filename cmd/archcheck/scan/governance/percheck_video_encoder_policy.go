@@ -61,7 +61,13 @@ var videoEncoderPolicyAllowPrefixes = []string{
 	// the production package was removed after migration to rustexec.
 	"internal/infrastructure/media/ffmpeg/encoder_resolver.go",
 	"internal/platform/config/video.go",
+	// Declarative policy owners: the stock pipeline and map profiles define
+	// default codec values, not a call-site encoder selection.
 	"internal/capabilities/assets/providers/stock/stockpipeline/service_types.go",
+	"internal/capabilities/overlays/map_encode_profile.go",
+	// The fragment pipeline resolves p.policy.Codec for the actual argv and
+	// pins libx264 only as the certification constraint.
+	"internal/app/wiring/final_job_fragment_pipeline.go",
 	"cmd/archcheck/scan",
 }
 
