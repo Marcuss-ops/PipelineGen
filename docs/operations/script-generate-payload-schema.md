@@ -227,8 +227,7 @@ may lower or raise that default, but the runtime clamps the effective ceiling to
 **15 phrases per run**. Candidates are deduplicated and ranked before admission,
 so the highest-ranked 15 survive an oversized request; the effective limit is
 reported in `phrase_overlay_budget.requested_phrase_overlays`. The image ceiling
-is unaffected. `video.create` exposes the same key at the top level and forwards
-it to its script-generate child.
+is unaffected.
 
 `max_overlays_per_scene` caps selected overlay items in each scene before
 composition. For example, `2` retains at most two items per scene. Nearby

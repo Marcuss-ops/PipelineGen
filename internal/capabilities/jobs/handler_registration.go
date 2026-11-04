@@ -439,11 +439,9 @@ func NewAutomationCatalog(reg *Registry, liveTypes []string) *AutomationCatalog 
 	}
 
 	// These are the stable external capabilities currently implemented by
-	// PipelineGen. video.assemble stays absent: assembly is not a job type
-	// (it runs on the VeloxEditing media plane inside video.create), and
-	// advertising a type without a durable handler would create fake
-	// availability. video.create is present since Sept 2026: its durable
-	// handler (internal/capabilities/videocreate) is registered and live.
+	// PipelineGen. video.assemble and video.create stay absent: RenderingGen
+	// assembles the workflow output, and advertising a type without a durable
+	// local handler would create fake availability.
 	safe := map[string]AutomationCapability{
 		TypeScriptGenerate: {
 			Type: TypeScriptGenerate, Version: "v1", Description: "Generate a script and editorial plan",
@@ -468,12 +466,7 @@ func NewAutomationCatalog(reg *Registry, liveTypes []string) *AutomationCatalog 
 		TypeClipRender: {
 			Type: TypeClipRender, Version: "v1", Description: "Render a localized clip",
 			InputSchema: "clip.render.v1", ResultSchema: "clip.render.result.v1", ArtifactKinds: []string{"video"}, EstimatedResourceClass: "render",
-		},
-		TypeVideoCreate: {
-			Type: TypeVideoCreate, Version: "v1", Description: "End-to-end durable video workflow (script, media, voiceover, audio, render, assemble, mux, verify, publish)",
-			InputSchema: "video.create.v1", ResultSchema: "video.create.result.v1", ArtifactKinds: []string{"video", "script", "audio"}, EstimatedResourceClass: "render",
-		},
-	}
+		}}
 	for typ, item := range safe {
 		if _, registered := live[typ]; !registered {
 			continue

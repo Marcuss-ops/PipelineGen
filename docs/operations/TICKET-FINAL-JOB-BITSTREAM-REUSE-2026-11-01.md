@@ -225,8 +225,7 @@ Fonte: `ops/jobs/garlasco_editorial_e2e_20261030/job-full-r49.json`,
 ## Diagnosi
 
 Il worker remoto compone 272,8 s di film in **13,9 s** perché il suo assembler è
-una concatenazione di pacchetti (`video.assemble.copy.v1`,
-`internal/capabilities/videocreate/ports.go:169,207`). Perché quella copia sia
+una concatenazione di pacchetti (`video.assemble.copy.v1`). Perché quella copia sia
 possibile, **noi** ri-encodiamo ogni finestra in locale: 85 processi `ffmpeg` +
 85 `ffprobe`, 3,2 s per frammento, per un film che il nostro stesso renderer ha
 già prodotto in formato corretto.

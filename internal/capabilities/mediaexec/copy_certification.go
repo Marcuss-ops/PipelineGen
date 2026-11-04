@@ -15,8 +15,8 @@ import (
 // first-frame-keyframe and stream-identical.
 //
 // This type lives in the media capability (not the platform executor) so
-// every capability that dispatches copy assembly — videocreate's Assembler
-// port included — speaks the certification without importing platform code.
+// every capability that dispatches copy assembly speaks the certification
+// without importing platform code.
 type CopyCertification struct {
 	CopyEligible         bool   `json:"copy_eligible"`
 	ProfileID            string `json:"profile_id,omitempty"`
