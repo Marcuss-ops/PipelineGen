@@ -7240,8 +7240,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7263,8 +7263,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7414,8 +7414,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7461,8 +7461,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "short_phrase"
@@ -7518,8 +7518,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7565,8 +7565,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7588,8 +7588,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7646,8 +7646,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7693,8 +7693,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7750,8 +7750,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7830,8 +7830,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
@@ -7932,8 +7932,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "short_phrase"
@@ -7954,8 +7954,8 @@
       "lanes": [
         "short"
       ],
-      "status": "active",
-      "renderer_supported": true,
+      "status": "retired",
+      "renderer_supported": false,
       "targets": [
         "bullet",
         "caption",
