@@ -5,11 +5,23 @@ import (
 )
 
 // The exact-cardinality word groups are the contract payload policies and
-// seeded group draws rely on: one to five words, no gaps, no overlaps.
+// seeded group draws rely on: one to five words, no overlaps. A group may be
+// empty only when the registry has no active renderer-backed recipe for that
+// word count, as is currently the case for two-word recipes.
 func TestShortPhraseWordGroupsCoverOneToFive(t *testing.T) {
+	available := make(map[int]bool, 5)
+	for _, entry := range canonicalAnimationRegistry.Entries() {
+		if wordCount, ok := AnimationWordCount(entry.ID); ok {
+			available[wordCount] = true
+		}
+	}
 	for wordCount := 1; wordCount <= 5; wordCount++ {
-		if len(ShortPhraseMotionsForWordCount(wordCount)) == 0 {
-			t.Errorf("word group %d is empty", wordCount)
+		ids := ShortPhraseMotionsForWordCount(wordCount)
+		if available[wordCount] && len(ids) == 0 {
+			t.Errorf("word group %d is empty but the registry has an active recipe", wordCount)
+		}
+		if !available[wordCount] && len(ids) != 0 {
+			t.Errorf("word group %d routes recipes but the registry has no active recipe", wordCount)
 		}
 	}
 	if len(ShortPhraseMotionsForWordCount(0)) != 0 || len(ShortPhraseMotionsForWordCount(6)) != 0 {
@@ -54,7 +66,7 @@ func TestShortPhraseWordGroupsCoverOneToFive(t *testing.T) {
 	if IsShortPhraseRecipe("typewriter_modern_01_monospace_block_cursor") {
 		t.Error("typewriter ids are general-catalog members, not exact recipes")
 	}
-	if !IsShortPhraseRecipe("short_phrase_character_tracking_reveal") {
+	if !IsShortPhraseRecipe("short_phrase_shape_phrase_wipe") {
 		t.Error("a surviving short_phrase_ ID must mark an exact-cardinality recipe")
 	}
 	// Exact recipes must never leak into the general catalog the long and
