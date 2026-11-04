@@ -16,11 +16,10 @@ import (
 )
 
 type Client struct {
-	BaseURL      string
-	Token        string
-	HTTP         *http.Client
-	PollInterval time.Duration
-	PollTimeout  time.Duration
+	BaseURL, Token string
+	HTTP           *http.Client
+	PollInterval   time.Duration
+	PollTimeout    time.Duration
 	// QueueTimeout bounds only the NOT-STARTED portion of a BOUNDED attach.
 	// A job the Master has not started cannot finish, so waiting the whole
 	// render budget for it changes nothing: r9 sat PENDING for 46 minutes and

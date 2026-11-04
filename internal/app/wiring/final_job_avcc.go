@@ -10,12 +10,12 @@ package wiring
 // the hot path. Only the small metadata boxes are read; `mdat` is skipped.
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 type mp4Box struct {
@@ -201,6 +201,5 @@ func readAVCDecoderConfigurationSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sum := sha256.Sum256(payload)
-	return hex.EncodeToString(sum[:]), nil
+	return digest.SHA256Bytes(payload), nil
 }
