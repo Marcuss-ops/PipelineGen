@@ -32,7 +32,7 @@ func finalJobObjectStoreRef(ctx context.Context, preferredID, storageKey, sha st
 // signStoredFinalJobObject is called only after this operation verified the
 // object's availability and size. It avoids repeating the same HEAD on every
 // publication while retaining the check at the external-reference boundary.
-func signStoredFinalJobObject(preferredID, storageKey, sha string, sizeBytes int64) (map[string]any, error) {
+func signStoredFinalJobObject(_ string, storageKey, sha string, sizeBytes int64) (map[string]any, error) {
 	sha = strings.ToLower(strings.TrimSpace(sha))
 	storageKey = strings.ToLower(strings.TrimSpace(storageKey))
 	if len(sha) != 64 || storageKey != sha || sizeBytes <= 0 {
@@ -53,10 +53,12 @@ func signStoredFinalJobObject(preferredID, storageKey, sha string, sizeBytes int
 	mac := hmac.New(digest.NewSHA256, []byte(secret))
 	_, _ = mac.Write([]byte(message))
 	query := url.Values{"expires": {fmt.Sprintf("%d", expires)}, "sig": {hex.EncodeToString(mac.Sum(nil))}}
-	assetID := strings.TrimSpace(preferredID)
-	if assetID == "" || strings.ContainsAny(assetID, "\\/\x00\r\n") || assetID == "." || assetID == ".." {
-		assetID = "sha256-" + sha
-	}
+	// The content address is the only canonical identity for an objectstore
+	// asset. The Producer's preferred ID (for example a manual_* alias) is a
+	// display hint, not a key the Master bridge can resolve; using it here
+	// produced a 404 while the same bytes were available under the SHA.
+	assetID := sha
+
 	assetURL := base + objectPath + "?" + query.Encode()
 	return map[string]any{
 		"asset_id": assetID,

@@ -63,7 +63,7 @@ func TestFinalJobObjectPublicationChecksAvailabilityOnce(t *testing.T) {
 	}
 	present.Store(true)
 	ref, err := PublishFinalJobLocalObjectVerified(context.Background(), "fragment", path, sha, int64(len(body)))
-	if err != nil || ref["asset_id"] != "fragment" || heads.Load() != 1 {
+	if err != nil || ref["asset_id"] != sha || heads.Load() != 1 {
 		t.Fatalf("existing object: ref=%v err=%v HEADs=%d", ref, err, heads.Load())
 	}
 	present.Store(false)

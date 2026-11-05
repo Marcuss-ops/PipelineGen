@@ -179,12 +179,12 @@ func TestValidateFinalJobPlanBindingRulesRejectsOneByteSetOnTwoAssets(t *testing
 	sha := strings.Repeat("b", 64)
 	plan := finalJobCompiledPlan{
 		Assets: []finalJobPlanAsset{
-			{AssetID: "fragment-a", AssetKey: "sha256:" + sha, SHA256: sha, SizeBytes: 1024, Kind: "video", FrameCount: 48},
-			{AssetID: "fragment-b", AssetKey: "sha256:" + sha, SHA256: sha, SizeBytes: 1024, Kind: "video", FrameCount: 48},
+			{AssetID: "fragment-a", AssetKey: "sha256:" + sha, SHA256: sha, SizeBytes: 1024, Kind: "video", DurationUS: 2_000_000, FrameCount: 48},
+			{AssetID: "fragment-b", AssetKey: "sha256:" + sha, SHA256: sha, SizeBytes: 1024, Kind: "video", DurationUS: 2_000_000, FrameCount: 48},
 		},
 		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: []finalJobPlanSegment{
-			{SegmentID: "segment-0000", AssetID: "fragment-a", SHA256: sha, FrameCount: 48},
-			{SegmentID: "segment-0001", AssetID: "fragment-b", SHA256: sha, FrameCount: 48},
+			{SegmentID: "segment-0000", AssetID: "fragment-a", SHA256: sha, SourceDurationUS: 2_000_000, FrameCount: 48},
+			{SegmentID: "segment-0001", AssetID: "fragment-b", SHA256: sha, SourceDurationUS: 2_000_000, FrameCount: 48},
 		}}},
 	}
 	if err := validateFinalJobPlanBindingRules(plan); err == nil {
