@@ -93,17 +93,21 @@ type finalJobPlanAsset struct {
 }
 
 type finalJobBaseSegment struct {
-	startUS, endUS int64
-	sourceInUS     int64
-	assetID        string
-	sha256         string
+	startUS, endUS   int64
+	sourceInUS       int64
+	sourceDurationUS int64
+	assetID          string
+	sha256           string
 }
 
 type finalJobOverlayWindow struct {
 	startUS, endUS int64
 	artifactInUS   int64
-	assetID        string
-	sha256         string
+	// artifactDurationUS is the certified length of the rendered artifact.
+	// Every window must fit inside it: the Master validates the same range.
+	artifactDurationUS int64
+	assetID            string
+	sha256             string
 }
 
 func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, overlayManifest map[string]any, audio FinalAudioReference, audioRef map[string]any, timelineDurationUS int64) (string, string, error) {
@@ -174,20 +178,20 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		}
 		assetID := finalJobStringValue(asset["asset_id"])
 		sha := strings.ToLower(finalJobStringValue(asset["sha256"]))
-		durationUS := finalJobInt64(asset["duration_ms"]) * 1000
+		entries, ok := manifest["entries"].([]any)
+		if !ok {
+			return "", "", fmt.Errorf("final_job overlay manifest entries have an invalid shape")
+		}
+		durationUS := finalJobOverlayAssetDurationUS(asset, entries, fpsNum, fpsDen)
 		if durationUS <= 0 {
-			// The manifest asset is a timeline-wide render. Some renderer versions
-			// omit duration_ms while still certifying frame_count; the canonical
-			// final timeline is the exact span the asset occupies.
-			durationUS = timelineDurationUS
+			// Without duration_ms, a certified frame grid, or any entry timing
+			// the artifact has no projectable length. Treating it as
+			// timeline-wide is what let r36 emit windows past a 15 s render.
+			return "", "", fmt.Errorf("final_job overlay manifest asset %q has no certifiable duration", assetID)
 		}
 		frameCount := finalJobInt64(asset["frame_count"])
 		if err := assets.addRaw(asset, "video", durationUS, delivery.Width, delivery.Height, frameCount); err != nil {
 			return "", "", fmt.Errorf("final_job overlay timeline asset: %w", err)
-		}
-		entries, ok := manifest["entries"].([]any)
-		if !ok {
-			return "", "", fmt.Errorf("final_job overlay manifest entries have an invalid shape")
 		}
 		for i, raw := range entries {
 			entry, ok := raw.(map[string]any)
@@ -212,7 +216,22 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 				artifactOutUS -= endUS - timelineDurationUS
 				endUS = timelineDurationUS
 			}
-			windows = append(windows, finalJobOverlayWindow{startUS: startUS, endUS: endUS, artifactInUS: artifactInUS, assetID: assetID, sha256: sha})
+			// The window must exist INSIDE the artifact. The Master validates
+			// source_in_us + source_duration_us against the certified asset
+			// duration, so a window that ends a few milliseconds past the render
+			// (r36: 4-20 ms) rejects the whole plan. Trim the tail instead of
+			// asking the worker for frames the file does not contain.
+			if clipUS := artifactInUS + (endUS - startUS) - durationUS; clipUS > 0 {
+				if endUS-startUS <= clipUS {
+					continue
+				}
+				artifactOutUS -= clipUS
+				endUS -= clipUS
+			}
+			if endUS <= startUS {
+				continue
+			}
+			windows = append(windows, finalJobOverlayWindow{startUS: startUS, endUS: endUS, artifactInUS: artifactInUS, artifactDurationUS: durationUS, assetID: assetID, sha256: sha})
 		}
 	}
 	for i, raw := range overlayRows {
@@ -238,10 +257,18 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		if durationUS <= 0 {
 			durationUS = endUS - startUS
 		}
+		// Same rule as the manifest path: a placement may never ask for more
+		// source than the rendered artifact certifies.
+		if endUS-startUS > durationUS {
+			endUS = startUS + durationUS
+		}
+		if endUS <= startUS {
+			continue
+		}
 		if err := assets.addRaw(row, "video", durationUS, delivery.Width, delivery.Height, finalJobInt64(row["frame_count"])); err != nil {
 			return "", "", fmt.Errorf("final_job dedicated overlay row %d: %w", i, err)
 		}
-		windows = append(windows, finalJobOverlayWindow{startUS: startUS, endUS: endUS, artifactInUS: 0, assetID: assetID, sha256: sha})
+		windows = append(windows, finalJobOverlayWindow{startUS: startUS, endUS: endUS, artifactInUS: 0, artifactDurationUS: durationUS, assetID: assetID, sha256: sha})
 	}
 	windows, err = finalJobMergeOverlayWindows(windows)
 	if err != nil {
@@ -292,6 +319,9 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: segments}},
 		Assets:      assets.sorted(),
 	}
+	if err := validateFinalJobPlanBindingRules(plan); err != nil {
+		return "", "", fmt.Errorf("final_job V2 compiled-plan asset bindings: %w", err)
+	}
 	canonical, err := json.Marshal(plan)
 	if err != nil {
 		return "", "", fmt.Errorf("marshal final_job canonical V2 render plan: %w", err)
@@ -321,7 +351,7 @@ func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAsset
 		sourceInUS := finalJobInt64(asset["start_ms"]) * 1000
 		assetID := finalJobStringValue(asset["asset_id"])
 		sha := strings.ToLower(finalJobStringValue(asset["sha256"]))
-		base = append(base, finalJobBaseSegment{startUS: cursorUS, endUS: cursorUS + durationUS, sourceInUS: sourceInUS, assetID: assetID, sha256: sha})
+		base = append(base, finalJobBaseSegment{startUS: cursorUS, endUS: cursorUS + durationUS, sourceInUS: sourceInUS, sourceDurationUS: assetDurationUS, assetID: assetID, sha256: sha})
 		cursorUS += durationUS
 	}
 	return base, nil
@@ -386,11 +416,27 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 			if endFrame <= startFrame {
 				continue
 			}
+			sourceInUS := source.sourceInUS + (inUS - source.startUS)
+			sourceDurationUS := outUS - inUS
+			// Timeline boundaries are frame-quantized; source duration is not.
+			// When the certified audio stretches the last scene a few
+			// milliseconds past the stock asset, trim the window to the bytes
+			// that exist (the worker holds the final frame) instead of declaring
+			// a range the Master rejects. Otherwise shift the same-length window
+			// backward inside the immutable asset.
+			if source.sourceDurationUS > 0 {
+				if sourceDurationUS > source.sourceDurationUS {
+					sourceDurationUS = source.sourceDurationUS
+				}
+				if maxSourceInUS := source.sourceDurationUS - sourceDurationUS; sourceInUS > maxSourceInUS {
+					sourceInUS = maxSourceInUS
+				}
+			}
 			segments = append(segments, finalJobPlanSegment{
 				SegmentID: fmt.Sprintf("segment-%04d", len(segments)), AssetID: source.assetID, SHA256: source.sha256,
 				TimelineStartFrame: startFrame,
 				FrameCount:         endFrame - startFrame,
-				SourceInUS:         source.sourceInUS + (inUS - source.startUS), SourceDurationUS: outUS - inUS,
+				SourceInUS:         sourceInUS, SourceDurationUS: sourceDurationUS,
 			})
 		}
 		return nil
@@ -405,10 +451,22 @@ func finalJobComposePlanSegments(base []finalJobBaseSegment, overlays []finalJob
 		startFrame := finalJobFrameAtUS(overlay.startUS, fpsNum, fpsDen)
 		endFrame := finalJobFrameAtUS(overlay.endUS, fpsNum, fpsDen)
 		if endFrame > startFrame {
+			sourceInUS := overlay.artifactInUS
+			sourceDurationUS := overlay.endUS - overlay.startUS
+			if overlay.artifactDurationUS > 0 {
+				if sourceDurationUS > overlay.artifactDurationUS {
+					return nil, fmt.Errorf("final_job overlay window %q (%dus) exceeds artifact duration %dus", overlay.assetID, sourceDurationUS, overlay.artifactDurationUS)
+				}
+				// Defensive shift, same as the base path: never emit a source
+				// range the Master must reject, whichever caller built the window.
+				if maxSourceInUS := overlay.artifactDurationUS - sourceDurationUS; sourceInUS > maxSourceInUS {
+					sourceInUS = maxSourceInUS
+				}
+			}
 			segments = append(segments, finalJobPlanSegment{
 				SegmentID: fmt.Sprintf("segment-%04d", len(segments)), AssetID: overlay.assetID, SHA256: overlay.sha256,
 				TimelineStartFrame: startFrame, FrameCount: endFrame - startFrame,
-				SourceInUS: overlay.artifactInUS, SourceDurationUS: overlay.endUS - overlay.startUS,
+				SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
 			})
 		}
 		cursorUS = overlay.endUS
@@ -457,6 +515,43 @@ func finalJobMergeContiguousSegments(segments []finalJobPlanSegment) []finalJobP
 	return merged
 }
 
+// finalJobOverlayAssetDurationUS is the length the plan may declare for an
+// overlay artifact. duration_ms is the renderer's own value; when a renderer
+// version omits it, the certified frame grid is the next authority (rounded UP
+// so the declared duration never cuts a real frame). Last resort is the
+// furthest point any entry claims inside the artifact: still the artifact's
+// own evidence, never the whole timeline. A manifest that carries none of the
+// three yields 0, which the caller rejects.
+func finalJobOverlayAssetDurationUS(asset map[string]any, entries []any, fpsNum, fpsDen int64) int64 {
+	if durationUS := finalJobInt64(asset["duration_ms"]) * 1000; durationUS > 0 {
+		return durationUS
+	}
+	if frames := finalJobInt64(asset["frame_count"]); frames > 0 && fpsNum > 0 && fpsDen > 0 {
+		numerator := frames * 1_000_000 * fpsDen
+		if remainder := numerator % fpsNum; remainder != 0 {
+			numerator += fpsNum - remainder
+		}
+		if durationUS := numerator / fpsNum; durationUS > 0 {
+			return durationUS
+		}
+	}
+	var maxOutUS int64
+	for _, raw := range entries {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		outUS := finalJobInt64(entry["artifact_out_us"])
+		if outUS <= 0 {
+			outUS = finalJobInt64(entry["out_us"])
+		}
+		if outUS > maxOutUS {
+			maxOutUS = outUS
+		}
+	}
+	return maxOutUS
+}
+
 func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {
 	numerator := us * fpsNum
 	denominator := int64(1_000_000) * fpsDen
@@ -485,6 +580,137 @@ func finalJobInt64(value any) int64 {
 
 func finalJobInt(value any) int {
 	return int(finalJobInt64(value))
+}
+
+// alignFinalJobCompiledPlanAssetIDs binds the compiled plan to the exact
+// runtime identities the worker will prefetch. Objectstore assets are keyed by
+// their content SHA; the plan may still name the same fragment by its
+// final-fragment-* work id. The copy-only assembler certifies the segment
+// against the plan asset, so both the asset and every segment must carry the
+// same canonical id and the asset's full prepared-fragment metadata.
+func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (string, error) {
+	var plan finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(rawPlan), &plan); err != nil {
+		return "", fmt.Errorf("decode final_job plan for runtime alignment: %w", err)
+	}
+	refs := make(map[string]map[string]any, len(runtimeAssets))
+	for _, raw := range runtimeAssets {
+		ref, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		sha := strings.ToLower(strings.TrimSpace(finalJobStringValue(ref["sha256"])))
+		if len(sha) == 64 {
+			refs[sha] = ref
+		}
+	}
+	if len(refs) == 0 {
+		return rawPlan, nil
+	}
+	seen := make(map[string]bool, len(plan.Assets))
+	for i := range plan.Assets {
+		asset := &plan.Assets[i]
+		ref := refs[strings.ToLower(asset.SHA256)]
+		if ref == nil {
+			continue
+		}
+		id := strings.TrimSpace(finalJobStringValue(ref["asset_id"]))
+		if id == "" {
+			return "", fmt.Errorf("final_job runtime asset %s has no canonical id", asset.SHA256)
+		}
+		if seen[id] {
+			return "", fmt.Errorf("final_job runtime asset id %q is repeated", id)
+		}
+		seen[id] = true
+		asset.AssetID = id
+		// The lease/cache identity must be the SAME string the worker derives
+		// from the runtime reference. A "sha256:" alias here made the Master
+		// prefetch one key while the worker reserved another.
+		asset.AssetKey = id
+		asset.SHA256 = strings.ToLower(finalJobStringValue(ref["sha256"]))
+		if size := finalJobInt64(ref["size_bytes"]); size > 0 {
+			asset.SizeBytes = size
+		}
+		if kind := finalJobStringValue(ref["kind"]); kind != "" {
+			asset.Kind = kind
+		}
+		if mimeType := finalJobStringValue(ref["mime"]); mimeType != "" {
+			asset.MIME = mimeType
+		}
+		if duration := finalJobInt64(ref["duration_us"]); duration > 0 {
+			asset.DurationUS = duration
+		}
+		if width := finalJobInt(ref["width"]); width > 0 {
+			asset.Width = width
+		}
+		if height := finalJobInt(ref["height"]); height > 0 {
+			asset.Height = height
+		}
+		if profile := finalJobStringValue(ref["profile_id"]); profile != "" {
+			asset.ProfileID = profile
+		}
+		if frames := finalJobInt64(ref["frame_count"]); frames > 0 {
+			asset.FrameCount = frames
+		}
+		if revision := finalJobInt64(ref["timeline_revision"]); revision > 0 {
+			asset.TimelineRevision = revision
+		}
+		if timelineSHA := strings.ToLower(finalJobStringValue(ref["timeline_sha256"])); timelineSHA != "" {
+			asset.TimelineSHA256 = timelineSHA
+		}
+		asset.TimelineStartFrame = finalJobInt64(ref["timeline_start_frame"])
+		asset.FirstFrameKeyframe = true
+		asset.ClosedGOP = true
+	}
+	assetsByID := make(map[string]*finalJobPlanAsset, len(plan.Assets))
+	for i := range plan.Assets {
+		assetsByID[plan.Assets[i].AssetID] = &plan.Assets[i]
+	}
+	if len(plan.VideoTracks) > 0 {
+		for i := range plan.VideoTracks[0].Segments {
+			segment := &plan.VideoTracks[0].Segments[i]
+			sha := strings.ToLower(strings.TrimSpace(segment.SHA256))
+			ref := refs[sha]
+			if ref == nil {
+				return "", fmt.Errorf("final_job segment %q has no runtime asset for sha %s", segment.SegmentID, sha)
+			}
+			segment.AssetID = strings.TrimSpace(finalJobStringValue(ref["asset_id"]))
+			segment.SHA256 = strings.ToLower(finalJobStringValue(ref["sha256"]))
+			// SourceInUS stays the source window here: this plan still names raw
+			// bytes. Segment preparation rewrites it to zero only after cutting
+			// the window into its own fragment.
+			// The plan segment is the placement's authority for the timeline
+			// span. The runtime ref only supplies the bytes (id, SHA and size).
+			// The copy-only gate certifies the fragment against the V1 stream
+			// profile even when the renderer labelled the opaque overlay
+			// artifact VELOX_OVERLAY_VIDEO_ONLY_V1 (r90).
+			if asset := assetsByID[segment.AssetID]; asset != nil && asset.Kind == "video" {
+				asset.ProfileID = kernelmedia.AssemblyMediaContractID
+				asset.TimelineRevision = plan.TimelineRevision
+				asset.TimelineSHA256 = strings.ToLower(plan.TimelineSHA256)
+				asset.TimelineStartFrame = segment.TimelineStartFrame
+				asset.FrameCount = segment.FrameCount
+				asset.DurationUS = segment.SourceDurationUS
+				asset.FirstFrameKeyframe = true
+				asset.ClosedGOP = true
+			}
+		}
+	}
+	if audioRef := refs[strings.ToLower(plan.FinalAudio.SHA256)]; audioRef != nil {
+		if id := strings.TrimSpace(finalJobStringValue(audioRef["asset_id"])); id != "" {
+			plan.FinalAudio.AssetID = id
+		}
+		plan.FinalAudio.SHA256 = strings.ToLower(finalJobStringValue(audioRef["sha256"]))
+		if size := finalJobInt64(audioRef["size_bytes"]); size > 0 {
+			plan.FinalAudio.SizeBytes = size
+		}
+	}
+	sort.Slice(plan.Assets, func(i, j int) bool { return plan.Assets[i].AssetID < plan.Assets[j].AssetID })
+	aligned, err := json.Marshal(plan)
+	if err != nil {
+		return "", fmt.Errorf("marshal aligned final_job plan: %w", err)
+	}
+	return string(aligned), nil
 }
 
 // --- the asset registry both plan builders share ---
@@ -553,12 +779,24 @@ func (a *finalJobPlanAssets) add(asset finalJobPlanAsset) error {
 // addRaw types a map-shaped source reference (stock scene, overlay artifact or
 // final audio) into the same registry.
 func (a *finalJobPlanAssets) addRaw(raw map[string]any, kind string, durationUS int64, width, height int, frameCount int64) error {
+	assetID := finalJobStringValue(raw["master_asset_id"])
+	if assetID == "" {
+		assetID = finalJobStringValue(raw["asset_id"])
+	}
+	assetKey := finalJobStringValue(raw["master_reference"])
+	if assetKey == "" {
+		assetKey = finalJobStringValue(raw["reference"])
+	}
+	mimeType := finalJobStringValue(raw["mime_type"])
+	if mimeType == "" {
+		mimeType = finalJobPlanAssetMIME(kind)
+	}
 	return a.add(finalJobPlanAsset{
-		AssetID: finalJobStringValue(raw["asset_id"]),
-		SHA256:  strings.ToLower(finalJobStringValue(raw["sha256"])),
+		AssetID: assetID, AssetKey: assetKey,
+		SHA256: strings.ToLower(finalJobStringValue(raw["sha256"])),
 		// SizeBytes is checked by add; the raw map spells it in bytes already.
 		SizeBytes: finalJobInt64(raw["size_bytes"]),
-		Kind:      kind, MIME: finalJobPlanAssetMIME(kind),
+		Kind:      kind, MIME: mimeType,
 		DurationUS: durationUS, Width: width, Height: height, FrameCount: frameCount,
 	})
 }

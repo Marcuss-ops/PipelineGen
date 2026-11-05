@@ -242,7 +242,7 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	// One scope per handoff: the per-window attribution must describe THIS
 	// payload, not whatever the preparer accumulated before it or beside it.
 	scope := a.segments.NewHandoffScope()
-	pre, finalize, err := scriptgen.BuildFinalJobPayloads(withFinalJobHandoffScope(ctx, scope), runID, req, result, a, a.segments)
+	pre, finalize, err := scriptgen.BuildFinalJobPayloadsWithSegmentPreparer(withFinalJobHandoffScope(ctx, scope), runID, req, result, a, a.segments)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
 	}

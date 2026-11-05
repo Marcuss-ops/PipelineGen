@@ -2,7 +2,10 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -98,7 +101,19 @@ func resolveFinalJobStockAsset(ctx context.Context, resolver FinalJobAssetResolv
 	return resolveFinalJobAsset(ctx, resolver, id)
 }
 
-func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparers ...FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
+func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
+	return buildFinalJobPayloads(ctx, runID, req, result, resolver, nil)
+}
+
+// BuildFinalJobPayloadsWithSegmentPreparer is the executable FINALIZE handoff:
+// every placement is cut into its own assembly-ready fragment before the plan
+// is sealed. The copy-only worker never accepts a raw stock/overlay source, so
+// callers that own a preparer must use this entry point.
+func BuildFinalJobPayloadsWithSegmentPreparer(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparer FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
+	return buildFinalJobPayloads(ctx, runID, req, result, resolver, preparer)
+}
+
+func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparer FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
 	if result == nil || result.CanonicalTimeline == nil || result.CanonicalTimeline.DurationUS <= 0 {
 		return nil, nil, fmt.Errorf("final_job requires a canonical timeline with positive duration")
 	}
@@ -393,10 +408,26 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if audioRef == nil {
 		return nil, nil, fmt.Errorf("final_job V2 worker submission requires certified final audio")
 	}
-	compiledPlan, compiledPlanSHA, err := finalJobCompiledPlanPayload(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS)
+	compiledPlan, _, err := finalJobCompiledPlanPayload(remoteScenes, remoteOverlays, overlayManifest, *result.FinalAudio, audioRef, result.CanonicalTimeline.DurationUS)
 	if err != nil {
 		return nil, nil, err
 	}
+	// The runtime refs are content-addressed (SHA), while the plan may still
+	// carry the fragment work ids used while building it. Bind both to the
+	// same canonical identities before the Master sees the plan; otherwise the
+	// copy-only assembler rejects segment-0000 with "manifest binding is not
+	// exact" even though the prefetched bytes are correct.
+	compiledPlan, err = alignFinalJobCompiledPlanAssetIDs(compiledPlan, runtimeAssets)
+	if err != nil {
+		return nil, nil, err
+	}
+	if preparer != nil {
+		compiledPlan, runtimeAssets, err = prepareFinalJobVideoSegments(ctx, compiledPlan, runtimeAssets, preparer)
+		if err != nil {
+			return nil, nil, fmt.Errorf("prepare final_job video segments: %w", err)
+		}
+	}
+	compiledPlanSHA := digest.SHA256String(compiledPlan)
 	attempt := 1
 	if result.RemoteFinalJob != nil && result.RemoteFinalJob.Attempt > 0 {
 		attempt = result.RemoteFinalJob.Attempt
@@ -434,23 +465,16 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		}
 	}
 	finalize["runtime_payload"] = runtimePayload
-	if len(preparers) > 0 && preparers[0] != nil {
-		compiledPlan, runtimeAssets, err = prepareFinalJobVideoSegments(ctx, compiledPlan, runtimeAssets, preparers[0])
-		if err != nil {
-			return nil, nil, err
-		}
-		compiledPlanSHA = digest.SHA256String(compiledPlan)
-		// CompiledRenderPlanV2 is the executable timeline SSOT. Runtime payload
-		// metadata must not leak unprepared source videos to the remote job.
-		delete(runtimePayload, "overlays")
-		delete(runtimePayload, "overlay_manifest")
-	}
 	pre["compiled_render_plan_json"] = compiledPlan
 	pre["compiled_render_plan_sha256"] = compiledPlanSHA
 	finalize["runtime_assets"] = runtimeAssets
-	if len(preparers) > 0 && preparers[0] != nil {
-		if err := validateFinalJobHTTPSRuntimeAssets(runtimeAssets); err != nil {
-			return nil, nil, err
+	// Diagnostic snapshot of the exact plan and runtime refs sent to the
+	// Master. It is local-only and lets the copy-only boundary be checked
+	// against the same bytes the worker receives.
+	if err := os.MkdirAll("/tmp/final-job-debug", 0o700); err == nil {
+		_ = os.WriteFile("/tmp/final-job-debug/compiled-plan.json", []byte(compiledPlan), 0o600)
+		if runtimeJSON, marshalErr := json.Marshal(runtimeAssets); marshalErr == nil {
+			_ = os.WriteFile("/tmp/final-job-debug/runtime-assets.json", runtimeJSON, 0o600)
 		}
 	}
 	return pre, finalize, nil
