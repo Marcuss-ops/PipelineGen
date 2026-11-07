@@ -246,6 +246,7 @@ func mergeResolvedAudioAssets(primary, layers audio.ResolvedAudioAssets) audio.R
 // gain while speech plays.
 func finalJobAudioInput(result GenerateResult, language Language) GenerateResult {
 	result.Scenes = append([]Scene(nil), result.Scenes...)
+	alignFinalJobStockSceneDurations(&result)
 	for i := range result.Scenes {
 		scene := &result.Scenes[i]
 		// Fixed-media scenes normally require their source clip's original
@@ -333,6 +334,54 @@ func finalJobAudioInput(result GenerateResult, language Language) GenerateResult
 		scene.Audio = filtered[0]
 	}
 	return result
+}
+
+// alignFinalJobStockSceneDurations rounds every stock-bound scene UP to the
+// next whole multiple of the stock file duration the binding declares
+// (start_ms/end_ms → StockBinding.DurationMs). The remote Master accepts only
+// whole-file stock windows (r56), so a narration that ends mid-file can never
+// be composed when the folder holds uniform files (r59b: 240×5000 ms vs a
+// 4624 ms tail). Extending the scene window is the Producer-side fix that keeps
+// stock remote: the certified voiceover keeps its own source duration, which
+// the canonical plan places at the start of the longer window; the renderer
+// fills the remainder with silence. No stock byte is downloaded, cut or
+// re-encoded here.
+//
+// A binding without a positive duration declares no whole-file quantum and is
+// left untouched; the planner keeps failing fast instead of guessing. The
+// function copies ResolvedScenes before touching them, so the caller's result
+// is never mutated.
+func alignFinalJobStockSceneDurations(result *GenerateResult) {
+	if result == nil {
+		return
+	}
+	if len(result.ResolvedScenes) > 0 {
+		result.ResolvedScenes = append([]ResolvedScene(nil), result.ResolvedScenes...)
+	}
+	alignedByScene := make(map[string]int64, len(result.Scenes))
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		if scene.Stock == nil || scene.Stock.DurationMs <= 0 {
+			continue
+		}
+		quantumUS := scene.Stock.DurationMs * 1000
+		durationUS := scene.DurationUS
+		if durationUS <= 0 {
+			durationUS = scene.DurationMS * 1000
+		}
+		if durationUS <= 0 {
+			durationUS = quantumUS
+		}
+		alignedUS := ((durationUS + quantumUS - 1) / quantumUS) * quantumUS
+		scene.DurationUS = alignedUS
+		scene.DurationMS = alignedUS / 1000
+		alignedByScene[scene.ID] = alignedUS
+	}
+	for i := range result.ResolvedScenes {
+		if alignedUS, ok := alignedByScene[result.ResolvedScenes[i].ID]; ok {
+			result.ResolvedScenes[i].DurationUS = alignedUS
+		}
+	}
 }
 
 func hasClipAudioIntent(intents []audio.AudioIntent, clipID string) bool {

@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // Cut implements the Stock VideoCutter port through the same client and
@@ -22,6 +24,13 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 	codec, preset, crf, err := p.policyFor(req.Codec, req.Preset, req.CRF)
 	if err != nil {
 		return result, err
+	}
+	// A stock clip is a whole-file packet-copy input of the remote assembler.
+	// Only the canonical libx264 lane produces the certified SPS/PPS; NVENC
+	// emits a different parameter-set family under the same nominal profile,
+	// so it must fail BEFORE any encode instead of being rejected downstream.
+	if !strings.EqualFold(codec, "libx264") {
+		return result, fmt.Errorf("STOCK_CANONICAL_ENCODER_REQUIRED: stock clips are packet-copy assembly inputs and require libx264, got %q", codec)
 	}
 	profileInput := p.profile
 	if profileInput == (mediaexec.VideoProfile{}) {
@@ -74,6 +83,15 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 		if hashErr != nil {
 			result.Items[i].Status = stockpipeline.CutItemStatusFailed
 			result.Items[i].Err = fmt.Errorf("validate rust cut output: %w", hashErr)
+			continue
+		}
+		// Bitstream identity gate: same codec name, profile and geometry are
+		// not enough — the exact SPS/PPS must be the canonical record, or
+		// `concat -c copy` applies one segment's parameter sets to another
+		// segment's slices. A failed gate makes the clip unpublishable.
+		if gateErr := kernelmedia.VerifyCanonicalVideoExtradata(item.OutputPath); gateErr != nil {
+			result.Items[i].Status = stockpipeline.CutItemStatusFailed
+			result.Items[i].Err = fmt.Errorf("validate rust cut bitstream: %w", gateErr)
 			continue
 		}
 		result.Items[i].SizeBytes, result.Items[i].SHA256Hex = size, hash

@@ -88,6 +88,15 @@ func (r *Runner) runAudioCompilePhase(ctx context.Context, runID string, req Gen
 		if !r.validateAudioCompileSceneIdentity(ctx, runID, req, exec, payloadStep, result) {
 			return false
 		}
+		// Stock scenes are handed to the remote Master as whole files only.
+		// Round each stock scene up to the binding's declared file duration
+		// BEFORE the audio plan is compiled: the certified TTS keeps its own
+		// source duration and the renderer fills the tail with silence. This
+		// mutates the durable scenes on purpose so the canonical timeline,
+		// the overlay projections and the final job all observe one window.
+		if req.FinalJob {
+			alignFinalJobStockSceneDurations(result)
+		}
 		// ── AUDIO PHASE ─────────────────────────────────────────────
 		// PipelineGen is audio-only: it compiles the canonical timeline +
 		// audio plan and certifies one final_audio.m4a whenever
