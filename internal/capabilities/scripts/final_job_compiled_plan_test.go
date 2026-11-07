@@ -353,7 +353,7 @@ func TestFinalJobCompiledPlanAlignsDurationToCertifiedAudio(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
 		t.Fatalf("decode compiled plan: %v", err)
 	}
-	if plan.DurationUS != audio.DurationUS || plan.FinalAudio.DurationUS != audio.DurationUS {
-		t.Fatalf("plan/audio durations = %d/%d, want certified audio duration %d", plan.DurationUS, plan.FinalAudio.DurationUS, audio.DurationUS)
+	if plan.DurationUS != 19_708_333 || plan.FinalAudio.DurationUS != audio.DurationUS {
+		t.Fatalf("plan/audio durations = %d/%d, want frame-aligned video 19708333 and certified audio %d", plan.DurationUS, plan.FinalAudio.DurationUS, audio.DurationUS)
 	}
 }
