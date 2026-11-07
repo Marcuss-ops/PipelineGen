@@ -6,7 +6,7 @@
 // entrypoint. This file is the SOLE owner of:
 //
 //   - The Service struct (private fields + 4 unexported port-shaped
-//     accessors: cutter / renderer / dispatcher / finalizer /
+//     accessors: cutter / dispatcher / finalizer /
 //     sourceStager / channelLister / db).
 //   - The shared service validation ladder (12 steps); public constructors
 //     live in service_constructors.go and surface each missing dep as a typed
@@ -69,11 +69,10 @@ import (
 // declared in internal/capabilities/assets/providers/stock:
 //
 //   - stock.VideoCutter  (extracted-clips from a single source video)
-//   - stock.StockRenderer (cross-clip concatenation + transition/overlay)
 //
 // PR-D (June 2026): all dependencies — including the PR6 ports —
 // arrive via the ctor-injected Deps struct (defined in
-// service_types.go). The 9 legacy setters (SetCutter / SetRenderer /
+// service_types.go). The 9 legacy setters (SetCutter /
 // SetClipsRepo / SetAssetIndex / SetDispatcher / SetJobsSvc /
 // SetYoutubeService / SetClipIndexer / SetMetadataWriter) were
 // removed. Production wire-up lives in WireStockPipeline at
@@ -90,7 +89,6 @@ type Service struct {
 	publisherPort finalization.PublisherPort
 	folderCreator StockFolderCreator
 	cutter        VideoCutter
-	renderer      StockRenderer
 	jobsSvc       *appjobs.Service
 	// batchRepo is the durable stock batch/group/artifact repository.
 	batchRepo StockBatchRepository
@@ -175,8 +173,8 @@ func (s *Service) SourceDurationProbe() SourceDurationProbe {
 // can forward a single error verbatim and tests can assert the precise
 // field-name without unwrapping the chain.
 //
-// PR6 ports (Cutter, Renderer) are required — missing either fails ctor
-// with ErrStockPipelineNilCutter / ErrStockPipelineNilRenderer. The
+// PR6 port (Cutter) is required — missing it fails ctor
+// with ErrStockPipelineNilCutter. The
 // legacy per-call nil-guards are gone; callers can rely on the
 // invariants without re-checking.
 //
@@ -202,9 +200,6 @@ func newService(deps Deps) (*Service, error) {
 	}
 	if deps.Media.Cutter == nil {
 		return nil, ErrStockPipelineNilCutter
-	}
-	if deps.Media.Renderer == nil {
-		return nil, ErrStockPipelineNilRenderer
 	}
 	if deps.Delivery.Publisher == nil {
 		return nil, ErrStockPipelineNilPublisher
@@ -276,7 +271,6 @@ func serviceFromDeps(deps Deps) *Service {
 		publisherPort: deps.Delivery.PublisherPort,
 		folderCreator: deps.Delivery.FolderCreator,
 		cutter:        deps.Media.Cutter,
-		renderer:      deps.Media.Renderer,
 		jobsSvc:       deps.Execution.Jobs,
 		batchRepo:     deps.Storage.BatchRepository,
 		dispatcher:    deps.Storage.Dispatcher,

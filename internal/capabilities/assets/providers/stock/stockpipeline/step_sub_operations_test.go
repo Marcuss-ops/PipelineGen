@@ -2,7 +2,7 @@
 // (PR-STOCK-SUB-OPERATIONS, October 2026).
 //
 // Contract tests for the stock-job sub-operation decomposition and the
-// stock job steps (stock.stage_sources / stock.extract / stock.compose) were
+// stock job steps (stock.stage_sources / stock.extract) were
 // ONE wall each: a multi-source request measured as a single span, and the
 // operator could not tell download time from cut time from render time. These
 // tests pin:
@@ -11,8 +11,6 @@
 //     source (deduplicated: two plans sharing a source measure once);
 //  2. stock.extract records ONE cut operation per source group, carrying the
 //     batch cardinality;
-//  3. stock.compose records ONE render operation per composed chunk;
-//     "Prepare failed" line — and the typed sentinel stays classifiable even
 //
 // The sub-operations are canonical kernel operations (run_operation_observations):
 // the enclosing stage wall is untouched, the operations are its measured
@@ -145,50 +143,5 @@ func TestStockExtract_RecordsOneCutOperationPerSourceGroup(t *testing.T) {
 	}
 	if op.Status != kernobs.StageStatusCompleted {
 		t.Fatalf("cut operation status = %q, want completed", op.Status)
-	}
-}
-
-// subOpRenderer is a trivial StockRenderer that counts render passes.
-type subOpRenderer struct{ calls int }
-
-func (r *subOpRenderer) Render(_ context.Context, _ RenderRequest) (RenderResult, error) {
-	r.calls++
-	return RenderResult{}, nil
-}
-
-// renderingFakeRunner overrides the base fake's nil Renderer.
-type renderingFakeRunner struct {
-	*fakeStepRunner
-	renderer StockRenderer
-}
-
-func (r *renderingFakeRunner) Renderer() StockRenderer { return r.renderer }
-
-// TestStockCompose_RecordsOneRenderOperationPerChunk pins the compose
-// decomposition: one chunk is ONE measured render pass (1:1 cardinality).
-func TestStockCompose_RecordsOneRenderOperationPerChunk(t *testing.T) {
-	ctx, recorder := newTimingObservedRun(t)
-	renderer := &subOpRenderer{}
-	runner := &renderingFakeRunner{
-		fakeStepRunner: &fakeStepRunner{
-			runInput: &RunInput{ClipDuration: 5, TotalMinutes: 1},
-			cfg:      OrchestratorConfig{PolicyVersion: "test-policy-v1"},
-			state:    &RunState{CutPaths: []string{"/tmp/cut_0.mp4", "/tmp/cut_1.mp4"}},
-		},
-		renderer: renderer,
-	}
-
-	if err := (StockComposeChunksStep{}).Run(ctx, runner); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if renderer.calls != 2 {
-		t.Fatalf("render calls = %d, want 2 (one per chunk)", renderer.calls)
-	}
-	if got := countOps(recorder.operations, string(kernobs.StageStockCompose), string(kernobs.OperationRender)); got != 2 {
-		t.Fatalf("render operations = %d, want 2 (one per chunk); ops: %+v", got, recorder.operations)
-	}
-	op := findOp(recorder.operations, string(kernobs.StageStockCompose), string(kernobs.OperationRender))
-	if op.Component != string(kernobs.ComponentFFmpeg) || op.Items != 1 {
-		t.Fatalf("render operation = component %q items %d, want ffmpeg/1", op.Component, op.Items)
 	}
 }

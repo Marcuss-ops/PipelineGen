@@ -167,8 +167,7 @@ type StockAcquisitionDeps struct {
 // StockMediaDeps groups the ffmpeg-mediated media processing layer
 // (Cutter, Renderer). Field count: 2.
 type StockMediaDeps struct {
-	Cutter   stockpipeline.VideoCutter   // required
-	Renderer stockpipeline.StockRenderer // required
+	Cutter stockpipeline.VideoCutter // required
 }
 
 // StockOrchestrationDeps groups the dispatcher-side control layer

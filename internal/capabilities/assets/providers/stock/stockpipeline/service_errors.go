@@ -43,7 +43,6 @@ var (
 	// delivery.Publisher.Publish + delivery.Publisher.ResolveFolder.
 	ErrStockPipelineNilDispatcher    = errors.New("NewProductionStockPipeline: storage.Dispatcher is required (QDRANT-002 PR7 — production canonical ingest)")
 	ErrStockPipelineNilCutter        = errors.New("NewProductionStockPipeline: media.Cutter is required (PR6 port)")
-	ErrStockPipelineNilRenderer      = errors.New("NewProductionStockPipeline: media.Renderer is required (PR6 port)")
 	ErrStockPipelineNilJobs          = errors.New("NewProductionStockPipeline: Jobs is required (async job tracker for HandleJob / RegisterHandler)")
 	ErrStockPipelineNilPublisher     = errors.New("NewProductionStockPipeline: delivery.Publisher is required")
 	ErrStockPipelineNilPublisherPort = errors.New("NewProductionStockPipeline: delivery.PublisherPort is required (godlike/06: wire drive.NewArtifactPublisherAdapter at the composition root)")

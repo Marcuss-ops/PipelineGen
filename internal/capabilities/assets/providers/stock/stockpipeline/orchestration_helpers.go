@@ -157,19 +157,13 @@ func (o *Orchestrator) stageSnapshots(ctx context.Context, input *RunInput) ([]S
 		StepKeyStockPlan,
 		StepKeyStockStageSources,
 		StepKeyStockExtractClips,
-		StepKeyStockComposeChunks,
 		StepKeyStockPublish,
 		StepKeyStockFinalize,
 	}
 	stages := make([]StageSnapshot, 0, len(stageNames))
 	for _, name := range stageNames {
 		stage := StageSnapshot{Name: name, Status: string(steps.StatusPending), Applicable: true}
-		bypassed := name == StepKeyStockComposeChunks && shouldBypassStockCompose(name, input)
-		if bypassed {
-			stage.Status = "skipped"
-			stage.Applicable = false
-		}
-		if row, ok := latest[name]; ok && !bypassed {
+		if row, ok := latest[name]; ok {
 			stage.Status = string(row.Status)
 			stage.Attempt = row.Attempt
 			if !row.StartedAt.IsZero() {
@@ -246,12 +240,11 @@ func (o *Orchestrator) stageSnapshots(ctx context.Context, input *RunInput) ([]S
 // existing ones MUST NOT be renamed without a migration forward-pointer
 // via architecture/current.yaml.
 const (
-	StepKeyStockPlan          = "stock.plan"
-	StepKeyStockStageSources  = "stock.stage_sources"
-	StepKeyStockExtractClips  = "stock.extract_clips"
-	StepKeyStockComposeChunks = "stock.compose_chunks"
-	StepKeyStockPublish       = "stock.publish"
-	StepKeyStockFinalize      = "stock.finalize"
+	StepKeyStockPlan         = "stock.plan"
+	StepKeyStockStageSources = "stock.stage_sources"
+	StepKeyStockExtractClips = "stock.extract_clips"
+	StepKeyStockPublish      = "stock.publish"
+	StepKeyStockFinalize     = "stock.finalize"
 )
 
 // Step is the canonical typed contract for a single orchestrator-side
@@ -299,7 +292,6 @@ func DefaultStockSteps() []Step {
 		StockPlanStep{},
 		StockStageSourcesStep{},
 		StockExtractClipsStep{},
-		StockComposeChunksStep{},
 		StockPublishStep{},
 		StockFinalizeStep{},
 	}
@@ -310,7 +302,6 @@ var (
 	_ Step = StockPlanStep{}
 	_ Step = StockStageSourcesStep{}
 	_ Step = StockExtractClipsStep{}
-	_ Step = StockComposeChunksStep{}
 	_ Step = StockPublishStep{}
 	_ Step = StockFinalizeStep{}
 )

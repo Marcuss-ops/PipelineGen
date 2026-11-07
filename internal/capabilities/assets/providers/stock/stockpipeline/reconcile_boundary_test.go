@@ -35,7 +35,6 @@ func (*boundaryRunner) PolicyVersion() string                                   
 func (*boundaryRunner) Planner() ClipPlanner                                         { return nil }
 func (*boundaryRunner) SourceStager() acquisition.SourceStager                       { return nil }
 func (*boundaryRunner) Cutter() VideoCutter                                          { return nil }
-func (*boundaryRunner) Renderer() StockRenderer                                      { return nil }
 func (*boundaryRunner) Builder() ManifestBuilder                                     { return nil }
 func (*boundaryRunner) Writer() TransactionalAssetWriter                             { return nil }
 func (*boundaryRunner) Projection() ProjectionPort                                   { return nil }

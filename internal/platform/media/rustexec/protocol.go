@@ -6,9 +6,6 @@ import (
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	capabilityrender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/render"
-	pathutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 )
 
 const ProtocolVersion = "mediaexec.v1"
@@ -28,14 +25,10 @@ const (
 	OperationGenerateStoryboard Operation = "generate_storyboard"
 	OperationRemuxHLS           Operation = "remux_hls"
 	OperationTrim               Operation = "trim"
-	OperationRenderStock        Operation = "render_stock"
 	OperationRenderClip         Operation = "render_clip"
-	OperationAdminRender        Operation = "admin_render"
 	OperationMergeInputs        Operation = "merge_inputs"
 	OperationRemoveSilence      Operation = "remove_silence"
 	OperationRenderAudioPlan    Operation = "render_audio_plan"
-	OperationMuxAudioCopy       Operation = "mux_audio_copy"
-	OperationAssembleCopy       Operation = "assemble_copy"
 )
 
 func (o Operation) String() string { return string(o) }
@@ -45,9 +38,8 @@ func (o Operation) valid() bool {
 	case OperationHealth, OperationProbe, OperationCutBatch, OperationNormalize,
 		OperationCutCopy, OperationCutAndNormalize, OperationWatermark,
 		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
-		OperationRemuxHLS, OperationTrim, OperationRenderStock, OperationRenderClip,
-		OperationAdminRender, OperationMergeInputs, OperationRemoveSilence,
-		OperationRenderAudioPlan, OperationMuxAudioCopy, OperationAssembleCopy:
+		OperationRemuxHLS, OperationTrim, OperationRenderClip,
+		OperationMergeInputs, OperationRemoveSilence, OperationRenderAudioPlan:
 		return true
 	default:
 		return false
@@ -98,27 +90,9 @@ type request struct {
 	GreenScreenBlend      float64         `json:"green_screen_blend,omitempty"`
 	InputPaths            []string        `json:"input_paths,omitempty"`
 	Jobs                  []cutRequestJob `json:"jobs,omitempty"`
-	// NoTransitions / NoEffects / ClipDurationSec are retained for the
-	// transport envelope's back-compat shape, but render_stock no longer
-	// derives its graph from them: the executor consumes the sealed
-	// render_plan (see RenderPlan below). The legacy `transitions` /
-	// `effect_paths` / `overlay_opacity` fields were removed outright —
-	// no production writer populated them and the executor fails closed
-	// without a canonical plan, so they only encoded a dead wire shape.
-	NoTransitions     bool               `json:"no_transitions,omitempty"`
-	ClipDurationSec   int                `json:"clip_duration_sec,omitempty"`
-	NoEffects         bool               `json:"no_effects,omitempty"`
-	Font              string             `json:"font,omitempty"`
-	Effects           []renderEffect     `json:"effects,omitempty"`
-	Overlays          []renderOverlay    `json:"overlays,omitempty"`
-	MaxDurationSec    float64            `json:"max_duration_sec,omitempty"`
-	AudioPlan         json.RawMessage    `json:"audio_plan,omitempty"`
-	AudioAssets       []audioAsset       `json:"audio_assets,omitempty"`
-	CopyCertification *CopyCertification `json:"copy_certification,omitempty"`
-	// RenderPlan is the sealed generation-time contract. The Go adapter
-	// validates its hashes and manifest files before this envelope is sent;
-	// keeping the exact JSON here lets the executor audit the same plan.
-	RenderPlan json.RawMessage `json:"render_plan,omitempty"`
+	MaxDurationSec        float64         `json:"max_duration_sec,omitempty"`
+	AudioPlan             json.RawMessage `json:"audio_plan,omitempty"`
+	AudioAssets           []audioAsset    `json:"audio_assets,omitempty"`
 	// ClipPlan is the sealed ClipRenderPlanV1 for render_clip. Validated in
 	// this transport (decode + drift) before Rust is invoked; Rust re-audits
 	// the same plan and verifies every referenced artifact fail-closed.
@@ -171,25 +145,6 @@ func (r request) Validate() error {
 			return fmt.Errorf("%s: audio_plan is required", r.Operation)
 		}
 		return nil
-	case OperationMuxAudioCopy:
-		if err := requireOutput(); err != nil {
-			return err
-		}
-		if len(r.InputPaths) != 2 {
-			return fmt.Errorf("%s: exactly video and final audio inputs are required", r.Operation)
-		}
-		return nil
-	case OperationAssembleCopy:
-		if len(r.InputPaths) == 0 {
-			return fmt.Errorf("%s: input_paths are required", r.Operation)
-		}
-		if err := requireOutput(); err != nil {
-			return err
-		}
-		if r.CopyCertification == nil {
-			return fmt.Errorf("%s: copy_certification is required", r.Operation)
-		}
-		return r.CopyCertification.Validate()
 	case OperationProbe:
 		return requireSource()
 	case OperationCutBatch:
@@ -200,23 +155,6 @@ func (r request) Validate() error {
 			return fmt.Errorf("%s: jobs are required", r.Operation)
 		}
 		return nil
-	case OperationRenderStock:
-		if len(r.InputPaths) == 0 {
-			return fmt.Errorf("%s: input_paths are required", r.Operation)
-		}
-		if len(r.RenderPlan) > 0 && string(r.RenderPlan) != "null" {
-			var plan capabilityrender.RenderPlan
-			if err := json.Unmarshal(r.RenderPlan, &plan); err != nil {
-				return fmt.Errorf("%s: decode sealed render_plan: %w", r.Operation, err)
-			}
-			// This is the last Go transport boundary. Validate the complete
-			// sealed contract here as well as in StockRenderer so every
-			// caller of Client.call is fail-closed before Rust is invoked.
-			if _, err := capabilityrender.ValidateRenderPlan(plan, pathutil.NewOS()); err != nil {
-				return fmt.Errorf("%s: sealed render_plan validation failed: %w", r.Operation, err)
-			}
-		}
-		return requireOutput()
 	case OperationRenderClip:
 		if err := requireSource(); err != nil {
 			return err
@@ -239,11 +177,6 @@ func (r request) Validate() error {
 			return fmt.Errorf("%s: sealed clip_plan validation failed: %w", r.Operation, err)
 		}
 		return nil
-	case OperationAdminRender:
-		if err := requireSource(); err != nil {
-			return err
-		}
-		return requireOutput()
 	case OperationCutCopy, OperationNormalize, OperationCutAndNormalize,
 		OperationWatermark, OperationExtractFrame, OperationGenerateProxy,
 		OperationGenerateStoryboard, OperationRemuxHLS, OperationTrim:
@@ -259,31 +192,6 @@ func (r request) Validate() error {
 type audioAsset struct {
 	AssetID string `json:"asset_id"`
 	Path    string `json:"path"`
-}
-
-// CopyCertification is the copy-only certification of assembled segments —
-// the Go side of the SHARED copy-safety contract the Rust
-// AssemblyCompatibilityGate (pipelinegen-muscles assemble_copy,
-// video.assemble.copy.v1) enforces per input and across inputs. ONE owner:
-// internal/capabilities/mediaexec (the media capability type every Go
-// boundary dispatches copy assembly through); the alias keeps this
-// transport layer's wire vocabulary stable.
-type CopyCertification = mediaexec.CopyCertification
-
-type renderEffect struct {
-	Path     string  `json:"path"`
-	DelayMS  int     `json:"delay_ms"`
-	Duration float64 `json:"duration"`
-	Volume   string  `json:"volume"`
-}
-
-type renderOverlay struct {
-	Text  string `json:"text"`
-	Start string `json:"start"`
-	End   string `json:"end"`
-	Size  string `json:"size"`
-	Y     string `json:"y"`
-	Color string `json:"color"`
 }
 
 type response struct {

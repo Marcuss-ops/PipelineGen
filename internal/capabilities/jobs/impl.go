@@ -33,7 +33,6 @@ type JobsHandler struct {
 	service  job.Service
 	stats    JobStatsReader
 	history  HistoryReader
-	replay   *replayConfig
 	log      *zap.Logger
 	schedule job.ScheduleStore
 	stages   job.JobStageStatusStore
@@ -72,7 +71,6 @@ func (h *JobsHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:id/cancel", h.Cancel)
 	r.POST("/:id/retry", h.Retry)
 	r.GET("/:id/events", h.Events)
-	r.POST("/:id/replay", h.Replay)
 	// Deferred scheduling + per-stage status (migration 005).
 	r.GET("/scheduled", h.ListScheduled)
 	r.POST("/schedule", h.ScheduleBatch)

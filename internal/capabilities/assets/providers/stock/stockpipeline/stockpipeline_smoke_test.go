@@ -47,7 +47,6 @@ func (r *stageURLRecordingRunner) PolicyVersion() string                    { re
 func (r *stageURLRecordingRunner) Planner() ClipPlanner                     { return nil }
 func (r *stageURLRecordingRunner) SourceStager() acquisition.SourceStager   { return r.stager }
 func (r *stageURLRecordingRunner) Cutter() VideoCutter                      { return nil }
-func (r *stageURLRecordingRunner) Renderer() StockRenderer                  { return nil }
 func (r *stageURLRecordingRunner) Builder() ManifestBuilder                 { return nil }
 func (r *stageURLRecordingRunner) Writer() TransactionalAssetWriter         { return nil }
 func (r *stageURLRecordingRunner) Projection() ProjectionPort               { return nil }

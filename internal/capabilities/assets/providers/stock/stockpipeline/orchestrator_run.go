@@ -53,9 +53,10 @@ func (o *Orchestrator) Run(ctx context.Context, input *RunInput) (*job.ArtifactM
 //  1. stock.plan           — ClipPlanner.Plan round-trip.
 //  2. stock.stage_sources  — SourceStager.StageSource per unique URL.
 //  3. stock.extract_clips  — VideoCutter.Cut per source group
-//     (test (a): writer error ⇒ ErrAtomicDispatchFailed).
-//  4. stock.compose_chunks — StockRenderer.Render per cut path.
-//  5. stock.publish        — ArtifactPreparation.Prepare per chunk
+//     (test (a): writer error ⇒ ErrAtomicDispatchFailed). The cut
+//     outputs ARE the published chunks: the stock pipeline renders
+//     nothing locally.
+//  4. stock.publish        — ArtifactPreparation.Prepare per chunk
 //     + per metadata.json. Uploads Drive;
 //     nil ArtifactPreparation ⇒ test-fixture skip.
 //  6. stock.finalize       — ManifestBuilder.Build + Validate +
@@ -131,7 +132,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// §12-1 (July 2026) + PR-STOCK-PRODUCTION-DEPS (P2_media,
 	// 2026-07-04): composition-time fail-closed gate. The canonical
 	// composition root (NewProductionStockPipeline) already validates
-	// planner/stager/renderer/jobs/sourceStager etc. at ctor time;
+	// planner/stager/cutter/jobs/sourceStager etc. at ctor time;
 	// this gate is the defense-in-depth seam for direct Orchestrator
 	// callers (tests, internal packages that bypass Service). Per
 	// godlike/07 no-fake-availability: a production run must NOT
@@ -142,7 +143,7 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// optional; stager + renderer required) is the canonical
 	// fail-closed surface; this gate mirrors the same contract
 	// for direct Orchestrator callers.
-	if o.planner == nil || o.stager == nil || o.renderer == nil || o.stepStore == nil || len(o.dispatchSteps) == 0 {
+	if o.planner == nil || o.stager == nil || o.cutter == nil || o.stepStore == nil || len(o.dispatchSteps) == 0 {
 		return nil, ErrOrchestratorNilDeps
 	}
 
@@ -205,26 +206,6 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 
 	var previousState *RunState
 	for _, step := range o.dispatchSteps {
-		// With no effects or transitions, stock.extract_clips already
-		// produced and verified the canonical final artifacts. Do not
-		// invoke or checkpoint stock.compose_chunks at all; its output
-		// is forwarded from CutPaths by the extract step (and backfilled
-		// here for checkpoints written by older versions).
-		if shouldBypassStockCompose(step.Name(), input) {
-			if len(state.ComposedPaths) == 0 && len(state.CutPaths) > 0 {
-				state.ComposedPaths = append([]string(nil), state.CutPaths...)
-				// Keep the next step's fingerprint projection aligned
-				// with the current state when resuming a legacy extract
-				// checkpoint that predates ComposedPaths.
-				var cloneErr error
-				previousState, cloneErr = cloneRunState(state)
-				if cloneErr != nil {
-					return nil, fmt.Errorf("orchestrator: %s resume clone: %w: %v", step.Name(), ErrStockResumeStateInvalid, cloneErr)
-				}
-			}
-			continue
-		}
-
 		row, hasRow := completedRows[step.Name()]
 		fingerprint := resumeCheckpointFingerprint(o.cfg.JobId, step.Name(), o.cfg, input, previousState, row, hasRow)
 		key := steps.StepKey{
@@ -455,14 +436,6 @@ func (o *Orchestrator) checkpointStep(ctx context.Context, key steps.StepKey, st
 		return nil, fmt.Errorf("orchestrator: %s MarkCompleted: %w", step.Name(), err)
 	}
 	return previous, nil
-}
-
-// shouldBypassStockCompose is the single dispatch gate for the
-// canonical cutter fast path. Keeping the step-name check here makes
-// the complete bypass explicit: no Run, checkpoint, or resume lookup
-// is performed for stock.compose_chunks in this mode.
-func shouldBypassStockCompose(stepName string, input *RunInput) bool {
-	return stepName == StepKeyStockComposeChunks && isCanonicalFinalCut(input)
 }
 
 // executorLogOrNop returns the per-orchestrator logger if one

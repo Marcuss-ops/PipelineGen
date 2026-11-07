@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 	finalization "github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -340,7 +342,7 @@ func (r *chrononTemplateMapPlateResolver) ResolvePlate(latitude, longitude float
 	plate, ok := r.ResolveFlyover(
 		capmodel.MapCenter{Latitude: latitude, Longitude: longitude},
 		capmodel.MapCenter{Latitude: latitude, Longitude: longitude},
-		1920, 1080,
+		kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight,
 	)
 	return plate, ok
 }

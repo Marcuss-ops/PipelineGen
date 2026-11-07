@@ -18,6 +18,8 @@ import (
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -349,7 +351,19 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 	for _, entry := range manifest.Entries {
 		item, exists := itemsByID[strings.TrimSpace(entry.ItemID)]
 		if !exists {
-			return nil, fmt.Errorf("final_job overlay manifest references unknown overlay %q", entry.ItemID)
+			// Review IDs include the selected motion, which may be reselected
+			// after a cached/parallel render has frozen its manifest. Reconcile
+			// year cards by their stable semantic value and time window; require
+			// exactly one match so a stale manifest can never bind ambiguously.
+			item, exists = finalJobManifestYearItem(entry, result.OverlayPlan.Items)
+			if !exists {
+				known := make([]string, 0, len(itemsByID))
+				for id := range itemsByID {
+					known = append(known, id)
+				}
+				sort.Strings(known)
+				return nil, fmt.Errorf("final_job overlay manifest references unknown overlay %q (plan item ids: %s)", entry.ItemID, strings.Join(known, ","))
+			}
 		}
 		startFrame := (entry.InUS*int64(fpsNum) + frameDenominator - 1) / frameDenominator
 		endFrame := (entry.OutUS*int64(fpsNum) + frameDenominator - 1) / frameDenominator
@@ -436,6 +450,32 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 		"asset":           asset,
 		"entries":         entries,
 	}, nil
+}
+
+func finalJobManifestYearItem(entry capmodel.OverlayManifestEntry, items []capmodel.OverlayItem) (capmodel.OverlayItem, bool) {
+	parts := strings.Split(strings.TrimSpace(entry.ItemID), "__")
+	if len(parts) != 4 || parts[2] != "date_number" {
+		return capmodel.OverlayItem{}, false
+	}
+	if _, err := strconv.Atoi(parts[1]); err != nil {
+		return capmodel.OverlayItem{}, false
+	}
+	var match capmodel.OverlayItem
+	found := false
+	for _, item := range items {
+		if !strings.EqualFold(strings.TrimSpace(item.Kind), "number") || strings.TrimSpace(item.Text) != parts[1] {
+			continue
+		}
+		startUS, endUS := item.StartUSValue(), item.EndUSValue()
+		if entry.InUS >= endUS || startUS >= entry.OutUS {
+			continue
+		}
+		if found {
+			return capmodel.OverlayItem{}, false
+		}
+		match, found = item, true
+	}
+	return match, found
 }
 
 // finalJobDedicatedOverlayRows builds the independent replace rows for the

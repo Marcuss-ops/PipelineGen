@@ -5,6 +5,7 @@ package images
 import (
 	"context"
 	retrieved "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/search"
+	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
 func (s *ImageStorageService) SearchBySlug(ctx context.Context, slug string, limit int) []string {
@@ -74,6 +75,38 @@ func (s *ImageStorageService) SearchDDGWideMany(ctx context.Context, query strin
 		return nil
 	}
 	return s.searchDDGWideMany(ctx, query, limit)
+}
+
+// SearchDDGImageCandidatesMany returns original image URLs with source
+// dimensions and page attribution intact. The legacy string method remains for
+// callers that only need a URL.
+func (s *ImageStorageService) SearchDDGImageCandidatesMany(ctx context.Context, query string, limit int) []retrieved.RetrievalSearchResult {
+	if s == nil {
+		return nil
+	}
+	rows := s.searchDDGImageResultsMany(ctx, query, limit)
+	out := make([]retrieved.RetrievalSearchResult, 0, len(rows))
+	for _, row := range rows {
+		imageURL := normalizeDDGImageURL(row.Image)
+		if imageURL == "" && row.Width >= 640 && row.Height >= 360 {
+			imageURL = normalizeDDGImageURL(row.Thumbnail)
+		}
+		if imageURL == "" {
+			continue
+		}
+		out = append(out, retrieved.RetrievalSearchResult{
+			Provider:   detail.ProviderDuckDuckGo,
+			Origin:     detail.ImageOriginRetrieved,
+			PreviewURL: imageURL,
+			PageURL:    firstNonEmptyImageURL(row.URL, imageURL),
+			Title:      row.Title,
+			Width:      row.Width,
+			Height:     row.Height,
+			License:    "Unknown",
+			Author:     "Unknown",
+		})
+	}
+	return out
 }
 
 var _ retrieved.StorageBridge = (*ImageStorageService)(nil)

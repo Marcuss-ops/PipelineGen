@@ -7,8 +7,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 )
 
 // TestResolveOnceSingleFlightSharesOneBuild pins the property the prefetch
@@ -192,44 +190,28 @@ func TestFinalJobSourcePrefetchSkipsCachedAndCapsTheFolder(t *testing.T) {
 	}
 }
 
-// TestHandoffCacheSurvivesThePrewarmOfTheSameRun pins the handoff boundary the
-// stock prewarm depends on: the prewarm and the handoff are two calls for ONE
-// run, so starting the handoff must not throw away what the walk already
-// resolved — otherwise the 10 s the prewarm moved off the critical path are
-// paid again, serially, and nothing reports it.
+// TestHandoffCacheSurvivesRepeatedBeginForTheSameRun pins the handoff boundary
+// shared by prefetch and the handoff: both are calls for ONE run, so starting
+// the handoff must not throw away what the prefetch already resolved.
 //
 // A DIFFERENT run must still start clean: the cache holds references into one
 // run's handoff, and a retry that reuses the adapter must never inherit them.
-func TestHandoffCacheSurvivesThePrewarmOfTheSameRun(t *testing.T) {
+func TestHandoffCacheSurvivesRepeatedBeginForTheSameRun(t *testing.T) {
 	adapter := &remoteFinalJobAdapter{}
-	adapter.beginHandoffCache("run-1") // the prewarm's window opens
+	adapter.beginHandoffCache("run-1") // the prefetch's window opens
 	adapter.resolved = map[string]map[string]any{"drive:file-1": {"asset_id": "file-1"}}
 	adapter.hits = 3
 
 	adapter.beginHandoffCache("run-1") // the handoff starts for the same run
 	if _, ok := adapter.resolved["drive:file-1"]; !ok {
-		t.Fatal("starting the handoff discarded the prewarmed identities of the same run")
+		t.Fatal("starting the handoff discarded the prefetched identities of the same run")
 	}
 	if adapter.hits != 3 {
-		t.Fatalf("dedup hits = %d, want the prewarm's 3 kept", adapter.hits)
+		t.Fatalf("dedup hits = %d, want the prefetch's 3 kept", adapter.hits)
 	}
 
 	adapter.beginHandoffCache("run-2")
 	if adapter.resolved != nil || adapter.hits != 0 {
 		t.Fatalf("a new run inherited the previous handoff cache: resolved=%v hits=%d", adapter.resolved, adapter.hits)
-	}
-}
-
-// TestPrewarmIgnoresARunWithoutStockSources pins the no-op contract: the runner
-// calls the prewarm on every final job, so a result the walk cannot select from
-// must return without touching the resolver.
-func TestPrewarmIgnoresARunWithoutStockSources(t *testing.T) {
-	adapter := &remoteFinalJobAdapter{}
-	adapter.beginHandoffCache("run-empty")
-	if err := adapter.PrewarmFinalJobStockSources(context.Background(), "run-empty", scriptgen.GenerateRequest{}, nil); err != nil {
-		t.Fatalf("a nil result must be a no-op, got %v", err)
-	}
-	if adapter.resolved != nil {
-		t.Fatalf("the prewarm resolved %v without a result", adapter.resolved)
 	}
 }

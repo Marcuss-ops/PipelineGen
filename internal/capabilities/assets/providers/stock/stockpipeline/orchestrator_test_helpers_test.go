@@ -19,10 +19,9 @@ func NewOrchestratorWithResilience(
 	planner ClipPlanner,
 	stager acquisition.SourceStager,
 	cutter VideoCutter,
-	renderer StockRenderer,
 	resilience ResilienceDeps,
 ) *Orchestrator {
-	o := NewTestStockOrchestrator(cfg, planner, stager, cutter, renderer)
+	o := NewTestStockOrchestrator(cfg, planner, stager, cutter)
 	if resilience.Builder != nil {
 		o.builder = resilience.Builder
 	}

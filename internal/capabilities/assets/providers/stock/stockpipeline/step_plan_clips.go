@@ -353,11 +353,12 @@ func clipTimestamp(seconds float64) string {
 //   - Clip count, per-clip duration and total published duration are UNCHANGED
 //     (the duration contract validated by the caller still holds verbatim); only
 //     the offsets move, so the plan stays inside the planner's own horizon.
-//   - Sources with an unknown or too-short duration are left exactly as the
-//     planner produced them (unknown duration still fails closed downstream at
-//     extract time, which is the pre-existing contract): a scattered plan makes
-//     sectionWindowForPlans return ok=false, so staging downloads the whole
-//     source instead of truncating it on a guess.
+//   - Sources with an unknown duration have their block anchored at 0: there is
+//     no interior anchor to compute, and 0 is the only offset guaranteed to be
+//     inside the source. This keeps a failed provider probe from discarding the
+//     whole run at extract time. Sources with a known but too-short duration are
+//     left exactly as the planner produced them, so the extract-time fail-closed
+//     bounds check reports them honestly.
 //   - OutputLogicalID is re-minted through mintOutputLogicalID because the ID
 //     hashes the clip window.
 func compactPlansIntoSections(plans []ClipPlan, sources []VideoSource, policyVersion string) []ClipPlan {
@@ -389,10 +390,26 @@ func compactPlansIntoSections(plans []ClipPlan, sources []VideoSource, policyVer
 		if clipDuration <= 0 {
 			continue
 		}
+		placeBlock := func(anchor float64) {
+			for i, idx := range indices {
+				start := anchor + float64(i)*clipDuration
+				end := start + clipDuration
+				plans[idx].StartSec = start
+				plans[idx].EndSec = end
+				plans[idx].OutputLogicalID = mintOutputLogicalID(sourceID, i, policyVersion, start, end)
+			}
+		}
+
 		duration := durations[sourceID]
 		if duration <= 0 {
-			// Unknown source length: the planner's budget*10 horizon is not a real
-			// bound, so there is nothing safe to anchor against.
+			// Unknown source length (the provider probe failed twice): the
+			// planner's budget*10 horizon is not a real bound and can land past
+			// the end of the file. Anchor the block at 0 — the only offset that
+			// is inside every possible source — so a sections_only run still
+			// publishes its windows instead of failing the whole job at extract
+			// time. A source shorter than the requested block cannot satisfy the
+			// contract and still fails closed.
+			placeBlock(0)
 			continue
 		}
 		horizon := int(duration) - sourceDurationHorizonMarginSec
@@ -409,15 +426,7 @@ func compactPlansIntoSections(plans []ClipPlan, sources []VideoSource, policyVer
 		if hi < lo {
 			lo, hi = 0, int(maxStart)
 		}
-		anchor := float64(sectionAnchorSec(sourceID, policyVersion, lo, hi))
-
-		for i, idx := range indices {
-			start := anchor + float64(i)*clipDuration
-			end := start + clipDuration
-			plans[idx].StartSec = start
-			plans[idx].EndSec = end
-			plans[idx].OutputLogicalID = mintOutputLogicalID(sourceID, i, policyVersion, start, end)
-		}
+		placeBlock(float64(sectionAnchorSec(sourceID, policyVersion, lo, hi)))
 	}
 	return plans
 }

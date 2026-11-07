@@ -1,35 +1,29 @@
 // Package stockpipeline — render_dto.go (PR-SPLIT-RENDER-PORTS, August 2026).
 //
 // Canonical owner of all neutral application-layer DTOs referenced by
-// the StockRenderer + VideoCutter ports (declared in render_ports.go).
-// Extracted from the 569 LoC monolith per AGENTS.md Pattern 5 +
-// godlike/06 SSOT one-canonical-owner-per-fact.
+// the VideoCutter port (declared in finalization_render.go).
 //
 // godlike/06 SSOT (one canonical owner per fact):
-//   - All neutral DTOs (RenderRequest + RenderResult + CutRequest +
-//     CutJob + CutItemStatus enum + 4 constants + String() method +
-//     CutItemResult + CutBatchResult + 4 helper methods + Clip +
-//     Succeeded() + SourceDurationProbe) live ONLY in this file.
-//   - The 2 ports these DTOs reference live in render_ports.go
-//     (sister file).
-//   - The transition catalog lives in render_transitions.go (sister
-//     file).
+//   - All neutral cut DTOs (CutRequest + CutJob + CutItemStatus enum +
+//     4 constants + String() method + CutItemResult + CutBatchResult +
+//     4 helper methods + Clip + Succeeded()) live ONLY in this file.
+//   - The VideoCutter port these DTOs reference lives in
+//     finalization_render.go (sister file).
 //
 // godlike/07 typed-error contract:
 //   - CutItemStatus enum is the typed outcome partition; dashboards
 //     MUST aggregate on the enum (NOT string-match Err patterns).
 //   - The "mai nil con zero output" invariant is enforced by the
-//     noOpCutter test fixture (in render_ports.go) AND by the
+//     noOpCutter test fixture (in finalization_render.go) AND by the
 //     production RustCutter in internal/platform/media/render/.
 //   - Clip.Succeeded() is the canonical "file-on-disk-playable"
-//     predicate; Source-fed consumers (InterleaveClips,
-//     renderChunk) skip non-Succeeded clips at iteration time via
-//     this predicate.
+//     predicate; Source-fed consumers skip non-Succeeded clips at
+//     iteration time via this predicate.
 //
 // godlike/07 minimum-blast-radius: the DTO signatures are STABLE —
-// render_ports.go references these types by name, and the
-// composition root's *RealRenderer / *RealCutter concretes consume
-// them by name. No surface-contract changes.
+// finalization_render.go references these types by name, and the
+// composition root's concrete cutter consumes them by name. No
+// surface-contract changes.
 package stockpipeline
 
 import (
@@ -37,83 +31,6 @@ import (
 
 	"go.uber.org/zap"
 )
-
-// ── Render DTOs (application-layer neutral types) ─────────────────────
-
-// RenderRequest is a neutrally-typed request the application layer
-// passes to StockRenderer.Render. No FFmpeg-specific types leak.
-type RenderRequest struct {
-	// OutputPath is the absolute path where the rendered chunk must be
-	// written. The renderer creates intermediate temp files and deletes
-	// them on success.
-	OutputPath string
-
-	// InputPaths are the absolute paths of the input clips (in order).
-	// The renderer concatenates them in the supplied order.
-	InputPaths []string
-
-	// ── Encoding policy (target codec + container) ────────────────
-	Width            int
-	Height           int
-	FPSNum           int
-	FPSDen           int
-	Codec            string // "libx264", "h264_nvenc", ...
-	Preset           string
-	CRF              int
-	KeyframeInterval int
-	KeepAudio        bool // false = strip audio output (-an)
-
-	// ── Transition policy ─────────────────────────────────────────
-	NoTransitions   bool
-	TransitionEvery int
-	ClipDurationSec int
-	Transitions     []RenderTransition
-
-	NoEffects       bool
-	EffectsDir      string
-	EffectEvery     int
-	EffectIndexHint int
-	EffectPaths     []RenderEffectPath
-	OverlayOpacity  float64
-
-	// ── Logging / telemetry ────────────────────────────────────────
-	Logger     *zap.Logger
-	ChunkIndex int // for log enrichment
-}
-
-// RenderTransition is a Go-resolved transition assignment.
-type RenderTransition struct {
-	ClipIndex int    `json:"clip_index"`
-	Segment   string `json:"segment"`
-	ID        string `json:"id"`
-}
-
-// RenderEffectPath is a Go-resolved exact effect file assignment.
-type RenderEffectPath struct {
-	ClipIndex int    `json:"clip_index"`
-	Path      string `json:"path"`
-}
-
-// RenderResult is the neutral result returned by StockRenderer.Render.
-// It is informational — callers can use it for telemetry + testing but
-// the main artifact is the rendered file at req.OutputPath.
-type RenderResult struct {
-	// UsedFastPath is true when the renderer skipped the filter_complex
-	// chain and used the concat demuxer (no transitions + no effects +
-	// ≥2 inputs).
-	UsedFastPath bool
-
-	// AppliedTransitions lists the catalog Names of transitions actually
-	// emitted (empty when NoTransitions or UsedFastPath).
-	AppliedTransitions []string
-
-	// AppliedOverlayFiles lists the .mp4 effect files actually overlaid
-	// (empty when NoEffects or UsedFastPath).
-	AppliedOverlayFiles []string
-
-	// DurationMS is the wall-clock duration of the render (informational).
-	DurationMS int64
-}
 
 // ── SourceDurationProbe port (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026) ──
 

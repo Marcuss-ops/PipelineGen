@@ -347,3 +347,36 @@ func dominantOperation(ops []OperationReport, stage string) string {
 	}
 	return best
 }
+
+func blockedIntervalUnion(waits []WaitReport) int64 {
+	if len(waits) == 0 {
+		return 0
+	}
+	intervals := append([]WaitReport(nil), waits...)
+	for i := 1; i < len(intervals); i++ {
+		for j := i; j > 0 && intervals[j].StartedAt.Before(intervals[j-1].StartedAt); j-- {
+			intervals[j], intervals[j-1] = intervals[j-1], intervals[j]
+		}
+	}
+	start, end := intervals[0].StartedAt, intervals[0].FinishedAt
+	var total time.Duration
+	for _, interval := range intervals[1:] {
+		if interval.StartedAt.After(end) {
+			total += end.Sub(start)
+			start, end = interval.StartedAt, interval.FinishedAt
+			continue
+		}
+		if interval.FinishedAt.After(end) {
+			end = interval.FinishedAt
+		}
+	}
+	total += end.Sub(start)
+	return nonNegative(total.Milliseconds())
+}
+
+func nonNegative(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return v
+}

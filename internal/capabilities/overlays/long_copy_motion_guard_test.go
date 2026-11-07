@@ -143,13 +143,13 @@ func TestHistoricalLongcatPoolNeverDealsCrashingMotion(t *testing.T) {
 	// plan time (covered by TestRetiredShortPhraseRecipeIsRefusedAsExplicitPolicy),
 	// so the replay keeps the 17 still-certified entries with the crashing id.
 	pool := []string{
-		"phrase_apple_clean_09_slide_down_catch", "phrase_apple_clean_11_slide_left_ease",
+		"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_25_opacity_soft_reveal",
 		"phrase_apple_clean_12_slide_diagonal_pop", "phrase_apple_clean_13_scale_soft_pop",
 		"phrase_apple_clean_15_scale_hero_focus", "phrase_apple_clean_16_scale_line_build",
 		"phrase_apple_clean_17_scale_in_place", "phrase_apple_clean_18_scale_card_tilt",
-		"phrase_apple_clean_19_tracking_tighten", "phrase_apple_clean_20_tracking_spread_clean",
-		"phrase_apple_clean_21_tracking_magnetic", "phrase_apple_clean_22_tracking_word_focus",
-		"phrase_apple_clean_23_tracking_precision_lock", "phrase_apple_clean_24_tracking_soft_kinetic",
+		"phrase_apple_clean_19_tracking_tighten", "phrase_apple_clean_29_opacity_hero_settle",
+		"phrase_apple_clean_05_blur_apple_fade", "phrase_apple_clean_03_blur_scale_clean",
+		"phrase_apple_clean_04_blur_tracking_drift", "phrase_apple_clean_24_tracking_soft_kinetic",
 		"phrase_apple_clean_26_opacity_depth_push", "phrase_apple_clean_27_opacity_parallax",
 		"phrase_apple_clean_02_blur_focus_snap",
 	}

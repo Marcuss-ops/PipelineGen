@@ -27,7 +27,10 @@ type VidRushSearchRequest struct {
 	// Entity preserves the canonical subject identity separately from Query,
 	// which may carry provider-specific retrieval hints.
 	Entity string `json:"entity,omitempty"`
-	Limit  int
+	// QueryClass preserves the semantic retrieval lane through provider routing.
+	// Empty retains the provider's default behavior.
+	QueryClass string `json:"query_class,omitempty"`
+	Limit      int
 	// TargetDurationMs is the desired clip length derived from the
 	// segment timing budget (voiceover > scene > estimated). Zero means
 	// the provider falls back to its own default.

@@ -2,19 +2,12 @@ package rustexec
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"os"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/adminmedia"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type fakeRunner struct {
@@ -147,37 +140,6 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 	}
 }
 
-func TestMuxFinalAudioCopySendsDedicatedCopyOperation(t *testing.T) {
-	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"mux_audio_copy"}`)}
-	client := NewClient("muscles", "ffmpeg", nil)
-	client.runner = runner
-	processor := &VideoProcessor{client: client}
-	audioPath := t.TempDir() + "/final_audio.m4a"
-	if err := os.WriteFile(audioPath, []byte("certified"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	hash := sha256.Sum256([]byte("certified"))
-	asset := capabilityaudio.FinalAudioAsset{AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: capabilityaudio.AudioPlanVersion, AudioPlanSHA256: "plan", FinalAudioSHA256: fmt.Sprintf("%x", hash[:]), Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", DurationMS: 1000, Bitrate: 128000, SizeBytes: 9, FinalMix: true, CopyEligible: true}
-	if err := processor.MuxFinalAudioCopy(context.Background(), "/tmp/video.mp4", audioPath, "/tmp/output.mp4", asset); err != nil {
-		t.Fatalf("MuxFinalAudioCopy() error = %v", err)
-	}
-	var sent request
-	if err := json.Unmarshal(runner.input, &sent); err != nil {
-		t.Fatal(err)
-	}
-	if sent.Operation != OperationMuxAudioCopy || len(sent.InputPaths) != 2 {
-		t.Fatalf("unexpected mux request: %+v", sent)
-	}
-}
-
-func TestMuxFinalAudioCopyRejectsIncompatibleAsset(t *testing.T) {
-	processor := &VideoProcessor{client: NewClient("muscles", "ffmpeg", nil)}
-	err := processor.MuxFinalAudioCopy(context.Background(), "video.mp4", "audio.m4a", "out.mp4", capabilityaudio.FinalAudioAsset{})
-	if !errors.Is(err, capabilityaudio.ErrAudioMediaIncompatible) {
-		t.Fatalf("error = %v, want AUDIO_MEDIA_INCOMPATIBLE", err)
-	}
-}
-
 func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	out := t.TempDir() + "/clip.mp4"
 	if err := os.WriteFile(out, []byte("clip"), 0o600); err != nil {
@@ -212,68 +174,5 @@ func TestVideoProcessorEncodingFailsWithoutPolicy(t *testing.T) {
 	err := processor.Normalize(context.Background(), "in.mp4", "out.mp4", mediaexec.NormalizeOptions{})
 	if err == nil || err.Error() != "ENCODER_POLICY_REQUIRED: Go did not provide a complete video encoder policy" {
 		t.Fatalf("Normalize() error = %v, want missing policy error", err)
-	}
-}
-
-func TestAdminRendererPreservesEncoderPolicy(t *testing.T) {
-	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"admin_render"}`)}
-	client := NewClient("muscles", "ffmpeg", nil)
-	client.runner = runner
-	processor := &AdminMediaProcessor{client: client, policy: mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 21}, profile: mediaexec.VideoProfile{}.WithDefaults()}
-	manifest := adminmedia.RenderManifest{
-		Input: "in.mp4", Output: "out.mp4", Font: "/tmp/font.ttf",
-		Effects:  []adminmedia.RenderEffect{{Path: "fx.mp4", DelayMS: 10, Duration: 1, Volume: "0.5"}},
-		Overlays: []adminmedia.RenderOverlay{{Text: "hello", Start: "0", End: "1", Size: "32", Y: "10", Color: "white"}},
-	}
-	if err := processor.Render(context.Background(), manifest); err != nil {
-		t.Fatalf("Render() error = %v", err)
-	}
-	var sent request
-	if err := json.Unmarshal(runner.input, &sent); err != nil {
-		t.Fatalf("decode request: %v", err)
-	}
-	if sent.Operation != "admin_render" || sent.Codec != "h264_nvenc" || sent.Preset != "p1" || sent.CRF != 21 || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "192k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Effects) != 1 || len(sent.Overlays) != 1 {
-		t.Fatalf("unexpected admin render request: %+v", sent)
-	}
-}
-
-func TestMediaExecCountersIncrementOnDispatch(t *testing.T) {
-	ffmpegBefore := testutil.ToFloat64(observability.FFmpegExecCount)
-	ffprobeBefore := testutil.ToFloat64(observability.FFprobeExecCount)
-
-	// probe is a single ffprobe invocation.
-	probeRunner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"probe","metadata":{"duration_sec":1}}`)}
-	probeClient := NewClient("muscles", "ffmpeg", nil)
-	probeClient.runner = probeRunner
-	if _, err := (&VideoProcessor{client: probeClient}).Probe(context.Background(), "/tmp/in.mp4"); err != nil {
-		t.Fatalf("Probe() error = %v", err)
-	}
-
-	// mux_audio_copy is a single ffmpeg stream-copy invocation.
-	audioPath := t.TempDir() + "/final_audio.m4a"
-	if err := os.WriteFile(audioPath, []byte("certified"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	hash := sha256.Sum256([]byte("certified"))
-	asset := capabilityaudio.FinalAudioAsset{AudioContractVersion: capabilityaudio.AudioContractVersion, AudioPlanVersion: capabilityaudio.AudioPlanVersion, AudioPlanSHA256: "plan", FinalAudioSHA256: fmt.Sprintf("%x", hash[:]), Codec: "aac", Profile: "LC", SampleRate: 48000, Channels: 2, ChannelLayout: "stereo", DurationMS: 1000, Bitrate: 128000, SizeBytes: 9, FinalMix: true, CopyEligible: true}
-	muxRunner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"mux_audio_copy"}`)}
-	muxClient := NewClient("muscles", "ffmpeg", nil)
-	muxClient.runner = muxRunner
-	if err := (&VideoProcessor{client: muxClient}).MuxFinalAudioCopy(context.Background(), "/tmp/video.mp4", audioPath, "/tmp/output.mp4", asset); err != nil {
-		t.Fatalf("MuxFinalAudioCopy() error = %v", err)
-	}
-
-	if got := testutil.ToFloat64(observability.FFprobeExecCount); got != ffprobeBefore+1 {
-		t.Fatalf("ffprobe_exec_count = %v, want %v", got, ffprobeBefore+1)
-	}
-	if got := testutil.ToFloat64(observability.FFmpegExecCount); got != ffmpegBefore+1 {
-		t.Fatalf("ffmpeg_exec_count = %v, want %v", got, ffmpegBefore+1)
-	}
-	// The copy-only mux decodes/encodes zero frames, so the frame counters stay 0.
-	if got := testutil.ToFloat64(observability.FramesDecoded); got != 0 {
-		t.Fatalf("frames_decoded = %v, want 0 (stream copy)", got)
-	}
-	if got := testutil.ToFloat64(observability.FramesEncoded); got != 0 {
-		t.Fatalf("frames_encoded = %v, want 0 (stream copy)", got)
 	}
 }

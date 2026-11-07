@@ -49,14 +49,6 @@ func (compositionCutter) Cut(context.Context, stockpipeline.CutRequest) (stockpi
 
 var _ stockpipeline.VideoCutter = compositionCutter{}
 
-type compositionRenderer struct{}
-
-func (compositionRenderer) Render(context.Context, stockpipeline.RenderRequest) (stockpipeline.RenderResult, error) {
-	return stockpipeline.RenderResult{}, nil
-}
-
-var _ stockpipeline.StockRenderer = compositionRenderer{}
-
 type compositionPublisherPort struct{}
 
 func (compositionPublisherPort) Publish(context.Context, finalization.VerifiedArtifact) (finalization.AssetLocation, error) {
@@ -118,7 +110,7 @@ func TestBuildStockBundle_WiresSourceDurationProbeIntoProductionService(t *testi
 			Dispatcher:      outbox.NewDispatcher(nil, nil, log, nil),
 			BatchRepository: batchRepo,
 		},
-		Media: StockMediaDeps{Cutter: compositionCutter{}, Renderer: compositionRenderer{}},
+		Media: StockMediaDeps{Cutter: compositionCutter{}},
 		Orchestration: StockOrchestrationDeps{
 			Jobs:          jobsBundle.Service,
 			FolderCreator: compositionFolderCreator{},

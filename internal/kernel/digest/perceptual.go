@@ -107,6 +107,9 @@ func IsPerceptualHash(value string) bool {
 }
 
 func downsamplePerceptualGray(img image.Image, columns, rows int) []uint8 {
+	if ycbcr, ok := img.(*image.YCbCr); ok {
+		return downsamplePerceptualYCbCr(ycbcr, columns, rows)
+	}
 	bounds := img.Bounds()
 	sourceWidth := bounds.Dx()
 	sourceHeight := bounds.Dy()
@@ -130,8 +133,45 @@ func downsamplePerceptualGray(img image.Image, columns, rows int) []uint8 {
 			var count uint64
 			for y := y0; y < y1; y++ {
 				for x := x0; x < x1; x++ {
-					r, g, b, _ := img.At(x, y).RGBA()
-					// ITU-R BT.601 luma, kept in 8-bit space.
+					sum += uint64(perceptualLumaAt(img, x, y))
+					count++
+				}
+			}
+			if count > 0 {
+				out[row*columns+column] = uint8(sum / count)
+			}
+		}
+	}
+	return out
+}
+
+// downsamplePerceptualYCbCr hoists the concrete decoder type check out of the
+// per-pixel loop. JPEG is the common web-image format and decodes to YCbCr;
+// using the same YCbCr.RGBA conversion preserves the legacy luma values.
+func downsamplePerceptualYCbCr(img *image.YCbCr, columns, rows int) []uint8 {
+	bounds := img.Bounds()
+	sourceWidth, sourceHeight := bounds.Dx(), bounds.Dy()
+	out := make([]uint8, columns*rows)
+	if sourceWidth <= 0 || sourceHeight <= 0 {
+		return out
+	}
+	for row := 0; row < rows; row++ {
+		y0 := bounds.Min.Y + row*sourceHeight/rows
+		y1 := bounds.Min.Y + (row+1)*sourceHeight/rows
+		if y1 <= y0 {
+			y1 = y0 + 1
+		}
+		for column := 0; column < columns; column++ {
+			x0 := bounds.Min.X + column*sourceWidth/columns
+			x1 := bounds.Min.X + (column+1)*sourceWidth/columns
+			if x1 <= x0 {
+				x1 = x0 + 1
+			}
+			var sum uint64
+			var count uint64
+			for y := y0; y < y1; y++ {
+				for x := x0; x < x1; x++ {
+					r, g, b, _ := img.YCbCrAt(x, y).RGBA()
 					sum += uint64((299*r + 587*g + 114*b) / 1000 >> 8)
 					count++
 				}
@@ -142,6 +182,37 @@ func downsamplePerceptualGray(img image.Image, columns, rows int) []uint8 {
 		}
 	}
 	return out
+}
+
+// perceptualLumaAt avoids the interface-returning Image.At call in the hot
+// pixel loop for the concrete image types returned by the standard decoders.
+// Each branch still uses the color type's canonical RGBA conversion, keeping
+// the resulting dHash byte-for-byte compatible with the generic path.
+func perceptualLumaAt(img image.Image, x, y int) uint8 {
+	var r, g, b uint32
+	switch im := img.(type) {
+	case *image.YCbCr:
+		r, g, b, _ = im.YCbCrAt(x, y).RGBA()
+	case *image.RGBA:
+		r, g, b, _ = im.RGBAAt(x, y).RGBA()
+	case *image.NRGBA:
+		r, g, b, _ = im.NRGBAAt(x, y).RGBA()
+	case *image.RGBA64:
+		r, g, b, _ = im.RGBA64At(x, y).RGBA()
+	case *image.NRGBA64:
+		r, g, b, _ = im.NRGBA64At(x, y).RGBA()
+	case *image.Gray:
+		r, g, b, _ = im.GrayAt(x, y).RGBA()
+	case *image.Gray16:
+		r, g, b, _ = im.Gray16At(x, y).RGBA()
+	case *image.Paletted:
+		r, g, b, _ = im.Palette[im.ColorIndexAt(x, y)].RGBA()
+	default:
+		r, g, b, _ = img.At(x, y).RGBA()
+	}
+	// ITU-R BT.601 luma, kept in 8-bit space. Keep this arithmetic identical
+	// to the former generic implementation to preserve all stored dHashes.
+	return uint8((299*r + 587*g + 114*b) / 1000 >> 8)
 }
 
 func perceptualDifferenceBits(gray []uint8) []byte {

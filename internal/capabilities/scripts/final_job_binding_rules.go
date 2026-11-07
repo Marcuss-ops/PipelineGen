@@ -50,8 +50,8 @@ func validateFinalJobPlanBindingRules(plan finalJobCompiledPlan) error {
 		}
 	}
 	seenSegment := make(map[string]struct{}, len(plan.Assets))
-	for _, track := range plan.VideoTracks {
-		for _, segment := range track.Segments {
+	for trackIndex, track := range plan.VideoTracks {
+		for segmentIndex, segment := range track.Segments {
 			id := strings.TrimSpace(segment.SegmentID)
 			if id == "" {
 				return fmt.Errorf("final_job plan segment without an id")
@@ -70,7 +70,37 @@ func validateFinalJobPlanBindingRules(plan finalJobCompiledPlan) error {
 			if segment.FrameCount <= 0 {
 				return fmt.Errorf("final_job plan segment %q has no frame span", id)
 			}
+			if violation := finalJobSourceRangeViolation(trackIndex, segmentIndex, segment, asset); violation != "" {
+				return fmt.Errorf("invalid_compiled_render_plan: %s", violation)
+			}
 		}
 	}
 	return nil
+}
+
+// finalJobSourceRangeViolation mirrors the Master's source_range_out_of_bounds
+// admission rule. It is the local half of the r36/r37 fix: a plan whose segment
+// asks for more source than the asset certifies must die in this process, with
+// the same segment coordinates the Master would print, before PREPARE and
+// before any fragment is uploaded.
+func finalJobSourceRangeViolation(trackIndex, segmentIndex int, segment finalJobPlanSegment, asset finalJobPlanAsset) string {
+	if segment.SourceInUS < 0 {
+		return fmt.Sprintf("video_tracks[%d].segments[%d]: source_in_us is negative (%d)", trackIndex, segmentIndex, segment.SourceInUS)
+	}
+	if segment.SourceDurationUS < 0 {
+		return fmt.Sprintf("video_tracks[%d].segments[%d]: source_duration_us is negative (%d)", trackIndex, segmentIndex, segment.SourceDurationUS)
+	}
+	if segment.SourceDurationUS == 0 || asset.DurationUS <= 0 {
+		// A zero duration is either a fragment whose asset carries the span in
+		// frame_count (prepared path) or a plan this validator cannot certify.
+		// The exact-span check below is meaningful only when both sides exist.
+		return ""
+	}
+	if end := segment.SourceInUS + segment.SourceDurationUS; end > asset.DurationUS {
+		return fmt.Sprintf(
+			"video_tracks[%d].segments[%d] asset %q: source_range_out_of_bounds (expected source_in_us + source_duration_us <= %d, observed %d + %d)",
+			trackIndex, segmentIndex, segment.AssetID, asset.DurationUS, segment.SourceInUS, segment.SourceDurationUS,
+		)
+	}
+	return ""
 }

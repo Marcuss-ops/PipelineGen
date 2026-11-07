@@ -79,3 +79,47 @@ func TestSourceDurations_AbsentKeepsLegacyWireShape(t *testing.T) {
 	require.Nil(t, copySourceDurations(nil))
 	require.Nil(t, copySourceDurations(map[string]float64{}))
 }
+
+// TestSourceTitles_TravelFromRequestToJobPayload pins the same four-boundary
+// trip for source_titles: without it a caller that supplies both durations and
+// titles silently loses the titles (and the clips become searchable only by
+// filename).
+func TestSourceTitles_TravelFromRequestToJobPayload(t *testing.T) {
+	titles := map[string]string{durationURL1: "first", durationURL2: "second"}
+	request := &StockSearchAndRunRequest{
+		DirectURLs:   []string{durationURL1, durationURL2},
+		SourceTitles: map[string]string{durationURL1: "first", durationURL2: "second"},
+	}
+
+	cmd, err := FromSearchAndRunRequest(request)
+	require.NoError(t, err)
+	require.Equal(t, titles, cmd.SourceTitles)
+
+	// Boundary copy: mutating the request map after conversion must not
+	// reach the command.
+	request.SourceTitles[durationURL1] = "mutated"
+	require.Equal(t, "first", cmd.SourceTitles[durationURL1])
+
+	payload := cmd.ToJobPayload()
+	require.Equal(t, titles, payload["source_titles"])
+
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	var decoded StockRunPayload
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.Equal(t, titles, decoded.SourceTitles)
+
+	input := cmd.ToRunInput()
+	require.Equal(t, titles, input.SourceTitles)
+}
+
+func TestSourceTitles_AbsentKeepsLegacyWireShape(t *testing.T) {
+	cmd := &StockCommand{DirectURLs: []string{durationURL1}}
+
+	_, present := cmd.ToJobPayload()["source_titles"]
+	require.False(t, present, "a run without supplied titles must not emit the key")
+
+	require.Nil(t, cmd.ToRunInput().SourceTitles)
+	require.Nil(t, copySourceTitles(nil))
+	require.Nil(t, copySourceTitles(map[string]string{}))
+}

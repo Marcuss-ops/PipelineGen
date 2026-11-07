@@ -41,7 +41,6 @@ func (f *publishFakeRunner) PolicyVersion() string                  { return f.c
 func (f *publishFakeRunner) Planner() ClipPlanner                   { return nil }
 func (f *publishFakeRunner) SourceStager() acquisition.SourceStager { return nil }
 func (f *publishFakeRunner) Cutter() VideoCutter                    { return nil }
-func (f *publishFakeRunner) Renderer() StockRenderer                { return nil }
 func (f *publishFakeRunner) Builder() ManifestBuilder               { return nil }
 func (f *publishFakeRunner) Writer() TransactionalAssetWriter       { return nil }
 func (f *publishFakeRunner) Projection() ProjectionPort             { return nil }

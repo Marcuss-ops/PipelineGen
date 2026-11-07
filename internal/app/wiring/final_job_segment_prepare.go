@@ -96,10 +96,11 @@ func finalJobDeliveryMatches(width, height int, avgFPS, pixelFmt, sampleAspectRa
 		pixelFmt == finalJobDelivery.PixelFormat && sampleAspectRatio == "1:1"
 }
 
-// finalJobSegmentPreparer creates only timeline fragments, never the final
-// video. Inputs that already carry a complete, trusted assembly certificate
-// are reused; incompatible windows are cut and encoded once locally, then
-// uploaded to Objectstore. Worker 51 receives only HTTPS, copy-ready pieces.
+// finalJobSegmentPreparer creates only Producer-owned timeline fragments, never
+// the final video. Inputs that already carry a complete, trusted assembly
+// certificate are reused; incompatible overlay/clip windows are cut and encoded
+// once locally, then uploaded to Objectstore. Stock is intentionally outside
+// this type: the remote Master processes the Drive source itself.
 type finalJobSegmentPreparer struct {
 	ffmpeg string
 	policy mediaexec.EncoderPolicy
@@ -231,6 +232,9 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	if p == nil || p.client == nil {
 		return nil, fmt.Errorf("local fragment encoder is unavailable")
 	}
+	if strings.EqualFold(stringValue(source["role"]), "stock") {
+		return nil, fmt.Errorf("stock sources must be processed by the remote Master; local stock preparation is disabled")
+	}
 	if request.FrameCount <= 0 || request.SourceInUS < 0 || request.SourceDurationUS <= 0 || request.TimelineStartFrame < 0 || request.TimelineRevision <= 0 || len(request.TimelineSHA256) != 64 {
 		return nil, fmt.Errorf("segment has invalid source or timeline bounds")
 	}
@@ -241,6 +245,10 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 	if sourceURL == "" {
 		sourceURL = strings.TrimSpace(stringValue(source["url"]))
 	}
+	// This preparer only handles Producer-owned overlay/clip artifacts. Stock
+	// never reaches it: the plan carries the stockpipeline Drive reference and
+	// the remote Master processes those bytes. Requiring HTTPS here keeps a
+	// local stock file from silently re-entering the local fragment path.
 	if inputID == "" || len(inputSHA) != 64 || inputSize <= 0 || !strings.HasPrefix(strings.ToLower(sourceURL), "https://") {
 		return nil, fmt.Errorf("source asset is missing an immutable HTTPS identity")
 	}
@@ -252,27 +260,6 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		// the placement is DERIVED: the certified bitstream is copied into a
 		// distinct container. Same frames, new bytes, no second render.
 		return p.derivePlacement(ctx, request, assetID, durationUS, stringValue(source["role"]))
-	}
-	if request.PlacementTag == "" && finalJobSourceIsExactPreparedFragment(source, request, durationUS) {
-		// The existing source already has a signed HTTPS locator and a verified
-		// content hash. Change only the per-segment identity; the signed URL is
-		// bound to the immutable hash-addressed object, not to asset_id.
-		ref := make(map[string]any, len(source)+1)
-		for key, value := range source {
-			if key == "drive_file_id" || key == "url" || key == "local_path" {
-				continue
-			}
-			ref[key] = value
-		}
-		ref["asset_id"] = assetID
-		// Reuse costs no phase time, but it is counted so a handoff that
-		// prepared nothing cannot be mistaken for one that encoded cheaply.
-		return p.finishFragment(ctx, request, ref, stringValue(source["role"]), inputSHA, inputSize, durationUS,
-			finalJobSegmentWindow{
-				segmentID: request.SegmentID, sourceSHA: inputSHA, path: finalJobWindowReuse,
-				frames: request.FrameCount, bytes: inputSize,
-			},
-			func(s *finalJobSegmentStats) { s.segments++; s.reused++ }), nil
 	}
 	// Cache: the same source bytes, window, encoder policy and requested
 	// preparation path are the same fragment. Keeping copy-enabled and
@@ -349,12 +336,11 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		case start+request.FrameCount > census.frames:
 			copyFailure = fmt.Errorf("window ends at frame %d beyond the %d certified frames", start+request.FrameCount, census.frames)
 		default:
-			// The certificate of a copied window is DERIVED, never re-probed:
-			// the census already proved the closed fixed GOP, the first keyframe
-			// and the packet count of these bytes, and the window starts on a
-			// GOP boundary, so a packet copy cannot change the pictures, the
-			// cadence or the frame count. A second ffprobe here would just
-			// repeat the census it ran one line above.
+			// A copy does not decode pictures, but the source declaration can be
+			// stale: intro/outro clips have been observed declaring one more frame
+			// than they contain. Probe the copied bytes before publishing; if the
+			// copy is short, fall back to the encoder below, which pads the
+			// measured shortfall.
 			started := time.Now()
 			copyErr := p.copyAVC3Window(ctx, sourcePath, outPath, request)
 			encoded += time.Since(started)
@@ -372,6 +358,16 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 						copyFailure = fmt.Errorf("copied fragment avcC %s is not canonical %s", got, finalJobDelivery.VideoExtradataSHA256)
 					}
 					_ = os.Remove(outPath)
+				}
+				if copied {
+					verifyStarted := time.Now()
+					verifyErr := certifyFinalJobFragment(ctx, outPath, request.FrameCount)
+					verified += time.Since(verifyStarted)
+					if verifyErr != nil {
+						copied = false
+						copyFailure = fmt.Errorf("copied fragment did not certify: %w", verifyErr)
+						_ = os.Remove(outPath)
+					}
 				}
 			}
 		}
@@ -391,20 +387,39 @@ func (p *finalJobSegmentPreparer) PrepareFinalJobVideoSegment(ctx context.Contex
 		// source is encoded without tpad, so reaching the frame cap can no
 		// longer freeze a tail that was already there.
 		paddedFrames = finalJobSourceShortfall(census, censusOK, request)
-		encodeStarted := time.Now()
-		if err := p.encodeFragment(ctx, sourcePath, outPath, request, normalizeGeometry, paddedFrames); err != nil {
-			return nil, err
+		for attempt := 0; attempt < 2; attempt++ {
+			encodeStarted := time.Now()
+			if err := p.encodeFragment(ctx, sourcePath, outPath, request, normalizeGeometry, paddedFrames); err != nil {
+				return nil, err
+			}
+			if got, hashErr := readAVCDecoderConfigurationSHA256(outPath); hashErr != nil {
+				return nil, fmt.Errorf("certify encoded fragment avcC: %w", hashErr)
+			} else if got != finalJobDelivery.VideoExtradataSHA256 {
+				return nil, fmt.Errorf("encoded fragment avcC %s != canonical %s: encoder output is not packet-copy compatible", got, finalJobDelivery.VideoExtradataSHA256)
+			}
+			verifyStarted := time.Now()
+			probe, probeErr := probeFinalJobFragment(ctx, outPath)
+			verified += time.Since(verifyStarted)
+			if probeErr != nil {
+				return nil, fmt.Errorf("certify encoded fragment: %w", probeErr)
+			}
+			if certErr := probe.certify(request.FrameCount); certErr != nil {
+				missing := request.FrameCount - probe.frames()
+				if attempt == 1 || missing <= 0 {
+					return nil, fmt.Errorf("certify encoded fragment: %w", certErr)
+				}
+				// A source with a non-zero start time can decode one frame short
+				// of its packet count at a CFR boundary (the intro/outro clips
+				// start at 0.020020 with 120 packets but encode to 119 frames).
+				// Add exactly the observed deficit and retry once; the output
+				// cap keeps a source that already has enough frames bounded.
+				paddedFrames += missing
+				encoded += time.Since(encodeStarted)
+				continue
+			}
+			encoded += time.Since(encodeStarted)
+			break
 		}
-		if got, hashErr := readAVCDecoderConfigurationSHA256(outPath); hashErr != nil {
-			return nil, fmt.Errorf("certify encoded fragment avcC: %w", hashErr)
-		} else if got != finalJobDelivery.VideoExtradataSHA256 {
-			return nil, fmt.Errorf("encoded fragment avcC %s != canonical %s: encoder output is not packet-copy compatible", got, finalJobDelivery.VideoExtradataSHA256)
-		}
-		encoded += time.Since(encodeStarted)
-		// No per-fragment probe: the command itself pins the contract (High 4.0,
-		// 1920x1080, yuv420p, 24/1, bf=0, closed GOP 48, PTS 0) and the tests
-		// certify a real encoded fragment. Probing every encode at runtime
-		// repeats a build-time proof on our own output.
 	}
 	sha, size, err := p.verifyLocalFile(outPath)
 	if err != nil {

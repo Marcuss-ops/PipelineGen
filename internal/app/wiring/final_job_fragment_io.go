@@ -106,7 +106,7 @@ func (p *finalJobSegmentPreparer) cachedFragment(key string, frameCount, duratio
 		return "", "", 0, false
 	}
 	if entry.ProfileID != finalJobSegmentProfile || entry.VideoExtradataSHA256 != finalJobDelivery.VideoExtradataSHA256 || len(entry.SHA256) != 64 || entry.SizeBytes <= 0 ||
-		entry.FrameCount != frameCount || entry.DurationUS != durationUS {
+		entry.FrameCount != frameCount || entry.MeasuredFrameCount != frameCount || entry.DurationUS != durationUS {
 		return "", "", 0, false
 	}
 	path := base + ".mp4"
@@ -166,7 +166,7 @@ func (p *finalJobSegmentPreparer) storeFragment(key, path, sha string, size, fra
 		return
 	}
 	payload, err := json.Marshal(finalJobFragmentCacheEntry{
-		SHA256: strings.ToLower(sha), SizeBytes: size, FrameCount: frameCount, DurationUS: durationUS, ProfileID: finalJobSegmentProfile,
+		SHA256: strings.ToLower(sha), SizeBytes: size, FrameCount: frameCount, MeasuredFrameCount: frameCount, DurationUS: durationUS, ProfileID: finalJobSegmentProfile,
 		VideoExtradataSHA256: finalJobDelivery.VideoExtradataSHA256,
 	})
 	if err != nil {
@@ -231,9 +231,14 @@ func finalJobFragmentCacheDir(dataDir string) string {
 // identity of the bytes next to it. A missing or mismatched sidecar is a cache
 // miss, never a guess.
 type finalJobFragmentCacheEntry struct {
-	SHA256               string `json:"sha256"`
-	SizeBytes            int64  `json:"size_bytes"`
-	FrameCount           int64  `json:"frame_count"`
+	SHA256     string `json:"sha256"`
+	SizeBytes  int64  `json:"size_bytes"`
+	FrameCount int64  `json:"frame_count"`
+	// MeasuredFrameCount is the packet count certify read from the bytes. It is
+	// separate from FrameCount because older entries stored only the requested
+	// count: a sidecar without a measured count cannot prove the fragment is
+	// whole and must be treated as a miss.
+	MeasuredFrameCount   int64  `json:"measured_frame_count"`
 	DurationUS           int64  `json:"duration_us"`
 	ProfileID            string `json:"profile_id"`
 	VideoExtradataSHA256 string `json:"video_extradata_sha256"`
@@ -338,9 +343,11 @@ func (p *finalJobSegmentPreparer) lockSource(key string) func() {
 	return lock.Unlock
 }
 
-// stagedSource returns a verified local copy of the source bytes and how long
-// obtaining it took. The bytes are hash-addressed, so they are fetched ONCE per
-// source: a source cache hit costs one stat and one hash, never a transfer.
+// stagedSource returns a verified local copy of a Producer-owned source and how
+// long obtaining it took. Stock does not use this path: the remote Master reads
+// the stockpipeline Drive reference directly. The bytes are hash-addressed, so
+// they are fetched ONCE per source: a cache hit costs one stat and one hash,
+// never a transfer.
 func (p *finalJobSegmentPreparer) stagedSource(ctx context.Context, sourceURL, expectedSHA string, expectedSize int64, workDir string) (string, time.Duration, error) {
 	stage := func(target string) (string, time.Duration, error) {
 		started := time.Now()

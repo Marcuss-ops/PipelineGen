@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -194,6 +196,91 @@ func terminalJobStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// ErrInvalidCompiledRenderPlan is the producer-owned classification for a
+// Master/prepare rejection that is NOT a quota problem: the compiled plan asked
+// for more source than the asset certifies. The Master historically returned
+// `m2m_quota_failure` for it; the Producer must still name the real cause so an
+// operator sees a plan bug, not a billing/quota incident.
+var ErrInvalidCompiledRenderPlan = errors.New("invalid compiled render plan")
+
+// PlanValidationError carries the Master's segment coordinates. It is terminal:
+// retrying the same plan can only reproduce the same rejection, so it must not
+// be wrapped as transient infrastructure noise.
+type PlanValidationError struct {
+	StatusCode int
+	Code       string
+	Message    string
+	Segments   []string
+}
+
+func (e *PlanValidationError) Error() string {
+	if e == nil {
+		return ErrInvalidCompiledRenderPlan.Error()
+	}
+	detail := strings.TrimSpace(e.Message)
+	if len(e.Segments) > 0 {
+		detail += " (segments: " + strings.Join(e.Segments, ", ") + ")"
+	}
+	if detail == "" {
+		detail = "no detail"
+	}
+	return fmt.Sprintf("invalid compiled render plan (HTTP %d, %s): %s", e.StatusCode, e.Code, detail)
+}
+
+func (e *PlanValidationError) Unwrap() error { return ErrInvalidCompiledRenderPlan }
+
+// IsRetryable makes the canonical typed retry classifier return false. A plan
+// defect is deterministic; only a changed plan (or a new attempt key) may help.
+func (e *PlanValidationError) IsRetryable() bool { return false }
+
+var (
+	planSegmentIndexPattern = regexp.MustCompile(`segments\[(\d+)\]`)
+	planSegmentNamePattern  = regexp.MustCompile(`segment\s+"([^"]+)"`)
+)
+
+// parsePlanValidationError turns the Master's misleading quota envelope into
+// the real, typed cause. It deliberately requires BOTH the quota/invalid-plan
+// code and a compiled-plan/source-range token: a genuine quota failure must
+// keep its own identity and must never be re-labelled as a plan bug.
+func parsePlanValidationError(status int, body string) *PlanValidationError {
+	var envelope struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal([]byte(body), &envelope)
+	code := strings.ToLower(strings.TrimSpace(envelope.Error))
+	message := strings.TrimSpace(envelope.Message)
+	if message == "" {
+		message = strings.TrimSpace(body)
+	}
+	if code != "m2m_quota_failure" && code != "invalid_compiled_render_plan" {
+		return nil
+	}
+	if !strings.Contains(message, "CompiledRenderPlan") && !strings.Contains(message, "source_range_out_of_bounds") {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	segments := make([]string, 0)
+	for _, match := range planSegmentIndexPattern.FindAllStringSubmatch(message, -1) {
+		key := "segments[" + match[1] + "]"
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		segments = append(segments, key)
+	}
+	for _, match := range planSegmentNamePattern.FindAllStringSubmatch(message, -1) {
+		key := `segment "` + match[1] + `"`
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		segments = append(segments, key)
+	}
+	sort.Strings(segments)
+	return &PlanValidationError{StatusCode: status, Code: code, Message: message, Segments: segments}
 }
 
 // staleJobResponse reports whether a Master error names a stale job identity:
@@ -474,7 +561,11 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 		return err
 	}
 	if resp.StatusCode != wantStatus {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		body := strings.TrimSpace(string(data))
+		if planErr := parsePlanValidationError(resp.StatusCode, body); planErr != nil {
+			return planErr
+		}
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 	}
 	if out != nil && len(data) > 0 {
 		if err := json.Unmarshal(data, out); err != nil {
@@ -482,119 +573,4 @@ func (c *Client) request(ctx context.Context, method, path string, body any, out
 		}
 	}
 	return nil
-}
-
-func unwrap(in jobEnvelope) jobEnvelope {
-	var wrapped jobEnvelope
-	if len(in.Job) > 0 && json.Unmarshal(in.Job, &wrapped) == nil && wrapped.Status != "" {
-		return withOuterTiming(wrapped, in)
-	}
-	if json.Unmarshal(in.Result, &wrapped) == nil && wrapped.Status != "" {
-		return withOuterTiming(wrapped, in)
-	}
-	return in
-}
-
-// withOuterTiming keeps the envelope's phase boundaries when the nested job
-// object does not repeat them: older Masters wrap status in job/result while
-// still exposing the timestamps at the top level.
-func withOuterTiming(inner, outer jobEnvelope) jobEnvelope {
-	if inner.CreatedAt == "" {
-		inner.CreatedAt = outer.CreatedAt
-	}
-	if inner.StartedAt == "" {
-		inner.StartedAt = outer.StartedAt
-	}
-	if inner.CompletedAt == "" {
-		inner.CompletedAt = outer.CompletedAt
-	}
-	if len(inner.WorkerTiming) == 0 {
-		inner.WorkerTiming = outer.WorkerTiming
-	}
-	return inner
-}
-
-// workerTimingFrom decodes the relayed worker report. A malformed or absent
-// block is "not reported": the breakdown is observability and must never fail
-// a render the Master already completed.
-func workerTimingFrom(raw json.RawMessage) WorkerTiming {
-	if len(raw) == 0 {
-		return WorkerTiming{}
-	}
-	var wire workerTimingWire
-	if err := json.Unmarshal(raw, &wire); err != nil {
-		return WorkerTiming{}
-	}
-	return WorkerTiming{
-		LeasedAt:   parseMasterTime(wire.LeasedAt),
-		StartedAt:  parseMasterTime(wire.StartedAt),
-		FinishedAt: parseMasterTime(wire.FinishedAt),
-		Download:   nonNegativeMS(wire.DownloadMS),
-		Decode:     nonNegativeMS(wire.DecodeMS),
-		Compose:    nonNegativeMS(wire.ComposeMS),
-		Encode:     nonNegativeMS(wire.EncodeMS),
-		Mux:        nonNegativeMS(wire.MuxMS),
-		Upload:     nonNegativeMS(wire.UploadMS),
-		Frames:     wire.Frames,
-		EncodeFPS:  wire.EncodeFPS,
-	}
-}
-
-// nonNegativeMS refuses a negative worker phase: a worker clock cannot produce
-// a negative duration, so such a value is a malformed report, not data.
-func nonNegativeMS(ms int64) time.Duration {
-	if ms <= 0 {
-		return 0
-	}
-	return time.Duration(ms) * time.Millisecond
-}
-
-// parseMasterTime reads a Master phase boundary. A malformed or absent value is
-// "not reported", never an error: the timing breakdown is observability and
-// must not fail a render that otherwise succeeded.
-func parseMasterTime(raw string) time.Time {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "null" {
-		return time.Time{}
-	}
-	parsed, err := time.Parse(time.RFC3339Nano, raw)
-	if err != nil {
-		return time.Time{}
-	}
-	return parsed
-}
-
-// timingFromState derives the Master-side phases, refusing negative intervals
-// (clock skew) instead of reporting a nonsensical duration.
-func timingFromState(state jobEnvelope) Timing {
-	created := parseMasterTime(state.CreatedAt)
-	started := parseMasterTime(state.StartedAt)
-	completed := parseMasterTime(state.CompletedAt)
-	timing := Timing{CreatedAt: created, StartedAt: started, CompletedAt: completed}
-	if !created.IsZero() && !started.IsZero() && started.After(created) {
-		timing.QueueWait = started.Sub(created)
-	}
-	if !started.IsZero() && !completed.IsZero() && completed.After(started) {
-		timing.Execution = completed.Sub(started)
-	}
-	timing.Worker = workerTimingFrom(state.WorkerTiming)
-	return timing
-}
-
-func resultFrom(jobID string, state jobEnvelope) Result {
-	var artifact struct {
-		URL    string `json:"url"`
-		SHA256 string `json:"sha256"`
-	}
-	_ = json.Unmarshal(state.Artifact, &artifact)
-	if artifact.URL == "" {
-		_ = json.Unmarshal(state.Result, &artifact)
-	}
-	if artifact.URL == "" {
-		artifact.URL = state.ArtifactURL
-	}
-	if artifact.SHA256 == "" {
-		artifact.SHA256 = state.ArtifactSHA256
-	}
-	return Result{JobID: jobID, Status: state.Status, WorkerID: state.WorkerID, ArtifactURL: artifact.URL, SHA256: artifact.SHA256, Timing: timingFromState(state)}
 }

@@ -13,11 +13,10 @@ import (
 
 // ProductionPipelineDeps groups the execution ports for the live stock run.
 type ProductionPipelineDeps struct {
-	Planner  ClipPlanner
-	Stager   acquisition.SourceStager
-	Cutter   VideoCutter
-	Renderer StockRenderer
-	Builder  ManifestBuilder
+	Planner ClipPlanner
+	Stager  acquisition.SourceStager
+	Cutter  VideoCutter
+	Builder ManifestBuilder
 }
 
 // ProductionPersistenceDeps groups durable state and finalization ports.
@@ -60,7 +59,6 @@ var (
 	ErrProductionPlannerMissing             = errors.New("stock production orchestrator: planner is required")
 	ErrProductionStagerMissing              = errors.New("stock production orchestrator: source stager is required")
 	ErrProductionCutterMissing              = errors.New("stock production orchestrator: cutter is required")
-	ErrProductionRendererMissing            = errors.New("stock production orchestrator: renderer is required")
 	ErrProductionManifestBuilderMissing     = errors.New("stock production orchestrator: manifest builder is required")
 	ErrProductionWriterMissing              = errors.New("stock production orchestrator: transactional writer is required")
 	ErrProductionProjectionMissing          = errors.New("stock production orchestrator: projection port is required")
@@ -86,7 +84,6 @@ func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStock
 		{deps.Pipeline.Planner, ErrProductionPlannerMissing},
 		{deps.Pipeline.Stager, ErrProductionStagerMissing},
 		{deps.Pipeline.Cutter, ErrProductionCutterMissing},
-		{deps.Pipeline.Renderer, ErrProductionRendererMissing},
 		{deps.Pipeline.Builder, ErrProductionManifestBuilderMissing},
 		{deps.Persistence.Writer, ErrProductionWriterMissing},
 		{deps.Persistence.Projection, ErrProductionProjectionMissing},
@@ -119,7 +116,6 @@ func NewProductionStockOrchestrator(cfg OrchestratorConfig, deps ProductionStock
 		planner:               deps.Pipeline.Planner,
 		stager:                deps.Pipeline.Stager,
 		cutter:                deps.Pipeline.Cutter,
-		renderer:              deps.Pipeline.Renderer,
 		builder:               deps.Pipeline.Builder,
 		writer:                deps.Persistence.Writer,
 		projection:            deps.Persistence.Projection,

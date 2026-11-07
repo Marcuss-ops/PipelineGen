@@ -45,7 +45,6 @@ func (f *fakeStepRunner) PolicyVersion() string                                 
 func (f *fakeStepRunner) Planner() ClipPlanner                                         { return f.planner }
 func (f *fakeStepRunner) SourceStager() acquisition.SourceStager                       { return nil }
 func (f *fakeStepRunner) Cutter() VideoCutter                                          { return f.cutter }
-func (f *fakeStepRunner) Renderer() StockRenderer                                      { return nil }
 func (f *fakeStepRunner) Builder() ManifestBuilder                                     { return nil }
 func (f *fakeStepRunner) Writer() TransactionalAssetWriter                             { return nil }
 func (f *fakeStepRunner) Projection() ProjectionPort                                   { return nil }

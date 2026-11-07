@@ -64,6 +64,29 @@ func TestSearchDDGWideUsesVQDAndImagesEndpoint(t *testing.T) {
 	}
 }
 
+func TestSearchDDGImageCandidatesPreserveDimensionsAndSkipSmallImages(t *testing.T) {
+	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body := `<script>vqd="12345-678"</script>`
+		if req.URL.Path == "/i.js" {
+			body = `{"results":[` +
+				`{"image":"https://images.example/thumb.jpg","url":"https://news.example/story","title":"Small","width":320,"height":240},` +
+				`{"image":"https://images.example/full.jpg","url":"https://news.example/full-story","title":"Full","width":1280,"height":720}]}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})}
+	service := &ImageStorageService{client: client, log: zap.NewNop()}
+	got := service.SearchDDGImageCandidatesMany(context.Background(), "image metadata gate", 10)
+	if len(got) != 1 {
+		t.Fatalf("candidate count = %d, want one sufficiently large image: %+v", len(got), got)
+	}
+	if got[0].PreviewURL != "https://images.example/full.jpg" || got[0].PageURL != "https://news.example/full-story" {
+		t.Fatalf("candidate URLs = (%q, %q), want the full image and source page", got[0].PreviewURL, got[0].PageURL)
+	}
+	if got[0].Width != 1280 || got[0].Height != 720 {
+		t.Fatalf("dimensions = %dx%d, want 1280x720", got[0].Width, got[0].Height)
+	}
+}
+
 func TestSearchDDGWideInvalidVQDResponseReturnsEmpty(t *testing.T) {
 	client := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{

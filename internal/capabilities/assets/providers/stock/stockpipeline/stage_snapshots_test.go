@@ -51,12 +51,12 @@ func TestOrchestratorStageSnapshots_MapsLatestRowsInCanonicalOrder(t *testing.T)
 	if err != nil {
 		t.Fatalf("stageSnapshots: %v", err)
 	}
-	if len(stages) != 6 {
-		t.Fatalf("stage count = %d, want 6", len(stages))
+	if len(stages) != 5 {
+		t.Fatalf("stage count = %d, want 5", len(stages))
 	}
 	wantNames := []string{
 		StepKeyStockPlan, StepKeyStockStageSources, StepKeyStockExtractClips,
-		StepKeyStockComposeChunks, StepKeyStockPublish, StepKeyStockFinalize,
+		StepKeyStockPublish, StepKeyStockFinalize,
 	}
 	for i, want := range wantNames {
 		if stages[i].Name != want {
@@ -69,40 +69,14 @@ func TestOrchestratorStageSnapshots_MapsLatestRowsInCanonicalOrder(t *testing.T)
 	if stages[2].Status != string(steps.StatusFailed) || stages[2].LastError != "source failed" {
 		t.Fatalf("extract snapshot = %+v", stages[2])
 	}
-	if stages[3].Status != string(steps.StatusPending) || !stages[3].Applicable {
-		t.Fatalf("missing compose snapshot = %+v", stages[3])
-	}
-	if stages[4].Status != string(steps.StatusPending) || stages[4].Attempt != 2 {
-		t.Fatalf("publish retry snapshot = %+v", stages[4])
-	}
-}
-
-func TestOrchestratorStageSnapshots_BypassedComposeWinsOverHistoricalCheckpoint(t *testing.T) {
-	store := steps.NewInMemoryStore()
-	ctx := context.Background()
-	key := steps.StepKey{JobID: "stage-snapshot-bypass", StepKey: StepKeyStockComposeChunks, InputFingerprint: "historical"}
-	if err := store.MarkStarted(ctx, key); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.MarkCompleted(ctx, key, json.RawMessage(`{"historical":true}`), nil); err != nil {
-		t.Fatal(err)
-	}
-
-	o := &Orchestrator{cfg: OrchestratorConfig{JobId: key.JobID}, stepStore: store}
-	stages, err := o.stageSnapshots(ctx, &RunInput{NoEffects: true, NoTransitions: true})
-	if err != nil {
-		t.Fatalf("stageSnapshots: %v", err)
-	}
-	compose := stages[3]
-	if compose.Name != StepKeyStockComposeChunks || compose.Status != "skipped" || compose.Applicable {
-		t.Fatalf("bypassed compose snapshot = %+v, want skipped/applicable=false", compose)
+	if stages[3].Status != string(steps.StatusPending) || stages[3].Attempt != 2 {
+		t.Fatalf("publish retry snapshot = %+v", stages[3])
 	}
 }
 
 func TestStageSnapshot_JSONOmitsZeroTimestampsAndPreservesOrder(t *testing.T) {
 	stages := []StageSnapshot{
 		{Name: StepKeyStockPlan, Status: string(steps.StatusCompleted), Attempt: 1, Applicable: true},
-		{Name: StepKeyStockComposeChunks, Status: "skipped", Applicable: false},
 	}
 	raw, err := json.Marshal(map[string]any{"stages": stages})
 	if err != nil {
@@ -114,14 +88,8 @@ func TestStageSnapshot_JSONOmitsZeroTimestampsAndPreservesOrder(t *testing.T) {
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		t.Fatalf("unmarshal stages: %v", err)
 	}
-	if len(envelope.Stages) != 2 || envelope.Stages[0]["name"] != StepKeyStockPlan || envelope.Stages[1]["status"] != "skipped" {
+	if len(envelope.Stages) != 1 || envelope.Stages[0]["name"] != StepKeyStockPlan {
 		t.Fatalf("serialized stages = %s", raw)
-	}
-	if _, ok := envelope.Stages[1]["started_at"]; ok {
-		t.Fatalf("skipped stage serialized zero started_at: %s", raw)
-	}
-	if _, ok := envelope.Stages[1]["completed_at"]; ok {
-		t.Fatalf("skipped stage serialized zero completed_at: %s", raw)
 	}
 }
 

@@ -151,6 +151,8 @@ curl -s http://127.0.0.1:8000/api/jobs/$JOB_ID/full \
 | `clips` | `[]ClipSpec` | No | Explicit clip specifications. |
 | `folder_name` | `string` | Yes* | Destination subfolder name under the configured Drive stock root. The handler does not validate emptiness; a missing value will fail later during the publish step. |
 | `clip_duration` | `int` | No | Length of each generated clip in seconds (default from `video.clip_duration`; range 3–40). |
+| `source_durations` | `object` | No | Map `direct_urls` URL → known duration in seconds. A URL with a matching `source_titles` entry skips the provider probe entirely; a URL with only a duration is still probed for its title (the supplied duration stays authoritative). |
+| `source_titles` | `object` | No | Map `direct_urls` URL → display title. Keeps clips searchable by their real titles when `source_durations` is supplied. |
 | `async` | `bool` | No | Controls dispatch mode. `true` queues `media.stock` and returns HTTP 202; `false` runs synchronously and returns HTTP 200; omitted is decoded as `false` and therefore also runs synchronously. |
 | `persist` | `bool` | No | When `true` and `async=false`, writes to `media_assets` in sync mode. |
 | `drive_folder_id` | `string` | No | Legacy destination folder ID override. |

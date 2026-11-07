@@ -3,6 +3,7 @@ package stockpipeline
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -81,10 +82,12 @@ func TestEnrichDirectURLDurations_PreservesKnownDuration(t *testing.T) {
 	input := &RunInput{
 		DirectURLs:      []string{url},
 		SourceDurations: map[string]float64{url: 12.5},
+		SourceTitles:    map[string]string{url: "known title"},
 	}
 	svc.enrichDirectURLDurations(context.Background(), input)
 
 	require.Equal(t, 12.5, input.SourceDurations[url])
+	require.Equal(t, "known title", input.SourceTitles[url])
 	_, calls, _ := lister.snapshot()
 	require.Empty(t, calls)
 }
@@ -107,7 +110,7 @@ func TestEnrichDirectURLDurations_ProbeFailureIsNonFatal(t *testing.T) {
 
 	require.Empty(t, input.SourceDurations)
 	_, calls, _ := lister.snapshot()
-	require.Equal(t, []string{url}, calls)
+	require.Equal(t, []string{url, url}, calls, "one retry after the transient probe failure")
 
 	// A nil-duration result is equally non-fatal.
 	emptyLister := &queryResolutionLister{
@@ -188,12 +191,75 @@ func TestEnrichDirectURLDurations_SuppliedDurationsSkipTheProbe(t *testing.T) {
 	input := &RunInput{
 		DirectURLs:      append([]string(nil), urls...),
 		SourceDurations: map[string]float64{urls[0]: 640, urls[1]: 900},
+		SourceTitles:    map[string]string{urls[0]: "first", urls[1]: "second"},
 	}
 	svc.enrichDirectURLDurations(context.Background(), input)
 
 	require.Equal(t, map[string]float64{urls[0]: 640, urls[1]: 900}, input.SourceDurations)
+	require.Equal(t, map[string]string{urls[0]: "first", urls[1]: "second"}, input.SourceTitles)
 	_, calls, _ := lister.snapshot()
-	require.Empty(t, calls, "caller-supplied durations must not trigger a probe")
+	require.Empty(t, calls, "a source with both a duration and a title must not trigger a probe")
+}
+
+// TestEnrichDirectURLDurations_SuppliedDurationStillProbesTitle pins the
+// searchability fix: a caller that supplies only source_durations must not lose
+// the real titles (the pre-fix behaviour skipped the probe entirely, leaving
+// every clip with the filename as search_text). The probe supplies the title;
+// the caller's duration stays authoritative.
+func TestEnrichDirectURLDurations_SuppliedDurationStillProbesTitle(t *testing.T) {
+	const url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+	lister := &queryResolutionLister{
+		results: map[string][]VideoInfo{url: {{ID: "jNQXAC9IVRw", Title: "real title", Duration: 999}}},
+		errors:  make(map[string]error),
+	}
+	svc := newQueryResolutionService(lister)
+
+	input := &RunInput{
+		DirectURLs:      []string{url},
+		SourceDurations: map[string]float64{url: 12.5},
+	}
+	svc.enrichDirectURLDurations(context.Background(), input)
+
+	require.Equal(t, 12.5, input.SourceDurations[url], "caller-supplied duration must win")
+	require.Equal(t, "real title", input.SourceTitles[url])
+	_, calls, _ := lister.snapshot()
+	require.Equal(t, []string{url}, calls)
+}
+
+// flakyDurationLister fails the first call and succeeds on the retry.
+type flakyDurationLister struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (l *flakyDurationLister) ListChannel(context.Context, string, int) ([]VideoInfo, error) {
+	l.mu.Lock()
+	l.calls++
+	attempt := l.calls
+	l.mu.Unlock()
+	if attempt == 1 {
+		return nil, errors.New("transient yt-dlp failure")
+	}
+	return []VideoInfo{{ID: "jNQXAC9IVRw", Title: "recovered", Duration: 42}}, nil
+}
+
+// TestEnrichDirectURLDurations_RetriesTransientProbeFailure pins the failure
+// the fix exists for: one transient probe failure used to leave the source with
+// no duration, the planner spread the windows over budget*10, and the whole run
+// failed closed at extract time. One retry recovers it.
+func TestEnrichDirectURLDurations_RetriesTransientProbeFailure(t *testing.T) {
+	const url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+	lister := &flakyDurationLister{}
+	svc := newQueryResolutionService(lister)
+
+	input := &RunInput{DirectURLs: []string{url}}
+	svc.enrichDirectURLDurations(context.Background(), input)
+
+	require.Equal(t, 42.0, input.SourceDurations[url])
+	require.Equal(t, "recovered", input.SourceTitles[url])
+	lister.mu.Lock()
+	defer lister.mu.Unlock()
+	require.Equal(t, 2, lister.calls)
 }
 
 // deadlineLister records the deadline the enrichment attaches to each probe

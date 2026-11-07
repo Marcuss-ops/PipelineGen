@@ -31,6 +31,15 @@ const DefaultGenerationConcurrency = 3
 // extraction branch: up to this many scenes enrich concurrently.
 const DefaultNLPConcurrency = 4
 
+// MaxVidRushImageConcurrency caps image provider and materialization work at
+// fifteen concurrent scene operations.
+const MaxVidRushImageConcurrency = 15
+
+// DefaultVidRushImageConcurrency allows up to fifteen independent scene
+// searches/materializations to overlap. Image work is network-bound; its
+// image-search calls still share a process-wide cap of the same size.
+const DefaultVidRushImageConcurrency = MaxVidRushImageConcurrency
+
 // DefaultTTSConcurrency bounds the certified default for the TTS voiceover
 // branch: up to this many scene×language synthesis calls run concurrently.
 // 4 is the measured optimum: widening the pool to 8 on the live 5-scene
@@ -84,17 +93,21 @@ func (b VidRushBackpressure) resolved() VidRushBackpressure {
 		b.ExtractionLimit = DefaultNLPConcurrency
 	}
 	if b.ProviderSearchLimit <= 0 {
-		b.ProviderSearchLimit = 4
+		b.ProviderSearchLimit = DefaultVidRushImageConcurrency
+	} else if b.ProviderSearchLimit > MaxVidRushImageConcurrency {
+		b.ProviderSearchLimit = MaxVidRushImageConcurrency
 	}
 	if b.MaterializationLimit <= 0 {
-		b.MaterializationLimit = 2
+		b.MaterializationLimit = DefaultVidRushImageConcurrency
+	} else if b.MaterializationLimit > MaxVidRushImageConcurrency {
+		b.MaterializationLimit = MaxVidRushImageConcurrency
 	}
 	return b
 }
 
 // DefaultVidRushBackpressure returns the canonical stage limits: extraction
-// bounded at the certified NLP concurrency, provider search at 4, and
-// materialization at 2.
+// bounded at the certified NLP concurrency, with provider search and image
+// materialization each capped at DefaultVidRushImageConcurrency.
 func DefaultVidRushBackpressure() VidRushBackpressure {
 	return VidRushBackpressure{}.resolved()
 }

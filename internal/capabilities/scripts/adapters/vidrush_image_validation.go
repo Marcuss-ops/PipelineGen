@@ -31,7 +31,41 @@ var (
 	ErrVidRushImageTooLarge = errors.New("vidrush image exceeds download limit")
 	ErrVidRushImageInvalid  = errors.New("vidrush image is not a valid supported image")
 	ErrVidRushSSRFBlocked   = errors.New("vidrush remote image URL blocked by SSRF policy")
+	vidRushImageTransport   = newVidRushImageTransport()
 )
+
+func newVidRushImageTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.MaxIdleConns = 100
+	transport.MaxIdleConnsPerHost = 4
+	transport.IdleConnTimeout = 90 * time.Second
+	dialer := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, fmt.Errorf("vidrush image: invalid upstream address: %w", err)
+		}
+		if err := validateVidRushResolvedHost(ctx, host); err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil || len(ips) == 0 {
+			if err == nil {
+				err = ErrVidRushSSRFBlocked
+			}
+			return nil, fmt.Errorf("vidrush image: resolve upstream: %w", err)
+		}
+		for _, resolved := range ips {
+			if isVidRushPrivateIP(resolved.IP) {
+				continue
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(resolved.IP.String(), port))
+		}
+		return nil, ErrVidRushSSRFBlocked
+	}
+	return transport
+}
 
 // VidRushImagePolicy is deliberately conservative and CPU-friendly. The
 // policy is shared by web-image and generated-image verification.
@@ -116,40 +150,10 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 	}
 	copyClient := *client
 	copyClient.Timeout = policy.Timeout
-	// Do not inherit environment proxies or a caller transport that can
-	// bypass the DNS/IP policy. The dialer resolves and validates the exact
-	// address immediately before connecting, closing the DNS-rebinding gap
-	// between the preflight lookup and the actual socket dial.
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if base, ok := client.Transport.(*http.Transport); ok && base != nil {
-		transport = base.Clone()
-	}
-	transport.Proxy = nil
-	dialer := &net.Dialer{Timeout: policy.Timeout, KeepAlive: 30 * time.Second}
-	transport.DialContext = func(dialCtx context.Context, network, address string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(address)
-		if err != nil {
-			return nil, fmt.Errorf("vidrush image: invalid upstream address: %w", err)
-		}
-		if err := validateVidRushResolvedHost(dialCtx, host); err != nil {
-			return nil, err
-		}
-		ips, err := net.DefaultResolver.LookupIPAddr(dialCtx, host)
-		if err != nil || len(ips) == 0 {
-			if err == nil {
-				err = ErrVidRushSSRFBlocked
-			}
-			return nil, fmt.Errorf("vidrush image: resolve upstream: %w", err)
-		}
-		for _, resolved := range ips {
-			if isVidRushPrivateIP(resolved.IP) {
-				continue
-			}
-			return dialer.DialContext(dialCtx, network, net.JoinHostPort(resolved.IP.String(), port))
-		}
-		return nil, ErrVidRushSSRFBlocked
-	}
-	copyClient.Transport = transport
+	// Reuse a shared transport so repeated image hosts benefit from pooled
+	// connections. Its dialer validates the resolved address at connect time;
+	// caller transports and environment proxies cannot bypass the SSRF policy.
+	copyClient.Transport = vidRushImageTransport
 	copyClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) > policy.MaxRedirects {
 			return fmt.Errorf("vidrush image: maximum redirects exceeded")
@@ -159,27 +163,9 @@ func downloadVidRushImage(ctx context.Context, client *http.Client, rawURL, sour
 		}
 		return validateVidRushResolvedHost(req.Context(), req.URL.String())
 	}
-	// Reject a known non-image response before reading its body. A number of
-	// search providers return hotlink/interstitial HTML at URLs that end in
-	// .jpg; extension checks alone therefore cannot protect the acquisition
-	// budget. HEAD is advisory for hosts that do not implement it.
-	headRequest, err := newVidRushImageRequestMethod(ctx, http.MethodHead, rawURL, sourcePageURL)
-	if err != nil {
-		return nil, "", err
-	}
-	headResponse, headErr := copyClient.Do(headRequest)
-	if headErr == nil {
-		status := headResponse.StatusCode
-		preflightErr := validateVidRushImageHead(status, headResponse.Header.Get("Content-Type"), headResponse.ContentLength, policy)
-		_ = headResponse.Body.Close()
-		if preflightErr != nil {
-			if status != http.StatusMethodNotAllowed && status != http.StatusNotImplemented {
-				return nil, strings.TrimSpace(strings.Split(headResponse.Header.Get("Content-Type"), ";")[0]), preflightErr
-			}
-		}
-	} else if ctx.Err() != nil {
-		return nil, "", ctx.Err()
-	}
+	// A bounded GET performs the authoritative validation in one request.
+	// HEAD was only advisory, added latency and often disagreed with the bytes
+	// actually served by image CDNs.
 	request, err := newVidRushImageRequest(ctx, rawURL, sourcePageURL)
 	if err != nil {
 		return nil, "", err

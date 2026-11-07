@@ -20,13 +20,13 @@ import (
 func TestVidRushBackpressure_Defaults(t *testing.T) {
 	bp := DefaultVidRushBackpressure()
 	assert.Equal(t, DefaultNLPConcurrency, bp.ExtractionLimit, "extraction defaults to the certified NLP concurrency")
-	assert.Equal(t, 4, bp.ProviderSearchLimit)
-	assert.Equal(t, 2, bp.MaterializationLimit)
+	assert.Equal(t, DefaultVidRushImageConcurrency, bp.ProviderSearchLimit)
+	assert.Equal(t, DefaultVidRushImageConcurrency, bp.MaterializationLimit)
 
 	resolved := (VidRushBackpressure{}).resolved()
 	assert.Equal(t, DefaultNLPConcurrency, resolved.ExtractionLimit)
-	assert.Equal(t, 4, resolved.ProviderSearchLimit)
-	assert.Equal(t, 2, resolved.MaterializationLimit)
+	assert.Equal(t, DefaultVidRushImageConcurrency, resolved.ProviderSearchLimit)
+	assert.Equal(t, DefaultVidRushImageConcurrency, resolved.MaterializationLimit)
 }
 
 func TestDefaultConcurrency_IsFour(t *testing.T) {
@@ -42,6 +42,15 @@ func TestVidRushBackpressure_RespectsExplicitLimits(t *testing.T) {
 	assert.Equal(t, 2, resolved.ExtractionLimit)
 	assert.Equal(t, 6, resolved.ProviderSearchLimit)
 	assert.Equal(t, 3, resolved.MaterializationLimit)
+}
+
+func TestVidRushBackpressure_ClampsImageWorkToFifteen(t *testing.T) {
+	resolved := (VidRushBackpressure{
+		ProviderSearchLimit:  32,
+		MaterializationLimit: 32,
+	}).resolved()
+	assert.Equal(t, MaxVidRushImageConcurrency, resolved.ProviderSearchLimit)
+	assert.Equal(t, MaxVidRushImageConcurrency, resolved.MaterializationLimit)
 }
 
 func TestGenerationGate_HighPriorityPreemptsLowPriority(t *testing.T) {

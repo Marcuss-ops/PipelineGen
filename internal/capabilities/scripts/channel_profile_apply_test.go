@@ -30,7 +30,7 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 		},
 		SoundEffects:  []channelprofile.SoundEffectProfile{{AssetID: "whoosh1", GainDB: &gain}},
 		MixPolicy:     "VOICEOVER_DUCKED_CLIP",
-		PhraseMotions: []string{"phrase_apple_clean_07_slide_up_soft"},
+		PhraseMotions: []string{"phrase_apple_clean_01_blur_soft_reveal"},
 		ImageMotions:  []string{"image_25d_card_swing", "image_depth_dolly"},
 	}
 	req := renderRequest()
@@ -67,7 +67,7 @@ func TestApplyChannelProfileFillsBlankSurfaces(t *testing.T) {
 	if req.MixPolicy != capabilityaudio.MixVoiceoverWithDuckedClip {
 		t.Fatalf("mix policy = %q, want %q", req.MixPolicy, capabilityaudio.MixVoiceoverWithDuckedClip)
 	}
-	if len(req.PhraseMotions) != 1 || req.PhraseMotions[0] != "phrase_apple_clean_07_slide_up_soft" {
+	if len(req.PhraseMotions) != 1 || req.PhraseMotions[0] != "phrase_apple_clean_01_blur_soft_reveal" {
 		t.Fatalf("phrase motions not filled: %+v", req.PhraseMotions)
 	}
 	if len(req.ImageMotions) != 2 || req.ImageMotions[0] != "image_25d_card_swing" || req.ImageMotions[1] != "image_depth_dolly" {
@@ -213,7 +213,7 @@ func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 		ChannelID:     "crime",
 		Subtitles:     &channelprofile.SubtitlesProfile{Preset: "impact"},
 		Watermark:     &channelprofile.WatermarkProfile{Text: "CRIME FILES", Position: "top_right", MarginPX: 48},
-		PhraseMotions: []string{"phrase_apple_clean_07_slide_up_soft"},
+		PhraseMotions: []string{"phrase_apple_clean_01_blur_soft_reveal"},
 		ImageMotions:  []string{"image_25d_card_swing", "image_depth_dolly"},
 	}})
 	defer channelprofile.Reset()
@@ -250,7 +250,7 @@ func TestBuildGenerateRequestAppliesTheChannelProfile(t *testing.T) {
 		if got.Render.Watermark == nil || got.Render.Watermark.Text != "CRIME FILES" {
 			t.Fatalf("channel watermark not applied: %+v", got.Render.Watermark)
 		}
-		if len(got.PhraseMotions) != 1 || got.PhraseMotions[0] != "phrase_apple_clean_07_slide_up_soft" {
+		if len(got.PhraseMotions) != 1 || got.PhraseMotions[0] != "phrase_apple_clean_01_blur_soft_reveal" {
 			t.Fatalf("channel motion pool not applied: %+v", got.PhraseMotions)
 		}
 		if len(got.ImageMotions) != 2 || got.ImageMotions[0] != "image_25d_card_swing" || got.ImageMotions[1] != "image_depth_dolly" {

@@ -34,12 +34,31 @@ func (s *ImageStorageService) searchDDGWide(ctx context.Context, query string) s
 
 type ddgImageResult struct {
 	Image     string `json:"image"`
+	URL       string `json:"url"`
+	Title     string `json:"title"`
 	Width     int    `json:"width"`
 	Height    int    `json:"height"`
 	Thumbnail string `json:"thumbnail"`
 }
 
 func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query string, limit int) []string {
+	results := s.searchDDGImageResultsMany(ctx, query, limit)
+	urls := make([]string, 0, len(results))
+	for _, result := range results {
+		imageURL := normalizeDDGImageURL(result.Image)
+		if imageURL == "" {
+			imageURL = normalizeDDGImageURL(result.Thumbnail)
+		}
+		if imageURL != "" {
+			urls = append(urls, imageURL)
+		}
+	}
+	return urls
+}
+
+// searchDDGImageResultsMany preserves DDG's source dimensions and page URL so
+// downstream selection can reject known undersized thumbnails before download.
+func (s *ImageStorageService) searchDDGImageResultsMany(ctx context.Context, query string, limit int) []ddgImageResult {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -131,10 +150,17 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 			break
 		}
 		for _, result := range payload.Results {
+			if (result.Width > 0 && result.Width < 640) || (result.Height > 0 && result.Height < 360) {
+				continue
+			}
 			candidate := result.Image
-			if candidate == "" {
+			// A thumbnail without an original is usable only when the provider
+			// reports dimensions that meet the production minimum. Unknown-size
+			// thumbnails are a common source of wasted downloads.
+			if candidate == "" && result.Width >= 640 && result.Height >= 360 {
 				candidate = result.Thumbnail
 			}
+			candidate = normalizeDDGImageURL(candidate)
 			if !strings.HasPrefix(candidate, "http") {
 				continue
 			}
@@ -163,27 +189,10 @@ func (s *ImageStorageService) searchDDGWideMany(ctx context.Context, query strin
 	sort.SliceStable(all, func(i, j int) bool {
 		return ddgImageScore(all[i]) > ddgImageScore(all[j])
 	})
-	out := make([]string, 0, min(limit, len(all)*2))
-	seenOutput := make(map[string]struct{}, cap(out))
-	for _, result := range all {
-		// Prefer the original source image so the technical minimum
-		// dimensions can be satisfied. Keep DuckDuckGo's real thumbnail as
-		// fallback when an origin host rejects server-side acquisition.
-		for _, candidate := range []string{normalizeDDGImageURL(result.Image), normalizeDDGImageURL(result.Thumbnail)} {
-			if !strings.HasPrefix(candidate, "http") {
-				continue
-			}
-			if _, ok := seenOutput[candidate]; ok {
-				continue
-			}
-			seenOutput[candidate] = struct{}{}
-			out = append(out, candidate)
-			if len(out) >= limit {
-				return out
-			}
-		}
+	if len(all) > limit {
+		all = all[:limit]
 	}
-	return out
+	return all
 }
 
 // normalizeDDGImageURL repairs the URL shape emitted by a few DDG response

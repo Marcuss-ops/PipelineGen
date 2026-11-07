@@ -64,8 +64,17 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		if mimeType := finalJobStringValue(ref["mime"]); mimeType != "" {
 			asset.MIME = mimeType
 		}
+		isStock := strings.EqualFold(finalJobStringValue(ref["role"]), "stock")
 		if duration := finalJobInt64(ref["duration_us"]); duration > 0 {
-			asset.DurationUS = duration
+			// Stock DurationUS is the declared source extent the compiled plan
+			// needs, not a producer-certified duration. The saved metadata is in
+			// milliseconds and can round a 5.000s/120-frame source down to 4.979s;
+			// overwriting the extended extent would put the requested 5s window
+			// out of bounds and make the remote PREPARE reject the whole plan.
+			// Keep the larger extent for stock; prepared fragments stay exact.
+			if !isStock || duration > asset.DurationUS {
+				asset.DurationUS = duration
+			}
 		}
 		if width := finalJobInt(ref["width"]); width > 0 {
 			asset.Width = width
@@ -73,7 +82,12 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		if height := finalJobInt(ref["height"]); height > 0 {
 			asset.Height = height
 		}
-		if profile := finalJobStringValue(ref["profile_id"]); profile != "" {
+		// Stock is a raw Master input, not a certified Producer fragment. Keep
+		// its real metadata instead of claiming the assembly-ready profile the
+		// Master itself will establish after downloading and cutting it.
+		if isStock {
+			asset.ProfileID = ""
+		} else if profile := finalJobStringValue(ref["profile_id"]); profile != "" {
 			asset.ProfileID = profile
 		}
 		if frames := finalJobInt64(ref["frame_count"]); frames > 0 {
@@ -86,8 +100,8 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 			asset.TimelineSHA256 = timelineSHA
 		}
 		asset.TimelineStartFrame = finalJobInt64(ref["timeline_start_frame"])
-		asset.FirstFrameKeyframe = true
-		asset.ClosedGOP = true
+		asset.FirstFrameKeyframe = !isStock
+		asset.ClosedGOP = !isStock
 	}
 	assetsByID := make(map[string]*finalJobPlanAsset, len(plan.Assets))
 	for i := range plan.Assets {
@@ -112,12 +126,25 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 			// profile even when the renderer labelled the opaque overlay
 			// artifact VELOX_OVERLAY_VIDEO_ONLY_V1 (r90).
 			if asset := assetsByID[segment.AssetID]; asset != nil && asset.Kind == "video" {
+				if strings.EqualFold(finalJobStringValue(ref["role"]), "stock") {
+					// Stock remains a raw Drive source for remote processing. The
+					// Master establishes the delivery profile and keyframe facts
+					// after it downloads the bytes; the Producer must not certify
+					// facts it never inspected.
+					asset.ProfileID = ""
+					asset.FirstFrameKeyframe = false
+					asset.ClosedGOP = false
+					continue
+				}
 				asset.ProfileID = kernelmedia.AssemblyMediaContractID
 				asset.TimelineRevision = plan.TimelineRevision
 				asset.TimelineSHA256 = strings.ToLower(plan.TimelineSHA256)
 				asset.TimelineStartFrame = segment.TimelineStartFrame
-				asset.FrameCount = segment.FrameCount
-				asset.DurationUS = segment.SourceDurationUS
+				// Do NOT copy DurationUS/FrameCount from the placement. One raw
+				// source can back several windows, so the LAST segment would shrink
+				// the source to its own window and every earlier window would look
+				// out of bounds or be cut from the wrong in-point. The source extent
+				// is the asset's own duration/frame count, not the placement's span.
 				asset.FirstFrameKeyframe = true
 				asset.ClosedGOP = true
 			}
@@ -184,18 +211,22 @@ func finalJobPlanAssetMIME(kind string) string {
 }
 
 // add types one asset into the plan. A repeated asset id must describe the same
-// bytes, size and kind: the plan is an immutable document, so a second
-// reference that disagrees is a producer bug, not an update.
+// bytes, size and kind. References can carry a scene-local duration, so retain
+// the longest declared source span for the shared byte identity; retaining the
+// first reference made later valid source cuts fail source range validation.
 func (a *finalJobPlanAssets) add(asset finalJobPlanAsset) error {
 	if asset.AssetID == "" || len(asset.SHA256) != 64 || asset.SizeBytes <= 0 || asset.DurationUS <= 0 {
 		return fmt.Errorf("asset requires id, 64-character SHA-256, positive size, and duration")
 	}
-	for _, prior := range a.items {
+	for i, prior := range a.items {
 		if prior.AssetID != asset.AssetID {
 			continue
 		}
 		if prior.SHA256 != asset.SHA256 || prior.SizeBytes != asset.SizeBytes || prior.Kind != asset.Kind {
 			return fmt.Errorf("asset %q was referenced with conflicting identity", asset.AssetID)
+		}
+		if asset.DurationUS > prior.DurationUS {
+			a.items[i].DurationUS = asset.DurationUS
 		}
 		return nil
 	}
@@ -228,8 +259,9 @@ func (a *finalJobPlanAssets) addRaw(raw map[string]any, kind string, durationUS 
 	})
 }
 
-// set replaces the registry contents (the producer re-binds every source to a
-// prepared fragment, so its result is the complete list, not an increment).
+// set replaces the registry contents (the producer re-binds overlay/clip sources
+// to prepared fragments and retains stock sources as Drive references, so its
+// result is the complete list, not an increment).
 func (a *finalJobPlanAssets) set(assets []finalJobPlanAsset) error {
 	a.items = nil
 	for _, asset := range assets {
@@ -245,4 +277,15 @@ func (a *finalJobPlanAssets) set(assets []finalJobPlanAsset) error {
 func (a *finalJobPlanAssets) sorted() []finalJobPlanAsset {
 	sort.Slice(a.items, func(i, j int) bool { return a.items[i].AssetID < a.items[j].AssetID })
 	return a.items
+}
+
+func (a *finalJobPlanAssets) extendSourceExtent(assetID string, sourceEndUS int64) {
+	if sourceEndUS <= 0 {
+		return
+	}
+	for i := range a.items {
+		if a.items[i].AssetID == assetID && sourceEndUS > a.items[i].DurationUS {
+			a.items[i].DurationUS = sourceEndUS
+		}
+	}
 }

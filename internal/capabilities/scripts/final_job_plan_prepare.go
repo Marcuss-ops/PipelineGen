@@ -8,19 +8,19 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
-// prepareFinalJobVideoSegments replaces source-video references with verified
-// assembly-ready fragments. It keeps audio as a single copy asset and drops
-// every unused source video from FINALIZE, so the remote worker's work is only
-// packet-copy placement plus final audio mux.
+// prepareFinalJobVideoSegments seals the executable plan for the remote Master.
+// Producer-owned overlay and clip placements are cut into certified fragments;
+// stock is deliberately passed through as its stockpipeline Drive reference and
+// source window. The Producer never downloads, probes, hashes, cuts, encodes or
+// publishes stock bytes: the Master owns that processing. Audio remains a
+// single copy asset.
 func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAssets []any, preparer FinalJobVideoSegmentPreparer) (string, []any, error) {
-	if preparer == nil {
-		return "", nil, fmt.Errorf("final_job requires a local video-segment preparer; refusing to send unprepared sources")
-	}
 	var plan finalJobCompiledPlan
 	if err := json.Unmarshal([]byte(rawPlan), &plan); err != nil {
 		return "", nil, fmt.Errorf("decode final_job compiled plan before segment preparation: %w", err)
@@ -44,11 +44,23 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		refs[id] = asset
 	}
 
+	if err := alignFinalJobSegmentSourceWindows(&plan); err != nil {
+		return "", nil, err
+	}
 	preparedAssets := make(map[string]finalJobPlanAsset, len(plan.VideoTracks[0].Segments)+1)
 	preparedRefs := make([]any, 0, len(plan.VideoTracks[0].Segments)+1)
+	planAssets := make(map[string]finalJobPlanAsset, len(plan.Assets))
+	for _, asset := range plan.Assets {
+		planAssets[asset.AssetID] = asset
+	}
 	// Phase 1 — validate every binding and describe the work. This is cheap and
-	// sequential, and it fails before any expensive preparation starts.
+	// sequential, and it fails before any expensive preparation starts. Stock
+	// is not work: it keeps the exact Drive reference and source window the
+	// stockpipeline already certified, for the Master to process remotely.
 	work := make([]finalJobSegmentWork, 0, len(plan.VideoTracks[0].Segments))
+	workByIndex := make(map[int]finalJobSegmentWork, len(plan.VideoTracks[0].Segments))
+	stockIndex := make(map[int]bool, len(plan.VideoTracks[0].Segments))
+	stockAssets := make(map[string]finalJobPlanAsset, len(plan.VideoTracks[0].Segments))
 	for index := range plan.VideoTracks[0].Segments {
 		segment := &plan.VideoTracks[0].Segments[index]
 		source := refs[segment.AssetID]
@@ -58,7 +70,19 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		if !strings.EqualFold(finalJobStringValue(source["sha256"]), segment.SHA256) {
 			return "", nil, fmt.Errorf("final_job segment %q source SHA-256 does not match the compiled plan", segment.SegmentID)
 		}
-		work = append(work, finalJobSegmentWork{
+		if isFinalJobStockSource(source) {
+			if finalJobStringValue(source["drive_file_id"]) == "" {
+				return "", nil, fmt.Errorf("final_job stock segment %q must remain a Drive reference; local stock processing is disabled", segment.SegmentID)
+			}
+			asset, ok := planAssets[segment.AssetID]
+			if !ok {
+				return "", nil, fmt.Errorf("final_job stock segment %q has no compiled plan asset %q", segment.SegmentID, segment.AssetID)
+			}
+			stockIndex[index] = true
+			stockAssets[asset.AssetID] = asset
+			continue
+		}
+		item := finalJobSegmentWork{
 			index:  index,
 			source: source,
 			request: FinalJobVideoSegmentRequest{
@@ -67,27 +91,66 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 				TimelineStartFrame: segment.TimelineStartFrame, FrameCount: segment.FrameCount,
 				TimelineRevision: plan.TimelineRevision, TimelineSHA256: plan.TimelineSHA256,
 			},
-		})
+		}
+		work = append(work, item)
+		workByIndex[index] = item
 	}
-	// Phase 2 — prepare the fragments. They are independent, so they run on the
-	// preparer's lanes; the result is indexed by plan position, which keeps the
-	// binding deterministic whatever the completion order is.
+	// Phase 2 — prepare only the Producer-owned fragments. They are independent,
+	// so they run on the preparer's lanes; the result is indexed by plan
+	// position, which keeps the binding deterministic whatever the completion
+	// order is. A stock-only plan performs no local work and needs no preparer.
+	if len(work) > 0 && preparer == nil {
+		return "", nil, fmt.Errorf("final_job requires a local video-segment preparer for overlay and clip sources")
+	}
 	prepared, err := finalJobPrepareSegments(ctx, preparer, work)
 	if err != nil {
 		return "", nil, err
 	}
-	// Phase 3 — bind in plan order, ONE asset per placement. The assembler
-	// certifies each placement against the manifest of its OWN asset
-	// (`segment "…" manifest binding is not exact` — r66), so two placements can
-	// never share one object even when their pixels are identical. The
-	// collision is resolved on the OBJECT, never on the binding: the later
+	// Phase 3 — bind in plan order. Producer-owned placements get ONE fragment
+	// each; stock keeps its stockpipeline asset and source window untouched.
+	// The assembler certifies each prepared placement against the manifest of
+	// its OWN asset (`segment "…" manifest binding is not exact` — r66), so two
+	// placements can never share one object even when their pixels are identical.
+	// The collision is resolved on the OBJECT, never on the binding: the later
 	// placement is re-prepared with a placement tag (same pictures, different
 	// container, different bytes), which satisfies both the plan's unique
 	// canonical identity and the assembler's per-placement certificate.
 	usedSHA := make(map[string]string, len(work))
 	usedURI := make(map[string]string, len(work))
-	for _, item := range work {
-		segment := &plan.VideoTracks[0].Segments[item.index]
+	stockRefs := make(map[string]bool, len(stockAssets))
+	for index := range plan.VideoTracks[0].Segments {
+		segment := &plan.VideoTracks[0].Segments[index]
+		if stockIndex[index] {
+			asset, ok := stockAssets[segment.AssetID]
+			if !ok {
+				return "", nil, fmt.Errorf("final_job stock segment %q lost its compiled plan asset", segment.SegmentID)
+			}
+			preparedAssets[asset.AssetID] = asset
+			if !stockRefs[asset.AssetID] {
+				source := refs[segment.AssetID]
+				// A stockpipeline reference is Drive metadata plus the remote
+				// locator. Any local path would invite the Producer to process the
+				// source again, so it must never cross FINALIZE.
+				delete(source, "local_path")
+				delete(source, "local_source_path")
+				delete(source, "local_only")
+				// The runtime reference must describe a video source; the Master
+				// downloads it from Drive and performs the cut itself.
+				if finalJobStringValue(source["kind"]) == "" {
+					source["kind"] = "video"
+				}
+				if finalJobStringValue(source["mime"]) == "" {
+					source["mime"] = "video/mp4"
+				}
+				preparedRefs = append(preparedRefs, source)
+				stockRefs[asset.AssetID] = true
+			}
+			continue
+		}
+		item, ok := workByIndex[index]
+		if !ok {
+			return "", nil, fmt.Errorf("final_job segment %q has no preparation work", segment.SegmentID)
+		}
 		source := item.source
 		asset, ref, err := finalJobPreparedSegmentAsset(prepared[item.index], item.request)
 		if err != nil {
@@ -130,9 +193,8 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		segment.SourceDurationUS = asset.DurationUS
 	}
 
-	// Preserve the one final audio asset, then add only the fragments referenced
-	// by the executable plan. Original stock, clip, and overlay sources no
-	// longer cross the FINALIZE boundary.
+	// Preserve the one final audio asset, then add the prepared fragments and
+	// the untouched stockpipeline references the executable plan still names.
 	var audioAsset *finalJobPlanAsset
 	for index := range plan.Assets {
 		if plan.Assets[index].AssetID == plan.FinalAudio.AssetID {
@@ -156,19 +218,24 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		}
 	}
 	plan.Assets = assets.sorted()
-	// Every video reference in the plan must now bind to one of the freshly
-	// prepared fragments with the exact frame identity. The timeline position
-	// belongs to the segment (and may be shared by several placements of one
-	// asset), so it is not compared against the asset.
-	for _, segment := range plan.VideoTracks[0].Segments {
+	// Every video reference in the plan must bind to the asset it names. Prepared
+	// placements carry the exact frame identity; stock keeps the source extent
+	// and remains addressable by the Master for remote processing. The timeline
+	// position belongs to the segment (and may be shared by several placements of
+	// one asset), so it is not compared against the asset.
+	for index, segment := range plan.VideoTracks[0].Segments {
 		asset, ok := preparedAssets[segment.AssetID]
-		if !ok || asset.SHA256 != segment.SHA256 || asset.FrameCount != segment.FrameCount {
+		if !ok || asset.SHA256 != segment.SHA256 {
+			return "", nil, fmt.Errorf("final_job segment %q lost its exact manifest binding", segment.SegmentID)
+		}
+		if !stockIndex[index] && asset.FrameCount != segment.FrameCount {
 			return "", nil, fmt.Errorf("final_job prepared segment %q lost its exact manifest binding", segment.SegmentID)
 		}
 	}
 
-	// Keep FINALIZE minimal: prepared video fragments and the certified master
-	// audio. Timeline/overlay placement is represented by the compiled plan.
+	// Keep FINALIZE minimal: prepared Producer fragments, untouched stock Drive
+	// references and the certified master audio. Timeline/overlay placement is
+	// represented by the compiled plan.
 	for _, raw := range runtimeAssets {
 		asset, _ := raw.(map[string]any)
 		if asset == nil || !strings.EqualFold(finalJobStringValue(asset["role"]), "final_audio") {
@@ -178,7 +245,9 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 	}
 	// The video role is preserved from its source (stock/clip/overlay) because
 	// Master validates that vocabulary while the immutable compiled plan uses
-	// kind=video. Final audio remains the last role-tagged asset above.
+	// kind=video. Stock stays role=stock with its Drive locator; it is the only
+	// video role the Master downloads and cuts itself. Final audio remains the
+	// last role-tagged asset above.
 
 	// The remote applies these exact rules; running them here means a plan that
 	// cannot be accepted dies in this process, not in a live run.
@@ -190,6 +259,80 @@ func prepareFinalJobVideoSegments(ctx context.Context, rawPlan string, runtimeAs
 		return "", nil, fmt.Errorf("marshal prepared final_job compiled plan: %w", err)
 	}
 	return string(canonicalPlan), preparedRefs, nil
+}
+
+// alignFinalJobSegmentSourceWindows converts every source window from the
+// timeline's arbitrary microsecond boundaries to the delivery frame grid. The
+// compiled plan already quantizes the TIMELINE; without this step the SOURCE
+// side still asks for ranges such as 4,475,000us for 13 frames at 24 fps, which
+// no file can satisfy exactly (12.6 frames). Producer-owned windows are cut
+// locally into a zero-based fragment, while stock keeps this frame-aligned
+// source window for the remote Master to cut and normalize itself.
+func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan) error {
+	if plan == nil || len(plan.VideoTracks) == 0 {
+		return nil
+	}
+	assets := make(map[string]finalJobPlanAsset, len(plan.Assets))
+	for _, asset := range plan.Assets {
+		assets[asset.AssetID] = asset
+	}
+	delivery := kernelmedia.DefaultAssemblyMediaContract()
+	fpsNum, fpsDen := int64(delivery.FPS.Num), int64(delivery.FPS.Den)
+	for trackIndex := range plan.VideoTracks {
+		for segmentIndex := range plan.VideoTracks[trackIndex].Segments {
+			segment := &plan.VideoTracks[trackIndex].Segments[segmentIndex]
+			if segment.FrameCount <= 0 {
+				continue
+			}
+			asset, ok := assets[segment.AssetID]
+			if !ok {
+				return fmt.Errorf("final_job segment %q has no plan asset %q for frame alignment", segment.SegmentID, segment.AssetID)
+			}
+			totalFrames := asset.FrameCount
+			if totalFrames <= 0 && asset.DurationUS > 0 {
+				totalFrames = finalJobFrameAtUS(asset.DurationUS, fpsNum, fpsDen)
+				// A millisecond-rounded duration can round UP to a frame whose
+				// start lies past the asset's real end. The frame itself does not
+				// exist, so the last admissible frame is the one before it.
+				if totalFrames > 0 && finalJobFrameStartUS(totalFrames, fpsNum, fpsDen) > asset.DurationUS {
+					totalFrames--
+				}
+			}
+			if totalFrames <= 0 {
+				return fmt.Errorf("final_job segment %q asset %q has no frame-addressable duration", segment.SegmentID, asset.AssetID)
+			}
+			// The declared duration can be one frame shorter than the bytes: a
+			// 5.000s/120-frame stock source is often recorded as 4.990s, and the
+			// conservative rounding below then reports 119. The local fragment
+			// preparer (or the remote stock cutter) is the frame authority and
+			// pads a measured tail shortfall when the bytes really are short, so
+			// admit exactly that one-frame boundary case only when the window
+			// starts at the source origin. Any larger mismatch still fails here.
+			shortfall := segment.FrameCount - totalFrames
+			startFrame := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
+			if shortfall > 1 || (shortfall == 1 && startFrame != 0) {
+				return fmt.Errorf("final_job segment %q asks for %d frames from asset %q, which carries %d", segment.SegmentID, segment.FrameCount, asset.AssetID, totalFrames)
+			}
+			maxStart := totalFrames - segment.FrameCount
+			if maxStart < 0 {
+				maxStart = 0
+			}
+			if startFrame > maxStart {
+				startFrame = maxStart
+			}
+			if startFrame < 0 {
+				startFrame = 0
+			}
+			segment.SourceInUS = finalJobFrameStartUS(startFrame, fpsNum, fpsDen)
+			segment.SourceDurationUS = finalJobFrameDurationUS(segment.FrameCount, fpsNum, fpsDen)
+			if overrun := segment.SourceInUS + segment.SourceDurationUS - asset.DurationUS; overrun > 0 {
+				if shortfall <= 0 || overrun > finalJobFrameDurationUS(shortfall, fpsNum, fpsDen) {
+					return fmt.Errorf("final_job segment %q aligned source window exceeds asset %q (%d + %d > %d)", segment.SegmentID, asset.AssetID, segment.SourceInUS, segment.SourceDurationUS, asset.DurationUS)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegmentRequest) (finalJobPlanAsset, map[string]any, error) {
@@ -235,6 +378,8 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 	}
 	ref["asset_id"], ref["sha256"], ref["size_bytes"], ref["source_uri"] = id, sha, size, source
 	delete(ref, "local_path")
+	delete(ref, "local_source_path")
+	delete(ref, "local_only")
 	asset := finalJobPlanAsset{
 		AssetID: id, AssetKey: id, SHA256: sha, SizeBytes: size,
 		Kind: "video", MIME: "video/mp4", DurationUS: durationUS, Width: delivery.Width, Height: delivery.Height, ProfileID: delivery.ID, FrameCount: frameCount,
@@ -242,6 +387,10 @@ func finalJobPreparedSegmentAsset(raw map[string]any, request FinalJobVideoSegme
 		TimelineStartFrame: request.TimelineStartFrame, FirstFrameKeyframe: true, ClosedGOP: true,
 	}
 	return asset, ref, nil
+}
+
+func isFinalJobStockSource(source map[string]any) bool {
+	return source != nil && strings.EqualFold(finalJobStringValue(source["role"]), "stock")
 }
 
 func finalJobFrameDurationUS(frameCount, fpsNum, fpsDen int64) int64 {
@@ -452,11 +601,23 @@ func finalJobSegmentPrepareError(item finalJobSegmentWork, err error) error {
 
 // finalJobPrepareSegments prepares the fragments concurrently and returns them
 // indexed by plan position, so the binding stays deterministic whatever order
-// they complete in. Fail-closed: a failure cancels the remaining work and is
-// reported by plan position, never by scheduling luck, and a mere cancellation
-// is not reported over a real cause.
+// they complete in. Fail-closed: a failure cancels the remaining work and the
+// FIRST observed failure is reported, because that is the one that triggered the
+// cancellation. Reporting by plan position lets a collateral `signal: killed`
+// from an earlier segment hide the real encoder error that cancelled the lanes.
 func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentPreparer, work []finalJobSegmentWork) ([]map[string]any, error) {
-	prepared := make([]map[string]any, len(work))
+	// Work contains every video placement, stock included. Results are consumed by
+	// plan position, so the binding never depends on completion order.
+	resultCount := 0
+	for _, item := range work {
+		if item.index < 0 {
+			return nil, fmt.Errorf("final_job segment %q has a negative plan index %d", item.request.SegmentID, item.index)
+		}
+		if item.index >= resultCount {
+			resultCount = item.index + 1
+		}
+	}
+	prepared := make([]map[string]any, resultCount)
 	if len(work) == 0 {
 		return prepared, nil
 	}
@@ -481,7 +642,8 @@ func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentP
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	failures := make([]error, len(work))
+	failures := make([]error, resultCount)
+	failureAt := make([]time.Time, resultCount)
 	gates := make(chan struct{}, lanes)
 	var wg sync.WaitGroup
 	for _, item := range work {
@@ -499,6 +661,7 @@ func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentP
 			}
 			result, err := preparer.PrepareFinalJobVideoSegment(runCtx, item.source, item.request)
 			if err != nil {
+				failureAt[item.index] = time.Now()
 				failures[item.index] = finalJobSegmentPrepareError(item, err)
 				cancel()
 				return
@@ -508,7 +671,9 @@ func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentP
 	}
 	wg.Wait()
 	var cancelled error
-	for _, err := range failures {
+	var earliest error
+	var earliestAt time.Time
+	for index, err := range failures {
 		if err == nil {
 			continue
 		}
@@ -518,7 +683,12 @@ func finalJobPrepareSegments(ctx context.Context, preparer FinalJobVideoSegmentP
 			}
 			continue
 		}
-		return nil, err
+		if earliest == nil || failureAt[index].Before(earliestAt) {
+			earliest, earliestAt = err, failureAt[index]
+		}
+	}
+	if earliest != nil {
+		return nil, earliest
 	}
 	if cancelled != nil {
 		return nil, cancelled

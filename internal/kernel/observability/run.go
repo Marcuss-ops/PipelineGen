@@ -249,6 +249,32 @@ func (r *Run) Report() *RunReport {
 	return cloneReport(&r.report)
 }
 
+// SetFinalJobReport records the canonical final-job projection before the run
+// finishes. It is write-once per receipt: a resumed attach replaces the
+// projection with the newest receipt, and a finished run is never mutated.
+func (r *Run) SetFinalJobReport(report FinalJobReport) {
+	if r == nil || report.ReportOwner == "" || len(report.Receipt) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.finished {
+		return
+	}
+	copy := report
+	copy.Receipt = append(json.RawMessage(nil), report.Receipt...)
+	r.report.FinalJob = &copy
+}
+
+// SetFinalJobReport is the context-bound form: it records the projection on
+// the run bound to ctx, or is a no-op when no run is bound. Instrumentation
+// must never change behaviour outside an observed run.
+func SetFinalJobReport(ctx context.Context, report FinalJobReport) {
+	if run := FromContext(ctx); run != nil {
+		run.SetFinalJobReport(report)
+	}
+}
+
 // ElapsedMs returns the wall time elapsed since the run started, measured on
 // the run's own canonical clock (never a second timer). It is the canonical
 // source for compatibility projections (e.g. GenerationTimings.TotalMs) that
@@ -283,6 +309,11 @@ func cloneReport(in *RunReport) *RunReport {
 	out.Waits = append([]WaitReport(nil), in.Waits...)
 	out.ClipTimeline = cloneClipTimeline(in.ClipTimeline)
 	out.SceneTimeline = cloneSceneTimeline(in.SceneTimeline)
+	if in.FinalJob != nil {
+		finalJob := *in.FinalJob
+		finalJob.Receipt = append(json.RawMessage(nil), in.FinalJob.Receipt...)
+		out.FinalJob = &finalJob
+	}
 	if in.Children != nil {
 		c := *in.Children
 		out.Children = &c
@@ -549,36 +580,4 @@ func persistentID(prefix string) string {
 		return fmt.Sprintf("%s_%d_%x", prefix, time.Now().UnixNano(), b)
 	}
 	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
-}
-func blockedIntervalUnion(waits []WaitReport) int64 {
-	if len(waits) == 0 {
-		return 0
-	}
-	intervals := append([]WaitReport(nil), waits...)
-	for i := 1; i < len(intervals); i++ {
-		for j := i; j > 0 && intervals[j].StartedAt.Before(intervals[j-1].StartedAt); j-- {
-			intervals[j], intervals[j-1] = intervals[j-1], intervals[j]
-		}
-	}
-	start, end := intervals[0].StartedAt, intervals[0].FinishedAt
-	var total time.Duration
-	for _, interval := range intervals[1:] {
-		if interval.StartedAt.After(end) {
-			total += end.Sub(start)
-			start, end = interval.StartedAt, interval.FinishedAt
-			continue
-		}
-		if interval.FinishedAt.After(end) {
-			end = interval.FinishedAt
-		}
-	}
-	total += end.Sub(start)
-	return nonNegative(total.Milliseconds())
-}
-
-func nonNegative(v int64) int64 {
-	if v < 0 {
-		return 0
-	}
-	return v
 }

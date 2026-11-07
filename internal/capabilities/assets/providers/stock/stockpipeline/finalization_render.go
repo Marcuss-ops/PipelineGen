@@ -153,27 +153,22 @@ func boolToInt64(v bool) int64 {
 
 // Package stockpipeline — render_ports.go (PR-SPLIT-RENDER-PORTS, August 2026).
 //
-// Slim orchestrator carrying the 2 main ports (StockRenderer + VideoCutter)
-// + their no-op test fixtures + the 2 compile-time pins. Extracted from
-// the 569 LoC monolith per AGENTS.md Pattern 5 + godlike/06 SSOT
-// one-canonical-owner-per-fact (precedent: PR-SPLIT-FINALIZE-TYPES-V2 +
-// PR-SPLIT-LEGACYAUDIT-V2 + PR-SPLIT-READYZ-CHECKERS + PR-SPLIT-LLM-CLIENT
-// + PR-SPLIT-STEP-EXTRACT-CLIPS + PR-SPLIT-ENRICHMENT-HANDLER — 7th
-// LONG-FILES-DECOMPOSITION-V2-EXEC closure).
+// Slim orchestrator carrying the VideoCutter port + its no-op test
+// fixture + the compile-time pin. The StockRenderer port (cross-clip
+// concatenation / transition / overlay rendering) was REMOVED: the
+// stock pipeline downloads and processes source material (yt-dlp, cut,
+// publish) and never re-renders videos locally.
 //
 // godlike/06 SSOT (one canonical owner per fact):
-//   - StockRenderer + VideoCutter interfaces live ONLY in this file.
-//   - The 2 no-op test fixtures (noOpRenderer + noOpCutter) live ONLY in
-//     this file — they implement the ports declared here.
+//   - The VideoCutter interface lives ONLY in this file.
+//   - The no-op test fixture (noOpCutter) lives ONLY in this file —
+//     it implements the port declared here.
 //   - ErrNoOpCutter typed sentinel lives ONLY in this file.
-//   - The 2 compile-time pins (var _ StockRenderer = (*noOpRenderer)(nil)
-//   - var _ VideoCutter = (*noOpCutter)(nil)) live ONLY in this file.
-//   - The neutral DTOs (RenderRequest + RenderResult + CutRequest +
-//     CutJob + CutItemStatus + CutItemResult + CutBatchResult + Clip)
-//     live ONLY in render_dto.go (sister file).
-//   - The transition catalog (TransitionSegment + TransitionRenderer +
-//     Transition + TransitionRegistry) lives ONLY in
-//     render_transitions.go (sister file).
+//   - The compile-time pin (var _ VideoCutter = (*noOpCutter)(nil))
+//     lives ONLY in this file.
+//   - The neutral cut DTOs (CutRequest + CutJob + CutItemStatus +
+//     CutItemResult + CutBatchResult + Clip) live ONLY in
+//     render_dto.go (sister file).
 //   - SourceDurationProbe (the pre-cut duration validation port) lives
 //     ONLY in render_dto.go (grouped with the cutter DTOs since it's
 //     used by step_extract_clips to validate before invoking
@@ -185,23 +180,7 @@ func boolToInt64(v bool) int64 {
 //
 // must NOT import `internal/platform/media/ffmpeg` OR
 // `internal/platform/process`. Both are infra concerns; the app
-// layer only depends on the StockRenderer + VideoCutter ports
-// declared here.
-// ── StockRenderer port (PR6, June 2026) ────────────────────────────────
-
-// StockRenderer is the canonical port the application layer uses to render
-// a chunk of stock clips into a single output video. The interface is
-// deliberately minimal: a single Render method that takes a neutrally-
-// typed RenderRequest (declared in render_dto.go) and returns a
-// RenderResult (declared in render_dto.go).
-//
-// Implementations live in `internal/platform/media/render/`.
-type StockRenderer interface {
-	// Render concatenates (and optionally decorates) the input clips into
-	// the output video file at OutputPath, honouring the request's
-	// transitions/effects/encoding policy.
-	Render(ctx context.Context, req RenderRequest) (RenderResult, error)
-}
+// layer only depends on the VideoCutter port declared here.
 
 // ── VideoCutter port (PR6) ─────────────────────────────────────────────
 
@@ -210,8 +189,7 @@ type StockRenderer interface {
 // per-job on-disk verification, and ffprobe-driven validity gating.
 // Callers receive a structured CutBatchResult (declared in
 // render_dto.go) carrying per-job outcomes in input-Jobs order (see
-// CutBatchResult invariant documentation). Implementations live in
-// `internal/platform/media/render/`.
+// CutBatchResult invariant documentation).
 type VideoCutter interface {
 	// Cut extracts N clips from a single source video. The batch of
 	// jobs shares the same SourcePath; encoding policy (codec / preset
@@ -235,19 +213,10 @@ type VideoCutter interface {
 	Cut(ctx context.Context, req CutRequest) (CutBatchResult, error)
 }
 
-// ── No-op test fixtures (co-located with the ports they implement) ───
+// ── No-op test fixture (co-located with the port it implements) ────────
 
-// _ ensures StockRenderer stays a true interface (no accidental struct
-// embedding on the application side).
-var _ StockRenderer = (*noOpRenderer)(nil)
-
-type noOpRenderer struct{}
-
-func (noOpRenderer) Render(ctx context.Context, req RenderRequest) (RenderResult, error) {
-	return RenderResult{}, nil
-}
-
-// _ ensures VideoCutter stays a true interface.
+// _VideoCutterAsInterface ensures VideoCutter stays a true interface
+// (no accidental struct embedding on the application side).
 var _ VideoCutter = (*noOpCutter)(nil)
 
 type noOpCutter struct{}
@@ -279,25 +248,3 @@ func (noOpCutter) Cut(ctx context.Context, req CutRequest) (CutBatchResult, erro
 // error). Distinct ErrCutFailed wording so callers can
 // errors.Is on no-op failures vs real ffmpeg failures.
 var ErrNoOpCutter = errors.New("cutter: noOpCutter (test fixture)")
-
-// Package stockpipeline — render.go refactored (PR6, June 2026).
-//
-// Pre-PR6: renderChunk lived inside the application package and directly
-// constructed the FFmpeg filter_complex chain, the 14-string transitions
-// table, and the per-codec encoding arguments. It also called process.Run
-// to dispatch the resulting command line. All FFmpeg + execution knowledge
-// leaked into the application layer (violates AGENTS.md Pattern 0 + 8).
-//
-// Post-PR6: this file is a PURE DECISION MODULE. It inspects the
-// application-side rendering policy (clips, every-Nth transitions, every-
-// Nth overlays, encoding params) and produces a neutral
-// `stock.RenderRequest` that the canonical `StockRenderer` port consumes.
-// The FFmpeg-specific code lives in
-// `internal/platform/media/render/ffmpeg.go` (see package docs).
-//
-// Import-boundary invariant:
-//
-//	go vet ./internal/capabilities/assets/providers/stock/...
-//
-// must NOT import `internal/platform/media/ffmpeg` OR
-// `internal/platform/process`. This file respects the invariant.

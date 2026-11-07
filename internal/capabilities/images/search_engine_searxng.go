@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +49,9 @@ func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query
 	params.Set("q", query)
 	params.Set("format", "json")
 	params.Set("categories", "images")
+	if timeRange := searxImageTimeRange(query); timeRange != "" {
+		params.Set("time_range", timeRange)
+	}
 	reqURL := fmt.Sprintf("%s/search?%s", strings.TrimRight(s.cfg.External.SearxngURL, "/"), params.Encode())
 	data, err := httpjson.GetJSON[struct {
 		Results []struct {
@@ -102,4 +106,24 @@ func (s *ImageStorageService) searchSearXNGImagesMany(ctx context.Context, query
 		}
 	}
 	return results
+}
+
+// searxImageTimeRange requests a recency window only for queries that clearly
+// ask for current material. It leaves historical or evergreen image searches
+// unchanged; SearXNG applies the range only to engines that support it.
+func searxImageTimeRange(query string) string {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return ""
+	}
+	currentYear := strconv.Itoa(time.Now().UTC().Year())
+	if strings.Contains(q, currentYear) {
+		return "year"
+	}
+	for _, token := range []string{"latest", "recent", "recenti", "oggi", "attuale", "attuali", "this year", "last 12 months"} {
+		if strings.Contains(q, token) {
+			return "year"
+		}
+	}
+	return ""
 }

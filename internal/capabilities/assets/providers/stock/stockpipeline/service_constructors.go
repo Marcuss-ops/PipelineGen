@@ -38,9 +38,6 @@ func NewTestStockPipeline(deps Deps) (*Service, error) {
 	if deps.Media.Cutter == nil {
 		return nil, ErrStockPipelineNilCutter
 	}
-	if deps.Media.Renderer == nil {
-		return nil, ErrStockPipelineNilRenderer
-	}
 	service := serviceFromDeps(deps)
 	service.runtimeMode = stockPipelineTestMode
 	return service, nil

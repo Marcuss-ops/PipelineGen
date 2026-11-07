@@ -129,8 +129,7 @@ type StorageDeps struct {
 // fields REMOVED — they were unused dead code (zero call sites in the
 // stockpipeline package).
 type MediaDeps struct {
-	Cutter   VideoCutter
-	Renderer StockRenderer
+	Cutter VideoCutter
 }
 
 // Deps is the canonical constructor input for stockpipeline.Service

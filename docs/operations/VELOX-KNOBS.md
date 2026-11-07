@@ -25,7 +25,6 @@ a registry entry.
 | `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Fragments prepared in parallel per handoff. |
 | `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/wiring/remote_final_job.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
 | `VELOX_FINAL_JOB_RESOLVE_CONCURRENCY` | env | 1 | `internal/app/wiring/remote_final_job_resolve.go` | 4 (1..16) | Drive sources resolved in parallel while preparing a handoff. |
-| `VELOX_FINAL_JOB_STOCK_CACHE_DIR` | env |  | `internal/app/wiring/remote_final_job_resolve.go` | unset (default cache root) | Relocates the resolved stock-asset cache used by the handoff. |
 | `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/wiring/remote_final_job.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
 | `VELOX_MEDIA_MANIFEST_PATH` | env |  | `internal/capabilities/scripts/adapters/media_manifest_shim.go` | unset | Opt-in media_manifest fast-path used by the composition root. |
 | `VELOX_POLL_MAX_BACKOFF` | config | 60s | `internal/platform/config/jobs.go` | 60s | Ceiling of the job-runner poll backoff. |

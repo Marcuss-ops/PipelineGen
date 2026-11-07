@@ -31,8 +31,16 @@ import (
 //
 // Audio profile SSOT: audio.DefaultAudioProfile() in internal/capabilities/audio
 // (aac, LC, 48000 Hz, 2 channels, stereo, 192k). This contract MUST stay
-// in sync with that profile; MuxFinalAudioCopy gates on the same values.
+// in sync with that profile; the stock copy renderer gates on the same values.
 const (
+	// Canonical delivery geometry. Every producer that renders, clamps, or
+	// certifies a delivery frame derives these facts from here instead of
+	// restating the literals in its own package.
+	CanonicalWidth  = 1920
+	CanonicalHeight = 1080
+	CanonicalFPSNum = 24
+	CanonicalFPSDen = 1
+
 	// V1 remains frozen for compatibility with existing assets.
 	AssemblyMediaContractID      = "VELOX_ASSEMBLY_READY_V1"
 	AssemblyMediaContractVersion = 1
@@ -171,9 +179,9 @@ func DefaultAssemblyMediaContract() AssemblyMediaContract {
 		VideoLevel:           "4.0",
 		VideoExtradataSHA256: CanonicalVideoExtradataSHA256,
 		PixelFormat:          "yuv420p",
-		Width:                1920,
-		Height:               1080,
-		FPS:                  FrameRate{Num: 24, Den: 1},
+		Width:                CanonicalWidth,
+		Height:               CanonicalHeight,
+		FPS:                  FrameRate{Num: CanonicalFPSNum, Den: CanonicalFPSDen},
 		VideoTimeBase:        Rational{Num: 1, Den: 90000},
 		AudioTimeBase:        Rational{Num: 1, Den: 48000},
 		SAR:                  Rational{Num: 1, Den: 1},
@@ -227,11 +235,11 @@ func (c AssemblyMediaContract) ValidateExact() error {
 	if c.Container != "mp4" || c.VideoCodec != "h264" || c.VideoProfile != "high" || c.PixelFormat != "yuv420p" {
 		return fmt.Errorf("video codec/container mismatch: %s/%s/%s/%s", c.Container, c.VideoCodec, c.VideoProfile, c.PixelFormat)
 	}
-	if c.Width != 1920 || c.Height != 1080 {
-		return fmt.Errorf("geometry %dx%d != 1920x1080", c.Width, c.Height)
+	if c.Width != CanonicalWidth || c.Height != CanonicalHeight {
+		return fmt.Errorf("geometry %dx%d != %dx%d", c.Width, c.Height, CanonicalWidth, CanonicalHeight)
 	}
-	if !c.FPS.Equal(FrameRate{Num: 24, Den: 1}) {
-		return fmt.Errorf("fps %d/%d != 24/1", c.FPS.Num, c.FPS.Den)
+	if !c.FPS.Equal(FrameRate{Num: CanonicalFPSNum, Den: CanonicalFPSDen}) {
+		return fmt.Errorf("fps %d/%d != %d/%d", c.FPS.Num, c.FPS.Den, CanonicalFPSNum, CanonicalFPSDen)
 	}
 	if !c.VideoTimeBase.Equal(Rational{Num: 1, Den: 90000}) {
 		return fmt.Errorf("video timebase %d/%d != 1/90000", c.VideoTimeBase.Num, c.VideoTimeBase.Den)

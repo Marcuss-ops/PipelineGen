@@ -3,7 +3,9 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,17 +18,107 @@ import (
 )
 
 type roundRobinImageSearchProvider struct {
+	mu      sync.Mutex
 	queries []string
 }
 
 func (*roundRobinImageSearchProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
 
 func (p *roundRobinImageSearchProvider) Search(_ context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	p.mu.Lock()
 	p.queries = append(p.queries, req.Query)
+	p.mu.Unlock()
 	slug := strings.NewReplacer(" ", "-", ":", "").Replace(strings.ToLower(req.Query))
 	return []scriptpkg.SegmentAssetCandidate{{
 		AssetID: "image-" + slug, Provider: p.Name(), SourceURL: "https://cdn.example/" + slug + ".jpg", Query: req.Query,
 	}}, nil
+}
+
+type gatedVariantImageProvider struct {
+	entered chan string
+	release chan struct{}
+}
+
+type measuredParallelImageProvider struct {
+	calls  atomic.Int32
+	active atomic.Int32
+	peak   atomic.Int32
+}
+
+type parallelImageQueryProbe struct {
+	calls  atomic.Int32
+	active atomic.Int32
+	peak   atomic.Int32
+}
+
+func (p *parallelImageQueryProbe) SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	p.calls.Add(1)
+	active := p.active.Add(1)
+	for peak := p.peak.Load(); active > peak; peak = p.peak.Load() {
+		if p.peak.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+	defer p.active.Add(-1)
+	select {
+	case <-time.After(20 * time.Millisecond):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	slug := strings.ToLower(strings.ReplaceAll(req.Query, " ", "-"))
+	return []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "asset-" + slug, Provider: scriptpkg.VidRushProviderInternetImages,
+		Query: req.Query, SourceURL: "https://cdn.example/" + slug + ".jpg",
+	}}, nil
+}
+
+func (*measuredParallelImageProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
+func (p *measuredParallelImageProvider) Search(ctx context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	p.calls.Add(1)
+	active := p.active.Add(1)
+	for peak := p.peak.Load(); active > peak; peak = p.peak.Load() {
+		if p.peak.CompareAndSwap(peak, active) {
+			break
+		}
+	}
+	defer p.active.Add(-1)
+	select {
+	case <-time.After(20 * time.Millisecond):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return []scriptpkg.SegmentAssetCandidate{{
+		AssetID:  "parallel-" + strings.ReplaceAll(strings.ToLower(req.Query), " ", "-"),
+		Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query,
+		SourceURL: "https://cdn.example/" + strings.ReplaceAll(strings.ToLower(req.Query), " ", "-") + ".jpg",
+	}}, nil
+}
+func (*measuredParallelImageProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	return scriptports.LocalArtifact{}, errors.New("not used")
+}
+func (*measuredParallelImageProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	return scriptports.VerifiedArtifact{}, errors.New("not used")
+}
+
+func (*gatedVariantImageProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
+func (p *gatedVariantImageProvider) Search(ctx context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	p.entered <- req.Query
+	select {
+	case <-p.release:
+		return []scriptpkg.SegmentAssetCandidate{{
+			AssetID:  "variant-" + strings.ReplaceAll(strings.ToLower(req.Query), " ", "-"),
+			Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query,
+			SourceURL: "https://cdn.example/" + strings.ReplaceAll(strings.ToLower(req.Query), " ", "-") + ".jpg",
+		}}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+func (*gatedVariantImageProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
+	return scriptports.LocalArtifact{}, errors.New("not used")
+}
+func (*gatedVariantImageProvider) Verify(context.Context, scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
+	return scriptports.VerifiedArtifact{}, errors.New("not used")
 }
 
 func (*roundRobinImageSearchProvider) Acquire(context.Context, scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
@@ -63,6 +155,133 @@ func TestVidRushRegistryMediaResolverSearchImagesKeepsVariantsInTopPool(t *testi
 	}
 	if len(seenQueries) != 5 {
 		t.Fatalf("top pool contains %d query variants, want all 5: %+v", len(seenQueries), got)
+	}
+}
+
+func TestVidRushRegistryMediaResolverRunsPortraitVariantsInParallel(t *testing.T) {
+	provider := &gatedVariantImageProvider{entered: make(chan string, 5), release: make(chan struct{})}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	resolver := &VidRushRegistryMediaResolver{Registry: registry}
+	done := make(chan struct {
+		candidates []scriptpkg.SegmentAssetCandidate
+		err        error
+	}, 1)
+	go func() {
+		candidates, err := resolver.SearchImages(context.Background(), InternetImageSearchRequest{
+			Query: "Alberto Stasi single-person portrait headshot photo", Entity: "Alberto Stasi", Limit: 2,
+		})
+		done <- struct {
+			candidates []scriptpkg.SegmentAssetCandidate
+			err        error
+		}{candidates: candidates, err: err}
+	}()
+
+	seen := make(map[string]bool, 5)
+	timeout := time.NewTimer(2 * time.Second)
+	defer timeout.Stop()
+	for len(seen) < 5 {
+		select {
+		case query := <-provider.entered:
+			seen[query] = true
+		case <-timeout.C:
+			close(provider.release)
+			<-done
+			t.Fatalf("only %d/5 portrait variants entered before release; searches are not parallel", len(seen))
+		}
+	}
+	close(provider.release)
+	result := <-done
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	wantOrder := []string{
+		"Alberto Stasi single-person portrait headshot photo",
+		"Alberto Stasi foto intervista",
+		"Alberto Stasi foto udienza tribunale Garlasco",
+		"Alberto Stasi dichiarazioni foto avvocato Garlasco",
+		"Alberto Stasi servizio televisivo ritratto",
+	}
+	if len(result.candidates) != len(wantOrder) {
+		t.Fatalf("candidate count = %d, want %d", len(result.candidates), len(wantOrder))
+	}
+	for i, want := range wantOrder {
+		if result.candidates[i].Query != want {
+			t.Fatalf("candidate[%d].Query = %q, want deterministic query order %q", i, result.candidates[i].Query, want)
+		}
+	}
+}
+
+func TestVidRushImageSearchGlobalParallelismCapsAtFifteen(t *testing.T) {
+	provider := &measuredParallelImageProvider{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	resolver := &VidRushRegistryMediaResolver{Registry: registry}
+	const concurrentScenes = 4
+	done := make(chan error, concurrentScenes)
+	for scene := 0; scene < concurrentScenes; scene++ {
+		go func(scene int) {
+			_, err := resolver.SearchImages(context.Background(), InternetImageSearchRequest{
+				SegmentID: fmt.Sprintf("scene-%d", scene),
+				Query:     "Alberto Stasi single-person portrait headshot photo", Entity: "Alberto Stasi", Limit: 5,
+			})
+			done <- err
+		}(scene)
+	}
+	for scene := 0; scene < concurrentScenes; scene++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := provider.calls.Load(); got != concurrentScenes*5 {
+		t.Fatalf("provider calls = %d, want %d", got, concurrentScenes*5)
+	}
+	if got := provider.peak.Load(); got != vidRushMaxParallelImageSearches {
+		t.Fatalf("peak concurrent image searches = %d, want configured cap %d", got, vidRushMaxParallelImageSearches)
+	}
+}
+
+func TestVidRushImageQueriesRunUpToFifteenInParallelAndMergeInInputOrder(t *testing.T) {
+	searcher := &parallelImageQueryProbe{}
+	fanout := &VidRushProviderFanout{images: searcher}
+	queries := make([]string, 20)
+	for i := range queries {
+		queries[i] = fmt.Sprintf("query-%02d", i)
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Topic: "parallel query test", Language: "en", ForceRefresh: true,
+		MediaPlan: mediadomain.MediaPlanSpec{ForceRefreshAssets: true},
+	}
+	workerInput := scriptpkg.VidRushSegmentResult{SegmentID: "parallel-segment", TextHash: "parallel-hash"}
+	fanoutPlan := vidRushFanoutPlan{
+		segmentID: workerInput.SegmentID, textHash: workerInput.TextHash,
+		imageQueries: queries, perQueryLimit: 1,
+	}
+	outcomes := make(chan vidRushProviderOutcome, 1)
+	fanout.resolveInternetImageCandidates(context.Background(), plan, fanoutPlan, workerInput, outcomes)
+	outcome := <-outcomes
+	if outcome.err != nil {
+		t.Fatal(outcome.err)
+	}
+	if got := searcher.calls.Load(); got != int32(len(queries)) {
+		t.Fatalf("provider calls = %d, want %d", got, len(queries))
+	}
+	if got := searcher.peak.Load(); got != vidRushMaxParallelImageSearches {
+		t.Fatalf("peak per-scene queries = %d, want cap %d", got, vidRushMaxParallelImageSearches)
+	}
+	if len(outcome.candidates) != len(queries) {
+		t.Fatalf("candidate count = %d, want %d", len(outcome.candidates), len(queries))
+	}
+	for i, want := range queries {
+		if got := outcome.candidates[i].Query; got != want {
+			t.Fatalf("candidate[%d].Query = %q, want stable input order %q", i, got, want)
+		}
 	}
 }
 

@@ -36,7 +36,6 @@ type StepRunner interface {
 	Planner() ClipPlanner
 	SourceStager() acquisition.SourceStager
 	Cutter() VideoCutter
-	Renderer() StockRenderer
 	Builder() ManifestBuilder
 	Writer() TransactionalAssetWriter
 	Projection() ProjectionPort
@@ -106,7 +105,6 @@ func (a *orchestratorRunner) PolicyVersion() string                  { return a.
 func (a *orchestratorRunner) Planner() ClipPlanner                   { return a.orch.planner }
 func (a *orchestratorRunner) SourceStager() acquisition.SourceStager { return a.orch.stager }
 func (a *orchestratorRunner) Cutter() VideoCutter                    { return a.orch.cutter }
-func (a *orchestratorRunner) Renderer() StockRenderer                { return a.orch.renderer }
 func (a *orchestratorRunner) Builder() ManifestBuilder               { return a.orch.builder }
 func (a *orchestratorRunner) Writer() TransactionalAssetWriter       { return a.orch.writer }
 func (a *orchestratorRunner) Projection() ProjectionPort             { return a.orch.projection }

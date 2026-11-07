@@ -8,7 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
+
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -216,16 +217,13 @@ func (f *vidRushArtifactFinalizer) Finalize(ctx context.Context, artifact script
 	candidate.VerificationStatus = scriptpkg.VidRushStatusVerified
 	candidate.PersistenceStatus = scriptpkg.VidRushStatusPersisted
 	// The transactional outbox request is durable at this boundary, while
-	// the projection worker owns the physical Qdrant write. Waiting here is
-	// only a read-side acknowledgement: the finalizer never calls Qdrant.
-	// If the worker is unavailable, keep the candidate pending and fail the
-	// binding closed; a later reconciliation/run can observe INDEXED.
+	// the projection worker owns the physical Qdrant write. Rendering only
+	// needs the verified, persisted file; semantic indexing is for later
+	// reuse and must not hold this request open. The pending state remains
+	// visible to the catalog and the outbox worker will update it asynchronously.
 	candidate.IndexStatus = "pending"
 	if current, err := readVidRushIndexState(ctx, f.mediaDB, candidate.AssetID); err == nil && current != "" {
 		candidate.IndexStatus = current
-	}
-	if waitForVidRushIndex(ctx, f.mediaDB, candidate.AssetID, 30*time.Second) {
-		candidate.IndexStatus = scriptpkg.VidRushStatusIndexed
 	}
 	return candidate, nil
 }
@@ -262,29 +260,6 @@ func readVidRushIndexState(ctx context.Context, db *sql.DB, assetID string) (str
 	return strings.TrimSpace(state), err
 }
 
-func waitForVidRushIndex(ctx context.Context, db *sql.DB, assetID string, maxWait time.Duration) bool {
-	if db == nil || strings.TrimSpace(assetID) == "" {
-		return false
-	}
-	deadline := time.NewTimer(maxWait)
-	defer deadline.Stop()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		var state string
-		if err := db.QueryRowContext(ctx, `SELECT COALESCE(index_state, '') FROM media_assets WHERE id = $1`, assetID).Scan(&state); err == nil && strings.EqualFold(strings.TrimSpace(state), "INDEXED") {
-			return true
-		}
-		select {
-		case <-ctx.Done():
-			return false
-		case <-deadline.C:
-			return false
-		case <-ticker.C:
-		}
-	}
-}
-
 type vidRushInternetImageProvider struct {
 	searcher adapters.InternetImageSearcher
 	log      *zap.Logger
@@ -308,7 +283,7 @@ func (p *vidRushImageGenerationProvider) Acquire(ctx context.Context, candidate 
 	if p == nil || p.generator == nil {
 		return scriptports.LocalArtifact{}, fmt.Errorf("vidrush image generation: generator unavailable")
 	}
-	output, err := p.generator.GenerateArtifact(ctx, "vidrush-"+candidate.AssetID, candidate.Query, "cinematic", 1920, 1080, nil)
+	output, err := p.generator.GenerateArtifact(ctx, "vidrush-"+candidate.AssetID, candidate.Query, "cinematic", kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight, nil)
 	if err != nil {
 		return scriptports.LocalArtifact{}, err
 	}
@@ -345,7 +320,7 @@ func (p *vidRushInternetImageProvider) Search(ctx context.Context, req scriptpor
 	if entity == "" {
 		entity = req.Query
 	}
-	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: entity, TextHash: req.TextHash, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
+	results, err := p.searcher.SearchImages(ctx, adapters.InternetImageSearchRequest{SegmentID: req.SegmentID, Position: req.Position, Query: req.Query, Entity: entity, QueryClass: req.QueryClass, TextHash: req.TextHash, Limit: req.Limit, Provider: scriptpkg.VidRushProviderInternetImages})
 	return results, err
 }
 func (p *vidRushInternetImageProvider) Acquire(ctx context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {

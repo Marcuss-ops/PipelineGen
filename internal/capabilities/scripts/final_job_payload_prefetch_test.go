@@ -29,11 +29,10 @@ func (r *prefetchRecordingResolver) prefetched() []string {
 	return append([]string(nil), r.seen...)
 }
 
-// TestBuildFinalJobPayloadsPrefetchesTheFolderItListed pins the warm-up: the
-// moment the walk knows which sources a stock folder can offer, it asks the
-// resolver to resolve them concurrently instead of paying one Drive round trip
-// per source on its own critical path (r69: 56 sources serially, 10,9 s).
-func TestBuildFinalJobPayloadsPrefetchesTheFolderItListed(t *testing.T) {
+// TestBuildFinalJobPayloadsDoesNotPrefetchTheFolderItListed pins the current
+// contract: final-job stock is passed by Drive reference, so building the
+// payload must not eagerly resolve or stage the folder's sources.
+func TestBuildFinalJobPayloadsDoesNotPrefetchTheFolderItListed(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
 		FinalAudio:        certifiedFinalAudio(2000),
@@ -48,8 +47,8 @@ func TestBuildFinalJobPayloadsPrefetchesTheFolderItListed(t *testing.T) {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
 	seen := resolver.prefetched()
-	if len(seen) != 1 || seen[0] != "drive-asset" {
-		t.Fatalf("prefetched = %v, want the folder's eligible source", seen)
+	if len(seen) != 0 {
+		t.Fatalf("prefetched = %v, want no eager Drive warm-up; stock is passed by reference", seen)
 	}
 }
 

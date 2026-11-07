@@ -49,11 +49,11 @@ lives **inside an item**; there are no top-level shortcut keys.
       "map_animation": "random",
       "animation_contract_version": 2,
       "animation_directives": [
-        {"scope":"element","scene_ref":"scene-1","target":"important_phrase","mode":"exact","motion_id":"phrase_apple_clean_07_slide_up_soft"},
+        {"scope":"element","scene_ref":"scene-1","target":"important_phrase","mode":"exact","motion_id":"phrase_apple_clean_01_blur_soft_reveal"},
         {"scope":"element","scene_ref":"scene-1","target":"image","mode":"prefer","motion_id":"image_focus_reveal"}
       ],
       "random_light_leak_on_clip_start": true,
-      "phrase_motions": ["phrase_apple_clean_07_slide_up_soft"],
+      "phrase_motions": ["phrase_apple_clean_01_blur_soft_reveal"],
       "image_motions": ["image_fade_reveal", "image_focus_reveal"],
       "entity_image_motions": ["image_fade_reveal", "image_scale_reveal"],
       "output":       { "...": "opt-in post-generation artifacts" },
@@ -214,7 +214,7 @@ by `audio.random_sfx_on_image_overlay`.
 {
   "animation_contract_version": 2,
   "animation_directives": [
-    {"scope":"element", "scene_ref":"scene-1", "target":"important_phrase", "mode":"exact", "motion_id":"phrase_apple_clean_07_slide_up_soft"},
+    {"scope":"element", "scene_ref":"scene-1", "target":"important_phrase", "mode":"exact", "motion_id":"phrase_apple_clean_01_blur_soft_reveal"},
     {"scope":"element", "scene_ref":"scene-1", "target":"image", "mode":"prefer", "motion_id":"image_focus_reveal"},
     {"scope":"element", "scene_ref":"scene-1", "target":"caption", "mode":"auto"}
   ]

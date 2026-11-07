@@ -135,8 +135,7 @@ func BuildStockBundle(deps StockBundleDeps) (*stockwiring.StockPipelineWiring, e
 			BatchRepository: deps.Acquisition.BatchRepository,
 		},
 		Media: stockpipeline.MediaDeps{
-			Cutter:   deps.Media.Cutter,
-			Renderer: deps.Media.Renderer,
+			Cutter: deps.Media.Cutter,
 		},
 		Execution: stockpipeline.ExecutionDeps{
 			Jobs:          deps.Orchestration.Jobs,

@@ -23,6 +23,9 @@ if command -v gitleaks >/dev/null 2>&1; then
     # rc=1 without it). Copying it would turn the gate into a silent no-op.
     git ls-files -co --exclude-standard -z \
       | grep -zvE '^\.gitleaks(\.toml|ignore)$' \
+      | while IFS= read -r -d '' path; do
+          if [ -e "$path" ]; then printf '%s\0' "$path"; fi
+        done \
       | tar -c --null -T - 2>/dev/null | tar -x -C "$snapshot"
     if [ -n "$config" ]; then
       gitleaks detect --source "$snapshot" --no-git --redact --exit-code 1 --config "$config"

@@ -70,7 +70,7 @@ func TestAutomaticHeavyLaneLimitKeepsAllLongFamilies(t *testing.T) {
 // TestHeavyLaneSmallPoolStaysVerbatim pins that small explicit caller pools
 // keep their order and are not forced through the family window.
 func TestHeavyLaneSmallPoolStaysVerbatim(t *testing.T) {
-	pool := []string{"phrase_apple_clean_07_slide_up_soft", "doc_06_red_keyword_punch", "text_3d_yaw_flip_in"}
+	pool := []string{"phrase_apple_clean_01_blur_soft_reveal", "doc_06_red_keyword_punch", "text_3d_yaw_flip_in"}
 	first := selectHeavyPhraseMotionLimited("verbatim-probe", "run", 0, pool, 0)
 	found := false
 	for _, id := range pool {
