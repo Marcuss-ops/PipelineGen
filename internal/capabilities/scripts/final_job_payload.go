@@ -131,7 +131,7 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	// The stock selection rule lives in finalJobStockPlanner; one planner per
 	// handoff keeps the folder cursors shared across scenes. Resolution is
 	// metadata-only: the Master downloads and processes the stock Drive source.
-	stockPlanner := newFinalJobStockPlanner()
+	stockPlanner := newFinalJobStockPlanner(runID)
 	remoteScenes := make([]map[string]any, 0, len(result.CanonicalTimeline.Segments))
 	clipOrdinal := 0
 	var plannedDurationMS int64
