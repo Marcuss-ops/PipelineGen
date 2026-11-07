@@ -3,7 +3,8 @@ package rustexec
 import (
 	"context"
 	"encoding/json"
-	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
@@ -141,12 +142,28 @@ func TestNormalizeHonorsDisableDuration(t *testing.T) {
 }
 
 func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
-	out := t.TempDir() + "/clip.mp4"
-	if err := os.WriteFile(out, []byte("clip"), 0o600); err != nil {
-		t.Fatal(err)
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	out := filepath.Join(t.TempDir(), "clip.mp4")
+	// The stock cutter accepts only the canonical libx264 lane, and the
+	// bitstream gate reads the real SPS/PPS: the fixture must therefore be a
+	// canonical assembly clip, not a placeholder file.
+	fixture := []string{
+		"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+		"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24", "-frames:v", "24", "-an",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+		"-profile:v", "high", "-level:v", "4.0", "-pix_fmt", "yuv420p", "-r", "24",
+		"-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
+		"-g", "48", "-keyint_min", "48", "-sc_threshold", "0", "-bf", "0", "-refs", "1", "-flags", "+cgop",
+		"-video_track_timescale", "90000", "-map_metadata", "-1", "-movflags", "+faststart", out,
+	}
+	if outBytes, err := exec.Command(ffmpeg, fixture...).CombinedOutput(); err != nil {
+		t.Fatalf("create canonical cut fixture: %v: %s", err, outBytes)
 	}
 	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"cut_batch","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"validated","size_bytes":4,"duration_sec":1}]}`)}
-	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", mediaexec.EncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}, mediaexec.VideoProfile{}.WithDefaults(), nil)
+	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, mediaexec.VideoProfile{}.WithDefaults(), nil)
 	processor.client.runner = runner
 
 	result, err := processor.Cut(context.Background(), stockpipeline.CutRequest{
@@ -164,7 +181,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	if err := json.Unmarshal(runner.input, &sent); err != nil {
 		t.Fatalf("decode request: %v", err)
 	}
-	if sent.Operation != "cut_batch" || sent.Codec != "h264_nvenc" || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "192k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Jobs) != 1 {
+	if sent.Operation != "cut_batch" || sent.Codec != "libx264" || sent.Preset != "veryfast" || sent.Width != 1920 || sent.Height != 1080 || sent.FPSNum != 24 || sent.FPSDen != 1 || sent.KeyframeInterval != 48 || sent.AudioCodec != "aac" || sent.AudioBitrate != "192k" || sent.SampleRate != 48000 || sent.Channels != 2 || len(sent.Jobs) != 1 {
 		t.Fatalf("unexpected shared cut request: %+v", sent)
 	}
 }
