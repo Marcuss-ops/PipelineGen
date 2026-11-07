@@ -52,27 +52,4 @@ func (p *AdminMediaProcessor) Trim(ctx context.Context, inputPath string, maxSec
 	return os.Rename(tmpPath, inputPath)
 }
 
-func (p *AdminMediaProcessor) Render(ctx context.Context, manifest adminmedia.RenderManifest) error {
-	if err := validateResolvedProfile(p.profile); err != nil {
-		return err
-	}
-	req := request{Operation: "admin_render", SourcePath: manifest.Input, OutputPath: manifest.Output, Font: manifest.Font, Codec: p.policy.Codec, Preset: p.policy.Preset, CRF: p.policy.CRF,
-		Width: uint32(p.profile.Width), Height: uint32(p.profile.Height), FPSNum: uint32(p.profile.FPSNum), FPSDen: uint32(p.profile.FPSDen), KeyframeInterval: uint32(p.profile.KeyframeInterval),
-		AudioCodec: p.profile.AudioCodec, AudioBitrate: p.profile.AudioBitrate, SampleRate: uint32(p.profile.SampleRate), Channels: uint32(p.profile.Channels)}
-	for _, effect := range manifest.Effects {
-		req.Effects = append(req.Effects, renderEffect{Path: effect.Path, DelayMS: effect.DelayMS, Duration: effect.Duration, Volume: effect.Volume})
-	}
-	for _, overlay := range manifest.Overlays {
-		req.Overlays = append(req.Overlays, renderOverlay{Text: overlay.Text, Start: overlay.Start, End: overlay.End, Size: overlay.Size, Y: overlay.Y, Color: overlay.Color})
-	}
-	_, err := p.client.call(ctx, req)
-	return err
-}
-
 var _ adminmedia.AudioEditor = (*AdminMediaProcessor)(nil)
-var _ adminmedia.ShortRenderer = (*AdminMediaProcessor)(nil)
-
-// StockRenderer adapts the resolved neutral StockRenderer port to the Rust
-// render_stock capability. Go resolves transition IDs and exact effect paths
-// before this adapter serializes the request; Rust owns only graph construction
-// and execution.

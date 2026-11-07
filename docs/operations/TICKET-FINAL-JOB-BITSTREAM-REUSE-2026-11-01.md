@@ -441,7 +441,7 @@ confronto omogeneo è con r95 (fredda, binario precedente) e con r83 (freddo,
 
 Il guadagno di lavoro (−59,9 s di encode) vale −19,5 s di wall perché la prep
 gira su 4 lane già all'**85,8%** di utilizzo (241,4 s / (70,3 s × 4), floor
-60,3 s). Il resto del run è fuori dal layer: overlay 28,9 s (12,1 s di prewarm),
+60,3 s). Il resto del run è fuori dal layer: overlay 28,9 s,
 generate 11,2 s, prepare_join 10,9 s, scene_analysis 9,0 s, coda Master 9,0 s,
 render remoto 7,7 s.
 
@@ -467,10 +467,7 @@ portava `VELOX_OVERLAY_VIDEO_ONLY_V1`. Il profilo video-only resta corretto per
 `plan.Output` e per i batch manifest (r80–r83); non è accettato dal gate di
 copia remoto per il frammento.
 
-**Ottimizzazioni residue — misurate (02-11, terza tornata).** Prewarm parallelo
-(`VELOX_FINAL_JOB_RESOLVE_CONCURRENCY=4`, r97): prewarm 12,11 → 7,85 s, ma
-`handoff` 3,2 → 36,8 s e `resolve` aggregato 115,8 s su 149 sorgenti;
-**rigettato**, default 1. Lane 4→6 (r99, cache fredda): 127,2 s contro 140,9 s
+**Ottimizzazioni residue — misurate (02-11, terza tornata).** Lane 4→6 (r99, cache fredda): 127,2 s contro 140,9 s
 di r96, utilizzo lane 83,8% vs 85,8%, CPU media 84,7% e picco 99%; **misurato,
 default 4 invariato** su n=1. Normalizzazione per sorgente: i tre outlier
 provengono da tre sorgenti distinte usate da una finestra ciascuna; a freddo

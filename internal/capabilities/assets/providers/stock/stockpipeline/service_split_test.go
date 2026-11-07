@@ -37,13 +37,12 @@ func TestSplit_SentinelsLiveInServiceErrors(t *testing.T) {
 		ErrStockPipelineNilLog,
 		ErrStockPipelineNilDispatcher,
 		ErrStockPipelineNilCutter,
-		ErrStockPipelineNilRenderer,
 		ErrStockPipelineNilJobs,
 		ErrStockPipelineNilSourceStager,
 		ErrStockPipelineNilLocalFS,
 		ErrStockPipelineNilFinalizer,
 	}
-	if got, want := len(sentinels), 9; got != want {
+	if got, want := len(sentinels), 8; got != want {
 		// 9 distinct sentinels today. Retired: ErrStockPipelineNilDB (DB is no
 		// longer passed) plus ErrStockPipelineNilClipsRepo and
 		// ErrStockPipelineNilAssetIndex (WAVE 6 + WAVE 9, September 2026 — the

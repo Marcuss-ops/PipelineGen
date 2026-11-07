@@ -10,7 +10,11 @@ type StockRunPayload struct {
 	// (URL → seconds) across the jobs wire so the worker's duration probe
 	// only runs for the URLs the submitter could not describe. Optional:
 	// a payload without it keeps the probe-for-everything behaviour.
-	SourceDurations                map[string]float64       `json:"source_durations,omitempty"`
+	SourceDurations map[string]float64 `json:"source_durations,omitempty"`
+	// SourceTitles carries the caller-supplied display titles (URL → title)
+	// across the jobs wire. A URL with both a duration and a title skips the
+	// provider probe; a URL with only a duration is probed for its title.
+	SourceTitles                   map[string]string        `json:"source_titles,omitempty"`
 	DriveURLs                      []string                 `json:"drive_urls,omitempty"`
 	Clips                          []ClipSpec               `json:"clips,omitempty"`
 	TotalMinutes                   int                      `json:"total_minutes"`

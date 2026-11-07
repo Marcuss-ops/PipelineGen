@@ -27,9 +27,9 @@ func TestRequestValidateMediaexecV1Operations(t *testing.T) {
 			want: "cut_batch: jobs are required",
 		},
 		{
-			name: "render requires output",
-			req:  request{Version: ProtocolVersion, Operation: OperationRenderStock, InputPaths: []string{"/clip.mp4"}},
-			want: "render_stock: output_path is required",
+			name: "render audio plan requires plan",
+			req:  request{Version: ProtocolVersion, Operation: OperationRenderAudioPlan, OutputPath: "/out.m4a"},
+			want: "render_audio_plan: audio_plan is required",
 		},
 		{
 			name: "normalize requires source",
@@ -173,18 +173,5 @@ func TestRequestValidateRenderClipRejectsTamperedPlan(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "sealed clip_plan validation failed") {
 		t.Fatalf("Validate() = %v, want sealed clip_plan validation failure", err)
-	}
-}
-
-func TestRequestValidateAcceptsMuxAudioCopyOnlyWithTwoInputs(t *testing.T) {
-	req := request{Version: ProtocolVersion, Operation: OperationMuxAudioCopy, OutputPath: "/tmp/video-final.mp4", InputPaths: []string{"/tmp/video.mp4", "/tmp/final_audio.m4a"}}
-	if err := req.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-	for _, inputs := range [][]string{nil, {"/tmp/video.mp4"}, {"/tmp/video.mp4", "/tmp/audio.m4a", "/tmp/extra.m4a"}} {
-		req.InputPaths = inputs
-		if err := req.Validate(); err == nil {
-			t.Fatalf("Validate() accepted %d mux inputs", len(inputs))
-		}
 	}
 }

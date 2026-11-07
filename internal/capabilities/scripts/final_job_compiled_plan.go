@@ -279,6 +279,24 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	if len(segments) == 0 {
 		return "", "", fmt.Errorf("final_job V2 render plan has no video segments")
 	}
+	// Producer deliberately keeps stock remote: it does not materialize Drive
+	// bytes just to probe duration. The scene references can describe several
+	// contiguous windows of one stock SHA, so declare the furthest range the
+	// compiled plan actually needs and let the Master/worker verify that range
+	// against the canonical Drive asset before dispatch.
+	stockAssetIDs := make(map[string]struct{}, len(scenes))
+	for _, scene := range scenes {
+		if stock, ok := scene["stock"].(map[string]any); ok {
+			if id := finalJobStringValue(stock["asset_id"]); id != "" {
+				stockAssetIDs[id] = struct{}{}
+			}
+		}
+	}
+	for _, segment := range segments {
+		if _, stock := stockAssetIDs[segment.AssetID]; stock {
+			assets.extendSourceExtent(segment.AssetID, segment.SourceInUS+segment.SourceDurationUS)
+		}
+	}
 
 	timelineRevision := int64(1)
 	timelineMaterial := map[string]any{
@@ -331,6 +349,8 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 // every stock asset INTO the shared registry the caller already owns.
 func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAssets) ([]finalJobBaseSegment, error) {
 	base := make([]finalJobBaseSegment, 0, len(scenes))
+	delivery := finalJobPlanDelivery()
+	fpsNum, fpsDen := int64(delivery.FPS.Num), int64(delivery.FPS.Den)
 	var cursorUS int64
 	for i, scene := range scenes {
 		asset, ok := scene["stock"].(map[string]any)
@@ -342,7 +362,14 @@ func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAsset
 			return nil, fmt.Errorf("final_job scene %d has an invalid duration", i)
 		}
 		durationUS := int64(math.Round(durationSeconds * 1_000_000))
-		assetDurationUS := finalJobInt64(asset["duration_ms"]) * 1000
+		// A stockpipeline duration is saved in milliseconds and can fall just
+		// below the frame grid (5.000s/120 frames is commonly recorded as
+		// 4.979s). Round the source extent UP to the delivery frame boundary
+		// before the scene windows are composed; otherwise the clamp below
+		// shrinks the window to 4.979s and the later alignment/validator can
+		// never recover the frame the remote cutter can pad. A source genuinely
+		// shorter than the requested scene still fails the frame-count check.
+		assetDurationUS := finalJobFrameCeilDurationUS(finalJobInt64(asset["duration_ms"])*1000, fpsNum, fpsDen)
 		if err := assets.addRaw(asset, "video", assetDurationUS, finalJobInt(asset["width"]), finalJobInt(asset["height"]), finalJobInt64(asset["frame_count"])); err != nil {
 			return nil, fmt.Errorf("final_job scene %d: %w", i, err)
 		}
@@ -554,6 +581,28 @@ func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {
 	numerator := us * fpsNum
 	denominator := int64(1_000_000) * fpsDen
 	return (numerator + denominator/2) / denominator
+}
+
+func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
+	numerator := frame * 1_000_000 * fpsDen
+	return (numerator + fpsNum/2) / fpsNum
+}
+
+// finalJobFrameCeilDurationUS lifts a declared duration to the first delivery
+// frame boundary at or after it. Stock metadata is millisecond-rounded and can
+// otherwise hide the partial last frame that the Master is allowed to pad.
+func finalJobFrameCeilDurationUS(durationUS, fpsNum, fpsDen int64) int64 {
+	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return durationUS
+	}
+	frames := finalJobFrameAtUS(durationUS, fpsNum, fpsDen)
+	if frames < 0 {
+		frames = 0
+	}
+	if finalJobFrameStartUS(frames, fpsNum, fpsDen) < durationUS {
+		frames++
+	}
+	return finalJobFrameDurationUS(frames, fpsNum, fpsDen)
 }
 
 func finalJobInt64(value any) int64 {

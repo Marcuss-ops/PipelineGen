@@ -1,11 +1,11 @@
 // Package stock — ports_test.go (PR6 + FASE 2.4).
 //
-// Pure-Go unit tests for the canonical StockRenderer + VideoCutter ports.
+// Pure-Go unit tests for the canonical VideoCutter port.
 // Mocks implement the port interfaces; no FFmpeg / process / infrastructure
 // import is exercised. These tests guard:
 //
-//	(1) Port contract: the no-op compile-time anchors (noOpRenderer /
-//	    noOpCutter) make the contract explicit and unmissable.
+//	(1) Port contract: the no-op compile-time anchor (noOpCutter)
+//	    makes the contract explicit and unmissable.
 //	(2) Mockable: the ports are interface-typed, so tests can swap in
 //	    fakes without touching infrastructure bindings.
 //
@@ -20,20 +20,6 @@ import (
 	"errors"
 	"testing"
 )
-
-// mockRenderer captures the last Render call and returns a stub Result.
-type mockRenderer struct {
-	lastReq RenderRequest
-	result  RenderResult
-	err     error
-	called  int
-}
-
-func (m *mockRenderer) Render(ctx context.Context, req RenderRequest) (RenderResult, error) {
-	m.called++
-	m.lastReq = req
-	return m.result, m.err
-}
 
 // mockCutter captures the last Cut call. FASE 2.4 returns
 // CutBatchResult so per-Job detail is observable by tests.
@@ -56,15 +42,6 @@ func (m *mockCutter) Cut(ctx context.Context, req CutRequest) (CutBatchResult, e
 // contracts (catches accidental breakage of the *_ = (*noOpRenderer)(nil)
 // declaration if the interfaces evolve).
 func TestNoOpAnchors(t *testing.T) {
-	var r StockRenderer = noOpRenderer{}
-	out, err := r.Render(context.Background(), RenderRequest{OutputPath: "/tmp/x.mp4"})
-	if err != nil {
-		t.Fatalf("noOpRenderer.Render returned unexpected error: %v", err)
-	}
-	if out.UsedFastPath {
-		t.Fatalf("noOpRenderer should not mark UsedFastPath")
-	}
-
 	// FASE 2.4: noOpCutter now returns a fully-populated
 	// CutBatchResult (mai-nil-with-zero-output invariant). Iterate
 	// Items without nil-checks; produced paths are empty when
@@ -90,44 +67,6 @@ func TestNoOpAnchors(t *testing.T) {
 	}
 	if len(out2.ProducedPaths()) != 0 {
 		t.Fatalf("noOpCutter should produce no paths, got %v", out2.ProducedPaths())
-	}
-}
-
-// ── Mock-based: renderer delegates the request intact ─────────────────
-
-// TestMockRendererDelegation ensures a concrete renderer can be swapped in
-// and receives the RenderRequest as built by the application layer (no
-// opaque magic).
-func TestMockRendererDelegation(t *testing.T) {
-	mock := &mockRenderer{
-		result: RenderResult{
-			UsedFastPath:        true,
-			AppliedTransitions:  []string{"fadeblack"},
-			AppliedOverlayFiles: []string{"/effects/a.mp4"},
-			DurationMS:          1234,
-		},
-	}
-	var r StockRenderer = mock
-	req := RenderRequest{
-		OutputPath:      "/tmp/out.mp4",
-		InputPaths:      []string{"/tmp/a.mp4", "/tmp/b.mp4"},
-		Codec:           "libx264",
-		NoTransitions:   true,
-		NoEffects:       true,
-		ClipDurationSec: 10,
-	}
-	res, err := r.Render(context.Background(), req)
-	if err != nil {
-		t.Fatalf("mock.Render unexpected error: %v", err)
-	}
-	if mock.called != 1 {
-		t.Fatalf("expected 1 call, got %d", mock.called)
-	}
-	if mock.lastReq.OutputPath != req.OutputPath {
-		t.Fatalf("OutputPath not propagated: got %q want %q", mock.lastReq.OutputPath, req.OutputPath)
-	}
-	if !res.UsedFastPath || len(res.AppliedTransitions) != 1 {
-		t.Fatalf("result not bubbled up: %+v", res)
 	}
 }
 
@@ -288,71 +227,6 @@ func TestClipSucceeded(t *testing.T) {
 		t.Fatalf("Unknown (zero-value) clip should not be Succeeded()")
 	}
 }
-
-// ── Boundary invariants ─────────────────────────────────────────────────
-
-// TestTransitionPortShape confirms the Transition struct and TransitionRegistry
-// interface are usable without importing infrastructure (ports-only integration).
-func TestTransitionPortShape(t *testing.T) {
-	// Transition struct is constructable and its fields are accessible.
-	tr := Transition{
-		Name:        "test",
-		Description: "a test transition",
-		RenderEnd: func(d int) string {
-			return "xfade=out"
-		},
-		RenderStart: func(d int) string {
-			return "xfade=in"
-		},
-	}
-	if tr.Name != "test" {
-		t.Fatalf("Name not set")
-	}
-	if tr.RenderEnd(0) != "xfade=out" || tr.RenderStart(0) != "xfade=in" {
-		t.Fatalf("Render closures not callable")
-	}
-
-	// TransitionRegistry interface can be mocked without the concrete impl.
-	mock := &mockTransitionRegistry{
-		transitions: []Transition{tr},
-	}
-	if mock.Len() != 1 {
-		t.Fatalf("mock registry Len() unexpected: %d", mock.Len())
-	}
-	if got, ok := mock.Get("test"); !ok || got.Name != "test" {
-		t.Fatalf("mock registry Get() failed: %+v", got)
-	}
-	if len(mock.All()) != 1 {
-		t.Fatalf("mock registry All() unexpected")
-	}
-}
-
-// mockTransitionRegistry is a minimal in-process mock for the
-// TransitionRegistry port — used only in tests that need a registry
-// without importing the concrete infrastructure implementation.
-type mockTransitionRegistry struct {
-	transitions []Transition
-	byName      map[string]Transition
-}
-
-func (m *mockTransitionRegistry) All() []Transition {
-	out := make([]Transition, len(m.transitions))
-	copy(out, m.transitions)
-	return out
-}
-func (m *mockTransitionRegistry) Get(name string) (Transition, bool) {
-	if m.byName == nil {
-		m.byName = make(map[string]Transition, len(m.transitions))
-		for _, t := range m.transitions {
-			m.byName[t.Name] = t
-		}
-	}
-	t, ok := m.byName[name]
-	return t, ok
-}
-func (m *mockTransitionRegistry) Len() int { return len(m.transitions) }
-
-var _ TransitionRegistry = (*mockTransitionRegistry)(nil)
 
 // ── Boundary invariants ─────────────────────────────────────────────────
 

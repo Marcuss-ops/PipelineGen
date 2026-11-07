@@ -26,7 +26,7 @@ func TestApplyOverlayGroupLimitsCapsAndDisables(t *testing.T) {
 		{ID: "m1", Kind: "map", Map: &capmodel.MapOverlay{}},
 		{ID: "m2", Kind: "map", Map: &capmodel.MapOverlay{}},
 		{ID: "m3", Kind: "map", Map: &capmodel.MapOverlay{}},
-		{ID: "s1", Kind: "text_phrase", Text: "two word phrase", MotionID: "phrase_apple_clean_07_slide_up_soft"},
+		{ID: "s1", Kind: "text_phrase", Text: "two word phrase", MotionID: "phrase_apple_clean_01_blur_soft_reveal"},
 		{ID: "l1", Kind: "text_phrase", MotionID: "slide_in"},
 		{ID: "l2", Kind: "text_phrase", MotionID: "slide_in"},
 	}

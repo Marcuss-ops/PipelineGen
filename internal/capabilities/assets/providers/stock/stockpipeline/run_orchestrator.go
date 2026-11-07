@@ -134,13 +134,13 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 		// constructor. Its in-memory step store and noop resilience ports
 		// cannot leak into production because production services take the
 		// strict branch below.
-		o = NewTestStockOrchestrator(cfg, planner, stager, s.cutter, s.renderer)
+		o = NewTestStockOrchestrator(cfg, planner, stager, s.cutter)
 	} else {
 		var constructErr error
 		o, constructErr = NewProductionStockOrchestrator(cfg, ProductionStockPipelineDeps{
 			Pipeline: ProductionPipelineDeps{
 				Planner: planner, Stager: stager, Cutter: s.cutter,
-				Renderer: s.renderer, Builder: stockManifestBuilder{},
+				Builder: stockManifestBuilder{},
 			},
 			Persistence: ProductionPersistenceDeps{
 				Writer: writer, Projection: s.projection, StepStore: s.stepStore,

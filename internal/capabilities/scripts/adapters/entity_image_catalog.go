@@ -15,8 +15,11 @@ import (
 const entityImageCatalogProvider = "duckduckgo"
 
 const (
-	entityImageCatalogPoolSize              = 10
-	entityImageCatalogMaterializationCopies = 5
+	entityImageCatalogPoolSize = 10
+	// Keep one alternate beyond the current scene's image demand. The durable
+	// discovery pool remains larger; downloading five copies per requested
+	// image on every video run made catalog warming dominate the hot path.
+	entityImageCatalogMaterializationCopies = 2
 )
 
 // entityImageCatalogPool is the durable candidate pool plus its usable count.

@@ -266,16 +266,21 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 	}()
 
 	// Deterministic work list: DirectURLs order, minus the URLs that already
-	// carry a duration (operator-supplied source_durations or a duration the
-	// search resolution propagated) and the non-YouTube sources this metadata
-	// path cannot probe.
+	// carry BOTH a duration and a title (operator-supplied source_durations /
+	// source_titles, or values propagated by search resolution), and the
+	// non-YouTube sources this metadata path cannot probe.
+	//
+	// A caller that supplies only source_durations still gets the title probe:
+	// skipping it would leave every clip with the filename as search_text and
+	// silently make the run unsearchable by content. The probe's duration is
+	// discarded in that case — the caller's number stays authoritative.
 	targets := make([]string, 0, len(input.DirectURLs))
 	for _, raw := range input.DirectURLs {
 		url := strings.TrimSpace(raw)
 		if url == "" {
 			continue
 		}
-		if known := input.SourceDurations[url]; known > 0 {
+		if input.SourceDurations[url] > 0 && strings.TrimSpace(input.SourceTitles[url]) != "" {
 			continue
 		}
 		if InferSourceProvider(url) != SourceProviderYouTube {
@@ -284,8 +289,8 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 		targets = append(targets, url)
 	}
 	if len(targets) == 0 {
-		// Every source already carries a duration — the probe is skipped
-		// entirely (the caller paid for the metadata once, upstream).
+		// Every source already carries a duration and a title — the probe is
+		// skipped entirely (the caller paid for the metadata once, upstream).
 		return
 	}
 
@@ -355,17 +360,22 @@ func (s *Service) enrichDirectURLDurations(ctx context.Context, input *RunInput)
 			}
 			continue
 		}
-		if result.title != "" {
+		if title := strings.TrimSpace(result.title); title != "" && strings.TrimSpace(input.SourceTitles[url]) == "" {
 			if input.SourceTitles == nil {
 				input.SourceTitles = make(map[string]string)
 			}
-			input.SourceTitles[url] = result.title
+			input.SourceTitles[url] = title
 		}
 		if result.duration <= 0 {
 			if s.log != nil {
 				s.log.Warn("stock: direct URL duration probe returned no duration — planner fallback applies",
 					zap.String("source_url", url))
 			}
+			continue
+		}
+		if input.SourceDurations[url] > 0 {
+			// The caller's duration is authoritative; this probe only supplied
+			// the title the plan was missing.
 			continue
 		}
 		if input.SourceDurations == nil {
@@ -395,9 +405,43 @@ type durationProbeResult struct {
 	err      error
 }
 
-// probeDirectURLDuration runs one bounded provider metadata probe. The
-// per-probe deadline is what keeps a hung provider from stalling the pool.
+// directURLDurationProbeAttempts bounds the retries of one provider metadata
+// probe. A single transient yt-dlp failure used to leave the source without a
+// duration; the planner then spread the windows over its budget*10 fallback
+// horizon and the whole run failed closed at extract time (observed: a 180-clip
+// run discarded because one probe timed out). One retry absorbs that transient
+// class without turning a genuinely unsupported URL into a slow failure.
+const directURLDurationProbeAttempts = 2
+
+// directURLDurationProbeRetryDelay is the pause before the retry, so a
+// provider hiccup has a moment to clear. It is not a backoff: two attempts is
+// the whole budget.
+const directURLDurationProbeRetryDelay = 300 * time.Millisecond
+
+// probeDirectURLDuration runs the bounded provider metadata probe with one
+// retry on error or an empty duration. The per-attempt deadline is what keeps
+// a hung provider from stalling the pool.
 func (s *Service) probeDirectURLDuration(ctx context.Context, url string) durationProbeResult {
+	var last durationProbeResult
+	for attempt := 0; attempt < directURLDurationProbeAttempts; attempt++ {
+		last = s.probeDirectURLDurationOnce(ctx, url)
+		if last.err == nil && last.duration > 0 {
+			return last
+		}
+		if attempt == directURLDurationProbeAttempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return last
+		case <-time.After(directURLDurationProbeRetryDelay):
+		}
+	}
+	return last
+}
+
+// probeDirectURLDurationOnce is one bounded provider metadata probe.
+func (s *Service) probeDirectURLDurationOnce(ctx context.Context, url string) durationProbeResult {
 	probeCtx, cancel := context.WithTimeout(ctx, directURLDurationProbeTimeout)
 	defer cancel()
 	videos, err := s.channelLister.ListChannel(probeCtx, url, 1)

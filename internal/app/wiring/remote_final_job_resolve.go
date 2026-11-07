@@ -5,12 +5,8 @@ import (
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,12 +14,11 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// Runtime-asset resolution for the remote final job: the identity cache, the
-// stock staging and its receipts, and the prefetch lanes that keep handoff
-// from re-resolving one source per fragment.
+// Runtime-asset resolution for the remote final job: the identity cache and
+// the prefetch lanes that keep handoff from re-resolving one source per
+// fragment. Stock resolution is metadata-only; the Master owns the bytes.
 
 // resolverClock accumulates the runtime-asset resolution time of one handoff.
 // It answers the only question the receipt could not: how much of handoff_ms is
@@ -152,33 +147,8 @@ func finalJobResolveConcurrency() int {
 	return value
 }
 
-// PrewarmFinalJobStockSources is the capability the scripts runner calls while
-// the overlay render is still running (FinalJobSourcePrewarmer). It walks the
-// FINAL JOB's own stock selection through the same planner the payload build
-// uses, so the identities it resolves are exactly the ones the handoff would
-// have resolved serially, and the handoff then answers them from this cache.
-//
-// It never fails the run: the error is returned for the log, and the handoff
-// re-walks the same selection and reports its own error.
-func (a *remoteFinalJobAdapter) PrewarmFinalJobStockSources(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) error {
-	if a == nil || result == nil {
-		return nil
-	}
-	// The prewarm owns the cache of THIS run; StartFinalJob keeps it because it
-	// sees the same run id.
-	a.beginHandoffCache(runID)
-	started := time.Now()
-	windows, err := scriptgen.PrewarmFinalJobStockSources(ctx, result, a)
-	a.resolvedMu.Lock()
-	unique := len(a.resolved)
-	a.resolvedMu.Unlock()
-	log.Printf("final_job prewarm kind=stock windows=%d unique_resolved=%d wall_ms=%d err=%v",
-		windows, unique, time.Since(started).Milliseconds(), err)
-	return err
-}
-
 // beginHandoffCache scopes the per-handoff resolution cache to ONE run without
-// throwing away what a prewarm of the SAME run already resolved.
+// throwing away what a prefetch of the SAME run already resolved.
 func (a *remoteFinalJobAdapter) beginHandoffCache(runID string) {
 	if a == nil {
 		return
@@ -296,88 +266,41 @@ func (a *remoteFinalJobAdapter) resolveHits() int {
 	return a.hits
 }
 
-// finalJobStockCacheDir is where a Drive stock file is kept between runs. The
-// handoff publishes every source it sends, and publishing needs the bytes; the
-// same file id with the same byte size is the same bytes, so the next run must
-// not pay the network again. VELOX_FINAL_JOB_STOCK_CACHE_DIR relocates it.
-func finalJobStockCacheDir() string {
-	if dir := strings.TrimSpace(knobs.String("VELOX_FINAL_JOB_STOCK_CACHE_DIR")); dir != "" {
-		return dir
-	}
-	return filepath.Join("data", "cache", "final_job_stock")
-}
-
-// stagedStockPath returns a local copy of one Drive stock file, downloading it
-// only when the cache does not already hold exactly that many bytes. The size is
-// part of the cache key: a file that changed identity cannot be served stale.
-func (a *remoteFinalJobAdapter) stagedStockPath(ctx context.Context, id string, size int64) (string, func(), error) {
-	dir := finalJobStockCacheDir()
-	cached := filepath.Join(dir, fmt.Sprintf("%s-%d.bin", id, size))
-	if info, err := os.Stat(cached); err == nil && info.Size() == size {
-		return cached, func() {}, nil
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", nil, fmt.Errorf("create stock cache %q: %w", dir, err)
-	}
-	tmp, err := os.CreateTemp(dir, ".stock-*")
-	if err != nil {
-		return "", nil, fmt.Errorf("stage stock file in %q: %w", dir, err)
-	}
-	tmpPath := tmp.Name()
-	discard := func() { _ = os.Remove(tmpPath) }
-	reader, _, err := a.stock.DownloadFile(ctx, id)
-	if err != nil {
-		_ = tmp.Close()
-		discard()
-		return "", nil, fmt.Errorf("download stock Drive file %q: %w", id, err)
-	}
-	written, copyErr := io.Copy(tmp, reader)
-	readerErr := reader.Close()
-	fileErr := tmp.Close()
-	if copyErr != nil {
-		discard()
-		return "", nil, fmt.Errorf("copy stock Drive file %q: %w", id, copyErr)
-	}
-	if readerErr != nil {
-		discard()
-		return "", nil, fmt.Errorf("close stock Drive response %q: %w", id, readerErr)
-	}
-	if fileErr != nil {
-		discard()
-		return "", nil, fmt.Errorf("close staged stock file %q: %w", id, fileErr)
-	}
-	if written != size {
-		discard()
-		return "", nil, fmt.Errorf("stock Drive file %q downloaded %d bytes, expected %d", id, written, size)
-	}
-	if err := os.Rename(tmpPath, cached); err != nil {
-		discard()
-		return "", nil, fmt.Errorf("commit stock cache entry %q: %w", cached, err)
-	}
-	return cached, func() {}, nil
-}
-
-// ResolveFinalJobStockAsset retains the explicitly allowed Drive path for
-// selected stock-folder videos. Every other final-job asset goes through the
-// HTTPS Objectstore resolver above.
+// ResolveFinalJobStockAsset returns a metadata-only Drive reference. That exact
+// reference becomes the FINALIZE stock entry, and the remote Master downloads
+// and processes it. The Producer never fetches the stock bytes or turns them
+// into a local fragment.
 func (a *remoteFinalJobAdapter) ResolveFinalJobStockAsset(ctx context.Context, id string) (map[string]any, error) {
 	return a.resolveOnce("drive:"+strings.TrimSpace(id), func() (map[string]any, error) {
-		return a.resolveStockAssetOnce(ctx, id)
+		return a.stockDriveReference(ctx, id)
 	})
 }
 
-func (a *remoteFinalJobAdapter) resolveStockAssetOnce(ctx context.Context, id string) (map[string]any, error) {
+func (a *remoteFinalJobAdapter) stockDriveReference(ctx context.Context, id string) (map[string]any, error) {
 	defer a.resolverClock()()
-	started := time.Now()
-	defer func() {
-		log.Printf("final_job resolve kind=drive id=%s ms=%d", id, time.Since(started).Milliseconds())
-	}()
-	if a == nil || a.stock == nil {
-		return nil, fmt.Errorf("final-job stock Drive reader is not configured")
+	if a == nil || a.stock == nil || a.media == nil {
+		return nil, fmt.Errorf("final-job stock metadata readers are not configured")
 	}
 	id = strings.TrimSpace(id)
 	if id == "" || strings.ContainsAny(id, "/\\\x00\r\n") {
 		return nil, fmt.Errorf("final-job stock Drive id is invalid")
+	}
+	assets, err := a.media.ResolveByDriveFileID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("read saved stock metadata for Drive file %q: %w", id, err)
+	}
+	var saved *asset.Asset
+	for _, candidate := range assets {
+		if candidate != nil && candidate.DriveFileID() == id {
+			saved = candidate
+			break
+		}
+	}
+	if saved == nil {
+		return nil, fmt.Errorf("stock Drive file %q has no saved media registry entry; run the stockpipeline first", id)
+	}
+	if saved.Duration <= 0 || len(saved.ContentHash()) != 64 {
+		return nil, fmt.Errorf("stock Drive file %q lacks saved duration or SHA-256 metadata", id)
 	}
 	meta, err := a.stock.GetFileMeta(ctx, id)
 	if err != nil {
@@ -386,87 +309,28 @@ func (a *remoteFinalJobAdapter) resolveStockAssetOnce(ctx context.Context, id st
 	if meta == nil || meta.Size <= 0 {
 		return nil, fmt.Errorf("stock Drive file %q has no positive byte size", id)
 	}
-
-	path, cleanup, err := a.stagedStockPath(ctx, id, meta.Size)
-	if err != nil {
-		return nil, err
-	}
-	defer cleanup()
-	// A staged stock file is written once, by us, from the Drive bytes of that
-	// exact id and size — the same identity the staging cache already trusts to
-	// serve the file without downloading it again. Hashing, probing and signing
-	// those same bytes on every later handoff is therefore repeated work, not
-	// verification: the receipt written next to the file answers all three.
-	// Fail-closed: a receipt that does not describe exactly this file is dropped
-	// and the bytes are re-derived.
-	if receipt, ok := readFinalJobStockReceipt(path, meta.Size); ok {
-		ref, publishErr := scriptgen.PublishFinalJobLocalObjectVerified(ctx, "stock-sha256-"+receipt.SHA256[:24], path, receipt.SHA256, receipt.SizeBytes)
-		if publishErr == nil {
-			ref["duration_ms"] = receipt.DurationMS
-			return ref, nil
-		}
-	}
-	hash, size, err := digest.SHA256File(path)
-	if err != nil {
-		return nil, fmt.Errorf("hash stock Drive file %q: %w", id, err)
-	}
-	if a.probe == nil {
-		return nil, fmt.Errorf("canonical media probe is not configured")
-	}
-	info, probeErr := a.probe.Probe(ctx, path)
-	if info == nil || !info.HasVideo {
-		return nil, fmt.Errorf("probe stock Drive video %q: video stream is missing", id)
-	}
-	resolved := asset.ResolveAssetDuration(info.Duration.Microseconds(), probeErr, 0, false)
-	if !resolved.Known() {
-		return nil, fmt.Errorf("probe stock Drive video %q: duration is unknown: %w", id, probeErr)
-	}
-	durationMS := resolved.DurationUS / 1000
-	assetID := "stock-sha256-" + hash[:24]
-	ref, err := scriptgen.PublishFinalJobLocalObject(ctx, assetID, path, hash, size)
-	if err != nil {
-		return nil, fmt.Errorf("publish stock Drive file %q to HTTPS Objectstore: %w", id, err)
-	}
-	ref["duration_ms"] = durationMS
-	writeFinalJobStockReceipt(path, finalJobStockReceipt{SHA256: hash, SizeBytes: size, DurationMS: durationMS})
-	return ref, nil
+	return finalJobStockDriveReference(id, saved, meta.Size), nil
 }
 
-// finalJobStockReceipt is what resolving a staged stock file produced: its
-// content address and the duration the probe reported. It is bound to the exact
-// staged file (size) so a re-downloaded or replaced file can never be served
-// from a stale receipt.
-type finalJobStockReceipt struct {
-	SHA256     string `json:"sha256"`
-	SizeBytes  int64  `json:"size_bytes"`
-	DurationMS int64  `json:"duration_ms"`
+// finalJobStockDriveReference is the metadata-only contract for a Drive stock
+// source: the Master can fetch source_uri directly, while asset_id is the bare
+// content SHA so the source identity is stable. This exact reference is sent in
+// the FINALIZE asset list; no Producer-owned stock fragment exists.
+func finalJobStockDriveReference(id string, saved *asset.Asset, size int64) map[string]any {
+	sha := strings.ToLower(saved.ContentHash())
+	return map[string]any{
+		"asset_id": sha, "drive_file_id": id,
+		"url":        "velox-drive://" + id,
+		"source_uri": driveStockDownloadURL(id),
+		"sha256":     sha, "kind": "video", "mime": "video/mp4",
+		"size_bytes": size, "duration_ms": saved.Duration.Milliseconds(),
+	}
 }
 
-func finalJobStockReceiptPath(staged string) string { return staged + ".resolve.json" }
-
-func readFinalJobStockReceipt(staged string, size int64) (finalJobStockReceipt, bool) {
-	payload, err := os.ReadFile(finalJobStockReceiptPath(staged))
-	if err != nil {
-		return finalJobStockReceipt{}, false
-	}
-	var receipt finalJobStockReceipt
-	if err := json.Unmarshal(payload, &receipt); err != nil {
-		return finalJobStockReceipt{}, false
-	}
-	if len(receipt.SHA256) != 64 || receipt.SizeBytes != size || receipt.DurationMS <= 0 {
-		return finalJobStockReceipt{}, false
-	}
-	return receipt, true
-}
-
-// writeFinalJobStockReceipt is best-effort: a handoff that cannot persist the
-// receipt is slower next time, never wrong.
-func writeFinalJobStockReceipt(staged string, receipt finalJobStockReceipt) {
-	payload, err := json.Marshal(receipt)
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(finalJobStockReceiptPath(staged), payload, 0o644)
+// driveStockDownloadURL is the public HTTPS fetch of the exact Drive bytes.
+// The remote Master uses it to download and process the stock window itself.
+func driveStockDownloadURL(id string) string {
+	return "https://drive.usercontent.google.com/download?id=" + id + "&export=download&confirm=t"
 }
 
 // FinalJobPublishedFileSize is retained for the capability port's legacy

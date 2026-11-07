@@ -410,6 +410,7 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 	a.log.Info("VidRush internet image search returned candidates", zap.String("query", req.Query), zap.Int("count", len(results)))
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
 	seen := make(map[string]struct{}, len(results))
+	metadataRejected := 0
 	for _, r := range results {
 		key := strings.TrimSpace(r.PreviewURL)
 		if key == "" {
@@ -418,10 +419,27 @@ func (a *internetImageSearchAdapter) searchImagesUncached(ctx context.Context, r
 		if _, duplicate := seen[key]; duplicate {
 			continue
 		}
+		candidate := toCandidate(r)
+		if !imageCandidateMeetsMinimumMetadata(candidate.Width, candidate.Height) {
+			metadataRejected++
+			continue
+		}
 		seen[key] = struct{}{}
-		out = append(out, toCandidate(r))
+		out = append(out, candidate)
+	}
+	if metadataRejected > 0 {
+		a.log.Debug("VidRush image search skipped candidates below the pixel floor",
+			zap.String("query", req.Query), zap.Int("rejected", metadataRejected))
 	}
 	return out, nil
+}
+
+// imageCandidateMeetsMinimumMetadata avoids spending a network request on a
+// provider result that already declares dimensions below the decoder policy.
+// Unknown dimensions remain eligible because the downloader verifies bytes.
+func imageCandidateMeetsMinimumMetadata(width, height int) bool {
+	policy := adapters.DefaultVidRushImagePolicy()
+	return (width <= 0 || width >= policy.MinWidth) && (height <= 0 || height >= policy.MinHeight)
 }
 
 // interleaveImageSearchResults keeps candidates from both independent

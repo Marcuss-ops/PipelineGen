@@ -308,6 +308,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 		SearchQueries:                  req.SearchQueries,
 		DirectURLs:                     req.DirectURLs,
 		SourceDurations:                req.SourceDurations,
+		SourceTitles:                   req.SourceTitles,
 		DriveURLs:                      req.DriveURLs,
 		Clips:                          req.Clips,
 		TotalMinutes:                   req.TotalMinutes,

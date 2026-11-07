@@ -6,15 +6,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // countingStockResolver models the adapter: it caches by identity (so a second
 // ask is free) and counts how many identities it actually resolved. The
-// distinction is the whole point of the prewarm — the walk always ASKS for
-// every source, and only the resolver can answer without paying.
+// distinction matters because the walk always ASKS for every source, while a
+// cached metadata reference answers without paying again.
 type countingStockResolver struct {
 	folder  []FinalJobStockFile
 	dur     map[string]int64
@@ -122,8 +119,8 @@ func TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes(t *testi
 }
 
 // TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource ensures a stock
-// source that cannot be packet-copied remains available to the local preparer,
-// which re-encodes and certifies the exact requested window before handoff.
+// source that cannot be packet-copied remains selectable: the remote Master
+// downloads and processes the exact requested window.
 func TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource(t *testing.T) {
 	const formerRejected = "1xvvjxin09xbwy7qqignzlmpjftckql_o"
 	resolver := newCountingStockResolver(
@@ -132,71 +129,9 @@ func TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource(t *testing.T) {
 	)
 	clips, err := newFinalJobStockPlanner().sceneClips(context.Background(), resolver, "folder-1", 5_000_000)
 	if err != nil {
-		t.Fatalf("GOP-incompatible source should reach the certified preparer: %v", err)
+		t.Fatalf("GOP-incompatible source should remain selectable for the remote Master: %v", err)
 	}
 	if len(clips) != 1 || clips[0].Asset["drive_file_id"] != formerRejected {
 		t.Fatalf("clips = %+v, want the former GOP-rejected stock source", clips)
-	}
-}
-
-// TestPrewarmFinalJobStockSourcesLeavesNothingForTheHandoffToResolve is the
-// acceptance criterion of the prewarm: the walk during the overlay render has
-// already paid for every Drive source, so the handoff resolves zero of them.
-func TestPrewarmFinalJobStockSourcesLeavesNothingForTheHandoffToResolve(t *testing.T) {
-	resolver := newCountingStockResolver(
-		[]FinalJobStockFile{{ID: "stock-a", Name: "a.mp4"}},
-		map[string]int64{"stock-a": 2_000},
-	)
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{
-			DurationUS: 2_000_000,
-			Segments:   []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}},
-		},
-		FinalAudio: certifiedFinalAudio(2000),
-		Scenes:     []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
-	}
-	planned, err := PrewarmFinalJobStockSources(context.Background(), result, resolver)
-	if err != nil {
-		t.Fatalf("prewarm: %v", err)
-	}
-	if planned != 1 {
-		t.Fatalf("prewarm planned %d windows, want 1", planned)
-	}
-	if got := resolver.resolved(); got != 1 {
-		t.Fatalf("prewarm resolved %d sources, want 1", got)
-	}
-	if _, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{SourceLanguage: "en"}, result, resolver); err != nil {
-		t.Fatalf("payload build after prewarm: %v", err)
-	}
-	if got := resolver.resolved(); got != 1 {
-		t.Fatalf("handoff resolved %d sources after the prewarm, want 0 more (total 1)", got-1)
-	}
-	if resolver.listed != 2 {
-		// One listing per walk: the prewarm's planner and the handoff's planner
-		// are distinct, and only the RESOLVED identities are shared.
-		t.Fatalf("folder listed %d times, want one listing per walk", resolver.listed)
-	}
-}
-
-// TestPrewarmFinalJobStockSourcesSkipsScenesWithoutAStockFolder keeps the walk
-// off the clip-only and fixed-media paths: they never touch a folder, so asking
-// for one would invent a selection the handoff never makes.
-func TestPrewarmFinalJobStockSourcesSkipsScenesWithoutAStockFolder(t *testing.T) {
-	resolver := newCountingStockResolver([]FinalJobStockFile{{ID: "stock-a", Name: "a.mp4"}}, map[string]int64{"stock-a": 2_000})
-	result := &GenerateResult{
-		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 4_000_000, Segments: []capabilityaudio.TimelineSegment{
-			{ID: "scene-clip", DurationUS: 2_000_000},
-			{ID: "scene-fixed", DurationUS: 2_000_000, FixedMedia: true},
-		}},
-		Scenes: []Scene{
-			{ID: "scene-clip"},
-			{ID: "scene-fixed", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}},
-		},
-	}
-	if planned, err := PrewarmFinalJobStockSources(context.Background(), result, resolver); err != nil || planned != 0 {
-		t.Fatalf("prewarm planned %d windows (err=%v), want none without a stock folder", planned, err)
-	}
-	if resolver.listed != 0 || resolver.resolved() != 0 {
-		t.Fatalf("prewarm touched a folder for a scene that has none (listed=%d resolved=%d)", resolver.listed, resolver.resolved())
 	}
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	"go.uber.org/zap"
 )
 
@@ -151,6 +150,10 @@ func durationSeconds(opts mediaexec.NormalizeOptions) float64 {
 		return 0
 	}
 	return float64(opts.Duration)
+}
+
+func durationFromSeconds(seconds float64) time.Duration {
+	return time.Duration(seconds * float64(time.Second))
 }
 
 // parseTimeSeconds converts a media timestamp to seconds. It accepts BOTH
@@ -318,59 +321,8 @@ func (p *VideoProcessor) MergeInputs(ctx context.Context, inputs []string, outpu
 	return p.run(ctx, request{Operation: OperationMergeInputs, InputPaths: inputs, OutputPath: output})
 }
 
-// MuxFinalAudioCopy is the assembler-only path. It accepts only a previously
-// certified canonical final audio asset and delegates a mux operation whose
-// Rust command uses -c:a copy. There is deliberately no encode fallback.
-func (p *VideoProcessor) MuxFinalAudioCopy(ctx context.Context, video, finalAudio, output string, asset audio.FinalAudioAsset) error {
-	if !asset.CopyEligible || !asset.FinalMix || asset.FinalAudioSHA256 == "" || asset.Codec != "aac" || !strings.EqualFold(asset.Profile, "LC") || asset.SampleRate != 48000 || asset.Channels != 2 || asset.ChannelLayout != "stereo" {
-		return fmt.Errorf("%w: final audio is not canonical copy-eligible media", audio.ErrAudioMediaIncompatible)
-	}
-	if strings.TrimSpace(video) == "" || strings.TrimSpace(finalAudio) == "" || strings.TrimSpace(output) == "" {
-		return fmt.Errorf("%w: video, final audio, and output paths are required", audio.ErrAudioMediaIncompatible)
-	}
-	info, err := os.Stat(finalAudio)
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || (asset.SizeBytes > 0 && info.Size() != asset.SizeBytes) {
-		return fmt.Errorf("%w: final audio file is unavailable", audio.ErrAudioMediaIncompatible)
-	}
-	file, err := os.Open(finalAudio)
-	if err != nil {
-		return fmt.Errorf("%w: final audio cannot be opened", audio.ErrAudioMediaIncompatible)
-	}
-	hash, hashErr := digest.SHA256Reader(file)
-	closeErr := file.Close()
-	if hashErr != nil || closeErr != nil || hash != asset.FinalAudioSHA256 {
-		return fmt.Errorf("%w: final audio hash mismatch", audio.ErrAudioMediaIncompatible)
-	}
-	return p.run(ctx, request{Operation: OperationMuxAudioCopy, InputPaths: []string{video, finalAudio}, OutputPath: output})
-}
-
 func (p *VideoProcessor) RemoveSilence(ctx context.Context, input, output string) error {
 	return p.run(ctx, request{Operation: OperationRemoveSilence, SourcePath: input, OutputPath: output})
-}
-
-// AssembleCopy is the VeloxEditing packet-copy assembly boundary
-// (assemble_copy / video.assemble.copy.v1): it concatenates COPY-CERTIFIED
-// segments in the given timeline order with zero decode, zero encode and zero
-// compositing. The Rust side re-probes every input and enforces the shared
-// copy-safety contract (per-input certification + cross-input stream identity);
-// there is deliberately NO re-encode fallback.
-func (p *VideoProcessor) AssembleCopy(ctx context.Context, inputs []string, output string, cert CopyCertification) error {
-	if len(inputs) == 0 {
-		return fmt.Errorf("assemble_copy: input_paths are required")
-	}
-	if strings.TrimSpace(output) == "" {
-		return fmt.Errorf("assemble_copy: output_path is required")
-	}
-	if err := cert.Validate(); err != nil {
-		return err
-	}
-	for _, input := range inputs {
-		info, err := os.Stat(input)
-		if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
-			return fmt.Errorf("assemble_copy: input %s is unavailable", input)
-		}
-	}
-	return p.run(ctx, request{Operation: OperationAssembleCopy, InputPaths: inputs, OutputPath: output, CopyCertification: &cert})
 }
 
 func (p *VideoProcessor) RenderAudioPlan(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, error) {

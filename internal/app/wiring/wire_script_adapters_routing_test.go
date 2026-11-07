@@ -139,3 +139,29 @@ func TestInternetImageSearchFallsBackToDDGWhenCommonsMisses(t *testing.T) {
 		t.Fatalf("fallback result = %+v", results)
 	}
 }
+
+func TestInternetImageSearchRejectsKnownUndersizedCandidatesBeforeDownload(t *testing.T) {
+	ddg := &routingFakeSearcher{provider: "duckduckgo", results: []imagesrouting.ImageSearchResult{
+		{PreviewURL: "https://ddg.invalid/thumb.jpg", Provider: "duckduckgo", Width: 320, Height: 240},
+		{PreviewURL: "https://ddg.invalid/full.jpg", Provider: "duckduckgo", Width: 1280, Height: 720},
+		{PreviewURL: "https://ddg.invalid/unknown.jpg", Provider: "duckduckgo"},
+	}}
+	adapter := newInternetImageSearchAdapter(&routingFakeResolver{providers: map[string]imagesrouting.ImageSearcher{
+		"duckduckgo": ddg,
+	}}, zap.NewNop())
+
+	results, err := adapter.SearchImages(context.Background(), adapters.InternetImageSearchRequest{
+		SegmentID: "vc_size_gate", Query: "California wildfire evacuation firefighters 2026", Limit: 8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("candidates = %d, want only the full-size and unknown-size candidates: %+v", len(results), results)
+	}
+	for _, candidate := range results {
+		if candidate.SourceURL == "https://ddg.invalid/thumb.jpg" {
+			t.Fatal("known undersized image crossed the pre-download gate")
+		}
+	}
+}

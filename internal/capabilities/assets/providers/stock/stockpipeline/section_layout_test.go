@@ -239,28 +239,35 @@ func TestCompactPlansIntoSections_OneContiguousBlockPerSource(t *testing.T) {
 	}
 }
 
-// TestCompactPlansIntoSections_LeavesUnknownDurationAlone pins the conservative
-// path: without a real source length there is no safe anchor, so the plan is left
-// as the planner produced it. The group is then non-contiguous, which makes
-// staging fall back to the whole source — the pre-existing behaviour, not a
-// truncation on a guess.
-func TestCompactPlansIntoSections_LeavesUnknownDurationAlone(t *testing.T) {
+// TestCompactPlansIntoSections_AnchorsUnknownDurationAtZero pins the safety
+// fallback for a source whose provider probe failed twice: the planner's
+// budget*10 horizon can land past the real end of the file, so the block is
+// anchored at 0 — the only offset guaranteed to be inside the source. The
+// group becomes contiguous and the extract-time bounds check still fails closed
+// if even the first block does not fit.
+func TestCompactPlansIntoSections_AnchorsUnknownDurationAtZero(t *testing.T) {
 	plans := []ClipPlan{
 		{SourceID: "unknown-duration", StartSec: 0, EndSec: 5},
 		{SourceID: "unknown-duration", StartSec: 400, EndSec: 405},
 	}
-	original := append([]ClipPlan(nil), plans...)
 
 	got := compactPlansIntoSections(plans, []VideoSource{{URL: "unknown-duration"}}, "v1")
 
-	for i := range got {
-		if got[i].StartSec != original[i].StartSec || got[i].EndSec != original[i].EndSec {
-			t.Fatalf("clip[%d] moved from [%v,%v] to [%v,%v] without a known duration",
-				i, original[i].StartSec, original[i].EndSec, got[i].StartSec, got[i].EndSec)
-		}
+	start, end, ok := sectionWindowForPlans(got)
+	if !ok {
+		t.Fatalf("unknown-duration group must be contiguous after compaction: %+v", got)
 	}
-	if _, _, ok := sectionWindowForPlans(got); ok {
-		t.Fatal("scattered plan must not be treated as one section")
+	if start != 0 || end != 10 {
+		t.Fatalf("window = [%v,%v], want [0,10]", start, end)
+	}
+	for i, plan := range got {
+		if plan.StartSec != float64(i*5) || plan.EndSec != float64(i*5+5) {
+			t.Fatalf("clip[%d] = [%v,%v], want adjacent 5s windows from 0", i, plan.StartSec, plan.EndSec)
+		}
+		want := mintOutputLogicalID("unknown-duration", i, "v1", plan.StartSec, plan.EndSec)
+		if plan.OutputLogicalID != want {
+			t.Fatalf("clip[%d] ID = %q, want the re-minted %q", i, plan.OutputLogicalID, want)
+		}
 	}
 }
 

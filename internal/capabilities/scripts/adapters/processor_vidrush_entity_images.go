@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -349,7 +351,7 @@ func (p *VidRushMaterializationProcessor) planGenerationFallback(plan *scriptpkg
 		}
 		key := VidRushGenerationCacheKey(VidRushGenerationRequest{
 			SegmentTextHash: segment.TextHash, Prompt: prompt, Style: "cinematic",
-			Width: 1920, Height: 1080, Provider: scriptpkg.VidRushProviderImageGeneration,
+			Width: kernelmedia.CanonicalWidth, Height: kernelmedia.CanonicalHeight, Provider: scriptpkg.VidRushProviderImageGeneration,
 			PromptVersion: plan.PromptVersion, TargetImages: targetImages,
 		})
 		out = append(out, scriptpkg.SegmentAssetCandidate{

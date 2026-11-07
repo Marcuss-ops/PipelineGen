@@ -340,15 +340,15 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 	imageTarget := vidRushImageTargetForSegment(plan, segment)
 	materializationImageTarget := imageTarget
 	if plan != nil && plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() && imageTarget > 0 {
-		// Warm a five-image canonical library per requested entity. These
-		// assets are finalized into the existing per-entity Drive folder and
-		// reused by subsequent jobs without another provider search/download.
+		// Materialize the current demand plus one alternate for later scenes.
+		// Discovery keeps its larger candidate pool; downloading a five-image
+		// library synchronously on every run delayed the current video.
 		materializationImageTarget = imageTarget * entityImageCatalogMaterializationCopies
 	} else if perSceneImageScope && imageTarget > 0 {
 		// Keep one extra verified per-scene candidate as a uniqueness fallback.
 		// Independent searches can return the same syndicated photo in two
 		// scenes; the overlay planner chooses the next materialized image by
-		// content hash so the final five images are genuinely distinct.
+		// content hash so the selected images are genuinely distinct.
 		materializationImageTarget++
 	}
 	discoveredCandidates := prioritizeExactVidRushImageCandidates(updated.Assets.Candidates, imageTarget, plan)

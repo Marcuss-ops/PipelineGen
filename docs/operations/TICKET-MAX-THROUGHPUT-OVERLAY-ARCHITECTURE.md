@@ -1674,58 +1674,6 @@ bottiglia è ora l'attesa del render remoto (handoff 12,6 s + attach 27,0 s), e 
 sua prima voce resta il `resolve` seriale da 9,8 s. Evidenza: `r69`÷`r75` in
 `ops/jobs/garlasco_editorial_e2e_20261030/` (`*-submit-poll.log`, `job-full-rNN.json`).
 
-### 7.x Il `resolve` seriale esce dalla critical path (r78)
-
-Il `resolve` non si può accelerare (la tabella sopra: più concorrenza = più
-lavoro), quindi la sola leva rimasta è **spostarlo in una finestra già pagata**.
-La finestra esiste: l'overlay render tiene 13,2-12,6 s di critical path con la
-CPU ferma. La selezione dei sorgenti stock, però, non era disponibile fuori dal
-payload build: era scritta dentro `BuildFinalJobPayloads`, intrecciata con la
-costruzione di scene, runtime asset e testo.
-
-Ora vive in `final_job_stock_planner.go` (`finalJobStockPlanner`): il folder
-listing, il filtro delle sorgenti copy-incompatibili, il cursore per folder e la
-rotazione a chunk. Il payload build e il prewarm attraversano **la stessa**
-camminata, quindi il prewarm non può scaldare un set diverso da quello che
-l'handoff chiederà — un prewarm che ricalcola la regola sarebbe una seconda
-implementazione dello stesso contratto, libera di divergere in silenzio.
-
-Il prewarm parte su `OnPlanReady` di `audioCompile` — non all'ingresso della
-fase: lì `result.CanonicalTimeline` è ancora nil e la camminata trova **0**
-segmenti. È esattamente quello che r77 ha misurato (`windows=0,
-unique_resolved=0`) prima che l'aggancio fosse spostato. Le due ancore
-(`audioCompile` → ramo join e `runOverlayRenderPhase` → ramo seriale) sono
-mutuamente esclusive ma idempotenti per run (`prewarmRunID`).
-
-**Risultato (stesso payload, 56 sorgenti stock):**
-
-| | r75 | r76 | r77 (hook all'ingresso) | **r78 (hook su OnPlanReady)** |
-|---|---:|---:|---:|---:|
-| prewarm | — | — | 0 window, 0 ms | **56 window, 10.383 ms** |
-| `handoff_resolve_ms` | 9.828 | 11.497 | 11.223 | **427** |
-| `handoff_ms` | 12.574 | 14.885 | 12.501 | **1.628** |
-| `dedup_hits` | 0 | 0 | 0 | **56** |
-| `poll_lag_ms` | 1.932 | 869 | 888 | 969 |
-| `queue_ms` (master) | 13.000 | 12.000 | 12.000 | 1.000 |
-| `execution_ms` (master) | 13.149 | 13.917 | 15.453 | 13.539 |
-| wall del run | 71,53 s | 91,79 s | 75,96 s | **49,25 s** |
-
-Il prewarm (10,4 s) sta **dentro** la finestra del render (12,6 s in r78): 0 s di
-lavoro aggiunto, 10,8 s tolti dall'handoff. `queue_ms` a 1,0 s non è attribuibile
-a questa modifica (è il gate di prefetch del master): si registra come osservato,
-non come guadagno. `poll_lag` non è più misurato a 1,9 s perché l'attach
-`boundPollGap` limita il gap a 1 s da quando il master riporta il job **started**
-(un job QUEUED non può completare, quindi mantiene il tetto configurato): r78
-misura 969 ms, cioè il tetto, non mezzo intervallo.
-
-Test che pinnano il contratto: `TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes`
-(rotazione e chunk identici alla camminata inline), `TestPrewarmFinalJobStockSourcesLeavesNothingForTheHandoffToResolve`
-(il build successivo non risolve nulla di nuovo), `TestFinalJobStockPrewarmStartsInTheAudioOverlapBranch`
-(fallisce se l'aggancio viene tolto da `audioCompile` — verificato togliendolo),
-`TestFinalJobStockPrewarmStartsOncePerRun`, `TestHandoffCacheSurvivesThePrewarmOfTheSameRun`
-(lo start dell'handoff non butta la cache dello stesso run, ma un run diverso sì),
-`TestBoundPollGapCapsTheStartedWait`.
-
 ## Regola operativa: blocchi editoriali compatti e fan-out (2026-11-03)
 
 Per i video lunghi, generare un numero piccolo di blocchi editoriali sostanziosi

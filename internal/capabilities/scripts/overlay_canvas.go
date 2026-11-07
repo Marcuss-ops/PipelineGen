@@ -12,8 +12,10 @@ package scriptgeneration
 
 import (
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -142,7 +144,7 @@ func (c OverlayCanvasSpec) withDefaults() OverlayCanvasSpec {
 		// explicitly. Preserve all caller-owned semantic fields: the old
 		// replacement silently dropped Background and Style whenever the
 		// production canvas dimensions were left at zero.
-		c.Width, c.Height, c.FPSNum, c.FPSDen = 1920, 1080, 24, 1
+		c.Width, c.Height, c.FPSNum, c.FPSDen = kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight, kernelmedia.CanonicalFPSNum, kernelmedia.CanonicalFPSDen
 	}
 	return c
 }

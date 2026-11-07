@@ -429,7 +429,7 @@ func TestFinalJobFragmentConcurrentWorkReusesCertifiedBytes(t *testing.T) {
 		TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64),
 	}
 	sourceSHA := strings.Repeat("b", 64)
-	source := map[string]any{"asset_id": "source", "sha256": sourceSHA, "size_bytes": int64(42), "source_uri": "https://objects.example/source", "role": "stock"}
+	source := map[string]any{"asset_id": "source", "sha256": sourceSHA, "size_bytes": int64(42), "source_uri": "https://objects.example/source", "role": "clip"}
 	key := p.fragmentWorkKey(request, sourceSHA, "libx264")
 	unlock, err := p.lockFragment(context.Background(), key)
 	if err != nil {
@@ -1130,9 +1130,9 @@ func TestFinalJobCopiedWindowTimingReceipt(t *testing.T) {
 		t.Fatalf("encoded off-GOP window is not fully attributed: %+v", encoded)
 	}
 
-	// Stock assets can be GOP-aligned yet fail the packet-copy census (for
-	// example, B-frames). They must take the same certified encode lane rather
-	// than fail an otherwise valid final job.
+	// Producer-owned assets can be GOP-aligned yet fail the packet-copy census
+	// (for example, B-frames). They must take the same certified encode lane
+	// rather than fail an otherwise valid final job.
 	openSource := filepath.Join(dir, "open-source.mp4")
 	openArgs := append([]string(nil), args[:len(args)-1]...)
 	for i := range openArgs {
@@ -1142,7 +1142,7 @@ func TestFinalJobCopiedWindowTimingReceipt(t *testing.T) {
 	}
 	openArgs = append(openArgs, openSource)
 	if out, err := exec.Command(ffmpeg, openArgs...).CombinedOutput(); err != nil {
-		t.Fatalf("make uncertified stock source: %v: %s", err, out)
+		t.Fatalf("make uncertified producer source: %v: %s", err, out)
 	}
 	currentSourceBytes, err = os.ReadFile(openSource)
 	if err != nil {
@@ -1153,13 +1153,13 @@ func TestFinalJobCopiedWindowTimingReceipt(t *testing.T) {
 	for key, value := range sourceRef {
 		openRef[key] = value
 	}
-	openRef["asset_id"], openRef["sha256"], openRef["size_bytes"] = "stock-open-gop", openSHA, int64(len(currentSourceBytes))
+	openRef["asset_id"], openRef["sha256"], openRef["size_bytes"] = "producer-open-gop", openSHA, int64(len(currentSourceBytes))
 	openRequest := request
-	openRequest.SegmentID = "segment-uncertified-stock"
+	openRequest.SegmentID = "segment-uncertified-source"
 	openRequest.SourceInUS = 0
 	openRequest.TimelineStartFrame = 48
 	if _, err := p.PrepareFinalJobVideoSegment(ctx, openRef, openRequest); err != nil {
-		t.Fatalf("prepare uncertified stock source through canonical encoder: %v", err)
+		t.Fatalf("prepare uncertified producer source through canonical encoder: %v", err)
 	}
 	prep = p.Timing(scope)
 	if len(prep.Windows) != 3 {
@@ -1167,11 +1167,11 @@ func TestFinalJobCopiedWindowTimingReceipt(t *testing.T) {
 	}
 	var uncertified *scriptgen.RemoteFinalJobSegmentPrepWindow
 	for i := range prep.Windows {
-		if prep.Windows[i].SegmentID == "segment-uncertified-stock" {
+		if prep.Windows[i].SegmentID == "segment-uncertified-source" {
 			uncertified = &prep.Windows[i]
 		}
 	}
 	if uncertified == nil || uncertified.Path != finalJobWindowEncode || uncertified.EncodeMS <= 0 || !strings.Contains(uncertified.CopyFailure, "not certified") {
-		t.Fatalf("uncertified stock encode is not attributed: %+v", prep.Windows)
+		t.Fatalf("uncertified source encode is not attributed: %+v", prep.Windows)
 	}
 }

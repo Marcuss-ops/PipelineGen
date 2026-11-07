@@ -1,0 +1,12 @@
+# Keep the upstream defaults while enabling the JSON API used by PipelineGen.
+# Without this override SearXNG answers HTML requests but returns 403 for the
+# application's `format=json` image-search requests.
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  limiter: false

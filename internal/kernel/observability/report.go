@@ -125,12 +125,28 @@ type RunReport struct {
 	Children               *ChildrenSummary  `json:"children,omitempty"`
 	KPIs                   PipelineKPIs      `json:"kpis,omitempty"`
 	ClipTimeline           *ClipTimeline     `json:"clip_timeline,omitempty"`
+	// FinalJob is the canonical report projection of the remote final-job
+	// receipt. The resumable checkpoint in workflow_payload_json is not a
+	// reporting surface; this field is the ONE place a report reader finds the
+	// receipt, its timing and its Producer/Master boundary verdict.
+	FinalJob *FinalJobReport `json:"final_job,omitempty"`
 	// SceneTimeline is the per-scene lifecycle trace (ready/enqueued/
 	// started/completed per stage); SceneTimeline.CriticalPath derives the
 	// gating chain from it without summing concurrent work (§7.3).
 	SceneTimeline *SceneTimeline `json:"scene_timeline,omitempty"`
 	ErrorCode     string         `json:"error_code,omitempty"`
 	Error         string         `json:"error,omitempty"`
+}
+
+// FinalJobReport is the kernel-owned, capability-neutral projection of a
+// remote final-job receipt. Receipt is opaque JSON on purpose: the kernel must
+// not import the scripts capability, but the report still carries the exact
+// receipt (job_id, status, timing, boundary) that the capability produced.
+// ReportOwner is duplicated at this level so a reader never has to inspect the
+// nested receipt to know which durable surface is authoritative.
+type FinalJobReport struct {
+	ReportOwner string          `json:"report_owner"`
+	Receipt     json.RawMessage `json:"receipt"`
 }
 
 type StageReport struct {

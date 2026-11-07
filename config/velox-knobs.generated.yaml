@@ -103,12 +103,6 @@ knobs:
     safe_production: "4 (1..16)"
     owner: "internal/app/wiring/remote_final_job_resolve.go"
     description: "Drive sources resolved in parallel while preparing a handoff."
-  VELOX_FINAL_JOB_STOCK_CACHE_DIR:
-    kind: env
-    default: ""
-    safe_production: "unset (default cache root)"
-    owner: "internal/app/wiring/remote_final_job_resolve.go"
-    description: "Relocates the resolved stock-asset cache used by the handoff."
   VELOX_FINAL_JOB_WORKER_ID:
     kind: env
     default: ""

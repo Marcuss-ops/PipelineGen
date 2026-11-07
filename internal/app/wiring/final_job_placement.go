@@ -78,9 +78,13 @@ func (p *finalJobSegmentPreparer) derivePlacement(ctx context.Context, request s
 	} else if got != finalJobDelivery.VideoExtradataSHA256 {
 		return nil, fmt.Errorf("derived placement avcC %s != canonical %s", got, finalJobDelivery.VideoExtradataSHA256)
 	}
+	// The remux copies packets, but the reused SHA can be a certificate from an
+	// older cache entry. Probe the actual container before publishing so a
+	// stale frame count cannot reach the plan.
+	if err := certifyFinalJobFragment(ctx, outPath, request.FrameCount); err != nil {
+		return nil, fmt.Errorf("certify derived placement: %w", err)
+	}
 	remuxed := time.Since(encodeStarted)
-	// The remux copies certified packets: the container is new, the frames are
-	// not. A probe here would re-certify the source it was copied from.
 	sha, size, err := p.verifyLocalFile(outPath)
 	if err != nil {
 		return nil, fmt.Errorf("hash derived placement: %w", err)
@@ -301,4 +305,16 @@ func probeFinalJobFragment(ctx context.Context, path string) (finalJobFragmentPr
 	}
 	probe.packets = int64(len(decoded.Packets))
 	return probe, nil
+}
+
+// certifyFinalJobFragment is the production certificate applied to every
+// fragment before it is published. The requested frame count is checked against
+// the packets actually present, so a stale cache entry or a source whose
+// metadata overstates its length cannot leak into the render plan.
+func certifyFinalJobFragment(ctx context.Context, path string, frameCount int64) error {
+	probe, err := probeFinalJobFragment(ctx, path)
+	if err != nil {
+		return err
+	}
+	return probe.certify(frameCount)
 }

@@ -138,7 +138,8 @@ prints it as part of the dry plan. Two consequences worth keeping in mind:
 - **PREPARE is not a phase that completes.** A pre-only job stays `PENDING` with
   `started_at: null` forever (verified 2026-09-20), so `script`/`clips`/`stock`
   are bound by the PREPARE call but never observed as completed by polling.
-  `clips`/`stock` are bound, not rendered: the render is the FINALIZE stage.
+  `clips`/`stock` references are bound in PREPARE; the worker materializes the
+  stock window from its Drive reference during FINALIZE.
 - **`audio_compile` is unproven on this lane.** The payload supplies
   `runtime_assets` (bgm1 + whop1) and earlier runs on this master reported
   `AAC stereo`, but the 5-clip preview run delivered an MP4 with **no audio

@@ -4,6 +4,7 @@ package adapters
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -23,7 +24,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	// replay (memory gate), so this cache produces HIT_EXACT without
 	// re-calling the provider.
 	segmentCacheKeyStr := vidRushFanoutImageCacheKey(&fanoutPlan, plan)
-	if !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
+	if !fanoutPlan.parallelQueryChild && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 		if cached, ok := cacheLoad(vidrushImageCache, segmentCacheKeyStr); ok {
 			if payload, ok := cached.(internetImageCachePayload); ok {
 				candidates, err := f.verifyPersonImageCandidates(ctx, payload.Candidates)
@@ -43,6 +44,11 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: scoreErr, allCacheHits: true}
 			return
 		}
+	}
+	if len(imageQueries) > 1 && !fanoutPlan.parallelQueryChild {
+		candidates, allCacheHits, queryErr := f.resolveInternetImageQueryBatch(ctx, plan, fanoutPlan, workerInput)
+		f.finishInternetImageCandidates(ctx, plan, fanoutPlan, workerInput, segmentCacheKeyStr, candidates, allCacheHits, queryErr, outcomes)
+		return
 	}
 	candidates := make([]scriptpkg.SegmentAssetCandidate, 0)
 	seen := make(map[string]struct{})
@@ -289,6 +295,14 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			candidates = append(candidates, cand)
 		}
 	}
+	if fanoutPlan.parallelQueryChild {
+		outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
+		return
+	}
+	f.finishInternetImageCandidates(ctx, plan, fanoutPlan, workerInput, segmentCacheKeyStr, candidates, allCacheHits, nil, outcomes)
+}
+
+func (f *VidRushProviderFanout) finishInternetImageCandidates(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, fanoutPlan vidRushFanoutPlan, workerInput scriptpkg.VidRushSegmentResult, segmentCacheKeyStr string, candidates []scriptpkg.SegmentAssetCandidate, allCacheHits bool, queryErr error, outcomes chan<- vidRushProviderOutcome) {
 	// Empty entity-image results must be searched again on later runs; caching
 	// them at segment level would bypass the per-person discovery retry above.
 	addEntityImageCatalogCandidates(f.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeAccepted, len(candidates))
@@ -303,10 +317,10 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	}
 	candidates = verified
 	payload := internetImageCachePayload{Candidates: append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)}
-	if len(payload.Candidates) > 0 {
+	if len(payload.Candidates) > 0 && queryErr == nil {
 		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
 	}
-	if len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	if queryErr == nil && (len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
 		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
 			// Cache persistence is a projection, not the source of truth for
 			// provider discovery. Preserve the live candidates so a cache
@@ -316,7 +330,60 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 		}
 	}
 	if f.log.Core() != nil {
-		f.log.Info("VidRush image fanout merged candidates", zap.String("segment_id", segmentID), zap.Int("count", len(candidates)))
+		f.log.Info("VidRush image fanout merged candidates", zap.String("segment_id", fanoutPlan.segmentID), zap.Int("count", len(candidates)))
 	}
-	outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits}
+	outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, allCacheHits: allCacheHits, err: queryErr}
+}
+
+func (f *VidRushProviderFanout) resolveInternetImageQueryBatch(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, fanoutPlan vidRushFanoutPlan, workerInput scriptpkg.VidRushSegmentResult) ([]scriptpkg.SegmentAssetCandidate, bool, error) {
+	type queryResult struct {
+		outcome vidRushProviderOutcome
+	}
+	results := make([]queryResult, len(fanoutPlan.imageQueries))
+	var wg sync.WaitGroup
+	for i, query := range fanoutPlan.imageQueries {
+		i, query := i, query
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case vidRushImageQuerySlots <- struct{}{}:
+			case <-ctx.Done():
+				results[i].outcome.err = ctx.Err()
+				return
+			}
+			defer func() { <-vidRushImageQuerySlots }()
+			childPlan := fanoutPlan
+			childPlan.imageQueries = []string{query}
+			childPlan.parallelQueryChild = true
+			childOutcomes := make(chan vidRushProviderOutcome, 1)
+			f.resolveInternetImageCandidates(ctx, plan, childPlan, workerInput, childOutcomes)
+			results[i].outcome = <-childOutcomes
+		}()
+	}
+	wg.Wait()
+
+	candidates := make([]scriptpkg.SegmentAssetCandidate, 0)
+	seen := make(map[string]struct{})
+	allCacheHits := true
+	var lastErr error
+	for _, result := range results {
+		outcome := result.outcome
+		allCacheHits = allCacheHits && outcome.allCacheHits
+		if outcome.err != nil {
+			lastErr = outcome.err
+		}
+		for _, candidate := range outcome.candidates {
+			key := vidRushCandidateIdentity(candidate)
+			if key == "" {
+				continue
+			}
+			if _, duplicate := seen[key]; duplicate {
+				continue
+			}
+			seen[key] = struct{}{}
+			candidates = append(candidates, candidate)
+		}
+	}
+	return candidates, allCacheHits, lastErr
 }

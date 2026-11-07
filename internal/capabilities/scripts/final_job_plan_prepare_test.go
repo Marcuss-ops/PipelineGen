@@ -84,8 +84,8 @@ func TestPrepareFinalJobVideoSegmentsGivesEachPlacementItsOwnExactAsset(t *testi
 		t.Fatal(err)
 	}
 	refs := []any{
-		map[string]any{"asset_id": "first-raw", "sha256": strings.Repeat("d", 64), "size_bytes": int64(2048), "source_uri": "https://objects.example/first", "role": "stock"},
-		map[string]any{"asset_id": "second-raw", "sha256": strings.Repeat("e", 64), "size_bytes": int64(2048), "source_uri": "https://objects.example/second", "role": "stock"},
+		map[string]any{"asset_id": "first-raw", "sha256": strings.Repeat("d", 64), "size_bytes": int64(2048), "source_uri": "https://objects.example/first", "role": "clip"},
+		map[string]any{"asset_id": "second-raw", "sha256": strings.Repeat("e", 64), "size_bytes": int64(2048), "source_uri": "https://objects.example/second", "role": "clip"},
 		map[string]any{"asset_id": "audio-1", "sha256": strings.Repeat("c", 64), "size_bytes": int64(32), "source_uri": "https://objects.example/audio", "role": "final_audio"},
 	}
 	preparer := &preparedSegmentStub{identical: true, tagChangesBytes: true}
@@ -198,7 +198,30 @@ func TestValidateFinalJobPlanBindingRulesRejectsOneByteSetOnTwoAssets(t *testing
 	}
 }
 
-func TestPrepareFinalJobVideoSegmentsReplacesRawSourceAndKeepsFinalAudio(t *testing.T) {
+func TestAlignFinalJobSegmentSourceWindowsUsesWholeFrames(t *testing.T) {
+	plan := finalJobCompiledPlan{
+		Assets: []finalJobPlanAsset{{
+			AssetID: "stock-raw", SHA256: strings.Repeat("d", 64), SizeBytes: 2048,
+			Kind: "video", DurationUS: 5_000_000,
+		}},
+		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: []finalJobPlanSegment{{
+			SegmentID: "segment-0003", AssetID: "stock-raw", SHA256: strings.Repeat("d", 64),
+			TimelineStartFrame: 347, FrameCount: 13, SourceInUS: 4_475_000, SourceDurationUS: 525_000,
+		}}}},
+	}
+	if err := alignFinalJobSegmentSourceWindows(&plan); err != nil {
+		t.Fatalf("alignFinalJobSegmentSourceWindows: %v", err)
+	}
+	segment := plan.VideoTracks[0].Segments[0]
+	if segment.SourceInUS != 4_458_333 || segment.SourceDurationUS != 541_667 {
+		t.Fatalf("aligned window = %d + %d, want 4458333 + 541667 (13 whole frames inside 5s)", segment.SourceInUS, segment.SourceDurationUS)
+	}
+	if segment.SourceInUS+segment.SourceDurationUS != 5_000_000 {
+		t.Fatalf("aligned window ends at %d, want the exact source end 5000000", segment.SourceInUS+segment.SourceDurationUS)
+	}
+}
+
+func TestPrepareFinalJobVideoSegmentsKeepsStockDriveReferenceUntouched(t *testing.T) {
 	timelineSHA := strings.Repeat("a", 64)
 	plan := finalJobCompiledPlan{
 		PlanVersion: 2, TimelineRevision: 1, TimelineSHA256: timelineSHA, DurationUS: 2_000_000,
@@ -209,7 +232,86 @@ func TestPrepareFinalJobVideoSegmentsReplacesRawSourceAndKeepsFinalAudio(t *test
 		}}}},
 		Assets: []finalJobPlanAsset{
 			{AssetID: "audio-1", SHA256: strings.Repeat("c", 64), SizeBytes: 32, Kind: "final_audio", DurationUS: 2_000_000},
-			{AssetID: "stock-raw", SHA256: strings.Repeat("d", 64), SizeBytes: 2048, Kind: "video", DurationUS: 4_000_000},
+			{AssetID: "stock-raw", SHA256: strings.Repeat("d", 64), SizeBytes: 2048, Kind: "video", DurationUS: 4_000_000,
+				ProfileID: "stale-assembly-profile", FirstFrameKeyframe: true, ClosedGOP: true},
+		},
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const driveURI = "https://drive.usercontent.google.com/download?id=drive-stock&export=download&confirm=t"
+	refs := []any{
+		map[string]any{
+			"asset_id": "stock-raw", "drive_file_id": "drive-stock", "url": "velox-drive://drive-stock",
+			"sha256": strings.Repeat("d", 64), "size_bytes": int64(2048), "source_uri": driveURI, "role": "stock",
+			"local_source_path": "/tmp/stock.mp4", "local_only": true,
+		},
+		map[string]any{"asset_id": "audio-1", "sha256": strings.Repeat("c", 64), "size_bytes": int64(32), "source_uri": "https://objects.example/audio", "role": "final_audio"},
+	}
+	aligned, err := alignFinalJobCompiledPlanAssetIDs(string(raw), refs)
+	if err != nil {
+		t.Fatalf("alignFinalJobCompiledPlanAssetIDs: %v", err)
+	}
+	preparer := &preparedSegmentStub{}
+	prepared, runtimeAssets, err := prepareFinalJobVideoSegments(context.Background(), aligned, refs, preparer)
+	if err != nil {
+		t.Fatalf("prepareFinalJobVideoSegments: %v", err)
+	}
+	if preparer.called != 0 {
+		t.Fatalf("preparer calls = %d, want zero: stock must be processed by the Master", preparer.called)
+	}
+	var got finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(prepared), &got); err != nil {
+		t.Fatal(err)
+	}
+	segment := got.VideoTracks[0].Segments[0]
+	if segment.AssetID != "stock-raw" || segment.SourceInUS != 500_000 || segment.SourceDurationUS != 2_000_000 || segment.SHA256 != strings.Repeat("d", 64) {
+		t.Fatalf("stock segment = %+v, want the untouched Drive source window", segment)
+	}
+	assetsByID := make(map[string]finalJobPlanAsset, len(got.Assets))
+	for _, asset := range got.Assets {
+		assetsByID[asset.AssetID] = asset
+	}
+	stockAsset, ok := assetsByID["stock-raw"]
+	if !ok {
+		t.Fatalf("compiled assets = %+v, want the stock source retained", got.Assets)
+	}
+	if stockAsset.ProfileID != "" || stockAsset.FirstFrameKeyframe || stockAsset.ClosedGOP {
+		t.Fatalf("stock asset = %+v, want no Producer certification of unprocessed bytes", stockAsset)
+	}
+	if len(runtimeAssets) != 2 {
+		t.Fatalf("runtime assets = %#v; want stock plus final audio", runtimeAssets)
+	}
+	var stockRef map[string]any
+	for _, rawAsset := range runtimeAssets {
+		asset := rawAsset.(map[string]any)
+		if asset["asset_id"] == "stock-raw" {
+			stockRef = asset
+		}
+	}
+	if stockRef == nil || stockRef["drive_file_id"] != "drive-stock" || stockRef["source_uri"] != driveURI || stockRef["kind"] != "video" {
+		t.Fatalf("stock runtime reference = %#v, want the Drive link for the Master", stockRef)
+	}
+	if _, exists := stockRef["local_source_path"]; exists {
+		t.Fatal("stock runtime reference leaked a local source path")
+	}
+	if _, exists := stockRef["local_only"]; exists {
+		t.Fatal("stock runtime reference leaked local_only")
+	}
+}
+
+func TestPrepareFinalJobVideoSegmentsRejectsStockWithoutDriveIdentity(t *testing.T) {
+	plan := finalJobCompiledPlan{
+		PlanVersion: 2, TimelineRevision: 1, TimelineSHA256: strings.Repeat("a", 64), DurationUS: 2_000_000,
+		FinalAudio: finalJobPlanAudio{Mode: "FINAL_AUDIO_COPY", AssetID: "audio-1", SHA256: strings.Repeat("c", 64), SizeBytes: 32, DurationUS: 2_000_000},
+		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: []finalJobPlanSegment{{
+			SegmentID: "segment-0000", AssetID: "stock-raw", SHA256: strings.Repeat("d", 64),
+			TimelineStartFrame: 0, FrameCount: 48, SourceInUS: 0, SourceDurationUS: 2_000_000,
+		}}}},
+		Assets: []finalJobPlanAsset{
+			{AssetID: "audio-1", SHA256: strings.Repeat("c", 64), SizeBytes: 32, Kind: "final_audio", DurationUS: 2_000_000},
+			{AssetID: "stock-raw", SHA256: strings.Repeat("d", 64), SizeBytes: 2048, Kind: "video", DurationUS: 2_000_000},
 		},
 	}
 	raw, err := json.Marshal(plan)
@@ -220,33 +322,8 @@ func TestPrepareFinalJobVideoSegmentsReplacesRawSourceAndKeepsFinalAudio(t *test
 		map[string]any{"asset_id": "stock-raw", "sha256": strings.Repeat("d", 64), "size_bytes": int64(2048), "source_uri": "https://objects.example/stock", "role": "stock"},
 		map[string]any{"asset_id": "audio-1", "sha256": strings.Repeat("c", 64), "size_bytes": int64(32), "source_uri": "https://objects.example/audio", "role": "final_audio"},
 	}
-	preparer := &preparedSegmentStub{}
-	prepared, runtimeAssets, err := prepareFinalJobVideoSegments(context.Background(), string(raw), refs, preparer)
-	if err != nil {
-		t.Fatalf("prepareFinalJobVideoSegments: %v", err)
-	}
-	if preparer.called != 1 || preparer.request.SourceInUS != 500_000 || preparer.request.TimelineStartFrame != 24 {
-		t.Fatalf("preparer calls/request = %d/%+v", preparer.called, preparer.request)
-	}
-	var got finalJobCompiledPlan
-	if err := json.Unmarshal([]byte(prepared), &got); err != nil {
-		t.Fatal(err)
-	}
-	segment := got.VideoTracks[0].Segments[0]
-	if segment.AssetID != "fragment-segment-0000" || segment.SourceInUS != 0 || segment.SourceDurationUS != 2_000_000 || segment.SHA256 != strings.Repeat("b", 64) {
-		t.Fatalf("prepared segment = %+v", segment)
-	}
-	if len(got.Assets) != 2 || got.Assets[0].AssetID != "audio-1" && got.Assets[1].AssetID != "audio-1" {
-		t.Fatalf("compiled assets = %+v; want prepared fragment plus final audio", got.Assets)
-	}
-	if len(runtimeAssets) != 2 {
-		t.Fatalf("runtime assets = %#v; want one prepared fragment and final audio", runtimeAssets)
-	}
-	for _, rawAsset := range runtimeAssets {
-		asset := rawAsset.(map[string]any)
-		if asset["asset_id"] == "stock-raw" {
-			t.Fatal("raw stock source crossed the FINALIZE boundary")
-		}
+	if _, _, err := prepareFinalJobVideoSegments(context.Background(), string(raw), refs, &preparedSegmentStub{}); err == nil || !strings.Contains(err.Error(), "Drive reference") {
+		t.Fatalf("error = %v, want a fail-closed stock Drive requirement", err)
 	}
 }
 
@@ -327,6 +404,49 @@ func TestPrepareFinalJobSegmentsRunsLanesAndKeepsPlanOrder(t *testing.T) {
 	}
 	if peak := atomic.LoadInt32(&stub.peak); peak > int32(stub.lanes) {
 		t.Fatalf("peak concurrency = %d, want it bounded by %d lanes", peak, stub.lanes)
+	}
+}
+
+type collateralKillStub struct {
+	lanes int
+}
+
+func (s *collateralKillStub) Parallelism() int { return s.lanes }
+
+func (s *collateralKillStub) PrepareFinalJobVideoSegment(ctx context.Context, _ map[string]any, request FinalJobVideoSegmentRequest) (map[string]any, error) {
+	if strings.HasSuffix(request.SegmentID, "-0000") {
+		<-ctx.Done()
+		return nil, fmt.Errorf("signal: killed")
+	}
+	time.Sleep(5 * time.Millisecond)
+	return nil, fmt.Errorf("stub rejected %s", request.SegmentID)
+}
+
+// TestPrepareFinalJobSegmentsReportsTheTriggerNotACollateralKill pins the r44
+// diagnosis: several lanes were cancelled together, and the earlier plan
+// position reported `signal: killed` while the real encoder error was on a
+// later segment. The error that triggered cancellation must win, not the
+// lowest plan index.
+func TestPrepareFinalJobSegmentsReportsTheTriggerNotACollateralKill(t *testing.T) {
+	timelineSHA := strings.Repeat("a", 64)
+	work := make([]finalJobSegmentWork, 0, 2)
+	for i := 0; i < 2; i++ {
+		work = append(work, finalJobSegmentWork{
+			index:  i,
+			source: map[string]any{"asset_id": "stock-raw", "sha256": strings.Repeat("d", 64)},
+			request: FinalJobVideoSegmentRequest{
+				SegmentID: fmt.Sprintf("segment-%04d", i), SourceSHA256: strings.Repeat("d", 64),
+				SourceDurationUS: 1_000_000, FrameCount: 24,
+				TimelineRevision: 1, TimelineSHA256: timelineSHA,
+			},
+		})
+	}
+	_, err := finalJobPrepareSegments(context.Background(), &collateralKillStub{lanes: 2}, work)
+	if err == nil {
+		t.Fatal("finalJobPrepareSegments = nil error, want the rejected segment")
+	}
+	if !strings.Contains(err.Error(), "segment-0001") || strings.Contains(err.Error(), "segment-0000") {
+		t.Fatalf("error = %v, want the real failure on segment-0001, not the collateral kill on segment-0000", err)
 	}
 }
 

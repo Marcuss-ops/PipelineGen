@@ -25,7 +25,7 @@ import (
 // production composition path.
 //
 // Caller-side tests are responsible for providing non-nil Planner, Stager,
-// Cutter, and Renderer when they exercise RunResilient.
+// and Cutter when they exercise RunResilient.
 //
 // Default fallbacks (Stock Cutover Commit 2):
 //   - MaxConcurrentJobs<=0      ⇒ DefaultMaxConcurrentJobs (3)
@@ -42,11 +42,11 @@ import (
 // is only used by non-broker callers (tests, CLI). Custom resilience
 // ports are test-only and use the helper in
 // orchestrator_test_helpers_test.go.
-func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager acquisition.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
-	return newStockPipeline(cfg, planner, stager, cutter, renderer)
+func NewTestStockOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, stager acquisition.SourceStager, cutter VideoCutter) *Orchestrator {
+	return newStockPipeline(cfg, planner, stager, cutter)
 }
 
-func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager acquisition.SourceStager, cutter VideoCutter, renderer StockRenderer) *Orchestrator {
+func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager acquisition.SourceStager, cutter VideoCutter) *Orchestrator {
 	if cfg.MaxConcurrentJobs <= 0 {
 		cfg.MaxConcurrentJobs = DefaultMaxConcurrentJobs
 	}
@@ -73,7 +73,6 @@ func newStockPipeline(cfg OrchestratorConfig, planner ClipPlanner, stager acquis
 		planner:       planner,
 		stager:        stager,
 		cutter:        cutter,
-		renderer:      renderer,
 		builder:       stockManifestBuilder{},
 		writer:        noopWriter{},
 		projection:    noopProjection{},

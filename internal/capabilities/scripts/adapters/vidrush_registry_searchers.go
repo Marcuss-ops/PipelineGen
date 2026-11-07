@@ -19,6 +19,17 @@ type VidRushRegistryMediaResolver struct {
 	Registry *VidRushAssetProviderRegistry
 }
 
+const vidRushMaxParallelImageSearches = 15
+
+// One process-wide limiter bounds requests across all concurrently enriched
+// scenes and all portrait-query variants; per-scene limits cannot multiply
+// provider traffic without bound.
+var vidRushImageSearchSlots = make(chan struct{}, vidRushMaxParallelImageSearches)
+
+// Bound whole-query workers too: a query may expand into several provider
+// variants, while all actual provider calls remain under the shared search cap.
+var vidRushImageQuerySlots = make(chan struct{}, vidRushMaxParallelImageSearches)
+
 func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	if s == nil || s.Registry == nil {
 		return nil, scriptports.ErrVidRushProviderNotFound
@@ -38,18 +49,34 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 			name + " servizio televisivo ritratto",
 		}
 	}
-	resultSets := make([][]scriptpkg.SegmentAssetCandidate, 0, len(queries))
+	resultSets := make([][]scriptpkg.SegmentAssetCandidate, len(queries))
+	queryErrors := make([]error, len(queries))
+	var wg sync.WaitGroup
+	for i, query := range queries {
+		i, query := i, query
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case vidRushImageSearchSlots <- struct{}{}:
+			case <-ctx.Done():
+				queryErrors[i] = ctx.Err()
+				return
+			}
+			defer func() { <-vidRushImageSearchSlots }()
+			found, err := s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
+				SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: query,
+				Query: query, Entity: req.Entity, QueryClass: req.QueryClass, Limit: req.Limit,
+			})
+			resultSets[i], queryErrors[i] = found, err
+		}()
+	}
+	wg.Wait()
 	var lastErr error
-	for _, query := range queries {
-		found, err := s.Registry.Search(ctx, scriptpkg.VidRushProviderInternetImages, scriptports.VidRushSearchRequest{
-			SegmentID: req.SegmentID, Position: req.Position, TextHash: req.TextHash, Text: query,
-			Query: query, Entity: req.Entity, Limit: req.Limit,
-		})
+	for _, err := range queryErrors {
 		if err != nil {
 			lastErr = err
-			continue
 		}
-		resultSets = append(resultSets, found)
 	}
 	limit := req.Limit
 	if len(queries) > 1 && limit < 5 {

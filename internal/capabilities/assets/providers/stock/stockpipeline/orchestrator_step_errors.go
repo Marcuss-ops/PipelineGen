@@ -102,16 +102,6 @@ var (
 	// says planned, extracting, or otherwise incomplete.
 	ErrStockExtractClipsDurableStateFailed = errors.New("stock.extract_clips: durable lifecycle state write failed")
 
-	// ErrStockComposeChunksAllFailed is raised when StockComposeChunksStep.Run
-	// was wired with a non-nil Renderer AND had non-empty CutPaths AND
-	// every chunk failed to render (zero string paths appended to the
-	// composed slice). Mirrors ErrStockStageSourcesAllFailed — the
-	// godlike/07 no-fake-availability class for the compose step.
-	// The per-chunk graceful degradation (Warn + continue on err) is
-	// preserved so partial successes still produce partial artifacts.
-	// PR-STOCK-FAKE-AVAILABILITY-REMOVAL (Wave 1 P0 #2).
-	ErrStockComposeChunksAllFailed = errors.New("stock.compose_chunks: all chunks failed to render")
-
 	// ErrStockPublishStateLost is raised when StockPublishStep.Run
 	// is wired with a non-nil ArtifactPreparation BUT state.ComposedPaths
 	// is empty — meaning the upstream compose step produced zero composed

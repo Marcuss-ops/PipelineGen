@@ -125,12 +125,12 @@ func TestBuildPlanRotatesWithinTheChannelPool(t *testing.T) {
 // the production defect where every long IMPORTANT_PHRASE rendered the same
 // animation: the crime channel's three-motion pool intersected the long-phrase
 // editorial list in exactly one id, so all fifteen long phrases of a run
-// received `phrase_apple_clean_07_slide_up_soft` (confirmed in the production
+// received `phrase_apple_clean_01_blur_soft_reveal` (confirmed in the production
 // render jobs). A caller pool must rotate across long cards too — the pool is
 // the channel's explicit vocabulary.
 func TestBuildPlanLongPhrasesRotateWithinTheChannelPool(t *testing.T) {
 	pool := []string{
-		"phrase_apple_clean_07_slide_up_soft",
+		"phrase_apple_clean_01_blur_soft_reveal",
 		"phrase_apple_clean_08_slide_up_spring",
 		"phrase_apple_clean_13_scale_soft_pop",
 	}
@@ -299,7 +299,7 @@ func TestModernAppleFamilyExposesAllCatalogMotions(t *testing.T) {
 			t.Fatalf("modern_apple family omitted default motion %q", id)
 		}
 	}
-	for _, id := range []string{"phrase_apple_clean_07_slide_up_soft", "phrase_apple_clean_25_opacity_soft_reveal"} {
+	for _, id := range []string{"phrase_apple_clean_01_blur_soft_reveal", "phrase_apple_clean_25_opacity_soft_reveal"} {
 		if !containsString(family, id) {
 			t.Fatalf("modern_apple family omitted certified motion %q", id)
 		}

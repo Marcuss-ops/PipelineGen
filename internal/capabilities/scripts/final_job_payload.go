@@ -32,35 +32,11 @@ type finalJobStockAssetResolver interface {
 	ResolveFinalJobStockAsset(context.Context, string) (map[string]any, error)
 }
 
-// finalJobStockAssetPrefetcher is the OPTIONAL warm-up path of the Drive
-// resolver. The folder cursor decides which file a scene consumes only as the
-// walk reaches it, but the SET it can consume is the folder listing, so a
-// resolver is free to warm those identities concurrently. Absence is not an
-// error: a resolver without it keeps the serial handoff byte for byte.
-//
-// The contract is best-effort by construction — the method returns nothing, so
-// a caller cannot turn a warm-up miss into a failed run. The walk still
-// resolves every source it eventually needs and still reports its own error.
-type finalJobStockAssetPrefetcher interface {
-	PrefetchFinalJobStockAssets(context.Context, []string)
-}
-
-func prefetchFinalJobStockAssets(ctx context.Context, resolver FinalJobAssetResolver, files []FinalJobStockFile) {
-	prefetcher, ok := resolver.(finalJobStockAssetPrefetcher)
-	if !ok || len(files) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(files))
-	for _, file := range files {
-		ids = append(ids, file.ID)
-	}
-	prefetcher.PrefetchFinalJobStockAssets(ctx, ids)
-}
-
-// FinalJobVideoSegmentRequest is one exact, frame-aligned fragment that the
-// remote copy-only assembler will place on the final timeline. Preparation
-// happens before PREPARE/FINALIZE; the remote worker receives only the
-// prepared HTTPS asset and never transcodes it.
+// FinalJobVideoSegmentRequest is one exact, frame-aligned fragment the Producer
+// prepares for its own overlay or clip placement. Stock is deliberately absent:
+// its Drive reference and source window travel in the compiled plan, and the
+// Master downloads, cuts and normalizes it remotely. The remote worker receives
+// only prepared Producer fragments over HTTPS and never transcodes those.
 type FinalJobVideoSegmentRequest struct {
 	SegmentID          string
 	SourceAssetID      string
@@ -87,9 +63,9 @@ type FinalJobVideoSegmentRequest struct {
 	ReuseFromURI    string
 }
 
-// FinalJobVideoSegmentPreparer materializes each selected stock/clip/overlay
-// window as one assembly-ready fragment. Implementations may reuse an
-// existing certified artifact when its bytes and exact window already match.
+// FinalJobVideoSegmentPreparer materializes the Producer-owned clip and overlay
+// windows as assembly-ready fragments. Stock never reaches this interface: the
+// Master processes the stockpipeline Drive source outside the Producer.
 type FinalJobVideoSegmentPreparer interface {
 	PrepareFinalJobVideoSegment(context.Context, map[string]any, FinalJobVideoSegmentRequest) (map[string]any, error)
 }
@@ -106,9 +82,10 @@ func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 }
 
 // BuildFinalJobPayloadsWithSegmentPreparer is the executable FINALIZE handoff:
-// every placement is cut into its own assembly-ready fragment before the plan
-// is sealed. The copy-only worker never accepts a raw stock/overlay source, so
-// callers that own a preparer must use this entry point.
+// Producer-owned clip and overlay placements are cut into assembly-ready
+// fragments before the plan is sealed. Stock is passed through as the
+// stockpipeline Drive reference and processed by the remote Master; the Producer
+// never downloads or transforms those bytes.
 func BuildFinalJobPayloadsWithSegmentPreparer(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparer FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
 	return buildFinalJobPayloads(ctx, runID, req, result, resolver, preparer)
 }
@@ -151,10 +128,9 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	for _, scene := range result.Scenes {
 		scenesByID[scene.ID] = scene
 	}
-	// The stock selection rule lives in finalJobStockPlanner so the prewarm
-	// walk (during the overlay render) and this handoff resolve the SAME
-	// sources; one planner per handoff keeps the folder cursors shared across
-	// scenes exactly as the inline walk did.
+	// The stock selection rule lives in finalJobStockPlanner; one planner per
+	// handoff keeps the folder cursors shared across scenes. Resolution is
+	// metadata-only: the Master downloads and processes the stock Drive source.
 	stockPlanner := newFinalJobStockPlanner()
 	remoteScenes := make([]map[string]any, 0, len(result.CanonicalTimeline.Segments))
 	clipOrdinal := 0

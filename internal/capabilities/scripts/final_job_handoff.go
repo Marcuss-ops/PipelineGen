@@ -89,8 +89,9 @@ func appendFinalJobRuntimeAsset(dst *[]any, seen map[string]bool, role string, r
 	seen[role+":"+id] = true
 	item := make(map[string]any, len(ref)+1)
 	for key, value := range ref {
-		// Keep worker-local cache paths out of the remote FINALIZE contract.
-		if key == "local_path" {
+		// Keep worker-local cache and stock paths out of the remote FINALIZE
+		// contract. Stock travels as its Drive identity, never as a local file.
+		if key == "local_path" || key == "local_source_path" || key == "local_only" {
 			continue
 		}
 		item[key] = value

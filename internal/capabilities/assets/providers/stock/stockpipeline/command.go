@@ -25,7 +25,11 @@ type StockSearchAndRunRequest struct {
 	// server-side provider probe for those URLs entirely; URLs missing from
 	// the map keep the normal probe behaviour. Durations <= 0 are treated as
 	// unknown.
-	SourceDurations                map[string]float64  `json:"source_durations,omitempty"`
+	SourceDurations map[string]float64 `json:"source_durations,omitempty"`
+	// SourceTitles carries the display titles for direct_urls (URL → title).
+	// Supplying it with SourceDurations skips the provider probe entirely; a
+	// URL with only a duration is still probed for its title.
+	SourceTitles                   map[string]string   `json:"source_titles,omitempty"`
 	DriveURLs                      []string            `json:"drive_urls,omitempty"`
 	Clips                          []ClipSpec          `json:"clips,omitempty"`
 	TotalMinutes                   int                 `json:"total_minutes"`
@@ -95,6 +99,7 @@ type StockCommand struct {
 	SearchQueryLimits              []int
 	DirectURLs                     []string
 	SourceDurations                map[string]float64
+	SourceTitles                   map[string]string
 	DriveURLs                      []string
 	Clips                          []ClipSpec
 	TotalMinutes                   int
@@ -148,6 +153,21 @@ func copySourceDurations(in map[string]float64) map[string]float64 {
 	return out
 }
 
+// copySourceTitles returns a defensive copy of a caller-supplied
+// URL → title map so neither side of a boundary can mutate the other's
+// view. An empty input stays nil so the wire shape keeps its omitempty
+// semantics.
+func copySourceTitles(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for url, title := range in {
+		out[url] = title
+	}
+	return out
+}
+
 // FromSearchAndRunRequest converts the search-and-run request body
 // (POST /search-and-run binds JSON directly to *StockSearchAndRunRequest)
 // into a StockCommand.
@@ -184,6 +204,7 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 		SearchQueryLimits:              limits,
 		DirectURLs:                     append([]string(nil), r.DirectURLs...),
 		SourceDurations:                copySourceDurations(r.SourceDurations),
+		SourceTitles:                   copySourceTitles(r.SourceTitles),
 		DriveURLs:                      append([]string(nil), r.DriveURLs...),
 		Clips:                          append([]ClipSpec(nil), r.Clips...),
 		TotalMinutes:                   r.TotalMinutes,
@@ -222,6 +243,7 @@ func (c *StockCommand) ToRunInput() *RunInput {
 		SearchQueryLimits:              append([]int(nil), c.SearchQueryLimits...),
 		DirectURLs:                     append([]string(nil), c.DirectURLs...),
 		SourceDurations:                copySourceDurations(c.SourceDurations),
+		SourceTitles:                   copySourceTitles(c.SourceTitles),
 		DriveURLs:                      append([]string(nil), c.DriveURLs...),
 		Clips:                          append([]ClipSpec(nil), c.Clips...),
 		TotalMinutes:                   c.TotalMinutes,
@@ -273,6 +295,9 @@ func (c *StockCommand) ToJobPayload() map[string]any {
 	}
 	if len(c.SourceDurations) > 0 {
 		payload["source_durations"] = copySourceDurations(c.SourceDurations)
+	}
+	if len(c.SourceTitles) > 0 {
+		payload["source_titles"] = copySourceTitles(c.SourceTitles)
 	}
 	if len(c.DriveURLs) > 0 {
 		payload["drive_urls"] = c.DriveURLs

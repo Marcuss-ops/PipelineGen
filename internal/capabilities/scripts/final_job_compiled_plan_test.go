@@ -6,6 +6,48 @@ import (
 	"testing"
 )
 
+func TestFinalJobCompiledPlanFrameAlignsShortStockExtent(t *testing.T) {
+	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	scenes := []map[string]any{{
+		"duration_seconds": 5.0,
+		"stock": map[string]any{
+			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
+			"duration_ms": int64(4979), "start_ms": int64(0),
+		},
+	}}
+	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
+	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(5000)}
+	raw, _, err := finalJobCompiledPlanPayload(scenes, nil, nil, audio, audioRef, 5_000_000)
+	if err != nil {
+		t.Fatalf("finalJobCompiledPlanPayload: %v", err)
+	}
+	var plan struct {
+		Assets []finalJobPlanAsset `json:"assets"`
+		Tracks []struct {
+			Segments []finalJobPlanSegment `json:"segments"`
+		} `json:"video_tracks"`
+	}
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		t.Fatal(err)
+	}
+	var got finalJobPlanAsset
+	for _, asset := range plan.Assets {
+		if asset.AssetID == "base-video" {
+			got = asset
+		}
+	}
+	if got.DurationUS != 5_000_000 {
+		t.Fatalf("stock source extent = %d, want the 5s frame boundary", got.DurationUS)
+	}
+	if len(plan.Tracks) != 1 || len(plan.Tracks[0].Segments) != 1 {
+		t.Fatalf("segments = %+v, want one stock segment", plan.Tracks)
+	}
+	if segment := plan.Tracks[0].Segments[0]; segment.SourceInUS != 0 || segment.SourceDurationUS != 5_000_000 || segment.FrameCount != 120 {
+		t.Fatalf("stock segment = %d + %d over %d frames, want 0 + 5000000 over 120", segment.SourceInUS, segment.SourceDurationUS, segment.FrameCount)
+	}
+}
+
 func TestFinalJobCompiledPlanSplitsOverlayWindowsOnThe24FPSGrid(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

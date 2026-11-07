@@ -31,12 +31,10 @@ func TestCoherenceDominantDirectionIsDeterministicPerSeed(t *testing.T) {
 // sliding motions classify correctly, and a motion naming both sides is neutral.
 func TestMotionHorizontalDirectionClassifiesWholeTokens(t *testing.T) {
 	cases := map[string]string{
-		"phrase_apple_clean_10_slide_from_right_apple": CoherenceDirectionRight,
-		"phrase_apple_clean_11_slide_left_ease":        CoherenceDirectionLeft,
-		"image_slide_left_reveal":                      CoherenceDirectionLeft,
-		"image_slide_right_reveal":                     CoherenceDirectionRight,
-		"image_fade_reveal":                            "",
-		"image_left_right_split":                       "",
+		"image_slide_left_reveal":  CoherenceDirectionLeft,
+		"image_slide_right_reveal": CoherenceDirectionRight,
+		"image_fade_reveal":        "",
+		"image_left_right_split":   "",
 	}
 	for id, want := range cases {
 		if got := motionHorizontalDirection(id); got != want {

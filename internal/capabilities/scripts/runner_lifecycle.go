@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
@@ -22,6 +21,16 @@ import (
 // settleFinalJob is the SINGLE interpretation of a remote final-job outcome.
 // Both submit and attach paths share receipt persistence and retry semantics.
 func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *GenerateResult, remote RemoteFinalJobResult, yields int, err error) bool {
+	// Project the newest receipt into the ONE report owner before any branch
+	// below can return. The checkpoint in workflow_payload_json remains the
+	// resumable copy, but run_observability.report_json is the reporting
+	// surface: /full and history readers must not infer this receipt from a
+	// log line or from the checkpoint shape.
+	reportReceipt := remote
+	if strings.TrimSpace(reportReceipt.JobID) == "" && result != nil && result.RemoteFinalJob != nil {
+		reportReceipt = *result.RemoteFinalJob
+	}
+	recordFinalJobReport(ctx, &reportReceipt)
 	if err != nil {
 		if errors.Is(err, ErrFinalJobPending) && result != nil {
 			receipt := remote
@@ -30,6 +39,7 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 			}
 			receipt.Yields = yields + 1
 			result.RemoteFinalJob = &receipt
+			recordFinalJobReport(ctx, &receipt)
 			r.checkpoint(ctx, runID, result)
 			if r.log != nil {
 				r.log.Info("remote final job still rendering; handing the wait back to a later attempt",
@@ -50,6 +60,7 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 			if !finalJobReceiptTerminal(&remote) {
 				remote.Status = "REJECTED"
 			}
+			recordFinalJobReport(ctx, &remote)
 			if r.log != nil {
 				r.log.Warn("invalidating stale remote final-job receipt; the next attempt prepares a fresh identity",
 					zap.String("run_id", runID), zap.String("remote_job_id", remote.JobID),
@@ -68,6 +79,7 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 		return false
 	}
 	if strings.TrimSpace(remote.JobID) == "" || !finalJobReceiptSucceeded(&remote) {
+		recordFinalJobReport(ctx, &remote)
 		r.failRunWithRetry(ctx, runID, StagePublishingDocuments, fmt.Errorf("remote final job returned incomplete/non-success result (job_id=%q status=%q)", remote.JobID, remote.Status))
 		return false
 	}
@@ -76,6 +88,7 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 		return false
 	}
 	result.RemoteFinalJob = &remote
+	recordFinalJobReport(ctx, &remote)
 	r.checkpoint(ctx, runID, result)
 	if r.log != nil {
 		fields := []zap.Field{zap.String("run_id", runID), zap.String("remote_job_id", remote.JobID), zap.String("worker_id", remote.WorkerID)}
@@ -91,6 +104,20 @@ func (r *Runner) settleFinalJob(ctx context.Context, runID string, result *Gener
 		r.log.Info("remote final job completed", fields...)
 	}
 	return true
+}
+
+// recordFinalJobReport projects the capability receipt into the kernel report.
+// The kernel receives opaque JSON so observability never imports the scripts
+// capability. Empty receipts are ignored: a PREPARE intent is not a job handle.
+func recordFinalJobReport(ctx context.Context, receipt *RemoteFinalJobResult) {
+	if receipt == nil || strings.TrimSpace(receipt.JobID) == "" || strings.TrimSpace(receipt.Status) == "" {
+		return
+	}
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		return
+	}
+	kernobs.SetFinalJobReport(ctx, kernobs.FinalJobReport{ReportOwner: FinalJobReportOwner, Receipt: raw})
 }
 
 // ── Internal helpers ────────────────────────────────────────────────
@@ -478,114 +505,4 @@ func (r *Runner) completeRun(ctx context.Context, runID string, result *Generate
 // the resume rule has one home.
 func stageSkipped(resumeIdx int, stage Stage) bool {
 	return resumeIdx >= 0 && StageIndex(stage) < resumeIdx
-}
-
-// ── Job stage relay (merged from runner_job_stage.go) ──
-//
-// Merged here to keep the registered scripts hotspot at its committed
-// baseline: stage relay is runner lifecycle. No behaviour change.
-
-// jobStageState tracks which job-level stage is currently open for a durable
-// run so the next transition can close it.
-type jobStageState struct {
-	jobID string
-	open  job.StageName
-}
-
-// SetJobStageSink wires the durable job stage-row store. Optional: nil keeps
-// the run ledger as the only progress record.
-func (r *Runner) SetJobStageSink(sink job.JobStageStatusStore) {
-	if r != nil {
-		r.jobStageSink = sink
-	}
-}
-
-// bindJobStage associates a durable run with the job whose stage rows it feeds.
-func (r *Runner) bindJobStage(runID, jobID string) {
-	if r == nil || r.jobStageSink == nil || runID == "" || jobID == "" {
-		return
-	}
-	r.jobStages.Store(runID, &jobStageState{jobID: jobID})
-}
-
-// closeJobStage closes the job stage still open when the execution returns.
-// The run's terminal status decides the outcome: COMPLETED closes it as
-// completed, anything else as failed. Best-effort, like every relay write.
-func (r *Runner) closeJobStage(ctx context.Context, runID string) {
-	if r == nil || r.jobStageSink == nil {
-		return
-	}
-	raw, ok := r.jobStages.Load(runID)
-	if !ok {
-		return
-	}
-	state := raw.(*jobStageState)
-	if state.open == "" {
-		return
-	}
-	status := job.StageFailed
-	if run, err := r.repo.Get(ctx, runID); err == nil && run != nil && run.Status == RunStatusCompleted {
-		status = job.StageCompleted
-	}
-	r.writeJobStage(ctx, state.jobID, state.open, status, time.Now().UTC())
-	state.open = ""
-}
-
-// unbindJobStage removes the association once the execution has returned.
-func (r *Runner) unbindJobStage(runID string) {
-	if r == nil {
-		return
-	}
-	r.jobStages.Delete(runID)
-}
-
-// jobStageForRunStage maps a run-ledger stage onto the job stage vocabulary.
-// Stages without a job-level equivalent return false and are not relayed.
-func jobStageForRunStage(stage Stage) (job.StageName, bool) {
-	switch stage {
-	case StageNormalizing, StagePreflight, StageGeneratingSceneText:
-		return job.StageScript, true
-	case StageTranslatingScenes:
-		return job.StageTranslation, true
-	case StageGeneratingVoiceovers:
-		return job.StageVoiceover, true
-	}
-	return "", false
-}
-
-// relayJobStage writes the job stage row for a run-ledger transition. It is
-// best-effort: a failed row write is logged and never fails the run.
-func (r *Runner) relayJobStage(ctx context.Context, runID string, stage Stage) {
-	if r == nil || r.jobStageSink == nil {
-		return
-	}
-	raw, ok := r.jobStages.Load(runID)
-	if !ok {
-		return
-	}
-	state := raw.(*jobStageState)
-	closing := stage == StageCoreReady || stage == StageCompleted
-	next, opens := jobStageForRunStage(stage)
-	if !opens && !closing {
-		return
-	}
-	now := time.Now().UTC()
-	if state.open != "" && (closing || (opens && next != state.open)) {
-		r.writeJobStage(ctx, state.jobID, state.open, job.StageCompleted, now)
-		state.open = ""
-	}
-	if opens {
-		r.writeJobStage(ctx, state.jobID, next, job.StageRunning, now)
-		state.open = next
-	}
-}
-
-func (r *Runner) writeJobStage(ctx context.Context, jobID string, stage job.StageName, status job.StageStatus, at time.Time) {
-	rec := job.JobStageStatus{JobID: jobID, Stage: stage, Status: status, UpdatedAt: at}
-	if err := r.jobStageSink.UpsertJobStageStatus(ctx, rec); err != nil && r.log != nil {
-		r.log.Warn("job stage status write failed",
-			zap.String("job_id", jobID),
-			zap.String("stage", string(stage)),
-			zap.Error(err))
-	}
 }

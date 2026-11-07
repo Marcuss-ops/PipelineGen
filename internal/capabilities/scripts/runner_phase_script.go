@@ -17,12 +17,7 @@ import (
 func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req GenerateRequest, routing scriptpkg.ArtifactRoutingContext, exec ExecutionContext, run *GenerationRun, resumeIdx int) (*GenerateResult, bool) {
 	// Internal callers may construct GenerateRequest directly instead of using
 	// BuildGenerateRequest. Preserve the same Drive grouping contract there.
-	if req.Render.Enabled && strings.TrimSpace(req.Render.DriveSubfolderName) == "" {
-		req.Render.DriveSubfolderName = strings.TrimSpace(req.Title)
-		if req.Render.DriveSubfolderName == "" {
-			req.Render.DriveSubfolderName = strings.TrimSpace(req.Source.Topic)
-		}
-	}
+	applyDefaultSceneRenderSubfolder(&req)
 	// ── Stage 2: Generate Scene Text ─────────────────────────────
 	scriptStep, startErr := r.startExecutionStep(ctx, exec, "SCRIPT", "generation")
 	if startErr != nil {
@@ -144,82 +139,8 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			TranslationMetrics: streamTranslationMetrics,
 			AudioMetrics:       streamAudioMetrics,
 		}
-		// The metrics struct exists whenever a render-enabled clip run can
-		// record render work; the EXPECTATION (the completion gate in
-		// completeRun) is only promised while dispatch is live. Sealing
-		// ExpectedRenderCount under sceneRenderDispatchSealed (runner_deps.go)
-		// keeps the run from demanding work this runner never dispatches.
-		if req.Source.Type == SourceClips && req.Render.Enabled {
-			result.RenderMetrics = &RenderMetrics{Concurrency: req.Render.RenderConcurrency}
-			if !sceneRenderDispatchSealed {
-				// Expected renders are the canonical render-unit count, not the
-				// scene count: a fixed intro/outro contributes one unit per bound
-				// clip (one final render per clip), fanned out per render
-				// language for fixed media (Intro V2).
-				expectedUnits := expectedRenderUnits(req, scenes)
-				result.ExpectedRenderCount = expectedUnits
-				result.RenderMetrics.Expected = expectedUnits
-			}
-		}
-		// The unified Rust editorial enrichment computes VALUES only over the
-		// stable text; the single writer below owns every result mutation.
-		_, unifiedEditorialEnabled := r.sceneSemanticAnalyzer.(SceneSemanticEditorialBatchAnalyzer)
-		piEnabled := unifiedEditorialEnabled && strings.TrimSpace(output.Text) != ""
-		type piOutcome struct {
-			summary         string
-			bullets         []string
-			heavy           []scriptpkg.ImportantSentence
-			chapterManifest *scriptpkg.ChapterManifest
-			highlights      []scriptpkg.SceneHighlight
-			editorial       *scriptpkg.EditorialManifest
-			timings         []PhraseImpactTimings
-			consolidation   *SemanticVisualConsolidation
-			productionPlan  *SemanticProductionPlan
-			searchFeedback  *SemanticSearchFeedback
-			err             error
-		}
-		var piOut piOutcome
-		if piEnabled {
-			hb.setOp("editorial_enrichment")
-			out, err := r.computePhraseImpactEnrichment(ctx, output.Text, scenes, req)
-			if err != nil {
-				piOut.err = err
-			} else if out != nil {
-				piOut.summary = out.summary
-				piOut.bullets = out.bullets
-				piOut.heavy = out.heavy
-				piOut.chapterManifest = out.chapterManifest
-				piOut.highlights = out.highlights
-				piOut.editorial = out.editorial
-				piOut.timings = out.timings
-				piOut.consolidation = out.consolidation
-				piOut.productionPlan = out.productionPlan
-				piOut.searchFeedback = out.searchFeedback
-			}
-		}
-		if piEnabled {
-			for _, tm := range piOut.timings {
-				observePhraseImpactTimings(tm)
-			}
-			if piOut.err != nil {
-				// The extractive summary is an optional data product. A broken
-				// or unavailable Rust NLP worker must never cost the caller the
-				// video, so the failure is recorded and the run continues with
-				// the editorial fields empty rather than failing closed.
-				r.log.Warn("phrase-impact analysis unavailable; continuing without extractive summary",
-					zap.String("run_id", runID), zap.Error(piOut.err))
-			} else {
-				result.Summary = piOut.summary
-				result.BulletPoints = piOut.bullets
-				result.HeavySentences = piOut.heavy
-				result.ChapterManifest = piOut.chapterManifest
-				result.SceneHighlights = piOut.highlights
-				result.Editorial = piOut.editorial
-				result.SemanticConsolidation = piOut.consolidation
-				result.SemanticProductionPlan = piOut.productionPlan
-				result.SemanticSearchFeedback = piOut.searchFeedback
-			}
-		}
+		setSceneRenderExpectations(req, scenes, result)
+		r.applySceneEditorialEnrichment(ctx, runID, req, result, scenes, output.Text, hb)
 		// The plan is only useful if its exact-source ladder is executed
 		// against the real provider. This phase is optional: an unwired
 		// planner leaves the plan and its feedback pending, unchanged.
@@ -236,162 +157,10 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 		// voiceover existed, which made audio.mode=NONE silently produce a script
 		// and no MP4. Keep this path source-language-only and reuse the same
 		// localized renderer, watermark contract, and certified result sink.
-		if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
-			hb.setOp("localized_render_fanout")
-			renderBatchStarted := time.Now()
-			concurrency := req.Render.RenderConcurrency
-			if concurrency < 1 {
-				concurrency = 2
-			}
-			sem := make(chan struct{}, concurrency)
-			var renders sync.WaitGroup
-			var renderErr error
-			var renderErrMu sync.Mutex
-			for _, scene := range scenes {
-				scene := scene
-				if scene.ExecutionMode.IsFixedMedia() {
-					// Intro V2: fixed media fans out one render per bound
-					// clip PER language, each burning its translated
-					// caption. Caption text is a per-(scene, language) fact;
-					// an empty caption still renders (transcript subs from
-					// the asset track) but never leaks BODY narration.
-					for _, lang := range fixedRenderLanguages(req, scene) {
-						lang := lang
-						text := fixedCaptionText(scene, req.SourceLanguage, lang)
-						sourceText := strings.TrimSpace(scene.Text[req.SourceLanguage])
-						if sourceText == "" {
-							sourceText = text
-						}
-						for _, unit := range RenderUnitsForScene(scene) {
-							unit := unit
-							clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
-							renders.Add(1)
-							go func() {
-								defer renders.Done()
-								sem <- struct{}{}
-								defer func() { <-sem }()
-								renderStarted := time.Now()
-								if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-									RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
-									JobID:    exec.JobID,
-									Language: lang, Text: text,
-									SourceLanguage: req.SourceLanguage, SourceText: sourceText,
-									ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-									ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
-									ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
-									OnRenderReady: func(rendered LocalizedRenderResult) error {
-										return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
-									},
-									OnRendered: func(rendered LocalizedRenderResult) error {
-										r.localizedRenderMu.Lock()
-										applyLocalizedRenderLinkLocked(result, rendered)
-										result.LocalizedRenders = append(result.LocalizedRenders, rendered)
-										result.RenderMetrics.Successful = len(result.LocalizedRenders)
-										accumulateLocalizedRenderMetrics(result, rendered)
-										r.localizedRenderMu.Unlock()
-										if rendered.WallMS == 0 {
-											r.localizedRenderMu.Lock()
-											result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
-											r.localizedRenderMu.Unlock()
-										}
-										return nil
-									},
-									OnFailed: func(failure LocalizedRenderFailure) error {
-										result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
-										result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
-										result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
-										upper := strings.ToUpper(failure.Error)
-										if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
-											result.RenderMetrics.GPUOOMs++
-										}
-										return nil
-									},
-								}); err != nil {
-									renderErrMu.Lock()
-									if renderErr == nil {
-										renderErr = fmt.Errorf("enqueue no-audio localized render: %w", err)
-									}
-									renderErrMu.Unlock()
-								}
-							}()
-						}
-					}
-					continue
-				}
-				// Caption text is a per-scene fact shared by all of the scene's
-				// render units. Fixed-media scenes resolve it without the BODY
-				// source_text fallback (display text only), so an empty
-				// intro/outro never leaks narration text into its render.
-				for _, lang := range renderLanguages(req, scene) {
-					lang := lang
-					text := localizedRenderCaptionText(req, scene)
-					if scene.ExecutionMode.IsFixedMedia() {
-						text = fixedCaptionText(scene, req.SourceLanguage, lang)
-					}
-					for _, unit := range RenderUnitsForScene(scene) {
-						unit := unit
-						clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
-						renders.Add(1)
-						go func() {
-							defer renders.Done()
-							sem <- struct{}{}
-							defer func() { <-sem }()
-							renderStarted := time.Now()
-							if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
-								RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
-								JobID:    exec.JobID,
-								Language: lang, Text: text,
-								SourceLanguage: req.SourceLanguage, SourceText: text,
-								ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
-								ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
-								ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
-								OnRenderReady: func(rendered LocalizedRenderResult) error {
-									return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
-								},
-								OnRendered: func(rendered LocalizedRenderResult) error {
-									r.localizedRenderMu.Lock()
-									applyLocalizedRenderLinkLocked(result, rendered)
-									result.LocalizedRenders = append(result.LocalizedRenders, rendered)
-									result.RenderMetrics.Successful = len(result.LocalizedRenders)
-									accumulateLocalizedRenderMetrics(result, rendered)
-									r.localizedRenderMu.Unlock()
-									if rendered.WallMS == 0 {
-										r.localizedRenderMu.Lock()
-										result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
-										r.localizedRenderMu.Unlock()
-									}
-									return nil
-								},
-								OnFailed: func(failure LocalizedRenderFailure) error {
-									result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
-									result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
-									result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
-									upper := strings.ToUpper(failure.Error)
-									if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
-										result.RenderMetrics.GPUOOMs++
-									}
-									return nil
-								},
-							}); err != nil {
-								renderErrMu.Lock()
-								if renderErr == nil {
-									renderErr = fmt.Errorf("enqueue no-audio localized render: %w", err)
-								}
-								renderErrMu.Unlock()
-							}
-						}()
-					}
-				}
-			}
-			renders.Wait()
-			if renderErr != nil {
-				renderErr = hb.annotate(renderErr)
-				r.failExecutionStepBestEffort(ctx, exec, scriptStep, renderErr)
-				r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, renderErr)
-				return result, false
-			}
-			result.RenderMetrics.WallMS = time.Since(renderBatchStarted).Milliseconds()
+		if !r.renderNoAudioLocalizedBatch(ctx, runID, req, exec, scriptStep, result, scenes, hb) {
+			return result, false
 		}
+
 		// Merge the certified produced videos the streaming fan-out
 		// accumulated (the coordinator has no result pointer of its own) so
 		// the run result records the final MP4s it rendered.
@@ -450,18 +219,8 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 	}
 
 	// Record resolved clip assets as script inputs once the scene plan exists.
-	if result != nil {
-		ordinal := 0
-		for _, scene := range result.Scenes {
-			if scene.Clip != nil {
-				if err := r.attachInputAsset(ctx, exec, scriptStep.StepID, scene.Clip.ID, ordinal); err != nil {
-					r.failExecutionStepBestEffort(ctx, exec, scriptStep, err)
-					r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
-					return result, false
-				}
-				ordinal++
-			}
-		}
+	if result != nil && !r.attachSceneClipInputAssets(ctx, runID, exec, scriptStep, result) {
+		return result, false
 	}
 	if scriptSkipped {
 		if err := r.skipExecutionStep(ctx, exec, scriptStep); err != nil {
@@ -480,4 +239,239 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 	}
 
 	return result, true
+}
+
+func (r *Runner) renderNoAudioLocalizedBatch(ctx context.Context, runID string, req GenerateRequest, exec ExecutionContext, scriptStep ExecutionStep, result *GenerateResult, scenes []Scene, hb *stageHeartbeat) bool {
+	if req.Source.Type == SourceClips && req.Render.Enabled && req.Audio == capabilityaudio.AudioModeNone {
+		hb.setOp("localized_render_fanout")
+		renderBatchStarted := time.Now()
+		concurrency := req.Render.RenderConcurrency
+		if concurrency < 1 {
+			concurrency = 2
+		}
+		sem := make(chan struct{}, concurrency)
+		var renders sync.WaitGroup
+		var renderErr error
+		var renderErrMu sync.Mutex
+		for _, scene := range scenes {
+			scene := scene
+			if scene.ExecutionMode.IsFixedMedia() {
+				// Intro V2: fixed media fans out one render per bound
+				// clip PER language, each burning its translated
+				// caption. Caption text is a per-(scene, language) fact;
+				// an empty caption still renders (transcript subs from
+				// the asset track) but never leaks BODY narration.
+				for _, lang := range fixedRenderLanguages(req, scene) {
+					lang := lang
+					text := fixedCaptionText(scene, req.SourceLanguage, lang)
+					sourceText := strings.TrimSpace(scene.Text[req.SourceLanguage])
+					if sourceText == "" {
+						sourceText = text
+					}
+					for _, unit := range RenderUnitsForScene(scene) {
+						unit := unit
+						clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
+						renders.Add(1)
+						go func() {
+							defer renders.Done()
+							sem <- struct{}{}
+							defer func() { <-sem }()
+							renderStarted := time.Now()
+							if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+								RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
+								JobID:    exec.JobID,
+								Language: lang, Text: text,
+								SourceLanguage: req.SourceLanguage, SourceText: sourceText,
+								ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
+								ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
+								ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
+								OnRenderReady: func(rendered LocalizedRenderResult) error {
+									return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+								},
+								OnRendered: func(rendered LocalizedRenderResult) error {
+									r.localizedRenderMu.Lock()
+									applyLocalizedRenderLinkLocked(result, rendered)
+									result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+									result.RenderMetrics.Successful = len(result.LocalizedRenders)
+									accumulateLocalizedRenderMetrics(result, rendered)
+									r.localizedRenderMu.Unlock()
+									if rendered.WallMS == 0 {
+										r.localizedRenderMu.Lock()
+										result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
+										r.localizedRenderMu.Unlock()
+									}
+									return nil
+								},
+								OnFailed: func(failure LocalizedRenderFailure) error {
+									result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+									result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
+									result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
+									upper := strings.ToUpper(failure.Error)
+									if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
+										result.RenderMetrics.GPUOOMs++
+									}
+									return nil
+								},
+							}); err != nil {
+								renderErrMu.Lock()
+								if renderErr == nil {
+									renderErr = fmt.Errorf("enqueue no-audio localized render: %w", err)
+								}
+								renderErrMu.Unlock()
+							}
+						}()
+					}
+				}
+				continue
+			}
+			// Caption text is a per-scene fact shared by all of the scene's
+			// render units. Fixed-media scenes resolve it without the BODY
+			// source_text fallback (display text only), so an empty
+			// intro/outro never leaks narration text into its render.
+			for _, lang := range renderLanguages(req, scene) {
+				lang := lang
+				text := localizedRenderCaptionText(req, scene)
+				if scene.ExecutionMode.IsFixedMedia() {
+					text = fixedCaptionText(scene, req.SourceLanguage, lang)
+				}
+				for _, unit := range RenderUnitsForScene(scene) {
+					unit := unit
+					clipID, clipAssetID, clipSHA256, clipDurationMS := localizedRenderUnitClipFields(unit)
+					renders.Add(1)
+					go func() {
+						defer renders.Done()
+						sem <- struct{}{}
+						defer func() { <-sem }()
+						renderStarted := time.Now()
+						if err := r.enqueueLocalizedRender(ctx, LocalizedRenderInput{
+							RunID: runID, ParentJobID: exec.JobID, SceneID: scene.ID, SceneIndex: scene.Index,
+							JobID:    exec.JobID,
+							Language: lang, Text: text,
+							SourceLanguage: req.SourceLanguage, SourceText: text,
+							ClipID: clipID, ClipAssetID: clipAssetID, ClipSHA256: clipSHA256,
+							ClipDurationMS: clipDurationMS, Render: sceneRenderSpec(req, scene),
+							ResumeFrom: r.stagedLocalizedRender(result, scene.ID, lang, clipID),
+							OnRenderReady: func(rendered LocalizedRenderResult) error {
+								return r.recordLocalizedRenderReady(ctx, exec, result, rendered)
+							},
+							OnRendered: func(rendered LocalizedRenderResult) error {
+								r.localizedRenderMu.Lock()
+								applyLocalizedRenderLinkLocked(result, rendered)
+								result.LocalizedRenders = append(result.LocalizedRenders, rendered)
+								result.RenderMetrics.Successful = len(result.LocalizedRenders)
+								accumulateLocalizedRenderMetrics(result, rendered)
+								r.localizedRenderMu.Unlock()
+								if rendered.WallMS == 0 {
+									r.localizedRenderMu.Lock()
+									result.RenderMetrics.WorkMS += time.Since(renderStarted).Milliseconds()
+									r.localizedRenderMu.Unlock()
+								}
+								return nil
+							},
+							OnFailed: func(failure LocalizedRenderFailure) error {
+								result.LocalizedRenderFailures = append(result.LocalizedRenderFailures, failure)
+								result.RenderMetrics.Failed = len(result.LocalizedRenderFailures)
+								result.RenderMetrics.RenderMS += time.Since(renderStarted).Milliseconds()
+								upper := strings.ToUpper(failure.Error)
+								if strings.Contains(upper, "CUDA") || strings.Contains(upper, "OUT OF MEMORY") {
+									result.RenderMetrics.GPUOOMs++
+								}
+								return nil
+							},
+						}); err != nil {
+							renderErrMu.Lock()
+							if renderErr == nil {
+								renderErr = fmt.Errorf("enqueue no-audio localized render: %w", err)
+							}
+							renderErrMu.Unlock()
+						}
+					}()
+				}
+			}
+		}
+		renders.Wait()
+		if renderErr != nil {
+			renderErr = hb.annotate(renderErr)
+			r.failExecutionStepBestEffort(ctx, exec, scriptStep, renderErr)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, renderErr)
+			return false
+		}
+		result.RenderMetrics.WallMS = time.Since(renderBatchStarted).Milliseconds()
+	}
+	return true
+}
+
+func applyDefaultSceneRenderSubfolder(req *GenerateRequest) {
+	if !req.Render.Enabled || strings.TrimSpace(req.Render.DriveSubfolderName) != "" {
+		return
+	}
+	req.Render.DriveSubfolderName = strings.TrimSpace(req.Title)
+	if req.Render.DriveSubfolderName == "" {
+		req.Render.DriveSubfolderName = strings.TrimSpace(req.Source.Topic)
+	}
+}
+
+// setSceneRenderExpectations records the canonical render-unit promise only
+// while dispatch is live. Sealing ExpectedRenderCount keeps completion from
+// demanding work this runner never dispatches.
+func setSceneRenderExpectations(req GenerateRequest, scenes []Scene, result *GenerateResult) {
+	if req.Source.Type != SourceClips || !req.Render.Enabled {
+		return
+	}
+	result.RenderMetrics = &RenderMetrics{Concurrency: req.Render.RenderConcurrency}
+	if sceneRenderDispatchSealed {
+		return
+	}
+	expectedUnits := expectedRenderUnits(req, scenes)
+	result.ExpectedRenderCount = expectedUnits
+	result.RenderMetrics.Expected = expectedUnits
+}
+
+// applySceneEditorialEnrichment computes the optional Rust editorial products
+// and applies them to the result. Failure is observable but never fatal: a
+// missing NLP worker must not cost the caller the video.
+func (r *Runner) applySceneEditorialEnrichment(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, scenes []Scene, text string, hb *stageHeartbeat) {
+	if _, enabled := r.sceneSemanticAnalyzer.(SceneSemanticEditorialBatchAnalyzer); !enabled || strings.TrimSpace(text) == "" {
+		return
+	}
+	hb.setOp("editorial_enrichment")
+	out, err := r.computePhraseImpactEnrichment(ctx, text, scenes, req)
+	if out != nil {
+		for _, tm := range out.timings {
+			observePhraseImpactTimings(tm)
+		}
+	}
+	if err != nil {
+		r.log.Warn("phrase-impact analysis unavailable; continuing without extractive summary",
+			zap.String("run_id", runID), zap.Error(err))
+		return
+	}
+	if out == nil {
+		return
+	}
+	result.Summary = out.summary
+	result.BulletPoints = out.bullets
+	result.HeavySentences = out.heavy
+	result.ChapterManifest = out.chapterManifest
+	result.SceneHighlights = out.highlights
+	result.Editorial = out.editorial
+	result.SemanticConsolidation = out.consolidation
+	result.SemanticProductionPlan = out.productionPlan
+	result.SemanticSearchFeedback = out.searchFeedback
+}
+
+func (r *Runner) attachSceneClipInputAssets(ctx context.Context, runID string, exec ExecutionContext, step ExecutionStep, result *GenerateResult) bool {
+	ordinal := 0
+	for _, scene := range result.Scenes {
+		if scene.Clip == nil {
+			continue
+		}
+		if err := r.attachInputAsset(ctx, exec, step.StepID, scene.Clip.ID, ordinal); err != nil {
+			r.failExecutionStepBestEffort(ctx, exec, step, err)
+			r.failRunWithRetry(ctx, runID, StageGeneratingSceneText, err)
+			return false
+		}
+		ordinal++
+	}
+	return true
 }

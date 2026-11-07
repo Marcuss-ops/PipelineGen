@@ -203,12 +203,7 @@ var registry = []Knob{
 		SafeProduction: "4 (1..16)",
 		Description:    "Drive sources resolved in parallel while preparing a handoff.",
 	},
-	{
-		Name: "VELOX_FINAL_JOB_STOCK_CACHE_DIR", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/remote_final_job_resolve.go",
-		SafeProduction: "unset (default cache root)",
-		Description:    "Relocates the resolved stock-asset cache used by the handoff.",
-	},
+
 	{
 		Name: "VELOX_FINAL_JOB_WORKER_ID", Kind: KindEnv, Default: "",
 		Owner:          "internal/app/wiring/remote_final_job.go",

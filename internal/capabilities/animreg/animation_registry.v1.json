@@ -5962,58 +5962,6 @@
       }
     },
     {
-      "id": "phrase_apple_clean_06_blur_gravity",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 25,
-        "phrase.apple_clean": 5,
-        "phrase.all": 52
-      }
-    },
-    {
-      "id": "phrase_apple_clean_07_slide_up_soft",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.long",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 26,
-        "phrase.apple_clean": 6,
-        "phrase.long": 9,
-        "phrase.all": 53
-      }
-    },
-    {
       "id": "phrase_apple_clean_08_slide_up_spring",
       "families": [
         "phrase.modern_apple",
@@ -6038,83 +5986,6 @@
         "phrase.apple_clean": 7,
         "phrase.long": 10,
         "phrase.all": 54
-      }
-    },
-    {
-      "id": "phrase_apple_clean_09_slide_down_catch",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 28,
-        "phrase.apple_clean": 8,
-        "phrase.all": 55
-      }
-    },
-    {
-      "id": "phrase_apple_clean_10_slide_from_right_apple",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.long",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 29,
-        "phrase.apple_clean": 9,
-        "phrase.long": 11,
-        "phrase.all": 56
-      }
-    },
-    {
-      "id": "phrase_apple_clean_11_slide_left_ease",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 30,
-        "phrase.apple_clean": 10,
-        "phrase.all": 57
       }
     },
     {
@@ -6171,22 +6042,6 @@
         "phrase.long": 12,
         "phrase.all": 59
       }
-    },
-    {
-      "id": "phrase_apple_clean_14_scale_bounce_clean",
-      "families": [
-        "phrase.all"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "retired",
-      "renderer_supported": false,
-      "targets": [
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1"
     },
     {
       "id": "phrase_apple_clean_15_scale_hero_focus",
@@ -6313,106 +6168,6 @@
         "phrase.modern_apple": 37,
         "phrase.apple_clean": 17,
         "phrase.all": 64
-      }
-    },
-    {
-      "id": "phrase_apple_clean_20_tracking_spread_clean",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 38,
-        "phrase.apple_clean": 18,
-        "phrase.all": 65
-      }
-    },
-    {
-      "id": "phrase_apple_clean_21_tracking_magnetic",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 39,
-        "phrase.apple_clean": 19,
-        "phrase.all": 66
-      }
-    },
-    {
-      "id": "phrase_apple_clean_22_tracking_word_focus",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 40,
-        "phrase.apple_clean": 20,
-        "phrase.all": 67
-      }
-    },
-    {
-      "id": "phrase_apple_clean_23_tracking_precision_lock",
-      "families": [
-        "phrase.modern_apple",
-        "phrase.apple_clean",
-        "phrase.all",
-        "bullet"
-      ],
-      "lanes": [
-        "long"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "phrase",
-        "text"
-      ],
-      "chronontemplate_family": "phrase_apple_clean_v1",
-      "order": {
-        "phrase.modern_apple": 41,
-        "phrase.apple_clean": 21,
-        "phrase.all": 68
       }
     },
     {
@@ -7285,29 +7040,6 @@
       "targets": []
     },
     {
-      "id": "short_phrase_editorial_baseline_rise",
-      "families": [
-        "phrase.short",
-        "phrase.short.words_4",
-        "bullet"
-      ],
-      "lanes": [
-        "short"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "caption",
-        "short_phrase"
-      ],
-      "word_count": 4,
-      "order": {
-        "phrase.short.words_4": 0,
-        "phrase.short": 17
-      }
-    },
-    {
       "id": "short_phrase_editorial_claude_diff_patch",
       "families": [
         "phrase.short"
@@ -7478,29 +7210,6 @@
       "status": "retired",
       "renderer_supported": false,
       "targets": []
-    },
-    {
-      "id": "short_phrase_editorial_side_glide",
-      "families": [
-        "phrase.short",
-        "phrase.short.words_5",
-        "bullet"
-      ],
-      "lanes": [
-        "short"
-      ],
-      "status": "active",
-      "renderer_supported": true,
-      "targets": [
-        "bullet",
-        "caption",
-        "short_phrase"
-      ],
-      "word_count": 5,
-      "order": {
-        "phrase.short.words_5": 0,
-        "phrase.short": 24
-      }
     },
     {
       "id": "short_phrase_editorial_tracking_close",

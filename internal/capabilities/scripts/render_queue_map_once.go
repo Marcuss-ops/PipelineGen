@@ -4,13 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 )
@@ -88,8 +90,8 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 	// retaining a 3x map raster only multiplies tile and RAM use before it is
 	// downsampled again.
 	renderWidth, renderHeight := plan.Width, plan.Height
-	if renderWidth > 1920 || renderHeight > 1080 {
-		renderWidth, renderHeight = 1920, 1080
+	if renderWidth > kernelmedia.CanonicalWidth || renderHeight > kernelmedia.CanonicalHeight {
+		renderWidth, renderHeight = kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight
 	}
 	// The native renderer's wire pins are the grounded place identity only
 	// (id, label, latitude, longitude) — its payload contract refuses fields

@@ -7,10 +7,17 @@ type runRequest struct {
 	SearchQueries []string `json:"search_queries"`
 	DirectURLs    []string `json:"direct_urls,omitempty"`
 	// SourceDurations lets the caller supply the durations it already knows
-	// for its direct_urls (URL → seconds), skipping the server-side provider
-	// probe for those URLs before planning. Optional; URLs left out keep the
-	// probe. Durations <= 0 are treated as unknown.
-	SourceDurations                map[string]float64                `json:"source_durations,omitempty"`
+	// for its direct_urls (URL → seconds). When a URL also has a
+	// source_titles entry the server-side provider probe is skipped entirely;
+	// a URL with only a duration is still probed for its title (the duration
+	// stays authoritative). Optional; URLs left out keep the probe. Durations
+	// <= 0 are treated as unknown.
+	SourceDurations map[string]float64 `json:"source_durations,omitempty"`
+	// SourceTitles carries the display titles for direct_urls (URL → title).
+	// Supplying it together with source_durations skips the provider probe and
+	// keeps the clips searchable by their real titles; a URL with only a
+	// duration is still probed for its title, never for the duration.
+	SourceTitles                   map[string]string                 `json:"source_titles,omitempty"`
 	DriveURLs                      []string                          `json:"drive_urls,omitempty"`
 	Clips                          []stockpipeline.ClipSpec          `json:"clips,omitempty"`
 	TotalMinutes                   int                               `json:"total_minutes"`

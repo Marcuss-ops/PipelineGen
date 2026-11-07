@@ -21,11 +21,12 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     environment:
       SEARXNG_BASE_URL: "http://127.0.0.1:8080/"
       SEARXNG_INSTANCE_NAME: "pipelinegen-searxng"
       SEARXNG_SECRET: "${VELOX_SEARXNG_SECRET:-change-me-in-secrets}"
-      SEARXNG_FORMATS: "html,json"
       SEARXNG_METHOD: "GET"
       SEARXNG_LIMITER: "false"
 volumes:

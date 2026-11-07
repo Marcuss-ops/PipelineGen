@@ -126,7 +126,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		return nil, fmt.Errorf("wire stock pipeline: Drive admin, reader, and publisher are required")
 	}
 
-	// Cutter, renderer, and probe share one Executor so resource limits,
+	// Cutter and probe share one Executor so resource limits,
 	// process-group cancellation, bounded diagnostics, and .part cleanup are
 	// owned by this composition root rather than each adapter separately.
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, ffmpegPath, log)
@@ -140,7 +140,6 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	if cutterErr != nil {
 		return nil, fmt.Errorf("wire stock pipeline: configure cutter: %w", cutterErr)
 	}
-	stockRenderer := rustexec.NewStockRendererWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)
 
 	// ChannelLister + SourceStager: share the same yt-dlp downloader.
 	// StockDownloaderAdapter bridges the concrete YTDLPDownloader to the
@@ -352,8 +351,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			DriveReader: root.Drive.DriveUploader,
 		},
 		Media: StockMediaDeps{
-			Cutter:   stockCutter,
-			Renderer: stockRenderer,
+			Cutter: stockCutter,
 		},
 		Orchestration: StockOrchestrationDeps{
 			Jobs:          root.Jobs.Service,

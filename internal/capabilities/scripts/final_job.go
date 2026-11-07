@@ -18,23 +18,6 @@ type FinalJobSubmitter interface {
 	SubmitFinalJob(context.Context, string, GenerateRequest, *GenerateResult) (RemoteFinalJobResult, error)
 }
 
-// FinalJobSourcePrewarmer is the OPTIONAL capability that resolves the stock
-// sources a final job will consume BEFORE the handoff asks for them.
-//
-// A handoff resolves its stock serially by contract (each source publishes its
-// own bytes), so on a 10-scene run it pays ~10 s inside `remote_final_job`
-// while the overlay render holds 13 s of the critical path with nothing queued
-// behind it. Warming the same sources during that render moves the cost into a
-// window that was already paid for; it does not make the resolution faster.
-//
-// It is optional and best-effort by construction: a submitter that cannot
-// prewarm keeps the serial handoff byte for byte, and the returned error is
-// logged by the runner — the handoff still walks and still reports its own
-// failure, so a prewarm miss can only cost the time it tried to save.
-type FinalJobSourcePrewarmer interface {
-	PrewarmFinalJobStockSources(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult) error
-}
-
 // FinalJobStarter separates creating the remote render from waiting for it.
 // The runner checkpoints the returned job ID before it starts polling, so a
 // process restart can always reattach to the same render.
@@ -52,6 +35,12 @@ var ErrFinalJobPending = errors.New("remote final job is still rendering")
 // ErrFinalJobReceiptCheckpoint prevents an automatic retry when durable
 // receipt state could not be saved safely.
 var ErrFinalJobReceiptCheckpoint = errors.New("remote final job receipt checkpoint failed")
+
+// FinalJobReportOwner names the ONE durable report that owns the final-job
+// projection: receipt, timing and boundary verdict. It is persisted in
+// run_observability.report_json (RunReport.FinalJob). The resumable copy in
+// run_observability.workflow_payload_json is a checkpoint, not a second report.
+const FinalJobReportOwner = "run_observability.report_json"
 
 // FinalJobAttacher is the OPTIONAL half of the final-job contract: waiting on a
 // job that a PREVIOUS attempt already submitted, with no second PREPARE. A
@@ -76,6 +65,10 @@ type RemoteFinalJobResult struct {
 	WorkerID    string `json:"worker_id,omitempty"`
 	ArtifactURL string `json:"artifact_url,omitempty"`
 	SHA256      string `json:"sha256,omitempty"`
+	// ReportOwner is the single durable owner of this receipt. It is stamped on
+	// every receipt (submit, attach, stale) so a reader never has to guess
+	// whether timing came from the Master, a log line or a sidecar.
+	ReportOwner string `json:"report_owner,omitempty"`
 	// Simulated marks a receipt produced by the local-only fake submitter
 	// (VELOX_FAKE_FINAL_JOB): the handoff completed, but no remote render was
 	// dispatched and no artifact exists. It exists so an operator can tell a

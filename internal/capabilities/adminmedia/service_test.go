@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -116,34 +115,5 @@ func TestExportSoundEffectsMetadata_GroupsUncategorized(t *testing.T) {
 	}
 	if len(document.ByFamily["cinematic"]) != 1 || len(document.ByFamily["uncategorized"]) != 1 {
 		t.Fatalf("families = %+v", document.ByFamily)
-	}
-}
-
-type testRenderer struct{ calls int }
-
-func (r *testRenderer) Render(context.Context, RenderManifest) error { r.calls++; return nil }
-
-func TestRenderShort_RendersBeforeOptionalUpload(t *testing.T) {
-	dir := t.TempDir()
-	input := filepath.Join(dir, "input.mp4")
-	output := filepath.Join(dir, "out.mp4")
-	if err := os.WriteFile(input, []byte("input"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	renderer := &testRenderer{}
-	uploader := &testUploader{}
-	result, err := RenderShort(context.Background(), RenderManifest{
-		Input: input, Output: output, Font: "/font.ttf",
-		Overlays: []RenderOverlay{{Text: "hello"}},
-		Upload:   &RenderUpload{FolderID: "folder-1", Filename: "out.mp4"},
-	}, renderer, uploader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result == nil || result.FileID != "file-1" {
-		t.Fatalf("result = %+v, want uploaded file-1", result)
-	}
-	if renderer.calls != 1 || len(uploader.commands) != 1 {
-		t.Fatalf("renderer calls=%d uploader calls=%d", renderer.calls, len(uploader.commands))
 	}
 }

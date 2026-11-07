@@ -8,10 +8,12 @@ package scriptgeneration
 
 import (
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"math"
 	"sort"
 	"strings"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -242,7 +244,7 @@ func entityImageCaption(item capmodel.OverlayItem) string {
 
 func entityImageLayerParams(width, height, count, slot int) map[string]any {
 	if width <= 0 || height <= 0 {
-		width, height = 1920, 1080
+		width, height = kernelmedia.CanonicalWidth, kernelmedia.CanonicalHeight
 	}
 	boxWidth, boxHeight := float64(width)*0.42, float64(height)*0.56
 	var x, y float64

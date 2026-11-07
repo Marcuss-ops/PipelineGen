@@ -15,16 +15,17 @@ type vidRushProviderOutcome struct {
 }
 
 type vidRushFanoutPlan struct {
-	segmentID      string
-	textHash       string
-	text           string
-	title          string
-	imageQueries   []string
-	firstEntity    string
-	youtubeSources []scriptports.VidRushSourceHint
-	perQueryLimit  int
-	imagesEnabled  bool
-	youtubeEnabled bool
+	segmentID          string
+	textHash           string
+	text               string
+	title              string
+	imageQueries       []string
+	firstEntity        string
+	youtubeSources     []scriptports.VidRushSourceHint
+	perQueryLimit      int
+	imagesEnabled      bool
+	youtubeEnabled     bool
+	parallelQueryChild bool
 }
 
 // VidRushProviderFanout construction (merged from

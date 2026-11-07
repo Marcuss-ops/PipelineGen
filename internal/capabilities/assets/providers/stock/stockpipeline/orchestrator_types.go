@@ -136,7 +136,7 @@ const stockArtifactCount = 5
 // construction. The orchestrator cannot run with nil Planner /
 // Steps / Stager; the caller side (Service.RunOrchestrator or
 // the composition root) is expected to validate-or-default.
-var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/renderer/stepStore must be non-nil")
+var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/cutter/stepStore must be non-nil")
 
 // Orchestrator is the canonical pipeline entrypoint (STATO ATTUALE).
 // Service.Run coexists for ServiceRunner interface back-compat
@@ -153,11 +153,10 @@ var ErrOrchestratorNilDeps = errors.New("orchestrator: planner/stager/renderer/s
 // that returns the manifest component of the RunSummary for legacy
 // callers (existing run_orchestrator_test.go tests).
 type Orchestrator struct {
-	cfg      OrchestratorConfig
-	planner  ClipPlanner
-	stager   acquisition.SourceStager
-	cutter   VideoCutter
-	renderer StockRenderer
+	cfg     OrchestratorConfig
+	planner ClipPlanner
+	stager  acquisition.SourceStager
+	cutter  VideoCutter
 	// builder emits the typed *job.ArtifactManifest from (workflowID,
 	// jobID). Default: stockManifestBuilder wrapping buildStockManifest.
 	builder ManifestBuilder

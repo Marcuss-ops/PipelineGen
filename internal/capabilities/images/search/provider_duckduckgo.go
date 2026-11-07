@@ -54,6 +54,24 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 		return nil, nil
 	}
 	if many, ok := p.bridge.(interface {
+		SearchDDGImageCandidatesMany(context.Context, string, int) []RetrievalSearchResult
+	}); ok {
+		results := many.SearchDDGImageCandidatesMany(ctx, query, 10)
+		if len(results) == 0 {
+			if err := p.challengeError(); err != nil {
+				return nil, err
+			}
+		}
+		for i := range results {
+			results[i].Provider = detail.ProviderDuckDuckGo
+			results[i].Origin = detail.ImageOriginRetrieved
+			if results[i].PageURL == "" {
+				results[i].PageURL = results[i].PreviewURL
+			}
+		}
+		return results, nil
+	}
+	if many, ok := p.bridge.(interface {
 		SearchDDGWideMany(context.Context, string, int) []string
 	}); ok {
 		urls := many.SearchDDGWideMany(ctx, query, 10)

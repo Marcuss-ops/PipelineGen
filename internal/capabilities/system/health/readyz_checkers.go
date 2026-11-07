@@ -284,16 +284,8 @@ func (r *ReadyChecker) runCanaryCheck(ctx context.Context, resp *HealthResponse)
 		resp.Checks["drive_canary"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	start := time.Now()
-	err := r.canary.CanaryUpload(ctx, r.canaryFolder)
-	elapsed := time.Since(start).Milliseconds()
-	if err != nil {
-		resp.Checks["drive_canary"] = CheckResult{"ok": false, "duration_ms": elapsed, "error": "drive canary upload failed: " + err.Error()}
-		resp.OK = false
-		resp.Status = "unhealthy"
-	} else {
-		resp.Checks["drive_canary"] = CheckResult{"ok": true, "duration_ms": elapsed, "folder": r.canaryFolder}
-	}
+	runProbe(resp, "drive_canary", func() error { return r.canary.CanaryUpload(ctx, r.canaryFolder) },
+		CheckResult{"folder": r.canaryFolder}, CheckResult{}, "drive canary upload failed: ")
 }
 
 func (r *ReadyChecker) runHandlerCheck(ctx context.Context, resp *HealthResponse) {
@@ -339,16 +331,9 @@ func (r *ReadyChecker) runDriveFolderCheck(ctx context.Context, resp *HealthResp
 		resp.Checks["drive_folder"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	start := time.Now()
-	err := r.driveFolder.CheckFolder(ctx, r.driveFolderID)
-	elapsed := time.Since(start).Milliseconds()
-	if err != nil {
-		resp.Checks["drive_folder"] = CheckResult{"ok": false, "duration_ms": elapsed, "error": "drive folder not accessible: " + err.Error(), "folder": r.driveFolderID}
-		resp.OK = false
-		resp.Status = "unhealthy"
-	} else {
-		resp.Checks["drive_folder"] = CheckResult{"ok": true, "duration_ms": elapsed, "folder": r.driveFolderID, "accessible": true}
-	}
+	runProbe(resp, "drive_folder", func() error { return r.driveFolder.CheckFolder(ctx, r.driveFolderID) },
+		CheckResult{"folder": r.driveFolderID, "accessible": true},
+		CheckResult{"folder": r.driveFolderID}, "drive folder not accessible: ")
 }
 
 func (r *ReadyChecker) runPublisherCheck(resp *HealthResponse) {
@@ -390,16 +375,9 @@ func (r *ReadyChecker) runTempPathCheck(resp *HealthResponse) {
 		resp.Checks["temp"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	start := time.Now()
-	err := r.tempChecker.CheckTempWritable(r.tempPath)
-	elapsed := time.Since(start).Milliseconds()
-	if err != nil {
-		resp.Checks["temp"] = CheckResult{"ok": false, "duration_ms": elapsed, "error": "temp path not writable: " + err.Error(), "path": r.tempPath}
-		resp.OK = false
-		resp.Status = "unhealthy"
-	} else {
-		resp.Checks["temp"] = CheckResult{"ok": true, "duration_ms": elapsed, "path": r.tempPath, "writable": true}
-	}
+	runProbe(resp, "temp", func() error { return r.tempChecker.CheckTempWritable(r.tempPath) },
+		CheckResult{"path": r.tempPath, "writable": true},
+		CheckResult{"path": r.tempPath}, "temp path not writable: ")
 }
 
 func (r *ReadyChecker) runTTSCheck(ctx context.Context, resp *HealthResponse) {
@@ -407,16 +385,8 @@ func (r *ReadyChecker) runTTSCheck(ctx context.Context, resp *HealthResponse) {
 		resp.Checks["tts"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	start := time.Now()
-	err := r.ttsChecker.CheckTTS(ctx)
-	elapsed := time.Since(start).Milliseconds()
-	if err != nil {
-		resp.Checks["tts"] = CheckResult{"ok": false, "duration_ms": elapsed, "error": "TTS unavailable: " + err.Error()}
-		resp.OK = false
-		resp.Status = "unhealthy"
-	} else {
-		resp.Checks["tts"] = CheckResult{"ok": true, "duration_ms": elapsed, "tts_available": true}
-	}
+	runProbe(resp, "tts", func() error { return r.ttsChecker.CheckTTS(ctx) },
+		CheckResult{"tts_available": true}, CheckResult{}, "TTS unavailable: ")
 }
 
 func (r *ReadyChecker) runDriveRootCheck(ctx context.Context, resp *HealthResponse) {
@@ -424,16 +394,9 @@ func (r *ReadyChecker) runDriveRootCheck(ctx context.Context, resp *HealthRespon
 		resp.Checks["drive_root"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	start := time.Now()
-	err := r.driveRootChecker.CheckDriveRoot(ctx, r.driveRootFolder)
-	elapsed := time.Since(start).Milliseconds()
-	if err != nil {
-		resp.Checks["drive_root"] = CheckResult{"ok": false, "duration_ms": elapsed, "error": "Drive root folder inaccessible: " + err.Error(), "folder_id": r.driveRootFolder}
-		resp.OK = false
-		resp.Status = "unhealthy"
-	} else {
-		resp.Checks["drive_root"] = CheckResult{"ok": true, "duration_ms": elapsed, "folder_id": r.driveRootFolder, "accessible": true}
-	}
+	runProbe(resp, "drive_root", func() error { return r.driveRootChecker.CheckDriveRoot(ctx, r.driveRootFolder) },
+		CheckResult{"folder_id": r.driveRootFolder, "accessible": true},
+		CheckResult{"folder_id": r.driveRootFolder}, "Drive root folder inaccessible: ")
 }
 
 func (r *ReadyChecker) runOllamaCheck(ctx context.Context, resp *HealthResponse) {
@@ -441,16 +404,8 @@ func (r *ReadyChecker) runOllamaCheck(ctx context.Context, resp *HealthResponse)
 		resp.Checks["ollama"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	start := time.Now()
-	err := r.ollamaChecker.CheckOllama(ctx)
-	elapsed := time.Since(start).Milliseconds()
-	if err != nil {
-		resp.Checks["ollama"] = CheckResult{"ok": false, "duration_ms": elapsed, "error": "Ollama unreachable: " + err.Error()}
-		resp.OK = false
-		resp.Status = "unhealthy"
-	} else {
-		resp.Checks["ollama"] = CheckResult{"ok": true, "duration_ms": elapsed, "ollama_reachable": true}
-	}
+	runProbe(resp, "ollama", func() error { return r.ollamaChecker.CheckOllama(ctx) },
+		CheckResult{"ollama_reachable": true}, CheckResult{}, "Ollama unreachable: ")
 }
 
 func (r *ReadyChecker) runOutboxCheck(ctx context.Context, resp *HealthResponse) {
@@ -458,16 +413,8 @@ func (r *ReadyChecker) runOutboxCheck(ctx context.Context, resp *HealthResponse)
 		resp.Checks["outbox"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
 		return
 	}
-	start := time.Now()
-	err := r.outboxChecker.CheckOutboxWorker(ctx)
-	elapsed := time.Since(start).Milliseconds()
-	if err != nil {
-		resp.Checks["outbox"] = CheckResult{"ok": false, "duration_ms": elapsed, "error": "outbox worker unavailable: " + err.Error()}
-		resp.OK = false
-		resp.Status = "unhealthy"
-	} else {
-		resp.Checks["outbox"] = CheckResult{"ok": true, "duration_ms": elapsed, "outbox_worker_active": true}
-	}
+	runProbe(resp, "outbox", func() error { return r.outboxChecker.CheckOutboxWorker(ctx) },
+		CheckResult{"outbox_worker_active": true}, CheckResult{}, "outbox worker unavailable: ")
 }
 
 func (r *ReadyChecker) runScriptGenerateCheck(ctx context.Context, resp *HealthResponse) {
@@ -490,6 +437,28 @@ func (r *ReadyChecker) runScriptGenerateCheck(ctx context.Context, resp *HealthR
 // probes (same second) produce distinct filenames. Owned
 // exclusively by the orchestrator so the runClipsPathCheck caller
 // has a stable internal helper via same-package scope.
+
+// runProbe executes one readiness probe and records the canonical result
+// envelope: timing is measured around the call, a failure flips the overall
+// response unhealthy, and success/failure carry only the probe-specific fields.
+func runProbe(resp *HealthResponse, name string, probe func() error, success, failure CheckResult, errPrefix string) {
+	start := time.Now()
+	err := probe()
+	elapsed := time.Since(start).Milliseconds()
+	if err != nil {
+		failure["ok"] = false
+		failure["duration_ms"] = elapsed
+		failure["error"] = errPrefix + err.Error()
+		resp.Checks[name] = failure
+		resp.OK = false
+		resp.Status = "unhealthy"
+		return
+	}
+	success["ok"] = true
+	success["duration_ms"] = elapsed
+	resp.Checks[name] = success
+}
+
 func formatNanos(ns int) string {
 	return string([]byte{
 		byte('0' + ns/100_000_000),

@@ -4,11 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
@@ -17,7 +18,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -87,31 +87,44 @@ func scriptGenerationTranslationPort(root *ComposeRoot) translation.TranslationP
 	return nil
 }
 
-func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo scriptgen.RunRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptgen.Runner, error) {
+func validateScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo scriptgen.RunRepository) error {
 	if cfg == nil || root == nil || runRepo == nil {
-		return nil, fmt.Errorf("script generation runtime requires config, composition root, and run repository")
+		return fmt.Errorf("script generation runtime requires config, composition root, and run repository")
 	}
 	if root.AI == nil || root.AI.SceneTextGenerator == nil || root.AI.OllamaTranslator == nil {
-		return nil, fmt.Errorf("script generation runtime requires scene text and translation adapters")
+		return fmt.Errorf("script generation runtime requires scene text and translation adapters")
 	}
 	if strings.TrimSpace(cfg.External.RustMusclesPath) == "" {
-		return nil, fmt.Errorf("script generation runtime requires Rust media executor path")
+		return fmt.Errorf("script generation runtime requires Rust media executor path")
 	}
+	return nil
+}
 
+// buildScriptGenerationMedia binds the sampler policy once so select and
+// select_group share the same operator configuration, then constructs the
+// combined audio renderer over the configured video processor.
+func buildScriptGenerationMedia(cfg *config.Config, root *ComposeRoot, log *zap.Logger) (*rustexec.MediaSamplerAdapter, *rustexec.CombinedAudioRenderer, error) {
 	executor := rustexec.NewExecutor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, log)
 	mediaSamplerExecutor := rustexec.NewExecutor(cfg.External.RustMediaSamplerPath, cfg.External.FfmpegPath, log)
-	// The Go-owned sampler selection policy (data-driven keyword tables,
-	// optional diversity weight) is bound ONCE here so both `select` and
-	// `select_group` operate on the same operator configuration. An empty
-	// config keeps the Rust worker's curated V1 defaults untouched.
 	mediaSampler, err := rustexec.NewMediaSamplerWithPolicy(mediaSamplerExecutor, rustexec.NewSamplerPolicy(cfg.Media.Sampler))
 	if err != nil {
-		return nil, fmt.Errorf("build MediaSampler adapter: %w", err)
+		return nil, nil, fmt.Errorf("build MediaSampler adapter: %w", err)
 	}
 	videoProcessor := rustexec.NewConfiguredVideoProcessorWithExecutor(executor, root.MediaExec.Policy, root.MediaExec.Profile, log)
 	audioRenderer, err := rustexec.NewCombinedAudioRenderer(videoProcessor)
 	if err != nil {
-		return nil, fmt.Errorf("build combined audio renderer: %w", err)
+		return nil, nil, fmt.Errorf("build combined audio renderer: %w", err)
+	}
+	return mediaSampler, audioRenderer, nil
+}
+
+func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo scriptgen.RunRepository, committer assetspersistence.AssetCommitter, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort) (*scriptgen.Runner, error) {
+	if err := validateScriptGenerationRuntime(cfg, root, runRepo); err != nil {
+		return nil, err
+	}
+	mediaSampler, audioRenderer, err := buildScriptGenerationMedia(cfg, root, log)
+	if err != nil {
+		return nil, err
 	}
 	runner := scriptgen.NewRunner(
 		runRepo,
@@ -157,39 +170,8 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			log.Info("final-audio plan cache configured", zap.String("cache_dir", audioCacheDir))
 		}
 	}
-	if fakeFinalJobRequested() {
-		// Local-only measurement mode: every local phase still runs, the remote
-		// render does not. The receipt is marked Simulated so nothing downstream
-		// can mistake it for a certified artifact.
-		runner.SetFinalJobSubmitter(newFakeFinalJobSubmitter())
-		log.Warn("remote final-job handoff SIMULATED (" + fakeFinalJobEnv + "=1): no render will be dispatched; timings cover the LOCAL pipeline only")
-	} else if remoteFinalJob, remoteErr := newRemoteFinalJobAdapter(root); remoteErr != nil {
-		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(remoteErr))
-	} else {
-		fragmentLanes, lanesErr := finalJobFragmentLanes()
-		if lanesErr != nil {
-			return nil, lanesErr
-		}
-		fragmentPolicy, policyErr := config.FinalJobFragmentEncoderPolicy(config.VideoEncoderPolicy{
-			Codec: root.MediaExec.Policy.Codec, Preset: root.MediaExec.Policy.Preset, CRF: root.MediaExec.Policy.CRF,
-		})
-		if policyErr != nil {
-			return nil, policyErr
-		}
-		fragmentCacheDir := finalJobFragmentCacheDir(cfg.Storage.DataDir)
-		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, mediaexec.EncoderPolicy{
-			Codec: fragmentPolicy.Codec, Preset: fragmentPolicy.Preset, CRF: fragmentPolicy.CRF,
-		}, fragmentCacheDir, fragmentLanes)
-		log.Info("final-job fragment preparation configured",
-			zap.Int("lanes", fragmentLanes),
-			zap.Bool("cache", fragmentCacheDir != ""),
-			zap.String("cache_dir", fragmentCacheDir))
-		// Use the same configured media processor for stock staging and
-		// certification. Without this probe the remote final-job path can
-		// download a stock clip but cannot verify its video stream/duration.
-		remoteFinalJob.probe = videoProcessor
-		runner.SetFinalJobSubmitter(remoteFinalJob)
-		log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.client.BaseURL))
+	if err := wireScriptGenerationFinalJob(runner, cfg, root, log); err != nil {
+		return nil, err
 	}
 	// Durable per-unit checkpoint resume (the audio unit today). The resolver
 	// gates reuse on (input fingerprint + recorded artifact still present +
@@ -254,99 +236,8 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		log.Warn("audio asset resolver not wired: asset registry missing (BGM/SFX intents will fail closed)")
 	}
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
-	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
-		queueClient := renderinggen.New(queueURL)
-		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
-		if storeURL == "" {
-			storeURL = defaultRenderingGenStoreURL
-		}
-		queueClient.SetAssetPrefetcher(renderinggen.NewHTTPAssetPrefetcher(storeURL))
-		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(queueClient)
-		if err != nil {
-			return nil, fmt.Errorf("build queue prepare enqueuer: %w", err)
-		}
-		runner.SetOverlayPrepareEnqueuer(prepareEnqueuer)
-		renderEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(queueClient)
-		if err != nil {
-			return nil, fmt.Errorf("build queue render enqueuer: %w", err)
-		}
-		renderEnqueuer.SetDynamicMapVideoCacheDir(cfg.Storage.FullPath("dynamic-map-video-cache"))
-		mapGPUGate, gateErr := scriptgen.NewDynamicMapGPUAdmission()
-		if gateErr != nil {
-			return nil, fmt.Errorf("build shared dynamic-map GPU admission gate: %w", gateErr)
-		}
-		renderEnqueuer.SetDynamicMapGPUGate(mapGPUGate)
-		if cfg.External.RenderingGenPollIntervalMS > 0 {
-			renderEnqueuer.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
-		}
-		// Reuse the canonical queue identity for retries/replays. A new render is
-		// requested explicitly by a new plan/force-refresh request; making every
-		// submission fresh here caused identical overlays to be rendered and
-		// published repeatedly.
-		renderEnqueuer.SetFreshRender(false)
-		// Pipelining depth for the per-item overlay renders. This is not a GPU
-		// bound: the worker's worker.gpu_lanes remains the only authority on
-		// concurrent GPU work, so this overlaps the per-item pre/post chain
-		// without oversubscribing the device.
-		renderEnqueuer.SetItemRenderPool(cfg.Scripts.SeparateItemRenderWorkers)
-		wireOverlayRenderCache(root, renderEnqueuer, log)
-		// Generated semantic overlays have their own canonical root. Clip
-		// renders use a separate routing contract and must not influence this
-		// destination: <Overlay Chronon>/<JobID>/<language>/overlay.
-		overlayParentFolderID := cfg.Drive.OverlayRenderFolder()
-		if root.Drive != nil && root.Drive.Publisher != nil && strings.TrimSpace(overlayParentFolderID) != "" {
-			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
-			overlayPublisher := renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher)
-			overlayPublisher.SetRootFolderID(overlayParentFolderID)
-			// Every generated semantic overlay is routed by JobID/PlanID and
-			// language. The configured folder is only the root; an empty
-			// ScriptsGenerateFolder must not silently flatten the overlay tree.
-			overlayPublisher.SetScriptLanguageRouting(true)
-			publicationPublisher, pubErr := wireDurableOverlayPublisher(root, overlayPublisher)
-			if pubErr != nil {
-				return nil, pubErr
-			}
-			renderEnqueuer.SetArtifactPublisher(publicationPublisher)
-			// RenderingGen has already certified immutable bytes when the
-			// enqueuer returns. Drive publication and analytics therefore run on
-			// the bounded post-render pool; the runner joins it before COMPLETE.
-			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
-			renderEnqueuer.SetAsyncPublication(true)
-			runner.SetOverlayPublicationDrainer(renderEnqueuer)
-			log.Info("overlay artifact Drive publisher wired",
-				zap.String("parent_folder_id", overlayParentFolderID),
-				zap.String("child_folder", "overlay"),
-				zap.Bool("durable_outbox", publicationPublisher != overlayPublisher))
-		} else {
-			// Ordinary certified video renders do not need a Drive copy. The
-			// queue fails closed if a final-job delivery explicitly requires one.
-			// Single publication path (TICKET-MAX-THROUGHPUT-OVERLAY-
-			// ARCHITECTURE §9.3.3 punto 5): the bounded post-render pool owns
-			// any publication work in EVERY configuration — Drive-backed or
-			// analytics-only — so no submit-side wait can ever serialize a
-			// render lane behind Drive/analytics latency.
-			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
-			renderEnqueuer.SetAsyncPublication(true)
-			runner.SetOverlayPublicationDrainer(renderEnqueuer)
-			log.Info("overlay Drive publisher unavailable; local certified renders remain enabled",
-				zap.Int("publication_workers", cfg.Scripts.OverlayPublicationWorkers))
-		}
-		var analyticsDB *sql.DB
-		if root.DB != nil {
-			analyticsDB = root.DB.DB
-		}
-		renderEnqueuer.SetRecorder(wireRenderAttemptRecorder(analyticsDB, log))
-		runner.SetOverlayRenderEnqueuer(renderEnqueuer)
-		// Bounded multilingual render fan-out. It replaces the serial
-		// per-language render loop, so N languages no longer wait on Chronon
-		// one after another. The RenderingGen worker still owns gpu_lanes, so
-		// this bounds pipelining, not device load.
-		runner.SetOverlayRenderConcurrency(cfg.Scripts.OverlayRenderConcurrency)
-		log.Info("overlay.prepare enqueuer wired to RenderingGen queue",
-			zap.String("url", queueURL),
-			zap.Int("overlay_render_concurrency", runner.OverlayRenderConcurrency()))
-	} else {
-		log.Warn("overlay.prepare enqueue disabled: RENDERINGGEN_QUEUE_URL is not configured")
+	if err := wireScriptGenerationOverlayQueue(runner, cfg, root, log); err != nil {
+		return nil, err
 	}
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
 		runner.SetScriptPersistence(newScriptGenerationPersistence(
@@ -362,105 +253,9 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		return nil, fmt.Errorf("build script generation runtime: Job Registry is required for execution lineage")
 	}
 
-	// SceneIR entity extraction and image search share the same semantic
-	// engine as the script batch analyzer. Exact source matches reuse the
-	// batch entity projection; translated/different text is analyzed by that
-	// same engine on demand.
-	vidRushEntityExtractor, err := nlp.NewEntityExtractorAdapter(semanticAnalyzer)
-	if err != nil {
-		return nil, fmt.Errorf("build NER entity extractor port: %w", err)
+	if err := wireScriptGenerationVidRush(runner, cfg, root, log, vidRushProviders, vidRushFinalizer, vidRushCache, mediaSampler, semanticAnalyzer); err != nil {
+		return nil, err
 	}
-	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
-	runner.SetImageSearchResolver(imageSearchResolver)
-	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
-	wireSemanticSearchPlanner(runner, cfg, root, log)
-
-	vidRushMetrics := observability.NewVidRushMetricsAdapter()
-	var vidRushFanout scriptgen.SegmentProviderResolver
-	if vidRushProviders != nil {
-		var entityImageCatalogRepo entitycatalog.Repository
-		if root.Repos != nil {
-			entityImageCatalogRepo = root.Repos.EntityImageCatalog
-		}
-		registryMediaResolver := &documentadapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
-		fanout := documentadapters.NewVidRushProviderFanoutWithResolver(
-			registryMediaResolver,
-			vidRushCache,
-			entityImageCatalogRepo,
-			vidRushMetrics,
-		).WithLogger(log)
-		// Opt-in media_manifest fast-path on the fan-out (the discovery owner
-		// for plans without the internet_images postprocessor). Fail-open: a
-		// broken manifest logs a warning and never fails a run.
-		if pins, pinsErr := documentadapters.LoadMediaManifestPinsFromEnv(); pinsErr != nil {
-			log.Warn("VidRush image fanout media_manifest fast-path disabled: manifest load failed", zap.String("error", pinsErr.Error()))
-		} else if pins != nil {
-			fanout.WithMediaManifestPins(pins)
-			log.Info("VidRush image fanout media_manifest fast-path enabled", zap.Int("pinned_entries", pins.EntryCount()))
-		}
-		if root.AI != nil && root.AI.ScriptGen != nil {
-			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-				fanout.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))
-				log.Info("VidRush image fanout wired with GPU-capable person-image verification", zap.String("model", ollamaClient.Model()))
-			}
-		}
-		vidRushFanout = fanout
-	}
-	var vidRushMaterializer scriptgen.SegmentMaterializer
-	if vidRushProviders != nil && vidRushFinalizer != nil {
-		var entityImageCatalogRepo entitycatalog.Repository
-		if root.Repos != nil {
-			entityImageCatalogRepo = root.Repos.EntityImageCatalog
-		}
-		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler).WithMediaSamplerGroup(mediaSampler).WithLogger(log)
-	}
-	pipeline := &scriptgen.VidRushPipeline{
-		ProviderResolver: vidRushFanout,
-		Materializer:     vidRushMaterializer,
-		Metrics:          vidRushMetrics,
-		PlanResolver: scriptgen.VidRushPlanResolverFunc(func(ctx context.Context, req scriptgen.GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
-			plan, err := root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
-			return plan, err
-		}),
-		Backpressure: scriptgen.DefaultVidRushBackpressure(),
-		NERPort:      semanticAnalyzer,
-		SamplerPort:  mediaSampler,
-		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
-			return mediacert.Certify(spec, result), nil
-		}),
-		CertSpecResolver: scriptgen.MediaCertSpecResolverFunc(buildRuntimeMediaCertSpec),
-	}
-	if root.MediaPostgres != nil && strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" && vidRushProviders != nil {
-		searcher := pgmedia.NewMediaSearcher(root.MediaPostgres)
-		embedder := stockintelligence.NewHTTPTextEmbedderAdapter(func(ctx context.Context, text string) ([]float32, error) {
-			res, err := embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()).Embed(ctx, text)
-			if err != nil {
-				return nil, err
-			}
-			return res.Vector, nil
-		})
-		local := stockintelligence.PostgresLocalSearchAdapter{Searcher: searcher, Embedder: embedder}
-		hydrator := stockintelligence.PostgresAssetHydrator{Searcher: searcher}
-		provider := stockintelligence.RegistryProviderClient{Registry: vidRushProviders}
-		sampler := func(candidates []stockintelligence.Candidate, segmentID, subject string, terms []string) (string, error) {
-			converted := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
-			for _, candidate := range candidates {
-				converted = append(converted, scriptpkg.SegmentAssetCandidate{AssetID: candidate.AssetID, Entity: candidate.Label, RelevanceScore: float64(candidate.GenericSimilarity), SegmentID: candidate.OwnerSegmentID})
-			}
-			return mediaSampler.Sample(context.Background(), segmentID, subject, terms, converted, false)
-		}
-		if resolver, resolverErr := stockintelligence.NewResolver(local, hydrator, provider, sampler); resolverErr == nil {
-			// Content-addressed resolve replay cache (L1 LRU + durable L2):
-			// repeated entity/query discovery — across segments and across
-			// runs — is served without re-embedding, re-searching or hitting
-			// the provider live path. The sampler stays per-request.
-			resolver.WithCache(documentadapters.NewStockResolveCache(vidRushCache))
-			if service, serviceErr := stockintelligence.NewService(resolver); serviceErr == nil {
-				pipeline.StockResolverPort = service
-			}
-		}
-	}
-	runner.SetVidRushPipeline(pipeline)
 	nlpConcurrency := cfg.Scripts.NLPConcurrency
 	if nlpConcurrency <= 0 {
 		nlpConcurrency = scriptgen.DefaultNLPConcurrency
@@ -591,3 +386,204 @@ func wireRenderAttemptRecorder(db *sql.DB, log *zap.Logger) scriptgen.RenderAtte
 }
 
 var _ scriptgen.Translator = (*scriptGenerationTranslator)(nil)
+
+func wireScriptGenerationOverlayQueue(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger) error {
+	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
+		queueClient := renderinggen.New(queueURL)
+		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
+		if storeURL == "" {
+			storeURL = defaultRenderingGenStoreURL
+		}
+		queueClient.SetAssetPrefetcher(renderinggen.NewHTTPAssetPrefetcher(storeURL))
+		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(queueClient)
+		if err != nil {
+			return fmt.Errorf("build queue prepare enqueuer: %w", err)
+		}
+		runner.SetOverlayPrepareEnqueuer(prepareEnqueuer)
+		renderEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(queueClient)
+		if err != nil {
+			return fmt.Errorf("build queue render enqueuer: %w", err)
+		}
+		renderEnqueuer.SetDynamicMapVideoCacheDir(cfg.Storage.FullPath("dynamic-map-video-cache"))
+		mapGPUGate, gateErr := scriptgen.NewDynamicMapGPUAdmission()
+		if gateErr != nil {
+			return fmt.Errorf("build shared dynamic-map GPU admission gate: %w", gateErr)
+		}
+		renderEnqueuer.SetDynamicMapGPUGate(mapGPUGate)
+		if cfg.External.RenderingGenPollIntervalMS > 0 {
+			renderEnqueuer.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
+		}
+		// Reuse the canonical queue identity for retries/replays. A new render is
+		// requested explicitly by a new plan/force-refresh request; making every
+		// submission fresh here caused identical overlays to be rendered and
+		// published repeatedly.
+		renderEnqueuer.SetFreshRender(false)
+		// Pipelining depth for the per-item overlay renders. This is not a GPU
+		// bound: the worker's worker.gpu_lanes remains the only authority on
+		// concurrent GPU work, so this overlaps the per-item pre/post chain
+		// without oversubscribing the device.
+		renderEnqueuer.SetItemRenderPool(cfg.Scripts.SeparateItemRenderWorkers)
+		wireOverlayRenderCache(root, renderEnqueuer, log)
+		// Generated semantic overlays have their own canonical root. Clip
+		// renders use a separate routing contract and must not influence this
+		// destination: <Overlay Chronon>/<JobID>/<language>/overlay.
+		overlayParentFolderID := cfg.Drive.OverlayRenderFolder()
+		if root.Drive != nil && root.Drive.Publisher != nil && strings.TrimSpace(overlayParentFolderID) != "" {
+			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
+			overlayPublisher := renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher)
+			overlayPublisher.SetRootFolderID(overlayParentFolderID)
+			// Every generated semantic overlay is routed by JobID/PlanID and
+			// language. The configured folder is only the root; an empty
+			// ScriptsGenerateFolder must not silently flatten the overlay tree.
+			overlayPublisher.SetScriptLanguageRouting(true)
+			publicationPublisher, pubErr := wireDurableOverlayPublisher(root, overlayPublisher)
+			if pubErr != nil {
+				return pubErr
+			}
+			renderEnqueuer.SetArtifactPublisher(publicationPublisher)
+			// RenderingGen has already certified immutable bytes when the
+			// enqueuer returns. Drive publication and analytics therefore run on
+			// the bounded post-render pool; the runner joins it before COMPLETE.
+			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
+			renderEnqueuer.SetAsyncPublication(true)
+			runner.SetOverlayPublicationDrainer(renderEnqueuer)
+			log.Info("overlay artifact Drive publisher wired",
+				zap.String("parent_folder_id", overlayParentFolderID),
+				zap.String("child_folder", "overlay"),
+				zap.Bool("durable_outbox", publicationPublisher != overlayPublisher))
+		} else {
+			// Ordinary certified video renders do not need a Drive copy. The
+			// queue fails closed if a final-job delivery explicitly requires one.
+			// Single publication path (TICKET-MAX-THROUGHPUT-OVERLAY-
+			// ARCHITECTURE §9.3.3 punto 5): the bounded post-render pool owns
+			// any publication work in EVERY configuration — Drive-backed or
+			// analytics-only — so no submit-side wait can ever serialize a
+			// render lane behind Drive/analytics latency.
+			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
+			renderEnqueuer.SetAsyncPublication(true)
+			runner.SetOverlayPublicationDrainer(renderEnqueuer)
+			log.Info("overlay Drive publisher unavailable; local certified renders remain enabled",
+				zap.Int("publication_workers", cfg.Scripts.OverlayPublicationWorkers))
+		}
+		var analyticsDB *sql.DB
+		if root.DB != nil {
+			analyticsDB = root.DB.DB
+		}
+		renderEnqueuer.SetRecorder(wireRenderAttemptRecorder(analyticsDB, log))
+		runner.SetOverlayRenderEnqueuer(renderEnqueuer)
+		// Bounded multilingual render fan-out. It replaces the serial
+		// per-language render loop, so N languages no longer wait on Chronon
+		// one after another. The RenderingGen worker still owns gpu_lanes, so
+		// this bounds pipelining, not device load.
+		runner.SetOverlayRenderConcurrency(cfg.Scripts.OverlayRenderConcurrency)
+		log.Info("overlay.prepare enqueuer wired to RenderingGen queue",
+			zap.String("url", queueURL),
+			zap.Int("overlay_render_concurrency", runner.OverlayRenderConcurrency()))
+	} else {
+		log.Warn("overlay.prepare enqueue disabled: RENDERINGGEN_QUEUE_URL is not configured")
+	}
+	return nil
+}
+
+func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort, mediaSampler *rustexec.MediaSamplerAdapter, semanticAnalyzer *rustexec.SemanticEngineAdapter) error {
+	// SceneIR entity extraction and image search share the same semantic
+	// engine as the script batch analyzer. Exact source matches reuse the
+	// batch entity projection; translated/different text is analyzed by that
+	// same engine on demand.
+	vidRushEntityExtractor, err := nlp.NewEntityExtractorAdapter(semanticAnalyzer)
+	if err != nil {
+		return fmt.Errorf("build NER entity extractor port: %w", err)
+	}
+	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
+	runner.SetImageSearchResolver(imageSearchResolver)
+	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
+	wireSemanticSearchPlanner(runner, cfg, root, log)
+
+	vidRushMetrics := observability.NewVidRushMetricsAdapter()
+	var vidRushFanout scriptgen.SegmentProviderResolver
+	if vidRushProviders != nil {
+		var entityImageCatalogRepo entitycatalog.Repository
+		if root.Repos != nil {
+			entityImageCatalogRepo = root.Repos.EntityImageCatalog
+		}
+		registryMediaResolver := &documentadapters.VidRushRegistryMediaResolver{Registry: vidRushProviders}
+		fanout := documentadapters.NewVidRushProviderFanoutWithResolver(
+			registryMediaResolver,
+			vidRushCache,
+			entityImageCatalogRepo,
+			vidRushMetrics,
+		).WithLogger(log)
+		// Opt-in media_manifest fast-path on the fan-out (the discovery owner
+		// for plans without the internet_images postprocessor). Fail-open: a
+		// broken manifest logs a warning and never fails a run.
+		if pins, pinsErr := documentadapters.LoadMediaManifestPinsFromEnv(); pinsErr != nil {
+			log.Warn("VidRush image fanout media_manifest fast-path disabled: manifest load failed", zap.String("error", pinsErr.Error()))
+		} else if pins != nil {
+			fanout.WithMediaManifestPins(pins)
+			log.Info("VidRush image fanout media_manifest fast-path enabled", zap.Int("pinned_entries", pins.EntryCount()))
+		}
+		if root.AI != nil && root.AI.ScriptGen != nil {
+			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+				fanout.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))
+				log.Info("VidRush image fanout wired with GPU-capable person-image verification", zap.String("model", ollamaClient.Model()))
+			}
+		}
+		vidRushFanout = fanout
+	}
+	var vidRushMaterializer scriptgen.SegmentMaterializer
+	if vidRushProviders != nil && vidRushFinalizer != nil {
+		var entityImageCatalogRepo entitycatalog.Repository
+		if root.Repos != nil {
+			entityImageCatalogRepo = root.Repos.EntityImageCatalog
+		}
+		vidRushMaterializer = documentadapters.NewVidRushMaterializationProcessorWithCatalog(vidRushProviders, vidRushFinalizer, vidRushCache, entityImageCatalogRepo, vidRushMetrics).WithMediaSampler(mediaSampler).WithMediaSamplerGroup(mediaSampler).WithLogger(log)
+	}
+	pipeline := &scriptgen.VidRushPipeline{
+		ProviderResolver: vidRushFanout,
+		Materializer:     vidRushMaterializer,
+		Metrics:          vidRushMetrics,
+		PlanResolver: scriptgen.VidRushPlanResolverFunc(func(ctx context.Context, req scriptgen.GenerateRequest) (*scriptpkg.ResolvedGenerationPlan, error) {
+			plan, err := root.AI.SceneTextGenerator.ResolveVidRushPlan(ctx, req)
+			return plan, err
+		}),
+		Backpressure: scriptgen.DefaultVidRushBackpressure(),
+		NERPort:      semanticAnalyzer,
+		SamplerPort:  mediaSampler,
+		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
+			return mediacert.Certify(spec, result), nil
+		}),
+		CertSpecResolver: scriptgen.MediaCertSpecResolverFunc(buildRuntimeMediaCertSpec),
+	}
+	if root.MediaPostgres != nil && strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" && vidRushProviders != nil {
+		searcher := pgmedia.NewMediaSearcher(root.MediaPostgres)
+		embedder := stockintelligence.NewHTTPTextEmbedderAdapter(func(ctx context.Context, text string) ([]float32, error) {
+			res, err := embeddings.NewHTTPTextEmbedderWithTimeout(cfg.ClipIndexer.ServerURL, cfg.ClipIndexer.EmbedTimeout()).Embed(ctx, text)
+			if err != nil {
+				return nil, err
+			}
+			return res.Vector, nil
+		})
+		local := stockintelligence.PostgresLocalSearchAdapter{Searcher: searcher, Embedder: embedder}
+		hydrator := stockintelligence.PostgresAssetHydrator{Searcher: searcher}
+		provider := stockintelligence.RegistryProviderClient{Registry: vidRushProviders}
+		sampler := func(candidates []stockintelligence.Candidate, segmentID, subject string, terms []string) (string, error) {
+			converted := make([]scriptpkg.SegmentAssetCandidate, 0, len(candidates))
+			for _, candidate := range candidates {
+				converted = append(converted, scriptpkg.SegmentAssetCandidate{AssetID: candidate.AssetID, Entity: candidate.Label, RelevanceScore: float64(candidate.GenericSimilarity), SegmentID: candidate.OwnerSegmentID})
+			}
+			return mediaSampler.Sample(context.Background(), segmentID, subject, terms, converted, false)
+		}
+		if resolver, resolverErr := stockintelligence.NewResolver(local, hydrator, provider, sampler); resolverErr == nil {
+			// Content-addressed resolve replay cache (L1 LRU + durable L2):
+			// repeated entity/query discovery — across segments and across
+			// runs — is served without re-embedding, re-searching or hitting
+			// the provider live path. The sampler stays per-request.
+			resolver.WithCache(documentadapters.NewStockResolveCache(vidRushCache))
+			if service, serviceErr := stockintelligence.NewService(resolver); serviceErr == nil {
+				pipeline.StockResolverPort = service
+			}
+		}
+	}
+	runner.SetVidRushPipeline(pipeline)
+	return nil
+}
