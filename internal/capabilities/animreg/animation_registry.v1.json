@@ -10377,6 +10377,52 @@
         "phrase.long": 61,
         "phrase.all": 125
       }
+    },
+    {
+      "id": "short_phrase_product_word_stack",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_3",
+        "bullet"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "bullet",
+        "caption",
+        "short_phrase"
+      ],
+      "word_count": 3,
+      "order": {
+        "phrase.short.words_3": 10,
+        "phrase.short": 17
+      }
+    },
+    {
+      "id": "short_phrase_product_tracking_focus",
+      "families": [
+        "phrase.short",
+        "phrase.short.words_4",
+        "bullet"
+      ],
+      "lanes": [
+        "short"
+      ],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [
+        "bullet",
+        "caption",
+        "short_phrase"
+      ],
+      "word_count": 4,
+      "order": {
+        "phrase.short.words_4": 7,
+        "phrase.short": 27
+      }
     }
   ]
 }

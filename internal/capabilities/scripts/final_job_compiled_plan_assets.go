@@ -21,6 +21,7 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		return "", fmt.Errorf("decode final_job plan for runtime alignment: %w", err)
 	}
 	refs := make(map[string]map[string]any, len(runtimeAssets))
+	stockSHAs := make(map[string]struct{}, len(runtimeAssets))
 	for _, raw := range runtimeAssets {
 		ref, ok := raw.(map[string]any)
 		if !ok {
@@ -29,6 +30,9 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		sha := strings.ToLower(strings.TrimSpace(finalJobStringValue(ref["sha256"])))
 		if len(sha) == 64 {
 			refs[sha] = ref
+			if strings.EqualFold(finalJobStringValue(ref["role"]), "stock") {
+				stockSHAs[sha] = struct{}{}
+			}
 		}
 	}
 	if len(refs) == 0 {
@@ -65,16 +69,16 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 			asset.MIME = mimeType
 		}
 		isStock := strings.EqualFold(finalJobStringValue(ref["role"]), "stock")
-		if duration := finalJobInt64(ref["duration_us"]); duration > 0 {
-			// Stock DurationUS is the declared source extent the compiled plan
-			// needs, not a producer-certified duration. The saved metadata is in
-			// milliseconds and can round a 5.000s/120-frame source down to 4.979s;
-			// overwriting the extended extent would put the requested 5s window
-			// out of bounds and make the remote PREPARE reject the whole plan.
-			// Keep the larger extent for stock; prepared fragments stay exact.
-			if !isStock || duration > asset.DurationUS {
-				asset.DurationUS = duration
-			}
+		// Stock Drive references carry duration_ms; prepared fragments carry
+		// duration_us. Read both, because the saved duration is the authority:
+		// never grow a 4.979s source to the 5.000s extent a padded plan asked
+		// for (r53).
+		duration := finalJobInt64(ref["duration_us"])
+		if duration <= 0 {
+			duration = finalJobInt64(ref["duration_ms"]) * 1000
+		}
+		if duration > 0 {
+			asset.DurationUS = duration
 		}
 		if width := finalJobInt(ref["width"]); width > 0 {
 			asset.Width = width
@@ -147,6 +151,20 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 				// is the asset's own duration/frame count, not the placement's span.
 				asset.FirstFrameKeyframe = true
 				asset.ClosedGOP = true
+			}
+		}
+	}
+	for _, track := range plan.VideoTracks {
+		for _, segment := range track.Segments {
+			if _, stock := stockSHAs[strings.ToLower(segment.SHA256)]; !stock {
+				continue
+			}
+			asset, ok := assetsByID[segment.AssetID]
+			if !ok {
+				return "", fmt.Errorf("final_job stock segment %q has no aligned plan asset %q", segment.SegmentID, segment.AssetID)
+			}
+			if asset.DurationUS <= 0 || segment.SourceInUS < 0 || segment.SourceDurationUS <= 0 || segment.SourceInUS+segment.SourceDurationUS > asset.DurationUS {
+				return "", fmt.Errorf("final_job stock segment %q source window %d+%d exceeds saved file duration %d", segment.SegmentID, segment.SourceInUS, segment.SourceDurationUS, asset.DurationUS)
 			}
 		}
 	}

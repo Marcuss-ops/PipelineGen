@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -410,7 +411,7 @@ func TestBuildFinalJobPayloadsAllStockClipsRouteToStockFolder(t *testing.T) {
 	}
 	plan := decodeFinalJobPlanForTest(t, pre)
 	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 || plan.VideoTracks[0].Segments[0].AssetID != "drive-asset" {
-		t.Fatalf("compiled stock segments = %+v, want one stock-folder visual and no clip fallback", plan.VideoTracks)
+		t.Fatalf("compiled stock segments = %+v, want one whole 2s stock-folder visual and no clip fallback", plan.VideoTracks)
 	}
 }
 
@@ -461,7 +462,36 @@ func TestFinalJobIntermediateClipWindowsNeverClassifiesStockAudio(t *testing.T) 
 }
 
 func (finalJobPayloadResolver) ListFinalJobStockFolder(context.Context, string) ([]FinalJobStockFile, error) {
-	return []FinalJobStockFile{{ID: "drive-asset", Name: "stock.mp4"}}, nil
+	return []FinalJobStockFile{
+		{ID: "drive-asset", Name: "stock-2000.mp4"},
+		{ID: "drive-asset-5000", Name: "stock-5000.mp4"},
+		{ID: "drive-asset-3900", Name: "stock-3900.mp4"},
+		{ID: "drive-asset-1000", Name: "stock-1000.mp4"},
+		{ID: "drive-asset-10000", Name: "stock-10000.mp4"},
+		{ID: "drive-asset-15000", Name: "stock-15000.mp4"},
+		{ID: "drive-asset-12000", Name: "stock-12000.mp4"},
+	}, nil
+}
+
+// ResolveFinalJobStockAsset offers one whole file per common scene duration.
+// The production adapter reads these durations from the saved media registry;
+// the fixture does the same by parsing the id suffix.
+func (finalJobPayloadResolver) ResolveFinalJobStockAsset(_ context.Context, id string) (map[string]any, error) {
+	durationMS := int64(2000)
+	sha := strings.Repeat("b", 64)
+	if id != "drive-asset" {
+		suffix := id[strings.LastIndex(id, "-")+1:]
+		value, err := strconv.ParseInt(suffix, 10, 64)
+		if err != nil || value <= 0 {
+			return nil, fmt.Errorf("unknown stock fixture %q", id)
+		}
+		durationMS = value
+		sha = digest.SHA256String(id)
+	}
+	return map[string]any{
+		"asset_id": id, "drive_file_id": id, "url": "velox-drive://" + id,
+		"sha256": sha, "size_bytes": int64(20 + durationMS), "duration_ms": durationMS,
+	}, nil
 }
 
 func (finalJobPayloadResolver) FinalJobPublishedFileSize(context.Context, string) (int64, error) {
@@ -873,8 +903,8 @@ func TestBuildFinalJobPayloadsDoesNotSendSubtitlesWithStockChunks(t *testing.T) 
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
 	}
 	plan := decodeFinalJobPlanForTest(t, pre)
-	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 3 {
-		t.Fatalf("compiled stock segments = %+v, want 3 stock windows", plan.VideoTracks)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 {
+		t.Fatalf("compiled stock segments = %+v, want the one whole 5s stock file", plan.VideoTracks)
 	}
 	runtimePayload, ok := finalize["runtime_payload"].(map[string]any)
 	if !ok {
@@ -940,8 +970,8 @@ func TestBuildFinalJobPayloadsSendsDriveStockAndPublishedOverlaysToWorker(t *tes
 		t.Fatalf("compiled video segments = %+v, want base/overlay/base timing segments", plan.VideoTracks)
 	}
 	segments := plan.VideoTracks[0].Segments
-	if segments[0].AssetID != "drive-asset" || segments[1].AssetID != "overlay-1" || segments[2].AssetID != "drive-asset" {
-		t.Fatalf("compiled video segments = %+v, want stock base around the overlay asset", segments)
+	if segments[0].AssetID != "drive-asset-5000" || segments[1].AssetID != "overlay-1" || segments[2].AssetID != "drive-asset-5000" {
+		t.Fatalf("compiled video segments = %+v, want the whole 5s stock base around the overlay asset", segments)
 	}
 	runtimePayload := finalize["runtime_payload"].(map[string]any)
 	overlays := runtimePayload["overlays"].([]any)

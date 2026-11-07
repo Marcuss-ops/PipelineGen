@@ -54,14 +54,27 @@ func (p *finalJobStockPlanner) folder(ctx context.Context, resolver FinalJobAsse
 	return listed, nil
 }
 
-// sceneClips consumes one scene's canonical duration from its stock folder and
-// returns the exact chunks the assembler will place.
+// finalJobStockScanWindow bounds how many folder entries one selection step
+// inspects. The prefetch lane warms the same head of the folder, so this is
+// also the window in which the next source is already cached. A folder that
+// cannot fill a scene inside this window fails closed instead of sending the
+// Master a stock window it cannot packet-copy.
+const finalJobStockScanWindow = 64
+
+// sceneClips consumes one scene's canonical duration from its stock folder
+// using WHOLE files only. The remote Master's stock lane is packet-copy: it
+// accepts source_in_us == 0 and source_duration_us == file duration, and
+// rejects a sub-window (r56: stock_window_not_packet_copyable). The Producer
+// therefore never trims a stock file. It prefers a file whose duration exactly
+// matches the remaining window; when none exists it takes the first whole file
+// that fits, so the scene is composed of whole files summing exactly to the
+// canonical duration. If no such composition exists, the handoff fails here
+// instead of sending a doomed plan.
 //
-// It reproduces the stock walk of the final-job payload byte for byte: rotate
-// through the folder, consume one chunk per file, and take the scene's
-// remaining duration from the last one. The cursor is stored after the file has
-// been claimed, so a failure half way through a scene leaves the folder
-// advanced exactly as the successful walk would have.
+// Selection is deterministic: the cursor advances past the claimed file and the
+// next scene continues through the folder. This replaces the former walk that
+// consumed a partial tail from the last file, which is exactly what the Master
+// refused in r53-r58.
 func (p *finalJobStockPlanner) sceneClips(ctx context.Context, resolver FinalJobAssetResolver, folderID string, durationUS int64) ([]finalJobStockClip, error) {
 	files, err := p.folder(ctx, resolver, folderID)
 	if err != nil {
@@ -74,28 +87,56 @@ func (p *finalJobStockPlanner) sceneClips(ctx context.Context, resolver FinalJob
 	clips := make([]finalJobStockClip, 0, 1)
 	folderIndex := p.cursors[folderID]
 	for remainingMS > 0 {
-		file := files[folderIndex%len(files)]
-		folderIndex++
-		p.cursors[folderID] = folderIndex
-		asset, ok := p.assets[file.ID]
-		if !ok {
-			asset, err = resolveFinalJobStockAsset(ctx, resolver, file.ID)
-			if err != nil {
-				return nil, fmt.Errorf("resolve stock file %s (%s): %w", file.Name, file.ID, err)
+		limit := len(files)
+		if limit > finalJobStockScanWindow {
+			limit = finalJobStockScanWindow
+		}
+		chosen := -1
+		chosenDurationMS := int64(0)
+		var chosenAsset map[string]any
+		var firstResolveErr error
+		for offset := 0; offset < limit; offset++ {
+			index := (folderIndex + offset) % len(files)
+			file := files[index]
+			asset, ok := p.assets[file.ID]
+			if !ok {
+				asset, err = resolveFinalJobStockAsset(ctx, resolver, file.ID)
+				if err != nil {
+					if firstResolveErr == nil {
+						firstResolveErr = fmt.Errorf("resolve stock file %s (%s): %w", file.Name, file.ID, err)
+					}
+					continue
+				}
+				p.assets[file.ID] = asset
 			}
-			p.assets[file.ID] = asset
+			durationMS, _ := asset["duration_ms"].(int64)
+			if durationMS <= 0 {
+				if firstResolveErr == nil {
+					firstResolveErr = fmt.Errorf("stock file %s has no canonical duration", file.Name)
+				}
+				continue
+			}
+			// Exact match wins immediately. Otherwise retain the first whole
+			// file that fits; do not pick a larger file and leave a tail the
+			// next step cannot fill.
+			if durationMS == remainingMS {
+				chosen, chosenDurationMS, chosenAsset = index, durationMS, asset
+				break
+			}
+			if durationMS < remainingMS && chosen < 0 {
+				chosen, chosenDurationMS, chosenAsset = index, durationMS, asset
+			}
 		}
-		durationMS, _ := asset["duration_ms"].(int64)
-		if durationMS <= 0 {
-			return nil, fmt.Errorf("stock file %s has no canonical duration", file.Name)
+		if chosen < 0 {
+			if firstResolveErr != nil {
+				return nil, fmt.Errorf("stock folder %s cannot fill the remaining %dms with whole files (no partial stock windows allowed): %w", folderID, remainingMS, firstResolveErr)
+			}
+			return nil, fmt.Errorf("stock folder %s cannot fill the remaining %dms with whole files; no partial stock windows are allowed", folderID, remainingMS)
 		}
-		chunkMS := durationMS
-		if chunkMS > remainingMS {
-			chunkMS = remainingMS
-		}
-		clips = append(clips, finalJobStockClip{Asset: asset, ChunkMS: chunkMS})
-		remainingMS -= chunkMS
-		folderIndex++
+		clips = append(clips, finalJobStockClip{Asset: chosenAsset, ChunkMS: chosenDurationMS})
+		remainingMS -= chosenDurationMS
+		folderIndex = (chosen + 1) % len(files)
+		p.cursors[folderID] = folderIndex
 	}
 	return clips, nil
 }
