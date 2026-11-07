@@ -128,7 +128,7 @@ type workerTimingWire struct {
 }
 
 func New(baseURL, token string) *Client {
-	return &Client{BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"), Token: strings.TrimSpace(token), HTTP: &http.Client{Timeout: 45 * time.Second}, PollInterval: 3 * time.Second, PollTimeout: 2 * time.Hour}
+	return &Client{BaseURL: strings.TrimRight(strings.TrimSpace(baseURL), "/"), Token: strings.TrimSpace(token), HTTP: &http.Client{Timeout: 5 * time.Minute}, PollInterval: 3 * time.Second, PollTimeout: 2 * time.Hour}
 }
 
 func ReadTokenFile(path string) (string, error) {
