@@ -15,10 +15,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
-	capdelivery "github.com/Marcuss-ops/PipelineGen/internal/capabilities/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/remotejob"
@@ -97,15 +94,9 @@ func finalJobAttachBudget() (time.Duration, error) {
 }
 
 type remoteFinalJobAdapter struct {
-	media    *pgmedia.MediaSearcher
-	stock    drive.Reader
-	client   *remotejob.Client
-	segments *finalJobSegmentPreparer
-	// drivePublisher promotes one Producer-owned fragment to Drive only when the
-	// plan has no stock source. A stock reference already satisfies the remote
-	// slice executor's Drive requirement and is passed through untouched; the
-	// Master downloads and processes that stock itself.
-	drivePublisher capdelivery.Publisher
+	media  *pgmedia.MediaSearcher
+	stock  drive.Reader
+	client *remotejob.Client
 	// attachBudget bounds a single attempt's wait on the Master render; see
 	// defaultFinalJobAttachBudget and finalJobAttachBudget.
 	attachBudget time.Duration
@@ -188,7 +179,7 @@ func newRemoteFinalJobAdapter(root *ComposeRoot) (*remoteFinalJobAdapter, error)
 	}
 	client := remotejob.New(base, token)
 	client.QueueTimeout = queueBudget
-	return &remoteFinalJobAdapter{media: pgmedia.NewMediaSearcher(root.MediaPostgres), stock: root.Drive.Reader, client: client, segments: nil, drivePublisher: root.Drive.Publisher, attachBudget: budget, queueBudget: queueBudget}, nil
+	return &remoteFinalJobAdapter{media: pgmedia.NewMediaSearcher(root.MediaPostgres), stock: root.Drive.Reader, client: client, attachBudget: budget, queueBudget: queueBudget}, nil
 }
 
 func (a *remoteFinalJobAdapter) SubmitFinalJob(ctx context.Context, runID string, req scriptgen.GenerateRequest, result *scriptgen.GenerateResult) (scriptgen.RemoteFinalJobResult, error) {
@@ -216,9 +207,6 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 		return scriptgen.RemoteFinalJobResult{}, fmt.Errorf("remote final-job adapter is not configured")
 	}
 	handoffStarted := time.Now()
-	// The segment preparation measured by THIS build, never the preparer's
-	// process-wide total: a resumed or concurrent run must not inherit it.
-	var segmentPrep *scriptgen.RemoteFinalJobSegmentPrepTiming
 	var resolveMS, prepareMS int64
 	var payloadBuiltAt time.Time
 	handoffTiming := func() *scriptgen.RemoteFinalJobTiming {
@@ -228,51 +216,31 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 			PrepareMS:        prepareMS,
 		}
 		if !payloadBuiltAt.IsZero() {
-			// The payload build is a SUBSET of handoff_ms that contains segment
-			// preparation and resolve; measuring its end is what makes the
-			// remainder attributable to FINALIZE instead of unknown.
+			// The payload build is a SUBSET of handoff_ms; measuring its end makes
+			// the remainder attributable to FINALIZE instead of unknown.
 			timing.PayloadMS = payloadBuiltAt.Sub(handoffStarted).Milliseconds()
-		}
-		if segmentPrep != nil && segmentPrep.Segments > 0 {
-			timing.SegmentPrep = segmentPrep
 		}
 		return timing
 	}
 	a.beginHandoffCache(runID)
 	a.resolverNS.Store(0)
-	// One scope per handoff: the per-window attribution must describe THIS
-	// payload, not whatever the preparer accumulated before it or beside it.
-	// A stock-only plan needs no preparer at all; a plan with overlay/clip work
-	// still fails closed if one is missing.
-	var segmentPreparer scriptgen.FinalJobVideoSegmentPreparer
-	var scope uint64
-	if a.segments != nil {
-		segmentPreparer = a.segments
-		scope = a.segments.NewHandoffScope()
-	}
-	pre, finalize, err := scriptgen.BuildFinalJobPayloadsWithSegmentPreparer(withFinalJobHandoffScope(ctx, scope), runID, req, result, a, segmentPreparer)
+	// Producer sends source assets and immutable windows directly. The Master
+	// owns source materialization; the Producer must not cut or re-encode video
+	// segments before FINALIZE.
+	pre, finalize, err := scriptgen.BuildFinalJobPayloads(ctx, runID, req, result, a)
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
 	}
-	if a.segments != nil {
-		if prep := a.segments.Timing(scope); prep.Segments > 0 {
-			segmentPrep = &prep
-		}
-	}
 	payloadBuiltAt = time.Now()
-	if err := a.promoteFinalJobDriveSource(ctx, req, finalize); err != nil {
+	if err := a.attachFinalJobDriveSources(finalize); err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
 	}
 	resolveMS = a.resolverNS.Load() / int64(time.Millisecond)
 	a.resolvedMu.Lock()
 	uniqueResolved, dedupHits := len(a.resolved), a.hits
 	a.resolvedMu.Unlock()
-	var encodeMS, verifyMS int64
-	if segmentPrep != nil {
-		encodeMS, verifyMS = segmentPrep.EncodeMS, segmentPrep.VerifyMS
-	}
-	log.Printf("final_job handoff resolve_ms=%d unique_resolved=%d dedup_hits=%d encode_ms=%d verify_ms=%d",
-		resolveMS, uniqueResolved, dedupHits, encodeMS, verifyMS)
+	log.Printf("final_job handoff resolve_ms=%d unique_resolved=%d dedup_hits=%d",
+		resolveMS, uniqueResolved, dedupHits)
 	workerID, err := finalJobWorkerPin()
 	if err != nil {
 		return scriptgen.RemoteFinalJobResult{}, err
@@ -318,17 +286,10 @@ func (a *remoteFinalJobAdapter) StartFinalJob(ctx context.Context, runID string,
 	return scriptgen.RemoteFinalJobResult{JobID: prepared.JobID, Status: "RUNNING", ReportOwner: scriptgen.FinalJobReportOwner, Timing: handoffTiming()}, nil
 }
 
-// promoteFinalJobDriveSource ensures the remote plan has a Drive-backed video
-// source. Stock already satisfies that contract: its exact stockpipeline Drive
-// reference is passed through, and the Master downloads and processes it. The
-// Producer does not read, hash, copy or publish stock bytes. Only a plan with no
-// stock promotes one certified Producer-owned fragment to the run's Drive
-// folder, so the remote slice executor still receives the Drive source it
-// requires.
-func (a *remoteFinalJobAdapter) promoteFinalJobDriveSource(ctx context.Context, req scriptgen.GenerateRequest, finalize map[string]any) error {
-	if a == nil {
-		return fmt.Errorf("remote final-job adapter is not configured")
-	}
+// attachFinalJobDriveSources adds the Master's Drive fetch URI to stock
+// references. Producer-owned video stays on its existing HTTPS source URI;
+// FINALIZE never publishes or materializes a local video fragment.
+func (a *remoteFinalJobAdapter) attachFinalJobDriveSources(finalize map[string]any) error {
 	assets, ok := finalize["runtime_assets"].([]any)
 	if !ok {
 		return fmt.Errorf("remote final-job runtime_assets has an invalid shape")
@@ -336,77 +297,34 @@ func (a *remoteFinalJobAdapter) promoteFinalJobDriveSource(ctx context.Context, 
 	// Existing stock: leave it on Drive, exactly as the stockpipeline wrote it.
 	for _, raw := range assets {
 		ref, ok := raw.(map[string]any)
-		if !ok || !strings.EqualFold(strings.TrimSpace(stringValue(ref["kind"])), "video") {
+		if !ok || !strings.EqualFold(strings.TrimSpace(finalJobAdapterString(ref["kind"])), "video") {
 			continue
 		}
-		if !strings.EqualFold(strings.TrimSpace(stringValue(ref["role"])), "stock") {
+		if !strings.EqualFold(strings.TrimSpace(finalJobAdapterString(ref["role"])), "stock") {
 			continue
 		}
-		driveID := strings.TrimSpace(stringValue(ref["drive_file_id"]))
+		driveID := strings.TrimSpace(finalJobAdapterString(ref["drive_file_id"]))
 		if driveID == "" {
-			return fmt.Errorf("remote final-job stock source %q has no Drive identity", stringValue(ref["asset_id"]))
+			return fmt.Errorf("remote final-job stock source %q has no Drive identity", finalJobAdapterString(ref["asset_id"]))
 		}
 		ref["source_uri"] = driveStockDownloadURL(driveID)
 		ref["url"] = "velox-drive://" + driveID
-		log.Printf("final_job stock source drive_file_id=%s (processed by Master)", driveID)
-		return nil
 	}
-	if a.drivePublisher == nil || a.segments == nil {
-		return fmt.Errorf("remote final-job requires a Drive publisher and a fragment preparer when no stock source exists")
+	if err := scriptgen.NormalizeFinalJobHTTPSRuntimeAssets(assets); err != nil {
+		return fmt.Errorf("normalize remote final-job video sources: %w", err)
 	}
-	folderID := strings.TrimSpace(req.Render.DriveFolderID)
-	if folderID == "" {
-		return fmt.Errorf("remote final-job requires a Drive destination folder for the certified video source")
+	return nil
+}
+
+func finalJobAdapterString(value any) string {
+	if value == nil {
+		return ""
 	}
-	for _, raw := range assets {
-		ref, ok := raw.(map[string]any)
-		if !ok || !strings.EqualFold(strings.TrimSpace(stringValue(ref["kind"])), "video") {
-			continue
-		}
-		role := strings.ToLower(strings.TrimSpace(stringValue(ref["role"])))
-		if role != "clip" {
-			continue
-		}
-		sha := strings.ToLower(strings.TrimSpace(stringValue(ref["sha256"])))
-		if len(sha) != 64 {
-			continue
-		}
-		path := a.segments.fragmentPath(sha)
-		if path == "" {
-			continue
-		}
-		size := int64Value(ref["size_bytes"])
-		info, err := os.Stat(path)
-		if err != nil {
-			return fmt.Errorf("stat remote final-job Drive source %s: %w", sha, err)
-		}
-		if !info.Mode().IsRegular() || size <= 0 || info.Size() != size {
-			return fmt.Errorf("remote final-job Drive source %s does not match its certified size %d (found %d)", sha, size, info.Size())
-		}
-		result, err := a.drivePublisher.Publish(ctx, capdelivery.PublishRequest{
-			Destination:         capdelivery.DestinationAdmin,
-			LocalPath:           path,
-			Filename:            "final-job-source-" + sha[:16] + ".mp4",
-			Description:         "certified final-job video fragment " + sha,
-			AssetID:             sha,
-			SizeBytes:           size,
-			ContentHash:         sha,
-			DestinationFolderID: folderID,
-			ConflictPolicy:      capdelivery.ConflictOverwrite,
-		})
-		if err != nil {
-			return fmt.Errorf("publish certified final-job Drive source %s: %w", sha, err)
-		}
-		if result == nil || strings.TrimSpace(result.FileID) == "" {
-			return fmt.Errorf("publish certified final-job Drive source %s returned no file id", sha)
-		}
-		ref["drive_file_id"] = result.FileID
-		ref["source_uri"] = driveStockDownloadURL(result.FileID)
-		ref["url"] = "velox-drive://" + result.FileID
-		log.Printf("final_job drive video source file_id=%s sha=%s bytes=%d", result.FileID, sha, size)
-		return nil
+	valueString := strings.TrimSpace(fmt.Sprint(value))
+	if valueString == "<nil>" {
+		return ""
 	}
-	return fmt.Errorf("remote final-job has no certified primary video fragment to promote to Drive")
+	return valueString
 }
 
 // staleReceiptStatus projects a stale transport outcome onto the capability's
@@ -552,7 +470,7 @@ func finalJobWaitError(err error) error {
 	}
 	return err
 }
-func wireScriptGenerationFinalJob(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger) error {
+func wireScriptGenerationFinalJob(runner *scriptgen.Runner, root *ComposeRoot, log *zap.Logger) error {
 	if fakeFinalJobRequested() {
 		// Local-only measurement mode: every local phase still runs, the remote
 		// render does not. The receipt is marked Simulated so nothing downstream
@@ -562,24 +480,6 @@ func wireScriptGenerationFinalJob(runner *scriptgen.Runner, cfg *config.Config, 
 	} else if remoteFinalJob, remoteErr := newRemoteFinalJobAdapter(root); remoteErr != nil {
 		log.Warn("remote final-job handoff unavailable; final_job=true requests will fail closed", zap.Error(remoteErr))
 	} else {
-		fragmentLanes, lanesErr := finalJobFragmentLanes()
-		if lanesErr != nil {
-			return lanesErr
-		}
-		fragmentPolicy, policyErr := config.FinalJobFragmentEncoderPolicy(config.VideoEncoderPolicy{
-			Codec: root.MediaExec.Policy.Codec, Preset: root.MediaExec.Policy.Preset, CRF: root.MediaExec.Policy.CRF,
-		})
-		if policyErr != nil {
-			return policyErr
-		}
-		fragmentCacheDir := finalJobFragmentCacheDir(cfg.Storage.DataDir)
-		remoteFinalJob.segments = newFinalJobSegmentPreparer(cfg.External.FfmpegPath, mediaexec.EncoderPolicy{
-			Codec: fragmentPolicy.Codec, Preset: fragmentPolicy.Preset, CRF: fragmentPolicy.CRF,
-		}, fragmentCacheDir, fragmentLanes)
-		log.Info("final-job fragment preparation configured",
-			zap.Int("lanes", fragmentLanes),
-			zap.Bool("cache", fragmentCacheDir != ""),
-			zap.String("cache_dir", fragmentCacheDir))
 		runner.SetFinalJobSubmitter(remoteFinalJob)
 		log.Info("remote final-job handoff wired", zap.String("master_url", remoteFinalJob.client.BaseURL))
 	}

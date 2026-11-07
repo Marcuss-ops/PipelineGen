@@ -9,6 +9,75 @@ import (
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
+// alignFinalJobSegmentSourceWindows performs metadata-only frame quantization.
+// The Master owns source download and preparation; Producer plans must still
+// express ranges exactly on the output frame grid and within declared extent.
+func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan) error {
+	if plan == nil || len(plan.VideoTracks) == 0 {
+		return nil
+	}
+	assets := make(map[string]finalJobPlanAsset, len(plan.Assets))
+	for _, asset := range plan.Assets {
+		assets[asset.AssetID] = asset
+	}
+	fpsNum, fpsDen := int64(plan.Output.FPSNum), int64(plan.Output.FPSDen)
+	if fpsNum <= 0 || fpsDen <= 0 {
+		output := finalJobPlanOutputBlock()
+		fpsNum, fpsDen = int64(output.FPSNum), int64(output.FPSDen)
+	}
+	for trackIndex := range plan.VideoTracks {
+		for segmentIndex := range plan.VideoTracks[trackIndex].Segments {
+			segment := &plan.VideoTracks[trackIndex].Segments[segmentIndex]
+			if segment.FrameCount <= 0 {
+				continue
+			}
+			asset, ok := assets[segment.AssetID]
+			if !ok {
+				return fmt.Errorf("segment %q has no plan asset %q", segment.SegmentID, segment.AssetID)
+			}
+			totalFrames := asset.FrameCount
+			if totalFrames <= 0 && asset.DurationUS > 0 {
+				totalFrames = finalJobFrameAtUS(asset.DurationUS, fpsNum, fpsDen)
+				if totalFrames > 0 && finalJobFrameStartUS(totalFrames, fpsNum, fpsDen) > asset.DurationUS {
+					totalFrames--
+				}
+			}
+			if totalFrames <= 0 {
+				return fmt.Errorf("segment %q asset %q has no frame-addressable duration", segment.SegmentID, asset.AssetID)
+			}
+			shortfall := segment.FrameCount - totalFrames
+			startFrame := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
+			if shortfall > 1 || (shortfall == 1 && startFrame != 0) {
+				return fmt.Errorf("segment %q asks for %d frames from asset %q, which carries %d", segment.SegmentID, segment.FrameCount, asset.AssetID, totalFrames)
+			}
+			if shortfall > 0 {
+				segment.FrameCount = totalFrames
+			}
+			maxStart := max(int64(0), totalFrames-segment.FrameCount)
+			startFrame = min(max(startFrame, int64(0)), maxStart)
+			segment.SourceInUS = finalJobFrameStartUS(startFrame, fpsNum, fpsDen)
+			segment.SourceDurationUS = finalJobFrameStartUS(startFrame+segment.FrameCount, fpsNum, fpsDen) - segment.SourceInUS
+			if overrun := segment.SourceInUS + segment.SourceDurationUS - asset.DurationUS; overrun > 0 {
+				if shortfall <= 0 || overrun > finalJobFrameStartUS(shortfall, fpsNum, fpsDen) {
+					return fmt.Errorf("segment %q aligned source window exceeds asset %q", segment.SegmentID, asset.AssetID)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {
+	numerator := us * fpsNum
+	denominator := int64(1_000_000) * fpsDen
+	return (numerator + denominator/2) / denominator
+}
+
+func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
+	numerator := frame * 1_000_000 * fpsDen
+	return (numerator + fpsNum/2) / fpsNum
+}
+
 // alignFinalJobCompiledPlanAssetIDs binds the compiled plan to the exact
 // runtime identities the worker will prefetch. Objectstore assets are keyed by
 // their content SHA; the plan may still name the same fragment by its

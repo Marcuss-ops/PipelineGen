@@ -17,12 +17,9 @@ a registry entry.
 | `VELOX_FAKE_FINAL_JOB` | env |  | `internal/app/wiring/fake_final_job.go` | unset | Simulate the remote final-job handoff so a run measures only the local pipeline. |
 | `VELOX_FINAL_AUDIO_CACHE_DIR` | env |  | `internal/app/wiring/script_generation_runtime.go` | unset (default cache root) | Relocates the per-run final-audio cache. |
 | `VELOX_FINAL_JOB_ATTACH_SECONDS` | env | 3000 | `internal/app/wiring/remote_final_job.go` | 3000 | Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait). |
-| `VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS` | env | 1 | `internal/app/wiring/final_job_segment_prepare.go` | 1 | Prefer packet copy for certified windows; 0 routes windows through the verified encoder lane. |
 | `VELOX_FINAL_JOB_CREDENTIALS_FILE` | env |  | `internal/app/wiring/remote_final_job.go` | /etc/pipelinegen/final_job_credentials.json | Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset. |
-| `VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR` | env |  | `internal/app/wiring/final_job_fragment_io.go` | unset (default cache root) | Relocates the prepared-fragment cache used by the final-job handoff. |
 | `VELOX_FINAL_JOB_M2M_SECRET` | env |  | `internal/app/wiring/remote_final_job.go` | 64-hex secret from the host env file | Per-client bearer secret for job.submit against the Master. |
 | `VELOX_FINAL_JOB_MASTER_URL` | env |  | `internal/app/wiring/remote_final_job.go` | https://<master-host> | Master URL for the remote final-job handoff; unset falls back to the configured base URL. |
-| `VELOX_FINAL_JOB_PREPARE_LANES` | env | 4 | `internal/app/wiring/final_job_segment_prepare.go` | 4 (1..16) | Fragments prepared in parallel per handoff. |
 | `VELOX_FINAL_JOB_QUEUE_SECONDS` | env | 180 | `internal/app/wiring/remote_final_job.go` | 180 | How long a handoff may sit NOT-STARTED before it is handed back (0 disables the budget). |
 | `VELOX_FINAL_JOB_RESOLVE_CONCURRENCY` | env | 1 | `internal/app/wiring/remote_final_job_resolve.go` | 4 (1..16) | Drive sources resolved in parallel while preparing a handoff. |
 | `VELOX_FINAL_JOB_WORKER_ID` | env |  | `internal/app/wiring/remote_final_job.go` | unset (Master places the job) | Pins the handoff to one worker; the retired worker-51 id is rejected loudly. |
@@ -44,8 +41,6 @@ the table so the inventory is complete.
 | `VELOX_ENQUEUE` | marker | `internal/capabilities/scripts/performance/resolver.go` | Execution step name used by the render-enqueue performance phase; never read as configuration. |
 | `VELOX_FEATURE_CLIP_INDEXER_ENABLED` | marker | `internal/app/wiring/build_bundles_qdrant_gates.go` | Escape-hatch name quoted by the Qdrant/ClipIndexer boot gate; the effective toggle is config clip_indexer.enabled. |
 | `VELOX_FEATURE_QDRANT_ENABLED` | marker | `internal/app/wiring/build_bundles_qdrant_gates.go` | Escape-hatch name quoted by the Qdrant/ClipIndexer boot gate; the effective toggle is config qdrant.enabled. |
-| `VELOX_FINAL_JOB_COPY_ONLY` | marker | `internal/app/wiring/final_job_segment_prepare.go` | Retired compatibility marker; local preparation may use verified encoding when a source window is not copy-compatible. |
-| `VELOX_FINAL_JOB_FRAGMENT_CODEC` | test-only | `internal/app/wiring/final_job_segment_prepare_test.go` | Test harness selector for the fragment codec path; not read by production code. |
 | `VELOX_OVERLAY_VIDEO_ONLY_V1` | marker | `internal/kernel/media/assembly_contract.go` | Legacy overlay video-only assembly contract identifier; never read as configuration. |
 | `VELOX_RUST_SEMANTIC_ENGINE_PATH` | test-only | `internal/app/wiring/semantic_blend_live_test.go` | Rust semantic-engine binary used by the opt-in live blend test. |
 | `VELOX_SEMANTIC_BLEND_FIXTURE` | test-only | `internal/app/wiring/semantic_blend_live_test.go` | Fixture payload for the opt-in live semantic blend test. |

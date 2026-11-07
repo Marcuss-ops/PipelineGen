@@ -2,7 +2,14 @@ package scriptgeneration
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"math/rand"
+	"sort"
+	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
 // FinalJobSubmitter hands a completed local media plan to the configured
@@ -111,114 +118,18 @@ type RemoteFinalJobTiming struct {
 	// Worker is the worker-side split of execution_ms, relayed by the Master.
 	// nil means the Master did not report it; it is never estimated here.
 	Worker *RemoteFinalJobWorkerTiming `json:"worker,omitempty"`
-	// SegmentPrep splits handoff_ms into the phases of the local fragment
-	// preparation that must finish before PREPARE can exist. nil means no
-	// fragment was prepared on this attempt (a resumed attach).
-	SegmentPrep *RemoteFinalJobSegmentPrepTiming `json:"segment_prep,omitempty"`
 	// HandoffResolveMS is the runtime-asset resolution time inside the handoff:
-	// Drive folder listings, media-SSOT lookups and Objectstore publication of
-	// the sources. It is the part of handoff_ms that is neither fragment
-	// preparation nor the two Master calls, and it is measured, never inferred.
+	// Drive folder listings, media-SSOT lookups and source URL resolution. It is
+	// measured, never inferred.
 	HandoffResolveMS int64 `json:"handoff_resolve_ms,omitempty"`
 	// PayloadMS is the local payload build, measured from the start of the
-	// handoff until the PREPARE body exists. It CONTAINS SegmentPrep and
-	// HandoffResolveMS (they run inside the build), so it is not a sibling of
-	// them; it is the phase that used to be the unexplained remainder of
-	// handoff_ms.
+	// handoff until the PREPARE body exists. It contains HandoffResolveMS.
 	PayloadMS int64 `json:"payload_ms,omitempty"`
 	// PrepareMS is the PREPARE round-trip to the Master. Together with
 	// PayloadMS it closes the handoff budget: FINALIZE is the remainder
 	// (handoff_ms − payload_ms − prepare_ms), so a phase can no longer hide in
 	// a single opaque number.
 	PrepareMS int64 `json:"prepare_ms,omitempty"`
-}
-
-// RemoteFinalJobSegmentPrepWindow attributes the preparation cost of ONE
-// fragment. The aggregate block above says how much the stage cost; this says
-// where: which windows were copied and which were encoded, and what each one
-// paid. Path is the producing lane, so `copy` with a zero EncodeMS is the copy
-// lever working and `encode` is the encoder being asked for bytes — the
-// distinction the aggregate `encode_ms` cannot make, because it sums both.
-// Phase durations are milliseconds and are measured, never estimated: a phase
-// that did not run stays 0.
-type RemoteFinalJobSegmentPrepWindow struct {
-	// SegmentID is the plan's segment identity (empty when the caller did not
-	// provide one; the other fields still describe the work).
-	SegmentID string `json:"segment_id,omitempty"`
-	// Path is how the bytes were produced: reuse|cache|copy|encode|derived.
-	Path string `json:"path"`
-	// Frames is the requested window length in frames.
-	Frames int64 `json:"frames,omitempty"`
-	// DownloadMS is the source transfer this window paid (0 when the source was
-	// already staged by an earlier window of the same bytes).
-	DownloadMS int64 `json:"download_ms,omitempty"`
-	// CopyMS is the packet-copy time. EncodeMS is the encoder time. They are
-	// mutually exclusive by construction: a copied window never reaches the
-	// encoder, and CopyMS stays 0 on an encoded window.
-	CopyMS   int64 `json:"copy_ms,omitempty"`
-	EncodeMS int64 `json:"encode_ms,omitempty"`
-	// VerifyMS is the census/probe work this window paid.
-	VerifyMS  int64 `json:"verify_ms,omitempty"`
-	PublishMS int64 `json:"publish_ms,omitempty"`
-	Bytes     int64 `json:"bytes,omitempty"`
-	// PaddedFrames is how many tail frames tpad had to clone because the
-	// source ended before the plan's window did. Zero is the normal case: a
-	// window fully inside the source is encoded without tpad at all, so a
-	// frozen tail is a measured shortfall, never a side effect.
-	PaddedFrames int64 `json:"padded_frames,omitempty"`
-	// SourceSHA256 identifies the bytes this window was cut from, so a slow
-	// window can be tied to its source after the temporary file is gone.
-	SourceSHA256 string `json:"source_sha256,omitempty"`
-	// Normalized reports that the encoder rebuilt the delivery geometry
-	// (resolution, frame rate, chroma) for this window instead of only cutting
-	// it. It separates a scale cost from a cut cost without a second probe.
-	Normalized bool `json:"normalized,omitempty"`
-	// CopyFailure explains why this window used the encoder instead of packet
-	// copy: for example, an unaligned start, an uncertified source, or a copy
-	// that failed verification. Every encode path names its reason so CPU work
-	// stays visible in the receipt.
-	CopyFailure string `json:"copy_failure,omitempty"`
-}
-
-// RemoteFinalJobSegmentPrepTiming is the locally measured split of the one
-// stage the remote render does not explain: preparing assembly-ready fragments
-// (download the source, encode the window, verify the frame cap, publish to the
-// HTTPS Objectstore). It is measured, never estimated: a phase that did not run
-// stays 0.
-type RemoteFinalJobSegmentPrepTiming struct {
-	Segments int `json:"segments,omitempty"`
-	// Reused counts fragments whose SOURCE already was the exact certified
-	// fragment (nothing was produced). Cached counts fragments served from the
-	// local fragment cache: the same window of the same source bytes, encoded
-	// and certified by an earlier run.
-	Reused int `json:"reused,omitempty"`
-	Cached int `json:"cached,omitempty"`
-	// Derived counts duplicate placements certified by copying an already
-	// certified bitstream into a distinct container. They cost a remux, not a
-	// second encode, and their bytes are distinct by construction.
-	Derived int `json:"derived,omitempty"`
-	// Copied counts verified GOP-aligned windows copied without re-encoding.
-	Copied     int   `json:"copied,omitempty"`
-	DownloadMS int64 `json:"download_ms,omitempty"`
-	EncodeMS   int64 `json:"encode_ms,omitempty"`
-	VerifyMS   int64 `json:"verify_ms,omitempty"`
-	PublishMS  int64 `json:"publish_ms,omitempty"`
-	Bytes      int64 `json:"bytes,omitempty"`
-	// PaddedFrames is the sum of cloned tail frames across this handoff. It is
-	// exposed separately so a run can prove that reaching the exact frame cap
-	// did not silently freeze pictures.
-	PaddedFrames int64 `json:"padded_frames,omitempty"`
-	// EncodeFallbacks counts windows that were ELIGIBLE for a packet copy (GOP
-	// aligned, certified source) but reached the encoder anyway. It is the
-	// count the lenient mode used to hide: the run reported success and paid a
-	// full re-encode for a window the copy lever should have covered. Each one
-	// is also named in its window record through CopyFailure.
-	EncodeFallbacks int `json:"encode_fallbacks,omitempty"`
-	// Windows is the per-fragment attribution of this handoff, sorted by
-	// segment identity for determinism. It is scoped to the handoff that built
-	// this payload, so a concurrent or resumed run never contributes its
-	// windows to this receipt.
-	Windows []RemoteFinalJobSegmentPrepWindow `json:"windows,omitempty"`
 }
 
 // RemoteFinalJobWorkerTiming is what the remote worker reports about its own
@@ -275,10 +186,151 @@ func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJo
 	if other.Worker != nil {
 		t.Worker = other.Worker
 	}
-	// The local preparation block is also one atomic observation: it describes
-	// a single payload build, so it is replaced whole, never field by field.
-	if other.SegmentPrep != nil {
-		t.SegmentPrep = other.SegmentPrep
-	}
 	return t
+}
+
+// final_job_stock_planner.go owns WHICH stock source a final job consumes and
+// which Drive reference/window goes into the compiled plan. The planner reads
+// saved metadata only; the Master downloads and processes the selected stock
+// window outside the Producer.
+// finalJobStockClip is one stock window the remote Master will place: the
+// resolved Drive reference and the exact duration the scene consumes from it.
+type finalJobStockClip struct {
+	Asset   map[string]any
+	ChunkMS int64
+}
+
+// finalJobStockPlanner carries the per-handoff stock bookkeeping: the shuffled
+// file list per folder, the resolved asset cache, and the rotation cursor. Its
+// order is seeded by runID, making new runs different while keeping retries of
+// one run stable.
+type finalJobStockPlanner struct {
+	runID   string
+	files   map[string][]FinalJobStockFile
+	assets  map[string]map[string]any
+	cursors map[string]int
+}
+
+func newFinalJobStockPlanner(runID string) *finalJobStockPlanner {
+	return &finalJobStockPlanner{
+		runID:   strings.TrimSpace(runID),
+		files:   make(map[string][]FinalJobStockFile),
+		assets:  make(map[string]map[string]any),
+		cursors: make(map[string]int),
+	}
+}
+
+// folder returns the video files of one stock folder, listing it once per
+// handoff and warming the metadata of the sources it will offer. The Producer
+// never normalizes or uploads stock: the compiled plan carries the Drive
+// reference and the remote Master processes the selected window.
+func (p *finalJobStockPlanner) folder(ctx context.Context, resolver FinalJobAssetResolver, folderID string) ([]FinalJobStockFile, error) {
+	if files, ok := p.files[folderID]; ok {
+		return files, nil
+	}
+	listed, err := resolver.ListFinalJobStockFolder(ctx, folderID)
+	if err != nil {
+		return nil, fmt.Errorf("list selected stock folder %s: %w", folderID, err)
+	}
+	if len(listed) == 0 {
+		return nil, fmt.Errorf("selected stock folder %s contains no video files", folderID)
+	}
+	listed = append([]FinalJobStockFile(nil), listed...)
+	sort.SliceStable(listed, func(i, j int) bool {
+		if listed[i].ID != listed[j].ID {
+			return listed[i].ID < listed[j].ID
+		}
+		return listed[i].Name < listed[j].Name
+	})
+	seed := digest.SHA256Sum([]byte(p.runID + ":" + folderID))
+	rng := rand.New(rand.NewSource(int64(binary.LittleEndian.Uint64(seed[:8]))))
+	rng.Shuffle(len(listed), func(i, j int) { listed[i], listed[j] = listed[j], listed[i] })
+	p.files[folderID] = listed
+	return listed, nil
+}
+
+// finalJobStockScanWindow bounds how many folder entries one selection step
+// inspects. The prefetch lane warms the same head of the folder, so this is
+// also the window in which the next source is already cached. A folder that
+// cannot fill a scene inside this window fails closed instead of sending the
+// Master a stock window it cannot packet-copy.
+const finalJobStockScanWindow = 64
+
+// sceneClips consumes one scene's canonical duration from its stock folder
+// using WHOLE files only. The remote Master's stock lane is packet-copy: it
+// accepts source_in_us == 0 and source_duration_us == file duration, and
+// rejects a sub-window (r56: stock_window_not_packet_copyable). The Producer
+// therefore never trims a stock file. It prefers a file whose duration exactly
+// matches the remaining window; when none exists it takes the first whole file
+// that fits, so the scene is composed of whole files summing exactly to the
+// canonical duration. If no such composition exists, the handoff fails here
+// instead of sending a doomed plan.
+//
+// Selection follows a per-run shuffled order: the cursor advances past the
+// claimed file and the next scene continues through that permutation. Retries
+// keep the same order; new runs get a fresh order.
+func (p *finalJobStockPlanner) sceneClips(ctx context.Context, resolver FinalJobAssetResolver, folderID string, durationUS int64) ([]finalJobStockClip, error) {
+	files, err := p.folder(ctx, resolver, folderID)
+	if err != nil {
+		return nil, err
+	}
+	remainingMS := (durationUS + 999) / 1000
+	if remainingMS <= 0 {
+		return nil, nil
+	}
+	clips := make([]finalJobStockClip, 0, 1)
+	folderIndex := p.cursors[folderID]
+	for remainingMS > 0 {
+		limit := len(files)
+		if limit > finalJobStockScanWindow {
+			limit = finalJobStockScanWindow
+		}
+		chosen := -1
+		chosenDurationMS := int64(0)
+		var chosenAsset map[string]any
+		var firstResolveErr error
+		for offset := 0; offset < limit; offset++ {
+			index := (folderIndex + offset) % len(files)
+			file := files[index]
+			asset, ok := p.assets[file.ID]
+			if !ok {
+				asset, err = resolveFinalJobStockAsset(ctx, resolver, file.ID)
+				if err != nil {
+					if firstResolveErr == nil {
+						firstResolveErr = fmt.Errorf("resolve stock file %s (%s): %w", file.Name, file.ID, err)
+					}
+					continue
+				}
+				p.assets[file.ID] = asset
+			}
+			durationMS, _ := asset["duration_ms"].(int64)
+			if durationMS <= 0 {
+				if firstResolveErr == nil {
+					firstResolveErr = fmt.Errorf("stock file %s has no canonical duration", file.Name)
+				}
+				continue
+			}
+			// Exact match wins immediately. Otherwise retain the first whole
+			// file that fits; do not pick a larger file and leave a tail the
+			// next step cannot fill.
+			if durationMS == remainingMS {
+				chosen, chosenDurationMS, chosenAsset = index, durationMS, asset
+				break
+			}
+			if durationMS < remainingMS && chosen < 0 {
+				chosen, chosenDurationMS, chosenAsset = index, durationMS, asset
+			}
+		}
+		if chosen < 0 {
+			if firstResolveErr != nil {
+				return nil, fmt.Errorf("stock folder %s cannot fill the remaining %dms with whole files (no partial stock windows allowed): %w", folderID, remainingMS, firstResolveErr)
+			}
+			return nil, fmt.Errorf("stock folder %s cannot fill the remaining %dms with whole files; no partial stock windows are allowed", folderID, remainingMS)
+		}
+		clips = append(clips, finalJobStockClip{Asset: chosenAsset, ChunkMS: chosenDurationMS})
+		remainingMS -= chosenDurationMS
+		folderIndex = (chosen + 1) % len(files)
+		p.cursors[folderID] = folderIndex
+	}
+	return clips, nil
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+	videoconfig "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // Cut implements the Stock VideoCutter port through the same client and
@@ -29,8 +30,15 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 	// Only the canonical libx264 lane produces the certified SPS/PPS; NVENC
 	// emits a different parameter-set family under the same nominal profile,
 	// so it must fail BEFORE any encode instead of being rejected downstream.
-	if !strings.EqualFold(codec, "libx264") {
+	if !strings.EqualFold(codec, videoconfig.CanonicalStockEncoderCodec) {
 		return result, fmt.Errorf("STOCK_CANONICAL_ENCODER_REQUIRED: stock clips are packet-copy assembly inputs and require libx264, got %q", codec)
+	}
+	// The certified avcC is produced by ONE encoder lane. A different libx264
+	// preset keeps the nominal profile while changing the encode decisions, so
+	// the stock cutter must fail closed before encoding instead of publishing
+	// bytes the assembly gate cannot certify.
+	if !strings.EqualFold(preset, videoconfig.CanonicalStockEncoderPreset) {
+		return result, fmt.Errorf("STOCK_CANONICAL_ENCODER_REQUIRED: stock clips require the certified veryfast preset, got %q", preset)
 	}
 	profileInput := p.profile
 	if profileInput == (mediaexec.VideoProfile{}) {

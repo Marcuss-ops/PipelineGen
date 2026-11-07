@@ -76,11 +76,9 @@ func TestAlignFinalJobCompiledPlanAcceptsWholeStockFileAtItsSavedDuration(t *tes
 	}
 }
 
-// TestAlignFinalJobSegmentSourceWindowsAllowsOneFrameDurationRounding pins the
-// r49 case: the bytes carry 120 frames at 5.000s, but the declared duration is
-// 4.990s, so the conservative frame math reports 119. The fragment preparer is
-// the authority on the actual tail; the plan must not reject the one-frame
-// boundary before that authority runs.
+// TestAlignFinalJobSegmentSourceWindowsClampsOneFrameDurationShortfall pins
+// the case where source metadata carries 119 frames while a segment asks for
+// 120. Keep the plan within the declared source extent before Master fetches it.
 func TestAlignFinalJobSegmentSourceWindowsAllowsOneFrameDurationRounding(t *testing.T) {
 	plan := finalJobCompiledPlan{
 		Assets: []finalJobPlanAsset{{
@@ -96,8 +94,8 @@ func TestAlignFinalJobSegmentSourceWindowsAllowsOneFrameDurationRounding(t *test
 		t.Fatalf("alignFinalJobSegmentSourceWindows: %v", err)
 	}
 	segment := plan.VideoTracks[0].Segments[0]
-	if segment.SourceInUS != 0 || segment.SourceDurationUS != 5_000_000 {
-		t.Fatalf("aligned window = %d + %d, want 0 + 5000000", segment.SourceInUS, segment.SourceDurationUS)
+	if segment.SourceInUS != 0 || segment.SourceDurationUS != 4_958_333 || segment.FrameCount != 119 {
+		t.Fatalf("aligned window = %d + %d over %d frames, want 0 + 4958333 over 119", segment.SourceInUS, segment.SourceDurationUS, segment.FrameCount)
 	}
 }
 

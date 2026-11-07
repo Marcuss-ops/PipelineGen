@@ -335,6 +335,9 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: segments}},
 		Assets:      assets.sorted(),
 	}
+	if err := alignFinalJobSegmentSourceWindows(&plan); err != nil {
+		return "", "", fmt.Errorf("align final_job source windows to the output frame grid: %w", err)
+	}
 	if err := validateFinalJobPlanBindingRules(plan); err != nil {
 		return "", "", fmt.Errorf("final_job V2 compiled-plan asset bindings: %w", err)
 	}
@@ -534,8 +537,7 @@ func finalJobMergeContiguousSegments(segments []finalJobPlanSegment) []finalJobP
 		}
 		merged = append(merged, current)
 	}
-	// Renumber so the segment ids stay dense and stable for the receipt and the
-	// prepared-fragment identity (which hashes the segment id).
+	// Renumber so the segment ids stay dense and stable in the sealed plan.
 	for i := range merged {
 		merged[i].SegmentID = fmt.Sprintf("segment-%04d", i)
 	}
@@ -577,15 +579,4 @@ func finalJobOverlayAssetDurationUS(asset map[string]any, entries []any, fpsNum,
 		}
 	}
 	return maxOutUS
-}
-
-func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {
-	numerator := us * fpsNum
-	denominator := int64(1_000_000) * fpsDen
-	return (numerator + denominator/2) / denominator
-}
-
-func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
-	numerator := frame * 1_000_000 * fpsDen
-	return (numerator + fpsNum/2) / fpsNum
 }
