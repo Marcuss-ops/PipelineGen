@@ -71,14 +71,21 @@ func (r *countingStockResolver) resolved() int {
 	return r.resolve
 }
 
-// TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes pins the
-// selection rule the payload used to own inline: a scene consumes chunks from a
-// folder that ROTATES across scenes, and the file after the one that filled the
-// scene is the next scene's first file.
-func TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes(t *testing.T) {
+// TestFinalJobStockPlannerConsumesWholeFilesAndRotatesAcrossScenes pins the
+// whole-file rule: a scene is filled by whole sources that sum exactly to its
+// canonical duration, and the cursor continues through the folder. The old
+// walk took a partial tail from the last file; the remote Master rejects that
+// (r56), so the planner must never emit it.
+func TestFinalJobStockPlannerConsumesWholeFilesAndRotatesAcrossScenes(t *testing.T) {
 	resolver := newCountingStockResolver(
-		[]FinalJobStockFile{{ID: "stock-a", Name: "a.mp4"}, {ID: "stock-b", Name: "b.mp4"}, {ID: "stock-c", Name: "c.mp4"}},
-		map[string]int64{"stock-a": 12_000, "stock-b": 4_000, "stock-c": 6_000},
+		[]FinalJobStockFile{
+			{ID: "stock-a", Name: "a.mp4"},
+			{ID: "stock-b", Name: "b.mp4"},
+			{ID: "stock-c", Name: "c.mp4"},
+			{ID: "stock-d", Name: "d.mp4"},
+			{ID: "stock-e", Name: "e.mp4"},
+		},
+		map[string]int64{"stock-a": 12_000, "stock-b": 4_000, "stock-c": 6_000, "stock-d": 3_000, "stock-e": 5_000},
 	)
 	planner := newFinalJobStockPlanner()
 	scene0, err := planner.sceneClips(context.Background(), resolver, "folder-1", 25_000_000)
@@ -88,7 +95,7 @@ func TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes(t *testi
 	want0 := []struct {
 		id      string
 		chunkMS int64
-	}{{"stock-a", 12_000}, {"stock-c", 6_000}, {"stock-b", 4_000}, {"stock-a", 3_000}}
+	}{{"stock-a", 12_000}, {"stock-b", 4_000}, {"stock-c", 6_000}, {"stock-d", 3_000}}
 	if len(scene0) != len(want0) {
 		t.Fatalf("scene 0 chunks = %+v, want %d", scene0, len(want0))
 	}
@@ -97,30 +104,47 @@ func TestFinalJobStockPlannerKeepsChunkingAndFolderRotationAcrossScenes(t *testi
 			t.Fatalf("scene 0 chunk %d = %v/%d, want %s/%d", i, scene0[i].Asset["drive_file_id"], scene0[i].ChunkMS, want.id, want.chunkMS)
 		}
 	}
-	// The cursor records the post-claim index of the LAST chunk, so the
-	// rotation step after it is only persisted when another chunk follows.
-	// Four chunks therefore leave the cursor at 7: the next scene starts at
-	// the second file and finishes on the first.
+	// The cursor records the file AFTER the last claimed chunk, so the next
+	// scene starts at stock-e and takes its exact 5s whole file.
 	scene1, err := planner.sceneClips(context.Background(), resolver, "folder-1", 5_000_000)
 	if err != nil {
 		t.Fatalf("scene 1: %v", err)
 	}
-	if len(scene1) != 2 || scene1[0].Asset["drive_file_id"] != "stock-b" || scene1[0].ChunkMS != 4_000 ||
-		scene1[1].Asset["drive_file_id"] != "stock-a" || scene1[1].ChunkMS != 1_000 {
-		t.Fatalf("scene 1 chunks = %+v, want stock-b/4000 then stock-a/1000", scene1)
+	if len(scene1) != 1 || scene1[0].Asset["drive_file_id"] != "stock-e" || scene1[0].ChunkMS != 5_000 {
+		t.Fatalf("scene 1 chunks = %+v, want stock-e/5000", scene1)
 	}
-	// One folder listing and one resolution per file: the planner caches both.
+	for _, clip := range append(scene0, scene1...) {
+		id := clip.Asset["drive_file_id"].(string)
+		if clip.ChunkMS != resolver.dur[id] {
+			t.Fatalf("clip %s uses %dms of a %dms file; partial stock windows are forbidden", id, clip.ChunkMS, resolver.dur[id])
+		}
+	}
 	if resolver.listed != 1 {
 		t.Fatalf("folder listed %d times, want once per handoff", resolver.listed)
 	}
-	if resolver.resolved() != 3 {
-		t.Fatalf("resolved %d stock files, want the 3 the folder offers", resolver.resolved())
+	if resolver.resolved() != 5 {
+		t.Fatalf("resolved %d stock files, want the 5 the folder offers", resolver.resolved())
+	}
+}
+
+// TestFinalJobStockPlannerRejectsAnUnfillableScene pins the fail-fast side: a
+// folder whose whole files cannot sum to the scene duration must stop the
+// handoff, not emit a partial tail for the Master to reject.
+func TestFinalJobStockPlannerRejectsAnUnfillableScene(t *testing.T) {
+	resolver := newCountingStockResolver(
+		[]FinalJobStockFile{{ID: "stock-a", Name: "a.mp4"}, {ID: "stock-b", Name: "b.mp4"}, {ID: "stock-c", Name: "c.mp4"}},
+		map[string]int64{"stock-a": 12_000, "stock-b": 4_000, "stock-c": 6_000},
+	)
+	_, err := newFinalJobStockPlanner().sceneClips(context.Background(), resolver, "folder-1", 25_000_000)
+	if err == nil || !strings.Contains(err.Error(), "whole files") {
+		t.Fatalf("sceneClips error = %v, want a whole-file composition failure", err)
 	}
 }
 
 // TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource ensures a stock
-// source that cannot be packet-copied remains selectable: the remote Master
-// downloads and processes the exact requested window.
+// source that previously failed a GOP probe remains selectable as a WHOLE
+// file: the remote Master downloads and packet-copies it itself. The Producer
+// neither probes nor re-encodes it.
 func TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource(t *testing.T) {
 	const formerRejected = "1xvvjxin09xbwy7qqignzlmpjftckql_o"
 	resolver := newCountingStockResolver(
@@ -129,9 +153,9 @@ func TestFinalJobStockPlannerKeepsTheFormerGOPRejectedSource(t *testing.T) {
 	)
 	clips, err := newFinalJobStockPlanner().sceneClips(context.Background(), resolver, "folder-1", 5_000_000)
 	if err != nil {
-		t.Fatalf("GOP-incompatible source should remain selectable for the remote Master: %v", err)
+		t.Fatalf("whole-file stock source should remain selectable for the remote Master: %v", err)
 	}
-	if len(clips) != 1 || clips[0].Asset["drive_file_id"] != formerRejected {
-		t.Fatalf("clips = %+v, want the former GOP-rejected stock source", clips)
+	if len(clips) != 1 || clips[0].Asset["drive_file_id"] != formerRejected || clips[0].ChunkMS != 5_000 {
+		t.Fatalf("clips = %+v, want the former GOP-rejected whole stock source", clips)
 	}
 }

@@ -349,8 +349,6 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 // every stock asset INTO the shared registry the caller already owns.
 func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAssets) ([]finalJobBaseSegment, error) {
 	base := make([]finalJobBaseSegment, 0, len(scenes))
-	delivery := finalJobPlanDelivery()
-	fpsNum, fpsDen := int64(delivery.FPS.Num), int64(delivery.FPS.Den)
 	var cursorUS int64
 	for i, scene := range scenes {
 		asset, ok := scene["stock"].(map[string]any)
@@ -362,14 +360,18 @@ func finalJobPlanBaseSegments(scenes []map[string]any, assets *finalJobPlanAsset
 			return nil, fmt.Errorf("final_job scene %d has an invalid duration", i)
 		}
 		durationUS := int64(math.Round(durationSeconds * 1_000_000))
-		// A stockpipeline duration is saved in milliseconds and can fall just
-		// below the frame grid (5.000s/120 frames is commonly recorded as
-		// 4.979s). Round the source extent UP to the delivery frame boundary
-		// before the scene windows are composed; otherwise the clamp below
-		// shrinks the window to 4.979s and the later alignment/validator can
-		// never recover the frame the remote cutter can pad. A source genuinely
-		// shorter than the requested scene still fails the frame-count check.
-		assetDurationUS := finalJobFrameCeilDurationUS(finalJobInt64(asset["duration_ms"])*1000, fpsNum, fpsDen)
+		// Stock is a whole-file packet-copy input. The saved duration is the
+		// authority: never pad a 4.979s file to the 5.000s frame boundary. The
+		// Master rejects source_in_us + source_duration_us beyond the bytes
+		// (r53) and refuses any sub-window (r56); a stock scene must therefore
+		// already be exactly one whole file.
+		assetDurationUS := finalJobInt64(asset["duration_ms"]) * 1000
+		if assetDurationUS <= 0 {
+			return nil, fmt.Errorf("final_job scene %d stock asset has no positive saved duration", i)
+		}
+		if strings.EqualFold(finalJobStringValue(scene["kind"]), "stock") && durationUS != assetDurationUS {
+			return nil, fmt.Errorf("final_job stock scene %d duration %dus does not match the whole stock file %dus; the remote Master only packet-copies whole stock files", i, durationUS, assetDurationUS)
+		}
 		if err := assets.addRaw(asset, "video", assetDurationUS, finalJobInt(asset["width"]), finalJobInt(asset["height"]), finalJobInt64(asset["frame_count"])); err != nil {
 			return nil, fmt.Errorf("final_job scene %d: %w", i, err)
 		}
@@ -586,45 +588,4 @@ func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {
 func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
 	numerator := frame * 1_000_000 * fpsDen
 	return (numerator + fpsNum/2) / fpsNum
-}
-
-// finalJobFrameCeilDurationUS lifts a declared duration to the first delivery
-// frame boundary at or after it. Stock metadata is millisecond-rounded and can
-// otherwise hide the partial last frame that the Master is allowed to pad.
-func finalJobFrameCeilDurationUS(durationUS, fpsNum, fpsDen int64) int64 {
-	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
-		return durationUS
-	}
-	frames := finalJobFrameAtUS(durationUS, fpsNum, fpsDen)
-	if frames < 0 {
-		frames = 0
-	}
-	if finalJobFrameStartUS(frames, fpsNum, fpsDen) < durationUS {
-		frames++
-	}
-	return finalJobFrameDurationUS(frames, fpsNum, fpsDen)
-}
-
-func finalJobInt64(value any) int64 {
-	switch n := value.(type) {
-	case int:
-		return int64(n)
-	case int64:
-		return n
-	case float64:
-		return int64(n)
-	case json.Number:
-		i, _ := n.Int64()
-		return i
-	case string:
-		var i int64
-		_, _ = fmt.Sscan(strings.TrimSpace(n), &i)
-		return i
-	default:
-		return 0
-	}
-}
-
-func finalJobInt(value any) int {
-	return int(finalJobInt64(value))
 }

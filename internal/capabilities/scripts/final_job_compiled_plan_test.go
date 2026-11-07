@@ -6,14 +6,41 @@ import (
 	"testing"
 )
 
-func TestFinalJobCompiledPlanFrameAlignsShortStockExtent(t *testing.T) {
+// TestFinalJobCompiledPlanRejectsStockSceneThatDoesNotMatchTheWholeFile pins
+// the r53/r56 closure: a 5.000s scene may never be built against 4.979s stock
+// bytes. The old plan padded the source extent to 5.000s and the Master
+// rejected the out-of-bounds/partial window; the Producer now fails first.
+func TestFinalJobCompiledPlanRejectsStockSceneThatDoesNotMatchTheWholeFile(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	scenes := []map[string]any{{
 		"duration_seconds": 5.0,
+		"kind":             "stock",
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
 			"duration_ms": int64(4979), "start_ms": int64(0),
+		},
+	}}
+	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
+	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(5000)}
+	_, _, err := finalJobCompiledPlanPayload(scenes, nil, nil, audio, audioRef, 5_000_000)
+	if err == nil || !strings.Contains(err.Error(), "whole stock file") {
+		t.Fatalf("finalJobCompiledPlanPayload error = %v, want a whole-stock-file mismatch", err)
+	}
+}
+
+// TestFinalJobCompiledPlanKeepsAWholeStockFileExact is the green twin: a 5.000s
+// scene backed by a 5.000s stock file produces exactly one whole-file window
+// with the real duration and frame count.
+func TestFinalJobCompiledPlanKeepsAWholeStockFileExact(t *testing.T) {
+	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	scenes := []map[string]any{{
+		"duration_seconds": 5.0,
+		"kind":             "stock",
+		"stock": map[string]any{
+			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
+			"duration_ms": int64(5000), "start_ms": int64(0),
 		},
 	}}
 	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
@@ -38,7 +65,7 @@ func TestFinalJobCompiledPlanFrameAlignsShortStockExtent(t *testing.T) {
 		}
 	}
 	if got.DurationUS != 5_000_000 {
-		t.Fatalf("stock source extent = %d, want the 5s frame boundary", got.DurationUS)
+		t.Fatalf("stock source extent = %d, want the exact 5s file duration", got.DurationUS)
 	}
 	if len(plan.Tracks) != 1 || len(plan.Tracks[0].Segments) != 1 {
 		t.Fatalf("segments = %+v, want one stock segment", plan.Tracks)
