@@ -2,7 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
+	"math/rand"
+	"sort"
+	"strings"
 )
 
 // final_job_stock_planner.go owns WHICH stock source a final job consumes and
@@ -16,19 +21,20 @@ type finalJobStockClip struct {
 	ChunkMS int64
 }
 
-// finalJobStockPlanner carries the per-handoff stock bookkeeping: the eligible
-// file list per folder, the resolved asset cache, and the rotation cursor. The
-// cursor is per FOLDER and advances across scenes, so one scene's consumption
-// decides what the next scene in the same folder gets — the planner must be
-// shared by every scene of a handoff, never recreated per scene.
+// finalJobStockPlanner carries the per-handoff stock bookkeeping: the shuffled
+// file list per folder, the resolved asset cache, and the rotation cursor. Its
+// order is seeded by runID, making new runs different while keeping retries of
+// one run stable.
 type finalJobStockPlanner struct {
+	runID   string
 	files   map[string][]FinalJobStockFile
 	assets  map[string]map[string]any
 	cursors map[string]int
 }
 
-func newFinalJobStockPlanner() *finalJobStockPlanner {
+func newFinalJobStockPlanner(runID string) *finalJobStockPlanner {
 	return &finalJobStockPlanner{
+		runID:   strings.TrimSpace(runID),
 		files:   make(map[string][]FinalJobStockFile),
 		assets:  make(map[string]map[string]any),
 		cursors: make(map[string]int),
@@ -50,6 +56,16 @@ func (p *finalJobStockPlanner) folder(ctx context.Context, resolver FinalJobAsse
 	if len(listed) == 0 {
 		return nil, fmt.Errorf("selected stock folder %s contains no video files", folderID)
 	}
+	listed = append([]FinalJobStockFile(nil), listed...)
+	sort.SliceStable(listed, func(i, j int) bool {
+		if listed[i].ID != listed[j].ID {
+			return listed[i].ID < listed[j].ID
+		}
+		return listed[i].Name < listed[j].Name
+	})
+	seed := sha256.Sum256([]byte(p.runID + ":" + folderID))
+	rng := rand.New(rand.NewSource(int64(binary.LittleEndian.Uint64(seed[:8]))))
+	rng.Shuffle(len(listed), func(i, j int) { listed[i], listed[j] = listed[j], listed[i] })
 	p.files[folderID] = listed
 	return listed, nil
 }
@@ -71,10 +87,9 @@ const finalJobStockScanWindow = 64
 // canonical duration. If no such composition exists, the handoff fails here
 // instead of sending a doomed plan.
 //
-// Selection is deterministic: the cursor advances past the claimed file and the
-// next scene continues through the folder. This replaces the former walk that
-// consumed a partial tail from the last file, which is exactly what the Master
-// refused in r53-r58.
+// Selection follows a per-run shuffled order: the cursor advances past the
+// claimed file and the next scene continues through that permutation. Retries
+// keep the same order; new runs get a fresh order.
 func (p *finalJobStockPlanner) sceneClips(ctx context.Context, resolver FinalJobAssetResolver, folderID string, durationUS int64) ([]finalJobStockClip, error) {
 	files, err := p.folder(ctx, resolver, folderID)
 	if err != nil {
