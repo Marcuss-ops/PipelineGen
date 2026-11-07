@@ -78,6 +78,60 @@ func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
 	return (numerator + fpsNum/2) / fpsNum
 }
 
+// finalJobCompleteVideoFrameCoverage adds the minimum source frames needed
+// for the worker's whole-frame duration contract. Audio duration remains the
+// plan SSOT; this only uses already-declared source frames at the timeline end.
+func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64) error {
+	if len(segments) == 0 || durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
+		return fmt.Errorf("final_job V2 cannot complete video coverage without segments and a valid output clock")
+	}
+	denominator := int64(1_000_000) * fpsDen
+	neededFrames := (durationUS*fpsNum + denominator - 1) / denominator
+	lastIndex, endFrame := -1, int64(0)
+	for i := range segments {
+		end := segments[i].TimelineStartFrame + segments[i].FrameCount
+		if end > endFrame {
+			lastIndex, endFrame = i, end
+		}
+	}
+	if endFrame >= neededFrames {
+		return nil
+	}
+	if lastIndex < 0 || segments[lastIndex].TimelineStartFrame+segments[lastIndex].FrameCount != endFrame {
+		return fmt.Errorf("final_job V2 video has no trailing segment at frame %d", endFrame)
+	}
+	segment := &segments[lastIndex]
+	assetIndex := -1
+	for i := range assets {
+		if assets[i].AssetID == segment.AssetID {
+			assetIndex = i
+			break
+		}
+	}
+	if assetIndex < 0 {
+		return fmt.Errorf("final_job V2 trailing segment %q has no source asset", segment.SegmentID)
+	}
+	asset := assets[assetIndex]
+	totalFrames := asset.FrameCount
+	if totalFrames <= 0 {
+		totalFrames = finalJobFrameAtUS(asset.DurationUS, fpsNum, fpsDen)
+		if totalFrames > 0 && finalJobFrameStartUS(totalFrames, fpsNum, fpsDen) > asset.DurationUS {
+			totalFrames--
+		}
+	}
+	sourceStartFrame := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
+	available := totalFrames - sourceStartFrame - segment.FrameCount
+	if available < neededFrames-endFrame {
+		return fmt.Errorf("final_job V2 trailing segment %q needs %d more frames but source %q has %d", segment.SegmentID, neededFrames-endFrame, segment.AssetID, max(available, int64(0)))
+	}
+	segment.FrameCount += neededFrames - endFrame
+	segment.SourceDurationUS = finalJobFrameStartUS(sourceStartFrame+segment.FrameCount, fpsNum, fpsDen) - segment.SourceInUS
+	if segment.SourceInUS+segment.SourceDurationUS > asset.DurationUS {
+		return fmt.Errorf("final_job V2 trailing segment %q frame completion exceeds source %q duration", segment.SegmentID, segment.AssetID)
+	}
+	return nil
+}
+
 // alignFinalJobCompiledPlanAssetIDs binds the compiled plan to the exact
 // runtime identities the worker will prefetch. Objectstore assets are keyed by
 // their content SHA; the plan may still name the same fragment by its
