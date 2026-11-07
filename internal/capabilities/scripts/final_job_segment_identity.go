@@ -103,28 +103,37 @@ func enforceFinalJobMinimumSceneDuration(scenes []map[string]any, minimumMS int6
 	return nil
 }
 
-// finalJobSegmentWork is one independent fragment preparation: the validated
-// source reference, its exact request, and its position in the compiled plan.
-type finalJobSegmentWork struct {
-	index   int
-	source  map[string]any
-	request FinalJobVideoSegmentRequest
+func finalJobSceneDurationMS(scenes []map[string]any) int64 {
+	var total int64
+	for _, scene := range scenes {
+		seconds, ok := scene["duration_seconds"].(float64)
+		if ok && !math.IsNaN(seconds) && !math.IsInf(seconds, 0) && seconds > 0 {
+			total += int64(math.Round(seconds * 1000))
+		}
+	}
+	return total
 }
 
-// FinalJobSegmentParallelism is the optional parallelism a preparer declares. A
-// preparer that does not implement it is driven one fragment at a time.
-type FinalJobSegmentParallelism interface {
-	Parallelism() int
-}
-
-func finalJobSegmentPrepareError(item finalJobSegmentWork, err error) error {
-	return fmt.Errorf(
-		"prepare final_job segment %q from asset %q role %q at %dus for %dus: %w",
-		item.request.SegmentID,
-		finalJobStringValue(item.source["asset_id"]),
-		finalJobStringValue(item.source["role"]),
-		item.request.SourceInUS,
-		item.request.SourceDurationUS,
-		err,
-	)
+func trimFinalJobSceneTail(scenes []map[string]any, surplusMS, minimumMS int64) error {
+	if surplusMS <= 0 {
+		return nil
+	}
+	for i := len(scenes) - 1; i >= 0 && surplusMS > 0; i-- {
+		seconds, ok := scenes[i]["duration_seconds"].(float64)
+		if !ok || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+			return fmt.Errorf("final_job scene %d has an invalid duration while aligning audio", i)
+		}
+		durationMS := int64(math.Round(seconds * 1000))
+		available := durationMS - minimumMS
+		if available <= 0 {
+			continue
+		}
+		trim := min(available, surplusMS)
+		scenes[i]["duration_seconds"] = float64(durationMS-trim) / 1000
+		surplusMS -= trim
+	}
+	if surplusMS > 0 {
+		return fmt.Errorf("final_job cannot trim %dms to fit the certified audio without violating minimum scene duration", surplusMS)
+	}
+	return nil
 }

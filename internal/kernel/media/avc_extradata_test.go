@@ -1,9 +1,6 @@
 package media
 
 import (
-	"errors"
-	"os/exec"
-	"path/filepath"
 	"testing"
 )
 
@@ -13,38 +10,24 @@ import (
 // 4.0, ref=1, fixed closed GOP, bt709 VUI); the drifted fixture keeps the same
 // codec name, profile and geometry but changes the reference count and level,
 // which is exactly the class the nominal profile checks cannot see.
-func TestVerifyCanonicalVideoExtradata(t *testing.T) {
-	ffmpeg, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		t.Skip("ffmpeg is not installed")
+// TestCanonicalVideoProfileRevisionIsPinned ties the human-readable encoder
+// lane revision to the contract it claims to name. The revision is part of the
+// fragment work identity, so changing it must never silently describe a
+// different level, GOP or bitstream identity.
+func TestCanonicalVideoProfileRevisionIsPinned(t *testing.T) {
+	contract := DefaultAssemblyMediaContract()
+	if CanonicalVideoProfileRevision != "velox-avc1-high40-ref1-bt709-v1" {
+		t.Fatalf("canonical profile revision = %q", CanonicalVideoProfileRevision)
 	}
-	dir := t.TempDir()
-	encode := func(name string, extra ...string) string {
-		path := filepath.Join(dir, name)
-		args := []string{
-			"-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-			"-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=24", "-frames:v", "48", "-an",
-			"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-			"-profile:v", "high", "-level:v", "4.0", "-pix_fmt", "yuv420p", "-r", "24",
-			"-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv",
-			"-g", "48", "-keyint_min", "48", "-sc_threshold", "0", "-bf", "0", "-refs", "1", "-flags", "+cgop",
-			"-video_track_timescale", "90000", "-map_metadata", "-1", "-movflags", "+faststart",
-		}
-		args = append(args, extra...)
-		args = append(args, path)
-		if out, err := exec.Command(ffmpeg, args...).CombinedOutput(); err != nil {
-			t.Fatalf("create %s: %v: %s", name, err, out)
-		}
-		return path
-	}
-
-	canonical := encode("canonical.mp4")
-	if err := VerifyCanonicalVideoExtradata(canonical); err != nil {
-		t.Fatalf("canonical stock clip refused: %v", err)
-	}
-
-	drifted := encode("drifted.mp4", "-refs", "3", "-level:v", "4.1")
-	if err := VerifyCanonicalVideoExtradata(drifted); !errors.Is(err, ErrVideoExtradataNotCanonical) {
-		t.Fatalf("drifted SPS/PPS gate = %v, want ErrVideoExtradataNotCanonical", err)
+	if contract.ID != AssemblyMediaContractID || contract.VideoLevel != "4.0" ||
+		contract.KeyframeInterval != 48 || contract.BFrames != 0 || !contract.ClosedGOP ||
+		contract.VideoExtradataSHA256 != CanonicalVideoExtradataSHA256 {
+		t.Fatalf("revision %q no longer names the High 4.0 / refs 1 / GOP 48 contract", CanonicalVideoProfileRevision)
 	}
 }
+
+// TestCanonicalFragmentsJoinAndDecode is the Producer-side junction
+// certification: two independently encoded fragments must carry the exact same
+// avcC, their packet-copy join must keep the exact frame count, and decoding
+// across the join must not report an error. The drifted fragment is refused by
+// the same gate that guards publication, so it can never reach the muxer.

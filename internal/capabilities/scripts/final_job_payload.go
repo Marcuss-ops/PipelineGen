@@ -32,44 +32,6 @@ type finalJobStockAssetResolver interface {
 	ResolveFinalJobStockAsset(context.Context, string) (map[string]any, error)
 }
 
-// FinalJobVideoSegmentRequest is one exact, frame-aligned fragment the Producer
-// prepares for its own overlay or clip placement. Stock is deliberately absent:
-// its Drive reference and source window travel in the compiled plan, and the
-// Master downloads, cuts and normalizes it remotely. The remote worker receives
-// only prepared Producer fragments over HTTPS and never transcodes those.
-type FinalJobVideoSegmentRequest struct {
-	SegmentID          string
-	SourceAssetID      string
-	SourceSHA256       string
-	SourceInUS         int64
-	SourceDurationUS   int64
-	TimelineStartFrame int64
-	FrameCount         int64
-	TimelineRevision   int64
-	TimelineSHA256     string
-	// PlacementTag is set ONLY when two placements would otherwise encode
-	// identical bytes. It gives this placement a distinct object with the same
-	// pictures (a container tag), because the plan refuses two assets with one
-	// canonical identity and the assembler certifies each placement against its
-	// own asset. It is part of the fragment work identity, so a tagged request
-	// can never be answered from the untagged cache entry.
-	PlacementTag string
-	// ReuseFromSHA256 names the certified fragment whose bytes this placement
-	// repeats, and ReuseFromURI is where those bytes already live. With both
-	// set, the preparer must DERIVE this placement by copying that bitstream
-	// into a distinct container instead of encoding the source window again: a
-	// duplicate placement is a naming problem, not a rendering problem.
-	ReuseFromSHA256 string
-	ReuseFromURI    string
-}
-
-// FinalJobVideoSegmentPreparer materializes the Producer-owned clip and overlay
-// windows as assembly-ready fragments. Stock never reaches this interface: the
-// Master processes the stockpipeline Drive source outside the Producer.
-type FinalJobVideoSegmentPreparer interface {
-	PrepareFinalJobVideoSegment(context.Context, map[string]any, FinalJobVideoSegmentRequest) (map[string]any, error)
-}
-
 func resolveFinalJobStockAsset(ctx context.Context, resolver FinalJobAssetResolver, id string) (map[string]any, error) {
 	if stockResolver, ok := resolver.(finalJobStockAssetResolver); ok {
 		return stockResolver.ResolveFinalJobStockAsset(ctx, id)
@@ -78,19 +40,46 @@ func resolveFinalJobStockAsset(ctx context.Context, resolver FinalJobAssetResolv
 }
 
 func BuildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
-	return buildFinalJobPayloads(ctx, runID, req, result, resolver, nil)
+	return buildFinalJobPayloads(ctx, runID, req, result, resolver)
 }
 
-// BuildFinalJobPayloadsWithSegmentPreparer is the executable FINALIZE handoff:
-// Producer-owned clip and overlay placements are cut into assembly-ready
-// fragments before the plan is sealed. Stock is passed through as the
-// stockpipeline Drive reference and processed by the remote Master; the Producer
-// never downloads or transforms those bytes.
-func BuildFinalJobPayloadsWithSegmentPreparer(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparer FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
-	return buildFinalJobPayloads(ctx, runID, req, result, resolver, preparer)
+// NormalizeFinalJobHTTPSRuntimeAssets validates the remote source locator for
+// each asset and keeps the worker-facing URL in its internal-reference form.
+// Stock retains its Drive identity; other assets use their content-addressed
+// Objectstore identity.
+func NormalizeFinalJobHTTPSRuntimeAssets(assets []any) error {
+	for i, raw := range assets {
+		asset, ok := raw.(map[string]any)
+		if !ok {
+			return fmt.Errorf("final_job runtime asset %d has an invalid shape", i)
+		}
+		source := strings.TrimSpace(finalJobStringValue(asset["source_uri"]))
+		if source == "" {
+			source = strings.TrimSpace(finalJobStringValue(asset["url"]))
+		}
+		if !strings.HasPrefix(strings.ToLower(source), "https://") {
+			return fmt.Errorf("final_job runtime asset %q has no HTTPS source_uri", finalJobStringValue(asset["asset_id"]))
+		}
+		assetID := strings.TrimSpace(finalJobStringValue(asset["asset_id"]))
+		if assetID == "" {
+			return fmt.Errorf("final_job runtime asset %d has no immutable asset_id", i)
+		}
+		asset["source_uri"] = source
+		if strings.EqualFold(finalJobStringValue(asset["role"]), "stock") {
+			driveID := strings.TrimSpace(finalJobStringValue(asset["drive_file_id"]))
+			if driveID == "" {
+				return fmt.Errorf("final_job stock runtime asset %q has no Drive identity", assetID)
+			}
+			asset["url"] = "velox-drive://" + driveID
+		} else {
+			delete(asset, "drive_file_id")
+			asset["url"] = "velox-asset://" + assetID
+		}
+	}
+	return nil
 }
 
-func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver, preparer FinalJobVideoSegmentPreparer) (map[string]any, map[string]any, error) {
+func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
 	if result == nil || result.CanonicalTimeline == nil || result.CanonicalTimeline.DurationUS <= 0 {
 		return nil, nil, fmt.Errorf("final_job requires a canonical timeline with positive duration")
 	}
@@ -396,12 +385,6 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	compiledPlan, err = alignFinalJobCompiledPlanAssetIDs(compiledPlan, runtimeAssets)
 	if err != nil {
 		return nil, nil, err
-	}
-	if preparer != nil {
-		compiledPlan, runtimeAssets, err = prepareFinalJobVideoSegments(ctx, compiledPlan, runtimeAssets, preparer)
-		if err != nil {
-			return nil, nil, fmt.Errorf("prepare final_job video segments: %w", err)
-		}
 	}
 	compiledPlanSHA := digest.SHA256String(compiledPlan)
 	attempt := 1

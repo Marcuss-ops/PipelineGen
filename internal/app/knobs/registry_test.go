@@ -94,7 +94,7 @@ func TestRegistryRowsAreWellFormed(t *testing.T) {
 // TestNonDefaultLogsEveryOverride pins the boot log: a host that runs with a
 // non-default knob must say so, with the value AND the default it overrides.
 func TestNonDefaultLogsEveryOverride(t *testing.T) {
-	t.Setenv("VELOX_FINAL_JOB_PREPARE_LANES", "7")
+	t.Setenv("VELOX_FINAL_JOB_ATTACH_SECONDS", "7")
 	core, observed := observer.New(zap.InfoLevel)
 	LogNonDefault(zap.New(core))
 
@@ -105,26 +105,26 @@ func TestNonDefaultLogsEveryOverride(t *testing.T) {
 	found := false
 	for _, entry := range entries {
 		fields := entry.ContextMap()
-		if fields["knob"] == "VELOX_FINAL_JOB_PREPARE_LANES" {
+		if fields["knob"] == "VELOX_FINAL_JOB_ATTACH_SECONDS" {
 			found = true
 			if fields["value"] != "7" {
 				t.Errorf("value field = %v, want 7", fields["value"])
 			}
-			if fields["default"] != "4" {
-				t.Errorf("default field = %v, want 4", fields["default"])
+			if fields["default"] != "3000" {
+				t.Errorf("default field = %v, want 3000", fields["default"])
 			}
 		}
 	}
 	if !found {
-		t.Errorf("override line does not name VELOX_FINAL_JOB_PREPARE_LANES: %v", entries)
+		t.Errorf("override line does not name VELOX_FINAL_JOB_ATTACH_SECONDS: %v", entries)
 	}
 
 	// A knob back at its default is silent.
-	t.Setenv("VELOX_FINAL_JOB_PREPARE_LANES", "4")
+	t.Setenv("VELOX_FINAL_JOB_ATTACH_SECONDS", "3000")
 	core, observed = observer.New(zap.InfoLevel)
 	LogNonDefault(zap.New(core))
 	for _, setting := range NonDefault() {
-		if setting.Name == "VELOX_FINAL_JOB_PREPARE_LANES" {
+		if setting.Name == "VELOX_FINAL_JOB_ATTACH_SECONDS" {
 			t.Errorf("default value was reported as an override: %+v", setting)
 		}
 	}

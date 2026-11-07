@@ -55,24 +55,12 @@ knobs:
     safe_production: "3000"
     owner: "internal/app/wiring/remote_final_job.go"
     description: "Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait)."
-  VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS:
-    kind: env
-    default: "1"
-    safe_production: "1"
-    owner: "internal/app/wiring/final_job_segment_prepare.go"
-    description: "Prefer packet copy for certified windows; 0 routes windows through the verified encoder lane."
   VELOX_FINAL_JOB_CREDENTIALS_FILE:
     kind: env
     default: ""
     safe_production: "/etc/pipelinegen/final_job_credentials.json"
     owner: "internal/app/wiring/remote_final_job.go"
     description: "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset."
-  VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR:
-    kind: env
-    default: ""
-    safe_production: "unset (default cache root)"
-    owner: "internal/app/wiring/final_job_fragment_io.go"
-    description: "Relocates the prepared-fragment cache used by the final-job handoff."
   VELOX_FINAL_JOB_M2M_SECRET:
     kind: env
     default: ""
@@ -85,12 +73,6 @@ knobs:
     safe_production: "https://<master-host>"
     owner: "internal/app/wiring/remote_final_job.go"
     description: "Master URL for the remote final-job handoff; unset falls back to the configured base URL."
-  VELOX_FINAL_JOB_PREPARE_LANES:
-    kind: env
-    default: "4"
-    safe_production: "4 (1..16)"
-    owner: "internal/app/wiring/final_job_segment_prepare.go"
-    description: "Fragments prepared in parallel per handoff."
   VELOX_FINAL_JOB_QUEUE_SECONDS:
     kind: env
     default: "180"

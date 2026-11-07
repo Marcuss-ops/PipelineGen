@@ -170,7 +170,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 			log.Info("final-audio plan cache configured", zap.String("cache_dir", audioCacheDir))
 		}
 	}
-	if err := wireScriptGenerationFinalJob(runner, cfg, root, log); err != nil {
+	if err := wireScriptGenerationFinalJob(runner, root, log); err != nil {
 		return nil, err
 	}
 	// Durable per-unit checkpoint resume (the audio unit today). The resolver

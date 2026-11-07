@@ -77,6 +77,16 @@ const (
 	// green/rainbow flash defect. This hash is the single bitstream identity
 	// the producer, the copy gate, the assembler and the final mux all compare.
 	CanonicalVideoExtradataSHA256 = "7201ce80a2b2b32a0c1a89501851099f267c1767d59ff799db744f72032aae5a"
+
+	// CanonicalVideoProfileRevision names the exact encoder lane behind
+	// CanonicalVideoExtradataSHA256. Profile and level alone are not a version:
+	// the same High 4.0 nominal profile can be produced with different reference
+	// counts, cadence, colour VUI or track timescale. Producers embed this
+	// revision in their work/cache identity, so changing the encoder contract
+	// invalidates previously certified artifacts even when the avcC bytes happen
+	// to stay equal. It is a revision of VELOX_ASSEMBLY_READY_V1 (High 4.0),
+	// never of the High 4.1 V2 contract.
+	CanonicalVideoProfileRevision = "velox-avc1-high40-ref1-bt709-v1"
 )
 
 // FrameRate is a rational framerate. Exact equality via cross-multiplication

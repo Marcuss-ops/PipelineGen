@@ -275,7 +275,7 @@ func TestFinalJobCompiledPlanClampsTheThreeR36Windows(t *testing.T) {
 		clamped[segment.AssetID] = segment.SourceDurationUS
 	}
 	for _, c := range cases {
-		want := c.assetUS - c.inUS
+		want := finalJobFrameStartUS(finalJobFrameAtUS(c.assetUS, 24, 1), 24, 1) - finalJobFrameStartUS(finalJobFrameAtUS(c.inUS, 24, 1), 24, 1)
 		if got := clamped[c.id]; got != want {
 			t.Fatalf("%s source duration = %d, want %d (trimmed to the artifact)", c.id, got, want)
 		}

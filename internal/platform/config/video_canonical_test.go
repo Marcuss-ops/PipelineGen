@@ -25,30 +25,6 @@ func TestVideoEncoderPolicyPreservesRuntimePolicy(t *testing.T) {
 	}
 }
 
-func TestFinalJobFragmentEncoderPolicyResolvesScopedOverride(t *testing.T) {
-	// The base policy may be a GPU runtime policy; the fragment lane must still
-	// resolve to the canonical CPU encoder because NVENC cannot produce the
-	// certified SPS/PPS.
-	base := VideoEncoderPolicy{Codec: "h264_nvenc", Preset: "p1", CRF: 23}
-	for _, override := range []string{"", "policy", "default", "x264", "libx264", "cpu"} {
-		t.Run(override, func(t *testing.T) {
-			t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", override)
-			got, err := FinalJobFragmentEncoderPolicy(base)
-			if err != nil || got.Codec != "libx264" || got.Preset != "veryfast" || got.CRF != base.CRF {
-				t.Fatalf("policy = %+v, %v; want canonical libx264/veryfast and unchanged quality", got, err)
-			}
-		})
-	}
-	for _, override := range []string{"nvenc", EncoderNVENCH264, "gpu", "invalid"} {
-		t.Run(override, func(t *testing.T) {
-			t.Setenv("VELOX_FINAL_JOB_FRAGMENT_CODEC", override)
-			if _, err := FinalJobFragmentEncoderPolicy(base); err == nil {
-				t.Fatalf("incompatible fragment codec override %q was accepted", override)
-			}
-		})
-	}
-}
-
 func TestVideoConfigCanonicalClipPreservesLegacyCompositeCompatibility(t *testing.T) {
 	got := (VideoConfig{Codec: "h264_nvenc", Preset: "p1", CRF: 26, ClipDuration: 7}).CanonicalClip()
 	if got.Width != 1920 || got.Height != 1080 || got.FPSNum != 24 || got.FPSDen != 1 || got.KeyframeInterval != 48 {

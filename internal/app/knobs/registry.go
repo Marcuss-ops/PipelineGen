@@ -144,34 +144,10 @@ var registry = []Knob{
 		Description:    "Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait).",
 	},
 	{
-		Name: "VELOX_FINAL_JOB_COPY_CERTIFIED_WINDOWS", Kind: KindEnv, Default: "1",
-		Owner:          "internal/app/wiring/final_job_segment_prepare.go",
-		SafeProduction: "1",
-		Description:    "Prefer packet copy for certified windows; 0 routes windows through the verified encoder lane.",
-	},
-	{
-		Name: "VELOX_FINAL_JOB_COPY_ONLY", Kind: KindMarker, Default: "",
-		Owner:          "internal/app/wiring/final_job_segment_prepare.go",
-		SafeProduction: "retired — packet copy is preferred and verified encoding remains available",
-		Description:    "Retired compatibility marker; local preparation may use verified encoding when a source window is not copy-compatible.",
-	},
-	{
 		Name: "VELOX_FINAL_JOB_CREDENTIALS_FILE", Kind: KindEnv, Default: "",
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "/etc/pipelinegen/final_job_credentials.json",
 		Description:    "Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset.",
-	},
-	{
-		Name: "VELOX_FINAL_JOB_FRAGMENT_CACHE_DIR", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/final_job_fragment_io.go",
-		SafeProduction: "unset (default cache root)",
-		Description:    "Relocates the prepared-fragment cache used by the final-job handoff.",
-	},
-	{
-		Name: "VELOX_FINAL_JOB_FRAGMENT_CODEC", Kind: KindTestOnly, Default: "",
-		Owner:          "internal/app/wiring/final_job_segment_prepare_test.go",
-		SafeProduction: "unset",
-		Description:    "Test harness selector for the fragment codec path; not read by production code.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_M2M_SECRET", Kind: KindEnv, Default: "",
@@ -184,12 +160,6 @@ var registry = []Knob{
 		Owner:          "internal/app/wiring/remote_final_job.go",
 		SafeProduction: "https://<master-host>",
 		Description:    "Master URL for the remote final-job handoff; unset falls back to the configured base URL.",
-	},
-	{
-		Name: "VELOX_FINAL_JOB_PREPARE_LANES", Kind: KindEnv, Default: "4",
-		Owner:          "internal/app/wiring/final_job_segment_prepare.go",
-		SafeProduction: "4 (1..16)",
-		Description:    "Fragments prepared in parallel per handoff.",
 	},
 	{
 		Name: "VELOX_FINAL_JOB_QUEUE_SECONDS", Kind: KindEnv, Default: "180",
