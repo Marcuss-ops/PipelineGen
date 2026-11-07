@@ -332,7 +332,7 @@ func TestFinalJobCompiledPlanAlignsDurationToCertifiedAudio(t *testing.T) {
 		"duration_seconds": 19.704,
 		"stock": map[string]any{
 			"asset_id": "base-video", "sha256": videoSHA, "size_bytes": int64(1000),
-			"duration_ms": int64(19704), "start_ms": int64(0),
+			"duration_ms": int64(19800), "start_ms": int64(0),
 		},
 	}}
 	audio := FinalAudioReference{
@@ -349,11 +349,26 @@ func TestFinalJobCompiledPlanAlignsDurationToCertifiedAudio(t *testing.T) {
 		FinalAudio struct {
 			DurationUS int64 `json:"duration_us"`
 		} `json:"final_audio"`
+		Tracks []struct {
+			Segments []finalJobPlanSegment `json:"segments"`
+		} `json:"video_tracks"`
 	}
 	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
 		t.Fatalf("decode compiled plan: %v", err)
 	}
-	if plan.DurationUS != 19_708_333 || plan.FinalAudio.DurationUS != audio.DurationUS {
-		t.Fatalf("plan/audio durations = %d/%d, want frame-aligned video 19708333 and certified audio %d", plan.DurationUS, plan.FinalAudio.DurationUS, audio.DurationUS)
+	if plan.DurationUS != audio.DurationUS || plan.FinalAudio.DurationUS != audio.DurationUS {
+		t.Fatalf("plan/audio durations = %d/%d, want certified audio duration %d", plan.DurationUS, plan.FinalAudio.DurationUS, audio.DurationUS)
+	}
+	if len(plan.Tracks) != 1 || len(plan.Tracks[0].Segments) == 0 {
+		t.Fatalf("video tracks = %+v, want a main track with source frames", plan.Tracks)
+	}
+	var timelineEnd int64
+	for _, segment := range plan.Tracks[0].Segments {
+		if end := segment.TimelineStartFrame + segment.FrameCount; end > timelineEnd {
+			timelineEnd = end
+		}
+	}
+	if timelineEnd != 474 {
+		t.Fatalf("video timeline ends at frame %d, want 474 frames for the packet-rounded audio duration", timelineEnd)
 	}
 }
