@@ -129,9 +129,16 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	if delta := audio.DurationUS - timelineDurationUS; delta < -40_000 || delta > 40_000 {
 		return "", "", fmt.Errorf("final_job V2 final audio duration %dus does not match canonical timeline %dus", audio.DurationUS, timelineDurationUS)
 	}
-	timelineDurationUS = audio.DurationUS
 	delivery := finalJobPlanDelivery()
 	fpsNum, fpsDen := int64(delivery.FPS.Num), int64(delivery.FPS.Den)
+	// The worker assembles whole frames, so the plan duration must also land
+	// on the output frame grid. Keep the nearest frame boundary to the certified
+	// audio duration; the audio asset retains its measured duration separately.
+	timelineFrames := finalJobFrameAtUS(audio.DurationUS, fpsNum, fpsDen)
+	if timelineFrames <= 0 {
+		return "", "", fmt.Errorf("final_job V2 final audio duration has no output frames")
+	}
+	timelineDurationUS = finalJobFrameStartUS(timelineFrames, fpsNum, fpsDen)
 	assets := &finalJobPlanAssets{}
 	base, err := finalJobPlanBaseSegments(scenes, assets)
 	if err != nil {
