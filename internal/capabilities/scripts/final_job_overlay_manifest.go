@@ -40,6 +40,19 @@ func normalizeFinalJobOverlayWindows(plan *capmodel.OverlayPlan, result *Generat
 	if plan == nil {
 		return nil
 	}
+	// Final artifacts r79/r82 showed fully white frames for text_3d_* phrase
+	// overlays: the opaque white canvas replaced the stock picture while the
+	// phrase itself was not visible. Normalize every 3D phrase motion here, at
+	// the Producer boundary, before the render plan is sealed.
+	for index := range plan.Items {
+		item := &plan.Items[index]
+		if item.Kind == "text_phrase" && strings.HasPrefix(item.MotionID, "text_3d_") {
+			item.PresetID = "static_text_smoke"
+			item.MotionID = ""
+			item.MotionParams = nil
+			item.RenderKey = ""
+		}
+	}
 	clipWindows := finalJobIntermediateClipWindows(result)
 	if len(clipWindows) == 0 {
 		return nil

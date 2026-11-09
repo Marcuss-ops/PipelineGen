@@ -7,6 +7,65 @@ import (
 	"strings"
 )
 
+// dedupeCoTimedDateAnnotations removes the coarse year-only annotation when
+// the same spoken moment also has a full date. Both candidates otherwise get
+// independent five-second cards at the exact same time (for example "2011"
+// and "6 dicembre 2011"), making the text collide in the rendered video.
+// Dates at different speech positions remain separate cards.
+func dedupeCoTimedDateAnnotations(in []TimedAnnotation) []TimedAnnotation {
+	out := make([]TimedAnnotation, 0, len(in))
+	for _, candidate := range in {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Type), "DATE") {
+			out = append(out, candidate)
+			continue
+		}
+		start := candidate.StartUS
+		if start <= 0 {
+			start = candidate.StartMs * 1000
+		}
+		duplicate := -1
+		year := dateYear(candidate.Text)
+		if year != "" {
+			for i := range out {
+				prior := out[i]
+				if !strings.EqualFold(strings.TrimSpace(prior.Type), "DATE") {
+					continue
+				}
+				priorStart := prior.StartUS
+				if priorStart <= 0 {
+					priorStart = prior.StartMs * 1000
+				}
+				if priorStart == start && dateYear(prior.Text) == year {
+					duplicate = i
+					break
+				}
+			}
+		}
+		if duplicate < 0 {
+			out = append(out, candidate)
+			continue
+		}
+		// Keep the more informative surface. Stable tie-breaking preserves the
+		// rank order supplied by the planner.
+		if len(strings.Fields(candidate.Text)) > len(strings.Fields(out[duplicate].Text)) {
+			out[duplicate] = candidate
+		}
+	}
+	return out
+}
+
+func dateYear(text string) string {
+	for _, field := range strings.Fields(text) {
+		if len(field) != 4 {
+			continue
+		}
+		if _, err := strconv.Atoi(field); err == nil {
+			return field
+		}
+	}
+	return ""
+}
+
 func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int, dateWindowCapUS ...int64) capmodel.OverlayItem {
 	id := itemID(sceneID, "number", number.Text)
 	templateID, motionID := "NUMBER", SelectTextMotion(planID, sceneID, id)

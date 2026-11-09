@@ -336,7 +336,7 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 			limit: config.MaxLogos,
 		}, rankedImages(scene.Logos))
 
-		numbers := rankedValid(scene.Numbers, 0)
+		numbers := dedupeCoTimedDateAnnotations(rankedValid(scene.Numbers, 0))
 		if len(numbers) > config.MaxNumbers {
 			numbers = numbers[:config.MaxNumbers]
 		}

@@ -29,7 +29,7 @@ var (
 	centeredImageMotionCandidates          = AnimationCandidates("image.map_centered")
 	generatedEntityImageMotionCandidates   = AnimationCandidates("image.entity")
 	generatedEntityCaptionMotionCandidates = AnimationCandidates("entity.caption")
-	datePresentationMotionCandidates       = AnimationCandidates("entity.date")
+	datePresentationMotionCandidates       = withoutAnimationCandidates(AnimationCandidates("entity.date"), "date_calendar_flip")
 	metricPresentationMotionCandidates     = AnimationCandidates("entity.metric")
 	classicAppleMotionCandidates           = AnimationCandidates("phrase.classic_apple")
 	modernAppleMotionCandidates            = AnimationCandidates("phrase.modern_apple")
@@ -44,6 +44,24 @@ var (
 	generatedTextMotions                   = phraseAppleCleanMotionCandidates
 	defaultPhraseMotionFamilies            = []string{"classic_apple", "modern_apple", "text_3d_v1", "documentary_highlighting_v1"}
 )
+
+// withoutAnimationCandidates removes motions that are registered but fail
+// visual QA in the actual composed video. date_calendar_flip rotates around
+// the canvas origin in the deployed compositor, so the card is clipped into
+// the upper-left corner instead of remaining centered.
+func withoutAnimationCandidates(candidates []string, excluded ...string) []string {
+	blocked := make(map[string]struct{}, len(excluded))
+	for _, id := range excluded {
+		blocked[id] = struct{}{}
+	}
+	out := make([]string, 0, len(candidates))
+	for _, id := range candidates {
+		if _, skip := blocked[id]; !skip {
+			out = append(out, id)
+		}
+	}
+	return out
+}
 
 func firstAnimationCandidate(group string) string {
 	ids := AnimationCandidates(group)
