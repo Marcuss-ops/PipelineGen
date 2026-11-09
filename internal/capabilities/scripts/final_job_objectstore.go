@@ -14,19 +14,21 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// finalJobObjectStoreRef turns a RenderingGen artifact already present in the
-// shared Objectstore into a short-lived HTTPS URL the remote worker can fetch
-// directly. Creator and Objectstore share the signing secret; neither Velox
-// nor the Master needs credentials or a proxy path for the object bytes.
-func finalJobObjectStoreRef(ctx context.Context, preferredID, storageKey, sha string, sizeBytes int64) (map[string]any, error) {
-	ref, err := signStoredFinalJobObject(preferredID, storageKey, sha, sizeBytes)
-	if err != nil {
-		return nil, err
-	}
-	if err := ensureFinalJobObjectStored(ctx, strings.ToLower(strings.TrimSpace(sha)), sizeBytes); err != nil {
-		return nil, err
-	}
-	return ref, nil
+// The final-job publisher runs once per clip and once per audio asset, so a
+// fresh http.Client per call would discard the connection pool between two
+// uploads to the same store. Two package-level clients keep keep-alive reuse
+// while preserving the distinct safety bounds: availability probes must not
+// hang a job for minutes, uploads may legitimately take that long.
+var (
+	finalJobObjectStoreHeadClient   = &http.Client{Timeout: 20 * time.Second, Transport: finalJobObjectStoreTransport()}
+	finalJobObjectStoreUploadClient = &http.Client{Timeout: 10 * time.Minute, Transport: finalJobObjectStoreTransport()}
+)
+
+func finalJobObjectStoreTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 32
+	transport.MaxIdleConnsPerHost = 16
+	return transport
 }
 
 // signStoredFinalJobObject is called only after this operation verified the
@@ -67,6 +69,20 @@ func signStoredFinalJobObject(_ string, storageKey, sha string, sizeBytes int64)
 	}, nil
 }
 
+// signCertifiedFinalJobObject signs a reference to bytes that another
+// certified boundary (RenderingGen) already uploaded and described by its
+// immutable content address. Unlike finalJobObjectStoreRef it deliberately
+// performs NO availability HEAD: re-checking an object the renderer just
+// certified is the duplicate round-trip this path exists to remove. Callers
+// must pass the exact certified identity; shape is validated here, existence
+// is the certificate's claim.
+func signCertifiedFinalJobObject(storageKey, sha string, sizeBytes int64) (map[string]any, error) {
+	if sizeBytes <= 0 {
+		return nil, fmt.Errorf("certified objectstore asset requires a positive size")
+	}
+	return signStoredFinalJobObject("", storageKey, sha, sizeBytes)
+}
+
 func ensureFinalJobObjectStored(ctx context.Context, sha string, expectedSize int64) error {
 	storeURL := finalJobPrivateObjectStoreURL()
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, storeURL+"/objects/"+sha, nil)
@@ -76,8 +92,7 @@ func ensureFinalJobObjectStored(ctx context.Context, sha string, expectedSize in
 	if token := strings.TrimSpace(os.Getenv("OBJECTSTORE_TOKEN")); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := finalJobObjectStoreHeadClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("check Creator-to-Objectstore path: %w", err)
 	}
@@ -111,7 +126,9 @@ func publishFinalJobLocalObject(ctx context.Context, path, sha string, sizeBytes
 	if !strings.EqualFold(actualSHA, strings.TrimSpace(sha)) || actualSize != sizeBytes {
 		return fmt.Errorf("Creator-local asset does not match certified hash/size")
 	}
-	return publishFinalJobVerifiedObject(ctx, path, sha, sizeBytes)
+	// The availability probe above already missed (otherwise this function
+	// returned), so the upload must not repeat the same HEAD before the PUT.
+	return publishFinalJobVerifiedObjectAfterMiss(ctx, path, sha, sizeBytes)
 }
 
 // publishFinalJobVerifiedObject uploads bytes whose SHA-256 and size the caller
@@ -124,6 +141,15 @@ func publishFinalJobVerifiedObject(ctx context.Context, path, sha string, sizeBy
 	if err := ensureFinalJobObjectStored(ctx, strings.ToLower(sha), sizeBytes); err == nil {
 		return nil
 	}
+	return publishFinalJobVerifiedObjectAfterMiss(ctx, path, sha, sizeBytes)
+}
+
+// publishFinalJobVerifiedObjectAfterMiss uploads when the caller has already
+// probed the address and did not find the object. The probe is advisory: a
+// non-200 answer is treated as a miss on this path, exactly as before, so a
+// transient HEAD failure degrades to an idempotent PUT rather than a failed
+// publication.
+func publishFinalJobVerifiedObjectAfterMiss(ctx context.Context, path, sha string, sizeBytes int64) error {
 	storeURL := finalJobPrivateObjectStoreURL()
 	file, err := os.Open(path)
 	if err != nil {
@@ -138,8 +164,7 @@ func publishFinalJobVerifiedObject(ctx context.Context, path, sha string, sizeBy
 	if token := strings.TrimSpace(os.Getenv("OBJECTSTORE_TOKEN")); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := finalJobObjectStoreUploadClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("upload Creator-local asset to Objectstore: %w", err)
 	}
@@ -206,7 +231,21 @@ func finalJobRenderArtifactRef(ctx context.Context, artifact *RenderArtifact) (m
 	var ref map[string]any
 	var err error
 	if finalJobObjectStoreConfigured() {
-		ref, err = finalJobObjectStoreRef(ctx, "", artifact.StorageKey, artifact.SHA256, artifact.SizeBytes)
+		// A queue artifact that names its remote locator is already certified
+		// and uploaded by the render boundary: sign that identity without a
+		// second HEAD. An artifact with no locator (a legacy or Drive-only
+		// producer) has not proven the object exists, so it keeps the
+		// fail-closed availability check before signing.
+		storageKey := strings.ToLower(strings.TrimSpace(artifact.StorageKey))
+		if storageKey == "" {
+			storageKey = strings.ToLower(strings.TrimSpace(artifact.SHA256))
+		}
+		if strings.TrimSpace(artifact.StorageKey) == "" {
+			if err := ensureFinalJobObjectStored(ctx, strings.ToLower(strings.TrimSpace(artifact.SHA256)), artifact.SizeBytes); err != nil {
+				return nil, err
+			}
+		}
+		ref, err = signCertifiedFinalJobObject(storageKey, artifact.SHA256, artifact.SizeBytes)
 	} else {
 		driveID := strings.TrimSpace(artifact.DriveFileID)
 		if driveID == "" || len(strings.TrimSpace(artifact.SHA256)) != 64 || artifact.SizeBytes <= 0 {

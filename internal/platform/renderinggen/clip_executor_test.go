@@ -385,6 +385,14 @@ type storeRecorder struct {
 }
 
 func (r *storeRecorder) handler(w http.ResponseWriter, req *http.Request) {
+	// This double models the direct content-addressed surface only. The
+	// pending staging route is exercised by its own dedicated fake; rejecting
+	// it here makes prefetch exercise the documented 404 fallback instead of
+	// silently counting a staging PUT as a direct object PUT.
+	if strings.HasPrefix(req.URL.Path, "/objects/staging/") {
+		http.NotFound(w, req)
+		return
+	}
 	key := strings.TrimPrefix(req.URL.Path, "/objects/")
 	r.mu.Lock()
 	defer r.mu.Unlock()

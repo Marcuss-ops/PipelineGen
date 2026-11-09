@@ -79,6 +79,24 @@ func NormalizeFinalJobHTTPSRuntimeAssets(assets []any) error {
 	return nil
 }
 
+// exposeFinalJobSourceURLs keeps the canonical asset identity in asset_id and
+// sha256 while also placing the already-authorized HTTPS locator in url. Older
+// Master 51 deployments resolve worker sources from url and otherwise fall
+// back to their local asset bridge; the newer source_uri field remains present
+// as the canonical transport field.
+func exposeFinalJobSourceURLs(assets []any) {
+	for _, raw := range assets {
+		asset, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		source := strings.TrimSpace(finalJobStringValue(asset["source_uri"]))
+		if strings.HasPrefix(strings.ToLower(source), "https://") {
+			asset["url"] = source
+		}
+	}
+}
+
 func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (map[string]any, map[string]any, error) {
 	if result == nil || result.CanonicalTimeline == nil || result.CanonicalTimeline.DurationUS <= 0 {
 		return nil, nil, fmt.Errorf("final_job requires a canonical timeline with positive duration")
@@ -370,6 +388,10 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "overlay", asset)
 		}
 	}
+	// Master 51's deployed build may predate source_uri propagation in the
+	// future-asset plan. Keep the canonical field and mirror it into url for
+	// that worker path so assets do not fall back to master_asset_bridge.
+	exposeFinalJobSourceURLs(runtimeAssets)
 	if audioRef == nil {
 		return nil, nil, fmt.Errorf("final_job V2 worker submission requires certified final audio")
 	}

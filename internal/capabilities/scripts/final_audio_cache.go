@@ -17,6 +17,7 @@ package scriptgeneration
 // and any missing/mismatched fact is a miss, never a guess.
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -115,13 +116,11 @@ func (c *finalAudioCache) take(plan audio.CompiledAudioPlan, destDir string) (Fi
 	if err != nil || !info.Mode().IsRegular() || info.Size() != entry.SizeBytes {
 		return FinalAudioReference{}, false
 	}
-	staged, err := stageCachedFinalAudio(cached, destDir, plan.PlanSHA256, entry.Container)
-	if err != nil {
-		return FinalAudioReference{}, false
-	}
-	sha, size, err := digest.SHA256File(staged)
+	staged, sha, size, err := stageCachedFinalAudio(cached, destDir, plan.PlanSHA256, entry.Container)
 	if err != nil || size != entry.SizeBytes || !strings.EqualFold(sha, entry.FinalAudioSHA256) {
-		_ = os.Remove(staged)
+		if staged != "" {
+			_ = os.Remove(staged)
+		}
 		return FinalAudioReference{}, false
 	}
 	return FinalAudioReference{
@@ -226,29 +225,54 @@ func (c *finalAudioCache) put(plan audio.CompiledAudioPlan, ref FinalAudioRefere
 }
 
 // stageCachedFinalAudio materializes independent run-owned bytes under a unique
-// name. A hard link would let a caller mutate the cached master or another run.
-func stageCachedFinalAudio(cached, destDir, planSHA, container string) (string, error) {
+// name. A hard link would let a caller mutate the cached master or another run,
+// so it prefers a copy-on-write reflink (independent inode, no byte copy) and
+// falls back to a streaming copy that hashes the bytes IN THE SAME PASS. The
+// previous shape copied the whole master and then re-read it just to learn the
+// digest the sidecar already named.
+func stageCachedFinalAudio(cached, destDir, planSHA, container string) (path, sha string, size int64, err error) {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return "", err
+		return "", "", 0, err
+	}
+	placeholder, err := os.CreateTemp(destDir, "pipelinegen-final-audio-"+planSHA[:16]+"-*"+finalAudioContainerExt(container))
+	if err != nil {
+		return "", "", 0, err
+	}
+	staged := placeholder.Name()
+	if err := placeholder.Close(); err != nil {
+		_ = os.Remove(staged)
+		return "", "", 0, err
+	}
+	// Reflink first: the filesystem proves the bytes are the cached file's
+	// bytes without moving them, and the result is an independent file.
+	if cloneErr := cloneFile(staged, cached); cloneErr == nil {
+		sha, size, err = digest.SHA256File(staged)
+		if err != nil {
+			_ = os.Remove(staged)
+			return "", "", 0, err
+		}
+		return staged, sha, size, nil
 	}
 	source, err := os.Open(cached)
 	if err != nil {
-		return "", err
+		_ = os.Remove(staged)
+		return "", "", 0, err
 	}
 	defer func() { _ = source.Close() }()
-	dest, err := os.CreateTemp(destDir, "pipelinegen-final-audio-"+planSHA[:16]+"-*"+finalAudioContainerExt(container))
+	dest, err := os.OpenFile(staged, os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
-		return "", err
-	}
-	staged := dest.Name()
-	if _, err := io.Copy(dest, source); err != nil {
-		_ = dest.Close()
 		_ = os.Remove(staged)
-		return "", err
+		return "", "", 0, err
 	}
-	if err := dest.Close(); err != nil {
+	hasher := digest.NewSHA256()
+	size, copyErr := io.Copy(io.MultiWriter(dest, hasher), source)
+	closeErr := dest.Close()
+	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(staged)
-		return "", err
+		if copyErr != nil {
+			return "", "", 0, copyErr
+		}
+		return "", "", 0, closeErr
 	}
-	return staged, nil
+	return staged, hex.EncodeToString(hasher.Sum(nil)), size, nil
 }

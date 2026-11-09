@@ -45,6 +45,13 @@ type RenderFacts struct {
 	AudioCodec string
 	Backend    string
 	Metrics    map[string]float64
+	// StorageKey / ArtifactURL / ContentType are the certified durable
+	// locator of the same bytes. RenderingGen already uploaded them and
+	// reported their identity, so a final-job consumer can hand this locator
+	// on without re-reading or re-uploading the generated clip.
+	StorageKey  string
+	ArtifactURL string
+	ContentType string
 }
 
 // RenderPlanExecutor executes a sealed render.RenderPlan together with the
@@ -219,6 +226,9 @@ func (r *LocalizedClipRenderer) Render(ctx context.Context, plan LocalizedClipPl
 		SubtitleSHA256: ass.SHA256,
 		SHA256:         facts.SHA256,
 		SizeBytes:      facts.SizeBytes,
+		StorageKey:     facts.StorageKey,
+		ArtifactURL:    facts.ArtifactURL,
+		ContentType:    facts.ContentType,
 		DurationMS:     facts.DurationMS,
 		VideoCodec:     facts.VideoCodec,
 		AudioCodec:     facts.AudioCodec,

@@ -240,6 +240,9 @@ func (a *localizedRenderEnqueuerAdapter) EnqueueLocalizedRender(ctx context.Cont
 				DriveLink:     artifact.DriveLink,
 				DriveFolderID: artifact.DriveFolderID,
 				DurationMS:    artifact.DurationMS,
+				SizeBytes:     artifact.SizeBytes,
+				StorageKey:    artifact.StorageKey,
+				ArtifactURL:   artifact.ArtifactURL,
 				LocalPath:     artifact.LocalPath,
 				Status:        string(artifact.Status),
 				Backend:       artifact.Backend,
@@ -304,6 +307,7 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 		// result keeps naming it after the upload-only retry.
 		PlanRevision: staged.RenderJobID,
 		AssetID:      staged.AssetID, LocalPath: staged.LocalPath, SHA256: staged.SHA256,
+		SizeBytes: staged.SizeBytes, StorageKey: staged.StorageKey, ArtifactURL: staged.ArtifactURL,
 		DurationMS: staged.DurationMS, Status: localization.LocalizedClipRendered,
 	}
 	uploader, ok := a.svc.(localizedArtifactUploader)
@@ -321,8 +325,9 @@ func (a *localizedRenderEnqueuerAdapter) UploadRendered(ctx context.Context, in 
 			Reused:      published.Reused, RenderSource: published.RenderSource,
 			ClipID: published.ClipID, AssetID: published.AssetID, SHA256: published.SHA256,
 			DriveFileID: published.DriveFileID, DriveLink: published.DriveLink, DriveFolderID: published.DriveFolderID,
-			DurationMS: published.DurationMS,
-			LocalPath:  published.LocalPath, Status: string(published.Status), Backend: published.Backend, Metrics: metricsMapFromJSON(published.MetricsJSON), StartedAt: staged.StartedAt,
+			DurationMS: published.DurationMS, SizeBytes: published.SizeBytes,
+			StorageKey: published.StorageKey, ArtifactURL: published.ArtifactURL,
+			LocalPath: published.LocalPath, Status: string(published.Status), Backend: published.Backend, Metrics: metricsMapFromJSON(published.MetricsJSON), StartedAt: staged.StartedAt,
 			FinishedAt: time.Now().UTC(),
 		})
 	}

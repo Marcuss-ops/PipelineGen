@@ -403,6 +403,12 @@ func (a *RenderPlanExecutor) execute(ctx context.Context, plan render.RenderPlan
 		AudioCodec: contract.AudioCodec,
 		Backend:    string(outcome.Backend),
 		Metrics:    metricsMap(outcome.Metrics),
+		// Preserve the certified durable locator the render boundary
+		// returned: a consumer that only hands the clip to another machine
+		// must not require the Producer to hold or re-stat the bytes.
+		StorageKey:  outcome.StorageKey,
+		ArtifactURL: outcome.ArtifactURL,
+		ContentType: outcome.ContentType,
 	}, nil
 }
 

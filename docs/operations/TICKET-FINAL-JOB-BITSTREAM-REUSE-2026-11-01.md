@@ -588,3 +588,61 @@ ora usa la stessa guardia di
 della build completa e run su GPU: il gate Go continua a verificare l'avcC
 reale, quindi un producer non conforme viene rifiutato a valle e non è mai
 dichiarato conforme per configurazione.
+
+## Secondo audit 2026-11-08 — disposizione delle voci
+
+Audit: PipelineGen `38443128` + RenderingGen `8141b1df`. Una voce è CHIUSA solo
+se il codice la implementa e un test la pinna; le voci non raggiungibili in
+questa tornata restano APERTE con il motivo, non vengono mascherate.
+
+| # | Voce | Stato | Evidenza / motivo |
+|---|---|---|---|
+| 1 | Asset già presenti sul Producer ri-registrati dal renderer | APERTA | Serve un percorso CAS locale esplicito e sicuro, visibile al renderer su host condiviso. Non introdotto: un fallback a path arbitrari sarebbe peggio del trasferimento. `Settle()` resta locator-first. |
+| 2 | `RenderingGen → Producer → worker finale` scarica l'MP4 localizzato | PARZIALE | Il contratto ora trasporta `SizeBytes`, `StorageKey`, `ArtifactURL` su `RenderFacts` → `LocalizedClipArtifact` → `LocalizedRenderResult`. `renderedClipAssetRef` firma un clip remote-only certificato senza download, `os.Stat` o HEAD. Resta il `Materialize()` lato Producer perché la localizzazione pubblica ancora la clip su Drive: una modalità locator-only richiede che la richiesta provi che la clip non ha una destinazione Drive autonoma. |
+| 3 | Cache audio finale: copia fisica e SHA integrali a ogni hit | CHIUSA sul I/O | `stageCachedFinalAudio` preferisce un reflink copy-on-write (Linux) e, in fallback, copia e calcola lo SHA nello stesso passaggio. Il file staged resta indipendente. Test: `TestFinalAudioCacheHitStagesIndependentBytes`. Il riferimento diretto al blob immutabile non è adottato: il consumatore riceve ancora byte run-owned. |
+| 4 | Preparazione ripetuta per ogni chunk | APERTA | Richiede un prepared render package condiviso e versionato in RenderingGen (`package_id + frame_range`), non un'ottimizzazione locale al Producer. |
+| 5 | `overlay.prepare` preventivo non giustificato | APERTA | La decisione va presa su `warm_bytes_reused`, worker di esecuzione e tempo sottratto al percorso critico; senza quella misura si rischia di sostituire un beneficio reale con una coda più lunga. |
+| 6 | Doppia codifica degli stock estratti via mirror | APERTA | `mirror_sections` consegna file per sezione; eliminare l'encode intermedio richiede che il cutter accetti sorgente + finestra attraverso il contratto di staging. `-c copy` da solo non conserva l'esattezza del taglio. Nessun cambio non misurato. |
+| 7 | Mappe: scaling/encode condizionale e verifica completa | APERTA | Va misurato se rendere direttamente alla geometria finale costa meno; la certificazione del renderer può sostituire la verifica indipendente solo se è equivalente. |
+| 8 | HEAD duplicati per lo stesso oggetto final-job | CHIUSA | Clip locale e audio usano il riferimento restituito da `PublishFinalJobLocalObject` (una sola verifica); gli artefatti remoti già certificati usano `signCertifiedFinalJobObject`, che non fa HEAD. Test: `TestRenderedClipLocalPublicationUsesOneHead`, `TestFinalJobAudioPublicationUsesOneHead`, `TestCertifiedRemoteClipSignsWithoutLocalBytesOrHead`. |
+| 9 | Clip riletta integralmente su cache hit | CHIUSA sul consumatore | `certifiedOutputDigest` già riusa lo SHA certificato dal confine; il nuovo `SizeBytes` evita anche lo `Stat` nel handoff final-job. `reusableBytes()` continua a ri-hashare la cache locale, che è mutabile per contratto: un blob remoto content-addressed non viene riletto. |
+| 10 | Metadati stock già certificati interrogati di nuovo su Drive | CHIUSA | `stockDriveReference` usa `Asset.SizeBytes()` della riga di registro e, se assente, `MediaSearcher.DriveLocationSize` su `asset_locations.file_size_bytes`; `GetFileMeta` resta solo quando entrambe le fonti locali non hanno una dimensione. |
+| 11 | Render di clip coperte al 100% da overlay replace | APERTA | Richiede finestre overlay congelate prima del fan-out e la prova che la clip non venga pubblicata autonomamente; non è sicuro approssimarla. |
+
+Test eseguiti per questa tornata: `go build ./internal/...`; package
+`internal/capabilities/scripts`, `internal/capabilities/localization/...`,
+`internal/app/wiring`, `internal/kernel/asset` (vedi comando di verifica nel
+commit). Le voci 1, 4, 5, 6, 7 e 11 restano lavoro aperto, non regressioni.
+
+## Terzo audit 2026-11-08 — tagli I/O eseguiti e limiti provati
+
+Questa tornata elimina i passaggi che non aggiungevano una verifica. Ogni taglio
+ha un test che pinna il confine di sicurezza; i tagli che non potevano restare
+fail-closed sono stati **rifiutati**, non mascherati.
+
+| # | Taglio | Stato | Evidenza |
+|---|---|---|---|
+| 1 | Clip locali final-job ri-hashate prima del PUT | CHIUSO | `renderedClipAssetRef` usa `PublishFinalJobLocalObjectVerified`: lo SHA/size arrivano dal certificato del render per quegli stessi byte. Il probe di disponibilità resta; un miss non viene ripetuto prima del PUT. I client HEAD (20 s) e upload (10 min) sono package-level con keep-alive. Test: `TestFinalJobLocalPublicationUsesCertifiedIdentity` (il PUT avviene senza ri-hash locale), `TestFinalJobLocalObjectProbeMissIsNotRepeated` (1 HEAD, 0 PUT su byte non certificati), `TestFinalJobObjectPublicationChecksAvailabilityOnce`. |
+| 2 | Parent finalization: hash + upload + warm L2 | PARZIALE / MISURATO | `storage.PutStagedFile` calcola lo SHA durante lo stream e il server lo verifica; `artifactFromFile + PutFile` sono sostituiti dal percorso staged con fallback. Le tre letture diventano **due**: upload+hash in un passaggio, poi la copia L2 necessaria a `publishAndVerify`. La copia L2 non è stata rimossa perché il publisher risolve l'artefatto dalla cache locale; saltarla sposterebbe lo stesso costo su un fetch L3. Test: `TestParentFinalizerPublishesThroughTheStagedLane`, `TestPutStagedFileStreamsHashesAndWarmsL2`. |
+| 3 | Overlay import: hash + upload duplicati | CHIUSO | `ImportOverlayArtifact` usa `PutStagedFile`, poi confronta SHA e size restituiti con `source_sha256`/`source_size_bytes` della richiesta prima di accettare l'artefatto. Probe, decode completo e provenienza restano invariati; il fallback classico resta per i backend senza staging. Test: `TestImportOverlayArtifactIsByteIdenticalAndDoesNotInvokeChronon` (verifica anche una sola upload staged). |
+| 4 | Prefetch local hint: verifica + upload | CHIUSO | Il percorso locale usa la sessione di staging pendente: `PUT /objects/staging` hasha il file mentre lo legge, il client confronta il digest prima del `finalize` e un mismatch viene cancellato con `DELETE` senza mai rendere l'oggetto visibile. Il file locale è letto una volta; nessun PUT diretto riceve un hint errato. I backend senza staging (404/405) mantengono la verifica preventiva memoizzata e il PUT diretto classico. Test: `TestHTTPAssetPrefetcherStagesLocalAssetThroughPendingSession` (1 staging PUT, 1 finalize, 0 direct PUT), `TestPrefetch_FailsClosedWhenNoVerifiedSourceExists`, `TestPrefetch_RejectsLocalHintWhoseBytesDoNotMatchTheAddress`. |
+| 5 | Re-hash di mappe/plate/BGM invariati | RIFIUTATO / NESSUNA MODIFICA | Il tentativo con `digest.NewVerifier(nil)` è stato rimosso: la memo è valida solo per `(size, mtime)` e `TestDynamicMapVideoCacheRoundTripAndRejectsCorruption` ha servito un file manomesso di pari dimensione. Per file mutabili (cache mappe, plate generate, BGM locale) il re-hash completo resta l'unica prova; non è stato indebolito. |
+| 6 | Size stock in batch | APERTO / DEFERITO | `DriveLocationSize` è una query locale per asset, non più un round-trip Drive. Un `ANY($1)` batch ridurrebbe N query a una, ma richiede cambiare l'interfaccia del registry e i suoi test di integrazione; il guadagno residuo è piccolo rispetto al rischio. Le righe con size già registrata non fanno alcuna query. |
+| 7 | Hash overlay duplicato dopo il probe | GIÀ CHIUSO / NO-OP | `MediaContractProber.ProbeOverlay` restituisce `SHA256` e `SizeBytes` nello stesso risultato; il chiamante usa quei valori. Non esiste un secondo `SHA256File` nel percorso. |
+
+Verifica eseguita: build e vet di `refactored/internal/...` e dei package
+RenderingGen `internal/storage` + `internal/processor`; test completi di
+`internal/storage`, test mirati `TestParent*`, `TestImport*`, `TestTailUpload*`
+e `TestPutStagedFile*`; test completi di `internal/capabilities/scripts` e
+`internal/app/wiring`; test mirati prefetch di
+`internal/platform/renderinggen` (`TestHTTPAssetPrefetcher*`, `TestPrefetch*`,
+`TestVerifiedLocalPath*`, incluso
+`TestHTTPAssetPrefetcherStagesLocalAssetThroughPendingSession`). La suite
+**completa** di
+`internal/platform/renderinggen` non è verde su questa macchina: i test
+`clip_executor` partono senza `RENDERINGGEN_STORE_URL` e usano il default
+`127.0.0.1:9000`, che risponde **401** già durante il prefetch, prima dei
+percorsi modificati; non è una regressione di questi tagli. Restano aperti, come
+da tabella precedente, i tagli che richiedono un nuovo contratto (prepared
+package, finestre overlay congelate, cutter source+window) e il `Materialize()`
+lato Producer della voce 2.
