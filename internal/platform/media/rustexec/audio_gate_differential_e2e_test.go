@@ -65,7 +65,12 @@ func TestListenGateDifferentialABCD(t *testing.T) {
 		freq      float64
 		durationS float64
 	}{
-		{"sfx-d-whoosh", 3000, 2},
+		// The whoosh sits at 3500 Hz, not 3000 Hz: 3000 is exactly the
+		// third harmonic of the 1000 Hz voiceover, so VO/AAC leakage in
+		// that bin contaminates A and masks the SFX differential. 3500
+		// keeps the effect in its own band below impact (5 kHz) and boom
+		// (8 kHz), so C-vs-A measures the effect rather than the VO.
+		{"sfx-d-whoosh", 3500, 2},
 		{"sfx-d-impact", 5000, 0.5},
 		{"sfx-d-boom", 8000, 0.3},
 	}
@@ -199,7 +204,7 @@ func TestListenGateDifferentialABCD(t *testing.T) {
 		hit       [2]float64
 		off       [2]float64
 	}{
-		{low: 2700, high: 3300, hit: [2]float64{2.7, 4.0}, off: [2]float64{5, 7.5}},
+		{low: 3200, high: 3800, hit: [2]float64{2.7, 4.0}, off: [2]float64{5, 7.5}},
 		{low: 4500, high: 5500, hit: [2]float64{7.7, 9.0}, off: [2]float64{10, 14.5}},
 		{low: 7500, high: 8500, hit: [2]float64{14.7, 16.0}, off: [2]float64{16.5, 19.5}},
 	}
