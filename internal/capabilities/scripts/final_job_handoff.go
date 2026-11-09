@@ -112,12 +112,12 @@ func finalJobAudioAsset(ctx context.Context, audio FinalAudioReference) (map[str
 		return nil, fmt.Errorf("final_job final audio is not canonical AAC-LC 48 kHz stereo")
 	}
 	if finalJobObjectStoreConfigured() {
-		if err := publishFinalJobLocalObject(ctx, audio.Path, audio.FinalAudioSHA256, audio.SizeBytes); err != nil {
-			return nil, fmt.Errorf("publish final audio to Objectstore: %w", err)
-		}
-		asset, err := finalJobObjectStoreRef(ctx, audio.AssetID, audio.FinalAudioSHA256, audio.FinalAudioSHA256, audio.SizeBytes)
+		// Publish returns the signed reference after the single availability
+		// check/upload it already performed. Requesting the reference
+		// separately repeated the same HEAD for every final-job audio asset.
+		asset, err := PublishFinalJobLocalObject(ctx, audio.AssetID, audio.Path, audio.FinalAudioSHA256, audio.SizeBytes)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("publish final audio to Objectstore: %w", err)
 		}
 		asset["duration_ms"] = audio.DurationMS
 		asset["codec"] = audio.Codec

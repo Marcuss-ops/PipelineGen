@@ -402,3 +402,9 @@ func (m *Asset) Slug() string       { return m.GetMetadataString("slug") }
 func (m *Asset) SetSlug(v string)   { m.SetMetadataString("slug", v) }
 func (m *Asset) Sha256() string     { return m.GetMetadataString("sha256") }
 func (m *Asset) SetSha256(v string) { m.SetMetadataString("sha256", v) }
+
+// SizeBytes is the verified byte size of the asset's content as recorded by
+// the ingest that copied it. Zero means UNKNOWN, never "empty file": callers
+// use it to skip a provider metadata round-trip only when it is positive.
+func (m *Asset) SizeBytes() int64     { return int64(m.GetMetadataInt("size_bytes")) }
+func (m *Asset) SetSizeBytes(v int64) { m.SetMetadataInt("size_bytes", int(v)) }

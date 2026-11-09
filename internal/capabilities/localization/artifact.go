@@ -98,6 +98,15 @@ type LocalizedClipArtifact struct {
 	SHA256 string `json:"sha256"`
 	// SizeBytes is the rendered file size in bytes.
 	SizeBytes int64 `json:"size_bytes"`
+	// StorageKey is the immutable object-store key (the SHA-256 content
+	// address) when the render boundary retained the bytes remotely. It lets a
+	// consumer hand the artifact to another machine without the Producer
+	// materializing it first.
+	StorageKey string `json:"storage_key,omitempty"`
+	// ArtifactURL is the worker-fetchable URL of those certified bytes.
+	ArtifactURL string `json:"artifact_url,omitempty"`
+	// ContentType is the certified container MIME type (for example video/mp4).
+	ContentType string `json:"content_type,omitempty"`
 	// DurationMS is the rendered clip duration in milliseconds.
 	DurationMS int64 `json:"duration_ms"`
 

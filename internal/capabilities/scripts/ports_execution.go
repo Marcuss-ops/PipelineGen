@@ -175,9 +175,17 @@ type LocalizedRenderResult struct {
 	// the pre-upload (RENDERED) stage, which has no destination yet.
 	DriveFolderID string `json:"drive_folder_id,omitempty"`
 	DurationMS    int64  `json:"duration_ms,omitempty"`
-	LocalPath     string `json:"local_path,omitempty"`
-	Status        string `json:"status"`
-	Backend       string `json:"backend,omitempty"`
+	// SizeBytes / StorageKey / ArtifactURL are the certified durable identity
+	// of the rendered MP4. They travel together so a final-job handoff can
+	// reference the bytes in the shared object store without a Producer-local
+	// os.Stat, re-hash or re-upload. LocalPath remains a runtime-only hint for
+	// consumers that genuinely need the file (Drive publication, muxing).
+	SizeBytes   int64  `json:"size_bytes,omitempty"`
+	StorageKey  string `json:"storage_key,omitempty"`
+	ArtifactURL string `json:"artifact_url,omitempty"`
+	LocalPath   string `json:"local_path,omitempty"`
+	Status      string `json:"status"`
+	Backend     string `json:"backend,omitempty"`
 	// Reused / RenderSource state WHERE these bytes came from: "fresh_gpu" for
 	// a render this run executed, "deterministic_render_cache" for a verified
 	// reuse of an identical plan. Without them a dedup run (metrics: null, a

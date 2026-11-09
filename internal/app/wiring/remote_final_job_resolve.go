@@ -302,14 +302,33 @@ func (a *remoteFinalJobAdapter) stockDriveReference(ctx context.Context, id stri
 	if saved.Duration <= 0 || len(saved.ContentHash()) != 64 {
 		return nil, fmt.Errorf("stock Drive file %q lacks saved duration or SHA-256 metadata", id)
 	}
-	meta, err := a.stock.GetFileMeta(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("read stock Drive metadata %q: %w", id, err)
+	// The saved registry row already carries the certificate the handoff
+	// needs (content SHA-256 and duration). Its size is a verified ingest
+	// fact too, so querying Drive again was a serial metadata round-trip per
+	// source for information this process already had. Only a row that never
+	// recorded a size falls back to the provider.
+	size := saved.SizeBytes()
+	if size <= 0 {
+		// The asset row does not project asset_locations, where ingest
+		// records the uploaded artifact's verified size. Read that local
+		// fact before spending a serial Drive metadata round-trip; a
+		// failed read keeps the provider fallback rather than inventing a
+		// size.
+		if locationSize, sizeErr := a.media.DriveLocationSize(ctx, id); sizeErr == nil {
+			size = locationSize
+		}
 	}
-	if meta == nil || meta.Size <= 0 {
-		return nil, fmt.Errorf("stock Drive file %q has no positive byte size", id)
+	if size <= 0 {
+		meta, err := a.stock.GetFileMeta(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("read stock Drive metadata %q: %w", id, err)
+		}
+		if meta == nil || meta.Size <= 0 {
+			return nil, fmt.Errorf("stock Drive file %q has no positive byte size", id)
+		}
+		size = meta.Size
 	}
-	return finalJobStockDriveReference(id, saved, meta.Size), nil
+	return finalJobStockDriveReference(id, saved, size), nil
 }
 
 // finalJobStockDriveReference is the metadata-only contract for a Drive stock

@@ -75,10 +75,92 @@ func TestFinalJobObjectPublicationChecksAvailabilityOnce(t *testing.T) {
 	if heads.Load() != 2 || puts.Load() != 1 {
 		t.Fatalf("upload: HEADs=%d PUTs=%d, want 2 and 1", heads.Load(), puts.Load())
 	}
-	heads.Store(0)
-	present.Store(false)
-	if _, err := finalJobObjectStoreRef(context.Background(), "fragment", sha, sha, int64(len(body))); err == nil || heads.Load() != 1 {
-		t.Fatalf("external reference must check availability: err=%v HEADs=%d", err, heads.Load())
+}
+
+// TestFinalJobLocalPublicationUsesCertifiedIdentity pins the verified entry
+// point's contract: the caller has already named these exact bytes, so the
+// publisher must upload them without re-reading the local file to hash it.
+// The permissive fake store accepts the body; a re-hash would reject it before
+// the PUT. The real store remains the authoritative content-address check.
+func TestFinalJobLocalPublicationUsesCertifiedIdentity(t *testing.T) {
+	body := []byte("local bytes whose identity the caller already certified")
+	sha := digest.SHA256String("a different identity accepted only by the fake store")
+	var heads, puts atomic.Int32
+	var present atomic.Bool
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/objects/"+sha {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodHead:
+			heads.Add(1)
+			if !present.Load() {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+		case http.MethodPut:
+			puts.Add(1)
+			_, _ = io.Copy(io.Discard, r.Body)
+			present.Store(true)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "https://objects.example")
+	t.Setenv("OBJECTSTORE_SIGNING_SECRET", strings.Repeat("s", 32))
+	t.Setenv("OBJECTSTORE_TOKEN", "")
+	path := filepath.Join(t.TempDir(), "fragment")
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PublishFinalJobLocalObjectVerified(context.Background(), "fragment", path, sha, int64(len(body))); err != nil {
+		t.Fatalf("verified publication: %v", err)
+	}
+	if puts.Load() != 1 || heads.Load() != 2 {
+		t.Fatalf("PUTs=%d HEADs=%d, want 1 and 2 (probe, upload, verification)", puts.Load(), heads.Load())
+	}
+}
+
+// TestFinalJobLocalObjectProbeMissIsNotRepeated pins the other half of the
+// publication contract: when the availability probe misses and the local bytes
+// cannot be certified, the rejection happens after ONE HEAD and before any PUT.
+// The old path repeated the probe inside the upload helper, paying two
+// round-trips to learn the same absence.
+func TestFinalJobLocalObjectProbeMissIsNotRepeated(t *testing.T) {
+	var heads, puts atomic.Int32
+	store := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodHead:
+			heads.Add(1)
+			http.NotFound(w, r)
+		case http.MethodPut:
+			puts.Add(1)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer store.Close()
+	t.Setenv("RENDERINGGEN_STORE_URL", store.URL)
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "https://objects.example")
+	t.Setenv("OBJECTSTORE_SIGNING_SECRET", strings.Repeat("s", 32))
+	t.Setenv("OBJECTSTORE_TOKEN", "")
+
+	path := filepath.Join(t.TempDir(), "fragment")
+	if err := os.WriteFile(path, []byte("not the certified bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sha := digest.SHA256String("the certified bytes")
+	if _, err := PublishFinalJobLocalObject(context.Background(), "fragment", path, sha, int64(len("the certified bytes"))); err == nil {
+		t.Fatal("local publication accepted bytes that do not match the certificate")
+	}
+	if heads.Load() != 1 || puts.Load() != 0 {
+		t.Fatalf("HEADs=%d PUTs=%d, want 1 and 0", heads.Load(), puts.Load())
 	}
 }
 

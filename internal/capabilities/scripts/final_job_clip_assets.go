@@ -78,11 +78,22 @@ func certifiedLocalizedRenderForClip(result *GenerateResult, sceneID, clipID, la
 }
 
 func localizedRenderIsCertifiedClip(rendered LocalizedRenderResult) bool {
-	locator := strings.TrimSpace(rendered.DriveFileID) != ""
-	if finalJobObjectStoreConfigured() {
-		locator = strings.TrimSpace(rendered.LocalPath) != ""
+	if len(strings.TrimSpace(rendered.SHA256)) != 64 || rendered.DurationMS <= 0 {
+		return false
 	}
-	return locator && len(strings.TrimSpace(rendered.SHA256)) == 64 && rendered.DurationMS > 0
+	if !finalJobObjectStoreConfigured() {
+		return strings.TrimSpace(rendered.DriveFileID) != ""
+	}
+	// Objectstore mode: a local path is a convenience, not the certificate.
+	// A render that stayed in the shared store is certified by its immutable
+	// storage key/URL plus the byte size the render boundary measured.
+	if strings.TrimSpace(rendered.LocalPath) != "" {
+		return true
+	}
+	if rendered.SizeBytes <= 0 {
+		return false
+	}
+	return strings.TrimSpace(rendered.StorageKey) != "" || strings.TrimSpace(rendered.ArtifactURL) != ""
 }
 
 // clipSceneRuntimeAsset builds the runtime asset reference of a clip-only scene
@@ -143,14 +154,49 @@ func renderedClipAssetRef(ctx context.Context, resolver FinalJobAssetResolver, r
 		return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q is not a certified MP4 (64-char sha256 and positive duration required)", sceneID, rendered.AssetID)
 	}
 	if finalJobObjectStoreConfigured() {
-		info, err := os.Stat(strings.TrimSpace(rendered.LocalPath))
-		if err != nil {
-			return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q has no Creator-local source for Objectstore publication: %w", sceneID, rendered.AssetID, err)
+		size := rendered.SizeBytes
+		storageKey := strings.ToLower(strings.TrimSpace(rendered.StorageKey))
+		if storageKey == "" {
+			storageKey = sha
 		}
-		if err := publishFinalJobLocalObject(ctx, rendered.LocalPath, sha, info.Size()); err != nil {
-			return nil, 0, fmt.Errorf("publish final_job scene %q rendered clip to Objectstore: %w", sceneID, err)
+		if storageKey != sha {
+			return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q has storage key %q, want its SHA-256", sceneID, rendered.AssetID, storageKey)
 		}
-		asset, err := finalJobObjectStoreRef(ctx, "", sha, sha, info.Size())
+		if localPath := strings.TrimSpace(rendered.LocalPath); localPath != "" {
+			// The Producer still owns the bytes: publish them once and use the
+			// returned reference. Publish already verified the object it
+			// uploaded, so asking for a second signature/HEAD here was a
+			// duplicate round-trip on every clip.
+			if size <= 0 {
+				info, err := os.Stat(localPath)
+				if err != nil {
+					return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q has no Creator-local source for Objectstore publication: %w", sceneID, rendered.AssetID, err)
+				}
+				size = info.Size()
+			}
+			// The SHA-256 and size come from the render certificate for these
+			// exact bytes (a fresh render or a cache hit that was re-hashed on
+			// entry). Re-hashing the local file here would read the whole
+			// fragment a second time; the verified publication keeps the
+			// availability probe and lets the store reject a bad upload.
+			asset, err := PublishFinalJobLocalObjectVerified(ctx, rendered.AssetID, localPath, sha, size)
+			if err != nil {
+				return nil, 0, fmt.Errorf("publish final_job scene %q rendered clip to Objectstore: %w", sceneID, err)
+			}
+			asset["duration_ms"] = rendered.DurationMS
+			return asset, rendered.DurationMS, nil
+		}
+		// Remote-only: RenderingGen certified the upload (storage key,
+		// SHA-256, size) and the bytes never came back to the Producer. Sign
+		// that identity directly; there is no local file to verify and no
+		// reason to download one.
+		if size <= 0 {
+			return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q is remote-only but carries no certified size", sceneID, rendered.AssetID)
+		}
+		if strings.TrimSpace(rendered.ArtifactURL) == "" && strings.TrimSpace(rendered.StorageKey) == "" {
+			return nil, 0, fmt.Errorf("final_job scene %q rendered clip %q has no certified locator", sceneID, rendered.AssetID)
+		}
+		asset, err := signCertifiedFinalJobObject(storageKey, sha, size)
 		if err != nil {
 			return nil, 0, err
 		}

@@ -9,6 +9,7 @@ package renderinggen
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -117,19 +118,42 @@ func NewHTTPAssetPrefetcher(storeURL string) *AssetPrefetcher {
 				if present {
 					return nil
 				}
-				// The content address is the ONLY source of truth. A producer-supplied
-				// LocalPath is an optimization, so it is used only after the bytes have
-				// been proven to hash to `hash`. This is the boundary that used to be
-				// missing: a stale hint (file deleted, or a different file at the same
-				// path) was published into the content-addressed store under someone
-				// else's address, and the mismatch only showed up much later as a
-				// corrupt or wrong asset. A rejected hint now falls through to the
-				// verified download source instead.
-				if verifiedLocalPath(localPath, hash) != "" {
-					if err := streamPutFile(ctx, storeURL, hash, localPath); err != nil {
-						return prefetchStageError(hash, "local:"+localPath, err)
+				// The content address is the ONLY source of truth. Prefer the
+				// store's pending staging session for a local hint: the file is
+				// read once, the store hashes the same stream, and nothing is
+				// visible until the client has compared that digest and finalized.
+				// A stale hint is aborted with DELETE and falls through to the
+				// verified download source, so wrong bytes are never published.
+				localStagingUnsupported := false
+				var localStageErr error
+				if info, statErr := os.Stat(localPath); statErr == nil && info.Mode().IsRegular() {
+					finalized, stageErr := stageLocalPrefetch(ctx, storeURL, hash, localPath, info.Size())
+					if finalized {
+						return nil
 					}
-					return nil
+					if stageErr == nil {
+						localStagingUnsupported = true
+					} else {
+						localStageErr = stageErr
+					}
+				}
+				// A backend without the staging route keeps the old memoized
+				// pre-verification; its direct PUT must never receive an
+				// unverified hint.
+				if localStagingUnsupported {
+					if verifiedLocalPath(localPath, hash) != "" {
+						if err := streamPutFile(ctx, storeURL, hash, localPath); err != nil {
+							return prefetchStageError(hash, "local:"+localPath, err)
+						}
+						return nil
+					}
+				}
+				if localStageErr != nil && !strings.HasPrefix(strings.TrimSpace(downloadURL), "http") {
+					if errors.Is(localStageErr, errPrefetchStagingMismatch) {
+						return fmt.Errorf("%w: asset %s (local hint %q rejected, url %q)",
+							ErrAssetSourceUnavailable, hash, localPath, downloadURL)
+					}
+					return prefetchStageError(hash, "local:"+localPath, localStageErr)
 				}
 				if !strings.HasPrefix(strings.TrimSpace(downloadURL), "http") {
 					return fmt.Errorf("%w: asset %s (local hint %q rejected, url %q)",
@@ -226,8 +250,102 @@ func objectStored(ctx context.Context, store, key string) (bool, error) {
 	}
 }
 
+// errPrefetchStagingMismatch means the staging server hashed the local bytes
+// and they do not name the requested content address. It is deterministic: the
+// pending object is deleted and the caller must not retry the same hint.
+var errPrefetchStagingMismatch = errors.New("asset prefetch: local bytes do not match content address")
+
+// stageLocalPrefetch uses the object store's pending staging session so a
+// local asset is read ONCE: PUT /objects/staging/{session} hashes the stream
+// server-side, the client compares the returned digest before finalize, and a
+// mismatch is deleted while still pending. finalize=true means the object is
+// now visible under key. finalized=false with a nil error means the backend
+// does not expose the staging route (404/405), so the caller keeps the classic
+// verified pre-hash + direct PUT path.
+func stageLocalPrefetch(ctx context.Context, store, key, path string, size int64) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, fmt.Errorf("open staged local asset %s: %w", path, err)
+	}
+	defer func() { _ = file.Close() }()
+
+	session := fmt.Sprintf("prefetch-%s-%d", key, time.Now().UnixNano())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, store+"/objects/staging/"+session, file)
+	if err != nil {
+		return false, err
+	}
+	req.ContentLength = size
+	setObjectStoreAuth(req)
+	resp, err := objectStoreHTTPClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		return false, nil
+	}
+	if resp.StatusCode != http.StatusCreated {
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return false, &objectStorePutError{StatusCode: resp.StatusCode, Detail: strings.TrimSpace(string(detail))}
+	}
+	var staged struct {
+		SHA256    string `json:"sha256"`
+		SizeBytes int64  `json:"size_bytes"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&staged); err != nil {
+		abortPrefetchStaged(ctx, store, session)
+		return false, fmt.Errorf("decode staged asset response: %w", err)
+	}
+	if !strings.EqualFold(staged.SHA256, key) || staged.SizeBytes != size {
+		abortPrefetchStaged(ctx, store, session)
+		return false, errPrefetchStagingMismatch
+	}
+
+	finalizeBody, _ := json.Marshal(map[string]string{"sha256": strings.ToLower(key)})
+	finalize, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		store+"/objects/staging/"+session+"/finalize", strings.NewReader(string(finalizeBody)))
+	if err != nil {
+		abortPrefetchStaged(ctx, store, session)
+		return false, err
+	}
+	finalize.Header.Set("Content-Type", "application/json")
+	setObjectStoreAuth(finalize)
+	finalizeResp, err := objectStoreHTTPClient.Do(finalize)
+	if err != nil {
+		abortPrefetchStaged(ctx, store, session)
+		return false, err
+	}
+	defer func() { _ = finalizeResp.Body.Close() }()
+	if finalizeResp.StatusCode == http.StatusNotFound || finalizeResp.StatusCode == http.StatusMethodNotAllowed {
+		abortPrefetchStaged(ctx, store, session)
+		return false, nil
+	}
+	if finalizeResp.StatusCode != http.StatusCreated {
+		detail, _ := io.ReadAll(io.LimitReader(finalizeResp.Body, 512))
+		abortPrefetchStaged(ctx, store, session)
+		return false, &objectStorePutError{StatusCode: finalizeResp.StatusCode, Detail: strings.TrimSpace(string(detail))}
+	}
+	return true, nil
+}
+
+// abortPrefetchStaged discards a pending staging object. Best-effort by
+// contract: the pending workspace is private and never visible under the
+// content address, so cleanup failure must not replace the real error.
+func abortPrefetchStaged(ctx context.Context, store, session string) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, store+"/objects/staging/"+session, nil)
+	if err != nil {
+		return
+	}
+	setObjectStoreAuth(req)
+	resp, err := objectStoreHTTPClient.Do(req)
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
+}
+
 // streamPutFile uploads a local file to the object store without
-// loading it into RAM.
+// loading it into RAM or reading it twice.
 func streamPutFile(ctx context.Context, store, key, path string) error {
 	file, err := os.Open(path)
 	if err != nil {
