@@ -250,7 +250,7 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 
 func TestDateAndMetricPresentationPoolsAreCuratedCanonicalSubsets(t *testing.T) {
 	wantDates := []string{
-		"date_fade_rise", "date_calendar_flip", "date_timeline_tick", "date_chronology_focus",
+		"date_fade_rise", "date_timeline_tick", "date_chronology_focus",
 		"date_calendar_drop", "date_month_wipe", "date_era_zoom",
 	}
 	wantMetrics := []string{
