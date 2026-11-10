@@ -34,11 +34,15 @@ func ResolveBackground(ctx context.Context, resolve BackgroundResolver, src *scr
 	if strings.TrimSpace(out.AssetID) == "" && strings.TrimSpace(out.URL) == "" && strings.TrimSpace(out.LocalPath) == "" && strings.TrimSpace(out.SHA256) == "" {
 		return nil, fmt.Errorf("visual background %q has no asset identity", out.Kind)
 	}
+	// The overlay plan binds every visual background through an AssetRef, and
+	// the model rejects a ref without asset_id. A local_path+sha256 is a
+	// verified source, not an identity: accepting it here only moved the
+	// failure to plan compilation, after the expensive render work (r111).
+	if strings.TrimSpace(out.AssetID) == "" {
+		return nil, fmt.Errorf("visual background %q requires asset_id for a verified image/video source", out.Kind)
+	}
 	if strings.TrimSpace(out.SHA256) != "" && (strings.TrimSpace(out.URL) != "" || strings.TrimSpace(out.LocalPath) != "") {
 		return &out, nil
-	}
-	if strings.TrimSpace(out.AssetID) == "" {
-		return nil, fmt.Errorf("visual background %q requires asset_id when sha256/source is incomplete", out.Kind)
 	}
 	if resolve == nil {
 		return nil, fmt.Errorf("visual background asset %q cannot be resolved: resolver is not wired", out.AssetID)

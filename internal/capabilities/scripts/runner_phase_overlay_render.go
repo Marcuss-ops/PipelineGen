@@ -121,6 +121,12 @@ func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRe
 	if plan == nil {
 		return RenderReference{}, nil
 	}
+	if req.Render.OverlaysOnly {
+		if renderer, ok := r.overlayRenderEnqueuer.(OverlayPlanItemEnqueuer); ok {
+			return renderer.EnqueueChrononPlanItems(ctx, *plan)
+		}
+		return RenderReference{}, fmt.Errorf("overlay-only render requires per-item alpha renderer")
+	}
 	if overlayPerSceneSplitEnabled() && planSpansMultipleScenes(*plan) {
 		if splitter, ok := r.overlayRenderEnqueuer.(OverlayPlanSplitEnqueuer); ok {
 			if preflightErr := finalJobSplitPreflight(req.FinalJob, *plan); preflightErr != nil {

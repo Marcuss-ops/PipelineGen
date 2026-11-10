@@ -440,7 +440,7 @@ func TestEditorialImageBudgetRunsBeforeCompositionAndKeepsUniqueChildren(t *test
 }
 
 func TestNamedEntityCardCeilingDoesNotLimitImageCompositeChildren(t *testing.T) {
-	items := make([]capmodel.OverlayItem, 0, 8)
+	items := make([]capmodel.OverlayItem, 0, 5+maxNamedEntityCardsPerScene+1)
 	for index := 0; index < 5; index++ {
 		id := fmt.Sprintf("image-%d", index)
 		items = append(items, capmodel.OverlayItem{
@@ -450,7 +450,7 @@ func TestNamedEntityCardCeilingDoesNotLimitImageCompositeChildren(t *testing.T) 
 			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: "sha-" + id}},
 		})
 	}
-	for index := 0; index < 3; index++ {
+	for index := 0; index < maxNamedEntityCardsPerScene+1; index++ {
 		items = append(items, capmodel.OverlayItem{
 			ID: fmt.Sprintf("card-%d", index), SceneID: "scene", EntityID: fmt.Sprintf("card-ent-%d", index),
 			Kind: string(capmodel.KindEntityCard), Text: fmt.Sprintf("Named entity %d", index),
@@ -467,7 +467,7 @@ func TestNamedEntityCardCeilingDoesNotLimitImageCompositeChildren(t *testing.T) 
 		}
 	}
 	if cards != maxNamedEntityCardsPerScene || images != 5 {
-		t.Fatalf("per-scene cap retained %d named cards and %d image entities; want 2 and 5", cards, images)
+		t.Fatalf("per-scene cap retained %d named cards and %d image entities; want %d and 5", cards, images, maxNamedEntityCardsPerScene)
 	}
 	grouped := composeNearbyEntityImages(items, 1920, 1080)
 	groupSize := 0

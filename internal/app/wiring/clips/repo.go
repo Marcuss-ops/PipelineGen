@@ -1,4 +1,4 @@
-package wiring
+package clipswiring
 
 import (
 	"context"
@@ -31,7 +31,7 @@ type clipsRepoAdapter struct {
 // Compile-time assertion: clipsRepoAdapter satisfies clips.ClipRepositoryPort.
 var _ clips.ClipRepositoryPort = (*clipsRepoAdapter)(nil)
 
-func newClipsRepoAdapter(r *assets.ClipsRepository) clips.ClipRepositoryPort {
+func NewClipsRepoAdapter(r *assets.ClipsRepository) clips.ClipRepositoryPort {
 	if r == nil {
 		return nil
 	}
@@ -98,7 +98,7 @@ type voiceoverRepoAdapter struct {
 // Compile-time assertion: voiceoverRepoAdapter satisfies clips.VoiceoverRepositoryPort.
 var _ clips.VoiceoverRepositoryPort = (*voiceoverRepoAdapter)(nil)
 
-func newVoiceoverRepoAdapter(r *assets.VoiceoversRepository) clips.VoiceoverRepositoryPort {
+func NewVoiceoverRepoAdapter(r *assets.VoiceoversRepository) clips.VoiceoverRepositoryPort {
 	if r == nil {
 		return nil
 	}
@@ -210,7 +210,7 @@ type imageRepoAdapter struct {
 // Compile-time assertion: imageRepoAdapter satisfies clips.ImageRepositoryPort.
 var _ clips.ImageRepositoryPort = (*imageRepoAdapter)(nil)
 
-func newImageRepoAdapter(r *imagesrepo.ImagesRepository) clips.ImageRepositoryPort {
+func NewImageRepoAdapter(r *imagesrepo.ImagesRepository) clips.ImageRepositoryPort {
 	if r == nil {
 		return nil
 	}

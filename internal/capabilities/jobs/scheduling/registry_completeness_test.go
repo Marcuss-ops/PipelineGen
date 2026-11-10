@@ -38,7 +38,7 @@
 //  8. cardinality-mismatch — reg.AllTypes().len != canonicalJobTypes.len
 //     (catches asymmetry between #1 and #7 — together they pin the
 //     Compose() ingress symmetric against the canonical const block).
-package jobs
+package scheduling
 
 import (
 	"reflect"

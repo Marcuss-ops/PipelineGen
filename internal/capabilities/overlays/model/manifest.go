@@ -164,12 +164,66 @@ type OverlayManifest struct {
 	SchemaVersion string `json:"schema_version"`
 	PlanID        string `json:"plan_id"`
 	VideoID       string `json:"video_id"`
+	// Mode is the overlay consumption mode. "replace" replaces the source
+	// picture inside each entry window; "composite" keeps the source visible
+	// and layers the artifact on top. Empty is the historical replace lane, so
+	// manifests written before the field existed keep their meaning.
+	Mode string `json:"mode,omitempty"`
+	// Stream carries the video-stream identity the artifact was certified
+	// against. It is optional as a group; when any field is present all are
+	// required. A manifest without it is a legacy source, not a promise of
+	// copy compatibility.
+	Stream *OverlayManifestStream `json:"stream,omitempty"`
 	// TimelineSHA256 is the identity of the single certified timeline
 	// artifact (the composed output). It is the RESULT of the render: it is
 	// excluded from Digest() so the request identity is stable before the
 	// artifact exists. Empty means "not yet certified".
 	TimelineSHA256 string                 `json:"timeline_sha256,omitempty"`
 	Entries        []OverlayManifestEntry `json:"entries"`
+}
+
+const (
+	OverlayModeReplace   = "replace"
+	OverlayModeComposite = "composite"
+)
+
+// OverlayManifestStream is the canonical video-stream signature transported
+// with the handoff. TimeBase is expressed as a rational pair, not a float, so
+// the consumer can compare it exactly.
+type OverlayManifestStream struct {
+	ProfileID       string `json:"profile_id"`
+	ExtradataSHA256 string `json:"extradata_sha256"`
+	TimeBaseNum     int    `json:"time_base_num"`
+	TimeBaseDen     int    `json:"time_base_den"`
+	EncoderRevision string `json:"encoder_revision"`
+}
+
+// OverlayMode returns the effective mode, defaulting the historical empty
+// value to replace. Validation has already rejected any other value.
+func (m OverlayManifest) OverlayMode() string {
+	if strings.TrimSpace(m.Mode) == "" {
+		return OverlayModeReplace
+	}
+	return strings.TrimSpace(m.Mode)
+}
+
+func (s *OverlayManifestStream) Validate() error {
+	if s == nil {
+		return nil
+	}
+	if strings.TrimSpace(s.ProfileID) == "" {
+		return fmt.Errorf("overlay manifest stream: profile_id is required")
+	}
+	if !digest.IsCanonicalSHA256(s.ExtradataSHA256) {
+		return fmt.Errorf("overlay manifest stream: extradata_sha256 must be a canonical SHA-256")
+	}
+	if s.TimeBaseNum <= 0 || s.TimeBaseDen <= 0 {
+		return fmt.Errorf("overlay manifest stream: time base must be positive")
+	}
+	if strings.TrimSpace(s.EncoderRevision) == "" {
+		return fmt.Errorf("overlay manifest stream: encoder_revision is required")
+	}
+	return nil
 }
 
 // Validate reports whether the manifest is a well-formed, internally
@@ -188,6 +242,13 @@ func (m *OverlayManifest) Validate() error {
 	}
 	if strings.TrimSpace(m.VideoID) == "" {
 		return fmt.Errorf("overlay manifest: video_id is required")
+	}
+	mode := strings.TrimSpace(m.Mode)
+	if mode != "" && mode != OverlayModeReplace && mode != OverlayModeComposite {
+		return fmt.Errorf("overlay manifest: mode %q must be %q or %q", m.Mode, OverlayModeReplace, OverlayModeComposite)
+	}
+	if err := m.Stream.Validate(); err != nil {
+		return err
 	}
 	if m.TimelineSHA256 != "" && !digest.IsCanonicalSHA256(m.TimelineSHA256) {
 		return fmt.Errorf("overlay manifest: timeline_sha256 %q is not a canonical SHA-256", m.TimelineSHA256)
@@ -244,6 +305,8 @@ func (m OverlayManifest) MarshalJSON() ([]byte, error) {
 		SchemaVersion  string                 `json:"schema_version"`
 		PlanID         string                 `json:"plan_id"`
 		VideoID        string                 `json:"video_id"`
+		Mode           string                 `json:"mode,omitempty"`
+		Stream         *OverlayManifestStream `json:"stream,omitempty"`
 		TimelineSHA256 string                 `json:"timeline_sha256,omitempty"`
 		Entries        []OverlayManifestEntry `json:"entries"`
 	}
@@ -251,6 +314,8 @@ func (m OverlayManifest) MarshalJSON() ([]byte, error) {
 		SchemaVersion:  m.SchemaVersion,
 		PlanID:         m.PlanID,
 		VideoID:        m.VideoID,
+		Mode:           m.Mode,
+		Stream:         m.Stream,
 		TimelineSHA256: m.TimelineSHA256,
 		Entries:        m.canonicalEntries(),
 	})
@@ -267,12 +332,23 @@ func (m OverlayManifest) Digest() string {
 		SchemaVersion string                 `json:"schema_version"`
 		PlanID        string                 `json:"plan_id"`
 		VideoID       string                 `json:"video_id"`
+		Mode          string                 `json:"mode,omitempty"`
+		Stream        *OverlayManifestStream `json:"stream,omitempty"`
 		Entries       []OverlayManifestEntry `json:"entries"`
+	}
+	// Replace is the historical empty-mode composition. Folding explicit
+	// "replace" into it preserves every pre-mode cache identity; composite is
+	// a different composition because the source picture stays visible.
+	mode := m.OverlayMode()
+	if mode == OverlayModeReplace {
+		mode = ""
 	}
 	raw, err := json.Marshal(manifestRequest{
 		SchemaVersion: m.SchemaVersion,
 		PlanID:        m.PlanID,
 		VideoID:       m.VideoID,
+		Mode:          mode,
+		Stream:        m.Stream,
 		Entries:       m.canonicalEntries(),
 	})
 	if err != nil {

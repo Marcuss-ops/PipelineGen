@@ -56,16 +56,26 @@ const (
 	// OverlayVideoOnlyProfileID is the current RenderingGen output profile for the
 	// final job's opaque overlay compositions (packed manifest timeline):
 	// H.264 High 4.0, 1920x1080@24, yuv420p, closed GOP 48, first frame IDR,
-	// start PTS 0, and ZERO audio streams. It is a RENDER certification
-	// profile, not an assembly contract: an overlay is an input to the
-	// assembler, so ValidateExact keeps rejecting it on purpose. The value is
-	// declared here so the plan that requests it and the producer that
-	// certifies it name the same profile. V2 is the current cache lane for new
-	// overlay sources; the fragment producer normalizes any source whose actual
-	// avcC is not CanonicalVideoExtradataSHA256, so the artifact profile does
-	// not itself promise a parameter-set identity. V1 remains historical.
-	OverlayVideoOnlyProfileID = "VELOX_OVERLAY_VIDEO_ONLY_V2"
+	// start PTS 0, ZERO audio streams, canonical 1/90000 timebase and canonical
+	// avcC. It is a RENDER certification profile, not an assembly contract: an
+	// overlay is an input to the assembler, so ValidateExact keeps rejecting it
+	// on purpose. The value is declared here so the plan that requests it and
+	// the producer that certifies it name the same profile. V3 is the current
+	// cache lane: RenderingGen canonicalizes the final encode before publishing
+	// it, so the final-job handoff can mark the artifact copy_ready=true. V2 (the
+	// previous lane) keeps copy_ready=false and is normalized by the fragment
+	// producer; V1 remains historical.
+	OverlayVideoOnlyProfileID = "VELOX_OVERLAY_VIDEO_ONLY_V3"
 	OverlayVideoOnlyLegacyID  = "VELOX_OVERLAY_VIDEO_ONLY_V1"
+	// OverlayVideoOnlyPreviousID is the previous V2 renderer-source lane. It is
+	// retained for reading cached/legacy artifacts and for the producer's
+	// normalization gate; new final-job plans use OverlayVideoOnlyProfileID.
+	OverlayVideoOnlyPreviousID = "VELOX_OVERLAY_VIDEO_ONLY_V2"
+	// OverlayVideoOnlyAssemblyProfileID is the assembly-compatible overlay lane.
+	// V3 pins the canonical 1/90000 timebase and avcC; RenderingGen emits those
+	// facts via its V3 canonicalization pass, and the final-job handoff marks
+	// V3 artifacts copy_ready=true.
+	OverlayVideoOnlyAssemblyProfileID = "VELOX_OVERLAY_VIDEO_ONLY_V3"
 
 	// CanonicalVideoExtradataSHA256 is the SHA-256 of the exact
 	// AVCDecoderConfigurationRecord (the MP4 `avcC` payload: SPS + PPS +

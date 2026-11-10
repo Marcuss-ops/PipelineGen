@@ -110,11 +110,18 @@ type phraseImpactEnrichment struct {
 // and the planner-owned feedback. A planning error is logged and withholds the
 // plan instead of failing the run: the editorial products already computed from
 // the same batch stay valid.
-func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles map[string]*SemanticCandidateBundle) {
+func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles map[string]*SemanticCandidateBundle, req GenerateRequest) {
 	if len(bundles) == 0 {
 		return
 	}
-	consolidation, plan, feedback, err := PlanScriptProduction(bundles)
+	config := DefaultSemanticProductionPlanConfig()
+	if req.MaxImageOverlays > 0 {
+		config.MaxMediaUnits = req.MaxImageOverlays
+	}
+	if req.MediaPlan.Planner.MaxImagesPerScene > 0 {
+		config.MaxMediaUnitsPerScene = req.MediaPlan.Planner.MaxImagesPerScene
+	}
+	consolidation, plan, feedback, err := PlanScriptProduction(bundles, config)
 	out.consolidation = consolidation
 	if err != nil {
 		if r.log != nil {
@@ -162,7 +169,7 @@ func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript s
 		}
 		semanticBundles, impactRes, err := batch.AnalyzeSemanticEditorial(ctx, transcript, language, sceneInputs)
 		if err == nil {
-			r.adoptSemanticPlannerView(out, semanticBundles)
+			r.adoptSemanticPlannerView(out, semanticBundles, req)
 			out.summary = impactRes.Summary
 			out.bullets = impactRes.BulletPoints
 			out.heavy = impactRes.HeavySentences

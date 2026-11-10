@@ -1,4 +1,4 @@
-package jobs
+package scheduling
 
 // registry_texttracks.go: registers the texttracks job types
 // into the canonical registry. Called by Compose() after the

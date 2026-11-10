@@ -470,5 +470,5 @@ const (
 	entityImageHoldMS           int64 = 1_500
 	entityImageTravelMS         int64 = 2_000
 	maxEntityImageGroup               = 5
-	maxNamedEntityCardsPerScene       = 2
+	maxNamedEntityCardsPerScene       = 10
 )

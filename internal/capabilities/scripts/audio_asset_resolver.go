@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -122,7 +123,7 @@ func randomClipStartSFXIntents(timeline audio.CanonicalTimeline) []scriptpkg.Sou
 				continue
 			}
 			intent := scriptpkg.SoundEffectIntent{AtMS: startUS / 1000, GainDB: -6}
-			intent.AssetID = randomWhooshID(timeline, len(intents), intent)
+			intent.AssetID = scriptaudio.RandomWhooshID(timeline, len(intents), intent)
 			// Keep the cue short and clearly below the voice/music bed.
 			// The canonical SFX bus is -10 dB, so -6 dB here yields -16 dB.
 			intent.DurationMS = 250
@@ -131,3 +132,25 @@ func randomClipStartSFXIntents(timeline audio.CanonicalTimeline) []scriptpkg.Sou
 	}
 	return intents
 }
+
+// Compatibility facade for the pure audio resolvers moved to scripts/audio.
+// The root package keeps these names for existing call sites and tests; new
+// code should depend on the leaf package directly.
+type (
+	AudioAutomationCompiler = scriptaudio.AudioAutomationCompiler
+	AudioIntentResolver     = scriptaudio.AudioIntentResolver
+	BackgroundMusicResolver = scriptaudio.BackgroundMusicResolver
+)
+
+const (
+	DefaultBGMDuckGainDB    = scriptaudio.DefaultBGMDuckGainDB
+	DefaultBGMDuckAttackUS  = scriptaudio.DefaultBGMDuckAttackUS
+	DefaultBGMDuckReleaseUS = scriptaudio.DefaultBGMDuckReleaseUS
+	CanonicalBGMDuckFloorDB = scriptaudio.CanonicalBGMDuckFloorDB
+)
+
+var (
+	NewAudioAutomationCompiler = scriptaudio.NewAudioAutomationCompiler
+	NewAudioIntentResolver     = scriptaudio.NewAudioIntentResolver
+	NewBackgroundMusicResolver = scriptaudio.NewBackgroundMusicResolver
+)

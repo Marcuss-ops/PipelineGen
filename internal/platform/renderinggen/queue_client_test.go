@@ -66,15 +66,64 @@ func TestClientSubmitCreated(t *testing.T) {
 }
 
 func TestClientSubmitConflictIsErrJobExists(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "job job-1 already exists", http.StatusConflict)
+	job := scriptgen.RenderQueueJob{ID: "job-1"}
+	identity, err := scriptgen.RenderRequestIdentityFor(job)
+	if err != nil {
+		t.Fatalf("request identity: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			http.Error(w, "job job-1 already exists", http.StatusConflict)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(queueclient.Job{ID: "job-1", IdempotencyKey: identity.IdempotencyKey("job-1")})
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL)
+	err = client.Submit(context.Background(), job)
+	if !errors.Is(err, scriptgen.ErrJobExists) {
+		t.Fatalf("expected ErrJobExists, got %v", err)
+	}
+}
+
+func TestClientSubmitIdentityConflictIsTyped(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			http.Error(w, "job job-1 already exists", http.StatusConflict)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(queueclient.Job{ID: "job-1", IdempotencyKey: "different-identity"})
 	}))
 	defer srv.Close()
 
 	client := New(srv.URL)
 	err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
-	if !errors.Is(err, scriptgen.ErrJobExists) {
-		t.Fatalf("expected ErrJobExists, got %v", err)
+	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
+		t.Fatalf("expected ErrRenderRequestConflict, got %v", err)
+	}
+	if errors.Is(err, scriptgen.ErrJobExists) {
+		t.Fatalf("identity conflict must not masquerade as an idempotent replay: %v", err)
+	}
+}
+
+func TestClientSubmitUnverifiableCollisionFailsClosed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			http.Error(w, "job job-1 already exists", http.StatusConflict)
+			return
+		}
+		http.Error(w, "queue unavailable", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	client := New(srv.URL)
+	err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
+	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
+		t.Fatalf("expected fail-closed ErrRenderRequestConflict, got %v", err)
+	}
+	if errors.Is(err, scriptgen.ErrJobExists) {
+		t.Fatalf("unverifiable identity must not masquerade as an idempotent replay: %v", err)
 	}
 }
 

@@ -1,4 +1,4 @@
-package scriptgeneration
+package runner
 
 import (
 	"testing"
@@ -12,7 +12,7 @@ func TestBuildPrepareJoinBreakdownAttributesLastBranch(t *testing.T) {
 	assetsDone := start.Add(8 * time.Second)
 	joinedAt := start.Add(8*time.Second + 250*time.Millisecond)
 
-	got := buildPrepareJoinBreakdown(start, joinStart, joinedAt, semanticDone, assetsDone)
+	got := BuildPrepareJoinBreakdown(start, joinStart, joinedAt, semanticDone, assetsDone)
 	if got == nil {
 		t.Fatal("expected a breakdown")
 	}
@@ -37,7 +37,7 @@ func TestBuildPrepareJoinBreakdownClampsAlreadyFinishedBranches(t *testing.T) {
 	joinStart := start.Add(8 * time.Second)
 	joinedAt := start.Add(8*time.Second + 100*time.Millisecond)
 
-	got := buildPrepareJoinBreakdown(start, joinStart, joinedAt, semanticDone, assetsDone)
+	got := BuildPrepareJoinBreakdown(start, joinStart, joinedAt, semanticDone, assetsDone)
 	if got == nil {
 		t.Fatal("expected a breakdown")
 	}
@@ -54,7 +54,7 @@ func TestBuildPrepareJoinBreakdownClampsAlreadyFinishedBranches(t *testing.T) {
 
 func TestBuildPrepareJoinBreakdownRequiresAllTimestamps(t *testing.T) {
 	start := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
-	if got := buildPrepareJoinBreakdown(start, start, start, time.Time{}, start); got != nil {
+	if got := BuildPrepareJoinBreakdown(start, start, start, time.Time{}, start); got != nil {
 		t.Fatalf("expected nil with a missing timestamp, got %+v", got)
 	}
 }

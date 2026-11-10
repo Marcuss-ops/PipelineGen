@@ -1,4 +1,4 @@
-// Package catalog — filters.go declares the read-only filter
+// Package contract — filters.go declares the read-only filter
 // shapes used by catalog search.
 //
 // Per the July 2026 image-restructuring plan, catalog search
@@ -7,7 +7,7 @@
 // filter is structural: callers can compose it like a builder,
 // and the catalog engine translates it to the underlying repo
 // query parameters.
-package images
+package contract
 
 import (
 	"strings"

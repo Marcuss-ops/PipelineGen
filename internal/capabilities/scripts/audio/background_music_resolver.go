@@ -1,4 +1,4 @@
-// Package scriptgeneration — background_music_resolver.go converts the
+// Package audio — background_music_resolver.go converts the
 // wire-level BGM intents into canonical ResolvedBGM windows.
 //
 // The domain always works with []BackgroundMusicIntent; this resolver is
@@ -7,7 +7,7 @@
 // window on the canonical timeline, and normalizes every other
 // millisecond field (fades, duck ramps) to canonical microseconds. The
 // loop expander and the automation compiler consume only resolved facts.
-package scriptgeneration
+package audio
 
 import (
 	"fmt"

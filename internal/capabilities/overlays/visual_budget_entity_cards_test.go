@@ -46,11 +46,13 @@ func TestNamedEntityCardArmIgnoresImageBackedCards(t *testing.T) {
 }
 
 // A run that narrates more scenes than the run allowance has cards keeps one
-// card per scene before repeating a scene: a fifteen-scene script must render a
-// name card for every scene it narrates, never only for the first ten.
+// card per scene before repeating a scene: the first allowance-many admitted
+// cards must cover distinct scenes, never two cards from an early scene while a
+// later scene is dropped.
 func TestNamedEntityCardArmSpendsAllowanceAcrossScenes(t *testing.T) {
-	items := make([]capmodel.OverlayItem, 0, 30)
-	for scene := 0; scene < 15; scene++ {
+	sceneCount := MaxNamedEntityCardsPerRun + 5
+	items := make([]capmodel.OverlayItem, 0, sceneCount*2)
+	for scene := 0; scene < sceneCount; scene++ {
 		for slot := 0; slot < 2; slot++ {
 			items = append(items, capmodel.OverlayItem{
 				ID:         fmt.Sprintf("card-%02d-%d", scene, slot),
@@ -65,7 +67,7 @@ func TestNamedEntityCardArmSpendsAllowanceAcrossScenes(t *testing.T) {
 	if len(got) != MaxNamedEntityCardsPerRun {
 		t.Fatalf("admitted = %d, want the run allowance %d", len(got), MaxNamedEntityCardsPerRun)
 	}
-	firstPass := got[:15]
+	firstPass := got[:MaxNamedEntityCardsPerRun]
 	seen := make(map[string]struct{}, len(firstPass))
 	for _, index := range firstPass {
 		scene := items[index].SceneID
@@ -74,8 +76,8 @@ func TestNamedEntityCardArmSpendsAllowanceAcrossScenes(t *testing.T) {
 		}
 		seen[scene] = struct{}{}
 	}
-	if len(seen) != 15 {
-		t.Fatalf("scenes covered = %d, want 15", len(seen))
+	if len(seen) != MaxNamedEntityCardsPerRun {
+		t.Fatalf("scenes covered = %d, want %d", len(seen), MaxNamedEntityCardsPerRun)
 	}
 }
 

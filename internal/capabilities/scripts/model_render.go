@@ -138,6 +138,12 @@ type RenderArtifact struct {
 // proceeds to wait on the existing job, making retries idempotent.
 var ErrJobExists = errors.New("render job already exists")
 
+// ErrRenderRequestConflict is returned when a queue job id already exists but
+// its immutable request identity differs from the one being submitted. This is
+// a real conflict, never an idempotent replay: the existing job must not be
+// reused, re-armed, or accepted as the render for the new content.
+var ErrRenderRequestConflict = errors.New("render request identity conflict")
+
 // defaultQueuePollInterval is how long the queue enqueuer waits between
 // status polls while the render is in flight. It is only exercised by the
 // polling fallback: the primary path is the queue's job-status long poll

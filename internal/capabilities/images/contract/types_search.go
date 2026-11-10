@@ -1,4 +1,4 @@
-// Package images (api/images) — types_search.go declares the
+// Package contract — types_search.go declares the
 // unified ImageSearchResult DTO returned by the Step-10 territory-
 // separated search endpoints.
 //
@@ -34,7 +34,7 @@
 //     returns "CC-BY-SA-4.0"; generated returns empty).
 //   - Author: human-readable attribution (Wikipedia returns
 //     "Wikipedia Contributors"; generated returns empty).
-package images
+package contract
 
 // ImageSearchResult is the unified response DTO for territory-
 // separated search. Same shape for retrieved, generated, and

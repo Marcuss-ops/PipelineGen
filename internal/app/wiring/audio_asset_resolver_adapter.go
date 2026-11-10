@@ -42,7 +42,14 @@ import (
 // CanonicalAssetMaterializer — no second download path.
 type audioAssetSourceAdapter struct {
 	assets    mediasub.AssetDetailsLookup
-	canonical *drivepkg.CanonicalAssetMaterializer
+	canonical assetMaterializer
+}
+
+// assetMaterializer is the narrow port the adapter needs from the canonical
+// materializer. Keeping it injectable avoids a second materialization path in
+// tests while production still wires drive.CanonicalAssetMaterializer.
+type assetMaterializer interface {
+	Materialize(context.Context, drivepkg.MaterializeRequest) (*drivepkg.MaterializeResult, error)
 }
 
 // ResolveOverlayBackground implements scripts.OverlayBackgroundSource. The
@@ -83,6 +90,28 @@ func (r *audioAssetSourceAdapter) ResolveOverlayBackground(ctx context.Context, 
 
 	path := localOverlayBackgroundPath(assetID)
 	if path == "" {
+		// The editorial background registry is the canonical alias -> Drive
+		// identity map. A plate can be absent from the media catalog and the
+		// local fixture cache (for example drive-background-02 after a clean
+		// deploy); materialize its registered bytes instead of failing the
+		// entire job after selecting it (r110). The expected SHA makes the
+		// download content-addressed and fail-closed on drift.
+		if plate, ok := mediaregistry.ResolveEditorialBackgroundReference(assetID); ok {
+			if r == nil || r.canonical == nil {
+				return scriptgen.OverlayBackgroundAsset{}, errors.New("overlay background materializer not wired")
+			}
+			materialized, matErr := r.canonical.Materialize(ctx, drivepkg.MaterializeRequest{
+				AssetID: plate.ID, DriveFileID: plate.DriveFileID,
+				ExpectedSHA256: plate.SHA256, Extension: filepath.Ext(plate.Filename),
+			})
+			if matErr != nil {
+				return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("materialize overlay background %q: %w", plate.ID, matErr)
+			}
+			return scriptgen.OverlayBackgroundAsset{
+				AssetID: plate.ID, LocalPath: materialized.LocalPath,
+				SHA256: materialized.SHA256, MediaType: plate.MediaType,
+			}, nil
+		}
 		return scriptgen.OverlayBackgroundAsset{}, fmt.Errorf("overlay background asset %q not found in catalog or local cache", assetID)
 	}
 	hash, err := sha256File(path)

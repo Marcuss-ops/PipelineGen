@@ -1,4 +1,4 @@
-// Package scriptgeneration — audio_intent_resolver.go converts the
+// Package audio — audio_intent_resolver.go converts the
 // wire-level audio intent commands into fully resolved timeline facts
 // BEFORE the compiled plan.
 //
@@ -9,7 +9,7 @@
 // offsets and normalizes every millisecond field to canonical
 // microseconds, so everything downstream (layer resolver → loop expander
 // → CompileWithLayers) works on resolved facts only.
-package scriptgeneration
+package audio
 
 import (
 	"fmt"
@@ -60,7 +60,7 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 			return nil, fmt.Errorf("resolve sound effects: sfx %d requires an asset_id", i)
 		}
 		if strings.EqualFold(assetID, scriptpkg.RandomWhooshDirective) {
-			assetID = randomWhooshID(timeline, i, intent)
+			assetID = RandomWhooshID(timeline, i, intent)
 		}
 		startUS, err := resolveSFXStartUS(timeline.DurationUS, scenes, intent)
 		if err != nil {
@@ -88,11 +88,11 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 	return out, nil
 }
 
-// randomWhooshID selects one of the built-in whoosh aliases without involving
+// RandomWhooshID selects one of the built-in whoosh aliases without involving
 // the renderer or filesystem. The selection is deterministic for a timeline
 // and event position, so retries remain idempotent while different events
 // normally receive different cues.
-func randomWhooshID(timeline audio.CanonicalTimeline, index int, intent scriptpkg.SoundEffectIntent) string {
+func RandomWhooshID(timeline audio.CanonicalTimeline, index int, intent scriptpkg.SoundEffectIntent) string {
 	seed := fmt.Sprintf("%d:%d:%d:%s:%d:%d", timeline.DurationUS, index, intent.AtMS, intent.SceneID, intent.OffsetMS, intent.SourceInMS)
 	digest := digest.SHA256Bytes([]byte(seed))
 	// The size of the family comes from the wire vocabulary

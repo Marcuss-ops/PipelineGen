@@ -6,6 +6,9 @@ import "strings"
 
 // MoveImagesAsideForOverlappingDateCards keeps a centered date readable when
 // its certified window overlaps an entity or editorial image, across scenes.
+// Both elements stay on the canvas centerline: the image uses the upper lane
+// and the date uses the lower lane instead of splitting the composition left
+// and right.
 func MoveImagesAsideForOverlappingDateCards(items []capmodel.OverlayItem, canvasWidth int) {
 	if canvasWidth <= 0 {
 		canvasWidth = 1920
@@ -35,28 +38,31 @@ func MoveImagesAsideForOverlappingDateCards(items []capmodel.OverlayItem, canvas
 			if imageWidth <= 0 {
 				imageWidth = float64(canvasWidth) * 0.68
 			}
-			// Image coordinates are centre-relative. Reserve the centre/right
-			// area for the overlapping date, then dock the image inside the left
-			// safe area; -720px pushed most images beyond the canvas.
-			safeMargin := float64(canvasWidth) * 0.04
-			maxWidth := float64(canvasWidth) * 0.38
+			// Keep the photo horizontally centered and place it above the date.
+			// A side-by-side treatment made photos tiny and left most of the
+			// white-paper canvas empty, especially in standalone overlay previews.
+			canvasHeight := float64(canvasWidth) * 9.0 / 16.0
+			maxWidth := float64(canvasWidth) * 0.82
+			maxHeight := canvasHeight * 0.58
 			if imageWidth > maxWidth {
 				imageWidth = maxWidth
 				items[i].Params["width"] = imageWidth
 				items[i].Params["box_width"] = imageWidth
 			}
-			items[i].Params["position_x"] = -float64(canvasWidth)/2 + safeMargin + imageWidth/2
-			items[i].Params["position_y"] = float64(0)
-			// A full-width date such as "17 dicembre 2009" still collides
-			// with a left-docked portrait at the default 140px type size.
-			// Reduce only the overlapping date card so both remain readable.
+			if imageHeight := overlayItemDimension(items[i].Params, "height", "box_height"); imageHeight > maxHeight {
+				items[i].Params["height"] = maxHeight
+				items[i].Params["box_height"] = maxHeight
+			}
+			items[i].Params["position_x"] = float64(0)
+			items[i].Params["position_y"] = -canvasHeight * 0.10
+			// Put the date in a lower centered lane. Keep its text centered
+			// instead of anchoring it at 70% of the canvas width.
 			if date.Params == nil {
 				date.Params = make(map[string]any)
 			}
 			date.Params["font_size_px"] = float64(96)
-			// Text positions are canvas-absolute; give the date a right-side
-			// anchor so the image and its text do not occupy the same pixels.
-			date.Params["position_x"] = float64(canvasWidth) * 0.70
+			date.Params["position_x"] = float64(canvasWidth) / 2
+			date.Params["position_y"] = canvasHeight * 0.86
 			if style, ok := date.Params["style"].(map[string]any); ok {
 				style["font_size"] = float64(96)
 			}

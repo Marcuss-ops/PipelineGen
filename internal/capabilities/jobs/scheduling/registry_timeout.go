@@ -17,7 +17,7 @@
 //	registry_definitions.go  (slim: package doc + canonical policy constants)
 //	registry_timeout.go     (this file: HC-1 typed port surface)
 //	registry_types.go       (NEW: RegistryEntry + JobPolicy + Type... const block)
-package jobs
+package scheduling
 
 import "time"
 

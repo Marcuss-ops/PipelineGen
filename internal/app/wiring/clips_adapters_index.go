@@ -3,6 +3,7 @@ package wiring
 import (
 	"context"
 
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
@@ -166,7 +167,7 @@ func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 // clipsOpsPorts holds ONLY the 5 typed ports that ClipOpsService
 // consumes. JobFacades is narrowed from *appjobs.Service (the canonical
 // job-broker facade type) to clips.JobsServicePort (the narrow
-// use-case surface) via newClipsJobsPortAdapter inline so
+// use-case surface) via clipswiring.NewClipsJobsPortAdapter inline so
 // ClipOpsService stays typed-port-monomorphic per AGENTS.md Pattern 0
 // + godlike/06 SSOT (one canonical owner per port contract).
 type clipsOpsPorts struct {
@@ -192,9 +193,9 @@ type clipsOpsPorts struct {
 func buildClipOpsPorts(clipRepo clips.ClipRepositoryPort, jobs *JobsBundle) clipsOpsPorts {
 	return clipsOpsPorts{
 		clipRepo:      clipRepo,
-		voiceoverRepo: newVoiceoverRepoAdapter(jobs.VoiceoverRepo),
-		imageRepo:     newImageRepoAdapter(jobs.ImagesRepo),
+		voiceoverRepo: clipswiring.NewVoiceoverRepoAdapter(jobs.VoiceoverRepo),
+		imageRepo:     clipswiring.NewImageRepoAdapter(jobs.ImagesRepo),
 		driveUploader: ytadapters.NewClipsDriveAdapter(jobs.DriveUploader, jobs.DriveUploader, jobs.DriveLifecycle),
-		jobsPort:      newClipsJobsPortAdapter(jobs.Facade),
+		jobsPort:      clipswiring.NewClipsJobsPortAdapter(jobs.Facade),
 	}
 }

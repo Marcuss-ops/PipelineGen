@@ -16,7 +16,7 @@
 //
 // Lookup paths preserved: `reg.Timeout("foo")`, `reg.GetMaxRetries("foo")`,
 // etc. all resolve identically pre/post split (same package).
-package jobs
+package scheduling
 
 import (
 	"fmt"

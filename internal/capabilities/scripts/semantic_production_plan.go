@@ -204,12 +204,16 @@ func ScriptSearchFeedbackFromBundles(bundles map[string]*SemanticCandidateBundle
 // the consolidated projection, its executable plan and the search feedback the
 // plan currently reports. A worker without the consolidation projection yields
 // nils, so older deployments keep their existing planning unchanged.
-func PlanScriptProduction(bundles map[string]*SemanticCandidateBundle) (*SemanticVisualConsolidation, *SemanticProductionPlan, *SemanticSearchFeedback, error) {
+func PlanScriptProduction(bundles map[string]*SemanticCandidateBundle, configs ...SemanticProductionPlanConfig) (*SemanticVisualConsolidation, *SemanticProductionPlan, *SemanticSearchFeedback, error) {
 	consolidation := ScriptConsolidationFromBundles(bundles)
 	if consolidation == nil {
 		return nil, nil, nil, nil
 	}
-	plan, err := BuildSemanticProductionPlan(consolidation, SemanticIdentitiesFromBundles(bundles), DefaultSemanticProductionPlanConfig())
+	config := DefaultSemanticProductionPlanConfig()
+	if len(configs) > 0 {
+		config = configs[0]
+	}
+	plan, err := BuildSemanticProductionPlan(consolidation, SemanticIdentitiesFromBundles(bundles), config)
 	if err != nil {
 		// The consolidation itself stays visible for audit; only the executable
 		// plan is withheld, because a broken plan must never drive a render.

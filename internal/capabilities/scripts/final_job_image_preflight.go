@@ -1,11 +1,21 @@
 package scriptgeneration
 
 import (
+	"bytes"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
+	"net/http"
+	"os"
 	"sort"
 	"strings"
+	"time"
 )
 
 // final_job_image_preflight.go: the pre-enqueue entity-image gate (the r10
@@ -35,10 +45,37 @@ func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
 			return false
 		}
 	}
-	if strings.TrimSpace(ref.URL) != "" {
-		return true
+	var reader io.ReadCloser
+	if path := strings.TrimSpace(ref.LocalPath); path != "" && usableLocalAssetPath(path) {
+		file, err := os.Open(path)
+		if err != nil {
+			return false
+		}
+		reader = file
+	} else if location := strings.TrimSpace(ref.URL); location != "" {
+		client := &http.Client{Timeout: 12 * time.Second}
+		response, err := client.Get(location)
+		if err != nil {
+			return false
+		}
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			response.Body.Close()
+			return false
+		}
+		reader = response.Body
+	} else {
+		return false
 	}
-	return usableLocalAssetPath(ref.LocalPath)
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(reader, 32<<20))
+	if err != nil || len(data) == 0 || len(data) >= 32<<20 {
+		return false
+	}
+	if !strings.EqualFold(digest.SHA256Bytes(data), sha) {
+		return false
+	}
+	config, format, err := image.DecodeConfig(bytes.NewReader(data))
+	return err == nil && config.Width > 0 && config.Height > 0 && (format == "jpeg" || format == "png" || format == "gif")
 }
 
 func anyFinalJobImageVerifiedRef(refs []capmodel.OverlayAssetRef) bool {
@@ -163,8 +200,11 @@ func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]
 		}
 		return nil
 	}
+	// Fail closed on the TOTAL class only. A partial miss is the documented
+	// fail-open policy (one invalid binding keeps its card text-only); the
+	// stronger content validation above must not turn that into a run failure.
 	if unverified == expected {
-		return fmt.Errorf("final_job preflight: entity image overlays are promised but none carries a verified asset (sha256 + locator), unverified overlay %q; predicted silent visual loss", firstUnverified)
+		return fmt.Errorf("final_job preflight: %d of %d selected image overlays failed download/content/hash/image validation; first invalid overlay %q; predicted silent visual loss; refusing to count unverified photo coverage", unverified, expected, firstUnverified)
 	}
 	return nil
 }

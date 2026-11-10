@@ -18,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 )
@@ -86,6 +87,44 @@ func (r *testDriveReader) SearchFiles(_ context.Context, _ string) ([]drive.Driv
 }
 
 var _ drive.Reader = (*testDriveReader)(nil)
+
+// fakeAssetMaterializer records the request and returns the exact result the
+// adapter must project. It is the narrow seam that proves the registry fallback
+// does not silently invent bytes or identity.
+type fakeAssetMaterializer struct {
+	req    drive.MaterializeRequest
+	result *drive.MaterializeResult
+	err    error
+}
+
+func (f *fakeAssetMaterializer) Materialize(_ context.Context, req drive.MaterializeRequest) (*drive.MaterializeResult, error) {
+	f.req = req
+	return f.result, f.err
+}
+
+// TestResolveOverlayBackgroundMaterializesMissingRegistryPlate pins r110: a
+// registry-owned plate with no media-catalog row and no local fixture is
+// downloaded through the canonical materializer with its Drive identity and
+// certified SHA, instead of failing after selection.
+func TestResolveOverlayBackgroundMaterializesMissingRegistryPlate(t *testing.T) {
+	t.Chdir(t.TempDir())
+	plate, ok := mediaregistry.LookupEditorialBackground("drive-background-02")
+	require.True(t, ok)
+	materializer := &fakeAssetMaterializer{result: &drive.MaterializeResult{
+		LocalPath: "/cache/drive-background-02.mp4", SHA256: plate.SHA256,
+	}}
+	adapter := &audioAssetSourceAdapter{canonical: materializer}
+
+	got, err := adapter.ResolveOverlayBackground(context.Background(), "drive-background-02")
+	require.NoError(t, err)
+	require.Equal(t, plate.ID, got.AssetID)
+	require.Equal(t, materializer.result.LocalPath, got.LocalPath)
+	require.Equal(t, plate.SHA256, got.SHA256)
+	require.Equal(t, plate.MediaType, got.MediaType)
+	require.Equal(t, plate.DriveFileID, materializer.req.DriveFileID)
+	require.Equal(t, plate.SHA256, materializer.req.ExpectedSHA256)
+	require.Equal(t, ".mp4", materializer.req.Extension)
+}
 
 // TestAudioAssetSourceAdapterCarriesCertifiedDuration certifies the
 // registry's certified duration (Asset.Duration, loaded from duration_ms)

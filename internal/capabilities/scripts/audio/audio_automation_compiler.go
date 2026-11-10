@@ -1,4 +1,4 @@
-// Package scriptgeneration — audio_automation_compiler.go compiles the
+// Package audio — audio_automation_compiler.go compiles the
 // editorial audio automation (BGM fades + BGM ducking under voiceover)
 // into canonical AudioAutomation entries on the compiled plan.
 //
@@ -18,7 +18,7 @@
 // ducked gain while the voiceover actually speaks — the same
 // AudioAutomation contract the clip ducking uses, so the mixer and
 // renderer consume exactly one automation mechanism.
-package scriptgeneration
+package audio
 
 import (
 	"fmt"

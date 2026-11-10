@@ -308,20 +308,19 @@ func ApplyImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageSt
 	item.RenderKey = ""
 }
 
-// NormalizeEntityImageLayer removes legacy geometry overrides that distort
-// entity portraits while retaining the shared image frame and backing panel.
+// NormalizeEntityImageLayer removes the legacy image radius override while
+// preserving the planner's centered hero geometry and caption-safe vertical
+// position.
 func NormalizeEntityImageLayer(item *capmodel.OverlayItem) {
 	if item == nil || item.Kind != string(capmodel.KindEntityImage) {
 		return
 	}
 	if item.Params != nil {
 		delete(item.Params, "radius")
-		delete(item.Params, "position_y")
 	}
 	for i := range item.ImageLayers {
 		if item.ImageLayers[i].Params != nil {
 			delete(item.ImageLayers[i].Params, "radius")
-			delete(item.ImageLayers[i].Params, "position_y")
 		}
 	}
 }

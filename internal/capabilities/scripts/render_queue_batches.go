@@ -16,7 +16,6 @@ import (
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
-	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // overlayBatchWork is one Chronon invocation: the manifest timeline
@@ -164,12 +163,13 @@ func fusedOverlayBatchPlan(parent capmodel.OverlayPlan, work overlayBatchWork) (
 	}
 	child.PlanID = overlayItemChildPlanID(parent.PlanID, work.candidates[0].index, "batch-"+work.id)
 	child.VideoID = child.PlanID
-	// The fused artifact is an opaque, SILENT composition: the batch muxes no
-	// audio (the master owns it) and the encoder writes H.264/yuv420p. Declare
-	// the profile that describes it AND the media contract derived from it in
-	// one call, so the producer certifies exactly the artifact it sketched and
-	// the pair cannot disagree.
-	child.StampOutputProfile(kernelmedia.OverlayVideoOnlyProfileID)
+	// Keep the artifact format sealed on the parent plan. Final jobs stamp the
+	// opaque video-only profile before rendering so their replacement windows
+	// can be assembled into the master. Standalone overlay renders leave this
+	// unset and therefore retain the alpha-bearing ProRes contract. Forcing the
+	// video-only profile here flattened every standalone overlay batch onto an
+	// opaque canvas and made transparent graphics impossible to publish.
+	child.StampOutputProfile(parent.OutputProfileID)
 	child.Fingerprint = ""
 	child.Items = items
 	child.DurationMS = (endUS - work.startUS + 999) / 1000

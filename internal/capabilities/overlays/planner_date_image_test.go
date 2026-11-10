@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestMoveEntityImageAsideFromOverlappingTimelineDate(t *testing.T) {
+func TestMoveEntityImageAndTimelineDateStayCenteredWhenOverlapping(t *testing.T) {
 	items := []capmodel.OverlayItem{
 		{
 			ID: "alberto", Kind: "entity_image", StartMs: 46_582, EndMs: 48_320,
@@ -22,17 +22,20 @@ func TestMoveEntityImageAsideFromOverlappingTimelineDate(t *testing.T) {
 
 	items[0].Params["width"] = float64(1305)
 	MoveImagesAsideForOverlappingDateCards(items, 1920)
-	if got := items[0].Params["position_x"].(float64); math.Abs(got-(-518.4)) > 0.001 {
-		t.Fatalf("entity image x position = %v, want safe-area dock at -518.4px", got)
+	if got := items[0].Params["position_x"].(float64); math.Abs(got) > 0.001 {
+		t.Fatalf("entity image x position = %v, want centered at 0px", got)
 	}
-	if got := items[0].Params["position_y"]; got != float64(0) {
-		t.Fatalf("entity image y position = %v, want 0px", got)
+	if got := items[0].Params["position_y"].(float64); math.Abs(got-(-108)) > 0.001 {
+		t.Fatalf("entity image y position = %v, want upper centered lane at -108px", got)
 	}
 	if got := items[1].Params["font_size_px"]; got != float64(96) {
 		t.Fatalf("overlapping date font size = %v, want 96px", got)
 	}
-	if got := items[1].Params["position_x"]; got != float64(1344) {
-		t.Fatalf("overlapping date x position = %v, want right-side anchor at 1344px", got)
+	if got := items[1].Params["position_x"]; got != float64(960) {
+		t.Fatalf("overlapping date x position = %v, want canvas center at 960px", got)
+	}
+	if got := items[1].Params["position_y"]; got != float64(928.8) {
+		t.Fatalf("overlapping date y position = %v, want lower centered lane at 928.8px", got)
 	}
 	if got := items[1].Params["style"].(map[string]any)["font_size"]; got != float64(96) {
 		t.Fatalf("overlapping date style font size = %v, want 96px", got)

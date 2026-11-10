@@ -13,7 +13,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-const maxGenericSceneImagesPerScene = 4
+const maxGenericSceneImagesPerScene = 10
 
 // resolveImageOverlayCeiling makes the two run-level image budgets agree.
 // max_image_overlays is the caller's request; overlay_group_limits.images is

@@ -39,6 +39,13 @@ func vidRushImageTarget(plan *scriptpkg.ResolvedGenerationPlan) int {
 // images must not silently truncate a 3-person (or 5-person) extraction.
 func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.VidRushSegmentResult) int {
 	target := vidRushImageTarget(plan)
+	// A caller-selected per-scene image budget must reach the acquisition
+	// boundary as well as the overlay planner. Otherwise the planner may allow
+	// ten scene images while materialization still keeps only the default two
+	// (or the number of extracted entities), leaving the larger budget empty.
+	if plan != nil && plan.MediaPlan.Planner.MaxImagesPerScene > target {
+		target = plan.MediaPlan.Planner.MaxImagesPerScene
+	}
 	if plan == nil || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 		return target
 	}

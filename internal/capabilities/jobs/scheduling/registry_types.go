@@ -21,7 +21,7 @@
 //	registry_definitions.go  (slim: package doc + canonical policy constants)
 //	registry_timeout.go     (HC-1 typed port surface)
 //	registry_types.go       (this file: RegistryEntry + JobPolicy + Type... const block)
-package jobs
+package scheduling
 
 import (
 	"errors"

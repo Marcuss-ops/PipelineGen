@@ -21,7 +21,7 @@
 //
 // Lookup paths preserved: jobs.DefaultQueue, jobs.DefaultConcurrency
 // resolve identically pre/post split (same package).
-package jobs
+package scheduling
 
 // ── Wave 19 / P1-9 canonical policy constants (June 2026) ─────────────────
 //

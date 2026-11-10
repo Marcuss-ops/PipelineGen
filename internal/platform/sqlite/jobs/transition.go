@@ -21,6 +21,12 @@ var ErrOptimisticLockFailed = fmt.Errorf("optimistic lock failed: revision or st
 // columns for the jobs table.
 var ErrInvalidColumn = fmt.Errorf("invalid column: not in jobs table allowlist")
 
+// ErrIncompleteFence is returned by Transition when only one half of the
+// worker/lease fence is supplied. Fencing is all-or-nothing: applying a
+// transition with WorkerID but no LeaseID (or vice versa) would silently
+// disable the lease guard and allow a stale worker to mutate the row.
+var ErrIncompleteFence = fmt.Errorf("incomplete lease fence: worker_id and lease_id must both be set or both be empty")
+
 // allowedJobColumns is the allowlist of column names that can legally appear
 // in a Transition SET clause (req.Updates keys and req.ExtraSets snippets).
 // Adding a column to the jobs table MUST be mirrored here so the Transition
@@ -140,6 +146,12 @@ func (u *JobUpdates) toSetClauses() (clauses []string, args []any) {
 
 // Transition atomically executes a guarded status change on the jobs table.
 func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*job.Job, error) {
+	// Fencing is all-or-nothing. A single token would be silently ignored by
+	// the WHERE clause below, so reject it before building any SQL.
+	if (req.WorkerID == "") != (req.LeaseID == "") {
+		return nil, fmt.Errorf("transition %s: %w", req.JobID, ErrIncompleteFence)
+	}
+
 	now := time.Now()
 
 	// Build the UPDATE query with parameterised SET clauses.
@@ -169,9 +181,14 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 	}
 
 	var resultPayload string
-	// Handle special fields.
+	// Handle special fields. Serialization is a precondition: a result that
+	// JSON cannot represent must fail the transition before any SQL runs, never
+	// commit the status change while silently dropping the result.
 	if req.Result != nil {
-		resultBytes, _ := json.Marshal(req.Result)
+		resultBytes, err := json.Marshal(req.Result)
+		if err != nil {
+			return nil, fmt.Errorf("transition %s: marshal result: %w", req.JobID, err)
+		}
 		resultPayload = string(resultBytes)
 	}
 	if req.Error != nil {
@@ -223,7 +240,10 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 		return nil, fmt.Errorf("transition: exec: %w", err)
 	}
 
-	n, _ := result.RowsAffected()
+	n, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("transition %s: rows affected: %w", req.JobID, err)
+	}
 	if n == 0 {
 		return nil, fmt.Errorf("transition %s: %w", req.JobID, ErrOptimisticLockFailed)
 	}

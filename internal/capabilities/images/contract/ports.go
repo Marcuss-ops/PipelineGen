@@ -13,7 +13,7 @@
 // extra fields the JOIN projections emit (Tags, CreatedAt, etc.).
 // Renamed from ImageFilter/ImageSearchResult to avoid the
 // declaration collision that pre-FASE-8 broke the build.
-package images
+package contract
 
 import (
 	detail "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"

@@ -1,11 +1,21 @@
 package scriptgeneration
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+	"image"
+	"image/png"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-	"strings"
-	"testing"
 )
 
 // The r10 incident class: the plan promised entity-image overlays whose
@@ -21,6 +31,29 @@ func imagePreflightItem(id, kind, sha, url string) capmodel.OverlayItem {
 		item.AssetRefs = []capmodel.OverlayAssetRef{{AssetID: "asset-" + id, SHA256: sha, URL: url}}
 	}
 	return item
+}
+
+// preflightPNGBytes returns a real, decodable image and its content address.
+// The preflight verifies the bytes it will actually render, so fixture hashes
+// must describe fixture bytes rather than arbitrary 64-hex strings.
+func preflightPNGBytes(t *testing.T) ([]byte, string) {
+	t.Helper()
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatalf("encode preflight PNG: %v", err)
+	}
+	data := encoded.Bytes()
+	return data, fmt.Sprintf("%x", sha256.Sum256(data))
+}
+
+func preflightPNGFile(t *testing.T) (string, string) {
+	t.Helper()
+	data, sha := preflightPNGBytes(t)
+	path := filepath.Join(t.TempDir(), "preflight.png")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("write preflight PNG: %v", err)
+	}
+	return path, sha
 }
 
 func TestFinalJobImagePreflight_UnverifiedPromisedImagesFailClosed(t *testing.T) {
@@ -42,14 +75,18 @@ func TestFinalJobImagePreflight_UnverifiedPromisedImagesFailClosed(t *testing.T)
 }
 
 func TestFinalJobImagePreflight_VerifiedAssetsAdmitted(t *testing.T) {
+	localPath, localSHA := preflightPNGFile(t)
+	remoteBytes, remoteSHA := preflightPNGBytes(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(remoteBytes)
+	}))
+	defer server.Close()
 	items := []capmodel.OverlayItem{
-		imagePreflightItem("img-1", "entity_image",
-			"1111111111111111111111111111111111111111111111111111111111111111",
-			"https://drive.example.com/download/asset"),
-		imagePreflightItem("img-2", "entity_image",
-			"2222222222222222222222222222222222222222222222222222222222222222",
-			"https://upload.wikimedia.org/stasi.jpg"),
+		imagePreflightItem("img-1", "entity_image", localSHA, ""),
+		imagePreflightItem("img-2", "entity_image", remoteSHA, server.URL+"/image.png"),
 	}
+	items[0].AssetRefs[0].LocalPath = localPath
 	if err := finalJobImagePreflight(items, nil, false); err != nil {
 		t.Fatalf("verified image assets must be admitted: %v", err)
 	}
@@ -68,12 +105,12 @@ func TestFinalJobImagePreflight_NoImagesPlannedPasses(t *testing.T) {
 func TestFinalJobImagePreflight_PartialUnverifiedStaysFailOpen(t *testing.T) {
 	// One of two promised cards is verified: the documented fail-open policy
 	// (one invalid binding keeps its card text-only) must keep the run going.
+	localPath, localSHA := preflightPNGFile(t)
 	items := []capmodel.OverlayItem{
-		imagePreflightItem("img-1", "entity_image",
-			"1111111111111111111111111111111111111111111111111111111111111111",
-			"https://drive.example.com/download/asset"),
+		imagePreflightItem("img-1", "entity_image", localSHA, ""),
 		imagePreflightItem("img-2", "entity_image", "", ""),
 	}
+	items[0].AssetRefs[0].LocalPath = localPath
 	if err := finalJobImagePreflight(items, nil, false); err != nil {
 		t.Fatalf("partial image miss must stay fail-open, got: %v", err)
 	}
@@ -82,13 +119,14 @@ func TestFinalJobImagePreflight_PartialUnverifiedStaysFailOpen(t *testing.T) {
 func TestFinalJobImagePreflight_VerifiedLocalPathAdmitted(t *testing.T) {
 	// The r38 cutover renders from the durable catalog: a LocalPath-backed
 	// binding without a public URL is a full identity when the file exists.
-	item := imagePreflightItem("img-1", "entity_image",
-		"3333333333333333333333333333333333333333333333333333333333333333", "")
-	item.AssetRefs[0].LocalPath = "final_job_image_preflight_test.go"
+	path, sha := preflightPNGFile(t)
+	item := imagePreflightItem("img-1", "entity_image", sha, "")
+	item.AssetRefs[0].LocalPath = path
 	if err := finalJobImagePreflight([]capmodel.OverlayItem{item}, nil, false); err != nil {
 		t.Fatalf("a usable local path is a verified locator: %v", err)
 	}
 	nonFile := item
+	nonFile.AssetRefs = append([]capmodel.OverlayAssetRef(nil), item.AssetRefs...)
 	nonFile.AssetRefs[0].LocalPath = "/definitely/not/a/real/path/for/preflight-test.png"
 	if err := finalJobImagePreflight([]capmodel.OverlayItem{nonFile}, nil, false); err == nil {
 		t.Fatal("a dangling local path is not a verified locator")
@@ -100,19 +138,21 @@ func TestFinalJobImagePreflight_CompositeRequiresEveryLayerVerified(t *testing.T
 		ID: "group-1", Kind: "entity_image", SceneID: "scene-1",
 		ImageLayers: []capmodel.OverlayImageLayer{{ID: "l-1", AssetID: "a-1"}, {ID: "l-2", AssetID: "a-2"}},
 	}
-	verifiedRef := func(sha string) capmodel.OverlayAssetRef {
-		return capmodel.OverlayAssetRef{AssetID: "a", SHA256: sha, URL: "https://drive.example.com/download/asset"}
+	path1, sha1 := preflightPNGFile(t)
+	path2, sha2 := preflightPNGFile(t)
+	verifiedRef := func(sha, path string) capmodel.OverlayAssetRef {
+		return capmodel.OverlayAssetRef{AssetID: "a", SHA256: sha, LocalPath: path}
 	}
 	full := base
 	full.AssetRefs = []capmodel.OverlayAssetRef{
-		verifiedRef("4444444444444444444444444444444444444444444444444444444444444444"),
-		verifiedRef("5555555555555555555555555555555555555555555555555555555555555555"),
+		verifiedRef(sha1, path1),
+		verifiedRef(sha2, path2),
 	}
 	if err := finalJobImagePreflight([]capmodel.OverlayItem{full}, nil, false); err != nil {
 		t.Fatalf("a fully verified composite group must be admitted: %v", err)
 	}
 	half := base
-	half.AssetRefs = []capmodel.OverlayAssetRef{verifiedRef("4444444444444444444444444444444444444444444444444444444444444444")}
+	half.AssetRefs = []capmodel.OverlayAssetRef{verifiedRef(sha1, path1)}
 	if err := finalJobImagePreflight([]capmodel.OverlayItem{half}, nil, false); err == nil {
 		t.Fatal("a composite group missing a verified layer must be unverified")
 	}

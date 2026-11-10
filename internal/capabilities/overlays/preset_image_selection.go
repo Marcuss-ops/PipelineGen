@@ -240,21 +240,21 @@ func CertifiedImageWithTextMotions() []string {
 	return append([]string(nil), generatedEntityImageMotionCandidates...)
 }
 
-// EntityImageParams returns the larger, raised hero box used by entity images.
-// Entity captions anchor below it, so the portrait stays in the center-safe area.
+// EntityImageParams returns a prominent, centered hero box used by entity
+// images. Keep enough room below for the centered name caption.
 
 func EntityImageParams(width, height int) map[string]any {
 	if width <= 0 || height <= 0 {
 		return map[string]any{"box_width": 800, "box_height": 650, "width": 800, "height": 650, "position_y": -60}
 	}
-	boxWidth, boxHeight := width*68/100, height*70/100
+	boxWidth, boxHeight := width*80/100, height*82/100
 	if boxWidth < 1 {
 		boxWidth = 1
 	}
 	if boxHeight < 1 {
 		boxHeight = 1
 	}
-	return map[string]any{"box_width": boxWidth, "box_height": boxHeight, "width": boxWidth, "height": boxHeight, "position_y": -float64(height) * 0.10}
+	return map[string]any{"box_width": boxWidth, "box_height": boxHeight, "width": boxWidth, "height": boxHeight, "position_y": -float64(height) * 0.05}
 }
 
 // ImageOverlayParams gives a standalone photo one consistent bounded box.

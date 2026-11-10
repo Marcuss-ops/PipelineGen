@@ -160,7 +160,7 @@ func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverla
 		info.Selected++
 		reason := entityImageOutcome(entity, verified)
 		info.Reasons[reason]++
-		if reason == EntityImageReasonBound || reason == EntityImageReasonUnverifiedBound {
+		if reason == EntityImageReasonBound {
 			info.Bound++
 			continue
 		}
@@ -206,6 +206,9 @@ func entityExpectsImage(entity OverlayAuditEntity) bool {
 // The status already distinguishes "no asset" from "verified but not planned";
 // this keeps that distinction in the reason the gate reports.
 func entityImageOutcome(entity OverlayAuditEntity, verified map[string]bool) string {
+	if !verified[entity.ID] && entity.ImageStatus == "planned" {
+		return EntityImageReasonUnverifiedBound
+	}
 	switch entity.ImageStatus {
 	case "planned":
 		return EntityImageReasonBound

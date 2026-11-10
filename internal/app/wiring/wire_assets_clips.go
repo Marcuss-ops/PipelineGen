@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
 	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
@@ -181,7 +182,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	}
 
 	duplicateFinder := duplicates.NewFinder(
-		NewClipsRepoDuplicateSource("local", params.Clips.Repositories.ClipsRepo),
+		clipswiring.NewClipsRepoDuplicateSource("local", params.Clips.Repositories.ClipsRepo),
 	)
 	enrichUC, err := appclips.NewEnrichUseCase(
 		params.Clips.Repositories.AssetRepo,
@@ -195,7 +196,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		params.Clips.Publisher,
-		newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
+		clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 		newClipsHashAdapter(),
 		newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
 		mutationsDisp,
@@ -203,7 +204,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	)
 
 	uploadUC, err := appupload.NewUseCase(appupload.UseCaseDeps{
-		Artifact:      NewArtifactServiceAdapter(params.Clips.ArtifactService),
+		Artifact:      clipswiring.NewArtifactServiceAdapter(params.Clips.ArtifactService),
 		Publisher:     params.Clips.Publisher,
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
@@ -218,7 +219,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 
 	aiStockUC, err := aistock.NewUseCase(aistock.UseCaseDeps{
 		DriveReader: newAistockDriveReaderAdapter(params.DriveUploader),
-		Artifact:    NewArtifactServiceAdapter(params.Clips.ArtifactService),
+		Artifact:    clipswiring.NewArtifactServiceAdapter(params.Clips.ArtifactService),
 		Dispatcher:  clipsDispatcherPort,
 		Log:         params.Log,
 	})
@@ -244,7 +245,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	)
 
 	clipsOpsPorts := buildClipOpsPorts(
-		newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
+		clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 		params.Jobs,
 	)
 	clipOpsSvc := appclips.NewClipOpsService(
@@ -279,9 +280,9 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
 		Handlers: clipsapi.Deps{
 			Search: clipsapi.SearchDeps{
-				ClipsRepo:     newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
+				ClipsRepo:     clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 				AssetRepo:     params.Clips.Repositories.AssetRepo,
-				VoiceoverRepo: newVoiceoverRepoAdapter(params.Clips.Repositories.VoiceoverRepo),
+				VoiceoverRepo: clipswiring.NewVoiceoverRepoAdapter(params.Clips.Repositories.VoiceoverRepo),
 				ImagesRepo:    params.Clips.Repositories.ImageRepo,
 				MediaSearch:   params.Clips.Repositories.MediaSearch,
 			},
@@ -289,7 +290,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				Dispatcher:   clipsDispatcherPort,
 				AssetTreeSvc: params.Clips.AssetTreeService,
 				JobsSvc:      params.Jobs.Facade,
-				ClipsRepo:    newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
+				ClipsRepo:    clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 				EnrichUC:     enrichUC,
 				UploadUC:     uploadUC,
 				AIStockUC:    aiStockUC,
@@ -298,7 +299,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 			Operations: clipsapi.OpsDeps{
 				ClipOpsService: clipOpsSvc,
 				DeletionSvc:    params.DeletionSvc,
-				ClipsRepo:      newClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
+				ClipsRepo:      clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 				DriveAdmin:     clipsDrive,
 				AssetTreeSvc:   params.Clips.AssetTreeService,
 				Log:            params.Log,

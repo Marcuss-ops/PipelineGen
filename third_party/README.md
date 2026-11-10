@@ -96,6 +96,52 @@ Il campo è opzionale: i piani esistenti senza `composition_id` restano validi.
 Su un composito, la caption va dichiarata sul relativo `image_layers[]`; il
 campo item-level `entity_caption` resta per l’immagine singola.
 
+Per una sola immagine si può chiedere uno sfondo riempitivo ricavato dalla
+stessa foto: `params.image_backdrop` aggiunge dietro al soggetto una copia a
+schermo intero, `cover` e sfocata. Il default è zoom `1.15x` e blur `18 px`;
+il payload può scegliere `zoom` da `1x` a `10x` e `blur_px` da `6` a `48`.
+Questa opzione è rifiutata sui compositi e sui gruppi.
+
+Ombra e contorno sono selezionabili nel payload sia per una foto singola
+(`item.frame`) sia per ogni membro di un composito o gruppo
+(`image_layers[].frame`). `frame` espone `border` (spessore, colore e raggio),
+`shadow` (colore, opacità, blur e offset), `stroke` e `clip_radius_px` per il
+ritaglio arrotondato del bounding box. Le dimensioni e il fit di ciascun box
+restano in `params.width`, `params.height`, `params.fit` e `params.bounded`.
+
+Esempio di foto singola:
+
+```json
+{
+  "params": {"width": 600, "height": 800, "bounded": true, "fit": "contain",
+    "image_backdrop": {"zoom": 1.15, "blur_px": 18}},
+  "frame": {
+    "border": {"width_px": 5, "color": "#FFFFFF", "radius_px": 24},
+    "shadow": {"color": "#000000", "opacity": 0.65, "blur_px": 16,
+      "offset_x_px": 0, "offset_y_px": 6},
+    "clip_radius_px": 19
+  }
+}
+```
+
+Per un composito, spostare `frame` e le dimensioni dentro ciascun elemento di
+`image_layers[]`; `image_backdrop` non è ammesso:
+
+```json
+{"image_layers": [
+  {"id": "left", "asset_id": "photo-a", "start_ms": 0,
+    "end_ms": 5000, "preset_id": "image_focus_in",
+    "params": {"width": 420, "height": 560, "bounded": true, "fit": "contain"},
+    "frame": {"shadow": {"color": "#000000", "opacity": 0.6,
+      "blur_px": 14, "offset_y_px": 5}}},
+  {"id": "right", "asset_id": "photo-b", "start_ms": 0,
+    "end_ms": 5000, "preset_id": "image_focus_in",
+    "params": {"width": 420, "height": 560, "bounded": true, "fit": "contain"},
+    "frame": {"border": {"width_px": 4, "color": "#38BDF8", "radius_px": 20},
+      "stroke": {"width_px": 2, "color": "#FFFFFF"}}}
+]}
+```
+
 **Fotografia runtime verificata:** c’è **1 renderer** (Chronon3D); il worker
 RenderingGen compila il piano semantico, non è un secondo renderer. Il registry
 contiene **20 `ItemKind`**, **29 template**, **10 preset ufficiali** (2 testo +
@@ -134,6 +180,119 @@ stabile per piano/video/layer-caption e differisce tra layer distinti. Per la
 certificazione GPU consultare il report runtime separato: la registrazione non
 implica che ogni ID sia stato certificato.
 
+## Heterogeneous animation groups
+
+`animation_groups` is the V2 owner for a mixed set of 2..8 existing items. A
+group owns one shared timeline and one motion per role (`image`,
+`important_phrase`, `caption`, `date`, `metric`); members must not already set
+`motion_id`, `caption_motion_id` or `group_motion_id`, and an item may belong to
+only one group. `sequence_v1` is the only choreography: members enter in array
+order, `params.stagger_frames` (0..240) spaces consecutive entrances, and
+`offset_ms` / `end_offset_ms` can override a member's window relative to the
+group. Without `motion_id`, the compiler chooses one stable motion per role and
+group, filtered by the role's certified pool, actual 3D/camera tracks and a
+neutral final rest pose. Timing is applied to the existing item, then the
+normal per-kind lowering runs unchanged; legacy plans without
+`animation_groups` are untouched.
+
+```json
+"animation_groups": [{
+  "id": "scene-1", "start_ms": 0, "end_ms": 4000,
+  "choreography_id": "sequence_v1",
+  "params": {"stagger_frames": 4},
+  "members": [
+    {"item_id": "headline", "role": "important_phrase"},
+    {"item_id": "portrait", "role": "image"},
+    {"item_id": "date", "role": "date"}
+  ]
+}]
+```
+
+The runtime catalog publishes the choreography and role pools under
+`group_choreographies`; the opt-in canary is
+`TestAnimationGroupHeterogeneousRenderCanary` (`CHRONON_BIN`).
+
+## Date animation catalog (multi-date sequences)
+
+`renderinggen/internal/dateanim` carries the 13 approved complete date
+animations used when a plan contains more than one date. The styles are the
+clean Playfair/cream set (no labels under the years); `14_mask_reveal` and
+`15_archival_chronology` are intentionally absent. The catalog fixes each
+style's authoring font size so selecting a style never changes typography.
+
+One date uses `01_timeline_progress` for selection compatibility; the
+multi-date materializer intentionally requires at least two dates, because a
+single date belongs to the ordinary `timeline_date` overlay. Two or more dates
+use a stable random choice over all 13 styles, seeded by plan, video, group and
+the date values: retries keep the same cut, while different sequences can get
+different styles. The odometer style needs at most one century transition; if
+the chosen sequence cannot satisfy that, materialization falls back to
+`01_timeline_progress` instead of failing the render. The selector is data-only;
+the visual plans remain owned by ChrononTemplate.
+
+The CLI can take the date sequence directly or extract the four-digit years
+from editorial text. Text extraction preserves first-seen order, drops
+duplicates and does not match video resolutions such as `1920x1080`; a text
+without a year is rejected instead of falling back to the sample dates.
+
+Selecting is not the end of the path. `-plan-out` rewrites the chosen style's
+authoring plan with the real dates, and `-render` runs that plan through the
+real Chronon3d renderer. Two, three and four dates are supported: unused slots
+are removed and the last date holds to the end. The plans are embedded from
+ChrononTemplate's approved golden plans, so the command also works without a
+sibling checkout at runtime (the checkout is still needed for the fonts during
+rendering, via `-assets-root` or `CHRONON_TEMPLATE_ROOT`). A text with more than
+four dates is rejected instead of silently dropping one.
+
+```sh
+cd renderinggen
+go run ./cmd/date-animation -list
+go run ./cmd/date-animation -dates 1948,1969,1998,2026 -plan-id p -video-id v
+go run ./cmd/date-animation -text "Nel 1948 nasce; nel 1969 cambia; nel 1998 arriva il lancio; nel 2026 il presente." -plan-id p -video-id v
+
+# Concrete plan with the real dates (no sample 1948/1969/1998/2026)
+go run ./cmd/date-animation -text "Nel 2007 parte; nel 2013 cresce; nel 2017 cambia; nel 2024 si chiude." \
+  -plan-id garlasco -video-id ep01 -plan-out /tmp/date.plan.json
+
+# Same selection, rendered to MP4
+go run ./cmd/date-animation -text "Nel 2007 parte; nel 2013 cresce; nel 2017 cambia; nel 2024 si chiude." \
+  -plan-id garlasco -video-id ep01 -plan-out /tmp/date.plan.json -render /tmp/date.mp4
+```
+
+The produced MP4 is a full-frame 1920×1080 clip. To put it into a RenderingGen
+job, upload it as an asset and reference it from a full-frame `video_overlay`
+item; the worker then treats it like any other materialized video asset. The
+renderer path is also covered by the opt-in test
+`TestRenderMaterializedDateAnimation` (`RENDERINGGEN_DATE_ANIM_E2E=1`,
+`CHRONON_BIN`, `CHRONON_TEMPLATE_ROOT`).
+
+### Tactical territory fill from a place name
+
+`cmd/map-tactical-fill` joins the Natural Earth registry to ChrononTemplate's
+native `TacticalFillPack`: it resolves a place, reads the feature's outer rings,
+projects them into the canvas territory box (Web Mercator, the same window
+formula as the map plates), writes the
+`chronontemplate.tactical-fill-sample.v1` document and runs
+`chronontemplate_emit_tactical_fill`.
+
+```sh
+cd renderinggen
+go run ./cmd/map-tactical-fill -place "Israel" -out-dir /tmp/tactical/israel
+go run ./cmd/map-tactical-fill -place "admin1:india:gujarat" -title "GUJARAT" -out-dir /tmp/tactical/gujarat
+
+# Lower and render in one step
+go run ./cmd/map-tactical-fill -place "country:ISR" -out-dir /tmp/tactical/israel \
+  -render /tmp/tactical/israel.mp4 -assets-root ../../ChrononTemplate
+```
+
+The emitter is resolved from `-emit`, `CHRONONTEMPLATE_EMIT_TACTICAL_FILL`, or
+the adjacent `ChrononTemplate/build` tree. RenderingGen owns the projection and
+the polygon source; ChrononTemplate only draws rings that are already in canvas
+space. Holes are not modelled: every outer ring becomes a filled territory, and
+the left third of the canvas stays free for the place name. The plan is the
+contract; pixel certification of the native shape render lane is tracked
+separately from plan generation.
+
 ## Motion and preset catalog (owned by ChrononTemplate)
 
 RenderingGen does not own the phrase/motion/preset vocabulary. ChrononTemplate
@@ -151,6 +310,30 @@ ChrononTemplate/tools/short_phrases/emit_short_phrase_catalog.cpp
                  ▼
 renderinggen/internal/motion/catalog/short_phrase_motion.v1.json       ← embedded
 ```
+
+### Motion ownership
+
+Each layer has exactly one owner; everything below it is a derived projection.
+Do not add a parallel id list in a consumer or edit an embedded catalog by hand.
+
+| Layer | Single owner | Rule |
+| --- | --- | --- |
+| Phrase/motion/preset vocabulary | `ChrononTemplate/catalog/motion_catalog.v1.json` plus the C++ recipe definitions | Authored data and C++ emitters; every id resolves from here. |
+| Multi-image certification | `MultiImagePack.cpp::reusableMotions()` | One table carries id, direction and entrance. `multiImageMotionIds()`, `isMultiImageMotion()` and `beatsFor()` derive from it. |
+| Camera-pan runtime semantics | `image_group_camera_pan.go::cameraPanDirections` | One table; `cameraPanSpecs` and `cameraPanMotionIDs` are derived at init. |
+| Go reusable image-group membership | `motion.ReusableImageGroupMotionIDs()` | Derives the reusable `image_group_v1` set from the embedded catalog; pickers and tests must not restate it. |
+| Count-specific image-group choreographies | `ChrononTemplate/catalog/motion_catalog.v1.json` (`image_group_v1`, `apply_to_all_members=false`) | 21 rows: 9 duo, 4 trio, 4 quad, 4 penta. Historical replay only; not in `reusableMotions()` and not offered by the picker. |
+| Refactored planner pools | `refactored/internal/capabilities/overlays/preset_selection.go` for the curated selection; `ChrononTemplate` owns every id | Pools select from the canonical catalog; they never define a second vocabulary. Parity and retirement tests fail on unknown or removed ids. |
+| Short-phrase recipes | `ShortPhraseRecipes.def` + the C++ `ShortPhrasePack` definitions | 14 recipes, 13 runtime-enabled. Emitted by `chronontemplate_emit_short_phrase_catalog`; never hand-trim the embedded artifact. |
+| Embedded catalogs | `renderinggen/internal/motion/catalog/*.json` | Generated only by `scripts/sync_motion_catalog.sh`; `--check` is the parity gate. |
+
+The 21 count-specific rows are deliberately outside the C++ reusable table: the
+emitter permits them for saved-plan replay, while a reusable `image_group_*` row
+missing C++ certification fails the emit. The `refactored` pools are curated
+subsets — some are generated from the canonical animation registry, others are
+explicit lists — and
+`refactored/internal/capabilities/overlays/motion_catalog_parity_test.go::TestMotionPoolsAreCanonicalSubsets`
+plus the short-phrase parity/retirement tests are the drift gate.
 
 The embedded artifact is the only source the worker reads: `internal/motion`
 registers every motion from it and fails closed at startup if it cannot be read
