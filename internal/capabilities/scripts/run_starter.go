@@ -21,9 +21,11 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // GenerationRunStarter creates a GenerationRun before the submission
@@ -89,10 +91,47 @@ func (s *GenerationRunStarter) Start(ctx context.Context, req GenerateRequest) (
 	// The runner reads the run from repo, sets RUNNING status,
 	// and executes stages with checkpoint persistence after each.
 	if s.runner != nil {
-		go s.runner.Execute(context.Background(), run.ID, req)
+		go func(runID string, request GenerateRequest) {
+			defer func() {
+				if rec := recover(); rec != nil {
+					if err := s.failRunOnPanic(runID, rec); err != nil && s.runner.log != nil {
+						s.runner.log.Error("scriptgeneration: failed to persist runner panic",
+							zap.String("run_id", runID),
+							zap.Error(err),
+						)
+					}
+				}
+			}()
+			s.runner.Execute(context.Background(), runID, request)
+		}(run.ID, req)
 	}
 
 	return run, nil
+}
+
+// failRunOnPanic persists a terminal failure when the background runner
+// panics. It deliberately uses only the RunRepository boundary so failure
+// bookkeeping cannot itself depend on the runner being in a usable state.
+func (s *GenerationRunStarter) failRunOnPanic(runID string, rec any) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	ctx := context.Background()
+	stage := StageNormalizing
+	attempt := 1
+	if run, err := s.repo.Get(ctx, runID); err == nil && run != nil {
+		if run.CurrentStage != "" {
+			stage = run.CurrentStage
+		}
+		attempt = run.AttemptCount + 1
+	}
+	return s.repo.FailRun(ctx, FailRunInput{
+		RunID:        runID,
+		FailedStage:  stage,
+		ErrorCode:    "RUNNER_PANIC",
+		ErrorMessage: fmt.Sprintf("script generation runner panicked: %v", rec),
+		AttemptCount: attempt,
+	})
 }
 
 // SetJobID persists the worker-assigned job identity after submission.

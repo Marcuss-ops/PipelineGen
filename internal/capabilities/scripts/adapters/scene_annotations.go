@@ -68,6 +68,12 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 			// spoken entities (mirror of the runner projection).
 			continue
 		}
+		if kind == "PERSON" {
+			fields := strings.Fields(strings.TrimSpace(value))
+			if len(fields) > 1 && isUppercaseAcronym(fields[0]) {
+				kind = "CONCEPT"
+			}
+		}
 		if value == "" {
 			continue
 		}
@@ -149,15 +155,14 @@ func hasVerifiedBrandImage(name string, seg scriptpkg.VidRushSegmentResult) bool
 			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
 			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
+			!strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") ||
 			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.ContentSHA256) == "" ||
 			strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), "failed") ||
 			strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
 			continue
 		}
-		for _, surface := range []string{candidate.Entity, candidate.Query} {
-			if normalizeBrandAssetName(surface) == want {
-				return true
-			}
+		if normalizeBrandAssetName(candidate.Entity) == want {
+			return true
 		}
 	}
 	return false

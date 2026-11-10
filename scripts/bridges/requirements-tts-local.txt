@@ -1,0 +1,21 @@
+# English-only local TTS pilot (opt-in; Edge remains the default for every
+# language). Install with:
+#   python3 -m pip install -r refactored/scripts/bridges/requirements-tts-local.txt
+#
+# Pocket TTS: model 4.0.1 as certified on 2026-11-09.
+pocket-tts==4.0.1
+# WAV writing for the Pocket adapter (torch tensors -> PCM16).
+soundfile>=0.12,<1.0
+numpy>=1.24
+
+# Phonon 31M runner. NOT installed by default: the 0.7.0 wheel raises SIGILL
+# on CPUs without the required vector ISA (verified on Intel Ivy Bridge).
+# Install it only on supported hardware, then set LOCAL_TTS_CMD_PHONON to the
+# runner invocation (placeholders: {text} {out} {voice} {lang}).
+# ptts==0.7.0
+
+# The larger GPU candidates are command adapters, not Python dependencies:
+#   LOCAL_TTS_CMD_QWEN3      Qwen3-TTS 1.7B
+#   LOCAL_TTS_CMD_COSYVOICE  CosyVoice 3 0.5B
+#   LOCAL_TTS_CMD_FISH       Fish Audio Drama 3 (check the license first)
+#   LOCAL_TTS_CMD_AUDIO8     Audio8 Realistic Air 0.6B

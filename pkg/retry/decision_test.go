@@ -273,6 +273,20 @@ func TestNorm_DefaultOptionsHaveJitter(t *testing.T) {
 	}
 }
 
+func TestDefaultOptions_RetryPredicateIsExplicit(t *testing.T) {
+	o := DefaultOptions()
+	if o.IsRetryable == nil {
+		t.Fatal("DefaultOptions must not rely on norm's nil fail-closed fallback")
+	}
+	if o.IsRetryable(errors.New("raw error with no typed carrier")) {
+		t.Fatal("DefaultOptions must stay fail-closed for untyped errors")
+	}
+	typed := &TransientInfrastructureError{Err: errors.New("typed transient")}
+	if !o.IsRetryable(typed) {
+		t.Fatal("DefaultOptions must retry a typed transient error")
+	}
+}
+
 func TestDo_DoNotRetry_MaxAttemptsOne(t *testing.T) {
 	// Pin spec (b) end-to-end: with IsRetryable=nil, MaxAttempts=1,
 	// the retry loop exits on first error (no burning of retry budget).

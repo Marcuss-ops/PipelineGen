@@ -76,6 +76,9 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			// phrase the narration never said (e.g. "PERSON").
 			continue
 		}
+		if kind == "PERSON" && startsWithEntityAcronym(value) {
+			kind = "CONCEPT"
+		}
 		span, ok := findEntitySpan(text, value)
 		if !ok {
 			continue
@@ -136,10 +139,18 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 	return ann
 }
 
-// entityImageBindingFor projects only a durable, identity-scoped internet
-// image onto a PERSON annotation. Generic scene candidates and remote-only
-// results must never become a person's image.
+// entityImageBindingFor projects only a durable, semantically approved,
+// identity-scoped internet image onto an annotation. Search queries are not
+// identity evidence: a location mentioned in a person's image query must not
+// bind that person's image to the location annotation (or vice versa).
 func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityImageBinding {
+	// NLP occasionally labels a named evidentiary object as a PERSON (for
+	// example, "DNA di Chiara"). An all-caps acronym at the start is not a
+	// human identity, so never attach a portrait to that annotation.
+	fields := strings.Fields(strings.TrimSpace(name))
+	if len(fields) > 1 && isUppercaseAcronym(fields[0]) {
+		return nil
+	}
 	want := normalizeEntityImageName(name)
 	if want == "" {
 		return nil
@@ -153,31 +164,21 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
 			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
+			!strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") ||
 			strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), "failed") ||
 			strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
 			continue
 		}
 		entity := normalizeEntityImageName(candidate.Entity)
-		query := normalizeEntityImageName(candidate.Query)
-		rank := 0
-		switch {
-		case entity == want:
-			rank = 3
-		case query == want:
-			rank = 2
-		case strings.Contains(entity, want) || strings.Contains(query, want):
-			rank = 1
-		}
-		if rank == 0 {
+		if entity != want {
 			continue
 		}
-		// Prefer the candidate's identity stamp over a generic search query,
-		// while preserving provider order for equal matches (the upstream
-		// selector has already ranked candidates for quality and rights).
-		if rank > bestRank {
+		// Preserve provider order among equally identity-scoped candidates; the
+		// upstream selector has already ranked candidates for quality and rights.
+		if bestRank == 0 {
 			candidateCopy := candidate
 			best = &candidateCopy
-			bestRank = rank
+			bestRank = 1
 		}
 	}
 	if best != nil {
@@ -191,6 +192,22 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 		}
 	}
 	return nil
+}
+
+func isUppercaseAcronym(value string) bool {
+	letters := 0
+	for _, r := range value {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+		letters++
+	}
+	return letters >= 2 && letters <= 6
+}
+
+func startsWithEntityAcronym(value string) bool {
+	fields := strings.Fields(strings.TrimSpace(value))
+	return len(fields) > 1 && isUppercaseAcronym(fields[0])
 }
 
 func normalizeEntityImageName(value string) string {

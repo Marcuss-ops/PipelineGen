@@ -372,6 +372,10 @@ func findEntityImageCandidateFrom(entity scriptpkg.AnnotatedEntity, seg scriptpk
 // candidates for an entity, de-duplicated by candidate identity and preserving
 // their upstream order.
 func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+	fields := strings.Fields(strings.TrimSpace(want))
+	if len(fields) > 1 && isUppercaseAcronym(fields[0]) {
+		return nil
+	}
 	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(all))
 	seen := make(map[string]struct{}, len(all))
@@ -385,9 +389,11 @@ func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scrip
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 			continue
 		}
-		candidateQuery := strings.TrimSpace(strings.TrimPrefix(normalizeEntityMatch(candidate.Query), "describe "))
 		candidateEntity := strings.TrimSpace(strings.TrimPrefix(normalizeEntityMatch(candidate.Entity), "describe "))
-		if candidateQuery != want && candidateEntity != want && !strings.Contains(candidateQuery, want) && !strings.Contains(candidateEntity, want) {
+		// Query is retrieval provenance, not identity evidence. In particular,
+		// a query such as "Milano" can return a title containing "Rotmilan";
+		// substring/query matches must never bind that result to an entity.
+		if candidateEntity != want || !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
 			continue
 		}
 		// Search results are projected once before acquisition and again after
@@ -406,6 +412,17 @@ func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scrip
 		out = append(out, candidate)
 	}
 	return out
+}
+
+func isUppercaseAcronym(value string) bool {
+	letters := 0
+	for _, r := range value {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+		letters++
+	}
+	return letters >= 2 && letters <= 6
 }
 
 // entityVariantOffset maps a scene+entity seed deterministically onto an offset

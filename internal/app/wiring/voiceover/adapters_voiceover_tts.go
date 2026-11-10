@@ -136,10 +136,11 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 		Voice:         res.Voice,
 		ContentSHA256: res.ContentSHA256,
 		Duration:      res.Duration,
-		// The canonical provider identity for the Edge TTS bridge. The
-		// bridge captures audio + WordBoundary in ONE synthesis pass, so
-		// the provider identity is fixed here (never inferred downstream).
-		Provider: "edge-tts",
+		// The canonical provider identity of the sidecar that produced this
+		// output. The processor owns it (Edge default, or the local engine
+		// selected by the pilot) so the cache fingerprint and the timing
+		// artifact can never attribute Edge audio to a local engine.
+		Provider: providerIdentity(a.proc),
 	}
 	if len(boundaries) > 0 {
 		out.BoundaryMode = audio.BoundaryWord
@@ -226,6 +227,29 @@ func parseEdgeWordBoundaries(metadataPath string) ([]voiceover.RawSpeechBoundary
 		return nil, skippedCorrupt, err
 	}
 	return boundaries, skippedCorrupt, nil
+}
+
+// ttsProviderID is the optional identity surface of a TTS generator. The
+// production *audioasset.Processor implements it; hermetic fakes that don't
+// keep the Edge default, preserving every existing test fixture.
+type ttsProviderID interface {
+	ProviderID() string
+}
+
+// ProviderIdentityFor exposes the same identity used by TTSOutput.Provider
+// to the cache fingerprint. Without it, Edge entries would hash as
+// "unspecified" and change identity again the moment a router is enabled.
+func (a *useCaseTTSAdapter) ProviderIdentityFor(voiceover.Language) string {
+	return providerIdentity(a.proc)
+}
+
+func providerIdentity(proc ttsGenerator) string {
+	if identity, ok := proc.(ttsProviderID); ok {
+		if id := strings.TrimSpace(identity.ProviderID()); id != "" {
+			return id
+		}
+	}
+	return audioasset.DefaultTTSProviderID
 }
 
 var _ voiceover.TTSProvider = (*useCaseTTSAdapter)(nil)

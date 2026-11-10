@@ -71,9 +71,9 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		return nil
 	}
 
-	scriptPath := filepath.Join(p.pythonScriptsDir, "bridges", "tts_edge_server.py")
+	scriptPath := filepath.Join(p.pythonScriptsDir, p.bridgeScriptPath())
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		return fmt.Errorf("tts_edge_server.py not found at %s: %w", scriptPath, ErrWorkerUnavailable)
+		return fmt.Errorf("%s not found at %s: %w", filepath.Base(p.bridgeScriptPath()), scriptPath, ErrWorkerUnavailable)
 	}
 
 	p.log.Info("audio.Processor: launching persistent TTS server",
@@ -86,7 +86,10 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	// Without this, Python's print(f"PORT={port}") stays in the ~8KB pipe
 	// buffer and scanner.Scan() blocks indefinitely — the primary cause of
 	// the voiceover pipeline hang.
-	p.cmd.Env = append(pythonBridgeEnv(p.pythonScriptsDir), "PYTHONUNBUFFERED=1")
+	p.cmd.Env = mergeBridgeEnv(
+		append(pythonBridgeEnv(p.pythonScriptsDir), "PYTHONUNBUFFERED=1"),
+		p.bridgeEnv,
+	)
 
 	// Capture stdout to read the PORT=<n> line.
 	stdoutPipe, err := p.cmd.StdoutPipe()
@@ -95,7 +98,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	}
 
 	// Route stderr to a file for post-mortem debugging.
-	stderrPath := filepath.Join(os.TempDir(), "tts_edge_server_stderr.log")
+	stderrPath := filepath.Join(os.TempDir(), filepath.Base(p.bridgeScriptPath())+"_stderr.log")
 	stderrFile, err := os.Create(stderrPath)
 	if err != nil {
 		p.log.Warn("audio.Processor: failed to create stderr log", zap.Error(err))
@@ -209,6 +212,40 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 
 	p.log.Info("audio.Processor: TTS server warmup complete, ready for synthesis")
 	return nil
+}
+
+// mergeBridgeEnv applies per-key overrides to a base environment. execve
+// receives duplicate keys verbatim and getenv returns the first match, so
+// appending would NOT override: the replacement must happen here.
+func mergeBridgeEnv(base []string, overrides map[string]string) []string {
+	if len(overrides) == 0 {
+		return base
+	}
+	out := make([]string, 0, len(base)+len(overrides))
+	seen := make(map[string]struct{}, len(overrides))
+	for _, entry := range base {
+		key := entry
+		if idx := strings.IndexByte(entry, '='); idx >= 0 {
+			key = entry[:idx]
+		}
+		value, ok := overrides[key]
+		if !ok {
+			out = append(out, entry)
+			continue
+		}
+		if _, done := seen[key]; done {
+			continue
+		}
+		out = append(out, key+"="+value)
+		seen[key] = struct{}{}
+	}
+	for key, value := range overrides {
+		if _, done := seen[key]; done {
+			continue
+		}
+		out = append(out, key+"="+value)
+	}
+	return out
 }
 
 // pythonBridgeEnv makes sibling bridge packages (edge_tts_bridge and other

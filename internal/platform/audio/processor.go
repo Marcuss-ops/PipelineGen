@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,19 @@ import (
 type Processor struct {
 	pythonScriptsDir string
 	log              *zap.Logger
+
+	// Sidecar identity. The English local-TTS pilot runs the SAME
+	// processor against a different bridge script and provider id, so a
+	// cache entry can never be attributed to the wrong engine and the
+	// legacy fallback can never silently swap providers.
+	bridgeScript string
+	legacyScript string
+	providerID   string
+
+	// bridgeEnv is merged into the sidecar process environment (last
+	// writer wins per key). Used to pass LOCAL_TTS_ENGINE without widening
+	// the provider-neutral HTTP contract.
+	bridgeEnv map[string]string
 
 	// Persistent worker state (VO-DECOMPOSITION P0 #1).
 	mu           sync.Mutex
@@ -105,12 +119,85 @@ func NewProcessor(
 	pythonScriptsDir string,
 	log *zap.Logger,
 ) *Processor {
+	return NewProcessorWithBridge(
+		pythonScriptsDir,
+		DefaultTTSBridgeScript,
+		DefaultTTSLegacyScript,
+		DefaultTTSProviderID,
+		log,
+	)
+}
+
+// NewProcessorWithBridge constructs a Processor bound to an explicit
+// sidecar script and provider identity. The local-TTS pilot passes an
+// empty legacyScript on purpose: when the local worker is unavailable the
+// call MUST fail, never fall back to the Edge CLI (which would produce
+// audio attributed to the local provider).
+func NewProcessorWithBridge(
+	pythonScriptsDir, bridgeScript, legacyScript, providerID string,
+	log *zap.Logger,
+) *Processor {
+	if strings.TrimSpace(bridgeScript) == "" {
+		panic("audioasset.NewProcessorWithBridge: bridgeScript is required")
+	}
+	if strings.TrimSpace(providerID) == "" {
+		providerID = DefaultTTSProviderID
+	}
 	return &Processor{
 		pythonScriptsDir: pythonScriptsDir,
 		log:              log,
+		bridgeScript:     bridgeScript,
+		legacyScript:     legacyScript,
+		providerID:       providerID,
 		requestSlots:     make(chan struct{}, DefaultTTSRequestConcurrency),
 		postprocessSlots: make(chan struct{}, DefaultTTSPostprocessConcurrency),
 	}
+}
+
+// Canonical sidecar identity for the Edge bridge. The local pilot passes
+// its own values to NewProcessorWithBridge.
+const (
+	DefaultTTSBridgeScript = "bridges/tts_edge_server.py"
+	DefaultTTSLegacyScript = "bridges/tts_edge.py"
+	DefaultTTSProviderID   = "edge-tts"
+)
+
+// ProviderID returns the canonical provider identity attached to every
+// synthesis result. Empty values fail back to the Edge identity so a
+// zero-value Processor (tests) stays deterministic.
+func (p *Processor) ProviderID() string {
+	if p == nil {
+		return ""
+	}
+	if strings.TrimSpace(p.providerID) == "" {
+		return DefaultTTSProviderID
+	}
+	return p.providerID
+}
+
+// bridgeScriptPath returns the configured bridge script, falling back to
+// the Edge default for zero-value Processors constructed in tests.
+func (p *Processor) bridgeScriptPath() string {
+	if p == nil || strings.TrimSpace(p.bridgeScript) == "" {
+		return DefaultTTSBridgeScript
+	}
+	return p.bridgeScript
+}
+
+// SetBridgeEnv merges extra environment variables into the sidecar process
+// (per-key override). Called before the first Generate; safe to call with
+// nil/empty. The map is copied so the caller cannot mutate live state.
+func (p *Processor) SetBridgeEnv(env map[string]string) {
+	if p == nil {
+		return
+	}
+	copied := make(map[string]string, len(env))
+	for key, value := range env {
+		copied[key] = value
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.bridgeEnv = copied
 }
 
 // DefaultTTSRequestConcurrency is the measured saturation point for the
@@ -279,6 +366,11 @@ func (p *Processor) synthesizeOnce(ctx context.Context, input *AudioInput, safeN
 	lockWait := time.Since(lockWaitStart)
 	if err := p.ensureStarted(ctx); err != nil {
 		p.mu.Unlock()
+		if strings.TrimSpace(p.legacyScript) == "" {
+			// The local pilot must never silently produce Edge audio under a
+			// local provider identity: fail closed instead of falling back.
+			return nil, fmt.Errorf("persistent TTS worker unavailable and no legacy script configured for provider %q: %w: %w", p.ProviderID(), err, ErrWorkerUnavailable)
+		}
 		p.log.Warn("persistent TTS worker unavailable, falling back to legacy spawn-per-call",
 			zap.Error(err))
 		return p.generateLegacy(ctx, input, safeName)
@@ -433,7 +525,10 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 
 	outputPath := filepath.Join(input.OutputDir, safeName)
 
-	scriptPath := filepath.Join(p.pythonScriptsDir, "bridges", "tts_edge.py")
+	if strings.TrimSpace(p.legacyScript) == "" {
+		return nil, fmt.Errorf("no legacy TTS script configured for provider %q: %w", p.ProviderID(), ErrWorkerUnavailable)
+	}
+	scriptPath := filepath.Join(p.pythonScriptsDir, p.legacyScript)
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		return nil, fmt.Errorf("tts script not found: %s", scriptPath)
 	}
@@ -462,7 +557,7 @@ func (p *Processor) generateLegacy(ctx context.Context, input *AudioInput, safeN
 	// worker path above; will be removed in CUTOVER phase.
 	// See: architecture/current.yaml#VO-DECOMPOSITION-2026-07-04.
 	cmd := exec.CommandContext(ctx, "python3", args...)
-	cmd.Env = pythonBridgeEnv(p.pythonScriptsDir)
+	cmd.Env = mergeBridgeEnv(pythonBridgeEnv(p.pythonScriptsDir), p.bridgeEnv)
 	if useStdin {
 		cmd.Stdin = bytes.NewReader([]byte(input.Text))
 	}

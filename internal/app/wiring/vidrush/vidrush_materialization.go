@@ -105,10 +105,16 @@ func BuildVidRushMaterialization(cfg *config.Config, deps VidRushMaterialization
 
 	registry := adapters.NewVidRushAssetProviderRegistry()
 	if deps.ImageSearcher != nil {
-		_ = registry.Register(&vidRushInternetImageProvider{searcher: deps.ImageSearcher, log: log})
+		if err := registry.Register(&vidRushInternetImageProvider{searcher: deps.ImageSearcher, log: log}); err != nil {
+			log.Error("vidrush: internet image provider registration failed", zap.Error(err))
+			return nil, nil
+		}
 	}
 	if deps.ImageGenerator != nil {
-		_ = registry.Register(&vidRushImageGenerationProvider{generator: deps.ImageGenerator})
+		if err := registry.Register(&vidRushImageGenerationProvider{generator: deps.ImageGenerator}); err != nil {
+			log.Error("vidrush: image generation provider registration failed", zap.Error(err))
+			return nil, nil
+		}
 	}
 	registry.Freeze()
 	log.Info("VidRush asset provider registry composed",

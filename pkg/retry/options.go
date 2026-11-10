@@ -62,8 +62,10 @@ type Options struct {
 	// Default: 2.0.
 	BackoffFactor float64
 
-	// IsRetryable is an optional predicate. If nil, every error is retried.
-	// When non-nil, only errors for which it returns true will be retried;
+	// IsRetryable is an optional predicate. When nil, norm() applies a
+	// fail-closed no-retry predicate (or the injected ClassifierRegistry's
+	// decision when present); it never means "retry every error". When
+	// non-nil, only errors for which it returns true are retried;
 	// non-retryable errors cause an immediate return.
 	IsRetryable func(error) bool
 
@@ -124,6 +126,7 @@ func DefaultOptions() Options {
 		InitialBackoff: 1 * time.Second,
 		MaxBackoff:     30 * time.Second,
 		BackoffFactor:  2.0,
+		IsRetryable:    IsTransient,
 		JitterFraction: 0.25,
 	}
 }
