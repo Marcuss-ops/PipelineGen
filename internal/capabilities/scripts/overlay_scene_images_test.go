@@ -142,6 +142,24 @@ func TestSceneImageCandidateRejectsNonContentAddressedSelection(t *testing.T) {
 	}
 }
 
+func TestSceneImageCandidateAcceptsUppercasePersistedIndexStatus(t *testing.T) {
+	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{
+		SceneID: "scene-indexed",
+		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "indexed-image", Provider: scriptpkg.VidRushProviderInternetImages,
+			SourceURL: "https://images.example/indexed.jpg", LocalPath: "/tmp/indexed.jpg", ContentSHA256: sha,
+			MIMEType: "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
+			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
+			IndexStatus: "INDEXED",
+		}}},
+	}}}
+
+	if _, ok := sceneImageCandidate(result, "scene-indexed", 0, nil, 0); !ok {
+		t.Fatal("persisted image with the media registry's uppercase INDEXED status was rejected")
+	}
+}
+
 func TestSceneImageCandidateClampsToOwningSceneEnd(t *testing.T) {
 	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{

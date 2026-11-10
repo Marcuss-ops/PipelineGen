@@ -124,7 +124,8 @@ func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest 
 	if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
 		strings.TrimSpace(candidate.AssetID) == "" || candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 		candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
-		candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted || candidate.IndexStatus != scriptpkg.VidRushStatusIndexed || len(digest) != 64 {
+		candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
+		!strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), scriptpkg.VidRushStatusIndexed) || len(digest) != 64 {
 		return false
 	}
 	_, err := hex.DecodeString(digest)

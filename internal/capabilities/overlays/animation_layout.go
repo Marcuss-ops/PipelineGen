@@ -50,7 +50,7 @@ func PrepareCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInpu
 // combined render set.
 func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInput) []capmodel.OverlayItem {
 	items = capmodel.CoalesceChainedOverlays(items, input.AnimationCounts)
-	MoveImagesAsideForOverlappingDateCards(items)
+	MoveImagesAsideForOverlappingDateCards(items, input.Width)
 	return items
 }
 
@@ -59,7 +59,7 @@ func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInp
 // collision-free placement into the segment; the cascade runs last because
 // chain containers are not shaped.
 func FinalizePlannerAnimationLayout(items []capmodel.OverlayItem, input PlanInput, fpsNum, fpsDen int) []capmodel.OverlayItem {
-	MoveImagesAsideForOverlappingDateCards(items)
+	MoveImagesAsideForOverlappingDateCards(items, input.Width)
 	ApplyAnimationConsistency(items, input)
 	items = capmodel.CoalesceChainedOverlays(items, input.AnimationCounts)
 	CascadeClusteredEntrances(items, fpsNum, fpsDen)

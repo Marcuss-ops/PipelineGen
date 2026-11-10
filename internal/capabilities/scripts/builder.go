@@ -500,6 +500,22 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	if req == nil || !req.Render.Enabled {
 		return nil
 	}
+	// Final-job overlays are encoded as opaque video clips and placed in
+	// replace-mode windows. A caller's solid color canvas would therefore hide
+	// the assembled picture for the entire overlay window. Replace only that
+	// unsafe final-job case with a curated moving plate; standalone previews
+	// retain their explicit color canvas.
+	if req.FinalJob && req.OverlayBackground != nil && strings.EqualFold(strings.TrimSpace(req.OverlayBackground.Kind), "color") {
+		plate, err := policy.SelectBackground(seed)
+		if err != nil {
+			return fmt.Errorf("apply editing asset policy: final overlay background: %w", err)
+		}
+		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{
+			Kind: overlayBackgroundPlateKind, AssetID: plate.ID,
+			Fit: overlayBackgroundPlateFit, Loop: true,
+		}
+		return nil
+	}
 	// A final-job overlay is handed off as a full-frame replacement window.
 	// A solid color therefore hides the picture underneath for the complete
 	// window (r79 produced a white interval when a phrase was rendered on an

@@ -459,6 +459,10 @@ func NewAutomationCatalog(reg *Registry, liveTypes []string) *AutomationCatalog 
 			Type: TypeYouTubeClipExtract, Version: "v1", Description: "Extract a YouTube clip",
 			InputSchema: "youtube_clip.extract.v1", ResultSchema: "youtube_clip.extract.result.v1", ArtifactKinds: []string{"video"}, EstimatedResourceClass: "media",
 		},
+		TypeYouTubeUpload: {
+			Type: TypeYouTubeUpload, Version: "v1", Description: "Upload and publish a video to a YouTube channel through InstaEdit",
+			InputSchema: "youtube.upload.v1", ResultSchema: "youtube.upload.result.v1", ArtifactKinds: []string{"video"}, EstimatedResourceClass: "network",
+		},
 		TypeImageGenerateGoogle: {
 			Type: TypeImageGenerateGoogle, Version: "v1", Description: "Generate an image",
 			InputSchema: "image.generate.google.v1", ResultSchema: "image.generate.google.result.v1", ArtifactKinds: []string{"image"}, EstimatedResourceClass: "gpu",

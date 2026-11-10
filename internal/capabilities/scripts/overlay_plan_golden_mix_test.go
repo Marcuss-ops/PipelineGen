@@ -350,5 +350,18 @@ func TestCompileOverlayPlanMovesResolvedEntityImageAsideFromDate(t *testing.T) {
 	require.NotNil(t, portrait, "entity resolver adds the bound portrait after the core planner")
 	require.Less(t, portrait.StartMs, date.EndMs)
 	require.Greater(t, portrait.EndMs, date.StartMs)
-	require.Equal(t, float64(-720), portrait.Params["position_x"], "the final combined plan must move late-resolved portraits clear of date cards")
+	positionX, ok := portrait.Params["position_x"].(float64)
+	require.True(t, ok, "the final combined plan must position late-resolved portraits")
+	imageWidth, _ := portrait.Params["width"].(float64)
+	if imageWidth <= 0 {
+		imageWidth, _ = portrait.Params["box_width"].(float64)
+	}
+	if imageWidth <= 0 {
+		imageWidth = float64(canvas.Width) * 0.38
+	}
+	canvasWidth := plan.Width
+	require.GreaterOrEqual(t, positionX-imageWidth/2, -float64(canvasWidth)/2+float64(canvasWidth)*0.04,
+		"the portrait must remain inside the left safe area")
+	require.LessOrEqual(t, positionX+imageWidth/2, -float64(canvasWidth)/2+float64(canvasWidth)*0.42,
+		"the portrait must leave the timeline date clear")
 }
