@@ -78,6 +78,7 @@ func TestProjectEntityAnnotations_BrandFallbackAndVerifiedLogo(t *testing.T) {
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		SemanticStatus:     "accepted",
 		RightsStatus:       "unknown_allowed",
 	}}
 	verified := projectEntityAnnotations(text, "en", segment)
@@ -101,7 +102,8 @@ func TestProjectEntityAnnotations_BindsImageFromEntityIdentityWhenQueryIsGeneric
 			LocalPath: "/tmp/ada-portrait.jpg",
 			MIMEType:  "image/jpeg", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
-			RightsBasis: "public-domain",
+			SemanticStatus: "accepted",
+			RightsBasis:    "public-domain",
 		}}},
 	}
 

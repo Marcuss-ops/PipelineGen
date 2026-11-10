@@ -113,6 +113,7 @@ func TestSceneAnnotations_BrandUsesTextFallbackUntilVerifiedAsset(t *testing.T) 
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		SemanticStatus:     "accepted",
 		RightsStatus:       "unknown_allowed",
 	}}
 	withAsset := sceneAnnotations("OpenAI announced the research result.", "en", segment)

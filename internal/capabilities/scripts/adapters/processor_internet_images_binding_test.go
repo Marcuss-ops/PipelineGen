@@ -19,12 +19,13 @@ func TestProjectEntityImageBindings_StripsPromptPrefixFromEntity(t *testing.T) {
 		SegmentID: "john-cena", SceneID: "scene-0",
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
 			AssetID: "asset-john-cena", Provider: scriptpkg.VidRushProviderInternetImages,
-			Query: "John Cena", SourceURL: "https://images.example/john-cena.jpg", Score: 1,
+			Entity: "John Cena", Query: "John Cena", SourceURL: "https://images.example/john-cena.jpg", Score: 1,
 			DriveLink:     "https://drive.google.com/file/d/john-cena/view",
 			ContentSHA256: "hash-john-cena", RightsStatus: "unknown_allowed",
 			AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 			VerificationStatus: scriptpkg.VidRushStatusVerified,
 			PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+			SemanticStatus:     "accepted",
 			IndexStatus:        scriptpkg.VidRushStatusIndexed,
 		}}},
 	}}
@@ -45,8 +46,8 @@ func TestProjectEntityImageBindingsPerSceneKeepsRepeatedPersonAssetsDistinct(t *
 		{ID: "scene-3", SegmentID: "segment-3", Index: 3, Annotations: person()},
 	}}
 	segments := []scriptpkg.VidRushSegmentResult{
-		{SegmentID: "segment-2", SceneID: "scene-2", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-court", "Milton Leite tribunal audiência cena 2", "Milton Leite tribunal audiência cena 2")}}},
-		{SegmentID: "segment-3", SceneID: "scene-3", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-stj", "Milton Leite decisão STJ cena 3", "Milton Leite decisão STJ cena 3")}}},
+		{SegmentID: "segment-2", SceneID: "scene-2", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-court", "Milton Leite tribunal audiência cena 2", "Milton Leite")}}},
+		{SegmentID: "segment-3", SceneID: "scene-3", Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{readyEntityImageCandidate("milton-stj", "Milton Leite decisão STJ cena 3", "Milton Leite")}}},
 	}
 	policy := entityImagePolicyForTest()
 	policy.Scope = "per_scene"
@@ -235,7 +236,7 @@ func TestFindEntityImageCandidate_PrefersDurableCandidate(t *testing.T) {
 	entity := scriptpkg.AnnotatedEntity{CanonicalName: "Describe John Cena", Type: "PERSON"}
 	seg := scriptpkg.VidRushSegmentResult{Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{
 		{AssetID: "discovered", Provider: scriptpkg.VidRushProviderInternetImages, Query: "John Cena", SourceURL: "https://images.example/discovered.jpg", Score: 1},
-		{AssetID: "durable", Provider: scriptpkg.VidRushProviderInternetImages, Query: "John Cena", SourceURL: "https://images.example/durable.jpg", Score: 1, DriveLink: "https://drive.google.com/file/d/durable/view", ContentSHA256: "hash", RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed},
+		{AssetID: "durable", Provider: scriptpkg.VidRushProviderInternetImages, Entity: "John Cena", Query: "John Cena", SourceURL: "https://images.example/durable.jpg", Score: 1, DriveLink: "https://drive.google.com/file/d/durable/view", ContentSHA256: "hash", RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted, SemanticStatus: "accepted", IndexStatus: scriptpkg.VidRushStatusIndexed},
 	}}}
 
 	got, ok := findEntityImageCandidate(entity, seg)
@@ -279,6 +280,7 @@ func readyEntityImageCandidate(assetID, query, entity string) scriptpkg.SegmentA
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		SemanticStatus:     "accepted",
 		IndexStatus:        scriptpkg.VidRushStatusIndexed,
 	}
 }
