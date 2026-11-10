@@ -42,7 +42,7 @@
 // accessors, every `jobs.Type*` constant, and `jobs.Compose()` all
 // resolve identically pre/post split (same package, no exported
 // symbol drift).
-package jobs
+package scheduling
 
 import (
 	"fmt"

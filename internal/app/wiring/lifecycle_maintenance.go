@@ -14,7 +14,7 @@
 //
 // Sister file to lifecycle_worker.go + lifecycle_scheduler.go (the 3
 // capability files) + lifecycle_adapters.go (composition-root adapters).
-// The 4 sweeper helpers (startResearchCacheSweeper etc.) continue to
+// The 4 sweeper helpers (wiringlifecycle.StartResearchCacheSweeper etc.) continue to
 // live in lifecycle_sweepers.go per AGENTS.md "Code Reuse: Always
 // reuse helper functions" — this file just wraps each with a
 // StartupStep + concurrent.SafeGo call.
@@ -40,6 +40,7 @@ import (
 
 	"go.uber.org/zap"
 
+	wiringlifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
@@ -160,7 +161,7 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 			Name: "research-cache-sweeper", Required: false,
 			Start: func(startCtx context.Context) error {
 				concurrent.SafeGo("research-cache-sweeper", func() {
-					startResearchCacheSweeper(startCtx, repo, deps.log)
+					wiringlifecycle.StartResearchCacheSweeper(startCtx, repo, deps.log)
 				})
 				return nil
 			},
@@ -174,7 +175,7 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 			Name: "gemma-memory-sweeper", Required: false,
 			Start: func(startCtx context.Context) error {
 				concurrent.SafeGo("gemma-memory-sweeper", func() {
-					startGemmaMemorySweeper(startCtx, mrepo, deps.log)
+					wiringlifecycle.StartGemmaMemorySweeper(startCtx, mrepo, deps.log)
 				})
 				return nil
 			},
@@ -210,7 +211,7 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 			Start: func(startCtx context.Context) error {
 				deps.log.Info("clip dedup sweeper starting (interval=30m)")
 				concurrent.SafeGo("clip-dedup-sweeper", func() {
-					startClipDedupSweeper(startCtx, dedupReader, dedupRetirer, deps.log)
+					wiringlifecycle.StartClipDedupSweeper(startCtx, dedupReader, dedupRetirer, deps.log)
 				})
 				return nil
 			},
@@ -227,7 +228,7 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 			Start: func(startCtx context.Context) error {
 				deps.log.Info("VLM auto-tag sweeper starting (interval=15m)")
 				concurrent.SafeGo("vlm-autotag-sweeper", func() {
-					startVLMAutoTagSweeper(startCtx, at, deps.log)
+					wiringlifecycle.StartVLMAutoTagSweeper(startCtx, at, deps.log)
 				})
 				return nil
 			},
@@ -297,7 +298,7 @@ func buildMaintenanceSteps(deps maintenanceDeps) []StartupStep {
 		uploadRepo := sqlitescripts.NewUploadIntentsRepository(deps.root.DB.DB)
 		driveLifecycle := deps.root.Drive.Lifecycle
 		orphanSweeper := voiceover.NewOrphanSweeper(voiceover.OrphanSweeperDeps{
-			Repo:         newUploadIntentsAdapter(uploadRepo),
+			Repo:         wiringlifecycle.NewUploadIntentsAdapter(uploadRepo),
 			DriveDeleter: driveLifecycle,
 			Logger:       deps.log,
 			Metrics: &voiceover.Metrics{

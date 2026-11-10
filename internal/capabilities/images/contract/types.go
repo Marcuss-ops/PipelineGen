@@ -1,6 +1,6 @@
-// Package images contains external-integration configuration types used by
+// Package contract contains external-integration configuration types used by
 // the image subsystem.
-package images
+package contract
 
 // GoogleAccountingConfig is the optional Google Accounting server
 // integration used for asset attribution and Drive-aware placement.

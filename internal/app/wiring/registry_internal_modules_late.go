@@ -12,6 +12,7 @@ package wiring
 import (
 	"fmt"
 
+	wiringlifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
@@ -57,7 +58,7 @@ func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *Compose
 func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
 	prepared := PreparedCapabilities{}
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
-		regWiring.OutboxHandler = outboxapi.NewHandler(newOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
+		regWiring.OutboxHandler = outboxapi.NewHandler(wiringlifecycle.NewOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
 	}
 	// Media-search transport follows the canonical media plane, not the legacy
 	// Qdrant process bundle. When PostgreSQL is deployed, readiness reports any

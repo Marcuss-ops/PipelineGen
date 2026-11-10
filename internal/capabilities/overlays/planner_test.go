@@ -73,8 +73,11 @@ func TestBuildPlanMovesOverlappingImageAsideFromTimelineDate(t *testing.T) {
 		if item.Kind != "image" {
 			continue
 		}
-		if got := item.Params["position_x"].(float64); got >= 0 || got <= -float64(plan.Width)/2 {
-			t.Fatalf("overlapping image x position = %v, want a left-docked center inside the canvas", got)
+		if got := item.Params["position_x"].(float64); got != 0 {
+			t.Fatalf("overlapping image x position = %v, want the centered upper lane", got)
+		}
+		if got := item.Params["position_y"].(float64); got >= 0 {
+			t.Fatalf("overlapping image y position = %v, want it above the date lane", got)
 		}
 		return
 	}

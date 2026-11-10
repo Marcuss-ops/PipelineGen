@@ -352,16 +352,10 @@ func TestCompileOverlayPlanMovesResolvedEntityImageAsideFromDate(t *testing.T) {
 	require.Greater(t, portrait.EndMs, date.StartMs)
 	positionX, ok := portrait.Params["position_x"].(float64)
 	require.True(t, ok, "the final combined plan must position late-resolved portraits")
-	imageWidth, _ := portrait.Params["width"].(float64)
-	if imageWidth <= 0 {
-		imageWidth, _ = portrait.Params["box_width"].(float64)
-	}
-	if imageWidth <= 0 {
-		imageWidth = float64(canvas.Width) * 0.38
-	}
-	canvasWidth := plan.Width
-	require.GreaterOrEqual(t, positionX-imageWidth/2, -float64(canvasWidth)/2+float64(canvasWidth)*0.04,
-		"the portrait must remain inside the left safe area")
-	require.LessOrEqual(t, positionX+imageWidth/2, -float64(canvasWidth)/2+float64(canvasWidth)*0.42,
-		"the portrait must leave the timeline date clear")
+	require.Equal(t, float64(0), positionX, "the portrait must stay on the canvas centerline")
+	positionY, ok := portrait.Params["position_y"].(float64)
+	require.True(t, ok, "the final combined plan must give the portrait its own lane")
+	dateY, ok := date.Params["position_y"].(float64)
+	require.True(t, ok, "the overlapping date must be placed in the lower lane")
+	require.Greater(t, dateY, positionY, "the portrait must leave the timeline date clear")
 }

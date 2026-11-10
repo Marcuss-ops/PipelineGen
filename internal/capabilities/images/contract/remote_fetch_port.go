@@ -1,4 +1,4 @@
-package images
+package contract
 
 import "net/http"
 

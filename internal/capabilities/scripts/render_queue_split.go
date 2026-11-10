@@ -58,6 +58,25 @@ type OverlayPlanSplitEnqueuer interface {
 	EnqueueChrononPlanSplit(context.Context, capmodel.OverlayPlan) (RenderReference, error)
 }
 
+// OverlayPlanItemEnqueuer renders every semantic overlay as its own short
+// alpha-bearing artifact. Overlay-only previews use this path so they never
+// create a full-canvas scene composition.
+type OverlayPlanItemEnqueuer interface {
+	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (RenderReference, error)
+}
+
+// EnqueueChrononPlanItems emits one short alpha-bearing artifact per semantic
+// overlay. This is the preview path: no scene-wide timeline canvas is made.
+func (e *QueueRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	manifest, dedicated := partitionOverlayRenderWork(plan)
+	candidates := append(manifest, dedicated...)
+	if len(candidates) == 0 {
+		return RenderReference{}, fmt.Errorf("overlay-only plan %q has no renderable items", plan.PlanID)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].index < candidates[j].index })
+	return e.enqueueStandaloneOverlayItems(ctx, plan, candidates)
+}
+
 // overlayPerSceneSplitEnabled reads the feature gate once per call. It is
 // default-ON with an explicit kill switch: the split is already the measured
 // path (the golden series runs it enabled), so an unset variable must not

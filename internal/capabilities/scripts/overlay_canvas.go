@@ -167,8 +167,8 @@ func effectiveImageStyle(style *scriptpkg.OverlayImageStyleSpec) *scriptpkg.Over
 		// edge pixels and a default radius crops corners, so both default
 		// to zero. Explicit payload styles still win via the merge below.
 		Border: &scriptpkg.OverlayImageBorder{Width: 0, Color: "#111827", Radius: float64Pointer(0)},
-		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: true, Color: "#000000", Opacity: float64Pointer(0.7),
-			Blur: float64Pointer(10), Offset: []float64{0, 4}},
+		Shadow: &scriptpkg.OverlayShadowSpec{Enabled: false, Color: "#000000", Opacity: float64Pointer(0),
+			Blur: float64Pointer(0), Offset: []float64{0, 0}},
 	}
 	if style == nil {
 		return effective

@@ -1,4 +1,4 @@
-package images
+package contract
 
 // contextKey and its consts are shared across sub-services for
 // per-request metadata tagging provenance. MetadataService owns

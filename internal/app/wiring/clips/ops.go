@@ -8,7 +8,7 @@
 // PR-GODOBJ-4 (Azione 4, July 2026): consolidated from clips_ops_adapters.go
 // and clipOpsSourceResolverAdapter from clips_adapters_repo.go.
 // 2 adapters: clipsJobsPortAdapter, clipOpsSourceResolverAdapter.
-package wiring
+package clipswiring
 
 import (
 	"context"
@@ -34,7 +34,7 @@ type clipsJobsPortAdapter struct {
 // Compile-time assertion: clipsJobsPortAdapter satisfies clips.JobsServicePort.
 var _ clips.JobsServicePort = (*clipsJobsPortAdapter)(nil)
 
-func newClipsJobsPortAdapter(svc job.Service) clips.JobsServicePort {
+func NewClipsJobsPortAdapter(svc job.Service) clips.JobsServicePort {
 	if svc == nil {
 		return nil
 	}

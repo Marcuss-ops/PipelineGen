@@ -3,6 +3,7 @@ package overlays
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -17,6 +18,16 @@ func TestResolveBackgroundCopiesColorInput(t *testing.T) {
 	color[0] = 9
 	if got.Color[0] != 0.1 {
 		t.Fatalf("result aliases request color slice: %v", got.Color)
+	}
+}
+
+func TestResolveBackgroundRejectsVerifiedVisualWithoutAssetID(t *testing.T) {
+	input := &scriptpkg.OverlayBackgroundSpec{
+		Kind: "image", LocalPath: "/cache/white-grain.png", SHA256: strings.Repeat("a", 64),
+	}
+	_, err := ResolveBackground(context.Background(), nil, input)
+	if err == nil || !strings.Contains(err.Error(), "requires asset_id") {
+		t.Fatalf("ResolveBackground() error = %v, want an asset_id requirement", err)
 	}
 }
 

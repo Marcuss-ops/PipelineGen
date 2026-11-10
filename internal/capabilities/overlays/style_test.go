@@ -52,15 +52,16 @@ func TestImageFrameAndEntityImageNormalization(t *testing.T) {
 	}
 	ApplyImageStyle(&item, style)
 	// Entity portraits keep the shared image frame (and its clip radius) while
-	// the legacy geometry params that distort the portrait are stripped.
+	// the legacy radius override is stripped. The planner's centered hero
+	// geometry and caption-safe vertical position survive normalization.
 	require.NotNil(t, item.Frame)
 	require.Equal(t, 12.0, item.Frame.ClipRadiusPX)
 	require.NotContains(t, item.Params, "radius")
-	require.NotContains(t, item.Params, "position_y")
+	require.Equal(t, 0.2, item.Params["position_y"])
 	require.NotNil(t, item.ImageLayers[0].Frame)
 	require.Equal(t, 12.0, item.ImageLayers[0].Frame.ClipRadiusPX)
 	require.NotContains(t, item.ImageLayers[0].Params, "radius")
-	require.NotContains(t, item.ImageLayers[0].Params, "position_y")
+	require.Equal(t, 0.2, item.ImageLayers[0].Params["position_y"])
 }
 
 func TestImageFrameShadowStaysWithinNativeGPUBlurLimit(t *testing.T) {

@@ -15,7 +15,7 @@ PipelineGen is a headless Go backend for media discovery, extraction, processing
 
 ## Requirements
 
-- Go 1.25+
+- Go 1.26+
 - Python 3.10+
 - FFmpeg and ffprobe
 - yt-dlp

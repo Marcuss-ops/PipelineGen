@@ -1,4 +1,4 @@
-package images
+package contract
 
 import "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 

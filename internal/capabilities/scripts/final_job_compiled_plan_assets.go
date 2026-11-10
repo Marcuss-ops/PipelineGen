@@ -58,8 +58,20 @@ func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan) error {
 			segment.SourceInUS = finalJobFrameStartUS(startFrame, fpsNum, fpsDen)
 			segment.SourceDurationUS = finalJobFrameStartUS(startFrame+segment.FrameCount, fpsNum, fpsDen) - segment.SourceInUS
 			if overrun := segment.SourceInUS + segment.SourceDurationUS - asset.DurationUS; overrun > 0 {
+				// A whole-frame window can exceed a container's reported duration
+				// by a few microseconds because duration is rounded on a different
+				// timebase (for example 55 frames at 24 fps end at 2,291,667us,
+				// while the MP4 reports 2,291,666us). Keep the certified frame count
+				// when the source starts within its extent and clamp only that tiny
+				// timestamp discrepancy; the remote worker still validates the
+				// source bytes before rendering.
+				frameToleranceUS := finalJobFrameStartUS(1, fpsNum, fpsDen)
+				if shortfall <= 0 && segment.SourceInUS <= asset.DurationUS && overrun <= frameToleranceUS {
+					segment.SourceDurationUS = asset.DurationUS - segment.SourceInUS
+					continue
+				}
 				if shortfall <= 0 || overrun > finalJobFrameStartUS(shortfall, fpsNum, fpsDen) {
-					return fmt.Errorf("segment %q aligned source window exceeds asset %q", segment.SegmentID, asset.AssetID)
+					return fmt.Errorf("segment %q aligned source window exceeds asset %q: source_in_us=%d source_duration_us=%d asset_duration_us=%d frame_count=%d asset_frame_count=%d shortfall_frames=%d", segment.SegmentID, asset.AssetID, segment.SourceInUS, segment.SourceDurationUS, asset.DurationUS, segment.FrameCount, totalFrames, shortfall)
 				}
 			}
 		}

@@ -26,7 +26,7 @@
 //   - is documented with the upstream contract it satisfies so a
 //     future port evolution can be tracked here as the canonical
 //     Bridge layer.
-package wiring
+package lifecycle
 
 import (
 	"context"
@@ -56,7 +56,7 @@ type outboxMonitorAdapter struct {
 
 var _ jobs.MonitorPort = (*outboxMonitorAdapter)(nil)
 
-func newOutboxMonitorAdapter(repo *outboxevents.Repository) jobs.MonitorPort {
+func NewOutboxMonitorAdapter(repo *outboxevents.Repository) jobs.MonitorPort {
 	if repo == nil {
 		return nil
 	}
@@ -179,8 +179,8 @@ func (a *monitorYtdlpAdapter) Path() string {
 	return a.inner.Path()
 }
 
-// newMonitorYtdlpAdapter constructs the inline ytdlp→monitor bridge.
-func newMonitorYtdlpAdapter(ytdlp *downloader.YTDLPDownloader) monitor.MonitorDownloaderPort {
+// NewMonitorYtdlpAdapter constructs the inline ytdlp→monitor bridge.
+func NewMonitorYtdlpAdapter(ytdlp *downloader.YTDLPDownloader) monitor.MonitorDownloaderPort {
 	return &monitorYtdlpAdapter{inner: ytdlp}
 }
 
@@ -317,11 +317,11 @@ func mapDiscoveriesErr(err error) error {
 	return err
 }
 
-// newMonitorDiscoveriesAdapter constructs the inline assets→monitor
+// NewMonitorDiscoveriesAdapter constructs the inline assets→monitor
 // bridge. Returns a valid monitor.YoutubeDiscoveriesPort even when
 // repo is nil (no-op: every method surfaces nil-or-empty so a
 // missing wire silently fails-soft).
-func newMonitorDiscoveriesAdapter(repo *youtubediscoveries.YoutubeDiscoveriesRepository) monitor.YoutubeDiscoveriesPort {
+func NewMonitorDiscoveriesAdapter(repo *youtubediscoveries.YoutubeDiscoveriesRepository) monitor.YoutubeDiscoveriesPort {
 	if repo == nil {
 		return nil
 	}
@@ -392,10 +392,10 @@ func (a *uploadIntentsAdapter) ListPending(ctx context.Context, olderThan time.T
 	return out, nil
 }
 
-// newUploadIntentsAdapter constructs the inline scripts→voiceover
+// NewUploadIntentsAdapter constructs the inline scripts→voiceover
 // bridge. Returns a valid voiceover.UploadIntentsRepository even when
 // repo is nil so partial-deploy paths log+skip cleanly.
-func newUploadIntentsAdapter(repo *scripts.UploadIntentsRepository) voiceover.UploadIntentsRepository {
+func NewUploadIntentsAdapter(repo *scripts.UploadIntentsRepository) voiceover.UploadIntentsRepository {
 	if repo == nil {
 		return nil
 	}

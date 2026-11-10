@@ -1020,9 +1020,9 @@ func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) 
 		"entity portraits use a motion from the certified image catalog")
 	// Entity images use a wide hero box on the 1280x720 canvas and stay slightly
 	// above center so the anchored name remains part of the card.
-	require.Equal(t, 1280*68/100, card.Params["box_width"])
-	require.Equal(t, 720*70/100, card.Params["box_height"])
-	require.Equal(t, -72.0, card.Params["position_y"])
+	require.Equal(t, 1280*80/100, card.Params["box_width"])
+	require.Equal(t, 720*82/100, card.Params["box_height"])
+	require.Equal(t, -36.0, card.Params["position_y"])
 	require.Empty(t, card.Text, "the entity image must not carry a rendered name")
 	require.NotEmpty(t, card.PresetID, "the entity image must use an official image preset")
 	require.Equal(t, "image_scale_in", card.ImagePresetID)

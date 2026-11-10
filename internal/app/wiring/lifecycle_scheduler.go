@@ -33,6 +33,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/youtubediscoveries"
 	platformyoutube "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
+	wiringlifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
 
@@ -124,7 +125,7 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 				// transcripts/YTDLPSubtitleAdapter for the subtitle
 				// subprocess, keeping a single downloader binary+cookies
 				// config across the two adapters.
-				Ytdlp:      newMonitorYtdlpAdapter(ytdlpForSubtitles),
+				Ytdlp:      wiringlifecycle.NewMonitorYtdlpAdapter(ytdlpForSubtitles),
 				Transcript: transcriptSource,
 				Analyzer:   ollamaAnalyzer,
 				Enqueuer:   monitoradapter.NewExtractionIntentAdapter(deps.root.Jobs.Service, channelsSvc, deps.log),
@@ -135,7 +136,7 @@ func buildSchedulerSteps(deps schedulerDeps) (*monitor.ChannelMonitor, []Startup
 				// *youtubediscoveries.YoutubeDiscoveriesRepository + overrides the
 				// translation methods). See lifecycle_adapters.go for the
 				// canonical adapter surface.
-				Discoveries: newMonitorDiscoveriesAdapter(youtubediscoveries.NewYoutubeDiscoveriesRepository(deps.root.DB.DB)),
+				Discoveries: wiringlifecycle.NewMonitorDiscoveriesAdapter(youtubediscoveries.NewYoutubeDiscoveriesRepository(deps.root.DB.DB)),
 			},
 			// FASE 3.7 Commit 2 (2026-07-04): wire the canonical
 			// *observability.ObservabilityMetricsRecorder so analyzer +

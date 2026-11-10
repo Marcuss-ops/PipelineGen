@@ -60,22 +60,27 @@ func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error
 	if c == nil || c.q == nil {
 		return fmt.Errorf("renderinggen submit: client is not configured")
 	}
+	identity, err := scriptgen.RenderRequestIdentityFor(job)
+	if err != nil {
+		return fmt.Errorf("renderinggen request identity: %w", err)
+	}
 	if c.prefetch != nil {
 		if err := c.prefetch.Prefetch(ctx, job.Assets); err != nil {
 			return fmt.Errorf("renderinggen asset prefetch: %w", err)
 		}
 	}
-	err := c.q.Submit(ctx, queueclient.Job{
-		ID:          job.ID,
-		JobType:     job.JobType,
-		ParentJobID: job.ParentJobID,
-		ChunkIndex:  job.ChunkIndex,
-		FrameRange:  toQueueFrameRange(job.FrameRange),
-		RenderPlan:  job.OverlaySpec,
-		Assets:      toQueueAssets(job.Assets),
+	err = c.q.Submit(ctx, queueclient.Job{
+		ID:             job.ID,
+		JobType:        job.JobType,
+		ParentJobID:    job.ParentJobID,
+		ChunkIndex:     job.ChunkIndex,
+		FrameRange:     toQueueFrameRange(job.FrameRange),
+		RenderPlan:     job.OverlaySpec,
+		Assets:         toQueueAssets(job.Assets),
+		IdempotencyKey: identity.IdempotencyKey(job.ID),
 	})
 	if errors.Is(err, queueclient.ErrJobExists) {
-		return fmt.Errorf("%w: job %s", scriptgen.ErrJobExists, job.ID)
+		return classifyRenderSubmitCollision(ctx, c.q, job.ID, identity)
 	}
 	if err != nil {
 		return fmt.Errorf("renderinggen submit: %w", err)

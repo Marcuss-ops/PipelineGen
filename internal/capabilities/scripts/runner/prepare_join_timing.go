@@ -1,4 +1,4 @@
-package scriptgeneration
+package runner
 
 import "time"
 
@@ -18,7 +18,7 @@ type PrepareJoinBreakdown struct {
 	LastBranch     string `json:"last_branch"`
 }
 
-func buildPrepareJoinBreakdown(
+func BuildPrepareJoinBreakdown(
 	branchStart, joinStart, joinedAt, semanticDone, assetsDone time.Time,
 ) *PrepareJoinBreakdown {
 	if branchStart.IsZero() || joinStart.IsZero() || joinedAt.IsZero() ||

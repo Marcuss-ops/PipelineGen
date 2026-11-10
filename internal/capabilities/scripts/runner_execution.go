@@ -18,6 +18,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptrunner "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
@@ -446,7 +447,7 @@ func (e *executionRun) parallelFanOut() bool {
 		semanticOutcome.err = err
 	}
 	if e.result != nil {
-		e.result.PrepareJoin = buildPrepareJoinBreakdown(
+		e.result.PrepareJoin = scriptrunner.BuildPrepareJoinBreakdown(
 			branchStart, joinStart, time.Now(),
 			semanticOutcome.completedAt, assetsOutcome.completedAt)
 	}

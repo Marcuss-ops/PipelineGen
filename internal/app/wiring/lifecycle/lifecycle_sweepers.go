@@ -2,7 +2,7 @@
 //
 // Per AGENTS.md Pattern 5 (June 2026): each file covers ONE concept.
 // This file holds the ticker-driven background sweeper goroutines.
-package wiring
+package lifecycle
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRepository, log *zap.Logger) {
+func StartResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRepository, log *zap.Logger) {
 	const (
 		initialDelay = 30 * time.Second
 		interval     = 6 * time.Hour
@@ -69,7 +69,7 @@ func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 // startQdrantHealthMonitor was removed during earlier cleanup. The
 // capability deleted.
 
-// mediaYouTubeIDDuplicateReader is the consumer-owned port for the clip-dedup
+// MediaYouTubeIDDuplicateReader is the consumer-owned port for the clip-dedup
 // sweeper's media_assets scan.
 //
 // The engine is NOT part of the interface, and that is intentional: the sweeper
@@ -81,7 +81,7 @@ func startResearchCacheSweeper(ctx context.Context, repo *sqlitescripts.ScriptRe
 // The retired form took *imagesregistry.ClipsRepository, which made the engine a
 // property of the parameter's type — the operational SQLite store — and that is
 // how a media read got wired to the mirror in the first place.
-type mediaYouTubeIDDuplicateReader interface {
+type MediaYouTubeIDDuplicateReader interface {
 	// DuplicateYouTubeIDGroups returns up to limit youtube_video_id groups
 	// holding more than one live media asset.
 	DuplicateYouTubeIDGroups(ctx context.Context, limit int) ([]pgmedia.YouTubeIDDuplicateGroup, error)
@@ -97,7 +97,7 @@ type mediaYouTubeIDDuplicateReader interface {
 // limit bounds the tick, it is not a contract about which groups get visited.
 const dedupGroupLimit = 500
 
-func startClipDedupSweeper(ctx context.Context, reader mediaYouTubeIDDuplicateReader, retire persistence.AssetSoftDeleter, log *zap.Logger) {
+func StartClipDedupSweeper(ctx context.Context, reader MediaYouTubeIDDuplicateReader, retire persistence.AssetSoftDeleter, log *zap.Logger) {
 	const (
 		initialDelay = 2 * time.Minute
 		interval     = 30 * time.Minute
@@ -164,7 +164,7 @@ func startClipDedupSweeper(ctx context.Context, reader mediaYouTubeIDDuplicateRe
 // Error policy is preserved from the retired form: a per-group lookup failure
 // logs and continues with the remaining groups (one bad group must not abort a
 // whole tick), while a scan-level failure aborts the tick.
-func runDedupSweep(ctx context.Context, reader mediaYouTubeIDDuplicateReader, retire persistence.AssetSoftDeleter, log *zap.Logger) (int, error) {
+func runDedupSweep(ctx context.Context, reader MediaYouTubeIDDuplicateReader, retire persistence.AssetSoftDeleter, log *zap.Logger) (int, error) {
 	if reader == nil {
 		return 0, fmt.Errorf("dedup sweep: media duplicate reader is not wired (media SSOT closed) — refusing to enumerate media_assets on a second engine")
 	}
@@ -205,7 +205,7 @@ func runDedupSweep(ctx context.Context, reader mediaYouTubeIDDuplicateReader, re
 // (media_assets.drive_file_id_clean += json_extract checks) and the
 // existing clip-dedup sweeper already enumerates sqliteIDs.
 
-func startGemmaMemorySweeper(ctx context.Context, repo scriptports.MemoryGate, log *zap.Logger) {
+func StartGemmaMemorySweeper(ctx context.Context, repo scriptports.MemoryGate, log *zap.Logger) {
 	const (
 		initialDelay = 60 * time.Second
 		interval     = 6 * time.Hour
@@ -241,7 +241,7 @@ func startGemmaMemorySweeper(ctx context.Context, repo scriptports.MemoryGate, l
 	}
 }
 
-func startVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, log *zap.Logger) {
+func StartVLMAutoTagSweeper(ctx context.Context, autotagSvc *autotag.Service, log *zap.Logger) {
 	const (
 		initialDelay = 1 * time.Minute
 		interval     = 15 * time.Minute

@@ -1,4 +1,4 @@
-// Package destinations — DestinationResolver port and YamlResolver
+// Package contract — DestinationResolver port and YamlResolver
 // concrete implementation (FASE 2D EXPAND, July 2026).
 //
 // DestinationResolver is the canonical typed port (Pattern 0) for
@@ -9,7 +9,7 @@
 // read-only after construction (no Reload method yet — operator-driven
 // config changes follow the restart convention until a reload-supported
 // alternative is requested).
-package images
+package contract
 
 import (
 	"fmt"

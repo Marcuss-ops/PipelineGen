@@ -525,6 +525,9 @@ type MediaPlannerPolicy struct {
 	Model          string `json:"model,omitempty"`
 	Version        string `json:"version,omitempty"`
 	CandidateLimit int    `json:"candidate_limit,omitempty"`
+	// MaxImagesPerScene caps independently searched semantic image compositions
+	// in each scene. Zero keeps the conservative two-image default.
+	MaxImagesPerScene int `json:"max_images_per_scene,omitempty"`
 }
 
 // IsValidMediaPlanSlot returns true when slot is a known slot.

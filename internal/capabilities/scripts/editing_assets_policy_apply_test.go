@@ -234,6 +234,21 @@ func TestApplyEditingAssetPolicyPreservesExplicitOverlayBackground(t *testing.T)
 		}
 	})
 
+	t.Run("final job color uses the explicit render plate", func(t *testing.T) {
+		req := combinedTimelineRequest("final-color-render-plate")
+		req.Render.Enabled = true
+		req.FinalJob = true
+		req.Render.Background = &scriptpkg.VideoBackgroundSpec{Mode: "asset", AssetID: "drive-background-crime"}
+		req.OverlayBackground = &scriptpkg.OverlayBackgroundSpec{Kind: "color", Color: []float64{1, 1, 1, 1}}
+		if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+			t.Fatal(err)
+		}
+		bg := req.OverlayBackground
+		if bg == nil || bg.Kind != "video" || bg.AssetID != "drive-background-crime" || !bg.Loop {
+			t.Fatalf("final overlay background = %+v, want the render's drive-background-crime video", bg)
+		}
+	})
+
 	t.Run("explicit plate is preserved", func(t *testing.T) {
 		req := combinedTimelineRequest("key")
 		req.Render.Enabled = true

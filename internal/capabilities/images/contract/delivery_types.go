@@ -1,6 +1,6 @@
-// Package destinations (FASE 2D EXPAND, July 2026) — image destination routing.
+// Package contract (FASE 2D EXPAND, July 2026) — image destination routing.
 // Smoke-test write to verify worktree persistence in this session.
-package images
+package contract
 
 import "errors"
 

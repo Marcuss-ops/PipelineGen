@@ -11,7 +11,7 @@
 // This keeps the upload use case free of artifacts package imports
 // (AGENTS.md Pattern 0 — port abstraction layer).
 
-package wiring
+package clipswiring
 
 import (
 	"context"

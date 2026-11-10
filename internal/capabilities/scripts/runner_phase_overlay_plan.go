@@ -337,7 +337,8 @@ func normalizeGeocodePlaceQuery(value, language string) string {
 func isGenericPlaceLabel(name string) bool {
 	switch strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " ")) {
 	case "here", "there", "local", "nearby", "home", "workplace", "city", "town", "village", "region", "area", "location",
-		"paese", "paesi", "nesta", "neste", "nessa", "nesse", "esta", "este", "essa", "esse":
+		"paese", "paesi", "nesta", "neste", "nessa", "nesse", "esta", "este", "essa", "esse",
+		"dopo", "capire":
 		return true
 	default:
 		return false

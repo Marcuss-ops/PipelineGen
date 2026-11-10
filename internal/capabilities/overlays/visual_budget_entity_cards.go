@@ -26,13 +26,12 @@ import (
 // consumed by the other arms.
 const (
 	// MaxNamedEntityCardsPerRun bounds text-only named entity cards admitted to
-	// one run. The per-scene ceiling (2) and the payload's entities_with_text
-	// group limit are enforced downstream on the survivors. Twenty is twice the
-	// ten-card acceptance corpus and keeps render fan-out bounded while still
-	// covering every scene of a run up to the image arm's own 20-scene ceiling:
-	// the scene-diversity pass below spends the allowance one card per scene
-	// before admitting a second card from any scene.
-	MaxNamedEntityCardsPerRun = 20
+	// one run. The planner's per-scene ceiling and the payload's
+	// entities_with_text group limit are enforced downstream on the survivors.
+	// Fifty keeps render fan-out bounded while giving the scene-diversity pass
+	// below enough room to cover a 50-scene run one card per scene before
+	// admitting a second card from any scene.
+	MaxNamedEntityCardsPerRun = 50
 )
 
 // namedEntityCardKind reports the text-only named entity card kinds, i.e. the

@@ -18,8 +18,8 @@ import (
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -153,18 +153,6 @@ func certifyFinalJobOverlayBatch(batch OverlayBatchRenderReference, fpsNum, fpsD
 	return nil
 }
 
-// finalJobArtifactWindowTolerance is how far a manifest window may overhang the
-// artifact's reported duration before the certificate calls it a defect. It is
-// exactly one frame: `out_us` is ceil'd to a frame edge, the duration is a frame
-// count, and neither side is allowed to grow past that rounding. An unknown
-// frame rate yields 0, which keeps the strict comparison.
-func finalJobArtifactWindowTolerance(fpsNum, fpsDen int) int64 {
-	if fpsNum <= 0 || fpsDen <= 0 {
-		return 0
-	}
-	return int64(1_000_000) * int64(fpsDen) / int64(fpsNum)
-}
-
 // manifestEntryArtifactWindow is the entry's span on the CERTIFIED artifact.
 // A packed entry (artifact_in_us/artifact_out_us set, §3 packed timeline)
 // addresses its frames there; an unpacked artifact is the plan canvas anchored
@@ -174,15 +162,6 @@ func manifestEntryArtifactWindow(entry capmodel.OverlayManifestEntry) (int64, in
 		return *entry.ArtifactInUS, *entry.ArtifactOutUS
 	}
 	return entry.InUS, entry.OutUS
-}
-
-// manifestEntryArtifactPositions reports the entry's packed positions and
-// whether they are distinct from its plan receipt.
-func manifestEntryArtifactPositions(entry capmodel.OverlayManifestEntry) (int64, int64, bool) {
-	if entry.ArtifactInUS == nil || entry.ArtifactOutUS == nil {
-		return 0, 0, false
-	}
-	return *entry.ArtifactInUS, *entry.ArtifactOutUS, true
 }
 
 // certifiableFinalJobOverlayBatches is the gate the per-scene SPLIT must pass
@@ -435,15 +414,20 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 		}
 		entries = append(entries, wireEntry)
 	}
+	mode := manifest.OverlayMode()
 	asset := map[string]any{
 		"asset_id": assetRef["asset_id"], "sha256": sha,
 		"size_bytes": artifact.SizeBytes, "frame_count": assetFrames,
 		"duration_ms": (artifact.DurationUS + 999) / 1000,
-		"mode":        "replace", "audio_mode": "preserve_final_audio",
+		"mode":        mode, "audio_mode": "preserve_final_audio",
 		"codec": artifact.Codec, "container": artifact.Container,
 		"pixel_format": artifact.PixelFormat, "audio_streams": artifact.AudioStreams,
 		"width": artifact.Width, "height": artifact.Height,
 		"fps_num": artifact.FPSNum, "fps_den": artifact.FPSDen,
+	}
+	stream := finalJobOverlayStreamWire(manifest, artifact)
+	if stream != nil {
+		asset["stream"] = stream
 	}
 	for key, value := range assetRef {
 		asset[key] = value
@@ -455,40 +439,61 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 	if assetFrames > 0 {
 		asset["frame_count"] = assetFrames
 	}
-	return map[string]any{
+	wire := map[string]any{
 		"schema_version":  manifest.SchemaVersion,
 		"plan_id":         manifest.PlanID,
 		"video_id":        manifest.VideoID,
+		"mode":            mode,
 		"timeline_sha256": strings.ToLower(strings.TrimSpace(manifest.TimelineSHA256)),
 		"asset":           asset,
 		"entries":         entries,
-	}, nil
+	}
+	if stream != nil {
+		wire["stream"] = stream
+	}
+	return wire, nil
 }
 
-func finalJobManifestYearItem(entry capmodel.OverlayManifestEntry, items []capmodel.OverlayItem) (capmodel.OverlayItem, bool) {
-	parts := strings.Split(strings.TrimSpace(entry.ItemID), "__")
-	if len(parts) != 4 || parts[2] != "date_number" {
-		return capmodel.OverlayItem{}, false
+// finalJobOverlayStreamWire transports the certified video-stream identity
+// without inventing it. A V3 artifact was finalize-validated against the
+// canonical timebase and avcC, so its canonical facts are safe to relay. Any
+// other profile is a legacy source: it keeps its profile id but makes no
+// canonical bitstream claim, and the fragment producer must normalize it.
+func finalJobOverlayStreamWire(manifest *capmodel.OverlayManifest, artifact *RenderArtifact) map[string]any {
+	if artifact == nil {
+		return nil
 	}
-	if _, err := strconv.Atoi(parts[1]); err != nil {
-		return capmodel.OverlayItem{}, false
+	profileID := strings.TrimSpace(artifact.ProfileID)
+	if profileID == "" {
+		return nil
 	}
-	var match capmodel.OverlayItem
-	found := false
-	for _, item := range items {
-		if !strings.EqualFold(strings.TrimSpace(item.Kind), "number") || strings.TrimSpace(item.Text) != parts[1] {
-			continue
+	if manifest != nil && manifest.Stream != nil {
+		declared := manifest.Stream
+		// A declared stream is a CLAIM, not proof. Relay the canonical facts
+		// only when the manifest's claim matches both the artifact's lane and
+		// every canonical value; otherwise downgrade to copy_ready=false and
+		// do not transport an extradata/timebase that would invite a copy.
+		if strings.TrimSpace(declared.ProfileID) == profileID &&
+			declared.ProfileID == kernelmedia.OverlayVideoOnlyAssemblyProfileID &&
+			declared.ExtradataSHA256 == kernelmedia.CanonicalVideoExtradataSHA256 &&
+			declared.TimeBaseNum == 1 && declared.TimeBaseDen == 90000 &&
+			declared.EncoderRevision == kernelmedia.CanonicalVideoProfileRevision {
+			return map[string]any{
+				"profile_id": declared.ProfileID, "extradata_sha256": declared.ExtradataSHA256,
+				"time_base_num": declared.TimeBaseNum, "time_base_den": declared.TimeBaseDen,
+				"encoder_revision": declared.EncoderRevision, "copy_ready": true,
+			}
 		}
-		startUS, endUS := item.StartUSValue(), item.EndUSValue()
-		if entry.InUS >= endUS || startUS >= entry.OutUS {
-			continue
-		}
-		if found {
-			return capmodel.OverlayItem{}, false
-		}
-		match, found = item, true
+		return map[string]any{"profile_id": profileID, "copy_ready": false}
 	}
-	return match, found
+	if profileID != kernelmedia.OverlayVideoOnlyAssemblyProfileID {
+		return map[string]any{"profile_id": profileID, "copy_ready": false}
+	}
+	return map[string]any{
+		"profile_id": profileID, "extradata_sha256": kernelmedia.CanonicalVideoExtradataSHA256,
+		"time_base_num": 1, "time_base_den": 90000,
+		"encoder_revision": kernelmedia.CanonicalVideoProfileRevision, "copy_ready": true,
+	}
 }
 
 // finalJobDedicatedOverlayRows builds the independent replace rows for the

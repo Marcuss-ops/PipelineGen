@@ -217,7 +217,7 @@ func TestAdoptSemanticPlannerViewRecordsThePlan(t *testing.T) {
 	bundles := map[string]*SemanticCandidateBundle{"s01": {Identities: planIdentities(), Consolidation: consolidation}}
 	runner := &Runner{}
 	out := &phraseImpactEnrichment{}
-	runner.adoptSemanticPlannerView(out, bundles)
+	runner.adoptSemanticPlannerView(out, bundles, GenerateRequest{})
 	if out.consolidation != consolidation || out.productionPlan == nil || out.searchFeedback == nil {
 		t.Fatalf("the enrichment must carry the planner view: %+v", out)
 	}
@@ -225,7 +225,7 @@ func TestAdoptSemanticPlannerViewRecordsThePlan(t *testing.T) {
 		t.Fatalf("feedback must be projected onto the enrichment: %+v", out.searchFeedback)
 	}
 	empty := &phraseImpactEnrichment{}
-	(&Runner{}).adoptSemanticPlannerView(empty, nil)
+	(&Runner{}).adoptSemanticPlannerView(empty, nil, GenerateRequest{})
 	if empty.productionPlan != nil || empty.consolidation != nil {
 		t.Fatalf("an empty batch must not invent a plan: %+v", empty)
 	}

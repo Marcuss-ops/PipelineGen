@@ -68,6 +68,10 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			continue
 		}
 		kind := normalizeEntityAnnotationType(entity.Type)
+		value, kind = normalizeEditorialEntity(value, kind)
+		if value == "" {
+			continue
+		}
 		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
 			// KEYWORD and VISUAL_SUBJECT are not spoken entities: they
 			// describe search/index surface and visual subjects, never a
@@ -137,6 +141,23 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		return nil
 	}
 	return ann
+}
+
+// normalizeEditorialEntity repairs recurring NER errors before any entity can
+// reserve a visual or text slot. These phrases describe concepts, while the
+// generic Italian verbs/adverbs are not place names.
+func normalizeEditorialEntity(value, kind string) (string, string) {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	normalized := strings.ToLower(strings.Trim(value, " \t.,;:!?()[]{}\"'“”"))
+	switch normalized {
+	case "dopo", "capire":
+		if kind == "LOCATION" || kind == "GPE" || kind == "PLACE" {
+			return "", ""
+		}
+	case "dna di chiara":
+		return value, "CONCEPT"
+	}
+	return value, kind
 }
 
 // entityImageBindingFor projects only a durable, semantically approved,

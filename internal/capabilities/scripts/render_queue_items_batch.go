@@ -30,6 +30,17 @@ import (
 // before the cutover. Failure is FAIL-FAST: the pool cancels the remaining
 // items and the error names the item it came from.
 func (e *QueueRenderEnqueuer) enqueueDedicatedOverlayItems(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (RenderReference, error) {
+	return e.enqueueOverlayItemClips(ctx, plan, candidates, true)
+}
+
+// enqueueStandaloneOverlayItems renders the plan's actual graphic items as
+// independent alpha-bearing clips. Overlaps are valid here because these
+// clips are separate transparent layers and are grouped for preview only.
+func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (RenderReference, error) {
+	return e.enqueueOverlayItemClips(ctx, plan, candidates, false)
+}
+
+func (e *QueueRenderEnqueuer) enqueueOverlayItemClips(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate, admitTimeline bool) (RenderReference, error) {
 	if len(candidates) == 0 {
 		return RenderReference{}, nil
 	}
@@ -46,8 +57,10 @@ func (e *QueueRenderEnqueuer) enqueueDedicatedOverlayItems(ctx context.Context, 
 			StartUS: start, DurationUS: end - start,
 		})
 	}
-	if err := capoverlay.AdmitOverlayTimeline(admissionItems, plan.FPSNum, plan.FPSDen); err != nil {
-		return RenderReference{}, err
+	if admitTimeline {
+		if err := capoverlay.AdmitOverlayTimeline(admissionItems, plan.FPSNum, plan.FPSDen); err != nil {
+			return RenderReference{}, err
+		}
 	}
 	var mapCandidates, otherCandidates []overlayItemCandidate
 	for _, candidate := range candidates {

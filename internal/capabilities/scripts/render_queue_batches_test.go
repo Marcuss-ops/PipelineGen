@@ -107,12 +107,13 @@ func TestFusedOverlayBatchPlanAcceptsSingleVoice(t *testing.T) {
 
 // TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile pins the producer
 // contract at the only place that can state it: the fused manifest-timeline
-// child. The artifact is an opaque, silent H.264 composition, so it declares
-// VELOX_OVERLAY_VIDEO_ONLY_V1 — never VELOX_ASSEMBLY_READY_V1, which requires
-// one audio stream and would be a certificate the artifact cannot honour. The
+// child. A final-job parent stamps the opaque, silent H.264 profile, so the
+// child must inherit it — never VELOX_ASSEMBLY_READY_V1, which requires one
+// audio stream and would be a certificate the artifact cannot honour. The
 // field must also survive the wire marshal, or the renderer never sees it.
 func TestFusedOverlayBatchPlanDeclaresTheVideoOnlyProfile(t *testing.T) {
 	plan := manifestTestPlan()
+	plan.StampOutputProfile(kernelmedia.OverlayVideoOnlyProfileID)
 	candidates := overlayRenderableCandidates(plan)[:1]
 	_, end := overlayCandidateRenderWindow(plan, candidates[0])
 	work := overlayBatchWork{
