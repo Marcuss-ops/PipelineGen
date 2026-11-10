@@ -217,8 +217,23 @@ Sample (frase 44, 1920×1080, ≤10 s) — cartella Drive `tts_models_20261109_m
 | CosyVoice 3 | clone di paul | 8,96 s | 9,97 s | [apri](https://drive.google.com/file/d/1BGiYsFS0Cv7sS5vxyoXYP9EKzL5L7Ka_/view?usp=drivesdk) |
 
 Manifest: `ops/jobs/tts_models_20261109/samples_male_models/upload_manifest.json`.
-Le sei voci Pocket maschili sulle 50 frasi sono già misurate (RTF 2,05–2,30) e
-su Drive nella cartella `tts_local_pilot_20261109_male`.
+Le sei voci Pocket maschili sulle 50 frasi sono già misurate (RTF 2,05–2,30).
+Il catalogo `pocket-tts` 4.0.1 ha **27 voci predefinite e nessun metadato di
+sesso**: le sei usate sono quelle classificate maschili nel pilota. Restano
+fuori `bill_boerst` e `peter_yearsley` (donor Voice-Zero, probabili maschili) e
+le voci maschili non inglesi (`giovanni`, `juergen`, `rafael`, `daan`).
+
+**Set canonico ordinato (2026-11-10)** — solo i due motori leggeri, Edge
+escluso: cartella
+[`male_pocket_cosy_20261110`](https://drive.google.com/drive/u/1/folders/1TdP46RsYpT6V6hyUL5YQesp2UagIklXe)
+con [`pocket/`](https://drive.google.com/drive/u/1/folders/1hJEjQm4oAjCtJ1eN7n67xy4d9wmv4w62)
+(sei voci native) e [`cosy/`](https://drive.google.com/drive/u/1/folders/1yt662cZZg7mqEyqpd9tRpyK-aL61PjPe)
+(clone di jean e paul), stessa frase
+per tutti (frase 8, 7,5–9,0 s) così il confronto è a parità di testo. Manifest:
+`ops/jobs/tts_models_20261109/samples_male_pocket_cosy/upload_manifest.json`.
+Le cartelle precedenti (`tts_local_pilot_20261109_male`,
+`tts_models_20261109_male`) restano come storico: contengono anche i quattro
+video Edge, che non fanno parte del set.
 
 **Lettura**: CosyVoice non sostituisce Pocket, lo affianca. Pocket vince sul
 costo ed espone sei voci maschili native; CosyVoice serve quando la voce deve
