@@ -198,8 +198,10 @@ viene passato a CosyVoice come prompt zero-shot con la trascrizione esatta.
 
 Zero errori su 100 frasi. Il clone maschile costa **quanto** quello femminile
 (2,65 → 2,67): il sesso del riferimento non cambia il costo, cambia il timbro.
-Pocket resta più economico sulla stessa voce (jean: RTF 2,24 con sei processi
-in parallelo, ~1,1–1,2 su un processo isolato).
+Pocket resta più economico sulla stessa voce: **RTF 1,08 su un processo
+isolato** (jean, 10 frasi, mediana 7,2 s per frase, load ~17 s) e 2,24 con sei
+processi in parallelo. A parità di processo singolo è quindi ~2,5× più veloce
+di CosyVoice (1,08 contro 2,67) e senza occupare la GPU.
 
 Trappola: CosyVoice stampa `synthesis text ... too short than prompt text`
 quando il target è più corto del prompt e la qualità cala. Il primo riferimento

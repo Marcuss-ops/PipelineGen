@@ -120,6 +120,7 @@ func TestVidRushLifecycleDoesNotBindUnpersistedOrUnverifiedRights(t *testing.T) 
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		SemanticStatus:     "accepted",
 		IndexStatus:        scriptpkg.VidRushStatusIndexed,
 		RightsStatus:       "unknown",
 	}

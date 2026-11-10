@@ -143,6 +143,7 @@ func TestFinalizeVidRushBindings_ImageOnlyUsesDurableImagesAsBinding(t *testing.
 		AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified,
 		PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+		SemanticStatus:     "accepted",
 		IndexStatus:        scriptpkg.VidRushStatusIndexed,
 		ContentSHA256:      "hash-commons-image-1",
 	}

@@ -193,6 +193,7 @@ func goldenMixResult(t *testing.T) (*GenerateResult, capabilityoverlay.PlateReso
 					AcquisitionStatus:  scriptpkg.VidRushStatusAcquired,
 					VerificationStatus: scriptpkg.VidRushStatusVerified,
 					PersistenceStatus:  scriptpkg.VidRushStatusPersisted,
+					SemanticStatus:     "accepted",
 					IndexStatus:        scriptpkg.VidRushStatusIndexed,
 					ContentSHA256:      fmt.Sprintf("%064x", i*2+j+1),
 					SourceURL:          fmt.Sprintf("https://images.example/still-%02d-%d.jpg", i, j),

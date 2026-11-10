@@ -417,7 +417,8 @@ func (s *entityImageSearcher) SearchImages(_ context.Context, req InternetImageS
 		DriveLink: "https://drive.google.com/file/d/asset-mike/view", ContentSHA256: "hash-mike",
 		RightsStatus: "unknown_allowed", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
 		VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
-		IndexStatus: scriptpkg.VidRushStatusIndexed,
+		SemanticStatus: "accepted",
+		IndexStatus:    scriptpkg.VidRushStatusIndexed,
 	}}, nil
 }
 

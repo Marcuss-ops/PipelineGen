@@ -135,6 +135,7 @@ func TestProjectEntityAnnotations_LogoIsPrimary(t *testing.T) {
 			DriveLink: "https://drive.google.com/file/d/apple-logo/view", ContentSHA256: "apple-md5",
 			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
 			PersistenceStatus: scriptpkg.VidRushStatusPersisted,
+			SemanticStatus:    "accepted",
 			RightsStatus:      "unknown_allowed",
 		}}},
 	}

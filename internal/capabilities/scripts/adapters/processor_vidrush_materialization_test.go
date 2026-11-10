@@ -872,11 +872,13 @@ func TestVidRushMaterializationEntityImageFullLifecycleChain(t *testing.T) {
 			Text:     "Dwayne Johnson trained in Los Angeles.",
 			TextHash: "cert-dwayne-hash",
 			Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
-				AssetID:      "asset-dwayne-cert",
-				Provider:     scriptpkg.VidRushProviderInternetImages,
-				Query:        "Dwayne Johnson",
-				SourceURL:    "https://images.example/dwayne.jpg",
-				RightsStatus: "unknown",
+				AssetID:        "asset-dwayne-cert",
+				Provider:       scriptpkg.VidRushProviderInternetImages,
+				Entity:         "Dwayne Johnson",
+				Query:          "Dwayne Johnson",
+				SourceURL:      "https://images.example/dwayne.jpg",
+				RightsStatus:   "unknown",
+				SemanticStatus: "accepted",
 			}}},
 		}},
 	}
