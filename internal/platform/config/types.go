@@ -93,6 +93,20 @@ type LinguisticsConfig struct {
 // Per-stage timeouts are applied via context.WithTimeout in the respective
 // adapters BEFORE the semaphore acquire so the timeout budget includes both
 // the queue-wait and the actual execution.
+// LocalTTSConfig is the local-TTS pilot policy. The provider id is part of
+// the cache fingerprint, so switching engine (pocket -> phonon) invalidates
+// cached audio instead of reusing the previous engine's output.
+type LocalTTSConfig struct {
+	Enabled       bool   `yaml:"enabled" env:"VELOX_VOICEOVER_LOCAL_TTS_ENABLED" default:"false"`
+	Engine        string `yaml:"engine" env:"VELOX_VOICEOVER_LOCAL_TTS_ENGINE" default:"pocket"`
+	Voice         string `yaml:"voice" env:"VELOX_VOICEOVER_LOCAL_TTS_VOICE" default:"alba"`
+	ProviderID    string `yaml:"provider_id" env:"VELOX_VOICEOVER_LOCAL_TTS_PROVIDER_ID" default:"local-tts"`
+	BridgeScript  string `yaml:"bridge_script" env:"VELOX_VOICEOVER_LOCAL_TTS_BRIDGE_SCRIPT" default:"bridges/tts_local_server.py"`
+	MaxConcurrent int    `yaml:"max_concurrent" env:"VELOX_VOICEOVER_LOCAL_TTS_MAX_CONCURRENT" default:"1"`
+	// Languages defaults to ["en"] when empty (fail-closed pilot scope).
+	Languages []string `yaml:"languages"`
+}
+
 type VoiceoverConcurrencyConfig struct {
 	// Defaults is the immutable voiceover request/pipeline policy resolved
 	// during bootstrap. Constructors consume these values; they do not
@@ -112,6 +126,13 @@ type VoiceoverConcurrencyConfig struct {
 	// docs job regressed wall time 51.2s → 58.2s (provider contention),
 	// confirming 4 as the certified optimum.
 	MaxConcurrentTTS int `yaml:"max_concurrent_tts" env:"VELOX_VOICEOVER_MAX_CONCURRENT_TTS" default:"4"`
+
+	// LocalTTS selects the English-only local TTS pilot. Disabled by
+	// default: every language keeps using the Edge bridge. When enabled,
+	// only the listed base languages are routed to the local sidecar; the
+	// remaining languages stay on Edge, so the multilingual fan-out is
+	// unchanged.
+	LocalTTS LocalTTSConfig `yaml:"local_tts"`
 
 	// Drive retry budget.
 

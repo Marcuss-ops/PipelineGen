@@ -500,6 +500,12 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	if req == nil || !req.Render.Enabled {
 		return nil
 	}
+	// A final-job overlay is handed off as a full-frame replacement window.
+	// A solid color therefore hides the picture underneath for the complete
+	// window (r79 produced a white interval when a phrase was rendered on an
+	// opaque white canvas). Keep explicit color plates for standalone renders,
+	// but final jobs must use a moving editorial plate so a text-only overlay
+	// cannot turn into a blank white/black screen in the delivered video.
 	// The assembled video background is the single source of truth for every
 	// overlay scene. Override a conflicting overlay_background declaration so
 	// image and phrase renders cannot publish on a second plate (for example a

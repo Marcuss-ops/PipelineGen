@@ -17,6 +17,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/platform/filesystem"
 	"golang.org/x/sync/errgroup"
 )
@@ -467,7 +468,8 @@ func (p *Processor) processRenditions(ctx context.Context, input *detail.Process
 		if manifestFPSNum <= 0 || manifestFPSDen <= 0 {
 			manifestFPSNum, manifestFPSDen = 24, 1
 		}
-		manifestBody := fmt.Sprintf(`{"asset_id":%q,"codec":"h264","audio_codec":"aac","pixel_format":"yuv420p","resolution":"1920x1080","fps_num":%d,"fps_den":%d,"placeholder":true}`+"\n", assetID, manifestFPSNum, manifestFPSDen)
+		contract := kernelmedia.DefaultAssemblyMediaContractV2()
+		manifestBody := fmt.Sprintf(`{"asset_id":%q,"codec":%q,"audio_codec":%q,"pixel_format":%q,"resolution":"%dx%d","fps_num":%d,"fps_den":%d,"placeholder":true}`+"\n", assetID, contract.VideoCodec, contract.AudioCodec, contract.PixelFormat, contract.Width, contract.Height, manifestFPSNum, manifestFPSDen)
 		if err := os.WriteFile(manifestPath, []byte(manifestBody), 0o644); err != nil {
 			return fmt.Errorf("write manifest placeholder: %w", err)
 		}

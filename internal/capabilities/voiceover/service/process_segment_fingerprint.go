@@ -2,6 +2,7 @@ package voiceover
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -84,4 +85,61 @@ func TimingPolicyFingerprint(timing *audio.TimingRequest, removeSilence bool) st
 // old entries go cold and are re-synthesized once, then cached under v2.
 func BuildVoiceoverContentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
 	return digest.SHA256String("voiceover-content-v2:" + string(textHash) + ":" + string(language) + ":" + voice + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
+}
+
+// idempotencyPolicyFingerprint folds the provider identity into the timing
+// policy ONLY when the provider declares one. Providers without an identity
+// keep the pre-v3 key verbatim, so enabling the local pilot invalidates
+// exactly the routed languages and nothing else.
+func idempotencyPolicyFingerprint(provider TTSProvider, language Language, timing *audio.TimingRequest, removeSilence bool) string {
+	base := TimingPolicyFingerprint(timing, removeSilence)
+	identity := providerIdentityForTTS(provider, language)
+	if identity == "" {
+		return base
+	}
+	return base + ";provider=" + identity
+}
+
+// ttsIdentityProvider is the optional port extension used by the cache
+// fingerprint. The language router implements it; simple fakes that don't
+// keep the legacy behaviour (empty identity) and stay deterministic.
+type ttsIdentityProvider interface {
+	ProviderIdentityFor(Language) string
+}
+
+func providerIdentityForTTS(provider TTSProvider, language Language) string {
+	if provider == nil {
+		return ""
+	}
+	if identity, ok := provider.(ttsIdentityProvider); ok {
+		return strings.TrimSpace(identity.ProviderIdentityFor(language))
+	}
+	return ""
+}
+
+// BuildVoiceoverContentFingerprintV3 is the provider-aware content
+// fingerprint. Version v3 (2026-11-09) adds the provider/model identity to
+// the tuple: switching Edge -> Pocket/Phonon (or Pocket -> Phonon) MUST
+// invalidate cached audio instead of reusing the previous engine's file,
+// even when text, language, voice and destination are identical.
+//
+// An empty identity is hashed as "unspecified" (never silently equal to
+// "edge-tts"), so a caller that forgets to expose an identity can only
+// miss the cache, never reuse the wrong engine's audio.
+func BuildVoiceoverContentFingerprintV3(textHash TextHash, language Language, voice, providerID, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		providerID = "unspecified"
+	}
+	return digest.SHA256String("voiceover-content-v3:" + string(textHash) + ":" + string(language) + ":" + voice + ":provider=" + providerID + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
+}
+
+// contentFingerprint is the use-case seam that resolves the provider
+// identity for the request language before hashing.
+func (u *ProcessSegmentUseCase) contentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
+	return BuildVoiceoverContentFingerprintV3(
+		textHash, language, voice,
+		providerIdentityForTTS(u.deps.TTSProvider, language),
+		folderID, timing, removeSilence,
+	)
 }

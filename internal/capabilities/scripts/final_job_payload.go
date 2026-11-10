@@ -460,3 +460,31 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	}
 	return pre, finalize, nil
 }
+
+// finalJobInt64 converts the loosely-typed values carried by the final-job
+// JSON payload into an int64. It stays in final_job_payload.go because every
+// caller belongs to the final-job handoff boundary; keeping it here avoids a
+// one-function file while preserving the canonical conversion semantics.
+func finalJobInt64(value any) int64 {
+	switch n := value.(type) {
+	case int:
+		return int64(n)
+	case int64:
+		return n
+	case float64:
+		return int64(n)
+	case json.Number:
+		i, _ := n.Int64()
+		return i
+	case string:
+		var i int64
+		_, _ = fmt.Sscan(strings.TrimSpace(n), &i)
+		return i
+	default:
+		return 0
+	}
+}
+
+func finalJobInt(value any) int {
+	return int(finalJobInt64(value))
+}

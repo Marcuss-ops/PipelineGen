@@ -10,6 +10,8 @@
 package voiceover
 
 import (
+	"strings"
+
 	"go.uber.org/zap"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
@@ -49,6 +51,61 @@ func BuildVoiceoverTTSProvider(
 	// glitch) is retried/failed instead of shipping an inaudible voiceover.
 	audioProcessor.SetLoudnessProber(capabilityaudio.NewFFmpegLoudnessProber(cfg.External.FfmpegPath))
 	var ttsProvider voiceover.TTSProvider = newUseCaseTTSAdapter(audioProcessor)
+
+	// Local TTS pilot (English only). Disabled by default. When enabled,
+	// only the configured base languages are routed to the local sidecar;
+	// every other language keeps using the Edge bridge above.
+	if local := cfg.Voiceover.LocalTTS; local.Enabled {
+		bridgeScript := strings.TrimSpace(local.BridgeScript)
+		if bridgeScript == "" {
+			bridgeScript = "bridges/tts_local_server.py"
+		}
+		providerID := strings.TrimSpace(local.ProviderID)
+		if providerID == "" {
+			providerID = "local-tts"
+		}
+		if providerID == "local-tts" {
+			if engine := strings.TrimSpace(local.Engine); engine != "" {
+				providerID = "local-tts:" + engine
+			}
+		}
+		maxConcurrent := local.MaxConcurrent
+		if maxConcurrent <= 0 {
+			maxConcurrent = 1
+		}
+
+		// Empty legacyScript is deliberate: if the local worker cannot
+		// start, the call must fail instead of silently producing Edge
+		// audio under the local provider identity.
+		localProcessor := audioasset.NewProcessorWithBridge(
+			cfg.Paths.PythonScriptsDir, bridgeScript, "", providerID, log,
+		)
+		localProcessor.SetRequestConcurrency(maxConcurrent)
+		localProcessor.SetMediaExecutor(mediaProcessor)
+		localProcessor.SetLoudnessProber(capabilityaudio.NewFFmpegLoudnessProber(cfg.External.FfmpegPath))
+		bridgeEnv := map[string]string{}
+		if engine := strings.TrimSpace(local.Engine); engine != "" {
+			bridgeEnv["LOCAL_TTS_ENGINE"] = engine
+		}
+		if voice := strings.TrimSpace(local.Voice); voice != "" {
+			bridgeEnv["LOCAL_TTS_DEFAULT_VOICE"] = voice
+		}
+		localProcessor.SetBridgeEnv(bridgeEnv)
+
+		ttsProvider = newLanguageRoutedTTS(
+			newUseCaseTTSAdapter(localProcessor),
+			ttsProvider,
+			local.Languages,
+			local.Voice,
+			providerID,
+			audioProcessor.ProviderID(),
+		)
+		log.Info("voiceover: local TTS pilot enabled",
+			zap.String("engine", local.Engine),
+			zap.String("provider_id", providerID),
+			zap.Strings("languages", local.Languages),
+			zap.Int("max_concurrent", maxConcurrent))
+	}
 
 	// FASE 6 (July 2026): wrap TTS provider with exponential-backoff
 	// retry + circuit breaker. The retry fires INSIDE the rate limiter

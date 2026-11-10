@@ -409,7 +409,7 @@ func renderDynamicMapVideoOnce(ctx context.Context, plan capmodel.OverlayPlan, g
 		upscaleArgs := []string{"/usr/bin/ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
 			"-i", outputPath, "-vf", scale, "-r", fmt.Sprintf("%d/%d", plan.FPSNum, plan.FPSDen)}
 		upscaleArgs = append(upscaleArgs, capoverlay.MapEncodeVideoArgs(encodeProfile)...)
-		upscaleArgs = append(upscaleArgs, "-pix_fmt", "yuv420p", "-movflags", "+faststart", encodedOutputPath)
+		upscaleArgs = append(upscaleArgs, "-pix_fmt", kernelmedia.DefaultAssemblyMediaContractV2().PixelFormat, "-movflags", "+faststart", encodedOutputPath)
 		upscale := exec.CommandContext(ctx, upscaleArgs[0], upscaleArgs[1:]...)
 		if output, err := upscale.CombinedOutput(); err != nil {
 			return "", fmt.Errorf("scale dynamic map to overlay contract: %w: %s", err, strings.TrimSpace(string(output)))
