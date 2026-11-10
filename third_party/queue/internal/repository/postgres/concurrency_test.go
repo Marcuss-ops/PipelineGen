@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
@@ -21,10 +20,7 @@ import (
 // or workers sharing a database rather than a single in-process pool.
 func openRepos(t *testing.T, lease time.Duration, maxAttempts, n int) []*Repository {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set; skipping postgres integration test")
-	}
+	dsn := testDatabaseURL(t)
 
 	ctx := context.Background()
 	repos := make([]*Repository, 0, n)

@@ -12,11 +12,18 @@ import (
 // Rendered marks a running job as rendered: the artifact is durably stored but
 // external publication failed, so the job stays out of `completed` and is
 // re-claimable for a publication-only retry.
-func (s *Service) Rendered(ctx context.Context, id, workerID string, artifact model.Artifact, reason string) error {
+func (s *Service) Rendered(ctx context.Context, id, workerID string, generation int64, artifact model.Artifact, reason string) error {
+	return s.rendered(ctx, model.Ownership{JobID: id, WorkerID: workerID, Generation: generation}, artifact, reason)
+}
+
+func (s *Service) rendered(ctx context.Context, own model.Ownership, artifact model.Artifact, reason string) error {
+	if own.Generation <= 0 {
+		return fmt.Errorf("lease generation is required")
+	}
 	if err := validateArtifact(artifact); err != nil {
 		return err
 	}
-	if err := s.repo.Rendered(ctx, id, workerID, artifact, reason); err != nil {
+	if err := s.repo.Rendered(ctx, own.JobID, own.WorkerID, own.Generation, artifact, reason); err != nil {
 		return err
 	}
 	s.observePending(ctx)
@@ -25,8 +32,15 @@ func (s *Service) Rendered(ctx context.Context, id, workerID string, artifact mo
 }
 
 // Fail marks a running job failed (requeue or permanent fail).
-func (s *Service) Fail(ctx context.Context, id, workerID, reason string) error {
-	if err := s.repo.Fail(ctx, id, workerID, reason); err != nil {
+func (s *Service) Fail(ctx context.Context, id, workerID string, generation int64, reason string) error {
+	return s.fail(ctx, model.Ownership{JobID: id, WorkerID: workerID, Generation: generation}, reason)
+}
+
+func (s *Service) fail(ctx context.Context, own model.Ownership, reason string) error {
+	if own.Generation <= 0 {
+		return fmt.Errorf("lease generation is required")
+	}
+	if err := s.repo.Fail(ctx, own.JobID, own.WorkerID, own.Generation, reason); err != nil {
 		return err
 	}
 	s.observePending(ctx)
@@ -36,12 +50,19 @@ func (s *Service) Fail(ctx context.Context, id, workerID, reason string) error {
 
 // FailPermanently records a non-retryable failure as terminal, without
 // consuming the ordinary attempt retry budget.
-func (s *Service) FailPermanently(ctx context.Context, id, workerID, reason string) error {
+func (s *Service) FailPermanently(ctx context.Context, id, workerID string, generation int64, reason string) error {
+	return s.failPermanently(ctx, model.Ownership{JobID: id, WorkerID: workerID, Generation: generation}, reason)
+}
+
+func (s *Service) failPermanently(ctx context.Context, own model.Ownership, reason string) error {
+	if own.Generation <= 0 {
+		return fmt.Errorf("lease generation is required")
+	}
 	permanentRepo, ok := s.repo.(repository.PermanentFailureRepository)
 	if !ok {
 		return fmt.Errorf("permanent failure transition is not supported by repository")
 	}
-	if err := permanentRepo.FailPermanently(ctx, id, workerID, reason); err != nil {
+	if err := permanentRepo.FailPermanently(ctx, own.JobID, own.WorkerID, own.Generation, reason); err != nil {
 		return err
 	}
 	s.observePending(ctx)
@@ -50,8 +71,11 @@ func (s *Service) FailPermanently(ctx context.Context, id, workerID, reason stri
 }
 
 // Renew extends the lease for a running job owned by workerID.
-func (s *Service) Renew(ctx context.Context, id, workerID string) error {
-	return s.repo.Renew(ctx, id, workerID)
+func (s *Service) Renew(ctx context.Context, id, workerID string, generation int64) error {
+	if generation <= 0 {
+		return fmt.Errorf("lease generation is required")
+	}
+	return s.repo.Renew(ctx, id, workerID, generation)
 }
 
 // RequeueExpired requeues (or permanently fails) jobs whose lease elapsed,
@@ -128,8 +152,11 @@ func (s *Service) Cancel(ctx context.Context, id string) error {
 // SetProgress records the worker's render progress for a running job. The
 // queue is the source of truth: progress survives worker restarts and is
 // visible through GET /jobs/{id} without asking the worker directly.
-func (s *Service) SetProgress(ctx context.Context, id, workerID string, p model.Progress) error {
-	return s.repo.SetProgress(ctx, id, workerID, p)
+func (s *Service) SetProgress(ctx context.Context, id, workerID string, generation int64, p model.Progress) error {
+	if generation <= 0 {
+		return fmt.Errorf("lease generation is required")
+	}
+	return s.repo.SetProgress(ctx, id, workerID, generation, p)
 }
 
 // Stats returns a snapshot of the queue state.

@@ -117,14 +117,19 @@ func ValidateChunk(job Job) error {
 }
 
 // ValidateJobBatch applies the batch-level ingress rules shared by every
-// backend: a non-empty batch, a required unique id per job, and a chunk whose
-// frame range is well-formed. Validation is complete before any mutation, so a
-// bad child never leaves a partial family behind.
+// backend: a non-empty batch, a required unique id per job, a chunk whose
+// frame range is well-formed, and at most ONE job per non-empty idempotency
+// key. The key rule lives here — not in one repository — because PostgreSQL
+// enforces it with a unique index while the in-memory store has to enforce it
+// explicitly; without one shared check the same batch would be accepted by one
+// backend and rejected by the other. Validation is complete before any
+// mutation, so a bad child never leaves a partial family behind.
 func ValidateJobBatch(jobs []Job) error {
 	if len(jobs) == 0 {
 		return fmt.Errorf("job batch is empty")
 	}
 	seen := make(map[string]struct{}, len(jobs))
+	keyOwner := make(map[string]string, len(jobs))
 	for _, job := range jobs {
 		if job.ID == "" {
 			return fmt.Errorf("job id is required")
@@ -133,6 +138,12 @@ func ValidateJobBatch(jobs []Job) error {
 			return fmt.Errorf("duplicate job id %s", job.ID)
 		}
 		seen[job.ID] = struct{}{}
+		if job.IdempotencyKey != "" {
+			if other, ok := keyOwner[job.IdempotencyKey]; ok {
+				return fmt.Errorf("duplicate idempotency key %q for jobs %s and %s", job.IdempotencyKey, other, job.ID)
+			}
+			keyOwner[job.IdempotencyKey] = job.ID
+		}
 		if err := ValidateChunk(job); err != nil {
 			return err
 		}
@@ -144,6 +155,16 @@ func ValidateJobBatch(jobs []Job) error {
 // and the logical path it must be materialized at in the job workspace. It is
 // an ALIAS of the public wire type, not a second declaration.
 type AssetRef = client.AssetRef
+
+// Ownership identifies one claimed attempt of a job. Generation is the
+// monotonically increasing lease_generation returned by Claim or
+// ClaimFinalization. Every transition requires a positive generation that
+// matches the row exactly; zero is rejected at the service boundary.
+type Ownership struct {
+	JobID      string
+	WorkerID   string
+	Generation int64
+}
 
 // Job is a unit of work in the queue: one render SEGMENT. The renderable
 // content carried in RenderPlan is the semantic OverlaySpec

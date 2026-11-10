@@ -17,11 +17,16 @@ import (
 
 // Fail marks a running job failed. Jobs that have not exhausted their attempts
 // are requeued; otherwise they are permanently failed.
-func (r *Repository) Fail(ctx context.Context, id, workerID, reason string) error {
+func (r *Repository) Fail(ctx context.Context, id, workerID string, generation int64, reason string) error {
+	return r.fail(ctx, model.Ownership{JobID: id, WorkerID: workerID, Generation: generation}, reason)
+}
+
+func (r *Repository) fail(ctx context.Context, own model.Ownership, reason string) error {
+	id, workerID := own.JobID, own.WorkerID
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
 	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		attempts, maxAttempts, err := lockRunningJobAttempts(ctx, tx, id, workerID)
+		attempts, maxAttempts, err := lockRunningJobAttempts(ctx, tx, id, workerID, own.Generation)
 		if err != nil {
 			return err
 		}
@@ -62,11 +67,16 @@ func (r *Repository) Fail(ctx context.Context, id, workerID, reason string) erro
 // FailPermanently marks a running job terminally failed regardless of its
 // normal retry budget. It is reserved for non-retryable failures such as a
 // missing required publisher configuration.
-func (r *Repository) FailPermanently(ctx context.Context, id, workerID, reason string) error {
+func (r *Repository) FailPermanently(ctx context.Context, id, workerID string, generation int64, reason string) error {
+	return r.failPermanently(ctx, model.Ownership{JobID: id, WorkerID: workerID, Generation: generation}, reason)
+}
+
+func (r *Repository) failPermanently(ctx context.Context, own model.Ownership, reason string) error {
+	id, workerID := own.JobID, own.WorkerID
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
 	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		if _, _, err := lockRunningJobAttempts(ctx, tx, id, workerID); err != nil {
+		if _, _, err := lockRunningJobAttempts(ctx, tx, id, workerID, own.Generation); err != nil {
 			return err
 		}
 		attempt, err := runningAttemptID(ctx, tx, id)
@@ -89,13 +99,14 @@ func (r *Repository) FailPermanently(ctx context.Context, id, workerID, reason s
 // lockRunningJobAttempts locks the job row and returns its attempt budget. Both
 // Fail paths must confirm ownership under the same row lock before closing the
 // attempt, so the SELECT ... FOR UPDATE lives here once.
-func lockRunningJobAttempts(ctx context.Context, tx *sql.Tx, id, workerID string) (int, int, error) {
+func lockRunningJobAttempts(ctx context.Context, tx *sql.Tx, id, workerID string, generation int64) (int, int, error) {
 	var attempts, maxAttempts int
 	err := tx.QueryRowContext(ctx, `
 		SELECT attempt_count, max_attempts
 		FROM render_jobs
 		WHERE id = $1 AND state = `+stateLiteral(model.StateRunning)+` AND current_worker_id = $2
-		FOR UPDATE`, id, workerID).Scan(&attempts, &maxAttempts)
+		  AND lease_generation = $3
+		FOR UPDATE`, id, workerID, generation).Scan(&attempts, &maxAttempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, 0, fmt.Errorf("job %s is not running or not owned by %s", id, workerID)
 	}
@@ -126,15 +137,16 @@ func markFailedTx(ctx context.Context, tx *sql.Tx, id, reason string) error {
 }
 
 // Renew extends the lease for a running job owned by workerID.
-func (r *Repository) Renew(ctx context.Context, id, workerID string) error {
+func (r *Repository) Renew(ctx context.Context, id, workerID string, generation int64) error {
 	ctx, cancel := r.opContext(ctx)
 	defer cancel()
 	return r.withTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `
 			UPDATE render_jobs
 			SET lease_until = $3
-			WHERE id = $1 AND state IN `+stateIn(model.StateRunning, model.StateFinalizing)+` AND current_worker_id = $2`,
-			id, workerID, time.Now().Add(r.lease))
+			WHERE id = $1 AND state IN `+stateIn(model.StateRunning, model.StateFinalizing)+` AND current_worker_id = $2
+			  AND lease_generation = $4`,
+			id, workerID, time.Now().Add(r.lease), generation)
 		if err != nil {
 			return err
 		}
@@ -251,7 +263,7 @@ func (r *Repository) Cancel(ctx context.Context, id string) error {
 // The conditional UPDATE (state = StateRunning AND current_worker_id=workerID)
 // makes a stale worker's report a no-op instead of a corruption vector: the
 // report either lands on the current owner's row or affects zero rows.
-func (r *Repository) SetProgress(ctx context.Context, id, workerID string, p model.Progress) error {
+func (r *Repository) SetProgress(ctx context.Context, id, workerID string, generation int64, p model.Progress) error {
 	if id == "" || workerID == "" {
 		return fmt.Errorf("job id and worker id are required")
 	}
@@ -269,8 +281,9 @@ func (r *Repository) SetProgress(ctx context.Context, id, workerID string, p mod
 		    progress_total_frames = $3,
 		    progress_last_frame_at = now(),
 		    progress_worker = $4
-		WHERE id = $1 AND state = `+stateLiteral(model.StateRunning)+` AND current_worker_id = $4`,
-		id, p.FramesDone, p.TotalFrames, workerID)
+		WHERE id = $1 AND state = `+stateLiteral(model.StateRunning)+` AND current_worker_id = $4
+		  AND lease_generation = $5`,
+		id, p.FramesDone, p.TotalFrames, workerID, generation)
 	if err != nil {
 		return err
 	}
@@ -291,7 +304,7 @@ func (r *Repository) SetProgress(ctx context.Context, id, workerID string, p mod
 		if state != string(model.StateRunning) {
 			return fmt.Errorf("job %s is in state %q, cannot report progress for non-running job", id, state)
 		}
-		return fmt.Errorf("job %s is owned by another worker", id)
+		return fmt.Errorf("job %s is not owned by this worker and attempt", id)
 	}
 	return nil
 }

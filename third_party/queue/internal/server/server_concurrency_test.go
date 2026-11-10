@@ -12,27 +12,28 @@ import (
 // claimOnce POSTs a claim to the queue for worker and returns the response
 // status and (when a job was claimed) its ID. It does not use the shared post
 // helper because it is called from concurrent goroutines.
-func claimOnce(baseURL, worker string) (status int, id string, err error) {
+func claimOnce(baseURL, worker string) (status int, id string, generation int64, err error) {
 	resp, err := http.Post(baseURL+"/jobs/claim", "application/json",
 		strings.NewReader(`{"worker":"`+worker+`"}`))
 	if err != nil {
-		return 0, "", err
+		return 0, "", 0, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
-		return resp.StatusCode, "", nil
+		return resp.StatusCode, "", 0, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return resp.StatusCode, "", fmt.Errorf("claim status %d", resp.StatusCode)
+		return resp.StatusCode, "", 0, fmt.Errorf("claim status %d", resp.StatusCode)
 	}
 	var claimed struct {
-		ID string `json:"id"`
+		ID              string `json:"id"`
+		LeaseGeneration int64  `json:"lease_generation"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&claimed); err != nil {
-		return resp.StatusCode, "", err
+		return resp.StatusCode, "", 0, err
 	}
-	return resp.StatusCode, claimed.ID, nil
+	return resp.StatusCode, claimed.ID, claimed.LeaseGeneration, nil
 }
 
 // TestServerConcurrentClaimExclusive drives many workers through the HTTP
@@ -56,7 +57,7 @@ func TestServerConcurrentClaimExclusive(t *testing.T) {
 		go func(worker string) {
 			defer wg.Done()
 			for {
-				status, id, err := claimOnce(ts.URL, worker)
+				status, id, _, err := claimOnce(ts.URL, worker)
 				if err != nil {
 					t.Errorf("claim(%s): %v", worker, err)
 					return
@@ -100,7 +101,7 @@ func TestServerConcurrentRenew(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < renews; i++ {
 				resp, err := http.Post(ts.URL+"/jobs/job-1/renew", "application/json",
-					strings.NewReader(`{"worker":"w1"}`))
+					strings.NewReader(`{"worker":"w1","lease_generation":1}`))
 				if err != nil {
 					errs <- err
 					return
@@ -148,7 +149,7 @@ func TestServerConcurrentClaimAndComplete(t *testing.T) {
 		go func(worker string) {
 			defer wg.Done()
 			for {
-				status, id, err := claimOnce(ts.URL, worker)
+				status, id, generation, err := claimOnce(ts.URL, worker)
 				if err != nil {
 					t.Errorf("claim(%s): %v", worker, err)
 					return
@@ -165,7 +166,7 @@ func TestServerConcurrentClaimAndComplete(t *testing.T) {
 				}
 
 				resp, err := http.Post(ts.URL+"/jobs/"+id+"/complete", "application/json",
-					strings.NewReader(fmt.Sprintf(`{"worker":%q,"data":{"storage_key":"sha-%s","artifact_hash":"sha-%s","size_bytes":1,"content_type":"video/mp4"}}`, worker, id, id)))
+					strings.NewReader(fmt.Sprintf(`{"worker":%q,"lease_generation":%d,"data":{"storage_key":"sha-%s","artifact_hash":"sha-%s","size_bytes":1,"content_type":"video/mp4"}}`, worker, generation, id, id)))
 				if err != nil {
 					t.Errorf("complete(%s): %v", worker, err)
 					return

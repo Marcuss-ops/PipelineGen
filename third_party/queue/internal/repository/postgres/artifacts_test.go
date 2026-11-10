@@ -56,7 +56,7 @@ func TestArtifactPersistedOnComplete(t *testing.T) {
 		FirstFrameKeyframe: true,
 		Provenance:         &queueclient.ArtifactProvenance{SchemaVersion: "renderinggen.artifact-provenance.v1", Protocol: "renderinggen.overlay-import.v1", Producer: "pipelinegen-map-v2", ImportJobID: "job-1", ItemIDs: []string{"map-item-1"}, SourceSHA256: "abc123", SourceSizeBytes: 12345, IdentityVerified: true, StructureVerified: true, FullDecodeVerified: true},
 	}
-	if err := r.Complete(context.Background(), "job-1", "w1", art); err != nil {
+	if err := r.Complete(context.Background(), "job-1", "w1", 1, art); err != nil {
 		t.Fatal(err)
 	}
 
@@ -109,7 +109,7 @@ func TestGetReturnsJobWithArtifact(t *testing.T) {
 	if _, _, err := r.Claim(context.Background(), "w1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Complete(context.Background(), "job-1", "w1", model.Artifact{
+	if err := r.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{
 		ID: "art-1", StorageKey: "overlay/job-1/out.mp4", ArtifactHash: "abc", ProfileID: queueclient.CertifiedProfileVeloxH2641080p30V1, CopyEligible: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestCompleteWithoutArtifactSkipsPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Empty artifact: the job completes but no artifact row is written.
-	if err := r.Complete(context.Background(), "job-1", "w1", model.Artifact{}); err != nil {
+	if err := r.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{}); err != nil {
 		t.Fatal(err)
 	}
 

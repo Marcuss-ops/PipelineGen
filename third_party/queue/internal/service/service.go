@@ -252,15 +252,22 @@ func (s *Service) WaitAndClaim(ctx context.Context, workerID string, state model
 	}
 }
 
-func (s *Service) Complete(ctx context.Context, id, workerID string, artifact model.Artifact) error {
+func (s *Service) Complete(ctx context.Context, id, workerID string, generation int64, artifact model.Artifact) error {
+	return s.complete(ctx, model.Ownership{JobID: id, WorkerID: workerID, Generation: generation}, artifact)
+}
+
+func (s *Service) complete(ctx context.Context, own model.Ownership, artifact model.Artifact) error {
+	if own.Generation <= 0 {
+		return fmt.Errorf("lease generation is required")
+	}
 	if err := validateArtifact(artifact); err != nil {
 		return err
 	}
-	if err := s.repo.Complete(ctx, id, workerID, artifact); err != nil {
+	if err := s.repo.Complete(ctx, own.JobID, own.WorkerID, own.Generation, artifact); err != nil {
 		return err
 	}
 	if s.metrics != nil {
-		if job, err := s.repo.Get(ctx, id); err == nil && job != nil && !job.StartedAt.IsZero() {
+		if job, err := s.repo.Get(ctx, own.JobID); err == nil && job != nil && !job.StartedAt.IsZero() {
 			d := job.CompletedAt.Sub(job.StartedAt)
 			if d <= 0 {
 				d = time.Since(job.StartedAt)

@@ -17,6 +17,9 @@ import (
 func TestApplyAgainstPostgres(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
+		if os.Getenv("RENDERINGGEN_REQUIRE_POSTGRES_TESTS") == "1" {
+			t.Fatal("TEST_DATABASE_URL is unset while RENDERINGGEN_REQUIRE_POSTGRES_TESTS=1: PostgreSQL integration tests must not be skipped in CI")
+		}
 		t.Skip("TEST_DATABASE_URL not set; skipping postgres integration test")
 	}
 

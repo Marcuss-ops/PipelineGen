@@ -70,10 +70,10 @@ func TestCancelRunningJobSurvivesLeaseClaimCycleWithoutNewChrononInvocation(t *t
 	}
 	// The in-flight worker's terminal reports must be rejected: the job is no
 	// longer running, so neither complete nor fail can move it or requeue it.
-	if err := svc.Complete(context.Background(), "job-running-cancel", "worker-1", cancelTestArtifact()); err == nil {
+	if err := svc.Complete(context.Background(), "job-running-cancel", "worker-1", 1, cancelTestArtifact()); err == nil {
 		t.Fatal("complete on cancelled job must be rejected")
 	}
-	if err := svc.Fail(context.Background(), "job-running-cancel", "worker-1", "late failure"); err == nil {
+	if err := svc.Fail(context.Background(), "job-running-cancel", "worker-1", 1, "late failure"); err == nil {
 		t.Fatal("fail on cancelled job must be rejected")
 	}
 
@@ -118,7 +118,7 @@ func TestCancelIsIdempotentAndRejectsTerminalStates(t *testing.T) {
 	if _, _, err := svc.Claim(context.Background(), "worker-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Complete(context.Background(), "job-completed", "worker-1", cancelTestArtifact()); err != nil {
+	if err := svc.Complete(context.Background(), "job-completed", "worker-1", 1, cancelTestArtifact()); err != nil {
 		t.Fatal(err)
 	}
 	if err := svc.Cancel(context.Background(), "job-completed"); err == nil || !strings.Contains(err.Error(), "cannot cancel") {
@@ -134,7 +134,7 @@ func TestCancelIsIdempotentAndRejectsTerminalStates(t *testing.T) {
 	if _, _, err := failedSvc.Claim(context.Background(), "worker-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := failedSvc.Fail(context.Background(), "job-failed", "worker-1", "boom"); err != nil {
+	if err := failedSvc.Fail(context.Background(), "job-failed", "worker-1", 1, "boom"); err != nil {
 		t.Fatal(err)
 	}
 	if err := failedSvc.Cancel(context.Background(), "job-failed"); err == nil || !strings.Contains(err.Error(), "cannot cancel") {

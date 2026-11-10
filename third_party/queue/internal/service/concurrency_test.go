@@ -85,7 +85,7 @@ func TestServiceConcurrentRenewSingleOwner(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < renews; i++ {
-				if err := svc.Renew(context.Background(), "job-1", "w1"); err != nil {
+				if err := svc.Renew(context.Background(), "job-1", "w1", 1); err != nil {
 					errs <- err
 					return
 				}

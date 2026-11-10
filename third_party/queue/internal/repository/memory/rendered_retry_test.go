@@ -28,7 +28,7 @@ func TestRenderedJobIsReclaimableWithArtifact(t *testing.T) {
 		SizeBytes:    42,
 		ContentType:  "video/mp4",
 	}
-	if err := repo.Rendered(context.Background(), "job-rendered", "w1", artifact, "drive upload failed"); err != nil {
+	if err := repo.Rendered(context.Background(), "job-rendered", "w1", claimed.LeaseGeneration, artifact, "drive upload failed"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -65,7 +65,7 @@ func TestRenderedJobIsReclaimableWithArtifact(t *testing.T) {
 	}
 
 	// And it can be completed by the new owner (publication-only retry done).
-	if err := repo.Complete(context.Background(), "job-rendered", "w3", artifact); err != nil {
+	if err := repo.Complete(context.Background(), "job-rendered", "w3", got.LeaseGeneration, artifact); err != nil {
 		t.Fatalf("complete after publication retry: %v", err)
 	}
 }
@@ -81,7 +81,7 @@ func TestRenderedStateIsNeverLeaseRequeued(t *testing.T) {
 	if err != nil || claimed == nil {
 		t.Fatalf("claim: %v %v", claimed, err)
 	}
-	if err := repo.Rendered(context.Background(), "job-rendered", "w1", model.Artifact{
+	if err := repo.Rendered(context.Background(), "job-rendered", "w1", claimed.LeaseGeneration, model.Artifact{
 		StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4",
 	}, "drive down"); err != nil {
 		t.Fatal(err)

@@ -78,21 +78,23 @@ type JobRepository interface {
 	RecoverableParents(ctx context.Context) ([]string, error)
 
 	// Complete marks a running job as completed and records the rendered
-	// artifact. The service layer rejects incomplete artifact metadata before
-	// this method is called.
-	Complete(ctx context.Context, id, workerID string, artifact model.Artifact) error
+	// artifact. generation is the lease fencing token returned by Claim; a
+	// stale attempt matches no row. The service layer rejects incomplete
+	// artifact metadata before this method is called.
+	Complete(ctx context.Context, id, workerID string, generation int64, artifact model.Artifact) error
 
 	// Rendered marks a running job as rendered: its artifact is durably stored
 	// but external publication failed, so the job stays out of `completed` and
 	// is re-claimable for a publication-only retry.
-	Rendered(ctx context.Context, id, workerID string, artifact model.Artifact, reason string) error
+	Rendered(ctx context.Context, id, workerID string, generation int64, artifact model.Artifact, reason string) error
 
 	// Fail marks a running job failed. Jobs that have not exhausted their
 	// attempts are requeued; otherwise they are permanently failed.
-	Fail(ctx context.Context, id, workerID, reason string) error
+	Fail(ctx context.Context, id, workerID string, generation int64, reason string) error
 
-	// Renew extends the lease for a running job owned by workerID.
-	Renew(ctx context.Context, id, workerID string) error
+	// Renew extends the lease for a running job owned by workerID and fenced to
+	// the claim generation.
+	Renew(ctx context.Context, id, workerID string, generation int64) error
 
 	// Retry resets a failed job back to pending state for re-execution.
 	Retry(ctx context.Context, id string) error
@@ -107,7 +109,7 @@ type JobRepository interface {
 	// that owns the job's lease. It fails if the job is not running or the
 	// reporting worker does not match the lease owner, so a stale worker
 	// cannot overwrite the progress of the current owner.
-	SetProgress(ctx context.Context, id, workerID string, p model.Progress) error
+	SetProgress(ctx context.Context, id, workerID string, generation int64, p model.Progress) error
 
 	// RequeueExpired requeues (or permanently fails) jobs whose lease elapsed,
 	// returning the number of jobs affected.
@@ -135,5 +137,5 @@ type BatchRepository interface {
 // for non-retryable job/configuration errors. Ordinary Fail retains the
 // retry-attempt policy.
 type PermanentFailureRepository interface {
-	FailPermanently(ctx context.Context, id, workerID, reason string) error
+	FailPermanently(ctx context.Context, id, workerID string, generation int64, reason string) error
 }

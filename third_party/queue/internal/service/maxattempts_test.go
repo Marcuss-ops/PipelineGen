@@ -47,7 +47,7 @@ func TestServiceMaxAttemptsUnderConcurrentRetries(t *testing.T) {
 				mu.Lock()
 				claimsPerJob[job.ID]++
 				mu.Unlock()
-				if err := svc.Fail(context.Background(), job.ID, worker, "boom"); err != nil {
+				if err := svc.Fail(context.Background(), job.ID, worker, job.LeaseGeneration, "boom"); err != nil {
 					t.Errorf("fail(%s): %v", worker, err)
 					return
 				}
