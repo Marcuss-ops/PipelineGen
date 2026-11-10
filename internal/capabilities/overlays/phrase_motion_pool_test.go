@@ -430,7 +430,7 @@ func TestPhraseMotionEntranceUsesOneThirdPhraseDuration(t *testing.T) {
 		wantFrames int
 	}{
 		{name: "microsecond timing rounds up", phrase: TimedAnnotation{StartMs: 0, EndMs: 800, DurationUS: 800_000}, fpsNum: 24, fpsDen: 1, wantFrames: 7},
-		{name: "millisecond fallback", phrase: TimedAnnotation{StartMs: 100, EndMs: 3100}, fpsNum: 30, fpsDen: 1, wantFrames: 30},
+		{name: "millisecond fallback respects the 700ms cap", phrase: TimedAnnotation{StartMs: 100, EndMs: 3100}, fpsNum: 30, fpsDen: 1, wantFrames: 21},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params := phraseMotionParams(tc.phrase, tc.fpsNum, tc.fpsDen)

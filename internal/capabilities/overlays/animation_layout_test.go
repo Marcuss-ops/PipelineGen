@@ -106,10 +106,14 @@ func TestPrepareCompiledAnimationLayoutCascadesBeforeFusion(t *testing.T) {
 	}
 }
 
-// One owner for the one-third phrase entrance rule.
-func TestPhraseEntranceFramesIsOneThirdOfTheClip(t *testing.T) {
-	if got := PhraseEntranceFrames(3_000_000, 24, 1); got != 24 {
-		t.Fatalf("3s at 24fps entrance = %d, want 24", got)
+// Phrase entrances retain the one-third share for short windows and cap long
+// windows so their text settles within 700ms.
+func TestPhraseEntranceFramesCapsLongClipEntrances(t *testing.T) {
+	if got := PhraseEntranceFrames(1_200_000, 24, 1); got != 10 {
+		t.Fatalf("1.2s at 24fps entrance = %d, want 10", got)
+	}
+	if got := PhraseEntranceFrames(6_000_000, 24, 1); got != 17 {
+		t.Fatalf("6s at 24fps entrance = %d, want 17 (700ms cap)", got)
 	}
 	if got := PhraseEntranceFrames(0, 24, 1); got != 0 {
 		t.Fatalf("empty clip entrance = %d, want 0", got)

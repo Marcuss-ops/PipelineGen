@@ -48,9 +48,11 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	if style.Size != nil {
 		if style.Size.Width != nil {
 			params["box_width"] = *style.Size.Width
+			params["width"] = *style.Size.Width
 		}
 		if style.Size.Height != nil {
 			params["box_height"] = *style.Size.Height
+			params["height"] = *style.Size.Height
 		}
 		if style.Size.FontSize != nil {
 			params["style"] = mergeStyleParam(params["style"], map[string]any{"font_size": *style.Size.FontSize})

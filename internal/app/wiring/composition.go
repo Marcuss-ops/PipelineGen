@@ -260,7 +260,7 @@ func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AI
 }
 
 func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle, process *ProcessBundle, textTracks *TextTrackBundle, log *zap.Logger) error {
-	if err := wireYoutubeCatalogJobBindings(sync, domains, jobs); err != nil {
+	if err := wireYoutubeCatalogJobBindings(sync, domains, jobs, log); err != nil {
 		return fmt.Errorf("compose catalogsync/youtube late-binding: %w", err)
 	}
 	if err := wireVoiceoverJobBindings(domains, jobs, log); err != nil {

@@ -31,17 +31,22 @@ func itemPriority(item capmodel.OverlayItem) float64 {
 	}
 }
 
-// PhraseEntranceFrames keeps one third of the certified phrase window for
-// entrance and leaves the remaining two thirds settled and readable. It is the
-// single owner of the one-third rule: the script-generation render boundary
-// uses it too instead of carrying a second implementation.
+// PhraseEntranceFrames gives a phrase a short entrance and leaves the rest of
+// its certified window settled and readable. The one-third share is capped at
+// 700ms so a long display window cannot turn a simple text entrance into a
+// multi-second transition.
 func PhraseEntranceFrames(durationUS int64, fpsNum, fpsDen int) int64 {
 	if durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
 		return 0
 	}
 	numerator := durationUS * int64(fpsNum)
 	denominator := 3_000_000 * int64(fpsDen)
-	return (numerator + denominator - 1) / denominator
+	frames := (numerator + denominator - 1) / denominator
+	maxFrames := (700_000*int64(fpsNum) + 1_000_000*int64(fpsDen) - 1) / (1_000_000 * int64(fpsDen))
+	if frames > maxFrames {
+		frames = maxFrames
+	}
+	return frames
 }
 
 // phraseMotionParams gives the entrance one third of the phrase's on-screen

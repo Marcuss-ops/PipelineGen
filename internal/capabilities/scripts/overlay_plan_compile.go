@@ -13,6 +13,8 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+const maxGenericSceneImagesPerScene = 4
+
 // resolveImageOverlayCeiling makes the two run-level image budgets agree.
 // max_image_overlays is the caller's request; overlay_group_limits.images is
 // the group cap. Before this gate the group silently overwrote the max, so a
@@ -225,8 +227,8 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
 			}
 			remaining := genericImageCeiling - genericImageCount
-			if remaining > 2 {
-				remaining = 2
+			if remaining > maxGenericSceneImagesPerScene {
+				remaining = maxGenericSceneImagesPerScene
 			}
 			for _, image := range sceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], remaining) {
 				sceneInput.Images = append(sceneInput.Images, image)
@@ -549,6 +551,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// replace MotionParams.
 	animationLayoutInput := capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, CoherenceSeed: strings.TrimSpace(canvas.CoherenceSeed),
+		Width: canvas.Width, Height: canvas.Height,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily,
 		AnimationCounts: canvas.AnimationCounts,
 	}

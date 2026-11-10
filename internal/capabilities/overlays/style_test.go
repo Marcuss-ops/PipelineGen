@@ -9,13 +9,16 @@ import (
 
 func TestStyleParamsProjectsRuntimeTextAndImageValues(t *testing.T) {
 	fontSize, imageWidth := 64.0, 320
+	boxWidth, boxHeight := 840, 260
 	got := StyleParams(&scriptpkg.OverlayStyleSpec{
 		Color: []float64{1, 0.5, 0}, FontFamily: "inter",
-		Size:  &scriptpkg.OverlaySizeSpec{FontSize: &fontSize},
+		Size:  &scriptpkg.OverlaySizeSpec{FontSize: &fontSize, Width: &boxWidth, Height: &boxHeight},
 		Image: &scriptpkg.OverlayImageStyleSpec{Width: &imageWidth},
 	})
 	require.Equal(t, "#FF8000", got["style"].(map[string]any)["fill"])
 	require.Equal(t, 64.0, got["font_size_px"])
+	require.Equal(t, boxWidth, got["width"])
+	require.Equal(t, boxHeight, got["height"])
 	require.Equal(t, "inter", got["font_family"])
 	require.Equal(t, 320, got["image_width"])
 }
