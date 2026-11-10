@@ -155,31 +155,31 @@ func (c *Client) claim(ctx context.Context, workerID, state string, wait time.Du
 }
 
 // Complete reports a successfully rendered job along with its artifact.
-func (c *Client) Complete(ctx context.Context, id, workerID string, artifact Artifact) error {
-	return c.report(ctx, id, workerID, "complete", artifact)
+func (c *Client) Complete(ctx context.Context, id, workerID string, generation int64, artifact Artifact) error {
+	return c.report(ctx, id, workerID, "complete", artifact, generation)
 }
 
 // Fail reports a job that could not be rendered.
-func (c *Client) Fail(ctx context.Context, id, workerID, reason string) error {
-	return c.report(ctx, id, workerID, "fail", map[string]string{"reason": reason})
+func (c *Client) Fail(ctx context.Context, id, workerID string, generation int64, reason string) error {
+	return c.report(ctx, id, workerID, "fail", map[string]string{"reason": reason}, generation)
 }
 
 // FailPermanently reports a non-retryable failure, bypassing max_attempts.
-func (c *Client) FailPermanently(ctx context.Context, id, workerID, reason string) error {
-	return c.report(ctx, id, workerID, "fail-permanent", map[string]string{"reason": reason})
+func (c *Client) FailPermanently(ctx context.Context, id, workerID string, generation int64, reason string) error {
+	return c.report(ctx, id, workerID, "fail-permanent", map[string]string{"reason": reason}, generation)
 }
 
 // Rendered reports a job whose render completed and was durably stored, but
 // whose external publication (Drive) failed. The job stays claimable for a
 // publication-only retry.
-func (c *Client) Rendered(ctx context.Context, id, workerID, reason string, artifact Artifact) error {
-	return c.report(ctx, id, workerID, "rendered", map[string]any{"reason": reason, "artifact": artifact})
+func (c *Client) Rendered(ctx context.Context, id, workerID string, generation int64, reason string, artifact Artifact) error {
+	return c.report(ctx, id, workerID, "rendered", map[string]any{"reason": reason, "artifact": artifact}, generation)
 }
 
 // Renew extends the lease on a running job owned by workerID. It fails if the
 // job expired and was requeued to another worker.
-func (c *Client) Renew(ctx context.Context, id, workerID string) error {
-	return c.report(ctx, id, workerID, "renew", nil)
+func (c *Client) Renew(ctx context.Context, id, workerID string, generation int64) error {
+	return c.report(ctx, id, workerID, "renew", nil, generation)
 }
 
 // Progress is the per-job render progress.
@@ -200,8 +200,8 @@ type Progress struct {
 // The queue stores it so GET /jobs/{id} exposes frames_done/last_frame_at
 // without asking the worker; a report from a worker that no longer owns the
 // lease is rejected (409), never applied.
-func (c *Client) ReportProgress(ctx context.Context, id, workerID string, p Progress) error {
-	return c.report(ctx, id, workerID, "progress", p)
+func (c *Client) ReportProgress(ctx context.Context, id, workerID string, generation int64, p Progress) error {
+	return c.report(ctx, id, workerID, "progress", p, generation)
 }
 
 // WorkerStatus represents the lifecycle state of a registered worker.
@@ -392,8 +392,11 @@ func (c *Client) Retry(ctx context.Context, id string) error {
 // report POSTs a worker action (complete/fail/renew) to the job endpoint. The
 // wire body carries the worker identity plus an optional data payload, matching
 // the queue server's handlers.
-func (c *Client) report(ctx context.Context, id, workerID, action string, payload any) error {
-	body := map[string]any{"worker": workerID}
+func (c *Client) report(ctx context.Context, id, workerID, action string, payload any, generation int64) error {
+	if generation <= 0 {
+		return fmt.Errorf("queue %s: lease generation is required", action)
+	}
+	body := map[string]any{"worker": workerID, "lease_generation": generation}
 	if payload != nil {
 		body["data"] = payload
 	}

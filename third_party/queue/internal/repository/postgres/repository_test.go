@@ -13,16 +13,30 @@ import (
 	"time"
 )
 
+// testDatabaseURL returns the PostgreSQL DSN for integration tests. A missing
+// DSN is a ordinary skip in a developer checkout, but a FAILURE when
+// RENDERINGGEN_REQUIRE_POSTGRES_TESTS=1: the CI job sets that variable and a
+// real service container, so an accidentally unwired TEST_DATABASE_URL can
+// never turn the whole PostgreSQL suite green by skipping it.
+func testDatabaseURL(tb testing.TB) string {
+	tb.Helper()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn != "" {
+		return dsn
+	}
+	if os.Getenv("RENDERINGGEN_REQUIRE_POSTGRES_TESTS") == "1" {
+		tb.Fatal("TEST_DATABASE_URL is unset while RENDERINGGEN_REQUIRE_POSTGRES_TESTS=1: PostgreSQL integration tests must not be skipped in CI")
+	}
+	tb.Skip("TEST_DATABASE_URL not set; skipping postgres integration test")
+	return ""
+}
+
 // setupRepo opens a PostgreSQL connection, applies the schema and truncates
-// the queue tables for a deterministic test. It skips unless TEST_DATABASE_URL
-// is set (e.g. in unit CI without a service container). It returns both the
-// repository and the *sql.DB so tests can inspect attempts/events.
+// the queue tables for a deterministic test. It returns both the repository
+// and the *sql.DB so tests can inspect attempts/events.
 func setupRepo(t *testing.T, lease time.Duration, maxAttempts int) (*Repository, *sql.DB) {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set; skipping postgres integration test")
-	}
+	dsn := testDatabaseURL(t)
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -67,7 +81,7 @@ func TestChunkMetadataRoundTripsThroughGetAndClaim(t *testing.T) {
 	}
 	assertChunkMetadata(t, claimed)
 	assertPublicationMetadata(t, claimed)
-	if err := r.Fail(context.Background(), job.ID, "worker-1", "retry"); err != nil {
+	if err := r.Fail(context.Background(), job.ID, "worker-1", claimed.LeaseGeneration, "retry"); err != nil {
 		t.Fatal(err)
 	}
 	again, _, err := r.Claim(context.Background(), "worker-2")
@@ -183,7 +197,7 @@ func TestSubmitClaimComplete(t *testing.T) {
 		t.Fatalf("envelope not round-tripped: schema=%q version=%d", claimed.Schema, claimed.Version)
 	}
 
-	if err := r.Complete(context.Background(), "job-1", "w1", model.Artifact{}); err != nil {
+	if err := r.Complete(context.Background(), "job-1", "w1", claimed.LeaseGeneration, model.Artifact{}); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 	if s := r.Stats(context.Background()); s.Completed != 1 {
@@ -226,18 +240,20 @@ func TestFailRequeuesUntilMaxAttempts(t *testing.T) {
 	}
 
 	// Attempt 1 -> requeue.
-	if _, _, err := r.Claim(context.Background(), "w1"); err != nil {
+	first, _, err := r.Claim(context.Background(), "w1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Fail(context.Background(), "job-1", "w1", "boom"); err != nil {
+	if err := r.Fail(context.Background(), "job-1", "w1", first.LeaseGeneration, "boom"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Attempt 2 -> permanent fail.
-	if _, _, err := r.Claim(context.Background(), "w2"); err != nil {
+	second, _, err := r.Claim(context.Background(), "w2")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Fail(context.Background(), "job-1", "w2", "boom"); err != nil {
+	if err := r.Fail(context.Background(), "job-1", "w2", second.LeaseGeneration, "boom"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -255,7 +271,7 @@ func TestFailWrongWorkerFails(t *testing.T) {
 	if _, _, err := r.Claim(context.Background(), "w1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Complete(context.Background(), "job-1", "w2", model.Artifact{}); err == nil {
+	if err := r.Complete(context.Background(), "job-1", "w2", 1, model.Artifact{}); err == nil {
 		t.Fatal("expected error completing with wrong worker")
 	}
 }
@@ -300,7 +316,7 @@ func TestRenewExtendsLease(t *testing.T) {
 	}
 
 	time.Sleep(60 * time.Millisecond) // near the end of the original lease
-	if err := r.Renew(context.Background(), "job-1", "w1"); err != nil {
+	if err := r.Renew(context.Background(), "job-1", "w1", 1); err != nil {
 		t.Fatalf("renew: %v", err)
 	}
 	time.Sleep(60 * time.Millisecond) // past original lease, within renewed lease
@@ -321,7 +337,8 @@ func TestRenderedThenClaimPublishOnlyThenComplete(t *testing.T) {
 	}
 
 	// Attempt 1: render done, Drive publication fails -> rendered.
-	if _, _, err := r.Claim(context.Background(), "w1"); err != nil {
+	first, _, err := r.Claim(context.Background(), "w1")
+	if err != nil {
 		t.Fatal(err)
 	}
 	stored := model.Artifact{
@@ -333,7 +350,7 @@ func TestRenderedThenClaimPublishOnlyThenComplete(t *testing.T) {
 		Height:       720,
 		DurationUS:   3_000_000,
 	}
-	if err := r.Rendered(context.Background(), "job-rendered", "w1", stored, "drive: upload failed"); err != nil {
+	if err := r.Rendered(context.Background(), "job-rendered", "w1", first.LeaseGeneration, stored, "drive: upload failed"); err != nil {
 		t.Fatalf("rendered: %v", err)
 	}
 
@@ -365,7 +382,7 @@ func TestRenderedThenClaimPublishOnlyThenComplete(t *testing.T) {
 	published := stored
 	published.DriveFileID = "drive-1"
 	published.DriveLink = "https://drive.example.com/file/d/drive-1"
-	if err := r.Complete(context.Background(), "job-rendered", "w2", published); err != nil {
+	if err := r.Complete(context.Background(), "job-rendered", "w2", again.LeaseGeneration, published); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 

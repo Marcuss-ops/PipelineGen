@@ -1,10 +1,17 @@
 # Vendored `github.com/Marcuss-ops/RenderingGen/queue`
 
-Provenance: byte-for-byte copy of `RenderingGen/queue` at commit `cd9749a`
-("fix(media): pin avcC profiles and certify segment output facts"). `README.md`
-is the upstream documentation (the tests read it to pin the live event and job
-state vocabulary); this file is the vendoring note and is the only local
-addition.
+Provenance: byte-for-byte copy of the `RenderingGen/queue` working tree at
+2026-11-10 (the post-audit lease-fencing contract; upstream base commit
+`cd9749a`, "fix(media): pin avcC profiles and certify segment output facts",
+plus the uncommitted queue-hardening changes). `README.md` is the upstream
+documentation (the tests read it to pin the live event and job state vocabulary);
+this file is the vendoring note and is the only local addition.
+
+Last sync: 2026-11-10. The copy includes migration
+`030_lease_generation.sql` and the contract-phase requirement that every worker
+transition (`complete`, `rendered`, `fail`, `fail-permanent`, `renew`,
+`progress`) carries `lease_generation`; the old generation-0 fallback and
+`*Owned`/`*WithLease` APIs are gone.
 
 ## Why this copy exists (BUILD-01)
 

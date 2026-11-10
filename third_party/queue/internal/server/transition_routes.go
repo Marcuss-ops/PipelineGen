@@ -36,17 +36,29 @@ func requireWorker(w http.ResponseWriter, worker string) bool {
 	return true
 }
 
+// requireLeaseGeneration rejects a worker transition that omits the fencing
+// token. The generation is part of the wire contract now; there is no
+// generation-0 compatibility path.
+func requireLeaseGeneration(w http.ResponseWriter, generation int64) bool {
+	if generation <= 0 {
+		http.Error(w, "lease_generation is required", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
 func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	var req struct {
-		Worker string         `json:"worker"`
-		Data   model.Artifact `json:"data"`
+		Worker          string         `json:"worker"`
+		LeaseGeneration int64          `json:"lease_generation"`
+		Data            model.Artifact `json:"data"`
 	}
-	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) || !requireLeaseGeneration(w, req.LeaseGeneration) {
 		return
 	}
 
-	if err := s.svc.Complete(r.Context(), id, req.Worker, req.Data); err != nil {
+	if err := s.svc.Complete(r.Context(), id, req.Worker, req.LeaseGeneration, req.Data); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
@@ -56,16 +68,17 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 func (s *Server) fail(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	var req struct {
-		Worker string `json:"worker"`
-		Data   struct {
+		Worker          string `json:"worker"`
+		LeaseGeneration int64  `json:"lease_generation"`
+		Data            struct {
 			Reason string `json:"reason"`
 		} `json:"data"`
 	}
-	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) || !requireLeaseGeneration(w, req.LeaseGeneration) {
 		return
 	}
 
-	if err := s.svc.Fail(r.Context(), id, req.Worker, req.Data.Reason); err != nil {
+	if err := s.svc.Fail(r.Context(), id, req.Worker, req.LeaseGeneration, req.Data.Reason); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
@@ -75,19 +88,19 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request) {
 func (s *Server) failPermanently(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	var req struct {
-		Worker string `json:"worker"`
-		Data   struct {
+		Worker          string `json:"worker"`
+		LeaseGeneration int64  `json:"lease_generation"`
+		Data            struct {
 			Reason string `json:"reason"`
 		} `json:"data"`
 	}
 	if !decodeRequestBody(w, r, &req) {
 		return
 	}
-	if req.Worker == "" || req.Data.Reason == "" {
-		http.Error(w, "worker and failure reason are required", http.StatusBadRequest)
+	if req.Worker == "" || req.Data.Reason == "" || !requireLeaseGeneration(w, req.LeaseGeneration) {
 		return
 	}
-	if err := s.svc.FailPermanently(r.Context(), id, req.Worker, req.Data.Reason); err != nil {
+	if err := s.svc.FailPermanently(r.Context(), id, req.Worker, req.LeaseGeneration, req.Data.Reason); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
@@ -133,17 +146,18 @@ func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
 func (s *Server) rendered(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	var req struct {
-		Worker string `json:"worker"`
-		Data   struct {
+		Worker          string `json:"worker"`
+		LeaseGeneration int64  `json:"lease_generation"`
+		Data            struct {
 			Reason   string         `json:"reason"`
 			Artifact model.Artifact `json:"artifact"`
 		} `json:"data"`
 	}
-	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) || !requireLeaseGeneration(w, req.LeaseGeneration) {
 		return
 	}
 
-	if err := s.svc.Rendered(r.Context(), id, req.Worker, req.Data.Artifact, req.Data.Reason); err != nil {
+	if err := s.svc.Rendered(r.Context(), id, req.Worker, req.LeaseGeneration, req.Data.Artifact, req.Data.Reason); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
@@ -156,13 +170,14 @@ func (s *Server) rendered(w http.ResponseWriter, r *http.Request) {
 func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	var req struct {
-		Worker string         `json:"worker"`
-		Data   model.Progress `json:"data"`
+		Worker          string         `json:"worker"`
+		LeaseGeneration int64          `json:"lease_generation"`
+		Data            model.Progress `json:"data"`
 	}
-	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) || !requireLeaseGeneration(w, req.LeaseGeneration) {
 		return
 	}
-	if err := s.svc.SetProgress(r.Context(), id, req.Worker, req.Data); err != nil {
+	if err := s.svc.SetProgress(r.Context(), id, req.Worker, req.LeaseGeneration, req.Data); err != nil {
 		writeTransitionError(w, err, http.StatusConflict)
 		return
 	}
@@ -172,13 +187,14 @@ func (s *Server) progress(w http.ResponseWriter, r *http.Request) {
 func (s *Server) renew(w http.ResponseWriter, r *http.Request) {
 	id := parseJobID(r)
 	var req struct {
-		Worker string `json:"worker"`
+		Worker          string `json:"worker"`
+		LeaseGeneration int64  `json:"lease_generation"`
 	}
-	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) {
+	if !decodeRequestBody(w, r, &req) || !requireWorker(w, req.Worker) || !requireLeaseGeneration(w, req.LeaseGeneration) {
 		return
 	}
 
-	if err := s.svc.Renew(r.Context(), id, req.Worker); err != nil {
+	if err := s.svc.Renew(r.Context(), id, req.Worker, req.LeaseGeneration); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}

@@ -72,7 +72,7 @@ func TestCompleteSendsWorkerAndArtifact(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL)
-	err := c.Complete(context.Background(), "job-1", "w1", Artifact{
+	err := c.Complete(context.Background(), "job-1", "w1", 1, Artifact{
 		ID: "art-1", ProfileID: CertifiedProfileVeloxH2641080p30V1, CopyEligible: true, ClosedGOP: true,
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func TestFailSendsReason(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL)
-	if err := c.Fail(context.Background(), "job-1", "w1", "boom"); err != nil {
+	if err := c.Fail(context.Background(), "job-1", "w1", 1, "boom"); err != nil {
 		t.Fatal(err)
 	}
 	if got.Data.Reason != "boom" {
@@ -120,7 +120,7 @@ func TestFailPermanentlyUsesTerminalEndpoint(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := New(srv.URL).FailPermanently(context.Background(), "job-1", "w1", "Drive unavailable"); err != nil {
+	if err := New(srv.URL).FailPermanently(context.Background(), "job-1", "w1", 1, "Drive unavailable"); err != nil {
 		t.Fatal(err)
 	}
 	data, ok := got["data"].(map[string]any)
@@ -135,10 +135,13 @@ func TestRenewSendsWorker(t *testing.T) {
 		if r.URL.Path != "/jobs/job-1/renew" || r.Method != http.MethodPost {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
-		var body map[string]string
+		var body struct {
+			Worker          string `json:"worker"`
+			LeaseGeneration int64  `json:"lease_generation"`
+		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		if body["worker"] != "w1" {
-			t.Errorf("worker = %q", body["worker"])
+		if body.Worker != "w1" || body.LeaseGeneration != 1 {
+			t.Errorf("body = %+v, want worker w1 generation 1", body)
 		}
 		atomic.AddInt32(&calls, 1)
 		w.WriteHeader(http.StatusNoContent)
@@ -146,7 +149,7 @@ func TestRenewSendsWorker(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL)
-	if err := c.Renew(context.Background(), "job-1", "w1"); err != nil {
+	if err := c.Renew(context.Background(), "job-1", "w1", 1); err != nil {
 		t.Fatal(err)
 	}
 	if atomic.LoadInt32(&calls) != 1 {

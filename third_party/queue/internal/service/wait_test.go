@@ -53,7 +53,7 @@ func TestWaitStateWakesOnComplete(t *testing.T) {
 	// Park the waiter on the wake channel, then complete the job.
 	time.Sleep(100 * time.Millisecond)
 	start := time.Now()
-	if err := svc.Complete(context.Background(), "job-1", "w1", model.Artifact{
+	if err := svc.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{
 		StorageKey: "abc", ArtifactHash: "abc", SizeBytes: 1, ContentType: "video/mp4",
 	}); err != nil {
 		t.Fatal(err)

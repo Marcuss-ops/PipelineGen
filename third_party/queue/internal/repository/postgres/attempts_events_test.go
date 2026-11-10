@@ -97,7 +97,7 @@ func TestAttemptsAndEventsOnClaimComplete(t *testing.T) {
 		t.Fatalf("unexpected attempt: %+v", attempts[0])
 	}
 
-	if err := r.Complete(context.Background(), "job-1", "w1", model.Artifact{}); err != nil {
+	if err := r.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -121,18 +121,20 @@ func TestAttemptsPreservedAcrossFailures(t *testing.T) {
 	}
 
 	// Attempt 1 fails -> requeue.
-	if _, _, err := r.Claim(context.Background(), "w1"); err != nil {
+	first, _, err := r.Claim(context.Background(), "w1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Fail(context.Background(), "job-1", "w1", "boom"); err != nil {
+	if err := r.Fail(context.Background(), "job-1", "w1", first.LeaseGeneration, "boom"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Attempt 2 claims and completes.
-	if _, _, err := r.Claim(context.Background(), "w2"); err != nil {
+	second, _, err := r.Claim(context.Background(), "w2")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Complete(context.Background(), "job-1", "w2", model.Artifact{}); err != nil {
+	if err := r.Complete(context.Background(), "job-1", "w2", second.LeaseGeneration, model.Artifact{}); err != nil {
 		t.Fatal(err)
 	}
 

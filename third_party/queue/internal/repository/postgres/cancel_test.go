@@ -50,10 +50,10 @@ func TestCancelRunningJobFreezesAttemptsAcrossLeaseCycle(t *testing.T) {
 
 	// The in-flight worker's reports must be rejected: the job is no longer
 	// running, so neither complete nor fail can move/requeue it.
-	if err := r.Complete(context.Background(), "pg-cancel-running", "worker-1", cancelArtifact()); err == nil {
+	if err := r.Complete(context.Background(), "pg-cancel-running", "worker-1", 1, cancelArtifact()); err == nil {
 		t.Fatal("complete on cancelled job must be rejected")
 	}
-	if err := r.Fail(context.Background(), "pg-cancel-running", "worker-1", "late failure"); err == nil {
+	if err := r.Fail(context.Background(), "pg-cancel-running", "worker-1", 1, "late failure"); err == nil {
 		t.Fatal("fail on cancelled job must be rejected")
 	}
 
@@ -151,7 +151,7 @@ func TestCancelIdempotentAndTerminalConflict(t *testing.T) {
 	if _, _, err := r.Claim(context.Background(), "worker-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Complete(context.Background(), "pg-completed", "worker-1", cancelArtifact()); err != nil {
+	if err := r.Complete(context.Background(), "pg-completed", "worker-1", 1, cancelArtifact()); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.Cancel(context.Background(), "pg-completed"); err == nil {

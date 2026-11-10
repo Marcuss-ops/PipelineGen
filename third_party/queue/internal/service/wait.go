@@ -66,6 +66,14 @@ func (s *Service) WaitState(ctx context.Context, id string, maxWait time.Duratio
 	deadline := time.NewTimer(maxWait)
 	defer deadline.Stop()
 	wake := s.notify.Done()
+	// The waiter must leave the Notifier when it stops waiting. Notify wakes
+	// exactly ONE parked waiter (FIFO), so an abandoned channel would consume a
+	// wake meant for a live caller and delay that caller until its bounded
+	// re-poll. This is a CLOSURE on purpose: the channel is replaced after
+	// every wake, while a `defer s.notify.Forget(wake)` would capture only the
+	// first channel as an argument and leak the replacement parked by the last
+	// wake. A woken channel is already dequeued, so forgetting it is a no-op.
+	defer func() { s.notify.Forget(wake) }()
 	pollDelay := waitPollFloor
 	// Reused poll timer: time.After in this loop would allocate and leak a
 	// timer per iteration until GC.

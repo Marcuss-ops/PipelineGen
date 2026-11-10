@@ -146,37 +146,44 @@ Response `200 OK`:
   "version": 1,
   "render_plan": { "schema_version": "renderinggen.overlay-plan.v1", "plan_id": "video-983", "video_id": "video-983", "width": 1920, "height": 1080, "fps_num": 30, "fps_den": 1, "source": { "asset_id": "base", "sha256": "<sha256>" } },
   "assets": [ { "hash": "<sha256>", "logical_path": "videos/base.mp4" } ],
-  "lease": 30000000000
+  "lease": 30000000000,
+  "lease_generation": 42
 }
 ```
 
 Response `204 No Content` when the queue is empty. The claim is atomic
 (`FOR UPDATE SKIP LOCKED` on PostgreSQL) so concurrent workers never receive
-the same job.
+the same job. `lease_generation` is the fencing token for this claim: every
+worker transition below must echo it, and a token from an expired attempt is
+rejected with `409 Conflict` even when the worker id is unchanged.
 
 #### `POST /jobs/{id}/complete`
 
-Request: `{"worker":"renderinggen-77","data":{ ...artifact... }}` — `data` is
-the certified [Artifact](#artifact-copy-only-certification). Response
-`204 No Content`, or `409 Conflict` if the job is not running or is owned by
-another worker.
+Request: `{"worker":"renderinggen-77","lease_generation":42,"data":{ ...artifact... }}`
+— `data` is the certified [Artifact](#artifact-copy-only-certification).
+Response `204 No Content`; `400 Bad Request` when `lease_generation` is
+missing; `409 Conflict` if the job is not running or the generation no longer
+owns it.
 
 #### `POST /jobs/{id}/fail`
 
-Request: `{"worker":"renderinggen-77","data":{"reason":"CUDA error"}}`.
-Response `204 No Content`. Jobs that have not exhausted `max_attempts` are
-requeued; otherwise they fail permanently.
+Request: `{"worker":"renderinggen-77","lease_generation":42,"data":{"reason":"CUDA error"}}`.
+Response `204 No Content`; `400 Bad Request` without the token. Jobs that have
+not exhausted `max_attempts` are requeued; otherwise they fail permanently.
+The terminal `/fail-permanent` endpoint takes the same body contract.
 
 #### `POST /jobs/{id}/renew`
 
-Request: `{"worker":"renderinggen-77"}`. Response `204 No Content`, or
-`409 Conflict` if the lease already expired and the job was requeued.
+Request: `{"worker":"renderinggen-77","lease_generation":42}`. Response
+`204 No Content`; `400 Bad Request` without the token; `409 Conflict` if the
+lease already expired, the job was requeued, or a newer attempt owns it.
 
 #### `POST /jobs/{id}/progress`
 
-Request: `{"worker":"renderinggen-77","data":{"frames_done":485,"frames_total":1800}}`.
-Response `204 No Content`, `409 Conflict` when the job is not running or is
-owned by another worker, `404 Not Found` for unknown jobs. The queue stores
+Request: `{"worker":"renderinggen-77","lease_generation":42,"data":{"frames_done":485,"frames_total":1800}}`.
+Response `204 No Content`; `400 Bad Request` without the token; `409 Conflict`
+when the job is not running or the generation no longer owns it; `404 Not Found`
+for unknown jobs. The queue stores
 the snapshot (plus its own `last_frame_at` timestamp) so `GET /jobs/{id}`
 exposes live render position without asking the worker; a report from a
 worker that no longer owns the lease is rejected, never applied.

@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"os"
 	"testing"
 	"time"
 
@@ -27,14 +26,12 @@ import (
 // pushes write no events at all (pinned by TestSetProgressWritesNoEvents), so
 // there is nothing on that path for "event batching" to batch.
 
-// setupRepoB is setupRepo for benchmarks (the harness is identical; the
-// package skips both unless TEST_DATABASE_URL is set).
+// setupRepoB is setupRepo for benchmarks (the harness is identical; both
+// skip outside CI unless TEST_DATABASE_URL is set, and fail closed when
+// RENDERINGGEN_REQUIRE_POSTGRES_TESTS=1).
 func setupRepoB(b *testing.B, lease time.Duration, maxAttempts int) *Repository {
 	b.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		b.Skip("TEST_DATABASE_URL not set; skipping postgres integration benchmark")
-	}
+	dsn := testDatabaseURL(b)
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		b.Fatal(err)
@@ -80,7 +77,7 @@ func TestSetProgressWritesNoEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		if err := r.SetProgress(ctx, "progress-no-events", "w1", model.Progress{FramesDone: i, TotalFrames: 100}); err != nil {
+		if err := r.SetProgress(ctx, "progress-no-events", "w1", 1, model.Progress{FramesDone: i, TotalFrames: 100}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -118,7 +115,7 @@ func BenchmarkSetProgress(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := r.SetProgress(ctx, "bench-progress", "w1", model.Progress{FramesDone: i, TotalFrames: b.N}); err != nil {
+		if err := r.SetProgress(ctx, "bench-progress", "w1", 1, model.Progress{FramesDone: i, TotalFrames: b.N}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -139,7 +136,7 @@ func BenchmarkRenew(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := r.Renew(ctx, "bench-renew", "w1"); err != nil {
+		if err := r.Renew(ctx, "bench-renew", "w1", 1); err != nil {
 			b.Fatal(err)
 		}
 	}

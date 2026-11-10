@@ -240,7 +240,7 @@ func TestComplete(t *testing.T) {
 	if _, _, err := s.Claim(context.Background(), "w1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Complete(context.Background(), "job-1", "w1", model.Artifact{}); err != nil {
+	if err := s.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{}); err != nil {
 		t.Fatalf("complete: %v", err)
 	}
 	if s.Stats(context.Background()).Completed != 1 {
@@ -254,7 +254,7 @@ func TestCompleteWrongWorkerFails(t *testing.T) {
 	if _, _, err := s.Claim(context.Background(), "w1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Complete(context.Background(), "job-1", "w2", model.Artifact{}); err == nil {
+	if err := s.Complete(context.Background(), "job-1", "w2", 1, model.Artifact{}); err == nil {
 		t.Fatal("expected error completing with wrong worker")
 	}
 }
@@ -264,18 +264,20 @@ func TestFailRequeuesUntilMaxAttempts(t *testing.T) {
 	submit(t, s, "job-1")
 
 	// Attempt 1 -> requeue.
-	if _, _, err := s.Claim(context.Background(), "w1"); err != nil {
+	first, _, err := s.Claim(context.Background(), "w1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Fail(context.Background(), "job-1", "w1", "boom"); err != nil {
+	if err := s.Fail(context.Background(), "job-1", "w1", first.LeaseGeneration, "boom"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Attempt 2 -> permanent fail.
-	if _, _, err := s.Claim(context.Background(), "w2"); err != nil {
+	second, _, err := s.Claim(context.Background(), "w2")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Fail(context.Background(), "job-1", "w2", "boom"); err != nil {
+	if err := s.Fail(context.Background(), "job-1", "w2", second.LeaseGeneration, "boom"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -291,7 +293,7 @@ func TestFailPermanentlyBypassesRetryBudget(t *testing.T) {
 	if _, _, err := s.Claim(context.Background(), "worker-1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.FailPermanently(context.Background(), "drive-required", "worker-1", "Drive publisher unavailable"); err != nil {
+	if err := s.FailPermanently(context.Background(), "drive-required", "worker-1", 1, "Drive publisher unavailable"); err != nil {
 		t.Fatal(err)
 	}
 	job, err := s.Get(context.Background(), "drive-required")
@@ -314,7 +316,7 @@ func TestRenewExtendsLease(t *testing.T) {
 	}
 
 	time.Sleep(60 * time.Millisecond) // near the end of the original lease
-	if err := s.Renew(context.Background(), "job-1", "w1"); err != nil {
+	if err := s.Renew(context.Background(), "job-1", "w1", 1); err != nil {
 		t.Fatalf("renew: %v", err)
 	}
 	time.Sleep(60 * time.Millisecond) // past original lease, within renewed lease
@@ -334,7 +336,7 @@ func TestRenewWrongWorkerFails(t *testing.T) {
 	if _, _, err := s.Claim(context.Background(), "w1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Renew(context.Background(), "job-1", "w2"); err == nil {
+	if err := s.Renew(context.Background(), "job-1", "w2", 1); err == nil {
 		t.Fatal("expected error renewing with wrong worker")
 	}
 }
@@ -342,6 +344,12 @@ func TestRenewWrongWorkerFails(t *testing.T) {
 func TestFinalizationLeaseRecoversAfterWorkerLoss(t *testing.T) {
 	s := New(10*time.Millisecond, 3)
 	submit(t, s, "parent-1")
+	if err := s.Submit(context.Background(), model.Job{
+		ID: "parent-1-chunk-0", ParentJobID: "parent-1", ChunkIndex: 0,
+		FrameRange: &model.FrameRange{Start: 0, End: 120}, RenderPlan: json.RawMessage(`{"n":1}`),
+	}); err != nil {
+		t.Fatalf("submit child: %v", err)
+	}
 
 	claimed, ok, err := s.ClaimFinalization(context.Background(), "parent-1", "w1")
 	if err != nil || !ok || claimed == nil {

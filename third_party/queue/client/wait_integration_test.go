@@ -48,7 +48,7 @@ func TestWaitTerminalEndToEndWithRealQueue(t *testing.T) {
 	// Park the server-side long poll, then complete the job.
 	time.Sleep(150 * time.Millisecond)
 	start := time.Now()
-	if err := svc.Complete(context.Background(), "job-1", "w1", model.Artifact{
+	if err := svc.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{
 		StorageKey: "abc", ArtifactHash: "abc", SizeBytes: 1, ContentType: "video/mp4",
 	}); err != nil {
 		t.Fatal(err)

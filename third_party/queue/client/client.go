@@ -386,6 +386,15 @@ type Job struct {
 	LeaseUntil  time.Time `json:"lease_until,omitempty"`
 	FailReason  string    `json:"fail_reason,omitempty"`
 
+	// LeaseGeneration is the monotonic fencing token of the attempt that owns
+	// the current lease. It increments on every successful claim (including a
+	// finalization claim) and is returned with the claimed job. Every worker
+	// transition must echo it: once the lease expires and another attempt claims
+	// the row, the old generation no longer matches, so a late Complete/Rendered/
+	// Fail/FailPermanently/Renew/SetProgress cannot confirm, requeue, extend or
+	// write progress for the new attempt even when the worker id is the same.
+	LeaseGeneration int64 `json:"lease_generation,omitempty"`
+
 	Artifact *Artifact `json:"artifact,omitempty"`
 
 	// Progress is the last render progress reported by the owning worker

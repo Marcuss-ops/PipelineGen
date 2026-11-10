@@ -17,6 +17,7 @@ package memory
 import (
 	"container/list"
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/Marcuss-ops/RenderingGen/queue/internal/model"
 	"github.com/Marcuss-ops/RenderingGen/queue/internal/repository"
@@ -100,29 +101,143 @@ func (s *Repository) removeOrderLocked(id string) {
 // it to the FIFO. Every insert path (single, idempotent, batch) shares this
 // write side.
 func (s *Repository) insertLocked(job *model.Job, now time.Time) {
-	job.State, job.CreatedAt, job.QueuedAt = model.StatePending, now, now
-	s.jobs[job.ID] = job
-	s.indexChildLocked(*job)
-	s.appendOrderLocked(job.ID)
+	// Store a deep copy: the caller still owns the slices/pointers it passed
+	// in and may mutate them after Submit returns.
+	stored := cloneJob(job)
+	stored.State, stored.CreatedAt, stored.QueuedAt = model.StatePending, now, now
+	s.jobs[stored.ID] = stored
+	s.indexChildLocked(*stored)
+	s.appendOrderLocked(stored.ID)
 }
 
-// artifactCopyLocked returns a copy of the stored artifact, or nil when the job
-// has none. The caller holds s.mu.
+// cloneFloatMap copies an artifact metrics map. nil stays nil so a copy of an
+// artifact without metrics does not grow an empty map.
+func cloneFloatMap(m map[string]float64) map[string]float64 {
+	if m == nil {
+		return nil
+	}
+	copy := make(map[string]float64, len(m))
+	for k, v := range m {
+		copy[k] = v
+	}
+	return copy
+}
+
+// cloneOutputFacts deep-copies the nested certification, including the
+// per-segment batch facts, so a consumer mutating the returned document cannot
+// alter the artifact ledger.
+func cloneOutputFacts(facts *model.OutputFacts) *model.OutputFacts {
+	if facts == nil {
+		return nil
+	}
+	copy := *facts
+	// Re-slice to a zero-capacity slice so append allocates an independent
+	// backing array; the element type is the wire type and needs no local
+	// re-declaration here.
+	copy.BatchSegments = append(facts.BatchSegments[:0:0], facts.BatchSegments...)
+	for i := range copy.BatchSegments {
+		copy.BatchSegments[i].OutputFacts = cloneOutputFacts(facts.BatchSegments[i].OutputFacts)
+	}
+	return &copy
+}
+
+// cloneProvenance deep-copies the provenance record (its item-id slice and
+// producer telemetry bytes).
+func cloneProvenance(p *model.ArtifactProvenance) *model.ArtifactProvenance {
+	if p == nil {
+		return nil
+	}
+	copy := *p
+	copy.ItemIDs = append([]string(nil), p.ItemIDs...)
+	copy.ProducerTelemetry = append(json.RawMessage(nil), p.ProducerTelemetry...)
+	return &copy
+}
+
+// cloneArtifact returns a deep copy of an artifact. The wire type carries a
+// metrics map, telemetry bytes, nested output facts and provenance; a shallow
+// struct copy would hand all of those to the caller.
+func cloneArtifact(artifact *model.Artifact) *model.Artifact {
+	if artifact == nil {
+		return nil
+	}
+	copy := *artifact
+	copy.Metrics = cloneFloatMap(artifact.Metrics)
+	copy.ChrononTelemetry = append(json.RawMessage(nil), artifact.ChrononTelemetry...)
+	copy.OutputFacts = cloneOutputFacts(artifact.OutputFacts)
+	copy.Provenance = cloneProvenance(artifact.Provenance)
+	return &copy
+}
+
+// cloneJob returns a deep copy of a job. Every reference field on the wire
+// type (render plan, assets, frame range, deferral time, progress and the
+// artifact graph) is duplicated, so a returned job never aliases queue state.
+func cloneJob(job *model.Job) *model.Job {
+	if job == nil {
+		return nil
+	}
+	copy := *job
+	copy.RenderPlan = append(json.RawMessage(nil), job.RenderPlan...)
+	copy.Assets = append([]model.AssetRef(nil), job.Assets...)
+	if job.FrameRange != nil {
+		frameRange := *job.FrameRange
+		copy.FrameRange = &frameRange
+	}
+	if job.NotBefore != nil {
+		notBefore := *job.NotBefore
+		copy.NotBefore = &notBefore
+	}
+	if job.Progress != nil {
+		progress := *job.Progress
+		copy.Progress = &progress
+	}
+	copy.Artifact = cloneArtifact(job.Artifact)
+	return &copy
+}
+
+// artifactCopyLocked returns a deep copy of the stored artifact, or nil when
+// the job has none. The caller holds s.mu.
 func (s *Repository) artifactCopyLocked(id string) *model.Artifact {
 	artifact, ok := s.artifacts[id]
 	if !ok {
 		return nil
 	}
-	return &artifact
+	return cloneArtifact(&artifact)
 }
 
-// jobCopyWithArtifactLocked returns a caller-owned copy of job with its
+// jobCopyWithArtifactLocked returns a caller-owned deep copy of job with its
 // artifact attached. Reads return copies so a caller cannot mutate queue state
 // through a pointer. The caller holds s.mu.
 func (s *Repository) jobCopyWithArtifactLocked(job *model.Job) *model.Job {
-	copy := *job
+	copy := cloneJob(job)
 	copy.Artifact = s.artifactCopyLocked(job.ID)
-	return &copy
+	return copy
+}
+
+// idemKeyLocked returns the live job id registered for an idempotency key.
+// The caller holds s.mu.
+func (s *Repository) idemKeyLocked(key string) (string, bool) {
+	if key == "" {
+		return "", false
+	}
+	id, ok := s.idem[key]
+	if !ok {
+		return "", false
+	}
+	if _, exists := s.jobs[id]; !exists {
+		return "", false
+	}
+	return id, true
+}
+
+// indexIdempotencyLocked records the key -> id mapping for an inserted job.
+// The caller holds s.mu. Every insert path must call it: Submit used to skip
+// the index entirely, which let a later submit reuse a key that PostgreSQL's
+// unique index rejects.
+func (s *Repository) indexIdempotencyLocked(job model.Job) {
+	if job.IdempotencyKey == "" {
+		return
+	}
+	s.idem[job.IdempotencyKey] = job.ID
 }
 
 // jobsByParentLocked materializes the parent's indexed jobs as caller-owned
@@ -158,10 +273,13 @@ func (s *Repository) claimCandidateLocked(id, workerID string, state model.State
 	job.State = model.StateRunning
 	job.Worker = workerID
 	job.Attempts++
+	job.LeaseGeneration++
 	job.StartedAt = now
 	job.LeaseUntil = job.StartedAt.Add(s.lease)
-	job.Artifact = s.artifactCopyLocked(id)
-	return job, true
+	// Hand back a caller-owned snapshot, not the map's pointer: ClaimState
+	// releases the write lock before the caller sees it, and an escaped
+	// pointer would let a worker mutate queue state without the mutex.
+	return s.jobCopyWithArtifactLocked(job), true
 }
 
 // indexChildLocked records job as a child of its declared parent. The caller
@@ -189,13 +307,8 @@ func (s *Repository) SubmitIdempotent(_ context.Context, job model.Job) (*model.
 	}
 	// O(1) idempotency lookup through a dedicated index instead of scanning
 	// the whole job map per submit (mirrors the postgres unique index).
-	if job.IdempotencyKey != "" {
-		if id, ok := s.idem[job.IdempotencyKey]; ok {
-			if existing, exists := s.jobs[id]; exists {
-				copy := *existing
-				return &copy, false, nil
-			}
-		}
+	if id, ok := s.idemKeyLocked(job.IdempotencyKey); ok {
+		return s.jobCopyWithArtifactLocked(s.jobs[id]), false, nil
 	}
 	if _, exists := s.jobs[job.ID]; exists {
 		return nil, false, fmt.Errorf("%w: job %s", repository.ErrJobExists, job.ID)
@@ -205,11 +318,10 @@ func (s *Repository) SubmitIdempotent(_ context.Context, job model.Job) (*model.
 		return nil, false, err
 	}
 	s.insertLocked(&job, now)
-	if job.IdempotencyKey != "" {
-		s.idem[job.IdempotencyKey] = job.ID
-	}
-	copy := job
-	return &copy, true, nil
+	s.indexIdempotencyLocked(job)
+	// Read the stored row back: insertLocked stores a clone and stamps its
+	// state/timestamps there, so the local input is not the canonical copy.
+	return s.jobCopyWithArtifactLocked(s.jobs[job.ID]), true, nil
 }
 
 // Submit enqueues a job. The ID is required and must be unique.
@@ -222,11 +334,17 @@ func (s *Repository) Submit(_ context.Context, job model.Job) error {
 	if _, exists := s.jobs[job.ID]; exists {
 		return fmt.Errorf("%w: job %s", repository.ErrJobExists, job.ID)
 	}
+	// Mirror the postgres unique index: a non-empty key identifies ONE
+	// logical job, so reusing it is a conflict even outside SubmitIdempotent.
+	if id, ok := s.idemKeyLocked(job.IdempotencyKey); ok {
+		return fmt.Errorf("%w: idempotency key %q is already used by job %s", repository.ErrJobExists, job.IdempotencyKey, id)
+	}
 	now := time.Now()
 	if err := model.ValidateChunk(job); err != nil {
 		return err
 	}
 	s.insertLocked(&job, now)
+	s.indexIdempotencyLocked(job)
 	return nil
 }
 
@@ -244,13 +362,19 @@ func (s *Repository) SubmitBatch(_ context.Context, jobs []model.Job) error {
 			return fmt.Errorf("%w: job %s", repository.ErrJobExists, job.ID)
 		}
 	}
+	// Idempotency keys are checked against the whole store BEFORE the first
+	// insert, so a conflicting batch leaves no partial family behind — the
+	// same all-or-nothing outcome as the PostgreSQL transaction rolling back
+	// on its unique index.
+	for _, job := range jobs {
+		if id, ok := s.idemKeyLocked(job.IdempotencyKey); ok {
+			return fmt.Errorf("%w: idempotency key %q is already used by job %s", repository.ErrJobExists, job.IdempotencyKey, id)
+		}
+	}
 	now := time.Now()
 	for _, job := range jobs {
-		copy := job
-		s.insertLocked(&copy, now)
-		if job.IdempotencyKey != "" {
-			s.idem[job.IdempotencyKey] = job.ID
-		}
+		s.insertLocked(&job, now)
+		s.indexIdempotencyLocked(job)
 	}
 	return nil
 }
@@ -284,9 +408,11 @@ func (s *Repository) ClaimState(_ context.Context, workerID string, state model.
 	// between snapshot and claim cannot hand out a stale job.
 	s.mu.RLock()
 	candidates := make([]string, 0, s.order.Len())
+	seen := make(map[string]struct{}, s.order.Len())
 	for el := s.order.Front(); el != nil; el = el.Next() {
 		if id, ok := el.Value.(string); ok {
 			candidates = append(candidates, id)
+			seen[id] = struct{}{}
 		}
 	}
 	s.mu.RUnlock()
@@ -309,20 +435,15 @@ func (s *Repository) ClaimState(_ context.Context, workerID string, state model.
 	// Snapshot missed a job submitted concurrently between RUnlock and Lock
 	// (tail growth). One live scan under the already-held write lock closes
 	// the race without another lock round-trip; it runs only when the
-	// snapshot found nothing claimable.
+	// snapshot found nothing claimable. `seen` is a set, not a linear lookup:
+	// a queue full of deferred or anchor jobs used to make this fallback
+	// O(pending^2), once per empty claim.
 	for el := s.order.Front(); el != nil; el = el.Next() {
 		id, ok := el.Value.(string)
 		if !ok {
 			continue
 		}
-		claimed := false
-		for _, c := range candidates {
-			if c == id {
-				claimed = true
-				break
-			}
-		}
-		if claimed {
+		if _, inSnapshot := seen[id]; inSnapshot {
 			continue
 		}
 		if job, ok := s.claimCandidateLocked(id, workerID, state, now); ok {
@@ -405,6 +526,13 @@ func (s *Repository) ClaimFinalization(_ context.Context, parentJobID, workerID 
 	if job == nil {
 		return nil, false, fmt.Errorf("parent job %s: %w", parentJobID, repository.ErrNotFound)
 	}
+	// Mirror the PostgreSQL invariant: only a job that OWNS assembable chunk
+	// children may be claimed by the finalizer. Without this, the transition
+	// below rewrites Worker and LeaseUntil on an ordinary running job and steals
+	// it from the render worker that still holds it.
+	if !s.hasChildrenLocked(parentJobID) {
+		return nil, false, fmt.Errorf("job %s has no chunk children: only an assembly anchor may be finalized", parentJobID)
+	}
 	if job.State == model.StateFinalizing {
 		return nil, false, nil
 	}
@@ -412,35 +540,43 @@ func (s *Repository) ClaimFinalization(_ context.Context, parentJobID, workerID 
 		return nil, false, fmt.Errorf("parent job %s is in state %q", parentJobID, job.State)
 	}
 	job.State = model.StateFinalizing
+	job.LeaseGeneration++
 	job.Worker = workerID
 	job.LeaseUntil = time.Now().Add(s.lease)
-	copy := *job
-	return &copy, true, nil
+	return s.jobCopyWithArtifactLocked(job), true, nil
 }
 
 // Complete marks a running job as completed and records its artifact.
-func (s *Repository) Complete(_ context.Context, id, workerID string, artifact model.Artifact) error {
+func (s *Repository) Complete(_ context.Context, id, workerID string, generation int64, artifact model.Artifact) error {
+	return s.complete(id, workerID, generation, artifact)
+}
+
+func (s *Repository) complete(id, workerID string, generation int64, artifact model.Artifact) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, err := s.runningJob(id, workerID)
+	job, err := s.runningJob(id, workerID, generation)
 	if err != nil {
 		return err
 	}
 	job.State = model.StateCompleted
 	job.CompletedAt = time.Now()
-	s.artifacts[id] = artifact
+	s.artifacts[id] = *cloneArtifact(&artifact)
 	return nil
 }
 
 // Rendered marks a running job as rendered: its artifact is durably stored, but
 // external publication failed, so the job stays out of `completed` and is
 // re-claimable for a publication-only retry.
-func (s *Repository) Rendered(_ context.Context, id, workerID string, artifact model.Artifact, reason string) error {
+func (s *Repository) Rendered(_ context.Context, id, workerID string, generation int64, artifact model.Artifact, reason string) error {
+	return s.rendered(id, workerID, generation, artifact, reason)
+}
+
+func (s *Repository) rendered(id, workerID string, generation int64, artifact model.Artifact, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, err := s.runningJob(id, workerID)
+	job, err := s.runningJob(id, workerID, generation)
 	if err != nil {
 		return err
 	}
@@ -451,18 +587,22 @@ func (s *Repository) Rendered(_ context.Context, id, workerID string, artifact m
 	// Mirror PostgreSQL: a rendered job holds no lease — it is only claimable
 	// again through an explicit (re)claim, never through lease expiry.
 	job.LeaseUntil = time.Time{}
-	s.artifacts[id] = artifact
+	s.artifacts[id] = *cloneArtifact(&artifact)
 	s.appendOrderLocked(id)
 	return nil
 }
 
 // Fail marks a running job failed. Jobs that have not exhausted their attempts
 // are requeued; otherwise they are permanently failed.
-func (s *Repository) Fail(_ context.Context, id, workerID, reason string) error {
+func (s *Repository) Fail(_ context.Context, id, workerID string, generation int64, reason string) error {
+	return s.fail(id, workerID, generation, reason)
+}
+
+func (s *Repository) fail(id, workerID string, generation int64, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, err := s.runningJob(id, workerID)
+	job, err := s.runningJob(id, workerID, generation)
 	if err != nil {
 		return err
 	}
@@ -478,14 +618,17 @@ func (s *Repository) Fail(_ context.Context, id, workerID, reason string) error 
 	job.LeaseUntil = time.Time{}
 	s.appendOrderLocked(id)
 	return nil
+} // FailPermanently marks a running job terminally failed, regardless of the
+// normal max-attempt retry budget. It is reserved for non-retryable failures.
+func (s *Repository) FailPermanently(_ context.Context, id, workerID string, generation int64, reason string) error {
+	return s.failPermanently(id, workerID, generation, reason)
 }
 
-// FailPermanently marks a running job terminally failed, regardless of the
-// normal max-attempt retry budget. It is reserved for non-retryable failures.
-func (s *Repository) FailPermanently(_ context.Context, id, workerID, reason string) error {
+func (s *Repository) failPermanently(id, workerID string, generation int64, reason string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	job, err := s.runningJob(id, workerID)
+
+	job, err := s.runningJob(id, workerID, generation)
 	if err != nil {
 		return err
 	}
@@ -497,11 +640,11 @@ func (s *Repository) FailPermanently(_ context.Context, id, workerID, reason str
 }
 
 // Renew extends the lease for a running job owned by workerID.
-func (s *Repository) Renew(_ context.Context, id, workerID string) error {
+func (s *Repository) Renew(_ context.Context, id, workerID string, generation int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, err := s.runningJob(id, workerID)
+	job, err := s.runningJob(id, workerID, generation)
 	if err != nil {
 		return err
 	}
@@ -563,11 +706,11 @@ func (s *Repository) Cancel(_ context.Context, id string) error {
 // SetProgress stores the latest render progress from the lease-owning worker.
 // It rejects reports for jobs that are not running or whose lease moved to
 // another worker, mirroring the PostgreSQL backend.
-func (s *Repository) SetProgress(_ context.Context, id, workerID string, p model.Progress) error {
+func (s *Repository) SetProgress(_ context.Context, id, workerID string, generation int64, p model.Progress) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, err := s.runningJob(id, workerID)
+	job, err := s.runningJob(id, workerID, generation)
 	if err != nil {
 		return err
 	}
@@ -641,8 +784,10 @@ func (s *Repository) Stats(_ context.Context) model.Stats {
 	return stats
 }
 
-// runningJob returns the job if it is running and owned by workerID.
-func (s *Repository) runningJob(id, workerID string) (*model.Job, error) {
+// runningJob returns the job if it is running, owned by workerID and still
+// on the claim generation. The worker id alone cannot distinguish two attempts
+// of the same worker after a lease expiry.
+func (s *Repository) runningJob(id, workerID string, generation int64) (*model.Job, error) {
 	job := s.jobs[id]
 	if job == nil {
 		return nil, fmt.Errorf("job %s not found", id)
@@ -652,6 +797,9 @@ func (s *Repository) runningJob(id, workerID string) (*model.Job, error) {
 	}
 	if job.Worker != workerID {
 		return nil, fmt.Errorf("job %s is owned by %s, not %s", id, job.Worker, workerID)
+	}
+	if job.LeaseGeneration != generation {
+		return nil, fmt.Errorf("job %s lease generation %d is stale (current %d)", id, generation, job.LeaseGeneration)
 	}
 	return job, nil
 }
