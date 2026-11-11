@@ -1,7 +1,11 @@
 // Package ingest owns neutral source-ingestion contracts for stockpipeline.
 package ingest
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+)
 
 type Source struct {
 	ID  string
@@ -16,9 +20,10 @@ type Source struct {
 }
 
 type PreparedSource struct {
-	SourceID  string
-	LocalPath string
-	Bytes     int64
+	SourceID     string
+	LocalPath    string
+	Bytes        int64
+	SourceWindow *media.SourceWindow
 }
 
 type SourcePreparer interface {

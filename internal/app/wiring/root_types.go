@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"sync"
 
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
@@ -24,7 +25,7 @@ type IOpaqueStartFunc func() error
 type ComposeRoot struct {
 	CanonicalAssetWriter assetspersistence.CanonicalAssetWriter
 	MediaExec            mediaexec.ExecutionConfig
-	ClipRenderRuntime    *ClipRenderRuntime
+	ClipRenderRuntime    *clipswiring.ClipRenderRuntime
 
 	// ScriptGenerationRunner is the durable single-item script.generate runtime.
 	// Cached here so the script parent aggregator (lifecycle step) can complete

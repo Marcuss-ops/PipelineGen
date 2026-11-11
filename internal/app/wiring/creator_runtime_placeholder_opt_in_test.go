@@ -4,7 +4,7 @@
 // Package app — creator_runtime_placeholder_opt_in_test.go (P1-COMPL-12-PLACEHOLDER-CAPABILITY).
 //
 // Companion `_test.go` for the build-tag-gated affordance in
-// `creator_runtime_placeholder_test_only.go`. Same build tag, so this
+// `creator_runtime_placeholder_test.go`. Same build tag, so this
 // file only compiles under `go test -tags voiceover_placeholder ./internal/app/...`.
 //
 // Purpose:

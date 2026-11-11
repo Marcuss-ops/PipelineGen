@@ -5,7 +5,7 @@
 //
 // The wire contract mirrors the queue HTTP server:
 //
-//	POST /jobs            submit a job (409 -> ErrJobExists)
+//	POST /jobs            submit a job (200 exact replay -> ErrJobExists; 409 -> conflict)
 //	GET  /jobs/{id}       current state + artifact
 //	GET  /jobs/{id}/wait  long-poll until the job is terminal (producer)
 //	GET  /jobs/depth      queue depth/stats
@@ -15,6 +15,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,9 +29,17 @@ import (
 	"unicode/utf8"
 )
 
-// ErrJobExists is returned by Submit when the job ID was already submitted.
-// Callers treat it as idempotent success for replay/retry scenarios.
-var ErrJobExists = errors.New("job already exists")
+// ErrJobExists means the queue atomically accepted an exact replay of the
+// immutable request. It is returned for HTTP 200, never for an unverified 409.
+var ErrJobExists = errors.New("identical job request already exists")
+
+// ErrIdempotencyConflict means an idempotency key was reused for a different
+// immutable request.
+var ErrIdempotencyConflict = errors.New("idempotency key reused for a different request")
+
+// ErrDuplicateJobID means an operational ID exists but the queue could not
+// prove that the incoming request is its exact replay.
+var ErrDuplicateJobID = errors.New("job ID already exists with an unverified request")
 
 // ErrNotFound is returned by Get when the job does not exist.
 var ErrNotFound = errors.New("job not found")
@@ -69,6 +78,7 @@ const (
 	PublicationObjectStoreAndDrive = "object_store_and_drive"
 
 	JobTypeRenderSegment = "render_segment"
+	JobTypeRenderPrepare = "render.prepare"
 
 	JobTypeOverlayPrepare = "overlay.prepare"
 	JobTypeOverlayRender  = "overlay.render"
@@ -110,6 +120,11 @@ func ValidateJobEnvelope(job Job) error {
 		}
 		if a.LogicalPath == "" {
 			return fmt.Errorf("assets[%d]: logical_path is required", i)
+		}
+	}
+	if job.PreparedRenderPackage != nil {
+		if err := job.PreparedRenderPackage.Validate(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -354,17 +369,55 @@ type FrameRange struct {
 	End   int64 `json:"end"`
 }
 
+// PreparedRenderPackageRef points at one immutable, content-addressed package
+// prepared once for a render family. The worker verifies the stored package
+// against the plan, assets, compiler and profile before consuming it.
+type PreparedRenderPackageRef struct {
+	PackageID        string `json:"package_id"`
+	PlanSHA256       string `json:"plan_sha256"`
+	AssetManifestSHA string `json:"asset_manifest_sha256"`
+	TotalFrames      int64  `json:"total_frames"`
+	CompilerVersion  string `json:"compiler_version"`
+	ProfileID        string `json:"profile_id"`
+}
+
+func (p PreparedRenderPackageRef) Validate() error {
+	for name, value := range map[string]string{
+		"package_id": p.PackageID, "plan_sha256": p.PlanSHA256,
+		"asset_manifest_sha256": p.AssetManifestSHA,
+	} {
+		if strings.ToLower(value) != value {
+			return fmt.Errorf("prepared_render_package.%s must use lowercase hex", name)
+		}
+		decoded, err := hex.DecodeString(value)
+		if err != nil || len(decoded) != 32 {
+			return fmt.Errorf("prepared_render_package.%s must be a 32-byte SHA-256", name)
+		}
+	}
+	if strings.TrimSpace(p.CompilerVersion) == "" {
+		return fmt.Errorf("prepared_render_package compiler_version is required")
+	}
+	if strings.TrimSpace(p.ProfileID) == "" {
+		return fmt.Errorf("prepared_render_package profile_id is required")
+	}
+	if p.TotalFrames <= 0 {
+		return fmt.Errorf("prepared_render_package total_frames must be positive")
+	}
+	return nil
+}
+
 type Job struct {
-	ID                    string      `json:"id"`
-	Schema                string      `json:"schema,omitempty"`
-	Version               int         `json:"version,omitempty"`
-	IdempotencyKey        string      `json:"idempotency_key,omitempty"`
-	JobType               string      `json:"job_type,omitempty"`
-	PublicationPolicy     string      `json:"publication_policy,omitempty"`
-	DaemonAdmissionWaitMS float64     `json:"daemon_admission_wait_ms,omitempty"`
-	ParentJobID           string      `json:"parent_job_id,omitempty"`
-	ChunkIndex            int         `json:"chunk_index,omitempty"`
-	FrameRange            *FrameRange `json:"frame_range,omitempty"`
+	ID                    string                    `json:"id"`
+	Schema                string                    `json:"schema,omitempty"`
+	Version               int                       `json:"version,omitempty"`
+	IdempotencyKey        string                    `json:"idempotency_key,omitempty"`
+	JobType               string                    `json:"job_type,omitempty"`
+	PublicationPolicy     string                    `json:"publication_policy,omitempty"`
+	DaemonAdmissionWaitMS float64                   `json:"daemon_admission_wait_ms,omitempty"`
+	ParentJobID           string                    `json:"parent_job_id,omitempty"`
+	ChunkIndex            int                       `json:"chunk_index,omitempty"`
+	FrameRange            *FrameRange               `json:"frame_range,omitempty"`
+	PreparedRenderPackage *PreparedRenderPackageRef `json:"prepared_render_package,omitempty"`
 
 	// NotBefore defers the job: when set to a future time the queue stores it
 	// but NO worker can claim it until the time is due. Omitted or a past time
@@ -451,8 +504,9 @@ func New(baseURL string) *Client {
 	}
 }
 
-// Submit enqueues a job. A 409 (job already exists) is translated to
-// ErrJobExists so callers can treat replays as idempotent.
+// Submit enqueues a job. HTTP 200 means Queue atomically verified an exact
+// replay and is translated to ErrJobExists. HTTP 409 is always an unverified
+// collision and maps to a fail-closed conflict sentinel.
 func (c *Client) Submit(ctx context.Context, job Job) error {
 	if err := ValidateJobEnvelope(job); err != nil {
 		return err
@@ -474,10 +528,12 @@ func (c *Client) Submit(ctx context.Context, job Job) error {
 	defer resp.Body.Close()
 
 	switch resp.StatusCode {
-	case http.StatusCreated, http.StatusOK:
+	case http.StatusCreated:
 		return nil
-	case http.StatusConflict:
+	case http.StatusOK:
 		return fmt.Errorf("%w: job %s", ErrJobExists, job.ID)
+	case http.StatusConflict:
+		return classifySubmitConflict(resp.Body, job.ID)
 	default:
 		raw, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("queue submit: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
@@ -513,13 +569,28 @@ func (c *Client) SubmitBatch(ctx context.Context, jobs []Job) error {
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {
-	case http.StatusCreated, http.StatusOK:
+	case http.StatusCreated:
 		return nil
-	case http.StatusConflict:
+	case http.StatusOK:
 		return fmt.Errorf("%w: batch", ErrJobExists)
+	case http.StatusConflict:
+		return classifySubmitConflict(resp.Body, "batch")
 	default:
 		raw, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("queue submit batch: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+}
+
+func classifySubmitConflict(body io.Reader, subject string) error {
+	raw, _ := io.ReadAll(body)
+	message := strings.TrimSpace(string(raw))
+	switch {
+	case strings.HasPrefix(message, "idempotency_conflict:"):
+		return fmt.Errorf("%w: %s: %s", ErrIdempotencyConflict, subject, strings.TrimSpace(strings.TrimPrefix(message, "idempotency_conflict:")))
+	case strings.HasPrefix(message, "job_id_conflict:"):
+		return fmt.Errorf("%w: %s: %s", ErrDuplicateJobID, subject, strings.TrimSpace(strings.TrimPrefix(message, "job_id_conflict:")))
+	default:
+		return fmt.Errorf("%w: %s: %s", ErrDuplicateJobID, subject, message)
 	}
 }
 

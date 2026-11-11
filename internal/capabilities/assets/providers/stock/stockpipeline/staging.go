@@ -38,7 +38,7 @@ func (s *StockStager) downloadSource(ctx context.Context, cacheKey string, ref a
 			downloadErr = fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, err)
 			return nil, downloadErr
 		}
-		result = &assetsports.StagedAsset{LocalPath: dlResult.ResolvedPath, Bytes: dlResult.SizeBytes}
+		result = &assetsports.StagedAsset{LocalPath: dlResult.ResolvedPath, Bytes: dlResult.SizeBytes, SourceWindow: dlResult.SourceWindow}
 		s.populateCache(ctx, cacheKey, "youtube", extractVideoID(ref.URL), ref, dlResult.ResolvedPath, dlResult.SizeBytes)
 		return result, nil
 	})
@@ -384,7 +384,7 @@ func (d serviceSourceDownloader) Download(ctx context.Context, req *SourceDownlo
 	if staged == nil || staged.LocalPath == "" || staged.Bytes <= 0 {
 		return nil, fmt.Errorf("stock service source downloader: empty staged result")
 	}
-	return &DownloadedSource{ResolvedPath: staged.LocalPath, SizeBytes: staged.Bytes}, nil
+	return &DownloadedSource{ResolvedPath: staged.LocalPath, SizeBytes: staged.Bytes, SourceWindow: staged.SourceWindow}, nil
 }
 
 // Package stockpipeline — source_staging.go (Stock P0 split, July 2026).
@@ -508,8 +508,9 @@ func (s *Service) stageSection(ctx context.Context, ref assetsports.SourceRef) (
 		zap.Time("expires_at", prepared.ExpiresAt),
 	)
 	return &assetsports.StagedAsset{
-		LocalPath: prepared.LocalPath,
-		Bytes:     fi.Size(),
+		LocalPath:    prepared.LocalPath,
+		Bytes:        fi.Size(),
+		SourceWindow: prepared.SourceWindow,
 	}, nil
 }
 

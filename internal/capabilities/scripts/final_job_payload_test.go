@@ -279,6 +279,39 @@ func TestBuildFinalJobPayloadsUsesPublishedPhraseVideoForPhraseOnlyScene(t *test
 	}
 }
 
+func TestBuildFinalJobPayloadsDropsFullyReplacedStockFromRuntimeAssets(t *testing.T) {
+	result := phraseOnlyFinalJobResult("scene-phrase")
+	result.Scenes[0].Stock = &scriptpkg.StockBinding{FolderID: "folder-1"}
+	pre, finalize, err := BuildFinalJobPayloads(context.Background(), "run-phrase", GenerateRequest{
+		Title: "Garlasco", SourceLanguage: "it",
+	}, result, finalJobPayloadResolver{})
+	if err != nil {
+		t.Fatalf("BuildFinalJobPayloads: %v", err)
+	}
+	plan := decodeFinalJobPlanForTest(t, pre)
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 || plan.VideoTracks[0].Segments[0].AssetID != "phrase-video" {
+		t.Fatalf("video plan = %+v, want the phrase replacement only", plan.VideoTracks)
+	}
+	for _, asset := range plan.Assets {
+		if strings.HasPrefix(asset.AssetID, "drive-asset") {
+			t.Fatalf("covered stock remains in compiled plan assets: %+v", plan.Assets)
+		}
+	}
+	runtimeAssets, ok := finalize["runtime_assets"].([]any)
+	if !ok {
+		t.Fatalf("runtime_assets = %#v, want an array", finalize["runtime_assets"])
+	}
+	for _, raw := range runtimeAssets {
+		asset, ok := raw.(map[string]any)
+		if !ok {
+			t.Fatalf("runtime asset has type %T", raw)
+		}
+		if strings.HasPrefix(finalJobStringValue(asset["asset_id"]), "drive-asset") {
+			t.Fatalf("covered stock remains in runtime asset prefetch set: %#v", runtimeAssets)
+		}
+	}
+}
+
 func TestFinalJobPhraseVideoRejectsUncertifiedArtifact(t *testing.T) {
 	result := phraseOnlyFinalJobResult("scene-phrase")
 	result.OverlayRender.Artifact = &RenderArtifact{ID: "incomplete", DriveFileID: "phrase-drive-id", MimeType: "video/mp4", CopyEligible: false}

@@ -23,6 +23,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -49,7 +50,8 @@ import (
 const jobColumns = `id, type, status, priority, project, video_name, active_key,
 	correlation_id, '' AS payload_json, '' AS result_json, progress, error, retry_count, max_retries,
 	worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, ` + parentStateTypedColumn + `,
-	parent_job_id, root_job_id, client_id, idempotency_key, deferred_until`
+	parent_job_id, root_job_id, client_id, idempotency_key, deferred_until,
+	resource_class, execution_lane, available_at`
 
 // scanner is the minimum surface of *sql.Row and *sql.Rows that scanJobColumns
 // needs. Defined here so we can share the same code between single-row and
@@ -58,13 +60,39 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
+func normalizeJobSchedulingDescriptor(j *job.Job) (job.SchedulingDescriptor, error) {
+	if j == nil {
+		return job.SchedulingDescriptor{}, fmt.Errorf("job is required")
+	}
+	descriptor := j.Scheduling
+	if descriptor.JobType != "" && descriptor.JobType != j.Type {
+		return job.SchedulingDescriptor{}, fmt.Errorf("scheduling descriptor job_type %q does not match job type %q", descriptor.JobType, j.Type)
+	}
+	if descriptor.Priority != 0 && descriptor.Priority != j.Priority {
+		return job.SchedulingDescriptor{}, fmt.Errorf("scheduling descriptor priority %d does not match job priority %d", descriptor.Priority, j.Priority)
+	}
+	descriptor.JobType = j.Type
+	descriptor.Priority = j.Priority
+	if descriptor.AvailableAt.IsZero() {
+		descriptor.AvailableAt = j.CreatedAt
+		if descriptor.AvailableAt.IsZero() {
+			descriptor.AvailableAt = time.Now().UTC()
+		}
+	}
+	if err := descriptor.Validate(); err != nil {
+		return job.SchedulingDescriptor{}, err
+	}
+	return descriptor, nil
+}
+
 // scanJobColumns reads the canonical job column list into job, then
 // unmarshals the JSON payload/result and parses the time columns. Used by
 // Get, List, and FindActiveByKey.
 func scanJobColumns(s scanner, j *job.Job) error {
 	var payloadJSON, resultJSON string
 	var leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt *string
-	var deferredUntil *string
+	var deferredUntil, availableAt *string
+	var resourceClass, executionLane string
 	if err := s.Scan(
 		&j.ID, &j.Type, &j.Status, &j.Priority, &j.Project, &j.VideoName, &j.ActiveKey,
 		&j.CorrelationID,
@@ -74,12 +102,18 @@ func scanJobColumns(s scanner, j *job.Job) error {
 		&j.ParentStateTyped,
 		&j.ParentJobID, &j.RootJobID,
 		&j.ClientID, &j.IdempotencyKey,
-		&deferredUntil,
+		&deferredUntil, &resourceClass, &executionLane, &availableAt,
 	); err != nil {
 		return err
 	}
 	unmarshalJobFields(j, payloadJSON, resultJSON, leaseExpiry, createdAt, updatedAt, startedAt, completedAt, cancelledAt)
 	j.DeferredUntil = timeutil.ParseRFC3339PtrString(deferredUntil)
+	j.Scheduling = job.SchedulingDescriptor{JobType: j.Type, Priority: j.Priority, ResourceClass: resourceClass, ExecutionLane: executionLane}
+	if availableAt != nil {
+		if parsed := timeutil.ParseRFC3339PtrString(availableAt); parsed != nil {
+			j.Scheduling.AvailableAt = parsed.UTC()
+		}
+	}
 	return nil
 }
 
@@ -111,12 +145,17 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 		return fmt.Errorf("jobs.CreateInTx: tx is nil (caller MUST supply the open *sql.Tx)")
 	}
 
+	descriptor, err := normalizeJobSchedulingDescriptor(j)
+	if err != nil {
+		return fmt.Errorf("jobs.CreateInTx: scheduling descriptor: %w", err)
+	}
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, progress, error, retry_count, max_retries,
 			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id,
-			client_id, idempotency_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		client_id, idempotency_key, resource_class, execution_lane, available_at,
+		claim_effective_priority, claim_next_age_millis)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
@@ -127,8 +166,9 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 	if revision <= 0 {
 		revision = 1
 	}
+	claimPriority, claimNextAge := initialClaimAging(j.Priority, j.CreatedAt, time.Now())
 
-	_, err := tx.ExecContext(ctx, query,
+	_, err = tx.ExecContext(ctx, query,
 		j.ID, j.Type, j.Status, j.Priority, j.Project, j.VideoName, j.ActiveKey,
 		j.CorrelationID,
 		j.Progress, j.Error,
@@ -136,7 +176,8 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
 		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID,
-		j.ClientID, j.IdempotencyKey)
+		j.ClientID, j.IdempotencyKey, descriptor.ResourceClass, descriptor.ExecutionLane, timeutil.FormatRFC3339(descriptor.AvailableAt),
+		claimPriority, claimNextAge)
 	if err != nil {
 		return fmt.Errorf("jobs.CreateInTx: %w", err)
 	}
@@ -166,12 +207,17 @@ func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) er
 // in lifecycle_aggregation.go, and RequeueExpiredLeases in
 // repository_claims.go).
 func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
+	descriptor, err := normalizeJobSchedulingDescriptor(j)
+	if err != nil {
+		return fmt.Errorf("failed to create job: scheduling descriptor: %w", err)
+	}
 	query := `
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, progress, error, retry_count, max_retries,
 			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id,
-			client_id, idempotency_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		client_id, idempotency_key, resource_class, execution_lane, available_at,
+		claim_effective_priority, claim_next_age_millis)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	payloadJSON := string(j.Payload)
@@ -184,6 +230,7 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 	if revision <= 0 {
 		revision = 1
 	}
+	claimPriority, claimNextAge := initialClaimAging(j.Priority, j.CreatedAt, time.Now())
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -198,7 +245,8 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
 		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID,
-		j.ClientID, j.IdempotencyKey)
+		j.ClientID, j.IdempotencyKey, descriptor.ResourceClass, descriptor.ExecutionLane, timeutil.FormatRFC3339(descriptor.AvailableAt),
+		claimPriority, claimNextAge)
 	if err != nil {
 		return fmt.Errorf("failed to create job: %w", err)
 	}
@@ -230,6 +278,9 @@ func (r *SQLiteStore) Create(ctx context.Context, j *job.Job) error {
 func (r *SQLiteStore) PeekQueued(ctx context.Context, limit int) ([]job.Job, error) {
 	if limit <= 0 {
 		return []job.Job{}, nil
+	}
+	if err := r.refreshClaimAging(ctx, time.Now()); err != nil {
+		return nil, fmt.Errorf("PeekQueued: refresh aging: %w", err)
 	}
 
 	rows, err := r.db.QueryContext(ctx,

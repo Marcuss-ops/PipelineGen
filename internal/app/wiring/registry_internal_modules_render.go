@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	renderingwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/rendering"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
@@ -42,7 +42,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	// Parallel-preparation adapters (composition root owns mechanics,
 	// the capability owns the ports). Every adapter is fail-closed at
 	// call time when a dependency is missing.
-	resolver, err := newClipRenderMediaResolver(root, log)
+	resolver, err := clipswiring.NewClipRenderMediaResolver(root.MediaPostgres, log)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build asset resolver: %w", err)
 	}
@@ -50,11 +50,11 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if root.Drive != nil {
 		driveReader = root.Drive.Reader
 	}
-	materializer, err := clipadapters.NewClipRenderMaterializer(driveReader, assetMaterializationRoot(cfg), log)
+	materializer, err := clipadapters.NewClipRenderMaterializer(driveReader, clipswiring.AssetMaterializationRoot(cfg), log)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build asset materializer: %w", err)
 	}
-	preparedResolver, err := cliprender.NewPreparedAssetResolver(assetMaterializationResolverRoot(cfg), materializer)
+	preparedResolver, err := cliprender.NewPreparedAssetResolver(clipswiring.AssetMaterializationResolverRoot(cfg), materializer)
 	if err != nil {
 		return fmt.Errorf("registerClipRender: build prepared asset resolver: %w", err)
 	}
@@ -127,7 +127,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		case fErr != nil:
 			log.Warn("registerClipRender: chronon timing metrics NOT wired (object store URL invalid)", zap.Error(fErr))
 		default:
-			if adapter := renderingwiring.NewChrononMetricsAdapter(root.DB.DB, log); adapter == nil {
+			if adapter := clipswiring.NewChrononMetricsAdapter(root.DB.DB, log); adapter == nil {
 				log.Warn("registerClipRender: chronon timing metrics NOT wired (performance store unavailable)")
 			} else {
 				worker.SetChrononMetrics(adapter, fetcher)
@@ -149,13 +149,14 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 	if mediaConfig == (mediaexec.ExecutionConfig{}) {
 		return fmt.Errorf("registerClipRender: resolved media execution config is required when ClipRenderEnabled=true (root.MediaExec)")
 	}
-	renderRuntime, runtimeErr := BuildClipRenderRuntime(cfg, root, log)
+	renderRuntime, runtimeErr := clipswiring.BuildClipRenderRuntime(cfg, root.MediaExec, root.ClipRenderRuntime, log)
 	if runtimeErr != nil {
 		return fmt.Errorf("registerClipRender: build shared render runtime: %w", runtimeErr)
 	}
+	root.ClipRenderRuntime = renderRuntime
 	worker.WithRenderExecutor(renderRuntime.RenderingGenExecutor)
 	worker.WithContinuationStore(renderRuntime.ContinuationStore)
-	worker.WithContinuationEnqueuer(&clipRenderContinuationEnqueuer{jobs: root.Jobs.Facade})
+	worker.WithContinuationEnqueuer(clipswiring.NewClipRenderContinuationEnqueuer(root.Jobs.Facade))
 	if root.Drive == nil || root.Drive.Publisher == nil || root.DB == nil || root.Outbox == nil || root.Outbox.EventsRepo == nil {
 		return fmt.Errorf("registerClipRender: Drive publisher, SQLite DB and outbox are required for rendered asset publication")
 	}

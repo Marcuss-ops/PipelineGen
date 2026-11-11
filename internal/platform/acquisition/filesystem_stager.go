@@ -53,6 +53,7 @@ import (
 	"go.uber.org/zap"
 
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // FetchFn is the byte-source closure the FilesystemStager calls to
@@ -66,11 +67,18 @@ import (
 // returning a NON-NIL error if the download failed; FilesystemStager
 // cleans up the .partial file in that case.
 //
-// The onWireSHA256 callback (if non-nil) is invoked with the SHA256
-// of the bytes as the closure wrote them — this lets the concrete
-// verify the download matches the upstream's declared hash (used by
-// future yt-dlp + content-stable Addressing paths).
-type FetchFn func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(hashHex string)) error
+// FetchResult carries identity facts established by the downloader. SourceWindow
+// is returned only when dstPath contains the complete source bytes and the
+// requested time interval is applied later by the canonical cutter.
+type FetchResult struct {
+	SHA256       string
+	SourceWindow *media.SourceWindow
+}
+
+// FetchFn downloads staged bytes. The optional result callback lets the
+// concrete provide a verified digest or SourceWindow without adding transport
+// details to the application request.
+type FetchFn func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(FetchResult)) error
 
 // FilesystemStager is the canonical FS-backed SourceStager concrete.
 // It is safe for concurrent use by uploaders + the broker's

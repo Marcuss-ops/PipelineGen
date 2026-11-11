@@ -2,6 +2,7 @@ package wiring
 
 import (
 	"context"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	"testing"
 )
 
@@ -14,7 +15,7 @@ import (
 // closed media plane would silently look like a catalog with nothing in it.
 // Returning the error is what lets the caller refuse to resolve the source.
 func TestPostgresCatalogPort_FailsClosedWithoutSearcher(t *testing.T) {
-	var port *postgresCatalogPort // the nil-receiver form must not panic
+	port := scriptwiring.NewPostgresCatalogPort(nil) // the nil-searcher form must fail closed
 	results, err := port.SearchAll(context.Background(), "ocean")
 	if err == nil {
 		t.Fatalf("expected an error without a media searcher, got results=%v", results)
@@ -23,7 +24,7 @@ func TestPostgresCatalogPort_FailsClosedWithoutSearcher(t *testing.T) {
 		t.Fatalf("expected no results on failure, got %v", results)
 	}
 
-	results, err = (&postgresCatalogPort{}).SearchAll(context.Background(), "ocean")
+	results, err = scriptwiring.NewPostgresCatalogPort(nil).SearchAll(context.Background(), "ocean")
 	if err == nil {
 		t.Fatalf("expected an error without a media searcher, got results=%v", results)
 	}

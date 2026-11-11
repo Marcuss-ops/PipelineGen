@@ -102,7 +102,7 @@ func NewVidRushIncrementalCoordinator(enricher SegmentEnricher, plan *scriptpkg.
 // NewVidRushIncrementalCoordinatorWithBackpressure constructs an incremental
 // coordinator with explicit per-stage concurrency limits.
 func NewVidRushIncrementalCoordinatorWithBackpressure(enricher SegmentEnricher, plan *scriptpkg.ResolvedGenerationPlan, backpressure VidRushBackpressure) *VidRushIncrementalCoordinator {
-	bp := backpressure.resolved()
+	bp := backpressure.Resolved()
 	return &VidRushIncrementalCoordinator{
 		enricher:       enricher,
 		plan:           plan,

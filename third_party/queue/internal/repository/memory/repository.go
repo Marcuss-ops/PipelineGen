@@ -61,6 +61,7 @@ var (
 	_ repository.WorkerRepository           = (*Repository)(nil)
 	_ repository.IdempotencyRepository      = (*Repository)(nil)
 	_ repository.BatchRepository            = (*Repository)(nil)
+	_ repository.BatchIdempotencyRepository = (*Repository)(nil)
 	_ repository.PermanentFailureRepository = (*Repository)(nil)
 )
 
@@ -178,6 +179,10 @@ func cloneJob(job *model.Job) *model.Job {
 	copy := *job
 	copy.RenderPlan = append(json.RawMessage(nil), job.RenderPlan...)
 	copy.Assets = append([]model.AssetRef(nil), job.Assets...)
+	if job.PreparedRenderPackage != nil {
+		preparedPackage := *job.PreparedRenderPackage
+		copy.PreparedRenderPackage = &preparedPackage
+	}
 	if job.FrameRange != nil {
 		frameRange := *job.FrameRange
 		copy.FrameRange = &frameRange
@@ -308,7 +313,11 @@ func (s *Repository) SubmitIdempotent(_ context.Context, job model.Job) (*model.
 	// O(1) idempotency lookup through a dedicated index instead of scanning
 	// the whole job map per submit (mirrors the postgres unique index).
 	if id, ok := s.idemKeyLocked(job.IdempotencyKey); ok {
-		return s.jobCopyWithArtifactLocked(s.jobs[id]), false, nil
+		canonical := s.jobs[id]
+		if !model.SameSubmitRequest(*canonical, job) {
+			return nil, false, fmt.Errorf("%w: key %q belongs to job %s", repository.ErrIdempotencyConflict, job.IdempotencyKey, id)
+		}
+		return s.jobCopyWithArtifactLocked(canonical), false, nil
 	}
 	if _, exists := s.jobs[job.ID]; exists {
 		return nil, false, fmt.Errorf("%w: job %s", repository.ErrJobExists, job.ID)
@@ -377,6 +386,46 @@ func (s *Repository) SubmitBatch(_ context.Context, jobs []model.Job) error {
 		s.indexIdempotencyLocked(job)
 	}
 	return nil
+}
+
+// SubmitBatchIdempotent creates a family under the write lock or accepts an
+// exact complete replay. Partial families and changed members fail closed.
+func (s *Repository) SubmitBatchIdempotent(_ context.Context, jobs []model.Job) (bool, error) {
+	if err := model.ValidateJobBatch(jobs); err != nil {
+		return false, err
+	}
+	for _, job := range jobs {
+		if job.IdempotencyKey == "" {
+			return false, fmt.Errorf("job %s has no idempotency key", job.ID)
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	existingCount := 0
+	for _, requested := range jobs {
+		byID := s.jobs[requested.ID]
+		keyID, hasKey := s.idemKeyLocked(requested.IdempotencyKey)
+		if byID == nil && !hasKey {
+			continue
+		}
+		if byID == nil || !hasKey || keyID != requested.ID || !model.SameSubmitRequest(*byID, requested) {
+			return false, fmt.Errorf("%w: batch member %s differs from the stored request", repository.ErrIdempotencyConflict, requested.ID)
+		}
+		existingCount++
+	}
+	if existingCount == len(jobs) {
+		return false, nil
+	}
+	if existingCount != 0 {
+		return false, fmt.Errorf("%w: only %d of %d batch members exist", repository.ErrIdempotencyConflict, existingCount, len(jobs))
+	}
+	now := time.Now()
+	for _, job := range jobs {
+		s.insertLocked(&job, now)
+		s.indexIdempotencyLocked(job)
+	}
+	return true, nil
 }
 
 // RecoverableParents returns parent IDs with child jobs that can be adopted or retried.

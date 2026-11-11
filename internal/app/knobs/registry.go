@@ -115,7 +115,7 @@ var registry = []Knob{
 	},
 	{
 		Name: "VELOX_FAKE_FINAL_JOB", Kind: KindEnv, Default: "",
-		Owner:          "internal/app/wiring/fake_final_job.go",
+		Owner:          "internal/app/wiring/script/fake_final_job.go",
 		SafeProduction: "unset",
 		Description:    "Simulate the remote final-job handoff so a run measures only the local pipeline.",
 	},

@@ -20,6 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -239,8 +240,49 @@ type CombinedAudioRenderer interface {
 // the capability never imports Drive, SQLite, or the filesystem mechanics.
 // Fail-closed: an unknown asset_id or an asset with no usable local copy is
 // a typed error, never a silent empty path.
-type AudioAssetSource interface {
-	ResolveAudioAsset(ctx context.Context, assetID string) (audio.ResolvedAudioAsset, error)
+type AudioAssetSource = scriptaudio.AssetSource
+type AudioAssetResolver = scriptaudio.AssetResolver
+
+var NewAudioAssetResolver = scriptaudio.NewAssetResolver
+
+func randomClipStartSFXIntents(timeline audio.CanonicalTimeline) []scriptpkg.SoundEffectIntent {
+	return scriptaudio.RandomClipStartSFXIntents(timeline)
+}
+
+// Compatibility facade for the pure audio resolvers in scripts/audio.
+type (
+	AudioAutomationCompiler = scriptaudio.AudioAutomationCompiler
+	AudioIntentResolver     = scriptaudio.AudioIntentResolver
+	BackgroundMusicResolver = scriptaudio.BackgroundMusicResolver
+)
+
+const (
+	DefaultBGMDuckGainDB    = scriptaudio.DefaultBGMDuckGainDB
+	DefaultBGMDuckAttackUS  = scriptaudio.DefaultBGMDuckAttackUS
+	DefaultBGMDuckReleaseUS = scriptaudio.DefaultBGMDuckReleaseUS
+	CanonicalBGMDuckFloorDB = scriptaudio.CanonicalBGMDuckFloorDB
+)
+
+var (
+	NewAudioAutomationCompiler = scriptaudio.NewAudioAutomationCompiler
+	NewAudioIntentResolver     = scriptaudio.NewAudioIntentResolver
+	NewBackgroundMusicResolver = scriptaudio.NewBackgroundMusicResolver
+)
+
+// AudioIntentCompileResult and CompileAudioWithIntents remain on the scripts
+// facade; the pure plan construction is owned by scripts/audio.
+type AudioIntentCompileResult = scriptaudio.IntentCompileResult
+
+func CompileAudioWithIntents(
+	ctx context.Context,
+	timeline audio.CanonicalTimeline,
+	profile audio.CanonicalAudioProfile,
+	policy audio.AudioMixPolicy,
+	bgmIntents []scriptpkg.BackgroundMusicIntent,
+	sfxIntents []scriptpkg.SoundEffectIntent,
+	source AudioAssetSource,
+) (AudioIntentCompileResult, error) {
+	return scriptaudio.CompileWithIntents(ctx, timeline, profile, policy, bgmIntents, sfxIntents, source)
 }
 
 // ClipAudioAssetSource is the optional production resolver for original clip
@@ -397,4 +439,51 @@ func (noopExecutionRecorder) RecordMetric(context.Context, ExecutionContext, str
 }
 func (noopExecutionRecorder) RecordOperation(context.Context, ExecutionContext, ArtifactOperation) error {
 	return nil
+}
+
+// CompileCanonicalAudioPlanAudioOnlyWithIntents is the audio-compile entry
+// point when a run carries a BGM/SFX intent block. It builds the same
+// VO-governed canonical timeline + primary (voiceover/original-clip) assets
+// as CompileCanonicalAudioPlanAudioOnly, then funnels the intents through
+// the canonical pipeline — AudioAssetResolver → BackgroundMusicResolver →
+// AudioLoopExpander → AudioIntentResolver → AudioAutomationCompiler — into
+// audio.CompileWithLayers (via CompileAudioWithIntents). The primary and
+// BGM/SFX asset tables are merged into one renderer input.
+//
+// Fail-closed: a nil source, an unresolved asset, a BGM without a certified
+// duration, or an SFX that overruns its source fails the whole compile — the
+// run never renders a partial or guessed layered plan.
+func CompileCanonicalAudioPlanAudioOnlyWithIntents(
+	ctx context.Context,
+	result GenerateResult,
+	language Language,
+	profile audio.CanonicalAudioProfile,
+	source AudioAssetSource,
+	policy audio.AudioMixPolicy,
+	bgm []scriptpkg.BackgroundMusicIntent,
+	sfx []scriptpkg.SoundEffectIntent,
+	randomSFXOnClipStart ...bool,
+) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
+	// Audio-only narration runs may be compiled before clip materialization.
+	// With VOICEOVER_ONLY there is deliberately no dependency on a local clip
+	// audio path: the master is narration + optional BGM, while the rendered
+	// MP4 clips keep their own source audio contract independently.
+	if policy == audio.MixVoiceoverOnly {
+		result = resultWithoutClipAudioIntents(result)
+	}
+	timeline, primaryAssets, timings, err := buildCanonicalTimelineAndPrimaryAssets(result, language, false)
+	if err != nil {
+		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+	}
+	if len(randomSFXOnClipStart) > 0 && randomSFXOnClipStart[0] {
+		sfx = append(append([]scriptpkg.SoundEffectIntent(nil), sfx...), randomClipStartSFXIntents(timeline)...)
+	}
+	planStarted := time.Now()
+	compiled, err := CompileAudioWithIntents(ctx, timeline, profile, policy, bgm, sfx, source)
+	timings.AudioPlanCompileMS = time.Since(planStarted).Milliseconds()
+	timings.AudioAssetResolveMS = compiled.AudioAssetResolveMS
+	if err != nil {
+		return audio.CanonicalTimeline{}, audio.CompiledAudioPlan{}, nil, timings, err
+	}
+	return timeline, compiled.Plan, scriptaudio.MergeResolvedAssets(primaryAssets, compiled.Assets), timings, nil
 }

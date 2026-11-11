@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
@@ -301,7 +302,7 @@ func buildScriptSourceResolvers(
 	// A closed media plane leaves SourceCatalog unwired rather than degrading
 	// onto that mirror (godlike/07 fail-closed).
 	if root.MediaPostgres != nil && clipSourceBuilder != nil {
-		catalogPort := &postgresCatalogPort{searcher: pgmedia.NewMediaSearcher(root.MediaPostgres)}
+		catalogPort := scriptwiring.NewPostgresCatalogPort(pgmedia.NewMediaSearcher(root.MediaPostgres))
 		sourceReg.Register(scriptpkg.SourceCatalog, usecase.NewCatalogSourceResolver(catalogPort, clipSourceBuilder, samplerReg, log))
 	}
 
@@ -316,11 +317,7 @@ func buildScriptSourceResolvers(
 	}
 
 	if mediaSearcher != nil && textEmbedder != nil && clipSourceBuilder != nil {
-		searchPort := &postgresSemanticSearchPort{
-			searcher: mediaSearcher,
-			embedder: textEmbedder,
-			log:      log,
-		}
+		searchPort := scriptwiring.NewPostgresSemanticSearchPort(mediaSearcher, textEmbedder, log)
 		sourceReg.Register(scriptpkg.SourceSearch, usecase.NewSearchSourceResolver(searchPort, clipSourceBuilder, samplerReg, log))
 		log.Info("SourceSearch resolver wired (PostgreSQL/pgvector + E5 sidecar)")
 	}
@@ -333,7 +330,7 @@ func buildScriptSourceResolvers(
 
 	var clipSearchPort scriptports.AssetSearchPort
 	if mediaSearcher != nil && textEmbedder != nil {
-		clipSearchPort = &postgresAssetSearchPort{searcher: mediaSearcher, embedder: textEmbedder}
+		clipSearchPort = scriptwiring.NewPostgresAssetSearchPort(mediaSearcher, textEmbedder)
 		log.Info("AssetSearchPort wired for clip catalog (PostgreSQL/pgvector + E5 sidecar)")
 	}
 	if curateResolver != nil && clipSearchPort != nil {

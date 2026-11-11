@@ -55,6 +55,7 @@ type mirrorEntryMeta struct {
 	Key     string `json:"key"`
 	Ext     string `json:"ext"`
 	Size    int64  `json:"size"`
+	SHA256  string `json:"sha256,omitempty"`
 }
 
 // youtubeVideoID extracts the canonical video ID from a YouTube URL, "" when
@@ -190,6 +191,51 @@ func mirrorStore(root, key, videoID, resolvedPath string) {
 		return
 	}
 	_ = os.Rename(metaTmp, filepath.Join(root, key+".json"))
+}
+
+// mirrorContentIdentity returns the immutable identity recorded for a cached
+// source. Older cache entries are upgraded once by hashing their bytes.
+func mirrorContentIdentity(root, key, path string) (string, int64, error) {
+	lock := lockMirrorKey(key)
+	lock.Lock()
+	defer lock.Unlock()
+	metaPath := filepath.Join(root, key+".json")
+	raw, err := os.ReadFile(metaPath)
+	if err != nil {
+		return "", 0, err
+	}
+	var meta mirrorEntryMeta
+	if err := json.Unmarshal(raw, &meta); err != nil || meta.Key != key {
+		return "", 0, fmt.Errorf("invalid mirror metadata")
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Size() <= 0 || info.Size() != meta.Size {
+		return "", 0, fmt.Errorf("mirror source size does not match its metadata")
+	}
+	if digest.IsCanonicalSHA256(meta.SHA256) {
+		return meta.SHA256, info.Size(), nil
+	}
+	sha, size, err := digest.SHA256File(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("hash mirror source: %w", err)
+	}
+	if size != info.Size() {
+		return "", 0, fmt.Errorf("mirror source changed while hashing")
+	}
+	meta.SHA256 = sha
+	updated, err := json.Marshal(meta)
+	if err != nil {
+		return "", 0, err
+	}
+	tmp := metaPath + ".tmp"
+	if err := os.WriteFile(tmp, updated, 0o644); err != nil {
+		return "", 0, err
+	}
+	if err := os.Rename(tmp, metaPath); err != nil {
+		_ = os.Remove(tmp)
+		return "", 0, err
+	}
+	return sha, size, nil
 }
 
 // mirrorDestination expands the caller's output template with the cached

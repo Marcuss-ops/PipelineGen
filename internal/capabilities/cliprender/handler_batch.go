@@ -188,6 +188,7 @@ func (h *Handler) RenderBatch(c *gin.Context) {
 			Type:          TypeClipRender,
 			CorrelationID: perItemCorrelation,
 			Payload:       &item,
+			Scheduling:    &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
 		})
 		if err != nil {
 			h.log.Error("clip.render batch enqueue failed",

@@ -9,6 +9,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"go.uber.org/zap"
 )
@@ -277,7 +278,8 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 		// and the certification below still runs on the reused reference.
 		if req.FinalJob {
 			cacheStarted := time.Now()
-			if cached, ok := r.finalAudioCache.take(compiledAudioPlan, os.TempDir()); ok {
+			if cachedRef, ok := r.finalAudioCache.Take(compiledAudioPlan, os.TempDir()); ok {
+				cached := finalAudioReferenceFromCache(cachedRef)
 				// A cache hit is only accepted when it satisfies the SAME
 				// contract the renderer must satisfy: a stale or foreign entry
 				// costs one render, never a failed run.
@@ -292,7 +294,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 						metrics = *result.AudioMetrics
 					}
 					cacheMS := time.Since(cacheStarted).Milliseconds()
-					metrics.CacheOutcome = finalAudioCacheHitPlan
+					metrics.CacheOutcome = scriptaudio.CacheHitPlan
 					metrics.TotalMS = cacheMS
 					metrics.AudioDurationMS = finalAudio.DurationMS
 					r.log.Info("final audio reused from the plan cache",
@@ -337,7 +339,7 @@ func (r *Runner) renderAndCertifyFinalAudio(ctx context.Context, runID string, r
 				return false
 			}
 			if req.FinalJob {
-				r.finalAudioCache.put(compiledAudioPlan, finalAudio)
+				r.finalAudioCache.Put(compiledAudioPlan, finalAudioCacheReference(finalAudio))
 			}
 		}
 		metrics.TimelineCompileMS = compileTimings.TimelineCompileMS
@@ -566,4 +568,23 @@ func (r *Runner) projectAudioOverlayPlan(ctx context.Context, runID string, req 
 		return r.joinOverlayPlanProjection(ctx, runID, req, exec, step, result, branch)
 	}
 	return r.compileAudioOverlayPlan(ctx, runID, req, exec, step, result)
+}
+
+func resultWithoutClipAudioIntents(result GenerateResult) GenerateResult {
+	result.ResolvedScenes = nil
+	result.Scenes = append([]Scene(nil), result.Scenes...)
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		intents := make([]capabilityaudio.AudioIntent, 0, len(scene.AudioIntents))
+		for _, intent := range scene.AudioIntents {
+			if intent.Mode != capabilityaudio.AudioClip || intent.ProtectedOriginalAudio || intent.StockOriginalAudio {
+				intents = append(intents, intent)
+			}
+		}
+		scene.AudioIntents = intents
+		if scene.Audio.Mode == capabilityaudio.AudioClip && !scene.Audio.ProtectedOriginalAudio && !scene.Audio.StockOriginalAudio {
+			scene.Audio.Mode = capabilityaudio.AudioVoiceover
+		}
+	}
+	return result
 }

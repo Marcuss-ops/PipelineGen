@@ -92,9 +92,9 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 	fetchCtx, cancel := context.WithTimeout(ctx, req.Timeout)
 	defer cancel()
 
-	var observedSHA string
-	err := f.fetch(fetchCtx, req, partialPath, func(hashHex string) {
-		observedSHA = hashHex
+	var fetchResult FetchResult
+	err := f.fetch(fetchCtx, req, partialPath, func(result FetchResult) {
+		fetchResult = result
 	})
 	if err != nil {
 		_ = os.RemoveAll(partialPath)
@@ -104,7 +104,20 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 	// Verify / compute the SHA256 — `observedSHA` (if set) overrides
 	// an explicit re-hash so the concrete can short-circuit on the
 	// upstream's declared hash (used by yt-dlp + future Drive).
-	sha256hex := observedSHA
+	sha256hex := fetchResult.SHA256
+	if fetchResult.SourceWindow != nil {
+		if err := fetchResult.SourceWindow.Validate(); err != nil {
+			_ = os.RemoveAll(partialPath)
+			return nil, appacq.Wrap(appacq.ErrAcquisitionPrepareFailed, fmt.Sprintf("invalid source window: %v", err))
+		}
+		if sha256hex == "" {
+			sha256hex = fetchResult.SourceWindow.AssetSHA256
+		}
+		if sha256hex != fetchResult.SourceWindow.AssetSHA256 {
+			_ = os.RemoveAll(partialPath)
+			return nil, appacq.Wrap(appacq.ErrAcquisitionPrepareFailed, "source-window digest differs from fetched bytes")
+		}
+	}
 	if sha256hex == "" {
 		hash, hashErr := fileSHA256(partialPath)
 		if hashErr != nil {
@@ -129,6 +142,11 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 	if statErr != nil {
 		return nil, appacq.Wrap(appacq.ErrAcquisitionPrepareFailed, fmt.Sprintf("stat staged %q: %v", stagedPath, statErr))
 	}
+	if fetchResult.SourceWindow != nil && stagedFileInfo.Size() != fetchResult.SourceWindow.SizeBytes {
+		_ = os.RemoveAll(stagedPath)
+		return nil, appacq.Wrap(appacq.ErrAcquisitionPrepareFailed,
+			fmt.Sprintf("source-window size %d differs from staged bytes %d", fetchResult.SourceWindow.SizeBytes, stagedFileInfo.Size()))
+	}
 
 	mime := req.Source.MIMETypeHint
 	if mime == "" {
@@ -145,6 +163,7 @@ func (f *FilesystemStager) Prepare(ctx context.Context, req appacq.PrepareReques
 		MIMEType:     mime,
 		ExpiresAt:    time.Now().UTC().Add(req.TTL),
 		CleanupToken: cleanupsToken,
+		SourceWindow: fetchResult.SourceWindow,
 	}
 
 	if err := f.writeMeta(metaPath, *context); err != nil {
@@ -204,6 +223,14 @@ func stagedArtifactUsable(ctx *appacq.PrepareContext) error {
 	if ctx.SizeBytes > 0 && info.Size() != ctx.SizeBytes {
 		return fmt.Errorf("staged artifact %q is %d bytes but the sidecar declares %d (truncated?)",
 			ctx.LocalPath, info.Size(), ctx.SizeBytes)
+	}
+	if ctx.SourceWindow != nil {
+		if err := ctx.SourceWindow.Validate(); err != nil {
+			return fmt.Errorf("staged source window is invalid: %w", err)
+		}
+		if ctx.SourceWindow.AssetSHA256 != ctx.SHA256 || ctx.SourceWindow.SizeBytes != ctx.SizeBytes {
+			return fmt.Errorf("staged source window identity differs from staged bytes")
+		}
 	}
 	return nil
 }

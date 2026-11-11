@@ -2,8 +2,8 @@ package renderinggen
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
@@ -19,19 +19,14 @@ func (c *Client) SubmitBatch(ctx context.Context, jobs []scriptgen.RenderQueueJo
 	if len(jobs) == 0 {
 		return fmt.Errorf("renderinggen submit batch: jobs are required")
 	}
-	identities := make([]scriptgen.RenderRequestIdentity, len(jobs))
-	for i, job := range jobs {
-		identity, err := scriptgen.RenderRequestIdentityFor(job)
-		if err != nil {
-			return fmt.Errorf("renderinggen submit batch: request identity: %w", err)
-		}
-		identities[i] = identity
+	identities, err := scriptgen.RenderRequestFamilyIdentities(jobs)
+	if err != nil {
+		return fmt.Errorf("renderinggen submit batch: request identity: %w", err)
 	}
-	for _, job := range jobs {
-		if c.prefetch != nil {
-			if err := c.prefetch.Prefetch(ctx, job.Assets); err != nil {
-				return fmt.Errorf("renderinggen asset prefetch: %w", err)
-			}
+	if c.prefetch != nil {
+		assets := uniqueBatchAssets(jobs)
+		if err := c.prefetch.Prefetch(ctx, assets); err != nil {
+			return fmt.Errorf("renderinggen asset prefetch: %w", err)
 		}
 	}
 	wire := make([]queueclient.Job, len(jobs))
@@ -39,17 +34,51 @@ func (c *Client) SubmitBatch(ctx context.Context, jobs []scriptgen.RenderQueueJo
 		wire[i] = queueclient.Job{
 			ID: job.ID, JobType: job.JobType, ParentJobID: job.ParentJobID,
 			ChunkIndex: job.ChunkIndex, FrameRange: toQueueFrameRange(job.FrameRange),
-			RenderPlan: job.OverlaySpec, Assets: toQueueAssets(job.Assets),
+			PreparedRenderPackage: toQueuePreparedRenderPackage(job.PreparedRenderPackage),
+			RenderPlan:            job.OverlaySpec, Assets: toQueueAssets(job.Assets),
 			IdempotencyKey: identities[i].IdempotencyKey(job.ID),
 		}
 	}
 	if err := c.q.SubmitBatch(ctx, wire); err != nil {
-		if errors.Is(err, queueclient.ErrJobExists) {
-			return classifyRenderBatchCollision(ctx, c.q, jobs, identities)
+		if mapped := classifyQueueSubmitError(err); mapped != nil {
+			return fmt.Errorf("renderinggen submit batch: %w", mapped)
 		}
 		return fmt.Errorf("renderinggen submit batch: %w", err)
 	}
 	return nil
+}
+
+// uniqueBatchAssets stages each content address once for the whole atomic
+// family. Chunk children commonly share the same manifest; prefetching each
+// child separately repeats object-store HEADs (and can repeat remote reads on
+// stores without a reliable HEAD path) before the batch is submitted.
+func uniqueBatchAssets(jobs []scriptgen.RenderQueueJob) []scriptgen.RenderQueueAsset {
+	assets := make([]scriptgen.RenderQueueAsset, 0)
+	indexes := make(map[string]int)
+	for _, job := range jobs {
+		for _, asset := range job.Assets {
+			hash := asset.Ref().SHA256
+			if index, exists := indexes[hash]; exists {
+				// Keep the first logical path, but merge materialization hints so
+				// one incomplete reference cannot hide a usable source carried by
+				// another member of the same family.
+				current := &assets[index]
+				if current.LocalPath == "" {
+					current.LocalPath = asset.LocalPath
+				}
+				if current.SourceURL == "" {
+					current.SourceURL = asset.SourceURL
+				}
+				if current.SourceURL == "" && current.URL != asset.URL && strings.HasPrefix(strings.ToLower(strings.TrimSpace(asset.URL)), "http") {
+					current.SourceURL = asset.URL
+				}
+				continue
+			}
+			indexes[hash] = len(assets)
+			assets = append(assets, asset)
+		}
+	}
+	return assets
 }
 
 func toQueueFrameRange(in *scriptgen.RenderFrameRange) *queueclient.FrameRange {

@@ -3,15 +3,12 @@ package wiring
 import (
 	"database/sql"
 
+	drivewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/drive"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	capregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	mwidem "github.com/Marcuss-ops/PipelineGen/internal/capabilities/middleware"
-	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/imagesregistry"
@@ -20,17 +17,10 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 )
 
-// DriveBundle owns the composed Google Drive ports and delivery surfaces.
-type DriveBundle struct {
-	Admin         drive.Admin
-	Reader        drive.Reader
-	DriveDests    *DriveDestinations
-	DestResolver  asset.Resolver
-	StyleRegistry *imagestyles.StyleRegistry
-	Publisher     delivery.Publisher
-	Lifecycle     drive.FileLifecycle
-	DriveUploader *drive.Uploader
-}
+// DriveBundle and DriveDestinations preserve the composition root's bundle
+// vocabulary while ownership lives in the Drive wiring module.
+type DriveBundle = drivewiring.Bundle
+type DriveDestinations = drivewiring.Destinations
 
 // RepoBundle owns the repository instances shared by the composition root.
 //

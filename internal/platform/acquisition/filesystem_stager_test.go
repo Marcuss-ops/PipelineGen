@@ -33,6 +33,8 @@ import (
 	// single-sourced in application/acquisition/ rather than
 	// duplicating types (godlike/06 one-owner-per-fact).
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // ── test-fetch helpers ──────────────────────────────────────────────
@@ -48,12 +50,12 @@ var fileFetchFnBody = []byte("hello from acquisition staging surface")
 
 // fileFetchFn returns the canonical FetchFn for §12-4 integration
 // tests. Writes the body to {dstPath}, computes the SHA256 +
-// SizeBytes empirically, and reports via the onWireSHA256 callback
+// SizeBytes empirically, and reports via the onFetchResult callback
 // so FilesystemStager's observed-SHA path stays consistent with
 // the canonical hash.
 func fileFetchFn(t *testing.T) FetchFn {
 	t.Helper()
-	return func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(hashHex string)) error {
+	return func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(FetchResult)) error {
 		// Write atomically: tmp then rename.
 		partial := dstPath + ".fetchwriting"
 		if err := os.WriteFile(partial, fileFetchFnBody, 0o644); err != nil {
@@ -68,8 +70,8 @@ func fileFetchFn(t *testing.T) FetchFn {
 		if err != nil {
 			return err
 		}
-		if onWireSHA256 != nil {
-			onWireSHA256(hash)
+		if onFetchResult != nil {
+			onFetchResult(FetchResult{SHA256: hash})
 		}
 		return nil
 	}
@@ -132,6 +134,35 @@ func TestFilesystemStager_Prepare_HappyPath_ReturnsCanonicalContext(t *testing.T
 	assert.Len(t, got.SHA256, 64, "SHA256 hex is 64 chars")
 }
 
+func TestFilesystemStager_PersistsCertifiedSourceWindow(t *testing.T) {
+	root := t.TempDir()
+	body := []byte("complete source asset")
+	sha := digest.SHA256Bytes(body)
+	window := &media.SourceWindow{AssetSHA256: sha, SizeBytes: int64(len(body)), StartUS: 4_000_000, EndUS: 9_000_000}
+	fetch := func(_ context.Context, _ appacq.PrepareRequest, dst string, report func(FetchResult)) error {
+		if err := os.WriteFile(dst, body, 0o600); err != nil {
+			return err
+		}
+		report(FetchResult{SHA256: sha, SourceWindow: window})
+		return nil
+	}
+	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: fetch})
+	require.NoError(t, err)
+	req := appacq.PrepareRequest{
+		Source:         appacq.SourceRef{URL: "https://example.test/source", DownloadSection: "*00:00:04-00:00:09"},
+		IdempotencyKey: "source-window-test",
+		CallerRef:      "test",
+	}
+	first, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, window, first.SourceWindow)
+	second, err := stager.Prepare(context.Background(), req)
+	require.NoError(t, err)
+	require.Equal(t, window, second.SourceWindow, "cache hit should restore the persisted source window")
+	require.Equal(t, sha, second.SHA256)
+	require.EqualValues(t, len(body), second.SizeBytes)
+}
+
 func TestFilesystemStager_Prepare_WritesMetaSidecar(t *testing.T) {
 	root := t.TempDir()
 	stager, _ := NewFilesystemStager(Options{StagingRoot: root, Fetch: fileFetchFn(t)})
@@ -153,11 +184,11 @@ func TestFilesystemStager_Prepare_ConcurrentSameSource_SerializesFetch(t *testin
 
 	var fetchCalls int32
 	var mu sync.Mutex
-	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(FetchResult)) error {
 		mu.Lock()
 		fetchCalls++
 		mu.Unlock()
-		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+		return fileFetchFn(t)(ctx, req, dstPath, onFetchResult)
 	}
 
 	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
@@ -214,7 +245,7 @@ func TestFilesystemStager_Prepare_DifferentSourcesCanFetchConcurrently(t *testin
 	root := t.TempDir()
 	started := make(chan struct{}, 2)
 	release := make(chan struct{})
-	fetch := func(_ context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+	fetch := func(_ context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(FetchResult)) error {
 		started <- struct{}{}
 		<-release
 		body := []byte(req.Source.URL)
@@ -225,8 +256,8 @@ func TestFilesystemStager_Prepare_DifferentSourcesCanFetchConcurrently(t *testin
 		if err != nil {
 			return err
 		}
-		if onWireSHA256 != nil {
-			onWireSHA256(hash)
+		if onFetchResult != nil {
+			onFetchResult(FetchResult{SHA256: hash})
 		}
 		return nil
 	}
@@ -268,11 +299,11 @@ func TestFilesystemStager_Prepare_SecondCall_HitsCache(t *testing.T) {
 	// the two Prepares.
 	var fetchCalls int32
 	var mu sync.Mutex
-	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(FetchResult)) error {
 		mu.Lock()
 		fetchCalls++
 		mu.Unlock()
-		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+		return fileFetchFn(t)(ctx, req, dstPath, onFetchResult)
 	}
 
 	stager, _ := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
@@ -312,11 +343,11 @@ func TestFilesystemStager_Prepare_OrphanedMeta_ReDownloadsInsteadOfReturningDang
 
 	var fetchCalls int32
 	var mu sync.Mutex
-	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(FetchResult)) error {
 		mu.Lock()
 		fetchCalls++
 		mu.Unlock()
-		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+		return fileFetchFn(t)(ctx, req, dstPath, onFetchResult)
 	}
 
 	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
@@ -358,11 +389,11 @@ func TestFilesystemStager_Prepare_TruncatedStage_ReDownloads(t *testing.T) {
 
 	var fetchCalls int32
 	var mu sync.Mutex
-	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+	wrappedFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(FetchResult)) error {
 		mu.Lock()
 		fetchCalls++
 		mu.Unlock()
-		return fileFetchFn(t)(ctx, req, dstPath, onWireSHA256)
+		return fileFetchFn(t)(ctx, req, dstPath, onFetchResult)
 	}
 
 	stager, err := NewFilesystemStager(Options{StagingRoot: root, Fetch: wrappedFetch})
@@ -449,7 +480,7 @@ func TestFilesystemStager_Release_DoubleRelease_ReturnsInvalidToken(t *testing.T
 
 func TestFilesystemStager_Prepare_FetchFails_ReturnsPrepareFailed(t *testing.T) {
 	root := t.TempDir()
-	failingFetch := func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(string)) error {
+	failingFetch := func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(FetchResult)) error {
 		return errors.New("fetch closed with error: simulated network failure")
 	}
 	stager, _ := NewFilesystemStager(Options{StagingRoot: root, Fetch: failingFetch})
@@ -469,7 +500,7 @@ func TestFilesystemStager_Prepare_InvalidRequest_DoesNotCallFetch(t *testing.T) 
 
 	var fetchCalls int32
 	var mu sync.Mutex
-	wrappedFetch := func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(string)) error {
+	wrappedFetch := func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(FetchResult)) error {
 		mu.Lock()
 		fetchCalls++
 		mu.Unlock()

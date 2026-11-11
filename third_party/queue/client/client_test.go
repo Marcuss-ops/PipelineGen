@@ -23,7 +23,9 @@ func fakeQueue(t *testing.T) *httptest.Server {
 		_ = json.NewDecoder(r.Body).Decode(&job)
 		switch job.ID {
 		case "dup":
-			http.Error(w, "already exists", http.StatusConflict)
+			http.Error(w, "job_id_conflict: already exists", http.StatusConflict)
+		case "replay":
+			w.WriteHeader(http.StatusOK)
 		case "boom":
 			http.Error(w, "bad input", http.StatusBadRequest)
 		case "internal":
@@ -158,8 +160,18 @@ func TestSubmitDuplicate(t *testing.T) {
 
 	c := New(srv.URL)
 	err := c.Submit(context.Background(), Job{ID: "dup", Schema: JobSchemaV1, Version: JobSchemaVersionV1, RenderPlan: []byte(`{"n":1}`), Assets: []AssetRef{}})
-	if err == nil || !errors.Is(err, ErrJobExists) {
-		t.Fatalf("want ErrJobExists, got %v", err)
+	if err == nil || !errors.Is(err, ErrDuplicateJobID) || errors.Is(err, ErrJobExists) {
+		t.Fatalf("want fail-closed ErrDuplicateJobID, got %v", err)
+	}
+}
+
+func TestSubmitExactReplayIsErrJobExists(t *testing.T) {
+	srv := fakeQueue(t)
+	defer srv.Close()
+	c := New(srv.URL)
+	err := c.Submit(context.Background(), Job{ID: "replay", Schema: JobSchemaV1, Version: JobSchemaVersionV1, RenderPlan: []byte(`{"n":1}`), Assets: []AssetRef{}})
+	if !errors.Is(err, ErrJobExists) {
+		t.Fatalf("HTTP 200 exact replay = %v, want ErrJobExists", err)
 	}
 }
 

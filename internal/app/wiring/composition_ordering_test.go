@@ -118,7 +118,7 @@ func TestComposition_NilObligatory_NewComposition(t *testing.T) {
 	// field it pinned. RepoBundle.CatalogRepo held the legacy SQLite catalog
 	// reader (*catalog.Repository over media_assets + clip_search_terms) whose
 	// only consumer was the SourceCatalog resolver; that resolver now reads the
-	// PostgreSQL media SSOT (wiring.postgresCatalogPort), so there is no
+	// PostgreSQL media SSOT (wiring/script's postgresCatalogPort), so there is no
 	// operational catalog repository left to assert.
 	require.NotNil(t, root.Repos.ScriptsRepo, "root.Repos.ScriptsRepo")
 	require.NotNil(t, root.Repos.ImageRepo, "root.Repos.ImageRepo")
@@ -301,14 +301,14 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 var frozenCompositionSequence = []string{
 	"BuildRepoBundle(",
 	"BuildSearchBundle(",
-	"BuildDriveBundle(",
+	"drivewiring.BuildBundle(",
 	"BuildJobsBundle(",
 	"BuildAIBundle(",
 	"buildQdrantDeps(",
 	"BuildOutboxBundle(",
 	"BuildProcessBundle(",
 	"BuildDomainBundle(",
-	"BuildSyncBundle(",
+	"drivewiring.BuildCatalogSyncService(",
 	"BuildMaintBundle(",
 	"BuildUtilityBundle(",
 }

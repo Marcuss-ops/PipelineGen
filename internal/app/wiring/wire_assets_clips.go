@@ -174,7 +174,7 @@ func (p *postgresClipMediaSearch) SearchClipsByTerms(ctx context.Context, source
 func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.ClipEnricher, error) {
 	var clipsDispatcherPort appclips.ClipIndexDispatcherPort
 	if params.Dispatcher != nil {
-		clipsDispatcherPort = &clipsDispatcherAdapter{disp: params.Dispatcher}
+		clipsDispatcherPort = clipswiring.NewIndexDispatcherAdapter(params.Dispatcher)
 	}
 	mutationsDisp, err := registrywiring.NewMutationsDispatcherAdapter(params.Dispatcher)
 	if err != nil {
@@ -197,8 +197,8 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		params.Clips.Publisher,
 		clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
-		newClipsHashAdapter(),
-		newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
+		clipswiring.NewHashAdapter(),
+		clipswiring.NewConfigAdapter(params.Cfg, appjobs.Compose()),
 		mutationsDisp,
 		params.Log,
 	)
@@ -207,8 +207,8 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		Artifact:      clipswiring.NewArtifactServiceAdapter(params.Clips.ArtifactService),
 		Publisher:     params.Clips.Publisher,
 		Dispatcher:    clipsDispatcherPort,
-		Config:        newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
-		TreeBuilder:   newClipsAssetTreeAdapter(params.Clips.AssetTreeService),
+		Config:        clipswiring.NewConfigAdapter(params.Cfg, appjobs.Compose()),
+		TreeBuilder:   clipswiring.NewAssetTreeAdapter(params.Clips.AssetTreeService),
 		JobsSvc:       params.Jobs.Facade,
 		ProcessRunner: processRunnerAdapter,
 		Log:           params.Log,
@@ -244,16 +244,21 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		params.Log,
 	)
 
-	clipsOpsPorts := buildClipOpsPorts(
+	clipsOpsPorts := clipswiring.NewOpsPorts(
 		clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
-		params.Jobs,
+		params.Jobs.VoiceoverRepo,
+		params.Jobs.ImagesRepo,
+		params.Jobs.DriveUploader,
+		params.Jobs.DriveUploader,
+		params.Jobs.DriveLifecycle,
+		params.Jobs.Facade,
 	)
 	clipOpsSvc := appclips.NewClipOpsService(
-		clipsOpsPorts.clipRepo,
-		clipsOpsPorts.voiceoverRepo,
-		clipsOpsPorts.imageRepo,
-		clipsOpsPorts.driveUploader,
-		clipsOpsPorts.jobsPort,
+		clipsOpsPorts.ClipRepo,
+		clipsOpsPorts.VoiceoverRepo,
+		clipsOpsPorts.ImageRepo,
+		clipsOpsPorts.DriveUploader,
+		clipsOpsPorts.JobsPort,
 		clipsDispatcherPort,
 		params.Log,
 	)

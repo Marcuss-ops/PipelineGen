@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/sourcedl"
 	infraartifacts "github.com/Marcuss-ops/PipelineGen/internal/platform/artifactstaging"
@@ -82,7 +83,7 @@ func buildSourceAwareDownloader(cfg *config.Config, db *sql.DB, cacheDB *sql.DB,
 		log.Warn("CAS downloader content-object registry unavailable", zap.Error(registryErr))
 	}
 	if cacheDB != nil {
-		if cache, cacheErr := NewArtifactCache(cfg, cacheDB, db, log); cacheErr == nil {
+		if cache, cacheErr := assetswiring.NewArtifactCache(cfg, cacheDB, db, log); cacheErr == nil {
 			wrapped.SetMetrics(cache)
 		} else {
 			log.Warn("CAS downloader durable cache metrics unavailable", zap.Error(cacheErr))

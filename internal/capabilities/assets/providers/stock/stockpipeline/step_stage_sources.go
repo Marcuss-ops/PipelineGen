@@ -266,9 +266,10 @@ func stageUniqueSourcesBounded(
 				}
 			default:
 				asset := &ports.StagedAsset{
-					LocalPath: prepared.LocalPath,
-					Bytes:     prepared.Bytes,
-					SourceID:  prepared.SourceID,
+					LocalPath:    prepared.LocalPath,
+					Bytes:        prepared.Bytes,
+					SourceID:     prepared.SourceID,
+					SourceWindow: prepared.SourceWindow,
 				}
 				outcomes[idx] = stagedSourceOutcome{asset: asset}
 				if runner.Log() != nil {

@@ -7,10 +7,33 @@ import (
 	"os"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
 )
+
+// Public aliases preserve the scripts API while the versioned wire contract
+// and its validation live in the finaljob boundary package.
+type FinalJobEnvelopeV1 = finaljob.EnvelopeV1
+type FinalJobCompiledPlanV2 = finaljob.CompiledPlanV2
+type FinalJobPrepareV1 = finaljob.PrepareV1
+type FinalJobFinalizeV1 = finaljob.FinalizeV1
+type FinalJobRuntimeAssetV1 = finaljob.RuntimeAssetV1
+type FinalJobRuntimePayloadV1 = finaljob.RuntimePayloadV1
+type FinalJobRuntimeAudioV1 = finaljob.RuntimeAudioV1
+
+const FinalJobEnvelopeSchemaV1 = finaljob.EnvelopeSchemaV1
+
+// BuildFinalJobEnvelopeV1 builds and validates the typed handoff before the
+// wiring adapter serializes it for the deployed Master contract.
+func BuildFinalJobEnvelopeV1(ctx context.Context, runID string, req GenerateRequest, result *GenerateResult, resolver FinalJobAssetResolver) (FinalJobEnvelopeV1, error) {
+	prepareMap, finalizeMap, err := buildFinalJobPayloads(ctx, runID, req, result, resolver)
+	if err != nil {
+		return FinalJobEnvelopeV1{}, err
+	}
+	return finaljob.BuildEnvelope(runID, prepareMap, finalizeMap)
+}
 
 type FinalJobStockFile struct{ ID, Name string }
 
@@ -408,6 +431,11 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	if err != nil {
 		return nil, nil, err
 	}
+	retainedRuntimeAssets, err := retainFinalJobRuntimeAssets(compiledPlan, runtimeAssets)
+	if err != nil {
+		return nil, nil, err
+	}
+	runtimeAssets = retainedRuntimeAssets
 	compiledPlanSHA := digest.SHA256String(compiledPlan)
 	attempt := 1
 	if result.RemoteFinalJob != nil && result.RemoteFinalJob.Attempt > 0 {

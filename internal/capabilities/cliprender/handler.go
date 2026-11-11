@@ -155,8 +155,9 @@ func (h *Handler) Render(c *gin.Context) {
 	}
 
 	enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
-		Type:    TypeClipRender,
-		Payload: &req,
+		Type:       TypeClipRender,
+		Payload:    &req,
+		Scheduling: &job.SchedulingDescriptor{JobType: TypeClipRender, ResourceClass: SchedulingResourceClass, ExecutionLane: ExecutionLaneSubmit},
 	})
 	if err != nil {
 		h.log.Error("clip.render enqueue failed",

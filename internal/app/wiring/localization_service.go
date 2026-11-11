@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
 	mediawiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 
@@ -275,8 +276,8 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 		return nil, fmt.Errorf("localization service: text-track repository %T does not expose FindByID (subtitle PK lookup)", root.Repos.TextTrackRepo)
 	}
 
-	scratchDir := assetMaterializationRoot(cfg)
-	resolver, resolverErr := newClipRenderMediaResolver(root, log)
+	scratchDir := clipswiring.AssetMaterializationRoot(cfg)
+	resolver, resolverErr := clipswiring.NewClipRenderMediaResolver(root.MediaPostgres, log)
 	if resolverErr != nil {
 		return nil, fmt.Errorf("localization service: build asset resolver: %w", resolverErr)
 	}
@@ -294,10 +295,11 @@ func BuildLocalizationService(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	subtitleResolver := localizationadapters.NewSubtitleResolver(trackStore)
 	subtitleCompiler := localizationadapters.NewSubtitleCompiler()
 
-	renderRuntime, runtimeErr := BuildClipRenderRuntime(cfg, root, log)
+	renderRuntime, runtimeErr := clipswiring.BuildClipRenderRuntime(cfg, root.MediaExec, root.ClipRenderRuntime, log)
 	if runtimeErr != nil {
 		return nil, fmt.Errorf("localization service: build shared render runtime: %w", runtimeErr)
 	}
+	root.ClipRenderRuntime = renderRuntime
 	executor := localizationadapters.NewRenderPlanExecutor(renderRuntime.RenderingGenExecutor, root.MediaExec.Profile, log)
 
 	uploader := localizationadapters.NewDriveUploader(root.Drive.Publisher)

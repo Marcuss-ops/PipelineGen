@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // metaFileEnvelope is the on-disk JSON shape for {ID}.meta.json.
@@ -19,16 +20,17 @@ import (
 // decode the sidecar without the runtime. New fields are added
 // in lockstep with PrepareContext additions.
 type metaFileEnvelope struct {
-	SchemaVersion string           `json:"schema_version"`
-	ID            string           `json:"id"`
-	SourceRef     appacq.SourceRef `json:"source_ref"`
-	LocalPath     string           `json:"local_path"`
-	StorageURI    string           `json:"storage_uri,omitempty"`
-	SHA256        string           `json:"sha256"`
-	SizeBytes     int64            `json:"size_bytes"`
-	MIMEType      string           `json:"mime_type"`
-	ExpiresAt     time.Time        `json:"expires_at"`
-	CleanupToken  string           `json:"cleanup_token"`
+	SchemaVersion string              `json:"schema_version"`
+	ID            string              `json:"id"`
+	SourceRef     appacq.SourceRef    `json:"source_ref"`
+	LocalPath     string              `json:"local_path"`
+	StorageURI    string              `json:"storage_uri,omitempty"`
+	SHA256        string              `json:"sha256"`
+	SizeBytes     int64               `json:"size_bytes"`
+	MIMEType      string              `json:"mime_type"`
+	ExpiresAt     time.Time           `json:"expires_at"`
+	CleanupToken  string              `json:"cleanup_token"`
+	SourceWindow  *media.SourceWindow `json:"source_window,omitempty"`
 }
 
 func (f *FilesystemStager) writeMeta(metaPath string, ctx appacq.PrepareContext) error {
@@ -43,6 +45,7 @@ func (f *FilesystemStager) writeMeta(metaPath string, ctx appacq.PrepareContext)
 		MIMEType:      ctx.MIMEType,
 		ExpiresAt:     ctx.ExpiresAt,
 		CleanupToken:  ctx.CleanupToken,
+		SourceWindow:  ctx.SourceWindow,
 	}
 	raw, err := json.Marshal(envelope)
 	if err != nil {
@@ -89,6 +92,7 @@ func (f *FilesystemStager) readMeta(metaPath string) (*appacq.PrepareContext, bo
 		MIMEType:     envelope.MIMEType,
 		ExpiresAt:    envelope.ExpiresAt,
 		CleanupToken: envelope.CleanupToken,
+		SourceWindow: envelope.SourceWindow,
 	}, true
 }
 
@@ -128,6 +132,7 @@ func (f *FilesystemStager) findByToken(token string) ([]appacq.PrepareContext, e
 				MIMEType:     envelope.MIMEType,
 				ExpiresAt:    envelope.ExpiresAt,
 				CleanupToken: envelope.CleanupToken,
+				SourceWindow: envelope.SourceWindow,
 			})
 		}
 	}

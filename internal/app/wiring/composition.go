@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 
+	drivewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/drive"
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
 	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	texttracks "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
@@ -48,7 +49,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose search: %w", err)
 	}
 
-	driveBundle, driveStart, err := BuildDriveBundle(ctx, cfg, dbs, log)
+	driveBundle, driveStart, err := drivewiring.BuildBundle(ctx, cfg, dbs.DualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose drive: %w", err)
 	}
@@ -129,10 +130,11 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		return nil, fmt.Errorf("compose domains: %w", err)
 	}
 
-	sync, err := BuildSyncBundle(ctx, cfg, dbs, log, repos, search, process, driveBundle, outbox, mediaPG)
+	catalogSync, err := drivewiring.BuildCatalogSyncService(cfg, mediaPG, repos.ClipsRepo, driveBundle.DriveUploader, search.AssetTreeService, outbox.Dispatcher, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose sync: %w", err)
 	}
+	sync := &SyncBundle{CatalogSync: catalogSync}
 
 	sourceCatalog, err := artifactsinfra.NewArtifactSourceCatalog(repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo, repos.VoiceoverRepo, repos.ImageRepo)
 	if err != nil {
@@ -234,7 +236,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *Databases, log
 		Staging:   staging,
 		Finalizer: finalizer,
 
-		DriveStart:  driveStart,
+		DriveStart:  IOpaqueStartFunc(driveStart),
 		OutboxStart: outboxStart,
 		Ctx:         ctx,
 	}

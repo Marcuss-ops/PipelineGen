@@ -244,3 +244,24 @@ type RunRepository interface {
 	// each translated scene) so a retry can resume from the checkpoint.
 	SavePartialResult(ctx context.Context, runID string, result *GenerateResult) error
 }
+
+// StaleSubmissionRun is a durable nonterminal submission whose last update is
+// old enough to reconcile against the authoritative job broker.
+type StaleSubmissionRun struct {
+	RunID          string
+	JobID          string
+	IdempotencyKey string
+	CurrentStage   Stage
+	UpdatedAt      time.Time
+}
+
+// RunReconciliationRepository is the narrow durable surface used to repair
+// submission/run correlation after a process crash. It is separate from
+// RunRepository so ordinary execution does not depend on reconciliation scans.
+type RunReconciliationRepository interface {
+	ListStaleSubmissionRuns(context.Context, time.Time, int) ([]StaleSubmissionRun, error)
+	Get(context.Context, string) (*GenerationRun, error)
+	SetJobID(context.Context, string, string) error
+	UpdateStage(context.Context, string, RunStatus, Stage) error
+	FailRun(context.Context, FailRunInput) error
+}

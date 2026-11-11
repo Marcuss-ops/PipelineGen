@@ -26,8 +26,31 @@ import (
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
+	runnerpolicy "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	"go.uber.org/zap"
 )
+
+// Compatibility exports for the runner-owned concurrency policy. New code
+// should import scripts/runner directly.
+const (
+	DefaultGenerationConcurrency    = runnerpolicy.DefaultGenerationConcurrency
+	DefaultNLPConcurrency           = runnerpolicy.DefaultNLPConcurrency
+	MaxVidRushImageConcurrency      = runnerpolicy.MaxVidRushImageConcurrency
+	DefaultVidRushImageConcurrency  = runnerpolicy.DefaultVidRushImageConcurrency
+	DefaultTTSConcurrency           = runnerpolicy.DefaultTTSConcurrency
+	MaxTranslationConcurrency       = runnerpolicy.MaxTranslationConcurrency
+	DefaultTranslationConcurrency   = runnerpolicy.DefaultTranslationConcurrency
+	DefaultOverlayRenderConcurrency = runnerpolicy.DefaultOverlayRenderConcurrency
+)
+
+type GenerationGate = runnerpolicy.GenerationGate
+
+func NewGenerationGate() *GenerationGate { return runnerpolicy.NewGenerationGate() }
+
+func NewGenerationGateWithCapacity(capacity int) *GenerationGate {
+	return runnerpolicy.NewGenerationGateWithCapacity(capacity)
+}
 
 // enqueueLocalizedRender emits one localized render for a ready (scene,
 // language) unit. A voiceover is required only for the voiceover-driven path;
@@ -298,7 +321,31 @@ func (r *Runner) SetFinalAudioCacheDir(dir string) {
 	case "", "off", "disabled", "none":
 		r.finalAudioCache = nil
 	default:
-		r.finalAudioCache = newFinalAudioCache(dir)
+		r.finalAudioCache = scriptaudio.NewFinalAudioCache(dir)
+	}
+}
+
+func finalAudioReferenceFromCache(ref scriptaudio.CachedFinalAudioReference) FinalAudioReference {
+	return FinalAudioReference{
+		AssetID: ref.AssetID, Path: ref.Path, Container: ref.Container,
+		AudioContractVersion: ref.AudioContractVersion, AudioPlanVersion: ref.AudioPlanVersion,
+		PlanSHA256: ref.PlanSHA256, FinalAudioSHA256: ref.FinalAudioSHA256,
+		Codec: ref.Codec, Profile: ref.Profile, SampleRate: ref.SampleRate,
+		Channels: ref.Channels, ChannelLayout: ref.ChannelLayout, Bitrate: ref.Bitrate,
+		DurationUS: ref.DurationUS, DurationMS: ref.DurationMS, StartPTS: ref.StartPTS,
+		SizeBytes: ref.SizeBytes, FinalMix: ref.FinalMix, CopyEligible: ref.CopyEligible,
+	}
+}
+
+func finalAudioCacheReference(ref FinalAudioReference) scriptaudio.CachedFinalAudioReference {
+	return scriptaudio.CachedFinalAudioReference{
+		AssetID: ref.AssetID, Path: ref.Path, Container: ref.Container,
+		AudioContractVersion: ref.AudioContractVersion, AudioPlanVersion: ref.AudioPlanVersion,
+		PlanSHA256: ref.PlanSHA256, FinalAudioSHA256: ref.FinalAudioSHA256,
+		Codec: ref.Codec, Profile: ref.Profile, SampleRate: ref.SampleRate,
+		Channels: ref.Channels, ChannelLayout: ref.ChannelLayout, Bitrate: ref.Bitrate,
+		DurationUS: ref.DurationUS, DurationMS: ref.DurationMS, StartPTS: ref.StartPTS,
+		SizeBytes: ref.SizeBytes, FinalMix: ref.FinalMix, CopyEligible: ref.CopyEligible,
 	}
 }
 

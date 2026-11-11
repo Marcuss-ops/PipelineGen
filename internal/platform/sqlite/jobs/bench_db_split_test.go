@@ -102,11 +102,18 @@ CREATE TABLE IF NOT EXISTS jobs (
 	revision INTEGER,
 	client_id TEXT NOT NULL DEFAULT '',
 	idempotency_key TEXT NOT NULL DEFAULT '',
-	deferred_until TEXT
+	deferred_until TEXT,
+	resource_class TEXT NOT NULL DEFAULT '',
+	execution_lane TEXT NOT NULL DEFAULT '',
+	available_at TEXT,
+	claim_effective_priority INTEGER NOT NULL DEFAULT 0,
+	claim_next_age_millis INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_bench_jobs_status_priority ON jobs(status, priority DESC);
 CREATE INDEX IF NOT EXISTS idx_bench_jobs_claim ON jobs(status, lease_expiry);
 CREATE INDEX IF NOT EXISTS idx_bench_jobs_expired_leases ON jobs(status, lease_expiry);
+CREATE INDEX IF NOT EXISTS idx_jobs_scheduling_lane
+	ON jobs(status, type, execution_lane, claim_effective_priority DESC, created_at ASC, id ASC);
 
 CREATE TABLE IF NOT EXISTS job_events (
 	id TEXT PRIMARY KEY,

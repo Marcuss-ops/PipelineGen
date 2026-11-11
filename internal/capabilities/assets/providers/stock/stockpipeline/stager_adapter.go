@@ -197,8 +197,9 @@ func (s *StockStager) stageSource(ctx context.Context, ref assets.SourceRef) (re
 	}
 
 	return &assets.StagedAsset{
-		LocalPath: finalLocalPath,
-		Bytes:     stagedAsset.Bytes,
+		LocalPath:    finalLocalPath,
+		Bytes:        stagedAsset.Bytes,
+		SourceWindow: stagedAsset.SourceWindow,
 	}, nil
 }
 
@@ -251,6 +252,7 @@ func (s *StockStager) Prepare(ctx context.Context, req acquisition.PrepareReques
 		ID:           staged.SourceID,
 		LocalPath:    staged.LocalPath,
 		SizeBytes:    staged.Bytes,
+		SourceWindow: staged.SourceWindow,
 		CleanupToken: staged.LocalPath,               // LocalPath doubles as cleanup token for legacy path
 		ExpiresAt:    time.Now().Add(24 * time.Hour), // legacy path has no TTL
 	}, nil

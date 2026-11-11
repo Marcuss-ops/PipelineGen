@@ -3,6 +3,7 @@ package wiring
 import (
 	"bytes"
 	"context"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"image"
 	"image/png"
@@ -69,7 +70,7 @@ func TestWireMapPlatesResolvesCertifiedPlate(t *testing.T) {
 	}
 
 	target := &recordingPlateTarget{}
-	if err := wireMapPlates(target, manifestPath, zap.NewNop()); err != nil {
+	if err := scriptwiring.WireMapPlates(target, manifestPath, zap.NewNop()); err != nil {
 		t.Fatalf("wire map plates: %v", err)
 	}
 	if target.calls != 1 {
@@ -129,7 +130,7 @@ func TestWireScriptLocationSourcesConnectsGeocoderAndCertifiedPlates(t *testing.
 			MapPlateManifestPath: "plates.json",
 		},
 	}
-	if err := wireScriptLocationSources(target, cfg, zap.NewNop()); err != nil {
+	if err := scriptwiring.WireScriptLocationSources(target, cfg, zap.NewNop()); err != nil {
 		t.Fatalf("wire script location sources: %v", err)
 	}
 	if _, ok := target.geocoder.(*platformgeocoding.Nominatim); !ok {
@@ -165,7 +166,7 @@ func TestWireScriptLocationSourcesConnectsGeocoderAndCertifiedPlates(t *testing.
 
 func TestWireScriptLocationSourcesLeavesMissingSourcesFailClosed(t *testing.T) {
 	target := &recordingPlateTarget{}
-	if err := wireScriptLocationSources(target, &config.Config{}, zap.NewNop()); err != nil {
+	if err := scriptwiring.WireScriptLocationSources(target, &config.Config{}, zap.NewNop()); err != nil {
 		t.Fatalf("empty location-source config should be a valid no-map deployment: %v", err)
 	}
 	if target.geocoder != nil || target.resolver != nil || target.calls != 0 {
@@ -173,7 +174,7 @@ func TestWireScriptLocationSourcesLeavesMissingSourcesFailClosed(t *testing.T) {
 	}
 
 	invalidGeocoder := &recordingPlateTarget{}
-	if err := wireScriptLocationSources(invalidGeocoder, &config.Config{
+	if err := scriptwiring.WireScriptLocationSources(invalidGeocoder, &config.Config{
 		External: config.ExternalConfig{GeocodingBaseURL: "https://geo.example/search", GeocodingUserAgent: "  "},
 	}, zap.NewNop()); err == nil {
 		t.Fatal("configured geocoder without an identifying User-Agent must fail wiring")
@@ -183,7 +184,7 @@ func TestWireScriptLocationSourcesLeavesMissingSourcesFailClosed(t *testing.T) {
 	}
 
 	invalidManifest := &recordingPlateTarget{}
-	if err := wireScriptLocationSources(invalidManifest, &config.Config{
+	if err := scriptwiring.WireScriptLocationSources(invalidManifest, &config.Config{
 		Storage:  config.StorageConfig{DataDir: t.TempDir()},
 		External: config.ExternalConfig{MapPlateManifestPath: "missing-plates.json"},
 	}, zap.NewNop()); err == nil {
@@ -207,7 +208,7 @@ func TestWireScriptLocationSourcesResolvesAbsoluteAndRelativePaths(t *testing.T)
 			GeocodingBaseURL: server.URL, GeocodingUserAgent: "PipelineGen path test",
 			GeocodingCacheDir: cacheDir,
 		}}
-		if err := wireScriptLocationSources(target, cfg, zap.NewNop()); err != nil {
+		if err := scriptwiring.WireScriptLocationSources(target, cfg, zap.NewNop()); err != nil {
 			t.Fatalf("wire absolute cache path: %v", err)
 		}
 		if _, err := os.Stat(cacheDir); err != nil {
@@ -230,7 +231,7 @@ func TestWireScriptLocationSourcesResolvesAbsoluteAndRelativePaths(t *testing.T)
 			Storage:  config.StorageConfig{DataDir: dataDir},
 			External: config.ExternalConfig{MapPlateManifestPath: filepath.Join("maps", "plates.json")},
 		}
-		if err := wireScriptLocationSources(target, cfg, zap.NewNop()); err != nil {
+		if err := scriptwiring.WireScriptLocationSources(target, cfg, zap.NewNop()); err != nil {
 			t.Fatalf("wire relative manifest path: %v", err)
 		}
 		if _, ok := target.resolver.ResolvePlate(29.95, -90.07); !ok {
@@ -248,7 +249,7 @@ func TestWireMapPlatesResolvesOfflineFlyoverLODs(t *testing.T) {
 		t.Fatalf("write manifest: %v", err)
 	}
 	target := &recordingPlateTarget{}
-	if err := wireMapPlates(target, manifestPath, zap.NewNop()); err != nil {
+	if err := scriptwiring.WireMapPlates(target, manifestPath, zap.NewNop()); err != nil {
 		t.Fatalf("wire flyover manifest: %v", err)
 	}
 	resolver, ok := target.resolver.(capabilityoverlay.FlyoverPlateResolver)
@@ -278,7 +279,7 @@ func TestWireMapPlatesResolvesOfflineFlyoverLODs(t *testing.T) {
 // cannot be certified is a hard error — never a run that silently drops maps.
 func TestWireMapPlatesFailsClosed(t *testing.T) {
 	unconfigured := &recordingPlateTarget{}
-	if err := wireMapPlates(unconfigured, "   ", zap.NewNop()); err != nil {
+	if err := scriptwiring.WireMapPlates(unconfigured, "   ", zap.NewNop()); err != nil {
 		t.Fatalf("an unconfigured manifest must be a valid no-op: %v", err)
 	}
 	if unconfigured.calls != 0 || unconfigured.resolver != nil {
@@ -295,7 +296,7 @@ func TestWireMapPlatesFailsClosed(t *testing.T) {
 		t.Fatalf("write manifest: %v", err)
 	}
 	other := &recordingPlateTarget{}
-	if err := wireMapPlates(other, mismatched, zap.NewNop()); err == nil {
+	if err := scriptwiring.WireMapPlates(other, mismatched, zap.NewNop()); err == nil {
 		t.Fatal("an uncertifiable manifest must fail wiring, not silently disable maps")
 	}
 	if other.calls != 0 || other.resolver != nil {

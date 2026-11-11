@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -309,9 +310,15 @@ type DownloadRequest struct {
 	MergeFormat      string // e.g. "mp4"
 	NoPlaylist       bool
 	DownloadSections []string // e.g. ["*00:01:20-00:01:35"]
-	ForceKeyframes   bool
-	StreamCopy       bool // If true, force stream copy (fast but less precise)
-	Timeout          time.Duration
+	// ReturnSourceWindows permits a cached full source to be returned with
+	// certified absolute windows instead of encoding one intermediate file per
+	// requested section. Callers must consume SourceWindow and perform their
+	// canonical output operation themselves. Network fallback retains the
+	// historical section-file behavior.
+	ReturnSourceWindows bool
+	ForceKeyframes      bool
+	StreamCopy          bool // If true, force stream copy (fast but less precise)
+	Timeout             time.Duration
 	// UseCookies enables passing YouTube cookies to yt-dlp.
 	// Cookies are needed for age-restricted or auth-required videos,
 	// but they disable the android client (which doesn't support cookies),
@@ -325,4 +332,7 @@ type DownloadedSegment struct {
 	Path  string
 	Name  string
 	Index int
+	// SourceWindow is set only when Path names a certified full source rather
+	// than a pre-cut section. Consumers must validate and apply the range.
+	SourceWindow *media.SourceWindow
 }

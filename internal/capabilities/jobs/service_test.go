@@ -69,7 +69,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 		-- Kernel deferral hint (migration 006): the instant a WAITING job must
 		-- not be re-claimed before. NULL = no deferral pending (nullable, so it
 		-- mirrors the migrated column exactly instead of inventing a sentinel).
-		deferred_until TEXT
+		deferred_until TEXT,
+		resource_class TEXT NOT NULL DEFAULT '',
+		execution_lane TEXT NOT NULL DEFAULT '',
+		available_at TEXT,
+		claim_effective_priority INTEGER NOT NULL DEFAULT 0,
+		claim_next_age_millis INTEGER NOT NULL DEFAULT 0
 	);
 	CREATE INDEX IF NOT EXISTS idx_jobs_status_priority ON jobs(status, priority DESC, created_at ASC);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_key ON jobs(active_key) WHERE active_key != '';

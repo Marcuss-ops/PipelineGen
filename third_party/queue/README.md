@@ -66,9 +66,21 @@ Request (only `id`, `schema`, `version`, `render_plan` and `assets` are used):
 ```
 
 - `id` is optional; when omitted the server assigns one.
-- Response `201 Created`: `{"id":"job-123"}`.
-- Response `409 Conflict`: a job with that `id` already exists. Producers treat
-  this as idempotent success and poll the existing job.
+- Response `201 Created`: `{"id":"job-123"}` for a newly stored request.
+- Response `200 OK`: `{"id":"job-123"}` only when the queue atomically verifies
+  that the idempotency key and immutable request match the stored job.
+- Response `409 Conflict`: the ID or idempotency key conflicts with a different
+  or unverifiable request. Producers must fail closed; a GET after the conflict
+  cannot turn it into a replay.
+
+#### `POST /jobs/batch`
+
+Submits an assembly anchor and its complete ordered chunk family in one
+transaction. Every member must carry its own idempotency key; the producer binds
+those keys to the same family digest, member order and frame ranges. `201 Created`
+means the family was inserted. `200 OK` means every stored member matched the
+retry atomically. A partial family, changed member, or conflicting ID returns
+`409 Conflict` and leaves new members uninserted.
 - `not_before` (RFC 3339) defers the job: it is stored immediately but **no
   worker can claim it until the time is due**. Omitted or a past time keeps the
   historical immediately-claimable behaviour, so existing producers are

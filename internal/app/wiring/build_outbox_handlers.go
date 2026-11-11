@@ -21,6 +21,8 @@ import (
 
 	"go.uber.org/zap"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
 	assetmetadata "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/metadataexport"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -302,7 +304,7 @@ func registerPostgresMediaOutboxHandlers(
 	if worker == nil {
 		return nil
 	}
-	clipHandler, clipErr := newClipRenderDriveDeliveryHandler(drivePublisher, mutator, subtitles, log)
+	clipHandler, clipErr := clipswiring.NewClipRenderDriveDeliveryHandler(drivePublisher, mutator, subtitles, log)
 	if clipErr != nil {
 		return fmt.Errorf("clip.render PostgreSQL Drive delivery handler: %w", clipErr)
 	}
@@ -313,15 +315,11 @@ func registerPostgresMediaOutboxHandlers(
 		observability.NewMediaOutboxStatusCountAdapter(),
 		cliprender.EventClipRenderDriveDeliveryRequested,
 	)
-	imageWriter, ok := mutator.(assetspersistence.AssetDriveDeliveryWriter)
-	if !ok {
-		return fmt.Errorf("image PostgreSQL Drive delivery handler: canonical asset mutator does not support Drive delivery by asset id")
-	}
-	imageHandler, imageErr := imagesapp.NewImageDriveDeliveryHandler(pgImageDriveDeliveryRepository{writer: imageWriter}, drivePublisher, log)
+	imageHandler, imageErr := assetswiring.NewImageDriveDeliveryPGHandler(mutator, drivePublisher, log)
 	if imageErr != nil {
 		return fmt.Errorf("image PostgreSQL Drive delivery handler: %w", imageErr)
 	}
-	if err := worker.RegisterHandler(imagesapp.EventTypeImageDriveDeliveryRequested, imageDriveDeliveryPGHandler{handler: imageHandler}); err != nil {
+	if err := worker.RegisterHandler(imagesapp.EventTypeImageDriveDeliveryRequested, imageHandler); err != nil {
 		return fmt.Errorf("register image PostgreSQL Drive delivery handler: %w", err)
 	}
 	log.Info("PostgreSQL media outbox Drive delivery handlers registered")

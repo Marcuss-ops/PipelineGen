@@ -123,8 +123,8 @@ check_ffmpeg_overlay_compositor_callers
 check_absent_rust 'chronon3d|CHRONON_' 'Rust must never reference the Chronon engine/binary'
 check_absent_rust 'cuda_native|scale_cuda|overlay_cuda|hwupload_cuda|render_backend|append_video_args_cuda|build_gpu_filter_graph|gpu_native_eligible|has_alpha_pixel_format' 'Rust GPU compositing machinery (demolished with PATH B)'
 
-if [[ ! -f internal/app/wiring/clip_render_runtime.go ]] || \
-   ! rg -q 'RenderingGenExecutor' internal/app/wiring/clip_render_runtime.go; then
+if [[ ! -f internal/app/wiring/clips/runtime.go ]] || \
+   ! rg -q 'RenderingGenExecutor' internal/app/wiring/clips/runtime.go; then
   echo 'FAIL: shared RenderingGen clip runtime is missing'
   fail=1
 else

@@ -31,6 +31,24 @@ func TestSubmitIdempotentReturnsStoredPendingJob(t *testing.T) {
 	}
 }
 
+func TestSubmitIdempotentRejectsChangedRequestUnderSameKey(t *testing.T) {
+	ctx := context.Background()
+	repo := New(time.Minute, 3)
+	first := model.Job{ID: "job-identity", IdempotencyKey: "request-key", RenderPlan: []byte(`{"n":1}`)}
+	if _, created, err := repo.SubmitIdempotent(ctx, first); err != nil || !created {
+		t.Fatalf("initial submit: created=%t err=%v", created, err)
+	}
+	changed := first
+	changed.RenderPlan = []byte(`{"n":2}`)
+	if _, created, err := repo.SubmitIdempotent(ctx, changed); !errors.Is(err, repository.ErrIdempotencyConflict) || created {
+		t.Fatalf("changed replay: created=%t err=%v, want idempotency conflict", created, err)
+	}
+	canonical, err := repo.Get(ctx, first.ID)
+	if err != nil || string(canonical.RenderPlan) != `{"n":1}` {
+		t.Fatalf("canonical job changed after conflicting replay: job=%+v err=%v", canonical, err)
+	}
+}
+
 // TestSubmitRejectsReusedIdempotencyKey pins the in-memory mirror of the
 // PostgreSQL unique index: a non-empty key identifies ONE logical job on EVERY
 // insert path. Submit used to skip the idem index entirely, so the same key was

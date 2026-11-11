@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	kernelaudio "github.com/Marcuss-ops/PipelineGen/internal/kernel/audio"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
@@ -279,4 +281,175 @@ func (r *Runner) auditFinalJobArtifactReuse(runID string, result *GenerateResult
 		zap.Int("overlay_items", overlayItems),
 		zap.Int("overlay_renders", overlayRenders),
 		zap.Int("localized_renders", localizedRenders))
+}
+
+// finalJobAudioInput projects the canonical mix onto the remote final-job
+// handoff: TTS, BGM and SFX pass through, and the original clip audio is
+// restored at FinalJobRestoredClipGainDB instead of being dropped. History:
+// this projection used to remove every AudioClip intent, which delivered
+// videos with silent clip audio (2026-09-30 Milton incident) — the source
+// speech was audible only in the local lane while the remote master mixed
+// narration + music alone. The restored track ducks like any clip track:
+// applyMixPolicy only deepens non-protected events toward the active duck
+// gain while speech plays.
+func finalJobAudioInput(result GenerateResult, language Language) GenerateResult {
+	result.Scenes = append([]Scene(nil), result.Scenes...)
+	alignFinalJobStockSceneDurations(&result)
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		// Fixed-media scenes normally require their source clip's original
+		// audio. The remote final-job path deliberately hands that clip to 51,
+		// so the local audio projection treats the slot as generated silence
+		// or narration while retaining its explicit duration.
+		if scene.ExecutionMode.IsFixedMedia() {
+			scene.ExecutionMode = scriptpkg.SceneExecutionGenerated
+		}
+		intents := scene.AudioIntents
+		if len(intents) == 0 && scene.Audio.Mode != "" {
+			intents = []capabilityaudio.AudioIntent{scene.Audio}
+		}
+		// Ordinary scenes bound to an editorial clip must contribute that
+		// clip's source audio to the same canonical master as their narration.
+		// Historically only fixed intro/outro sections carried an AudioClip
+		// intent, so intermediate clip scenes could reach 51 with narration
+		// alone (or with an inconsistent source track inherited downstream).
+		// Stock-selected scenes remain visual-only, EXCEPT for clips the caller
+		// explicitly marked as used-as-stock: those keep the clip audio at full
+		// original volume because the caller asked for that clip to be HEARD.
+		stockClipIDs := sceneStockClipIDs(*scene)
+		if !scene.ExecutionMode.IsFixedMedia() && scene.Stock == nil && scene.Clip != nil && !hasClipAudioIntent(intents, scene.Clip.ID) {
+			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(scene.Clip); ok {
+				intents = append(intents, capabilityaudio.AudioIntent{
+					Mode: capabilityaudio.AudioClip, ClipAssetID: scene.Clip.ID,
+					SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
+					TimelineOffsetUS: 0, TimelineDurationUS: sourceDurationUS,
+					UseOriginalAudio: true, GainDB: kernelaudio.FinalJobRestoredClipGainDB,
+				})
+			}
+		}
+		// A stock-marked clip is an explicit editorial request to hear that
+		// clip: its original audio joins the master at full volume even when
+		// the scene's visual comes from a stock folder and even when the run's
+		// global policy is VOICEOVER_ONLY.
+		for _, clip := range sceneClips(*scene) {
+			if !clip.usedAsStock() || hasClipAudioIntent(intents, clip.ID) {
+				continue
+			}
+			if sourceInUS, sourceDurationUS, ok := finalJobClipAudioWindow(clip); ok {
+				intents = append(intents, capabilityaudio.AudioIntent{
+					Mode: capabilityaudio.AudioClip, ClipAssetID: clip.ID,
+					SourceInUS: sourceInUS, SourceDurationUS: sourceDurationUS,
+					TimelineOffsetUS: 0, TimelineDurationUS: sourceDurationUS,
+					UseOriginalAudio: true, StockOriginalAudio: true, GainDB: 0,
+				})
+			}
+		}
+		filtered := make([]capabilityaudio.AudioIntent, 0, len(intents)+1)
+		hasVoiceover := false
+		for _, intent := range intents {
+			if intent.Mode == capabilityaudio.AudioClip {
+				// The clip's original audio reaches the remote master: keep the
+				// intent and stamp the restored-mix gain. The mix policy still
+				// ducks it under speech; the compiler never touches an explicit
+				// non-zero GainDB. A stock-marked clip is the exception: the
+				// caller asked for it AS STOCK, so it stays at full original
+				// volume and keeps its protection against VO-only removal and
+				// ducking.
+				restored := intent
+				if _, isStock := stockClipIDs[intent.ClipAssetID]; isStock {
+					restored.StockOriginalAudio = true
+					restored.GainDB = 0
+				} else {
+					restored.GainDB = kernelaudio.FinalJobRestoredClipGainDB
+				}
+				filtered = append(filtered, restored)
+				continue
+			}
+			if intent.Mode == capabilityaudio.AudioVoiceover {
+				hasVoiceover = true
+			}
+			filtered = append(filtered, intent)
+		}
+		if !hasVoiceover {
+			if voiceover, ok := scene.Voiceover[language]; ok && voiceover.ID != "" {
+				filtered = append(filtered, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover, VoiceoverAssetID: voiceover.ID})
+			}
+		}
+		if len(filtered) == 0 {
+			filtered = append(filtered, capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioSilence})
+		}
+		scene.AudioIntents = filtered
+		scene.Audio = filtered[0]
+	}
+	return result
+}
+
+// alignFinalJobStockSceneDurations rounds every stock-bound scene UP to the
+// next whole multiple of the stock file duration the binding declares
+// (start_ms/end_ms → StockBinding.DurationMs). The remote Master accepts only
+// whole-file stock windows (r56), so a narration that ends mid-file can never
+// be composed when the folder holds uniform files (r59b: 240×5000 ms vs a
+// 4624 ms tail). Extending the scene window is the Producer-side fix that keeps
+// stock remote: the certified voiceover keeps its own source duration, which
+// the canonical plan places at the start of the longer window; the renderer
+// fills the remainder with silence. No stock byte is downloaded, cut or
+// re-encoded here.
+//
+// A binding without a positive duration declares no whole-file quantum and is
+// left untouched; the planner keeps failing fast instead of guessing. The
+// function copies ResolvedScenes before touching them, so the caller's result
+// is never mutated.
+func alignFinalJobStockSceneDurations(result *GenerateResult) {
+	if result == nil {
+		return
+	}
+	if len(result.ResolvedScenes) > 0 {
+		result.ResolvedScenes = append([]ResolvedScene(nil), result.ResolvedScenes...)
+	}
+	alignedByScene := make(map[string]int64, len(result.Scenes))
+	for i := range result.Scenes {
+		scene := &result.Scenes[i]
+		if scene.Stock == nil || scene.Stock.DurationMs <= 0 {
+			continue
+		}
+		quantumUS := scene.Stock.DurationMs * 1000
+		durationUS := scene.DurationUS
+		if durationUS <= 0 {
+			durationUS = scene.DurationMS * 1000
+		}
+		if durationUS <= 0 {
+			durationUS = quantumUS
+		}
+		alignedUS := ((durationUS + quantumUS - 1) / quantumUS) * quantumUS
+		scene.DurationUS = alignedUS
+		scene.DurationMS = alignedUS / 1000
+		alignedByScene[scene.ID] = alignedUS
+	}
+	for i := range result.ResolvedScenes {
+		if alignedUS, ok := alignedByScene[result.ResolvedScenes[i].ID]; ok {
+			result.ResolvedScenes[i].DurationUS = alignedUS
+		}
+	}
+}
+
+func hasClipAudioIntent(intents []capabilityaudio.AudioIntent, clipID string) bool {
+	for _, intent := range intents {
+		if intent.Mode == capabilityaudio.AudioClip && intent.ClipAssetID == clipID {
+			return true
+		}
+	}
+	return false
+}
+
+func finalJobClipAudioWindow(clip *ClipReference) (sourceInUS, durationUS int64, ok bool) {
+	if clip == nil || strings.TrimSpace(clip.ID) == "" || clip.SourceInMS < 0 {
+		return 0, 0, false
+	}
+	sourceInUS = clip.SourceInMS * 1000
+	if clip.SourceOutMS > clip.SourceInMS {
+		durationUS = (clip.SourceOutMS - clip.SourceInMS) * 1000
+	} else if total := clip.AssetDuration().DurationUS; total > sourceInUS {
+		durationUS = total - sourceInUS
+	}
+	return sourceInUS, durationUS, durationUS > 0
 }

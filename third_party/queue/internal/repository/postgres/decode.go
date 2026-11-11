@@ -46,14 +46,27 @@ func decodeFrameRange(raw []byte) (*model.FrameRange, error) {
 }
 
 func decodeAssets(raw []byte) ([]model.AssetRef, error) {
+	manifest, err := decodeInputManifest(raw)
+	if err != nil {
+		return nil, err
+	}
+	return manifest.Assets, nil
+}
+
+func decodeInputManifest(raw []byte) (inputManifest, error) {
 	if len(raw) == 0 {
-		return nil, nil
+		return inputManifest{}, nil
 	}
 	var m inputManifest
 	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, fmt.Errorf("postgres: corrupt input_manifest jsonb (%d bytes): %w", len(raw), err)
+		return inputManifest{}, fmt.Errorf("postgres: corrupt input_manifest jsonb (%d bytes): %w", len(raw), err)
 	}
-	return m.Assets, nil
+	if m.PreparedRenderPackage != nil {
+		if err := m.PreparedRenderPackage.Validate(); err != nil {
+			return inputManifest{}, fmt.Errorf("postgres: corrupt input_manifest prepared render package: %w", err)
+		}
+	}
+	return m, nil
 }
 
 // poisonCorruptJob marks a job failed due to corrupt JSONB so it never

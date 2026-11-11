@@ -15,11 +15,57 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	instaeditcalendar "github.com/Marcuss-ops/PipelineGen/internal/platform/instaeditcalendar"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobs"
 )
+
+// Test-only adapters keep focused lifecycle tests concise while production
+// callers use the lifecycle module directly.
+const (
+	EnvInteractiveWorkers     = lifecyclewiring.EnvInteractiveWorkers
+	EnvFeederWorkers          = lifecyclewiring.EnvFeederWorkers
+	defaultInteractiveWorkers = lifecyclewiring.DefaultInteractiveWorkers
+	defaultFeederWorkers      = lifecyclewiring.DefaultFeederWorkers
+	jobRunnerPoolGeneral      = lifecyclewiring.JobRunnerPoolGeneral
+)
+
+func clipRenderPhaseScope() (job.PayloadMatch, job.PayloadNotMatch) {
+	return lifecyclewiring.ClipRenderPhaseScope()
+}
+func interactiveJobTypes() []string             { return lifecyclewiring.InteractiveJobTypes() }
+func interactiveWorkerBudget() int              { return lifecyclewiring.InteractiveWorkerBudget() }
+func feederJobTypes() []string                  { return lifecyclewiring.FeederJobTypes() }
+func feederWorkerBudget() int                   { return lifecyclewiring.FeederWorkerBudget() }
+func generalPoolJobTypes() []string             { return lifecyclewiring.GeneralPoolJobTypes() }
+func settleWorkerBudget(cfg *config.Config) int { return lifecyclewiring.SettleWorkerBudget(cfg) }
+
+func buildJobSchedulerStep(deps jobRunnerDeps) *StartupStep {
+	return lifecyclewiring.BuildJobSchedulerStep(lifecycleJobRunnerDeps(deps))
+}
+func buildJobRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Reporter) {
+	return lifecyclewiring.BuildJobRunner(lifecycleJobRunnerDeps(deps))
+}
+func buildClipRenderSettleRunner(deps jobRunnerDeps) (*appjobs.Runner, *instaeditcalendar.Reporter) {
+	return lifecyclewiring.BuildClipRenderSettleRunner(lifecycleJobRunnerDeps(deps))
+}
+
+type jobRunnerPool struct {
+	name     string
+	reporter *instaeditcalendar.Reporter
+}
+
+func startCalendarDrains(pools []jobRunnerPool, ctx context.Context, log *zap.Logger) {
+	adapted := make([]lifecyclewiring.JobRunnerPool, len(pools))
+	for i, pool := range pools {
+		adapted[i] = lifecyclewiring.JobRunnerPool{Name: pool.name, Reporter: pool.reporter}
+	}
+	lifecyclewiring.StartCalendarDrains(adapted, ctx, log)
+}
 
 // TestBuildJobSchedulerStep pins the STARTUP GATE of the deferred-job
 // scheduler, which is the only writer of the SCHEDULED → QUEUED promotion.
@@ -232,14 +278,14 @@ func TestJobRunnerStepDrainsTheCalendarSpool(t *testing.T) {
 // asserted inside buildJobRunnerStep's own body, so moving the call into a dead
 // branch or deleting it fails here instead of in production.
 func TestBuildJobRunnerStepStartsTheDrains(t *testing.T) {
-	src, err := os.ReadFile("lifecycle_job_runner.go")
+	src, err := os.ReadFile("lifecycle/jobrunner.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	const start = "func buildJobRunnerStep("
+	const start = "func BuildJobRunnerStep("
 	begin := strings.Index(string(src), start)
 	if begin < 0 {
-		t.Fatalf("lifecycle_job_runner.go no longer declares %s", start)
+		t.Fatalf("lifecycle/jobrunner.go no longer declares %s", start)
 	}
 	rest := string(src)[begin+len(start):]
 	end := strings.Index(rest, "\nfunc ")
@@ -247,7 +293,7 @@ func TestBuildJobRunnerStepStartsTheDrains(t *testing.T) {
 		end = len(rest)
 	}
 	body := rest[:end]
-	if !strings.Contains(body, "startCalendarDrains(pools, startCtx, deps.log)") {
+	if !strings.Contains(body, "StartCalendarDrains(pools, startCtx, deps.Log)") {
 		t.Fatal("buildJobRunnerStep no longer starts the calendar drains: spooled reports would never reach InstaEdit")
 	}
 }

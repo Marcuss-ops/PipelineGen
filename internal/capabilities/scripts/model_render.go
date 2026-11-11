@@ -206,16 +206,17 @@ func NewRenderQueueAsset(ref kernelasset.Ref, logicalPath, sourceURL string) Ren
 // GET /jobs/{id}). JobType is the canonical overlay job type
 // (overlay.prepare / overlay.render) the queue worker dispatches on.
 type RenderQueueJob struct {
-	ID          string             `json:"id"`
-	JobType     string             `json:"job_type,omitempty"`
-	ParentJobID string             `json:"parent_job_id,omitempty"`
-	ChunkIndex  int                `json:"chunk_index,omitempty"`
-	FrameRange  *RenderFrameRange  `json:"frame_range,omitempty"`
-	OverlaySpec json.RawMessage    `json:"overlay_spec"`
-	Assets      []RenderQueueAsset `json:"assets"`
-	State       string             `json:"state"`
-	FailReason  string             `json:"fail_reason,omitempty"`
-	Artifact    *RenderArtifact    `json:"artifact,omitempty"`
+	ID                    string                         `json:"id"`
+	JobType               string                         `json:"job_type,omitempty"`
+	ParentJobID           string                         `json:"parent_job_id,omitempty"`
+	ChunkIndex            int                            `json:"chunk_index,omitempty"`
+	FrameRange            *RenderFrameRange              `json:"frame_range,omitempty"`
+	PreparedRenderPackage *RenderQueuePreparedPackageRef `json:"prepared_render_package,omitempty"`
+	OverlaySpec           json.RawMessage                `json:"overlay_spec"`
+	Assets                []RenderQueueAsset             `json:"assets"`
+	State                 string                         `json:"state"`
+	FailReason            string                         `json:"fail_reason,omitempty"`
+	Artifact              *RenderArtifact                `json:"artifact,omitempty"`
 
 	// Queue-owned lifecycle timestamps (GET /jobs/{id}). They are the ONLY
 	// measurement of where a remote render's wall went BEFORE the renderer
@@ -226,6 +227,17 @@ type RenderQueueJob struct {
 	QueuedAt    time.Time `json:"queued_at,omitempty"`
 	StartedAt   time.Time `json:"started_at,omitempty"`
 	CompletedAt time.Time `json:"completed_at,omitempty"`
+}
+
+// RenderQueuePreparedPackageRef identifies the immutable preparation shared
+// by every render in a chunk family.
+type RenderQueuePreparedPackageRef struct {
+	PackageID        string `json:"package_id"`
+	PlanSHA256       string `json:"plan_sha256"`
+	AssetManifestSHA string `json:"asset_manifest_sha256"`
+	TotalFrames      int64  `json:"total_frames"`
+	CompilerVersion  string `json:"compiler_version"`
+	ProfileID        string `json:"profile_id,omitempty"`
 }
 
 // RenderFrameRange is the half-open [Start, End) range carried by a chunk

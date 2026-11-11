@@ -126,7 +126,12 @@ CREATE TABLE jobs (
     revision INTEGER NOT NULL DEFAULT 1,
     client_id TEXT NOT NULL DEFAULT '',
     idempotency_key TEXT NOT NULL DEFAULT '',
-    deferred_until TEXT
+    deferred_until TEXT,
+    resource_class TEXT NOT NULL DEFAULT '',
+    execution_lane TEXT NOT NULL DEFAULT '',
+    available_at TEXT,
+    claim_effective_priority INTEGER NOT NULL DEFAULT 0,
+    claim_next_age_millis INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE job_events (
@@ -137,6 +142,15 @@ CREATE TABLE job_events (
     data_json TEXT DEFAULT '{}',
     created_at DATETIME
 );
+
+CREATE INDEX idx_jobs_claim_order
+	ON jobs(status, type, claim_effective_priority DESC, created_at ASC, id ASC);
+CREATE INDEX idx_jobs_claim_status_order
+	ON jobs(status, claim_effective_priority DESC, created_at ASC, id ASC);
+CREATE INDEX idx_jobs_claim_lane_order
+	ON jobs(status, type, execution_lane, claim_effective_priority DESC, created_at ASC, id ASC);
+CREATE INDEX idx_jobs_claim_aging_due
+    ON jobs(status, claim_next_age_millis);
 
 CREATE TABLE outbox_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,7 +171,7 @@ CREATE UNIQUE INDEX outbox_events_event_key_uniq ON outbox_events(event_key) WHE
 // avoid cross-test pollution (the broker uses package-level
 // observability counters that survive between tests, but the DB
 // itself is hermetic per-test).
-func newBrokerTestDB(t *testing.T) *sql.DB {
+func newBrokerTestDB(t testing.TB) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {

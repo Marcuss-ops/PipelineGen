@@ -50,6 +50,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 const (
@@ -91,6 +93,7 @@ type SourceDownloadRequest struct {
 type DownloadedSource struct {
 	ResolvedPath string
 	SizeBytes    int64
+	SourceWindow *media.SourceWindow
 }
 
 // SourceDownloader is the Pattern 0 typed port for source video

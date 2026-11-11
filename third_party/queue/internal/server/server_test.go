@@ -170,7 +170,7 @@ func TestSubmitIdempotencyReturnsCanonicalJob(t *testing.T) {
 	}
 	first.Body.Close()
 
-	second := post(t, ts.URL+"/jobs", `{"id":"job-retry-generated","idempotency_key":"pipeline-123:scene-04:overlay-v1","render_plan":{"different":true}}`)
+	second := post(t, ts.URL+"/jobs", body)
 	if second.StatusCode != http.StatusOK {
 		t.Fatalf("retry submit: got %d", second.StatusCode)
 	}
@@ -183,6 +183,11 @@ func TestSubmitIdempotencyReturnsCanonicalJob(t *testing.T) {
 	}
 	if secondResponse.ID != firstResponse.ID {
 		t.Fatalf("canonical id changed: first=%q retry=%q", firstResponse.ID, secondResponse.ID)
+	}
+	changed := post(t, ts.URL+"/jobs", `{"id":"job-retry-generated","idempotency_key":"pipeline-123:scene-04:overlay-v1","render_plan":{"different":true}}`)
+	defer changed.Body.Close()
+	if changed.StatusCode != http.StatusConflict {
+		t.Fatalf("changed request under same idempotency key: want 409, got %d", changed.StatusCode)
 	}
 }
 

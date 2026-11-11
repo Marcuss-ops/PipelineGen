@@ -17,11 +17,13 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"time"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	geography "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/geography"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -143,7 +145,7 @@ func (r *Runner) runVidRushJoinAndPrepare(ctx context.Context, runID string, req
 			}
 		}
 		wantMaps := req.MapsOnly || req.AnimationCounts["maps"] > 0 || req.AnimationCounts["one_map"] > 0 || req.AnimationCounts["two_maps"] > 0
-		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{sceneTexts: sceneTexts, mapsOnly: wantMaps}); err != nil {
+		if err := r.geocodePlaceAnnotations(ctx, geocoded, string(req.SourceLanguage), geocodeOptions{SceneTexts: sceneTexts, MapsOnly: wantMaps}); err != nil {
 			return vidRushPrepareResult{}, err
 		}
 		annotations = geocoded
@@ -468,3 +470,31 @@ func overlayPrepareNeedsAssetPrefetch(intents []capmodel.OverlayIntent) bool {
 	}
 	return false
 }
+
+// shouldGeocodeScriptLocations preserves the explicit compatibility opt-in and
+// activates automatic grounded geocoding only when adapters and extraction
+// policy are configured.
+func (r *Runner) shouldGeocodeScriptLocations(req GenerateRequest) bool {
+	if req.MediaPlan.ProviderPolicy.Geocoding == mediadomain.MediaToggleDisabled {
+		return false
+	}
+	if req.MediaPlan.ProviderPolicy.Geocoding == mediadomain.MediaToggleEnabled {
+		return true
+	}
+	return r != nil && r.geocoder != nil && r.mapPlates != nil && !req.EntityExtractionDisabled() && req.NeedsSemanticEnrichment() && req.MediaPlan.Extraction.EntityExtractionRequested() && req.MediaPlan.Extraction.IncludesEntityType("LOCATION")
+}
+
+type geocodeOptions = geography.Options
+
+func (r *Runner) geocodePlaceAnnotations(ctx context.Context, annotations map[int]*scriptpkg.SceneAnnotations, language string, options ...geocodeOptions) error {
+	if r == nil || r.geocoder == nil {
+		return fmt.Errorf("geocoding is enabled but no geocoder adapter is wired")
+	}
+	return geography.Enrich(ctx, r.geocoder, annotations, language, options...)
+}
+
+func stripPersonNameMapCandidates(annotation *scriptpkg.SceneAnnotations, sceneText string) {
+	geography.StripPersonNameMapCandidates(annotation, sceneText)
+}
+
+func isPlaceEntityType(entityType string) bool { return geography.IsPlaceEntityType(entityType) }

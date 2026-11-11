@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
+	lifecyclewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
 	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	capperformance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/performance"
@@ -118,7 +120,7 @@ func buildPreparationCoordinatorStep(deps jobRunnerDeps) *StartupStep {
 	// routes every unit onto the preparation_units lease.
 	var claimer appjobs.ArtifactClaimer
 	if deps.root.CacheDB != nil && deps.root.CacheDB.DB != nil && deps.root.DB != nil && deps.root.DB.DB != nil {
-		if cache, cacheErr := NewArtifactCache(deps.cfg, deps.root.CacheDB.DB, deps.root.DB.DB, deps.log); cacheErr == nil {
+		if cache, cacheErr := assetswiring.NewArtifactCache(deps.cfg, deps.root.CacheDB.DB, deps.root.DB.DB, deps.log); cacheErr == nil {
 			// *platformcache.Cache implements capcache.ClaimStore; convert to the
 			// interface so the adapter can type-assert the singleflight surface.
 			claimer = artifactCacheClaimer{inner: capcache.ClaimStore(cache)}
@@ -126,7 +128,7 @@ func buildPreparationCoordinatorStep(deps jobRunnerDeps) *StartupStep {
 			deps.log.Warn("preparation artifact-claim adapter disabled; routing via preparation_units lease", zap.Error(cacheErr))
 		}
 	}
-	router := appjobs.NewPreparationLeaseRouter(deps.root.Jobs.Repo, claimer, "preparation-coordinator", leaseTTLDefault(deps.cfg))
+	router := appjobs.NewPreparationLeaseRouter(deps.root.Jobs.Repo, claimer, "preparation-coordinator", lifecyclewiring.LeaseTTLDefault(deps.cfg))
 	coordinator, err := appjobs.NewPreparationCoordinator(
 		deps.root.Jobs.Repo,
 		deps.root.Jobs.Repo,

@@ -12,6 +12,7 @@ import (
 	capyoutubeusecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
 	youtubeinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/youtube"
 
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/ytdlp"
@@ -69,10 +70,10 @@ func buildDomainScriptServices(
 			Log:        log,
 		}),
 	)
-	transcriptFetcher := &transcriptFetcherAdapter{sub: extractSubtitleSource}
+	transcriptFetcher := youtubewiring.NewTranscriptFetcherAdapter(extractSubtitleSource)
 	// Analyzer is the nil-tolerant forward-pointer: failClosedAnalyzerAdapter
 	// surfaces ErrAnalyzerUnavailable until the real LLM analyzer lands.
-	analyzer := &failClosedAnalyzerAdapter{}
+	analyzer := youtubewiring.NewFailClosedAnalyzerAdapter()
 	segmentSelectionResolver := capyoutubeusecase.NewSegmentSelectionResolver(log, transcriptFetcher, analyzer)
 	bundle.YoutubeClipService.SetSegmentSelectionResolver(segmentSelectionResolver)
 

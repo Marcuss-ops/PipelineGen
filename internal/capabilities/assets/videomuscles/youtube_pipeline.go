@@ -120,13 +120,14 @@ func (p *Pipeline) sectionDownloadTimeout() time.Duration {
 // hardcoded value here would silently cap the largest downloadable window.
 func (p *Pipeline) buildYouTubeSectionDownloadRequest(req YouTubeCutRequest, outputPath, section string, useCookies bool) *coredl.DownloadRequest {
 	return &coredl.DownloadRequest{
-		URL:              req.URL,
-		OutputPath:       outputPath,
-		MergeFormat:      "mp4",
-		DownloadSections: []string{section},
-		ForceKeyframes:   false,
-		UseCookies:       useCookies,
-		Timeout:          p.sectionDownloadTimeout(),
+		URL:                 req.URL,
+		OutputPath:          outputPath,
+		MergeFormat:         "mp4",
+		DownloadSections:    []string{section},
+		ReturnSourceWindows: true,
+		ForceKeyframes:      false,
+		UseCookies:          useCookies,
+		Timeout:             p.sectionDownloadTimeout(),
 	}
 }
 
@@ -137,6 +138,10 @@ func canonicalYouTubeCutOptions(keepAudio bool) mediaexec.CutAndNormalizeOptions
 	return mediaexec.CutAndNormalizeOptions{
 		NoAudio: !keepAudio,
 	}
+}
+
+func youtubeSectionBoundaryUS(seconds float64) int64 {
+	return int64(time.Duration(seconds*float64(time.Second))/time.Millisecond) * 1_000
 }
 
 // DownloadAndCutYouTubeVideo downloads a specific section of a YouTube video and uses FFmpeg to process it.
@@ -275,6 +280,25 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		}
 
 		rawFile := segments[0].Path
+		cutStart := 0.0
+		cutEnd := req.Duration
+		removeRawAfterCut := true
+		if window := segments[0].SourceWindow; window != nil {
+			removeRawAfterCut = false // Path is the persistent mirrored source.
+			if err := window.Validate(); err != nil {
+				return nil, fmt.Errorf("invalid certified source window: %w", err)
+			}
+			wantStartUS := youtubeSectionBoundaryUS(req.Start)
+			wantEndUS := youtubeSectionBoundaryUS(req.Start + req.Duration)
+			if window.StartUS != wantStartUS || window.EndUS != wantEndUS {
+				return nil, fmt.Errorf("certified source window [%d,%d) does not match request [%d,%d)", window.StartUS, window.EndUS, wantStartUS, wantEndUS)
+			}
+			// The mirror returned the complete source. Apply the certified
+			// absolute window in the canonical encode; avoid encoding an
+			// intermediate section and encoding it again downstream.
+			cutStart = float64(window.StartUS) / 1_000_000
+			cutEnd = float64(window.EndUS) / 1_000_000
+		}
 
 		// 4. Process the downloaded section with ffmpeg.
 		//
@@ -287,7 +311,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		// download path is the fallback when section staging is
 		// unavailable; the segment is always normalized here.)
 		renderTimer := time.Now()
-		normalizeErr := p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "0", p.formatTime(req.Duration), canonicalYouTubeCutOptions(req.KeepAudio))
+		normalizeErr := p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, p.formatTime(cutStart), p.formatTime(cutEnd), canonicalYouTubeCutOptions(req.KeepAudio))
 
 		status := "success"
 		if normalizeErr != nil {
@@ -298,10 +322,14 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 
 		if normalizeErr != nil {
 			p.log.Error("ffmpeg clip processing failed", zap.Error(normalizeErr))
-			_ = os.Remove(rawFile)
+			if removeRawAfterCut {
+				_ = os.Remove(rawFile)
+			}
 			return nil, fmt.Errorf("video processing failed: %w", normalizeErr)
 		}
-		_ = os.Remove(rawFile)
+		if removeRawAfterCut {
+			_ = os.Remove(rawFile)
+		}
 	}
 
 	// 5. (REMOVED — Sept 2026) The legacy YouTube watermark overlay

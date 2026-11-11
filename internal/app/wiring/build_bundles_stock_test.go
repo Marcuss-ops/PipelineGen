@@ -13,6 +13,7 @@ package wiring
 import (
 	"context"
 	"errors"
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
 	"testing"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
@@ -31,7 +32,7 @@ func TestStockRuntimeConfigCarriesBothConcurrencyBounds(t *testing.T) {
 	cfg.Concurrency.MaxConcurrentStockDownloads = 9
 	cfg.Concurrency.MaxConcurrentStockCuts = 2
 
-	rt := stockRuntimeConfig(cfg)
+	rt := stockwiring.RuntimeConfig(cfg)
 	if rt == nil {
 		t.Fatal("stockRuntimeConfig(non-nil cfg) returned nil")
 	}
@@ -49,11 +50,11 @@ func TestStockRuntimeConfigCarriesBothConcurrencyBounds(t *testing.T) {
 // DefaultMaxConcurrentJobs) apply, so test/CLI Services and a config that
 // omits the keys keep working unchanged.
 func TestStockRuntimeConfigLeavesUnsetBoundsAtZero(t *testing.T) {
-	if rt := stockRuntimeConfig(nil); rt != nil {
+	if rt := stockwiring.RuntimeConfig(nil); rt != nil {
 		t.Fatalf("stockRuntimeConfig(nil) = %+v, want nil", rt)
 	}
 
-	rt := stockRuntimeConfig(&config.Config{})
+	rt := stockwiring.RuntimeConfig(&config.Config{})
 	if rt == nil {
 		t.Fatal("stockRuntimeConfig(&config.Config{}) returned nil")
 	}
@@ -137,7 +138,7 @@ func TestValidateStockSymmetricGate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateStockSymmetricGate(tc.publisher, tc.finalizer)
+			err := stockwiring.ValidateStockSymmetricGate(tc.publisher, tc.finalizer)
 			if tc.wantErr == nil {
 				if err != nil {
 					t.Fatalf("validateStockSymmetricGate: want nil, got %v", err)
@@ -166,7 +167,7 @@ func TestValidateStockSymmetricGate_PinErrorMessages(t *testing.T) {
 	fin := noOpFinalizer{}
 
 	t.Run("ErrStockProductionJobFinalizerMissing message", func(t *testing.T) {
-		err := validateStockSymmetricGate(pub, nil)
+		err := stockwiring.ValidateStockSymmetricGate(pub, nil)
 		if !errors.Is(err, stockpipeline.ErrStockProductionJobFinalizerMissing) {
 			t.Fatalf("want ErrStockProductionJobFinalizerMissing, got %v", err)
 		}
@@ -178,7 +179,7 @@ func TestValidateStockSymmetricGate_PinErrorMessages(t *testing.T) {
 	})
 
 	t.Run("ErrStockProductionArtifactPrepMissing message", func(t *testing.T) {
-		err := validateStockSymmetricGate(nil, fin)
+		err := stockwiring.ValidateStockSymmetricGate(nil, fin)
 		if !errors.Is(err, stockpipeline.ErrStockProductionArtifactPrepMissing) {
 			t.Fatalf("want ErrStockProductionArtifactPrepMissing, got %v", err)
 		}

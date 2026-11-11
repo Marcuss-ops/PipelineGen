@@ -16,11 +16,20 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	runnerpolicy "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/stockintelligence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
+
+// VidRushBackpressure remains as a compatibility alias; the policy is owned
+// by the runner subpackage.
+type VidRushBackpressure = runnerpolicy.VidRushBackpressure
+
+func DefaultVidRushBackpressure() VidRushBackpressure {
+	return runnerpolicy.DefaultVidRushBackpressure()
+}
 
 // VidRushPlanResolver resolves the per-run ResolvedGenerationPlan consumed by
 // the incremental VidRush coordinator. The plan carries the caller's language,

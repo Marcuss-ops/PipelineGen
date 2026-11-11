@@ -139,6 +139,46 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 	if scheduled {
 		initialStatus = job.StatusScheduled
 	}
+	scheduling := job.SchedulingDescriptor{JobType: req.Type, Priority: req.Priority, AvailableAt: now}
+	if req.ScheduledAt != nil {
+		scheduling.AvailableAt = req.ScheduledAt.UTC()
+	}
+	if req.Scheduling != nil {
+		scheduling.ResourceClass = req.Scheduling.ResourceClass
+		scheduling.ExecutionLane = req.Scheduling.ExecutionLane
+		if req.Scheduling.JobType != "" && req.Scheduling.JobType != req.Type {
+			return nil, fmt.Errorf("scheduling descriptor job_type %q does not match enqueue type %q", req.Scheduling.JobType, req.Type)
+		}
+		if req.Scheduling.Priority != 0 && req.Scheduling.Priority != req.Priority {
+			return nil, fmt.Errorf("scheduling descriptor priority %d does not match enqueue priority %d", req.Scheduling.Priority, req.Priority)
+		}
+		if !req.Scheduling.AvailableAt.IsZero() {
+			if req.ScheduledAt == nil {
+				return nil, fmt.Errorf("scheduling descriptor available_at requires scheduled_at")
+			}
+			if !req.Scheduling.AvailableAt.Equal(req.ScheduledAt.UTC()) {
+				return nil, fmt.Errorf("scheduling descriptor available_at does not match scheduled_at")
+			}
+			scheduling.AvailableAt = req.Scheduling.AvailableAt.UTC()
+		}
+	}
+	if len(payload) > 0 {
+		var hints map[string]json.RawMessage
+		if err := json.Unmarshal(payload, &hints); err == nil {
+			if rawPhase, ok := hints["render_phase"]; ok {
+				var phase string
+				if err := json.Unmarshal(rawPhase, &phase); err != nil {
+					return nil, fmt.Errorf("payload render_phase must be a string: %w", err)
+				}
+				if phase != "" && scheduling.ExecutionLane != phase {
+					return nil, fmt.Errorf("scheduling execution_lane %q does not match payload render_phase %q", scheduling.ExecutionLane, phase)
+				}
+			}
+		}
+	}
+	if err := scheduling.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid scheduling descriptor: %w", err)
+	}
 	j := &job.Job{
 		ID:             GenerateJobID(),
 		Type:           req.Type,
@@ -156,6 +196,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (ret *jo
 		CorrelationID:  correlationID,
 		ClientID:       req.ClientID,
 		IdempotencyKey: req.IdempotencyKey,
+		Scheduling:     scheduling,
 	}
 
 	if s.consumers != nil {

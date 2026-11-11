@@ -98,3 +98,47 @@ func TestEnqueuePastScheduledAtEnqueuesImmediately(t *testing.T) {
 		t.Fatal("a past ScheduledAt must enqueue immediately")
 	}
 }
+
+func TestEnqueueSchedulingLaneMustMatchPayloadPhase(t *testing.T) {
+	t.Parallel()
+	b := &scheduledBroker{}
+	svc := NewService(b, fixedRetryResolver(3), nil, zap.NewNop())
+
+	_, err := svc.Enqueue(context.Background(), &job.EnqueueRequest{
+		Type:    job.TypeClipRender,
+		Payload: map[string]any{"render_phase": "settle"},
+		Scheduling: &job.SchedulingDescriptor{
+			JobType: job.TypeClipRender, ExecutionLane: "submit",
+		},
+	})
+	if err == nil {
+		t.Fatal("mismatched scheduling lane must fail closed")
+	}
+	if b.created != nil {
+		t.Fatal("mismatched scheduling lane must not reach persistence")
+	}
+}
+
+func TestEnqueuePersistsExplicitSchedulingProjection(t *testing.T) {
+	t.Parallel()
+	b := &scheduledBroker{}
+	svc := NewService(b, fixedRetryResolver(3), nil, zap.NewNop())
+
+	created, err := svc.Enqueue(context.Background(), &job.EnqueueRequest{
+		Type:    job.TypeClipRender,
+		Payload: map[string]any{"render_phase": "settle"},
+		Scheduling: &job.SchedulingDescriptor{
+			JobType: job.TypeClipRender, ResourceClass: "render", ExecutionLane: "settle",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	if b.created == nil || b.created.Scheduling.ExecutionLane != "settle" ||
+		b.created.Scheduling.ResourceClass != "render" || b.created.Scheduling.AvailableAt.IsZero() {
+		t.Fatalf("persisted scheduling descriptor = %+v", b.created)
+	}
+	if created.Scheduling != b.created.Scheduling {
+		t.Fatalf("returned scheduling descriptor = %+v, persisted = %+v", created.Scheduling, b.created.Scheduling)
+	}
+}

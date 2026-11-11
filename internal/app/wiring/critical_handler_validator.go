@@ -31,6 +31,7 @@ import (
 
 	"go.uber.org/zap"
 
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
@@ -47,10 +48,7 @@ import (
 // Pre-fill Naming convention: <capability>.<job_type> (e.g.
 // "voiceover.generate", "stockpipeline.media_stock",
 // "images.image_generate_google").
-type CriticalHandler struct {
-	Name string
-	Bind func(svc *appjobs.Service) error
-}
+type CriticalHandler = vowiring.CriticalHandler
 
 // ValidateCriticalHandlers iterates the provided CriticalHandlers
 // slice and accumulates each Bind failure with errors.Join. Returns

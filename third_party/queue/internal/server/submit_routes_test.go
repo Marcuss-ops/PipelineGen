@@ -97,3 +97,29 @@ func TestSubmitBatchEnforcesRequestSizeLimit(t *testing.T) {
 		t.Fatalf("oversized batch: want 400, got %d", resp.StatusCode)
 	}
 }
+
+func TestSubmitBatchExactReplayIsAtomicAndChangedFamilyConflicts(t *testing.T) {
+	ts := newServer(t)
+	family := `{"jobs":[{"id":"family-anchor","idempotency_key":"family-key","render_plan":{"n":1}},{"id":"family-child","parent_job_id":"family-anchor","chunk_index":0,"frame_range":{"start":0,"end":120},"idempotency_key":"child-key","render_plan":{"n":2}}]}`
+	if resp := post(t, ts.URL+"/jobs/batch", family); resp.StatusCode != http.StatusCreated {
+		t.Fatalf("first family submit: want 201, got %d", resp.StatusCode)
+	}
+	if resp := post(t, ts.URL+"/jobs/batch", family); resp.StatusCode != http.StatusOK {
+		t.Fatalf("exact family replay: want 200, got %d", resp.StatusCode)
+	}
+	changed := strings.Replace(family, `"n":2`, `"n":3`, 1)
+	if resp := post(t, ts.URL+"/jobs/batch", changed); resp.StatusCode != http.StatusConflict {
+		t.Fatalf("changed family replay: want 409, got %d", resp.StatusCode)
+	}
+}
+
+func TestSubmitBatchRejectsPartialIdempotencyKeys(t *testing.T) {
+	ts := newServer(t)
+	body := `{"jobs":[{"id":"partial-anchor","idempotency_key":"anchor-key"},{"id":"partial-child","parent_job_id":"partial-anchor","chunk_index":0,"frame_range":{"start":0,"end":120}}]}`
+	if resp := post(t, ts.URL+"/jobs/batch", body); resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("partial batch idempotency keys: want 400, got %d", resp.StatusCode)
+	}
+	if next := post(t, ts.URL+"/jobs/claim", `{"worker":"worker"}`); next.StatusCode != http.StatusNoContent {
+		t.Fatalf("invalid partial batch inserted a job: claim status=%d", next.StatusCode)
+	}
+}

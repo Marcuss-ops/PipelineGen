@@ -82,19 +82,51 @@ func (s *Service) Submit(ctx context.Context, job model.Job) error {
 // repository capability is mandatory: silently falling back to a loop would
 // reintroduce the anchor-claim race this API exists to remove.
 func (s *Service) SubmitBatch(ctx context.Context, jobs []model.Job) error {
+	_, err := s.SubmitBatchIdempotent(ctx, jobs)
+	return err
+}
+
+// SubmitBatchIdempotent atomically submits a complete family or accepts an
+// exact replay. A family with keys on only some members is invalid because it
+// cannot prove complete membership during a retry.
+func (s *Service) SubmitBatchIdempotent(ctx context.Context, jobs []model.Job) (bool, error) {
 	if len(jobs) == 0 {
-		return fmt.Errorf("job batch is empty")
+		return false, fmt.Errorf("job batch is empty")
+	}
+	keyCount := 0
+	for _, job := range jobs {
+		if job.IdempotencyKey != "" {
+			keyCount++
+		}
 	}
 	b, ok := s.repo.(repository.BatchRepository)
 	if !ok {
-		return fmt.Errorf("queue repository does not support atomic job batches")
+		return false, fmt.Errorf("queue repository does not support atomic job batches")
 	}
-	if err := b.SubmitBatch(ctx, jobs); err != nil {
-		return err
+	if keyCount == 0 {
+		if err := b.SubmitBatch(ctx, jobs); err != nil {
+			return false, err
+		}
+		s.observePending(ctx)
+		s.notify.Notify()
+		return true, nil
 	}
-	s.observePending(ctx)
-	s.notify.Notify()
-	return nil
+	if keyCount != len(jobs) {
+		return false, fmt.Errorf("idempotent batch requires an idempotency key for every job")
+	}
+	idem, ok := s.repo.(repository.BatchIdempotencyRepository)
+	if !ok {
+		return false, fmt.Errorf("queue repository does not support idempotent job batches")
+	}
+	created, err := idem.SubmitBatchIdempotent(ctx, jobs)
+	if err != nil {
+		return false, err
+	}
+	if created {
+		s.observePending(ctx)
+		s.notify.Notify()
+	}
+	return created, nil
 }
 
 // SubmitIdempotent returns the canonical job for an idempotency key. created

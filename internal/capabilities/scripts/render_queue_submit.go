@@ -1,7 +1,6 @@
 package scriptgeneration
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,11 +8,11 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	caprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/render"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/identity"
 
 	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -458,128 +457,53 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
 }
 
-// RenderRequestIdentity is the immutable identity of a render request. It is
-// deliberately separate from RenderQueueJob.ID: the operational id may be
-// reused across retries, while this identity changes whenever the bytes the
-// worker would produce can change.
-type RenderRequestIdentity struct {
-	SchemaVersion string `json:"schema_version"`
-	RunID         string `json:"run_id"`
-	PlanSHA256    string `json:"plan_sha256"`
-	AssetsSHA256  string `json:"assets_sha256"`
-	ContractID    string `json:"contract_id"`
-}
+// RenderRequestIdentity is the queue-neutral result projected from the
+// scripts capability's RenderQueueJob contract.
+type RenderRequestIdentity = identity.RenderRequestIdentity
 
-const renderRequestIdentitySchemaV1 = "pipelinegen.render-request.v1"
-
-// RenderRequestIdentityFor derives the identity from a canonical plan JSON and
-// the content-addressed asset set. Locators (SourceURL) are excluded on
-// purpose: they describe where the bytes can be fetched, not which bytes the
-// render consumes. Logical paths stay in the assets digest because they bind a
-// hash to the workspace location the worker will materialize.
+// RenderRequestIdentityFor adapts the queue job to the standalone canonical
+// identity package. The scripts capability remains the owner of its queue
+// model; identity owns only canonical digest construction.
 func RenderRequestIdentityFor(job RenderQueueJob) (RenderRequestIdentity, error) {
-	planSHA, contractID, err := canonicalRenderRequestPlan(job.OverlaySpec)
-	if err != nil {
-		return RenderRequestIdentity{}, err
-	}
-	assetsSHA, err := canonicalRenderRequestAssets(job.Assets)
-	if err != nil {
-		return RenderRequestIdentity{}, err
-	}
-	return RenderRequestIdentity{
-		SchemaVersion: renderRequestIdentitySchemaV1,
-		RunID:         strings.TrimSpace(job.ParentJobID),
-		PlanSHA256:    planSHA,
-		AssetsSHA256:  assetsSHA,
-		ContractID:    contractID,
-	}, nil
+	return identity.For(renderRequestIdentityInput(job))
 }
 
-// canonicalRenderRequestPlan decodes and re-encodes the plan so map key order
-// and insignificant whitespace cannot change the identity. encoding/json
-// sorts map keys, which makes the result deterministic for the same document.
-func canonicalRenderRequestPlan(raw json.RawMessage) (string, string, error) {
-	if len(raw) == 0 {
-		return digest.SHA256Bytes(nil), "", nil
+// RenderRequestFamilyIdentities returns an identity for each job bound to the
+// complete, ordered family. The order supplied by the atomic queue request is
+// part of the family identity.
+func RenderRequestFamilyIdentities(jobs []RenderQueueJob) ([]RenderRequestIdentity, error) {
+	inputs := make([]identity.Request, len(jobs))
+	for i := range jobs {
+		inputs[i] = renderRequestIdentityInput(jobs[i])
 	}
-	if !json.Valid(raw) {
-		return "", "", fmt.Errorf("render request identity: plan is not valid JSON")
-	}
-	var decoded any
-	// UseNumber preserves the exact JSON numeric literal. Decoding into
-	// float64 would collapse integers above 2^53 (frame/time values can reach
-	// that range) and make two different plans hash identically.
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
-		return "", "", fmt.Errorf("render request identity: plan is not valid JSON: %w", err)
-	}
-	canonical, err := json.Marshal(decoded)
-	if err != nil {
-		return "", "", fmt.Errorf("render request identity: canonicalize plan: %w", err)
-	}
-	return digest.SHA256Bytes(canonical), renderRequestContractID(decoded), nil
+	return identity.FamilyIdentities(inputs)
 }
 
-func renderRequestContractID(plan any) string {
-	object, ok := plan.(map[string]any)
-	if !ok {
-		return ""
-	}
-	for _, key := range []string{"contract_id", "media_contract", "output_profile_id"} {
-		if value, ok := object[key].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-type renderRequestIdentityAsset struct {
-	SHA256      string `json:"sha256"`
-	LogicalPath string `json:"logical_path"`
-}
-
-func canonicalRenderRequestAssets(assets []RenderQueueAsset) (string, error) {
-	entries := make([]renderRequestIdentityAsset, 0, len(assets))
-	for _, asset := range assets {
+func renderRequestIdentityInput(job RenderQueueJob) identity.Request {
+	assets := make([]identity.Asset, len(job.Assets))
+	for i, asset := range job.Assets {
 		ref := asset.Ref()
-		hash := strings.ToLower(strings.TrimSpace(ref.SHA256))
-		if hash == "" {
-			return "", fmt.Errorf("render request identity: asset %q has no content hash", strings.TrimSpace(asset.URL))
-		}
-		entries = append(entries, renderRequestIdentityAsset{
-			SHA256:      hash,
-			LogicalPath: strings.TrimSpace(ref.AssetID),
-		})
+		assets[i] = identity.Asset{SHA256: ref.SHA256, LogicalPath: ref.AssetID}
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].SHA256 != entries[j].SHA256 {
-			return entries[i].SHA256 < entries[j].SHA256
-		}
-		return entries[i].LogicalPath < entries[j].LogicalPath
-	})
-	canonical, err := json.Marshal(entries)
-	if err != nil {
-		return "", fmt.Errorf("render request identity: canonicalize assets: %w", err)
+	var frameRange *identity.FrameRange
+	if job.FrameRange != nil {
+		frameRange = &identity.FrameRange{Start: job.FrameRange.Start, End: job.FrameRange.End}
 	}
-	return digest.SHA256Bytes(canonical), nil
-}
-
-// Digest is the content identity. It contains only strings, so the marshal
-// below cannot fail; an empty digest is returned rather than a fabricated
-// stable value if that invariant is ever broken.
-func (i RenderRequestIdentity) Digest() string {
-	encoded, err := json.Marshal(i)
-	if err != nil {
-		return ""
+	return identity.Request{
+		ID: job.ID, RunID: job.ParentJobID, JobType: job.JobType,
+		ChunkIndex: job.ChunkIndex, FrameRange: frameRange,
+		Plan: job.OverlaySpec, Assets: assets,
+		PreparedPackage: func() *identity.PreparedPackage {
+			if job.PreparedRenderPackage == nil {
+				return nil
+			}
+			ref := job.PreparedRenderPackage
+			return &identity.PreparedPackage{
+				PackageID: ref.PackageID, PlanSHA256: ref.PlanSHA256,
+				AssetManifestSHA: ref.AssetManifestSHA,
+				TotalFrames:      ref.TotalFrames,
+				CompilerVersion:  ref.CompilerVersion, ProfileID: ref.ProfileID,
+			}
+		}(),
 	}
-	return digest.SHA256Bytes(encoded)
-}
-
-// IdempotencyKey binds the content identity to the operational id. Including
-// the id keeps two intentionally distinct jobs (fresh renders) with identical
-// bytes from aliasing each other, while the same id with changed content still
-// produces a different key.
-func (i RenderRequestIdentity) IdempotencyKey(jobID string) string {
-	return digest.SHA256String(strings.TrimSpace(jobID) + "\x00" + i.Digest())
 }

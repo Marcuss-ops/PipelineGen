@@ -55,6 +55,11 @@ func (r *SQLiteStore) CreateScheduled(ctx context.Context, j *job.Job, runAt tim
 	if j.Status != job.StatusScheduled {
 		return fmt.Errorf("jobs.CreateScheduled: status must be %s, got %s", job.StatusScheduled, j.Status)
 	}
+	descriptor, err := normalizeJobSchedulingDescriptor(j)
+	if err != nil {
+		return fmt.Errorf("jobs.CreateScheduled: scheduling descriptor: %w", err)
+	}
+	descriptor.AvailableAt = runAt.UTC()
 
 	payloadJSON := string(j.Payload)
 	if payloadJSON == "" || payloadJSON == "null" {
@@ -64,6 +69,7 @@ func (r *SQLiteStore) CreateScheduled(ctx context.Context, j *job.Job, runAt tim
 	if revision <= 0 {
 		revision = 1
 	}
+	claimPriority, claimNextAge := initialClaimAging(j.Priority, j.CreatedAt, time.Now())
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -75,8 +81,9 @@ func (r *SQLiteStore) CreateScheduled(ctx context.Context, j *job.Job, runAt tim
 		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
 			correlation_id, progress, error, retry_count, max_retries,
 			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision, parent_job_id, root_job_id,
-			client_id, idempotency_key)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		client_id, idempotency_key, resource_class, execution_lane, available_at,
+		claim_effective_priority, claim_next_age_millis)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		j.ID, j.Type, j.Status, j.Priority, j.Project, j.VideoName, j.ActiveKey,
 		j.CorrelationID,
@@ -85,7 +92,8 @@ func (r *SQLiteStore) CreateScheduled(ctx context.Context, j *job.Job, runAt tim
 		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
 		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
 		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision, j.ParentJobID, j.RootJobID,
-		j.ClientID, j.IdempotencyKey)
+		j.ClientID, j.IdempotencyKey, descriptor.ResourceClass, descriptor.ExecutionLane, timeutil.FormatRFC3339(descriptor.AvailableAt),
+		claimPriority, claimNextAge)
 	if err != nil {
 		return mapWriteError(fmt.Errorf("jobs.CreateScheduled: %w", err))
 	}
