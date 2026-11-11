@@ -560,6 +560,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	coalesced := capabilityoverlay.FinalizeCompiledAnimationLayout(items, animationLayoutInput)
 	intake.stage(capmodel.OverlayDropCompositionMerged, len(items), len(coalesced))
 	items = coalesced
+	// Finalization can split a composite into independent image items. Re-apply
+	// the deterministic decoration to those final surfaces; attachRandomImageEffect
+	// is idempotent and preserves every explicit effects stack.
+	if canvas.RandomImageEffects {
+		capabilityoverlay.AttachRandomImageEffects(planID, items)
+	}
 	// Single-owner boundary (§3 step 5→6): ResolveAnimationSelections valida
 	// che chain container e composite parent non portino MotionID proprie e che
 	// ogni child/segmento conservi la scelta. Validazione, mai ricampionamento.
@@ -570,6 +576,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// facade, so the naming rule has exactly one home.
 	capabilityoverlay.NameItemsForReview(items)
 	applyCompositeRuntimeStyle(items, canvas)
+	// The review-name pass assigns the final item identity. Re-apply after it so
+	// split image surfaces are decorated with the same deterministic rule as
+	// their pre-fusion composites; attachRandomImageEffect is idempotent.
+	if canvas.RandomImageEffects {
+		capabilityoverlay.AttachRandomImageEffects(planID, items)
+	}
 
 	// The master audio/timeline extent derivation and the plan sealing live in
 	// overlay_plan_seal.go (split under the 600-line file gate; same behavior).

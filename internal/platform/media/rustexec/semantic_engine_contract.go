@@ -1,6 +1,8 @@
 package rustexec
 
 import (
+	"encoding/json"
+
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -37,6 +39,7 @@ type semanticEngineManifest struct {
 	SchemaVersion       string                            `json:"schema_version"`
 	Language            string                            `json:"language"`
 	Fingerprint         string                            `json:"fingerprint"`
+	Discourse           json.RawMessage                   `json:"discourse,omitempty"`
 	Analyzers           semanticEngineAnalyzerVersions    `json:"analyzers"`
 	Scenes              []semanticEngineSceneManifest     `json:"scenes"`
 	StoryGraph          *scriptgen.SemanticStoryGraph     `json:"story_graph,omitempty"`

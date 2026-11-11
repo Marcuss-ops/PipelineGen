@@ -190,6 +190,11 @@ func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, err
 	}
 	input.MotionSeed = motionSeed
 	plan.Items = PruneOrphanChartBars(plan.Items)
+	// Move images aside for overlapping date cards after admission. Animation
+	// consistency was already applied above; re-running it here would rotate
+	// duplicate motions and exceed the per-family style cap.
+	MoveImagesAsideForOverlappingDateCards(plan.Items, input.Width)
+	plan.Items = PruneOrphanChartBars(plan.Items)
 	if err := plan.Validate(); err != nil {
 		return capmodel.OverlayPlan{}, err
 	}

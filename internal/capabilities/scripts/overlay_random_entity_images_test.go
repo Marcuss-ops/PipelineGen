@@ -64,22 +64,38 @@ func TestRandomImageEffectsReachMultipleEntityImagesAtFullHD(t *testing.T) {
 	require.Equal(t, 1080, plan.Height)
 	require.NoError(t, plan.Validate())
 
-	var composite *capmodel.OverlayItem
+	var images []*capmodel.OverlayItem
 	for index := range plan.Items {
-		if len(plan.Items[index].ImageLayers) > 0 {
-			composite = &plan.Items[index]
-			break
+		if plan.Items[index].Kind == "entity_image" {
+			images = append(images, &plan.Items[index])
 		}
 	}
-	require.NotNil(t, composite, "the two entity portraits must reach one composite render item")
-	require.Equal(t, "entity_image", composite.Kind)
-	require.Len(t, composite.AssetRefs, 2)
-	require.Len(t, composite.ImageLayers, 2)
-	require.NotContains(t, composite.Params, "effects", "random decisions belong to individual photo surfaces")
+	require.Len(t, images, 2, "the two entity portraits must remain independent render items")
 
 	assets := map[string]bool{}
-	for _, asset := range composite.AssetRefs {
-		assets[asset.SHA256] = true
+	selectedEffects := 0
+	for _, item := range images {
+		require.Len(t, item.AssetRefs, 1, "each entity portrait must carry its own asset")
+		assets[item.AssetRefs[0].SHA256] = true
+		if len(item.ImageLayers) > 0 {
+			require.NotContains(t, item.Params, "effects", "random decisions belong to individual photo surfaces")
+		}
+		if capabilityoverlay.SelectImageEffectDecorationEnabled(plan.PlanID, item.ID) {
+			selectedEffects++
+			require.Contains(t, item.Params, "effects", "selected random image treatment must survive on item %q", item.ID)
+		}
+		for _, layer := range item.ImageLayers {
+			if capabilityoverlay.SelectImageEffectDecorationEnabled(plan.PlanID, layer.ID) {
+				selectedEffects++
+				require.Contains(t, layer.Params, "effects", "selected random image treatment must survive on layer %q", layer.ID)
+			}
+			if layer.AssetID == "" || layer.Caption == "" {
+				t.Fatalf("entity-image layer lost its asset or identity caption: %+v", layer)
+			}
+		}
+		if item.EntityCaption == "" {
+			t.Fatalf("entity image lost its identity caption: %+v", item)
+		}
 	}
 	require.True(t, assets[adaSHA], "Ada's verified image must be carried to rendering")
 	require.True(t, assets[graceSHA], "Grace's verified image must be carried to rendering")
@@ -89,17 +105,7 @@ func TestRandomImageEffectsReachMultipleEntityImagesAtFullHD(t *testing.T) {
 	wireText := string(wire)
 	require.Contains(t, wireText, `"width":1920`)
 	require.Contains(t, wireText, `"height":1080`)
-	require.Contains(t, wireText, `"image_layers"`)
-	selectedEffects := 0
-	for _, layer := range composite.ImageLayers {
-		if capabilityoverlay.SelectImageEffectDecorationEnabled(plan.PlanID, layer.ID) {
-			selectedEffects++
-			require.Contains(t, layer.Params, "effects", "selected random image treatment must survive on layer %q", layer.ID)
-			require.Contains(t, wireText, `"effects"`, "random image treatment must be present on the render wire")
-		}
-		if layer.AssetID == "" || layer.Caption == "" {
-			t.Fatalf("entity-image layer lost its asset or identity caption: %+v", layer)
-		}
-	}
+	require.Contains(t, wireText, `"asset_refs"`)
+	require.Contains(t, wireText, `"effects"`, "random image treatment must be present on the render wire")
 	require.Positive(t, selectedEffects, "the full-HD render plan should exercise at least one random image effect")
 }

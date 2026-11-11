@@ -129,7 +129,7 @@ func (*roundRobinImageSearchProvider) Verify(context.Context, scriptports.LocalA
 	return scriptports.VerifiedArtifact{}, errors.New("not used")
 }
 
-func TestVidRushRegistryMediaResolverSearchImagesKeepsVariantsInTopPool(t *testing.T) {
+func TestVidRushRegistryMediaResolverSearchImagesUsesOnlyRequestedQuery(t *testing.T) {
 	provider := &roundRobinImageSearchProvider{}
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(provider); err != nil {
@@ -137,28 +137,22 @@ func TestVidRushRegistryMediaResolverSearchImagesKeepsVariantsInTopPool(t *testi
 	}
 	registry.Freeze()
 
+	query := "Alberto Stasi single-person portrait headshot photo"
 	got, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchImages(context.Background(), InternetImageSearchRequest{
-		Query: "Alberto Stasi single-person portrait headshot photo", Entity: "Alberto Stasi", Limit: 2,
+		Query: query, Entity: "Alberto Stasi", Limit: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(provider.queries) != 5 {
-		t.Fatalf("image queries = %d, want 5", len(provider.queries))
+	if len(provider.queries) != 1 || provider.queries[0] != query {
+		t.Fatalf("image queries = %v, want only the requested query %q", provider.queries, query)
 	}
-	if len(got) != 5 {
-		t.Fatalf("candidate count = %d, want bounded 5-query pool", len(got))
-	}
-	seenQueries := make(map[string]struct{}, len(got))
-	for _, candidate := range got {
-		seenQueries[candidate.Query] = struct{}{}
-	}
-	if len(seenQueries) != 5 {
-		t.Fatalf("top pool contains %d query variants, want all 5: %+v", len(seenQueries), got)
+	if len(got) != 1 || got[0].Query != query {
+		t.Fatalf("candidates = %+v, want one candidate for the requested query", got)
 	}
 }
 
-func TestVidRushRegistryMediaResolverRunsPortraitVariantsInParallel(t *testing.T) {
+func TestVidRushRegistryMediaResolverRunsConcurrentRequestsInParallel(t *testing.T) {
 	provider := &gatedVariantImageProvider{entered: make(chan string, 5), release: make(chan struct{})}
 	registry := NewVidRushAssetProviderRegistry()
 	if err := registry.Register(provider); err != nil {
@@ -166,19 +160,15 @@ func TestVidRushRegistryMediaResolverRunsPortraitVariantsInParallel(t *testing.T
 	}
 	registry.Freeze()
 	resolver := &VidRushRegistryMediaResolver{Registry: registry}
-	done := make(chan struct {
-		candidates []scriptpkg.SegmentAssetCandidate
-		err        error
-	}, 1)
-	go func() {
-		candidates, err := resolver.SearchImages(context.Background(), InternetImageSearchRequest{
-			Query: "Alberto Stasi single-person portrait headshot photo", Entity: "Alberto Stasi", Limit: 2,
-		})
-		done <- struct {
-			candidates []scriptpkg.SegmentAssetCandidate
-			err        error
-		}{candidates: candidates, err: err}
-	}()
+	done := make(chan error, 5)
+	for i := 0; i < 5; i++ {
+		go func(i int) {
+			_, err := resolver.SearchImages(context.Background(), InternetImageSearchRequest{
+				Query: fmt.Sprintf("query-%02d", i), Entity: "Alberto Stasi", Limit: 2,
+			})
+			done <- err
+		}(i)
+	}
 
 	seen := make(map[string]bool, 5)
 	timeout := time.NewTimer(2 * time.Second)
@@ -189,28 +179,16 @@ func TestVidRushRegistryMediaResolverRunsPortraitVariantsInParallel(t *testing.T
 			seen[query] = true
 		case <-timeout.C:
 			close(provider.release)
-			<-done
-			t.Fatalf("only %d/5 portrait variants entered before release; searches are not parallel", len(seen))
+			for i := 0; i < 5; i++ {
+				<-done
+			}
+			t.Fatalf("only %d/5 concurrent requests entered before release; searches are not parallel", len(seen))
 		}
 	}
 	close(provider.release)
-	result := <-done
-	if result.err != nil {
-		t.Fatal(result.err)
-	}
-	wantOrder := []string{
-		"Alberto Stasi single-person portrait headshot photo",
-		"Alberto Stasi foto intervista",
-		"Alberto Stasi foto udienza tribunale Garlasco",
-		"Alberto Stasi dichiarazioni foto avvocato Garlasco",
-		"Alberto Stasi servizio televisivo ritratto",
-	}
-	if len(result.candidates) != len(wantOrder) {
-		t.Fatalf("candidate count = %d, want %d", len(result.candidates), len(wantOrder))
-	}
-	for i, want := range wantOrder {
-		if result.candidates[i].Query != want {
-			t.Fatalf("candidate[%d].Query = %q, want deterministic query order %q", i, result.candidates[i].Query, want)
+	for i := 0; i < 5; i++ {
+		if err := <-done; err != nil {
+			t.Fatal(err)
 		}
 	}
 }
@@ -223,13 +201,13 @@ func TestVidRushImageSearchGlobalParallelismCapsAtFifteen(t *testing.T) {
 	}
 	registry.Freeze()
 	resolver := &VidRushRegistryMediaResolver{Registry: registry}
-	const concurrentScenes = 4
+	const concurrentScenes = 20
 	done := make(chan error, concurrentScenes)
 	for scene := 0; scene < concurrentScenes; scene++ {
 		go func(scene int) {
 			_, err := resolver.SearchImages(context.Background(), InternetImageSearchRequest{
 				SegmentID: fmt.Sprintf("scene-%d", scene),
-				Query:     "Alberto Stasi single-person portrait headshot photo", Entity: "Alberto Stasi", Limit: 5,
+				Query:     fmt.Sprintf("query-%02d", scene), Entity: "Alberto Stasi", Limit: 5,
 			})
 			done <- err
 		}(scene)
@@ -239,8 +217,8 @@ func TestVidRushImageSearchGlobalParallelismCapsAtFifteen(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := provider.calls.Load(); got != concurrentScenes*5 {
-		t.Fatalf("provider calls = %d, want %d", got, concurrentScenes*5)
+	if got := provider.calls.Load(); got != concurrentScenes {
+		t.Fatalf("provider calls = %d, want %d", got, concurrentScenes)
 	}
 	if got := provider.peak.Load(); got != vidRushMaxParallelImageSearches {
 		t.Fatalf("peak concurrent image searches = %d, want configured cap %d", got, vidRushMaxParallelImageSearches)
