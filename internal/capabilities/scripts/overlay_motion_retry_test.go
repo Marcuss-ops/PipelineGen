@@ -8,6 +8,7 @@ import (
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -76,21 +77,28 @@ func TestCompileOverlayPlanRetryKeepsStableIndependentImageMotions(t *testing.T)
 		if err := plan.Validate(); err != nil {
 			t.Fatalf("plan %q is invalid: %v", planID, err)
 		}
-		if len(plan.Items) != 1 || len(plan.Items[0].ImageLayers) != 2 {
-			t.Fatalf("plan %q should produce one two-image composite, got %+v", planID, plan.Items)
+		var imageItems []capmodel.OverlayItem
+		for _, item := range plan.Items {
+			if item.Kind == "entity_image" {
+				imageItems = append(imageItems, item)
+			}
 		}
-		item := plan.Items[0]
-		// The group is simultaneous: both portraits occupy the same 2s scene
-		// window, with side-by-side positions and no camera sequence.
-		if item.StartMs != 0 || item.EndMs != 2_000 ||
-			item.ImageLayers[0].StartMS != 0 || item.ImageLayers[1].StartMS != 0 ||
-			item.ImageLayers[0].EndMS != item.EndMs || item.ImageLayers[1].EndMS != item.EndMs {
-			t.Fatalf("plan %q has an unexpected simultaneous composite: %+v", planID, item)
+		if len(imageItems) != 2 {
+			t.Fatalf("plan %q should produce two independent entity images, got %+v", planID, plan.Items)
 		}
-		if item.ImageLayers[0].Params["position_x"] == item.ImageLayers[1].Params["position_x"] || item.CameraMotionID != "" {
-			t.Fatalf("plan %q did not place both images side-by-side without a camera sequence: %+v", planID, item)
+		got := make([]string, 0, len(imageItems))
+		for _, item := range imageItems {
+			if len(item.AssetRefs) != 1 {
+				t.Fatalf("plan %q entity image must carry exactly one asset, got %+v", planID, item)
+			}
+			if strings.TrimSpace(item.MotionID) == "" {
+				t.Fatalf("plan %q entity image has no motion: %+v", planID, item)
+			}
+			got = append(got, item.MotionID)
 		}
-		got := []string{item.ImageLayers[0].MotionID, item.ImageLayers[1].MotionID}
+		if imageItems[0].StartMs >= imageItems[1].StartMs {
+			t.Fatalf("plan %q entity images are not a sequence: %+v", planID, imageItems)
+		}
 		certified := capabilityoverlay.CertifiedImageMotions()
 		if got[0] == got[1] {
 			t.Fatalf("plan %q reused one motion for both portraits: %v", planID, got)

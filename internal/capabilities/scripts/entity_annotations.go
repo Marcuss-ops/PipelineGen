@@ -571,11 +571,9 @@ func ProjectSegmentAnnotations(spec *scriptpkg.SpecSceneOutput, language Languag
 }
 
 // applySegmentEntityResults projects each segment's typed entities onto the
-// matching scene's canonical per-scene EntityResult surface (the same
-// EntityResult model as the document aggregate — no second entity model). It
-// mirrors applySegmentEntityAnnotations matching (SceneID, then Position). A
-// scene that legitimately carries no entities keeps an explicit empty result
-// with EntityOverlayRequired=false; an entity is never invented.
+// matching scene's canonical per-scene EntityResult surface (no second entity
+// model), mirroring applySegmentEntityAnnotations matching (SceneID, then
+// Position). An empty scene stays explicit; an entity is never invented.
 func applySegmentEntityResults(result *GenerateResult, segments []scriptpkg.VidRushSegmentResult) {
 	if result == nil {
 		return

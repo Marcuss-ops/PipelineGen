@@ -518,7 +518,6 @@ func (r *OperatorInventoryReader) listProcessing(ctx context.Context, assetID st
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-
 	var out []asset.ProcessingRecord
 	for rows.Next() {
 		var rec asset.ProcessingRecord
@@ -559,13 +558,11 @@ func (r *OperatorInventoryReader) listOutboxEvents(ctx context.Context, assetID 
 	WHERE aggregate_id = $1
 	ORDER BY ` + tsExpr("created_at") + ` DESC
 	LIMIT 50`
-
 	rows, err := r.db.QueryContext(ctx, q, assetID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-
 	var out []operator.OutboxEventProjection
 	for rows.Next() {
 		var ev operator.OutboxEventProjection

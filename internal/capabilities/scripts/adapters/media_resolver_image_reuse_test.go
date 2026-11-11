@@ -198,9 +198,9 @@ func TestPlanInternetImageDiscoveryPinsTheQueryRule(t *testing.T) {
 		{
 			name:        "manual query is kept and deduped case-insensitively",
 			contextual:  []string{" Garlasco piazza "},
-			manual:      []string{"garlasco PIAZZA", "chiesa di San Rocco", "  "},
+			manual:      []string{"garlasco PIAZZA", "Garlasco piazza", "chiesa di San Rocco", "  "},
 			wantMode:    internetImageDiscoverySearch,
-			wantQueries: []string{"Garlasco piazza", "chiesa di San Rocco"},
+			wantQueries: []string{"garlasco PIAZZA", "chiesa di San Rocco"},
 		},
 		{
 			name:     "no query at all bypasses discovery",

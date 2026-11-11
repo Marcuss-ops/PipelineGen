@@ -278,16 +278,6 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 			if !chainable(next) || next.SceneID != scene {
 				break
 			}
-			// Camera maps carry per-LOD rasters that are resolved and validated
-			// through the standalone map path. A mixed chain currently reaches
-			// RenderingGen without the segment-scoped LOD asset bundle, so keep
-			// maps standalone beside image/text/entity chains. Homogeneous map
-			// runs may still use the dedicated map_chain lowering.
-			firstFamily := chainFamily(group[0].Kind)
-			nextFamily := chainFamily(next.Kind)
-			if firstFamily != nextFamily && (firstFamily == "map" || nextFamily == "map") {
-				break
-			}
 			// Fuse nearby AND overlapping items (image@10s + phrase@12s
 			// overlap but must still become one chain): the gap is
 			// measured against the furthest end seen so far, and any

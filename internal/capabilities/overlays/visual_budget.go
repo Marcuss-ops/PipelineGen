@@ -162,15 +162,44 @@ func applyEditorialOverlayBudget(items []capmodel.OverlayItem, phraseLimit, imag
 	chartBarIndices := chartBarIndices(items)
 	editorialIndices := editorialLabelIndicesExcludingBullets(items, bulletLimit > 0)
 	// Chains are a final presentation form and must only be created after this
-	// admission pass. Reject pre-existing containers here so nested image/text
-	// segments cannot bypass category quotas or per-run deduplication.
-	chainIndices := []int(nil)
+	// admission pass. The one exception is a date chain that was already
+	// budgeted upstream: its all-date segments carry no image/text content and
+	// dropping it would truncate the timeline. Image/text/map containers still
+	// go through their category quotas.
+	chainIndices := preBudgetedDateChainIndices(items)
 	// Text-only named entity cards are their own editorial category (see
 	// visual_budget_entity_cards.go). Without an arm here they were planned and
 	// capped but silently dropped by retainOverlayItems.
 	namedEntityIndices := rankedNamedEntityCardIndices(items)
 	out := retainOverlayItems(items, imageIndices, phraseIndices, mapIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices, namedEntityIndices, bulletIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
+}
+
+// preBudgetedDateChainIndices retains timeline-date chains that were budgeted
+// before this pass. Only all-date chains qualify; any other container remains
+// subject to the normal category arms.
+func preBudgetedDateChainIndices(items []capmodel.OverlayItem) []int {
+	indices := make([]int, 0)
+	for i, item := range items {
+		if item.Kind != capmodel.KindPhraseChain {
+			continue
+		}
+		segments, ok := capmodel.DecodeChainSegments(item.Params)
+		if !ok || len(segments) == 0 {
+			continue
+		}
+		allDates := true
+		for _, segment := range segments {
+			if segment.TemplateID != "TIMELINE_DATE_CARD" {
+				allDates = false
+				break
+			}
+		}
+		if allDates {
+			indices = append(indices, i)
+		}
+	}
+	return indices
 }
 
 // rankedUniqueKindIndices ranks and deduplicates one text-based overlay kind

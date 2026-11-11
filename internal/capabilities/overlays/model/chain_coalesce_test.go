@@ -122,7 +122,7 @@ func TestCoalesceKeepsChartGroupAtomic(t *testing.T) {
 	}
 }
 
-// Chains never cross scenes; text+image in the same scene fuse as mixed_chain.
+// Image and text remain separate; text chains never cross scenes.
 func TestCoalesceRespectsSceneAndFamily(t *testing.T) {
 	img := chainFixture("text_phrase", "s1", "alpha", 100_000, 500_000, "motion_a")
 	img.Kind, img.TemplateID = "image", "IMAGE_OVERLAY"
@@ -133,27 +133,27 @@ func TestCoalesceRespectsSceneAndFamily(t *testing.T) {
 		img,
 	}
 	got := CoalesceChainedOverlays(items, map[string]int{"chain_enabled": 1})
-	if len(got) != 2 {
-		t.Fatalf("same-scene image+phrase must fuse, cross-scene must not: %+v", got)
+	if len(got) != 3 {
+		t.Fatalf("image and two scene-scoped phrases must remain separate: %+v", got)
 	}
-	foundMixed := false
+	images, phrases := 0, 0
 	for _, item := range got {
-		if item.Kind == KindMixedChain {
-			foundMixed = true
-			if item.TemplateID != TemplateMixedChain {
-				t.Fatalf("mixed chain template = %q", item.TemplateID)
-			}
+		if chainFamily(item.Kind) == "image" {
+			images++
+		}
+		if item.Kind == "text_phrase" {
+			phrases++
 		}
 		if item.SceneID == "s2" && strings.Contains(item.Kind, "chain") {
 			t.Fatalf("must not chain across scenes: %+v", got)
 		}
 	}
-	if !foundMixed {
-		t.Fatalf("want one mixed_chain: %+v", got)
+	if images != 1 || phrases != 2 {
+		t.Fatalf("want one image and two separate phrases, got %+v", got)
 	}
 }
 
-// Image@10s + phrase@12s (overlapping windows) fuse into one mixed_chain.
+// Overlapping image and phrase windows still remain separate layers.
 func TestCoalesceFusesOverlappingImagePhrase(t *testing.T) {
 	img := chainFixture("text_phrase", "s1", "pic", 10_000_000, 5_000_000, "img_motion")
 	img.Kind, img.TemplateID = "image", "IMAGE_OVERLAY"
@@ -161,11 +161,11 @@ func TestCoalesceFusesOverlappingImagePhrase(t *testing.T) {
 	img.AssetRefs = []OverlayAssetRef{{AssetID: "img-1", SHA256: "hash"}}
 	phrase := chainFixture("text_phrase", "s1", "la frase", 12_000_000, 3_000_000, "phrase_motion")
 	got := CoalesceChainedOverlays([]OverlayItem{img, phrase}, map[string]int{"chain_enabled": 1})
-	if len(got) != 1 || got[0].Kind != KindMixedChain {
-		t.Fatalf("overlapping image+phrase must fuse: %+v", got)
+	if len(got) != 2 || got[0].Kind != "image" || got[1].Kind != "text_phrase" {
+		t.Fatalf("overlapping image+phrase must remain distinct: %+v", got)
 	}
-	if len(got[0].AssetRefs) != 1 || strings.TrimSpace(got[0].Text) == "" {
-		t.Fatalf("mixed chain must carry image asset + phrase text: %+v", got[0])
+	if len(got[0].AssetRefs) != 1 || got[1].Text != "la frase" {
+		t.Fatalf("separate image and phrase lost their content: %+v", got)
 	}
 }
 

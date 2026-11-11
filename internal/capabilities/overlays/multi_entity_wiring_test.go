@@ -246,8 +246,8 @@ func TestBuildPlanLowersEditorialGroupsToCanonicalRenderPrimitives(t *testing.T)
 			t.Fatalf("group plan did not preserve independent animated images: %+v", item)
 		}
 	}
-	if EditorialSectionForItem(plan.Items[0]) != EditorialSectionEntityTextImage {
-		t.Fatalf("image editorial section=%q, want %q", EditorialSectionForItem(plan.Items[0]), EditorialSectionEntityTextImage)
+	if EditorialSectionForItem(plan.Items[0]) != EditorialSectionSingleImage {
+		t.Fatalf("image editorial section=%q, want %q", EditorialSectionForItem(plan.Items[0]), EditorialSectionSingleImage)
 	}
 }
 
