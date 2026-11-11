@@ -236,19 +236,21 @@ func TestComposition_FrozenClientConstructionSites(t *testing.T) {
 		frozenQdrantClientSites, matches)
 }
 
-// TestComposition_FrozenIndexSchemaSites: exactly ONE qdrant.DefaultV3Schema()
-// call site. Pre-PR4 state had TWO sites — schema version could drift
-// between them. After PR 4 the runtime holds a single Schema instance.
+// TestComposition_FrozenIndexSchemaSites: exactly ONE DefaultV3Schema()
+// call site, regardless of the import alias used to reach it. Pre-PR4 state
+// had TWO sites — schema version could drift between them. After PR 4 the
+// runtime holds a single Schema instance.
 func TestComposition_FrozenIndexSchemaSites(t *testing.T) {
 	chdirToProjectRoot(t)
 	files := compositionBundleSourceFiles(t)
+	schemaCall := regexp.MustCompile(`\b[A-Za-z_][A-Za-z0-9_]*\.DefaultV3Schema\(`)
 	matches := 0
 	for _, f := range files {
 		src, _ := os.ReadFile(f)
-		matches += strings.Count(string(src), "qdrant.DefaultV3Schema(")
+		matches += len(schemaCall.FindAllString(string(src), -1))
 	}
 	require.Equalf(t, frozenQdrantDefaultV3SchemaSites, matches,
-		"PR 4: qdrant.DefaultV3Schema(%d expected call site in internal/app/*.go; found %d. QdrantRuntime.NewRuntime is the single construction site. Promote schema wiring through runtime.Schema rather than calling DefaultV3Schema twice.",
+		"PR 4: DefaultV3Schema(%d expected call site in internal/app/*.go; found %d. QdrantRuntime.NewRuntime is the single construction site. Promote schema wiring through runtime.Schema rather than calling DefaultV3Schema twice.",
 		frozenQdrantDefaultV3SchemaSites, matches)
 }
 

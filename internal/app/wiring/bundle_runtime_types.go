@@ -15,6 +15,34 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
+import (
+	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifact_finalize"
+	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/capabilities/staging"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
+)
+import (
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/autotag"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
+	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images"
+	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	scriptgencore "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+	translation "github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
+	voiceover "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/jobs"
+	voicesync "github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/sync"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ai/reranker"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/platform/audio"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+)
 
 // OutboxBundle aggregates the canonical outbox dispatcher and event workers.
 type OutboxBundle struct {
@@ -72,4 +100,57 @@ type AssetsWiring struct {
 	InternalMediaHandler *assetstorage.Handler
 	SearchAggregator     *assetsearch.Aggregator
 	SearchFanOut         assetsearch.SearchFanOut
+}
+
+// StagingBundle owns the canonical staging store, repository and resolved
+// workspace used by the publication saga.
+type StagingBundle struct {
+	Store      stagingsvc.Store
+	Repository artifact.ArtifactStageRepository
+	Workspace  string
+}
+
+// FinalizerBundle owns the typed finalization surface for the publication saga.
+type FinalizerBundle struct {
+	Finalizer artifactfinalize.Finalizer
+}
+
+// AIBundle owns script generation and AI composition surfaces.
+type AIBundle struct {
+	OllamaClient             *client.Client
+	OllamaEmbedClient        *client.Client
+	Reranker                 *reranker.Client
+	ScriptGen                *ollama.Generator
+	OllamaTranslator         *translation.OllamaTranslator
+	MemoryRepo               scriptports.MemoryGate
+	MemorySvc                *processor.Service
+	ScriptEngine             *scriptgencore.Engine
+	WhisperTranscriber       youtubeports.WhisperTranscriberPort
+	SceneTextGenerator       *SceneTextGenerator
+	ScriptVoiceoverGenerator *vowiring.ScriptVoiceoverGenerator
+}
+
+// DomainBundle is the remaining application-level domain dependency bag. New
+// wiring should prefer capability-owned Deps structs instead of adding fields.
+type DomainBundle struct {
+	CueWriter          texttracks.TimedCueWriter
+	FolderPathWriter   texttracks.FolderPathWriter
+	YoutubeClipService *youtube.Service
+	SubtitleFetcher    youtubeports.SubtitleFetcherPort
+
+	VoiceoverSync                *voicesync.Service
+	ImageService                 *images.Service
+	IngestService                *ingest.Service
+	MetaWriter                   semantic.MetadataWriterPort
+	RealtimeMatcher              assetsapi.RealtimeMatcher
+	RealtimeSearch               scriptcore.RealtimeSearchService
+	AutotagService               *autotag.Service
+	AssocService                 scriptcore.AssocSearchService
+	VoiceoverGenerateHandler     *voiceoverjobs.GenerateJobHandler
+	VoiceoverProcessItem         voiceover.VoiceoverItemExecutor
+	VoiceoverPublishPool         interface{ Wait() }
+	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
+	ArtifactService              *artifacts.Service
+	ImageSearchResolver          images.ImageSearchResolver
+	AudioProcessor               *audioasset.Processor
 }

@@ -26,6 +26,14 @@ import (
 	"go.uber.org/zap"
 )
 
+import (
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
+	infradrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+)
+import (
+	assetvoice "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/voiceover"
+)
+
 // WireAssets builds the Assets HTTP capability from dependencies that were
 // fully constructed by the composition root. Required services are immutable:
 // the function never creates a second deletion service and never participates
@@ -340,6 +348,57 @@ func buildRegisterBundle(
 	}
 	desc, ok := descriptor.(*assetregister.RegisterDescriptor)
 	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: register (got %T, want *assetregister.RegisterDescriptor)", descriptor), !ok || desc == nil, DepRequired, log); err != nil {
+		return nil, err
+	}
+	return desc, nil
+}
+
+// Compatibility aliases keep the composition root stable while ownership of
+// the resolver lives in wiring/assets. New code should import the leaf package.
+type AssetDestResolver = assetswiring.DestResolver
+
+var (
+	ErrAssetDestResolverNotWired = assetswiring.ErrDestResolverNotWired
+	ErrAssetDestParentRequired   = assetswiring.ErrDestParentRequired
+	ErrAssetDestSubfolderFailed  = assetswiring.ErrDestSubfolderFailed
+	ErrAssetDestEmptyFolderID    = assetswiring.ErrDestEmptyFolderID
+)
+
+func NewAssetDestResolver(admin infradrive.Admin) *AssetDestResolver {
+	return assetswiring.NewDestResolver(admin)
+}
+
+// buildVoiceoverBundle constructs the canonical *assetvoice.VoiceoverDescriptor.
+//
+// Blocco C1-Step 7 (June 2026): the Handler is constructed inside
+// Build and captured by the returned VoiceoverDescriptor's Module
+// closure. The composition site type-asserts ONCE to
+// *assetvoice.VoiceoverDescriptor (fail-closed) and reuses the
+// concrete for the assetsapi.NewModule(..., Voiceover: vd, ...) call
+// (the concrete *VoiceoverDescriptor satisfies api.Descriptor
+// structurally). The voiceover capability has no non-HTTP consumer in
+// the codebase (/generate is the entire public surface, reachable only
+// via HTTP), so the Descriptor surface is the smallest possible — just
+// `Module` field + forwarder methods (matches the stock precedent
+// exactly).
+//
+// voiceover is always on in production (no feature flag) and has no
+// per-feature middleware.
+func buildVoiceoverBundle(
+	log *zap.Logger,
+	jobs *JobsBundle,
+) (*assetvoice.VoiceoverDescriptor, error) {
+	descriptor, err := assetvoice.Build(assetvoice.Dependencies{
+		Jobs:        jobs.Facade,
+		EnabledFunc: func() bool { return true }, // voiceover is always on in production (no feature flag)
+		ModuleOpts:  nil,                         // no per-feature middleware for the voiceover capability (matches pre-Step-7 wiring)
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, err
+	}
+	desc, ok := descriptor.(*assetvoice.VoiceoverDescriptor)
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: voiceover (got %T, want *assetvoice.VoiceoverDescriptor)", descriptor), !ok || desc == nil, DepRequired, log); err != nil {
 		return nil, err
 	}
 	return desc, nil

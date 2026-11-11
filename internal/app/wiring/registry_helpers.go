@@ -31,6 +31,12 @@ import (
 	"go.uber.org/zap"
 )
 
+import (
+	registrywiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/registry"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
+	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
+)
+
 // ── Media processor initialisation ──────────────────────────────────────────
 
 // InitMediaProcessor wires the media processor. PG-011: db is
@@ -112,3 +118,36 @@ func InitMediaProcessor(cfg *config.Config, db *storage.SQLiteDB, cacheDB *stora
 // Composition's role is to wire deps; per-style Drive folder creation
 // is the operator's responsibility post-deploy via the canonical
 // `reset-video-ai` admin command (which uses the drive.Admin port).
+
+type PreparedCapabilities = registrywiring.PreparedCapabilities
+type CapabilityDeps = registrywiring.CapabilityDeps
+type TrackedHTTPModule = registrywiring.TrackedHTTPModule
+type TrackedProviderEntry = registrywiring.TrackedProviderEntry
+type ProviderKind = registrywiring.ProviderKind
+
+const (
+	ProviderKindSearch = registrywiring.ProviderKindSearch
+	ProviderKindFetch  = registrywiring.ProviderKindFetch
+)
+
+type strictOption = registrywiring.StrictOption
+
+func bootstrapProviderRegistry(provReg *providers.Registry, entries []TrackedProviderEntry, descriptors []module.DescriptorProviders) error {
+	return registrywiring.BootstrapProviderRegistry(provReg, entries, descriptors)
+}
+
+func registerCapabilities(reg *module.Registry, provReg *providers.Registry, deps CapabilityDeps) error {
+	return registrywiring.RegisterCapabilities(reg, provReg, deps, registrywiring.ValidateRuntimeGraph)
+}
+
+func WithRegistrationPoint(point string) strictOption {
+	return registrywiring.WithRegistrationPoint(point)
+}
+
+func tryRegisterModuleStrict(reg *module.Registry, log *zap.Logger, mod module.Module, opts ...strictOption) error {
+	return registrywiring.TryRegisterModuleStrict(reg, log, mod, opts...)
+}
+
+func tryRegisterModule(reg *module.Registry, log *zap.Logger, mod module.Module) error {
+	return registrywiring.TryRegisterModule(reg, log, mod)
+}

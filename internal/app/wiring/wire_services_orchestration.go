@@ -414,3 +414,60 @@ func verifyEmbeddingContract(ctx context.Context, sidecarURL, queryModelID strin
 	}
 	return coreembedding.Verify(coreembedding.CanonicalText, sidecar, qdrant, coreembedding.Contract{ModelID: models.E5.ID})
 }
+
+// InitComposition returns the unified *ComposeRoot tree directly.
+// PR4d-final (June 2026): the legacy *CoreDeps projection was deleted —
+// the public entry point now returns *ComposeRoot + *backgroundJobs so
+// callers can start the JobRunner AFTER WireRegistry has registered all
+// handlers.
+func InitComposition(cfg *config.Config, log *zap.Logger) (*ComposeRoot, *backgroundJobs, CleanupFunc, error) {
+	if err := initLinguistics(cfg, log); err != nil {
+		return nil, nil, func() {}, fmt.Errorf("init composition linguistics: %w", err)
+	}
+	return initCompositionMinimal(cfg, log, "")
+}
+
+// WireMinimal creates a minimal server with core services only.
+// Uses InitComposition to build the full *ComposeRoot (so background jobs,
+// migrations, and DB are wired identically to WireServices), but returns
+// an empty registry so the caller can mount routes selectively.
+func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, error) {
+	_, _, coreClean, err := initCompositionMinimal(cfg, log, mode)
+	if err != nil {
+		return nil, err
+	}
+	return &AppDeps{
+		Handlers: AppHandlers{
+			Registry: nil, // forward-pointer: PR-COMPOSITION-REGISTRY-LIVE-WIRE
+		},
+		Runtime: AppRuntime{
+			Lifecycle: &minimalLifecycle{stop: coreClean},
+		},
+		Images: AppImage{},
+	}, nil
+}
+
+// minimalLifecycle wraps a single stop function as a LifecycleManager.
+// Used by WireMinimal to keep the AppDeps contract uniform: all callers
+// use Lifecycle.Stop for teardown, never a separate Cleanup func.
+//
+// QDRANT-005 (June 2026): minimalLifecycle now also implements AddProbe
+// (no-op) so it stays compatible with the extended api.LifecycleManager
+// interface. WireMinimal callers don't get the readiness barrier —
+// the AddProbe call simply pushes the probe onto the discard tray.
+type minimalLifecycle struct {
+	stop func()
+}
+
+func (m *minimalLifecycle) Start(_ context.Context) error { return nil }
+func (m *minimalLifecycle) Stop(_ context.Context) error {
+	if m.stop != nil {
+		m.stop()
+	}
+	return nil
+}
+
+// AddProbe is a no-op for minimalLifecycle. WireMinimal does not run
+// the readiness barrier; the probe is discarded so the call site remains
+// type-safe.
+func (m *minimalLifecycle) AddProbe(_ string, _ func(context.Context) error) {}

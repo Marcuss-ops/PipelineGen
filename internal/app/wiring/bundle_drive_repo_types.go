@@ -17,6 +17,11 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 )
 
+import (
+	processwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/process"
+	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
+)
+
 // DriveBundle and DriveDestinations preserve the composition root's bundle
 // vocabulary while ownership lives in the Drive wiring module.
 type DriveBundle = drivewiring.Bundle
@@ -77,3 +82,8 @@ func NewMediaRepoBundle(pgDB *sql.DB, textTrackRepo detail.TextTrackRepository) 
 	}
 	return bundle
 }
+
+type SearchBundle = searchwiring.SearchBundle
+type ProcessQdrantBundle = processwiring.ProcessQdrantBundle
+type ProcessBundle = processwiring.ProcessBundle
+type QdrantDeps = processwiring.QdrantDeps

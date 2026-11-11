@@ -29,6 +29,9 @@ import (
 
 	mediamemoryindexing "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/mediamemory"
 )
+import (
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
+)
 
 // buildDomainAssetServicesParams groups the dependencies required to
 // construct the voiceover, ingest, images, and
@@ -224,4 +227,25 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 	_ = usecase.AssocSearchService(nil)
 
 	return nil
+}
+
+// Stock dependency contracts are owned by the stock wiring module. These
+// aliases keep the composition package's existing typed builder surface
+// source-compatible while its assembly logic migrates by subsystem.
+type StockBundleDeps = stockwiring.StockBundleDeps
+type StockSourceCacheDeps = stockwiring.StockSourceCacheDeps
+type StockRuntimeDeps = stockwiring.StockRuntimeDeps
+type StockDeliveryDeps = stockwiring.StockDeliveryDeps
+type StockDriveReader = stockwiring.StockDriveReader
+type StockAcquisitionDeps = stockwiring.StockAcquisitionDeps
+type StockMediaDeps = stockwiring.StockMediaDeps
+type StockOrchestrationDeps = stockwiring.StockOrchestrationDeps
+type StockFeatureGate = stockwiring.StockFeatureGate
+type StockEnrichmentDeps = stockwiring.StockEnrichmentDeps
+
+// BuildStockBundle preserves the canonical composition-root entry point while
+// delegating stock service/API assembly to the stock wiring module. Batch
+// module construction stays injected because it uses application-root helpers.
+func BuildStockBundle(deps StockBundleDeps) (*stockwiring.StockPipelineWiring, error) {
+	return stockwiring.BuildBundle(deps, buildStockBatchModule)
 }

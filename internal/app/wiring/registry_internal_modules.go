@@ -25,6 +25,17 @@ import (
 
 	"go.uber.org/zap"
 )
+import (
+	mediamemoryapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+)
+import (
+	wiringlifecycle "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/lifecycle"
+	capjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediasearch"
+	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/outbox"
+)
 
 func registerInternalModules(ctx context.Context, registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, regWiring *RegistryWiring) (registryCrossStepState, error) {
 	idemPlus := middleware.NewIdempotency(root.Repos.IdempotencyStore, log)
@@ -294,4 +305,96 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	}
 	log.Info("created YouTubeClip module via youtube.Build (Blocco C1-Step 4)")
 	return tryRegisterModuleStrict(registry, log, yd, WithRegistrationPoint("register.YouTubeClip"))
+}
+
+// ── Step 5c helper ────────────────────────────────────────────────
+
+// registerMediaMemory wires the canonical MediaMemory resolve +
+// bindings + feedback surface. The resolver is backed by the Brain
+// (canonical 9-level cascade); the binding service is backed by
+// SQLite + outbox dispatcher.
+func registerMediaMemory(registry *module.Registry, log *zap.Logger, root *ComposeRoot, searchFanOut search.SearchFanOut) error {
+	if searchFanOut == nil {
+		log.Warn("registerMediaMemory: searchFanOut not wired; skipping (Level 3-9 cascade unavailable)")
+		return nil
+	}
+	if root.DB == nil {
+		log.Warn("registerMediaMemory: DB not available; skipping")
+		return nil
+	}
+
+	resolver, err := WireMediaMemoryResolver(searchFanOut, root.DB.DB, log)
+	if err != nil {
+		return fmt.Errorf("registerMediaMemory: wire resolver: %w", err)
+	}
+
+	txMgr := outbox.NewManager(root.DB.DB, log)
+	eventsRepo := outboxevents.NewRepository(root.DB.DB)
+	bindingSvc := WireBindingService(root.DB.DB, txMgr, eventsRepo, log)
+
+	handler := mediamemoryapi.NewHandler(mediamemoryapi.WireParams{
+		Resolver:       resolver,
+		PolicyResolver: mediamemoryapi.NewResolutionPolicyResolver(),
+		Bindings:       bindingSvc,
+		Log:            log,
+	})
+
+	descriptor := mediamemoryapi.Build(handler, log)
+	if err := tryRegisterModuleStrict(registry, log, descriptor, WithRegistrationPoint("register.MediaMemory")); err != nil {
+		return fmt.Errorf("registerMediaMemory: tryRegisterModuleStrict: %w", err)
+	}
+
+	log.Info("registerMediaMemory: mediamemory module mounted")
+	return nil
+}
+
+func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot, wiring *RegistryWiring) error {
+	bundle := capjobs.NewBundleWithHistory(
+		root.Jobs.Service,
+		root.Jobs.Service,
+		root.Jobs.History,
+		func() bool { return true },
+		log,
+	)
+	if err := registry.RegisterCapabilityModule(bundle, module.BuildContext{}); err != nil {
+		return fmt.Errorf("wire registry: jobs: %w", err)
+	}
+	log.Info("created Jobs module")
+
+	// PG-M2M (Aug 2026): build the M2M job surface from the SAME bundle
+	// so Enqueue/Get stay single-implementation. The M2M module is
+	// NOT registered in the public /api registry (it would collide
+	// with the admin /jobs prefix and inherit the admin Auth guard);
+	// it is plumbed through RegistryWiring → AppDeps.Handlers and
+	// mounted on its own /api/v1/jobs group by the server composition.
+	// Enabled closure is true so the M2M surface mounts whenever the
+	// M2MSecurityPort is wired (the port's EnableM2M() is the real
+	// gate inside JobClientAuthMiddleware; this closure only decides
+	// whether the routes exist at all).
+	m2mModule := capjobs.NewM2MJobsModule(bundle.Handler(), func() bool { return true })
+	if wiring != nil {
+		wiring.M2MJobsHandler = m2mModule
+	}
+	log.Info("created M2M Jobs module (POST + GET /:id on /api/v1/jobs)")
+	return nil
+}
+
+// applyLateBindings is retained as an orchestration name for a pure handler
+// preparation phase. Provider adapters and descriptor-owned providers have
+// already been registered and frozen before this function is called.
+func applyLateBindings(_ *module.Registry, log *zap.Logger, root *ComposeRoot, regWiring *RegistryWiring, crossStep registryCrossStepState) (PreparedCapabilities, error) {
+	prepared := PreparedCapabilities{}
+	if root.Outbox != nil && root.Outbox.EventsRepo != nil {
+		regWiring.OutboxHandler = outboxapi.NewHandler(wiringlifecycle.NewOutboxMonitorAdapter(root.Outbox.EventsRepo), log)
+	}
+	// Media-search transport follows the canonical media plane, not the legacy
+	// Qdrant process bundle. When PostgreSQL is deployed, readiness reports any
+	// missing semantic dependency through the handler instead of hiding the route.
+	if root != nil && root.MediaPostgres != nil && crossStep.SearchAggregator != nil {
+		searchAgg := mediasearchapi.AggregatorSearcher(crossStep.SearchAggregator)
+		regWiring.MediasearchHandler = mediasearchapi.NewHandler(mediasearchapi.WireParams{
+			Aggregator: searchAgg, SemanticReady: WireMediasearchReadiness(root, searchAgg), Log: log,
+		})
+	}
+	return prepared, nil
 }
