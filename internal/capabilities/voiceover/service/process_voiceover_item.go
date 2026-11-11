@@ -373,6 +373,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		Text:           item.Text,
 		Language:       item.Language,
 		Voice:          item.Voice,
+		TTSRate:        item.TTSRate,
 		Filename:       item.Filename,
 		Strategy:       string(item.Strategy),
 		Metadata:       item.Metadata,

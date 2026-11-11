@@ -163,6 +163,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 			Text:          cmd.Text,
 			Language:      cmd.Language,
 			Voice:         cmd.Voice,
+			Rate:          cmd.TTSRate,
 			Filename:      cmd.Filename,
 			OutputDir:     cmd.Dest.FolderPath,
 			RemoveSilence: false, // P0.2 Fase 2c: never delegate to TTS

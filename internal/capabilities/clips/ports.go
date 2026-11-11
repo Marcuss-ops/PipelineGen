@@ -17,6 +17,7 @@ package clips
 
 import (
 	"context"
+	"errors"
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"io"
 	"time"
@@ -52,7 +53,14 @@ type ClipDriveFileDTO struct {
 // of the SDK File struct is dropped at the adapter boundary.
 type ClipDriveFileMetaDTO struct {
 	MimeType string
+	Name     string
+	Size     int64
 }
+
+// ErrDriveRangeUnsupported is returned by a Drive reader that can stream the
+// whole object but has no Range support. The download handler falls back to a
+// full 200 response so the client can restart instead of failing the request.
+var ErrDriveRangeUnsupported = errors.New("drive range download unsupported")
 
 // ClipMetaWriteRequest is the narrowed semantic-write request shape.
 // Mirrors semantic.WriteRequest without exposing the SDK type.

@@ -100,14 +100,6 @@ const (
 	// window keeps a sane tail ceiling.
 	maxPhraseOverlayDurationUS int64 = 8_000_000
 	maxOverlayItemDurationUS   int64 = 5_000_000
-	// maxCompositeOverlayDurationUS must cover the largest camera journey the
-	// composer can emit: 5 children, consecutive mention anchors up to
-	// entityImageMergeGapMS (5s) apart, each slot spaced at least
-	// hold (1.5s) + travel (2s) = 3.5s. Worst case offsets reach
-	// 4*5000ms = 20000ms, plus the final hold: 21500ms. Capping below
-	// that truncates the parent while layers keep their windows, which
-	// fails child-plan validation (x4 broke at the 8s cap).
-	maxCompositeOverlayDurationUS int64 = 22_000_000
 )
 
 // phraseWindowLimitUS is the longest the phrase clip may run before it would
@@ -225,11 +217,11 @@ func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.Overla
 		maxDurationUS = durationUS
 	}
 	if len(source.ImageLayers) > 0 {
-		// A composite's children carry staggered windows relative to the
-		// parent. Preserve the entire (up to 5s + 3s mention gap) composition
-		// instead of applying the ordinary 5s single-item cap.
+		// Composite children carry staggered windows relative to the parent.
+		// Use their actual parent window; the clip duration is data from the
+		// certified timeline, not a separate renderer cap.
 		targetUS = durationUS
-		maxDurationUS = maxCompositeOverlayDurationUS
+		maxDurationUS = durationUS
 	}
 	if capmodel.IsChainItemKind(source.Kind) {
 		// A chain item carries its segments at absolute plan times, but the

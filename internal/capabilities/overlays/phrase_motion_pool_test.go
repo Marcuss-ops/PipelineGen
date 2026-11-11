@@ -235,6 +235,25 @@ func TestLongLaneIncludesFixed3DMotions(t *testing.T) {
 	}
 }
 
+// TestLongPhraseAutoSelectionSkips3DBlankOnWhiteCanvas pins the production
+// consequence of the blank 3D render: the catalog may keep the family, but the
+// automatic long-lane walk must never choose it. The golden v3.1 maps run on
+// 2026-11-11 produced text_3d_tilt_rise / roll_depth / camera_push items whose
+// every sampled frame was full-frame white; a phrase that disappears is worse
+// than a simpler 2D entrance.
+func TestLongPhraseAutoSelectionSkips3DBlankOnWhiteCanvas(t *testing.T) {
+	for ordinal := 0; ordinal < 3*len(longPhraseMotionCandidates); ordinal++ {
+		for _, got := range []string{
+			selectLongPhraseMotion("job", "scene", ordinal, nil),
+			selectLongPhraseMotionLimited("job", "scene", ordinal, nil, 8),
+		} {
+			if strings.HasPrefix(got, "text_3d_") {
+				t.Fatalf("automatic long-lane ordinal %d selected blank 3D motion %q", ordinal, got)
+			}
+		}
+	}
+}
+
 func TestBuildPlanDefaultLongPhrasesRotateWithoutRepeating(t *testing.T) {
 	longPhrases := make([]TimedAnnotation, 15)
 	for i := range longPhrases {

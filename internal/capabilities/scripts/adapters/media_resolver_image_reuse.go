@@ -44,6 +44,16 @@ type internetImageDiscoveryPlan struct {
 //     candidate — otherwise the segment search would be suppressed by a warm
 //     generic scene image.
 func planInternetImageDiscovery(contextual, entity, manual []string, entityMode, fanoutOwned bool, covers func(string) bool) internetImageDiscoveryPlan {
+	// Explicit media-plan searches are the operator's complete retrieval scope
+	// for this segment. Mixing them with inferred entities or semantic hints
+	// lets generic fragments (for example a month or a court label) consume the
+	// image budget with unrelated results.
+	if explicit := imageQueryList(manual); len(explicit) > 0 {
+		if fanoutOwned {
+			return internetImageDiscoveryPlan{Mode: internetImageDiscoveryReuse, Queries: explicit}
+		}
+		return internetImageDiscoveryPlan{Mode: internetImageDiscoverySearch, Queries: explicit}
+	}
 	base := imageQueryList(contextual)
 	if entityMode {
 		if identity := imageQueryList(entity); len(identity) > 0 {

@@ -153,9 +153,8 @@ func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, err
 	}
 	plan.Items = PruneOrphanChartBars(plan.Items)
 	// Recap observability is counted here: after overlap degradation and
-	// run-level budgets (the gates that can drop cards), before chain
-	// fusion (which may merge admitted cards into chain segments while
-	// still rendering their text).
+	// run-level budgets (the gates that can drop cards), while every card
+	// remains a separately counted item.
 	for i := range plan.Items {
 		if v, ok := plan.Items[i].Params["recap"]; ok && v == true {
 			plan.RecapCards++
@@ -190,9 +189,6 @@ func BuildPlan(input PlanInput, config PlannerConfig) (capmodel.OverlayPlan, err
 		}
 	}
 	input.MotionSeed = motionSeed
-	// Nearby-animation layout has one owner (animation_layout.go): duplicate
-	// rotation, image/date placement, chain fusion and the entrance cascade.
-	plan.Items = FinalizePlannerAnimationLayout(plan.Items, input, input.FPSNum, input.FPSDen)
 	plan.Items = PruneOrphanChartBars(plan.Items)
 	if err := plan.Validate(); err != nil {
 		return capmodel.OverlayPlan{}, err
@@ -303,26 +299,11 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 		if len(images) > config.MaxImages {
 			images = images[:config.MaxImages]
 		}
-		// Automatic image groups: temporally adjacent certified images of this
-		// scene become one group. Consumed images must not also emit overlays.
-		explicitAssets := make(map[string]struct{})
-		for _, group := range scene.MultiEntityGroups {
-			for _, member := range group.Items {
-				if member.AssetRef != nil {
-					explicitAssets[member.AssetRef.AssetID] = struct{}{}
-				}
-			}
-		}
-		autoGroups, groupedAssets := AutoImageGroups(scene.ID, images, explicitAssets)
 		appendVisualLane(plan, scene.ID, visualLane{
 			kind: "image", templateID: "IMAGE_OVERLAY", position: "center", style: "popup",
 			limit: config.MaxImages,
 			presetFor: func(sceneID, itemID string) string {
 				return selectImagePreset(input.PlanID, sceneID, itemID)
-			},
-			skip: func(assetID string) bool {
-				_, grouped := groupedAssets[assetID]
-				return grouped
 			},
 		}, images)
 
@@ -435,16 +416,10 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 				MotionParams: phraseMotionParams(candidate, input.FPSNum, input.FPSDen), Params: params,
 			})
 		}
-		allGroups := append(append([]MultiEntityGroup(nil), scene.MultiEntityGroups...), autoGroups...)
+		allGroups := append([]MultiEntityGroup(nil), scene.MultiEntityGroups...)
 		previousGroupMotion := ""
-		for groupIndex, group := range allGroups {
-			// Auto-detected groups replace standalone image overlays, so their
-			// layers draw from the same images lane cap; explicit groups keep
-			// the entities lane they always used.
+		for _, group := range allGroups {
 			groupLane := laneEntities
-			if groupIndex >= len(scene.MultiEntityGroups) {
-				groupLane = laneImages
-			}
 			if group.SceneID != "" && group.SceneID != scene.ID {
 				return imageOrdinal, fmt.Errorf("overlay planner: multi-entity group %q belongs to scene %q, not %q", group.GroupID, group.SceneID, scene.ID)
 			}

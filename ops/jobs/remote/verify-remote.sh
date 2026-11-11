@@ -113,9 +113,8 @@ echo "verify-remote: target=$TARGET client=${CLIENT_ID:-<unset>}"
 echo
 
 # ── 0. liveness ───────────────────────────────────────────────────────────
-# /health is the liveness gate. /health/ready is NOT: a master can serve the
-# M2M surface without exposing the readiness endpoint (the local dev build
-# answers 404 there), so it is reported and the M2M probes below decide.
+# /health is the liveness gate. /ready is the readiness gate; older builds
+# may not expose it, so a 404 is reported and the M2M probes below decide.
 code="$(probe GET /health "$TMP/health.json")"
 if [[ "$code" != "200" ]]; then
   echo "  /health        FAIL (HTTP $code)"
@@ -124,11 +123,11 @@ if [[ "$code" != "200" ]]; then
 fi
 echo "  /health        OK $(jq -c '{status,commit,version}' "$TMP/health.json" 2>/dev/null || echo '{}')"
 
-code="$(probe GET /health/ready "$TMP/ready.json")"
+code="$(probe GET /ready "$TMP/ready.json")"
 case "$code" in
-  200) echo "  /health/ready  OK $(jq -c '{status,commit}' "$TMP/ready.json" 2>/dev/null || echo '{}')" ;;
-  404) echo "  /health/ready  404 (readiness endpoint not exposed on this build — not a failure)" ;;
-  *)   echo "  /health/ready  $code (not a failure; the M2M probes below decide)" ;;
+  200) echo "  /ready         OK $(jq -c '{status,commit}' "$TMP/ready.json" 2>/dev/null || echo '{}')" ;;
+  404) echo "  /ready         404 (readiness endpoint not exposed on this build — not a failure)" ;;
+  *)   echo "  /ready         $code (not a failure; the M2M probes below decide)" ;;
   esac
 echo
 

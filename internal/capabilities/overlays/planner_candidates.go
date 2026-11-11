@@ -33,6 +33,9 @@ func rankedValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 			continue
 		}
 		candidate.Text = strings.TrimSpace(candidate.Text)
+		if isPromptInstructionEcho(candidate.Text) {
+			continue
+		}
 		valid = append(valid, candidate)
 	}
 	sort.SliceStable(valid, func(i, j int) bool { return valid[i].Score > valid[j].Score })
@@ -60,6 +63,9 @@ func rankedPhraseValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 			continue
 		}
 		if maxWords > 0 && len(strings.Fields(candidate.Text)) > maxWords {
+			continue
+		}
+		if isPromptInstructionEcho(candidate.Text) {
 			continue
 		}
 		valid = append(valid, candidate)
@@ -91,6 +97,35 @@ func rankedPhraseValid(in []TimedAnnotation, maxWords int) []TimedAnnotation {
 		return valid[i].Score > valid[j].Score
 	})
 	return valid
+}
+
+// promptInstructionEchoes are the openings of the analysis instructions that
+// the 2026-11-11 golden run's model copied into scene text. They are grounded
+// in the contaminated script, so a text gate alone accepts them; if the phrase
+// planner does too they become full-screen cards such as "Esaminare
+// attentamente atti e decisioni ufficiali...". Keep the list literal: these
+// are prompt echoes, not editorial sentences, and a broad heuristic such as
+// "contains analisi" would also drop legitimate reporting.
+var promptInstructionEchoes = []string{
+	"esaminare attentamente atti e decisioni ufficiali",
+	"le fonti giornalistiche spesso mescolano questi elementi",
+	"le dichiarazioni televisive offrono uno spaccato mediatico",
+	"le consulenze tecniche emergono nel dibattito",
+	"l'obiettivo primario è presentare il quadro informativo",
+	"è fondamentale procedere con cautela",
+	"un singolo elemento non va isolato",
+	"il contraddittorio consente alla difesa di esaminare gli atti",
+	"i fatti accertati, le ipotesi investigative, le dichiarazioni e i punti contestati",
+}
+
+func isPromptInstructionEcho(text string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(text)), " "))
+	for _, prefix := range promptInstructionEchoes {
+		if strings.HasPrefix(normalized, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func rankedImages(in []ImageCandidate) []ImageCandidate {

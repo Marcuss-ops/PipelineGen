@@ -34,21 +34,10 @@ func (s *VidRushRegistryMediaResolver) SearchImages(ctx context.Context, req Int
 	if s == nil || s.Registry == nil {
 		return nil, scriptports.ErrVidRushProviderNotFound
 	}
+	// Search only the query produced for this segment/entity. Expanding it here
+	// made the result depend on unrelated case-specific hardcoding and caused
+	// cross-story images to enter otherwise correctly scoped searches.
 	queries := []string{req.Query}
-	if strings.Contains(strings.ToLower(req.Query), "single-person portrait headshot photo") {
-		// One broad portrait query repeatedly returned the same top photograph
-		// for every scene. Search a small set of identity-safe contexts through
-		// the same provider and merge them; downstream person verification and
-		// perceptual deduplication remain authoritative.
-		name := strings.TrimSpace(req.Entity)
-		queries = []string{
-			req.Query,
-			name + " foto intervista",
-			name + " foto udienza tribunale Garlasco",
-			name + " dichiarazioni foto avvocato Garlasco",
-			name + " servizio televisivo ritratto",
-		}
-	}
 	resultSets := make([][]scriptpkg.SegmentAssetCandidate, len(queries))
 	queryErrors := make([]error, len(queries))
 	var wg sync.WaitGroup

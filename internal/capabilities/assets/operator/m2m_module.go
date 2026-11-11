@@ -15,9 +15,16 @@ import (
 // ops/jobs/remote/inventory.sh does today, with direct `docker exec psql`
 // access a remote computer does not have):
 //
-//	GET /api/v1/media/assets      → List  (scope: media.read)
-//	GET /api/v1/media/assets/:id  → Get   (scope: media.read)
-//	GET /api/v1/media/facets      → Facets(scope: media.read)
+//	GET  /api/v1/media/assets      → List  (scope: media.read)
+//	GET  /api/v1/media/assets/:id  → Get   (scope: media.read)
+//	GET  /api/v1/media/facets      → Facets(scope: media.read)
+//	POST /api/v1/media/clips/:source/clips/:id/download
+//	                               → DownloadClip (scope: media.read)
+//
+// The download route is POST because the canonical admin route is POST; it
+// only streams bytes (local file or Drive proxy) and never mutates the
+// catalog. It is mounted only when the composition root supplies the canonical
+// download handler, so a deployment without that surface stays GET-only.
 //
 // It is deliberately distinct from the admin operator console
 // (module.go / handler_assets.go), which registers the SAME three read
@@ -39,8 +46,9 @@ import (
 // the Master considers authoritative, including the control-plane state
 // that used to require a psql session.
 type M2MModule struct {
-	handler *Handler
-	enabled func() bool
+	handler  *Handler
+	enabled  func() bool
+	download gin.HandlerFunc
 }
 
 // ScopeMediaRead gates the M2M media-read surface. The admin key-creation
@@ -62,6 +70,15 @@ func NewM2MModule(readModel AssetInventoryReader, log *zap.Logger, enabled func(
 	return &M2MModule{
 		handler: NewHandler(Dependencies{ReadModel: readModel}, log),
 		enabled: enabled,
+	}
+}
+
+// SetDownloadHandler mounts the canonical clip download handler on the M2M
+// surface. Optional: when it is not set (tests, media-disabled deployments,
+// or a composition without the clips capability) the module stays GET-only.
+func (m *M2MModule) SetDownloadHandler(h gin.HandlerFunc) {
+	if m != nil {
+		m.download = h
 	}
 }
 
@@ -102,6 +119,14 @@ func (m *M2MModule) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("/assets", apimw.RequireScope(ScopeMediaRead), m.handler.handleListAssets)
 	rg.GET("/assets/:id", apimw.RequireScope(ScopeMediaRead), m.handler.handleGetAsset)
 	rg.GET("/facets", apimw.RequireScope(ScopeMediaRead), m.handler.handleFacets)
+	if m.download != nil {
+		rg.POST(
+			"/clips/:source/clips/:id/download",
+			apimw.RequireScope(ScopeMediaRead),
+			apimw.M2MDownloadConcurrency(2),
+			m.download,
+		)
+	}
 }
 
 // Compile-time assertion: M2MModule satisfies the minimal route-module

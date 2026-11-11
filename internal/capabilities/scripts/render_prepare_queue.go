@@ -60,8 +60,11 @@ func (e *QueuePrepareEnqueuer) EnqueuePrepare(ctx context.Context, req capoverla
 		Assets:      prepareAssets(req.Intents),
 	}
 	if err := e.client.Submit(ctx, job); err != nil {
-		if errors.Is(err, ErrJobExists) {
-			return nil // idempotent replay
+		if errors.Is(err, ErrJobExists) || errors.Is(err, ErrRenderRequestConflict) {
+			// Prepare is advisory and fire-and-forget: an existing operational
+			// id (including a replay whose request hash no longer matches) is
+			// an idempotent no-op, never a run failure.
+			return nil
 		}
 		return fmt.Errorf("chronon queue prepare submit failed: %w", err)
 	}

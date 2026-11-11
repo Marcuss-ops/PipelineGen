@@ -108,13 +108,15 @@ type ttsIdentityProvider interface {
 }
 
 func providerIdentityForTTS(provider TTSProvider, language Language) string {
+	identity := ""
 	if provider == nil {
-		return ""
+	} else if providerIdentity, ok := provider.(ttsIdentityProvider); ok {
+		identity = strings.TrimSpace(providerIdentity.ProviderIdentityFor(language))
 	}
-	if identity, ok := provider.(ttsIdentityProvider); ok {
-		return strings.TrimSpace(identity.ProviderIdentityFor(language))
+	if strings.EqualFold(string(language), "it") {
+		identity += ";rate=+1%;silence=-40dB/120ms"
 	}
-	return ""
+	return identity
 }
 
 // BuildVoiceoverContentFingerprintV3 is the provider-aware content

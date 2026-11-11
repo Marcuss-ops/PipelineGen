@@ -462,13 +462,4 @@ func annotationStableEntityID(entity scriptpkg.AnnotatedEntity) string {
 	return capabilityentities.StableEntityID(entity.Type, entity.CanonicalName)
 }
 
-// entityImageMergeGapMS is the largest gap between certified mention anchors
-// that still reads as one shared visual sequence. Grouping prevents nearby
-// images from being rendered as independent overlays that cover one another.
-const (
-	entityImageMergeGapMS       int64 = 5_000
-	entityImageHoldMS           int64 = 1_500
-	entityImageTravelMS         int64 = 2_000
-	maxEntityImageGroup               = 5
-	maxNamedEntityCardsPerScene       = 10
-)
+const maxNamedEntityCardsPerScene = 10

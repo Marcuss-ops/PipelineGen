@@ -21,6 +21,10 @@ import (
 // GetFull, Cancel, Retry, Events, Replay, History) stays on the
 // protected group under Auth.
 func (r *Router) registerAPIRoutes(engine *gin.Engine, log *zap.Logger) *gin.RouterGroup {
+	// One limiter shared by jobs and media: a per-group bucket would double
+	// the effective budget of every M2M key.
+	m2mLimiter := middleware.NewM2MClientRateLimiter()
+
 	// API routes
 	api := engine.Group("/api")
 	{
@@ -54,6 +58,7 @@ func (r *Router) registerAPIRoutes(engine *gin.Engine, log *zap.Logger) *gin.Rou
 		if r.m2mJobsHandler != nil {
 			m2mJobs := api.Group("/v1/jobs")
 			m2mJobs.Use(middleware.JobClientAuthMiddleware(r.cfg.M2M, r.cfg.Log))
+			m2mJobs.Use(m2mLimiter.Handler())
 			// Per-route RequireScope (jobs.submit / jobs.read) is applied
 			// inside the module's RegisterRoutes so the scope gate sits
 			// immediately before the handler.
@@ -83,6 +88,7 @@ func (r *Router) registerAPIRoutes(engine *gin.Engine, log *zap.Logger) *gin.Rou
 		if r.m2mMediaHandler != nil {
 			m2mMedia := api.Group("/v1/media")
 			m2mMedia.Use(middleware.JobClientAuthMiddleware(r.cfg.M2M, r.cfg.Log))
+			m2mMedia.Use(m2mLimiter.Handler())
 			r.m2mMediaHandler.RegisterRoutes(m2mMedia)
 			log.Info("M2M media read surface mounted", zap.String("prefix", "/api/v1/media"))
 		} else {

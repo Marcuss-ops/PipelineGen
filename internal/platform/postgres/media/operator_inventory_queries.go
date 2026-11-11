@@ -79,11 +79,11 @@ func operatorItemProjection() string {
     m.index_state,
     COALESCE(NULLIF(m.binary_sha256, ''), NULLIF(m.content_sha256, ''), m.content_sha256) AS content_hash,
     ` + operatorJSONText("m.metadata_json", "indexed_content_hash") + ` AS indexed_content_hash,
-    ` + operatorJSONText("m.metadata_json", "embedding_model_version") + ` AS embedding_version,
+    COALESCE(NULLIF(emb.model_id, ''), ` + operatorJSONText("m.metadata_json", "embedding_model_version") + `) AS embedding_version,
     m.collection_version,
     COALESCE(loc.has_local, 0) AS has_local_file,
     COALESCE(loc.has_drive, 0) AS has_drive_file,
-    CASE WHEN m.embedding_json <> '' AND m.embedding_json <> '[]' THEN 1 ELSE 0 END AS has_embedding,
+    CASE WHEN COALESCE(emb.n, 0) > 0 THEN 1 ELSE 0 END AS has_embedding,
     COALESCE(o.pending_events, 0) AS pending_outbox_events,
     ` + operatorJSONText("m.metadata_json", "last_index_error") + ` AS last_error,
     m.created_at,
@@ -106,6 +106,15 @@ outbox_counts AS (
     FROM outbox_events
     WHERE status = 'pending'
     GROUP BY aggregate_id
+),
+embedding_flags AS (
+    -- The canonical vector surface is media_embeddings (pgvector), NOT the
+    -- legacy media_assets.embedding_json mirror: that mirror is empty on the
+    -- PostgreSQL plane, so a projection keyed on it would report every
+    -- indexed asset as "no embedding".
+    SELECT asset_id, COUNT(*) AS n, MIN(model_id) AS model_id
+    FROM media_embeddings
+    GROUP BY asset_id
 )
 `
 
@@ -179,6 +188,7 @@ func (r *OperatorInventoryReader) list(ctx context.Context, query operator.Asset
 FROM media_assets m
 LEFT JOIN loc_flags loc ON loc.asset_id = m.id
 LEFT JOIN outbox_counts o ON o.aggregate_id = m.id
+LEFT JOIN embedding_flags emb ON emb.asset_id = m.id
 WHERE ` + where + `
 ORDER BY ` + tsExpr("m.updated_at") + ` DESC, m.id DESC
 LIMIT ` + fmt.Sprintf("$%d OFFSET $%d", len(pageArgs)-1, len(pageArgs))
@@ -322,6 +332,20 @@ func (r *OperatorInventoryReader) get(ctx context.Context, assetID string) (*ope
 	if err != nil {
 		return nil, fmt.Errorf("operatorinventory.get metadata: %w", err)
 	}
+	textTracks, err := r.listTextTracks(ctx, assetID)
+	if err != nil {
+		return nil, fmt.Errorf("operatorinventory.get text tracks: %w", err)
+	}
+	vectors, err := r.listVectors(ctx, assetID)
+	if err != nil {
+		return nil, fmt.Errorf("operatorinventory.get vectors: %w", err)
+	}
+	if len(vectors) > 0 {
+		item.HasEmbedding = true
+		if item.EmbeddingVersion == "" {
+			item.EmbeddingVersion = vectors[0].ModelID
+		}
+	}
 
 	return &operator.AssetInspection{
 		AssetInventoryItem: *item,
@@ -329,7 +353,86 @@ func (r *OperatorInventoryReader) get(ctx context.Context, assetID string) (*ope
 		Locations:          locations,
 		Processing:         processing,
 		OutboxEvents:       outboxEvents,
+		TextTracks:         textTracks,
+		Vectors:            vectors,
 	}, nil
+}
+
+// listTextTracks returns the CURRENT text tracks for one asset. Historical
+// audit rows (is_current=0) are deliberately excluded: they are superseded
+// translations, not catalog content a remote reader should pick up. The query
+// is bounded by the asset id and ordered deterministically so the Inspector
+// (and the remote M2M client) renders the same list every time.
+func (r *OperatorInventoryReader) listTextTracks(ctx context.Context, assetID string) ([]operator.TextTrackProjection, error) {
+	const q = `SELECT id, language_code, text_kind, text_content, source_type,
+	       source_language_code, is_original, provider, status, confidence, updated_at
+	FROM asset_text_tracks
+	WHERE asset_id = $1 AND is_current = 1
+	ORDER BY language_code, text_kind`
+
+	rows, err := r.db.QueryContext(ctx, q, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]operator.TextTrackProjection, 0)
+	for rows.Next() {
+		var track operator.TextTrackProjection
+		var original int
+		var confidence sql.NullFloat64
+		var updatedAt string
+		if err := rows.Scan(
+			&track.ID, &track.LanguageCode, &track.TextKind, &track.TextContent,
+			&track.SourceType, &track.SourceLanguageCode, &original, &track.Provider,
+			&track.Status, &confidence, &updatedAt,
+		); err != nil {
+			return nil, err
+		}
+		track.IsOriginal = original != 0
+		if confidence.Valid {
+			v := confidence.Float64
+			track.Confidence = &v
+		}
+		track.UpdatedAt = parseOperatorTime(updatedAt)
+		out = append(out, track)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// listVectors returns the vector-family identity of every embedding attached
+// to the asset. The raw `vector` is intentionally NOT selected: a 768-float
+// payload is not an operator-visible field, and `vector_dims` answers the only
+// question the Inspector needs (which family, how wide, when written).
+func (r *OperatorInventoryReader) listVectors(ctx context.Context, assetID string) ([]operator.EmbeddingProjection, error) {
+	const q = `SELECT embedding_type, model_id, vector_dims(embedding), created_at
+	FROM media_embeddings
+	WHERE asset_id = $1
+	ORDER BY embedding_type, model_id`
+
+	rows, err := r.db.QueryContext(ctx, q, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]operator.EmbeddingProjection, 0)
+	for rows.Next() {
+		var vector operator.EmbeddingProjection
+		var createdAt string
+		if err := rows.Scan(&vector.EmbeddingType, &vector.ModelID, &vector.Dimensions, &createdAt); err != nil {
+			return nil, err
+		}
+		vector.CreatedAt = parseOperatorTime(createdAt)
+		out = append(out, vector)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // getItem is the detail arm's row read. It reuses the list arm's projection and
@@ -341,6 +444,7 @@ func (r *OperatorInventoryReader) getItem(ctx context.Context, assetID string) (
 FROM media_assets m
 LEFT JOIN loc_flags loc ON loc.asset_id = m.id
 LEFT JOIN outbox_counts o ON o.aggregate_id = m.id
+LEFT JOIN embedding_flags emb ON emb.asset_id = m.id
 WHERE m.id = $1 AND m.lifecycle_state <> 'DELETED'`
 
 	rows, err := r.db.QueryContext(ctx, q, assetID)

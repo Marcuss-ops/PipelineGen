@@ -513,26 +513,15 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if len(items) == 0 {
 		return nil, nil
 	}
-	// Co-present nearby images, including in per-scene mode. Each child keeps
-	// its own certified timestamp and motion inside one composite artifact, so
-	// later images enter beside earlier ones instead of covering them.
-	// Compose BEFORE per-scene/per-group caps: a 2-5 group counts as ONE unit,
-	// otherwise LimitOverlayItemsPerScene drops the second image before it can
-	// fuse and every animation stays a singolo overlay.
-	if canvas.AnimationCounts["chain_disabled"] == 0 {
-		composed := composeNearbyEntityImages(items, canvas.Width, canvas.Height)
-		intake.stage(capmodel.OverlayDropCompositionMerged, len(items), len(composed))
-		items = composed
-	}
 	groupItems = applyOverlayGroupLimits(items, canvas.OverlayGroupLimits)
 	intake.stage(capmodel.OverlayDropGroupLimit, len(items), len(groupItems))
 	items = groupItems
 	sceneItems := capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
 	intake.stage(capmodel.OverlayDropPerSceneCap, len(items), len(sceneItems))
 	items = sceneItems
-	// Apply effects after entity assets are attached and nearby images have
-	// been composed, so the random policy covers both generic images and every
-	// entity-image child while respecting the final admitted render set.
+	// Apply effects after final item admission and entity asset attachment,
+	// before chain fusion, so each source image gets its own deterministic
+	// effect selection.
 	if canvas.RandomImageEffects {
 		capabilityoverlay.AttachRandomImageEffects(planID, items)
 	}
@@ -565,9 +554,9 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	}); err != nil {
 		return nil, fmt.Errorf("overlay plan: %w", err)
 	}
-	// EntityTimeline cards are resolved after the core BuildPlan call, so its
-	// date/image collision pass cannot see them; the finalizer repeats it on
-	// the combined render set together with chain fusion.
+	// EntityTimeline cards are resolved after the core BuildPlan call. Finalize
+	// the full admitted set here: resolve date/image collisions first, then
+	// create sequential chains exactly once.
 	coalesced := capabilityoverlay.FinalizeCompiledAnimationLayout(items, animationLayoutInput)
 	intake.stage(capmodel.OverlayDropCompositionMerged, len(items), len(coalesced))
 	items = coalesced

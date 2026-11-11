@@ -1,0 +1,442 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "francis-kaufmann-final-20261111-r11",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "francis-kaufmann-villa-pamphili-final-20261111-r11",
+      "project": "francis-kaufmann-villa-pamphili-20261111",
+      "title": "Francis Kaufmann: ergastolo e tre anni di isolamento diurno",
+      "channel_id": "crime",
+      "language": "it",
+      "tone": "inchiesta giudiziaria italiana, sobria, rispettosa delle vittime e rigorosa sulle fonti",
+      "style": "Narrazione documentaristica italiana lunga circa 20 minuti, 2600 parole complessive. Ritmo chiaro e sostenuto, passaggi naturali fra capitoli, spiegazioni accessibili e mai sensazionalistiche. Dai spazio alle vittime Anastasia Trofimova e Andromeda. Ogni fatto deve restare nei brief e nelle fonti elencate; attribuisci le ricostruzioni alle fonti. Distingui sempre accuse, elementi riferiti dalle cronache, decisione della Corte e dichiarazioni della difesa. La condanna del 5 novembre 2026 è di primo grado e non definitiva. Evita dettagli grafici, citazioni inventate, motivazioni ipotetiche, diagnosi autonome e qualunque informazione non fornita.",
+      "model": "gemma4:e4b",
+      "media_mode": "stock_only",
+      "source": {
+        "type": "text",
+        "topic": "Francis Kaufmann condannato in primo grado all’ergastolo con tre anni di isolamento diurno per il duplice omicidio di Anastasia Trofimova e della figlia Andromeda a Villa Pamphili",
+        "source_text": "Fonti di base: ANSA 5 novembre 2026, “Uccise la compagna e la figlioletta, Francis Kaufmann condannato all’ergastolo”; RaiNews 5 novembre 2026, “Kaufmann condannato all’ergastolo per i femminicidi di Villa Pamphili”; Associated Press 5 novembre 2026, “American national sentenced to life in prison for murders of partner and infant daughter in Rome”; RaiNews 8 ottobre 2026 sulla perizia psichiatrica e la data della sentenza. Sentenza di primo grado della Prima Corte d’Assise di Roma del 5 novembre 2026: ergastolo e isolamento diurno per tre anni. Vittime: Anastasia Trofimova, 28 anni, e la figlia Andromeda, 11 mesi; corpi trovati nel giugno 2025 a Villa Pamphili. Kaufmann negò di averle uccise. La ricostruzione processuale si è basata anche su testimonianze e immagini di telecamere. Il processo fu sospeso per una temporanea incapacità processuale dopo la diagnosi di un disturbo psicotico transitorio e riprese nel giugno 2026; la Corte respinse una nuova richiesta di perizia l’8 ottobre. AP riferisce che Kaufmann si presentava come filmmaker con l’alias Rexal Ford, fuggì a Skiathos e fu estradato in Italia; riferisce inoltre circa un milione di dollari di crediti d’imposta per un film mai realizzato e conseguenti dimissioni nel Ministero della Cultura. Tenere il filone dei fondi pubblici distinto dalla prova dei delitti. La condanna è di primo grado, impugnabile.",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": 2538,
+        "min_words": 2498,
+        "segment_words": 200,
+        "skip_quality_gate": false,
+        "force_refresh": true,
+        "voiceover_group": "Velox Max",
+        "segments": [
+          {
+            "id": "cold-case",
+            "kind": "clip",
+            "topic": "Dalla sentenza al punto di partenza: che cosa è stato deciso",
+            "source_text": "Il 5 novembre 2026 la Prima Corte d’Assise di Roma ha condannato Francis Kaufmann all’ergastolo, aggiungendo tre anni di isolamento diurno. È una sentenza di primo grado: un passaggio importante, ma non l’ultimo possibile nel percorso giudiziario. I giudici lo hanno riconosciuto responsabile del duplice omicidio di Anastasia Trofimova e della figlia Andromeda, e dell’occultamento dei corpi. La decisione ha chiuso il dibattimento iniziato dopo una lunga indagine, ma per capire che cosa significa bisogna tornare al luogo da cui tutto è partito: Villa Pamphili, a Roma. Il 7 giugno 2025, nel grande parco della Capitale, furono trovate senza vita una donna e una bambina di appena undici mesi. Le cronache identificarono poi le vittime come Anastasia, ventotto anni, e la piccola Andromeda. Da quel momento investigatori, testimoni e telecamere hanno contribuito a ricostruire i loro ultimi giorni. In questo video ripercorriamo il caso con una distinzione necessaria: ciò che la Corte ha accertato in primo grado, ciò che le fonti hanno riferito e ciò che resta affidato ai successivi passaggi della giustizia.",
+            "target_words": 173,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "discovery",
+            "kind": "clip",
+            "topic": "Il ritrovamento a Villa Pamphili",
+            "source_text": "Villa Pamphili è un parco storico molto esteso, frequentato ogni giorno da romani e visitatori. Il 7 giugno 2025 la quiete del luogo fu spezzata dal ritrovamento dei corpi di Anastasia Trofimova e di sua figlia Andromeda, a breve distanza l’uno dall’altra. Le cronache parlarono di punti diversi del parco; i dettagli più duri non sono necessari per capire la vicenda e non li ripeteremo. La priorità degli investigatori fu stabilire chi fossero le vittime e ricostruire quando fossero morte. Anastasia aveva ventotto anni. Andromeda ne aveva undici mesi. In quella prima fase il caso non era ancora una storia giudiziaria con una sentenza: era un’indagine aperta, con due vittime da identificare e una sequenza di fatti ancora da chiarire. Anche la distanza fra i luoghi del ritrovamento, la gestione dei corpi e il tempo trascorso sarebbero diventati elementi della ricostruzione investigativa. Il parco, con i suoi viali e gli accessi, offriva un contesto concreto da confrontare con le immagini di sorveglianza e con le testimonianze. La cronaca avrebbe poi concentrato l’attenzione sull’uomo che era stato con loro nei giorni precedenti.",
+            "target_words": 181,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "victims",
+            "kind": "clip",
+            "topic": "Anastasia e Andromeda, prima dei titoli di cronaca",
+            "source_text": "Prima di parlare dell’imputato, è importante ricordare chi erano le persone al centro di questa vicenda. Anastasia Trofimova era una donna di ventotto anni. Andromeda era sua figlia, aveva undici mesi. Le fonti pubbliche disponibili sono concentrate soprattutto sulle indagini e sul processo; non autorizzano a riempire con supposizioni la vita privata delle due vittime. Sappiamo che Anastasia e la bambina erano la compagna e la figlia di Francis Kaufmann e che si trovavano con lui nel periodo ricostruito dagli inquirenti. I familiari di Anastasia vivevano in Siberia e non avevano potuto conoscere la nipote, secondo quanto riferito nel resoconto ANSA delle parole dei legali di parte civile. Questo dato rende visibile un dolore che il linguaggio processuale non riesce a contenere. Le due vittime non sono un dettaglio introduttivo né una cornice per la storia dell’uomo condannato: sono il centro umano del caso. Per rispetto, evitiamo immagini di repertorio che possano confondere le persone coinvolte e non mostriamo contenuti grafici. La ricostruzione che segue riguarda le prove e le decisioni giudiziarie, ma deve restare consapevole del fatto che dietro ogni atto c’erano due vite e una famiglia colpita da una perdita irreparabile.",
+            "target_words": 193,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "timeline",
+            "kind": "clip",
+            "topic": "I giorni precedenti e la ricostruzione degli spostamenti",
+            "source_text": "Il processo ha cercato di ricostruire i giorni precedenti al ritrovamento. RaiNews ha riferito che davanti alla Corte sono stati ascoltati testimoni che avevano incontrato Kaufmann, Anastasia e la bambina. Le loro testimonianze sono state confrontate con immagini di telecamere, utili a ricostruire gli spostamenti dell’uomo e della piccola. Questo tipo di ricostruzione non è una semplice sequenza di fotogrammi: ogni immagine mostra un luogo e un momento, mentre gli investigatori devono collegare orari, persone e tragitti. Una testimonianza può aggiungere un incontro o un dettaglio; un filmato può confermare un passaggio senza raccontare tutto ciò che avvenne prima o dopo. La Corte ha valutato il materiale nel suo insieme. Le fonti non descrivono ogni singola ripresa né permettono di attribuire a un solo filmato la prova completa del delitto. Per questo è più corretto parlare di un quadro ricostruito attraverso elementi diversi, anziché di un video decisivo o di una confessione che non risulta nei resoconti consultati. La cronologia è diventata centrale perché le vittime furono trovate in momenti diversi e gli investigatori dovevano comprendere gli spostamenti della famiglia. È da questo lavoro paziente, fatto di riscontri e verifiche, che il caso è passato dalla fase investigativa al processo.",
+            "target_words": 200,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "investigation",
+            "kind": "clip",
+            "topic": "Identificazione, indagini e prove",
+            "source_text": "Identificare le vittime, stabilire una cronologia e individuare le persone che potevano averle incontrate: l’indagine ha dovuto affrontare passaggi distinti. I resoconti del processo sottolineano il ruolo delle testimonianze e delle immagini di videosorveglianza nella ricostruzione degli ultimi spostamenti. È importante non aggiungere reperti che le fonti qui utilizzate non documentano. Non attribuiremo al caso risultati specifici su DNA o impronte, né parleremo di una confessione. La prova in un processo è un insieme di elementi che vengono acquisiti e discussi in aula; ciascuno può avere limiti, e spetta ai giudici valutarne il peso complessivo. Una telecamera può collocare una persona in un luogo, ma da sola non rivela le sue intenzioni. Una testimonianza può ricordare un incontro, ma va confrontata con tempi e altri riscontri. Questo lavoro di confronto è particolarmente rilevante quando gli eventi si svolgono in luoghi pubblici e in giornate diverse. Nel caso di Villa Pamphili, la ricostruzione dei movimenti ha contribuito a mettere in ordine ciò che era accaduto prima del ritrovamento. Il verdetto del 2026 è arrivato dopo che accusa e difesa hanno potuto confrontarsi su quel quadro davanti alla Corte d’Assise.",
+            "target_words": 188,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "suspect",
+            "kind": "clip",
+            "topic": "Francis Kaufmann e l’alias Rexal Ford",
+            "source_text": "Francis Kaufmann è un cittadino statunitense che, secondo le cronache, aveva quarantasette anni al momento della sentenza. Si presentava anche come filmmaker e utilizzava l’alias Rexal Ford. Questi elementi sono entrati nella narrazione pubblica del caso perché aiutano a descrivere l’identità con cui era conosciuto in contesti diversi; non sono, da soli, prove degli omicidi. Durante il procedimento Kaufmann ha negato di aver ucciso Anastasia e Andromeda, come riferito dall’Associated Press. La distinzione è fondamentale: una persona è imputata durante il processo, la difesa contesta l’accusa, e la Corte pronuncia una decisione motivata. Il 5 novembre 2026 i giudici di primo grado lo hanno riconosciuto responsabile. La sua versione e le contestazioni difensive sono state discusse nel procedimento, ma non hanno convinto la Corte. La sentenza può ancora essere impugnata secondo le regole del processo. I diversi nomi utilizzati da Kaufmann, tra cui Rexal Ford, hanno alimentato l’attenzione mediatica e reso la sua storia biografica un filone parallelo. Per comprendere il caso, però, bisogna separare il racconto della sua immagine pubblica dai fatti contestati e dalla valutazione giudiziaria.",
+            "target_words": 178,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "flight",
+            "kind": "clip",
+            "topic": "Da Roma alla Grecia: fuga, arresto, estradizione",
+            "source_text": "Dopo i fatti del giugno 2025, la vicenda ha assunto una dimensione internazionale. L’Associated Press riferisce che Kaufmann raggiunse l’isola greca di Skiathos e fu poi estradato in Italia per affrontare il processo. È una traiettoria che ha richiesto la cooperazione fra autorità di Paesi diversi e ha spostato per un periodo la ricerca dell’imputato oltre i confini italiani. Non aggiungiamo tappe o date che le fonti consultate non precisano. Il dato essenziale è che l’uomo fu rintracciato in Grecia e riportato in Italia, dove la giustizia poteva procedere con le accuse relative alle morti di Anastasia e Andromeda. L’estradizione non stabilisce la colpevolezza: rende possibile la comparizione davanti ai giudici del Paese competente. Dopo il rientro, il caso è proseguito nelle aule giudiziarie romane, con testimonianze e immagini esaminate nel dibattimento. La fuga e il successivo arresto hanno attirato molta attenzione, ma non sostituiscono l’analisi delle prove. Il punto decisivo è rimasto ciò che l’accusa ha portato in aula e ciò che la difesa ha contestato, fino alla valutazione della Prima Corte d’Assise.",
+            "target_words": 174,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "film-funds",
+            "kind": "clip",
+            "topic": "Il film mai realizzato e i fondi pubblici",
+            "source_text": "Accanto al processo per il duplice omicidio, le cronache hanno raccontato una controversia sui fondi destinati al cinema. L’Associated Press ha riferito che Kaufmann, presentatosi come filmmaker, aveva ottenuto circa un milione di dollari in crediti d’imposta italiani per un film che non venne realizzato. Secondo AP, lo scandalo ebbe conseguenze anche al Ministero della Cultura e fu seguito dalle dimissioni del responsabile della direzione cinema. È un filone importante per capire perché il nome di Kaufmann fosse già comparso in notizie pubbliche prima del verdetto, ma va tenuto distinto dalle prove del caso di Villa Pamphili. L’ottenimento dei crediti d’imposta e la mancata realizzazione del film non dimostrano, da soli, la responsabilità per le morti di Anastasia e Andromeda. La sentenza si riferisce agli omicidi e all’occultamento dei corpi. Mettere in fila vicende diverse senza confonderle è una regola essenziale del racconto giudiziario: la controversia amministrativa riguarda l’uso di risorse pubbliche e la responsabilità politica, mentre il processo penale riguarda condotte specifiche contestate all’imputato. Le due storie hanno avuto un punto di contatto nella figura di Kaufmann, ma restano questioni distinte.",
+            "target_words": 182,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "trial",
+            "kind": "clip",
+            "topic": "Il processo davanti alla Corte d’Assise",
+            "source_text": "Il procedimento si è svolto davanti alla Prima Corte d’Assise di Roma. Nel corso del dibattimento sono stati ascoltati testimoni che avevano incontrato la famiglia prima del ritrovamento e sono state considerate immagini di telecamere che aiutavano a ricostruire gli spostamenti. In un processo penale la Procura espone la propria ricostruzione, la difesa può contestarla e presentare le proprie ragioni, e i giudici valutano gli elementi secondo le regole del procedimento. Kaufmann ha negato gli omicidi. La Corte ha infine accolto la richiesta della Procura e lo ha condannato in primo grado. Non riportiamo citazioni dirette non verificate né attribuiamo alla difesa argomenti specifici oltre a quelli riferiti dalle cronache sulla richiesta di nuove valutazioni psichiatriche. Anche la sentenza va descritta con precisione: è un verdetto di primo grado, soggetto agli eventuali strumenti di impugnazione. Il dibattimento ha attraversato una sospensione per ragioni legate alla capacità processuale dell’imputato, ed è ripreso nel giugno 2026. Questa pausa ha reso il percorso più lungo e ha riportato al centro la distinzione fra la possibilità di stare in giudizio e la valutazione della responsabilità per i fatti contestati.",
+            "target_words": 185,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "fitness",
+            "kind": "clip",
+            "topic": "La pausa e le questioni sulla capacità processuale",
+            "source_text": "Il processo non è stato lineare. RaiNews riferisce che il dibattimento fu sospeso dopo una diagnosi di disturbo psicotico transitorio e una temporanea incapacità di stare in giudizio. Il procedimento riprese nel giugno 2026. L’8 ottobre dello stesso anno, la Corte respinse la richiesta della difesa di disporre una nuova perizia psichiatrica. Secondo il resoconto, i giudici richiamarono il monitoraggio sanitario in carcere e l’assenza di elementi oggettivi sufficienti per una nuova valutazione. Qui è importante distinguere due questioni giuridiche che spesso vengono confuse: la capacità di partecipare consapevolmente al processo nel presente e l’imputabilità al momento dei fatti sono valutazioni diverse. Le fonti riferiscono la decisione della Corte, ma non autorizzano a formulare diagnosi autonome o a usare la salute mentale come spiegazione automatica della violenza. La sospensione ha avuto un effetto concreto sui tempi del processo: il dibattimento si è fermato e poi è ripreso dopo il miglioramento delle condizioni processuali. La nuova istanza respinta non ha chiuso il caso; ha consentito al processo di proseguire verso la discussione finale e la sentenza prevista per il 5 novembre.",
+            "target_words": 180,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "verdict",
+            "kind": "clip",
+            "topic": "La decisione del 5 novembre 2026",
+            "source_text": "Il 5 novembre 2026 la Prima Corte d’Assise di Roma ha pronunciato la sentenza di primo grado. I giudici hanno condannato Francis Kaufmann all’ergastolo e disposto tre anni di isolamento diurno. La Corte lo ha riconosciuto responsabile del duplice omicidio di Anastasia Trofimova e della figlia Andromeda, oltre che dell’occultamento dei corpi. ANSA riferisce che il verdetto ha accolto la richiesta avanzata dalla Procura. Questo è il contenuto essenziale della decisione, da non confondere con una sentenza definitiva: la condanna può essere impugnata e gli eventuali gradi successivi possono ancora intervenire. La difesa aveva contestato l’accusa e Kaufmann aveva negato di aver ucciso le due vittime. Le cronache della giornata hanno riportato anche le parole dei legali di parte civile, che hanno descritto il verdetto come un piccolo conforto davanti a una perdita enorme. Per rispetto verso i familiari, è meglio non trasformare quella frase in una conclusione emotiva più ampia di ciò che è stato detto. Il verdetto risponde alla responsabilità penale valutata in questo primo grado; non cancella il lutto e non conclude necessariamente l’intero percorso giudiziario.",
+            "target_words": 179,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "sentence",
+            "kind": "clip",
+            "topic": "Ergastolo e tre anni di isolamento diurno: cosa significa",
+            "source_text": "La pena annunciata comprende due elementi: l’ergastolo e tre anni di isolamento diurno. È la formula riportata da ANSA e RaiNews il giorno della sentenza. L’isolamento diurno va descritto con la denominazione usata dai giudici e dalle agenzie, senza confonderlo con il regime speciale del 41-bis o con una sanzione disciplinare. Non entriamo in interpretazioni sull’esecuzione concreta della pena, perché le fonti qui raccolte non le sviluppano. La Corte ha riconosciuto Kaufmann responsabile di due omicidi e dell’occultamento dei corpi, e ha stabilito la pena nel processo di primo grado. L’ergastolo è la condanna più severa prevista dall’ordinamento italiano; i dettagli sulla possibilità di impugnazione e sugli sviluppi successivi dipendono dalle fasi processuali che potranno seguire. La durata dei tre anni di isolamento diurno è stata riportata chiaramente nelle cronache, ma non significa che il caso sia già arrivato a una decisione definitiva. Raccontare la pena in modo accurato significa tenere insieme la gravità del verdetto, la terminologia giuridica corretta e il fatto che esistono ancora passaggi di garanzia. È questo il quadro, senza aggiungere previsioni sugli esiti futuri.",
+            "target_words": 179,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "aftermath",
+            "kind": "clip",
+            "topic": "Familiari, responsabilità e ciò che resta aperto",
+            "source_text": "La sentenza ha avuto anche un significato per i familiari di Anastasia. ANSA ha riportato il commento dell’avvocato di parte civile, secondo cui la decisione poteva offrire un piccolo conforto, pur dentro una tragedia irreparabile. La stessa dichiarazione ricordava il dolore legato alla perdita di una figlia e di una nipote mai conosciuta. È una reazione attribuita a un legale, non una frase da estendere a tutti i familiari o da usare come chiusura definitiva della vicenda. I genitori di Anastasia, residenti in Siberia secondo le cronache, erano lontani dal processo e la distanza ha reso ancora più difficile seguire gli eventi. La Corte ha pronunciato una condanna di primo grado, ma il percorso giudiziario può proseguire attraverso le impugnazioni previste. Per questo la parola “fine” sarebbe prematura. Allo stesso tempo, il verdetto dà una risposta giudiziaria importante alla domanda di responsabilità per le morti di Anastasia e Andromeda. Il racconto pubblico dovrebbe tenere insieme queste due realtà: la decisione dei giudici e il fatto che il dolore delle famiglie non si esaurisce con una sentenza.",
+            "target_words": 176,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          },
+          {
+            "id": "closing",
+            "kind": "clip",
+            "topic": "Il caso Kaufmann oltre il verdetto",
+            "source_text": "Il caso di Villa Pamphili si è sviluppato dal ritrovamento di Anastasia Trofimova e della piccola Andromeda, attraverso una ricostruzione fatta di testimonianze e immagini di sorveglianza, fino al processo davanti alla Corte d’Assise di Roma. Francis Kaufmann, che aveva negato di averle uccise, è stato condannato in primo grado all’ergastolo con tre anni di isolamento diurno per il duplice omicidio e l’occultamento dei corpi. Il dibattimento ha avuto una sospensione legata alla capacità processuale e si è concluso con il verdetto del 5 novembre 2026. Intorno alla vicenda è emersa anche la controversia sul film mai realizzato e sui crediti d’imposta, che resta distinta dalla prova dei delitti. Il giudizio di primo grado può ancora essere impugnato, quindi gli sviluppi giudiziari non sono necessariamente conclusi. La storia va seguita con attenzione alle fonti, senza teorie non dimostrate e senza trasformare il dolore delle vittime in spettacolo. Anastasia e Andromeda restano il centro di questa vicenda. Gli eventuali passaggi successivi riguarderanno la responsabilità penale e le garanzie previste dalla legge.",
+            "target_words": 170,
+            "stock_folder_id": "1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa",
+            "stock_folder_link": "https://drive.google.com/drive/folders/1HD5enZnbKa1RSkES3bS36zdX7gyRc0pa"
+          }
+        ],
+        "source_text_verbatim": true,
+        "concurrency": 1
+      },
+      "output": {
+        "render": {
+          "enabled": true,
+          "render_concurrency": 2,
+          "drive_folder_id": "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS",
+          "drive_subfolder_name": "francis-kaufmann-villa-pamphili-2026-11-11",
+          "background": {
+            "mode": "asset",
+            "asset_id": "drive-background-crime"
+          }
+        },
+        "extract_entities": "enabled",
+        "generate_scene_images": "disabled",
+        "save_to_db": true,
+        "generate_timeline": true,
+        "stock_enabled": "enabled",
+        "voiceover_enabled": "enabled",
+        "voiceover_group": "Velox Max",
+        "voiceover_folder_id": "1wFhLmyyIH5rKSbtQuCuua9a2LKQymA8A"
+      },
+      "media_plan": {
+        "mode": "hybrid",
+        "provider_policy": {
+          "youtube": "disabled",
+          "internet_images": "enabled",
+          "image_generation": "disabled"
+        },
+        "cache": {
+          "read": true,
+          "write": true
+        },
+        "extraction": {
+          "enabled": true,
+          "entity_images": {
+            "enabled": true,
+            "scope": "per_scene",
+            "entity_types": [
+              "PERSON"
+            ],
+            "max_per_entity": 1,
+            "upload_to_drive": true
+          },
+          "max_image_queries_per_segment": 1
+        },
+        "planner": {
+          "candidate_limit": 16,
+          "max_images_per_scene": 2
+        },
+        "materialization": {
+          "mode": "selected",
+          "upload_to_drive": true,
+          "wait_for_ready": true
+        },
+        "include_trace": true,
+        "force_refresh_assets": true,
+        "searches": [
+          {
+            "segment_id": "cold-case",
+            "slot": "secondary_image",
+            "query": "Francis Kaufmann condannato ergastolo Corte d’Assise Roma 5 novembre 2026",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "discovery",
+            "slot": "secondary_image",
+            "query": "Villa Pamphili Roma parco viale fontana",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "victims",
+            "slot": "secondary_image",
+            "query": "Villa Pamphili memorial Anastasia Trofimova Andromeda",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "timeline",
+            "slot": "secondary_image",
+            "query": "Villa Pamphili Roma indagini polizia giugno 2025",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "investigation",
+            "slot": "secondary_image",
+            "query": "Polizia Scientifica Villa Pamphili indagine Roma",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "suspect",
+            "slot": "secondary_image",
+            "query": "Francis Kaufmann Rexal Ford foto processo Roma",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "flight",
+            "slot": "secondary_image",
+            "query": "Skiathos Grecia porto isola",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "film-funds",
+            "slot": "secondary_image",
+            "query": "set cinematografico camera cinema produzione film",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "trial",
+            "slot": "secondary_image",
+            "query": "Francis Kaufmann processo Corte d’Assise Roma 2026",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "fitness",
+            "slot": "secondary_image",
+            "query": "Francis Kaufmann udienza tribunale Roma 2026",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "verdict",
+            "slot": "secondary_image",
+            "query": "Francis Kaufmann sentenza ergastolo Roma novembre 2026",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "sentence",
+            "slot": "secondary_image",
+            "query": "Corte d’Assise Roma aula tribunale giustizia",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "aftermath",
+            "slot": "secondary_image",
+            "query": "Villa Pamphili memorial Anastasia Trofimova Andromeda",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          },
+          {
+            "segment_id": "closing",
+            "slot": "secondary_image",
+            "query": "Villa Pamphili Roma giardino storico viale pini",
+            "providers": [
+              "internet_images"
+            ],
+            "media_types": [
+              "image"
+            ],
+            "limit": 3
+          }
+        ],
+        "intro": {
+          "mode": "manual",
+          "clips": [
+            {
+              "asset_id": "yt_TOg-27w-jwc_2_12_v1",
+              "duration_ms": 5000
+            },
+            {
+              "asset_id": "yt_SyRx22pA-jk_2_12_v1",
+              "duration_ms": 5000
+            },
+            {
+              "asset_id": "yt_SyRx22pA-jk_12_41_v1",
+              "duration_ms": 5000
+            }
+          ],
+          "target_duration_ms": 15000,
+          "max_clips": 3,
+          "goal": "Tre clip già indicizzate e pertinenti al caso: lettura della sentenza, hook sull’ergastolo e riepilogo del duplice omicidio. Usarle in quest’ordine, senza audio originale."
+        }
+      },
+      "audio": {
+        "mode": "COMBINED_TIMELINE",
+        "mix_policy": "VOICEOVER_ONLY",
+        "background_music": [
+          {
+            "asset_id": "bgm3",
+            "start_ms": 0,
+            "end": "video_end",
+            "loop": true,
+            "gain_db": -30,
+            "fade_in_ms": 800,
+            "fade_out_ms": 1200,
+            "duck_under_voiceover": true,
+            "duck_gain_db": -33,
+            "duck_attack_ms": 120,
+            "duck_release_ms": 500
+          }
+        ],
+        "timing": {
+          "mode": "required",
+          "boundary": "word",
+          "formats": [
+            "json",
+            "srt",
+            "vtt"
+          ]
+        }
+      },
+      "overlay_categories": {
+        "maps": "disabled"
+      },
+      "max_map_overlays": 0
+    }
+  ],
+  "final_job": true
+}

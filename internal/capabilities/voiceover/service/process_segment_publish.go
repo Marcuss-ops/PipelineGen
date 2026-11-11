@@ -255,7 +255,11 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 	// best-effort degrades explicitly (never fabricate timestamps).
 	var postEditMap []audio.AudioEdit
 	if cmd.RemoveSilence {
-		if post == nil || len(post.EditMap) == 0 || post.DurationUS <= 0 {
+		// An empty edit map is the identity transform (Rust reports no cut
+		// intervals when the audio already has no qualifying silence). The
+		// final duration is still required so the timing artifact binds to the
+		// actual post-processed audio.
+		if post == nil || post.DurationUS <= 0 {
 			if policy.Mode == audio.TimingRequired {
 				emitTiming("failed")
 				timingEvent(log, "voiceover.timing.failed", cmd, tts.Provider, tts.BoundaryMode, len(tts.WordBoundaries), tts.Duration.Microseconds())

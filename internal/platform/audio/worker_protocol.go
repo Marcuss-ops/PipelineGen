@@ -28,6 +28,7 @@ type ttsSynthesizeRequest struct {
 	Text               string `json:"text"`
 	Lang               string `json:"lang"`
 	Voice              string `json:"voice,omitempty"`
+	Rate               string `json:"rate,omitempty"`
 	Out                string `json:"out"`
 	AllowVoiceFallback bool   `json:"allow_voice_fallback,omitempty"`
 }
@@ -81,6 +82,7 @@ func (p *Processor) sendSynthesizeStream(ctx context.Context, input *AudioInput)
 		Text:               input.Text,
 		Lang:               input.Language,
 		Voice:              input.Voice,
+		Rate:               input.Rate,
 		Out:                filepath.Join(input.OutputDir, input.Filename),
 		AllowVoiceFallback: input.AllowVoiceFallback,
 	}

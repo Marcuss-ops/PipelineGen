@@ -63,6 +63,7 @@ class SynthesizeRequest:
     # Default False (production fail-closed): a missing voice is a
     # 400 error. Set to True only in debug/smoke-test contexts.
     allow_voice_fallback: bool = False
+    rate: str = ""
 
     @classmethod
     def from_dict(cls, body: Any) -> "SynthesizeRequest":
@@ -91,6 +92,9 @@ class SynthesizeRequest:
 
         # Optional field: voice (verbatim, may be empty).
         voice = str(body.get("voice") or "").strip()
+        rate = str(body.get("rate") or "").strip()
+        if rate and rate != "+1%":
+            raise SynthesizeRequestError('unsupported "rate" value')
 
         # Optional field: boundary (word|sentence, default word).
         boundary = str(body.get("boundary") or "word").strip().lower() or "word"
@@ -108,7 +112,7 @@ class SynthesizeRequest:
 
         return cls(
             text=text, out=out_path, lang=lang, voice=voice,
-            boundary=boundary, allow_voice_fallback=allow_fallback,
+            boundary=boundary, allow_voice_fallback=allow_fallback, rate=rate,
         )
 
 

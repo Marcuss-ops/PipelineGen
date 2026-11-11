@@ -95,6 +95,43 @@ type AssetInspection struct {
 
 	// OutboxEvents lists the recent outbox activity for the asset.
 	OutboxEvents []OutboxEventProjection `json:"outbox_events,omitempty"`
+
+	// TextTracks lists the CURRENT transcript / translation / summary rows
+	// for this asset. It is single-asset only (the list projection stays
+	// lean), and it is what lets a remote M2M reader with media.read see the
+	// same localized text the operator console sees.
+	TextTracks []TextTrackProjection `json:"text_tracks,omitempty"`
+
+	// Vectors lists the vector families attached to this asset (model,
+	// dimension, creation time), never the raw floats. This is the vector
+	// identity a remote reader needs to understand how the asset is
+	// searchable, without shipping a 768-float payload per row.
+	Vectors []EmbeddingProjection `json:"vectors,omitempty"`
+}
+
+// TextTrackProjection is the read-only view of one current text track.
+// Audit-only historical rows (is_current=0) are excluded by the reader.
+type TextTrackProjection struct {
+	ID                 int64     `json:"id"`
+	LanguageCode       string    `json:"language_code"`
+	TextKind           string    `json:"text_kind"`
+	TextContent        string    `json:"text_content"`
+	SourceType         string    `json:"source_type"`
+	SourceLanguageCode string    `json:"source_language_code"`
+	IsOriginal         bool      `json:"is_original"`
+	Provider           string    `json:"provider"`
+	Status             string    `json:"status"`
+	Confidence         *float64  `json:"confidence,omitempty"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// EmbeddingProjection is one vector row attached to the asset: family
+// identity and dimension, never the raw vector values.
+type EmbeddingProjection struct {
+	EmbeddingType string    `json:"embedding_type"`
+	ModelID       string    `json:"model_id"`
+	Dimensions    int       `json:"dimensions"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // OutboxEventProjection is a lightweight operator view of an outbox row.

@@ -570,7 +570,12 @@ func (u *Uploader) openUploadSource(ctx context.Context, req PutFileRequest) (up
 	if req.ExpectedSize <= 0 {
 		return nil, 0, fmt.Errorf("putFile: a remote source requires the expected size")
 	}
-	return &httpObjectSource{ctx: ctx, url: req.SourceURL, size: req.ExpectedSize}, req.ExpectedSize, nil
+	return &httpObjectSource{
+		ctx:       ctx,
+		url:       req.SourceURL,
+		size:      req.ExpectedSize,
+		authToken: objectStoreTokenForURL(req.SourceURL),
+	}, req.ExpectedSize, nil
 }
 
 // renameWithTimestamp, setAppProperties, and truncate16 have moved

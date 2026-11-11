@@ -236,3 +236,50 @@ func TestResolveRankedEntityOverlayPlan_TemplateResolution(t *testing.T) {
 		require.Equal(t, entry.Template, item.TemplateID, "item %q must resolve through the registry", item.ID)
 	}
 }
+
+// TestResolveRankedEntityOverlayPlan_ClampsDurationToSceneEnd pins the scene
+// boundary contract: a short mention near the end of a scene may not use its
+// one-second readability floor to bleed the card into the next scene. The
+// certified scene end wins when there is less room than the floor.
+func TestResolveRankedEntityOverlayPlan_ClampsDurationToSceneEnd(t *testing.T) {
+	occurrence := func(name, typ, sceneID string, sceneIndex int, sceneStartUS, startUS, endUS int64) EntityOccurrence {
+		return EntityOccurrence{
+			EntityID: StableEntityID(typ, name), Name: name, Type: typ,
+			SceneID: sceneID, SceneIndex: sceneIndex, Confidence: 0.9,
+			TextStart: 0, TextEnd: 1, WordStart: 0, WordEnd: 1,
+			LocalStartUS: startUS - sceneStartUS, LocalEndUS: endUS - sceneStartUS,
+			TimelineStartUS: sceneStartUS,
+			AudioStartUS:    startUS, AudioEndUS: endUS,
+		}
+	}
+	timeline := EntityTimeline{
+		Version:    EntityTimelineVersion,
+		DurationUS: 2_000_000,
+		Scenes: []SceneEntityTimeline{
+			{SceneID: "scene-0", SceneIndex: 0, TimelineStartUS: 0, Entities: []EntityOccurrence{
+				occurrence("Tim Cook", "PERSON", "scene-0", 0, 0, 900_000, 950_000),
+			}},
+			{SceneID: "scene-1", SceneIndex: 1, TimelineStartUS: 1_000_000, Entities: []EntityOccurrence{
+				occurrence("Pomezia", "GPE", "scene-1", 1, 1_000_000, 1_000_000, 1_100_000),
+			}},
+		},
+	}
+	require.NoError(t, timeline.Validate())
+
+	plan, err := ResolveRankedEntityOverlayPlan(timeline, "plan-boundary-001", "video-boundary-001", "", 1280, 720, 30, 1, RankConfig{})
+	require.NoError(t, err)
+	require.NoError(t, plan.Validate())
+
+	var timCook *capmodel.OverlayItem
+	for i := range plan.Items {
+		if plan.Items[i].Text == "Tim Cook" {
+			timCook = &plan.Items[i]
+			break
+		}
+	}
+	require.NotNil(t, timCook, "the clamped entity card must still be emitted")
+	require.Equal(t, int64(900_000), timCook.StartUS)
+	require.Equal(t, int64(100_000), timCook.DurationUS, "the card must stop at the certified scene end, not at the readability floor")
+	require.Equal(t, int64(900), timCook.StartMs)
+	require.Equal(t, int64(1_000), timCook.EndMs, "end_ms must be the scene boundary")
+}

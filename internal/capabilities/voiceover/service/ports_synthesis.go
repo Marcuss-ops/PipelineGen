@@ -34,6 +34,7 @@ type TTSInput struct {
 	// the raw string when forwarding to audioasset.AudioInput.
 	Language      Language
 	Voice         string
+	Rate          string
 	Filename      string
 	OutputDir     string
 	RemoveSilence bool

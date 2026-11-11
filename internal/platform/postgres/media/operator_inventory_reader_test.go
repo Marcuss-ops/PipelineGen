@@ -91,6 +91,25 @@ func seedOperatorFixture(t *testing.T, db *sql.DB) {
 		INSERT INTO asset_processing (asset_id, step, status, error_message, updated_at)
 		VALUES ('asset-3','embedding','failed','embedding failed',$1)`, now)
 
+	// One READY Italian transcript for asset-1: the inspector must surface the
+	// current localized text (what a remote M2M reader needs), not just counts.
+	mustExecOperator(t, db, `
+		INSERT INTO asset_text_tracks
+			(asset_id, language_code, text_kind, text_content, source_type,
+			 source_language_code, is_original, provider, status, is_current,
+			 created_at, updated_at)
+		VALUES ('asset-1','it','transcript','Ciao mondo','translation',
+		        'en',0,'argos','READY',1,$1,$1)`, now)
+
+	// One registered visual family + a 2-d vector for asset-1. The inspector
+	// must expose the vector identity/dimension, never the raw floats.
+	mustExecOperator(t, db, `
+		INSERT INTO media_embedding_families (embedding_type, model_id, dim, created_at)
+		VALUES ('visual','siglip-v2',2,$1)`, now)
+	mustExecOperator(t, db, `
+		INSERT INTO media_embeddings (asset_id, embedding_type, model_id, embedding, created_at)
+		VALUES ('asset-1','visual','siglip-v2','[0.1,0.2]'::vector,$1)`, now)
+
 	// The fixture is read-only from here on; assert the seed landed so a
 	// silently empty fixture cannot make the suites below vacuously pass.
 	var n int
@@ -320,11 +339,28 @@ func TestOperatorInventoryReader_Get(t *testing.T) {
 	require.Equal(t, "Beluga underwater", inspection.Name)
 	require.Equal(t, "hash-1", inspection.ContentHash)
 	require.Equal(t, "hash-1", inspection.IndexedContentHash)
+	require.True(t, inspection.HasEmbedding, "has_embedding must follow the canonical media_embeddings row")
 	require.Equal(t, "siglip-v2", inspection.EmbeddingVersion)
 	require.Len(t, inspection.Locations, 2)
 	require.Len(t, inspection.OutboxEvents, 0)
 	// The metadata map is the raw metadata_json, surfaced typed.
 	require.Equal(t, "hash-1", inspection.Metadata["indexed_content_hash"])
+
+	// The current text tracks are part of the single-asset inspection. This is
+	// the field the remote M2M client reads to show translations.
+	require.Len(t, inspection.TextTracks, 1)
+	require.Equal(t, "it", inspection.TextTracks[0].LanguageCode)
+	require.Equal(t, "transcript", inspection.TextTracks[0].TextKind)
+	require.Equal(t, "Ciao mondo", inspection.TextTracks[0].TextContent)
+	require.Equal(t, "READY", inspection.TextTracks[0].Status)
+	require.Equal(t, "argos", inspection.TextTracks[0].Provider)
+
+	// The vector identity is surfaced, without the raw embedding payload.
+	require.Len(t, inspection.Vectors, 1)
+	require.Equal(t, "visual", inspection.Vectors[0].EmbeddingType)
+	require.Equal(t, "siglip-v2", inspection.Vectors[0].ModelID)
+	require.Equal(t, 2, inspection.Vectors[0].Dimensions)
+	require.False(t, inspection.Vectors[0].CreatedAt.IsZero())
 }
 
 func TestOperatorInventoryReader_Get_WithProcessingAndOutbox(t *testing.T) {

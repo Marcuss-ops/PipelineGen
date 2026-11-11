@@ -3,61 +3,9 @@ package overlays
 import (
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	"math"
 	"sort"
 	"strings"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 )
-
-// autoImageGroupMaxGapMS is the largest empty timeline gap under which
-// certified images of the same scene join one editorial group. Keep this
-// aligned with the overlay composer so an early pair cannot strand a third
-// nearby image in a separate overlay.
-const autoImageGroupMaxGapMS int64 = 5_000
-
-// AutoImageGroups clusters one scene's certified, timed images into 2-5 image
-// groups via GroupNearbyEntities. Singletons are not returned, so they keep
-// their individual overlay. The returned set holds the asset IDs consumed by a
-// group, which the caller must not also emit as standalone overlays. Assets in
-// exclude (already owned by explicit groups) are skipped.
-func AutoImageGroups(sceneID string, images []ImageCandidate, exclude map[string]struct{}) ([]MultiEntityGroup, map[string]struct{}) {
-	candidates := make([]MultiEntityCandidate, 0, len(images))
-	seen := make(map[string]struct{}, len(images))
-	for _, image := range images {
-		image = clampImageWindow(image)
-		assetID := strings.TrimSpace(image.AssetID)
-		if assetID == "" || strings.TrimSpace(image.SHA256) == "" {
-			continue
-		}
-		if _, dup := seen[assetID]; dup {
-			continue
-		}
-		if _, owned := exclude[assetID]; owned {
-			continue
-		}
-		seen[assetID] = struct{}{}
-		ref := capmodel.NewOverlayAssetRef(asset.New(image.AssetID, image.SHA256, image.MediaType, 0), image.URL, image.LocalPath)
-		candidates = append(candidates, MultiEntityCandidate{
-			ID: assetID, SceneID: sceneID, Kind: MultiEntityKindImage, Name: assetID,
-			AssetRef: &ref, StartMS: image.StartMs, EndMS: image.EndMs,
-		})
-	}
-	consumed := make(map[string]struct{})
-	var groups []MultiEntityGroup
-	for _, group := range GroupNearbyEntities(candidates, autoImageGroupMaxGapMS) {
-		if group.GroupType != MultiEntityKindImage || group.Count < 2 {
-			continue
-		}
-		group.SceneID = sceneID
-		group.GroupID = sceneID + "-" + group.GroupID
-		for _, item := range group.Items {
-			consumed[item.ID] = struct{}{}
-		}
-		groups = append(groups, group)
-	}
-	return groups, consumed
-}
 
 // MultiEntityKind classifies the elements within a temporally grouped scene.
 type MultiEntityKind string
@@ -228,11 +176,9 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 	if strings.TrimSpace(group.GroupID) == "" || strings.TrimSpace(group.SceneID) == "" || group.StartMS < 0 || group.EndMS <= group.StartMS || len(group.Items) == 0 || len(group.Items) > 5 || canvasWidth <= 0 || canvasHeight <= 0 {
 		return nil, fmt.Errorf("multi-entity wiring: invalid group identity, timing, or contents")
 	}
-	assets := make([]capmodel.OverlayAssetRef, 0, len(group.Items))
-	layers := make([]capmodel.OverlayImageLayer, 0, len(group.Items))
-	phrases := make([]MultiEntityCandidate, 0, len(group.Items))
-	layerIDs := make(map[string]struct{}, len(group.Items))
-	imageStartOffset, imageEndOffset := int64(math.MaxInt64), int64(0)
+	seenAssets := make(map[string]struct{}, len(group.Items))
+	seenIDs := make(map[string]struct{}, len(group.Items))
+	var out []capmodel.OverlayItem
 	for index, candidate := range group.Items {
 		if candidate.StartMS < group.StartMS || candidate.EndMS > group.EndMS || candidate.EndMS <= candidate.StartMS {
 			return nil, fmt.Errorf("multi-entity wiring: candidate %q falls outside group window", candidate.ID)
@@ -240,163 +186,69 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 		if candidate.SceneID != "" && candidate.SceneID != group.SceneID {
 			return nil, fmt.Errorf("multi-entity wiring: candidate %q belongs to scene %q, not %q", candidate.ID, candidate.SceneID, group.SceneID)
 		}
-		if candidate.Kind == MultiEntityKindImage && candidate.AssetRef != nil {
-			for _, ref := range assets {
-				if ref.AssetID == candidate.AssetRef.AssetID {
-					return nil, fmt.Errorf("multi-entity wiring: duplicate image asset %q", ref.AssetID)
-				}
-			}
-		}
 		switch candidate.Kind {
 		case MultiEntityKindImage:
 			if candidate.AssetRef == nil || strings.TrimSpace(candidate.AssetRef.AssetID) == "" || strings.TrimSpace(candidate.AssetRef.SHA256) == "" {
 				return nil, fmt.Errorf("multi-entity wiring: image candidate %q requires a content-addressed asset", candidate.ID)
 			}
-			endMS := min(candidate.EndMS, candidate.StartMS+MaxImageOverlayDurationMS)
-			if endMS <= candidate.StartMS {
-				return nil, fmt.Errorf("multi-entity wiring: image candidate %q starts outside the %dms image window", candidate.ID, MaxImageOverlayDurationMS)
+			if _, duplicate := seenAssets[candidate.AssetRef.AssetID]; duplicate {
+				return nil, fmt.Errorf("multi-entity wiring: duplicate image asset %q", candidate.AssetRef.AssetID)
 			}
+			seenAssets[candidate.AssetRef.AssetID] = struct{}{}
+			imageID := strings.TrimSpace(candidate.ID)
+			if imageID == "" {
+				imageID = fmt.Sprintf("%s-image-%d", group.GroupID, index+1)
+			}
+			if _, duplicate := seenIDs[imageID]; duplicate {
+				return nil, fmt.Errorf("multi-entity wiring: duplicate image candidate id %q", imageID)
+			}
+			seenIDs[imageID] = struct{}{}
 			ref := *candidate.AssetRef
-			assets = append(assets, ref)
-			layerID := strings.TrimSpace(candidate.ID)
-			if layerID == "" {
-				layerID = fmt.Sprintf("image_%d", index+1)
-			}
-			if _, duplicate := layerIDs[layerID]; duplicate {
-				return nil, fmt.Errorf("multi-entity wiring: duplicate image candidate id %q", layerID)
-			}
-			layerIDs[layerID] = struct{}{}
-			imageIndex := len(layers)
-			startOffset, endOffset := candidate.StartMS-group.StartMS, endMS-group.StartMS
-			if startOffset < imageStartOffset {
-				imageStartOffset = startOffset
-			}
-			if endOffset > imageEndOffset {
-				imageEndOffset = endOffset
-			}
-			position := multiImagePosition(countKind(group.Items, MultiEntityKindImage), imageIndex, canvasWidth, canvasHeight)
-			// Seed the motion offset from the group identity (same scheme as
-			// the scripts-layer assignEntityImageMotions path): a hardcoded 0
-			// gave every group in every job the identical entrances.
 			motionOffset := ImageMotionOffsetForSeed(group.GroupID + "\x00" + group.SceneID)
-			layers = append(layers, capmodel.OverlayImageLayer{
-				ID: layerID, GroupID: group.GroupID, SubgroupID: layerID, AssetID: ref.AssetID,
-				StartMS: candidate.StartMS - group.StartMS, EndMS: endMS - group.StartMS,
-				PresetID:          selectImagePreset(group.GroupID, group.SceneID, layerID),
-				MotionID:          EntityImageMotionAtOffset(motionOffset, imageIndex),
-				Caption:           strings.TrimSpace(candidate.Name),
-				CaptionMotionID:   RuntimeEntityCaptionMotionAtOffset(motionOffset, imageIndex),
-				CaptionFontFamily: "",
-				CaptionColor:      "",
-				Params:            map[string]any{"position_x": position[0], "position_y": position[1], "width": position[2], "height": position[3], "fit": "contain"},
+			out = append(out, capmodel.OverlayItem{
+				ID: imageID, SceneID: group.SceneID, GroupID: group.GroupID,
+				Kind: string(capmodel.KindEntityImage), TemplateID: "IMAGE_OVERLAY",
+				PresetID:        selectImagePreset(group.GroupID, group.SceneID, imageID),
+				MotionID:        EntityImageMotionAtOffset(motionOffset, index),
+				CaptionMotionID: RuntimeEntityCaptionMotionAtOffset(motionOffset, index),
+				EntityCaption:   strings.TrimSpace(candidate.Name),
+				StartMs:         candidate.StartMS, EndMs: candidate.EndMS,
+				StartUS: candidate.StartMS * 1000, DurationUS: (candidate.EndMS - candidate.StartMS) * 1000,
+				AssetRefs: []capmodel.OverlayAssetRef{ref},
 			})
 		case MultiEntityKindPhrase:
 			if strings.TrimSpace(candidate.Text) == "" {
 				return nil, fmt.Errorf("multi-entity wiring: phrase candidate %q requires text", candidate.ID)
 			}
-			phrases = append(phrases, candidate)
+			phraseID := strings.TrimSpace(candidate.ID)
+			if phraseID == "" {
+				phraseID = fmt.Sprintf("%s-phrase-%d", group.GroupID, index+1)
+			}
+			item := capmodel.OverlayItem{
+				ID: phraseID, SceneID: group.SceneID, GroupID: group.GroupID, SubgroupID: phraseID,
+				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
+				PresetID: selectPhrasePreset(group.GroupID, group.SceneID, phraseID),
+				StartMs:  candidate.StartMS, EndMs: candidate.EndMS, StartUS: candidate.StartMS * 1000,
+				DurationUS: (candidate.EndMS - candidate.StartMS) * 1000,
+				Text:       strings.TrimSpace(candidate.Text),
+				Params:     map[string]any{"position": "center", "style": "headline", "priority": candidate.Priority},
+			}
+			words := len(strings.Fields(item.Text))
+			if words > 0 && words < 6 {
+				item.MotionID = selectShortPhraseMotion(group.GroupID, group.SceneID, index, words, nil)
+			} else {
+				item.MotionID = selectLongPhraseMotion(group.GroupID, group.SceneID, index, nil)
+			}
+			out = append(out, item)
 		default:
 			return nil, fmt.Errorf("multi-entity wiring: unsupported candidate kind %q", candidate.Kind)
 		}
 	}
-	if len(layers) > 0 && imageEndOffset-imageStartOffset > MaxImageOverlayDurationMS {
-		return nil, fmt.Errorf("multi-entity wiring: image stack spans %dms, exceeding the %dms image ceiling", imageEndOffset-imageStartOffset, MaxImageOverlayDurationMS)
-	}
-	if len(layers) > 0 {
-		for index := range layers {
-			layers[index].StartMS -= imageStartOffset
-			layers[index].EndMS -= imageStartOffset
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].StartMs != out[j].StartMs {
+			return out[i].StartMs < out[j].StartMs
 		}
-	}
-	var out []capmodel.OverlayItem
-	if len(layers) > 0 {
-		imageID := group.GroupID + "-images"
-		imageWindowStart := group.StartMS + imageStartOffset
-		imageWindowEnd := group.StartMS + imageEndOffset
-		imageItem := capmodel.OverlayItem{
-			ID: imageID, SceneID: group.SceneID, GroupID: group.GroupID,
-			Kind: string(capmodel.KindEntityImage), TemplateID: "IMAGE_OVERLAY",
-			PresetID: selectImagePreset(group.GroupID, group.SceneID, imageID),
-			StartMs:  imageWindowStart, EndMs: imageWindowEnd, StartUS: imageWindowStart * 1000, DurationUS: (imageWindowEnd - imageWindowStart) * 1000,
-			AssetRefs: assets,
-		}
-		if len(layers) == 1 {
-			imageItem.EntityCaption = layers[0].Caption
-			imageItem.CaptionMotionID = layers[0].CaptionMotionID
-			imageItem.MotionID = layers[0].MotionID
-			imageItem.Params = layers[0].Params
-		} else {
-			imageItem.ImageLayers = layers
-		}
-		// Grouped portraits keep the planner-selected image/caption motions.
-		// Spatial entity compositions remain available only when explicitly
-		// requested; runtime defaults stay simple and GPU-safe.
-		out = append(out, imageItem)
-	}
-	for index, candidate := range phrases {
-		phraseID := fmt.Sprintf("%s-phrase-%d", group.GroupID, index+1)
-		item := capmodel.OverlayItem{
-			ID: phraseID, SceneID: group.SceneID, GroupID: group.GroupID, SubgroupID: phraseID,
-			Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
-			PresetID: selectPhrasePreset(group.GroupID, group.SceneID, phraseID),
-			StartMs:  candidate.StartMS, EndMs: candidate.EndMS, StartUS: candidate.StartMS * 1000,
-			DurationUS: (candidate.EndMS - candidate.StartMS) * 1000,
-			Text:       strings.TrimSpace(candidate.Text),
-			Params:     map[string]any{"position": "center", "style": "headline", "priority": candidate.Priority},
-		}
-		words := len(strings.Fields(item.Text))
-		if words > 0 && words < 6 {
-			item.MotionID = selectShortPhraseMotion(group.GroupID, group.SceneID, index, words, nil)
-		} else {
-			item.MotionID = selectLongPhraseMotion(group.GroupID, group.SceneID, index, nil)
-		}
-		out = append(out, item)
-	}
+		return out[i].ID < out[j].ID
+	})
 	return out, nil
-}
-
-func countKind(items []MultiEntityCandidate, kind MultiEntityKind) int {
-	count := 0
-	for _, item := range items {
-		if item.Kind == kind {
-			count++
-		}
-	}
-	return count
-}
-
-func multiImagePosition(count, index, canvasWidth, canvasHeight int) []float64 {
-	width, height := float64(canvasWidth)*0.42, float64(canvasHeight)*0.56
-	var x, y float64
-	switch count {
-	case 1:
-		x, y = 0, 0
-	case 2:
-		x = []float64{-0.25, 0.25}[index]
-	case 3:
-		width, height = float64(canvasWidth)*0.40, float64(canvasHeight)*0.46
-		positions := [][2]float64{{-0.22, -0.22}, {0.22, -0.22}, {0, 0.25}}
-		x, y = positions[index][0], positions[index][1]
-	case 4:
-		positions := [][2]float64{{-0.24, -0.22}, {0.24, -0.22}, {-0.24, 0.22}, {0.24, 0.22}}
-		x, y = positions[index][0], positions[index][1]
-	case 5:
-		width, height = float64(canvasWidth)*0.34, float64(canvasHeight)*0.42
-		positions := [][2]float64{{-0.32, -0.25}, {0, -0.25}, {0.32, -0.25}, {-0.18, 0.24}, {0.18, 0.24}}
-		x, y = positions[index][0], positions[index][1]
-	default:
-		columns := int(math.Ceil(math.Sqrt(float64(max(1, count)))))
-		row := index / columns
-		column := index % columns
-		rows := (count + columns - 1) / columns
-		x = (float64(column) - float64(columns-1)/2) * float64(canvasWidth) * 0.46
-		y = (float64(row) - float64(rows-1)/2) * float64(canvasHeight) * 0.52
-		width = float64(canvasWidth) * 0.42 / math.Sqrt(float64(columns))
-		height = float64(canvasHeight) * 0.56 / math.Sqrt(float64(rows))
-	}
-	if count >= 2 && count <= 5 {
-		x *= float64(canvasWidth)
-		y *= float64(canvasHeight)
-	}
-	return []float64{x, y, width, height}
 }

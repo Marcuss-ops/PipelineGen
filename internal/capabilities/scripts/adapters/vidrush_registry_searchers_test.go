@@ -387,8 +387,11 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 		t.Fatalf("ResolveProviders error: %v", err)
 	}
 
-	if youtube.calls.Load() != 1 || images.calls.Load() != 1 {
-		t.Fatalf("youtube calls=%d images calls=%d, want 1 each", youtube.calls.Load(), images.calls.Load())
+	// The image provider is invoked once per planned query: the retrieval
+	// intent plus the deterministic ladder query for this segment. Two calls
+	// still prove each provider was entered exactly once as a provider.
+	if youtube.calls.Load() != 1 || images.calls.Load() != 2 {
+		t.Fatalf("youtube calls=%d images calls=%d, want 1 youtube / 2 image queries", youtube.calls.Load(), images.calls.Load())
 	}
 	if result.Assets.PrimaryVideo != nil {
 		t.Fatalf("provider fanout selected a primary: %+v", result.Assets.PrimaryVideo)

@@ -71,6 +71,11 @@ type ClipsModule struct {
 	Processing *processing.Descriptor
 	Operations *operations.Descriptor
 
+	// DownloadClip is the canonical publication handler (local file or Drive
+	// proxy), exposed so the M2M media surface can stream the same artifact
+	// to a remote reader without granting it the admin token.
+	DownloadClip gin.HandlerFunc
+
 	bulk   *bulk.Descriptor
 	jobReg *clipJobRegistrar
 }
@@ -209,12 +214,13 @@ func Build(deps Dependencies) (*ClipsModule, error) {
 	)
 
 	return &ClipsModule{
-		Module:     mod,
-		Catalog:    catalogDesc,
-		Ingest:     ingestDesc,
-		Processing: processingDesc,
-		Operations: operationsDesc,
-		bulk:       bulkDesc,
+		Module:       mod,
+		Catalog:      catalogDesc,
+		Ingest:       ingestDesc,
+		Processing:   processingDesc,
+		Operations:   operationsDesc,
+		DownloadClip: handler.actions.DownloadClip,
+		bulk:         bulkDesc,
 		jobReg: &clipJobRegistrar{
 			bulkUploadWorker: deps.Handlers.NonOps.BulkUploadWorker,
 			jobsSvc:          deps.Handlers.NonOps.JobsSvc,

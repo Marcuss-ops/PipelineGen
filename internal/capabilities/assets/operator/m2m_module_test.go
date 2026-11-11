@@ -101,6 +101,16 @@ func doGET(engine *gin.Engine, path, secret string) *httptest.ResponseRecorder {
 	return w
 }
 
+func doPOST(engine *gin.Engine, path, secret string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, nil)
+	if secret != "" {
+		req.Header.Set("Authorization", "Bearer "+secret)
+	}
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	return w
+}
+
 // TestM2MModule_MediaReadScopeIsEnforced pins the scope gate: jobs.read is
 // NOT enough to read the catalog, media.read is.
 func TestM2MModule_MediaReadScopeIsEnforced(t *testing.T) {
@@ -164,6 +174,31 @@ func TestM2MModule_MountsReadOnlyRoutes(t *testing.T) {
 		if !seen {
 			t.Errorf("expected route %q to be registered, but it is missing", key)
 		}
+	}
+}
+
+// TestM2MModule_DownloadRouteIsMountedAndScoped pins the byte-read surface:
+// a remote computer holding media.read can stream the SAME artifact the admin
+// download route serves, and a key without media.read cannot. The route is
+// POST because the canonical admin endpoint is POST; it only streams bytes and
+// never mutates the catalog.
+func TestM2MModule_DownloadRouteIsMountedAndScoped(t *testing.T) {
+	module := NewM2MModule(fakeInventoryReader{}, zap.NewNop(), func() bool { return true })
+	called := false
+	module.SetDownloadHandler(func(c *gin.Context) {
+		called = true
+		c.Status(http.StatusOK)
+	})
+
+	path := "/api/v1/media/clips/youtube/clips/yt_1/download"
+	engine := mountM2MMedia(t, module, newFakeM2MSecurity(true, []string{"media.read"}, "s1"))
+	if w := doPOST(engine, path, "s1"); w.Code != http.StatusOK || !called {
+		t.Fatalf("expected the download handler to stream with media.read, got %d called=%v", w.Code, called)
+	}
+
+	engine = mountM2MMedia(t, module, newFakeM2MSecurity(true, []string{"jobs.read"}, "s2"))
+	if w := doPOST(engine, path, "s2"); w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 without media.read, got %d (body=%q)", w.Code, w.Body.String())
 	}
 }
 

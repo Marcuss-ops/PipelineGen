@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/duplicates"
@@ -95,6 +96,10 @@ func (h *ActionHandler) DownloadClip(c *gin.Context) {
 		return
 	}
 
+	// Every download is per-client and must not be cached by shared proxies.
+	// Set this before c.File as well: ServeFile preserves headers already set.
+	c.Header("Cache-Control", "private, no-store")
+
 	if result.Source == appclips.DownloadSourceLocal {
 		if info, statErr := os.Stat(result.LocalPath); statErr == nil && !info.IsDir() {
 			c.File(result.LocalPath)
@@ -113,10 +118,54 @@ func (h *ActionHandler) DownloadClip(c *gin.Context) {
 			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", metaErr))
 			return
 		}
+		if meta == nil {
+			meta = &appclips.ClipDriveFileMetaDTO{}
+		}
 		if !strings.HasPrefix(meta.MimeType, "video/") && !strings.HasPrefix(meta.MimeType, "audio/") && meta.MimeType != "application/octet-stream" {
 			h.log.Warn("refusing to proxy non-media file from drive", zap.String("mime", meta.MimeType))
 			apiutil.BadRequest(c, "drive file is not media: "+meta.MimeType)
 			return
+		}
+
+		filename := meta.Name
+		if strings.TrimSpace(filename) == "" {
+			filename = clipID
+		}
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+
+		rangeHeader := strings.TrimSpace(c.GetHeader("Range"))
+		if rangeHeader != "" && meta.Size > 0 {
+			start, end, ok := parseRangeHeader(rangeHeader, meta.Size)
+			if !ok {
+				c.Header("Content-Range", fmt.Sprintf("bytes */%d", meta.Size))
+				apiutil.Error(c, 416, "invalid range")
+				return
+			}
+			if rangeReader, ok := h.driveAdmin.(interface {
+				DownloadFileRange(context.Context, string, int64, int64) (io.ReadCloser, string, error)
+			}); ok {
+				body, contentType, dlErr := rangeReader.DownloadFileRange(c.Request.Context(), result.DriveID, start, end)
+				if dlErr == nil {
+					defer func() { _ = body.Close() }()
+					if contentType == "" || contentType == "application/octet-stream" {
+						contentType = "video/mp4"
+					}
+					c.Header("Content-Type", contentType)
+					c.Header("Accept-Ranges", "bytes")
+					c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, meta.Size))
+					c.Header("Content-Length", strconv.FormatInt(end-start+1, 10))
+					c.Status(206)
+					if _, copyErr := io.Copy(c.Writer, body); copyErr != nil {
+						h.log.Debug("drive range stream interrupted", zap.Error(copyErr))
+					}
+					return
+				}
+				if !errors.Is(dlErr, appclips.ErrDriveRangeUnsupported) {
+					h.log.Error("failed to range-download from drive", zap.Error(dlErr), zap.String("id", result.DriveID))
+					apiutil.InternalError(c, fmt.Errorf("failed to stream range from drive: %w", dlErr))
+					return
+				}
+			}
 		}
 
 		body, contentType, dlErr := h.driveAdmin.DownloadFile(c.Request.Context(), result.DriveID)
@@ -131,7 +180,16 @@ func (h *ActionHandler) DownloadClip(c *gin.Context) {
 			contentType = "video/mp4"
 		}
 		c.Header("Content-Type", contentType)
-		c.Header("Cache-Control", "public, max-age=3600")
+		if meta.Size > 0 {
+			c.Header("Content-Length", strconv.FormatInt(meta.Size, 10))
+		}
+		if _, ok := h.driveAdmin.(interface {
+			DownloadFileRange(context.Context, string, int64, int64) (io.ReadCloser, string, error)
+		}); ok && rangeHeader == "" {
+			c.Header("Accept-Ranges", "bytes")
+		} else {
+			c.Header("Accept-Ranges", "none")
+		}
 		if _, copyErr := io.Copy(c.Writer, body); copyErr != nil {
 			h.log.Debug("drive stream interrupted", zap.Error(copyErr))
 		}
@@ -144,6 +202,50 @@ func (h *ActionHandler) DownloadClip(c *gin.Context) {
 		return
 	}
 	h.respondNotReady(c, "RUNNING", 1)
+}
+
+// parseRangeHeader parses the single-range form used by resumable clients:
+// "bytes=start-", "bytes=start-end", or "bytes=-suffix". Multi-range
+// requests are rejected because the download is a single media stream.
+func parseRangeHeader(raw string, size int64) (start, end int64, ok bool) {
+	if size <= 0 || !strings.HasPrefix(raw, "bytes=") {
+		return 0, 0, false
+	}
+	spec := strings.TrimSpace(strings.TrimPrefix(raw, "bytes="))
+	if spec == "" || strings.Contains(spec, ",") {
+		return 0, 0, false
+	}
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	startPart := strings.TrimSpace(parts[0])
+	endPart := strings.TrimSpace(parts[1])
+	if startPart == "" {
+		suffix, err := strconv.ParseInt(endPart, 10, 64)
+		if err != nil || suffix <= 0 {
+			return 0, 0, false
+		}
+		if suffix > size {
+			suffix = size
+		}
+		return size - suffix, size - 1, true
+	}
+	start, err := strconv.ParseInt(startPart, 10, 64)
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, false
+	}
+	end = size - 1
+	if endPart != "" {
+		parsed, err := strconv.ParseInt(endPart, 10, 64)
+		if err != nil || parsed < start {
+			return 0, 0, false
+		}
+		if parsed < end {
+			end = parsed
+		}
+	}
+	return start, end, true
 }
 
 // respondIfNotReady answers 409 Conflict when the asset's video artifact is not

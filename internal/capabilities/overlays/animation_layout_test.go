@@ -61,23 +61,16 @@ func TestApplyAnimationConsistencyPinnedKeepsExplicitChoice(t *testing.T) {
 	}
 }
 
-// The planner finalizer fuses nearby phrases into one chain and lays the
-// second segment at the previous segment's end plus the 400 ms handoff.
-func TestFinalizePlannerAnimationLayoutFusesNearbyPhrases(t *testing.T) {
+// The planner stage must leave candidates separate so budgets and collision
+// checks can inspect them. The compiled finalizer owns the only chain pass.
+func TestFinalizePlannerAnimationLayoutDefersNearbyPhraseFusion(t *testing.T) {
 	items := []capmodel.OverlayItem{
 		layoutPhraseItem("a", 0, 1_000, "text_fade_up"),
 		layoutPhraseItem("b", 1_600, 2_600, "text_word_rise"),
 	}
 	got := FinalizePlannerAnimationLayout(items, layoutChainInput(), 24, 1)
-	if len(got) != 1 || !capmodel.IsChainItemKind(got[0].Kind) {
-		t.Fatalf("nearby phrases did not fuse: %+v", got)
-	}
-	segments, ok := capmodel.DecodeChainSegments(got[0].Params)
-	if !ok || len(segments) != 2 {
-		t.Fatalf("chain segments = %+v (decoded %v)", got[0].Params["chain_segments"], ok)
-	}
-	if segments[1].StartUS != 1_400_000 {
-		t.Fatalf("second segment start = %dus, want 1400000us (1000ms + 400ms handoff)", segments[1].StartUS)
+	if len(got) != 2 || capmodel.IsChainItemKind(got[0].Kind) || capmodel.IsChainItemKind(got[1].Kind) {
+		t.Fatalf("planner fused candidates before final admission: %+v", got)
 	}
 }
 
@@ -130,7 +123,10 @@ func TestResolveAnimationSelectionsRejectsContainerMotions(t *testing.T) {
 	if err := ResolveAnimationSelections(badChain); err == nil {
 		t.Fatal("chain container with MotionID must fail")
 	}
-	goodChain := []capmodel.OverlayItem{{ID: "c1", Kind: "phrase_chain"}}
+	goodChain := capmodel.CoalesceChainedOverlays([]capmodel.OverlayItem{
+		{ID: "a", SceneID: "s1", Kind: "image", TemplateID: "IMAGE_OVERLAY", MotionID: "image_a", StartMs: 0, EndMs: 1_000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-a"}}},
+		{ID: "b", SceneID: "s1", Kind: "image", TemplateID: "IMAGE_OVERLAY", MotionID: "image_b", StartMs: 1_000, EndMs: 2_000, AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-b"}}},
+	}, map[string]int{"chain_enabled": 1})
 	if err := ResolveAnimationSelections(goodChain); err != nil {
 		t.Fatalf("chain container without MotionID: %v", err)
 	}

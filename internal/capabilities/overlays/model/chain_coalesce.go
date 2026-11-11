@@ -79,8 +79,6 @@ const (
 	// timeline between them into one multi-animation chain item.
 	defaultChainGapUS         int64 = 5_000_000
 	maxChainGapUS             int64 = 5_000_000
-	defaultChainMaxSegments         = 8
-	maxChainSegmentsHard            = 32
 	minChainSegmentDurationUS int64 = 2_500_000
 	chainHandoffGapUS         int64 = 400_000
 )
@@ -127,7 +125,8 @@ type ChainSegment struct {
 //
 // \tchain_gap_ms:       max empty interval between two overlays to fuse.
 // \tchain_enabled:      when > 0, chain with the default 5000ms gap.
-// \tchain_max_segments: max segments per chain item (default 8, hard 32).
+// \tchain_max_segments: optional explicit segment ceiling; unset means the
+// \truntime timeline and scene boundary determine the chain length.
 // \tchain_disabled:     when > 0, coalescing is skipped entirely.
 func chainConfig(counts map[string]int) (maxGapUS int64, maxSegments int, disabled bool) {
 	if counts == nil || counts["chain_disabled"] > 0 {
@@ -150,12 +149,9 @@ func chainConfig(counts map[string]int) (maxGapUS int64, maxSegments int, disabl
 	if v := counts["chain_max_segments"]; v > 0 {
 		maxSegments = v
 	}
-	if maxSegments <= 0 {
-		maxSegments = defaultChainMaxSegments
-	}
-	if maxSegments > maxChainSegmentsHard {
-		maxSegments = maxChainSegmentsHard
-	}
+	// No implicit ceiling: splitting a slideshow can make adjacent chain
+	// containers overlap and display multiple images at once. A caller may
+	// still request an explicit segment limit.
 	return maxGapUS, maxSegments, false
 }
 
@@ -230,6 +226,32 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 	if disabled || len(items) < 2 {
 		return items
 	}
+	// Image chains are slideshows: each source image must get its own timed
+	// animation, followed by the next image. Do not absorb images into a mixed
+	// text/card chain, and do not let intervening text or cards split a run of
+	// nearby images. Text and entity cards keep their existing mixed-chain
+	// behavior; maps stay on their dedicated homogeneous path.
+	var imageItems, otherItems []OverlayItem
+	for _, item := range items {
+		if chainFamily(item.Kind) == "image" {
+			imageItems = append(imageItems, item)
+		} else {
+			otherItems = append(otherItems, item)
+		}
+	}
+	if len(imageItems) > 0 && len(otherItems) > 0 {
+		out := make([]OverlayItem, 0, len(items))
+		out = append(out, CoalesceChainedOverlays(imageItems, counts)...)
+		out = append(out, CoalesceChainedOverlays(otherItems, counts)...)
+		sort.SliceStable(out, func(i, j int) bool {
+			si, sj := out[i].StartUSValue(), out[j].StartUSValue()
+			if si != sj {
+				return si < sj
+			}
+			return out[i].ID < out[j].ID
+		})
+		return out
+	}
 	sorted := append([]OverlayItem(nil), items...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		si, sj := sorted[i].StartUSValue(), sorted[j].StartUSValue()
@@ -251,9 +273,19 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 		group := []OverlayItem{sorted[i]}
 		groupEnd := sorted[i].EndUSValue()
 		j := i + 1
-		for j < len(sorted) && len(group) < maxSegments {
+		for j < len(sorted) && (maxSegments <= 0 || len(group) < maxSegments) {
 			next := sorted[j]
 			if !chainable(next) || next.SceneID != scene {
+				break
+			}
+			// Camera maps carry per-LOD rasters that are resolved and validated
+			// through the standalone map path. A mixed chain currently reaches
+			// RenderingGen without the segment-scoped LOD asset bundle, so keep
+			// maps standalone beside image/text/entity chains. Homogeneous map
+			// runs may still use the dedicated map_chain lowering.
+			firstFamily := chainFamily(group[0].Kind)
+			nextFamily := chainFamily(next.Kind)
+			if firstFamily != nextFamily && (firstFamily == "map" || nextFamily == "map") {
 				break
 			}
 			// Fuse nearby AND overlapping items (image@10s + phrase@12s

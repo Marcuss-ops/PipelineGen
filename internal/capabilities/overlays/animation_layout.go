@@ -6,19 +6,9 @@ import (
 	"strings"
 )
 
-// animation_layout.go is the single owner of the order in which the producer
-// settles nearby animations. BuildPlan and the script-generation compile
-// boundary used to re-implement the same passes (duplicate-motion rotation,
-// image/date collision placement, chain fusion, entrance cascade) in two
-// different files. Those sequences now live here:
-//
-//	planner  : move images -> rotate duplicates -> fuse chains -> cascade
-//	compiled : cascade + rotate (before policies) -> fuse chains -> move images
-//
-// The two orders are deliberately different. BuildPlan runs before nearby
-// images are composed, while the compile boundary re-runs the layout on the
-// combined item set after the policy projection. Do not copy a pass sequence
-// into a caller: add a stage here instead.
+// Animation preparation and finalization live here. Item admission and all
+// collision checks run while overlays are still separate; chain fusion is the
+// final transformation after the complete item set has been prepared.
 
 // ApplyAnimationConsistency rotates duplicate phrase and number motions away.
 // It mutates items in place and is idempotent: a second pass finds no
@@ -49,8 +39,8 @@ func PrepareCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInpu
 // so the image/date collision placement is repeated here on the final
 // combined render set.
 func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInput) []capmodel.OverlayItem {
-	items = capmodel.CoalesceChainedOverlays(items, input.AnimationCounts)
 	MoveImagesAsideForOverlappingDateCards(items, input.Width)
+	items = capmodel.CoalesceChainedOverlays(items, input.AnimationCounts)
 	return items
 }
 
@@ -61,7 +51,6 @@ func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInp
 func FinalizePlannerAnimationLayout(items []capmodel.OverlayItem, input PlanInput, fpsNum, fpsDen int) []capmodel.OverlayItem {
 	MoveImagesAsideForOverlappingDateCards(items, input.Width)
 	ApplyAnimationConsistency(items, input)
-	items = capmodel.CoalesceChainedOverlays(items, input.AnimationCounts)
 	CascadeClusteredEntrances(items, fpsNum, fpsDen)
 	return items
 }
@@ -76,6 +65,20 @@ func ResolveAnimationSelections(items []capmodel.OverlayItem) error {
 		if capmodel.IsChainItemKind(it.Kind) {
 			if strings.TrimSpace(it.MotionID) != "" {
 				return fmt.Errorf("animation selector: chain container %q must not carry MotionID %q (segments own it)", it.ID, it.MotionID)
+			}
+			segments, ok := capmodel.DecodeChainSegments(it.Params)
+			if !ok || len(segments) < 2 {
+				return fmt.Errorf("animation selector: chain container %q has no valid segments", it.ID)
+			}
+			for n, segment := range segments {
+				if strings.TrimSpace(segment.MotionID) == "" {
+					return fmt.Errorf("animation selector: chain %q segment %d has no MotionID", it.ID, n)
+				}
+				for _, layer := range segment.ImageLayers {
+					if strings.TrimSpace(layer.MotionID) == "" {
+						return fmt.Errorf("animation selector: chain %q segment %d image layer %q has no MotionID", it.ID, n, layer.ID)
+					}
+				}
 			}
 			continue
 		}

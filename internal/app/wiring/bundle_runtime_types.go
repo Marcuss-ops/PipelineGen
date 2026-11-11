@@ -14,6 +14,7 @@ import (
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
+	"github.com/gin-gonic/gin"
 )
 import (
 	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifact_finalize"
@@ -100,6 +101,10 @@ type AssetsWiring struct {
 	InternalMediaHandler *assetstorage.Handler
 	SearchAggregator     *assetsearch.Aggregator
 	SearchFanOut         assetsearch.SearchFanOut
+	// DownloadClip is the canonical clip download handler, shared with the
+	// M2M media surface so a remote reader streams the same artifact without
+	// receiving the admin token.
+	DownloadClip gin.HandlerFunc
 }
 
 // StagingBundle owns the canonical staging store, repository and resolved

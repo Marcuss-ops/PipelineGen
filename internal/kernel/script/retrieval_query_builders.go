@@ -25,11 +25,19 @@ func BuildYouTubeQueries(profile SegmentSemanticProfile, limit int) []string {
 	return uniqueQueries(queries, limit)
 }
 
+// QueriesForImages merges the profile's retrieval intent with the deterministic
+// entity-first ladder. Retrieval images alone are NOT a complete surface: they
+// can be a short list of raw provider queries (sometimes one per entity), so a
+// caller that budgets ten scene images would still receive two. The ladder adds
+// the semantic joins without dropping the retrieval intent.
 func QueriesForImages(profile SegmentSemanticProfile, limit int) []string {
-	if profile.Retrieval != nil && len(profile.Retrieval.Images) > 0 {
-		return uniqueRetrievalQueries(profile.Retrieval.Images, normalizedQueryLimit(limit, defaultImageQueryLimit))
+	limit = normalizedQueryLimit(limit, defaultImageQueryLimit)
+	queries := make([]string, 0, limit)
+	if profile.Retrieval != nil {
+		queries = append(queries, profile.Retrieval.Images...)
 	}
-	return BuildImageQueries(profile, limit)
+	queries = append(queries, BuildImageQueries(profile, limit)...)
+	return uniqueRetrievalQueries(queries, limit)
 }
 
 func uniqueRetrievalQueries(candidates []string, limit int) []string {

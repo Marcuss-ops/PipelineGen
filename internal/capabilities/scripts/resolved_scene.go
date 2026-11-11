@@ -45,6 +45,25 @@ type ResolvedVoiceover struct {
 type SceneDurationResolver struct{}
 
 func (SceneDurationResolver) Resolve(scene Scene, mode audio.AudioMode, clipBound bool, intents []audio.AudioIntent, voiceoverDurationUS int64) (int64, error) {
+	// The combined master must never end before its certified voiceover. This
+	// also handles scenes with an explicit planning duration: after synthesis,
+	// the measured (post-cleanup) audio extent can be longer than that estimate.
+	if mode == audio.AudioModeCombinedTimeline && voiceoverDurationUS > 0 {
+		explicitUS := scene.DurationUS
+		if explicitUS <= 0 && scene.DurationMS > 0 {
+			var err error
+			explicitUS, err = checkedUS(scene.DurationMS, 1000, "duration_ms")
+			if err != nil {
+				return 0, err
+			}
+		}
+		if voiceoverDurationUS > explicitUS {
+			if sceneVisual := sceneVisualDurationUS(scene, intents); clipBound && sceneVisual > voiceoverDurationUS {
+				return sceneVisual, nil
+			}
+			return voiceoverDurationUS, nil
+		}
+	}
 	// COMBINED_TIMELINE materializes both the clip video and the narration
 	// into one master. When the clip is part of that materialized timeline,
 	// a clip shorter than its narration freezes on its last frame until the

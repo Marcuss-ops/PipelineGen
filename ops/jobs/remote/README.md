@@ -11,6 +11,10 @@ Everything here was verified on 2026-09-20 from **creator-77 (this host,
 
 | File | Purpose |
 |---|---|
+| `REMOTE-ACCESS.md` | Guida operativa in italiano: esporre il catalogo media PipelineGen ai PC remoti, creare le chiavi e usare il client portabile. |
+| `chronon.py` | Client portabile (solo Python 3 stdlib): asset, Drive link, trascrizioni, vettori, ricerca, download, invio/poll job e `verify` end-to-end. |
+| `test_chronon.py` | Test unitari stdlib del client (in particolare: il path di download non perde la directory). |
+| `test_chronon_download.py` | Test stdlib di integrità SHA-256, resume da `.part` e fail-closed su hash errato. |
 | `preflight.sh` | Read-only connection check: liveness, readiness, M2M key, route inventory. Never enqueues work. |
 | `inventory.sh` | Read-only inventory of the media SSOT (`pipelinegen_media`) — what material a pre-job can reference. |
 | `pre-job.creator-77.json` | First PREPARE payload, built from real DB assets. |
@@ -26,7 +30,7 @@ Everything here was verified on 2026-09-20 from **creator-77 (this host,
 
 | Role | Endpoint | Evidence |
 |---|---|---|
-| Remote master (target of the pre-job) | `http://51.91.11.36:8000` | `GET /health` → `commit bddf00b4`, `version 1.4.39`, `/health/ready` → `ready`, 11 checks |
+| Remote master (target of the pre-job) | `http://51.91.11.36:8000` | `GET /health` → `commit bddf00b4`, `version 1.4.39`, `/ready` → `ready`, 11 checks |
 | Local master (creator-77) | `http://127.0.0.1:8000` (77.93.152.122) | `pipelinegen --mode all`, commit `0eaa5ab22`, worker_id `YOutube` |
 | RenderingGen queue / worker / daemon | `127.0.0.1:8081` / `:8085` / `/run/chronon3d/chronon.sock` | native services on this host |
 
@@ -41,7 +45,7 @@ M2M client env files live **outside the repository** (`0600`), never committed:
 | File | Master URL | Client id |
 |---|---|---|
 | `~/creator-77-master.env` | `http://51.91.11.36:8000` | `creator-77-master-01` |
-| `~/computer-editor-77-01.env` | `http://77.93.152.122:8000` | `computer-editor-77-01` |
+| `~/computer-editor-77-01.env` | `https://77.93.152.122` | `computer-editor-77-01` |
 
 Auth is `Authorization: Bearer $VELOX_M2M_SECRET` (scopes `jobs.submit`,
 `jobs.read`). `preflight.sh` resolves `$VELOX_M2M_ENV` → `$HOME/creator-77-master.env`
@@ -59,7 +63,7 @@ before regenerating a token.
 
 | Method + path | Result | Meaning |
 |---|---|---|
-| `GET /health`, `GET /health/ready` | 200 | master healthy and ready |
+| `GET /health`, `GET /ready` | 200 | master healthy and ready |
 | `POST /api/v1/jobs` | 401 without token, **400 with our key** | M2M surface mounted, key accepted (`invalid_json` on an empty body — no job created) |
 | `GET /api/v1/jobs/{id}` | 404 on an unknown id | read route mounted, job lookup answered |
 | `POST /api/v1/jobs/pre` | **400 / 202** | PREPARE route **mounted** (the older build answered 404) |

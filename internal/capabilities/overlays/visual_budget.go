@@ -161,7 +161,10 @@ func applyEditorialOverlayBudget(items []capmodel.OverlayItem, phraseLimit, imag
 	chartLabelIndices := chartLabelIndices(items)
 	chartBarIndices := chartBarIndices(items)
 	editorialIndices := editorialLabelIndicesExcludingBullets(items, bulletLimit > 0)
-	chainIndices := chainItemIndices(items)
+	// Chains are a final presentation form and must only be created after this
+	// admission pass. Reject pre-existing containers here so nested image/text
+	// segments cannot bypass category quotas or per-run deduplication.
+	chainIndices := []int(nil)
 	// Text-only named entity cards are their own editorial category (see
 	// visual_budget_entity_cards.go). Without an arm here they were planned and
 	// capped but silently dropped by retainOverlayItems.
@@ -234,20 +237,6 @@ func editorialLabelIndicesExcludingBullets(items []capmodel.OverlayItem, exclude
 			if !excludeBullets {
 				indices = append(indices, i)
 			}
-		}
-	}
-	return indices
-}
-
-// chainItemIndices keeps chains that already passed the planner's category
-// budgets. A later budget pass (after entity media is attached) must not drop
-// fused dates, metrics, or phrases just because their child categories are
-// represented inside chain_segments instead of the top-level item kind.
-func chainItemIndices(items []capmodel.OverlayItem) []int {
-	indices := make([]int, 0)
-	for i := range items {
-		if capmodel.IsChainItemKind(items[i].Kind) {
-			indices = append(indices, i)
 		}
 	}
 	return indices
@@ -344,7 +333,9 @@ func ApplyEditorialOverlayBudgetWithLimit(items []capmodel.OverlayItem, phraseLi
 	chartLabelIndices := chartLabelIndices(items)
 	chartBarIndices := chartBarIndices(items)
 	editorialIndices := editorialLabelIndices(items)
-	chainIndices := chainItemIndices(items)
+	// Never admit a pre-fused container through a visual budget: chains are
+	// created only after final item admission.
+	chainIndices := []int(nil)
 	out := retainOverlayItems(items, imageIndices, phraseIndices, numberIndices, brandIndices, chartBarIndices, chartLabelIndices, editorialIndices, chainIndices)
 	return out, MeasurePhraseOverlayBudgetWithLimit(out, limit)
 }

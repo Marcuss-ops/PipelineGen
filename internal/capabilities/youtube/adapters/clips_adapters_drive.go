@@ -88,7 +88,25 @@ func (a *ClipsDriveAdapter) GetFileMeta(ctx context.Context, fileID string) (*cl
 	if meta == nil {
 		return &clips.ClipDriveFileMetaDTO{}, nil
 	}
-	return &clips.ClipDriveFileMetaDTO{MimeType: meta.MimeType}, nil
+	return &clips.ClipDriveFileMetaDTO{MimeType: meta.MimeType, Name: meta.Name, Size: meta.Size}, nil
+}
+
+// DownloadFileRange is the optional range surface consumed by the clip
+// download handler. It keeps the main ClipDriveUploaderPort unchanged so
+// existing fakes and deployments that only implement full downloads keep
+// compiling; callers must treat ErrDriveRangeUnsupported as a full-download
+// fallback.
+func (a *ClipsDriveAdapter) DownloadFileRange(ctx context.Context, fileID string, start, end int64) (io.ReadCloser, string, error) {
+	if a.reader == nil {
+		return nil, "", fmt.Errorf("ClipsDriveAdapter: reader not wired")
+	}
+	rangeReader, ok := a.reader.(interface {
+		DownloadFileRange(context.Context, string, int64, int64) (io.ReadCloser, string, error)
+	})
+	if !ok {
+		return nil, "", clips.ErrDriveRangeUnsupported
+	}
+	return rangeReader.DownloadFileRange(ctx, fileID, start, end)
 }
 
 func (a *ClipsDriveAdapter) TrashFile(ctx context.Context, fileID string) error {
