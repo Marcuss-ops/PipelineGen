@@ -41,26 +41,28 @@ func TestGroupNearbyEntities_DuoImages(t *testing.T) {
 		t.Errorf("expected group_type=image, got %s", g.GroupType)
 	}
 	items, err := WireMultiEntityOverlays(g, 1920, 1080)
-	if err != nil || len(items) != 1 {
-		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want one canonical image-stack item", len(items), err)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want two timed image items", len(items), err)
 	}
-	item := items[0]
-	if item.Kind != string(capmodel.KindEntityImage) || item.TemplateID != "IMAGE_OVERLAY" {
-		t.Errorf("group must lower to the canonical entity_image primitive, got kind/template %q/%q", item.Kind, item.TemplateID)
-	}
-	if len(item.ImageLayers) != 2 {
-		t.Errorf("expected 2 image layers, got %d", len(item.ImageLayers))
-	}
-	if item.ImageLayers[0].Caption != "Entity Alpha" || item.ImageLayers[1].Caption != "Entity Beta" {
-		t.Errorf("image caption names = %q/%q, want each entity name", item.ImageLayers[0].Caption, item.ImageLayers[1].Caption)
-	}
-	for _, layer := range item.ImageLayers {
-		if layer.MotionID == "" || !containsString(CertifiedSingleImageMotions(), layer.MotionID) || layer.PresetID == "" {
-			t.Errorf("child layer must have a certified independent motion and preset: %+v", layer)
+	for i, want := range []struct {
+		id, caption string
+		start, end  int64
+	}{
+		{"ent_1", "Entity Alpha", 1000, 2500}, {"ent_2", "Entity Beta", 2800, 4500},
+	} {
+		item := items[i]
+		if item.Kind != string(capmodel.KindEntityImage) || item.TemplateID != "IMAGE_OVERLAY" || len(item.ImageLayers) != 0 {
+			t.Errorf("image %d must remain an independent entity_image item: %+v", i, item)
+		}
+		if item.ID != want.id || item.EntityCaption != want.caption || item.StartMs != want.start || item.EndMs != want.end {
+			t.Errorf("image %d lost its own identity/caption/timing: %+v", i, item)
+		}
+		if item.MotionID == "" || !containsString(CertifiedSingleImageMotions(), item.MotionID) || item.PresetID == "" {
+			t.Errorf("image must have its own certified motion and preset: %+v", item)
 		}
 	}
-	if item.ImageLayers[0].MotionID == item.ImageLayers[1].MotionID {
-		t.Errorf("adjacent images should use independent motions: %q", item.ImageLayers[0].MotionID)
+	if items[0].MotionID == items[1].MotionID {
+		t.Errorf("adjacent images should use independent motions: %q", items[0].MotionID)
 	}
 }
 
@@ -88,14 +90,13 @@ func TestGroupNearbyEntities_TrioQuadPenta(t *testing.T) {
 	}
 
 	items, err := WireMultiEntityOverlays(g, 1920, 1080)
-	if err != nil || len(items) != 1 {
-		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want one image stack", len(items), err)
+	if err != nil || len(items) != 5 {
+		t.Fatalf("WireMultiEntityOverlays() = %d items, err=%v; want five timed images", len(items), err)
 	}
-	if len(items[0].ImageLayers) != 5 {
-		t.Errorf("expected 5 image layers, got %d", len(items[0].ImageLayers))
-	}
-	if items[0].ImageLayers[0].Params["position_x"] != float64(-0.32)*1920 || items[0].ImageLayers[4].Params["position_y"] != float64(0.24)*1080 {
-		t.Errorf("five-image layout positions do not match the canonical x5 editorial grid: first=%v last=%v", items[0].ImageLayers[0].Params, items[0].ImageLayers[4].Params)
+	for i, item := range items {
+		if len(item.ImageLayers) != 0 || item.AssetRefs[0].AssetID != string(rune('A'+i)) {
+			t.Errorf("image %d should be an independent item, got %+v", i, item)
+		}
 	}
 }
 
@@ -182,8 +183,8 @@ func TestGroupNearbyEntitiesKeepsMixedScenesAndImageWindowSeparate(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(items) != 1 || items[0].EndMs-items[0].StartMs > MaxImageOverlayDurationMS {
-				t.Fatalf("image group violates five-second image ceiling: %+v", items)
+			if len(items) != 1 || len(items[0].ImageLayers) != 0 || items[0].EndMs-items[0].StartMs != 1200 {
+				t.Fatalf("grouped source must stay one independent image with its original window: %+v", items)
 			}
 		}
 	}
@@ -237,19 +238,16 @@ func TestBuildPlanLowersEditorialGroupsToCanonicalRenderPrimitives(t *testing.T)
 	if err := plan.Validate(); err != nil {
 		t.Fatalf("canonical grouped plan failed validation: %v", err)
 	}
-	if len(plan.Items) != 1 || plan.Items[0].Kind != string(capmodel.KindEntityImage) || len(plan.Items[0].ImageLayers) != 2 {
-		t.Fatalf("group plan emitted a noncanonical image primitive: %+v", plan.Items)
+	if len(plan.Items) != 2 {
+		t.Fatalf("group plan emitted %d items, want two independently timed images", len(plan.Items))
 	}
-	if plan.Items[0].MotionID != "" {
-		t.Fatalf("stack parent must not duplicate its independently selected layer motions: %+v", plan.Items[0])
-	}
-	for _, layer := range plan.Items[0].ImageLayers {
-		if !containsString(CertifiedSingleImageMotions(), layer.MotionID) {
-			t.Fatalf("image layer motion %q is outside the existing certified image pool", layer.MotionID)
+	for _, item := range plan.Items {
+		if item.Kind != string(capmodel.KindEntityImage) || len(item.ImageLayers) != 0 || item.MotionID == "" {
+			t.Fatalf("group plan did not preserve independent animated images: %+v", item)
 		}
 	}
-	if EditorialSectionForItem(plan.Items[0]) != EditorialSectionImageStack {
-		t.Fatalf("stack editorial section=%q, want %q", EditorialSectionForItem(plan.Items[0]), EditorialSectionImageStack)
+	if EditorialSectionForItem(plan.Items[0]) != EditorialSectionEntityTextImage {
+		t.Fatalf("image editorial section=%q, want %q", EditorialSectionForItem(plan.Items[0]), EditorialSectionEntityTextImage)
 	}
 }
 
@@ -290,16 +288,16 @@ func TestWireMultiEntityMotionsSeededByGroup(t *testing.T) {
 			},
 		}
 	}
-	wire := func(groupID string) []capmodel.OverlayImageLayer {
+	wire := func(groupID string) []capmodel.OverlayItem {
 		t.Helper()
 		items, err := WireMultiEntityOverlays(mkGroup(groupID), 1280, 720)
 		if err != nil {
 			t.Fatalf("wire %s: %v", groupID, err)
 		}
-		if len(items) != 1 || len(items[0].ImageLayers) != 2 {
-			t.Fatalf("wire %s = %+v, want one item with two layers", groupID, items)
+		if len(items) != 2 || len(items[0].ImageLayers) != 0 || len(items[1].ImageLayers) != 0 {
+			t.Fatalf("wire %s = %+v, want two independent image items", groupID, items)
 		}
-		return items[0].ImageLayers
+		return items
 	}
 	first, again := wire("group-1"), wire("group-1")
 	for i := range first {

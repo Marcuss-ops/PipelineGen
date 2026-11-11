@@ -111,7 +111,8 @@ async def handle_synthesize(request: web.Request) -> web.Response:
     stream_started = time.monotonic()
     try:
         communicate = Communicate(
-            parsed.text, voice, boundary=edge_boundary_mode(parsed.boundary))
+            parsed.text, voice, boundary=edge_boundary_mode(parsed.boundary),
+            **({"rate": parsed.rate} if parsed.rate else {}))
         with open(audio_part, "wb") as audio_fh, \
                 open(meta_part, "w", encoding="utf-8") as meta_fh:
             async for chunk in communicate.stream():

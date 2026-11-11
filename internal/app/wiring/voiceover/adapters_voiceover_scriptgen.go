@@ -102,11 +102,8 @@ func (g *ScriptVoiceoverGenerator) voiceForLanguage(language scriptgen.Language)
 //
 // The filename is deterministic per durable run and scene, so work from a
 // canceled attempt cannot overwrite audio or Edge boundaries from its retry.
-// Silence removal
-// is intentionally disabled: the Edge boundaries describe the exact bytes
-// produced, so trimming silence without an edit map would leave stale
-// timestamps (the SILENCE gate). The combined-audio stage owns any
-// silence/padding normalization on the final timeline.
+// Edge boundaries are remapped through the canonical audio edit map after
+// cleanup, so Italian scene audio can be trimmed without stale timings.
 func (g *ScriptVoiceoverGenerator) Generate(
 	ctx context.Context,
 	input scriptgen.VoiceoverInput,
@@ -185,15 +182,14 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// publisher failed AFTER TTS work was already spent. Empty Project
 		// is unreachable here because the runner fails the run before the
 		// voiceover phase when it is missing.
-		Project: input.Project,
-		// Canonical Edge cleanup: remove every silence run longer than 800 ms
-		// in the post-TTS media stage. The cleaned duration is propagated back
-		// into the scene timing before the script artifact is published.
-		// Word boundaries are captured from the exact synthesized bytes.
-		// Do not trim this per-scene asset here: without an edit map the
-		// cleanup would invalidate the canonical timing artifact before the
-		// script runner lowers overlays.
-		RemoveSilence:  false,
+		Project:       input.Project,
+		RemoveSilence: strings.EqualFold(string(input.Language), "it"),
+		TTSRate: func() string {
+			if strings.EqualFold(string(input.Language), "it") {
+				return "+1%"
+			}
+			return ""
+		}(),
 		ForceSynthesis: input.ForceSynthesis,
 		Strategy:       asset.StrategyVerify,
 	}

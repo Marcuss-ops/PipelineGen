@@ -93,6 +93,47 @@ func TestHTTPObjectSource_NonRangeServerFallback(t *testing.T) {
 	}
 }
 
+// TestHTTPObjectSource_ObjectStoreBearerToken pins the auth contract: an
+// artifact URL that addresses the configured store carries the shared bearer
+// token, and a foreign URL with the same path does not.
+func TestHTTPObjectSource_ObjectStoreBearerToken(t *testing.T) {
+	payload := []byte("rendered clip bytes")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-store-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+
+	t.Setenv("OBJECTSTORE_TOKEN", "test-store-token")
+	t.Setenv("RENDERINGGEN_STORE_URL", server.URL)
+
+	src := &httpObjectSource{
+		ctx:       context.Background(),
+		url:       server.URL + "/objects/abc",
+		size:      int64(len(payload)),
+		authToken: objectStoreTokenForURL(server.URL + "/objects/abc"),
+	}
+	defer func() { _ = src.Close() }()
+	if src.authToken != "test-store-token" {
+		t.Fatalf("authToken = %q, want the store token", src.authToken)
+	}
+	all, err := io.ReadAll(src)
+	if err != nil {
+		t.Fatalf("sequential Read: %v", err)
+	}
+	if string(all) != string(payload) {
+		t.Fatalf("sequential Read = %q, want %q", all, payload)
+	}
+
+	t.Setenv("RENDERINGGEN_STORE_URL", "http://store.internal:9000")
+	if token := objectStoreTokenForURL("http://other.example:9000/objects/abc"); token != "" {
+		t.Fatalf("foreign URL received token %q", token)
+	}
+}
+
 // TestOpenUploadSource_FailClosed pins the source resolution rules: a local
 // path wins, a remote URL needs an expected size, and neither is a typed error.
 func TestOpenUploadSource_FailClosed(t *testing.T) {

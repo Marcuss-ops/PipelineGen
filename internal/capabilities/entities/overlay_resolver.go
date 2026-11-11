@@ -13,8 +13,8 @@ import (
 const MaxEntityOverlayDurationUS int64 = 5_000_000
 
 // MinEntityOverlayDurationUS is the readability floor of the dynamic entity
-// window: a very short spoken mention still stays on screen a full second so
-// the card never collapses into a sub-second flash.
+// window: a very short spoken mention still stays on screen long enough to
+// read the name and caption instead of collapsing into a flash.
 const MinEntityOverlayDurationUS int64 = 1_000_000
 
 // EntityOverlayHoldoutUS is the tail hold added after the last spoken word of
@@ -26,7 +26,7 @@ const EntityOverlayHoldoutUS int64 = 500_000
 // occupies plus a half-second readability hold, clamped into
 // [MinEntityOverlayDurationUS, MaxEntityOverlayDurationUS]. The duration is
 // never estimated from text length or scene duration — only the certified
-// audio positions count. A short name gets a readable second; a longer
+// audio positions count. A short name gets a readable beat; a longer
 // narration keeps the card up while it is spoken (bounded by the ceiling).
 //
 // The result is quantized UP to whole milliseconds: the overlay wire contract
@@ -94,7 +94,7 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 	ctx := NewRankContext(allOccurrences)
 
 	var items []capmodel.OverlayItem
-	for _, scene := range timeline.Scenes {
+	for sceneIndex, scene := range timeline.Scenes {
 		// Apply the resolver's cap after semantic deduplication. Passing it into
 		// RankScene would let repeated mentions of one entity consume several
 		// slots and crowd out distinct people or places in the same scene.
@@ -134,6 +134,14 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 			// microsecond projection to that same boundary so the dynamic
 			// editorial window remains internally consistent.
 			startUS := startMS * 1000
+			// A short mention near a scene boundary must not bleed the card into
+			// the next scene. The readability floor still applies whenever the
+			// scene has room; otherwise the certified scene end wins.
+			if sceneEndUS := entitySceneEndUS(timeline, sceneIndex); sceneEndUS > startUS {
+				if remaining := sceneEndUS - startUS; durationUS > remaining {
+					durationUS = remaining
+				}
+			}
 			kind := capmodel.EntityTypeToKind(occurrence.Type)
 			entry, err := capmodel.DefaultChrononOverlayRegistry.Resolve(string(kind))
 			if err != nil {
@@ -204,6 +212,16 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 // wire interval without truncating its final partial millisecond.
 func overlayEndMs(startUS, durationUS int64) int64 {
 	return (startUS + durationUS + 999) / 1000
+}
+
+// entitySceneEndUS returns the certified end of one timeline scene. The
+// entity projection does not carry a per-scene duration, so the next scene's
+// start (or the run duration for the final scene) is the canonical boundary.
+func entitySceneEndUS(timeline EntityTimeline, sceneIndex int) int64 {
+	if sceneIndex+1 < len(timeline.Scenes) {
+		return timeline.Scenes[sceneIndex+1].TimelineStartUS
+	}
+	return timeline.DurationUS
 }
 
 // allOccurrences flattens every scene's occurrences into one slice, in scene

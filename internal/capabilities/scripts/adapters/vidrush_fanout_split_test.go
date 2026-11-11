@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"strings"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -160,5 +161,62 @@ func TestVidRushFanoutMergeKeepsCandidatesWithoutSelectingWinner(t *testing.T) {
 	}
 	if updated.Assets.PrimaryVideo != nil {
 		t.Fatalf("provider discovery selected a primary: %+v", updated.Assets.PrimaryVideo)
+	}
+}
+
+// An explicit scene-image budget larger than the provider default must fill
+// with generic scene imagery even when identity images are scoped per scene.
+// Entity searches yield one image per identity, so a single-place scene would
+// otherwise stop at one frame despite images_per_scene=10.
+func TestVidRushFanoutPlanPerSceneExplicitBudgetAddsGenericLadderAfterEntities(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ImagesPerScene: 10,
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Planner: mediadomain.MediaPlannerPolicy{MaxImagesPerScene: 10},
+			Extraction: mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{
+				Enabled: true, Scope: "per_scene", EntityTypes: []string{"PERSON", "GPE"},
+			}},
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+		},
+	}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1", TextHash: "hash-1", Text: "Garlasco, piazza duomo",
+		Insights: scriptpkg.SegmentInsights{
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON"}, {Value: "Garlasco", Type: "GPE"}},
+			NounChunks:   []string{"piazza duomo"},
+			ImageQueries: []string{"Alberto Stasi", "Garlasco"},
+		},
+	}
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
+	if len(fanout.imageQueries) < 4 {
+		t.Fatalf("image queries = %#v, want the generic ladder after the two identities", fanout.imageQueries)
+	}
+	if fanout.imageQueries[0] != "Alberto Stasi" || fanout.imageQueries[1] != "Garlasco" {
+		t.Fatalf("entity queries must stay first: %#v", fanout.imageQueries)
+	}
+	found := false
+	for _, query := range fanout.imageQueries {
+		if strings.Contains(query, "piazza duomo") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("image queries = %#v, want a generic scene query", fanout.imageQueries)
+	}
+}
+
+func TestVidRushFanoutPlanDropsUnusableImageQueries(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
+		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+	}}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-16", TextHash: "hash-16", Text: "Il pannello mostra il dettaglio della perizia.",
+		Insights: scriptpkg.SegmentInsights{ImageQueries: []string{"I", "Overlay 25 100 1 2", "Garlasco piazza"}},
+	}
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
+	for _, query := range fanout.imageQueries {
+		if query == "I" || strings.EqualFold(query, "Overlay 25 100 1 2") {
+			t.Fatalf("unusable image query survived: %#v", fanout.imageQueries)
+		}
 	}
 }

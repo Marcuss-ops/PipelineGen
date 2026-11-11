@@ -75,6 +75,7 @@ func (a *useCaseTTSAdapter) Synthesize(ctx context.Context, in voiceover.TTSInpu
 		// scope discipline).
 		Language:      string(in.Language),
 		Voice:         in.Voice,
+		Rate:          in.Rate,
 		Filename:      in.Filename,
 		OutputDir:     in.OutputDir,
 		RemoveSilence: in.RemoveSilence,
@@ -270,6 +271,10 @@ type useCaseAudioAdapter struct {
 	media mediaexec.AudioProcessor
 }
 
+type silenceEditReporter interface {
+	RemoveSilenceWithEdits(context.Context, string, string) ([]audio.AudioEdit, error)
+}
+
 func NewUseCaseAudioAdapter(log *zap.Logger, media mediaexec.AudioProcessor) *useCaseAudioAdapter {
 	return &useCaseAudioAdapter{log: log, media: media}
 }
@@ -293,7 +298,14 @@ func (a *useCaseAudioAdapter) Process(ctx context.Context, in voiceover.AudioPos
 	if a.media == nil {
 		return voiceover.AudioPostOutput{}, fmt.Errorf("voiceover.audio_post: media executor unavailable")
 	}
-	if err := a.media.RemoveSilence(ctx, in.LocalPath, cleaned); err != nil {
+	var edits []audio.AudioEdit
+	var err error
+	if reporter, ok := a.media.(silenceEditReporter); ok {
+		edits, err = reporter.RemoveSilenceWithEdits(ctx, in.LocalPath, cleaned)
+	} else {
+		err = a.media.RemoveSilence(ctx, in.LocalPath, cleaned)
+	}
+	if err != nil {
 		if a.log != nil {
 			a.log.Warn("voiceover.audio_post: RemoveSilence failed (caller decides whether to fail-fast)",
 				zap.String("input", in.LocalPath),
@@ -310,7 +322,7 @@ func (a *useCaseAudioAdapter) Process(ctx context.Context, in voiceover.AudioPos
 	} else if err != nil {
 		return voiceover.AudioPostOutput{}, fmt.Errorf("voiceover.audio_post: probe cleaned audio: %w", err)
 	}
-	return voiceover.AudioPostOutput{CleanedPath: cleaned, DurationUS: durationUS}, nil
+	return voiceover.AudioPostOutput{CleanedPath: cleaned, DurationUS: durationUS, EditMap: edits}, nil
 }
 
 var _ voiceover.AudioPostProcessor = (*useCaseAudioAdapter)(nil)

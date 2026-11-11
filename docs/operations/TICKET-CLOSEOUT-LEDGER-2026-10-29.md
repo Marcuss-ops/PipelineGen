@@ -179,7 +179,7 @@ chiudono con una decisione (accept/reject), non con un commit di codice.
 - Un test verde su fixture non chiude un gate che parla di throughput o di
   pixel: sono livelli di evidenza diversi e vanno tenuti separati.
 
-## 7. Audit architetturale esterno — stato verificato al 2026-11-02
+## 7. Audit architetturale esterno — stato verificato al 2026-11-02 (aggiornato 2026-11-11)
 
 Mappa unica dei 12 punti dell'audit (PipelineGen + RenderingGen + Chronon3d) sul
 codice corrente. «Chiuso» significa che il criterio è nel codice e pinnato da un
@@ -188,18 +188,29 @@ richiede una misura su GPU.
 
 | # | Punto | Stato | Evidenza |
 |---|---|---|---|
-| 1 | Preparazione troppo tardiva | **Parziale** | `prepareFinalJobVideoSegments` è ancora obbligatorio in `final_job_payload.go:433`; cache, riuso e copy-window hanno rimosso il costo per le finestre già calde. |
-| 2 | Identità contenuto = identità segmento | **Bloccato** | `derivePlacement` rimuxa e pubblica un contenitore distinto (`final_job_placement.go`); il vincolo è del Master (r55/r66). |
+| 1 | Preparazione troppo tardiva | **Spostato al Master (2026-11-11)** | `76e8f49c1` ha eliminato `final_job_plan_prepare.go`, `final_job_segment_prepare.go` e `final_job_stock_planner.go`: la preparazione dei segmenti non è più nel Producer. Il residuo vive nel Master/worker; evidenza `RenderingGen/docs/tickets/TICKET-PRODUCER-MASTER-BOUNDARY-2026-11-04.md`. |
+| 2 | Identità contenuto = identità segmento | **Spostato al Master (2026-11-11)** | `derivePlacement` e `final_job_placement.go` non esistono più nel tree corrente (restano solo in `refactored-origin`); il Producer invia il piano, l'identità la certifica il Master. Residuo esterno. |
 | 3 | Concorrenza GPU | **Chiuso 2026-11-02 con misura** | Misurati due job batch indipendenti: multi-runtime **1,98×**, ~764 MiB/job, artefatti identici; nello stesso daemon gli stessi job in `parallel_disjoint` mandavano in stallo (stesso piano) o uccidevano il daemon (piani diversi). Fix: `extract_plan_admission_shape` rifiuta il dominio condiviso ai piani compositi (`daemon_service_ipc_protocol.cpp`, `daemon_service_ipc_render_job.cpp`). Evidenza: `Chronon3d/docs/evidence/gpu-admission-two-jobs-2026-11-02.md`. |
 | 4 | Hash ripetuti sulla stessa sorgente | **Chiuso** | `digest.Verifier` memoizza per path+size+mtime con singleflight (`kernel/digest/verifier.go`); `stagedSource` non ri-hasha a ogni finestra. |
 | 5 | Probe concorrenti duplicati | **Chiuso** | `sourceCensus` passa da `censusFlights.Do` (`final_job_source_census.go`): un `ffprobe` per SHA. |
 | 6 | Cache copy/encode | **Chiuso** | `fragmentWorkKey` include `copy-enabled`/`encode-only` e `finalJobFragmentFormatVersion = 9`. |
-| 7 | Conversioni e trasferimenti ripetuti | **Parziale** | Sorgente una volta (`lockSource`), frammenti in cache, `rememberFragmentPath`; il piazzamento duplicato resta remux+publish. |
+| 7 | Conversioni e trasferimenti ripetuti | **Spostato al Master (2026-11-11)** | `76e8f49c1` ha rimosso `final_job_plan_prepare.go` e `final_job_stock_planner.go`; la preparazione/trasferimento dei frammenti è del Master. Il Producer conserva solo la costruzione del payload. |
 | 8 | Finalizzazione per segmento sequenziale | **Chiuso** | Pool bounded a 4 con ordine di piano preservato (`RenderingGen/.../segments.go`). |
-| 9 | Contratti video distribuiti | **Parziale** | Dentro PipelineGen `finalJobDelivery` deriva da `kernelmedia.DefaultAssemblyMediaContract`; RenderingGen e Chronon hanno ancora i propri registry. |
-| 10 | Segmentazione subordinata al layout | **Non verificabile qui** | Il mux segmentato vive nel worker remoto, fuori da questi tre repo. |
+| 9 | Contratti video distribuiti | **Parziale, confine PipelineGen chiuso** | Dentro PipelineGen `finalJobDelivery` deriva da `kernelmedia.DefaultAssemblyMediaContract`; RenderingGen e Chronon mantengono registry propri, fuori dal perimetro PipelineGen. |
+| 10 | Segmentazione subordinata al layout | **Non verificabile qui** | Il mux segmentato vive nel worker remoto; non c'è codice PipelineGen da modificare né un test locale che possa chiudere il criterio. |
 | 11 | Congelamento frame con `tpad` | **Chiuso 2026-11-02** | `finalJobFragmentVideoFilter` aggiunge `tpad` solo per il deficit misurato dal census; `padded_frames` è nel receipt per finestra e per handoff. |
 | 12 | Metriche aggregate contaminate | **Chiuso** | Contatori per scope handoff (`final_job_fragment_pipeline.go`, già `final_job_segment_stats.go`). |
+
+**Aggiornamento 2026-11-11 — perimetro dei cinque punti.** Il commit
+`76e8f49c1` ("refactor(final-job): move segment preparation to Master",
+36 file, +692/−5158) ha rimosso dal Producer `final_job_placement.go`,
+`final_job_segment_prepare.go`, `final_job_plan_prepare.go` e
+`final_job_stock_planner.go`. Quindi #1, #2 e #7 non sono più implementazione
+PipelineGen: il criterio residuo è nel Master/worker e va chiuso là, non con un
+test locale. #9 ha il confine PipelineGen già sul contratto kernel, ma
+RenderingGen/Chronon restano esterni; #10 vive interamente nel worker remoto.
+Nessuno dei cinque punti è “chiuso” da questo ledger: sono stati riportati al
+proprietario corretto, che è ciò che il perimetro di questa sessione consente.
 
 **Correzione all'audit — profilo del frammento.** L'audit afferma che il profilo
 dei frammenti è tornato `VELOX_OVERLAY_VIDEO_ONLY_V1`. Non è così: in

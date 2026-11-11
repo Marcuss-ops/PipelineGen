@@ -27,7 +27,9 @@ func (s *Store) LookupClient(ctx context.Context, secretHash string) (*middlewar
 	}
 	var id, scopesJSON string
 	var enabled int
-	err := s.db.QueryRowContext(ctx, `SELECT client_id, scopes_json, enabled FROM m2m_clients WHERE secret_hash = ?`, secretHash).Scan(&id, &scopesJSON, &enabled)
+	var rateLimitRPS float64
+	var rateLimitBurst int
+	err := s.db.QueryRowContext(ctx, `SELECT client_id, scopes_json, enabled, rate_limit_rps, rate_limit_burst FROM m2m_clients WHERE secret_hash = ?`, secretHash).Scan(&id, &scopesJSON, &enabled, &rateLimitRPS, &rateLimitBurst)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -38,7 +40,13 @@ func (s *Store) LookupClient(ctx context.Context, secretHash string) (*middlewar
 	if err := json.Unmarshal([]byte(scopesJSON), &scopes); err != nil {
 		return nil, err
 	}
-	return &middleware.M2MClient{ClientID: id, Scopes: scopes, Enabled: enabled != 0}, nil
+	return &middleware.M2MClient{
+		ClientID:       id,
+		Scopes:         scopes,
+		Enabled:        enabled != 0,
+		RateLimitRPS:   rateLimitRPS,
+		RateLimitBurst: rateLimitBurst,
+	}, nil
 }
 
 var _ middleware.M2MSecurityPort = (*Store)(nil)

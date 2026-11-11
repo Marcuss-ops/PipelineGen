@@ -233,6 +233,7 @@ func WireAssets(
 		InternalMediaHandler: storageDesc.Handler,
 		SearchAggregator:     searchAggregator,
 		SearchFanOut:         searchFanOut,
+		DownloadClip:         clipsDesc.DownloadClip,
 	}, nil
 }
 

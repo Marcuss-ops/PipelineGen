@@ -19,6 +19,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -38,6 +41,10 @@ type httpObjectSource struct {
 	ctx  context.Context
 	url  string
 	size int64
+	// authToken is the shared object-store bearer token. It is empty for
+	// sources that do not point at the configured store, so an arbitrary
+	// artifact URL never receives the credential.
+	authToken string
 
 	mu   sync.Mutex
 	body io.ReadCloser
@@ -100,6 +107,46 @@ func (s *httpObjectSource) Close() error {
 	return err
 }
 
+// objectStoreTokenForURL returns the shared object-store bearer token only
+// when rawURL addresses the configured store. The credential is host-scoped:
+// a redirect or a foreign artifact URL must never receive it. Loopback
+// spellings (localhost vs 127.0.0.1) are the same endpoint on this host, and
+// the store advertises one of them while callers may use the other.
+func objectStoreTokenForURL(rawURL string) string {
+	token := strings.TrimSpace(os.Getenv("OBJECTSTORE_TOKEN"))
+	if token == "" {
+		return ""
+	}
+	target, err := url.Parse(rawURL)
+	if err != nil || target.Host == "" {
+		return ""
+	}
+	for _, key := range []string{"RENDERINGGEN_STORE_URL", "OBJECTSTORE_PUBLIC_URL"} {
+		raw := strings.TrimSpace(os.Getenv(key))
+		if raw == "" {
+			continue
+		}
+		store, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		if store.Host == target.Host || sameLoopbackEndpoint(store, target) {
+			return token
+		}
+	}
+	return ""
+}
+
+func sameLoopbackEndpoint(a, b *url.URL) bool {
+	if a.Port() != b.Port() {
+		return false
+	}
+	loopback := func(host string) bool {
+		return host == "localhost" || host == "127.0.0.1" || host == "::1"
+	}
+	return loopback(a.Hostname()) && loopback(b.Hostname())
+}
+
 // objectStoreHTTPClient is the tuned client for object-store Range GETs.
 // The previous http.DefaultClient had the Go-default MaxIdleConnsPerHost=2
 // and no explicit dial tuning, and every ReadAt chunk of the disk-free
@@ -133,6 +180,9 @@ func (s *httpObjectSource) get(rangeHeader string) (*http.Response, error) {
 	}
 	if rangeHeader != "" {
 		req.Header.Set("Range", rangeHeader)
+	}
+	if s.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.authToken)
 	}
 	resp, err := objectStoreHTTPClient.Do(req)
 	if err != nil {

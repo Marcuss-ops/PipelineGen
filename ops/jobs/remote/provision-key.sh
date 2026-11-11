@@ -41,7 +41,7 @@
 #   ops/jobs/remote/provision-key.sh --client-id x --disable      # revoke (enabled=0)
 #   ops/jobs/remote/provision-key.sh --client-id x --dry-run      # print the SQL only
 #   ops/jobs/remote/provision-key.sh --client-id x \
-#     --master-url http://77.93.152.122:8000 --env-file ~/computer-editor-77-01.env
+#     --master-url https://77.93.152.122 --env-file ~/computer-editor-77-01.env
 #
 # Options:
 #   --client-id ID      client_id (required unless --list)

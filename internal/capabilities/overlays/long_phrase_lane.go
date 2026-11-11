@@ -6,6 +6,8 @@
 package overlays
 
 import (
+	"strings"
+
 	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 )
 
@@ -61,12 +63,13 @@ func longPhraseFamilyBucketOf(id string) int {
 // long-copy whitelist; a short phrase pool must never leak across the
 // word-count boundary.
 func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) string {
-	compatible := make([]string, 0, len(longPhraseMotionCandidates))
+	safe := text3DFreeLongPhraseMotions(longPhraseMotionCandidates)
+	compatible := make([]string, 0, len(safe))
 	allowed := make(map[string]struct{}, len(pool))
 	for _, id := range pool {
 		allowed[id] = struct{}{}
 	}
-	for _, id := range longPhraseMotionCandidates {
+	for _, id := range safe {
 		if len(pool) == 0 {
 			compatible = append(compatible, id)
 			continue
@@ -82,7 +85,7 @@ func selectLongPhraseMotion(jobID, sceneID string, ordinal int, pool []string) s
 	default:
 		// A family pool with no long-lane matches cannot bypass the long-copy
 		// compatibility whitelist.
-		return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, excludeLongCopyCrashingMotions(longPhraseMotionCandidates))
+		return selectLongPhraseMotionFromFamilies(jobID, sceneID, ordinal, excludeLongCopyCrashingMotions(safe))
 	}
 }
 
@@ -164,14 +167,32 @@ func longPhraseFamilyWindow(pool []string, limit int, jobID string) []string {
 	return order[:limit]
 }
 
+// text3DFreeLongPhraseMotions removes the spatial text family from automatic
+// phrase selection. On the white overlay plate used by the golden runs a
+// text_3d_* item compiles to a full-frame white video (all sampled frames, not
+// only a fade), so selecting one silently removes the phrase. Keep the family
+// in the catalog for an explicit caller; never rotate into it automatically
+// until the renderer has a pixel-certified white-plate case.
+func text3DFreeLongPhraseMotions(pool []string) []string {
+	out := make([]string, 0, len(pool))
+	for _, id := range pool {
+		if strings.HasPrefix(id, "text_3d_") {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
 func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []string, limit int) string {
 	// Apply the long-copy compatibility whitelist before the animation-count
 	// window. Sampling the full modern_product_v1 catalog first made a 15-motion
 	// window overwhelmingly Apple and could discard documentary and spatial 3D.
 	// A caller pool with no long-lane overlap stays authoritative: the channel
 	// bought that explicit vocabulary, so the whitelist must not substitute
-	// its own entries for long copy.
-	candidates := append([]string(nil), longPhraseMotionCandidates...)
+	// its own entries for long copy. The automatic family also excludes the
+	// text_3d_* blank-on-white defect.
+	candidates := text3DFreeLongPhraseMotions(longPhraseMotionCandidates)
 	if len(pool) > 0 {
 		if compatible := intersectMotionPool(candidates, pool); len(compatible) > 0 {
 			candidates = compatible
@@ -181,7 +202,7 @@ func selectLongPhraseMotionLimited(jobID, sceneID string, ordinal int, pool []st
 	}
 	candidates = excludeLongCopyCrashingMotions(candidates)
 	if len(candidates) == 0 {
-		candidates = append([]string(nil), longPhraseMotionCandidates...)
+		candidates = text3DFreeLongPhraseMotions(longPhraseMotionCandidates)
 	}
 	if limit > 0 {
 		candidates = longPhraseFamilyWindow(candidates, limit, jobID)

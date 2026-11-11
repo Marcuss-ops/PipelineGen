@@ -47,6 +47,23 @@ func TestProjectEntityAnnotations_GroundsAndClassifies(t *testing.T) {
 	}
 }
 
+func TestProjectEntityAnnotations_DropsPromptEchoEntityNames(t *testing.T) {
+	text := "Overlay Check: Scheda Entità Overlay. Mappa Pertinente Andrea Sempio. Andrea Sempio è indagato."
+	seg := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{
+		Entities: []scriptpkg.ExtractedEntity{
+			{Value: "Overlay Check", Type: "PERSON", Confidence: 1},
+			{Value: "Scheda Entità Overlay", Type: "PERSON", Confidence: 1},
+			{Value: "Mappa Pertinente Andrea Sempio", Type: "PERSON", Confidence: 1},
+			{Value: "Andrea Sempio", Type: "PERSON", Confidence: 0.9},
+		},
+	}}
+
+	ann := projectEntityAnnotations(text, "it", seg)
+	require.NotNil(t, ann)
+	require.Len(t, ann.PrimaryEntities, 1)
+	assert.Equal(t, "Andrea Sempio", ann.PrimaryEntities[0].CanonicalName)
+}
+
 func TestProjectEntityAnnotations_ProjectsBrandAsTextFallback(t *testing.T) {
 	text := "Apple announced its revenue growth."
 	seg := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{

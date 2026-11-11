@@ -325,6 +325,23 @@ func (p *VideoProcessor) RemoveSilence(ctx context.Context, input, output string
 	return p.run(ctx, request{Operation: OperationRemoveSilence, SourcePath: input, OutputPath: output})
 }
 
+// RemoveSilenceWithEdits returns the source-to-cleaned timeline edit map
+// emitted by the media executor so speech timings can follow removed pauses.
+func (p *VideoProcessor) RemoveSilenceWithEdits(ctx context.Context, input, output string) ([]audio.AudioEdit, error) {
+	result, err := p.client.call(ctx, request{Operation: OperationRemoveSilence, SourcePath: input, OutputPath: output})
+	if err != nil {
+		return nil, err
+	}
+	if result.Metadata == nil {
+		return nil, fmt.Errorf("remove_silence returned no edit metadata")
+	}
+	edits := make([]audio.AudioEdit, len(result.Metadata.AudioEdits))
+	for i, edit := range result.Metadata.AudioEdits {
+		edits[i] = audio.AudioEdit{SourceStartUS: edit.SourceStartUS, SourceEndUS: edit.SourceEndUS, OutputStartUS: edit.OutputStartUS, OutputEndUS: edit.OutputEndUS}
+	}
+	return edits, nil
+}
+
 func (p *VideoProcessor) RenderAudioPlan(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets, output string) (audio.FinalAudioAsset, error) {
 	asset, _, err := p.RenderAudioPlanWithMetrics(ctx, plan, assets, output)
 	return asset, err

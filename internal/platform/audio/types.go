@@ -12,6 +12,7 @@ type AudioInput struct {
 	Text          string
 	Language      string
 	Voice         string // the explicit voice identifier (required in production; passed as --voice)
+	Rate          string // optional Edge TTS speech rate, e.g. "+1%"
 	Filename      string
 	OutputDir     string
 	Strategy      string // "replace", "skip", "fail"

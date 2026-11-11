@@ -10,6 +10,14 @@ VELOX_PORT=8000
 Questo rende il server raggiungibile solo dallo stesso computer. Per raggiungere il servizio da un altro computer sulla stessa rete locale, o da Internet, è necessario modificare il binding e aggiungere un reverse proxy HTTPS.
 
 > **ATTENZIONE:** non esporre PipelineGen su Internet senza autenticazione e senza HTTPS. Il valore di default (`127.0.0.1`) è quello corretto quando si usa un reverse proxy locale come Nginx.
+>
+> **Stato attuale (11 novembre 2026):** questa installazione è pubblicata su
+> `https://77.93.152.122` con Nginx sulla 443 e certificato Let's Encrypt per
+> l'IP. PipelineGen ascolta solo su `127.0.0.1:8000`; la 8000 non è raggiungibile
+> dall'esterno. Lo stesso Nginx inoltra `/objects/` all'object store locale.
+> Certbot rinnova in standalone sulla porta 80, che resta libera, e un deploy
+> hook ricarica Nginx. Vedi `ops/jobs/remote/REMOTE-ACCESS.md` per il client e
+> le chiavi.
 
 ---
 
@@ -91,6 +99,13 @@ VELOX_HOST=127.0.0.1
 VELOX_PORT=8000
 ```
 
+Un profilo pronto per l'esposizione M2M (TLS, download Range/resume,
+timeout da 600s) è in
+`refactored/scripts/deploy/nginx-pipelinegen-m2m.conf`. Per questa installazione
+con IP e object store il file già adattato è
+`refactored/scripts/deploy/nginx-pipelinegen-ip-objectstore.conf`. L'esempio
+seguente resta la versione minima; il file nel repository è quello da installare.
+
 Esempio di configurazione Nginx in `/etc/nginx/sites-available/pipelinegen`:
 
 ```nginx
@@ -119,10 +134,15 @@ server {
         proxy_set_header X-Workspace-ID $http_x_workspace_id;
 
         proxy_connect_timeout 10s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
 
         proxy_buffering off;
+        proxy_request_buffering off;
+
+        # Necessari per i download riprendibili delle clip.
+        proxy_set_header Range $http_range;
+        proxy_set_header If-Range $http_if_range;
     }
 }
 ```
@@ -339,4 +359,4 @@ VELOX_WORKER_TOKEN=<token-casuale-differente>
 VELOX_BASE_URL=https://pipeline.example.com
 ```
 
-Esponi solo Nginx sulle porte `80/443`, lascia chiusa la porta `8000` verso l'esterno e usa HTTPS.
+Esponi solo Nginx sulla `443` (la `80` resta libera per Certbot standalone), lascia chiusa la porta `8000` verso l'esterno e usa HTTPS.

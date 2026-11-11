@@ -82,13 +82,13 @@ fi
 HEALTH="$(jq -c '{status,version,commit}' "$TMP/health.json" 2>/dev/null || echo '{}')"
 echo "  /health               OK   $HEALTH"
 
-READY_CODE="$(probe GET /health/ready "$TMP/ready.json")"
+READY_CODE="$(probe GET /ready "$TMP/ready.json")"
 if [[ "$READY_CODE" != "200" ]]; then
-  echo "  /health/ready         FAIL (HTTP $READY_CODE)"
+  echo "  /ready                FAIL (HTTP $READY_CODE)"
   echo "preflight: FAIL — master not ready" >&2
   exit 2
 fi
-echo "  /health/ready         OK   $(jq -c '{status,commit,capabilities}' "$TMP/ready.json" 2>/dev/null || echo '{}')"
+echo "  /ready                OK   $(jq -c '{status,commit,capabilities}' "$TMP/ready.json" 2>/dev/null || echo '{}')"
 echo
 
 # ── 2. M2M auth ────────────────────────────────────────────────────────────

@@ -242,8 +242,9 @@ type GenerateVoiceoverItemCommand struct {
 	Strategy asset.PipelineStrategy `json:"strategy,omitempty"`
 
 	// RemoveSilence toggles audio post-processing for THIS child.
-	RemoveSilence  bool `json:"remove_silence,omitempty"`
-	ForceSynthesis bool `json:"force_synthesis,omitempty"`
+	RemoveSilence  bool   `json:"remove_silence,omitempty"`
+	ForceSynthesis bool   `json:"force_synthesis,omitempty"`
+	TTSRate        string `json:"tts_rate,omitempty"`
 
 	// Timing is the voiceover timing policy for THIS child, copied
 	// from the parent batch. nil means the canonical defaults apply.

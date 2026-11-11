@@ -65,8 +65,16 @@ func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *c
 	// read model is wired; the EnableM2M() gate + the media.read scope live
 	// inside the middleware.
 	if wiring != nil {
-		wiring.M2MMediaHandler = operator.NewM2MModule(readModel, log, func() bool { return true })
-		log.Info("created M2M media read module (GET /assets, /assets/:id, /facets on /api/v1/media)")
+		m2mMedia := operator.NewM2MModule(readModel, log, func() bool { return true })
+		// Stream the SAME artifact the admin download route serves (local file
+		// or Drive proxy). Without this a remote computer could SEE the catalog
+		// but had to be handed the admin token just to fetch a file; the route
+		// stays gated by media.read inside the module.
+		if wiring.Assets != nil && wiring.Assets.DownloadClip != nil {
+			m2mMedia.SetDownloadHandler(wiring.Assets.DownloadClip)
+		}
+		wiring.M2MMediaHandler = m2mMedia
+		log.Info("created M2M media module (GET /assets, /assets/:id, /facets, POST download on /api/v1/media)")
 	}
 
 	var verifier operator.IndexVerifier

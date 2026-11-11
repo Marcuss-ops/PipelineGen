@@ -147,9 +147,11 @@ type M2MSecurityPort interface {
 // disabled the client without deleting it. ClientID is the stable
 // identifier used for idempotency-key uniqueness and quota accounting.
 type M2MClient struct {
-	ClientID string
-	Scopes   []string
-	Enabled  bool
+	ClientID       string
+	Scopes         []string
+	Enabled        bool
+	RateLimitRPS   float64
+	RateLimitBurst int
 }
 
 // HasScope reports whether the client was granted the given scope.

@@ -142,6 +142,34 @@ func (u *Uploader) DownloadFile(ctx context.Context, fileID string) (io.ReadClos
 	return resp.Body, resp.Header.Get("Content-Type"), nil
 }
 
+// DownloadFileRange downloads the inclusive byte window [start,end]. It uses
+// the Drive media endpoint's Range support; Google answers 206 Partial Content.
+// A 200 response means the range was ignored, so it is rejected rather than
+// silently handing the caller the whole file at an offset it did not request.
+func (u *Uploader) DownloadFileRange(ctx context.Context, fileID string, start, end int64) (io.ReadCloser, string, error) {
+	if u.Service == nil {
+		return nil, "", fmt.Errorf("drive service not configured")
+	}
+	if start < 0 {
+		return nil, "", fmt.Errorf("invalid range start %d", start)
+	}
+	call := u.Service.Files.Get(fileID)
+	if end >= start {
+		call.Header().Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+	} else {
+		call.Header().Set("Range", fmt.Sprintf("bytes=%d-", start))
+	}
+	resp, err := call.Context(ctx).Download()
+	if err != nil {
+		return nil, "", err
+	}
+	if resp.StatusCode != 206 {
+		_ = resp.Body.Close()
+		return nil, "", fmt.Errorf("drive ignored range request: HTTP %d", resp.StatusCode)
+	}
+	return resp.Body, resp.Header.Get("Content-Type"), nil
+}
+
 // MoveFile moves a file from one folder to another (true "move" — read
 // current parents + add new + remove old). Distinct from
 // FileLifecycle.AddParent which only ADDS a new parent without removing

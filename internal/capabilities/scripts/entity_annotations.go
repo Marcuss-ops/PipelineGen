@@ -69,7 +69,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		}
 		kind := normalizeEntityAnnotationType(entity.Type)
 		value, kind = normalizeEditorialEntity(value, kind)
-		if value == "" {
+		if value == "" || isPromptEchoEntityName(value) {
 			continue
 		}
 		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
@@ -158,6 +158,29 @@ func normalizeEditorialEntity(value, kind string) (string, string) {
 		return value, "CONCEPT"
 	}
 	return value, kind
+}
+
+// isPromptEchoEntityName rejects entity strings that are really instructions
+// or template labels echoed back by the language model. They are grounded in
+// the contaminated script, so the ordinary text gate cannot distinguish them
+// from a person; rendering them produces cards such as "Overlay Check" or
+// "Mappa Pertinente Andrea Sempio". Keep this list narrow and explicit: a real
+// entity is never named like an overlay instruction.
+func isPromptEchoEntityName(value string) bool {
+	name := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+	switch {
+	case name == "overlay check", name == "data documentata":
+		return true
+	case strings.HasPrefix(name, "overlay:"),
+		strings.HasPrefix(name, "scheda entit"),
+		strings.HasPrefix(name, "mappa pertinente"),
+		strings.HasPrefix(name, "frase breve"),
+		strings.HasPrefix(name, "frase lunga"),
+		strings.HasPrefix(name, "immagine ("):
+		return true
+	default:
+		return false
+	}
 }
 
 // entityImageBindingFor projects only a durable, semantically approved,

@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"strconv"
 	"strings"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -45,13 +46,17 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		// does not satisfy an explicit image/identity search request.
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
-	imageQueries := append([]string(nil), segment.Insights.ImageQueries...)
+	imageQueries := plausibleSceneImageQueries(segment.Insights.ImageQueries)
+	// Explicit searches authored in the media plan define this segment's image
+	// scope. Do not mix them with inferred entities or broad semantic queries:
+	// their candidates can belong to a different person or story.
+	explicitImageSearchOnly := len(manualImageQueries) > 0
 	// Explicit media-plan searches are the caller's retrieval intent. Apply
 	// them at fanout planning too, but keep them alongside identity-scoped
 	// searches. A courthouse/town query cannot retrieve a verified portrait,
 	// and replacing the identity queries here silently removed every entity
 	// image whenever a caller also supplied contextual image searches.
-	if perSceneImages {
+	if perSceneImages && !explicitImageSearchOnly {
 		// Entity-image searches use the canonical person identity. Adding the
 		// scene's opening prose created queries like "Chiara Poggi Presenta ..."
 		// and let collages/news cards bind as identity portraits. Variant
@@ -66,11 +71,23 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	// is useful for generic scene imagery, but must not leak into an
 	// entity-only run because it bypasses entity cache identity and creates
 	// dozens of unrelated provider downloads.
-	if perSceneImages {
+	if perSceneImages && !explicitImageSearchOnly {
 		// The source-grounded scene query above is the complete retrieval scope;
-		// do not collapse it back to an entity-only canonical query.
-	} else if !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
-		for _, query := range scriptpkg.QueriesForImages(profile, 7) {
+		// do not collapse it back to an entity-only canonical query. Entity
+		// searches still yield one image per identity, so an explicit scene
+		// image budget larger than the provider default would silently stop at
+		// one frame for a scene with a single person/place. The generic semantic
+		// ladder fills the remaining frames AFTER the identity queries, which
+		// stay first because they feed the entity cards.
+		budget := plan.MediaPlan.Planner.MaxImagesPerScene
+		if budget <= vidRushDefaultImagesPerScene {
+			budget = plan.ImagesPerScene
+		}
+		if budget > vidRushDefaultImagesPerScene {
+			imageQueries = appendUniqueImageQueries(imageQueries, plausibleSceneImageQueries(scriptpkg.QueriesForImages(profile, budget)))
+		}
+	} else if !perSceneImages && !explicitImageSearchOnly && !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		for _, query := range plausibleSceneImageQueries(scriptpkg.QueriesForImages(profile, 7)) {
 			duplicate := false
 			for _, existing := range imageQueries {
 				if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(query)) {
@@ -82,7 +99,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 				imageQueries = append(imageQueries, query)
 			}
 		}
-	} else {
+	} else if !perSceneImages && !explicitImageSearchOnly {
 		// Identity-image mode only materializes explicit person/brand/org
 		// queries; numeric/value overlays and generic concepts cannot consume
 		// the verified image budget.
@@ -175,6 +192,35 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		imagesEnabled:  effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderInternetImages) && images != nil && len(imageQueries) > 0,
 		youtubeEnabled: effectiveProviderEnabled(plan, decision, scriptpkg.VidRushProviderYouTube) && youtube != nil,
 	}
+}
+
+// plausibleSceneImageQueries drops provider queries that cannot describe a
+// picture: a one-character token (an article such as the Italian "I") and
+// overlay metadata echoed back by the LLM ("Overlay 25 100 1 2"). Both were
+// observed retrieving unrelated stock photos that consumed the scene budget.
+func plausibleSceneImageQueries(queries []string) []string {
+	out := make([]string, 0, len(queries))
+	for _, query := range queries {
+		query = strings.Join(strings.Fields(strings.TrimSpace(query)), " ")
+		if query == "" || len([]rune(query)) < 3 {
+			continue
+		}
+		fields := strings.Fields(query)
+		if len(fields) > 1 && strings.EqualFold(fields[0], "overlay") {
+			numeric := true
+			for _, field := range fields[1:] {
+				if _, err := strconv.Atoi(field); err != nil {
+					numeric = false
+					break
+				}
+			}
+			if numeric {
+				continue
+			}
+		}
+		out = append(out, query)
+	}
+	return out
 }
 
 func appendUniqueImageQueries(existing, extra []string) []string {

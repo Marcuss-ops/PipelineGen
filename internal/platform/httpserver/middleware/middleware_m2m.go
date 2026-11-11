@@ -71,9 +71,22 @@ import (
 // fingerprint.
 
 // jobClientContextKey is the gin.Context key under which the resolved
-// M2MClient (client_id + scopes) is stored for downstream requireScope
-// checks and the future idempotency-key uniqueness constraint.
+// M2MClient (client_id + scopes + limits) is stored for downstream
+// requireScope/rate-limit checks and the future idempotency-key uniqueness
+// constraint.
 const jobClientContextKey = "m2m_client"
+
+// M2MClientFromContext returns the authenticated M2M client stored by
+// JobClientAuthMiddleware. The bool is false for the dev/test pass-through
+// mode, where no client row exists.
+func M2MClientFromContext(c *gin.Context) (*mw.M2MClient, bool) {
+	raw, exists := c.Get(jobClientContextKey)
+	if !exists || raw == nil {
+		return nil, false
+	}
+	client, ok := raw.(*mw.M2MClient)
+	return client, ok && client != nil
+}
 
 // jobClientAuthMiddleware returns a gin middleware that enforces M2M
 // client-secret auth on the /api/v1/jobs surface. It resolves the
