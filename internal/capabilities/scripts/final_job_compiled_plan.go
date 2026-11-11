@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
@@ -14,81 +15,12 @@ import (
 // the Master. Keep field order and omission rules aligned with
 // velox-shared/contract.CompiledRenderPlanV2: the Master verifies canonical
 // JSON byte-for-byte before dispatching the plan to worker 51.
-type finalJobCompiledPlan struct {
-	PlanVersion      int                      `json:"plan_version"`
-	TimelineRevision int64                    `json:"timeline_revision"`
-	TimelineSHA256   string                   `json:"timeline_sha256"`
-	DurationUS       int64                    `json:"duration_us"`
-	Output           finalJobPlanOutput       `json:"output"`
-	FinalAudio       finalJobPlanAudio        `json:"final_audio"`
-	VideoTracks      []finalJobPlanVideoTrack `json:"video_tracks"`
-	Assets           []finalJobPlanAsset      `json:"assets"`
-}
-
-type finalJobPlanOutput struct {
-	Container    string `json:"container"`
-	VideoCodec   string `json:"video_codec"`
-	Width        int    `json:"width"`
-	Height       int    `json:"height"`
-	FPSNum       int    `json:"fps_num"`
-	FPSDen       int    `json:"fps_den"`
-	PixelFormat  string `json:"pixel_format,omitempty"`
-	ProfileID    string `json:"profile_id,omitempty"`
-	CodecProfile string `json:"codec_profile,omitempty"`
-	CodecLevel   string `json:"codec_level,omitempty"`
-	GOPSize      int    `json:"gop_size,omitempty"`
-	BFrames      int    `json:"b_frames"`
-	ClosedGOP    bool   `json:"closed_gop,omitempty"`
-	TimeBaseNum  int    `json:"time_base_num,omitempty"`
-	TimeBaseDen  int    `json:"time_base_den,omitempty"`
-}
-
-type finalJobPlanAudio struct {
-	Mode             string `json:"mode"`
-	AssetID          string `json:"asset_id"`
-	SHA256           string `json:"sha256"`
-	SizeBytes        int64  `json:"size_bytes"`
-	Codec            string `json:"codec"`
-	SampleRateHz     int    `json:"sample_rate_hz"`
-	Channels         int    `json:"channels"`
-	DurationUS       int64  `json:"duration_us"`
-	TimelineRevision int64  `json:"timeline_revision"`
-	TimelineSHA256   string `json:"timeline_sha256"`
-}
-
-type finalJobPlanVideoTrack struct {
-	TrackID  string                `json:"track_id"`
-	Segments []finalJobPlanSegment `json:"segments"`
-}
-
-type finalJobPlanSegment struct {
-	SegmentID          string `json:"segment_id"`
-	AssetID            string `json:"asset_id"`
-	SHA256             string `json:"sha256"`
-	TimelineStartFrame int64  `json:"timeline_start_frame"`
-	FrameCount         int64  `json:"frame_count"`
-	SourceInUS         int64  `json:"source_in_us"`
-	SourceDurationUS   int64  `json:"source_duration_us"`
-}
-
-type finalJobPlanAsset struct {
-	AssetID            string `json:"asset_id"`
-	AssetKey           string `json:"asset_key,omitempty"`
-	SHA256             string `json:"sha256"`
-	SizeBytes          int64  `json:"size_bytes"`
-	Kind               string `json:"kind"`
-	MIME               string `json:"mime,omitempty"`
-	DurationUS         int64  `json:"duration_us,omitempty"`
-	Width              int    `json:"width,omitempty"`
-	Height             int    `json:"height,omitempty"`
-	ProfileID          string `json:"profile_id,omitempty"`
-	FrameCount         int64  `json:"frame_count,omitempty"`
-	TimelineRevision   int64  `json:"timeline_revision,omitempty"`
-	TimelineSHA256     string `json:"timeline_sha256,omitempty"`
-	TimelineStartFrame int64  `json:"timeline_start_frame,omitempty"`
-	FirstFrameKeyframe bool   `json:"first_frame_keyframe,omitempty"`
-	ClosedGOP          bool   `json:"closed_gop,omitempty"`
-}
+type finalJobCompiledPlan = finaljob.CompiledPlanV2
+type finalJobPlanOutput = finaljob.PlanOutput
+type finalJobPlanAudio = finaljob.PlanAudio
+type finalJobPlanVideoTrack = finaljob.PlanVideoTrack
+type finalJobPlanSegment = finaljob.PlanSegment
+type finalJobPlanAsset = finaljob.PlanAsset
 
 type finalJobBaseSegment struct {
 	startUS, endUS   int64
@@ -96,6 +28,10 @@ type finalJobBaseSegment struct {
 	sourceDurationUS int64
 	assetID          string
 	sha256           string
+}
+
+func validateFinalJobPlanBindingRules(plan finalJobCompiledPlan) error {
+	return finaljob.ValidatePlanBindingRules(plan)
 }
 
 type finalJobOverlayWindow struct {
@@ -301,6 +237,11 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 			assets.extendSourceExtent(segment.AssetID, segment.SourceInUS+segment.SourceDurationUS)
 		}
 	}
+	// The remote Master treats plan.Assets as the authoritative materialization
+	// manifest. Drop sources that no surviving video segment or final-audio
+	// binding references; otherwise a fully replaced stock scene would still be
+	// fetched and prepared even though appendBase emitted no segment for it.
+	assets.retainReferenced(segments, finalJobStringValue(audioRef["asset_id"]))
 
 	timelineRevision := int64(1)
 	timelineMaterial := map[string]any{

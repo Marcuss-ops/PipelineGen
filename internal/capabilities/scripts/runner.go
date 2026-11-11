@@ -15,6 +15,7 @@ import (
 	capabilitygeocoding "github.com/Marcuss-ops/PipelineGen/internal/capabilities/geocoding"
 	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -122,7 +123,7 @@ type Runner struct {
 	// re-encode it. The durable checkpoint above is job-scoped and can never
 	// hit across runs; this cache is content-scoped by construction. Nil
 	// disables reuse.
-	finalAudioCache *finalAudioCache
+	finalAudioCache *scriptaudio.FinalAudioCache
 
 	// localizedRenderMu fences appends of certified localized-render videos
 	// onto the run result. The fan-out enqueues from concurrent TTS workers

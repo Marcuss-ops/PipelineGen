@@ -277,9 +277,10 @@ func (p *stockIngestPreparer) Prepare(ctx context.Context, source ingest.Source)
 		return nil, nil
 	}
 	return &ingest.PreparedSource{
-		SourceID:  source.ID,
-		LocalPath: prepared.LocalPath,
-		Bytes:     prepared.SizeBytes,
+		SourceID:     source.ID,
+		LocalPath:    prepared.LocalPath,
+		Bytes:        prepared.SizeBytes,
+		SourceWindow: prepared.SourceWindow,
 	}, nil
 }
 

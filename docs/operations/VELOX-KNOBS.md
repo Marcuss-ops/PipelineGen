@@ -14,7 +14,7 @@ a registry entry.
 | `VELOX_CREDENTIALS_FILE` | config | credentials.json | `internal/platform/config/types_misc.go` | /etc/pipelinegen/credentials.json | OAuth client credentials file used by the Drive publisher. |
 | `VELOX_DRIVE_STRICT_STARTUP_VALIDATION` | config | true | `internal/app/wiring/build_bundles_drive_gates.go` | true | Fail boot when Drive credentials/roots are invalid; false is the soft-mode escape hatch. |
 | `VELOX_EDITORIAL_BACKGROUNDS_DIR` | env |  | `internal/app/wiring/media/editorial_assets_bootstrap.go` | unset (plates are fetched and verified from Drive) | Local directory of certified editorial plate fixtures; an optimization, not the authority. |
-| `VELOX_FAKE_FINAL_JOB` | env |  | `internal/app/wiring/fake_final_job.go` | unset | Simulate the remote final-job handoff so a run measures only the local pipeline. |
+| `VELOX_FAKE_FINAL_JOB` | env |  | `internal/app/wiring/script/fake_final_job.go` | unset | Simulate the remote final-job handoff so a run measures only the local pipeline. |
 | `VELOX_FINAL_AUDIO_CACHE_DIR` | env |  | `internal/app/wiring/script_generation_runtime.go` | unset (default cache root) | Relocates the per-run final-audio cache. |
 | `VELOX_FINAL_JOB_ATTACH_SECONDS` | env | 3000 | `internal/app/wiring/remote_final_job.go` | 3000 | Maximum seconds a script.generate attempt stays attached to the remote render (0 disables the hand-off wait). |
 | `VELOX_FINAL_JOB_CREDENTIALS_FILE` | env |  | `internal/app/wiring/remote_final_job.go` | /etc/pipelinegen/final_job_credentials.json | Credentials file carrying the final-job bearer token when VELOX_FINAL_JOB_M2M_SECRET is unset. |

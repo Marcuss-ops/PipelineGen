@@ -8,8 +8,43 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
+
+// Test facade keeps cache coverage at the scripts integration boundary while
+// the cache implementation itself lives in scripts/audio.
+type finalAudioCache struct {
+	cache *scriptaudio.FinalAudioCache
+	dir   string
+}
+
+func newFinalAudioCache(dir string) *finalAudioCache {
+	return &finalAudioCache{cache: scriptaudio.NewFinalAudioCache(dir), dir: dir}
+}
+
+func (c *finalAudioCache) enabled() bool { return c != nil && c.cache.Enabled() }
+
+func (c *finalAudioCache) take(plan audio.CompiledAudioPlan, destDir string) (FinalAudioReference, bool) {
+	if c == nil || c.cache == nil {
+		return FinalAudioReference{}, false
+	}
+	ref, ok := c.cache.Take(plan, destDir)
+	if !ok {
+		return FinalAudioReference{}, false
+	}
+	return finalAudioReferenceFromCache(ref), true
+}
+
+func (c *finalAudioCache) put(plan audio.CompiledAudioPlan, ref FinalAudioReference) {
+	if c != nil && c.cache != nil {
+		c.cache.Put(plan, finalAudioCacheReference(ref))
+	}
+}
+
+func (c *finalAudioCache) entryPath(planSHA string) string {
+	return filepath.Join(c.dir, planSHA[:2], planSHA)
+}
 
 // The final-audio checkpoint is keyed by exec.JobID, so it can only ever skip a
 // unit inside ONE job. These tests pin the cross-run cache that replaces that
@@ -204,8 +239,8 @@ func TestFinalAudioCacheDisabledIsANoOp(t *testing.T) {
 		t.Fatal("SetFinalAudioCacheDir(\"off\") must leave reuse disabled")
 	}
 	runner.SetFinalAudioCacheDir(t.TempDir())
-	runner.finalAudioCache.put(plan, ref)
-	if _, ok := runner.finalAudioCache.take(plan, t.TempDir()); !ok {
+	runner.finalAudioCache.Put(plan, finalAudioCacheReference(ref))
+	if _, ok := runner.finalAudioCache.Take(plan, t.TempDir()); !ok {
 		t.Fatal("a configured cache dir must reuse the certified master")
 	}
 

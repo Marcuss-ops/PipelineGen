@@ -3,13 +3,14 @@ package wiring
 import (
 	"testing"
 
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
 	media "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 func TestBuildRuntimeMediaCertSpecDoesNotInventTextSceneIdentity(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{Mode: "text"}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if spec.Segments != 0 {
 		t.Fatalf("segments = %d, want 0 without an authored segment contract", spec.Segments)
 	}
@@ -27,7 +28,7 @@ func TestBuildRuntimeMediaCertSpecUsesExplicitIDsAndDeterministicFallback(t *tes
 			{Topic: "United States"},
 		},
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if len(spec.SegmentsExpected) != 2 {
 		t.Fatalf("segments_expected = %d, want 2", len(spec.SegmentsExpected))
 	}
@@ -44,7 +45,7 @@ func TestBuildRuntimeMediaCertSpecAllowsEntityImageReuseFromGenericExtractionSur
 			Extraction: media.MediaExtractionPolicy{Include: []string{"entities"}},
 		},
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if !spec.AllowCrossSceneAssetReuse {
 		t.Fatal("entity extraction surface must allow canonical identity-image reuse across scenes")
 	}
@@ -55,7 +56,7 @@ func TestBuildRuntimeMediaCertSpecDoesNotRequireSecondaryImagesForClipOnly(t *te
 		MediaMode:      scriptpkg.MediaModeClipOnly,
 		ImagesPerScene: 1,
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if spec.ImagesPerSegment != 0 {
 		t.Fatalf("images_per_segment = %d, want 0 for clip-only video scenes", spec.ImagesPerSegment)
 	}
@@ -71,7 +72,7 @@ func TestBuildRuntimeMediaCertSpecDoesNotAssumeAVideoProviderForMixedFolderBindi
 			ProviderPolicy: media.MediaProviderPolicy{YouTube: media.MediaToggleDisabled},
 		},
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if spec.VideoProvider != "" {
 		t.Fatalf("video_provider = %q, want none when no video provider is enabled", spec.VideoProvider)
 	}
@@ -84,7 +85,7 @@ func TestBuildRuntimeMediaCertSpecRequiresProviderRelevanceWhenVideoProviderEnab
 			ProviderPolicy: media.MediaProviderPolicy{YouTube: media.MediaToggleEnabled},
 		},
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if spec.VideoProvider != scriptpkg.VidRushProviderYouTube {
 		t.Fatalf("video_provider = %q, want %q when the video provider is enabled", spec.VideoProvider, scriptpkg.VidRushProviderYouTube)
 	}
@@ -99,7 +100,7 @@ func TestBuildRuntimeMediaCertSpecMarksStockFolderScenesStockBound(t *testing.T)
 			{ID: "scene-1", Kind: "stock", Topic: "stock scene", StockFolderID: "1Sr15dwjKQkuNn9yaPBav8TwNS_lfEzd-"},
 		},
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if len(spec.SegmentsExpected) != 2 {
 		t.Fatalf("segments_expected = %d, want 2", len(spec.SegmentsExpected))
 	}
@@ -118,7 +119,7 @@ func TestBuildRuntimeMediaCertSpecStockBoundViaFolderLink(t *testing.T) {
 			{ID: "scene-0", StockFolderLink: "https://drive.google.com/drive/folders/1Sr15dwjKQkuNn9yaPBav8TwNS_lfEzd-"},
 		},
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if !spec.SegmentsExpected[0].StockBound {
 		t.Fatal("a stock_folder_link segment must be marked stock_bound")
 	}
@@ -136,7 +137,7 @@ func TestBuildRuntimeMediaCertSpecSkipsDisabledVisualMediaPlan(t *testing.T) {
 	if plan.HasVisualMediaPlan() {
 		t.Fatal("disabled visual media plan must not request MediaCert")
 	}
-	spec := buildRuntimeMediaCertSpec(plan)
+	spec := scriptwiring.BuildRuntimeMediaCertSpec(plan)
 	if spec.Segments != 0 || len(spec.SegmentsExpected) != 0 {
 		t.Fatalf("disabled plan acquired media expectations: %+v", spec)
 	}

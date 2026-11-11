@@ -53,6 +53,7 @@ func normalizeJobType(jobType string) (string, error) {
 	}
 	switch jobType {
 	case model.JobTypeRenderSegment,
+		model.JobTypeRenderPrepare,
 		model.JobTypeOverlayPrepare,
 		model.JobTypeOverlayRender,
 		model.JobTypeOverlayImport:
@@ -191,7 +192,8 @@ func New(db *sql.DB, lease time.Duration, maxAttempts int) *Repository {
 
 // inputManifest is the JSONB shape stored in render_jobs.input_manifest.
 type inputManifest struct {
-	Assets []model.AssetRef `json:"assets"`
+	Assets                []model.AssetRef                `json:"assets"`
+	PreparedRenderPackage *model.PreparedRenderPackageRef `json:"prepared_render_package,omitempty"`
 }
 
 // jobRow carries the wire defaults and encoded JSONB columns of one job row.
@@ -218,7 +220,7 @@ func prepareJobRow(job model.Job) (jobRow, error) {
 		return jobRow{}, fmt.Errorf("render_plan: %w", err)
 	}
 	row.plan = plan
-	manifest, err := json.Marshal(inputManifest{Assets: job.Assets})
+	manifest, err := json.Marshal(inputManifest{Assets: job.Assets, PreparedRenderPackage: job.PreparedRenderPackage})
 	if err != nil {
 		return jobRow{}, fmt.Errorf("input_manifest: %w", err)
 	}
@@ -342,6 +344,109 @@ func (r *Repository) SubmitBatch(ctx context.Context, jobs []model.Job) error {
 	})
 }
 
+// SubmitBatchIdempotent submits the complete family in one transaction. If
+// that transaction loses a unique-key race, the persisted IDs and request
+// envelopes are re-read and accepted only when every member matches exactly.
+func (r *Repository) SubmitBatchIdempotent(ctx context.Context, jobs []model.Job) (bool, error) {
+	if err := model.ValidateJobBatch(jobs); err != nil {
+		return false, err
+	}
+	for _, job := range jobs {
+		if job.IdempotencyKey == "" {
+			return false, fmt.Errorf("job %s has no idempotency key", job.ID)
+		}
+	}
+	if err := r.SubmitBatch(ctx, jobs); err == nil {
+		return true, nil
+	} else if !errors.Is(err, repository.ErrJobExists) && !errors.Is(err, repository.ErrIdempotencyConflict) {
+		return false, err
+	} else {
+		submitErr := err
+		if !errors.Is(submitErr, repository.ErrJobExists) && !errors.Is(submitErr, repository.ErrIdempotencyConflict) {
+			return false, submitErr
+		}
+		matches, verifyErr := r.batchRequestMatches(ctx, jobs)
+		if verifyErr != nil {
+			return false, verifyErr
+		}
+		if !matches {
+			return false, fmt.Errorf("%w: stored family differs or is incomplete", repository.ErrIdempotencyConflict)
+		}
+		return false, nil
+	}
+}
+
+// batchRequestMatches reads every immutable field in one SQL statement. A
+// replay therefore gets one PostgreSQL snapshot for the full family instead
+// of a producer-side series of GETs that could observe a mixed state.
+func (r *Repository) batchRequestMatches(ctx context.Context, jobs []model.Job) (bool, error) {
+	ctx, cancel := r.opContext(ctx)
+	defer cancel()
+	args := make([]any, len(jobs))
+	placeholders := make([]string, len(jobs))
+	expected := make(map[string]model.Job, len(jobs))
+	for i, job := range jobs {
+		args[i] = job.ID
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		expected[job.ID] = job
+	}
+	query := `SELECT id, job_type, publication_policy, daemon_admission_wait_ms, job_schema,
+		job_schema_version, render_plan, input_manifest, idempotency_key, parent_job_id,
+		chunk_index, frame_range, not_before FROM render_jobs WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	found := make(map[string]model.Job, len(jobs))
+	for rows.Next() {
+		var actual model.Job
+		var schema string
+		var version sql.NullInt64
+		var plan, manifest, frameRange []byte
+		var idemKey, parentID sql.NullString
+		var notBefore sql.NullTime
+		if err := rows.Scan(&actual.ID, &actual.JobType, &actual.PublicationPolicy,
+			&actual.DaemonAdmissionWaitMS, &schema, &version, &plan, &manifest,
+			&idemKey, &parentID, &actual.ChunkIndex, &frameRange, &notBefore); err != nil {
+			return false, err
+		}
+		actual.Schema = schema
+		actual.Version = schemaVersion(version)
+		actual.RenderPlan = json.RawMessage(plan)
+		actual.IdempotencyKey = idemKey.String
+		actual.ParentJobID = parentID.String
+		actual.FrameRange, err = decodeFrameRange(frameRange)
+		if err != nil {
+			return false, fmt.Errorf("batch replay frame range %s: %w", actual.ID, err)
+		}
+		manifestValue, err := decodeInputManifest(manifest)
+		if err != nil {
+			return false, fmt.Errorf("batch replay manifest %s: %w", actual.ID, err)
+		}
+		actual.Assets = manifestValue.Assets
+		actual.PreparedRenderPackage = manifestValue.PreparedRenderPackage
+		if notBefore.Valid {
+			t := notBefore.Time
+			actual.NotBefore = &t
+		}
+		found[actual.ID] = actual
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	if len(found) != len(expected) {
+		return false, nil
+	}
+	for id, requested := range expected {
+		actual, ok := found[id]
+		if !ok || !model.SameSubmitRequest(actual, requested) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // SubmitIdempotent uses the database uniqueness constraint as the race-safe
 // winner selection for concurrent retries of the same logical request.
 func (r *Repository) SubmitIdempotent(ctx context.Context, job model.Job) (*model.Job, bool, error) {
@@ -358,7 +463,13 @@ func (r *Repository) SubmitIdempotent(ctx context.Context, job model.Job) (*mode
 	err := r.db.QueryRowContext(ctx, `SELECT id FROM render_jobs WHERE idempotency_key = $1`, job.IdempotencyKey).Scan(&existingID)
 	if err == nil {
 		canonical, getErr := r.Get(ctx, existingID)
-		return canonical, false, getErr
+		if getErr != nil {
+			return nil, false, getErr
+		}
+		if !model.SameSubmitRequest(*canonical, job) {
+			return nil, false, fmt.Errorf("%w: key %q belongs to job %s", repository.ErrIdempotencyConflict, job.IdempotencyKey, existingID)
+		}
+		return canonical, false, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, false, err
@@ -387,7 +498,13 @@ func (r *Repository) SubmitIdempotent(ctx context.Context, job model.Job) (*mode
 		return nil, false, err
 	}
 	canonical, getErr := r.Get(ctx, existingID)
-	return canonical, false, getErr
+	if getErr != nil {
+		return nil, false, getErr
+	}
+	if !model.SameSubmitRequest(*canonical, job) {
+		return nil, false, fmt.Errorf("%w: key %q belongs to job %s", repository.ErrIdempotencyConflict, job.IdempotencyKey, existingID)
+	}
+	return canonical, false, nil
 }
 
 // isSubmitConflict reports whether err is the uniqueness collision that means
@@ -504,7 +621,7 @@ func (r *Repository) ClaimState(ctx context.Context, workerID string, state mode
 	if err != nil {
 		return nil, 0, poisonCorruptClaim(ctx, tx, id, err)
 	}
-	assetsVal, err := decodeAssets(manifest)
+	manifestVal, err := decodeInputManifest(manifest)
 	if err != nil {
 		return nil, 0, poisonCorruptClaim(ctx, tx, id, err)
 	}
@@ -552,7 +669,8 @@ func (r *Repository) ClaimState(ctx context.Context, workerID string, state mode
 		Schema:                schema,
 		Version:               schemaVersion(version),
 		RenderPlan:            json.RawMessage(plan),
-		Assets:                assetsVal,
+		Assets:                manifestVal.Assets,
+		PreparedRenderPackage: manifestVal.PreparedRenderPackage,
 		State:                 model.StateRunning,
 		Worker:                workerID,
 		Attempts:              attemptNumber,
@@ -635,9 +753,12 @@ func (r *Repository) Get(ctx context.Context, id string) (*model.Job, error) {
 	if job.FrameRange, decErr = decodeFrameRange(frameRange); decErr != nil {
 		return nil, r.poisonCorruptRead(ctx, id, decErr)
 	}
-	if job.Assets, decErr = decodeAssets(manifest); decErr != nil {
+	var manifestVal inputManifest
+	if manifestVal, decErr = decodeInputManifest(manifest); decErr != nil {
 		return nil, r.poisonCorruptRead(ctx, id, decErr)
 	}
+	job.Assets = manifestVal.Assets
+	job.PreparedRenderPackage = manifestVal.PreparedRenderPackage
 	if notBefore.Valid {
 		nb := notBefore.Time
 		job.NotBefore = &nb

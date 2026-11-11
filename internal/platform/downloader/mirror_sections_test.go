@@ -206,6 +206,37 @@ func TestDownloadSections_ViaMirror_OneFetchNCuts(t *testing.T) {
 	}
 }
 
+func TestDownloadSections_ReturnsCertifiedSourceWindowsWithoutIntermediateCuts(t *testing.T) {
+	t.Setenv(EnvYTDLPMirrorRoot, filepath.Join(t.TempDir(), "mirror"))
+	t.Setenv(EnvYTDLPMirrorSections, "")
+	workDir := t.TempDir()
+	d := newMirrorTestDownloader(t, workDir)
+	countFile := filepath.Join(workDir, "count")
+	t.Setenv("FAKE_YTDLP_COUNT", countFile)
+
+	segs, err := d.DownloadSections(context.Background(), &DownloadRequest{
+		URL:                 "https://www.youtube.com/watch?v=windowSource01",
+		OutputPath:          filepath.Join(workDir, "unused-section.mp4"),
+		DownloadSections:    []string{"*00:01:00.250-00:01:05.750", "*00:02:00.000-00:02:05.000"},
+		ReturnSourceWindows: true,
+	})
+	require.NoError(t, err)
+	require.Len(t, segs, 2)
+	require.Equal(t, segs[0].Path, segs[1].Path, "windows should share one immutable full source")
+	for i, want := range []struct{ start, end int64 }{{60_250_000, 65_750_000}, {120_000_000, 125_000_000}} {
+		require.NotNil(t, segs[i].SourceWindow)
+		require.NoError(t, segs[i].SourceWindow.Validate())
+		require.Equal(t, want.start, segs[i].SourceWindow.StartUS)
+		require.Equal(t, want.end, segs[i].SourceWindow.EndUS)
+	}
+	if got := downloadCount(t, countFile); got != 1 {
+		t.Fatalf("full-source downloads = %d, want 1", got)
+	}
+	if _, err := os.Stat(segs[0].Path); err != nil {
+		t.Fatalf("certified source path missing: %v", err)
+	}
+}
+
 // TestDownloadSections_ViaMirror_UnparseableFallsBackToNetwork pins the
 // fail-soft contract: a section string the local cutter cannot parse keeps
 // the legacy per-section network path instead of failing.

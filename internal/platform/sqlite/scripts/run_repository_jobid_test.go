@@ -88,3 +88,97 @@ func TestGetByJobIDFallsBackToTheJobRowWithoutASubmissionRun(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, missing)
 }
+
+func TestCreateRollsBackAttemptWhenRunCheckpointWriteFails(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newRunRepositoryTestRepo(t)
+	_, err := db.ExecContext(ctx, `CREATE TRIGGER fail_submission_run_insert
+		BEFORE INSERT ON run_observability
+		BEGIN SELECT RAISE(ABORT, 'injected run checkpoint failure'); END`)
+	require.NoError(t, err)
+
+	err = repo.Create(ctx, &scriptgen.GenerationRun{
+		ID:           "run-create-atomic",
+		Request:      scriptgen.GenerateRequest{IdempotencyKey: "create-atomic"},
+		Status:       scriptgen.RunStatusPending,
+		CurrentStage: scriptgen.StageNormalizing,
+	})
+	require.Error(t, err)
+
+	var attempts, runs int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM job_attempts WHERE run_id=?`, "run-create-atomic").Scan(&attempts))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM run_observability WHERE run_id=?`, "run-create-atomic").Scan(&runs))
+	require.Zero(t, attempts, "attempt insert must roll back when the run checkpoint cannot be written")
+	require.Zero(t, runs)
+}
+
+func TestSetJobIDRollsBackAttemptWhenRunUpdateFails(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newRunRepositoryTestRepo(t)
+	const runID = "run-jobid-atomic"
+	require.NoError(t, repo.Create(ctx, &scriptgen.GenerationRun{
+		ID:           runID,
+		Request:      scriptgen.GenerateRequest{IdempotencyKey: "jobid-atomic"},
+		Status:       scriptgen.RunStatusPending,
+		CurrentStage: scriptgen.StageNormalizing,
+	}))
+	_, err := db.ExecContext(ctx, `CREATE TRIGGER fail_submission_run_jobid
+		BEFORE UPDATE OF job_id ON run_observability WHEN NEW.job_id='job-fail'
+		BEGIN SELECT RAISE(ABORT, 'injected job id failure'); END`)
+	require.NoError(t, err)
+
+	err = repo.SetJobID(ctx, runID, "job-fail")
+	require.Error(t, err)
+	var attemptJobID, runJobID string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT job_id FROM job_attempts WHERE run_id=?`, runID).Scan(&attemptJobID))
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT job_id FROM run_observability WHERE run_id=?`, runID).Scan(&runJobID))
+	require.Equal(t, runID, attemptJobID, "attempt correlation must roll back with the failed run update")
+	require.Equal(t, runID, runJobID)
+}
+
+func TestListStaleSubmissionRunsFindsOnlyOldNonterminalIntents(t *testing.T) {
+	ctx := context.Background()
+	repo, db := newRunRepositoryTestRepo(t)
+	const staleRun = "run-stale-unlinked"
+	const runningRun = "run-stale-running"
+	const freshRun = "run-fresh-unlinked"
+	for _, run := range []struct {
+		id     string
+		status scriptgen.RunStatus
+		stage  scriptgen.Stage
+	}{
+		{id: staleRun, status: scriptgen.RunStatusPending, stage: scriptgen.StagePreflight},
+		{id: runningRun, status: scriptgen.RunStatusRunning, stage: scriptgen.StageGeneratingSceneText},
+		{id: freshRun, status: scriptgen.RunStatusPending, stage: scriptgen.StagePreflight},
+	} {
+		require.NoError(t, repo.Create(ctx, &scriptgen.GenerationRun{
+			ID:           run.id,
+			Request:      scriptgen.GenerateRequest{IdempotencyKey: "idem-" + run.id},
+			Status:       run.status,
+			CurrentStage: run.stage,
+		}))
+	}
+	cutoff := time.Now().UTC().Add(-time.Hour)
+	for _, runID := range []string{staleRun, runningRun} {
+		_, err := db.ExecContext(ctx, `UPDATE run_observability SET updated_at=? WHERE run_id=?`, formatTime(cutoff.Add(-time.Minute)), runID)
+		require.NoError(t, err)
+	}
+
+	candidates, err := repo.ListStaleSubmissionRuns(ctx, cutoff, 10)
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+	byID := map[string]scriptgen.StaleSubmissionRun{}
+	for _, candidate := range candidates {
+		byID[candidate.RunID] = candidate
+	}
+	require.Equal(t, staleRun, byID[staleRun].JobID)
+	require.Equal(t, "idem-"+staleRun, byID[staleRun].IdempotencyKey)
+	require.Equal(t, scriptgen.StagePreflight, byID[staleRun].CurrentStage)
+	require.Equal(t, scriptgen.StageGeneratingSceneText, byID[runningRun].CurrentStage)
+
+	require.NoError(t, repo.SetJobID(ctx, staleRun, "job-linked"))
+	candidates, err = repo.ListStaleSubmissionRuns(ctx, cutoff, 10)
+	require.NoError(t, err)
+	require.Len(t, candidates, 1, "recently checked linked runs wait another grace period")
+	require.Equal(t, runningRun, candidates[0].RunID)
+}

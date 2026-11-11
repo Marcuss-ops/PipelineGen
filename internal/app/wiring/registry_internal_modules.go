@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
+	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
 	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers"
 	stockadapter "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock"
@@ -182,7 +183,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		IdempotencyHandler: idemHandler,
 	}
 	if stockW != nil && stockW.Service != nil {
-		crossStep.StockPrefetcher = newStockScriptPrefetcher(stockW.Service, log)
+		crossStep.StockPrefetcher = stockwiring.NewScriptPrefetcher(stockW.Service, log)
 	}
 
 	// Fase 4.1: native Pexels image search provider. Registered

@@ -163,3 +163,67 @@ func TestIdempotencyParityBetweenBackends(t *testing.T) {
 		}
 	})
 }
+
+type batchIdempotent interface {
+	SubmitBatchIdempotent(context.Context, []model.Job) (bool, error)
+}
+
+func TestBatchIdempotencyParityBetweenBackends(t *testing.T) {
+	ctx := context.Background()
+	for _, backend := range idempotencyBackends(t) {
+		t.Run(backend.name, func(t *testing.T) {
+			repo, ok := backend.repo.(batchIdempotent)
+			if !ok {
+				t.Fatalf("%T does not implement atomic batch idempotency", backend.repo)
+			}
+			family := []model.Job{
+				{ID: backend.name + "-family", IdempotencyKey: backend.name + "-family-key", RenderPlan: []byte(`{"n":1}`)},
+				{ID: backend.name + "-chunk-0", ParentJobID: backend.name + "-family", ChunkIndex: 0,
+					FrameRange: &model.FrameRange{Start: 0, End: 120}, IdempotencyKey: backend.name + "-chunk-key", RenderPlan: []byte(`{"n":2}`)},
+			}
+			created, err := repo.SubmitBatchIdempotent(ctx, family)
+			if err != nil || !created {
+				t.Fatalf("first family submit: created=%t err=%v", created, err)
+			}
+			replayed, err := repo.SubmitBatchIdempotent(ctx, family)
+			if err != nil || replayed {
+				t.Fatalf("exact family replay: created=%t err=%v", replayed, err)
+			}
+			changed := append([]model.Job(nil), family...)
+			changed[1].RenderPlan = []byte(`{"n":3}`)
+			if _, err := repo.SubmitBatchIdempotent(ctx, changed); !errors.Is(err, repository.ErrIdempotencyConflict) {
+				t.Fatalf("changed child replay: err=%v, want idempotency conflict", err)
+			}
+			if _, err := backend.repo.Get(ctx, backend.name+"-chunk-0"); err != nil {
+				t.Fatalf("conflicting replay altered canonical child: %v", err)
+			}
+		})
+	}
+}
+
+func TestBatchIdempotencyRejectsPartialExistingFamily(t *testing.T) {
+	ctx := context.Background()
+	for _, backend := range idempotencyBackends(t) {
+		t.Run(backend.name, func(t *testing.T) {
+			repo, ok := backend.repo.(batchIdempotent)
+			if !ok {
+				t.Fatalf("%T does not implement atomic batch idempotency", backend.repo)
+			}
+			anchor := model.Job{ID: backend.name + "-partial-anchor", IdempotencyKey: backend.name + "-partial-anchor-key", RenderPlan: []byte(`{"n":1}`)}
+			if err := backend.repo.Submit(ctx, anchor); err != nil {
+				t.Fatalf("seed partial anchor: %v", err)
+			}
+			family := []model.Job{
+				anchor,
+				{ID: backend.name + "-partial-child", ParentJobID: anchor.ID, ChunkIndex: 0,
+					FrameRange: &model.FrameRange{Start: 0, End: 120}, IdempotencyKey: backend.name + "-partial-child-key", RenderPlan: []byte(`{"n":2}`)},
+			}
+			if created, err := repo.SubmitBatchIdempotent(ctx, family); created || !errors.Is(err, repository.ErrIdempotencyConflict) {
+				t.Fatalf("partial family replay: created=%t err=%v, want idempotency conflict", created, err)
+			}
+			if _, err := backend.repo.Get(ctx, family[1].ID); !errors.Is(err, repository.ErrNotFound) {
+				t.Fatalf("partial replay inserted child: %v", err)
+			}
+		})
+	}
+}

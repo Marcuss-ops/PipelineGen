@@ -40,6 +40,11 @@ verify-rust-contract:
 verify-repository-integrity:
 	@bash scripts/ci/ci-submodule-integrity.sh
 
+# verify-queue-vendor — pin the vendored RenderingGen queue snapshot and,
+# when both repositories are checked out, prove byte-for-byte synchronization.
+verify-queue-vendor:
+	@python3 scripts/ci/check_queue_vendor.py --tests
+
 # verify-base — fail-closed base gate: toolchain version, secrets,
 # formatting, and module tidiness. Kept cheap so the most common failures
 # surface in seconds. GO-ONLY; use verify-foundation below for the full
@@ -157,7 +162,7 @@ verify-integration: go-version-check
 
 # verify-architecture — governance and architecture checks. Kept separate
 # so architecture drift surfaces under its own target.
-verify-architecture:
+verify-architecture: verify-queue-vendor
 	@bash scripts/ci/check_clip_render_cutover.sh && \
 	$(GO) run ./cmd/architecture-aggregate --dry-run && \
 	$(GO) run ./cmd/archcheck && \

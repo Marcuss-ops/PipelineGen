@@ -29,6 +29,7 @@ import (
 
 	"go.uber.org/zap"
 
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
@@ -490,12 +491,12 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		log.Warn("wireScriptFlow: localized render fan-out not wired (localization service unavailable)", zap.Error(err))
 		return
 	}
-	resolver, resolverErr := newClipRenderMediaResolver(root, log)
+	resolver, resolverErr := clipswiring.NewClipRenderMediaResolver(root.MediaPostgres, log)
 	if resolverErr != nil {
 		log.Warn("wireScriptFlow: localized render fan-out not wired (asset resolver unavailable)", zap.Error(resolverErr))
 		return
 	}
-	materializer, materializerErr := clipadapters.NewClipRenderMaterializer(root.Drive.Reader, assetMaterializationRoot(cfg), log)
+	materializer, materializerErr := clipadapters.NewClipRenderMaterializer(root.Drive.Reader, clipswiring.AssetMaterializationRoot(cfg), log)
 	if materializerErr != nil {
 		log.Warn("wireScriptFlow: localized render fan-out not wired (asset materializer unavailable)", zap.Error(materializerErr))
 		return

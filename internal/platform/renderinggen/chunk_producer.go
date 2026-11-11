@@ -16,11 +16,16 @@ package renderinggen
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
+	"time"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -79,6 +84,14 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 			ref.LogicalPath, "")
 	}
 	anchorID := set.AnchorJobID()
+	queue, ok := p.submitter.(scriptgen.RenderQueueClient)
+	if !ok {
+		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: shared prepared packages require a queue submit/get client")
+	}
+	preparedRef, err := p.prepareFamilyPackage(ctx, queue, anchorID, childPlan, assets, set.TotalFrames)
+	if err != nil {
+		return cliprender.ChunkSet{}, err
+	}
 	family := make([]scriptgen.RenderQueueJob, 0, len(set.Chunks)+1)
 	family = append(family, scriptgen.RenderQueueJob{
 		ID: anchorID, JobType: queueclient.JobTypeRenderSegment,
@@ -89,11 +102,75 @@ func (p *ChunkProducer) Submit(ctx context.Context, plan cliprender.ClipRenderPl
 			ID: chunk.JobID, JobType: queueclient.JobTypeRenderSegment,
 			ParentJobID: anchorID, ChunkIndex: chunk.Index,
 			FrameRange:  &scriptgen.RenderFrameRange{Start: chunk.StartFrame, End: chunk.EndFrame},
-			OverlaySpec: childPlan, Assets: assets,
+			OverlaySpec: childPlan, Assets: assets, PreparedRenderPackage: preparedRef,
 		})
 	}
 	if err := p.submitter.SubmitBatch(ctx, family); err != nil {
 		return cliprender.ChunkSet{}, fmt.Errorf("chunk producer: submit family: %w", err)
 	}
 	return set, nil
+}
+
+func (p *ChunkProducer) prepareFamilyPackage(ctx context.Context, queue scriptgen.RenderQueueClient, anchorID string, plan json.RawMessage, assets []scriptgen.RenderQueueAsset, totalFrames int64) (*scriptgen.RenderQueuePreparedPackageRef, error) {
+	prepareID := anchorID + ".prepare"
+	prepareJob := scriptgen.RenderQueueJob{
+		ID: prepareID, JobType: queueclient.JobTypeRenderPrepare,
+		OverlaySpec: plan, Assets: assets,
+	}
+	if err := queue.Submit(ctx, prepareJob); err != nil {
+		return nil, fmt.Errorf("chunk producer: submit family preparation: %w", err)
+	}
+	completed, _, err := scriptgen.WaitRenderQueueTerminal(ctx, queue, prepareID, 500*time.Millisecond)
+	if err != nil {
+		return nil, fmt.Errorf("chunk producer: wait for family preparation: %w", err)
+	}
+	artifact := completed.Artifact
+	if completed.State != "completed" || artifact == nil || artifact.Kind != "prepared_render_package" {
+		return nil, fmt.Errorf("chunk producer: preparation job %s completed without a prepared render package", prepareID)
+	}
+	packageID := strings.TrimSpace(artifact.StorageKey)
+	artifactSHA := strings.TrimSpace(artifact.SHA256)
+	if packageID == "" {
+		packageID = artifactSHA
+	} else if artifactSHA != "" && packageID != artifactSHA {
+		return nil, fmt.Errorf("chunk producer: preparation job %s returned conflicting package storage key and sha256", prepareID)
+	}
+	if !digest.IsCanonicalSHA256(packageID) || strings.TrimSpace(artifact.ChrononVersion) == "" || strings.TrimSpace(artifact.ProfileID) == "" {
+		return nil, fmt.Errorf("chunk producer: preparation job %s returned incomplete package identity", prepareID)
+	}
+	identity, err := scriptgen.RenderRequestIdentityFor(prepareJob)
+	if err != nil {
+		return nil, fmt.Errorf("chunk producer: canonicalize family package request: %w", err)
+	}
+	return &scriptgen.RenderQueuePreparedPackageRef{
+		PackageID: packageID, PlanSHA256: identity.PlanSHA256,
+		AssetManifestSHA: renderAssetManifestSHA(assets), TotalFrames: totalFrames,
+		CompilerVersion: artifact.ChrononVersion, ProfileID: artifact.ProfileID,
+	}, nil
+}
+
+type renderAssetManifestEntry struct {
+	Hash        string `json:"hash"`
+	LogicalPath string `json:"logical_path"`
+}
+
+func renderAssetManifestSHA(assets []scriptgen.RenderQueueAsset) string {
+	entries := make([]renderAssetManifestEntry, 0, len(assets))
+	for _, asset := range assets {
+		entries = append(entries, renderAssetManifestEntry{
+			Hash: strings.ToLower(strings.TrimSpace(asset.SHA256)), LogicalPath: strings.TrimSpace(asset.URL),
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Hash != entries[j].Hash {
+			return entries[i].Hash < entries[j].Hash
+		}
+		return entries[i].LogicalPath < entries[j].LogicalPath
+	})
+	encoded, _ := json.Marshal(entries)
+	return sha256Hex(encoded)
+}
+
+func sha256Hex(data []byte) string {
+	return digest.SHA256Bytes(data)
 }

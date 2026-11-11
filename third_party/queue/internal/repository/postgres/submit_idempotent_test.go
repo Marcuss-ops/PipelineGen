@@ -53,3 +53,21 @@ func TestSubmitIdempotentSurfacesValidationError(t *testing.T) {
 		t.Fatalf("invalid job was persisted: Get error = %v", getErr)
 	}
 }
+
+func TestSubmitIdempotentRejectsChangedRequestUnderSameKey(t *testing.T) {
+	r := newRepo(t, time.Minute, 3)
+	ctx := context.Background()
+	first := model.Job{ID: "job-identity", IdempotencyKey: "request-key", RenderPlan: []byte(`{"n":1}`)}
+	if _, created, err := r.SubmitIdempotent(ctx, first); err != nil || !created {
+		t.Fatalf("initial submit: created=%t err=%v", created, err)
+	}
+	changed := first
+	changed.RenderPlan = []byte(`{"n":2}`)
+	if _, created, err := r.SubmitIdempotent(ctx, changed); !errors.Is(err, repository.ErrIdempotencyConflict) || created {
+		t.Fatalf("changed replay: created=%t err=%v, want idempotency conflict", created, err)
+	}
+	canonical, err := r.Get(ctx, first.ID)
+	if err != nil || canonical == nil || !model.SameSubmitRequest(*canonical, first) {
+		t.Fatalf("canonical request changed after conflicting replay: job=%+v err=%v", canonical, err)
+	}
+}

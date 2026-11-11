@@ -35,21 +35,38 @@ func (s *Server) submitBatch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "jobs is required", http.StatusBadRequest)
 		return
 	}
+	keyCount := 0
 	for _, job := range req.Jobs {
 		if err := validateSubmittedJob(job); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if job.IdempotencyKey != "" {
+			keyCount++
+		}
 	}
-	if err := s.svc.SubmitBatch(r.Context(), req.Jobs); err != nil {
+	if keyCount != 0 && keyCount != len(req.Jobs) {
+		http.Error(w, "idempotency keys must be provided for every job in a batch", http.StatusBadRequest)
+		return
+	}
+	created, err := s.svc.SubmitBatchIdempotent(r.Context(), req.Jobs)
+	if err != nil {
 		if errors.Is(err, repository.ErrJobExists) {
-			http.Error(w, err.Error(), http.StatusConflict)
+			http.Error(w, "job_id_conflict: "+err.Error(), http.StatusConflict)
+			return
+		}
+		if errors.Is(err, repository.ErrIdempotencyConflict) {
+			http.Error(w, "idempotency_conflict: "+err.Error(), http.StatusConflict)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
+	if created {
+		w.WriteHeader(http.StatusCreated)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
 }
 func parseJobID(r *http.Request) string {
 	if parent := r.PathValue("parent"); parent != "" {
@@ -81,12 +98,15 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	canonical, created, err := s.svc.SubmitIdempotent(r.Context(), job)
 	if err != nil {
-		// 409 is reserved for the duplicate-ID condition. Producers treat 409
-		// as idempotent success (queue/client maps it to ErrJobExists), so a
-		// transient storage failure must never be reported as 409: that would
-		// silently drop the job. Everything else is a server error.
+		// Duplicate IDs and mismatched idempotency replays are conflicts. A
+		// transient storage failure must never be reported as 409: producers
+		// could otherwise mistake an outage for a completed replay.
 		if errors.Is(err, repository.ErrJobExists) {
-			http.Error(w, err.Error(), http.StatusConflict)
+			http.Error(w, "job_id_conflict: "+err.Error(), http.StatusConflict)
+			return
+		}
+		if errors.Is(err, repository.ErrIdempotencyConflict) {
+			http.Error(w, "idempotency_conflict: "+err.Error(), http.StatusConflict)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)

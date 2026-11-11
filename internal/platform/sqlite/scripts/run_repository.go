@@ -62,13 +62,21 @@ func (r *SQLiteRunRepository) Create(ctx context.Context, run *scriptgen.Generat
 	}
 	attemptID := run.ID + ":script"
 	status := canonicalStatus(run.Status)
-	_, err = r.db.ExecContext(ctx, `INSERT INTO job_attempts (attempt_id,job_id,run_id,attempt_number,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(attempt_id) DO NOTHING`, attemptID, jobID, run.ID, run.AttemptCount+1, status, formatTime(created), formatTime(updated))
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("scriptgeneration: begin run create: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `INSERT INTO job_attempts (attempt_id,job_id,run_id,attempt_number,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(attempt_id) DO NOTHING`, attemptID, jobID, run.ID, run.AttemptCount+1, status, formatTime(created), formatTime(updated))
 	if err != nil {
 		return fmt.Errorf("scriptgeneration: create attempt: %w", err)
 	}
-	_, err = r.db.ExecContext(ctx, `INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET workflow_payload_json=excluded.workflow_payload_json,updated_at=excluded.updated_at`, run.ID, jobID, "script.generate", attemptID, status, formatTime(created), formatTime(created), "{}", string(body), formatTime(updated))
+	_, err = tx.ExecContext(ctx, `INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET workflow_payload_json=excluded.workflow_payload_json,updated_at=excluded.updated_at`, run.ID, jobID, "script.generate", attemptID, status, formatTime(created), formatTime(created), "{}", string(body), formatTime(updated))
 	if err != nil {
 		return fmt.Errorf("scriptgeneration: create run: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("scriptgeneration: commit run create: %w", err)
 	}
 	return nil
 }
@@ -77,11 +85,22 @@ func (r *SQLiteRunRepository) SetJobID(ctx context.Context, runID, jobID string)
 	if runID == "" || jobID == "" {
 		return errors.New("scriptgeneration: SetJobID requires run and job IDs")
 	}
-	if _, err := r.db.ExecContext(ctx, `UPDATE job_attempts SET job_id=?,updated_at=? WHERE run_id=?`, jobID, formatTime(time.Now().UTC()), runID); err != nil {
-		return err
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("scriptgeneration: begin set job id: %w", err)
 	}
-	_, err := r.db.ExecContext(ctx, `UPDATE run_observability SET job_id=?,updated_at=? WHERE run_id=?`, jobID, formatTime(time.Now().UTC()), runID)
-	return err
+	defer func() { _ = tx.Rollback() }()
+	now := formatTime(time.Now().UTC())
+	if _, err := tx.ExecContext(ctx, `UPDATE job_attempts SET job_id=?,updated_at=? WHERE run_id=?`, jobID, now, runID); err != nil {
+		return fmt.Errorf("scriptgeneration: set attempt job id: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE run_observability SET job_id=?,updated_at=? WHERE run_id=?`, jobID, now, runID); err != nil {
+		return fmt.Errorf("scriptgeneration: set run job id: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("scriptgeneration: commit set job id: %w", err)
+	}
+	return nil
 }
 
 func (r *SQLiteRunRepository) Get(ctx context.Context, runID string) (*scriptgen.GenerationRun, error) {

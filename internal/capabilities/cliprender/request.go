@@ -29,6 +29,12 @@ import (
 // consumers reference one stable identifier.
 const TypeClipRender = job.TypeClipRender
 
+const (
+	SchedulingResourceClass = "render"
+	ExecutionLaneSubmit     = "submit"
+	ExecutionLaneSettle     = "settle"
+)
+
 // DefaultDriveRootFolderID is the canonical certification TMP root.
 // Every validated render artifact is uploaded under
 // DefaultDriveRootFolderID/<run-id>/ — never directly in the root.

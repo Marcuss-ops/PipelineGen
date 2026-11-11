@@ -34,6 +34,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	renderingwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/rendering"
 	capjobregistry "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobregistry"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	worker "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/worker"
@@ -207,7 +208,7 @@ func buildWorkerComposition(ctx context.Context, cfg *config.Config, profile *Wo
 		}, nil
 
 	case "renderer":
-		renderingRuntime, renderingCleanup, renderingErr := wiring.BuildRenderingRuntime(cfg, log)
+		renderingRuntime, renderingCleanup, renderingErr := renderingwiring.BuildRenderingRuntime(cfg, log)
 		if renderingErr != nil {
 			err = fmt.Errorf("rendering runtime: %w", renderingErr)
 			return nil, err

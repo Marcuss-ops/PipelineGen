@@ -34,6 +34,20 @@ jobs:
   governance:
     name: Reproduce catalogs and commit-bound report (governance)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: queue_test
+          POSTGRES_PASSWORD: queue_test
+          POSTGRES_DB: queue_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U queue_test -d queue_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
     permissions:
       contents: read
     steps:
@@ -47,6 +61,15 @@ jobs:
         with:
           go-version: '1.26.x'
           cache: true
+
+      - name: Check RenderingGen queue snapshot and compatibility matrix
+        env:
+          TEST_DATABASE_URL: postgres://queue_test:queue_test@127.0.0.1:5432/queue_test?sslmode=disable
+          RENDERINGGEN_REQUIRE_POSTGRES_TESTS: "1"
+        run: python3 scripts/ci/check_queue_vendor.py --tests
+
+      - name: Build Docker Go binaries with the vendored queue
+        run: docker buildx build --target builder --progress=plain .
 
       - name: Regenerate active architecture catalogs
         run: |

@@ -55,7 +55,7 @@ func New(baseURL string) *Client {
 }
 
 // Submit enqueues a job. A 409 (job already exists) is surfaced as
-// scriptgen.ErrJobExists so the enqueuer treats replays as idempotent.
+// scriptgen.ErrJobExists only after Queue atomically verified an exact replay.
 func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error {
 	if c == nil || c.q == nil {
 		return fmt.Errorf("renderinggen submit: client is not configured")
@@ -70,19 +70,20 @@ func (c *Client) Submit(ctx context.Context, job scriptgen.RenderQueueJob) error
 		}
 	}
 	err = c.q.Submit(ctx, queueclient.Job{
-		ID:             job.ID,
-		JobType:        job.JobType,
-		ParentJobID:    job.ParentJobID,
-		ChunkIndex:     job.ChunkIndex,
-		FrameRange:     toQueueFrameRange(job.FrameRange),
-		RenderPlan:     job.OverlaySpec,
-		Assets:         toQueueAssets(job.Assets),
-		IdempotencyKey: identity.IdempotencyKey(job.ID),
+		ID:                    job.ID,
+		JobType:               job.JobType,
+		ParentJobID:           job.ParentJobID,
+		ChunkIndex:            job.ChunkIndex,
+		FrameRange:            toQueueFrameRange(job.FrameRange),
+		PreparedRenderPackage: toQueuePreparedRenderPackage(job.PreparedRenderPackage),
+		RenderPlan:            job.OverlaySpec,
+		Assets:                toQueueAssets(job.Assets),
+		IdempotencyKey:        identity.IdempotencyKey(job.ID),
 	})
-	if errors.Is(err, queueclient.ErrJobExists) {
-		return classifyRenderSubmitCollision(ctx, c.q, job.ID, identity)
-	}
 	if err != nil {
+		if mapped := classifyQueueSubmitError(err); mapped != nil {
+			return mapped
+		}
 		return fmt.Errorf("renderinggen submit: %w", err)
 	}
 	return nil
@@ -132,16 +133,17 @@ func (c *Client) WaitTerminal(ctx context.Context, id string) (scriptgen.RenderQ
 // single projection shared by Get and WaitTerminal.
 func toScriptJob(job queueclient.Job) scriptgen.RenderQueueJob {
 	return scriptgen.RenderQueueJob{
-		ID:          job.ID,
-		JobType:     job.JobType,
-		ParentJobID: job.ParentJobID,
-		ChunkIndex:  job.ChunkIndex,
-		FrameRange:  fromQueueFrameRange(job.FrameRange),
-		OverlaySpec: job.RenderPlan,
-		Assets:      fromQueueAssets(job.Assets),
-		State:       string(job.State),
-		FailReason:  job.FailReason,
-		Artifact:    toScriptArtifact(job.Artifact),
+		ID:                    job.ID,
+		JobType:               job.JobType,
+		ParentJobID:           job.ParentJobID,
+		ChunkIndex:            job.ChunkIndex,
+		FrameRange:            fromQueueFrameRange(job.FrameRange),
+		PreparedRenderPackage: fromQueuePreparedRenderPackage(job.PreparedRenderPackage),
+		OverlaySpec:           job.RenderPlan,
+		Assets:                fromQueueAssets(job.Assets),
+		State:                 string(job.State),
+		FailReason:            job.FailReason,
+		Artifact:              toScriptArtifact(job.Artifact),
 		// Queue-owned lifecycle timestamps: the admission/service split the
 		// producer cannot observe from the artifact alone.
 		QueuedAt:    job.QueuedAt,
@@ -273,7 +275,7 @@ var (
 // lets the caller release its worker slot.
 //
 // Idempotent by construction: the remote job id is plan.RunID, so a retried
-// submit addresses the same remote job (the queue answers 409 → ErrJobExists)
+// submit addresses the same remote job (the queue answers 200 only after atomic identity verification)
 // and a FAILED remote job is reset to pending rather than left stuck.
 func (e *ClipRenderExecutor) Submit(ctx context.Context, plan cliprender.ClipRenderPlanV1) error {
 	if e == nil || e.queue == nil {

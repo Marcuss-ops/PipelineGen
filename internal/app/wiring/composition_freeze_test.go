@@ -126,7 +126,6 @@ var frozenZeroSpawnBuilders = []string{
 	"BuildArtifactFinalizeBundle",
 	"BuildStagingBundle",
 	"BuildTextTrackBundle",
-	"BuildSyncBundle",
 	"BuildMaintBundle",
 	"BuildUtilityBundle",
 	"BuildStockBundle",

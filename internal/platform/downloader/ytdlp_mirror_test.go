@@ -8,6 +8,7 @@ package downloader
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,8 +17,100 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+func TestMirrorContentIdentityCertifiesAndUpgradesCacheMetadata(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(t.TempDir(), "source.mp4")
+	content := []byte("stable full-source bytes")
+	if err := os.WriteFile(source, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const key = "0123456789abcdef0123456789abcdef"
+	mirrorStore(root, key, "video-id", source)
+	entry, ok := mirrorFullSourceEntry(root, key)
+	if !ok {
+		t.Fatal("mirrorStore did not produce a readable entry")
+	}
+	sha, size, err := mirrorContentIdentity(root, key, entry)
+	if err != nil {
+		t.Fatalf("mirrorContentIdentity: %v", err)
+	}
+	if sha != digest.SHA256Bytes(content) || size != int64(len(content)) {
+		t.Fatalf("identity = (%s,%d), want (%s,%d)", sha, size, digest.SHA256Bytes(content), len(content))
+	}
+
+	// A pre-identity cache entry is upgraded once, preserving the same wire
+	// metadata instead of forcing a duplicate network download.
+	metaPath := filepath.Join(root, key+".json")
+	raw, err := os.ReadFile(metaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var meta mirrorEntryMeta
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		t.Fatal(err)
+	}
+	meta.SHA256 = ""
+	raw, err = json.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metaPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sha, _, err = mirrorContentIdentity(root, key, entry)
+	if err != nil || sha != digest.SHA256Bytes(content) {
+		t.Fatalf("legacy entry identity = (%s,%v)", sha, err)
+	}
+	upgraded, err := os.ReadFile(metaPath)
+	if err != nil || !strings.Contains(string(upgraded), digest.SHA256Bytes(content)) {
+		t.Fatalf("legacy cache metadata was not upgraded: %s (%v)", upgraded, err)
+	}
+}
+
+func TestDownloadWithSourceWindowCopiesCertifiedSourceToStagingPath(t *testing.T) {
+	t.Setenv(EnvYTDLPMirrorRoot, filepath.Join(t.TempDir(), "mirror"))
+	t.Setenv(EnvYTDLPMirrorSections, "")
+	workDir := t.TempDir()
+	d := newMirrorTestDownloader(t, workDir)
+	countFile := filepath.Join(workDir, "count")
+	t.Setenv("FAKE_YTDLP_COUNT", countFile)
+	outputTemplate := filepath.Join(workDir, "stage.partial.%(ext)s")
+
+	window, err := d.DownloadWithSourceWindow(context.Background(), &DownloadRequest{
+		URL:                 "https://www.youtube.com/watch?v=sourceWindow01",
+		OutputPath:          outputTemplate,
+		DownloadSections:    []string{"*00:00:04.250-00:00:09.500"},
+		ReturnSourceWindows: true,
+		MergeFormat:         "mp4",
+	})
+	if err != nil {
+		t.Fatalf("DownloadWithSourceWindow: %v", err)
+	}
+	if window == nil {
+		t.Fatal("mirror hit did not return a SourceWindow")
+	}
+	path, err := ResolveDownloadedSegmentPath(outputTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("staged full source missing: %v", err)
+	}
+	if window.AssetSHA256 != digest.SHA256Bytes(content) || window.SizeBytes != int64(len(content)) {
+		t.Fatalf("window identity does not match staged source: %+v", window)
+	}
+	if window.StartUS != 4_250_000 || window.EndUS != 9_500_000 {
+		t.Fatalf("window range = [%d,%d), want [4250000,9500000)", window.StartUS, window.EndUS)
+	}
+	if got := downloadCount(t, countFile); got != 1 {
+		t.Fatalf("source fetches = %d, want one", got)
+	}
+}
 
 // fakeYTDLPScript is a yt-dlp stand-in: it writes a non-empty file next to
 // the requested output template (the ext resolution contract) and increments

@@ -208,6 +208,96 @@ func TestFinalJobCompiledPlanClampsOverlayWindowsToArtifactDuration(t *testing.T
 	}
 }
 
+func TestFinalJobComposePlanSegmentsOmitsFullyCoveredBaseVideo(t *testing.T) {
+	base := []finalJobBaseSegment{{
+		startUS: 0, endUS: 5_000_000, sourceInUS: 0, sourceDurationUS: 5_000_000,
+		assetID: "stock-base", sha256: strings.Repeat("a", 64),
+	}}
+	overlays := []finalJobOverlayWindow{{
+		startUS: 0, endUS: 5_000_000, artifactInUS: 0, artifactDurationUS: 5_000_000,
+		assetID: "replacement", sha256: strings.Repeat("b", 64),
+	}}
+	segments, err := finalJobComposePlanSegments(base, overlays, 5_000_000, 24, 1)
+	if err != nil {
+		t.Fatalf("finalJobComposePlanSegments: %v", err)
+	}
+	if len(segments) != 1 || segments[0].AssetID != "replacement" || segments[0].FrameCount != 120 {
+		t.Fatalf("segments = %+v, want only the 120-frame replacement; covered stock video must be omitted", segments)
+	}
+}
+
+func TestFinalJobCompiledPlanDropsFullyReplacedBaseFromAssetManifest(t *testing.T) {
+	const baseSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	const replacementSHA = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	scenes := []map[string]any{{
+		"duration_seconds": 5.0,
+		"kind":             "stock",
+		"stock": map[string]any{
+			"asset_id": "stock-base", "sha256": baseSHA, "size_bytes": int64(1000),
+			"duration_ms": int64(5000), "start_ms": int64(0),
+		},
+	}}
+	manifest := map[string]any{
+		"asset": map[string]any{
+			"asset_id": "replacement", "sha256": replacementSHA, "size_bytes": int64(900),
+			"duration_ms": int64(5000), "frame_count": int64(120),
+		},
+		"entries": []any{map[string]any{"item_id": "full-replace", "in_us": int64(0), "out_us": int64(5_000_000)}},
+	}
+	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
+	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(5000)}
+	raw, _, err := finalJobCompiledPlanPayload(scenes, nil, manifest, audio, audioRef, 5_000_000)
+	if err != nil {
+		t.Fatalf("finalJobCompiledPlanPayload: %v", err)
+	}
+	var plan finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		t.Fatalf("decode compiled plan: %v", err)
+	}
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 || plan.VideoTracks[0].Segments[0].AssetID != "replacement" {
+		t.Fatalf("video segments = %+v, want the replacement only", plan.VideoTracks)
+	}
+	assetIDs := make(map[string]struct{}, len(plan.Assets))
+	for _, asset := range plan.Assets {
+		assetIDs[asset.AssetID] = struct{}{}
+	}
+	if _, exists := assetIDs["stock-base"]; exists {
+		t.Fatalf("unused stock source remains in materialization manifest: %+v", plan.Assets)
+	}
+	if _, exists := assetIDs["replacement"]; !exists {
+		t.Fatalf("replacement asset missing from manifest: %+v", plan.Assets)
+	}
+	if _, exists := assetIDs["final-audio"]; !exists {
+		t.Fatalf("final audio missing from manifest: %+v", plan.Assets)
+	}
+}
+
+func TestRetainFinalJobRuntimeAssetsDropsBindingsUnusedByCompiledPlan(t *testing.T) {
+	const usedSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const unusedSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	plan := finalJobCompiledPlan{
+		FinalAudio: finalJobPlanAudio{AssetID: "audio", SHA256: strings.Repeat("c", 64)},
+		Assets:     []finalJobPlanAsset{{AssetID: "replacement", AssetKey: "replacement-key", SHA256: usedSHA}},
+	}
+	rawPlan, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings := []any{
+		map[string]any{"asset_id": "replacement", "sha256": usedSHA},
+		map[string]any{"asset_id": "audio", "sha256": strings.Repeat("c", 64)},
+		map[string]any{"asset_id": "covered-stock", "sha256": unusedSHA, "drive_file_id": "drive-covered"},
+	}
+	got, err := retainFinalJobRuntimeAssets(string(rawPlan), bindings)
+	if err != nil {
+		t.Fatalf("retainFinalJobRuntimeAssets: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("retained runtime assets = %#v, want replacement and audio only", got)
+	}
+}
+
 // Exact replay of the three ranges the Master rejected in r36: every window
 // ends 4-20 ms past the artifact and must be trimmed to the certified length
 // instead of failing the whole plan after the local handoff has been paid for.

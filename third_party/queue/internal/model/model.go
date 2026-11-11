@@ -3,7 +3,14 @@
 package model
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"reflect"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/RenderingGen/queue/client"
 )
@@ -73,6 +80,7 @@ const (
 	PublicationObjectStoreAndDrive = client.PublicationObjectStoreAndDrive
 
 	JobTypeRenderSegment  = client.JobTypeRenderSegment
+	JobTypeRenderPrepare  = client.JobTypeRenderPrepare
 	JobTypeOverlayPrepare = client.JobTypeOverlayPrepare
 	JobTypeOverlayRender  = client.JobTypeOverlayRender
 	JobTypeOverlayImport  = client.JobTypeOverlayImport
@@ -91,6 +99,10 @@ const (
 // two sides of the wire (the same rule that already applies to State and
 // Artifact).
 type FrameRange = client.FrameRange
+
+// PreparedRenderPackageRef is the shared immutable family preparation
+// reference. It aliases the one public queue wire declaration.
+type PreparedRenderPackageRef = client.PreparedRenderPackageRef
 
 // ValidateChunk validates chunk metadata for a job. It is the single authority
 // for frame_range/chunk_index invariants (U6): both memory and postgres
@@ -113,6 +125,11 @@ func ValidateChunk(job Job) error {
 	if job.ChunkIndex < 0 {
 		return fmt.Errorf("invalid chunk_index for job %s", job.ID)
 	}
+	if job.PreparedRenderPackage != nil {
+		if err := job.PreparedRenderPackage.Validate(); err != nil {
+			return fmt.Errorf("job %s prepared render package: %w", job.ID, err)
+		}
+	}
 	return nil
 }
 
@@ -130,6 +147,7 @@ func ValidateJobBatch(jobs []Job) error {
 	}
 	seen := make(map[string]struct{}, len(jobs))
 	keyOwner := make(map[string]string, len(jobs))
+	var familyPackage *client.PreparedRenderPackageRef
 	for _, job := range jobs {
 		if job.ID == "" {
 			return fmt.Errorf("job id is required")
@@ -146,6 +164,79 @@ func ValidateJobBatch(jobs []Job) error {
 		}
 		if err := ValidateChunk(job); err != nil {
 			return err
+		}
+		if job.PreparedRenderPackage != nil {
+			if err := job.PreparedRenderPackage.Validate(); err != nil {
+				return fmt.Errorf("job %s prepared render package: %w", job.ID, err)
+			}
+		}
+		if job.ParentJobID == "" && job.PreparedRenderPackage != nil {
+			return fmt.Errorf("assembly anchor %s must not reference a child render package", job.ID)
+		}
+		if job.ParentJobID != "" && job.PreparedRenderPackage != nil {
+			if familyPackage == nil {
+				ref := *job.PreparedRenderPackage
+				familyPackage = &ref
+			} else if *familyPackage != *job.PreparedRenderPackage {
+				return fmt.Errorf("job batch members reference different prepared render packages")
+			}
+		}
+	}
+	if familyPackage != nil {
+		// A prepared package certifies one ordered set of child ranges. Treat
+		// chunk_index and frame_range as the durable family manifest: every
+		// child must belong to the same anchor, indices must be dense from zero,
+		// and their half-open frame ranges must cover one contiguous timeline.
+		var anchorID string
+		children := make([]*Job, 0, len(jobs)-1)
+		for i := range jobs {
+			job := &jobs[i]
+			if job.ParentJobID == "" {
+				if anchorID != "" {
+					return fmt.Errorf("prepared render family has multiple assembly anchors")
+				}
+				anchorID = job.ID
+				continue
+			}
+			children = append(children, job)
+		}
+		if anchorID == "" || len(children) == 0 {
+			return fmt.Errorf("prepared render family requires one assembly anchor and at least one chunk")
+		}
+		ordered := make([]*Job, len(children))
+		for _, child := range children {
+			if child.ParentJobID != anchorID {
+				return fmt.Errorf("prepared render chunk %s belongs to anchor %s, want %s", child.ID, child.ParentJobID, anchorID)
+			}
+			if child.ChunkIndex < 0 || child.ChunkIndex >= len(children) || ordered[child.ChunkIndex] != nil {
+				return fmt.Errorf("prepared render family has invalid or duplicate chunk index %d", child.ChunkIndex)
+			}
+			if child.FrameRange == nil {
+				return fmt.Errorf("prepared render chunk %s has no frame range", child.ID)
+			}
+			ordered[child.ChunkIndex] = child
+		}
+		for i, child := range ordered {
+			if child == nil {
+				return fmt.Errorf("prepared render family is missing chunk index %d", i)
+			}
+			if i == 0 && child.FrameRange.Start != 0 {
+				return fmt.Errorf("prepared render family starts at frame %d, want 0", child.FrameRange.Start)
+			}
+			if i > 0 && child.FrameRange.Start != ordered[i-1].FrameRange.End {
+				return fmt.Errorf("prepared render chunk %d range starts at %d, previous chunk ends at %d", i, child.FrameRange.Start, ordered[i-1].FrameRange.End)
+			}
+			if child.FrameRange.End > familyPackage.TotalFrames {
+				return fmt.Errorf("prepared render chunk %d ends at frame %d past package total %d", i, child.FrameRange.End, familyPackage.TotalFrames)
+			}
+			if i == len(ordered)-1 && child.FrameRange.End != familyPackage.TotalFrames {
+				return fmt.Errorf("prepared render family ends at frame %d, want package total %d", child.FrameRange.End, familyPackage.TotalFrames)
+			}
+		}
+		for _, job := range jobs {
+			if job.ParentJobID != "" && job.PreparedRenderPackage == nil {
+				return fmt.Errorf("chunk %s is missing the family prepared render package", job.ID)
+			}
 		}
 	}
 	return nil
@@ -180,6 +271,93 @@ type Ownership struct {
 // re-declaration — kept in step only by hand-maintained field copies in the
 // server and the worker adapter — is gone.
 type Job = client.Job
+
+// SameSubmitRequest reports whether two envelopes describe the same immutable
+// request identity. The operational queue ID and lifecycle fields (state,
+// lease, timestamps, artifact and progress) are deliberately excluded, so a
+// retry can resolve to the canonical ID and remains valid after work has
+// started or completed. The queue uses this while resolving its unique key;
+// an idempotency key alone is never proof of equivalence.
+func SameSubmitRequest(a, b Job) bool {
+	if a.Schema == "" {
+		a.Schema = JobSchemaV1
+	}
+	if b.Schema == "" {
+		b.Schema = JobSchemaV1
+	}
+	if a.Version == 0 {
+		a.Version = JobSchemaVersionV1
+	}
+	if b.Version == 0 {
+		b.Version = JobSchemaVersionV1
+	}
+	if a.JobType == "" {
+		a.JobType = JobTypeRenderSegment
+	}
+	if b.JobType == "" {
+		b.JobType = JobTypeRenderSegment
+	}
+	if a.Schema != b.Schema || a.Version != b.Version ||
+		a.IdempotencyKey != b.IdempotencyKey || a.JobType != b.JobType ||
+		a.PublicationPolicy != b.PublicationPolicy || a.DaemonAdmissionWaitMS != b.DaemonAdmissionWaitMS ||
+		a.ParentJobID != b.ParentJobID || a.ChunkIndex != b.ChunkIndex ||
+		!reflect.DeepEqual(a.FrameRange, b.FrameRange) ||
+		!reflect.DeepEqual(a.PreparedRenderPackage, b.PreparedRenderPackage) ||
+		!sameNotBefore(a.NotBefore, b.NotBefore) ||
+		!sameSubmitAssets(a.Assets, b.Assets) || !sameJSON(a.RenderPlan, b.RenderPlan) {
+		return false
+	}
+	return true
+}
+
+// sameSubmitAssets compares the semantic asset manifest used by producer
+// request identities. Asset order and SourceURL are transport details: the
+// content hash and workspace path determine render inputs, while signed URLs
+// may legitimately rotate between an original submit and its retry.
+func sameSubmitAssets(a, b []AssetRef) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	canonical := func(assets []AssetRef) []AssetRef {
+		out := make([]AssetRef, len(assets))
+		for i, asset := range assets {
+			out[i] = AssetRef{
+				Hash:        strings.ToLower(strings.TrimSpace(asset.Hash)),
+				LogicalPath: strings.TrimSpace(asset.LogicalPath),
+			}
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Hash != out[j].Hash {
+				return out[i].Hash < out[j].Hash
+			}
+			return out[i].LogicalPath < out[j].LogicalPath
+		})
+		return out
+	}
+	return reflect.DeepEqual(canonical(a), canonical(b))
+}
+
+func sameNotBefore(a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.Equal(*b)
+}
+
+func sameJSON(a, b json.RawMessage) bool {
+	var left, right any
+	ld := json.NewDecoder(bytes.NewReader(a))
+	ld.UseNumber()
+	rd := json.NewDecoder(bytes.NewReader(b))
+	rd.UseNumber()
+	if ld.Decode(&left) != nil || rd.Decode(&right) != nil {
+		return false
+	}
+	if ld.Decode(new(any)) != io.EOF || rd.Decode(new(any)) != io.EOF {
+		return false
+	}
+	return reflect.DeepEqual(left, right)
+}
 
 // Progress is the per-job render progress reported by the worker that owns
 // the job's lease. FramesDone is the last frame position the renderer

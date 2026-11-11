@@ -34,7 +34,8 @@ var (
 	// the start of the file it must be cut from — a negative seek. It is a
 	// fail-closed guard, not a data condition: the section offset is derived from
 	// the very plans being cut, so a negative window means the two drifted.
-	ErrStockExtractClipsBeforeSection = errors.New("stock.extract_clips: clip window precedes the staged section")
+	ErrStockExtractClipsBeforeSection  = errors.New("stock.extract_clips: clip window precedes the staged section")
+	ErrStockStagedSourceWindowMismatch = errors.New("stock.extract_clips: staged source window differs from the planned section")
 )
 
 // maxDriveUploadWorkers caps concurrent Drive uploads per source group.
@@ -148,8 +149,15 @@ func boundedSourceCuts(ctx context.Context, runner StepRunner, groups []stockSou
 					continue
 				}
 
+				cutOffsetSec, windowErr := stagedSourceCutOffset(staged, group.plans, group.cutOffsetSec)
+				if windowErr != nil {
+					if ctx.Err() == nil {
+						setError(fmt.Errorf("orchestrator: stock.extract_clips: source window for %s: %w", group.sourceID, windowErr))
+					}
+					return
+				}
 				sourceDuration, _, validationErr := validateAndProbeSourceDuration(
-					workCtx, runner, group.sourceID, staged.LocalPath, staged, group.plans, group.cutOffsetSec)
+					workCtx, runner, group.sourceID, staged.LocalPath, staged, group.plans, cutOffsetSec)
 				if validationErr != nil {
 					if ctx.Err() == nil {
 						setError(validationErr)
@@ -158,7 +166,7 @@ func boundedSourceCuts(ctx context.Context, runner StepRunner, groups []stockSou
 				}
 				result, cutErr := executeCuts(
 					workCtx, runner, group.sourceID, staged.LocalPath, sourceDuration,
-					group.plans, group.index, noAudio, group.cutOffsetSec,
+					group.plans, group.index, noAudio, cutOffsetSec,
 				)
 				successful := result.SuccessfulItems()
 				if cutErr != nil && len(successful) == 0 {

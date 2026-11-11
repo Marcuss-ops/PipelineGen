@@ -44,10 +44,9 @@ type registryCrossStepState struct {
 // sourcing.HashPort port (internal/capabilities/assets/sourcing/ports.go).
 // The adapter was never constructed anywhere in the tree and HashPort had zero
 // consumers — no field, parameter or return value was typed by it. The
-// canonical MD5 surface is clips.ClipHashPort, implemented by clipsHashAdapter
-// (clips_adapters_index.go) and consumed by clips.BulkUploadWorker.hasher; this
-// was a superseded duplicate of the same checksum.LegacyMD5File call. Both are
-// deleted so nothing pins the shape back into existence.
+// canonical MD5 surface is clips.ClipHashPort, implemented by the clips wiring
+// adapter and consumed by clips.BulkUploadWorker.hasher. This preserves one
+// owner for the checksum port.
 
 // searxngWebSearchProviderAdapter wraps the existing Ollama WebSearcher
 // (backed by SearXNG) as a WebSearchProvider for the multi-provider

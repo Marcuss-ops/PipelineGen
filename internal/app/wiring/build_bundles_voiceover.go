@@ -5,7 +5,7 @@
 // modules/content.go, modules/images.go"). The "modules/" path in the
 // pending item is a forward reference; the canonical current target for
 // per-capability helpers is `internal/app/build_bundles_<capability>.go`,
-// matching the buildIngestService / buildHealthService / BuildSyncTargets
+// matching the buildIngestService / buildHealthService / catalog sync builder
 // pattern already established by build_bundles_core.go / build_bundles_process.go
 // / build_bundles_domain.go.
 //
@@ -50,6 +50,26 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
+
+// appendVoiceoverCriticalValidators retains the composition-root call site
+// while the voiceover module owns its handler registration policy.
+func appendVoiceoverCriticalValidators(domains *DomainBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
+	if domains == nil || jobs == nil || validators == nil {
+		return
+	}
+	var generate, generateItem vowiring.HandlerRegistrar
+	if domains.VoiceoverGenerateHandler != nil {
+		generate = domains.VoiceoverGenerateHandler
+	}
+	if domains.VoiceoverGenerateItemHandler != nil {
+		generateItem = domains.VoiceoverGenerateItemHandler
+	}
+	*validators = append(*validators, vowiring.CriticalHandlers(
+		jobs.Service,
+		generate,
+		generateItem,
+	)...)
+}
 
 // voiceoverMediaReaderAdapter maps the platform media reader onto the
 // capability-owned VoiceoverMediaReader port.

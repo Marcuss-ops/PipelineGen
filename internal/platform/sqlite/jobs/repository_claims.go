@@ -15,31 +15,14 @@ import (
 
 // ── ClaimNext ───────────────────────────────────────────────────────────
 
-// claimAgingExpression is the anti-starvation aging term of the canonical
-// claim ordering: every FULL queued hour adds +1 to a job's effective
-// priority, so a long-waiting low-priority job eventually overtakes a fresh
-// higher-priority one. Strict (priority DESC, created_at ASC) ordering starved
-// exactly this way in production — the timing snapshot measured
-// `asset.text.materialize` waiting 13.26x its own execution time (44.3h of
-// queue wait for 3.3h of work) and one `script.generate` sitting 12,926s
-// (3.6h) behind a stream of higher-priority claims. Within the first queued
-// hour the aging term is 0 and the historical strict ordering holds exactly.
-//
-// created_at is the canonical RFC3339 UTC column written by CreateJob, which
-// julianday() parses natively (the same pair already drives the queue-age
-// statistic in repository_stats.go). COALESCE keeps an unparseable legacy
-// timestamp ordering as aging 0 instead of demoting the row below every
-// parseable one (NULL sorts last on DESC).
-const claimAgingExpression = `priority + COALESCE(CAST((julianday('now') - julianday(created_at)) * 24.0 AS INTEGER), 0)`
+// claimOrderClause uses the persisted hourly aging score. refreshClaimAging
+// catches up every elapsed full hour before a claim, preserving the historical
+// priority + floor(queue_age_hours) order and its created_at/id tie-break while
+// allowing the claim indexes to provide rows in order.
+const claimOrderClause = `ORDER BY claim_effective_priority DESC, created_at ASC, id ASC`
 
-// claimOrderClause is the canonical claim ordering shared by ClaimNext,
-// claimNextScoped and PeekQueued. PeekQueued MUST keep using this exact
-// clause: the future-reader contract promises preparation a mirror of what
-// the claim path will pick next.
-const claimOrderClause = `ORDER BY ` + claimAgingExpression + ` DESC, created_at ASC`
-
-// ClaimNext atomically claims the best queued job under the canonical aging
-// ordering (see claimAgingExpression), transitioning it to running (via
+// ClaimNext atomically claims the best currently available queued job under
+// the canonical persisted aging ordering, transitioning it to running (via
 // Start). Returns (nil, nil) on empty queue. Implements Store.ClaimNext.
 //
 // Concurrency (post-PR-Polling design, ADR-0003 §Implementation-status #6
@@ -52,20 +35,25 @@ const claimOrderClause = `ORDER BY ` + claimAgingExpression + ` DESC, created_at
 // initial SELECT.
 func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*job.Job, error) {
 	now := time.Now()
+	availableAt := timeutil.FormatRFC3339(now.UTC())
+	if err := r.refreshClaimAging(ctx, now); err != nil {
+		return nil, fmt.Errorf("ClaimNext: refresh aging: %w", err)
+	}
 
 	// Find the best candidate (queued only — ClaimNext in the domain interface
 	// is the atomic claim + start, so we select from queued).
 	query := `SELECT ` + jobColumns + ` FROM jobs
-		WHERE status = 'QUEUED' ` + claimOrderClause + ` LIMIT 1`
-	var args []any
+		WHERE status = 'QUEUED' AND (available_at IS NULL OR available_at <= ?) ` + claimOrderClause + ` LIMIT 1`
+	args := []any{availableAt}
 	if len(types) > 0 {
 		placeholders := make([]string, len(types))
+		args = []any{availableAt}
 		for i, t := range types {
 			placeholders[i] = "?"
 			args = append(args, t)
 		}
 		query = `SELECT ` + jobColumns + ` FROM jobs
-			WHERE status = 'QUEUED' AND type IN (` + strings.Join(placeholders, ",") + `)
+			WHERE status = 'QUEUED' AND (available_at IS NULL OR available_at <= ?) AND type IN (` + strings.Join(placeholders, ",") + `)
 			` + claimOrderClause + ` LIMIT 1`
 	}
 	row := r.db.QueryRowContext(ctx, query, args...)
@@ -83,11 +71,9 @@ func (r *SQLiteStore) ClaimNext(ctx context.Context, workerID string, leaseTTL t
 	return r.claimCandidate(ctx, j, workerID, leaseTTL, now)
 }
 
-// claimPayloadMatchScan caps how many QUEUED candidates a payload-scoped claim
-// examines in one attempt. Non-matching jobs are drained by the UNFILTERED pool
-// (that is the point of a payload-scoped pool), and the actor polls again on an
-// empty result, so the window bounds per-attempt cost without starving a
-// matching job behind a bounded run of non-matching ones.
+// claimPayloadMatchScan bounds each payload hydration page. claimNextScoped
+// continues across pages until it finds a match or exhausts the queued rows;
+// a matching job must not become invisible because it sorts behind this page.
 const claimPayloadMatchScan = 64
 
 // ClaimNextMatching is the payload-scoped form of ClaimNext: it claims the
@@ -132,8 +118,17 @@ func (r *SQLiteStore) ClaimNextMatchingExcluding(ctx context.Context, workerID s
 // ClaimNext.
 func (r *SQLiteStore) claimNextScoped(ctx context.Context, workerID string, leaseTTL time.Duration, types []string, match job.PayloadMatch, exclude job.PayloadNotMatch) (*job.Job, error) {
 	now := time.Now()
-	query := `SELECT ` + jobColumns + ` FROM jobs WHERE status = 'QUEUED'`
-	var args []any
+	if err := r.refreshClaimAging(ctx, now); err != nil {
+		return nil, fmt.Errorf("ClaimNextMatching: refresh aging: %w", err)
+	}
+	if phase, ok := match["render_phase"]; ok && phase != "" && len(match) == 1 && len(exclude) == 0 {
+		return r.claimNextRenderPhase(ctx, workerID, leaseTTL, types, phase, now)
+	}
+	query := `WITH queued AS (SELECT ` + jobColumns + `,
+		claim_effective_priority AS claim_effective_priority,
+		created_at AS claim_cursor_created_at FROM jobs WHERE status = 'QUEUED'
+		AND (available_at IS NULL OR available_at <= ?)`
+	args := []any{timeutil.FormatRFC3339(now.UTC())}
 	if len(types) > 0 {
 		placeholders := make([]string, len(types))
 		for i, t := range types {
@@ -142,45 +137,87 @@ func (r *SQLiteStore) claimNextScoped(ctx context.Context, workerID string, leas
 		}
 		query += ` AND type IN (` + strings.Join(placeholders, ", ") + `)`
 	}
-	query += ` ` + claimOrderClause + `, id ASC LIMIT ?`
-	args = append(args, claimPayloadMatchScan)
-
-	// Buffer the bounded candidate window and CLOSE the cursor BEFORE hydrating
-	// it: hydration issues its own queries, and a nested query inside an open
-	// rows cursor deadlocks under a single-connection pool (the same failure
-	// mode RequeueExpiredLeases documents).
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("ClaimNextMatching: select: %w", err)
+	// render_phase is the one payload scope used for the hot dedicated clip
+	// render lane. New rows carry the same value in the indexed projection;
+	// empty values remain eligible for legacy rows and are checked after
+	// payload hydration below.
+	if phase, ok := match["render_phase"]; ok && phase != "" {
+		query += ` AND execution_lane IN (?, '')`
+		args = append(args, phase)
 	}
-	candidates := make([]*job.Job, 0, claimPayloadMatchScan)
-	for rows.Next() {
-		candidate := &job.Job{}
-		if scanErr := scanJobColumns(rows, candidate); scanErr != nil {
+	if phase, ok := exclude["render_phase"]; ok && phase != "" {
+		query += ` AND (execution_lane != ? OR execution_lane = '')`
+		args = append(args, phase)
+	}
+	query += `) SELECT * FROM queued WHERE 1 = 1`
+	baseArgs := append([]any(nil), args...)
+	var cursor *claimCandidateCursor
+	for {
+		pageQuery := query
+		pageArgs := append([]any(nil), baseArgs...)
+		if cursor != nil {
+			pageQuery += ` AND (claim_effective_priority < ? OR
+				(claim_effective_priority = ? AND (claim_cursor_created_at > ? OR
+				(claim_cursor_created_at = ? AND id > ?))))`
+			pageArgs = append(pageArgs, cursor.effectivePriority, cursor.effectivePriority,
+				cursor.createdAt, cursor.createdAt, cursor.jobID)
+		}
+		pageQuery += ` ORDER BY claim_effective_priority DESC, claim_cursor_created_at ASC, id ASC LIMIT ?`
+		pageArgs = append(pageArgs, claimPayloadMatchScan)
+		// Buffer one candidate page and CLOSE the cursor BEFORE hydrating it:
+		// hydration issues its own queries, and a nested query inside an open
+		// rows cursor deadlocks under a single-connection pool.
+		rows, err := r.db.QueryContext(ctx, pageQuery, pageArgs...)
+		if err != nil {
+			return nil, fmt.Errorf("ClaimNextMatching: select: %w", err)
+		}
+		candidates := make([]*job.Job, 0, claimPayloadMatchScan)
+		var lastCursor *claimCandidateCursor
+		for rows.Next() {
+			candidate := &job.Job{}
+			var effectivePriority int64
+			var createdAt string
+			if scanErr := scanJobColumns(claimCandidateScanner{scanner: rows, effectivePriority: &effectivePriority, createdAt: &createdAt}, candidate); scanErr != nil {
+				_ = rows.Close()
+				return nil, fmt.Errorf("ClaimNextMatching: scan: %w", scanErr)
+			}
+			candidates = append(candidates, candidate)
+			lastCursor = &claimCandidateCursor{effectivePriority: effectivePriority, createdAt: createdAt, jobID: candidate.ID}
+		}
+		if rowsErr := rows.Err(); rowsErr != nil {
 			_ = rows.Close()
-			return nil, fmt.Errorf("ClaimNextMatching: scan: %w", scanErr)
+			return nil, fmt.Errorf("ClaimNextMatching: rows: %w", rowsErr)
 		}
-		candidates = append(candidates, candidate)
-	}
-	if rowsErr := rows.Err(); rowsErr != nil {
 		_ = rows.Close()
-		return nil, fmt.Errorf("ClaimNextMatching: rows: %w", rowsErr)
-	}
-	_ = rows.Close()
+		if len(candidates) == 0 {
+			return nil, nil
+		}
+		cursor = lastCursor
 
-	for _, candidate := range candidates {
-		if hydrateErr := r.hydrateLatestPayload(ctx, candidate); hydrateErr != nil {
-			return nil, fmt.Errorf("ClaimNextMatching: hydrate payload: %w", hydrateErr)
+		for _, candidate := range candidates {
+			if handled, matches := schedulingProjectionMatches(candidate, match, exclude); handled {
+				if !matches {
+					continue
+				}
+				return r.claimCandidate(ctx, candidate, workerID, leaseTTL, now)
+			}
+			if hydrateErr := r.hydrateLatestPayload(ctx, candidate); hydrateErr != nil {
+				return nil, fmt.Errorf("ClaimNextMatching: hydrate payload: %w", hydrateErr)
+			}
+			if len(match) > 0 && !job.MatchesPayload(candidate.Payload, match) {
+				continue
+			}
+			if !job.ExcludesPayload(candidate.Payload, exclude) {
+				continue
+			}
+			return r.claimCandidate(ctx, candidate, workerID, leaseTTL, now)
 		}
-		if len(match) > 0 && !job.MatchesPayload(candidate.Payload, match) {
-			continue
-		}
-		if !job.ExcludesPayload(candidate.Payload, exclude) {
-			continue
-		}
-		return r.claimCandidate(ctx, candidate, workerID, leaseTTL, now)
 	}
-	return nil, nil
+}
+
+func (s claimCandidateScanner) Scan(dest ...any) error {
+	dest = append(dest, s.effectivePriority, s.createdAt)
+	return s.scanner.Scan(dest...)
 }
 
 // claimCandidate performs the atomic claim (CAS Start) for one chosen candidate

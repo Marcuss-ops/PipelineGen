@@ -149,7 +149,7 @@ func StartClipDedupSweeper(ctx context.Context, reader MediaYouTubeIDDuplicateRe
 //
 // Both halves now come from the composition root (see
 // mediaDuplicateGroupReaderFromCommitter + persistence.CanonicalAssetSoftDeleter
-// in buildMaintenanceSteps), so the sweep finds duplicates where the canonical
+// in BuildMaintenanceSteps), so the sweep finds duplicates where the canonical
 // writer commits them and retires them where the canonical writer owns them.
 // There is no SQLite path and no direct SQL here: this file no longer mentions
 // media_assets at all, and the archcheck media-reader gate is what keeps it

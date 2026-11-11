@@ -44,6 +44,9 @@ cp ../RenderingGen/infra/e2e/golden-overlay-verify.sh third_party/infra/e2e/
 cp ../RenderingGen/README.md third_party/README.md
 
 go mod tidy
+
+# from the PipelineGen repository root, after reviewing the source diff:
+python3 scripts/ci/check_queue_vendor.py --write-lock
 ```
 
 `--exclude VENDOR.md` keeps this note. The three host fixtures are required by
@@ -52,12 +55,16 @@ which resolve their pinned documents from the parent of the module root. Verify
 the copy with:
 
 ```sh
-python3 ops/tools/check_queue_drift.py --tests
+python3 scripts/ci/check_queue_vendor.py --tests
 ```
 
-The checker compares every file byte-for-byte, compares the three fixtures, and
-optionally runs `go test ./...` in both modules. A drift is a build failure of
-the checker, not a surprise at claim time.
+The checker compares every file byte-for-byte when the sibling checkout is
+available, validates the committed SHA-256 snapshot lock in isolated CI, checks
+the version compatibility matrix, compares the three fixtures, and optionally
+runs `go test ./...` in both modules. A drift is a build failure of the checker,
+not a surprise at claim time. Refresh the lock only after reviewing the upstream
+diff and updating `third_party/queue.compatibility.json` if the supported
+protocol version or feature set changed.
 
 ## Exit path
 

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
+	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
+	youtubewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/artifacts"
@@ -233,10 +236,10 @@ func buildDomainMediaServices(
 	// not exercised by the YouTube orchestrator at composition time).
 	// Single-owner concurrency contract (Sept 2026): the youtube concurrency
 	// values are resolved EXACTLY ONCE at config-resolution time
-	// (buildYouTubeRuntimeConfig); the composition root only passes them
+	// (youtube.RuntimeConfigFromConfig); the composition root only passes them
 	// through. An explicit operator value (e.g. VELOX_CONCURRENT_VIDEO_EXTRACTS=2)
 	// must be honored verbatim — no silent re-normalization here.
-	ytRuntimeCfg := buildYouTubeRuntimeConfig(cfg)
+	ytRuntimeCfg := youtubewiring.RuntimeConfigFromConfig(cfg)
 	youtubeCore := youtube.ServiceCoreDeps{
 		Cfg: ytRuntimeCfg,
 		Log: log,
@@ -365,14 +368,14 @@ func buildClipMetadataService(
 ) (*ytmetadata.MetadataService, error) {
 	ollamaBuilderInner := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
-		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
+		youtubewiring.RuntimeConfigFromConfig(cfg).OllamaMetadataModel,
 		0,
 		log,
 	)
 	var ollamaBuilder ytmetadata.ClipMetadataBuilder = ollamaBuilderInner
 	if dbs.Cache != nil && dbs.Cache.DB != nil && dbs.Main != nil && dbs.Main.DB != nil {
-		if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
-			model := buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel
+		if cache, cacheErr := assetswiring.NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
+			model := youtubewiring.RuntimeConfigFromConfig(cfg).OllamaMetadataModel
 			if model == "" && ai.OllamaClient != nil {
 				model = ai.OllamaClient.Model()
 			}
@@ -409,7 +412,7 @@ func buildClipMetadataService(
 // to boot rather than silently dropping every enrichment intent.
 func registerClipMetadataEnrichment(outbox *OutboxBundle, clipMetadataService *ytmetadata.MetadataService, log *zap.Logger) error {
 	if outbox != nil && outbox.MediaIndexWorker != nil {
-		enrichHandler, enrichErr := newClipMetadataEnrichHandler(clipMetadataService, log)
+		enrichHandler, enrichErr := clipswiring.NewMetadataEnrichHandler(clipMetadataService, log)
 		if enrichErr != nil {
 			return fmt.Errorf("compose domains: metadata enrichment handler: %w", enrichErr)
 		}

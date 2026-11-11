@@ -3,6 +3,8 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -19,10 +21,15 @@ import (
 func seedClaimQueuedJob(t *testing.T, db *sql.DB, id, jobType string, priority int, payload string) {
 	t.Helper()
 	now := timeutil.FormatRFC3339(time.Now().UTC())
+	var descriptor map[string]string
+	if err := json.Unmarshal([]byte(payload), &descriptor); err != nil {
+		t.Fatalf("decode scheduling lane from payload: %v", err)
+	}
+	lane := descriptor["render_phase"]
 	if _, err := db.ExecContext(context.Background(),
-		`INSERT INTO jobs (id, type, status, priority, payload_json, created_at, updated_at, revision)
-		 VALUES (?, ?, 'QUEUED', ?, ?, ?, ?, 1)`,
-		id, jobType, priority, payload, now, now); err != nil {
+		`INSERT INTO jobs (id, type, status, priority, payload_json, created_at, updated_at, revision, execution_lane, available_at)
+		 VALUES (?, ?, 'QUEUED', ?, ?, ?, ?, 1, ?, ?)`,
+		id, jobType, priority, payload, now, now, lane, now); err != nil {
 		t.Fatalf("seed QUEUED job %s: %v", id, err)
 	}
 }
@@ -58,6 +65,121 @@ func TestClaimNextMatching_SelectsOnlyMatchingPhase(t *testing.T) {
 	}
 	if remaining == nil || remaining.ID != "job-submit" {
 		t.Fatalf("unscoped claim = %+v, want job-submit (the scoped pool must not consume it)", remaining)
+	}
+}
+
+func TestClaimMethodsDoNotClaimBeforeAvailableAt(t *testing.T) {
+	tests := []struct {
+		name  string
+		claim func(context.Context, *SQLiteStore) (*job.Job, error)
+	}{
+		{
+			name: "unscoped",
+			claim: func(ctx context.Context, store *SQLiteStore) (*job.Job, error) {
+				return store.ClaimNext(ctx, "worker", time.Minute, []string{"clip.render"})
+			},
+		},
+		{
+			name: "indexed execution lane",
+			claim: func(ctx context.Context, store *SQLiteStore) (*job.Job, error) {
+				return store.ClaimNextMatching(ctx, "worker", time.Minute, []string{"clip.render"}, job.PayloadMatch{"render_phase": "settle"})
+			},
+		},
+		{
+			name: "payload fallback",
+			claim: func(ctx context.Context, store *SQLiteStore) (*job.Job, error) {
+				return store.ClaimNextMatching(ctx, "worker", time.Minute, []string{"clip.render"}, job.PayloadMatch{"render_phase": "settle", "tenant": "a"})
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := newBrokerTestDB(t)
+			store := NewSQLiteStore(db, zap.NewNop())
+			ctx := context.Background()
+			seedClaimQueuedJob(t, db, "scheduled", "clip.render", 100, `{"render_phase":"settle","tenant":"a"}`)
+			future := timeutil.FormatRFC3339(time.Now().UTC().Add(time.Hour))
+			if _, err := db.ExecContext(ctx, `UPDATE jobs SET available_at = ? WHERE id = ?`, future, "scheduled"); err != nil {
+				t.Fatal(err)
+			}
+
+			claimed, err := tt.claim(ctx, store)
+			if err != nil {
+				t.Fatalf("claim before availability: %v", err)
+			}
+			if claimed != nil {
+				t.Fatalf("claim before available_at = %+v, want no job", claimed)
+			}
+
+			ready := timeutil.FormatRFC3339(time.Now().UTC().Add(-time.Second))
+			if _, err := db.ExecContext(ctx, `UPDATE jobs SET available_at = ? WHERE id = ?`, ready, "scheduled"); err != nil {
+				t.Fatal(err)
+			}
+			claimed, err = tt.claim(ctx, store)
+			if err != nil {
+				t.Fatalf("claim after availability: %v", err)
+			}
+			if claimed == nil || claimed.ID != "scheduled" {
+				t.Fatalf("claim after available_at = %+v, want scheduled", claimed)
+			}
+		})
+	}
+}
+
+func TestClaimNextMatching_MaterializedAgingPreservesEffectivePriorityAndTieBreak(t *testing.T) {
+	db := newBrokerTestDB(t)
+	store := NewSQLiteStore(db, zap.NewNop())
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	seedClaimQueuedJob(t, db, "aged-lane-job", "clip.render", 4, `{"render_phase":"settle"}`)
+	seedClaimQueuedJob(t, db, "fresh-lane-job", "clip.render", 6, `{"render_phase":"settle"}`)
+	if _, err := db.ExecContext(ctx, `UPDATE jobs SET created_at = ?, claim_next_age_millis = 0 WHERE id = ?`,
+		timeutil.FormatRFC3339(now.Add(-2*time.Hour)), "aged-lane-job"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE jobs SET created_at = ?, claim_next_age_millis = 0 WHERE id = ?`,
+		timeutil.FormatRFC3339(now), "fresh-lane-job"); err != nil {
+		t.Fatal(err)
+	}
+
+	claimed, err := store.ClaimNextMatching(ctx, "settle-worker", time.Minute,
+		[]string{"clip.render"}, job.PayloadMatch{"render_phase": "settle"})
+	if err != nil {
+		t.Fatalf("ClaimNextMatching: %v", err)
+	}
+	if claimed == nil || claimed.ID != "aged-lane-job" {
+		t.Fatalf("claimed=%+v, want older priority-4 job after two full hours tie it with priority 6", claimed)
+	}
+	var agedPriority, freshPriority int
+	if err := db.QueryRowContext(ctx, `SELECT claim_effective_priority FROM jobs WHERE id = ?`, "aged-lane-job").Scan(&agedPriority); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT claim_effective_priority FROM jobs WHERE id = ?`, "fresh-lane-job").Scan(&freshPriority); err != nil {
+		t.Fatal(err)
+	}
+	if agedPriority != freshPriority || agedPriority != 6 {
+		t.Fatalf("materialized priorities aged=%d fresh=%d, want both 6", agedPriority, freshPriority)
+	}
+}
+
+func TestClaimNextMatchingFindsMatchBeyondFirstScanPage(t *testing.T) {
+	db := newBrokerTestDB(t)
+	store := NewSQLiteStore(db, zap.NewNop())
+	ctx := context.Background()
+	for i := 0; i < claimPayloadMatchScan+6; i++ {
+		seedClaimQueuedJob(t, db, fmt.Sprintf("job-%03d", i), "clip.render", 10,
+			`{"render_phase":"submit"}`)
+	}
+	seedClaimQueuedJob(t, db, "job-after-first-page", "clip.render", 1,
+		`{"render_phase":"settle"}`)
+
+	claimed, err := store.ClaimNextMatching(ctx, "settle-worker", time.Minute,
+		[]string{"clip.render"}, job.PayloadMatch{"render_phase": "settle"})
+	if err != nil {
+		t.Fatalf("ClaimNextMatching: %v", err)
+	}
+	if claimed == nil || claimed.ID != "job-after-first-page" {
+		t.Fatalf("scoped claim = %+v, want matching job beyond the first %d candidates", claimed, claimPayloadMatchScan)
 	}
 }
 
@@ -183,5 +305,31 @@ func TestClaimNextMatching_RespectsTypeFilter(t *testing.T) {
 	}
 	if claimed == nil || claimed.ID != "job-other" {
 		t.Fatalf("scoped claim = %+v, want job-other (type filter must still apply)", claimed)
+	}
+}
+
+func TestSchedulingProjectionMatchesExplicitLaneWithoutPayloadHydration(t *testing.T) {
+	settle := &job.Job{Scheduling: job.SchedulingDescriptor{ExecutionLane: "settle"}}
+	handled, matches := schedulingProjectionMatches(settle, job.PayloadMatch{"render_phase": "settle"}, nil)
+	if !handled || !matches {
+		t.Fatalf("explicit matching lane = handled:%v matches:%v, want true/true", handled, matches)
+	}
+
+	submit := &job.Job{Scheduling: job.SchedulingDescriptor{ExecutionLane: "submit"}}
+	handled, matches = schedulingProjectionMatches(submit, job.PayloadMatch{"render_phase": "settle"}, nil)
+	if !handled || matches {
+		t.Fatalf("explicit nonmatching lane = handled:%v matches:%v, want true/false", handled, matches)
+	}
+
+	legacy := &job.Job{}
+	handled, _ = schedulingProjectionMatches(legacy, job.PayloadMatch{"render_phase": "settle"}, nil)
+	if handled {
+		t.Fatal("legacy row with no lane must fall back to payload hydration")
+	}
+
+	extraPredicate := job.PayloadMatch{"render_phase": "settle", "tenant": "blue"}
+	handled, matches = schedulingProjectionMatches(settle, extraPredicate, nil)
+	if handled || matches {
+		t.Fatalf("lane plus unrelated payload predicate = handled:%v matches:%v, want payload fallback", handled, matches)
 	}
 }

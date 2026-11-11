@@ -84,4 +84,8 @@ type EnqueueRequest struct {
 	// enqueues immediately (StatusQueued), preserving the historical
 	// behaviour for every existing caller.
 	ScheduledAt *time.Time
+	// Scheduling optionally supplies the typed resource/lane projection.
+	// JobType, Priority and AvailableAt are checked against the enqueue request
+	// and completed from its canonical fields when omitted.
+	Scheduling *SchedulingDescriptor
 }

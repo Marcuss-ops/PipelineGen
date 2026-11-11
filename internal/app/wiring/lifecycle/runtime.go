@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -122,3 +123,6 @@ func SafeCall(name string, fn func()) (err error) {
 	fn()
 	return nil
 }
+
+// ErrCapabilityDisabled reports a deliberately suppressed optional startup capability.
+var ErrCapabilityDisabled = errors.New("lifecycle: capability disabled (operator-facing policy decision; the surrounding step is intentionally not running)")

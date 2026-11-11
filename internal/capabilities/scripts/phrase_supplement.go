@@ -44,7 +44,7 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		if !ok {
 			continue
 		}
-		span, ok = completeGroundedPhrase(text, span)
+		span, ok = phrasepkg.CompleteGroundedPhrase(text, span)
 		if !ok {
 			continue
 		}
@@ -65,7 +65,7 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		if !ok {
 			continue
 		}
-		span, ok = completeGroundedPhrase(text, span)
+		span, ok = phrasepkg.CompleteGroundedPhrase(text, span)
 		if !ok {
 			continue
 		}
@@ -83,7 +83,7 @@ func supplementSourceImportantPhrases(ann *scriptpkg.SceneAnnotations, text, lan
 		if !ok {
 			continue
 		}
-		span, ok = completeGroundedPhrase(text, span)
+		span, ok = phrasepkg.CompleteGroundedPhrase(text, span)
 		if !ok {
 			continue
 		}

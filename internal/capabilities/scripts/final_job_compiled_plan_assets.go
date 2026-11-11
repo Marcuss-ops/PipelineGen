@@ -442,3 +442,71 @@ func (a *finalJobPlanAssets) extendSourceExtent(assetID string, sourceEndUS int6
 		}
 	}
 }
+
+// retainReferenced removes registry entries that the sealed plan cannot
+// consume. Runtime asset manifests drive remote prefetch, so keeping an unused
+// source here would still pay its download/preparation cost.
+func (a *finalJobPlanAssets) retainReferenced(segments []finalJobPlanSegment, finalAudioID string) {
+	if a == nil {
+		return
+	}
+	used := make(map[string]struct{}, len(segments)+1)
+	for _, segment := range segments {
+		if id := strings.TrimSpace(segment.AssetID); id != "" {
+			used[id] = struct{}{}
+		}
+	}
+	if id := strings.TrimSpace(finalAudioID); id != "" {
+		used[id] = struct{}{}
+	}
+	kept := a.items[:0]
+	for _, asset := range a.items {
+		if _, ok := used[asset.AssetID]; ok {
+			kept = append(kept, asset)
+		}
+	}
+	a.items = kept
+}
+
+// retainFinalJobRuntimeAssets keeps only transport bindings named by the
+// compiled plan. The Master includes runtime_assets in its queue dependency
+// set, so leaving an unused source there would still cause a prefetch even if
+// the plan no longer contains a segment for it.
+func retainFinalJobRuntimeAssets(planJSON string, runtimeAssets []any) ([]any, error) {
+	var plan finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(planJSON), &plan); err != nil {
+		return nil, fmt.Errorf("decode final_job plan while pruning runtime bindings: %w", err)
+	}
+	used := make(map[string]struct{}, len(plan.Assets)*5+1)
+	add := func(values ...string) {
+		for _, value := range values {
+			if value = strings.TrimSpace(value); value != "" {
+				used[value] = struct{}{}
+			}
+		}
+	}
+	for _, asset := range plan.Assets {
+		add(asset.AssetID, asset.AssetKey, asset.SHA256)
+	}
+	add(plan.FinalAudio.AssetID, plan.FinalAudio.SHA256)
+
+	filtered := make([]any, 0, len(runtimeAssets))
+	for _, raw := range runtimeAssets {
+		asset, ok := raw.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("final_job runtime asset has unexpected type %T", raw)
+		}
+		keep := false
+		for _, key := range []string{"asset_id", "asset_key", "sha256", "asset_sha256", "drive_file_id", "master_asset_id", "master_reference", "reference"} {
+			value := strings.TrimSpace(finalJobStringValue(asset[key]))
+			if _, ok := used[value]; value != "" && ok {
+				keep = true
+				break
+			}
+		}
+		if keep {
+			filtered = append(filtered, raw)
+		}
+	}
+	return filtered, nil
+}

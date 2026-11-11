@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/clips"
@@ -248,24 +249,26 @@ func buildSoundeffectBundle(params buildSoundeffectParams) (*assetsfx.Soundeffec
 	if params.Cfg == nil {
 		return nil, fmt.Errorf("soundeffect: config is required")
 	}
-	sfxClips := &sfxClipsRepoAdapter{repo: params.Soundeffect.ClipsRepo}
-	sfxMeta := &sfxSemanticWriterAdapter{w: params.Soundeffect.MetaWriter}
-	sfxResolver := &sfxResolverAdapter{mediaRoot: "data"}
-	sfxDispatcher := newSfxDispatcherAdapter(params.Soundeffect.Dispatcher)
+	sfxAdapters := wiringaudio.NewSoundEffectAdapters(
+		params.Soundeffect.ClipsRepo,
+		params.Soundeffect.MetaWriter,
+		params.Soundeffect.Dispatcher,
+		"data",
+	)
 
 	descriptor, err := assetsfx.Build(assetsfx.Dependencies{
 		Core: assetsfx.CoreDeps{
-			ClipsRepo:     sfxClips,
-			MetaWriter:    sfxMeta,
+			ClipsRepo:     sfxAdapters.Clips,
+			MetaWriter:    sfxAdapters.Metadata,
 			ProcessRunner: processRunnerAdapter,
 		},
 		Delivery: assetsfx.DeliveryDeps{
-			Resolver:               sfxResolver,
+			Resolver:               sfxAdapters.Destination,
 			Publisher:              params.Soundeffect.Publisher,
 			SoundEffectsRootFolder: params.Cfg.Drive.SoundEffectsRootFolder,
 		},
 		Transport: assetsfx.TransportDeps{
-			Dispatcher:  sfxDispatcher,
+			Dispatcher:  sfxAdapters.Dispatcher,
 			EnabledFunc: func() bool { return true },
 			ModuleOpts:  nil,
 		},

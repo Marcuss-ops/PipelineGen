@@ -23,6 +23,7 @@ func TestNormalizeJobTypeEmptyWarnsAndCounts(t *testing.T) {
 	}
 	for _, known := range []string{
 		model.JobTypeRenderSegment,
+		model.JobTypeRenderPrepare,
 		model.JobTypeOverlayPrepare,
 		model.JobTypeOverlayRender,
 		model.JobTypeOverlayImport,

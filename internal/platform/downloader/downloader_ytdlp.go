@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 	"github.com/Marcuss-ops/PipelineGen/pkg/security"
 )
@@ -21,6 +22,39 @@ import (
 func shouldForceNoPlaylist(url string) bool {
 	return strings.Contains(url, "youtube.com") ||
 		strings.Contains(url, "youtu.be")
+}
+
+// DownloadWithSourceWindow stages the requested source section. On a mirror
+// hit it copies the certified full source to the requested output and returns
+// the absolute section identity so a downstream canonical cutter can do the
+// only encode. Without a usable mirror it preserves Download's historical
+// section-file behavior and returns a nil window.
+func (d *YTDLPDownloader) DownloadWithSourceWindow(ctx context.Context, req *DownloadRequest) (*media.SourceWindow, error) {
+	if req == nil {
+		return nil, fmt.Errorf("download source window: request is required")
+	}
+	if req.ReturnSourceWindows && len(req.DownloadSections) == 1 {
+		segments, ok := d.sourceWindowsViaMirror(ctx, req)
+		if ok && len(segments) == 1 && segments[0].SourceWindow != nil {
+			template := req.OutputPath
+			if !strings.Contains(template, "%(ext)s") {
+				template += ".%(ext)s"
+			}
+			dest := mirrorDestination(template, mirrorSectionExt(req.MergeFormat))
+			if dest != "" {
+				if err := os.MkdirAll(filepath.Dir(dest), 0o755); err == nil {
+					_ = os.Remove(dest)
+					if err := linkOrCopy(segments[0].Path, dest); err == nil {
+						if err := d.verifier.VerifyFile(dest); err == nil {
+							return segments[0].SourceWindow, nil
+						}
+						_ = os.Remove(dest)
+					}
+				}
+			}
+		}
+	}
+	return nil, d.Download(ctx, req)
 }
 
 func (d *YTDLPDownloader) addExternalDownloaderArgs(args []string) []string {
@@ -341,6 +375,11 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 	basePath := strings.TrimSuffix(req.OutputPath, filepath.Ext(req.OutputPath)) // Section-via-mirror first: one full-source fetch, N local GPU cuts.
 	// Fail-soft — any miss or cut failure falls through to per-section
 	// network downloads below.
+	if req.ReturnSourceWindows {
+		if results, ok := d.sourceWindowsViaMirror(ctx, req); ok {
+			return results, nil
+		}
+	}
 	mirrorDests := sectionDestPaths(req)
 	if ok, _ := d.tryDownloadSectionsViaMirror(ctx, req, mirrorDests); ok {
 		results := make([]DownloadedSegment, len(req.DownloadSections))

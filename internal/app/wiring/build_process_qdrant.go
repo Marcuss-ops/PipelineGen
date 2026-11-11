@@ -32,25 +32,16 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing"
-
 	"go.uber.org/zap"
 
+	processwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/process"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
-	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/capabilities/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/collections"
-	qdranthealth "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/health"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
-	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
-	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/transport"
-	sqassets "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/channels"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
 
@@ -134,60 +125,16 @@ func BuildProcessBundle(
 		qd.ClipIndexerService.SetAssetMutationCommitter(mutationCommitter)
 	}
 
-	collectionMgr, vectorSvc, qdrantClient, qdrantHealthProbe, locatorCleaner, qdrantSearcher := initQdrantProcessSubsystems(qd, cfg, log)
+	processQdrant := processwiring.BuildQdrantSubsystems(qd, cfg, log)
 
 	return &ProcessBundle{
-		ProcessQdrantBundle: ProcessQdrantBundle{
-			CollectionManager: collectionMgr,
-			QdrantDeleter:     qd.QdrantDeleter,
-			QdrantRuntime:     qd.Runtime, // PR 4: first-class facade exposed at ProcessBundle level
-			VectorSvc:         vectorSvc,
-			QdrantClient:      qdrantClient,
-			QdrantHealthProbe: qdrantHealthProbe,
-			LocatorCleaner:    locatorCleaner,
-			QdrantSearcher:    qdrantSearcher,
-		},
-		MediaProcessor:     mediaProcessor,
-		ClipIndexerService: qd.ClipIndexerService,
-		VLMClient:          vlmClient,
+		ProcessQdrantBundle: processQdrant,
+		MediaProcessor:      mediaProcessor,
+		ClipIndexerService:  qd.ClipIndexerService,
+		VLMClient:           vlmClient,
 	}, nil
 }
 
-// ── Qdrant port assertions + subsystem init (moved from build_qdrant_runtime.go, Phase 5 consolidation, June 2026) ──
-
-var (
-	_ clipindexer.VectorStoreIndexer = (*indexing.IndexWriter)(nil)
-	_ jobsoutbox.AssetDeleter        = (*sqassets.ClipsRepository)(nil)
-)
-
-func initQdrantProcessSubsystems(
-	qd *QdrantDeps,
-	cfg *config.Config,
-	log *zap.Logger,
-) (
-	collectionMgr *collections.CollectionManager,
-	vectorSvc assetsearch.VectorStorePort,
-	qdrantClient *qdranttransport.Client,
-	qdrantHealthProbe *qdranthealth.Probe,
-	locatorCleaner *qdrantmaintenance.LocatorCleaner,
-	qdrantSearcher *qdrantsearch.Searcher,
-) {
-	if qd.Runtime == nil {
-		log.Info("QDRANT-003: Qdrant disabled — no Qdrant components wired (BuildProcessBundle)")
-		return
-	}
-	collectionMgr = qd.Runtime.Manager
-	vectorSvc = qd.Runtime.SearchAdapter
-	qdrantClient = qd.Runtime.Client
-	qdrantHealthProbe = qd.Runtime.Health
-	locatorCleaner = qd.Runtime.Cleaner
-	qdrantSearcher = qd.Runtime.Searcher
-	log.Info("QDRANT-005 PR4: HealthProbe + LocatorCleaner + Searcher + CollectionManager sourced from single QdrantRuntime (BuildProcessBundle)",
-		zap.String("qdrant_url", cfg.Qdrant.BaseURL),
-		zap.String("schema_version", qd.Runtime.Schema.Version))
-	log.Info("QDRANT-004 PR4: VectorStorePort sourced from single QdrantRuntime.SearchAdapter (BuildProcessBundle)")
-	return
-}
 func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *Databases, repos *RepoBundle, log *zap.Logger) (*QdrantDeps, error) {
 	_ = ctx
 

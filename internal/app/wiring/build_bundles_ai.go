@@ -19,6 +19,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	processor "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters/processor"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -240,7 +241,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 		// Derived transcript cache: source bytes + Whisper processor version
 		// identify the result; local temporary paths never become cache keys.
 		if dbs.Cache != nil && dbs.Cache.DB != nil && dbs.Main != nil && dbs.Main.DB != nil {
-			if cache, cacheErr := NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
+			if cache, cacheErr := assetswiring.NewArtifactCache(cfg, dbs.Cache.DB, dbs.Main.DB, log); cacheErr == nil {
 				// The Whisper bridge has its own execution contract; the Ollama
 				// chat model is unrelated and must not invalidate or alias
 				// transcription artifacts.
@@ -261,7 +262,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *Databases, log 
 	// AI-generated scene text (scene-by-scene) separate from the
 	// Translator. The adapter bridges scriptgeneration.GenerateRequest
 	// to the existing engine ResolvedGenerationPlan.
-	sceneTextGen := NewSceneTextGenerator(engine, log)
+	sceneTextGen := scriptwiring.NewSceneTextGenerator(engine, log)
 	sceneTextGen.SetMemoryService(memSvc)
 	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-20): the clip asset resolver
 	// reads the PostgreSQL media SSOT (pgmedia.MediaSearcher implements

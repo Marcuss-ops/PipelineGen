@@ -27,12 +27,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/process"
 )
@@ -362,6 +364,60 @@ func (d *YTDLPDownloader) tryDownloadSectionsViaMirror(ctx context.Context, req 
 		}
 	}
 	return true, nil
+}
+
+// sourceWindowsViaMirror returns the immutable full source plus certified
+// absolute ranges. The consumer performs the one canonical encode directly
+// from this source, avoiding a mirror cut followed by a second encode.
+func (d *YTDLPDownloader) sourceWindowsViaMirror(ctx context.Context, req *DownloadRequest) ([]DownloadedSegment, bool) {
+	if req == nil || len(req.DownloadSections) == 0 || !mirrorSectionsEnabled() {
+		return nil, false
+	}
+	videoID := youtubeVideoID(req.URL)
+	if videoID == "" {
+		return nil, false
+	}
+	ranges := make([]sectionRange, len(req.DownloadSections))
+	for i, section := range req.DownloadSections {
+		r, ok := parseSectionRange(section)
+		if !ok {
+			return nil, false
+		}
+		ranges[i] = r
+	}
+	mergeFormat := req.MergeFormat
+	if mergeFormat == "" {
+		mergeFormat = "mp4"
+	}
+	root, available := d.mirrorRoot()
+	if !available {
+		return nil, false
+	}
+	key := mirrorKey(videoID, d.fullSourceFormatSignature(req.Format, mergeFormat))
+	source, err := d.ensureFullSourceCached(ctx, req.URL, videoID, req.Format, mergeFormat, req.UseCookies, d.effectiveDownloadTimeout(req.Timeout))
+	if err != nil {
+		log.Printf("downloader: mirror source-window unavailable for %s (%v); using section path", videoID, err)
+		return nil, false
+	}
+	sha, size, err := mirrorContentIdentity(root, key, source)
+	if err != nil {
+		log.Printf("downloader: mirror source-window identity unavailable for %s (%v); using section path", videoID, err)
+		return nil, false
+	}
+	out := make([]DownloadedSegment, len(ranges))
+	for i, r := range ranges {
+		window := &media.SourceWindow{
+			AssetSHA256: sha,
+			SizeBytes:   size,
+			StartUS:     int64(math.Round(r.start * 1_000_000)),
+			EndUS:       int64(math.Round(r.end * 1_000_000)),
+		}
+		if err := window.Validate(); err != nil {
+			return nil, false
+		}
+		out[i] = DownloadedSegment{Path: source, Name: fmt.Sprintf("segment_%03d", i+1), Index: i, SourceWindow: window}
+	}
+	return out, true
 }
 
 // sectionDestPaths derives the exact output files the network section path

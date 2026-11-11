@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "pipelinegen": {
+    "render_request_identity": "pipelinegen.render-request.v2",
+    "queue_job_schema": "renderinggen.job.v1"
+  },
+  "queue_module": {
+    "module": "github.com/Marcuss-ops/RenderingGen/queue",
+    "minimum_version": "0.1.2",
+    "verified_version": "0.1.2"
+  },
+  "renderinggen_server": {
+    "queue_module_version": "0.1.2",
+    "required_features": [
+      "atomic-submit-batch",
+      "idempotency-key-unique",
+      "lease-generation-fencing",
+      "job-children-read",
+      "prepared-render-package",
+      "prepared-family-contiguous-ranges",
+      "prepared-family-total-frame-coverage",
+      "prepared-package-profile-required",
+      "idempotent-replay-request-match",
+      "atomic-idempotent-batch-replay"
+    ]
+  },
+  "verification": {
+    "pipelinegen": "go test ./internal/platform/renderinggen -count=1",
+    "queue": "go test ./... (in the queue module)",
+    "snapshot": "python3 scripts/ci/check_queue_vendor.py"
+  }
+}

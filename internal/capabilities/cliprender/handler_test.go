@@ -133,6 +133,10 @@ func TestRenderHandler_HappyPath_CanonicalWireShape(t *testing.T) {
 	if jobsSvc.enqueued.Type != TypeClipRender {
 		t.Errorf("Type: got %q, want %q", jobsSvc.enqueued.Type, TypeClipRender)
 	}
+	if got := jobsSvc.enqueued.Scheduling; got == nil || got.JobType != TypeClipRender ||
+		got.ResourceClass != SchedulingResourceClass || got.ExecutionLane != ExecutionLaneSubmit {
+		t.Errorf("Scheduling: got %+v, want the indexed clip.render submit descriptor", got)
+	}
 
 	req, ok := jobsSvc.enqueued.Payload.(*RenderRequest)
 	if !ok {

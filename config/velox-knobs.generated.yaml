@@ -41,7 +41,7 @@ knobs:
     kind: env
     default: ""
     safe_production: "unset"
-    owner: "internal/app/wiring/fake_final_job.go"
+    owner: "internal/app/wiring/script/fake_final_job.go"
     description: "Simulate the remote final-job handoff so a run measures only the local pipeline."
   VELOX_FINAL_AUDIO_CACHE_DIR:
     kind: env

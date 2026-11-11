@@ -4,15 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/knobs"
+	wiringaudio "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/audio"
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
+	scriptwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/script"
+	vowiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/voiceover"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
@@ -25,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
@@ -32,11 +34,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/renderinggen"
 	sqlitecheckpoint "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/checkpoint"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/rendermetrics"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
 
@@ -138,7 +140,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// reuse) was invisible in production logs while the same code logged
 	// normally in tests. Nil-safe.
 	runner.SetLogger(log)
-	phraseEmbedder := wirePhraseImpactEmbedder(cfg)
+	phraseEmbedder := scriptwiring.WirePhraseImpactEmbedder(cfg)
 	// Unified semantic path: ONE analyze call per script returns entities,
 	// bullets, charts, dates and numbers from the same extraction. The worker
 	// is a dedicated binary (bin/semantic-engine), not the media executor and
@@ -153,14 +155,29 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer
 	// still gates all lookups and map planning on request-level geocoding opt-in.
-	if err := wireScriptLocationSources(runner, cfg, log); err != nil {
+	if err := scriptwiring.WireScriptLocationSources(runner, cfg, log); err != nil {
 		return nil, err
 	}
 	if cfg != nil && cfg.Scripts.LocalizedRenderConcurrency > 0 {
 		runner.SetTTSConcurrency(cfg.Scripts.LocalizedRenderConcurrency)
 	}
 	runner.SetCombinedAudioRenderer(audioRenderer)
-	runner.SetFinalAudioPublisher(newFinalAudioPublisher(root, committer, log))
+	var finalAudioDB *sql.DB
+	var finalAudioDrivePublisher delivery.Publisher
+	var finalAudioDriveGate *concurrent.FairSemaphore
+	if root != nil {
+		if root.DB != nil && root.DB.DB != nil {
+			finalAudioDB = root.DB.DB
+			if root.MediaPostgres != nil {
+				finalAudioDB = root.MediaPostgres
+			}
+		}
+		if root.Drive != nil {
+			finalAudioDrivePublisher = root.Drive.Publisher
+		}
+		finalAudioDriveGate = root.DriveUploadGate
+	}
+	runner.SetFinalAudioPublisher(vowiring.NewFinalAudioPublisher(finalAudioDB, finalAudioDrivePublisher, committer, finalAudioDriveGate, log))
 	if cfg != nil {
 		// Cross-run reuse of a certified master: the audio plan hash is the work
 		// identity, so an unchanged plan must not be re-mixed and re-encoded.
@@ -222,10 +239,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		if matErr != nil {
 			return nil, fmt.Errorf("audio asset resolver: wire canonical materializer: %w", matErr)
 		}
-		audioAdapter := &audioAssetSourceAdapter{
-			assets:    assetLookup,
-			canonical: canonical,
-		}
+		audioAdapter := wiringaudio.NewAudioAssetSourceAdapter(assetLookup, canonical)
 		runner.SetAudioAssetSource(audioAdapter)
 		runner.SetOverlayBackgroundSource(audioAdapter)
 		// Add canonical audio resolvers to the already-wired preflight without
@@ -240,7 +254,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		return nil, err
 	}
 	if root.Repos != nil && root.Repos.ScriptsRepo != nil {
-		runner.SetScriptPersistence(newScriptGenerationPersistence(
+		runner.SetScriptPersistence(scriptwiring.NewGenerationPersistence(
 			sqlitescripts.NewRepositoryAdapter(root.Repos.ScriptsRepo), log,
 		))
 	} else {
@@ -387,104 +401,6 @@ func wireRenderAttemptRecorder(db *sql.DB, log *zap.Logger) scriptgen.RenderAtte
 
 var _ scriptgen.Translator = (*scriptGenerationTranslator)(nil)
 
-func wireScriptGenerationOverlayQueue(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger) error {
-	if queueURL := strings.TrimSpace(cfg.External.RenderingGenQueueURL); queueURL != "" {
-		queueClient := renderinggen.New(queueURL)
-		storeURL := strings.TrimSpace(os.Getenv("RENDERINGGEN_STORE_URL"))
-		if storeURL == "" {
-			storeURL = defaultRenderingGenStoreURL
-		}
-		queueClient.SetAssetPrefetcher(renderinggen.NewHTTPAssetPrefetcher(storeURL))
-		prepareEnqueuer, err := scriptgen.NewQueuePrepareEnqueuer(queueClient)
-		if err != nil {
-			return fmt.Errorf("build queue prepare enqueuer: %w", err)
-		}
-		runner.SetOverlayPrepareEnqueuer(prepareEnqueuer)
-		renderEnqueuer, err := scriptgen.NewQueueRenderEnqueuer(queueClient)
-		if err != nil {
-			return fmt.Errorf("build queue render enqueuer: %w", err)
-		}
-		renderEnqueuer.SetDynamicMapVideoCacheDir(cfg.Storage.FullPath("dynamic-map-video-cache"))
-		mapGPUGate, gateErr := scriptgen.NewDynamicMapGPUAdmission()
-		if gateErr != nil {
-			return fmt.Errorf("build shared dynamic-map GPU admission gate: %w", gateErr)
-		}
-		renderEnqueuer.SetDynamicMapGPUGate(mapGPUGate)
-		if cfg.External.RenderingGenPollIntervalMS > 0 {
-			renderEnqueuer.SetPollInterval(time.Duration(cfg.External.RenderingGenPollIntervalMS) * time.Millisecond)
-		}
-		// Reuse the canonical queue identity for retries/replays. A new render is
-		// requested explicitly by a new plan/force-refresh request; making every
-		// submission fresh here caused identical overlays to be rendered and
-		// published repeatedly.
-		renderEnqueuer.SetFreshRender(false)
-		// Pipelining depth for the per-item overlay renders. This is not a GPU
-		// bound: the worker's worker.gpu_lanes remains the only authority on
-		// concurrent GPU work, so this overlaps the per-item pre/post chain
-		// without oversubscribing the device.
-		renderEnqueuer.SetItemRenderPool(cfg.Scripts.SeparateItemRenderWorkers)
-		wireOverlayRenderCache(root, renderEnqueuer, log)
-		// Generated semantic overlays have their own canonical root. Clip
-		// renders use a separate routing contract and must not influence this
-		// destination: <Overlay Chronon>/<JobID>/<language>/overlay.
-		overlayParentFolderID := cfg.Drive.OverlayRenderFolder()
-		if root.Drive != nil && root.Drive.Publisher != nil && strings.TrimSpace(overlayParentFolderID) != "" {
-			drivePublisher := drive.NewArtifactPublisherAdapter(root.Drive.Publisher, log)
-			overlayPublisher := renderinggen.NewDriveOverlayArtifactPublisher(drivePublisher)
-			overlayPublisher.SetRootFolderID(overlayParentFolderID)
-			// Every generated semantic overlay is routed by JobID/PlanID and
-			// language. The configured folder is only the root; an empty
-			// ScriptsGenerateFolder must not silently flatten the overlay tree.
-			overlayPublisher.SetScriptLanguageRouting(true)
-			publicationPublisher, pubErr := wireDurableOverlayPublisher(root, overlayPublisher)
-			if pubErr != nil {
-				return pubErr
-			}
-			renderEnqueuer.SetArtifactPublisher(publicationPublisher)
-			// RenderingGen has already certified immutable bytes when the
-			// enqueuer returns. Drive publication and analytics therefore run on
-			// the bounded post-render pool; the runner joins it before COMPLETE.
-			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
-			renderEnqueuer.SetAsyncPublication(true)
-			runner.SetOverlayPublicationDrainer(renderEnqueuer)
-			log.Info("overlay artifact Drive publisher wired",
-				zap.String("parent_folder_id", overlayParentFolderID),
-				zap.String("child_folder", "overlay"),
-				zap.Bool("durable_outbox", publicationPublisher != overlayPublisher))
-		} else {
-			// Ordinary certified video renders do not need a Drive copy. The
-			// queue fails closed if a final-job delivery explicitly requires one.
-			// Single publication path (TICKET-MAX-THROUGHPUT-OVERLAY-
-			// ARCHITECTURE §9.3.3 punto 5): the bounded post-render pool owns
-			// any publication work in EVERY configuration — Drive-backed or
-			// analytics-only — so no submit-side wait can ever serialize a
-			// render lane behind Drive/analytics latency.
-			renderEnqueuer.SetPublicationWorkers(cfg.Scripts.OverlayPublicationWorkers)
-			renderEnqueuer.SetAsyncPublication(true)
-			runner.SetOverlayPublicationDrainer(renderEnqueuer)
-			log.Info("overlay Drive publisher unavailable; local certified renders remain enabled",
-				zap.Int("publication_workers", cfg.Scripts.OverlayPublicationWorkers))
-		}
-		var analyticsDB *sql.DB
-		if root.DB != nil {
-			analyticsDB = root.DB.DB
-		}
-		renderEnqueuer.SetRecorder(wireRenderAttemptRecorder(analyticsDB, log))
-		runner.SetOverlayRenderEnqueuer(renderEnqueuer)
-		// Bounded multilingual render fan-out. It replaces the serial
-		// per-language render loop, so N languages no longer wait on Chronon
-		// one after another. The RenderingGen worker still owns gpu_lanes, so
-		// this bounds pipelining, not device load.
-		runner.SetOverlayRenderConcurrency(cfg.Scripts.OverlayRenderConcurrency)
-		log.Info("overlay.prepare enqueuer wired to RenderingGen queue",
-			zap.String("url", queueURL),
-			zap.Int("overlay_render_concurrency", runner.OverlayRenderConcurrency()))
-	} else {
-		log.Warn("overlay.prepare enqueue disabled: RENDERINGGEN_QUEUE_URL is not configured")
-	}
-	return nil
-}
-
 func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, root *ComposeRoot, log *zap.Logger, vidRushProviders *documentadapters.VidRushAssetProviderRegistry, vidRushFinalizer scriptports.VidRushArtifactFinalizer, vidRushCache scriptports.VidRushCachePort, mediaSampler *rustexec.MediaSamplerAdapter, semanticAnalyzer *rustexec.SemanticEngineAdapter) error {
 	// SceneIR entity extraction and image search share the same semantic
 	// engine as the script batch analyzer. Exact source matches reuse the
@@ -497,7 +413,7 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
 	runner.SetImageSearchResolver(imageSearchResolver)
 	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
-	wireSemanticSearchPlanner(runner, cfg, root, log)
+	scriptwiring.WireSemanticSearchPlanner(runner, cfg, scriptCacheDB(root), vidrushInternetImageSearcher(root, log), log)
 
 	vidRushMetrics := observability.NewVidRushMetricsAdapter()
 	var vidRushFanout scriptgen.SegmentProviderResolver
@@ -552,7 +468,7 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 		CertifierPort: scriptgen.MediaCertifierFunc(func(_ context.Context, spec mediacert.Spec, result mediacert.MediaResult) (mediacert.Report, error) {
 			return mediacert.Certify(spec, result), nil
 		}),
-		CertSpecResolver: scriptgen.MediaCertSpecResolverFunc(buildRuntimeMediaCertSpec),
+		CertSpecResolver: scriptgen.MediaCertSpecResolverFunc(scriptwiring.BuildRuntimeMediaCertSpec),
 	}
 	if root.MediaPostgres != nil && strings.TrimSpace(cfg.ClipIndexer.ServerURL) != "" && vidRushProviders != nil {
 		searcher := pgmedia.NewMediaSearcher(root.MediaPostgres)
@@ -586,4 +502,11 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 	}
 	runner.SetVidRushPipeline(pipeline)
 	return nil
+}
+
+func scriptCacheDB(root *ComposeRoot) *sql.DB {
+	if root == nil || root.CacheDB == nil {
+		return nil
+	}
+	return root.CacheDB.DB
 }

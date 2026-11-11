@@ -16,6 +16,7 @@ import (
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	queueclient "github.com/Marcuss-ops/RenderingGen/queue/client"
 )
 
@@ -65,65 +66,155 @@ func TestClientSubmitCreated(t *testing.T) {
 	}
 }
 
-func TestClientSubmitConflictIsErrJobExists(t *testing.T) {
-	job := scriptgen.RenderQueueJob{ID: "job-1"}
-	identity, err := scriptgen.RenderRequestIdentityFor(job)
-	if err != nil {
-		t.Fatalf("request identity: %v", err)
-	}
+func TestClientSubmitExactReplayUsesQueueAtomicResult(t *testing.T) {
+	var getCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			http.Error(w, "job job-1 already exists", http.StatusConflict)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":"job-1"}`))
 			return
 		}
-		_ = json.NewEncoder(w).Encode(queueclient.Job{ID: "job-1", IdempotencyKey: identity.IdempotencyKey("job-1")})
+		getCalls++
+		http.Error(w, "GET must not classify submit replay", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL)
-	err = client.Submit(context.Background(), job)
+	err := New(srv.URL).Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
 	if !errors.Is(err, scriptgen.ErrJobExists) {
-		t.Fatalf("expected ErrJobExists, got %v", err)
+		t.Fatalf("atomic exact replay = %v, want ErrJobExists", err)
+	}
+	if getCalls != 0 {
+		t.Fatalf("producer made %d GET calls after Queue confirmed replay", getCalls)
 	}
 }
 
-func TestClientSubmitIdentityConflictIsTyped(t *testing.T) {
+func TestClientSubmitChangedIdentityFailsWithoutProducerRead(t *testing.T) {
+	var getCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			http.Error(w, "job job-1 already exists", http.StatusConflict)
+			http.Error(w, "idempotency_conflict: different immutable request", http.StatusConflict)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(queueclient.Job{ID: "job-1", IdempotencyKey: "different-identity"})
+		getCalls++
+		http.Error(w, "GET must not classify submit conflict", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
 
-	client := New(srv.URL)
-	err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
-	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
-		t.Fatalf("expected ErrRenderRequestConflict, got %v", err)
+	err := New(srv.URL).Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
+	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) || errors.Is(err, scriptgen.ErrJobExists) {
+		t.Fatalf("changed identity error = %v, want only ErrRenderRequestConflict", err)
 	}
-	if errors.Is(err, scriptgen.ErrJobExists) {
-		t.Fatalf("identity conflict must not masquerade as an idempotent replay: %v", err)
+	if getCalls != 0 {
+		t.Fatalf("producer made %d GET calls after Queue reported a conflict", getCalls)
 	}
 }
 
-func TestClientSubmitUnverifiableCollisionFailsClosed(t *testing.T) {
+func TestClientSubmitDuplicateIDFailsClosedWithoutProducerRead(t *testing.T) {
+	var getCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			http.Error(w, "job job-1 already exists", http.StatusConflict)
+			http.Error(w, "job_id_conflict: ID is owned by another request", http.StatusConflict)
 			return
 		}
-		http.Error(w, "queue unavailable", http.StatusInternalServerError)
+		getCalls++
+		http.Error(w, "GET must not classify submit conflict", http.StatusInternalServerError)
 	}))
 	defer srv.Close()
-
-	client := New(srv.URL)
-	err := client.Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
+	err := New(srv.URL).Submit(context.Background(), scriptgen.RenderQueueJob{ID: "job-1"})
 	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
-		t.Fatalf("expected fail-closed ErrRenderRequestConflict, got %v", err)
+		t.Fatalf("duplicate ID error = %v, want ErrRenderRequestConflict", err)
 	}
-	if errors.Is(err, scriptgen.ErrJobExists) {
-		t.Fatalf("unverifiable identity must not masquerade as an idempotent replay: %v", err)
+	if getCalls != 0 {
+		t.Fatalf("producer made %d GET calls after Queue reported duplicate ID", getCalls)
+	}
+}
+
+func TestClientSubmitBatchExactReplayUsesQueueAtomicResult(t *testing.T) {
+	family := []scriptgen.RenderQueueJob{
+		{ID: "anchor", JobType: "render.segment"},
+		{ID: "chunk-0", JobType: "render.segment", ParentJobID: "anchor", ChunkIndex: 0, FrameRange: &scriptgen.RenderFrameRange{Start: 0, End: 48}},
+	}
+	var getCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/jobs/batch" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		getCalls++
+		http.Error(w, "producer reads are forbidden", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	err := New(srv.URL).SubmitBatch(context.Background(), family)
+	if !errors.Is(err, scriptgen.ErrJobExists) {
+		t.Fatalf("atomic exact family replay = %v, want ErrJobExists", err)
+	}
+	if getCalls != 0 {
+		t.Fatalf("producer made %d GET calls after Queue confirmed family replay", getCalls)
+	}
+}
+
+func TestClientSubmitBatchChangedFamilyFailsWithoutProducerRead(t *testing.T) {
+	family := []scriptgen.RenderQueueJob{
+		{ID: "anchor", JobType: "render.segment"},
+		{ID: "chunk-0", JobType: "render.segment", ParentJobID: "anchor", ChunkIndex: 0, FrameRange: &scriptgen.RenderFrameRange{Start: 0, End: 48}},
+	}
+	var getCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			http.Error(w, "idempotency_conflict: family differs", http.StatusConflict)
+			return
+		}
+		getCalls++
+		http.Error(w, "producer reads are forbidden", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	err := New(srv.URL).SubmitBatch(context.Background(), family)
+	if !errors.Is(err, scriptgen.ErrRenderRequestConflict) {
+		t.Fatalf("changed family error = %v, want ErrRenderRequestConflict", err)
+	}
+	if getCalls != 0 {
+		t.Fatalf("producer made %d GET calls after Queue reported family conflict", getCalls)
+	}
+}
+
+func TestClientSubmitBatchPrefetchesSharedAssetsOnce(t *testing.T) {
+	assetHash := strings.Repeat("a", 64)
+	assetWithoutSource := scriptgen.NewRenderQueueAsset(kernelasset.Ref{SHA256: assetHash, AssetID: "shared.mp4"}, "shared.mp4", "")
+	assetWithSource := scriptgen.NewRenderQueueAsset(kernelasset.Ref{SHA256: assetHash, AssetID: "shared.mp4"}, "shared.mp4", "https://assets.example/shared.mp4")
+	var calls int
+	var prefetched []scriptgen.RenderQueueAsset
+	prefetch := NewAssetPrefetcher(func(_ context.Context, assets []scriptgen.RenderQueueAsset) error {
+		calls++
+		prefetched = append(prefetched, assets...)
+		return nil
+	})
+	var submitted bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jobs/batch" || r.Method != http.MethodPost {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		submitted = true
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+	client := New(srv.URL)
+	client.SetAssetPrefetcher(prefetch)
+	family := []scriptgen.RenderQueueJob{
+		{ID: "anchor", JobType: "render.segment", Assets: []scriptgen.RenderQueueAsset{assetWithoutSource}},
+		{ID: "chunk-1", JobType: "render.segment", ParentJobID: "anchor", Assets: []scriptgen.RenderQueueAsset{assetWithoutSource}},
+		{ID: "chunk-2", JobType: "render.segment", ParentJobID: "anchor", Assets: []scriptgen.RenderQueueAsset{assetWithSource}},
+	}
+	if err := client.SubmitBatch(context.Background(), family); err != nil {
+		t.Fatalf("SubmitBatch: %v", err)
+	}
+	if calls != 1 || len(prefetched) != 1 || prefetched[0].Ref().SHA256 != assetHash {
+		t.Fatalf("prefetch calls=%d assets=%d, want one call with one content address", calls, len(prefetched))
+	}
+	if got := prefetched[0].SourceURL; got != "https://assets.example/shared.mp4" {
+		t.Fatalf("deduplicated asset source URL = %q, want hint merged from a later chunk", got)
+	}
+	if !submitted {
+		t.Fatal("batch was not submitted after prefetch")
 	}
 }
 

@@ -27,8 +27,9 @@ import (
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/scripts"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
+	drivewiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	drive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	platformdrive "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 
 	"go.uber.org/zap"
 )
@@ -44,7 +45,7 @@ import (
 func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	// FASE 9 Step 2: use root.Drive.DriveUploader directly instead of
 	// constructing a redundant *drive.Uploader from DriveClient.
-	var driveUploaderAdapter *drive.Uploader
+	var driveUploaderAdapter *platformdrive.Uploader
 	if root.Drive != nil && root.Drive.DriveUploader != nil {
 		driveUploaderAdapter = root.Drive.DriveUploader
 	}
@@ -54,7 +55,7 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		toolCheckerAdapter,
 		processRunnerAdapter,
 		dbHealthCheckerAdapter,
-		newDriveAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
+		drivewiring.NewSystemAdminAdapter(driveUploaderAdapter, driveUploaderAdapter, root.Drive.Lifecycle, log),
 		nil,
 	)
 	if err := registry.RegisterCapabilityModule(capability, module.BuildContext{}); err != nil {

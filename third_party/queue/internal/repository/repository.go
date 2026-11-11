@@ -31,6 +31,11 @@ var ErrNotFound = errors.New("job not found")
 // it.
 var ErrJobExists = client.ErrJobExists
 
+// ErrIdempotencyConflict means a caller reused an idempotency key for a
+// different immutable request. It is distinct from a valid replay and is
+// decided by the repository while resolving the unique-key collision.
+var ErrIdempotencyConflict = errors.New("idempotency key reused for a different request")
+
 // JobRepository is the storage contract for the central job queue.
 //
 // Every method takes the caller's context as its first parameter. Cancellation
@@ -131,6 +136,12 @@ type IdempotencyRepository interface {
 // it before the children exist and render the full plan a second time.
 type BatchRepository interface {
 	SubmitBatch(ctx context.Context, jobs []model.Job) error
+}
+
+// BatchIdempotencyRepository atomically submits a family or accepts a replay
+// only when every persisted member has the same immutable request.
+type BatchIdempotencyRepository interface {
+	SubmitBatchIdempotent(ctx context.Context, jobs []model.Job) (created bool, err error)
 }
 
 // PermanentFailureRepository exposes an explicit terminal-failure transition

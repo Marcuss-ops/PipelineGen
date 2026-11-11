@@ -3,7 +3,7 @@
 # PipelineGen multi-target Dockerfile.
 #
 # Multi-stage build with three runtime targets:
-#   1) builder         — shared Go compiler (golang:1.25-bookworm, CGO enabled).
+#   1) builder         — shared Go compiler (golang:1.26-bookworm, CGO enabled).
 #   2) server-runtime  — HTTP server only (ca-certificates + curl).
 #   3) worker-runtime  — background job executor (ffmpeg + yt-dlp + Python/Whisper).
 #   4) admin-runtime   — one-shot admin CLI (sqlite3 + jq + python3).
@@ -16,7 +16,7 @@
 # never use.
 
 # ─── builder ─────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS builder
 ARG TARGETOS=linux
 ARG TARGETPLATFORM
 ARG VERSION=dev
@@ -37,14 +37,12 @@ RUN apt-get update \
 
 WORKDIR /src
 
-# PipelineGen's go.mod replaces the published queue version with the sibling
-# RenderingGen checkout. Supply that checkout as a named BuildKit context so
-# container builds use the same queue contract as local Go builds.
-COPY --from=renderinggen-queue / /RenderingGen/queue/
-
 # Layer-cache friendly: copy go.mod/go.sum first, download deps, then copy
-# the rest of the source.
+# the local queue replacement's module manifest, then download deps. The full
+# queue source is copied with the application below so Docker and local builds
+# use the exact vendored contract from third_party/queue.
 COPY go.mod go.sum ./
+COPY third_party/queue/go.mod ./third_party/queue/go.mod
 RUN go mod download
 
 COPY . .

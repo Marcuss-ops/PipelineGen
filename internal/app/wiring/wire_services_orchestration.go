@@ -79,7 +79,7 @@ import (
 // including the job runner — is captured in jobs.startupPlan), builds
 // cleanup. WireRegistry takes ONLY root + ctx — there is no *CoreDeps
 // projection. The job-runner StartupStep (built by
-// lifecycle_job_runner.go::buildJobRunnerStep, PR4.8) freezes the
+// lifecycle/jobrunner.go::BuildJobRunnerStep, PR4.8) freezes the
 // dispatcher during Start so all handlers registered in
 // NewComposition + WireRegistry are accepted before any new handler
 // can register.

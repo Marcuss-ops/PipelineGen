@@ -36,6 +36,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/finalization"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	infacq "github.com/Marcuss-ops/PipelineGen/internal/platform/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -152,7 +153,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// maps appacq.PrepareRequest → downloader.DownloadRequest,
 	// then resolves the yt-dlp output file and renames it to the
 	// canonical dstPath the FilesystemStager expects.
-	ytdlpFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
+	ytdlpFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onFetchResult func(infacq.FetchResult)) error {
 		dlReq := &downloader.DownloadRequest{
 			URL:        req.Source.URL,
 			OutputPath: dstPath + ".%(ext)s",
@@ -162,11 +163,13 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		if req.Source.DownloadSection != "" {
 			dlReq.DownloadSections = []string{req.Source.DownloadSection}
 			dlReq.ForceKeyframes = req.Source.ForceKeyframes
+			dlReq.ReturnSourceWindows = true
 		}
 		if req.Source.MergeFormat != "" {
 			dlReq.MergeFormat = req.Source.MergeFormat
 		}
-		if err := ytdlp.Download(ctx, dlReq); err != nil {
+		sourceWindow, err := ytdlp.DownloadWithSourceWindow(ctx, dlReq)
+		if err != nil {
 			return err
 		}
 		// yt-dlp writes to OutputPath.%(ext)s; resolve the actual file
@@ -180,6 +183,9 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 			if err := os.Rename(resolved, dstPath); err != nil {
 				return err
 			}
+		}
+		if sourceWindow != nil && onFetchResult != nil {
+			onFetchResult(infacq.FetchResult{SHA256: sourceWindow.AssetSHA256, SourceWindow: sourceWindow})
 		}
 		return nil
 	}
@@ -306,7 +312,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// transient at the underlying ffprobe.
 	stockProbe := render.NewCachedSourceDurationProbe(
 		render.NewFFProbeSourceDurationProbe(rustexec.NewConfiguredVideoProcessorWithExecutor(rustExecutor, mediaConfig.Policy, mediaConfig.Profile, log)))
-	stockProjection := newStockProjection()
+	stockProjection := stockwiring.NewProjection()
 
 	return BuildStockBundle(StockBundleDeps{
 		Runtime: StockRuntimeDeps{

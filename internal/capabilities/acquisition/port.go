@@ -26,6 +26,8 @@ package acquisition
 import (
 	"context"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // ── Sentinel errors (godlike/07 typed-error contract) ────────────────
@@ -177,6 +179,10 @@ type PrepareContext struct {
 	MIMEType     string
 	ExpiresAt    time.Time
 	CleanupToken string
+	// SourceWindow is present when the staged bytes are a complete source
+	// asset and the request identifies a certified absolute window within it.
+	// Consumers then apply the window in their one canonical media operation.
+	SourceWindow *media.SourceWindow
 }
 
 // ── SourceStager — the canonical port ────────────────────────────────

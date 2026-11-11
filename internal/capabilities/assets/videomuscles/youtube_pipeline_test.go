@@ -27,6 +27,11 @@ func TestCanonicalYouTubeCutOptionsDelegatesEncoderPolicy(t *testing.T) {
 	require.True(t, noAudio.NoAudio)
 }
 
+func TestYouTubeSectionBoundaryUsesSerializedMillisecondPrecision(t *testing.T) {
+	require.EqualValues(t, 1_234_000, youtubeSectionBoundaryUS(1.2349))
+	require.EqualValues(t, 1_234_000, youtubeSectionBoundaryUS(1.2341))
+}
+
 func TestBuildYouTubeSectionDownloadRequestDisablesForceKeyframes(t *testing.T) {
 	req := (&Pipeline{}).buildYouTubeSectionDownloadRequest(YouTubeCutRequest{
 		URL:            "https://www.youtube.com/watch?v=example",
@@ -37,6 +42,8 @@ func TestBuildYouTubeSectionDownloadRequestDisablesForceKeyframes(t *testing.T) 
 		"the canonical YouTube path must leave section cutting to CutAndNormalize")
 	require.Equal(t, []string{"*00:00:01.000-00:00:05.000"}, req.DownloadSections)
 	require.Equal(t, "mp4", req.MergeFormat)
+	require.True(t, req.ReturnSourceWindows,
+		"the mirror path should hand a certified source window to the single canonical encoder")
 	require.True(t, req.UseCookies)
 	require.Equal(t, defaultSectionDownloadTimeout, req.Timeout,
 		"an unconfigured pipeline keeps the historical per-section bound")

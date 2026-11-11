@@ -31,7 +31,7 @@ func WireAcquisitionStager(cfg *config.Config, log *zap.Logger, fetch infacq.Fet
 		log = zap.NewNop()
 	}
 	if fetch == nil {
-		fetch = func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(string)) error {
+		fetch = func(_ context.Context, _ appacq.PrepareRequest, _ string, _ func(infacq.FetchResult)) error {
 			return appacq.Wrap(appacq.ErrAcquisitionPrepareFailed, "acquisition fetch is not wired")
 		}
 	}
@@ -56,7 +56,7 @@ func WireAcquisitionStager(cfg *config.Config, log *zap.Logger, fetch infacq.Fet
 func buildYouTubeSourceStager(cfg *config.Config, log *zap.Logger) appacq.SourceStager {
 	var youtubeSourceStager appacq.SourceStager
 	ytdlpDL := downloader.NewYTDLP(cfg)
-	fetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, _ func(string)) error {
+	fetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, _ func(infacq.FetchResult)) error {
 		dlReq := &downloader.DownloadRequest{
 			URL:        req.Source.URL,
 			OutputPath: dstPath + ".%(ext)s",

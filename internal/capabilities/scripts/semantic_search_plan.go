@@ -3,7 +3,30 @@ package scriptgeneration
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/searchpolicy"
 )
+
+// SemanticSearchClass and the routing helpers remain part of the scripts
+// facade while provider-lane classification lives in its policy package.
+type SemanticSearchClass = searchpolicy.Class
+
+const (
+	SearchClassPerson       = searchpolicy.Person
+	SearchClassOrganization = searchpolicy.Organization
+	SearchClassLocation     = searchpolicy.Location
+	SearchClassObject       = searchpolicy.Object
+	SearchClassEvent        = searchpolicy.Event
+	SearchClassGeneric      = searchpolicy.Generic
+)
+
+func SearchClassForIdentityKind(kind string) SemanticSearchClass {
+	return searchpolicy.ForIdentityKind(kind)
+}
+
+func SearchClassFromQuery(query string) SemanticSearchClass {
+	return searchpolicy.FromQuery(query)
+}
 
 // SemanticSearchOutcome is one retrieval result reported by the planner's
 // asset provider. The planner owns retrieval; the engine only proposed the

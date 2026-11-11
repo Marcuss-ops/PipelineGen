@@ -6,6 +6,8 @@
 // metadata needed by downstream processing steps.
 package asset
 
+import "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
+
 // StagedAsset carries the result of a successful staging call.
 // The file at LocalPath is ready for subsequent processing (cut,
 // transcode, upload). Bytes is the on-disk size.
@@ -22,8 +24,9 @@ package asset
 // When 0 the downstream step must fall back to its own probe or
 // skip the bounds check.
 type StagedAsset struct {
-	LocalPath   string
-	Bytes       int64
-	SourceID    string
-	DurationSec float64
+	LocalPath    string
+	Bytes        int64
+	SourceID     string
+	DurationSec  float64
+	SourceWindow *media.SourceWindow
 }

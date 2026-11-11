@@ -149,7 +149,8 @@ type Job struct {
 	//
 	// It is cleared whenever the row leaves RETRY_WAIT (requeue), so a stale
 	// hint can never delay a later, unrelated attempt.
-	DeferredUntil *time.Time `json:"deferred_until,omitempty"`
+	DeferredUntil *time.Time           `json:"deferred_until,omitempty"`
+	Scheduling    SchedulingDescriptor `json:"scheduling"`
 	// ParentJobID is the canonical job-broker ID of the parent that fanned
 	// this job out. Empty for root jobs. Persisted in the jobs table and
 	// carried in the payload for remote claimers.

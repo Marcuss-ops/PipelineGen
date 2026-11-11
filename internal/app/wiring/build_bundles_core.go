@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/ingest"
@@ -388,11 +389,11 @@ func buildImagesService(params buildImagesParams) (*images.Service, semantic.Met
 	imageService := images.NewService(images.ImagesDeps{
 		Core: images.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
 		Storage: images.ImagesStorageDeps{
-			ImageRepo: params.ImageRepo, LocalIndex: localImageIndex, DriveReader: newImagesDriveReaderAdapter(params.DriveUploader),
+			ImageRepo: params.ImageRepo, LocalIndex: localImageIndex, DriveReader: assetswiring.NewImagesDriveReaderAdapter(params.DriveUploader),
 			Publisher: params.Publisher, DestResolver: destResolver,
 		},
 		GenAI: images.ImagesGenAIDeps{
-			MetaWriter: newImagesSemanticAdapter(params.VOMetaWriter), StyleRegistry: params.StyleRegistry,
+			MetaWriter: assetswiring.NewImagesSemanticAdapter(params.VOMetaWriter), StyleRegistry: params.StyleRegistry,
 			// Image generation via Chrome/Google Slides is intentionally not
 			// wired. Scene/entity images come from the retrieved-image path
 			// (DuckDuckGo and the configured asset catalog), never from a

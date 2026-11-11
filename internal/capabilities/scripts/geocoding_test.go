@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	geography "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/geography"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/linguistics"
@@ -166,7 +167,7 @@ func TestGeocodePlaceAnnotationsSkipsItalianGenericPaese(t *testing.T) {
 		}}},
 	}}
 	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it", geocodeOptions{
-		sceneTexts: map[int]string{0: "Ci spostiamo verso Coimbra, nel centro del Paese."}, mapsOnly: true,
+		SceneTexts: map[int]string{0: "Ci spostiamo verso Coimbra, nel centro del Paese."}, MapsOnly: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +196,7 @@ func TestMapOnlyGeocodingUsesGroundedCountryForCity(t *testing.T) {
 		},
 	}}
 	err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it", geocodeOptions{
-		sceneTexts: map[int]string{0: "Il viaggio comincia a Lisbona, in Portogallo."}, mapsOnly: true,
+		SceneTexts: map[int]string{0: "Il viaggio comincia a Lisbona, in Portogallo."}, MapsOnly: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +213,7 @@ func TestMapOnlyGeocodingRecoversCityOmittedByEntityExtractor(t *testing.T) {
 	}}
 	annotation := &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed"}
 	var geoContext capabilitygeocoding.Context
-	if err := geocodeGroundedPlaceNames(context.Background(), geocoder, map[string]capabilitygeocoding.Result{},
+	if err := geography.GeocodeGroundedPlaceNames(context.Background(), geocoder, map[string]capabilitygeocoding.Result{},
 		annotation, "Ci spostiamo verso Coimbra, nel centro del Paese.", "it", 0, &geoContext); err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +371,7 @@ func TestGroundedMapFallbackIgnoresSentenceAdverbsAndUppercaseOrganizations(t *t
 	}}
 	annotation := &scriptpkg.SceneAnnotations{Version: 1, Language: "it", Status: "completed"}
 	var noContext capabilitygeocoding.Context
-	if err := geocodeGroundedPlaceNames(context.Background(), geocoder, map[string]capabilitygeocoding.Result{},
+	if err := geography.GeocodeGroundedPlaceNames(context.Background(), geocoder, map[string]capabilitygeocoding.Result{},
 		annotation, "Infine, ANSA pubblica un aggiornamento.", "it", 0, &noContext); err != nil {
 		t.Fatal(err)
 	}
@@ -390,11 +391,11 @@ func TestIgnoredMapCandidateRejectsArticlePrefixedInstitutions(t *testing.T) {
 	for _, candidate := range []string{
 		"La Cassazione", "La Corte", "Suprema Corte", "La Procura", "Il Tribunale",
 	} {
-		if !ignoredMapCandidate(ignored, candidate, "it") {
+		if !geography.IgnoredMapCandidate(ignored, candidate, "it") {
 			t.Errorf("institution %q must not be a map candidate", candidate)
 		}
 	}
-	if ignoredMapCandidate(ignored, "Garlasco", "it") {
+	if geography.IgnoredMapCandidate(ignored, "Garlasco", "it") {
 		t.Fatal("a real place must remain a map candidate")
 	}
 }
@@ -404,7 +405,7 @@ func TestMapPlaceCandidateIgnoredWordsUsesConfiguredLexicon(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load canonical lexicon: %v", err)
 	}
-	ignored, err := mapPlaceCandidateIgnoredWords(registry, "en")
+	ignored, err := geography.MapPlaceCandidateIgnoredWords(registry, "en")
 	if err != nil {
 		t.Fatalf("resolve English map candidate exclusions: %v", err)
 	}
@@ -413,10 +414,10 @@ func TestMapPlaceCandidateIgnoredWordsUsesConfiguredLexicon(t *testing.T) {
 			t.Errorf("canonical English entity blocklist does not exclude %q", word)
 		}
 	}
-	if _, err := mapPlaceCandidateIgnoredWords(registry, "missing-language"); err == nil {
+	if _, err := geography.MapPlaceCandidateIgnoredWords(registry, "missing-language"); err == nil {
 		t.Fatal("unconfigured language must fail closed rather than invent a stopword set")
 	}
-	if _, err := mapPlaceCandidateIgnoredWords(nil, "en"); err == nil {
+	if _, err := geography.MapPlaceCandidateIgnoredWords(nil, "en"); err == nil {
 		t.Fatal("missing lexicon registry must fail closed")
 	}
 }
@@ -444,8 +445,8 @@ func TestMapGeocodingSkipsItalianDiscourseWordsMisclassifiedAsPlaces(t *testing.
 		},
 	}
 	err := runner.geocodePlaceAnnotations(context.Background(), map[int]*scriptpkg.SceneAnnotations{0: annotation}, "it", geocodeOptions{
-		sceneTexts: map[int]string{0: "Tale è la procedura; ciò avviene; egli è indagato; essa parla secondo gli atti, usare con cautela durante il processo, solo Alberto Stasi e Andrea Sempio a Pavia."},
-		mapsOnly:   true,
+		SceneTexts: map[int]string{0: "Tale è la procedura; ciò avviene; egli è indagato; essa parla secondo gli atti, usare con cautela durante il processo, solo Alberto Stasi e Andrea Sempio a Pavia."},
+		MapsOnly:   true,
 	})
 	if err != nil {
 		t.Fatal(err)

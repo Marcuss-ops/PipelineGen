@@ -140,6 +140,9 @@ func (u *JobUpdates) toSetClauses() (clauses []string, args []any) {
 	if u.Priority != nil {
 		clauses = append(clauses, "priority = ?")
 		args = append(args, *u.Priority)
+		clauses = append(clauses, `claim_effective_priority = ? + COALESCE(
+			CAST((julianday('now') - julianday(created_at)) * 24.0 AS INTEGER), 0)`)
+		args = append(args, *u.Priority)
 	}
 	return
 }
@@ -169,6 +172,14 @@ func (r *SQLiteStore) Transition(ctx context.Context, req TransitionRequest) (*j
 	for col, val := range req.LegacyUpdates {
 		if _, err := validateSetColumn(col + " = ?"); err != nil {
 			return nil, fmt.Errorf("transition %s: %w", req.JobID, err)
+		}
+		if col == "priority" {
+			setClauses = append(setClauses, "priority = ?")
+			args = append(args, val)
+			setClauses = append(setClauses, `claim_effective_priority = CAST(? AS INTEGER) + COALESCE(
+				CAST((julianday('now') - julianday(created_at)) * 24.0 AS INTEGER), 0)`)
+			args = append(args, val)
+			continue
 		}
 		switch v := val.(type) {
 		case *time.Time:

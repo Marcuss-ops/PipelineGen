@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app/wiring"
+	assetwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/outboxevents"
 )
 
@@ -72,11 +73,11 @@ func RunSyncDriveFolder(args []string) error {
 
 	// MEDIA LEGACY READ-PLANE DEMOLITION (2026-09-21, sub-wave B): the
 	// catalog-sync repository + indexer pair comes from the SHARED engine
-	// decision point (wiring.CatalogSyncPorts) instead of handing the
+	// decision point (wiring/assets.NewCatalogSyncRepository) instead of handing the
 	// operational SQLite mirror in for both slots. With the media SSOT wired
 	// the media reads resolve on PostgreSQL; without it the folder half stays
 	// operational and the index-state slot fails closed.
-	catalogRepo, catalogIndexer := wiring.CatalogSyncPorts(root.MediaPostgres, root.Repos.ClipsRepo)
+	catalogRepo, catalogIndexer := assetwiring.NewCatalogSyncRepository(root.MediaPostgres, root.Repos.ClipsRepo)
 	summary, err := root.Sync.CatalogSync.SyncFolderID(
 		ctx, strings.TrimSpace(*folder), strings.TrimSpace(*source),
 		strings.TrimSpace(*name), strings.TrimSpace(*mediaType), catalogRepo, catalogIndexer,
