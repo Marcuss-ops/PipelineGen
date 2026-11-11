@@ -42,6 +42,10 @@ import (
 	"go.uber.org/zap"
 )
 
+import (
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase/gencore"
+)
+
 // defaultRenderingGenStoreURL is the fallback object-store endpoint used when
 // RENDERINGGEN_STORE_URL is unset (the local single-host deployment default).
 // Owning it once keeps the overlay-asset prefetch and the Chronon timing
@@ -509,4 +513,17 @@ func scriptCacheDB(root *ComposeRoot) *sql.DB {
 		return nil
 	}
 	return root.CacheDB.DB
+}
+
+// SceneTextGenerator remains a composition-root facade over the script
+// subsystem implementation.
+type SceneTextGenerator = scriptwiring.SceneTextGenerator
+
+type ClipAssetResolver = scriptwiring.ClipAssetResolver
+type ClipProber = scriptwiring.ClipProber
+
+// NewSceneTextGenerator preserves the wiring package constructor while the
+// implementation and its planning helpers live with the script subsystem.
+func NewSceneTextGenerator(engine *gencore.Engine, log *zap.Logger) *SceneTextGenerator {
+	return scriptwiring.NewSceneTextGenerator(engine, log)
 }

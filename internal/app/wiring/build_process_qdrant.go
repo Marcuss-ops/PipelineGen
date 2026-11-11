@@ -44,6 +44,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
 	regsql "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/mediaregistry"
 )
+import (
+	qdrantschema "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/schema"
+)
 
 // BuildProcessBundle builds the media-processing adapters and assembles
 // the canonical *ProcessBundle. publisher is passed in directly —
@@ -244,4 +247,107 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *Databases, re
 		qd.QdrantDeleter = runtime.Writer
 	}
 	return qd, nil
+}
+
+// validateQdrantIndexerCompatibility is the canonical composition-root
+// fail-closed gate for the Qdrant + ClipIndexer configuration pair
+// (PR-QDRANT-CONFIG-MISMATCH-GATE, July 2026). It returns a non-nil
+// error iff the configuration is INCOMPATIBLE for end-to-end indexing
+// (outbox asset.index.requested -> IndexingHandler -> IndexClip ->
+// Qdrant.Writer). Compatible configurations return nil silently so the
+// per-call site can proceed to construct its Qdrant-stack bundle.
+//
+// Configurations that fail-closed (with the verbatim substring contract):
+//
+//	(a) nil cfg                                 -> "cfg is nil"
+//	(b) Qdrant.Enabled=true AND ClipIndexer.Enabled=false
+//	    -> "QdrantEnabled=true ... ClipIndexerEnabled=false ...
+//	        QDRANT-CHAIN-VERIFY-2026-07-04 P0 ...
+//	        VELOX_FEATURE_CLIP_INDEXER_ENABLED=true ...
+//	        VELOX_FEATURE_QDRANT_ENABLED=false"
+//	(c) ClipIndexer.Enabled=true AND Qdrant.Enabled=false
+//	    -> "ClipIndexerEnabled=true ... QdrantEnabled=false ...
+//	        QDRANT-CHAIN-VERIFY-2026-07-04 P0 ...
+//	        VELOX_FEATURE_CLIP_INDEXER_ENABLED=false ...
+//	        VELOX_FEATURE_QDRANT_ENABLED=true"
+//
+// Configurations that pass silently (godlike/07 both-enabled OR both-disabled):
+//
+//	(d) Qdrant.Enabled=false AND ClipIndexer.Enabled=false (the canonical
+//	    operator-disabled zero-state, allowed by design)
+//	(e) Qdrant.Enabled=true AND ClipIndexer.Enabled=true (the canonical
+//	    happy path: every end-to-end indexing hop is wired)
+//
+// godlike/07 no-fake-availability: case (b) is the CRITICAL RED POINT
+// discovered by the QDRANT-CHAIN-VERIFY-2026-07-04 audit. With this gate
+// in place, a misconfigured deployment fails at BOOT (loud + actionable)
+// rather than at the first asset.index.requested event (silent + false
+// success). The godlike/07 fail-fast-at-boot-vs-fail-slow-at-first-/run
+// principle is preserved.
+//
+// godlike/06 SSOT one-owner-per-fact: this helper is the SOLE canonical
+// owner of the Qdrant+ClipIndexer compatibility check. The 4 wire sites
+// (build_process_qdrant/buildQdrantDeps + build_bundles_process/BuildOutboxBundle
+// + wire_services/WireServices + build_bundles_core/buildHealthService)
+// all delegate to this helper by exactly ONE call line at the top of
+// their function body. Future Qdrant+ClipIndexer compatibility policy
+// changes are made HERE; the wire sites pick them up automatically.
+//
+// Escape hatches (documented in the returned error message):
+//
+//	Configuration			Fix env-var
+//	-------------------------	----------------------------------------
+//	Qdrant=true, ClipIndexer=false	set VELOX_FEATURE_CLIP_INDEXER_ENABLED=true
+//	OR				set VELOX_FEATURE_QDRANT_ENABLED=false
+//	ClipIndexer=true, Qdrant=false	set VELOX_FEATURE_QDRANT_ENABLED=true
+//	OR				set VELOX_FEATURE_CLIP_INDEXER_ENABLED=false
+//
+// The disable-via-env-var escape means operators who don't need the
+// Qdrant vector store or who don't need the AI sidecar can choose either
+// direction without spindle-and-break boot.
+func validateQdrantIndexerCompatibility(cfg *config.Config) error {
+	if cfg == nil {
+		// godlike/06 SSOT surface: the helper itself must fail loudly when
+		// invoked with nil cfg (defensive coverage for callers that have
+		// not yet initialized the boot-time config struct). The Wire* callers
+		// (build_process_qdrant/buildQdrantDeps, build_bundles_process/
+		// BuildOutboxBundle, wire_services/WireServices, build_bundles_core/
+		// buildHealthService) all dereference cfg for other reads, so this
+		// nil-check is the canonical "cfg is nil" surface.
+		return fmt.Errorf("validateQdrantIndexerCompatibility: cfg is nil (PR-QDRANT-CONFIG-MISMATCH-GATE fail-closed cannot evaluate Qdrant+ClipIndexer compatibility)")
+	}
+
+	// Direction B (the RED POINT): Qdrant enabled, ClipIndexer disabled.
+	// IndexClip short-circuits ("clipindexer disabled, skipping") and the
+	// outbox marks asset.index.requested as COMPLETED without writing to
+	// Qdrant. Operators seeing this in boot logs must choose one of the
+	// two escape hatches listed in the message.
+	// Qdrant and the indexer are independent  When the indexer
+	// is off, its event handler returns the typed retry sentinel; startup must
+	// remain available for script/video workflows that do not need indexing.
+
+	// Direction A (pre-existing inline check, July 2026): ClipIndexer
+	// enabled, Qdrant disabled. UpsertVectorStore would no-op (no target
+	// store) and the clipindexer would report INDEXED despite no Qdrant
+	// write — same false-success class as Direction B but on the
+	// sidecar->vector channel rather than the outbox vector-write.
+	// With Qdrant disabled the indexer is allowed to enter registry-only /
+	// disabled-projection mode. It must never report INDEXED without a vector;
+	// the clipindexer service enforces that invariant at event time.
+
+	// Dimension equality is not enough to prove that the runtime query
+	// embedder and the indexed vectors share a vector space. The schema is
+	// the single contract owner; reject a model drift before Qdrant is used.
+	if cfg.Qdrant.Enabled {
+		textSpec := qdrantschema.DefaultV3Schema().GetDense("text")
+		if textSpec == nil || cfg.External.OllamaEmbedModel != textSpec.Model {
+			want := "<missing>"
+			if textSpec != nil {
+				want = textSpec.Model
+			}
+			return fmt.Errorf("QDRANT_EMBEDDING_CONTRACT_MISMATCH: collection_model=%s runtime_model=%s", want, cfg.External.OllamaEmbedModel)
+		}
+	}
+
+	return nil
 }

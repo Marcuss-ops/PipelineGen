@@ -45,6 +45,14 @@ import (
 
 	"go.uber.org/zap"
 )
+import (
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
+	usecase "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // pgMediaAssetLookupAdapter satisfies drive.AssetStoreLookup against the
 // PostgreSQL media SSOT. It is the ONLY deep LocationVerifier cross-reference.
@@ -257,6 +265,157 @@ func registerScriptPostProcessors(
 		return fmt.Errorf("register vidrush materialization processor: composition bug")
 	}
 	log.Info("VidRushMaterializationProcessor wired through the canonical provider registry")
+
+	return nil
+}
+
+var _ scriptgen.SegmentProviderResolver = (*adapters.VidRushProviderFanout)(nil)
+var _ scriptgen.SegmentSceneMerger = (*adapters.VidRushSceneMerger)(nil)
+var _ scriptgen.VidRushMetrics = (*observability.VidRushMetricsAdapter)(nil)
+var _ scriptgen.SegmentMaterializer = (*adapters.VidRushMaterializationProcessor)(nil)
+
+// registerAIBackedProcessors registers the AI-backed postprocessors:
+// metadata, translation, clip_search, and internet_images.
+// Each processor is gated on its required infrastructure dependency
+// (Ollama client for metadata/translation, OllamaTranslator
+// for clip_search) — when the dep
+// is absent, the processor is silently skipped (BestEffort policy).
+//
+// Canonical ordering (per CanonicalProcessorNames):
+//
+//	ClipSearch → Metadata → Translation → ClipBindings → InternetImages
+//
+// ClipBindings is registered BEFORE this function is called (in the
+// orchestrator), so this function handles the remaining 4 processors
+// in their canonical positions after ClipBindings.
+func registerAIBackedProcessors(
+	ppReg *adapters.PostProcessorRegistry,
+	root *ComposeRoot,
+	searchFanOut search.SearchFanOut,
+	vidRushProviders *adapters.VidRushAssetProviderRegistry,
+	vidRushCache ports.VidRushCachePort,
+	cfg *config.Config,
+	log *zap.Logger,
+) error {
+	vidrushMetrics := observability.NewVidRushMetricsAdapter()
+	ppReg.SetVidRushTimingMetrics(vidrushMetrics)
+	// ── Metadata ─────────────────────────────────────────────────────
+	var metadataAdapter adapters.MetadataGenerator
+
+	if root.AI != nil && root.AI.ScriptGen != nil {
+		metadataAdapter = ollamaadapters.NewOllamaMetadataGeneratorAdapter(
+			root.AI.ScriptGen,
+		)
+		log.Info("MetadataProcessor wired with optional Ollama backend")
+	} else {
+		log.Info(
+			"MetadataProcessor wired without Ollama; caller-provided metadata remains available",
+		)
+	}
+
+	if !ppReg.Register(processor.NewMetadataProcessor(metadataAdapter)) {
+		return fmt.Errorf("register metadata processor: composition bug")
+	}
+
+	// ── Translation ──────────────────────────────────────────────────
+	if root.AI != nil && root.AI.OllamaTranslator != nil {
+		translatorPort := ports.NewScriptTranslatorFromFunc(func(ctx context.Context, text, targetLanguage string) (string, error) {
+			result, err := root.AI.OllamaTranslator.Translate(ctx, translation.TranslationCommand{
+				Text:       text,
+				TargetLang: targetLanguage,
+			})
+			if err != nil {
+				return "", err
+			}
+			return result.TranslatedText, nil
+		})
+		metricsPort, mErr := observability.NewTranslationMetricsAdapter(prometheus.DefaultRegisterer)
+		if mErr != nil {
+			return fmt.Errorf("register translation processor: metrics adapter: %w", mErr)
+		}
+		transProc := processor.NewTranslationProcessor(
+			translatorPort,
+			metricsPort,
+			usecase.NewTranslationUseCaseAdapter(),
+			usecase.NewTranslationReasonClassifierAdapter(),
+			log,
+		)
+		if !ppReg.Register(transProc) {
+			return fmt.Errorf("register translation processor: composition bug")
+		}
+		log.Info("TranslationProcessor wired (OllamaTranslator + Prometheus metrics adapter)")
+	} else {
+		log.Warn("TranslationProcessor: OllamaTranslator not available; postprocessor not registered (translation requests will produce warnings)")
+	}
+
+	// Internet image discovery is the first half of the unified VidRush media
+	// path. It discovers and caches candidates; VidRushMaterialization owns
+	// Acquire → Verify → Drive/SQLite/outbox. Keeping this processor registered
+	// is required because the generation plan explicitly requests the canonical
+	// `internet_images` stage before materialization.
+	imageSearcher := vidrushInternetImageSearcher(root, log)
+	if imageSearcher != nil {
+		var entityImageCatalogRepo entitycatalog.Repository
+
+		if root != nil && root.Repos != nil {
+			entityImageCatalogRepo = root.Repos.EntityImageCatalog
+		}
+		imageStage := adapters.NewMediaResolverImageStageWithCatalog(imageSearcher, vidRushCache, entityImageCatalogRepo, vidrushMetrics)
+		// Opt-in media_manifest fast-path: when VELOX_MEDIA_MANIFEST_PATH points
+		// at a verified manifest, pinned segment candidates bypass cache tiers
+		// and provider search entirely (zero network calls per run). Fail-open:
+		// a broken manifest must never fail a run.
+		if pins, pinsErr := adapters.LoadMediaManifestPinsFromEnv(); pinsErr != nil {
+			log.Warn("InternetImagesProcessor media_manifest fast-path disabled: manifest load failed", zap.String("error", pinsErr.Error()))
+		} else if pins != nil {
+			imageStage = imageStage.WithMediaManifestPins(pins)
+			log.Info("InternetImagesProcessor media_manifest fast-path enabled", zap.Int("pinned_entries", pins.EntryCount()))
+		}
+		if root != nil && root.AI != nil && root.AI.ScriptGen != nil {
+			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+				imageStage.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))
+				log.Info("InternetImagesProcessor wired with GPU-capable Ollama person-image verification", zap.String("model", ollamaClient.Model()))
+			}
+		}
+		if !ppReg.Register(imageStage) {
+			return fmt.Errorf("register internet_images processor: composition bug")
+		}
+		log.Info("InternetImagesProcessor wired through canonical ImageSearchResolver")
+	} else {
+		log.Warn("InternetImagesProcessor: ImageSearchResolver not available; postprocessor not registered")
+	}
+
+	// ── Visual planning ──────────────────────────────────────────────
+	// The processor owns no provider or database implementation: the
+	// composition root supplies the canonical MediaMemory resolver, which
+	// fans out through the shared SearchFanOut exactly once per plan.
+	// Gemma is used as a ranking strategy to choose among the closed
+	// candidate list returned by the resolver; on LLM failure the
+	// adapter deterministically falls back to the top-scoring candidate.
+	var visualPlanner adapters.VisualCandidatePlanner
+	if searchFanOut != nil && root.DB != nil {
+		resolver, err := WireMediaMemoryResolver(searchFanOut, root.DB.DB, log)
+		if err != nil {
+			return fmt.Errorf("register visual_planning: wire resolver: %w", err)
+		}
+		if root.AI != nil && root.AI.ScriptGen != nil {
+			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+				visualPlanner = ollamaadapters.NewOllamaVisualPlannerAdapter(ollamaClient, log)
+				log.Info("VisualCandidatePlanner wired with real Ollama backend")
+			}
+		}
+		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, visualPlanner, nil, log)) {
+			return fmt.Errorf("register visual_planning processor: composition bug")
+		}
+		log.Info("VisualPlanningProcessor wired with canonical MediaMemory resolver")
+	} else {
+		log.Warn("VisualPlanningProcessor: SearchFanOut or DB not available; postprocessor not registered")
+	}
+	// Timeline slots are resolver-local and must remain available for manual
+	// plans even when the external MediaMemory resolver is unavailable.
+	if !ppReg.Register(adapters.NewVisualSlotsProcessor(adapters.NewClosedVisualPlanner(visualPlanner))) {
+		return fmt.Errorf("register visual_slots processor: composition bug")
+	}
 
 	return nil
 }
