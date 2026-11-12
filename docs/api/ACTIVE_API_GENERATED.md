@@ -78,7 +78,6 @@
 | PATCH | `/api/jobs/:id/stages/:stage` | Report a pipeline stage status/progress for a job |
 | POST | `/api/jobs` | Enqueue a new job |
 | POST | `/api/jobs/:id/cancel` | Cancel a job |
-| POST | `/api/jobs/:id/replay` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/jobs/:id/retry` | Retry a failed job |
 | POST | `/api/jobs/schedule` | Enqueue a batch of deferred jobs (up to 500) |
 

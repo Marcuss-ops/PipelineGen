@@ -171,9 +171,6 @@ routes:
       path: /api/jobs/:id/cancel
       source: cmd/admin/gen_api_docs.go
     - method: POST
-      path: /api/jobs/:id/replay
-      source: cmd/admin/gen_api_docs.go
-    - method: POST
       path: /api/jobs/:id/retry
       source: cmd/admin/gen_api_docs.go
     - method: POST
