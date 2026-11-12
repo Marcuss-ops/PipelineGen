@@ -59,6 +59,15 @@ func (e *executionRun) audioCompile() bool {
 	}
 	var done chan audioOverlayOutcome
 	state.OnPlanReady = func(result *GenerateResult) bool {
+		// Freeze the plan on the DURABLE result before the snapshot exists. The
+		// snapshot is what the renderer receives; freezing first is what makes
+		// the persisted plan and the rendered plan the same document (and
+		// therefore the same digest). Doing it on the snapshot instead was the
+		// divergence this hand-off used to create.
+		if err := FreezeFinalJobOverlayPlans(result, e.req.FinalJob); err != nil {
+			failure.cause = fmt.Errorf("freeze overlay plan: %w", err)
+			return false
+		}
 		snapshot, err := snapshotGenerateResult(result)
 		if err != nil {
 			failure.cause = fmt.Errorf("snapshot overlay plan: %w", err)

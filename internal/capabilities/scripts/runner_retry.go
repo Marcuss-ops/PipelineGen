@@ -43,6 +43,12 @@ func deriveErrorCode(err error, stage Stage) string {
 	if errors.Is(err, ErrFinalJobStaleReceipt) {
 		return "REMOTE_JOB_STALE"
 	}
+	// A plan the Master refused is the producer's defect, not an identity
+	// incident. The code is stable so a retry bot stops instead of rotating the
+	// attempt and resubmitting the same plan.
+	if errors.Is(err, ErrFinalJobInvalidPlan) {
+		return "REMOTE_PLAN_REJECTED"
+	}
 	// A producer that offers bytes which do not hash to the content address it
 	// named has violated its contract; retrying the same payload cannot repair
 	// it. The code is stable so a retry bot stops instead of re-rendering.

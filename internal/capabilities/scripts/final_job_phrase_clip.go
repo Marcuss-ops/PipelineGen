@@ -23,6 +23,15 @@ func finalJobPhraseOverlayClip(ctx context.Context, result *GenerateResult, scen
 	if result == nil || result.OverlayPlan == nil || result.OverlayRender == nil {
 		return nil, 0, "", false, nil
 	}
+	// Same identity gate as the overlay handoff: a phrase-only scene's visual IS
+	// the phrase's window inside this artifact, so handing the window over
+	// without proving the artifact belongs to the current plan would render a
+	// scene from a previous plan version.
+	if strings.TrimSpace(result.OverlayRender.PlanDigest) != "" {
+		if err := validateOverlayPlanRenderDigest(result.OverlayPlan, result.OverlayRender); err != nil {
+			return nil, 0, "", false, fmt.Errorf("final_job phrase clip: %w", err)
+		}
+	}
 	var phrase *capmodel.OverlayItem
 	for i := range result.OverlayPlan.Items {
 		item := &result.OverlayPlan.Items[i]

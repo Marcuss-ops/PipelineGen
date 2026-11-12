@@ -100,6 +100,15 @@ type jobEnvelope struct {
 	ArtifactURL    string `json:"artifact_url"`
 	ArtifactSHA256 string `json:"sha256"`
 	Error          string `json:"error"`
+	// ErrorCode is the Master's STRUCTURED failure identity. The free-text
+	// Error alone cannot distinguish a transient worker fault from a rejected
+	// preparation, and guessing from prose is how a job that can never succeed
+	// kept being polled. Absent on older Masters: classification then falls
+	// back to the diagnostic token in Error.
+	ErrorCode            string `json:"error_code"`
+	DispatchStatus       string `json:"dispatch_status"`
+	FinalizationStatus   string `json:"finalization_status"`
+	RuntimeAssetsPending bool   `json:"runtime_assets_pending"`
 	// Master-clock phase boundaries. GET /api/v1/jobs/{id} exposes created_at,
 	// started_at and completed_at; a pre-only job keeps started_at null, which
 	// is exactly why an unstarted phase must stay zero here.
@@ -186,6 +195,33 @@ func (e *StaleJobError) Unwrap() []error {
 		return []error{ErrRemoteStaleJob}
 	}
 	return []error{ErrRemoteStaleJob, e.Cause}
+}
+
+// ErrRemoteInvalidPlan reports a Master rejection of the PLAN the producer
+// submitted. It is deliberately NOT ErrRemoteStaleJob: rotating the remote
+// identity cannot fix a deterministic defect in the plan, so the caller must
+// fail the run and regenerate the plan instead of presenting the failure as a
+// stale receipt (which would rotate the attempt and resubmit the same plan).
+var ErrRemoteInvalidPlan = errors.New("remote job rejected the submitted plan")
+
+// InvalidPlanError carries the Master code that proved the rejection.
+type InvalidPlanError struct {
+	JobID  string
+	Status string
+	Code   string
+	Cause  error
+}
+
+func (e *InvalidPlanError) Error() string {
+	return fmt.Sprintf("remote job %s plan rejected (%s): %v: %v", e.JobID, e.Code, ErrRemoteInvalidPlan, e.Cause)
+}
+
+// Unwrap exposes the sentinel and the transport cause, never the stale sentinel.
+func (e *InvalidPlanError) Unwrap() []error {
+	if e.Cause == nil {
+		return []error{ErrRemoteInvalidPlan}
+	}
+	return []error{ErrRemoteInvalidPlan, e.Cause}
 }
 
 // terminalJobStatus reports a Master status that can no longer be finalized.
@@ -281,6 +317,101 @@ func parsePlanValidationError(status int, body string) *PlanValidationError {
 	}
 	sort.Strings(segments)
 	return &PlanValidationError{StatusCode: status, Code: code, Message: message, Segments: segments}
+}
+
+// remoteTransientErrorHints mark a failure the Master may still recover from:
+// polling must keep observing it as RUNNING instead of rotating the identity.
+var remoteTransientErrorHints = []string{
+	"timeout", "timed out", "deadline", "rate_limit", "rate limit", "throttl",
+	"temporar", "unavailable", "connection reset", "connection refused",
+	"econnreset", "econnrefused", "try again", "retry", "busy", "429", "502", "503", "504",
+}
+
+// remotePermanentPreparationErrorCodes is the EXPLICIT allowlist of structured
+// codes that name a deterministic preparation/plan defect. Only these end a
+// wait. The list is an allowlist and not a denylist on purpose: a code this
+// build has never seen is UNKNOWN, and an unknown failure may be recoverable,
+// so classifying it as permanent would abandon a render the Master can still
+// finish.
+//
+// Every entry names a defect in the submitted plan or in its preparation, not
+// an infrastructure fault: replaying the same plan can only reproduce it.
+var remotePermanentPreparationErrorCodes = map[string]struct{}{
+	"window_extradata_identity_mismatch": {},
+	"extradata_identity_mismatch":        {},
+	"plan_validation_failed":             {},
+	"invalid_compiled_plan":              {},
+	"invalid_overlay_plan":               {},
+	"unsupported_media_contract":         {},
+	"media_contract_unsupported":         {},
+	"asset_content_mismatch":             {},
+	"schema_unsupported":                 {},
+}
+
+// remoteDiagnosticTokenPattern matches the Master's structured error tokens
+// embedded in prose (`WINDOW_EXTRADATA_IDENTITY_MISMATCH`). Only a token of this
+// shape can classify a failure; ordinary words cannot.
+var remoteDiagnosticTokenPattern = regexp.MustCompile(`\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){2,}\b`)
+
+// remotePreparationPosture reports a job that has NOT reached rendering, i.e.
+// one whose failure is a preparation defect rather than a render fault. A job
+// the Master already STARTED is never classified from this path: its error may
+// be a recoverable worker fault, and killing the wait would strand a render that
+// is still producing frames.
+func remotePreparationPosture(state jobEnvelope) bool {
+	if strings.TrimSpace(state.StartedAt) == "" {
+		return true
+	}
+	if state.RuntimeAssetsPending {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(state.DispatchStatus), "waiting_runtime_assets") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(state.FinalizationStatus), "WAITING_PREPARATION")
+}
+
+// remotePermanentPreparationFailure classifies a reported error on a job that
+// cannot progress. It is deliberately strict in three ways:
+//
+//  1. no error text  -> not a failure at all (a healthy RUNNING job);
+//  2. no structured code and no diagnostic token -> unknown, therefore
+//     TRANSIENT: an unrecognised error must stay observable, never terminal;
+//  3. the job must be in a preparation posture -> a started render is never
+//     rotated by this rule.
+//
+// The returned token is what the operator sees in the classified cause.
+func remotePermanentPreparationFailure(state jobEnvelope) (string, bool) {
+	message := strings.TrimSpace(state.Error)
+	if message == "" {
+		return "", false
+	}
+	if !remotePreparationPosture(state) {
+		return "", false
+	}
+	code := strings.TrimSpace(state.ErrorCode)
+	if code != "" {
+		if _, permanent := remotePermanentPreparationErrorCodes[strings.ToLower(code)]; permanent {
+			return code, true
+		}
+		// Allowlist, not denylist: an unrecognised structured code stays
+		// observable instead of ending the wait on a recoverable failure.
+		return "", false
+	}
+	lower := strings.ToLower(message)
+	for _, hint := range remoteTransientErrorHints {
+		if strings.Contains(lower, hint) {
+			return "", false
+		}
+	}
+	token := remoteDiagnosticTokenPattern.FindString(message)
+	if token == "" {
+		return "", false
+	}
+	if _, permanent := remotePermanentPreparationErrorCodes[strings.ToLower(token)]; !permanent {
+		return "", false
+	}
+	return token, true
 }
 
 // staleJobResponse reports whether a Master error names a stale job identity:
@@ -389,6 +520,36 @@ func (c *Client) Poll(ctx context.Context, jobID string) (Result, error) {
 		return Result{JobID: jobID}, fmt.Errorf("poll remote job %s: %w", jobID, err)
 	}
 	state = unwrap(state)
+	// The Master can leave a preparation job marked RUNNING while a window
+	// preparation executor has failed and runtime assets are still pending.
+	// That state cannot reach rendering by polling: this identity needs to be
+	// replaced so the producer can submit a fresh preparation. Keep the check
+	// narrow to the explicit waiting-for-assets phase and a reported error; a
+	// transient error on an otherwise progressing render remains observable as
+	// RUNNING.
+	if strings.EqualFold(strings.TrimSpace(state.Status), "RUNNING") &&
+		strings.EqualFold(strings.TrimSpace(state.DispatchStatus), "waiting_runtime_assets") &&
+		strings.EqualFold(strings.TrimSpace(state.FinalizationStatus), "WAITING_PREPARATION") &&
+		state.RuntimeAssetsPending && strings.TrimSpace(state.Error) != "" {
+		return resultFrom(jobID, state), &StaleJobError{
+			JobID: jobID, Status: state.Status,
+			Cause: fmt.Errorf("master preparation failed while runtime assets remain pending: %s", strings.TrimSpace(state.Error)),
+		}
+	} // A preparation that FAILED permanently must not be polled forever: the
+	// Master reports RUNNING while the error names the definitive cause
+	// (r-Kaufmann: WINDOW_EXTRADATA_IDENTITY_MISMATCH). Classifying it as a
+	// stale identity ends the wait without a concurrent retry, and the
+	// caller rotates the attempt instead of replaying a job that can only
+	// reproduce the same rejection. A transient or unrecognised error stays
+	// RUNNING, because the same job may still finish.
+	if code, permanent := remotePermanentPreparationFailure(state); permanent {
+		// A plan/prepare defect is terminal but NOT a stale identity: rotating
+		// the attempt would resubmit the same plan and reproduce it exactly.
+		return resultFrom(jobID, state), &InvalidPlanError{
+			JobID: jobID, Status: state.Status, Code: code,
+			Cause: fmt.Errorf("master preparation failed permanently (%s): %s", code, strings.TrimSpace(state.Error)),
+		}
+	}
 	switch strings.ToUpper(strings.TrimSpace(state.Status)) {
 	case "SUCCEEDED", "SUCCESS", "COMPLETED":
 		state.Status = "SUCCEEDED"
