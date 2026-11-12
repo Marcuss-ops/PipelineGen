@@ -249,6 +249,13 @@ func (r *Runner) submitFinalJob(ctx context.Context, runID string, req GenerateR
 // remote job instead of replaying the dead one.
 var ErrFinalJobStaleReceipt = errors.New("remote final job identity is stale and must be replaced")
 
+// ErrFinalJobInvalidPlan marks a Master rejection of the PLAN itself (an
+// unrenderable window, an unsupported media contract, a plan-level validation
+// failure). It is terminal and distinct from ErrFinalJobStaleReceipt: the
+// remote identity is fine, so rotating it would resubmit the same defective
+// plan and reproduce the rejection. The fix is a regenerated plan.
+var ErrFinalJobInvalidPlan = errors.New("remote final job rejected the overlay plan")
+
 // auditFinalJobArtifactReuse makes the retry path's artifact reuse auditable.
 // A final-job-only retry must carry the certified script, audio and overlay
 // artifacts earlier attempts produced instead of regenerating them; these are

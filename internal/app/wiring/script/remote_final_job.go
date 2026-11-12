@@ -541,6 +541,14 @@ func finalJobWaitError(err error) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, remotejob.ErrRemoteInvalidPlan) {
+		// A rejected plan is not a stale identity: report it as its own terminal
+		// class so the run fails on the plan instead of rotating the attempt.
+		return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobInvalidPlan, err)
+	}
+	if errors.Is(err, remotejob.ErrRemoteStaleJob) {
+		return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobStaleReceipt, err)
+	}
 	if errors.Is(err, remotejob.ErrRemotePending) {
 		return fmt.Errorf("%w: %w", scriptgen.ErrFinalJobPending, err)
 	}

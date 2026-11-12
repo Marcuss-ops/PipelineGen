@@ -23,20 +23,24 @@ import (
 	"strings"
 )
 
-// normalizeFinalJobOverlayWindows applies the final-job placement policy to
-// the plan BEFORE rendering. The pure-manifest wire freezes placement at
-// render time (entries document the artifact's frames), so the policy that
-// the per-item handoff applied at payload time must move upstream: the
-// composition, the manifest and the payload then all agree on where every
-// item sits. Idempotent — the moved window is computed absolutely from the
-// clip scene's certified start — so resumed runs can re-apply it safely.
+// applyFinalJobOverlayWindowPolicy applies the final-job placement policy to a
+// plan the caller already OWNS (see FrozenFinalJobOverlayPlan, which applies it
+// to a copy). It must never be called on the durable result's plan directly:
+// the render path normalizing its own snapshot while the checkpoint kept the
+// un-normalized plan is exactly the divergence the binding digest closes.
+//
+// The policy runs BEFORE rendering because the pure-manifest wire freezes
+// placement at render time (entries document the artifact's frames): the
+// composition, the manifest and the payload then all agree on where every item
+// sits. Idempotent — the moved window is computed absolutely from the clip
+// scene's certified start — so resumed runs can re-apply it safely.
 //
 // The one placement rule that survives: a phrase callout on an intermediate
 // clip scene (original clip audio + generated narration) must sit JUST BEFORE
 // the clip, never over it — replace-mode frames would cover the source video
 // that has to stay visible. Image-style cards on those scenes are dropped at
 // handoff time instead (their frames are simply never placed).
-func normalizeFinalJobOverlayWindows(plan *capmodel.OverlayPlan, result *GenerateResult) error {
+func applyFinalJobOverlayWindowPolicy(plan *capmodel.OverlayPlan, result *GenerateResult) error {
 	if plan == nil {
 		return nil
 	}
@@ -189,6 +193,17 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 	}
 	if result.OverlayRender == nil || (result.OverlayRender.Manifest == nil && len(result.OverlayRender.Items) == 0) {
 		return nil, nil, fmt.Errorf("final_job has semantic overlays but no published overlay render artifacts")
+	}
+	// Identity gate, upstream of every wire decision below: the composition the
+	// handoff is about to describe must be the render of THIS sealed plan. Until
+	// the digest was bound this check did not exist, so a retry could hand a
+	// stale artifact to the compositor and only the unknown-ID check — much
+	// later, inside finalJobManifestWire — noticed, by which point the payload
+	// was already semantically wrong.
+	if strings.TrimSpace(result.OverlayRender.PlanDigest) != "" {
+		if err := validateOverlayPlanRenderDigest(result.OverlayPlan, result.OverlayRender); err != nil {
+			return nil, nil, fmt.Errorf("final_job overlay render does not bind to the sealed plan: %w", err)
+		}
 	}
 	// Image preflight (the r10 class): promised entity-image overlays must be
 	// backed by a verified content address BEFORE a worker attempt exists.

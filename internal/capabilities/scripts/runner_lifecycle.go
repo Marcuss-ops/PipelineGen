@@ -140,7 +140,7 @@ func (r *Runner) updateStage(ctx context.Context, runID string, status RunStatus
 // observed. The byte counter is recorded where the payload is actually produced
 // (the repository marshal), so it measures what SQLite received rather than an
 // estimate.
-func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateResult) {
+func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateResult) error {
 	observability.ScriptCheckpointAttemptTotal.Inc()
 	started := time.Now()
 	saveErr := r.repo.SavePartialResult(ctx, runID, result)
@@ -159,6 +159,7 @@ func (r *Runner) checkpoint(ctx context.Context, runID string, result *GenerateR
 	}
 	observability.ScriptCheckpointSeconds.Observe(time.Since(started).Seconds())
 	kernobs.RecordStage(ctx, kernobs.StageInfo{Stage: "checkpoint"}, started, time.Now(), nil)
+	return saveErr
 }
 
 const partialCheckpointDebounce = 500 * time.Millisecond

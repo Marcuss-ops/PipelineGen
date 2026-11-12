@@ -126,6 +126,33 @@ func (e *executionRun) start() bool {
 				zap.String("run_id", e.runID),
 			)
 		}
+		// Adopt the durable result from the checkpoint BEFORE deciding the resume
+		// stage. Repository.Get returns the checkpointed Result, and every phase
+		// that runs BEFORE the resume index is skipped — so without this adoption
+		// a resume from PUBLISHING_DOCUMENTS (including a resume from the
+		// CORE_READY boundary) would continue against an empty result and publish
+		// nothing, silently discarding the completed core work the checkpoint was
+		// written to preserve. A fresh run has no checkpointed result, so this is
+		// a no-op there.
+		if e.result == nil && run.Result != nil {
+			e.result = run.Result
+		}
+		// A checkpoint whose overlay render no longer binds to its sealed plan
+		// (the Kaufmann failure) cannot be repaired by deleting the reference: a
+		// run resumed at PUBLISHING_DOCUMENTS never re-enters the overlay phase,
+		// so the handoff would fail on a missing render instead. Archive the
+		// incompatible reference and move the resume point back to the stage
+		// that owns the render.
+		var repaired bool
+		resumeStage, repaired = e.r.repairOverlayCheckpointOnResume(e.ctx, e.runID, resumeStage, e.result)
+		if repaired {
+			// The repair moved the durable stage back to COMPILING_AUDIO. Keep
+			// the in-memory aggregate consistent too: phases inspect it and the
+			// attempt must no longer look like the FAILED publish attempt.
+			run.Status = RunStatusRunning
+			run.CurrentStage = resumeStage
+			run.FailedStage = ""
+		}
 		if resumeStage == StageCompleted {
 			e.r.log.Info("run already completed", zap.String("run_id", e.runID))
 			return false
@@ -137,17 +164,6 @@ func (e *executionRun) start() bool {
 			zap.Int("attempt", run.AttemptCount+1),
 		)
 		e.run = run
-		// Adopt the durable result from the checkpoint. Repository.Get returns
-		// the checkpointed Result, and every phase that runs BEFORE the resume
-		// index is skipped — so without this adoption a resume from
-		// PUBLISHING_DOCUMENTS (including a resume from the CORE_READY boundary)
-		// would continue against an empty result and publish nothing, silently
-		// discarding the completed core work the checkpoint was written to
-		// preserve. A fresh run has no checkpointed result, so this is a no-op
-		// there.
-		if e.result == nil && run.Result != nil {
-			e.result = run.Result
-		}
 	} else {
 		// New run — set RUNNING.
 		if err := e.r.updateStage(e.ctx, e.runID, RunStatusRunning, StageNormalizing); err != nil {

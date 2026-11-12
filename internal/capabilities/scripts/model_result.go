@@ -177,6 +177,11 @@ type GenerateResult struct {
 	// translated plans above. OverlayRender remains the source-language
 	// compatibility projection.
 	LocalizedOverlayRenders map[Language]RenderReference `json:"localized_overlay_renders,omitempty"`
+	// OverlayRenderHistory archives overlay renders that no longer bind to the
+	// sealed plan (see RepairFinalJobOverlayCheckpoint). The artifacts stay
+	// addressable for audit instead of being deleted, while OverlayRender stops
+	// naming them, so nothing downstream can ship them by accident.
+	OverlayRenderHistory []RenderReference `json:"overlay_render_history,omitempty"`
 
 	// OverlayIntents are the pre-timing entity→template bindings, created
 	// immediately after entity extraction. Each intent binds one entity
@@ -473,6 +478,13 @@ type RenderReference struct {
 	JobID    string          `json:"job_id"`
 	Status   string          `json:"status"`
 	Artifact *RenderArtifact `json:"artifact,omitempty"`
+	// PlanDigest names the EXACT plan version these bytes were rendered from
+	// (OverlayPlanRenderDigest). It is the identity that makes reuse safe: a
+	// reference whose digest differs from the current plan describes different
+	// pixels and must never satisfy a resume, a cache hit or a handoff. Empty
+	// means the checkpoint predates digest binding, so the caller must prove
+	// compatibility from the content itself before reusing it.
+	PlanDigest string `json:"plan_digest,omitempty"`
 	// Items carries the per-overlay render lineage when production renders
 	// each semantic item as its own short video. Artifact remains the first
 	// item for backward-compatible document/publication consumers.

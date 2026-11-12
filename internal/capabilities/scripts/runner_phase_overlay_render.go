@@ -59,6 +59,9 @@ type overlayRenderOutcome struct {
 	ref          RenderReference
 	boundaryWall time.Duration
 	planItems    int
+	// planDigest is the identity of the plan this render was produced from. It
+	// is written by the caller that owns the plan, never by the worker.
+	planDigest string
 }
 
 // runOverlayRenderPhase renders the frozen semantic OverlayPlan and records the
@@ -159,35 +162,35 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, re
 	if result == nil || (!req.Render.Enabled && !req.Render.OverlaysOnly) || r.overlayRenderEnqueuer == nil || stageSkipped(resumeIdx, StageCompilingAudio) {
 		return nil, nil
 	}
+	// Freeze ONCE, on the durable result, before any plan reaches the renderer.
+	// This is intervention A: the plan the renderer executes, the plan the
+	// checkpoint persists and the plan the manifest is derived from are the same
+	// document, so "normalize on the snapshot" can no longer exist. Idempotent, so
+	// a resumed run that already froze its plan re-derives an identical one.
+	if err := FreezeFinalJobOverlayPlans(result, req.FinalJob); err != nil {
+		return nil, err
+	}
 	pending := pendingOverlayPlans(result, req)
 	if len(pending) == 0 {
 		return nil, nil
 	}
-	if req.FinalJob {
-		// Final-job placement policy runs BEFORE the render: the manifest
-		// wire freezes placement at render time, so phrase callouts on
-		// intermediate clip scenes are moved before their clip here (the
-		// per-item handoff used to move them at payload time).
-		//
-		// The output identity (certification profile + the media contract
-		// derived from it) is NOT decided here: it is stamped once, at the
-		// plan seal, from the canvas the runner built (see
-		// OverlayPlan.StampOutputProfile). Restating it in the render phase
-		// is how the plan came to declare `overlay-v1` — ProRes 4444 with
-		// alpha — on H.264/yuv420p artifacts: the timeline had already
-		// copied the contract by value before this phase ran.
-		for _, item := range pending {
-			if err := normalizeFinalJobOverlayWindows(item.plan, result); err != nil {
-				return nil, err
-			}
-		}
-	}
+	// The render phase deliberately performs NO plan normalization: the
+	// final-job placement policy already ran on the durable plan (see the freeze
+	// above), and the output identity (certification profile + derived media
+	// contract) is stamped once at the plan seal (OverlayPlan.StampOutputProfile).
+	// Restating either here is how the renderer and the checkpoint diverged.
 	return concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
 		func(renderCtx context.Context, _ int, item languageOverlayPlan) (overlayRenderOutcome, error) {
 			// The plan size and boundary wall time are measured HERE, at the only
 			// place that performs the blocking hand-off, so no consumer has to
 			// re-time a wait it does not own.
 			observability.OverlayRenderItems.Observe(float64(len(item.plan.Items)))
+			// Capture the identity BEFORE the hand-off. The plan travels by value
+			// but its Items slice is shared, so an enqueuer that normalizes its own
+			// copy in place would otherwise change the document this digest names
+			// — that is how a render of plan A came to be stamped with the digest
+			// of a mutated plan A' and then looked unbound on the next pass.
+			planDigest := OverlayPlanRenderDigest(item.plan)
 			startedAt := time.Now()
 			ref, renderErr := r.renderOverlayPlanAtBoundary(renderCtx, req, item.plan)
 			boundaryWall := time.Since(startedAt)
@@ -198,7 +201,16 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, re
 			}
 			observability.OverlayRenderTotal.WithLabelValues(renderOutcomeSuccess).Inc()
 			recordChrononArtifactMetrics(ref)
-			return overlayRenderOutcome{language: item.language, ref: ref, boundaryWall: boundaryWall, planItems: len(item.plan.Items)}, nil
+			return overlayRenderOutcome{
+				language:     item.language,
+				ref:          ref,
+				boundaryWall: boundaryWall,
+				planItems:    len(item.plan.Items),
+				// Stamp the identity of the plan the renderer just executed. The
+				// worker cannot know it, and inferring it later is what allowed a
+				// retry to adopt a render produced by an older plan.
+				planDigest: planDigest,
+			}, nil
 		})
 }
 
@@ -210,12 +222,15 @@ func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult
 	for _, outcome := range outcomes {
 		if outcome.language == sourceLanguage {
 			ref := outcome.ref
+			ref.PlanDigest = outcome.planDigest
 			result.OverlayRender = &ref
 		} else {
 			if result.LocalizedOverlayRenders == nil {
 				result.LocalizedOverlayRenders = make(map[Language]RenderReference)
 			}
-			result.LocalizedOverlayRenders[outcome.language] = outcome.ref
+			localized := outcome.ref
+			localized.PlanDigest = outcome.planDigest
+			result.LocalizedOverlayRenders[outcome.language] = localized
 		}
 		r.log.Info("overlay render complete",
 			zap.String("run_id", runID),
@@ -241,12 +256,21 @@ func pendingOverlayPlans(result *GenerateResult, req GenerateRequest) []language
 		if req.FinalJob && item.plan != nil {
 			item.plan.RequireObjectStoreBeforeReturn = true
 		}
+		// Reuse requires PROOF that the persisted render belongs to this plan
+		// version (intervention B). A different digest means different pixels:
+		// the plan is re-rendered instead of adopting the older artifact. A
+		// digest-less legacy checkpoint is reused only when its content still
+		// certifies the current plan.
 		if item.language == sourceLanguage && result.OverlayRender != nil {
-			continue
+			if overlayRenderBindsPlan(item.plan, result.OverlayRender) {
+				continue
+			}
 		}
 		if item.language != sourceLanguage {
-			if _, done := result.LocalizedOverlayRenders[item.language]; done {
-				continue
+			if ref, done := result.LocalizedOverlayRenders[item.language]; done {
+				if overlayRenderBindsPlan(item.plan, &ref) {
+					continue
+				}
 			}
 		}
 		pending = append(pending, item)
