@@ -189,6 +189,7 @@ func lifecycleMaintenanceDeps(cfg *config.Config, root *ComposeRoot, log *zap.Lo
 	}
 	if root.Jobs != nil {
 		deps.Services.Jobs = root.Jobs.Service
+		deps.Services.StaleJobs = root.Jobs.Repo
 	}
 	if root.Maint != nil {
 		deps.Services.EntityImageRecertification = root.Maint.EntityImageRecertification

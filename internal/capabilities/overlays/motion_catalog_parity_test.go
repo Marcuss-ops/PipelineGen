@@ -198,7 +198,7 @@ func loadCanonicalMotionUniverse(t *testing.T) canonicalMotionUniverse {
 			} `json:"families"`
 		} `json:"entity_presentation"`
 	}
-	if err := json.Unmarshal(read("RenderingGen/renderinggen/internal/motion/catalog/chronontemplate_catalog.v1.json"), &chronon); err != nil {
+	if err := json.Unmarshal(loadCanonicalMotionCatalog(t), &chronon); err != nil {
 		t.Fatalf("decode canonical chronontemplate catalog: %v", err)
 	}
 	for _, motion := range chronon.Motions {

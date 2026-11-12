@@ -40,6 +40,7 @@ type MaintenanceDeps struct {
 // MaintenanceServices groups capability-owned services used by maintenance.
 type MaintenanceServices struct {
 	Jobs                       MaintenanceJobService
+	StaleJobs                  StaleJobSweeperStore
 	EntityImageRecertification *entitycatalog.RecertificationService
 	MemoryRepo                 scriptports.MemoryGate
 	OutboxDispatcher           *outbox.Dispatcher
@@ -222,6 +223,21 @@ func BuildMaintenanceSteps(deps MaintenanceDeps) []StartupStep {
 				Stop: func(_ context.Context) error { return nil },
 			})
 		}
+	}
+
+	// Fail jobs whose worker lease expired well past the grace window. This
+	// is the automatic counterpart to the operator-only zombie-sweep CLI.
+	if deps.Services.StaleJobs != nil {
+		steps = append(steps, StartupStep{
+			Name: "stale-job-sweeper", Required: false,
+			Start: func(startCtx context.Context) error {
+				concurrent.SafeGo("stale-job-sweeper", func() {
+					StartStaleJobSweeper(startCtx, deps.Services.StaleJobs, deps.Log)
+				})
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
 	}
 
 	// Qdrant-cleaner step removed (godlike/07 no-fake-availability

@@ -38,6 +38,35 @@ func TestBuildVoiceoverContentFingerprintV3_DiffersFromV2(t *testing.T) {
 	require.NotEqual(t, v2, v3)
 }
 
+// TestBuildVoiceoverContentFingerprintV4_SeparatesRateAndSilencePolicy pins
+// the audit's cache requirement: two requests with different speeds or cut
+// policies must never reuse the same audio.
+func TestBuildVoiceoverContentFingerprintV4_SeparatesRateAndSilencePolicy(t *testing.T) {
+	textHash := TextHash("scene-text")
+	base := DefaultVoiceoverPostPolicy()
+	fingerprint := func(post VoiceoverPostPolicy) string {
+		return BuildVoiceoverContentFingerprintV4(textHash, "it", "alba", "edge-tts", "folder", nil, true, post)
+	}
+	slower := base
+	slower.Rate = "-5%"
+	stricter := base
+	stricter.Silence.ThresholdDB = -30
+	differentGap := base
+	differentGap.Silence.MinSilenceMS = 200
+	if fingerprint(base) == fingerprint(slower) {
+		t.Fatal("a different TTS rate must change the cache fingerprint")
+	}
+	if fingerprint(base) == fingerprint(stricter) {
+		t.Fatal("a different silence threshold must change the cache fingerprint")
+	}
+	if fingerprint(base) == fingerprint(differentGap) {
+		t.Fatal("a different minimum silence must change the cache fingerprint")
+	}
+	if fingerprint(base) != fingerprint(base) {
+		t.Fatal("the same policy tuple must stay byte-stable")
+	}
+}
+
 // TestBuildVoiceoverContentFingerprintV3_EmptyProviderIsExplicit pins that
 // a missing identity never collapses to the Edge identity by accident.
 func TestBuildVoiceoverContentFingerprintV3_EmptyProviderIsExplicit(t *testing.T) {

@@ -98,7 +98,7 @@ func (u *ProcessSegmentUseCase) publishStage(
 	// Derive deterministic idempotency key.
 	var idemKey string
 	if cmd.JobID != "" {
-		idemKey = BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, idempotencyPolicyFingerprint(u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence))
+		idemKey = BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, idempotencyPolicyFingerprint(u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)))
 	}
 
 	// Delivery upload ONLY when a Publisher is wired. The video pipeline is
@@ -425,7 +425,7 @@ func (u *ProcessSegmentUseCase) publishTimingBundle(
 					FolderID:       cmd.Dest.FolderID,
 					Project:        cmd.Project,
 					Language:       string(cmd.Language),
-					IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, idempotencyPolicyFingerprint(u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence), string(format)),
+					IdempotencyKey: BuildVoiceoverTimingIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash, idempotencyPolicyFingerprint(u.deps.TTSProvider, cmd.Language, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)), string(format)),
 				})
 				if err != nil {
 					timingPubMu.Lock()

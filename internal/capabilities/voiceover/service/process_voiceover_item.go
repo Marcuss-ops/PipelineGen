@@ -335,7 +335,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// stores the audio artifact but not a verifiable timing bundle. This
 	// makes the run report honest (candidate/hit/miss) without risking an
 	// unsynchronised subtitle timeline.
-	fingerprint := BuildVoiceoverContentFingerprintV3(itemHash, item.Language, item.Voice, providerIdentityForTTS(u.deps.Pipeline.TTSProvider, item.Language), dest.FolderID, item.Timing, item.RemoveSilence)
+	fingerprint := BuildVoiceoverContentFingerprintV4(itemHash, item.Language, item.Voice, providerIdentityForTTS(u.deps.Pipeline.TTSProvider, item.Language), dest.FolderID, item.Timing, item.RemoveSilence, voiceoverPostPolicy(item.TTSRate, item.SilencePolicy))
 	cacheStatus := "miss"
 	cacheReason := "not_found"
 	if lookup, ok := u.deps.Pipeline.VoiceoverRepository.(voiceoverFingerprintLookup); ok {
@@ -374,6 +374,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		Language:       item.Language,
 		Voice:          item.Voice,
 		TTSRate:        item.TTSRate,
+		SilencePolicy:  item.SilencePolicy,
 		Filename:       item.Filename,
 		Strategy:       string(item.Strategy),
 		Metadata:       item.Metadata,

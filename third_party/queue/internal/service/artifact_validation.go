@@ -22,5 +22,16 @@ func validateArtifact(artifact model.Artifact) error {
 	if strings.TrimSpace(artifact.ContentType) == "" {
 		return fmt.Errorf("artifact content_type is required")
 	}
+	// A worker that reports success with a zero-frame or zero-duration video
+	// has not produced a publishable artifact. Reject it at the completion
+	// gate instead of recording a SUCCEEDED job with unusable output.
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(artifact.ContentType)), "video/") {
+		if artifact.FrameCount <= 0 {
+			return fmt.Errorf("artifact frame_count must be positive for video output")
+		}
+		if artifact.DurationUS <= 0 {
+			return fmt.Errorf("artifact duration_us must be positive for video output")
+		}
+	}
 	return nil
 }

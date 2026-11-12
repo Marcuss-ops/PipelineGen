@@ -106,7 +106,7 @@ func TestWaitStateForgetsReplacementWaiterAfterWake(t *testing.T) {
 	}()
 	waitUntilParked(t, svc.notify, 1)
 	if err := svc.Complete(ctx, "job-1", "w1", 1, model.Artifact{
-		StorageKey: "abc", ArtifactHash: "abc", SizeBytes: 1, ContentType: "video/mp4",
+		StorageKey: "abc", ArtifactHash: "abc", SizeBytes: 1, ContentType: "video/mp4", FrameCount: 1, DurationUS: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}

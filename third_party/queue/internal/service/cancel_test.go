@@ -12,7 +12,7 @@ import (
 
 // validArtifact mirrors the queue-side completion gate used across tests.
 func cancelTestArtifact() model.Artifact {
-	return model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4"}
+	return model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4", FrameCount: 1, DurationUS: 1}
 }
 
 func TestCancelPendingJobIsNeverClaimed(t *testing.T) {

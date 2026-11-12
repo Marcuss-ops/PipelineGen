@@ -157,7 +157,7 @@ func chainConfig(counts map[string]int) (maxGapUS int64, maxSegments int, disabl
 
 // chainFamily groups chainable kinds. Homogeneous groups keep their
 // dedicated chain kind; heterogeneous groups fuse as mixed_chain with each
-// segment keeping its own lowering. Only video/shape kinds stay out (they own
+// segment keeping its own lowering. Video/shape/map kinds stay out (they own
 // the full canvas and have no per-segment chain lowering yet).
 func chainFamily(kind string) string {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
@@ -195,7 +195,12 @@ func chainable(item OverlayItem) bool {
 	if family == "image" && len(item.AssetRefs) == 0 && len(item.ImageLayers) == 0 {
 		return false
 	}
-	if family == "map" && (item.Map == nil || (len(item.AssetRefs) == 0 && !item.Map.DynamicRendererOnly)) {
+	if family == "map" {
+		// Maps are standalone by contract. A map owns the full georeferenced
+		// canvas and its LOD asset set; fusing it with a phrase or a second
+		// map creates a chain whose segments cannot be validated against a
+		// single map window. Explicit geographic sequences are a separate,
+		// future feature, never an automatic coalescing result.
 		return false
 	}
 	// SFX currently lowers to the plan-level audio bus. Keep it standalone
@@ -547,6 +552,24 @@ func ValidateChainItem(item OverlayItem) error {
 	}
 	if len(segments) < 2 {
 		return fmt.Errorf("overlay plan: chain item %q needs at least two segments", item.ID)
+	}
+	// Maps never enter an automatic text/image/mixed chain. A hand-built
+	// mixed chain carrying a map is therefore a producer bug, not a payload
+	// to lower: the map compiler needs a standalone window and its complete
+	// LOD assets. map_chain stays valid for an explicitly authored geographic
+	// sequence, but every one of its segments must actually be a map.
+	if kind != KindMapChain {
+		for n, seg := range segments {
+			if seg.Map != nil {
+				return fmt.Errorf("overlay plan: chain item %q segment %d carries a map; maps must stay standalone", item.ID, n)
+			}
+		}
+	} else {
+		for n, seg := range segments {
+			if seg.Map == nil {
+				return fmt.Errorf("overlay plan: map chain item %q segment %d has no map payload", item.ID, n)
+			}
+		}
 	}
 	start, end := item.StartUSValue(), item.EndUSValue()
 	lastStartUS := int64(-1)

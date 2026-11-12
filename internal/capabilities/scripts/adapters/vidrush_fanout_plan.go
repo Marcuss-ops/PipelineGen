@@ -33,8 +33,34 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	profile := segment.CanonicalSemanticProfile()
 	manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: segment.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
 	perSceneImages := plan.MediaPlan.Extraction.EntityImages.PerScene()
-	imageSidecarRequested := plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() &&
-		(len(manualImageQueries) > 0 || perSceneImages || len(segment.Insights.ImageQueries) > 0)
+	imageSearchMode := plan.MediaPlan.Extraction.ImageSearchMode
+	if !mediadomain.IsValidImageSearchMode(imageSearchMode) {
+		// Unknown modes fail closed to the historical policy rather than
+		// silently widening an explicit pin.
+		imageSearchMode = ""
+	}
+	automaticImageSearch := imageSearchMode != mediadomain.ImageSearchModeDisabled &&
+		imageSearchMode != mediadomain.ImageSearchModeExplicitOnly
+	manualImageExclusive := len(manualImageQueries) > 0
+	switch imageSearchMode {
+	case mediadomain.ImageSearchModeExplicitOnly:
+		manualImageExclusive = true
+	case mediadomain.ImageSearchModeAutomatic:
+		manualImageExclusive = false
+	case mediadomain.ImageSearchModeDisabled:
+		manualImageExclusive = false
+	}
+	imageSidecarRequested := false
+	if plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() && imageSearchMode != mediadomain.ImageSearchModeDisabled {
+		switch imageSearchMode {
+		case mediadomain.ImageSearchModeExplicitOnly:
+			imageSidecarRequested = len(manualImageQueries) > 0
+		case mediadomain.ImageSearchModeAutomatic:
+			imageSidecarRequested = perSceneImages || len(segment.Insights.ImageQueries) > 0
+		default:
+			imageSidecarRequested = len(manualImageQueries) > 0 || perSceneImages || len(segment.Insights.ImageQueries) > 0
+		}
+	}
 	contentType := "video"
 	if imageSidecarRequested {
 		contentType = "image"
@@ -46,17 +72,19 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		// does not satisfy an explicit image/identity search request.
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
-	imageQueries := plausibleSceneImageQueries(segment.Insights.ImageQueries)
+	imageQueries := []string(nil)
+	if automaticImageSearch {
+		imageQueries = plausibleSceneImageQueries(segment.Insights.ImageQueries)
+	}
 	// Explicit searches authored in the media plan define this segment's image
 	// scope. Do not mix them with inferred entities or broad semantic queries:
 	// their candidates can belong to a different person or story.
-	explicitImageSearchOnly := len(manualImageQueries) > 0
 	// Explicit media-plan searches are the caller's retrieval intent. Apply
 	// them at fanout planning too, but keep them alongside identity-scoped
 	// searches. A courthouse/town query cannot retrieve a verified portrait,
 	// and replacing the identity queries here silently removed every entity
 	// image whenever a caller also supplied contextual image searches.
-	if perSceneImages && !explicitImageSearchOnly {
+	if perSceneImages && automaticImageSearch && !manualImageExclusive {
 		// Entity-image searches use the canonical person identity. Adding the
 		// scene's opening prose created queries like "Chiara Poggi Presenta ..."
 		// and let collages/news cards bind as identity portraits. Variant
@@ -71,7 +99,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	// is useful for generic scene imagery, but must not leak into an
 	// entity-only run because it bypasses entity cache identity and creates
 	// dozens of unrelated provider downloads.
-	if perSceneImages && !explicitImageSearchOnly {
+	if perSceneImages && automaticImageSearch && !manualImageExclusive {
 		// The source-grounded scene query above is the complete retrieval scope;
 		// do not collapse it back to an entity-only canonical query. Entity
 		// searches still yield one image per identity, so an explicit scene
@@ -86,7 +114,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		if budget > vidRushDefaultImagesPerScene {
 			imageQueries = appendUniqueImageQueries(imageQueries, plausibleSceneImageQueries(scriptpkg.QueriesForImages(profile, budget)))
 		}
-	} else if !perSceneImages && !explicitImageSearchOnly && !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+	} else if automaticImageSearch && !manualImageExclusive && !perSceneImages && !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
 		for _, query := range plausibleSceneImageQueries(scriptpkg.QueriesForImages(profile, 7)) {
 			duplicate := false
 			for _, existing := range imageQueries {
@@ -99,7 +127,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 				imageQueries = append(imageQueries, query)
 			}
 		}
-	} else if !perSceneImages && !explicitImageSearchOnly {
+	} else if automaticImageSearch && !manualImageExclusive && !perSceneImages {
 		// Identity-image mode only materializes explicit person/brand/org
 		// queries; numeric/value overlays and generic concepts cannot consume
 		// the verified image budget.
@@ -151,24 +179,44 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		}
 		imageQueries = filtered
 	}
-	imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
-	// A complete source sentence is a final provider fallback for scenes whose
-	// extracted entity terms are too generic (for example "wide pan"). It is
-	// still source-grounded and bounded by the same provider result limit.
-	if source := strings.TrimSpace(segment.Text); source != "" && len(imageQueries) >= 3 {
-		duplicate := false
-		for _, existing := range imageQueries {
-			if strings.EqualFold(strings.TrimSpace(existing), source) {
-				duplicate = true
-				break
+	switch {
+	case imageSearchMode == mediadomain.ImageSearchModeDisabled:
+		// Disabled means no provider query at all, even when NER or a caller
+		// supplied one.
+		imageQueries = nil
+	case imageSearchMode == mediadomain.ImageSearchModeExplicitOnly,
+		imageSearchMode == mediadomain.ImageSearchModeExplicitThenFallback && len(manualImageQueries) > 0,
+		imageSearchMode == "" && len(manualImageQueries) > 0:
+		// Manual searches are the caller's complete retrieval contract. No
+		// inferred entity query, semantic ladder or scene-sentence fallback
+		// may widen that scope: doing so retrieves unrelated people or
+		// places under the authority of an explicit pin. The per-segment
+		// budget does not truncate an explicit list either; the caller
+		// authorized every entry.
+		imageQueries = append([]string(nil), manualImageQueries...)
+	default:
+		if imageSearchMode != mediadomain.ImageSearchModeAutomatic {
+			imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
+		}
+		// A complete source sentence is a final provider fallback for scenes
+		// whose extracted entity terms are too generic (for example "wide
+		// pan"). It is still source-grounded and bounded by the same provider
+		// result limit. It is never appended to an explicit-only search.
+		if source := strings.TrimSpace(segment.Text); source != "" && len(imageQueries) >= 3 {
+			duplicate := false
+			for _, existing := range imageQueries {
+				if strings.EqualFold(strings.TrimSpace(existing), source) {
+					duplicate = true
+					break
+				}
+			}
+			if !duplicate {
+				imageQueries = append(imageQueries, source)
 			}
 		}
-		if !duplicate {
-			imageQueries = append(imageQueries, source)
+		if maxQueries := plan.MediaPlan.Extraction.MaxImageQueriesPerSegment; maxQueries > 0 && len(imageQueries) > maxQueries {
+			imageQueries = imageQueries[:maxQueries]
 		}
-	}
-	if maxQueries := plan.MediaPlan.Extraction.MaxImageQueriesPerSegment; maxQueries > 0 && len(imageQueries) > maxQueries {
-		imageQueries = imageQueries[:maxQueries]
 	}
 	limit := 10
 	if plan.MediaPlan.Planner.CandidateLimit > 0 {

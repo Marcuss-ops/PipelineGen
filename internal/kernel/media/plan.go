@@ -15,6 +15,19 @@ import (
 )
 
 const (
+	// ImageSearchModeExplicitOnly retrieves only the caller's explicit
+	// media-plan queries. No NER, semantic ladder or scene-sentence fallback
+	// may widen the provider scope.
+	ImageSearchModeExplicitOnly string = "explicit_only"
+	// ImageSearchModeAutomatic derives queries from entity/scene extraction
+	// and ignores caller-provided searches.
+	ImageSearchModeAutomatic string = "automatic"
+	// ImageSearchModeExplicitThenFallback prefers explicit queries and
+	// derives automatic ones only when the caller supplied none.
+	ImageSearchModeExplicitThenFallback string = "explicit_then_fallback"
+	// ImageSearchModeDisabled performs no image search at all.
+	ImageSearchModeDisabled string = "disabled"
+
 	// MediaPlanModeDisabled skips media resolution entirely.
 	MediaPlanModeDisabled string = "disabled"
 	// MediaPlanModeManual requires all slots to be covered by locked
@@ -30,6 +43,18 @@ const (
 	// then Drive, and finally external providers only when required.
 	MediaPlanModeHybrid string = "hybrid"
 )
+
+// IsValidImageSearchMode returns true for the canonical image-search modes.
+// An empty value is valid and preserves the historical behavior (explicit
+// queries are exclusive when present, otherwise automatic derivation).
+func IsValidImageSearchMode(mode string) bool {
+	switch mode {
+	case "", ImageSearchModeExplicitOnly, ImageSearchModeAutomatic,
+		ImageSearchModeExplicitThenFallback, ImageSearchModeDisabled:
+		return true
+	}
+	return false
+}
 
 // IsValidMediaPlanMode returns true for supported mode values.
 func IsValidMediaPlanMode(mode string) bool {
@@ -179,11 +204,17 @@ type MediaExtractionPolicy struct {
 	// ImportantPhrases are optional caller-supplied editorial hints. They are
 	// accepted only when they are exact, source-grounded spans and do not
 	// overlap a named entity; model extraction remains the default path.
-	ImportantPhrases            []string          `json:"important_phrases,omitempty"`
-	MaxImportantWordsPerSegment int               `json:"max_important_words_per_segment,omitempty"`
-	MaxImageQueriesPerSegment   int               `json:"max_image_queries_per_segment,omitempty"`
-	Strategy                    string            `json:"strategy,omitempty"`
-	EntityImages                EntityImagePolicy `json:"entity_images,omitempty"`
+	ImportantPhrases            []string `json:"important_phrases,omitempty"`
+	MaxImportantWordsPerSegment int      `json:"max_important_words_per_segment,omitempty"`
+	MaxImageQueriesPerSegment   int      `json:"max_image_queries_per_segment,omitempty"`
+	// ImageSearchMode is the retrieval authority for still images. Empty
+	// preserves the historical behavior; explicit_only makes caller queries
+	// exclusive, automatic ignores caller queries, explicit_then_fallback
+	// derives only when no explicit query exists, and disabled performs no
+	// image search.
+	ImageSearchMode string            `json:"image_search_mode,omitempty"`
+	Strategy        string            `json:"strategy,omitempty"`
+	EntityImages    EntityImagePolicy `json:"entity_images,omitempty"`
 }
 
 const (

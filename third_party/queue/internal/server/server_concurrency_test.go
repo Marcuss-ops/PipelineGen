@@ -166,7 +166,7 @@ func TestServerConcurrentClaimAndComplete(t *testing.T) {
 				}
 
 				resp, err := http.Post(ts.URL+"/jobs/"+id+"/complete", "application/json",
-					strings.NewReader(fmt.Sprintf(`{"worker":%q,"lease_generation":%d,"data":{"storage_key":"sha-%s","artifact_hash":"sha-%s","size_bytes":1,"content_type":"video/mp4"}}`, worker, generation, id, id)))
+					strings.NewReader(fmt.Sprintf(`{"worker":%q,"lease_generation":%d,"data":{"storage_key":"sha-%s","artifact_hash":"sha-%s","size_bytes":1,"content_type":"video/mp4","frame_count":1,"duration_us":1}}`, worker, generation, id, id)))
 				if err != nil {
 					t.Errorf("complete(%s): %v", worker, err)
 					return

@@ -22,6 +22,7 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/overlays"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -170,6 +171,10 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 		return nil, err
 	}
 	output := filepath.Join(jobDir, safeName(item.ID)+"."+container)
+	// Render into a private staged path. A consumer must never see the file
+	// until the probe, media-contract validation and hash have all succeeded;
+	// the final atomic rename is the publication gate.
+	renderOutput := filepath.Join(jobDir, "."+safeName(item.ID)+".partial."+container)
 	// Every overlay render is a fresh Chronon execution. The content cache is
 	// intentionally used only by AssetPreparer for reusable input resources
 	// (entity images, backgrounds and fonts); a previous rendered overlay is
@@ -192,7 +197,8 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 		if err != nil {
 			return err
 		}
-		if err := h.Renderer.Render(ctx, planJSON, output); err != nil {
+		if err := h.Renderer.Render(ctx, planJSON, renderOutput); err != nil {
+			_ = os.Remove(renderOutput)
 			return err
 		}
 		return nil
@@ -216,8 +222,9 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 		Component: kernobs.ComponentRenderingGen,
 		Operation: kernobs.OperationHash,
 	}, func(ctx context.Context) error {
-		p, err := h.Prober.ProbeOverlay(ctx, output)
+		p, err := h.Prober.ProbeOverlay(ctx, renderOutput)
 		if err != nil {
+			quarantineRendered(jobDir, renderOutput, "probe_failed: "+err.Error())
 			return err
 		}
 		probed = p
@@ -226,7 +233,16 @@ func (h *HandlerSet) Render(ctx context.Context, j *job.Job, _ *job.JobExecution
 		return nil, err
 	}
 	if err := contract.Validate(probed); err != nil {
+		quarantineRendered(jobDir, renderOutput, "media_contract_failed: "+err.Error())
 		return nil, fmt.Errorf("overlay.render media contract: %w", err)
+	}
+	if err := validateRenderedArtifact(probed); err != nil {
+		quarantineRendered(jobDir, renderOutput, err.Error())
+		return nil, fmt.Errorf("overlay.render artifact not publishable: %w", err)
+	}
+	if err := atomicwrite.CommitFile(renderOutput, output); err != nil {
+		quarantineRendered(jobDir, renderOutput, "atomic_commit_failed: "+err.Error())
+		return nil, fmt.Errorf("overlay.render atomic publish: %w", err)
 	}
 	mime := "video/mp4"
 	if container == "mov" {

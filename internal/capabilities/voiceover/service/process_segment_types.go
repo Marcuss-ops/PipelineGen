@@ -17,6 +17,7 @@ type ProcessSegmentCommand struct {
 	Language             Language
 	Voice, Filename      string
 	TTSRate              string
+	SilencePolicy        audio.SilenceRemovalPolicy
 	Strategy             string
 	Metadata             map[string]any
 	RemoveSilence        bool
