@@ -2,7 +2,7 @@ module github.com/Marcuss-ops/PipelineGen
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 // BUILD-01: the queue module is vendored in-repo (third_party/queue) so an
 // isolated PipelineGen checkout builds without a sibling RenderingGen working
