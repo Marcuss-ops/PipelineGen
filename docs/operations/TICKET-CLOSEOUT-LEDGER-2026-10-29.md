@@ -1,5 +1,12 @@
 # Ledger di chiusura ticket — 2026-10-29
 
+> **ARCHIVIATO 2026-11-12 — documento storico.** Non è lo stato corrente del
+> repository. La fonte autorevole per la bonifica è
+> `docs/operations/AUDIT-BASELINE-2026-11-11.md` (sezione 9) e, per le
+> consegne, `docs/operations/DELIVERY-CERTIFICATION-2026-11-12.md`. Le misure e
+> i verdetti qui sotto restano come evidenza del 29-10 e non vanno letti come
+> stato attuale.
+
 Scopo: un solo posto con lo stato reale dei ticket aperti, l'evidenza di ciò
 che è stato chiuso in questa sessione, ciò che richiede ancora lavoro di codice
 e ciò che è bloccato da evidenza esterna (GPU, host autorizzato, CI sullo

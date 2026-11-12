@@ -1,0 +1,161 @@
+{
+  "schema_version": "velox.chain-segments.conformance.v1",
+  "description": "Five nearby images must survive as five independently timed image segments, each with its own asset and motion. PipelineGen validates this plan as the producer; RenderingGen compiles the same bytes as the consumer.",
+  "plan": {
+    "schema_version": "renderinggen.overlay-plan.v1",
+    "plan_id": "conformance-five-images",
+    "video_id": "conformance-video",
+    "width": 1280,
+    "height": 720,
+    "fps_num": 30,
+    "fps_den": 1,
+    "duration_ms": 15200,
+    "items": [
+      {
+        "id": "scene-1:chain-image:0",
+        "scene_id": "scene-1",
+        "kind": "image_chain",
+        "template_id": "IMAGE_CHAIN",
+        "start_ms": 0,
+        "end_ms": 15200,
+        "start_us": 0,
+        "duration_us": 15200000,
+        "asset_refs": [
+          {
+            "asset_id": "img-0",
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "url": "https://example.test/img-0.jpg",
+            "media_type": "image/jpeg"
+          },
+          {
+            "asset_id": "img-1",
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "url": "https://example.test/img-1.jpg",
+            "media_type": "image/jpeg"
+          },
+          {
+            "asset_id": "img-2",
+            "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+            "url": "https://example.test/img-2.jpg",
+            "media_type": "image/jpeg"
+          },
+          {
+            "asset_id": "img-3",
+            "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+            "url": "https://example.test/img-3.jpg",
+            "media_type": "image/jpeg"
+          },
+          {
+            "asset_id": "img-4",
+            "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+            "url": "https://example.test/img-4.jpg",
+            "media_type": "image/jpeg"
+          }
+        ],
+        "params": {
+          "chain_camera": "fly_under_fade",
+          "chain_count": 5,
+          "chain_motions": [
+            "image_focus_reveal",
+            "image_roll_depth_in",
+            "image_photo_drop",
+            "image_spotlight_focus",
+            "image_parallax_frame"
+          ],
+          "chain_segments": [
+            {
+              "text": "",
+              "motion_id": "image_focus_reveal",
+              "preset_id": "image_scale_in",
+              "template_id": "IMAGE_OVERLAY",
+              "kind": "image",
+              "start_us": 0,
+              "duration_us": 2800000,
+              "asset_id": "img-0",
+              "assets": [
+                {
+                  "asset_id": "img-0",
+                  "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+                  "url": "https://example.test/img-0.jpg",
+                  "media_type": "image/jpeg"
+                }
+              ]
+            },
+            {
+              "text": "",
+              "motion_id": "image_roll_depth_in",
+              "preset_id": "image_scale_in",
+              "template_id": "IMAGE_OVERLAY",
+              "kind": "image",
+              "start_us": 3000000,
+              "duration_us": 2800000,
+              "asset_id": "img-1",
+              "assets": [
+                {
+                  "asset_id": "img-1",
+                  "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+                  "url": "https://example.test/img-1.jpg",
+                  "media_type": "image/jpeg"
+                }
+              ]
+            },
+            {
+              "text": "",
+              "motion_id": "image_photo_drop",
+              "preset_id": "image_scale_in",
+              "template_id": "IMAGE_OVERLAY",
+              "kind": "image",
+              "start_us": 6000000,
+              "duration_us": 2800000,
+              "asset_id": "img-2",
+              "assets": [
+                {
+                  "asset_id": "img-2",
+                  "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+                  "url": "https://example.test/img-2.jpg",
+                  "media_type": "image/jpeg"
+                }
+              ]
+            },
+            {
+              "text": "",
+              "motion_id": "image_spotlight_focus",
+              "preset_id": "image_scale_in",
+              "template_id": "IMAGE_OVERLAY",
+              "kind": "image",
+              "start_us": 9000000,
+              "duration_us": 2800000,
+              "asset_id": "img-3",
+              "assets": [
+                {
+                  "asset_id": "img-3",
+                  "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+                  "url": "https://example.test/img-3.jpg",
+                  "media_type": "image/jpeg"
+                }
+              ]
+            },
+            {
+              "text": "",
+              "motion_id": "image_parallax_frame",
+              "preset_id": "image_scale_in",
+              "template_id": "IMAGE_OVERLAY",
+              "kind": "image",
+              "start_us": 12000000,
+              "duration_us": 2800000,
+              "asset_id": "img-4",
+              "assets": [
+                {
+                  "asset_id": "img-4",
+                  "sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+                  "url": "https://example.test/img-4.jpg",
+                  "media_type": "image/jpeg"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

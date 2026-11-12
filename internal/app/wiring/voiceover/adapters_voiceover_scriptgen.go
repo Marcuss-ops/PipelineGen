@@ -184,6 +184,10 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		// voiceover phase when it is missing.
 		Project:       input.Project,
 		RemoveSilence: strings.EqualFold(string(input.Language), "it"),
+		// The cut policy is explicit and versioned. It is folded into the
+		// voiceover cache fingerprint, so changing the threshold cannot
+		// reuse audio cleaned under the previous policy.
+		SilencePolicy: capabilityaudio.DefaultSilenceRemovalPolicy(),
 		TTSRate: func() string {
 			if strings.EqualFold(string(input.Language), "it") {
 				return "+1%"

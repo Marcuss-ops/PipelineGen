@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -197,8 +198,9 @@ func TestCoalesceFusesCardPhrase(t *testing.T) {
 	}
 }
 
-// Map + phrase fuse as mixed_chain keeping the georeference per segment.
-func TestCoalesceFusesMapPhrase(t *testing.T) {
+// Map + phrase are standalone by contract: a map owns the full georeferenced
+// canvas and never fuses into a text chain.
+func TestCoalesceKeepsMapPhraseStandalone(t *testing.T) {
 	m := chainFixture("map", "s1", "", 10_000_000, 5_000_000, "map_motion")
 	m.TemplateID = "MAP"
 	m.Text = ""
@@ -206,12 +208,14 @@ func TestCoalesceFusesMapPhrase(t *testing.T) {
 	m.AssetRefs = []OverlayAssetRef{{AssetID: "basemap", SHA256: "hash"}}
 	phrase := chainFixture("text_phrase", "s1", "la frase", 12_000_000, 3_000_000, "phrase_motion")
 	got := CoalesceChainedOverlays([]OverlayItem{m, phrase}, map[string]int{"chain_enabled": 1})
-	if len(got) != 1 || got[0].Kind != KindMixedChain {
-		t.Fatalf("map+phrase must fuse as mixed_chain: %+v", got)
+	if len(got) != 2 {
+		t.Fatalf("map+phrase must stay two standalone items: %+v", got)
 	}
-	segs, ok := got[0].Params["chain_segments"].([]ChainSegment)
-	if !ok || len(segs) != 2 || segs[0].Map == nil {
-		t.Fatalf("mixed segments must keep the map payload: %+v", got[0].Params["chain_segments"])
+	if got[0].Kind != "map" || got[1].Kind != "text_phrase" {
+		t.Fatalf("map+phrase kinds = %q/%q, want map/text_phrase", got[0].Kind, got[1].Kind)
+	}
+	if IsChainItemKind(got[0].Kind) || IsChainItemKind(got[1].Kind) {
+		t.Fatalf("map+phrase must not create a chain: %+v", got)
 	}
 }
 
@@ -222,23 +226,20 @@ func TestCoalesceKeepsShortTextBeforeMapReadable(t *testing.T) {
 	mapItem.Map = &MapOverlay{Provider: "local"}
 	mapItem.AssetRefs = []OverlayAssetRef{{AssetID: "basemap", SHA256: "hash"}}
 	got := CoalesceChainedOverlays([]OverlayItem{phrase, mapItem}, map[string]int{"chain_enabled": 1})
-	if len(got) != 1 {
-		t.Fatalf("expected one mixed chain, got %+v", got)
+	if len(got) != 2 {
+		t.Fatalf("expected standalone phrase + map, got %+v", got)
 	}
-	segments, ok := DecodeChainSegments(got[0].Params)
-	if !ok || len(segments) != 2 {
-		t.Fatalf("mixed chain segments not decoded: %+v", got[0].Params)
+	if got[0].Kind != "text_phrase" || got[0].StartUSValue() != 10_000_000 || got[0].EndUSValue() != 10_762_500 {
+		t.Fatalf("short phrase must keep its certified window: %+v", got[0])
 	}
-	if segments[0].DurationUS < minChainSegmentDurationUS {
-		t.Fatalf("text lead duration = %d us, want at least %d us", segments[0].DurationUS, minChainSegmentDurationUS)
-	}
-	if segments[1].StartUS < segments[0].StartUS+segments[0].DurationUS+chainHandoffGapUS {
-		t.Fatalf("map starts before readable text and handoff: first=%+v map=%+v", segments[0], segments[1])
+	if got[1].Kind != "map" || got[1].StartUSValue() != 10_762_500 {
+		t.Fatalf("map must stay standalone after the phrase: %+v", got[1])
 	}
 }
 
-// Two nearby maps fuse as map_chain.
-func TestCoalesceFusesMapMap(t *testing.T) {
+// Two nearby maps must remain two standalone map items; automatic map chains
+// are not part of the canonical contract.
+func TestCoalesceKeepsMapsStandalone(t *testing.T) {
 	mk := func(start int64) OverlayItem {
 		m := chainFixture("map", "s1", "", start, 3_000_000, "map_motion")
 		m.TemplateID = "MAP"
@@ -248,31 +249,124 @@ func TestCoalesceFusesMapMap(t *testing.T) {
 		return m
 	}
 	got := CoalesceChainedOverlays([]OverlayItem{mk(10_000_000), mk(12_000_000)}, map[string]int{"chain_enabled": 1})
-	if len(got) != 1 || got[0].Kind != KindMapChain || got[0].TemplateID != TemplateMapChain {
-		t.Fatalf("map+map must fuse as map_chain: %+v", got)
+	if len(got) != 2 {
+		t.Fatalf("map+map must stay two standalone maps: %+v", got)
+	}
+	for i, item := range got {
+		if item.Kind != "map" || IsChainItemKind(item.Kind) {
+			t.Fatalf("map item %d = %q, want standalone map", i, item.Kind)
+		}
 	}
 }
 
-// A fused mixed chain with map + phrase validates; maps without payload fail.
-func TestChainValidationMixedMap(t *testing.T) {
+// A hand-built mixed chain carrying a map fails closed: maps cannot enter an
+// automatic text/image/mixed chain.
+func TestChainValidationRejectsMapInMixedChain(t *testing.T) {
 	m := chainFixture("map", "s1", "", 10_000_000, 5_000_000, "map_motion")
 	m.TemplateID = "MAP"
 	m.Text = ""
 	m.Map = &MapOverlay{Provider: "local"}
 	m.AssetRefs = []OverlayAssetRef{{AssetID: "basemap", SHA256: "hash"}}
-	phrase := chainFixture("text_phrase", "s1", "la frase", 12_000_000, 3_000_000, "phrase_motion")
-	chain := CoalesceChainedOverlays([]OverlayItem{m, phrase}, map[string]int{"chain_enabled": 1})[0]
+	phrase := chainFixture("text_phrase", "s1", "la frase", 15_000_000, 3_000_000, "phrase_motion")
+	chain := OverlayItem{
+		ID: "s1:chain-mixed:0", SceneID: "s1", Kind: KindMixedChain, TemplateID: TemplateMixedChain,
+		StartMs: 10_000, EndMs: 18_000, StartUS: 10_000_000, DurationUS: 8_000_000,
+		Params: map[string]any{"chain_segments": []ChainSegment{
+			{Kind: "map", TemplateID: "MAP", StartUS: 10_000_000, DurationUS: 5_000_000, Map: m.Map, Assets: m.AssetRefs},
+			{Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: phrase.Text, MotionID: phrase.MotionID, StartUS: 15_000_000, DurationUS: 3_000_000},
+		}},
+	}
 	plan := OverlayPlan{
 		SchemaVersion: SchemaVersionPlan, PlanID: "p", VideoID: "v",
 		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
 		Items: []OverlayItem{chain},
 	}
+	if err := plan.Validate(); err == nil {
+		t.Fatal("mixed chain carrying a map must fail closed")
+	}
+}
+
+// Five nearby images must become one image_chain with five independently
+// preserved identities and motions, never a single composite image.
+func TestCoalesceFiveImagesPreserveFiveIdentitiesAndMotions(t *testing.T) {
+	motions := []string{
+		"image_focus_reveal",
+		"image_roll_depth_in",
+		"image_photo_drop",
+		"image_spotlight_focus",
+		"image_parallax_frame",
+	}
+	items := make([]OverlayItem, 0, len(motions))
+	for i, motion := range motions {
+		item := chainFixture("image", "s1", "", int64(i)*3_000_000, 2_800_000, motion)
+		item.TemplateID = "IMAGE_OVERLAY"
+		item.PresetID = "image_scale_in"
+		item.Text = ""
+		item.AssetRefs = []OverlayAssetRef{{
+			AssetID: fmt.Sprintf("img-%d", i),
+			SHA256:  strings.Repeat(fmt.Sprintf("%x", i+1), 64),
+		}}
+		items = append(items, item)
+	}
+	got := CoalesceChainedOverlays(items, map[string]int{"chain_enabled": 1})
+	if len(got) != 1 {
+		t.Fatalf("five nearby images must produce one chain, got %d: %+v", len(got), got)
+	}
+	chain := got[0]
+	if chain.Kind != KindImageChain || chain.TemplateID != TemplateImageChain {
+		t.Fatalf("chain kind/template = %q/%q, want image_chain/IMAGE_CHAIN", chain.Kind, chain.TemplateID)
+	}
+	segments, ok := DecodeChainSegments(chain.Params)
+	if !ok || len(segments) != 5 {
+		t.Fatalf("chain segments = %+v, want five", chain.Params["chain_segments"])
+	}
+	seenAssets, seenMotions := map[string]bool{}, map[string]bool{}
+	for i, seg := range segments {
+		if seg.AssetID != fmt.Sprintf("img-%d", i) || len(seg.Assets) != 1 || seg.Assets[0].AssetID != seg.AssetID {
+			t.Fatalf("segment %d lost its own asset identity: %+v", i, seg)
+		}
+		if seg.MotionID != motions[i] {
+			t.Fatalf("segment %d motion = %q, want %q", i, seg.MotionID, motions[i])
+		}
+		if seenAssets[seg.AssetID] || seenMotions[seg.MotionID] {
+			t.Fatalf("segment %d repeated an asset or motion: assets=%v motions=%v", i, seenAssets, seenMotions)
+		}
+		seenAssets[seg.AssetID], seenMotions[seg.MotionID] = true, true
+	}
+	if len(chain.AssetRefs) != 5 {
+		t.Fatalf("chain-level asset refs = %d, want five distinct source images", len(chain.AssetRefs))
+	}
+	plan := OverlayPlan{
+		SchemaVersion: SchemaVersionPlan, PlanID: "five-images", VideoID: "v",
+		Width: 1280, Height: 720, FPSNum: 30, FPSDen: 1,
+		Items: []OverlayItem{chain},
+	}
 	if err := plan.Validate(); err != nil {
-		t.Fatalf("fused mixed map chain must validate: %v", err)
+		t.Fatalf("five-image chain must validate: %v", err)
 	}
 }
 
 // chain_max_segments bounds the chain; chain_disabled forces legacy output.
+// A five-image chain is intentionally not split by an implicit ceiling.
+func TestCoalesceFiveImagesIsNotSplitByImplicitCeiling(t *testing.T) {
+	items := make([]OverlayItem, 0, 5)
+	for i := 0; i < 5; i++ {
+		item := chainFixture("image", "s1", "", int64(i)*2_700_000, 2_600_000, fmt.Sprintf("image_motion_%d", i))
+		item.TemplateID = "IMAGE_OVERLAY"
+		item.Text = ""
+		item.AssetRefs = []OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: "hash"}}
+		items = append(items, item)
+	}
+	got := CoalesceChainedOverlays(items, map[string]int{"chain_enabled": 1})
+	if len(got) != 1 {
+		t.Fatalf("five images must remain one chain without an explicit ceiling, got %d", len(got))
+	}
+	segments, ok := DecodeChainSegments(got[0].Params)
+	if !ok || len(segments) != 5 {
+		t.Fatalf("chain segments = %+v, want five", got[0].Params["chain_segments"])
+	}
+}
+
 func TestCoalesceHonorsLimits(t *testing.T) {
 	items := make([]OverlayItem, 4)
 	for i := range items {

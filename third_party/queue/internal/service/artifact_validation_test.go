@@ -13,6 +13,8 @@ func TestValidateArtifactRequiresAllPublicationFields(t *testing.T) {
 		ArtifactHash: strings.Repeat("a", 64),
 		SizeBytes:    42,
 		ContentType:  "video/mp4",
+		FrameCount:   150,
+		DurationUS:   5_000_000,
 	}
 	tests := []struct {
 		name     string
@@ -27,6 +29,8 @@ func TestValidateArtifactRequiresAllPublicationFields(t *testing.T) {
 		{name: "negative size", artifact: model.Artifact{StorageKey: valid.StorageKey, ArtifactHash: valid.ArtifactHash, SizeBytes: -1, ContentType: valid.ContentType}, wantErr: "size_bytes"},
 		{name: "missing content type", artifact: model.Artifact{StorageKey: valid.StorageKey, ArtifactHash: valid.ArtifactHash, SizeBytes: valid.SizeBytes}, wantErr: "content_type"},
 		{name: "blank content type", artifact: model.Artifact{StorageKey: valid.StorageKey, ArtifactHash: valid.ArtifactHash, SizeBytes: valid.SizeBytes, ContentType: "  "}, wantErr: "content_type"},
+		{name: "zero frames", artifact: model.Artifact{StorageKey: valid.StorageKey, ArtifactHash: valid.ArtifactHash, SizeBytes: valid.SizeBytes, ContentType: valid.ContentType, DurationUS: valid.DurationUS}, wantErr: "frame_count"},
+		{name: "zero duration", artifact: model.Artifact{StorageKey: valid.StorageKey, ArtifactHash: valid.ArtifactHash, SizeBytes: valid.SizeBytes, ContentType: valid.ContentType, FrameCount: valid.FrameCount}, wantErr: "duration_us"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

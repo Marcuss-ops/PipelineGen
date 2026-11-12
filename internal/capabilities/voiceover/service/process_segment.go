@@ -113,7 +113,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// overlay compiler consumes that exact artifact, so a timing link or summary
 	// alone is not sufficient to skip synthesis.
 	if !cmd.ForceSynthesis && u.deps.Cache.VoiceoverCache != nil {
-		fingerprint := u.contentFingerprint(cmd.TextHash, cmd.Language, cmd.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
+		fingerprint := u.contentFingerprint(cmd.TextHash, cmd.Language, cmd.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy))
 		hit, lookupErr := u.deps.Cache.VoiceoverCache.Lookup(ctx, fingerprint, timingPolicy.Mode != audio.TimingDisabled)
 		if lookupErr != nil {
 			log.Warn("voiceover cache lookup error — falling through to full pipeline",
@@ -362,7 +362,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
 	finalizeCmd := &FinalizeCommand{
-		Fingerprint:     u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence),
+		Fingerprint:     u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy)),
 		IdempotencyKey:  pub.IdemKey,
 		JobID:           cmd.JobID,
 		ID:              cmd.ID,

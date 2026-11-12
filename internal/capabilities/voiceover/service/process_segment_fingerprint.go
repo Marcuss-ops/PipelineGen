@@ -91,8 +91,8 @@ func BuildVoiceoverContentFingerprint(textHash TextHash, language Language, voic
 // policy ONLY when the provider declares one. Providers without an identity
 // keep the pre-v3 key verbatim, so enabling the local pilot invalidates
 // exactly the routed languages and nothing else.
-func idempotencyPolicyFingerprint(provider TTSProvider, language Language, timing *audio.TimingRequest, removeSilence bool) string {
-	base := TimingPolicyFingerprint(timing, removeSilence)
+func idempotencyPolicyFingerprint(provider TTSProvider, language Language, timing *audio.TimingRequest, removeSilence bool, post VoiceoverPostPolicy) string {
+	base := TimingPolicyFingerprint(timing, removeSilence) + ";" + post.Fingerprint()
 	identity := providerIdentityForTTS(provider, language)
 	if identity == "" {
 		return base
@@ -108,15 +108,42 @@ type ttsIdentityProvider interface {
 }
 
 func providerIdentityForTTS(provider TTSProvider, language Language) string {
-	identity := ""
 	if provider == nil {
-	} else if providerIdentity, ok := provider.(ttsIdentityProvider); ok {
-		identity = strings.TrimSpace(providerIdentity.ProviderIdentityFor(language))
+		return ""
 	}
-	if strings.EqualFold(string(language), "it") {
-		identity += ";rate=+1%;silence=-40dB/120ms"
+	if providerIdentity, ok := provider.(ttsIdentityProvider); ok {
+		return strings.TrimSpace(providerIdentity.ProviderIdentityFor(language))
 	}
-	return identity
+	return ""
+}
+
+// VoiceoverPostPolicy is the versioned synthesis + post-processing contract
+// that must participate in the cache identity. Rate is the actual TTS rate
+// forwarded with the request ("+1%", "-5%", or empty for provider default);
+// Silence is the resolved cut policy applied by the audio executor.
+type VoiceoverPostPolicy struct {
+	Rate    string
+	Silence audio.SilenceRemovalPolicy
+}
+
+// DefaultVoiceoverPostPolicy mirrors the historical Italian voiceover policy
+// without hiding it inside the provider identity.
+func DefaultVoiceoverPostPolicy() VoiceoverPostPolicy {
+	return VoiceoverPostPolicy{Rate: "+1%", Silence: audio.DefaultSilenceRemovalPolicy()}
+}
+
+func voiceoverPostPolicy(rate string, silence audio.SilenceRemovalPolicy) VoiceoverPostPolicy {
+	return VoiceoverPostPolicy{Rate: strings.TrimSpace(rate), Silence: silence.Normalized()}
+}
+
+// Fingerprint is stable and explicit: an empty rate is distinct from the
+// canonical +1% policy, and every silence parameter is included.
+func (p VoiceoverPostPolicy) Fingerprint() string {
+	rate := strings.TrimSpace(p.Rate)
+	if rate == "" {
+		rate = "provider-default"
+	}
+	return "rate=" + rate + ";" + p.Silence.Normalized().Fingerprint()
 }
 
 // BuildVoiceoverContentFingerprintV3 is the provider-aware content
@@ -136,12 +163,25 @@ func BuildVoiceoverContentFingerprintV3(textHash TextHash, language Language, vo
 	return digest.SHA256String("voiceover-content-v3:" + string(textHash) + ":" + string(language) + ":" + voice + ":provider=" + providerID + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ":format=mp3-48k-stereo")
 }
 
+// BuildVoiceoverContentFingerprintV4 adds the actual rate and the versioned
+// silence-removal policy to the identity. V3 hard-coded the Italian
+// "rate=+1%;silence=-40dB/120ms" token inside the provider identity, so a
+// caller that changed the rate could silently reuse audio synthesized (or
+// cut) under the old policy. V4 makes that token an input.
+func BuildVoiceoverContentFingerprintV4(textHash TextHash, language Language, voice, providerID, folderID string, timing *audio.TimingRequest, removeSilence bool, post VoiceoverPostPolicy) string {
+	providerID = strings.TrimSpace(providerID)
+	if providerID == "" {
+		providerID = "unspecified"
+	}
+	return digest.SHA256String("voiceover-content-v4:" + string(textHash) + ":" + string(language) + ":" + voice + ":provider=" + providerID + ":" + folderID + ":" + TimingPolicyFingerprint(timing, removeSilence) + ";" + post.Fingerprint() + ":format=mp3-48k-stereo")
+}
+
 // contentFingerprint is the use-case seam that resolves the provider
 // identity for the request language before hashing.
-func (u *ProcessSegmentUseCase) contentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool) string {
-	return BuildVoiceoverContentFingerprintV3(
+func (u *ProcessSegmentUseCase) contentFingerprint(textHash TextHash, language Language, voice, folderID string, timing *audio.TimingRequest, removeSilence bool, post VoiceoverPostPolicy) string {
+	return BuildVoiceoverContentFingerprintV4(
 		textHash, language, voice,
 		providerIdentityForTTS(u.deps.TTSProvider, language),
-		folderID, timing, removeSilence,
+		folderID, timing, removeSilence, post,
 	)
 }

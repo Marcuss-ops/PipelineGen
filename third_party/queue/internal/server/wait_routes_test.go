@@ -16,7 +16,7 @@ func TestJobWaitReturnsTerminalJobAndNotFound(t *testing.T) {
 	ts := newServer(t)
 	post(t, ts.URL+"/jobs", `{"id":"job-1","render_plan":{"n":1}}`)
 	post(t, ts.URL+"/jobs/claim", `{"worker":"w1"}`)
-	post(t, ts.URL+"/jobs/job-1/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"abc","artifact_hash":"abc","size_bytes":1,"content_type":"video/mp4"}}`)
+	post(t, ts.URL+"/jobs/job-1/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"abc","artifact_hash":"abc","size_bytes":1,"content_type":"video/mp4","frame_count":1,"duration_us":1}}`)
 
 	resp, err := http.Get(ts.URL + "/jobs/job-1/wait?max_wait_ms=1000")
 	if err != nil {
@@ -109,7 +109,7 @@ func TestJobWaitWakesOnCompletion(t *testing.T) {
 	// of waiting out max_wait_ms.
 	time.Sleep(100 * time.Millisecond)
 	start := time.Now()
-	resp := post(t, ts.URL+"/jobs/job-1/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"abc","artifact_hash":"abc","size_bytes":1,"content_type":"video/mp4"}}`)
+	resp := post(t, ts.URL+"/jobs/job-1/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"abc","artifact_hash":"abc","size_bytes":1,"content_type":"video/mp4","frame_count":1,"duration_us":1}}`)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("complete: want 204, got %d", resp.StatusCode)
 	}

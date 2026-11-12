@@ -3,8 +3,6 @@ package overlays
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -665,29 +663,7 @@ func TestEntityImageMotionRotationCoversThePhotoSafeCatalog(t *testing.T) {
 
 func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
 	t.Helper()
-	root, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var catalogPath string
-	for dir := root; ; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "RenderingGen", "renderinggen", "internal", "motion", "catalog", "chronontemplate_catalog.v1.json")
-		if _, err := os.Stat(candidate); err == nil {
-			catalogPath = candidate
-			break
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-	}
-	if catalogPath == "" {
-		t.Fatal("could not locate canonical ChrononTemplate motion catalog")
-	}
-	data, err := os.ReadFile(catalogPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := loadCanonicalMotionCatalog(t)
 	var document struct {
 		Motions []struct {
 			ID       string   `json:"id"`
@@ -843,29 +819,7 @@ func TestGeneratedEntityCaptionRotationAndCatalogStayInSync(t *testing.T) {
 }
 
 func TestGeneratedImageMotionPoolMatchesCanonicalChrononCatalog(t *testing.T) {
-	root, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var catalogPath string
-	for dir := root; ; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "RenderingGen", "renderinggen", "internal", "motion", "catalog", "chronontemplate_catalog.v1.json")
-		if _, err := os.Stat(candidate); err == nil {
-			catalogPath = candidate
-			break
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-	}
-	if catalogPath == "" {
-		t.Fatal("could not locate canonical ChrononTemplate motion catalog")
-	}
-	data, err := os.ReadFile(catalogPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := loadCanonicalMotionCatalog(t)
 	var document struct {
 		Motions []struct {
 			ID       string `json:"id"`

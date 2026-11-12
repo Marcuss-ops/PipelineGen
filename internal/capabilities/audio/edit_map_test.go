@@ -152,6 +152,56 @@ func TestRemapTiming_WordInsideRemovedSilenceCollapses(t *testing.T) {
 	}
 }
 
+// Full-pipeline regression for the audit's 73.3s -> 64.7s cleanup: three
+// cuts totalling 8.6 seconds, with words before, between and after the cuts.
+// A flat 8.6s shift is wrong; every word must follow its actual cut position.
+func TestRemapTiming_Garlasco73_3To64_7(t *testing.T) {
+	const originalUS int64 = 73_300_000
+	const finalUS int64 = 64_700_000
+	edits := []AudioEdit{
+		{SourceStartUS: 5_000_000, SourceEndUS: 7_300_000, OutputStartUS: 5_000_000, OutputEndUS: 5_000_000},
+		{SourceStartUS: 20_000_000, SourceEndUS: 22_100_000, OutputStartUS: 17_700_000, OutputEndUS: 17_700_000},
+		{SourceStartUS: 50_000_000, SourceEndUS: 54_200_000, OutputStartUS: 45_600_000, OutputEndUS: 45_600_000},
+	}
+	var removed int64
+	for _, edit := range edits {
+		removed += edit.SourceEndUS - edit.SourceStartUS
+	}
+	if removed != originalUS-finalUS {
+		t.Fatalf("removed %d us, want %d us", removed, originalUS-finalUS)
+	}
+	words := []SpeechWordTiming{
+		remapTestWord(0, "prima", 10_000_000, 10_500_000),
+		remapTestWord(1, "durante", 30_000_000, 30_500_000),
+		remapTestWord(2, "fine", 73_000_000, 73_300_000),
+	}
+	got, err := RemapSpeechTiming(words, edits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].StartUS != 7_700_000 || got[0].EndUS != 8_200_000 {
+		t.Fatalf("word before the second/third cut = [%d,%d), want [7700000,8200000)", got[0].StartUS, got[0].EndUS)
+	}
+	if got[1].StartUS != 25_600_000 || got[1].EndUS != 26_100_000 {
+		t.Fatalf("word after the third cut = [%d,%d), want [25600000,26100000)", got[1].StartUS, got[1].EndUS)
+	}
+	if got[2].StartUS != 64_400_000 || got[2].EndUS != 64_700_000 {
+		t.Fatalf("final word = [%d,%d), want [64400000,64700000) (flat 8.6s shift would be wrong)", got[2].StartUS, got[2].EndUS)
+	}
+	if _, rawErr := BuildSpeechTimingArtifact("edge_tts", "it", "voice",
+		strings.Repeat("a", 64), strings.Repeat("b", 64), finalUS, words); rawErr == nil {
+		t.Fatal("raw un-remapped timing must not validate against the 64.7s final audio")
+	}
+	artifact, err := BuildSpeechTimingArtifact("edge_tts", "it", "voice",
+		strings.Repeat("a", 64), strings.Repeat("b", 64), finalUS, got)
+	if err != nil {
+		t.Fatalf("remapped timing must validate against the 64.7s final audio: %v", err)
+	}
+	if artifact.Words[2].EndUS != finalUS {
+		t.Fatalf("final artifact word end = %d, want %d", artifact.Words[2].EndUS, finalUS)
+	}
+}
+
 func TestRemapTiming_RejectsInvertedSourceInterval(t *testing.T) {
 	edits := []AudioEdit{{SourceStartUS: 2_000_000, SourceEndUS: 1_000_000, OutputStartUS: 2_000_000, OutputEndUS: 2_000_000}}
 	_, err := RemapSpeechTiming(nil, edits)

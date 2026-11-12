@@ -205,6 +205,45 @@ func TestVidRushFanoutPlanPerSceneExplicitBudgetAddsGenericLadderAfterEntities(t
 	}
 }
 
+// Manual image pins are an exclusive retrieval contract. When the payload
+// authorizes explicit searches, NER entities, the semantic ladder and the
+// scene-sentence fallback must not widen the provider query list — even when
+// the explicit list is longer than the per-segment budget.
+func TestVidRushFanoutPlanExplicitImageQueriesAreExclusive(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title: "explicit pins",
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Extraction: mediadomain.MediaExtractionPolicy{
+				EntityImages:              mediadomain.EntityImagePolicy{Enabled: true, Scope: "per_scene"},
+				MaxImageQueriesPerSegment: 1,
+			},
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+			Searches: []mediadomain.SegmentMediaSearch{
+				{SegmentID: "scene-1", Slot: mediadomain.SlotSecondaryImage, Query: "Alberto Stasi portrait"},
+				{SegmentID: "scene-1", Slot: mediadomain.SlotSecondaryImage, Query: "Garlasco piazza"},
+			},
+		},
+	}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1", TextHash: "hash-1",
+		Text: "Alberto Stasi arriva in tribunale a Garlasco con i giornalisti.",
+		Insights: scriptpkg.SegmentInsights{
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON"}},
+			ImageQueries: []string{"Alberto Stasi", "Garlasco", "tribunale"},
+		},
+	}
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
+	want := []string{"Alberto Stasi portrait", "Garlasco piazza"}
+	if len(fanout.imageQueries) != len(want) {
+		t.Fatalf("explicit image queries = %#v, want only %#v", fanout.imageQueries, want)
+	}
+	for i := range want {
+		if fanout.imageQueries[i] != want[i] {
+			t.Fatalf("explicit image queries = %#v, want only %#v", fanout.imageQueries, want)
+		}
+	}
+}
+
 func TestVidRushFanoutPlanDropsUnusableImageQueries(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{MediaPlan: mediadomain.MediaPlanSpec{
 		ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},

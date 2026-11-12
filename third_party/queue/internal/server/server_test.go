@@ -97,7 +97,7 @@ func TestSubmitClaimCompleteFlow(t *testing.T) {
 	}
 
 	// Complete.
-	resp = post(t, ts.URL+"/jobs/job-1/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"sha-job-1","artifact_hash":"sha-job-1","size_bytes":1,"content_type":"video/mp4"}}`)
+	resp = post(t, ts.URL+"/jobs/job-1/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"sha-job-1","artifact_hash":"sha-job-1","size_bytes":1,"content_type":"video/mp4","frame_count":1,"duration_us":1}}`)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("complete: want 204, got %d", resp.StatusCode)
 	}
@@ -254,6 +254,7 @@ func TestCompletePersistsArtifact(t *testing.T) {
 	completeBody := `{"worker":"w1","lease_generation":1,"data":{` +
 		`"kind":"segment","storage_key":"abc123","artifact_url":"https://store/objects/abc123",` +
 		`"artifact_hash":"abc123","content_type":"video/mp4","size_bytes":42,` +
+		`"frame_count":1,"duration_us":1,` +
 		`"backend":"software","chronon_version":"0.1.0"}}`
 	resp := post(t, ts.URL+"/jobs/job-1/complete", completeBody)
 	if resp.StatusCode != http.StatusNoContent {
@@ -365,7 +366,7 @@ func TestCancelEndpointRejectsTerminalAndMissingJobs(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("claim: got %d", resp.StatusCode)
 	}
-	resp = post(t, ts.URL+"/jobs/job-done/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"k","artifact_hash":"h","size_bytes":1,"content_type":"video/mp4"}}`)
+	resp = post(t, ts.URL+"/jobs/job-done/complete", `{"worker":"w1","lease_generation":1,"data":{"storage_key":"k","artifact_hash":"h","size_bytes":1,"content_type":"video/mp4","frame_count":1,"duration_us":1}}`)
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("complete: got %d", resp.StatusCode)
 	}

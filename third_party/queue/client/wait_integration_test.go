@@ -49,7 +49,7 @@ func TestWaitTerminalEndToEndWithRealQueue(t *testing.T) {
 	time.Sleep(150 * time.Millisecond)
 	start := time.Now()
 	if err := svc.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{
-		StorageKey: "abc", ArtifactHash: "abc", SizeBytes: 1, ContentType: "video/mp4",
+		StorageKey: "abc", ArtifactHash: "abc", SizeBytes: 1, ContentType: "video/mp4", FrameCount: 1, DurationUS: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}

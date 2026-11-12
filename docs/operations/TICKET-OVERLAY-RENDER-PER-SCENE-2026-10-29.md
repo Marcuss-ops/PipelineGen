@@ -1,5 +1,11 @@
 # TICKET — Overlay render per-scena (entiame già in overlap: design correzione)
 
+> **ARCHIVIATO 2026-11-12 — documento storico.** Il design e le misure qui
+> sotto descrivono il 29-10. Lo stato corrente della bonifica è in
+> `docs/operations/AUDIT-BASELINE-2026-11-11.md` (sezione 9); le regole di
+> consegna sono in `docs/operations/DELIVERY-CERTIFICATION-2026-11-12.md`.
+> Non usare questo file come stato corrente né come gate di release.
+
 Data: 2026-10-29 (agg. 2026-10-31) · Stato: **PARTIAL** — split per scena
 implementato e **default-on** per i job non-final (`d94109fab`), con epoch cache
 stabile e tre run live 30-10 a mediana **77,32 item/min** (65–70 item, senza

@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 )
 
 // Writer receives the bytes to persist. A returned error aborts the write and
@@ -110,6 +111,49 @@ func Commit(tmp, path string) error {
 		return err
 	}
 	return syncDir(filepath.Dir(path))
+}
+
+// CommitFile makes an already-written file durable and then atomically
+// publishes it at path. It is the final link for externally produced artifacts
+// (a renderer or encoder writes the file): fsync the bytes, rename over the
+// destination, fsync the directory. A caller that has already probed and
+// hashed the staged file can use this to avoid copying a multi-GB artifact.
+func CommitFile(tmp, path string) error {
+	file, err := os.Open(tmp)
+	if err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return Commit(tmp, path)
+}
+
+// Quarantine moves a rejected artifact out of the publication path and writes
+// a reason sidecar next to it. The returned path is the quarantined file. A
+// caller must never leave a rejected MP4 at the consumer-visible path: moving
+// it here makes the failure diagnosable (job, attempt and reason live in the
+// sidecar) while the rename keeps readers from observing a partial file.
+func Quarantine(path, dir, reason string) (string, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	base := filepath.Base(path)
+	dest := filepath.Join(dir, base+"."+time.Now().UTC().Format("20060102T150405.000000000Z")+".quarantine")
+	if err := os.Rename(path, dest); err != nil {
+		return "", err
+	}
+	if err := syncDir(dir); err != nil {
+		return dest, err
+	}
+	if err := WriteFile(dest+".reason.txt", []byte(reason+"\n"), 0o644); err != nil {
+		return dest, err
+	}
+	return dest, nil
 }
 
 // Discard removes a staged file that will not be committed. It is a no-op for

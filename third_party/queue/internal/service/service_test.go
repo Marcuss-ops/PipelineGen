@@ -37,7 +37,7 @@ func TestServiceRecordsQueueMetrics(t *testing.T) {
 		t.Fatalf("pending after claim: want 1, got %v", got)
 	}
 
-	if err := svc.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4"}); err != nil {
+	if err := svc.Complete(context.Background(), "job-1", "w1", 1, model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4", FrameCount: 1, DurationUS: 1}); err != nil {
 		t.Fatal(err)
 	}
 	svc.RefreshPendingGauge()
@@ -171,10 +171,10 @@ func TestOldestPendingGaugeTracksHeadAge(t *testing.T) {
 	if _, _, err := svc.Claim(context.Background(), "w2"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Complete(ctx, "job-old", "w1", 1, model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4"}); err != nil {
+	if err := svc.Complete(ctx, "job-old", "w1", 1, model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4", FrameCount: 1, DurationUS: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.Complete(ctx, "job-new", "w2", 1, model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4"}); err != nil {
+	if err := svc.Complete(ctx, "job-new", "w2", 1, model.Artifact{StorageKey: "sha", ArtifactHash: "sha", SizeBytes: 1, ContentType: "video/mp4", FrameCount: 1, DurationUS: 1}); err != nil {
 		t.Fatal(err)
 	}
 	svc.RefreshPendingGauge()

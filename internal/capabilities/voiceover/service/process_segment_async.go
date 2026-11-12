@@ -141,7 +141,7 @@ func (u *ProcessSegmentUseCase) runAsyncPublish(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	fingerprint := u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence)
+	fingerprint := u.contentFingerprint(cmd.TextHash, cmd.Language, out.Voice, cmd.Dest.FolderID, cmd.Timing, cmd.RemoveSilence, voiceoverPostPolicy(cmd.TTSRate, cmd.SilencePolicy))
 	finalizeCmd := &FinalizeCommand{
 		Fingerprint:     fingerprint,
 		IdempotencyKey:  pub.IdemKey,

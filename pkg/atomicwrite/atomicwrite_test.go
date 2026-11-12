@@ -139,6 +139,54 @@ func TestStageCommitPublishes(t *testing.T) {
 	assertNoTempFiles(t, dir)
 }
 
+func TestCommitFileFsyncsAndPublishesExternallyWrittenFile(t *testing.T) {
+	dir := t.TempDir()
+	staged := filepath.Join(dir, ".render.partial.mp4")
+	output := filepath.Join(dir, "render.mp4")
+	if err := os.WriteFile(staged, []byte("encoded-bytes"), 0o644); err != nil {
+		t.Fatalf("seed staged file: %v", err)
+	}
+	if err := CommitFile(staged, output); err != nil {
+		t.Fatalf("CommitFile: %v", err)
+	}
+	got, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatalf("read published file: %v", err)
+	}
+	if string(got) != "encoded-bytes" {
+		t.Fatalf("content=%q, want encoded-bytes", got)
+	}
+	if _, statErr := os.Stat(staged); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("staged file still present after publish: %v", statErr)
+	}
+}
+
+func TestQuarantineMovesRejectedArtifactAndWritesReason(t *testing.T) {
+	dir := t.TempDir()
+	artifact := filepath.Join(dir, "overlay.mp4")
+	quarantineDir := filepath.Join(dir, "quarantine")
+	if err := os.WriteFile(artifact, []byte("moov-atom-not-found"), 0o644); err != nil {
+		t.Fatalf("seed artifact: %v", err)
+	}
+	moved, err := Quarantine(artifact, quarantineDir, "probe_failed: moov atom not found")
+	if err != nil {
+		t.Fatalf("Quarantine: %v", err)
+	}
+	if _, statErr := os.Stat(artifact); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("rejected artifact remains at the publish path: %v", statErr)
+	}
+	if _, statErr := os.Stat(moved); statErr != nil {
+		t.Fatalf("quarantined file missing at %s: %v", moved, statErr)
+	}
+	reason, err := os.ReadFile(moved + ".reason.txt")
+	if err != nil {
+		t.Fatalf("read quarantine reason: %v", err)
+	}
+	if !strings.Contains(string(reason), "moov atom not found") {
+		t.Fatalf("quarantine reason = %q, want probe failure", reason)
+	}
+}
+
 func TestDiscardRemovesStagedFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "x.txt")
