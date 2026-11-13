@@ -42,6 +42,10 @@ type gpuTelemetryRenderEnqueuer struct {
 	items []OverlayItemRenderReference
 }
 
+func (e *gpuTelemetryRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	return e.EnqueueChrononPlan(ctx, plan)
+}
+
 func (e *gpuTelemetryRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	ref := RenderReference{JobID: plan.PlanID, Status: "COMPLETED", Items: e.items}
 	// The real wire duplicates the FIRST item's artifact onto Artifact for the
@@ -54,6 +58,10 @@ func (e *gpuTelemetryRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan 
 
 // failingRenderEnqueuer stands in for a render that fails remotely.
 type failingRenderEnqueuer struct{ err error }
+
+func (e *failingRenderEnqueuer) EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (RenderReference, error) {
+	return RenderReference{}, e.err
+}
 
 func (e *failingRenderEnqueuer) EnqueueChrononPlan(context.Context, capmodel.OverlayPlan) (RenderReference, error) {
 	return RenderReference{}, e.err
@@ -249,6 +257,10 @@ type languageCapturingRenderEnqueuer struct {
 	delay     time.Duration
 	inFlight  int
 	maxInFlgt int
+}
+
+func (e *languageCapturingRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	return e.EnqueueChrononPlan(ctx, plan)
 }
 
 func (e *languageCapturingRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {

@@ -171,6 +171,25 @@ func (p EditingAssetsPolicy) SelectBackground(seed string) (EditorialBackgroundA
 	return asset, nil
 }
 
+// SelectBackgroundForChannel prefers the registered channel plate when the
+// policy pool contains it. A channel alias (crime, boxe, ...) is stronger
+// evidence than the deterministic pool rotation: selecting a boxing plate for
+// a crime documentary is a valid asset but a wrong editorial choice. Unknown
+// or unpooled channels fall back to the deterministic pool.
+func (p EditingAssetsPolicy) SelectBackgroundForChannel(seed, channel string) (EditorialBackgroundAsset, error) {
+	if err := validateBackgroundPool(p.Backgrounds.Pool); err != nil {
+		return EditorialBackgroundAsset{}, err
+	}
+	if plate, ok := ResolveEditorialBackgroundReference(strings.TrimSpace(channel)); ok {
+		for _, id := range p.Backgrounds.Pool {
+			if id == plate.ID {
+				return plate, nil
+			}
+		}
+	}
+	return p.SelectBackground(seed)
+}
+
 // SelectBGM deterministically picks a background-music track from the pool.
 func (p EditingAssetsPolicy) SelectBGM(seed string) (EditorialAudioAsset, error) {
 	if err := validateAudioPool("bgm", p.BGM.Pool, "music"); err != nil {

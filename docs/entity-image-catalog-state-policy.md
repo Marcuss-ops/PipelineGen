@@ -1,8 +1,8 @@
 # Entity Image Catalog: candidate state policy
 
-> How selected candidates become overlay items — composite grouping and
-> dynamic timing — is documented separately in
-> `docs/operations/entity-overlay-composition.md`.
+> How selected candidates become overlay items — one identity per item,
+> image chains, explicit composite groups and dynamic timing — is documented
+> separately in `docs/operations/entity-overlay-composition.md`.
 
 ## Scope
 

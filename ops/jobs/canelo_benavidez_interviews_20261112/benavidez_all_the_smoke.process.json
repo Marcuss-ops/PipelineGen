@@ -1,0 +1,49 @@
+{
+  "url": "https://www.youtube.com/watch?v=oRM53PP7eXU",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "18:26",
+      "end": "19:22",
+      "name": "Nessuno voleva firmarlo: la svolta prima del titolo",
+      "category": "boxing_interview",
+      "source_title": "David Benavidez: The Emotional Road to Facing Morell & Will He Get Canelo? | THE ART OF WARD",
+      "source_channel": "ALL THE SMOKE FIGHT",
+      "summary": "A 11-0 con 10 KO nessuno lo ingaggiava; la svolta arrivò alle Virgin Islands contro Julian Jackson, poi la firma con Sampson Lewkowicz e l'inizio della scalata al titolo.",
+      "topics": [
+        "Benavidez unsigned 11-0 Julian Jackson Virgin Islands Sampson Lewkowicz first title"
+      ],
+      "tags": [
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    },
+    {
+      "start": "28:23",
+      "end": "29:20",
+      "name": "Quando Benavidez ha capito che Canelo era il bersaglio",
+      "category": "boxing_interview",
+      "source_title": "David Benavidez: The Emotional Road to Facing Morell & Will He Get Canelo? | THE ART OF WARD",
+      "source_channel": "ALL THE SMOKE FIGHT",
+      "summary": "Dopo il secondo fight con Golovkin capì che Canelo sarebbe stato inevitabile; racconta di non essere mai stato citato tra i possibili avversari e del sospetto che fosse orgoglio o timore.",
+      "topics": [
+        "Benavidez Canelo Golovkin 168 inevitable callout pride threat"
+      ],
+      "tags": [
+        "David Benavidez",
+        "Canelo Alvarez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

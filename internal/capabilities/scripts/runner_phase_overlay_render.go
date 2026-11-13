@@ -97,63 +97,18 @@ func (r *Runner) runOverlayRenderPhase(ctx context.Context, runID string, req Ge
 	return true
 }
 
-// renderOverlayPlanAtBoundary is the ONLY place that chooses the submission
-// shape for one language plan (TICKET-OVERLAY-RENDER-PER-SCENE-2026-10-29).
+// renderOverlayPlanAtBoundary is the ONLY local overlay submission shape.
 //
-// The per-scene split (one composition per scene window, N independent GPU
-// round-trips instead of one whole-timeline pass) is opt-in via
-// OVERLAY_RENDER_PER_SCENE and now applies to final jobs too: the worker's
-// final manifest carries artifacts[] and the V2 plan binds one asset per
-// distinct byte-set, so several certified overlay artifacts are a supported
-// shape (the wire becomes pipelinegen.overlay-manifest-set.v1, one manifest per
-// batch). Single-scene plans never split (degenerate case of the same shape),
-// and enqueuers without the Split capability keep the single path — including
-// every test mock, so flag OFF and capability-missing both reproduce the
-// single-timeline behaviour byte for byte.
-//
-// Fail-closed fallback: a SPLIT ERROR falls back to the single-timeline
-// submission, so a flag-ON run can only ever end up with more GPU work, never
-// a different failure surface than the certified path. A split that RENDERS but
-// whose batch set cannot be certified is a different class: it is a defective
-// artifact, not a shape the plan cannot express, and re-rendering the whole
-// timeline to paper over it is exactly the double render r63 and r69 paid for.
-// The plan-level preflight (finalJobSplitPreflight) admits only shapes whose
-// batches can certify, and a post-render certificate failure then fails closed
-// with the batch named instead of buying a second GPU pass.
-func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, req GenerateRequest, plan *capmodel.OverlayPlan) (RenderReference, error) {
+// PipelineGen renders independent per-item alpha clips. The whole-timeline
+// canvas and the per-scene split were removed on 2026-11-12: a local run must
+// never encode a full timeline or a scene-wide composition. If the wired
+// enqueuer cannot render per item, the run fails closed instead of falling
+// back to a timeline render.
+func (r *Runner) renderOverlayPlanAtBoundary(ctx context.Context, _ GenerateRequest, plan *capmodel.OverlayPlan) (RenderReference, error) {
 	if plan == nil {
 		return RenderReference{}, nil
 	}
-	if req.Render.OverlaysOnly {
-		if renderer, ok := r.overlayRenderEnqueuer.(OverlayPlanItemEnqueuer); ok {
-			return renderer.EnqueueChrononPlanItems(ctx, *plan)
-		}
-		return RenderReference{}, fmt.Errorf("overlay-only render requires per-item alpha renderer")
-	}
-	if overlayPerSceneSplitEnabled() && planSpansMultipleScenes(*plan) {
-		if splitter, ok := r.overlayRenderEnqueuer.(OverlayPlanSplitEnqueuer); ok {
-			if preflightErr := finalJobSplitPreflight(req.FinalJob, *plan); preflightErr != nil {
-				// No split submission at all: the batch set could never be
-				// certified, so rendering it would only be thrown away.
-				r.log.Warn("overlay split skipped before any render: the batch set cannot be certified",
-					zap.String("plan_id", plan.PlanID),
-					zap.Error(preflightErr))
-			} else {
-				ref, splitErr := splitter.EnqueueChrononPlanSplit(ctx, *plan)
-				if splitErr != nil {
-					r.log.Warn("overlay per-scene split failed; falling back to the single-timeline submission",
-						zap.String("plan_id", plan.PlanID),
-						zap.Error(splitErr))
-				} else if certErr := certifiableFinalJobOverlayBatches(req.FinalJob, ref, plan.FPSNum, plan.FPSDen); certErr != nil {
-					// The plan passed the preflight, so the artifacts are wrong.
-					return RenderReference{}, fmt.Errorf("overlay split rendered a batch set the final-job handoff cannot consume (refusing a second render): %w", certErr)
-				} else {
-					return ref, nil
-				}
-			}
-		}
-	}
-	return r.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *plan)
+	return r.overlayRenderEnqueuer.EnqueueChrononPlanItems(ctx, *plan)
 }
 
 // renderOverlayPlans computes against a private snapshot. It never writes the

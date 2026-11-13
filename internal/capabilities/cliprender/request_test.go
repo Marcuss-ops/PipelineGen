@@ -26,8 +26,8 @@ func TestNormalize_AppliesCanonicalDefaults(t *testing.T) {
 	if req.Watermark.Opacity != 1.0 {
 		t.Errorf("Watermark.Opacity default: got %v, want 1.0", req.Watermark.Opacity)
 	}
-	if req.Transcript.Mode != TranscriptModeReuse {
-		t.Errorf("Transcript.Mode default: got %q, want reuse", req.Transcript.Mode)
+	if req.Transcript.Mode != TranscriptModeAuto {
+		t.Errorf("Transcript.Mode default: got %q, want auto", req.Transcript.Mode)
 	}
 	if req.Transcript.Language != DefaultLanguage {
 		t.Errorf("Transcript.Language default: got %q, want en", req.Transcript.Language)
@@ -198,6 +198,17 @@ func TestValidate_OutputContract(t *testing.T) {
 		t.Errorf("valid output must validate: %v", err)
 	}
 
+	// V1 rejects a frame rate the frozen assembly contract cannot honour; the
+	// failure must be a 400 at the request boundary, not a GPU render followed
+	// by a canonical emission rejection.
+	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{
+		Contract: OutputContractVeloxAssemblyReadyV1, Width: 1920, Height: 1080, FPSNum: 25, FPSDen: 1,
+	}}
+	req.Normalize()
+	if err := req.Validate(); err == nil || !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("V1 25/1 must be an INVALID_PAYLOAD, got %v", err)
+	}
+
 	// V2 rejects non-canonical FPS at the request boundary.
 	req = &RenderRequest{SourceAssetID: "a", Output: &OutputSpec{
 		Contract: OutputContractVeloxAssemblyReadyV2, Width: 1920, Height: 1080, FPSNum: 30, FPSDen: 1,
@@ -241,7 +252,7 @@ func TestValidate_AudioAndTranscriptEnums(t *testing.T) {
 	if err := req.Validate(); err == nil {
 		t.Error("unknown audio mode must fail")
 	}
-	for _, mode := range []string{TranscriptModeReuse, TranscriptModeGenerate, TranscriptModeReuse} {
+	for _, mode := range []string{TranscriptModeAuto, TranscriptModeReuse, TranscriptModeGenerate} {
 		req := &RenderRequest{SourceAssetID: "a", Transcript: &TranscriptSpec{Mode: mode}}
 		req.Normalize()
 		if err := req.Validate(); err != nil {

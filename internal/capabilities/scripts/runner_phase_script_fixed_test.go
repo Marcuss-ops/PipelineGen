@@ -193,6 +193,49 @@ func TestFixedMediaClipProjectionUsesOriginalClipAudioAndSourceWindow(t *testing
 	}
 }
 
+func TestFixedMediaClipProjectionCanMuteOriginalAudio(t *testing.T) {
+	clips, intents, durationUS := fixedMediaClipProjection(
+		[]string{"intro-1", "intro-2", "intro-3"},
+		scriptpkg.FixedPlaybackPolicy{AudioMode: scriptpkg.FixedPlaybackSilence, SourceInMS: 0, SourceOutMS: 5_000},
+	)
+	if len(clips) != 3 || len(intents) != 3 || durationUS != 15_000_000 {
+		t.Fatalf("projection = clips:%d intents:%d duration:%d", len(clips), len(intents), durationUS)
+	}
+	for i, intent := range intents {
+		if intent.Mode != capabilityaudio.AudioSilence || intent.ClipAssetID != "" || intent.UseOriginalAudio || intent.ProtectedOriginalAudio {
+			t.Fatalf("intent[%d] = %+v, want silent visual-only clip window", i, intent)
+		}
+		if intent.TimelineDurationUS != 5_000_000 || clips[i].AudioAssetID != "" {
+			t.Fatalf("silent clip[%d] = %+v / %+v, want a 5s video window with no source audio", i, clips[i], intent)
+		}
+	}
+	scene := Scene{ID: "scene-intro", ExecutionMode: scriptpkg.SceneExecutionFixedMedia,
+		FixedPlayback: &scriptpkg.FixedPlaybackPolicy{AudioMode: scriptpkg.FixedPlaybackSilence},
+		Clips:         clips, AudioIntents: intents}
+	if err := rebuildFixedMediaTiming(&scene); err != nil {
+		t.Fatalf("rebuild muted fixed timing: %v", err)
+	}
+	if scene.DurationUS != durationUS || len(scene.AudioIntents) != 1 || scene.AudioIntents[0].Mode != capabilityaudio.AudioSilence || scene.AudioIntents[0].TimelineDurationUS != durationUS {
+		t.Fatalf("rebuilt silent scene = duration:%d intents:%+v", scene.DurationUS, scene.AudioIntents)
+	}
+	resolved, err := ResolveScenes([]Scene{scene}, "en", capabilityaudio.AudioModeCombinedTimeline, false)
+	if err != nil {
+		t.Fatalf("resolve rebuilt silent scene: %v", err)
+	}
+	if _, err := compileResolvedSceneTimeline(resolved); err != nil {
+		t.Fatalf("compile rebuilt silent scene: %v", err)
+	}
+}
+
+func TestCompileResolvedSceneTimelineAllowsSceneWithoutAudioIntent(t *testing.T) {
+	_, err := compileResolvedSceneTimeline([]ResolvedScene{{
+		ID: "visual-only", Index: 0, DurationUS: 1_000_000,
+	}})
+	if err != nil {
+		t.Fatalf("compile visual-only scene: %v", err)
+	}
+}
+
 func TestFixedSectionsCompileWithOriginalAudioOnlyAcrossMixPolicies(t *testing.T) {
 	req := GenerateRequest{
 		SourceLanguage: "en",

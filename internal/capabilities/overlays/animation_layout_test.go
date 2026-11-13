@@ -2,7 +2,10 @@ package overlays
 
 import capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func layoutPhraseItem(id string, startMs, endMs int64, motion string) capmodel.OverlayItem {
 	return capmodel.OverlayItem{
@@ -143,5 +146,30 @@ func TestResolveAnimationSelectionsRejectsContainerMotions(t *testing.T) {
 	}}
 	if err := ResolveAnimationSelections(missingChild); err == nil {
 		t.Fatal("composite child without MotionID must fail")
+	}
+}
+
+func TestFinalizeCompiledAnimationLayoutKeepsOverflowingImageRunStandalone(t *testing.T) {
+	items := make([]capmodel.OverlayItem, 0, 4)
+	for i := 0; i < 4; i++ {
+		start := int64(i) * 5_000_000
+		items = append(items, capmodel.OverlayItem{
+			ID: fmt.Sprintf("image-%d", i), SceneID: "s1", Kind: "image", TemplateID: "IMAGE_OVERLAY",
+			MotionID: fmt.Sprintf("image_motion_%d", i),
+			StartUS:  start, DurationUS: 5_000_000,
+			StartMs: start / 1000, EndMs: (start + 5_000_000) / 1000,
+			AssetRefs: []capmodel.OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: "hash"}},
+		})
+	}
+	input := layoutChainInput()
+	input.Scenes = []SceneInput{{ID: "s1", EndUS: 20_000_000}}
+	got := FinalizeCompiledAnimationLayout(items, input)
+	if len(got) != len(items) {
+		t.Fatalf("overflowing run = %+v, want %d standalone images", got, len(items))
+	}
+	for i, item := range got {
+		if capmodel.IsChainItemKind(item.Kind) {
+			t.Fatalf("item %d = %q, want standalone image", i, item.Kind)
+		}
 	}
 }

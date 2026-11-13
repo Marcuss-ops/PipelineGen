@@ -62,6 +62,19 @@ func StyleParams(style *scriptpkg.OverlayStyleSpec) map[string]any {
 	if style.FontFamily != "" {
 		params["font_family"] = style.FontFamily
 	}
+	if background := style.CardBackground; background != nil {
+		plate := map[string]any{"color": background.Color}
+		if background.Opacity != nil {
+			plate["opacity"] = *background.Opacity
+		}
+		if background.Radius != nil {
+			plate["radius"] = *background.Radius
+		}
+		if len(background.Padding) > 0 {
+			plate["padding"] = append([]float64(nil), background.Padding...)
+		}
+		params["style"] = mergeStyleParam(params["style"], map[string]any{"background": plate})
+	}
 	// Chronon's runtime text override treats an explicit zero-size glow/stroke
 	// as a layer effect override. On standalone overlay clips this can lower the
 	// glyph pass to a fully transparent/black frame. Omit disabled effects; the

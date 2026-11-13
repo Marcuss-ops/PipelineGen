@@ -22,6 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // projectEntityImageBindings attaches only provider candidates that are
@@ -75,14 +76,13 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			}
 		}
 	}
-	resolvedEntityImages := make(map[string]struct{}, capabilityoverlay.MaxEntityImageOverlaysPerRun)
-	// usedCandidates is the run-scoped distribution ledger. The canonical
-	// entity image library is SHARED across runs on purpose (published once per
-	// entity, reused for cost), but within ONE run the same candidate must not
-	// be rebound to every scene that mentions the entity: each occurrence
-	// prefers a DISTINCT candidate from the same entity pool. When the pool has
-	// only one usable candidate shared-entity mode reuses it (availability beats
-	// strict distinctness); per-scene mode fails closed rather than repeating it.
+	resolvedEntityAssets := make(map[string]struct{}, capabilityoverlay.MaxEntityImageOverlaysPerRun)
+	// usedCandidates is the run-scoped distribution ledger. The entity image
+	// library is SHARED across runs on purpose (published once per entity,
+	// reused for cost). Within one run each occurrence still PREFERS an unused
+	// variant, but a person with only one verified portrait must be able to
+	// reuse it in every scene: per_scene controls overlay placement, not the
+	// obligation to find N distinct photos of one face.
 	usedCandidates := make(map[string]struct{})
 	for i := range out.Scenes {
 		if out.Scenes[i].Annotations == nil {
@@ -101,43 +101,41 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			previousImage := entity.Image
 			entity.Image = &scriptpkg.EntityImageBinding{Status: "not_found"}
 			if seg == nil {
-				entity.Image = preservedPlanImageBinding(previousImage)
+				entity.Image = missingEntityImageBinding(previousImage, "SEGMENT_MISSING")
 				continue
 			}
 			variantSeed := strings.TrimSpace(out.Scenes[i].ID) + "|" + entityImageIdentity(*entity)
 			candidate, ok := findEntityImageCandidateFrom(*entity, *seg, variantSeed, usedCandidates)
-			if !ok && !policy.PerScene() {
-				// Shared-entity mode prefers an unused variant, but a single-image
-				// catalog must remain usable across repeated mentions. Per-scene
-				// mode keeps its stricter distinctness contract.
+			if !ok {
+				// The unused-variant pass is a preference, not a requirement.
+				// Reusing one verified portrait across scenes is correct when the
+				// entity pool has a single usable image.
 				candidate, ok = findEntityImageCandidateFrom(*entity, *seg, variantSeed)
 			}
 			if ok {
-				key := vidRushCandidateIdentity(candidate)
-				if key != "" {
-					usedCandidates[key] = struct{}{}
+				assetKey := vidRushCandidateIdentity(candidate)
+				if assetKey == "" {
+					assetKey = strings.TrimSpace(candidate.AssetID)
 				}
-				identity := entityImageIdentity(*entity)
-				bindingKey := identity
-				if policy.PerScene() {
-					// Per-scene scope deliberately lets the same person receive a
-					// separately selected image in each scene. Keep the one-image-per-
-					// scene guard here; run-scoped identity dedup belongs only to the
-					// canonical shared-entity mode.
-					bindingKey = strings.TrimSpace(out.Scenes[i].ID)
-				}
-				if _, alreadyBound := resolvedEntityImages[bindingKey]; !alreadyBound {
-					if len(resolvedEntityImages) >= capabilityoverlay.MaxEntityImageOverlaysPerRun {
-						// Keep the entity in the semantic result, but do not bind
-						// another image once the run-level render budget is full.
-						entity.Image = preservedPlanImageBinding(previousImage)
-						continue
+				if assetKey != "" {
+					usedCandidates[assetKey] = struct{}{}
+					if _, alreadyBound := resolvedEntityAssets[assetKey]; !alreadyBound {
+						if len(resolvedEntityAssets) >= capabilityoverlay.MaxEntityImageOverlaysPerRun {
+							// Keep the entity in the semantic result, but do not bind
+							// another distinct asset once the run-level render budget is
+							// full. Reusing an already-admitted asset stays free: the budget
+							// counts unique images, not scene occurrences.
+							entity.Image = missingEntityImageBinding(previousImage, "BUDGET_EXHAUSTED", candidate.Query, candidate.AssetID, candidate.SelectionReason)
+							continue
+						}
+						resolvedEntityAssets[assetKey] = struct{}{}
 					}
-					resolvedEntityImages[bindingKey] = struct{}{}
 				}
 				entity.Image = &scriptpkg.EntityImageBinding{
 					Status: "resolved", AssetID: candidate.AssetID,
-					DriveLink: candidate.DriveLink, Source: candidate.Provider,
+					Query: candidate.Query, CandidateID: firstNonEmptyImageValue(candidate.AssetID, vidRushCandidateIdentity(candidate)),
+					SelectionReason: candidate.SelectionReason,
+					DriveLink:       candidate.DriveLink, DriveFileID: entityImageDriveFileID(candidate), Source: candidate.Provider,
 					LocalPath:  candidate.LocalPath,
 					MediaType:  candidate.MIMEType,
 					License:    candidate.RightsBasis,
@@ -156,11 +154,28 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 					SHA256: asset.ResolveContentAddress(candidate.ContentSHA256),
 				}
 			} else {
-				entity.Image = preservedPlanImageBinding(previousImage)
+				entity.Image = missingEntityImageBinding(previousImage, entityImageFailureReason(*entity, *seg), entityImageSearchQuery(*entity, *seg))
 			}
 		}
 	}
 	return out
+}
+
+// entityImageDriveFileID resolves the canonical Drive file id from the
+// candidate's public link. The finalizer stores only DriveLink on a
+// SegmentAssetCandidate, but the plan/audit contract requires the id to prove
+// that an uploaded entity image is drive-addressable; deriving it here keeps
+// the projection lossless without widening the candidate schema.
+func entityImageDriveFileID(candidate scriptpkg.SegmentAssetCandidate) string {
+	link := strings.TrimSpace(candidate.DriveLink)
+	if link == "" {
+		return ""
+	}
+	id, err := urlutil.FileIDFromDriveLink(link)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(id)
 }
 
 // preservedPlanImageBinding keeps a verified binding that the planner wrote
@@ -172,6 +187,105 @@ func preservedPlanImageBinding(binding *scriptpkg.EntityImageBinding) *scriptpkg
 		return binding
 	}
 	return &scriptpkg.EntityImageBinding{Status: "not_found"}
+}
+
+func missingEntityImageBinding(previous *scriptpkg.EntityImageBinding, reason string, provenance ...string) *scriptpkg.EntityImageBinding {
+	if preserved := preservedPlanImageBinding(previous); preserved != nil && preserved.Status != "not_found" {
+		return preserved
+	}
+	binding := &scriptpkg.EntityImageBinding{Status: "not_found", FailureReason: reason}
+	if len(provenance) > 0 {
+		binding.Query = provenance[0]
+	}
+	if len(provenance) > 1 {
+		binding.CandidateID = provenance[1]
+	}
+	if len(provenance) > 2 {
+		binding.SelectionReason = provenance[2]
+	}
+	return binding
+}
+
+func entityImageSearchQuery(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult) string {
+	want := normalizeEntityMatch(entity.CanonicalName)
+	if want == "" {
+		want = normalizeEntityMatch(entity.Text)
+	}
+	for query, canonicalID := range seg.Insights.ImageEntityCanonicalIDs {
+		if normalizeEntityMatch(query) == want && canonicalID != "" {
+			return strings.TrimSpace(query)
+		}
+	}
+	return strings.TrimSpace(entity.CanonicalName)
+}
+
+func entityImageFailureReason(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult) string {
+	want := normalizeEntityMatch(entity.CanonicalName)
+	if want == "" {
+		want = normalizeEntityMatch(entity.Text)
+	}
+	want = strings.TrimSpace(strings.TrimPrefix(want, "describe "))
+	for _, candidate := range append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...) {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+			continue
+		}
+		identity := normalizeEntityMatch(candidate.Entity)
+		query := normalizeEntityMatch(candidate.Query)
+		if want != "" && identity != want && !strings.Contains(query, want) {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(candidate.LifecycleFailureStage)) {
+		case scriptpkg.VidRushLifecycleStageAcquire:
+			return "DOWNLOAD_FAILED"
+		case scriptpkg.VidRushLifecycleStageVerify:
+			return "UNVERIFIED_IMAGE"
+		case scriptpkg.VidRushLifecycleStageFinalize:
+			return "UPLOAD_FAILED"
+		}
+		if strings.EqualFold(candidate.AcquisitionStatus, "failed") {
+			return "DOWNLOAD_FAILED"
+		}
+		if strings.EqualFold(candidate.VerificationStatus, "failed") {
+			return "UNVERIFIED_IMAGE"
+		}
+		if strings.EqualFold(candidate.PersistenceStatus, "failed") {
+			return "UPLOAD_FAILED"
+		}
+	}
+	matching := 0
+	for _, candidate := range append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...) {
+		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+			continue
+		}
+		identity := normalizeEntityMatch(candidate.Entity)
+		query := normalizeEntityMatch(candidate.Query)
+		if want != "" && identity != want && !strings.Contains(query, want) {
+			continue
+		}
+		matching++
+		if !validVidRushCandidate(candidate) || !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
+			return "UNVERIFIED_IMAGE"
+		}
+		if !readyVidRushCandidate(candidate) {
+			return "NOT_MATERIALIZED"
+		}
+	}
+	if matching > 0 {
+		return "IDENTITY_MISMATCH"
+	}
+	if len(seg.Insights.ImageQueries) == 0 {
+		return "SEARCH_EMPTY"
+	}
+	return "SEARCH_EMPTY"
+}
+
+func firstNonEmptyImageValue(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func entityImageIdentity(entity scriptpkg.AnnotatedEntity) string {
@@ -197,6 +311,7 @@ func ProjectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 type sceneIdentityIndex struct {
 	bySegmentID map[string]int
 	bySceneID   map[string]int
+	byIndex     map[int]int
 	firstNoID   int
 }
 
@@ -206,10 +321,14 @@ func buildSceneIdentityIndex(spec scriptpkg.SpecSceneOutput) sceneIdentityIndex 
 	idx := sceneIdentityIndex{
 		bySegmentID: make(map[string]int, len(spec.Scenes)),
 		bySceneID:   make(map[string]int, len(spec.Scenes)),
+		byIndex:     make(map[int]int, len(spec.Scenes)),
 		firstNoID:   -1,
 	}
 	for i := range spec.Scenes {
 		s := spec.Scenes[i]
+		if _, ok := idx.byIndex[s.Index]; !ok {
+			idx.byIndex[s.Index] = i
+		}
 		switch {
 		case s.SegmentID != "":
 			if _, ok := idx.bySegmentID[s.SegmentID]; !ok {
@@ -233,15 +352,25 @@ func buildSceneIdentityIndex(spec scriptpkg.SpecSceneOutput) sceneIdentityIndex 
 // ID match, then the first identity-less scene — whichever is earliest.
 func (idx sceneIdentityIndex) sceneFor(segment scriptpkg.VidRushSegmentResult) int {
 	best := -1
-	if segment.SegmentID != "" {
-		if i, ok := idx.bySegmentID[segment.SegmentID]; ok {
+	// The durable SpecScene uses the segment id as the scene id (`cold-case`),
+	// while the VidRush result may carry it in either SegmentID or SceneID.
+	// Both keys are matched against both maps so the association does not
+	// depend on which side of the contract filled which field.
+	for _, key := range []string{segment.SegmentID, segment.SceneID} {
+		if key == "" {
+			continue
+		}
+		if i, ok := idx.bySegmentID[key]; ok && (best == -1 || i < best) {
+			best = i
+		}
+		if i, ok := idx.bySceneID[key]; ok && (best == -1 || i < best) {
 			best = i
 		}
 	}
-	if segment.SceneID != "" {
-		if i, ok := idx.bySceneID[segment.SceneID]; ok && (best == -1 || i < best) {
-			best = i
-		}
+	// Last resort: the ordinal is the one identity both timelines share even
+	// when a producer regenerated the string ids.
+	if i, ok := idx.byIndex[segment.Position]; ok && (best == -1 || i < best) {
+		best = i
 	}
 	if idx.firstNoID != -1 && (best == -1 || idx.firstNoID < best) {
 		best = idx.firstNoID

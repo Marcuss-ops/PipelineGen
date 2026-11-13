@@ -323,11 +323,25 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 		}, rankedImages(scene.Logos))
 
 		numbers := dedupeCoTimedDateAnnotations(rankedValid(scene.Numbers, 0))
-		if len(numbers) > config.MaxNumbers {
-			numbers = numbers[:config.MaxNumbers]
-		}
+		// A date card that cannot keep two readable seconds before the scene
+		// end is not rendered at all. Filter it before applying MaxNumbers:
+		// otherwise the dropped card consumes a lane slot and a valid metric
+		// behind it never reaches admission.
+		admittedNumbers := make([]TimedAnnotation, 0, len(numbers))
 		for _, number := range numbers {
-			dateWindowCap := dateCardWindowCap(number, numbers)
+			if _, ok := dateSceneEndCap(number, scene.EndUS); ok {
+				admittedNumbers = append(admittedNumbers, number)
+			}
+		}
+		if len(admittedNumbers) > config.MaxNumbers {
+			admittedNumbers = admittedNumbers[:config.MaxNumbers]
+		}
+		for _, number := range admittedNumbers {
+			sceneCap, _ := dateSceneEndCap(number, scene.EndUS)
+			dateWindowCap := dateCardWindowCap(number, admittedNumbers)
+			if dateWindowCap == 0 || (sceneCap > 0 && sceneCap < dateWindowCap) {
+				dateWindowCap = sceneCap
+			}
 			dateWindowCap = dateCardWindowCapBeforeImage(number, images, dateWindowCap)
 			plan.Items = append(plan.Items, numberOverlayItem(input.PlanID, scene.ID, number, input.AnimationCounts, dateWindowCap))
 		}

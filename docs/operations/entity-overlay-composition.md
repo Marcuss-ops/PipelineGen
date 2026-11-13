@@ -1,70 +1,98 @@
-# Entity image overlays: composite composition and dynamic duration
+# Entity image overlays: admission, chains and explicit composites
 
 ## Summary
 
-Two editorial contracts govern how PERSON / ORGANIZATION / GPE / CONCEPT
-image cards are grouped and timed inside the semantic overlay plan
-(`renderinggen.overlay-plan.v1`):
+The producer admits entity imagery one identity at a time. Each admitted
+identity yields at most one standalone `entity_image` item carrying one
+verified asset. Nearby overlays may then be fused into an animation chain
+(`image_chain`) with one segment per image. A multi-layer composite
+(`image_layers`) is an **explicitly authored** shape, not something the
+producer infers from proximity.
 
-1. **Composite grouping** — entity-image cards whose certified spoken
-   anchors are **five seconds or closer and in the same scene** are
-   presented as **ONE composite overlay item** (one queued render, one
-   Drive artifact), not as two or more sequential image videos.
-2. **Dynamic duration** — an entity overlay's display window derives from
-   the **certified spoken mention** of the entity plus a half-second
-   readability hold, clamped into **[1 s, 5 s]**. There is no fixed
-   five-second reset, and the duration is never estimated from text
-   length or scene duration.
+Three contracts govern this area:
 
-Both contracts are producer-side decisions (PipelineGen): RenderingGen and
-Chronon only lower what the sealed plan already decided.
+1. **One identity, one item** — an entity card is promoted to an image item only
+   when its canonical identity resolves to a verified asset.
+2. **A chain is not a composite** — five nearby images become five chain
+   segments with five independent motions, not one five-layer collage.
+3. **Dynamic duration** — an entity overlay's display window derives from the
+   certified spoken mention plus a half-second readability hold, clamped into
+   `[1 s, 5 s]`.
 
-## Composite grouping contract
+All three are producer-side decisions. RenderingGen lowers what the sealed plan
+already decided and does not re-group, re-time or re-select the imagery.
 
-Implemented by `composeNearbyEntityImages` in
-`internal/capabilities/scripts/entity_projection.go`.
+## Automatic grouping was removed
 
-- **Merge window**: mentions whose `start_ms` anchors are at most
-  `entityImageMergeGapMS = 5_000` ms apart and share the same `scene_id`
-  join the same cluster. Items without a scene never group; mentions in
-  different scenes never group.
-- **Cluster size 2..5** (`maxEntityImageGroup`): up to five portraits or contextual images share
-  one item (the RenderingGen ceiling; `entity_group` and composite `image_layers` reject six). Remainders repartition deterministically so a group always has
-  at least two children (7 → 5+2, 11 → 5+4+2).
-- The automatic overlay planner applies the same 5,000 ms empty-gap ceiling to
-  certified images from one scene (`AutoImageGroups`). Its existing hard image
-  window also caps a composite's full timeline span at five seconds; images
-  outside that window stay eligible as their own overlay. A lone image uses the
-  single-image motion path.
-- **One group choreography**: composites carry a size-specific `group_motion_id`
-  selected from the certified `image.group.count_2` through
-  `image.group.count_5` catalog pools. The seeded draw is stable on retry and
-  avoids repeating the previous group when another candidate exists. All image
-  layers share the same start and end, so their entrance and exit are visible
-  while the group is on screen. Each child also keeps its own certified layer
-  entrance and caption animation.
-- **Wire shape**: one `entity_image` item carrying N `asset_refs` and N
-  `image_layers`. Each layer keeps:
-  - the shared relative `start_ms`/`end_ms` of the simultaneous group window;
-  - its own `preset_id` and its own certified `motion_id`
-    (`assignEntityImageMotions` consumes one motion-pool ordinal per
-    layer, so animations stay independent and non-repeating);
-  - its own `caption` (the entity's display name);
-  - per-slot geometry in `params` (`width`, `height`, `position_x`,
-    `position_y`, `fit: contain`).
-- **Slot geometry** (1920×1080 reference; scales with the canvas):
-  duo = left/right cards at ±25 % width; trio = two above and one centered below;
-  quad = 2×2; penta = hero row of three + pair below. There is no hexa layout.
-- **Identity**: the composite item ID concatenates the child IDs
-  (`id-a+id-b+…`); each layer ID is the original item ID and carries the
-  child's `entity_id` (producer-only) so intent joins survive. The parent
-  carries no `entity_id`/`entity_ref` — it represents the group.
-- **Renderer support**: RenderingGen lowers every layer to an
-  independently animated Chronon image layer (`compileImageLayers`); the
-  overlay-plan.v1 schema declares `image_layers` with `minItems: 2` and
-  `maxItems: 5`.
+The former helpers `composeNearbyEntityImages` (in
+`internal/capabilities/scripts/entity_projection.go`) and `AutoImageGroups`
+(batch overlay planner) no longer exist in the tree. They have no production
+caller and no compatibility shim; a nearby mention gap is no longer a reason to
+merge two identities into one item.
 
-## Dynamic duration contract
+The only path that still creates a multi-layer composite is an explicitly
+authored `SceneInput.MultiEntityGroups` entry. Fields without that authoring
+step are not grouped by the planner.
+
+## Explicit composite groups
+
+`WireMultiEntityOverlays` turns an authored `MultiEntityGroup` into one
+`entity_image` item carrying N `asset_refs` and N `image_layers`. Each layer
+keeps:
+
+- the shared group window (`start_ms`/`end_ms`, `start_us`/`duration_us`);
+- its own `preset_id` and certified `motion_id`;
+- its own caption and caption motion;
+- per-slot geometry in `params` (`width`, `height`, `position_x`,
+  `position_y`, `fit: contain`).
+
+The planner assigns one seeded choreography for the whole group
+(`GroupMotionID`) from the certified `image.group.count_2` through
+`image.group.count_5` pools. All image layers share the same start and end, so
+their entrance and exit are visible while the group is on screen. The composite
+parent clears `EntityCaption`; the visible names stay on the layers.
+
+Schema bounds: `image_layers` requires 2..5 children. There is no six-layer
+layout, and an authored group larger than five is a validation error rather
+than a silent split.
+
+## Image chains (five images stay five images)
+
+`CoalesceChainedOverlays` fuses nearby overlays into one chain item when the
+configured gap and scene boundary allow it. For images this produces:
+
+```json
+{
+  "kind": "image_chain",
+  "chain_segments": [
+    {
+      "kind": "image",
+      "asset_id": "img-0",
+      "start_us": 0,
+      "duration_us": 2800000,
+      "motion_id": "image_focus_reveal",
+      "preset_id": "image_scale_in",
+      "template_id": "IMAGE_OVERLAY"
+    }
+  ]
+}
+```
+
+This excerpt is illustrative; the authoritative bytes are the shared fixture in
+`testdata/contracts/chain-segments-v1.json`. A segment has no separate
+`segment_id` on the wire: the chain item ID plus the segment index is its
+identity. Its `StartUS`/`DurationUS` are absolute plan microseconds. The producer owns them;
+RenderingGen only offsets each segment against the chain window and lowers it
+through the same per-kind compiler a standalone item uses. A five-image chain
+therefore keeps five distinct asset identities and five distinct motions. It
+does not become one composite item, and no downstream stage re-selects a motion
+after sealing.
+
+The renderer handoff is `fly_under_fade`: every non-first, non-map segment
+receives the camera dip and fade. Maps are excluded because their own
+`camera_move` is already an entrance animation.
+
+## Dynamic duration
 
 Implemented by `EntitySpokenWindowDuration` in
 `internal/capabilities/entities/overlay_resolver.go`:
@@ -75,78 +103,51 @@ durationUS = clamp(audioEndUS - audioStartUS + 500ms,
                    MaxEntityOverlayDurationUS /* 5s */)
 ```
 
-- **Floor (1 s)**: a very short spoken mention still reads for a full
-  second — the card never collapses into a sub-second flash.
-- **Hold (+0.5 s)**: the card stays up half a second past the last spoken
-  word of the mention so the narration can move on first.
-- **Ceiling (5 s)**: a long narration never makes the image layer run
-  indefinitely (`MaxEntityOverlayDurationUS`).
+- **Floor (1 s)**: a very short spoken mention still reads for a full second.
+- **Hold (+0.5 s)**: the card stays up half a second past the last spoken word.
+- **Ceiling (5 s)**: a long narration never makes the image run indefinitely.
 
-The dynamic entity duration is applied on these entity-image paths:
+The dynamic window applies to entity cards and entity images. Generic per-scene
+contextual images are a separate lane: they are anchored at their certified
+scene start and use the image ceiling rather than the entity spoken window.
 
-1. the entity overlay resolver — PERSON/ORG/GPE/CONCEPT cards
-   (`ResolveRankedEntityOverlayPlan`);
-2. product/logo image candidates (`imageCandidate` in
-   `overlay_entity_cards.go`);
-3. the semantic render bundle records the certified entity timeline and asset
-   bindings for audit; the renderer plan is compiled from the canonical entity
-   resolver, which preserves the spoken window and applies the hard image ceiling
-   (`MaxImageOverlayDurationMS`).
+## Renderer contract
 
-**Separate scope:** generic per-scene contextual images are not entity
-portraits. `sceneImageCandidate` in `overlay_scene_images.go` is anchored at
-its certified scene start, begins after the entity-card opening window, and
-currently uses `MaxImageOverlayDurationMS`; it does not use
-`EntitySpokenWindowDuration`.
+`RenderingGen/renderinggen/internal/overlay/chain_compile.go` enforces:
 
-For entity cards/images, certified word/audio timing of the mention is the
-only timing authority end to end. Generic scene images use the certified
-scene start and their separate scene-image policy.
+- a non-map chain (`phrase_chain`, `image_chain`, `mixed_chain`) carrying a map
+  segment fails closed;
+- a `map_chain` segment without a map fails closed;
+- each chain segment has a positive duration, a non-negative start and a window
+  inside the chain window;
+- each segment is rebuilt as its own semantic item and lowered through the same
+  dispatcher as a standalone item.
 
-## Where it lands in the plan
-
-A composite appears in `overlay_plan.items[]` as:
-
-```json
-{
-  "id": "overlay-scene-0-ada-lovelace+overlay-scene-0-grace-hopper",
-  "kind": "entity_image",
-  "template_id": "image_popup",
-  "start_ms": 0, "end_ms": 2000,
-  "start_us": 0, "duration_us": 2000000,
-  "asset_refs": [ { "asset_id": "…", "sha256": "…" }, { "asset_id": "…", "sha256": "…" } ],
-  "image_layers": [
-    { "id": "overlay-scene-0-ada-lovelace", "asset_id": "…", "start_ms": 0, "end_ms": 1000,
-      "preset_id": "…", "motion_id": "…", "caption": "Ada Lovelace", "params": { "…": "…" } },
-    { "id": "overlay-scene-0-grace-hopper", "asset_id": "…", "start_ms": 1000, "end_ms": 2000,
-      "preset_id": "…", "motion_id": "…", "caption": "Grace Hopper", "params": { "…": "…" } }
-  ]
-}
-```
-
-The final-job payload gate (`final_job_payload.go`) admits one overlay per
-rendered Drive asset and one overlay per frame window. Composites reduce
-the number of rendered artifacts, and their child layers always live
-inside the parent window, so the frame-intersection gate stays satisfied.
+`validateSemanticImageLayers` independently enforces the 2..5 composite bound
+and per-layer asset references.
 
 ## Test matrix
 
 | Surface | Test |
 |---|---|
-| Grouping 2..11 images, no stranded singles | `internal/capabilities/scripts/overlay_entity_cards_test.go` (`TestComposeNearbyEntityImagesGroupsTwoThroughFiveWithDeterministicRemainders`, `…PreservesMoreThanFiveInSameScene`) |
-| 5 s boundary (5000 composes, 5001 separates), cross-scene isolation | `TestComposeNearbyEntityImagesHonorsFiveSecondMentionGap` |
-| Composite timing/identity/captions + plan validation + wire + independent certified motions | `TestComposeNearbyEntityImagesCreatesOneStaggeredComposite` |
-| Dynamic duration clamps + millisecond quantization | `internal/capabilities/entities/overlay_resolver_test.go` (`TestEntitySpokenWindowDurationDynamicClamps`, `TestResolveEntityOverlayPlan_DurationFollowsSpokenWindow`) |
-| Bundle preserves repeated scene-scoped entity occurrences | `internal/capabilities/scripts/semantic_render_bundle_builder_test.go` (`TestBuildSemanticRenderBundleKeepsRepeatedEntityImageOccurrencesPerScene`) |
-| Async Drive receipt is projected without mutating the render certificate | `internal/platform/sqlite/jobs/result_store_overlay_links_test.go` (`TestRecordOverlayDriveLinkKeepsAsyncReceiptBesideRenderArtifact`) |
-| Real-engine side-by-side render (opt-in, `CHRONON_BIN=…`) | `RenderingGen/renderinggen/internal/overlay/composite_image_runtime_test.go` |
+| Five nearby images keep five identities and five motions | `internal/capabilities/overlays/model/chain_coalesce_test.go` (`TestCoalesceFiveImagesPreserveFiveIdentitiesAndMotions`) |
+| Five images are not split by an implicit ceiling | `TestCoalesceFiveImagesIsNotSplitByImplicitCeiling` |
+| Producer/consumer fixture identity and five-segment decoding | `internal/capabilities/overlays/model/chain_segments_conformance_test.go` (`TestChainSegmentsSharedConformanceFixture`) |
+| Certified entity image motion selection | `internal/capabilities/scripts/entity_image_motion_rotation_test.go` (`TestAssignEntityImageMotionsUsesCertifiedCatalog`) |
+| Explicit composite group choreography | `internal/capabilities/overlays/selection_group_motion_test.go` (`TestSelectImageGroupMotionIsCertifiedDeterministicAndNoRepeat`) |
+| Renderer rejects a map inside a mixed chain | `RenderingGen/renderinggen/internal/overlay/chain_map_contract_test.go` (`TestCompileRejectsMapInMixedChain`) |
+| Renderer rejects a map chain without a map | `TestCompileRejectsMapChainSegmentWithoutMap` |
+| Renderer compiles five images as five visual segments | `RenderingGen/renderinggen/internal/overlay/chain_compile_test.go` (`TestCompileFiveImageChainKeepsFiveDistinctVisualSegments`) |
 
-The live end-to-end certification is
-`tests/operational/person_overlay_drive_e2e.sh`. The production path renders
-one short transparent artifact per semantic overlay item (a composite remains
-one item/artifact), checks the renderer/GPU certificate and bounded clip
-windows, then waits for the asynchronous Drive outbox to record one valid
-`result.overlay_links` receipt per rendered item. All receipts must resolve to
-the same non-empty Drive folder; set `EXPECTED_OVERLAY_DRIVE_FOLDER` only when
-a run must target a specific known folder. `overlay_render.artifact` is the
-first render certificate and is not rewritten by that publication projection.
+The cross-repository fixture is
+`testdata/contracts/chain-segments-v1.json` in PipelineGen and
+`contracts/chain-segments-v1.json` in RenderingGen, byte-identical with SHA-256
+`c8b8195de94e39b3ff36ffba938f4941a3e929ce0bdb1fdd0c8b37e445088faa`.
+
+## Historical note
+
+Before 2026-11-11 this document described automatic 5-second/same-scene
+grouping of entity portraits into 2..5 layer composites. That behaviour and its
+helpers were removed. The dynamic-duration contract survived unchanged; the
+composite wire shape survives only for explicitly authored
+`MultiEntityGroups`.

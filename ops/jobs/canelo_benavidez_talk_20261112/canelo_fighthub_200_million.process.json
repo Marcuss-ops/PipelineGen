@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=_EnMsh60Dv0",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "02:03",
+      "end": "03:06",
+      "name": "Canelo: 150-200 milioni e domani lo affronto",
+      "category": "boxing_interview",
+      "source_title": "Canelo DEMANDS 200 million to fight Benavidez & DISSES Mike Tyson telling him to fight David",
+      "source_channel": "Fight Hub TV",
+      "summary": "Canelo nega l’offerta da 5 milioni e dice che Benavidez non porta nulla al tavolo: solo 25 libbre in più. Combatterebbe domani solo se un promoter gli mettesse sul piatto 150–200 milioni.",
+      "topics": [
+        "Canelo Benavidez 200 million offer nothing table 25 pounds"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

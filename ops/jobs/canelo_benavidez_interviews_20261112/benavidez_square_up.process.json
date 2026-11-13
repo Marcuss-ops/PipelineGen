@@ -1,0 +1,67 @@
+{
+  "url": "https://www.youtube.com/watch?v=WzAcgCkdKrA",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "07:28",
+      "end": "08:03",
+      "name": "Benavidez: Canelo sa quanto sono pericoloso",
+      "category": "boxing_interview",
+      "source_title": "DAVID BENAVIDEZ: New Face of Boxing, Zurdo & Canelo | Square Up with Andre Berto",
+      "source_channel": "Square Up with Andre Berto",
+      "summary": "David dice che Canelo conosce la sua pericolosità e la sua fame, mette in dubbio la fiducia dell'avversario e si dichiara pronto a tutto.",
+      "topics": [
+        "Benavidez Canelo dangerous confidence ready boxing"
+      ],
+      "tags": [
+        "David Benavidez",
+        "Canelo Alvarez",
+        "boxing",
+        "interview"
+      ]
+    },
+    {
+      "start": "25:08",
+      "end": "26:08",
+      "name": "Il papà, gli sparring con i campioni e Golovkin",
+      "category": "boxing_interview",
+      "source_title": "DAVID BENAVIDEZ: New Face of Boxing, Zurdo & Canelo | Square Up with Andre Berto",
+      "source_channel": "Square Up with Andre Berto",
+      "summary": "Benavidez racconta che il padre lo metteva contro campioni da ragazzino; a Big Bear ha incontrato Golovkin e ci ha fatto sparring per quattro anni, imparando a essere il fighter che è oggi.",
+      "topics": [
+        "Benavidez father training champions sparring Golovkin Big Bear"
+      ],
+      "tags": [
+        "David Benavidez",
+        "Gennady Golovkin",
+        "boxing",
+        "interview"
+      ]
+    },
+    {
+      "start": "36:58",
+      "end": "37:56",
+      "name": "La fame di essere il migliore",
+      "category": "boxing_interview",
+      "source_title": "DAVID BENAVIDEZ: New Face of Boxing, Zurdo & Canelo | Square Up with Andre Berto",
+      "source_channel": "Square Up with Andre Berto",
+      "summary": "Spiega che lo muove la voglia di vincere in modo convincente e di essere ricordato tra i grandi: visualizza la carriera dall'alto verso il basso e insegue la grandezza.",
+      "topics": [
+        "Benavidez hunger greatness motivation envision career legacy"
+      ],
+      "tags": [
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

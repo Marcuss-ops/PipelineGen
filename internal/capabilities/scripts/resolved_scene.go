@@ -170,13 +170,21 @@ func ResolveScenes(scenes []Scene, language Language, mode audio.AudioMode, clip
 	return resolved, nil
 }
 
-// protectedFixedAudioIntents is the canonical audio firewall for fixed_media
-// scenes. Fixed media has one authoritative source: the original clip audio.
-// Generated voiceover intents are discarded, while every clip intent is made
-// explicit and immune to global VO-only removal or ducking.
+// protectedFixedAudioIntents applies the fixed section's audio policy.
+// Generated voiceover intents are discarded. Original-clip mode protects each
+// clip stream from global mix policies; silence mode retains the explicit
+// silence window instead.
 func protectedFixedAudioIntents(intents []audio.AudioIntent) []audio.AudioIntent {
 	out := make([]audio.AudioIntent, 0, len(intents))
 	for _, intent := range intents {
+		if intent.Mode == audio.AudioSilence {
+			intent.ClipAssetID = ""
+			intent.UseOriginalAudio = false
+			intent.ProtectedOriginalAudio = false
+			intent.GainDB = 0
+			out = append(out, intent)
+			continue
+		}
 		if intent.Mode != audio.AudioClip {
 			continue
 		}

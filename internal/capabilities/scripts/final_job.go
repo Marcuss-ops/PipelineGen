@@ -189,10 +189,11 @@ func (t *RemoteFinalJobTiming) Merge(other *RemoteFinalJobTiming) *RemoteFinalJo
 	return t
 }
 
-// final_job_stock_planner.go owns WHICH stock source a final job consumes and
+// The final-job stock planner owns WHICH stock source a final job consumes and
 // which Drive reference/window goes into the compiled plan. The planner reads
 // saved metadata only; the Master downloads and processes the selected stock
-// window outside the Producer.
+// window outside the Producer. The old dedicated file was folded into this one
+// by the 2026-11-11 boundary cleanup, so do not look for it by filename.
 // finalJobStockClip is one stock window the remote Master will place: the
 // resolved Drive reference and the exact duration the scene consumes from it.
 type finalJobStockClip struct {

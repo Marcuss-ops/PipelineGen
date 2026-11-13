@@ -97,13 +97,15 @@ func (s *ImageStorageService) SearchWebImage(ctx context.Context, prompt, slug s
 		return nil, err
 	}
 
-	// Metadata enrichment — surface failure rather than silently ignoring it.
-	updatedJSON := detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, "", "duckduckgo", prompt)
-	if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); updateErr != nil {
-		s.log.Error("SearchWebImage: UpdateImageMetadata failed", zap.Error(updateErr))
-		return imgAsset, fmt.Errorf("update image metadata: %w", updateErr)
+	// Metadata enrichment is a secondary write. Send only the provenance keys:
+	// the canonical writer merges them with jsonb ||, so it cannot overwrite a
+	// concurrent delivery/embedding update with this snapshot.
+	provenancePatch := detail.AppendImageProvenance("{}", imgURL, "", "duckduckgo", prompt)
+	if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, provenancePatch); updateErr != nil {
+		s.log.Warn("SearchWebImage: image provenance update failed; keeping committed asset",
+			zap.String("hash", imgAsset.Hash), zap.Error(updateErr))
 	}
-	imgAsset.MetadataJSON = updatedJSON
+	imgAsset.MetadataJSON = detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, "", "duckduckgo", prompt)
 
 	s.log.Info("Web image ingested successfully",
 		zap.String("slug", slug),

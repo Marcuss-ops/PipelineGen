@@ -163,7 +163,7 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 		hasRenderPlate := renderBackground != nil &&
 			strings.EqualFold(strings.TrimSpace(renderBackground.Mode), videoBackgroundModeAsset)
 		if !hasRenderPlate {
-			plate, err := policy.SelectBackground(seed)
+			plate, err := policy.SelectBackgroundForChannel(seed, req.ChannelID)
 			if err != nil {
 				return fmt.Errorf("apply editing asset policy: final overlay background: %w", err)
 			}
@@ -208,7 +208,7 @@ func applyOverlayBackgroundSelection(req *GenerateRequest, policy mediaregistry.
 	if !overlayBackgroundSelectionIsBlank(req.OverlayBackground) {
 		return nil
 	}
-	plate, err := policy.SelectBackground(seed)
+	plate, err := policy.SelectBackgroundForChannel(seed, req.ChannelID)
 	if err != nil {
 		return fmt.Errorf("apply editing asset policy: overlay background: %w", err)
 	}

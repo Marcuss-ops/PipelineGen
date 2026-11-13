@@ -54,7 +54,7 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	if plan == nil {
 		return nil
 	}
-	bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID)
+	bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID, perSceneImages...)
 	if bundleErr != nil {
 		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
 	}
@@ -66,7 +66,13 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	lineage := freezeOverlayIntents(resolved, plan.Items)
 	result.ResolvedOverlayIntents = resolved
 	result.OverlayAudit = buildOverlayAuditWithLineage(bundle, plan, lineage)
+	var admittedIdentityImages map[string]struct{}
+	if result.SemanticProductionPlan != nil && len(result.SemanticProductionPlan.Identity) > 0 {
+		admittedIdentityImages = result.SemanticProductionPlan.IdentitiesAdmittedForMedia()
+	}
+	applyRequestedEntityImageContract(result.OverlayAudit, bundle, plan, canvas.RequireEntityImages, canvas.EntityImagesRequireDrive, canvas.RequiredEntityTypes, admittedIdentityImages)
 	if err := enforceEntityImageGate(result.OverlayAudit); err != nil {
+		dumpOverlayGateDebug(result, planID)
 		return err
 	}
 	return nil

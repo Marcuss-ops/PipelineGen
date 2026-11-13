@@ -304,7 +304,10 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 			Audio:       capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioVoiceover},
 		},
 	})
-	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	// The two grounded dates start at 1.7s and 1.9s. Keep five seconds of
+	// audible scene after them so both cards fit inside the scene without
+	// crossing into scene-1; the word boundaries themselves stay at 100ms.
+	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{tailUS: 5_000_000})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
@@ -418,8 +421,8 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 
 	scene1Phrase := overlayItemByText(t, res.OverlayPlan.Items, "text_phrase", "Growth matters more")
 	requireReviewName(t, scene1Phrase.ID, "growth-matters-more", "phrase", "short_phrase")
-	require.Equal(t, int64(2900), scene1Phrase.StartMs)
-	require.Equal(t, int64(3200), scene1Phrase.EndMs)
+	require.Equal(t, int64(7900), scene1Phrase.StartMs, "scene-1 follows scene-0's certified audio, including its display tail")
+	require.Equal(t, int64(8200), scene1Phrase.EndMs)
 
 	var person capmodel.OverlayItem
 	personFound := false

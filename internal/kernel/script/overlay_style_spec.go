@@ -67,6 +67,17 @@ type OverlayStyleSpec struct {
 	// Image controls apply to generated image overlays and entity portraits.
 	// They stay separate from text styling so one script can tune both layers.
 	Image *OverlayImageStyleSpec `json:"image,omitempty"`
+	// CardBackground is a per-text-layer plate. It is separate from the
+	// full-canvas overlay_background, which would obscure source footage in a
+	// final-job replacement window.
+	CardBackground *OverlayCardBackgroundSpec `json:"card_background,omitempty"`
+}
+
+type OverlayCardBackgroundSpec struct {
+	Color   string    `json:"color"`
+	Opacity *float64  `json:"opacity,omitempty"`
+	Radius  *float64  `json:"radius,omitempty"`
+	Padding []float64 `json:"padding,omitempty"`
 }
 
 // OverlayCursorStyleSpec controls the runtime typewriter caret.
@@ -116,6 +127,25 @@ func (s *OverlayStyleSpec) Validate() error {
 	}
 	if !IsSupportedFontFamily(s.FontFamily) {
 		return fmt.Errorf("overlay_style.font_family %q is unsupported (%s)", s.FontFamily, strings.Join(SupportedFontFamilies, ", "))
+	}
+	if bg := s.CardBackground; bg != nil {
+		if !isStyleHexColor(bg.Color) {
+			return fmt.Errorf("overlay_style.card_background.color must be #RRGGBB")
+		}
+		if bg.Opacity != nil && (math.IsNaN(*bg.Opacity) || math.IsInf(*bg.Opacity, 0) || *bg.Opacity < 0 || *bg.Opacity > 1) {
+			return fmt.Errorf("overlay_style.card_background.opacity must be between 0 and 1")
+		}
+		if bg.Radius != nil && (math.IsNaN(*bg.Radius) || math.IsInf(*bg.Radius, 0) || *bg.Radius < 0 || *bg.Radius > 512) {
+			return fmt.Errorf("overlay_style.card_background.radius must be between 0 and 512 pixels")
+		}
+		if len(bg.Padding) > 2 {
+			return fmt.Errorf("overlay_style.card_background.padding accepts at most [x,y]")
+		}
+		for _, value := range bg.Padding {
+			if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 512 {
+				return fmt.Errorf("overlay_style.card_background.padding values must be between 0 and 512 pixels")
+			}
+		}
 	}
 	if s.GlowSize != nil && (math.IsNaN(*s.GlowSize) || math.IsInf(*s.GlowSize, 0) || *s.GlowSize < 0 || *s.GlowSize > 256) {
 		return fmt.Errorf("overlay_style.glow_size must be between 0 and 256 pixels")

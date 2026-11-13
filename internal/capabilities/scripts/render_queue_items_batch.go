@@ -1,11 +1,9 @@
 package scriptgeneration
 
-// render_queue_items_batch.go owns the dedicated per-item render path that
-// survives the manifest-timeline cutover: maps and chain items keep their own
-// render pipelines (dynamic-map admission and asset lifecycle; chain segment
-// rebasing) and their own certified artifacts. Ordinary overlay items are NOT
-// rendered here — they compose the single manifest timeline artifact
-// (overlay_manifest_timeline.go).
+// render_queue_items_batch.go owns the per-item overlay render path: every
+// semantic overlay becomes its own certified artifact through bounded pools.
+// Maps keep their dynamic-map pre-materialization; chain items keep their
+// segment rebasing. No shared timeline or scene-wide composition exists.
 
 import (
 	"context"
@@ -14,53 +12,17 @@ import (
 	"sort"
 	"sync"
 
-	capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
 
-// enqueueDedicatedOverlayItems renders and publishes each map/chain item as an
-// independent certified artifact through its dedicated pipeline. The returned
-// reference carries one item row per artifact in plan order; the manifest
-// timeline caller merges these rows into its own reference.
-//
-// The items are submitted through bounded pools (the map class at its own
-// width — one LOD raster pyramid per map — the rest at the configured width),
-// so the GPU lane and the per-item pre/post chain overlap exactly as they did
-// before the cutover. Failure is FAIL-FAST: the pool cancels the remaining
-// items and the error names the item it came from.
-func (e *QueueRenderEnqueuer) enqueueDedicatedOverlayItems(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (RenderReference, error) {
-	return e.enqueueOverlayItemClips(ctx, plan, candidates, true)
-}
-
-// enqueueStandaloneOverlayItems renders the plan's actual graphic items as
-// independent alpha-bearing clips. Overlaps are valid here because these
-// clips are separate transparent layers and are grouped for preview only.
+// enqueueStandaloneOverlayItems renders every overlay item as an independent
+// alpha-bearing clip through bounded pools (the map class at its own width, the
+// rest at the configured width). Overlaps are valid because these clips are
+// separate transparent layers.
 func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate) (RenderReference, error) {
-	return e.enqueueOverlayItemClips(ctx, plan, candidates, false)
-}
-
-func (e *QueueRenderEnqueuer) enqueueOverlayItemClips(ctx context.Context, plan capmodel.OverlayPlan, candidates []overlayItemCandidate, admitTimeline bool) (RenderReference, error) {
 	if len(candidates) == 0 {
 		return RenderReference{}, nil
-	}
-	// OverlayTimelineAdmission before any expensive render: dedicated items
-	// keep their per-item replace semantics in the final handoff, so their
-	// frame windows must not share even one frame. Fail early instead of
-	// rendering artifacts the final job will reject. The final publication
-	// gate remains as defense-in-depth.
-	admissionItems := make([]capmodel.OverlayItem, 0, len(candidates))
-	for _, candidate := range candidates {
-		start, end := capoverlay.OverlayItemWindowUS(candidate.source)
-		admissionItems = append(admissionItems, capmodel.OverlayItem{
-			ID: candidate.source.ID, SceneID: candidate.source.SceneID,
-			StartUS: start, DurationUS: end - start,
-		})
-	}
-	if admitTimeline {
-		if err := capoverlay.AdmitOverlayTimeline(admissionItems, plan.FPSNum, plan.FPSDen); err != nil {
-			return RenderReference{}, err
-		}
 	}
 	var mapCandidates, otherCandidates []overlayItemCandidate
 	for _, candidate := range candidates {
@@ -184,7 +146,6 @@ func (e *QueueRenderEnqueuer) enqueueOverlayItemClips(ctx context.Context, plan 
 	items := make([]OverlayItemRenderReference, 0, len(results))
 	for _, result := range results {
 		items = append(items, result.item)
-		items = append(items, result.additionalItems...)
 	}
 	order := make(map[string]int, len(candidates))
 	for _, candidate := range candidates {

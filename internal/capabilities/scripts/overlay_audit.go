@@ -54,18 +54,29 @@ type OverlayAuditIntake struct {
 }
 
 type OverlayAuditEntity struct {
-	ID               string   `json:"id"`
-	OccurrenceID     string   `json:"occurrence_id,omitempty"`
-	Type             string   `json:"type"`
-	Text             string   `json:"text"`
-	CanonicalText    string   `json:"canonical_text,omitempty"`
-	SceneID          string   `json:"scene_id"`
-	Confidence       float64  `json:"confidence"`
-	SelectedForVideo bool     `json:"selected_for_video"`
-	HasVerifiedImage bool     `json:"has_verified_image"`
-	ImageStatus      string   `json:"image_status,omitempty"`
-	ImageAssetIDs    []string `json:"image_asset_ids,omitempty"`
-	PlannedKinds     []string `json:"planned_kinds,omitempty"`
+	ID                     string   `json:"id"`
+	CanonicalEntityID      string   `json:"canonical_entity_id,omitempty"`
+	OccurrenceID           string   `json:"occurrence_id,omitempty"`
+	Type                   string   `json:"type"`
+	Text                   string   `json:"text"`
+	CanonicalText          string   `json:"canonical_text,omitempty"`
+	SceneID                string   `json:"scene_id"`
+	Confidence             float64  `json:"confidence"`
+	SelectedForVideo       bool     `json:"selected_for_video"`
+	ImageRequired          bool     `json:"image_required"`
+	ImageDriveRequired     bool     `json:"image_drive_required,omitempty"`
+	ImageAcquisitionStatus string   `json:"image_acquisition_status,omitempty"`
+	HasVerifiedImage       bool     `json:"has_verified_image"`
+	ImageStatus            string   `json:"image_status,omitempty"`
+	ImageAssetIDs          []string `json:"image_asset_ids,omitempty"`
+	PlannedKinds           []string `json:"planned_kinds,omitempty"`
+	ImageQuery             string   `json:"image_query,omitempty"`
+	ImageCandidateID       string   `json:"image_candidate_id,omitempty"`
+	ImageSelectionReason   string   `json:"image_selection_reason,omitempty"`
+	ImageFailureReason     string   `json:"image_failure_reason,omitempty"`
+	ImageSHA256            string   `json:"image_sha256,omitempty"`
+	ImageDriveFileID       string   `json:"image_drive_file_id,omitempty"`
+	OverlayItemID          string   `json:"overlay_item_id,omitempty"`
 }
 
 // OverlayAuditImage makes the image decision auditable at the plan boundary:
@@ -119,8 +130,10 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 	selectedSurface := make(map[string]bool)
 	selectedImageEntity := make(map[string]bool)
 	selectedKinds := make(map[string][]string)
+	selectedOverlayIDs := make(map[string][]string)
 	selectedAssets := make(map[string][]string)
 	verifiedAssetIDs := make(map[string]bool)
+	plannedEntityImages := overlayPlanEntityImageIndex(plan)
 	imageBindings := make([]OverlayAuditImage, 0)
 	if plan != nil {
 		if encoded, err := json.Marshal(plan); err == nil {
@@ -161,6 +174,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 					if key != "" {
 						selected[key] = true
 						selectedKinds[key] = appendUniqueAuditValue(selectedKinds[key], kind)
+						selectedOverlayIDs[key] = appendUniqueAuditValue(selectedOverlayIDs[key], item.ID)
 					}
 				}
 				for _, surface := range []string{item.EntityRef.SurfaceText, item.EntityRef.Name} {
@@ -261,13 +275,34 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 			case hasImage:
 				imageStatus = "planned_without_verified_asset"
 			}
+			imageFailureReason := entity.ImageFailureReason
+			imageDriveFileID := entity.ImageDriveFileID
+			imageSHA256 := entity.ImageSHA256
+			// A chain item renders its entity images from nested segments. Those
+			// bindings are absent from the annotation projection and from the
+			// item-level EntityRef, so the audit must take them from the compiled
+			// plan itself. Once the plan carries the image, a stale annotation
+			// failure reason (or an empty annotation Drive id) is not the truth.
+			if planned, ok := overlayPlannedEntityImageFor(plannedEntityImages, entity.SceneID, entity.EntityID); ok {
+				imageStatus = "planned"
+				imageFailureReason = ""
+				imageDriveFileID = planned.DriveFileID
+				imageSHA256 = planned.SHA256
+				assetIDs = appendUniqueAuditValue(assetIDs, firstNonEmptyAuditValue(planned.AssetID, planned.SHA256))
+			}
 			audit.DetectedEntities = append(audit.DetectedEntities, OverlayAuditEntity{
 				ID: entity.EntityID, OccurrenceID: entity.OccurrenceID, Type: entityType,
-				Text: entity.Text, CanonicalText: entity.CanonicalText, SceneID: entity.SceneID,
+				CanonicalEntityID: entity.CanonicalEntityID,
+				Text:              entity.Text, CanonicalText: entity.CanonicalText, SceneID: entity.SceneID,
 				Confidence: entity.Confidence, SelectedForVideo: selected[key] ||
 					selectedSurface[surfaceKey] || selectedSurface[canonicalKey],
 				HasVerifiedImage: hasVerifiedImage, ImageStatus: imageStatus,
 				ImageAssetIDs: assetIDs, PlannedKinds: plannedKinds,
+				ImageQuery: entity.ImageQuery, ImageCandidateID: entity.ImageCandidateID,
+				ImageSelectionReason: entity.ImageSelectionReason, ImageFailureReason: imageFailureReason,
+				ImageAcquisitionStatus: entity.ImageStatus,
+				ImageSHA256:            imageSHA256, ImageDriveFileID: imageDriveFileID,
+				OverlayItemID: strings.Join(selectedOverlayIDs[entity.EntityID], ","),
 			})
 		}
 		audit.DetectedEntityCount = len(bundle.Entities)

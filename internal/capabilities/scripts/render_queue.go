@@ -2,8 +2,6 @@ package scriptgeneration
 
 import (
 	"context"
-	"fmt"
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"sync"
 	"sync/atomic"
@@ -102,27 +100,3 @@ type QueueRenderEnqueuer struct {
 // The publication batch type and its join helpers live in
 // overlay_publication.go, next to the publication port they serve; the pool
 // fields above belong to this type.
-
-// EnqueueChrononPlan submits the semantic OverlayPlan to RenderingGen. The
-// worker is the sole owner of the semantic→Chronon v2 compilation and writes
-// the concrete plan it actually executes. Keeping this boundary semantic is
-// important: sending PipelineGen's old v1 concrete document makes the worker
-// validate it against the v2 schema and fail before Chronon starts.
-func (e *QueueRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
-	manifestCandidates, dedicatedCandidates := partitionOverlayRenderWork(plan)
-	if len(manifestCandidates) == 0 {
-		if len(dedicatedCandidates) == 0 {
-			// Un solo percorso (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE
-			// §9.3.3 punto 2): non esiste più il terzo rendito legacy che
-			// inviava l'intero piano grezzo alla coda. Un piano le cui voci
-			// sono tutta canvas di background (template BACKGROUND/
-			// VIDEO_BACKGROUND) è già dichiarato dalla SSOT del piano:
-			// il background si dichiara nel blocco Background, non come item.
-			return RenderReference{}, fmt.Errorf(
-				"overlay plan %q has no renderable candidates: declare the background in the plan Background block, not as a legacy BACKGROUND item",
-				plan.PlanID)
-		}
-		return e.enqueueDedicatedOverlayItems(ctx, plan, dedicatedCandidates)
-	}
-	return e.enqueueOverlayManifestTimeline(ctx, plan, manifestCandidates, dedicatedCandidates)
-}

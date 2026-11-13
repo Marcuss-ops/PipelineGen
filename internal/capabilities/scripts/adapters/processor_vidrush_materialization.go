@@ -147,6 +147,16 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		return nil, fmt.Errorf("vidrush materialization: bounded segment workers: %w", err)
 	}
 	p.selectMaterializedImageGroups(ctx, plan, input.VidRushSegments, processed)
+	// Entity images on a stock-bound scene are OVERLAYS, not scene media.
+	// Group sampling can repopulate SecondaryImages from the candidate pool;
+	// clear that projection again so STOCK ISOLATION keeps certifying the
+	// scene's provider-free media surface while the annotations keep their
+	// resolved portrait bindings.
+	for i := range processed {
+		if _, stockBound := stockBindingForSegment(plan, input.StockBindings, processed[i].result); stockBound {
+			clearStockBoundSceneImages(&processed[i].result)
+		}
+	}
 	segments := make([]scriptpkg.VidRushSegmentResult, 0, len(processed))
 	var warnings []string
 	for _, item := range processed {
@@ -290,10 +300,26 @@ func (p *VidRushMaterializationProcessor) materializeStockBoundEntityImages(ctx 
 		return vidRushMaterializedSegment{}, err
 	}
 	materialized.result.Assets.PrimaryVideo = primary
+	// The sidecar's verified portraits are entity-overlay assets. Keeping
+	// them in SecondaryImages would make the scene look provider-backed to
+	// STOCK ISOLATION and to the scene-media consumers. The Candidates list
+	// remains the binding source for projectEntityImageBindings.
+	clearStockBoundSceneImages(&materialized.result)
 	materialized.result.Cache.ImageGeneration = "BYPASSED"
 	materialized.result.Cache.YouTube = "BYPASSED"
 	materialized.result.Cache.Binding = "STOCK_BOUND"
 	return materialized, nil
+}
+
+// clearStockBoundSceneImages removes provider image selections from a
+// stock-bound scene's media surface. Entity-image candidates stay available in
+// Assets.Candidates for annotation binding; they never become scene media.
+func clearStockBoundSceneImages(segment *scriptpkg.VidRushSegmentResult) {
+	if segment == nil {
+		return
+	}
+	segment.Assets.SecondaryImages = nil
+	segment.Assets.GeneratedImages = nil
 }
 
 func stockBoundEntityImageMaterializationEnabled(plan *scriptpkg.ResolvedGenerationPlan) bool {

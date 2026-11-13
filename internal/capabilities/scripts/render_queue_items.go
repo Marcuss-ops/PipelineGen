@@ -53,35 +53,28 @@ type overlayItemCandidate struct {
 // publishes in `Items` and the full RenderReference the first item returns for
 // backwards compatibility.
 type overlayItemRenderResult struct {
-	full            RenderReference
-	item            OverlayItemRenderReference
-	additionalItems []OverlayItemRenderReference
-	batch           *OverlayBatchRenderReference
-	order           int
+	full  RenderReference
+	item  OverlayItemRenderReference
+	order int
 }
 
 type overlayItemPublicationMetadata struct {
-	// ManifestOwnedCache marks renders whose cache identity is owned by the
-	// manifest-timeline layer (the composition digest is the content address,
-	// OVERLAY-MANIFEST-CONTRACT.md §2): the submitter must not create a second
-	// cache row for the same artifact.
-	ManifestOwnedCache bool
-	JobID              string
-	ResultJobID        string
-	ItemID             string
-	BatchID            string
-	BatchItemIDs       []string
-	ItemKind           string
-	MotionID           string
-	EntityID           string
-	EntityName         string
-	EntityIDs          []string
-	EntityLabels       []string
-	Text               string
-	SourceStartUS      int64
-	SourceEndUS        int64
-	TargetDurationUS   int64
-	BatchEndUS         int64
+	JobID            string
+	ResultJobID      string
+	ItemID           string
+	BatchID          string
+	BatchItemIDs     []string
+	ItemKind         string
+	MotionID         string
+	EntityID         string
+	EntityName       string
+	EntityIDs        []string
+	EntityLabels     []string
+	Text             string
+	SourceStartUS    int64
+	SourceEndUS      int64
+	TargetDurationUS int64
+	BatchEndUS       int64
 }
 
 const (
@@ -168,6 +161,14 @@ func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.Overla
 	}
 	targetUS := durationUS + overlayItemPaddingUS
 	maxDurationUS := maxOverlayItemDurationUS
+	if strings.EqualFold(strings.TrimSpace(source.TemplateID), "TIMELINE_DATE_CARD") {
+		// Date cards are budgeted to end before the next spoken date. The
+		// generic 2s tail would push every capped card to the 5s ceiling and
+		// make consecutive dates overlap in the composited timeline. The
+		// planner's window is the complete date-card clip.
+		targetUS = durationUS
+		maxDurationUS = durationUS
+	}
 	if strings.EqualFold(strings.TrimSpace(source.TemplateID), "IMPORTANT_PHRASE") || source.Kind == "text_phrase" || source.Kind == string(capmodel.KindImportantPhrase) {
 		// A short phrase holds a settled tail after the spoken window and never
 		// renders shorter than the minimum, so the entrance is visible instead of

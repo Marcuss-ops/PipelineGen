@@ -216,9 +216,6 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	if len(segments) == 0 {
 		return "", "", fmt.Errorf("final_job V2 render plan has no video segments")
 	}
-	if err := finalJobCompleteVideoFrameCoverage(segments, assets.items, timelineDurationUS, fpsNum, fpsDen); err != nil {
-		return "", "", err
-	}
 	// Producer deliberately keeps stock remote: it does not materialize Drive
 	// bytes just to probe duration. The scene references can describe several
 	// contiguous windows of one stock SHA, so declare the furthest range the
@@ -282,6 +279,13 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	}
 	if err := alignFinalJobSegmentSourceWindows(&plan); err != nil {
 		return "", "", fmt.Errorf("align final_job source windows to the output frame grid: %w", err)
+	}
+	plan.VideoTracks[0].Segments, err = finalJobCompleteVideoFrameCoverage(plan.VideoTracks[0].Segments, plan.Assets, plan.DurationUS, fpsNum, fpsDen)
+	if err != nil {
+		return "", "", err
+	}
+	if err := alignFinalJobSegmentSourceWindows(&plan); err != nil {
+		return "", "", fmt.Errorf("align final_job source windows after frame coverage: %w", err)
 	}
 	if err := validateFinalJobPlanBindingRules(plan); err != nil {
 		return "", "", fmt.Errorf("final_job V2 compiled-plan asset bindings: %w", err)

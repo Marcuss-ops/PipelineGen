@@ -178,6 +178,18 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 	}
 	seenAssets := make(map[string]struct{}, len(group.Items))
 	seenIDs := make(map[string]struct{}, len(group.Items))
+	imageCount := 0
+	for _, item := range group.Items {
+		if item.Kind == MultiEntityKindImage {
+			imageCount++
+		}
+	}
+	// A sequence camera is meaningful only when at least two images share the
+	// group; a single portrait keeps the ordinary image entrance.
+	cameraMotionID := ""
+	if imageCount >= 2 {
+		cameraMotionID = SelectEntitySequenceCameraMotion(group.GroupID, group.SceneID, group.GroupID)
+	}
 	var out []capmodel.OverlayItem
 	for index, candidate := range group.Items {
 		if candidate.StartMS < group.StartMS || candidate.EndMS > group.EndMS || candidate.EndMS <= candidate.StartMS {
@@ -211,6 +223,7 @@ func WireMultiEntityOverlays(group MultiEntityGroup, canvasWidth, canvasHeight i
 				PresetID:        selectImagePreset(group.GroupID, group.SceneID, imageID),
 				MotionID:        EntityImageMotionAtOffset(motionOffset, index),
 				CaptionMotionID: RuntimeEntityCaptionMotionAtOffset(motionOffset, index),
+				CameraMotionID:  cameraMotionID,
 				EntityCaption:   strings.TrimSpace(candidate.Name),
 				StartMs:         candidate.StartMS, EndMs: candidate.EndMS,
 				StartUS: candidate.StartMS * 1000, DurationUS: (candidate.EndMS - candidate.StartMS) * 1000,

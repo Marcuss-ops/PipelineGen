@@ -492,14 +492,24 @@ func containsString(haystack []string, needle string) bool {
 }
 
 func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
-	want := renderSafeImageMotions
+	want := uniqueMotionPool(append(append([]string(nil), renderSafeImageMotions...), imageRecipeMotionCandidates...))
 	got := CertifiedImageMotions()
 	if len(got) != len(want) {
-		t.Fatalf("CertifiedImageMotions has %d entries, want %d", len(got), len(want))
+		t.Fatalf("CertifiedImageMotions has %d entries, want %d (32 base + 69 single-image recipes)", len(got), len(want))
 	}
 	for i := range want {
-		if got[i] != want[i] || renderSafeImageMotions[i] != want[i] {
-			t.Fatalf("image motion %d = %q / %q, want catalog contract %q", i, got[i], renderSafeImageMotions[i], want[i])
+		if got[i] != want[i] {
+			t.Fatalf("image motion %d = %q, want catalog contract %q", i, got[i], want[i])
+		}
+	}
+	for _, id := range renderSafeImageMotions {
+		if !containsString(got, id) {
+			t.Fatalf("CertifiedImageMotions lost base motion %q", id)
+		}
+	}
+	for _, id := range imageRecipeMotionCandidates {
+		if !containsString(got, id) {
+			t.Fatalf("CertifiedImageMotions lost recipe motion %q", id)
 		}
 	}
 	// The default selector is directionally coherent: it walks the dominant-
@@ -563,7 +573,7 @@ func TestCertifiedImageMotionPoolAndPlannerAssignment(t *testing.T) {
 		if item.Kind != "image" {
 			continue
 		}
-		if !containsString(renderSafeImageMotions, item.MotionID) || item.PresetID == "" {
+		if !containsString(automaticSingleImageMotionCandidates, item.MotionID) || item.PresetID == "" {
 			t.Fatalf("image item %q must use a new single-image motion and image preset, preset=%q motion=%q", item.ID, item.PresetID, item.MotionID)
 		}
 		imageCount++
@@ -684,9 +694,9 @@ func canonicalSelectableCaptionMotionIDs(t *testing.T) map[string]bool {
 	if err := json.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	// Entity cards are restricted to the ten authored entity_card_v1 presets;
-	// other caption families are intentionally not selected for them.
-	categories := map[string]bool{"entity_card_v1": true}
+	// The caption catalog is the union of the three certified entity families:
+	// entity_card_v1, entity_caption_v1 and trump_entity_text_v1.
+	categories := map[string]bool{"entity_card_v1": true, "entity_caption_v1": true, "trump_entity_text_v1": true}
 	ids := map[string]bool{}
 	for _, definition := range document.Motions {
 		if !categories[definition.Category] || (!containsString(definition.Targets, "text") && !containsString(definition.Targets, "entity")) {

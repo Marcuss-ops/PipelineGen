@@ -13,6 +13,9 @@ func validateAnimationReferences(item OverlayItem) error {
 	kind := strings.ToLower(strings.TrimSpace(item.Kind))
 	if id := strings.TrimSpace(item.MotionID); id != "" {
 		groups := motionGroupsForItem(kind, item.TemplateID, item.Params)
+		if isImageItemKind(kind) {
+			groups = append(groups, "image.recipe")
+		}
 		if !selectableInAnyGroup(id, groups...) {
 			return fmt.Errorf("motion %q is unknown, retired, renderer-unsupported, or incompatible with item kind %q", id, item.Kind)
 		}
@@ -24,7 +27,7 @@ func validateAnimationReferences(item OverlayItem) error {
 		return fmt.Errorf("camera motion %q is unknown, retired, or renderer-unsupported", id)
 	}
 	for _, layer := range item.ImageLayers {
-		if id := strings.TrimSpace(layer.MotionID); id != "" && !selectableInAnyGroup(id, "image.all", "image.lightleak") {
+		if id := strings.TrimSpace(layer.MotionID); id != "" && !selectableInAnyGroup(id, "image.all", "image.lightleak", "image.recipe") {
 			return fmt.Errorf("image layer %q motion %q is unknown, retired, or renderer-unsupported", layer.ID, id)
 		}
 		if id := strings.TrimSpace(layer.CaptionMotionID); id != "" && !capanimreg.AnimationSelectable(id, "entity.caption") && !capanimreg.AnimationSelectable(id, "phrase.all") {
@@ -55,6 +58,15 @@ func motionGroupsForItem(kind, template string, params map[string]any) []string 
 			return groups
 		}
 		return capanimreg.ItemDefaultMotionGroups()
+	}
+}
+
+func isImageItemKind(kind string) bool {
+	switch kind {
+	case "image", "entity_image", "image_popup", "product", "logo":
+		return true
+	default:
+		return false
 	}
 }
 

@@ -1,0 +1,68 @@
+{
+  "url": "https://www.youtube.com/watch?v=4BBfb1nup30",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "08:47",
+      "end": "09:27",
+      "name": "La mente non era lì: Canelo spiega la notte con Crawford",
+      "category": "boxing_interview",
+      "source_title": "Canelo Alvarez ANNOUNCES Next Fight, Disappointed Crawford Rematch Didn't Happen, Defends Boxing",
+      "source_channel": "The Ariel Helwani Show",
+      "summary": "Canelo ammette di aver fatto un training camp perfetto ma di non essere stato mentalmente presente contro Crawford: la testa era altrove durante la fight week.",
+      "topics": [
+        "Canelo Crawford mind wasn't there training camp fight week focus boxing"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "Terence Crawford",
+        "boxing",
+        "interview"
+      ]
+    },
+    {
+      "start": "12:11",
+      "end": "13:05",
+      "name": "Il rematch con Crawford che non è mai successo",
+      "category": "boxing_interview",
+      "source_title": "Canelo Alvarez ANNOUNCES Next Fight, Disappointed Crawford Rematch Didn't Happen, Defends Boxing",
+      "source_channel": "The Ariel Helwani Show",
+      "summary": "Racconta la sorpresa per il ritiro di Crawford, i colloqui avvenuti subito dopo il fight e la speranza che torni sul ring per un'ultima volta.",
+      "topics": [
+        "Crawford retirement rematch talks Eddy Reynoso hope return boxing"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "Terence Crawford",
+        "boxing",
+        "interview"
+      ]
+    },
+    {
+      "start": "32:37",
+      "end": "33:22",
+      "name": "Jake Paul: il fight che Canelo voleva e perché è saltato",
+      "category": "boxing_interview",
+      "source_title": "Canelo Alvarez ANNOUNCES Next Fight, Disappointed Crawford Rematch Didn't Happen, Defends Boxing",
+      "source_channel": "The Ariel Helwani Show",
+      "summary": "Canelo rivela di aver spinto per il fight con Jake Paul, che il suo team lo considerava troppo facile e che alla fine scelsero la sfida a Riyad.",
+      "topics": [
+        "Canelo Jake Paul fight Riyadh team decision boxing business"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "Jake Paul",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

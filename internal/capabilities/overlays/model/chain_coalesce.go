@@ -52,10 +52,9 @@ const (
 	// KindImageChain is one fused image overlay: N nearby images with N
 	// concatenated motions and the same fly-under + fade transition.
 	KindImageChain = "image_chain"
-	// KindMixedChain is one fused overlay mixing nearby text + image + card +
-	// number + map items (e.g. image@10s + phrase@12s): one chain item, each
-	// segment lowered through its own per-kind compiler with the same
-	// fly-under + fade.
+	// KindMixedChain is one fused overlay mixing nearby text, number, and card
+	// items. Images are partitioned into their own chains and maps stay
+	// standalone during automatic coalescing.
 	KindMixedChain = "mixed_chain"
 	// KindMapChain is one fused overlay of nearby map items: one chain item
 	// carrying each map segment's own georeference + motion.
@@ -188,6 +187,13 @@ func chainable(item OverlayItem) bool {
 	if item.Params != nil && (item.Params["chart_card"] == true || item.Params["chart_bar"] == true) {
 		return false
 	}
+	// Timeline date cards stay standalone. Fusing them re-times every card
+	// sequentially and can extend the chain past the owning scene, hiding a
+	// later date under the next scene's imagery. A standalone card keeps its
+	// own date template, motion and scene-capped window.
+	if strings.TrimSpace(item.TemplateID) == "TIMELINE_DATE_CARD" {
+		return false
+	}
 	family := chainFamily(item.Kind)
 	if family == "" {
 		return false
@@ -227,6 +233,15 @@ func chainable(item OverlayItem) bool {
 // in place. A chain never crosses scenes (captions and scene budgets are
 // scene-scoped) and never exceeds the configured gap / segment ceiling.
 func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []OverlayItem {
+	return CoalesceChainedOverlaysWithSceneEnds(items, counts, nil)
+}
+
+// CoalesceChainedOverlaysWithSceneEnds is the production form: sceneEnds maps
+// a scene id to its absolute plan end. A fused chain lays its segments out
+// sequentially, so its container can be longer than the original windows; if
+// that projection crosses the scene end, the items stay standalone instead of
+// bleeding into the next scene. Nil/zero ends preserve the legacy behavior.
+func CoalesceChainedOverlaysWithSceneEnds(items []OverlayItem, counts map[string]int, sceneEnds map[string]int64) []OverlayItem {
 	maxGapUS, maxSegments, disabled := chainConfig(counts)
 	if disabled || len(items) < 2 {
 		return items
@@ -235,7 +250,7 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 	// animation, followed by the next image. Do not absorb images into a mixed
 	// text/card chain, and do not let intervening text or cards split a run of
 	// nearby images. Text and entity cards keep their existing mixed-chain
-	// behavior; maps stay on their dedicated homogeneous path.
+	// behavior; maps stay standalone during automatic coalescing.
 	var imageItems, otherItems []OverlayItem
 	for _, item := range items {
 		if chainFamily(item.Kind) == "image" {
@@ -246,8 +261,8 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 	}
 	if len(imageItems) > 0 && len(otherItems) > 0 {
 		out := make([]OverlayItem, 0, len(items))
-		out = append(out, CoalesceChainedOverlays(imageItems, counts)...)
-		out = append(out, CoalesceChainedOverlays(otherItems, counts)...)
+		out = append(out, CoalesceChainedOverlaysWithSceneEnds(imageItems, counts, sceneEnds)...)
+		out = append(out, CoalesceChainedOverlaysWithSceneEnds(otherItems, counts, sceneEnds)...)
 		sort.SliceStable(out, func(i, j int) bool {
 			si, sj := out[i].StartUSValue(), out[j].StartUSValue()
 			if si != sj {
@@ -300,6 +315,14 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 		if len(group) < 2 {
 			out = append(out, sorted[i])
 			i++
+			continue
+		}
+		if chainExceedsSceneEnd(group, sceneEnds[scene]) {
+			// A chain re-times its children sequentially. Keeping the
+			// original standalone windows is the only in-scene rendering;
+			// fusing them would push the tail into the next scene.
+			out = append(out, group...)
+			i = j
 			continue
 		}
 		out = append(out, fuseChain(group, chainIndex))
@@ -430,60 +453,6 @@ func fuseChain(group []OverlayItem, chainIndex int) OverlayItem {
 		StartUS: startUS, DurationUS: cursorUS - startUS,
 		AssetRefs: assets, Params: params,
 	}
-}
-
-func cloneAnyMap(src map[string]any) map[string]any {
-	if src == nil {
-		return nil
-	}
-	out := make(map[string]any, len(src))
-	for key, value := range src {
-		out[key] = value
-	}
-	return out
-}
-
-func cloneOverlayImageLayers(src []OverlayImageLayer) []OverlayImageLayer {
-	if src == nil {
-		return nil
-	}
-	out := append([]OverlayImageLayer(nil), src...)
-	for i := range out {
-		out[i].MotionParams = cloneAnyMap(out[i].MotionParams)
-		out[i].Params = cloneAnyMap(out[i].Params)
-		out[i].Frame = cloneOverlayFrame(out[i].Frame)
-	}
-	return out
-}
-
-func cloneOverlayFrame(src *OverlayItemFrame) *OverlayItemFrame {
-	if src == nil {
-		return nil
-	}
-	out := *src
-	if src.Border != nil {
-		border := *src.Border
-		out.Border = &border
-	}
-	if src.Shadow != nil {
-		shadow := *src.Shadow
-		out.Shadow = &shadow
-	}
-	if src.Stroke != nil {
-		stroke := *src.Stroke
-		out.Stroke = &stroke
-	}
-	return &out
-}
-
-// IsChainItemKind reports whether an overlay kind is a fused multi-animation
-// chain rather than a standalone item.
-func IsChainItemKind(kind string) bool {
-	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case KindPhraseChain, KindImageChain, KindMixedChain, KindMapChain:
-		return true
-	}
-	return false
 }
 
 // DecodeChainSegments extracts the segment list from an item's Params.

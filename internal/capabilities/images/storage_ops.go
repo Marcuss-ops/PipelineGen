@@ -232,56 +232,66 @@ func (s *ImageStorageService) searchAndDownloadInnerDetailed(ctx context.Context
 	// Step 8: route the network search through the RetrievalProviderRegistry.
 	// Wikidata disambig above is preserved as it feeds the Wikipedia
 	// canonical title rather than performing a network round-trip.
-	imgURL, source, wikiURL := s.runRetrievalFallbackForProvider(ctx, finalQuery, lang, provider)
-	if imgURL == "" {
+	candidates := s.runRetrievalCandidatesForProvider(ctx, finalQuery, lang, provider)
+	if len(candidates) == 0 {
 		return nil, fmt.Errorf("no image found for query: %s", finalQuery)
 	}
 
-	s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
-	description := fmt.Sprintf("Image for %s found via %s", displayName, source)
+	var lastDownloadErr error
+	for _, candidate := range candidates {
+		imgURL := candidate.URL
+		source := candidate.Source
+		pageURL := candidate.PageURL
 
-	provCtx := context.WithValue(ctx, SourceTypeKey, "retrieved")
-	provCtx = context.WithValue(provCtx, RetrieverKey, source)
-	provCtx = context.WithValue(provCtx, SearchQueryKey, query)
-	provCtx = context.WithValue(provCtx, ImageURLKey, imgURL)
-	if wikiURL != "" {
-		provCtx = context.WithValue(provCtx, PageURLKey, wikiURL)
-	} else {
-		provCtx = context.WithValue(provCtx, PageURLKey, imgURL)
-	}
-	license, author := defaultLicenseAndAuthor(ctx, source)
-	provCtx = context.WithValue(provCtx, LicenseKey, license)
-	provCtx = context.WithValue(provCtx, AuthorKey, author)
+		s.log.Info("Downloading image", zap.String("url", imgURL), zap.String("source", source))
+		description := fmt.Sprintf("Image for %s found via %s", displayName, source)
 
-	imgAsset, err := s.downloadAndIngest(provCtx, slug, imgURL, slug, source, finalQuery, description, tags)
-	if err == nil && imgAsset != nil {
-		pageURL := ""
-		if wikiURL != "" {
-			pageURL = wikiURL
+		provCtx := context.WithValue(ctx, SourceTypeKey, "retrieved")
+		provCtx = context.WithValue(provCtx, RetrieverKey, source)
+		provCtx = context.WithValue(provCtx, SearchQueryKey, query)
+		provCtx = context.WithValue(provCtx, ImageURLKey, imgURL)
+		if pageURL == "" {
+			pageURL = imgURL
 		}
-		updatedJSON := detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, pageURL, source, query)
+		provCtx = context.WithValue(provCtx, PageURLKey, pageURL)
+		license, author := defaultLicenseAndAuthor(ctx, source)
+		provCtx = context.WithValue(provCtx, LicenseKey, license)
+		provCtx = context.WithValue(provCtx, AuthorKey, author)
+
+		imgAsset, err := s.downloadAndIngest(provCtx, slug, imgURL, slug, source, finalQuery, description, tags)
+		if err != nil || imgAsset == nil {
+			lastDownloadErr = err
+			s.log.Warn("image candidate could not be acquired; trying the next candidate",
+				zap.String("url", imgURL), zap.String("source", source), zap.Error(err))
+			continue
+		}
+		// Send ONLY the provenance keys: the canonical writer merges them into
+		// the stored metadata with jsonb ||, so a concurrent delivery/embedding
+		// writer cannot be overwritten by this snapshot.
+		provenancePatch := detail.AppendImageProvenance("{}", imgURL, pageURL, source, query)
 		if finalQuery != "" && finalQuery != query {
-			updatedJSON = detail.AppendImageMetadataField(updatedJSON, "resolved_query", finalQuery)
+			provenancePatch = detail.AppendImageMetadataField(provenancePatch, "resolved_query", finalQuery)
 		}
-		if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); updateErr != nil {
-			s.log.Error("searchAndDownloadInner: UpdateImageMetadata failed", zap.Error(updateErr))
-			return &SearchResult{
-				Asset:             imgAsset,
-				CacheHit:          false,
-				CacheSource:       "provider",
-				RetrievalProvider: source,
-			}, fmt.Errorf("update image metadata: %w", updateErr)
+		if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, provenancePatch); updateErr != nil {
+			// The bytes are already committed under imgAsset.Hash. Enrichment
+			// is retriable; it must not turn a verified candidate into an
+			// acquisition failure.
+			s.log.Warn("searchAndDownloadInner: image provenance update failed; keeping committed asset",
+				zap.String("hash", imgAsset.Hash), zap.String("source", source), zap.Error(updateErr))
 		}
-		imgAsset.MetadataJSON = updatedJSON
+		imgAsset.MetadataJSON = detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, pageURL, source, query)
+		if finalQuery != "" && finalQuery != query {
+			imgAsset.MetadataJSON = detail.AppendImageMetadataField(imgAsset.MetadataJSON, "resolved_query", finalQuery)
+		}
+		return &SearchResult{
+			Asset:             imgAsset,
+			CacheHit:          false,
+			CacheSource:       "provider",
+			RetrievalProvider: source,
+		}, nil
 	}
-	if err != nil || imgAsset == nil {
-		return nil, err
+	if lastDownloadErr != nil {
+		return nil, fmt.Errorf("no image candidate could be downloaded for query %s: %w", finalQuery, lastDownloadErr)
 	}
-
-	return &SearchResult{
-		Asset:             imgAsset,
-		CacheHit:          false,
-		CacheSource:       "provider",
-		RetrievalProvider: source,
-	}, nil
+	return nil, fmt.Errorf("no image found for query: %s", finalQuery)
 }

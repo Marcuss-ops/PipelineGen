@@ -203,7 +203,7 @@ func TestRenderHandler_MinimalRequest_AppliesDefaults(t *testing.T) {
 	if req.Watermark.Enabled {
 		t.Error("Watermark default: must be disabled")
 	}
-	if req.Transcript.Mode != TranscriptModeReuse ||
+	if req.Transcript.Mode != TranscriptModeAuto ||
 		req.Transcript.Language != "en" || !req.Transcript.Persist {
 		t.Errorf("Transcript defaults: got %+v (persist must default to true so a batch reuses one ASR pass per source)", req.Transcript)
 	}
@@ -523,7 +523,7 @@ func TestRenderHandler_ClassicPaleOliveBackgroundSubsWatermark(t *testing.T) {
 	if req.Output.Width != 1920 || req.Output.Height != 1080 {
 		t.Errorf("Output resolution defaults: got %dx%d, want 1920x1080", req.Output.Width, req.Output.Height)
 	}
-	if req.Transcript.Mode != TranscriptModeReuse || !req.Transcript.Persist {
+	if req.Transcript.Mode != TranscriptModeAuto || !req.Transcript.Persist {
 		t.Errorf("Transcript defaults: got %+v", req.Transcript)
 	}
 

@@ -249,6 +249,7 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 		return err
 	}
 	rank := 0
+	persisted := 0
 	for _, result := range results {
 		if !strings.EqualFold(strings.TrimSpace(result.Provider), scriptpkg.VidRushProviderInternetImages) || strings.TrimSpace(result.SourceURL) == "" {
 			continue
@@ -271,6 +272,11 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 		}); err != nil {
 			return err
 		}
+		persisted++
+	}
+	if persisted == 0 {
+		return repo.SetRefreshState(ctx, identity.CanonicalEntityID, entitycatalog.RefreshStatusFailed, nowUTC(),
+			"no PERSON image candidate passed the identity/quality filter")
 	}
 	return repo.SetRefreshState(ctx, identity.CanonicalEntityID, entitycatalog.RefreshStatusSucceeded, nowUTC(), "")
 }

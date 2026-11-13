@@ -174,6 +174,24 @@ func TestVoiceoverCacheSSOT_EmptyDriveFileIDIsMiss(t *testing.T) {
 	require.Nil(t, hit, "cache must MISS when media_assets.DriveFileID is empty — asset was not uploaded")
 }
 
+// TestVoiceoverCacheUsesCleanedDurationFromMetadata proves that a cache hit
+// returns the post-cleanup duration, not the stale duration_seconds written
+// before silence removal. The row says 5.0s; the cleanup report says 4.0s.
+func TestVoiceoverCacheUsesCleanedDurationFromMetadata(t *testing.T) {
+	db := newVoiceoverCacheTestDB(t)
+	repo := sqassets.NewVoiceoversRepository(db)
+	adapter := NewUseCaseRepoAdapter(repo, db, sqliteVoiceoverMediaReader{db: db})
+	cache := NewVoiceoverCacheAdapter(adapter, zap.NewNop())
+
+	insertVoiceoverRow(t, db, "vo-clean", "fp-clean", "completed", `{"silence_cleanup":{"clean_duration_us":4000000}}`)
+	insertMediaAssetRow(t, db, "vo-clean", "drive-clean", "name")
+
+	hit, err := cache.Lookup(context.Background(), "fp-clean", false)
+	require.NoError(t, err)
+	require.NotNil(t, hit, "a reusable row with a durable asset must hit")
+	require.Equal(t, int64(4000), hit.DurationMs, "cache hit must expose the cleaned duration")
+}
+
 // TestVoiceoverCacheSSOT_HealthyRowReturnsHitWithSSOTData proves that
 // when media_assets validates the asset (non-empty DriveFileID), the
 // cache hit returns data sourced from SQLite (not from the cache row

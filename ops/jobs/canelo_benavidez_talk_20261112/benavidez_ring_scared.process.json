@@ -1,0 +1,50 @@
+{
+  "url": "https://www.youtube.com/watch?v=7WH4QeGUZLc",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "07:08",
+      "end": "07:53",
+      "name": "Benavidez: Canelo ha paura di me",
+      "category": "boxing_interview",
+      "source_title": "EXCLUSIVE: David Benavidez FIRES SHOTS at \"SCARED\" Canelo Alvarez | Inside The Ring",
+      "source_channel": "Ring Magazine",
+      "summary": "Benavidez sostiene che Canelo lo teme: uno che parla tanto andrebbe messo a tacere sul ring. Secondo lui Canelo non riesce a dominare i fighter grandi e potenti come lui, che hanno velocità, potenza e cuore.",
+      "topics": [
+        "Benavidez Canelo scared power size speed heart"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    },
+    {
+      "start": "11:01",
+      "end": "11:39",
+      "name": "Benavidez: ora ho io il potere, Canelo salga",
+      "category": "boxing_interview",
+      "source_title": "EXCLUSIVE: David Benavidez FIRES SHOTS at \"SCARED\" Canelo Alvarez | Inside The Ring",
+      "source_channel": "Ring Magazine",
+      "summary": "Dopo il titolo WBC dei 175, Benavidez dice che tocca a Canelo salire: se vuole il fight per la grandezza e le cinture, venga al tavolo quando avrà unificato.",
+      "topics": [
+        "Benavidez Canelo 175 titles power greatness come up"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

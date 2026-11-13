@@ -100,6 +100,54 @@ func TestMediaManifestPinsBypassProviderAndScorer(t *testing.T) {
 	require.Equal(t, 0, searcher.calls, "pinned segments must never enter provider discovery")
 }
 
+// TestMediaManifestPinsDoNotSuppressEntityImageDiscovery is the regression
+// for the per-scene portrait lane: a contextual MANIFEST_PIN is a complete
+// discovery verdict for the scene image, but never for a person portrait. The
+// pinned candidate must survive while the entity query still reaches the
+// provider.
+func TestMediaManifestPinsDoNotSuppressEntityImageDiscovery(t *testing.T) {
+	searcher := &panickingImageSearcher{}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, nil).
+		WithMediaManifestPins(testPins(t))
+
+	input := manifestTestInput()
+	input.VidRushSegments[0].Insights.Entities = []scriptpkg.ExtractedEntity{{
+		Value: "Chiara Binda", Type: "PERSON", Confidence: 1,
+	}}
+	plan := manifestTestPlan(false)
+	plan.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{Enabled: true, Scope: "per_scene"}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, searcher.calls, 1, "a manifest pin must not suppress entity-image discovery")
+	require.Len(t, result.VidRushSegments, 1)
+	seg := result.VidRushSegments[0]
+	require.NotEmpty(t, seg.Assets.Candidates, "the pinned contextual candidate must be preserved")
+	require.Equal(t, MediaManifestProvider, seg.Assets.Candidates[0].Provider)
+}
+
+// TestVidRushProviderFanoutPinnedEntityImagesStillSearch is the fan-out
+// regression for the production final-job path. The manifest pin satisfies
+// the contextual scene image, but a per-scene PERSON request must still reach
+// the identity provider; otherwise every entity overlay is SEARCH_EMPTY.
+func TestVidRushProviderFanoutPinnedEntityImagesStillSearch(t *testing.T) {
+	searcher := &panickingImageSearcher{}
+	fanout := NewVidRushProviderFanout(searcher).WithMediaManifestPins(testPins(t))
+
+	input := manifestTestInput()
+	input.VidRushSegments[0].Insights.Entities = []scriptpkg.ExtractedEntity{{
+		Value: "Chiara Binda", Type: "PERSON", Confidence: 1,
+	}}
+	plan := manifestTestPlan(false)
+	plan.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{Enabled: true, Scope: "per_scene"}
+
+	out, err := fanout.ResolveProviders(context.Background(), plan, input.VidRushSegments[0])
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, searcher.calls, 1, "a manifest pin must not suppress fan-out entity discovery")
+	require.NotEmpty(t, out.Assets.Candidates, "the pinned contextual candidate must be preserved")
+	require.Equal(t, MediaManifestProvider, out.Assets.Candidates[0].Provider)
+}
+
 // TestMediaManifestPinsServeCacheOnly verifies the pin path does not violate
 // the cache_only no-provider contract (pins are local verified bytes, not a
 // network source) and stays labelled MANIFEST_PIN, not CACHE_MISS.

@@ -309,8 +309,12 @@ type EntityImageBinding struct {
 	// MediaType is the verified MIME type of the persisted image bytes. It is
 	// carried into the semantic overlay asset ref so a provider URL without an
 	// extension (for example a Drive download URL) gets the right logical path.
-	MediaType string `json:"media_type,omitempty"`
-	DriveLink string `json:"drive_link,omitempty"`
+	MediaType       string `json:"media_type,omitempty"`
+	DriveLink       string `json:"drive_link,omitempty"`
+	Query           string `json:"query,omitempty"`
+	CandidateID     string `json:"candidate_id,omitempty"`
+	SelectionReason string `json:"selection_reason,omitempty"`
+	FailureReason   string `json:"failure_reason,omitempty"`
 	// PreviewURL is the direct image URL used for inline rendering in the
 	// response (IDEAL PASS). It is the candidate's source image URL, never
 	// a Drive view-page link. Empty when no direct image is available.

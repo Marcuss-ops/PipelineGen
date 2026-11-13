@@ -66,20 +66,20 @@ func (w *WatermarkSpec) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// TranscriptSpec controls canonical transcript resolution. clip.render is a
-// RENDER step, so the default is `reuse`: the canonical READY text track must
-// already exist and a miss FAILS CLOSED. `generate` remains only as an
-// explicit manual repair that runs ASR and persists the transcript once into
-// the DB (never a temp WAV).
+// TranscriptSpec controls canonical transcript resolution. `auto` is the
+// default: reuse the canonical READY text track when it exists, otherwise run
+// ASR and persist the generated track once into the DB (never a temp WAV).
+// `reuse` keeps the deterministic render lane (no ASR, missing READY fails
+// closed); `generate` forces ASR and skips the lookup.
 //
-// Persist defaults to TRUE (see Normalize). Without persistence an explicit
-// `generate` repair has nothing to reuse: EVERY clip of a batch over the same
-// source re-runs speech recognition, which is the single largest per-clip cost
-// that is not the render itself. An EXPLICIT `"persist": false` still opts
-// out, which is why the presence of the key is recorded separately
+// Persist defaults to TRUE (see Normalize). Without persistence an `auto` miss
+// or an explicit `generate` repair has nothing to reuse: EVERY clip of a batch
+// over the same source re-runs speech recognition, which is the single largest
+// per-clip cost that is not the render itself. An EXPLICIT `"persist": false`
+// still opts out, which is why the presence of the key is recorded separately
 // (persistSet).
 type TranscriptSpec struct {
-	Mode     string `json:"mode,omitempty"` // default reuse
+	Mode     string `json:"mode,omitempty"` // default auto
 	Language string `json:"language,omitempty"`
 	// Persist deliberately has NO omitempty: an explicit false must survive the
 	// persisted job payload, otherwise the worker's re-decode would see an

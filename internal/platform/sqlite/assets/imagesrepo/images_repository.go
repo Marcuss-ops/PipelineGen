@@ -22,6 +22,18 @@ type ImagesRepository struct {
 	db              *sql.DB
 	canonicalCommit ImageCommitFunc
 	canonicalMutate persistence.AssetMutator
+	mediaReader     MediaImageReader
+}
+
+// MediaImageReader is the PostgreSQL media-SSOT reader for the image identity
+// lookups (content hash, asset id, Drive file id). The canonical image
+// ingestion commits AssetID == content hash, so these lookups must resolve a
+// PG-only row; reading the SQLite read model here is what made the image
+// cache/dedup path miss assets that were already committed.
+type MediaImageReader interface {
+	GetImageByHash(context.Context, string) (*detail.ImageAsset, error)
+	GetImageByID(context.Context, string) (*detail.ImageAsset, error)
+	GetImageByDriveFileID(context.Context, string) (*detail.ImageAsset, error)
 }
 
 // ImageCommitFunc is the composition-root supplied canonical write path for a
@@ -37,6 +49,16 @@ func NewImagesRepository(db *sql.DB) *ImagesRepository {
 func (r *ImagesRepository) SetCanonicalCommitter(commit ImageCommitFunc) {
 	if r != nil {
 		r.canonicalCommit = commit
+	}
+}
+
+// SetMediaReader supplies the PostgreSQL identity reader. When it is absent
+// (legacy unit tests that only exercise the SQLite detail tables), the
+// identity methods keep their SQLite fallback. Production wiring always sets
+// it from the media PostgreSQL handle.
+func (r *ImagesRepository) SetMediaReader(reader MediaImageReader) {
+	if r != nil {
+		r.mediaReader = reader
 	}
 }
 

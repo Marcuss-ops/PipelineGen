@@ -43,6 +43,19 @@ func TestBuildPlans_EmptyInputRemainsNil(t *testing.T) {
 	require.Nil(t, BuildPlans(nil))
 }
 
+func TestBuildPostprocessorListSkipsStockForOverlayOnlyRuns(t *testing.T) {
+	output := scriptpkg.OutputSpec{
+		StockEnabled:  scriptpkg.ToggleEnabled,
+		StockBindings: []scriptpkg.StockBindingInput{{Index: 0, SceneID: "scene-0", FolderID: "folder-1"}},
+		Render:        scriptpkg.VideoRenderSpec{OverlaysOnly: true},
+	}
+	for _, name := range buildPostprocessorList(output) {
+		require.NotEqual(t, adapters.ProcessorStockBindings, name)
+	}
+	output.Render.OverlaysOnly = false
+	require.Contains(t, buildPostprocessorList(output), adapters.ProcessorStockBindings)
+}
+
 func TestBuildPlanPreservesStyleAndExtractionSelection(t *testing.T) {
 	plan := BuildPlan(scriptpkg.GenerationItemV2{
 		Style:  "documentary cinematic",

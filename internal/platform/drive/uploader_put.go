@@ -169,11 +169,40 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", label, lookupErr)
 		}
 		if len(lookup.Matches) > 1 {
-			label := req.Filename
-			if req.IdempotencyKey != "" {
-				label = truncate16(req.IdempotencyKey) + "..."
+			// A prior create race can leave several Drive files carrying the
+			// same idempotency key. The key folds in the content hash, so those
+			// files are copies of the same logical artifact. ConflictSkip only
+			// reads one of them; collapse the set deterministically instead of
+			// failing forever on a duplicate that no retry can remove. Any
+			// mutating policy (overwrite/rename) still fails closed because
+			// updating one sibling would leave the others ambiguous.
+			if req.ConflictPolicy == delivery.ConflictSkip && req.IdempotencyKey != "" {
+				duplicateCount := len(lookup.Matches)
+				existing := lookup.Matches[0]
+				for _, match := range lookup.Matches[1:] {
+					if match.FileID != "" && (existing.FileID == "" || match.FileID < existing.FileID) {
+						existing = match
+					}
+				}
+				if existing.FileID != "" {
+					lookup.Matches = []RemoteFile{existing}
+					if u.Log != nil {
+						u.Log.Warn("putFile: multiple Drive files share the idempotency key; reusing deterministic match",
+							zap.String("idempotency_key", truncate16(req.IdempotencyKey)+"..."),
+							zap.String("file_id", existing.FileID),
+							zap.Int("duplicate_count", duplicateCount),
+						)
+					}
+				} else {
+					return nil, fmt.Errorf("putFile: lookup existing file %q: %w", truncate16(req.IdempotencyKey)+"...", ErrAmbiguousDriveFile)
+				}
+			} else {
+				label := req.Filename
+				if req.IdempotencyKey != "" {
+					label = truncate16(req.IdempotencyKey) + "..."
+				}
+				return nil, fmt.Errorf("putFile: lookup existing file %q: %w", label, ErrAmbiguousDriveFile)
 			}
-			return nil, fmt.Errorf("putFile: lookup existing file %q: %w", label, ErrAmbiguousDriveFile)
 		}
 		var existing *RemoteFile
 		if len(lookup.Matches) == 1 {
@@ -541,41 +570,6 @@ func (u *Uploader) doPutFile(ctx context.Context, req PutFileRequest, existing *
 		MD5Checksum:  created.Md5Checksum,
 		Action:       PutActionCreated,
 	}, nil
-}
-
-// Files above 5 MiB use Drive's resumable protocol. The previous 16 MiB
-// threshold sent typical 6–7 MiB final-audio artifacts through multipart;
-// every retry then restarted the entire upload from byte zero. Resumable
-// uploads preserve the session and let Drive continue from the acknowledged
-// offset after a transient 502/timeout.
-// openUploadSource resolves the upload bytes and their length. A local path is
-// opened and stat'd; otherwise the remote SourceURL is streamed with the
-// caller's ExpectedSize (the resumable path needs a length).
-func (u *Uploader) openUploadSource(ctx context.Context, req PutFileRequest) (uploadSource, int64, error) {
-	if path := strings.TrimSpace(req.LocalPath); path != "" {
-		f, err := u.openReader(path)
-		if err != nil {
-			return nil, 0, fmt.Errorf("open local file: %w", err)
-		}
-		info, err := f.Stat()
-		if err != nil {
-			_ = f.Close()
-			return nil, 0, fmt.Errorf("stat local file: %w", err)
-		}
-		return f, info.Size(), nil
-	}
-	if strings.TrimSpace(req.SourceURL) == "" {
-		return nil, 0, fmt.Errorf("putFile: source url is required when no local path is set")
-	}
-	if req.ExpectedSize <= 0 {
-		return nil, 0, fmt.Errorf("putFile: a remote source requires the expected size")
-	}
-	return &httpObjectSource{
-		ctx:       ctx,
-		url:       req.SourceURL,
-		size:      req.ExpectedSize,
-		authToken: objectStoreTokenForURL(req.SourceURL),
-	}, req.ExpectedSize, nil
 }
 
 // renameWithTimestamp, setAppProperties, and truncate16 have moved

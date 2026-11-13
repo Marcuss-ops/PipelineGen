@@ -7,11 +7,11 @@ import (
 	"strings"
 )
 
-// dedupeCoTimedDateAnnotations removes the coarse year-only annotation when
-// the same spoken moment also has a full date. Both candidates otherwise get
-// independent five-second cards at the exact same time (for example "2011"
-// and "6 dicembre 2011"), making the text collide in the rendered video.
-// Dates at different speech positions remain separate cards.
+// dedupeCoTimedDateAnnotations removes a partial date annotation when the
+// same spoken moment also has a fuller surface. The NLP extractor emits both
+// "3 giugno 2007" and "3 giugno"/"giugno 2007" at the same certified start;
+// keeping all of them creates duplicate cards that collide and consume the
+// date lane. Dates at different speech positions remain separate cards.
 func dedupeCoTimedDateAnnotations(in []TimedAnnotation) []TimedAnnotation {
 	out := make([]TimedAnnotation, 0, len(in))
 	for _, candidate := range in {
@@ -19,27 +19,18 @@ func dedupeCoTimedDateAnnotations(in []TimedAnnotation) []TimedAnnotation {
 			out = append(out, candidate)
 			continue
 		}
-		start := candidate.StartUS
-		if start <= 0 {
-			start = candidate.StartMs * 1000
-		}
+		start := dateStartUS(candidate)
 		duplicate := -1
-		year := dateYear(candidate.Text)
-		if year != "" {
-			for i := range out {
-				prior := out[i]
-				if !strings.EqualFold(strings.TrimSpace(prior.Type), "DATE") {
-					continue
-				}
-				priorStart := prior.StartUS
-				if priorStart <= 0 {
-					priorStart = prior.StartMs * 1000
-				}
-				if priorStart == start && dateYear(prior.Text) == year {
-					duplicate = i
-					break
-				}
+		for i := range out {
+			prior := out[i]
+			if !strings.EqualFold(strings.TrimSpace(prior.Type), "DATE") {
+				continue
 			}
+			if dateStartUS(prior) != start || !dateSurfacesOverlap(candidate.Text, prior.Text) {
+				continue
+			}
+			duplicate = i
+			break
 		}
 		if duplicate < 0 {
 			out = append(out, candidate)
@@ -47,23 +38,97 @@ func dedupeCoTimedDateAnnotations(in []TimedAnnotation) []TimedAnnotation {
 		}
 		// Keep the more informative surface. Stable tie-breaking preserves the
 		// rank order supplied by the planner.
-		if len(strings.Fields(candidate.Text)) > len(strings.Fields(out[duplicate].Text)) {
+		if dateSurfaceFields(candidate.Text) > dateSurfaceFields(out[duplicate].Text) {
 			out[duplicate] = candidate
 		}
+		winner := out[duplicate]
+		// A single full date can supersede more than one partial annotation at
+		// the same start ("3 giugno" and "giugno 2007"); remove all of them.
+		kept := make([]TimedAnnotation, 0, len(out))
+		for i := range out {
+			prior := out[i]
+			if i != duplicate && strings.EqualFold(strings.TrimSpace(prior.Type), "DATE") &&
+				dateStartUS(prior) == start && dateSurfacesOverlap(prior.Text, winner.Text) {
+				continue
+			}
+			kept = append(kept, prior)
+		}
+		out = kept
 	}
 	return out
 }
 
-func dateYear(text string) string {
-	for _, field := range strings.Fields(text) {
-		if len(field) != 4 {
-			continue
-		}
-		if _, err := strconv.Atoi(field); err == nil {
-			return field
+func dateStartUS(date TimedAnnotation) int64 {
+	if date.StartUS > 0 {
+		return date.StartUS
+	}
+	return date.StartMs * 1000
+}
+
+// dateSurfacesOverlap reports whether two surfaces describe the same date at
+// the same spoken moment. A partial surface ("3 giugno") is a token subset of
+// the full one ("3 giugno 2007"); identical surfaces are duplicates too. The
+// year alone is deliberately not enough: "3 giugno 2007" and "4 giugno 2007"
+// share a year but are different dates.
+func dateSurfacesOverlap(a, b string) bool {
+	af, bf := dateSurfaceTokens(a), dateSurfaceTokens(b)
+	if len(af) == 0 || len(bf) == 0 {
+		return false
+	}
+	return tokenSubset(af, bf) || tokenSubset(bf, af)
+}
+
+func dateSurfaceTokens(text string) map[string]struct{} {
+	tokens := make(map[string]struct{})
+	for _, field := range strings.Fields(strings.ToLower(text)) {
+		field = strings.Trim(field, ".,;:!?()[]{}'\"")
+		if field != "" {
+			tokens[field] = struct{}{}
 		}
 	}
-	return ""
+	return tokens
+}
+
+func tokenSubset(a, b map[string]struct{}) bool {
+	if len(a) > len(b) {
+		return false
+	}
+	for token := range a {
+		if _, ok := b[token]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func dateSurfaceFields(text string) int { return len(dateSurfaceTokens(text)) }
+
+// dateSceneEndCap bounds a timeline date/time card to the owning scene. The
+// producer sets SceneInput.EndUS; a card that cannot keep at least two
+// readable seconds before the scene ends is dropped instead of bleeding into
+// the next scene. Other number cards (metrics) keep their independent lane.
+func dateSceneEndCap(date TimedAnnotation, sceneEndUS int64) (int64, bool) {
+	if !isTimelineDateCardType(date.Type) {
+		return 0, true
+	}
+	if sceneEndUS <= 0 {
+		return 0, true
+	}
+	start := dateStartUS(date)
+	if start >= sceneEndUS {
+		return 0, false
+	}
+	remaining := sceneEndUS - start
+	if remaining < minimumDateCardReadableUS {
+		return 0, false
+	}
+	return remaining, true
+}
+
+const minimumDateCardReadableUS int64 = 2_000_000
+
+func isTimelineDateCardType(entityType string) bool {
+	return NumberPresentationTemplateForEntityType(entityType) == "TIMELINE_DATE_CARD"
 }
 
 func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int, dateWindowCapUS ...int64) capmodel.OverlayItem {

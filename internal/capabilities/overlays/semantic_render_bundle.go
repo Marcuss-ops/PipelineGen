@@ -33,18 +33,27 @@ type SegmentSemanticProfile struct {
 // ResolvedEntity is source-grounded typed entity identity. Text is never
 // replaced by a normalized spelling in the evidence fields.
 type ResolvedEntity struct {
-	EntityID string `json:"entity_id"`
+	EntityID          string `json:"entity_id"`
+	CanonicalEntityID string `json:"canonical_entity_id,omitempty"`
 	// OccurrenceID is scene-scoped identity for a repeated canonical entity.
 	// Empty preserves the legacy one-card-per-canonical-entity projection.
-	OccurrenceID  string  `json:"occurrence_id,omitempty"`
-	Type          string  `json:"type"`
-	Text          string  `json:"text"`
-	CanonicalText string  `json:"canonical_text"`
-	Evidence      string  `json:"evidence"`
-	Start         int     `json:"start"`
-	End           int     `json:"end"`
-	Confidence    float64 `json:"confidence"`
-	SceneID       string  `json:"scene_id"`
+	OccurrenceID         string  `json:"occurrence_id,omitempty"`
+	Type                 string  `json:"type"`
+	Text                 string  `json:"text"`
+	CanonicalText        string  `json:"canonical_text"`
+	Evidence             string  `json:"evidence"`
+	Start                int     `json:"start"`
+	End                  int     `json:"end"`
+	Confidence           float64 `json:"confidence"`
+	SceneID              string  `json:"scene_id"`
+	ImageStatus          string  `json:"image_status,omitempty"`
+	ImageQuery           string  `json:"image_query,omitempty"`
+	ImageCandidateID     string  `json:"image_candidate_id,omitempty"`
+	ImageSelectionReason string  `json:"image_selection_reason,omitempty"`
+	ImageFailureReason   string  `json:"image_failure_reason,omitempty"`
+	ImageAssetID         string  `json:"image_asset_id,omitempty"`
+	ImageSHA256          string  `json:"image_sha256,omitempty"`
+	ImageDriveFileID     string  `json:"image_drive_file_id,omitempty"`
 }
 
 // BoundAsset is the only asset shape allowed to cross into rendering.

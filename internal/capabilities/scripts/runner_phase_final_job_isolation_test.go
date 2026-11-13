@@ -22,6 +22,10 @@ type blockingRenderEnqueuer struct {
 	release chan struct{}
 }
 
+func (e *blockingRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	return e.EnqueueChrononPlan(ctx, plan)
+}
+
 func (e *blockingRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.once.Do(func() { close(e.started) })
 	select {

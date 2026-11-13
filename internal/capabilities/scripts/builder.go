@@ -284,6 +284,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		EnableCharts:                  item.EnableCharts,
 		HeavyPhrasePriority:           item.HeavyPhrasePriority,
 		OverlayCategories:             scriptpkg.CloneOverlayCategories(item.OverlayCategories),
+		OverlayImages:                 append([]scriptpkg.OverlayImageAsset(nil), item.OverlayImages...),
 		IdempotencyKey:                idempotencyKey,
 		ForceRefresh:                  env.ForceRefresh,
 		FinalJob:                      env.FinalJob,
@@ -472,7 +473,7 @@ func applyBackgroundSelection(req *GenerateRequest, policy mediaregistry.Editing
 	if !backgroundSelectionIsBlank(req.Render.Background) {
 		return nil
 	}
-	plate, err := policy.SelectBackground(seed)
+	plate, err := policy.SelectBackgroundForChannel(seed, req.ChannelID)
 	if err != nil {
 		return fmt.Errorf("apply editing asset policy: background: %w", err)
 	}

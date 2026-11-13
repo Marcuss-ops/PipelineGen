@@ -45,7 +45,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	switch imageSearchMode {
 	case mediadomain.ImageSearchModeExplicitOnly:
 		manualImageExclusive = true
-	case mediadomain.ImageSearchModeAutomatic:
+	case mediadomain.ImageSearchModeAutomatic, mediadomain.ImageSearchModeExplicitThenFallback:
 		manualImageExclusive = false
 	case mediadomain.ImageSearchModeDisabled:
 		manualImageExclusive = false
@@ -185,7 +185,6 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		// supplied one.
 		imageQueries = nil
 	case imageSearchMode == mediadomain.ImageSearchModeExplicitOnly,
-		imageSearchMode == mediadomain.ImageSearchModeExplicitThenFallback && len(manualImageQueries) > 0,
 		imageSearchMode == "" && len(manualImageQueries) > 0:
 		// Manual searches are the caller's complete retrieval contract. No
 		// inferred entity query, semantic ladder or scene-sentence fallback
@@ -195,9 +194,10 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		// authorized every entry.
 		imageQueries = append([]string(nil), manualImageQueries...)
 	default:
-		if imageSearchMode != mediadomain.ImageSearchModeAutomatic {
-			imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
-		}
+		// Automatic identity/context discovery and caller-authored context
+		// searches are independent lanes. Only explicit_only grants the caller
+		// authority to suppress entity-derived queries.
+		imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
 		// A complete source sentence is a final provider fallback for scenes
 		// whose extracted entity terms are too generic (for example "wide
 		// pan"). It is still source-grounded and bounded by the same provider

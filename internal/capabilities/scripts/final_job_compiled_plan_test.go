@@ -415,6 +415,56 @@ func TestFinalJobCompiledPlanDerivesOverlayDurationFromEntryTiming(t *testing.T)
 	t.Fatal("compiled plan has no legacy overlay segment")
 }
 
+// TestFinalJobCompiledPlanHoldsLastFrameWhenAudioOutlastsStock pins the case
+// where AAC packet rounding makes the certified final audio one frame longer
+// than a stock timeline that already consumes the whole source file. The plan
+// must keep ONE whole-file stock segment and let the worker hold its last
+// displayed frame for the extra output frame; it must not invent a sub-window
+// stock segment (the Master only packet-copies whole stock files).
+func TestFinalJobCompiledPlanHoldsLastFrameWhenAudioOutlastsStock(t *testing.T) {
+	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	scenes := []map[string]any{{
+		"duration_seconds": 4.979,
+		"kind":             "stock",
+		"stock": map[string]any{
+			"asset_id": "stock-4979", "sha256": videoSHA, "size_bytes": int64(1000),
+			"duration_ms": int64(4979), "start_ms": int64(0),
+		},
+	}}
+	audio := FinalAudioReference{
+		DurationUS: 4_991_000, DurationMS: 4991, CopyEligible: true, FinalMix: true,
+		PlanSHA256: strings.Repeat("d", 64),
+	}
+	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(4991)}
+	raw, _, err := finalJobCompiledPlanPayload(scenes, nil, nil, audio, audioRef, 4_979_000)
+	if err != nil {
+		t.Fatalf("finalJobCompiledPlanPayload: %v", err)
+	}
+	var plan finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.DurationUS != 4_991_000 {
+		t.Fatalf("plan duration = %d, want the certified audio duration 4991000", plan.DurationUS)
+	}
+	if len(plan.VideoTracks) != 1 || len(plan.VideoTracks[0].Segments) != 1 {
+		t.Fatalf("video segments = %+v, want exactly one whole-file stock segment", plan.VideoTracks)
+	}
+	base := plan.VideoTracks[0].Segments[0]
+	if base.FrameCount != 120 || base.TimelineStartFrame != 0 {
+		t.Fatalf("stock segment = %+v, want 120 output frames at timeline 0 (last frame held)", base)
+	}
+	if base.SourceInUS != 0 || base.SourceDurationUS != 4_979_000 {
+		t.Fatalf("stock source window = %d + %d, want the whole file 0 + 4979000", base.SourceInUS, base.SourceDurationUS)
+	}
+	for _, asset := range plan.Assets {
+		if asset.AssetID == "stock-4979" && base.SourceInUS+base.SourceDurationUS > asset.DurationUS {
+			t.Fatalf("stock window %d + %d exceeds stock duration %d", base.SourceInUS, base.SourceDurationUS, asset.DurationUS)
+		}
+	}
+}
+
 func TestFinalJobCompiledPlanAlignsDurationToCertifiedAudio(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

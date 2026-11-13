@@ -23,6 +23,16 @@ func TestValidateContractTablesRejectsDuplicateDimensions(t *testing.T) {
 	}
 }
 
+func TestV1ResolverRejectsNonCanonicalFPS(t *testing.T) {
+	req := &RenderRequest{Output: &OutputSpec{
+		Contract: OutputContractVeloxAssemblyReadyV1,
+		Width:    1920, Height: 1080, FPSNum: 25, FPSDen: 1,
+	}}
+	if _, err := NewContractResolver().Resolve(context.Background(), req); err == nil || !errors.Is(err, ErrOutputContractMismatch) {
+		t.Fatalf("expected OUTPUT_CONTRACT_MISMATCH, got %v", err)
+	}
+}
+
 func TestV2ResolverRejectsNonCanonicalFPS(t *testing.T) {
 	req := &RenderRequest{Output: &OutputSpec{
 		Contract: OutputContractVeloxAssemblyReadyV2,

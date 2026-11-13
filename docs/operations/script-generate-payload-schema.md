@@ -237,12 +237,15 @@ animations. The chain hands off with `fly_under_fade`, which dips the framing
 down before revealing the next segment. Omission or zero keeps the existing
 scene policy.
 
-Entity image cards are grouped and timed automatically; there is no payload
-switch to opt out. Cards whose certified spoken anchors are five seconds or
-closer (same scene) render as ONE composite overlay with independent per-portrait
-motions, and every entity card's duration follows the spoken mention dynamically
-(mention + 0.5 s hold, clamped to 1–5 s). See
-`docs/operations/entity-overlay-composition.md` for the full contract.
+Entity image cards are admitted one identity at a time: each admitted entity
+yields at most one standalone `entity_image` item with one verified asset.
+Nearby overlays, including images, may be fused into an `image_chain` with one
+segment per image; a chain is not a composite and keeps each image's own motion
+and asset identity. Multi-layer composites are produced only from explicitly
+authored `MultiEntityGroups`, never inferred from nearby mentions. Every entity
+card's duration follows the spoken mention dynamically (mention + 0.5 s hold,
+clamped to 1–5 s). See `docs/operations/entity-overlay-composition.md` for the
+full contract.
 
 ```json
 {

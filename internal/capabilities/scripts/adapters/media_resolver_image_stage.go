@@ -154,26 +154,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			updatedSegments = append(updatedSegments, updated)
 			continue
 		}
-		// Pinned-media fast path (opt-in, see media_manifest_shim.go): when
-		// the manifest pins this scene/segment, discovery is complete by
-		// construction — offline-verified bytes, durable verdicts, zero
-		// provider calls. It wins over caches, the fan-out short circuit and
-		// force refresh alike (a pin is the operator's authoritative pick),
-		// and it never violates cache_only (no network in either path).
-		if pinned := p.pinnedInternetImageState(plan, updated); len(pinned) > 0 {
-			updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, pinned)
-			updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, pinned)
-			updated.Cache.InternetImages = MediaManifestCacheState
-			updated.Cache.InternetImagesProviderSearches = 0
-			updated.Cache.InternetImagesNewUploads = 0
-			updatedSegments = append(updatedSegments, updated)
-			if p.metrics != nil {
-				p.metrics.IncAssetCache("internet_images", true)
-			}
-			continue
-		}
 		entityPoolLookup := entityImagesEnabled && plan != nil && plan.MediaPlan.Extraction.EntityImages.PerScene()
-		catalogLimit := entityImageCatalogPoolSize
 		// Which queries this segment resolves and whether discovery already
 		// happened is one rule (identity beats topic, manual queries are always
 		// kept, a fan-out hit only covers contextual images). It lives in
@@ -183,6 +164,33 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 		if entityImagesEnabled {
 			entityQueries = scenePrimaryEntityQueries(input.SpecScene, sceneIdx, updated)
 		}
+		// Pinned-media fast path (opt-in, see media_manifest_shim.go): when
+		// the manifest pins this scene/segment, discovery is complete by
+		// construction — offline-verified bytes, durable verdicts, zero
+		// provider calls. It wins over caches, the fan-out short circuit and
+		// force refresh alike (a pin is the operator's authoritative pick),
+		// and it never violates cache_only (no network in either path).
+		//
+		// A pin is a CONTEXTUAL discovery verdict: it never covers the
+		// entity-image lane. When the scene asks for per-scene entity
+		// portraits, the pinned candidate is preserved as the contextual
+		// selection and the entity queries still run; otherwise the pin would
+		// satisfy discovery while every person overlay remained imageless.
+		if pinned := p.pinnedInternetImageState(plan, updated); len(pinned) > 0 {
+			updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, pinned)
+			updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, pinned)
+			updated.Cache.InternetImages = MediaManifestCacheState
+			updated.Cache.InternetImagesProviderSearches = 0
+			updated.Cache.InternetImagesNewUploads = 0
+			if !entityPoolLookup || len(entityQueries) == 0 {
+				updatedSegments = append(updatedSegments, updated)
+				if p.metrics != nil {
+					p.metrics.IncAssetCache("internet_images", true)
+				}
+				continue
+			}
+		}
+		catalogLimit := entityImageCatalogPoolSize
 		manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: updated.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
 		discovery := planInternetImageDiscovery(
 			updated.Insights.ImageQueries, entityQueries, manualImageQueries, entityImagesEnabled,

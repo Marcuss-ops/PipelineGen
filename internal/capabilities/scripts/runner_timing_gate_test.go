@@ -144,6 +144,10 @@ type recordingOverlayRenderEnqueuer struct {
 	plan *capmodel.OverlayPlan
 }
 
+func (e *recordingOverlayRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	return e.EnqueueChrononPlan(ctx, plan)
+}
+
 func (e *recordingOverlayRenderEnqueuer) EnqueueChrononPlan(_ context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.mu.Lock()
 	cp := plan

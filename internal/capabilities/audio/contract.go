@@ -336,6 +336,19 @@ var (
 	ErrInvalidAudioPlan = errors.New("invalid compiled audio plan")
 )
 
+func hasFixedMediaAudioPolicy(intents []AudioIntent, durationUS int64) bool {
+	if hasProtectedOriginalAudio(intents) {
+		return true
+	}
+	for _, intent := range intents {
+		if intent.Mode == AudioSilence && intent.TimelineOffsetUS == 0 && intent.TimelineDurationUS == durationUS &&
+			intent.SourceDurationUS == 0 && intent.ClipAssetID == "" && !intent.UseOriginalAudio && !intent.ProtectedOriginalAudio {
+			return true
+		}
+	}
+	return false
+}
+
 func (t CanonicalTimeline) Validate() error {
 	if t.Version != TimelineVersion || t.DurationUS <= 0 || len(t.Segments) == 0 {
 		return fmt.Errorf("%w: version or duration", ErrInvalidTimeline)
@@ -364,8 +377,8 @@ func (t CanonicalTimeline) Validate() error {
 			return fmt.Errorf("%w: segment %d video does not cover scene duration", ErrInvalidTimeline, i)
 		}
 		intents := s.EffectiveAudioIntents()
-		if s.FixedMedia && !hasProtectedOriginalAudio(intents) {
-			return fmt.Errorf("%w: segment %d fixed media lacks protected original audio", ErrInvalidTimeline, i)
+		if s.FixedMedia && !hasFixedMediaAudioPolicy(intents, s.DurationUS) {
+			return fmt.Errorf("%w: segment %d fixed media lacks a valid original-audio or silence policy", ErrInvalidTimeline, i)
 		}
 		for _, intent := range intents {
 			if intent.SourceInUS < 0 || intent.SourceDurationUS < 0 || intent.TimelineOffsetUS < 0 || intent.TimelineOffsetUS > s.DurationUS || intent.TimelineDurationUS < 0 || intent.TimelineDurationUS > s.DurationUS-intent.TimelineOffsetUS || (intent.Mode == AudioClip && intent.SourceDurationUS <= 0) {

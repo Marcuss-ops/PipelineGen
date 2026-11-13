@@ -530,3 +530,36 @@ func TestCoalescePreservesDistinctMotionsPerChain(t *testing.T) {
 		seen[seg.MotionID] = true
 	}
 }
+
+// A sequential image chain adds handoff gaps and minimum holds, so a run that
+// fits the scene as standalone windows can overflow once fused. The coalescer
+// must keep the standalone windows when the projected chain crosses the scene
+// end, and still fuse the same run when the scene has room.
+func TestCoalesceDoesNotFuseImagesPastSceneEnd(t *testing.T) {
+	items := make([]OverlayItem, 0, 4)
+	for i := 0; i < 4; i++ {
+		item := chainFixture("image", "s1", "", int64(i)*5_000_000, 5_000_000, fmt.Sprintf("image_motion_%d", i))
+		item.TemplateID = "IMAGE_OVERLAY"
+		item.Text = ""
+		item.AssetRefs = []OverlayAssetRef{{AssetID: fmt.Sprintf("asset-%d", i), SHA256: "hash"}}
+		items = append(items, item)
+	}
+
+	got := CoalesceChainedOverlaysWithSceneEnds(items, map[string]int{"chain_enabled": 1}, map[string]int64{"s1": 20_000_000})
+	if len(got) != len(items) {
+		t.Fatalf("overflowing run fused into %d items, want %d standalone: %+v", len(got), len(items), got)
+	}
+	for i, item := range got {
+		if IsChainItemKind(item.Kind) {
+			t.Fatalf("item %d = %q, want standalone image", i, item.Kind)
+		}
+	}
+
+	got = CoalesceChainedOverlaysWithSceneEnds(items, map[string]int{"chain_enabled": 1}, map[string]int64{"s1": 40_000_000})
+	if len(got) != 1 || got[0].Kind != KindImageChain {
+		t.Fatalf("run with scene room = %+v, want one image_chain", got)
+	}
+	if got[0].EndUSValue() > 40_000_000 {
+		t.Fatalf("image chain ends at %dus, past the 40s scene", got[0].EndUSValue())
+	}
+}
