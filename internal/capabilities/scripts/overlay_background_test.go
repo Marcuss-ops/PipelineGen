@@ -1,7 +1,9 @@
 package scriptgeneration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"testing"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -45,6 +47,54 @@ func TestOverlayStyleProjectsImageBackdropOnlyForStandaloneImages(t *testing.T) 
 	}
 	if _, ok := items[1].Params["image_backdrop"]; ok {
 		t.Fatalf("composite image must not receive image_backdrop: %#v", items[1].Params)
+	}
+}
+
+func TestImageBackdropGridPayloadJSONProjectsToPlan(t *testing.T) {
+	raw := []byte(`{
+		"version": 2,
+		"preset": "custom",
+		"items": [{
+			"source": {"type": "text", "topic": "image backdrop", "source_text": "Una sola fotografia."},
+			"script_params": {"target_words": 100},
+			"overlay_style": {"image": {
+				"bounded": true, "fit": "contain",
+				"backdrop": {"zoom": 1.2, "blur_px": 24,
+					"grid": {"style": "lines", "color": "#7FA8C8", "spacing_px": 80, "line_width_px": 1.5, "opacity": 0.35}}
+			}}
+		}]
+	}`)
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var envelope scriptpkg.GenerationEnvelopeV2
+	if err := decoder.Decode(&envelope); err != nil {
+		t.Fatalf("decode script.generate payload: %v", err)
+	}
+	if err := envelope.Validate(); err != nil {
+		t.Fatalf("validate script.generate payload: %v", err)
+	}
+	if len(envelope.Items) != 1 || envelope.Items[0].OverlayStyle == nil || envelope.Items[0].OverlayStyle.Image == nil {
+		t.Fatalf("payload did not decode overlay_style.image: %+v", envelope.Items)
+	}
+	if err := envelope.Items[0].OverlayStyle.Validate(); err != nil {
+		t.Fatalf("validate overlay_style: %v", err)
+	}
+
+	items := []capmodel.OverlayItem{{ID: "solo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}}}
+	applyOverlayStyleToItems(items, OverlayCanvasSpec{Style: envelope.Items[0].OverlayStyle})
+	backdrop, ok := items[0].Params["image_backdrop"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload did not project image_backdrop: %#v", items[0].Params)
+	}
+	if backdrop["zoom"] != 1.2 || backdrop["blur_px"] != 24.0 {
+		t.Fatalf("backdrop = %#v, want zoom 1.2 / blur 24", backdrop)
+	}
+	grid, ok := backdrop["grid"].(map[string]any)
+	if !ok {
+		t.Fatalf("backdrop grid missing: %#v", backdrop)
+	}
+	if grid["style"] != "lines" || grid["color"] != "#7FA8C8" || grid["spacing_px"] != 80.0 || grid["line_width_px"] != 1.5 || grid["opacity"] != 0.35 {
+		t.Fatalf("grid payload projection = %#v", grid)
 	}
 }
 
