@@ -8,6 +8,8 @@ import (
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
 
@@ -60,4 +62,77 @@ func dumpOverlayGateDebug(result *GenerateResult, planID string) {
 		return
 	}
 	zap.L().Warn("overlay gate debug dump written", zap.String("path", path), zap.Int("bytes", len(data)))
+}
+
+// overlayStatusRequest copies the caller-visible overlay contract before
+// planning, so a failed run still explains what was asked for.
+func overlayStatusRequest(req GenerateRequest) *overlaystatus.Request {
+	status := &overlaystatus.Request{
+		EntityImages:     req.MediaPlan.Extraction.EntityImages.Enabled,
+		EntityTypes:      append([]string(nil), req.MediaPlan.Extraction.EntityImages.EntityTypes...),
+		EntityScope:      req.MediaPlan.Extraction.EntityImages.Scope,
+		MaxImageOverlays: req.MaxImageOverlays,
+		FinalJob:         req.FinalJob,
+	}
+	if req.OverlayBackground != nil {
+		status.BackgroundKind = req.OverlayBackground.Kind
+		status.BackgroundAssetID = req.OverlayBackground.AssetID
+		status.BackgroundFit = req.OverlayBackground.Fit
+	}
+	return status
+}
+
+// overlayStatusBackground projects a resolved asset, or the failure that
+// prevented resolution, without inventing a local path or hash.
+func overlayStatusBackground(assetID string, asset *scriptpkg.OverlayBackgroundSpec, failure error) *overlaystatus.Background {
+	if assetID == "" && asset == nil && failure == nil {
+		return nil
+	}
+	status := &overlaystatus.Background{AssetID: assetID}
+	if asset != nil {
+		if asset.AssetID != "" {
+			status.AssetID = asset.AssetID
+		}
+		status.LocalPath = asset.LocalPath
+		status.URL = asset.URL
+		status.SHA256 = asset.SHA256
+		status.MediaType = asset.MediaType
+		status.Resolved = failure == nil
+	}
+	if failure != nil {
+		status.Error = failure.Error()
+	}
+	return status
+}
+
+// overlayStatusPlanSummary keeps the status document compact while preserving
+// the plan shape and the two image lanes that decide whether admission worked.
+func overlayStatusPlanSummary(plan *capmodel.OverlayPlan) *overlaystatus.PlanSummary {
+	if plan == nil {
+		return nil
+	}
+	summary := &overlaystatus.PlanSummary{
+		PlanID:     plan.PlanID,
+		PlanSHA256: plan.Fingerprint,
+		Items:      len(plan.Items),
+		ByKind:     make(map[string]int),
+	}
+	for _, item := range plan.Items {
+		kind := strings.ToLower(strings.TrimSpace(item.Kind))
+		if kind == "" {
+			kind = strings.ToLower(strings.TrimSpace(item.TemplateID))
+		}
+		if kind == "" {
+			kind = "unknown"
+		}
+		summary.ByKind[kind]++
+		imageItem := len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0 || strings.Contains(kind, "image") || kind == "logo" || kind == "product"
+		if imageItem {
+			summary.ImageItems++
+		}
+		if kind == "entity_image" || (strings.TrimSpace(item.EntityID) != "" && (len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0)) {
+			summary.EntityImageItems++
+		}
+	}
+	return summary
 }

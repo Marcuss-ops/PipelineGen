@@ -51,12 +51,13 @@ func filterPersonEntityImageCandidatesMeasured(identity entitycatalog.PersonIden
 }
 
 func persistEntityImageCatalogCandidatesMeasured(ctx context.Context, repo entitycatalog.Repository, identity entitycatalog.PersonIdentity, results []scriptpkg.SegmentAssetCandidate, metrics any) error {
+	accepted := filterPersonEntityImageCandidates(identity, results)
 	err := persistEntityImageCatalogCandidates(ctx, repo, identity, results)
 	outcome := scriptmetrics.EntityImageOutcomeSuccess
 	if err != nil {
 		outcome = scriptmetrics.EntityImageOutcomeFailure
 	} else {
-		addEntityImageCatalogCandidates(metrics, scriptmetrics.EntityImageStageCatalogPersist, scriptmetrics.EntityImageOutcomeAccepted, len(results))
+		addEntityImageCatalogCandidates(metrics, scriptmetrics.EntityImageStageCatalogPersist, scriptmetrics.EntityImageOutcomeAccepted, len(accepted))
 	}
 	incEntityImageCatalogLifecycle(metrics, scriptmetrics.EntityImageStageCatalogPersist, outcome)
 	return err

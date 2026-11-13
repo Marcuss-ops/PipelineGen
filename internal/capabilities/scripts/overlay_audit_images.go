@@ -165,10 +165,24 @@ func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverla
 			}
 		}
 	}
+	// Audit one planned identity, not every spoken occurrence of it. The
+	// planner works per canonical identity (or per scene occurrence when the
+	// per-scene contract is on); counting all 18 mentions of five people as 18
+	// image promises made the gate impossible even with perfect media.
+	groups := make(map[string][]OverlayAuditEntity)
+	order := make([]string, 0, len(audit.DetectedEntities))
 	for _, entity := range audit.DetectedEntities {
 		if !entityExpectsImage(entity) {
 			continue
 		}
+		key := auditEntityImageGroupKey(entity)
+		if _, exists := groups[key]; !exists {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], entity)
+	}
+	for _, key := range order {
+		entity := bestAuditImageEntity(groups[key])
 		info.Selected++
 		reason := entityImageOutcome(entity, verified)
 		info.Reasons[reason]++
@@ -202,15 +216,78 @@ func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverla
 // are not image promises: counting them here made final jobs fail even when
 // every planned entity-image overlay had a verified asset.
 func entityExpectsImage(entity OverlayAuditEntity) bool {
-	if entity.ImageRequired {
+	// A planned image is a promise even when it is nested in a chain: the
+	// top-level item has no EntityRef to set SelectedForVideo, but the plan
+	// still carries this entity's bytes.
+	if strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned") {
 		return true
 	}
 	if !entity.SelectedForVideo {
 		return false
 	}
+	if entity.ImageRequired {
+		return true
+	}
 	for _, kind := range entity.PlannedKinds {
 		kind = strings.ToLower(strings.TrimSpace(kind))
 		if strings.Contains(kind, "image") {
+			return true
+		}
+	}
+	return false
+}
+
+// auditEntityImageGroupKey is the planner's coverage unit: one scene-scoped
+// occurrence in per-scene mode, otherwise one canonical identity. The empty
+// OccurrenceID is the run-level contract (one card per identity).
+func auditEntityImageGroupKey(entity OverlayAuditEntity) string {
+	if occurrence := strings.TrimSpace(entity.OccurrenceID); occurrence != "" {
+		return occurrence
+	}
+	if canonical := strings.TrimSpace(entity.CanonicalEntityID); canonical != "" {
+		return canonical
+	}
+	return strings.TrimSpace(entity.ID)
+}
+
+func bestAuditImageEntity(entities []OverlayAuditEntity) OverlayAuditEntity {
+	best := entities[0]
+	for _, candidate := range entities[1:] {
+		if auditImageEntityRank(candidate) > auditImageEntityRank(best) {
+			best = candidate
+		}
+	}
+	return best
+}
+
+func auditImageEntityRank(entity OverlayAuditEntity) int {
+	switch strings.ToLower(strings.TrimSpace(entity.ImageStatus)) {
+	case "planned":
+		if entity.HasVerifiedImage {
+			return 4
+		}
+		return 3
+	case "verified_asset_not_planned":
+		return 2
+	case "planned_without_verified_asset":
+		return 1
+	default:
+		return 0
+	}
+}
+
+// auditEntityHasPlannedImageCard reports whether the planner emitted an
+// image-bearing card for this identity. A text-only entity card is the
+// fallback the planner chose when no image was available, so it is not an
+// image promise and must never fail the strict image gate. Only a planned
+// image (top-level or nested in a chain) is a promise to bind verified bytes.
+func auditEntityHasPlannedImageCard(entity OverlayAuditEntity) bool {
+	if strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned") {
+		return true
+	}
+	for _, kind := range entity.PlannedKinds {
+		kind = strings.ToLower(strings.TrimSpace(kind))
+		if kind == "entity_image" || strings.Contains(kind, "image") {
 			return true
 		}
 	}
@@ -239,26 +316,34 @@ func applyRequestedEntityImageContract(audit *OverlayAudit, bundle *capabilityov
 		admitted = admittedSets[0]
 	}
 	for i := range audit.DetectedEntities {
-		entityType := strings.ToUpper(strings.TrimSpace(audit.DetectedEntities[i].Type))
+		entity := &audit.DetectedEntities[i]
+		entityType := strings.ToUpper(strings.TrimSpace(entity.Type))
 		_, imageRequired := wanted[entityType]
+		// Only an image card the planner actually emitted is an image promise.
+		// A text card is the deliberate degradation path, not a missing image;
+		// counting it here made the gate demand bytes for a fallback the plan
+		// chose and turned every unverified identity into a false failure.
+		if imageRequired && !auditEntityHasPlannedImageCard(*entity) {
+			imageRequired = false
+		}
 		// The semantic production plan is the run-level admission decision for
 		// identity imagery. When it deliberately excluded an identity from
 		// media, the resolver drops its image card and the audit must not turn
 		// that policy into a missing-image failure. A planned image is still
 		// audited: once the plan carries bytes, the Drive contract must hold.
-		if imageRequired && len(admitted) > 0 && audit.DetectedEntities[i].ImageStatus != "planned" {
-			surface := normalizeIdentitySurface(firstNonEmptyAuditValue(audit.DetectedEntities[i].Text, audit.DetectedEntities[i].CanonicalText))
+		if imageRequired && len(admitted) > 0 && !strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned") {
+			surface := normalizeIdentitySurface(firstNonEmptyAuditValue(entity.Text, entity.CanonicalText))
 			if _, ok := admitted[surface]; !ok {
 				imageRequired = false
 			}
 		}
-		audit.DetectedEntities[i].ImageRequired = imageRequired
-		audit.DetectedEntities[i].ImageDriveRequired = requireDrive && audit.DetectedEntities[i].ImageRequired
+		entity.ImageRequired = imageRequired
+		// upload_to_drive applies to acquired assets. A reviewed local registry
+		// asset is already producer-local and content-addressed; its empty Drive
+		// id is not an upload failure.
+		entity.ImageDriveRequired = requireDrive && imageRequired && !entity.ImageLocalVerified
 	}
 	audit.EntityImages = buildOverlayAuditEntityImages(audit, bundle, plan)
-	if audit.EntityImages != nil {
-		audit.EntityImages.Required = true
-	}
 }
 
 // entityImageOutcome maps the audit's image_status onto the gate vocabulary.
@@ -271,13 +356,13 @@ func entityImageOutcome(entity OverlayAuditEntity, verified map[string]bool) str
 		EntityImageReasonBindingMissing, EntityImageReasonSegmentMissing, EntityImageReasonNotMaterialized:
 		return strings.ToUpper(strings.TrimSpace(entity.ImageFailureReason))
 	}
-	if entity.ImageDriveRequired && entity.ImageStatus == "planned" && strings.TrimSpace(entity.ImageDriveFileID) == "" {
+	if entity.ImageDriveRequired && entity.ImageStatus == "planned" && strings.TrimSpace(entity.ImageDriveFileID) == "" && !entity.ImageLocalVerified {
 		return EntityImageReasonUploadFailed
 	}
 	if entity.ImageRequired && !entity.SelectedForVideo && entity.ImageStatus == "missing" {
 		return EntityImageReasonNotSelected
 	}
-	if !verified[entity.ID] && entity.ImageStatus == "planned" {
+	if !verified[entity.ID] && entity.ImageStatus == "planned" && !entity.ImageLocalVerified {
 		return EntityImageReasonUnverifiedBound
 	}
 	switch entity.ImageStatus {
@@ -286,7 +371,10 @@ func entityImageOutcome(entity OverlayAuditEntity, verified map[string]bool) str
 	case "planned_without_verified_asset":
 		return EntityImageReasonUnverified
 	case "verified_asset_not_planned":
-		return EntityImageReasonBindingMissing
+		// The asset exists and is verified; the planner simply did not
+		// select this occurrence for a card. That is an editorial choice,
+		// not a missing binding, so it must never fail the strict gate.
+		return EntityImageReasonNotSelected
 	}
 	if verified[entity.ID] {
 		return EntityImageReasonBindingMissing
@@ -361,7 +449,7 @@ func enforceEntityImageGate(audit *OverlayAudit) error {
 		reasons = append(reasons, fmt.Sprintf("%s=%d", reason, count))
 	}
 	sort.Strings(reasons)
-	return fmt.Errorf("%w: %d of %d selected entities have no bound image (%s); reasons: %s",
+	return fmt.Errorf("%w: %d of %d planned entity-image promises have no bound image (%s); reasons: %s",
 		ErrEntityImageGate, info.Missing, info.Selected,
 		strings.Join(names, ", "), strings.Join(reasons, ", "))
 }

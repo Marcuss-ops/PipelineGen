@@ -101,3 +101,37 @@ func TestDuckDuckGoProviderEmptyBackendResponseIsControlled(t *testing.T) {
 		t.Fatalf("Search returned %d results, want 0", len(results))
 	}
 }
+
+type duckDuckGoLimitBridge struct {
+	duckDuckGoBridgeStub
+	gotLimit int
+}
+
+func (b *duckDuckGoLimitBridge) SearchDDGImageCandidatesMany(_ context.Context, _ string, limit int) []RetrievalSearchResult {
+	b.gotLimit = limit
+	return nil
+}
+
+func TestDuckDuckGoProviderHonorsRequestedLimit(t *testing.T) {
+	cases := []struct {
+		name      string
+		requested int
+		want      int
+	}{
+		{name: "explicit discovery budget", requested: 20, want: 20},
+		{name: "provider default", requested: 0, want: 10},
+		{name: "hard ceiling", requested: 99, want: 50},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bridge := &duckDuckGoLimitBridge{}
+			provider := NewDuckDuckGoProvider(bridge, nil, zap.NewNop())
+			if _, err := provider.Search(context.Background(), "red fox", RetrievalSearchOptions{Limit: tc.requested}); err != nil {
+				t.Fatal(err)
+			}
+			if bridge.gotLimit != tc.want {
+				t.Fatalf("bridge limit = %d, want %d", bridge.gotLimit, tc.want)
+			}
+		})
+	}
+}

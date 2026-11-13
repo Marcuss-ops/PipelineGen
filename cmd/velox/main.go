@@ -62,6 +62,8 @@ func run(args []string) int {
 		return cmdReplay(rest)
 	case "download":
 		return cmdDownload(rest)
+	case "download-final":
+		return cmdDownloadFinal(rest)
 	case "search":
 		return cmdSearch(rest)
 	case "jobs":

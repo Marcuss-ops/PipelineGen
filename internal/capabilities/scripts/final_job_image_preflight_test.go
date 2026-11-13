@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
@@ -89,6 +90,47 @@ func TestFinalJobImagePreflight_VerifiedAssetsAdmitted(t *testing.T) {
 	items[0].AssetRefs[0].LocalPath = localPath
 	if err := finalJobImagePreflight(items, nil, false); err != nil {
 		t.Fatalf("verified image assets must be admitted: %v", err)
+	}
+}
+
+func TestFinalJobImagePreflight_RetriesTransientURL(t *testing.T) {
+	remoteBytes, remoteSHA := preflightPNGBytes(t)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(remoteBytes)
+	}))
+	defer server.Close()
+	item := imagePreflightItem("img-retry", "entity_image", remoteSHA, server.URL+"/image.png")
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{item}, nil, false); err != nil {
+		t.Fatalf("a transient first failure must be retried: %v", err)
+	}
+	if calls.Load() < 2 {
+		t.Fatalf("preflight made %d request(s), want at least 2", calls.Load())
+	}
+}
+
+func TestFinalJobImagePreflight_FallsBackFromStaleLocalPath(t *testing.T) {
+	// A reconciled catalog can leave an old local copy beside a newer Drive
+	// object. The stale local bytes must not reject the verified remote asset.
+	remoteBytes, remoteSHA := preflightPNGBytes(t)
+	stalePath := filepath.Join(t.TempDir(), "stale.png")
+	if err := os.WriteFile(stalePath, []byte("stale local cache"), 0o600); err != nil {
+		t.Fatalf("write stale local cache: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(remoteBytes)
+	}))
+	defer server.Close()
+	item := imagePreflightItem("img-stale-local", "entity_image", remoteSHA, server.URL+"/image.png")
+	item.AssetRefs[0].LocalPath = stalePath
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{item}, nil, false); err != nil {
+		t.Fatalf("a stale local path must fall back to the verified URL: %v", err)
 	}
 }
 
@@ -177,6 +219,7 @@ func TestFinalJobImagePreflight_ClipSceneCardsExcluded(t *testing.T) {
 // after a full remote attempt.
 func TestFinalJobEntityImageGateRejectsPartialCoverage(t *testing.T) {
 	audit := &OverlayAudit{EntityImages: &OverlayAuditEntityImages{
+		Required: true,
 		Selected: 3,
 		Bound:    3,
 		Reasons:  map[string]int{EntityImageReasonBound: 3},
@@ -184,7 +227,7 @@ func TestFinalJobEntityImageGateRejectsPartialCoverage(t *testing.T) {
 	if err := finalJobEntityImageGate(audit, true); err != nil {
 		t.Fatalf("fully bound audit must pass: %v", err)
 	}
-	zeroAudit := &OverlayAudit{EntityImages: &OverlayAuditEntityImages{Selected: 0}}
+	zeroAudit := &OverlayAudit{EntityImages: &OverlayAuditEntityImages{Required: true, Selected: 0}}
 	if err := finalJobEntityImageGate(zeroAudit, true); err == nil {
 		t.Fatal("requested images with zero selected entity occurrences must fail closed (0/0 is not a pass)")
 	}
@@ -199,6 +242,30 @@ func TestFinalJobEntityImageGateRejectsPartialCoverage(t *testing.T) {
 	}
 	if err := finalJobEntityImageGate(audit, false); err != nil {
 		t.Fatalf("a run that did not request images must not be gated: %v", err)
+	}
+}
+
+// TestFinalJobEntityImageGateIsOptIn pins the r41h regression: a plan that
+// already converted unverified identities to text cards must pass the default
+// policy, even when the audit reports them as missing image promises. The
+// strict failure belongs only to VELOX_REQUIRE_ENTITY_IMAGES.
+func TestFinalJobEntityImageGateIsOptIn(t *testing.T) {
+	audit := &OverlayAudit{EntityImages: &OverlayAuditEntityImages{
+		Required: false,
+		Selected: 16,
+		Bound:    6,
+		Missing:  10,
+		Reasons: map[string]int{
+			EntityImageReasonBound:        6,
+			EntityImageReasonUploadFailed: 10,
+		},
+	}}
+	if err := finalJobEntityImageGate(audit, true); err != nil {
+		t.Fatalf("default text-card fallback policy must not run the strict gate: %v", err)
+	}
+	audit.EntityImages.Required = true
+	if err := finalJobEntityImageGate(audit, true); err == nil {
+		t.Fatal("strict gate must fail once the operator opts in")
 	}
 }
 

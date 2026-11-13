@@ -24,6 +24,7 @@ import (
 
 	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -157,9 +158,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 	// All backends share one label-normalization pass before policy filtering,
 	// deduplication and projection. This keeps PER/ORG/LOC and backend-specific
 	// spellings from changing downstream behavior.
-	for i := range entities {
-		entities[i].Type = scriptpkg.EntityType(scriptpkg.NormalizeAnnotationType(string(entities[i].Type)))
-	}
+	normalizeVisualEntityTypes(entities)
 	if extraction.HasCategoryOnlyIncludes() {
 		filtered := make([]VisualEntity, 0, len(entities))
 		for _, entity := range entities {
@@ -321,6 +320,17 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 // before the entity/image fanout. VisualNER may return both a canonical name
 // and a sentence surface such as "While Dolly Parton's"; those are one
 // person, hence one image query and one overlay.
+// normalizeVisualEntityTypes corrects the extractor's PERSON default when the
+// surface itself is a strong place or organisation name. The correction stays
+// on the Go projection boundary so the entity timeline, annotations and image
+// queries all consume the same kind.
+func normalizeVisualEntityTypes(entities []VisualEntity) {
+	for i := range entities {
+		corrected := entitytype.CorrectSurfaceType(entities[i].Text, string(entities[i].Type))
+		entities[i].Type = scriptpkg.EntityType(scriptpkg.NormalizeAnnotationType(corrected))
+	}
+}
+
 func categoryIncludesImageableIdentity(policy mediadomain.MediaExtractionPolicy) bool {
 	// Broad entities includes named identities; a value selector added beside
 	// it must not suppress their image lane. Category-only value requests stay

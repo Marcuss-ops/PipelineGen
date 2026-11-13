@@ -49,14 +49,15 @@ func (p *DuckDuckGoProvider) Healthy(_ context.Context) error {
 	return nil
 }
 
-func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
+func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, opts RetrievalSearchOptions) ([]RetrievalSearchResult, error) {
 	if p == nil || p.bridge == nil || strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
+	limit := duckDuckGoSearchLimit(opts)
 	if many, ok := p.bridge.(interface {
 		SearchDDGImageCandidatesMany(context.Context, string, int) []RetrievalSearchResult
 	}); ok {
-		results := many.SearchDDGImageCandidatesMany(ctx, query, 10)
+		results := many.SearchDDGImageCandidatesMany(ctx, query, limit)
 		if len(results) == 0 {
 			if err := p.challengeError(); err != nil {
 				return nil, err
@@ -74,7 +75,7 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 	if many, ok := p.bridge.(interface {
 		SearchDDGWideMany(context.Context, string, int) []string
 	}); ok {
-		urls := many.SearchDDGWideMany(ctx, query, 10)
+		urls := many.SearchDDGWideMany(ctx, query, limit)
 		if len(urls) == 0 {
 			if err := p.challengeError(); err != nil {
 				return nil, err
@@ -107,6 +108,20 @@ func (p *DuckDuckGoProvider) Search(ctx context.Context, query string, _ Retriev
 		License:    "Unknown",
 		Author:     "Unknown",
 	}}, nil
+}
+
+// duckDuckGoSearchLimit keeps the provider contract aligned with the
+// retrieval caller. The old implementation always asked for ten results,
+// silently ignoring a larger per-entity discovery budget.
+func duckDuckGoSearchLimit(opts RetrievalSearchOptions) int {
+	limit := opts.Limit
+	if limit <= 0 {
+		return 10
+	}
+	if limit > 50 {
+		return 50
+	}
+	return limit
 }
 
 // challengeError turns an empty answer caused by an anti-bot cooldown into a

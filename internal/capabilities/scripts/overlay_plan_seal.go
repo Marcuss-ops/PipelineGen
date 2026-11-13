@@ -11,8 +11,11 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
+	"go.uber.org/zap"
+
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/logging"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -136,24 +139,93 @@ func entityVariationSeedForCanvas(canvas OverlayCanvasSpec) string {
 // third below the portrait. An entity without an indexed asset is returned
 // unchanged (text-only card).
 func attachEntityCardAsset(item capmodel.OverlayItem, media *capabilityentities.EntityMediaResolver, canonicalByStable map[string]string, planID string) capmodel.OverlayItem {
-	lookupID := canonicalByStable[item.ID]
-	if lookupID == "" {
-		lookupID = canonicalByStable[item.EntityID]
-	}
-	if lookupID == "" {
+	if media == nil {
+		logEntityCardMediaMiss(item, "MEDIA_INDEX_MISS", "resolver is nil", "")
 		return item
 	}
-	ref, err := media.ResolveBest(lookupID)
-	if err != nil {
+	lookupIDs := entityCardLookupIDs(item, canonicalByStable)
+	var lastErr error
+	var lastLookup string
+	for _, lookupID := range lookupIDs {
+		ref, err := media.ResolveBest(lookupID)
+		if err != nil {
+			lastErr, lastLookup = err, lookupID
+			continue
+		}
+		// A catalog row without a fetchable URL is not renderable by Chronon.
+		// Keep the entity card text-only until the asset binding is complete;
+		// emitting a hash-only ref would make RenderingGen fail later while
+		// materializing an impossible logical path.
+		if strings.TrimSpace(ref.URL) == "" || strings.TrimSpace(ref.SHA256) == "" || strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") {
+			lastErr, lastLookup = fmt.Errorf("resolved asset has no renderable URL or SHA-256"), lookupID
+			continue
+		}
+		return promoteEntityCardToImage(item, ref, lookupID, planID)
+	}
+	if lastErr != nil {
+		logEntityCardMediaMiss(item, "ASSET_UNMATERIALIZED", lastErr.Error(), lastLookup)
 		return item
 	}
-	// A catalog row without a fetchable URL is not renderable by Chronon.
-	// Keep the entity card text-only until the asset binding is complete;
-	// emitting a hash-only ref would make RenderingGen fail later while
-	// materializing an impossible logical path.
-	if strings.TrimSpace(ref.URL) == "" || strings.TrimSpace(ref.SHA256) == "" || strings.HasPrefix(strings.TrimSpace(ref.URL), "assets/semantic/") || strings.HasPrefix(strings.TrimSpace(ref.URL), "semantic/") {
-		return item
+	logEntityCardMediaMiss(item, "MEDIA_INDEX_MISS", "no canonical identity was indexed", "")
+	return item
+}
+
+// entityCardLookupIDs tries every identity projection the resolver card can
+// carry. The plan joins on the item ID in the common case, but a chain or a
+// localized resolver may preserve only the stable entity id, the producer's
+// EntityRef id, or the canonical id. Trying them in order makes the join
+// identity-based instead of depending on one serialization format.
+func entityCardLookupIDs(item capmodel.OverlayItem, canonicalByStable map[string]string) []string {
+	keys := []string{item.ID, item.EntityID}
+	if item.EntityRef != nil {
+		keys = append(keys, item.EntityRef.EntityID, item.EntityRef.CanonicalEntityID)
 	}
+	out := make([]string, 0, len(keys)+4)
+	appendID := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			return
+		}
+		for _, existing := range out {
+			if existing == id {
+				return
+			}
+		}
+		out = append(out, id)
+	}
+	for _, key := range keys {
+		appendID(canonicalByStable[key])
+	}
+	for _, key := range keys {
+		appendID(key)
+	}
+	if ref := item.EntityRef; ref != nil {
+		if sceneID := strings.TrimSpace(item.SceneID); sceneID != "" && strings.TrimSpace(ref.CanonicalEntityID) != "" {
+			appendID(sceneID + "::" + strings.TrimSpace(ref.CanonicalEntityID))
+		}
+		if ref.Type != "" && ref.Name != "" {
+			stable := capabilityentities.StableEntityID(ref.Type, ref.Name)
+			appendID(canonicalByStable[stable])
+			appendID(stable)
+			if sceneID := strings.TrimSpace(item.SceneID); sceneID != "" {
+				appendID(sceneID + "::" + stable)
+			}
+		}
+	}
+	// Last identity projection: the verified bundle indexed this display name
+	// even when the resolver card carries neither a canonical id nor an
+	// occurrence id (generated agency/location cards).
+	name := strings.TrimSpace(item.EntityCaption)
+	if name == "" {
+		name = strings.TrimSpace(item.Text)
+	}
+	if key := normalizeEntityAssetKey(name); key != "" {
+		appendID(canonicalByStable["bundle-name:"+key])
+	}
+	return out
+}
+
+func promoteEntityCardToImage(item capmodel.OverlayItem, ref capabilityentities.ResolvedAssetRef, lookupID, planID string) capmodel.OverlayItem {
 	item.AssetRefs = []capmodel.OverlayAssetRef{{
 		AssetID: ref.SHA256, URL: ref.URL, LocalPath: ref.LocalPath, SHA256: ref.SHA256, MediaType: ref.MediaType,
 	}}
@@ -188,4 +260,22 @@ func attachEntityCardAsset(item capmodel.OverlayItem, media *capabilityentities.
 	}
 	item.EntityRef.CanonicalEntityID = canonicalID
 	return item
+}
+
+func logEntityCardMediaMiss(item capmodel.OverlayItem, reason, detail, lookupID string) {
+	entity := ""
+	if item.EntityRef != nil {
+		entity = item.EntityRef.Name
+	}
+	if entity == "" {
+		entity = item.Text
+	}
+	logger.Warn("overlay plan: entity card left text-only",
+		zap.String("reason", reason),
+		zap.String("item_id", item.ID),
+		zap.String("entity_id", item.EntityID),
+		zap.String("entity", entity),
+		zap.String("lookup_id", lookupID),
+		zap.String("detail", detail),
+	)
 }

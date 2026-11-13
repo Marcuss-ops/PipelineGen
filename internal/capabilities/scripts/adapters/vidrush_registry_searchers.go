@@ -279,9 +279,11 @@ func personImageSearchQuery(canonicalName string, isPerson bool) string {
 	if !isPerson || canonicalName == "" {
 		return canonicalName
 	}
-	// Search uses a narrow subject description to avoid article hero collages;
-	// canonical entity identity remains a separate provider request field.
-	return canonicalName + " single-person portrait headshot photo"
+	// Keep the retrieval intent ("photo") without forcing a tight headshot.
+	// The old "single-person portrait headshot photo" suffix excluded editorial
+	// and environmental photographs before the identity/quality gate could see
+	// them. Canonical entity identity remains a separate provider request field.
+	return canonicalName + " photo"
 }
 
 // The YouTube source-hint helpers live in

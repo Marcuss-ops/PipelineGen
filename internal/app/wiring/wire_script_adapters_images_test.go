@@ -232,7 +232,7 @@ func TestInternetImageSearchAdapter_SharesOneProviderAnswerAcrossEntityQueryVari
 	}
 	afterFirst := fixture.searchCalls
 	second, err := adapter.SearchImages(context.Background(), scriptadapters.InternetImageSearchRequest{
-		Query: "John Cena single-person portrait headshot photo", Entity: "John Cena", Limit: 2,
+		Query: "John Cena photo", Entity: "John Cena", Limit: 2,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -139,6 +139,32 @@ func (c *Client) ListM2MJobTypes(ctx context.Context) (*M2MJobTypesResponse, err
 	return &out, nil
 }
 
+// GetJobFull GETs the canonical admin job document. Callers that need the
+// terminal final-job receipt (remote_final_job.artifact_url + sha256) cannot
+// use GetJobStatus, which deliberately projects only status/progress/error.
+// The full document is admin-only: the M2M surface exposes job state, not the
+// producer's artifact locator.
+func (c *Client) GetJobFull(ctx context.Context, jobID string) ([]byte, error) {
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return nil, fmt.Errorf("veloxclient: empty jobID")
+	}
+	if c.m2m {
+		return nil, fmt.Errorf("veloxclient: full job document is admin-only")
+	}
+	resp, retryable, err := c.doRequest(ctx, http.MethodGet, c.baseURL+RouteJobsFull(jobID), nil, "")
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if retryable {
+		return nil, ErrServer
+	}
+	return resp.body, nil
+}
+
 // GetJobStatus GETs /api/jobs/{jobID}/full or the scoped M2M equivalent.
 func (c *Client) GetJobStatus(ctx context.Context, jobID string) (*JobStatusResponse, error) {
 	jobID = strings.TrimSpace(jobID)

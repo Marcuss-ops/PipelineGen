@@ -25,6 +25,7 @@ import (
 
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 )
 
 // compileResultOverlayPlan attaches the sealed source/localized plans and
@@ -33,6 +34,19 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	if result == nil {
 		return nil
 	}
+	// Build the verified asset bundle BEFORE lowering the plan. The bundle is
+	// the planner's only entity-media source; building it afterwards left the
+	// planner reading annotations that may already be cleared or localized.
+	bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, planID, perSceneImages...)
+	if bundleErr != nil {
+		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
+	}
+	if bundle != nil {
+		// The hash describes the plan that is about to be compiled, not the
+		// previous result's plan. Re-stamp it after sealing.
+		bundle.OverlayPlanHash = ""
+	}
+	result.SemanticRenderBundle = bundle
 	plan, err := compileOverlayPlanForLanguage(result, language, planID, projectID, driveFolderID, canvas, plates, perSceneImages...)
 	if err != nil {
 		return err
@@ -54,11 +68,10 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 	if plan == nil {
 		return nil
 	}
-	bundle, bundleErr := BuildSemanticRenderBundleFromResult(result, language, planID, plan.VideoID, perSceneImages...)
-	if bundleErr != nil {
-		return fmt.Errorf("overlay plan: build semantic render bundle: %w", bundleErr)
+	if bundle != nil {
+		bundle.OverlayPlanHash = plan.Fingerprint
+		result.SemanticRenderBundle = bundle
 	}
-	result.SemanticRenderBundle = bundle
 	// The lineage is computed by the freeze pass itself, then projected into
 	// the audit: the audit must describe the plan that was lowered, not the
 	// pre-freeze intent set.
@@ -71,7 +84,17 @@ func compileResultOverlayPlan(result *GenerateResult, language Language, planID,
 		admittedIdentityImages = result.SemanticProductionPlan.IdentitiesAdmittedForMedia()
 	}
 	applyRequestedEntityImageContract(result.OverlayAudit, bundle, plan, canvas.RequireEntityImages, canvas.EntityImagesRequireDrive, canvas.RequiredEntityTypes, admittedIdentityImages)
+	overlaystatus.Update(planID, func(status *overlaystatus.Status) {
+		status.PlanID = planID
+		status.Stage = "plan_frozen"
+		status.Audit = result.OverlayAudit
+		status.Plan = overlayStatusPlanSummary(plan)
+	})
 	if err := enforceEntityImageGate(result.OverlayAudit); err != nil {
+		overlaystatus.Update(planID, func(status *overlaystatus.Status) {
+			status.Stage = "entity_gate_failed"
+			status.Error = err.Error()
+		})
 		dumpOverlayGateDebug(result, planID)
 		return err
 	}

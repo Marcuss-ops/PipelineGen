@@ -91,6 +91,59 @@ func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan) error {
 	return nil
 }
 
+// clampFinalJobRuntimeSourceWindows reconciles the plan with the durations in
+// the runtime asset refs. The plan is first aligned against manifest metadata,
+// then alignFinalJobCompiledPlanAssetIDs replaces that metadata with the
+// producer's authoritative durations. Container duration can be one rounding
+// tick shorter than the frame-grid end (98 frames at 24 fps end at 4,083,333us
+// while the artifact reports 4,083,332us), so re-align the source window after
+// the rebinding instead of letting the strict binding validator reject the
+// whole handoff. Only a sub-frame overrun is tolerated; anything larger is a
+// real half-open-window violation and stays fail-closed.
+func clampFinalJobRuntimeSourceWindows(plan *finalJobCompiledPlan) error {
+	if plan == nil {
+		return nil
+	}
+	assets := make(map[string]finalJobPlanAsset, len(plan.Assets))
+	for _, asset := range plan.Assets {
+		assets[asset.AssetID] = asset
+	}
+	fpsNum, fpsDen := int64(plan.Output.FPSNum), int64(plan.Output.FPSDen)
+	if fpsNum <= 0 || fpsDen <= 0 {
+		output := finalJobPlanOutputBlock()
+		fpsNum, fpsDen = int64(output.FPSNum), int64(output.FPSDen)
+	}
+	frameToleranceUS := finalJobFrameStartUS(1, fpsNum, fpsDen)
+	for trackIndex := range plan.VideoTracks {
+		for segmentIndex := range plan.VideoTracks[trackIndex].Segments {
+			segment := &plan.VideoTracks[trackIndex].Segments[segmentIndex]
+			asset, ok := assets[segment.AssetID]
+			if !ok || asset.DurationUS <= 0 || segment.SourceDurationUS <= 0 {
+				continue
+			}
+			overrun := segment.SourceInUS + segment.SourceDurationUS - asset.DurationUS
+			if overrun <= 0 {
+				continue
+			}
+			// Only reconcile a window that is exactly a frame-grid span. An
+			// arbitrary offset or duration is not container rounding; leave it
+			// for the binding validator to reject.
+			startFrame := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
+			endFrame := finalJobFrameAtUS(segment.SourceInUS+segment.SourceDurationUS, fpsNum, fpsDen)
+			if segment.SourceInUS != finalJobFrameStartUS(startFrame, fpsNum, fpsDen) ||
+				segment.SourceInUS+segment.SourceDurationUS != finalJobFrameStartUS(endFrame, fpsNum, fpsDen) ||
+				endFrame-startFrame != segment.FrameCount {
+				continue
+			}
+			if segment.SourceInUS > asset.DurationUS || overrun > frameToleranceUS {
+				return fmt.Errorf("video_tracks[%d].segments[%d] asset %q: source_range_out_of_bounds after runtime binding (source_in_us=%d source_duration_us=%d asset_duration_us=%d)", trackIndex, segmentIndex, asset.AssetID, segment.SourceInUS, segment.SourceDurationUS, asset.DurationUS)
+			}
+			segment.SourceDurationUS = asset.DurationUS - segment.SourceInUS
+		}
+	}
+	return nil
+}
+
 func finalJobFrameAtUS(us, fpsNum, fpsDen int64) int64 {
 	numerator := us * fpsNum
 	denominator := int64(1_000_000) * fpsDen
@@ -340,6 +393,12 @@ func alignFinalJobCompiledPlanAssetIDs(rawPlan string, runtimeAssets []any) (str
 		if size := finalJobInt64(audioRef["size_bytes"]); size > 0 {
 			plan.FinalAudio.SizeBytes = size
 		}
+	}
+	if err := clampFinalJobRuntimeSourceWindows(&plan); err != nil {
+		return "", fmt.Errorf("align final_job runtime source windows: %w", err)
+	}
+	if err := validateFinalJobPlanBindingRules(plan); err != nil {
+		return "", fmt.Errorf("validate final_job runtime plan bindings: %w", err)
 	}
 	sort.Slice(plan.Assets, func(i, j int) bool { return plan.Assets[i].AssetID < plan.Assets[j].AssetID })
 	aligned, err := json.Marshal(plan)

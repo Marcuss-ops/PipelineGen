@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 	"testing"
@@ -101,19 +102,93 @@ func TestOverlayAuditEntityImagesExplainsEveryMissingImage(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestRequestedEntityImageDenominatorComesFromEligibleDetectedEntities(t *testing.T) {
+func TestGateCountsPlannedEntityImageCardsOnly(t *testing.T) {
+	t.Setenv(requireEntityImagesEnv, "")
 	bundle := &capabilityoverlay.SemanticRenderBundleV1{Entities: []capabilityoverlay.ResolvedEntity{
 		auditTestEntity("Ana Rossi"), auditTestEntity("Marco Bianchi"),
 	}}
 	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{auditTestEntityCard("card-1", "scene-1", "Ana Rossi")}}
 	audit := buildOverlayAuditWithLineage(bundle, plan, nil)
 	applyRequestedEntityImageContract(audit, bundle, plan, true, false, []string{"PERSON"})
-	if audit.EntityImages == nil || !audit.EntityImages.Required || audit.EntityImages.Selected != 2 || audit.EntityImages.Missing != 2 {
-		t.Fatalf("requested person-image audit = %+v; want required denominator from both eligible entities", audit.EntityImages)
+	if audit.EntityImages == nil || audit.EntityImages.Required || audit.EntityImages.Selected != 0 || audit.EntityImages.Missing != 0 {
+		t.Fatalf("requested person-image audit = %+v; a text fallback is not an image promise", audit.EntityImages)
 	}
-	if audit.EntityImages.Reasons[EntityImageReasonNotSelected] != 1 {
-		t.Fatalf("unplanned eligible person reason = %+v, want entity_not_selected", audit.EntityImages.Reasons)
+	if len(audit.EntityImages.Reasons) != 0 {
+		t.Fatalf("text fallback reasons = %+v, want no image promise", audit.EntityImages.Reasons)
 	}
+	if audit.DetectedEntities[0].ImageRequired || audit.DetectedEntities[1].ImageRequired {
+		t.Fatal("neither a text fallback nor an unplanned mention may inflate the image denominator")
+	}
+
+	t.Setenv(requireEntityImagesEnv, "1")
+	strict := buildOverlayAuditWithLineage(bundle, plan, nil)
+	applyRequestedEntityImageContract(strict, bundle, plan, true, false, []string{"PERSON"})
+	require.True(t, strict.EntityImages.Required)
+	require.NoError(t, enforceEntityImageGate(strict), "a planned text fallback must not fail the strict gate")
+}
+
+func TestEntityImageGateDeduplicatesRepeatedIdentityOccurrences(t *testing.T) {
+	t.Setenv(requireEntityImagesEnv, "")
+	names := []string{"Francis Kaufmann", "Anastasia Trofimova", "Villa Pamphili"}
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{}
+	plan := &capmodel.OverlayPlan{}
+	for _, name := range names {
+		stable := auditPersonID(name)
+		bundle.Assets = append(bundle.Assets, capabilityoverlay.BoundAsset{
+			EntityID: stable, AssetID: "asset-" + stable, ContentHash: strings.Repeat("a", 64),
+			SourceURL: "https://drive.google.com/uc?export=download&id=" + stable, Verified: true,
+		})
+		plan.Items = append(plan.Items, auditTestImageItem("image-"+stable, "scene-1", name))
+		for scene := 0; scene < 6; scene++ {
+			entity := auditTestEntity(name)
+			entity.SceneID = "scene-" + string(rune('a'+scene))
+			bundle.Entities = append(bundle.Entities, entity)
+		}
+	}
+
+	audit := buildOverlayAuditWithLineage(bundle, plan, nil)
+	applyRequestedEntityImageContract(audit, bundle, plan, true, false, []string{"PERSON"})
+	require.NotNil(t, audit.EntityImages)
+	require.Equal(t, 3, audit.EntityImages.Selected, "three identities, not eighteen occurrences")
+	require.Equal(t, 3, audit.EntityImages.Bound)
+	require.Equal(t, 0, audit.EntityImages.Missing)
+	require.False(t, audit.EntityImages.Required, "the strict gate stays opt-in")
+	require.NoError(t, enforceEntityImageGate(audit))
+
+	t.Setenv(requireEntityImagesEnv, "1")
+	strict := buildOverlayAuditWithLineage(bundle, plan, nil)
+	applyRequestedEntityImageContract(strict, bundle, plan, true, false, []string{"PERSON"})
+	require.True(t, strict.EntityImages.Required)
+	require.NoError(t, enforceEntityImageGate(strict))
+}
+
+// TestVerifiedAssetNotPlannedIsNotABindingFailure pins the r41 vocabulary bug:
+// a verified portrait that the planner did not select is an editorial choice,
+// not a missing binding. It must stay outside the strict gate's denominator.
+func TestVerifiedAssetNotPlannedIsNotBindingMissing(t *testing.T) {
+	t.Setenv(requireEntityImagesEnv, "1")
+	name := "Anastasia Trofimova"
+	stable := auditPersonID(name)
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{}
+	for scene := 0; scene < 18; scene++ {
+		entity := auditTestEntity(name)
+		entity.SceneID = fmt.Sprintf("scene-%02d", scene)
+		bundle.Entities = append(bundle.Entities, entity)
+		bundle.Assets = append(bundle.Assets, capabilityoverlay.BoundAsset{
+			EntityID: stable, AssetID: fmt.Sprintf("asset-%02d", scene), Verified: true,
+		})
+	}
+
+	audit := buildOverlayAuditWithLineage(bundle, &capmodel.OverlayPlan{}, nil)
+	applyRequestedEntityImageContract(audit, bundle, nil, true, false, []string{"PERSON"})
+	require.NotNil(t, audit.EntityImages)
+	require.Equal(t, 0, audit.EntityImages.Selected, "unplanned mentions are not image promises")
+	require.NoError(t, enforceEntityImageGate(audit), "a verified-but-unplanned asset must not fail the gate")
+
+	outcome := entityImageOutcome(OverlayAuditEntity{
+		ID: stable, Type: "PERSON", Text: name, ImageStatus: "verified_asset_not_planned",
+	}, map[string]bool{stable: true})
+	require.Equal(t, EntityImageReasonNotSelected, outcome)
 }
 
 // TestFreezeOverlayIntentsReportsWhyAnIntentDidNotFreeze pins the lineage: an
@@ -271,4 +346,67 @@ func TestRequestedEntityImageContractStillAuditsPlannedUnadmittedImage(t *testin
 	require.Equal(t, 1, audit.EntityImages.Selected)
 	require.Equal(t, 1, audit.EntityImages.Missing)
 	require.Equal(t, EntityImageReasonUploadFailed, audit.EntityImages.MissingEntities[0].Reason)
+}
+
+// TestRequestedEntityImageContractAcceptsLocalVerifiedAssetWithoutDriveID
+// covers the Kaufmann shape: the reviewed registry binds a local, hashed file
+// to every scene, while the payload asks for Drive upload. The local bytes are
+// a valid delivery and must not be reported as UPLOAD_FAILED just because the
+// registry deliberately has no Drive locator.
+func TestRequestedEntityImageContractAcceptsLocalVerifiedAssetWithoutDriveID(t *testing.T) {
+	t.Setenv(requireEntityImagesEnv, "1")
+	name := "Francis Kaufmann"
+	entityID := auditPersonID(name)
+	sha := strings.Repeat("a", 64)
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{
+		Entities: []capabilityoverlay.ResolvedEntity{{
+			EntityID: entityID, Type: "PERSON", Text: name, CanonicalText: name,
+			SceneID: "scene-1", Confidence: 1,
+		}},
+	}
+	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
+		ID: "francis-local", SceneID: "scene-1", Kind: "entity_image", EntityID: entityID,
+		AssetRefs: []capmodel.OverlayAssetRef{{
+			AssetID: "local-asset", SHA256: sha, LocalPath: "/tmp/francis.jpg",
+		}},
+	}}}
+
+	audit := buildOverlayAuditWithLineage(bundle, plan, nil)
+	require.NotNil(t, audit)
+	applyRequestedEntityImageContract(audit, bundle, plan, true, true, []string{"PERSON"})
+	require.True(t, audit.DetectedEntities[0].ImageLocalVerified)
+	require.False(t, audit.DetectedEntities[0].ImageDriveRequired)
+	require.Equal(t, 1, audit.EntityImages.Selected)
+	require.Equal(t, 1, audit.EntityImages.Bound)
+	require.Equal(t, 0, audit.EntityImages.Missing)
+	require.NoError(t, enforceEntityImageGate(audit))
+}
+
+// TestOverlayAuditBindsEntityCardImageWithoutEntityRef covers the plan shape
+// the entity timeline emits: the card carries EntityID + Text, not an
+// EntityRef. Once the reviewed registry binds bytes, the audit must report the
+// card as planned/bound instead of a zero-image false negative.
+func TestOverlayAuditBindsEntityCardImageWithoutEntityRef(t *testing.T) {
+	entity := capabilityoverlay.ResolvedEntity{
+		EntityID: "ent-villa", Type: "GPE", Text: "Villa Pamphili",
+		CanonicalText: "Villa Pamphili", SceneID: "discovery", Confidence: 1,
+	}
+	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
+		ID: "villa-card", SceneID: "discovery", Kind: "entity_card",
+		EntityID: "ent-villa", Text: "Villa Pamphili", ImagePresetID: "image_slide_left",
+		AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "asset-villa", SHA256: strings.Repeat("a", 64)}},
+	}}}
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{
+		Entities: []capabilityoverlay.ResolvedEntity{entity},
+		Assets:   []capabilityoverlay.BoundAsset{{EntityID: "ent-villa", AssetID: "asset-villa", Verified: true}},
+	}
+
+	audit := buildOverlayAuditWithLineage(bundle, plan, nil)
+	require.NotNil(t, audit)
+	require.NotNil(t, audit.EntityImages)
+	require.Equal(t, 1, audit.EntityImages.BudgetUsed)
+	require.Equal(t, 1, audit.EntityImages.Selected)
+	require.Equal(t, 1, audit.EntityImages.Bound)
+	require.Equal(t, 0, audit.EntityImages.Missing)
+	require.Equal(t, "planned", audit.DetectedEntities[0].ImageStatus)
 }

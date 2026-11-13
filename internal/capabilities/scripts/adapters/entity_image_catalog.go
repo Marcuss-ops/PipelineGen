@@ -16,6 +16,11 @@ const entityImageCatalogProvider = "duckduckgo"
 
 const (
 	entityImageCatalogPoolSize = 10
+	// Ask the provider for more rows than the durable pool exposes. The gate
+	// rejects most web results before vision, so a ten-row request left fewer
+	// than ten usable portraits; twenty rows keep the same bounded pool while
+	// giving the identity/quality filter enough candidates to survive.
+	entityImageCatalogDiscoveryLimit = 20
 	// Keep one alternate beyond the current scene's image demand. The durable
 	// discovery pool remains larger; downloading five copies per requested
 	// image on every video run made catalog warming dominate the hot path.
@@ -240,7 +245,8 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 	if repo == nil || identity.CanonicalEntityID == "" {
 		return nil
 	}
-	results = filterPersonEntityImageCandidates(identity, results)
+	providerTotal := len(results)
+	accepted, rejected := filterPersonEntityImageCandidatesWithRejections(identity, results)
 	if err := repo.UpsertEntity(ctx, entitycatalog.Entity{
 		CanonicalEntityID: identity.CanonicalEntityID,
 		EntityType:        entitycatalog.EntityTypePerson,
@@ -250,7 +256,7 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 	}
 	rank := 0
 	persisted := 0
-	for _, result := range results {
+	for _, result := range accepted {
 		if !strings.EqualFold(strings.TrimSpace(result.Provider), scriptpkg.VidRushProviderInternetImages) || strings.TrimSpace(result.SourceURL) == "" {
 			continue
 		}
@@ -276,7 +282,7 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 	}
 	if persisted == 0 {
 		return repo.SetRefreshState(ctx, identity.CanonicalEntityID, entitycatalog.RefreshStatusFailed, nowUTC(),
-			"no PERSON image candidate passed the identity/quality filter")
+			"no PERSON image candidate passed the identity/quality filter: "+formatPersonImageRejectionSummary(providerTotal, rejected))
 	}
 	return repo.SetRefreshState(ctx, identity.CanonicalEntityID, entitycatalog.RefreshStatusSucceeded, nowUTC(), "")
 }

@@ -100,6 +100,17 @@ func (r *recordingTrackRepo) snapshot() []detail.TextTrack {
 	return append([]detail.TextTrack(nil), r.tracks...)
 }
 
+// setReady simulates the canonical backfill write: the adapter re-reads the
+// target through FindReady after the materializer returns.
+func (r *recordingTrackRepo) setReady(language string, cues []detail.TimedCue) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ready == nil {
+		r.ready = make(map[string][]detail.TimedCue)
+	}
+	r.ready[language] = append([]detail.TimedCue(nil), cues...)
+}
+
 func (r *recordingTrackRepo) Find(context.Context, string, string, detail.TextTrackKind) (*detail.TextTrack, error) {
 	return nil, nil
 }
@@ -152,6 +163,27 @@ func (w *recordingCueWriter) last(assetID string) map[string][]detail.TimedCue {
 	return w.byLang[assetID]
 }
 
+// recordingSubtitleMaterializer simulates the canonical BackfillService for a
+// missing target language: it records the request and writes the target cues
+// into the repository the adapter reads back. It can fail on demand so the
+// fail-closed path is proven rather than assumed.
+type recordingSubtitleMaterializer struct {
+	calls      []string
+	repo       *recordingTrackRepo
+	targetCues []detail.TimedCue
+	err        error
+}
+
+func (m *recordingSubtitleMaterializer) EnsureTranslatedSubtitleTrack(_ context.Context, assetID, sourceLang, targetLang string) error {
+	m.calls = append(m.calls, assetID+":"+sourceLang+"->"+targetLang)
+	if m.err != nil {
+		return m.err
+	}
+	m.repo.setReady(targetLang, m.targetCues)
+	return nil
+}
+
+var _ localizedSubtitleMaterializer = (*recordingSubtitleMaterializer)(nil)
 var _ detail.TextTrackRepository = (*recordingTrackRepo)(nil)
 var _ texttracks.TimedCueWriter = (*recordingCueWriter)(nil)
 var _ localizedLocalizer = (*recordingLocalizer)(nil)
@@ -353,6 +385,86 @@ func TestLocalizedRenderEnqueuer_RejectsMissingRequestedSubtitleLanguage(t *test
 	}
 	if len(l.snapshot()) != 0 {
 		t.Fatal("Localize must not run when the requested subtitle language is unavailable")
+	}
+}
+
+// TestLocalizedRenderEnqueuer_MaterializesMissingTargetSubtitleOnDemand pins
+// the multilingual render contract: a Spanish clip rendered with Italian text
+// must get its Italian track created through the canonical backfill pipeline
+// before Localize, instead of failing or burning the Spanish track.
+func TestLocalizedRenderEnqueuer_MaterializesMissingTargetSubtitleOnDemand(t *testing.T) {
+	l := &recordingLocalizer{}
+	tr := &recordingTrackRepo{ready: map[string][]detail.TimedCue{
+		"es": {{StartMs: 0, EndMs: 1200, Text: "Hola mundo"}},
+	}}
+	cw := &recordingCueWriter{}
+	a := newLocalizedRenderEnqueuerAdapter(l, tr, cw, LocalizedRenderEnqueuerConfig{
+		SourceLanguage: "es",
+		FolderID:       "folder-1",
+		FolderAdmin:    &localizedRenderFolderAdmin{},
+	}, zap.NewNop())
+	mat := &recordingSubtitleMaterializer{
+		repo:       tr,
+		targetCues: []detail.TimedCue{{StartMs: 0, EndMs: 1200, Text: "Ciao mondo"}},
+	}
+	a.SetSubtitleMaterializer(mat)
+
+	in := testEnqueuerInput()
+	in.SourceLanguage = "es"
+	in.SourceText = "Hola mundo"
+	in.Language = "it"
+	in.Text = "Ciao mondo"
+	in.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true, Mode: "burn"}
+	if err := a.EnqueueLocalizedRender(context.Background(), in); err != nil {
+		t.Fatalf("EnqueueLocalizedRender: %v", err)
+	}
+
+	if len(mat.calls) != 1 || mat.calls[0] != "clip-1:es->it" {
+		t.Fatalf("on-demand materialization calls = %v, want [clip-1:es->it]", mat.calls)
+	}
+	got := l.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("Localize calls = %d, want 1", len(got))
+	}
+	if got[0].SourceLanguage != "es" || len(got[0].Request.Languages) != 1 || got[0].Request.Languages[0].Language != "it" {
+		t.Fatalf("LocalizeInput = %+v, want source es and target it", got[0])
+	}
+	if _, ok := tr.ready["it"]; !ok {
+		t.Fatal("target Italian track was not persisted")
+	}
+}
+
+// TestLocalizedRenderEnqueuer_MaterializationFailureDoesNotFallBack pins the
+// other half: when the canonical pipeline cannot create the target, the render
+// stops before Localize and never burns the source-language track.
+func TestLocalizedRenderEnqueuer_MaterializationFailureDoesNotFallBack(t *testing.T) {
+	l := &recordingLocalizer{}
+	tr := &recordingTrackRepo{ready: map[string][]detail.TimedCue{
+		"es": {{StartMs: 0, EndMs: 1200, Text: "Hola mundo"}},
+	}}
+	cw := &recordingCueWriter{}
+	a := newLocalizedRenderEnqueuerAdapter(l, tr, cw, LocalizedRenderEnqueuerConfig{
+		SourceLanguage: "es",
+		FolderID:       "folder-1",
+		FolderAdmin:    &localizedRenderFolderAdmin{},
+	}, zap.NewNop())
+	a.SetSubtitleMaterializer(&recordingSubtitleMaterializer{repo: tr, err: errors.New("translator unavailable")})
+
+	in := testEnqueuerInput()
+	in.SourceLanguage = "es"
+	in.SourceText = "Hola mundo"
+	in.Language = "it"
+	in.Text = "Ciao mondo"
+	in.Render.Subtitles = &scriptpkg.VideoSubtitlesSpec{Enabled: true, Mode: "burn"}
+	err := a.EnqueueLocalizedRender(context.Background(), in)
+	if err == nil || !strings.Contains(err.Error(), "translator unavailable") {
+		t.Fatalf("error = %v, want the canonical materialization failure", err)
+	}
+	if len(l.snapshot()) != 0 {
+		t.Fatal("Localize must not run when the requested subtitle track could not be materialized")
+	}
+	if _, ok := tr.ready["it"]; ok {
+		t.Fatal("a failed materialization must not leave a target track behind")
 	}
 }
 

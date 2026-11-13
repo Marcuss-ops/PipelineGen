@@ -56,7 +56,10 @@ func vidRushImageTargetForSegment(plan *scriptpkg.ResolvedGenerationPlan, segmen
 	// The set is keyed by identity family, not by spelling: a policy that
 	// allows ORGANIZATION must also allow COMPANY, and a segment annotated
 	// GPE is the same PLACE a later pass calls LOCATION.
-	allowed := map[string]bool{entitytype.Person: true, entitytype.Logo: true, entitytype.Org: true}
+	allowed := make(map[string]bool, len(scriptpkg.AnnotationEntityKinds()))
+	for _, kind := range scriptpkg.AnnotationEntityKinds() {
+		allowed[entitytype.Fold(kind)] = true
+	}
 	if len(plan.MediaPlan.Extraction.EntityImages.EntityTypes) > 0 {
 		allowed = make(map[string]bool, len(plan.MediaPlan.Extraction.EntityImages.EntityTypes))
 		for _, raw := range plan.MediaPlan.Extraction.EntityImages.EntityTypes {

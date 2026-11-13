@@ -162,8 +162,8 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			}
 			searchQuery := personImageSearchQuery(query, catalogEligible)
 			imageLimit := perQueryLimit
-			if catalogEligible && imageLimit < entityImageCatalogPoolSize {
-				imageLimit = entityImageCatalogPoolSize
+			if catalogEligible && imageLimit < entityImageCatalogDiscoveryLimit {
+				imageLimit = entityImageCatalogDiscoveryLimit
 			}
 			searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
 				// Entity remains canonical; the provider query may include a
@@ -209,6 +209,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			}
 			if catalogEligible && f.catalog != nil {
 				providerCount := len(providerResults)
+				rawProviderResults := providerResults
 				rejected := make(map[string]int)
 				for _, candidate := range providerResults {
 					ok, _, _, reason := evaluatePersonImageCandidate(catalogIdentity, candidate)
@@ -222,7 +223,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 						zap.String("query", query), zap.Int("provider_candidates", providerCount),
 						zap.Int("catalog_eligible", len(providerResults)), zap.Any("catalog_rejections", rejected))
 				}
-				if catalogErr := persistEntityImageCatalogCandidatesMeasured(ctx, f.catalog, catalogIdentity, providerResults, f.metrics); catalogErr != nil {
+				if catalogErr := persistEntityImageCatalogCandidatesMeasured(ctx, f.catalog, catalogIdentity, rawProviderResults, f.metrics); catalogErr != nil {
 					if releaseCatalog != nil {
 						releaseCatalog()
 					}

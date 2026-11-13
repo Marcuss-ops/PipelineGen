@@ -9,6 +9,20 @@ import "testing"
 // above it take a certified VISIBLE entrance, the phrases below it keep the
 // calm rotation bit-for-bit, and every emitted motion stays inside the
 // callable phrase catalog.
+func TestHeavyPhraseDefaultPoolRotatesFamilies(t *testing.T) {
+	seen := map[int]bool{}
+	for ordinal := 0; ordinal < 8; ordinal++ {
+		id := selectHeavyPhraseMotion("heavy-family-seed", "run", ordinal, nil)
+		if id == "" {
+			t.Fatalf("heavy ordinal %d selected no motion", ordinal)
+		}
+		seen[longPhraseFamilyBucketOf(id)] = true
+	}
+	if len(seen) < 2 {
+		t.Fatalf("automatic heavy phrases stayed in one visual family: %v", seen)
+	}
+}
+
 func TestBuildPlanSplitsHeavyPhrasesIntoTheProminentLane(t *testing.T) {
 	heavy := CertifiedHeavyPhraseMotions()
 	if len(heavy) < 2 {

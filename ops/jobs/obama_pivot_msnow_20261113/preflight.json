@@ -1,0 +1,315 @@
+{
+  "videos": [
+    {
+      "n": 1,
+      "id": "xOl7HTXuLvk",
+      "source_duration_s": 3347,
+      "segments": 17,
+      "clips": 8,
+      "hooks": 9,
+      "max_segment_seconds": 60,
+      "rows": [
+        {
+          "kind": "moment",
+          "start": "01:28",
+          "end": "02:02",
+          "duration_seconds": 34,
+          "limit_seconds": 60,
+          "name": "Obama ribalta i ruoli e chiede se Ryan Clark ha un gemello"
+        },
+        {
+          "kind": "moment",
+          "start": "02:50",
+          "end": "03:48",
+          "duration_seconds": 58,
+          "limit_seconds": 60,
+          "name": "Prese in giro sulla moda, il Tan Suit e i gioielli"
+        },
+        {
+          "kind": "moment",
+          "start": "08:20",
+          "end": "09:04",
+          "duration_seconds": 44,
+          "limit_seconds": 60,
+          "name": "Il fascino presidenziale e la paura di Michelle"
+        },
+        {
+          "kind": "moment",
+          "start": "10:04",
+          "end": "11:04",
+          "duration_seconds": 60,
+          "limit_seconds": 60,
+          "name": "Le signore anziane che toccavano il sedere al Presidente"
+        },
+        {
+          "kind": "moment",
+          "start": "19:53",
+          "end": "20:30",
+          "duration_seconds": 37,
+          "limit_seconds": 60,
+          "name": "Travestirsi con i dreadlock e il problema delle orecchie grandi"
+        },
+        {
+          "kind": "moment",
+          "start": "31:35",
+          "end": "32:05",
+          "duration_seconds": 30,
+          "limit_seconds": 60,
+          "name": "Confessare ai liceali di aver fatto bravate da adolescente"
+        },
+        {
+          "kind": "moment",
+          "start": "47:18",
+          "end": "48:05",
+          "duration_seconds": 47,
+          "limit_seconds": 60,
+          "name": "La difesa speciale a basket, i 12 punti al labbro e Michelle"
+        },
+        {
+          "kind": "moment",
+          "start": "54:09",
+          "end": "55:09",
+          "duration_seconds": 60,
+          "limit_seconds": 60,
+          "name": "Fuorionda finale: sfide a basket e il nome completo di KK"
+        },
+        {
+          "kind": "hook",
+          "start": "01:28",
+          "end": "01:42",
+          "duration_seconds": 14,
+          "limit_seconds": 15,
+          "name": "Ryan Clark ha un gemello?"
+        },
+        {
+          "kind": "hook",
+          "start": "02:56",
+          "end": "03:11",
+          "duration_seconds": 15,
+          "limit_seconds": 15,
+          "name": "Volevo mettere il famoso abito beige"
+        },
+        {
+          "kind": "hook",
+          "start": "08:54",
+          "end": "09:04",
+          "duration_seconds": 10,
+          "limit_seconds": 15,
+          "name": "Ho paura di Michelle"
+        },
+        {
+          "kind": "hook",
+          "start": "10:04",
+          "end": "10:18",
+          "duration_seconds": 14,
+          "limit_seconds": 15,
+          "name": "Le foto delle signore che mi toccavano il sedere"
+        },
+        {
+          "kind": "hook",
+          "start": "16:19",
+          "end": "16:33",
+          "duration_seconds": 14,
+          "limit_seconds": 15,
+          "name": "Malia pensava che nessuno la riconoscesse"
+        },
+        {
+          "kind": "hook",
+          "start": "20:16",
+          "end": "20:28",
+          "duration_seconds": 12,
+          "limit_seconds": 15,
+          "name": "Le mie orecchie sono troppo grandi per travestirmi"
+        },
+        {
+          "kind": "hook",
+          "start": "47:29",
+          "end": "47:44",
+          "duration_seconds": 15,
+          "limit_seconds": 15,
+          "name": "12 punti di sutura al labbro prima di un discorso"
+        },
+        {
+          "kind": "hook",
+          "start": "51:44",
+          "end": "51:58",
+          "duration_seconds": 14,
+          "limit_seconds": 15,
+          "name": "Michelle non era il mio capo, usava la fotocopiatrice"
+        },
+        {
+          "kind": "hook",
+          "start": "54:19",
+          "end": "54:31",
+          "duration_seconds": 12,
+          "limit_seconds": 15,
+          "name": "I giocatori NFL non sanno giocare a basket"
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "id": "yvYCzh0BcmM",
+      "source_duration_s": 2651,
+      "segments": 19,
+      "clips": 9,
+      "hooks": 10,
+      "max_segment_seconds": 60,
+      "rows": [
+        {
+          "kind": "moment",
+          "start": "01:04",
+          "end": "01:33",
+          "duration_seconds": 29,
+          "limit_seconds": 60,
+          "name": "Troppo giovane per un mausoleo senza vita"
+        },
+        {
+          "kind": "moment",
+          "start": "01:57",
+          "end": "02:14",
+          "duration_seconds": 17,
+          "limit_seconds": 60,
+          "name": "Obama legge storie ai bambini con gli artigli terribili"
+        },
+        {
+          "kind": "moment",
+          "start": "18:54",
+          "end": "19:25",
+          "duration_seconds": 31,
+          "limit_seconds": 60,
+          "name": "Il lato nerd da professore di educazione civica"
+        },
+        {
+          "kind": "moment",
+          "start": "24:14",
+          "end": "24:48",
+          "duration_seconds": 34,
+          "limit_seconds": 60,
+          "name": "Costruire il centro come una partita gigante a Scarabeo"
+        },
+        {
+          "kind": "moment",
+          "start": "25:04",
+          "end": "25:56",
+          "duration_seconds": 52,
+          "limit_seconds": 60,
+          "name": "Lo stivale intrappolato per sempre nel cemento del garage"
+        },
+        {
+          "kind": "moment",
+          "start": "31:09",
+          "end": "32:09",
+          "duration_seconds": 60,
+          "limit_seconds": 60,
+          "name": "Obama collaudatore ufficiale di tutte le sedie del museo"
+        },
+        {
+          "kind": "moment",
+          "start": "34:26",
+          "end": "34:47",
+          "duration_seconds": 21,
+          "limit_seconds": 60,
+          "name": "La mossa diplomatica per non offendere nessun artista"
+        },
+        {
+          "kind": "moment",
+          "start": "35:05",
+          "end": "35:58",
+          "duration_seconds": 53,
+          "limit_seconds": 60,
+          "name": "La ricetta del chili di Obama e il libro preferito di Michelle"
+        },
+        {
+          "kind": "moment",
+          "start": "36:00",
+          "end": "36:20",
+          "duration_seconds": 20,
+          "limit_seconds": 60,
+          "name": "Da Obamacare all'edificio chiamato Obamalisco"
+        },
+        {
+          "kind": "hook",
+          "start": "01:04",
+          "end": "01:13",
+          "duration_seconds": 9,
+          "limit_seconds": 15,
+          "name": "Sono troppo giovane per un mausoleo"
+        },
+        {
+          "kind": "hook",
+          "start": "02:02",
+          "end": "02:11",
+          "duration_seconds": 9,
+          "limit_seconds": 15,
+          "name": "Obama fa le vocine dei mostri ai bambini"
+        },
+        {
+          "kind": "hook",
+          "start": "05:58",
+          "end": "06:10",
+          "duration_seconds": 12,
+          "limit_seconds": 15,
+          "name": "Aspetti, ma sta parlando davvero di lei?"
+        },
+        {
+          "kind": "hook",
+          "start": "19:12",
+          "end": "19:22",
+          "duration_seconds": 10,
+          "limit_seconds": 15,
+          "name": "Il mio lato nerd da professore di educazione civica"
+        },
+        {
+          "kind": "hook",
+          "start": "25:20",
+          "end": "25:34",
+          "duration_seconds": 14,
+          "limit_seconds": 15,
+          "name": "C'e un mio stivale murato nel parcheggio"
+        },
+        {
+          "kind": "hook",
+          "start": "31:14",
+          "end": "31:26",
+          "duration_seconds": 12,
+          "limit_seconds": 15,
+          "name": "Obama che corre a provare tutte le sedie"
+        },
+        {
+          "kind": "hook",
+          "start": "32:03",
+          "end": "32:14",
+          "duration_seconds": 11,
+          "limit_seconds": 15,
+          "name": "Belle da vedere, scomode da sedersi"
+        },
+        {
+          "kind": "hook",
+          "start": "35:19",
+          "end": "35:29",
+          "duration_seconds": 10,
+          "limit_seconds": 15,
+          "name": "Aspetta, ma Obama sa cucinare?"
+        },
+        {
+          "kind": "hook",
+          "start": "35:45",
+          "end": "35:58",
+          "duration_seconds": 13,
+          "limit_seconds": 15,
+          "name": "Il libro preferito in biblioteca? Quello di Michelle"
+        },
+        {
+          "kind": "hook",
+          "start": "36:10",
+          "end": "36:20",
+          "duration_seconds": 10,
+          "limit_seconds": 15,
+          "name": "Lo chiamano Obamalisco e a me va benissimo"
+        }
+      ]
+    }
+  ],
+  "problems": []
+}

@@ -1,0 +1,651 @@
+{
+  "batch": "obama_pivot_msnow_20261113",
+  "folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr",
+  "total_new_assets": 36,
+  "drive_refs": 36,
+  "languages": [
+    "en"
+  ],
+  "existing_assets_checked": 14,
+  "problems": [],
+  "assets": [
+    {
+      "id": "yt_xOl7HTXuLvk_88_122_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1Mk371Zsi1j89e5QDjxg5HEMvJ41hPKIE"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_170_228_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1v-y8lcGYKE40pINwiRL2YXTPpeZ7wAaF"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_500_544_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1sugbEPlTbpZqyfeB9n-Bo1I72xLc6f_5"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_604_664_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1cf-43atr9RjTutAzvk_H3yTrCRV8G6HJ"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_1193_1230_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1x5lbLWgmR6XP6Q0HI1FTifCHYn8yrQXz"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_1895_1925_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1T9btYdc2cb63QAGNVxCsifPGr4Jveap8"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_2838_2885_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1ChMIpe6EbJI0n19_a_yoKb4VQRMc2k-p"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_3249_3309_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1PZj8nFJlTO6YGGIZSoMl_GZD3wCzUR3G"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_88_102_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1n9DEXf3CMHVjLbWooZjMILt34EeZvptR"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_176_191_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1KwHqh-wOj6o3Z-gIXDc3FFT4X_6LZbUD"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_534_544_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1LEnDaFcH384nF8W3mbnDn4BYYCZwdENY"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_604_618_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1OBdv7aOpnfJGttzdk5rDpqTqN3XsAOGV"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_979_993_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1KVQjZ4tTS0RBGdKq79ob7odHrSTwIrIO"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_1216_1228_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1s2eFTDYDqw26u4k54aIBVAN4e8DFmLXm"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_2849_2864_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1Bw2priTew72zHvy4ayTWsW3Tb-sHyyZl"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_3104_3118_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "10KaE50gh_m5iPfKzo98pkld_r-kEkHmc"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_3259_3271_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "1",
+      "video_id": "xOl7HTXuLvk",
+      "drive_file_id": "1CgS5cjXItnUBW9lhQqBVgq39zyNFRmKP"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_64_93_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1yueSp1BMBsLYLziKg2-bT4Tzq9z1w0q-"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_117_134_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1dqA-1En7frAiku_USwJTMgx4L_1gNimY"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1134_1165_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1olTVZAmL2VrfNXkUqbEP77gNYUX86H6a"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1454_1488_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1wiGkusD4iw3PSVEFY4V73DTu-7itcUPl"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1504_1556_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "10sjwZe9ZGVvEZQm075zq-qs2y1xdvS5N"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1869_1929_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1C5yrGLKdkNpt6ReujBj0s8QNUrph7b44"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2066_2087_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1xtzesZKSnIHWEnIac2sZJBs_5omN28r_"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2105_2158_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1cJL_IDH_lgZOX36EXYFKAmWb3Kazcedf"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2160_2180_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1DJKDrk4Xhjpzs1KhpfHEgfuxtT2lrG6s"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_64_73_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1dwyqbc8fSMG8cB2Xhx1NUXMDatOlUKKO"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_122_131_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "14KvlzDvhfXnQ62NnRbX9YKktvnJalXkc"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_358_370_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1kJLnTbnRWqEl4LCuT3wYqSfgyRVqV3ca"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1152_1162_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "14Uq0KyotxzlP4vOq4TezZ1-jf_g9ZyDG"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1520_1534_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1mMMhFPvwId7PJ-RS5G3ggUduX_1v-Mmf"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1874_1886_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1lyx21fU-PorCzo4uR6gzbss23Kwjve8C"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_1923_1934_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1NpU2q5ncLIlSlhWTM5d92i9ikXvhdQ5K"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2119_2129_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1PdFKuy8EqMhmAuJswmSLfAFU8-5QTNAo"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2145_2158_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1wvLIyRwXmeiv4Wjp_CZcxHJJGNyxSvrn"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2170_2180_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "2",
+      "video_id": "yvYCzh0BcmM",
+      "drive_file_id": "1EGZo8c_sr7ascyk08Wm6Ui8GiHuLAFbU"
+    }
+  ],
+  "existing_assets": [
+    {
+      "id": "yt_xOl7HTXuLvk_0_30_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "9",
+      "video_id": "xOl7HTXuLvk"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_680_725_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "9",
+      "video_id": "xOl7HTXuLvk"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_940_1000_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "9",
+      "video_id": "xOl7HTXuLvk"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_2895_2955_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "9",
+      "video_id": "xOl7HTXuLvk"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_3060_3120_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "9",
+      "video_id": "xOl7HTXuLvk"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_0_15_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "9",
+      "video_id": "xOl7HTXuLvk"
+    },
+    {
+      "id": "yt_xOl7HTXuLvk_680_692_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "9",
+      "video_id": "xOl7HTXuLvk"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_39_81_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "12",
+      "video_id": "yvYCzh0BcmM"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_338_375_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "12",
+      "video_id": "yvYCzh0BcmM"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_682_735_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "12",
+      "video_id": "yvYCzh0BcmM"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2304_2355_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "12",
+      "video_id": "yvYCzh0BcmM"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2402_2462_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "12",
+      "video_id": "yvYCzh0BcmM"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_39_54_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "12",
+      "video_id": "yvYCzh0BcmM"
+    },
+    {
+      "id": "yt_yvYCzh0BcmM_2402_2417_v1",
+      "index_state": "INDEXED",
+      "has_embedding": true,
+      "pending_outbox_events": 0,
+      "languages": [
+        "en"
+      ],
+      "index_health": "STALE",
+      "video": "12",
+      "video_id": "yvYCzh0BcmM"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -63,6 +64,7 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		value := strings.TrimSpace(entity.Value)
 		kind := normalizeAnnotationType(entity.Type)
 		kind = correctKnownPortugueseEntityType(value, kind)
+		kind = normalizeAnnotationType(entitytype.CorrectSurfaceType(value, kind))
 		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
 			// KEYWORD / VISUAL_SUBJECT are search/index surfaces, never
 			// spoken entities (mirror of the runner projection).
@@ -466,12 +468,13 @@ func discoverGroundedEntities(text string) []scriptpkg.AnnotatedEntity {
 
 func classifyDiscoveredEntity(value string) string {
 	lower := strings.ToLower(strings.TrimSpace(value))
-	return correctKnownPortugueseEntityType(value, func() string {
+	current := correctKnownPortugueseEntityType(value, func() string {
 		if strings.HasPrefix(lower, "oper") {
 			return "EVENT"
 		}
 		return "PERSON"
 	}())
+	return normalizeAnnotationType(entitytype.CorrectSurfaceType(value, current))
 }
 
 func correctKnownPortugueseEntityType(value, current string) string {

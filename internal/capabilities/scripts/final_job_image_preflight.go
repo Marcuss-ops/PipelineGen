@@ -45,28 +45,32 @@ func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
 			return false
 		}
 	}
-	var reader io.ReadCloser
+	// LocalPath is a cache, not the identity: a stale or partially written
+	// local copy must not poison a valid content-addressed remote asset. Try
+	// the local candidate first, then fall back to the URL whenever its bytes
+	// fail the hash/format check.
 	if path := strings.TrimSpace(ref.LocalPath); path != "" && usableLocalAssetPath(path) {
-		file, err := os.Open(path)
-		if err != nil {
-			return false
+		if file, err := os.Open(path); err == nil {
+			verified := finalJobImageBytesVerified(file, sha)
+			file.Close()
+			if verified {
+				return true
+			}
 		}
-		reader = file
-	} else if location := strings.TrimSpace(ref.URL); location != "" {
-		client := &http.Client{Timeout: 12 * time.Second}
-		response, err := client.Get(location)
-		if err != nil {
-			return false
-		}
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			response.Body.Close()
-			return false
-		}
-		reader = response.Body
-	} else {
-		return false
 	}
-	defer reader.Close()
+	if location := strings.TrimSpace(ref.URL); location != "" {
+		client := &http.Client{Timeout: 12 * time.Second}
+		response, err := getFinalJobImageWithRetry(client, location)
+		if err != nil {
+			return false
+		}
+		defer response.Body.Close()
+		return finalJobImageBytesVerified(response.Body, sha)
+	}
+	return false
+}
+
+func finalJobImageBytesVerified(reader io.Reader, sha string) bool {
 	data, err := io.ReadAll(io.LimitReader(reader, 32<<20))
 	if err != nil || len(data) == 0 || len(data) >= 32<<20 {
 		return false
@@ -76,6 +80,30 @@ func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	return err == nil && config.Width > 0 && config.Height > 0 && (format == "jpeg" || format == "png" || format == "gif")
+}
+
+// getFinalJobImageWithRetry keeps one transient Drive/provider failure from
+// turning a valid, content-addressed image into a failed final job. The gate
+// downloads every selected image sequentially; a single 429/5xx or timeout
+// must not reject bytes that are otherwise proven by their SHA-256.
+func getFinalJobImageWithRetry(client *http.Client, location string) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		response, err := client.Get(location)
+		if err == nil && response != nil && response.StatusCode >= 200 && response.StatusCode < 300 {
+			return response, nil
+		}
+		if response != nil {
+			response.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d", response.StatusCode)
+		} else {
+			lastErr = err
+		}
+		if attempt < 2 {
+			time.Sleep(time.Duration(attempt+1) * 300 * time.Millisecond)
+		}
+	}
+	return nil, lastErr
 }
 
 func anyFinalJobImageVerifiedRef(refs []capmodel.OverlayAssetRef) bool {
@@ -159,6 +187,12 @@ func finalJobImageRequested(req GenerateRequest) bool {
 // VELOX_REQUIRE_ENTITY_IMAGES gate: a final job that requested images must not
 // ship text-only cards for some of its selected entities. Partial coverage is
 // the r20minuti failure mode that a zero-image check alone cannot see.
+//
+// The gate must remain opt-in: the default policy accepts the planner's
+// text-card fallback for identities without a verified asset. Only an operator
+// who explicitly sets VELOX_REQUIRE_ENTITY_IMAGES opts into refusing those
+// fallbacks. Without this check the strict gate ran on every final job and
+// rejected plans that had already degraded unverified portraits to text.
 func finalJobEntityImageGate(audit *OverlayAudit, imageRequested bool) error {
 	if !imageRequested {
 		return nil
@@ -167,6 +201,9 @@ func finalJobEntityImageGate(audit *OverlayAudit, imageRequested bool) error {
 		return fmt.Errorf("final_job preflight: entity images were requested but no entity-image audit was produced")
 	}
 	info := audit.EntityImages
+	if !info.Required {
+		return nil
+	}
 	if info.Selected == 0 {
 		return fmt.Errorf("final_job preflight: entity images were requested but the audit selected zero entity-image occurrences; refusing a false 0/0 pass")
 	}

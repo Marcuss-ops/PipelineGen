@@ -134,7 +134,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		identityQueries := make(map[string]struct{})
 		for _, entity := range segment.Insights.Entities {
 			kind := normalizeAnnotationType(entity.Type)
-			if kind != "PERSON" && kind != "LOGO" && kind != "ORG" {
+			if !isPersonOrgOrPlace(kind) && kind != "LOGO" {
 				continue
 			}
 			name := normalizeEntityMatch(trimEnglishPossessive(entity.Value))
@@ -161,7 +161,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		}
 		for _, entity := range segment.Insights.Entities {
 			kind := normalizeAnnotationType(entity.Type)
-			if kind != "PERSON" && kind != "LOGO" && kind != "ORG" {
+			if !isPersonOrgOrPlace(kind) && kind != "LOGO" {
 				continue
 			}
 			query := strings.TrimSpace(entity.Value)
@@ -299,7 +299,11 @@ func sceneScopedImageQueriesForTypes(segment scriptpkg.VidRushSegmentResult, ent
 		allowed[normalizeAnnotationType(kind)] = struct{}{}
 	}
 	if len(allowed) == 0 {
-		allowed["PERSON"] = struct{}{}
+		// An empty policy means the canonical imageable set, not PERSON-only:
+		// GPE/ORG entities are legitimate entity cards and must be searched.
+		for _, kind := range scriptpkg.AnnotationEntityKinds() {
+			allowed[normalizeAnnotationType(kind)] = struct{}{}
+		}
 	}
 	queries := make([]string, 0, len(segment.Insights.Entities))
 	for _, entity := range segment.Insights.Entities {
@@ -307,9 +311,30 @@ func sceneScopedImageQueriesForTypes(segment scriptpkg.VidRushSegmentResult, ent
 		if _, ok := allowed[kind]; !ok {
 			continue
 		}
-		queries = appendUniqueImageQueries(queries, []string{entity.Value})
+		value := strings.TrimSpace(entity.Value)
+		queries = appendUniqueImageQueries(queries, []string{value})
+		// A bare agency acronym is a poor image query: providers return zero
+		// results for "ANSA" while a named-agency query retrieves its verified
+		// newsroom/logo imagery. Keep the identity prefix so the binder can
+		// attach the result to the original ORG annotation.
+		if kind == "ORG" && isUppercaseAcronymQuery(value) {
+			queries = appendUniqueImageQueries(queries, []string{value + " news agency", value + " Roma"})
+		}
 	}
 	return queries
+}
+
+func isUppercaseAcronymQuery(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) < 2 || len(value) > 6 {
+		return false
+	}
+	for _, r := range value {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 // sceneScopedImageQueries retains every imageable person in the scene. The

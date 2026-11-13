@@ -1,0 +1,220 @@
+{
+  "results": [
+    {
+      "video": "9",
+      "video_id": "xOl7HTXuLvk",
+      "job_id": "job_1794566907752914156_0a23bf5d",
+      "segments": [
+        {
+          "start": "51:00",
+          "end": "52:00",
+          "duration_seconds": 60,
+          "name": "Come ha corteggiato Michelle a inizio carriera",
+          "kind": "moment"
+        }
+      ],
+      "items": [
+        {
+          "id": "yt_xOl7HTXuLvk_3060_3120_v1",
+          "name": "Come ha corteggiato Michelle a inizio carriera",
+          "start": "51:00",
+          "end": "52:00",
+          "start_seconds": 3060,
+          "end_seconds": 3120,
+          "duration_seconds": 60,
+          "filename": "yt_xOl7HTXuLvk_3060_3120_v1_come-ha-corteggiato-michelle-a-inizio-ca.mp4",
+          "content_sha256": "0d23e8c9d9ba6baa81b6b2f7f3f09d2418285faf261966be1a38b98366171e52",
+          "size_bytes": 24681001,
+          "local_path": "data/media/clips/general/yt_xOl7HTXuLvk/yt_xOl7HTXuLvk_3060_3120_v1_come-ha-corteggiato-michelle-a-inizio-ca.mp4",
+          "drive_link": "https://drive.google.com/file/d/1KwQFk7t15yPs6x8LD3P7ye2uEo60rZ4M/view?usp=drivesdk",
+          "drive_file_id": "1KwQFk7t15yPs6x8LD3P7ye2uEo60rZ4M",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        }
+      ],
+      "asset_ids": [
+        "yt_xOl7HTXuLvk_3060_3120_v1"
+      ],
+      "assets": [
+        {
+          "id": "yt_xOl7HTXuLvk_3060_3120_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "backfill": {
+        "mode": "apply",
+        "source": "youtube",
+        "source_language": "en",
+        "target_languages": [],
+        "text_kind": "transcript",
+        "only_missing": false,
+        "total_candidates": 1,
+        "processed": 1,
+        "source_ready_count": 1,
+        "source_acquired_count": 1,
+        "source_missing_count": 0,
+        "skipped_only_missing": 0,
+        "created_total": 0,
+        "index_repaired_total": 1,
+        "reindex_requested_total": 1,
+        "subtitles_delivered_total": 1,
+        "skipped_lang_total": 0,
+        "retranslated_total": 0,
+        "failed_lang_total": 0,
+        "duration_ms": 17250,
+        "failed_reason_no_source": 0,
+        "failed_reason_other": 0
+      },
+      "finished_at": "2026-11-13T10:49:29Z"
+    },
+    {
+      "video": "12",
+      "video_id": "yvYCzh0BcmM",
+      "job_id": "job_1794566970038827594_c5c8d8c5",
+      "segments": [
+        {
+          "start": "40:02",
+          "end": "41:02",
+          "duration_seconds": 60,
+          "name": "La lettera toccante del veterano ferito in Afghanistan",
+          "kind": "moment"
+        },
+        {
+          "start": "00:39",
+          "end": "00:54",
+          "duration_seconds": 15,
+          "name": "Hook: Introduzione allo speciale Hope Comes Home",
+          "kind": "hook"
+        },
+        {
+          "start": "40:02",
+          "end": "40:17",
+          "duration_seconds": 15,
+          "name": "Hook: Il racconto emotivo del veterano",
+          "kind": "hook"
+        }
+      ],
+      "items": [
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2462_v1",
+          "name": "La lettera toccante del veterano ferito in Afghanistan",
+          "start": "40:02",
+          "end": "41:02",
+          "start_seconds": 2402,
+          "end_seconds": 2462,
+          "duration_seconds": 60,
+          "filename": "yt_yvYCzh0BcmM_2402_2462_v1_la-lettera-toccante-del-veterano-ferito.mp4",
+          "content_sha256": "e5956bfe8f3987a74765d63126e518cae8017962eb8c9ec0bba19bc56f6ce512",
+          "size_bytes": 10774900,
+          "local_path": "data/media/clips/general/yt_yvYCzh0BcmM/yt_yvYCzh0BcmM_2402_2462_v1_la-lettera-toccante-del-veterano-ferito.mp4",
+          "drive_link": "https://drive.google.com/file/d/1h7biHI7A48T3RDCpRk5oYEh7ZasxHRv9/view?usp=drivesdk",
+          "drive_file_id": "1h7biHI7A48T3RDCpRk5oYEh7ZasxHRv9",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_39_54_v1",
+          "name": "Hook Introduzione allo speciale Hope Comes Home",
+          "start": "00:39",
+          "end": "00:54",
+          "start_seconds": 39,
+          "end_seconds": 54,
+          "duration_seconds": 15,
+          "filename": "yt_yvYCzh0BcmM_39_54_v1_hook-introduzione-allo-speciale-hope-com.mp4",
+          "content_sha256": "24539580a35e12f6fb083267475921dfea8361268f041e2b3f55899aebabdc1e",
+          "size_bytes": 11606023,
+          "local_path": "data/media/clips/general/yt_yvYCzh0BcmM/yt_yvYCzh0BcmM_39_54_v1_hook-introduzione-allo-speciale-hope-com.mp4",
+          "drive_link": "https://drive.google.com/file/d/1QKijiLM0yVoEwqi2ueJ9jXTjh-8GILHc/view?usp=drivesdk",
+          "drive_file_id": "1QKijiLM0yVoEwqi2ueJ9jXTjh-8GILHc",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2417_v1",
+          "name": "Hook Il racconto emotivo del veterano",
+          "start": "40:02",
+          "end": "40:17",
+          "start_seconds": 2402,
+          "end_seconds": 2417,
+          "duration_seconds": 15,
+          "filename": "yt_yvYCzh0BcmM_2402_2417_v1_hook-il-racconto-emotivo-del-veterano.mp4",
+          "content_sha256": "ca80d482fcf3a2545238c83c49b58f6ab608f853bdb4d908d0d49cce96e7db9c",
+          "size_bytes": 3914320,
+          "local_path": "data/media/clips/general/yt_yvYCzh0BcmM/yt_yvYCzh0BcmM_2402_2417_v1_hook-il-racconto-emotivo-del-veterano.mp4",
+          "drive_link": "https://drive.google.com/file/d/1SP95H6ZLyawKXw87rCPLZqmGlTNXVR42/view?usp=drivesdk",
+          "drive_file_id": "1SP95H6ZLyawKXw87rCPLZqmGlTNXVR42",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        }
+      ],
+      "asset_ids": [
+        "yt_yvYCzh0BcmM_2402_2462_v1",
+        "yt_yvYCzh0BcmM_39_54_v1",
+        "yt_yvYCzh0BcmM_2402_2417_v1"
+      ],
+      "assets": [
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2462_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_39_54_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2417_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "backfill": {
+        "mode": "apply",
+        "source": "youtube",
+        "source_language": "en",
+        "target_languages": [],
+        "text_kind": "transcript",
+        "only_missing": false,
+        "total_candidates": 3,
+        "processed": 3,
+        "source_ready_count": 3,
+        "source_acquired_count": 3,
+        "source_missing_count": 0,
+        "skipped_only_missing": 0,
+        "created_total": 0,
+        "index_repaired_total": 3,
+        "reindex_requested_total": 3,
+        "subtitles_delivered_total": 3,
+        "skipped_lang_total": 0,
+        "retranslated_total": 0,
+        "failed_lang_total": 0,
+        "duration_ms": 33627,
+        "failed_reason_no_source": 0,
+        "failed_reason_other": 0
+      },
+      "finished_at": "2026-11-13T10:51:22Z"
+    }
+  ]
+}

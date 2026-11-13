@@ -161,6 +161,46 @@ func TestApplyEditorialOverlayBudgetHonoursCallerImageLimit(t *testing.T) {
 	}
 }
 
+// TestEntityImageCardsOutrankGenericSceneImages reproduces the r41 failure:
+// eighteen verified portraits and a full run of generic scene stills compete
+// for the same image budget. Entity cards carry no planner priority (their
+// Params are cleared when the media is attached), so a pure score sort lets
+// every still win and silently drops every portrait. The editorial subject
+// must be admitted first; stills fill the remaining slots.
+func TestEntityImageCardsOutrankGenericSceneImages(t *testing.T) {
+	items := make([]capmodel.OverlayItem, 0, 21)
+	for i := 0; i < 20; i++ {
+		items = append(items, capmodel.OverlayItem{
+			ID: fmt.Sprintf("scene-image-%d", i), Kind: "image", SceneID: fmt.Sprintf("scene-%d", i),
+			AssetRefs: []capmodel.OverlayAssetRef{{SHA256: fmt.Sprintf("scene-hash-%d", i)}},
+			Params:    map[string]any{"priority": 1.0},
+		})
+	}
+	items = append(items, capmodel.OverlayItem{
+		ID: "portrait", Kind: "entity_image", SceneID: "scene-0",
+		EntityRef: &capmodel.OverlayEntityRef{CanonicalEntityID: "person:ada"},
+		AssetRefs: []capmodel.OverlayAssetRef{{SHA256: "portrait-hash"}},
+	})
+
+	got, _ := ApplyEditorialOverlayBudgetWithImageLimit(items, 0, 20, 0)
+	portrait := false
+	images := 0
+	for _, item := range got {
+		if item.Kind == "image" || item.Kind == "entity_image" {
+			images++
+		}
+		if item.ID == "portrait" {
+			portrait = true
+		}
+	}
+	if !portrait {
+		t.Fatal("the entity portrait was evicted by generic scene stills")
+	}
+	if images != 20 {
+		t.Fatalf("image overlays = %d, want the caller ceiling 20", images)
+	}
+}
+
 func TestApplyEditorialOverlayBudgetHonoursImageLimitAboveDefault(t *testing.T) {
 	const requestedImages = MaxImageOverlaysPerRun + 5
 	items := limitTestItems(0)

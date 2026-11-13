@@ -218,7 +218,10 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 	// enforce. Both are fail-closed: a payload that violates either never
 	// reaches the remote and can never burn a worker attempt on a guaranteed
 	// rejection.
-	admittedContent := make(map[string]string)
+	// One SHA can legitimately recur in non-overlapping windows. Keep every
+	// admitted owner, not only the last one: A(0-10), B(20-30), C(5-15)
+	// must still reject C against A even though B is the most recent owner.
+	admittedContent := make(map[string][]string)
 	admittedFrames := make(map[string]finalJobFrameWindow)
 	var manifestWire map[string]any
 	manifestItems := make(map[string]struct{})
@@ -296,7 +299,7 @@ func finalJobOverlayHandoff(ctx context.Context, result *GenerateResult, consume
 // instead of a standalone Drive clip); image-style cards on intermediate clip
 // scenes are dropped for the same reason the per-item handoff dropped them —
 // mode=replace would cover the source clip that must stay visible.
-func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) (map[string]any, error) {
+func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string][]string, admittedFrames map[string]finalJobFrameWindow) (map[string]any, error) {
 	manifest := result.OverlayRender.Manifest
 	if manifest == nil {
 		return nil, fmt.Errorf("final_job overlays are not on the manifest wire (missing overlay_manifest)")
@@ -327,10 +330,10 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 	if assetFrames <= 0 && artifact.DurationUS > 0 && fpsNum > 0 && fpsDen > 0 {
 		assetFrames = (artifact.DurationUS*int64(fpsNum) + 500_000*int64(fpsDen)) / (1_000_000 * int64(fpsDen))
 	}
-	if prior, exists := admittedContent[sha]; exists {
-		return nil, fmt.Errorf("final_job overlays %q and the overlay timeline render the same artifact %s; one image one overlay", prior, sha)
+	if prior := admittedContent[sha]; len(prior) > 0 {
+		return nil, fmt.Errorf("final_job overlays %q and the overlay timeline render the same artifact %s; one image one overlay", strings.Join(prior, ", "), sha)
 	}
-	admittedContent[sha] = "overlay_timeline"
+	admittedContent[sha] = append(admittedContent[sha], "overlay_timeline")
 
 	itemsByID := make(map[string]capmodel.OverlayItem, len(result.OverlayPlan.Items))
 	for _, item := range result.OverlayPlan.Items {
@@ -458,7 +461,7 @@ func finalJobManifestWire(ctx context.Context, result *GenerateResult, consumed 
 // artifact per item and the worker keeps replacing those windows one clip at
 // a time. Every other plan item must be covered by the manifest — a regular
 // item without a manifest entry is a broken handoff, not a fallback.
-func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, consumed, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string]string, admittedFrames map[string]finalJobFrameWindow) ([]any, error) {
+func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, consumed, manifestItems map[string]struct{}, baseFrameCount int64, fpsNum, fpsDen int, admittedContent map[string][]string, admittedFrames map[string]finalJobFrameWindow) ([]any, error) {
 	plan := result.OverlayPlan
 	artifacts := make(map[string]RenderArtifact, len(result.OverlayRender.Items))
 	for _, rendered := range result.OverlayRender.Items {
@@ -467,6 +470,10 @@ func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, c
 		}
 	}
 	rows := make([]any, 0, len(plan.Items))
+	itemsByID := make(map[string]capmodel.OverlayItem, len(plan.Items))
+	for _, item := range plan.Items {
+		itemsByID[strings.TrimSpace(item.ID)] = item
+	}
 	frameDenominator := int64(1_000_000 * fpsDen)
 	for index, item := range plan.Items {
 		id := strings.TrimSpace(item.ID)
@@ -505,12 +512,14 @@ func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, c
 		if endFrame <= startFrame {
 			return nil, fmt.Errorf("final_job overlay %q has an empty frame interval", id)
 		}
-		// Gate 1 — content identity: the same rendered artifact admitted twice
-		// would render the same visual again.
-		if prior, exists := admittedContent[sha]; exists {
-			return nil, fmt.Errorf("final_job overlays %q and %q render the same artifact %s; one image one overlay", prior, id, sha)
+		// Duplicate identity collapse: the same entity can be planned in two
+		// scenes and render the same bytes. Replacing the same artifact twice
+		// is idempotent, not a reason to kill the video. Collapse only when the
+		// content AND the canonical identity agree; a different entity sharing
+		// bytes is still a genuine one-image-one-overlay violation.
+		if finalJobOverlayDuplicateIdentity(admittedContent[sha], admittedFrames, itemsByID, item, startFrame, endFrame) {
+			continue
 		}
-		admittedContent[sha] = id
 		// Gate 2 — frame window: a dedicated row replaces its window with its
 		// own clip, so it must never share a frame with another dedicated row
 		// OR with composition frames (those belong to the timeline artifact).
@@ -532,6 +541,18 @@ func finalJobDedicatedOverlayRows(ctx context.Context, result *GenerateResult, c
 			}
 			startFrame, endFrame = scheduledStart, scheduledEnd
 		}
+		// Gate 1 — content identity: the same visual may legitimately recur
+		// at a different time (the same card for a returning entity), so a
+		// shared artifact is a defect only when it would replace the same
+		// frames twice. Compare against EVERY admitted window for this SHA,
+		// not just the most recent one.
+		for _, prior := range admittedContent[sha] {
+			priorWindow, tracked := admittedFrames[prior]
+			if !tracked || (startFrame < priorWindow.end && priorWindow.start < endFrame) {
+				return nil, fmt.Errorf("final_job overlays %q and %q render the same artifact %s in overlapping windows; one image one overlay", prior, id, sha)
+			}
+		}
+		admittedContent[sha] = append(admittedContent[sha], id)
 		admittedFrames[id] = finalJobFrameWindow{start: startFrame, end: endFrame, sceneID: item.SceneID}
 		row := map[string]any{
 			"id": id, "asset_id": assetRef["asset_id"],

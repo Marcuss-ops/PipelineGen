@@ -1,0 +1,810 @@
+{
+  "videos": {
+    "1": {
+      "attempt": 0,
+      "n": 1,
+      "video_id": "Hb2rKGfIOrM",
+      "url": "https://www.youtube.com/watch?v=Hb2rKGfIOrM",
+      "status": "done",
+      "started_at": "2026-11-13T11:20:18Z",
+      "job_id": "job_1794568820633134608_df6ffa08",
+      "items": [
+        {
+          "id": "yt_Hb2rKGfIOrM_1_44_v1",
+          "status": "processed",
+          "start": "00:01",
+          "end": "00:44",
+          "name": "Saluti iniziali abiti e palloni da basket",
+          "filename": "yt_Hb2rKGfIOrM_1_44_v1_saluti-iniziali-abiti-e-palloni-da-baske.mp4",
+          "drive_file_id": "1wNMBevEKb9Yf7YNvLS4unjqao4KxTy41",
+          "drive_link": "https://drive.google.com/file/d/1wNMBevEKb9Yf7YNvLS4unjqao4KxTy41/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_51_95_v1",
+          "status": "processed",
+          "start": "00:51",
+          "end": "01:35",
+          "name": "Stand up comedy più spaventosa della Presidenza",
+          "filename": "yt_Hb2rKGfIOrM_51_95_v1_stand-up-comedy-più-spaventosa-della-pre.mp4",
+          "drive_file_id": "1Vzl3Ym9Hp7kYB8DKQiXpaaljwO-piFWf",
+          "drive_link": "https://drive.google.com/file/d/1Vzl3Ym9Hp7kYB8DKQiXpaaljwO-piFWf/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_194_250_v1",
+          "status": "processed",
+          "start": "03:14",
+          "end": "04:10",
+          "name": "La finta grazia legale per il produttore Brendan",
+          "filename": "yt_Hb2rKGfIOrM_194_250_v1_la-finta-grazia-legale-per-il-produttore.mp4",
+          "drive_file_id": "1uv1MTH1RMkjX5qWcCrrTRN1FZg6Wav8l",
+          "drive_link": "https://drive.google.com/file/d/1uv1MTH1RMkjX5qWcCrrTRN1FZg6Wav8l/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_267_324_v1",
+          "status": "processed",
+          "start": "04:27",
+          "end": "05:24",
+          "name": "Sindrome di Stoccolma e il Super Io di Maron",
+          "filename": "yt_Hb2rKGfIOrM_267_324_v1_sindrome-di-stoccolma-e-il-super-io-di-m.mp4",
+          "drive_file_id": "15i_MDN1A0ka_ZUnOxVypoYlETKn03laY",
+          "drive_link": "https://drive.google.com/file/d/15i_MDN1A0ka_ZUnOxVypoYlETKn03laY/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_364_395_v1",
+          "status": "processed",
+          "start": "06:04",
+          "end": "06:35",
+          "name": "Paragonare il podcast alla Presidenza USA",
+          "filename": "yt_Hb2rKGfIOrM_364_395_v1_paragonare-il-podcast-alla-presidenza-us.mp4",
+          "drive_file_id": "18oC9Vk9MD9EDuAkTAOGq-PEdjvOA1Mg8",
+          "drive_link": "https://drive.google.com/file/d/18oC9Vk9MD9EDuAkTAOGq-PEdjvOA1Mg8/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_490_520_v1",
+          "status": "processed",
+          "start": "08:10",
+          "end": "08:40",
+          "name": "Essere cerebralmente morti e i debiti con Michelle",
+          "filename": "yt_Hb2rKGfIOrM_490_520_v1_essere-cerebralmente-morti-e-i-debiti-co.mp4",
+          "drive_file_id": "18ER8u2so97L0l1NuIb9fG9-ZCFSHjqxq",
+          "drive_link": "https://drive.google.com/file/d/18ER8u2so97L0l1NuIb9fG9-ZCFSHjqxq/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_828_870_v1",
+          "status": "processed",
+          "start": "13:48",
+          "end": "14:30",
+          "name": "Fuori dal giro culturale e incomprensione di TikTok",
+          "filename": "yt_Hb2rKGfIOrM_828_870_v1_fuori-dal-giro-culturale-e-incomprension.mp4",
+          "drive_file_id": "19lNWiC590lvF1zg8WqPE3LXyJTjgYGKw",
+          "drive_link": "https://drive.google.com/file/d/19lNWiC590lvF1zg8WqPE3LXyJTjgYGKw/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_968_1018_v1",
+          "status": "processed",
+          "start": "16:08",
+          "end": "16:58",
+          "name": "Presidente digitale solo perché al verde",
+          "filename": "yt_Hb2rKGfIOrM_968_1018_v1_presidente-digitale-solo-perché-al-verde.mp4",
+          "drive_file_id": "1RIQaA0lD47OdhWkbDpqLZzajEuvOQ4JW",
+          "drive_link": "https://drive.google.com/file/d/1RIQaA0lD47OdhWkbDpqLZzajEuvOQ4JW/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1371_1415_v1",
+          "status": "processed",
+          "start": "22:51",
+          "end": "23:35",
+          "name": "Trattati nucleari interrotti da Words with Friends",
+          "filename": "yt_Hb2rKGfIOrM_1371_1415_v1_trattati-nucleari-interrotti-da-words-wi.mp4",
+          "drive_file_id": "1_UC1SZuxqf9ClKTXxKfixSixvBY0x2LE",
+          "drive_link": "https://drive.google.com/file/d/1_UC1SZuxqf9ClKTXxKfixSixvBY0x2LE/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1767_1800_v1",
+          "status": "processed",
+          "start": "29:27",
+          "end": "30:00",
+          "name": "La battuta di stand up di Maron che ha fatto ridere Obama",
+          "filename": "yt_Hb2rKGfIOrM_1767_1800_v1_la-battuta-di-stand-up-di-maron-che-ha-f.mp4",
+          "drive_file_id": "1Mvq-n6bjcE-ePhsItv4s9BDczdbjRPzJ",
+          "drive_link": "https://drive.google.com/file/d/1Mvq-n6bjcE-ePhsItv4s9BDczdbjRPzJ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_3098_3140_v1",
+          "status": "processed",
+          "start": "51:38",
+          "end": "52:20",
+          "name": "Il complotto degli elicotteri neri in Texas",
+          "filename": "yt_Hb2rKGfIOrM_3098_3140_v1_il-complotto-degli-elicotteri-neri-in-te.mp4",
+          "drive_file_id": "1kdgisEgC5vZtB0w9k0xomBVaI78ZtY2H",
+          "drive_link": "https://drive.google.com/file/d/1kdgisEgC5vZtB0w9k0xomBVaI78ZtY2H/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_4020_4075_v1",
+          "status": "processed",
+          "start": "67:00",
+          "end": "67:55",
+          "name": "Saluti finali e il merito del montaggio di Brendan",
+          "filename": "yt_Hb2rKGfIOrM_4020_4075_v1_saluti-finali-e-il-merito-del-montaggio.mp4",
+          "drive_file_id": "1PBygbp08H68Bn0-8iOcbVJKm6kTMGA79",
+          "drive_link": "https://drive.google.com/file/d/1PBygbp08H68Bn0-8iOcbVJKm6kTMGA79/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_11_24_v1",
+          "status": "processed",
+          "start": "00:11",
+          "end": "00:24",
+          "name": "Hook Tutto il resto è in lavatrice",
+          "filename": "yt_Hb2rKGfIOrM_11_24_v1_hook-tutto-il-resto-è-in-lavatrice.mp4",
+          "drive_file_id": "10SEmtPb0Kq0VbQFLJ1MKz9gkxPyas5qt",
+          "drive_link": "https://drive.google.com/file/d/10SEmtPb0Kq0VbQFLJ1MKz9gkxPyas5qt/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_51_65_v1",
+          "status": "processed",
+          "start": "00:51",
+          "end": "01:05",
+          "name": "Hook La stand up è più spaventosa della Presidenza",
+          "filename": "yt_Hb2rKGfIOrM_51_65_v1_hook-la-stand-up-è-più-spaventosa-della.mp4",
+          "drive_file_id": "1v0Wl6emoPXb1TYJn8SFDnAkiV2CLD8ZJ",
+          "drive_link": "https://drive.google.com/file/d/1v0Wl6emoPXb1TYJn8SFDnAkiV2CLD8ZJ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_202_213_v1",
+          "status": "processed",
+          "start": "03:22",
+          "end": "03:33",
+          "name": "Hook È una grazia presidenziale Non posso più farle",
+          "filename": "yt_Hb2rKGfIOrM_202_213_v1_hook-è-una-grazia-presidenziale-non-poss.mp4",
+          "drive_file_id": "1jFnWc7A1Fk_BuUkODDVuFwe55mLeNQRE",
+          "drive_link": "https://drive.google.com/file/d/1jFnWc7A1Fk_BuUkODDVuFwe55mLeNQRE/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_369_380_v1",
+          "status": "processed",
+          "start": "06:09",
+          "end": "06:20",
+          "name": "Hook Paragonare il podcast alla Presidenza",
+          "filename": "yt_Hb2rKGfIOrM_369_380_v1_hook-paragonare-il-podcast-alla-presiden.mp4",
+          "drive_file_id": "1_LvUobwNsDfSlrEh3NLtqT4VPQAJVLev",
+          "drive_link": "https://drive.google.com/file/d/1_LvUobwNsDfSlrEh3NLtqT4VPQAJVLev/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_848_862_v1",
+          "status": "processed",
+          "start": "14:08",
+          "end": "14:22",
+          "name": "Hook Il cervello di Obama non elabora TikTok",
+          "filename": "yt_Hb2rKGfIOrM_848_862_v1_hook-il-cervello-di-obama-non-elabora-ti.mp4",
+          "drive_file_id": "11VA1spTo503UOkkQ-oH8VfGGm74NfRNk",
+          "drive_link": "https://drive.google.com/file/d/11VA1spTo503UOkkQ-oH8VfGGm74NfRNk/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_970_984_v1",
+          "status": "processed",
+          "start": "16:10",
+          "end": "16:24",
+          "name": "Hook Pioniere digitale solo perché senza soldi",
+          "filename": "yt_Hb2rKGfIOrM_970_984_v1_hook-pioniere-digitale-solo-perché-senza.mp4",
+          "drive_file_id": "1Lxjqu0Fiy7jYajSZ1zmDqGLuesIYiDEj",
+          "drive_link": "https://drive.google.com/file/d/1Lxjqu0Fiy7jYajSZ1zmDqGLuesIYiDEj/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1398_1412_v1",
+          "status": "processed",
+          "start": "23:18",
+          "end": "23:32",
+          "name": "Hook Words with Friends durante i trattati nucleari",
+          "filename": "yt_Hb2rKGfIOrM_1398_1412_v1_hook-words-with-friends-durante-i-tratta.mp4",
+          "drive_file_id": "1GAMNEQYZxV-xYaTdhFB9HnZltu8tYxke",
+          "drive_link": "https://drive.google.com/file/d/1GAMNEQYZxV-xYaTdhFB9HnZltu8tYxke/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1773_1787_v1",
+          "status": "processed",
+          "start": "29:33",
+          "end": "29:47",
+          "name": "Hook La freddura di Maron che ha fatto ridere Obama",
+          "filename": "yt_Hb2rKGfIOrM_1773_1787_v1_hook-la-freddura-di-maron-che-ha-fatto-r.mp4",
+          "drive_file_id": "1Q6qWYezUKTmuPD8SKNmQ3b5QWPUkJ5Bn",
+          "drive_link": "https://drive.google.com/file/d/1Q6qWYezUKTmuPD8SKNmQ3b5QWPUkJ5Bn/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_Hb2rKGfIOrM_1_44_v1",
+        "yt_Hb2rKGfIOrM_51_95_v1",
+        "yt_Hb2rKGfIOrM_194_250_v1",
+        "yt_Hb2rKGfIOrM_267_324_v1",
+        "yt_Hb2rKGfIOrM_364_395_v1",
+        "yt_Hb2rKGfIOrM_490_520_v1",
+        "yt_Hb2rKGfIOrM_828_870_v1",
+        "yt_Hb2rKGfIOrM_968_1018_v1",
+        "yt_Hb2rKGfIOrM_1371_1415_v1",
+        "yt_Hb2rKGfIOrM_1767_1800_v1",
+        "yt_Hb2rKGfIOrM_3098_3140_v1",
+        "yt_Hb2rKGfIOrM_4020_4075_v1",
+        "yt_Hb2rKGfIOrM_11_24_v1",
+        "yt_Hb2rKGfIOrM_51_65_v1",
+        "yt_Hb2rKGfIOrM_202_213_v1",
+        "yt_Hb2rKGfIOrM_369_380_v1",
+        "yt_Hb2rKGfIOrM_848_862_v1",
+        "yt_Hb2rKGfIOrM_970_984_v1",
+        "yt_Hb2rKGfIOrM_1398_1412_v1",
+        "yt_Hb2rKGfIOrM_1773_1787_v1"
+      ],
+      "finished_at": "2026-11-13T11:33:18Z",
+      "backfill": {
+        "processed": 20,
+        "source_ready_count": 20,
+        "source_acquired_count": 19,
+        "created_total": 0,
+        "index_repaired_total": 20,
+        "reindex_requested_total": 19,
+        "subtitles_delivered_total": 20,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 202116
+      },
+      "assets": [
+        {
+          "id": "yt_Hb2rKGfIOrM_1_44_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_51_95_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_194_250_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_267_324_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_364_395_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_490_520_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_828_870_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_968_1018_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1371_1415_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1767_1800_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_3098_3140_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_4020_4075_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_11_24_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_51_65_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_202_213_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_369_380_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_848_862_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_970_984_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1398_1412_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1773_1787_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ]
+    },
+    "2": {
+      "attempt": 0,
+      "n": 2,
+      "video_id": "v8e5d8HOaMA",
+      "url": "https://www.youtube.com/watch?v=v8e5d8HOaMA",
+      "status": "done",
+      "started_at": "2026-11-13T11:33:18Z",
+      "job_id": "job_1794569607983229939_60e3ff1e",
+      "items": [
+        {
+          "id": "yt_v8e5d8HOaMA_26_55_v1",
+          "status": "processed",
+          "start": "00:26",
+          "end": "00:55",
+          "name": "Il segreto dell ottimismo crescere alle Hawaii",
+          "filename": "yt_v8e5d8HOaMA_26_55_v1_il-segreto-dell-ottimismo-crescere-alle.mp4",
+          "drive_file_id": "1ZK_ZVdVtwoxTQphcIAU9iFICCAcDWGrm",
+          "drive_link": "https://drive.google.com/file/d/1ZK_ZVdVtwoxTQphcIAU9iFICCAcDWGrm/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_108_134_v1",
+          "status": "processed",
+          "start": "01:48",
+          "end": "02:14",
+          "name": "Cosa ricorderò in punto di morte e la battuta sulle Hawaii",
+          "filename": "yt_v8e5d8HOaMA_108_134_v1_cosa-ricorderò-in-punto-di-morte-e-la-ba.mp4",
+          "drive_file_id": "1IhI7ettck9OHa_05NIaxNlI_W5saklYN",
+          "drive_link": "https://drive.google.com/file/d/1IhI7ettck9OHa_05NIaxNlI_W5saklYN/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_135_158_v1",
+          "status": "processed",
+          "start": "02:15",
+          "end": "02:38",
+          "name": "Eredità nella comunità afroamericana e l elogio a Michelle",
+          "filename": "yt_v8e5d8HOaMA_135_158_v1_eredità-nella-comunità-afroamericana-e-l.mp4",
+          "drive_file_id": "19XuIICVqGsntl2svjZxPcDtFkzyWD3If",
+          "drive_link": "https://drive.google.com/file/d/19XuIICVqGsntl2svjZxPcDtFkzyWD3If/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_431_465_v1",
+          "status": "processed",
+          "start": "07:11",
+          "end": "07:45",
+          "name": "La metafora della prima casa senza piani in granito",
+          "filename": "yt_v8e5d8HOaMA_431_465_v1_la-metafora-della-prima-casa-senza-piani.mp4",
+          "drive_file_id": "1QPoYq04kwItbNzGfFZpTZRGGbrJCRRqw",
+          "drive_link": "https://drive.google.com/file/d/1QPoYq04kwItbNzGfFZpTZRGGbrJCRRqw/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_517_552_v1",
+          "status": "processed",
+          "start": "08:37",
+          "end": "09:12",
+          "name": "Niente lamentele non diventate cinici",
+          "filename": "yt_v8e5d8HOaMA_517_552_v1_niente-lamentele-non-diventate-cinici.mp4",
+          "drive_file_id": "1HwyzJUX5mpdrLtQ-zuwdXhUMJJAvyVlX",
+          "drive_link": "https://drive.google.com/file/d/1HwyzJUX5mpdrLtQ-zuwdXhUMJJAvyVlX/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_552_580_v1",
+          "status": "processed",
+          "start": "09:12",
+          "end": "09:40",
+          "name": "Steve Jobs Quentin Tarantino e il genio di Picasso",
+          "filename": "yt_v8e5d8HOaMA_552_580_v1_steve-jobs-quentin-tarantino-e-il-genio.mp4",
+          "drive_file_id": "1QSlYTMQnx5C0B4wTtwvG7DEEi6NOoJ2G",
+          "drive_link": "https://drive.google.com/file/d/1QSlYTMQnx5C0B4wTtwvG7DEEi6NOoJ2G/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_593_620_v1",
+          "status": "processed",
+          "start": "09:53",
+          "end": "10:20",
+          "name": "Il biglietto di compleanno coi brillantini fatto coi genitori",
+          "filename": "yt_v8e5d8HOaMA_593_620_v1_il-biglietto-di-compleanno-coi-brillanti.mp4",
+          "drive_file_id": "1S_GjiyzzuOYzS_VryRwdEC8nQIK9_uHb",
+          "drive_link": "https://drive.google.com/file/d/1S_GjiyzzuOYzS_VryRwdEC8nQIK9_uHb/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_36_50_v1",
+          "status": "processed",
+          "start": "00:36",
+          "end": "00:50",
+          "name": "Hook Il merito è solo delle Hawaii",
+          "filename": "yt_v8e5d8HOaMA_36_50_v1_hook-il-merito-è-solo-delle-hawaii.mp4",
+          "drive_file_id": "1lTLZXzwFybgX1xDJ3Q8WvaUE0K_OYbMf",
+          "drive_link": "https://drive.google.com/file/d/1lTLZXzwFybgX1xDJ3Q8WvaUE0K_OYbMf/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_124_134_v1",
+          "status": "processed",
+          "start": "02:04",
+          "end": "02:14",
+          "name": "Hook È soprattutto merito delle Hawaii",
+          "filename": "yt_v8e5d8HOaMA_124_134_v1_hook-è-soprattutto-merito-delle-hawaii.mp4",
+          "drive_file_id": "1ND9TgZfkLlHmgZanChY-7c3_mX3EzbDw",
+          "drive_link": "https://drive.google.com/file/d/1ND9TgZfkLlHmgZanChY-7c3_mX3EzbDw/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_140_154_v1",
+          "status": "processed",
+          "start": "02:20",
+          "end": "02:34",
+          "name": "Hook Michelle è una bomba",
+          "filename": "yt_v8e5d8HOaMA_140_154_v1_hook-michelle-è-una-bomba.mp4",
+          "drive_file_id": "1cUNX4sPLneN3_uR-F1dPmH18MCbbtdki",
+          "drive_link": "https://drive.google.com/file/d/1cUNX4sPLneN3_uR-F1dPmH18MCbbtdki/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_441_456_v1",
+          "status": "processed",
+          "start": "07:21",
+          "end": "07:36",
+          "name": "Hook Niente granito in cucina ma meglio che dormire fuori",
+          "filename": "yt_v8e5d8HOaMA_441_456_v1_hook-niente-granito-in-cucina-ma-meglio.mp4",
+          "drive_file_id": "1agKSm4bZGksTMJhdmsWDeyjsXtRpeJ8o",
+          "drive_link": "https://drive.google.com/file/d/1agKSm4bZGksTMJhdmsWDeyjsXtRpeJ8o/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_520_535_v1",
+          "status": "processed",
+          "start": "08:40",
+          "end": "08:55",
+          "name": "Hook Vietato lamentarsi e fare gli offesi",
+          "filename": "yt_v8e5d8HOaMA_520_535_v1_hook-vietato-lamentarsi-e-fare-gli-offes.mp4",
+          "drive_file_id": "1E7CFtR0EqPKd_K-nqOcX3fPkjPQL5Xc1",
+          "drive_link": "https://drive.google.com/file/d/1E7CFtR0EqPKd_K-nqOcX3fPkjPQL5Xc1/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_562_574_v1",
+          "status": "processed",
+          "start": "09:22",
+          "end": "09:34",
+          "name": "Hook Solo Picasso era davvero più bravo degli altri",
+          "filename": "yt_v8e5d8HOaMA_562_574_v1_hook-solo-picasso-era-davvero-più-bravo.mp4",
+          "drive_file_id": "1MHfIEgT1jOZdtUoad0fTv-MImvt1Iwuk",
+          "drive_link": "https://drive.google.com/file/d/1MHfIEgT1jOZdtUoad0fTv-MImvt1Iwuk/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_597_611_v1",
+          "status": "processed",
+          "start": "09:57",
+          "end": "10:11",
+          "name": "Hook Vi hanno aiutato i genitori con i brillantini",
+          "filename": "yt_v8e5d8HOaMA_597_611_v1_hook-vi-hanno-aiutato-i-genitori-con-i-b.mp4",
+          "drive_file_id": "1cx4J7Fftj2uG-h0c5Xd2oSMuKyoQcJC8",
+          "drive_link": "https://drive.google.com/file/d/1cx4J7Fftj2uG-h0c5Xd2oSMuKyoQcJC8/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_v8e5d8HOaMA_26_55_v1",
+        "yt_v8e5d8HOaMA_108_134_v1",
+        "yt_v8e5d8HOaMA_135_158_v1",
+        "yt_v8e5d8HOaMA_431_465_v1",
+        "yt_v8e5d8HOaMA_517_552_v1",
+        "yt_v8e5d8HOaMA_552_580_v1",
+        "yt_v8e5d8HOaMA_593_620_v1",
+        "yt_v8e5d8HOaMA_36_50_v1",
+        "yt_v8e5d8HOaMA_124_134_v1",
+        "yt_v8e5d8HOaMA_140_154_v1",
+        "yt_v8e5d8HOaMA_441_456_v1",
+        "yt_v8e5d8HOaMA_520_535_v1",
+        "yt_v8e5d8HOaMA_562_574_v1",
+        "yt_v8e5d8HOaMA_597_611_v1"
+      ],
+      "backfill": {
+        "processed": 14,
+        "source_ready_count": 14,
+        "source_acquired_count": 14,
+        "created_total": 0,
+        "index_repaired_total": 14,
+        "reindex_requested_total": 14,
+        "subtitles_delivered_total": 14,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 135988
+      },
+      "assets": [
+        {
+          "id": "yt_v8e5d8HOaMA_26_55_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_108_134_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_135_158_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_431_465_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_517_552_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_552_580_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_593_620_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_36_50_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_124_134_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_140_154_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_441_456_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_520_535_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_562_574_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_v8e5d8HOaMA_597_611_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T11:42:30Z"
+    }
+  },
+  "folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr",
+  "started_at": "2026-11-13T11:20:18Z"
+}

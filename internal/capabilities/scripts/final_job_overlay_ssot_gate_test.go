@@ -123,6 +123,43 @@ func TestFinalJobManifestRejectsDuplicateContentHash(t *testing.T) {
 // TestFinalJobHandoffRejectsRowSharingTimelineArtifact pins that a dedicated
 // replace row can never reuse the composition's certified bytes: the timeline
 // artifact is admitted exactly once on the handoff.
+// TestFinalJobHandoffCollapsesRepeatedIdentityArtifact pins the r38 fix: two
+// scenes can carry the same person and therefore the same rendered artifact.
+// When the canonical identity and the content address agree, the second row is
+// redundant and must collapse; the guard remains fail-closed for two different
+// entities that happen to share bytes.
+func TestFinalJobHandoffCollapsesRepeatedIdentityArtifact(t *testing.T) {
+	t.Setenv("OBJECTSTORE_PUBLIC_URL", "")
+	sha := strings.Repeat("e", 64)
+	entityRef := &overlaymodel.OverlayEntityRef{
+		EntityID: "ent_francis", Type: "PERSON", Name: "Francis Kaufmann",
+		CanonicalEntityID: "person:francis-kaufmann",
+	}
+	items := []overlaymodel.OverlayItem{
+		{ID: "card-a", SceneID: "scene-1", Kind: "entity_image", TemplateID: "image_popup",
+			EntityID: "ent_francis", EntityRef: entityRef, StartUS: 0, DurationUS: 1_000_000},
+		{ID: "card-b", SceneID: "scene-2", Kind: "entity_image", TemplateID: "image_popup",
+			EntityID: "ent_francis", EntityRef: entityRef, StartUS: 500_000, DurationUS: 1_000_000},
+	}
+	artifact := &RenderArtifact{ID: "same-artifact", DriveFileID: "same-drive", SHA256: sha,
+		SizeBytes: 123, FrameCount: 120, Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1}
+	result := &GenerateResult{
+		OverlayPlan: &overlaymodel.OverlayPlan{FPSNum: 24, FPSDen: 1, Items: items},
+		OverlayRender: &RenderReference{Items: []OverlayItemRenderReference{
+			{ItemID: "card-a", Artifact: artifact},
+			{ItemID: "card-b", Artifact: artifact},
+		}},
+	}
+	rows, err := finalJobDedicatedOverlayRows(context.Background(), result, nil, nil, 0, 24, 1,
+		map[string][]string{}, map[string]finalJobFrameWindow{})
+	if err != nil {
+		t.Fatalf("same-identity duplicate must collapse, got %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %#v, want one replace row for one identity/artifact", rows)
+	}
+}
+
 func TestFinalJobHandoffRejectsRowSharingTimelineArtifact(t *testing.T) {
 	sha := strings.Repeat("d", 64)
 	phrase := overlaymodel.OverlayItem{ID: "overlay-a", SceneID: "scene-1", Kind: "text_phrase", TemplateID: "phrase", StartMs: 100, EndMs: 2100, Text: "first"}

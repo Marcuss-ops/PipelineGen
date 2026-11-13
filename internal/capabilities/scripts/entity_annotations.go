@@ -123,7 +123,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		// — never a re-derivation from a possibly-different surface.
 		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
 		if scriptpkg.IsAnnotationEntityKind(kind) {
-			item.Image = entityImageBindingFor(canonical, seg)
+			item.Image = entityImageBindingFor(canonical, kind, seg)
 		}
 		if kind == "LOGO" && item.Image == nil {
 			item.Type = "BRAND"
@@ -187,7 +187,7 @@ func isPromptEchoEntityName(value string) bool {
 // identity-scoped internet image onto an annotation. Search queries are not
 // identity evidence: a location mentioned in a person's image query must not
 // bind that person's image to the location annotation (or vice versa).
-func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityImageBinding {
+func entityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityImageBinding {
 	// NLP occasionally labels a named evidentiary object as a PERSON (for
 	// example, "DNA di Chiara"). An all-caps acronym at the start is not a
 	// human identity, so never attach a portrait to that annotation.
@@ -203,18 +203,45 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 	var best *scriptpkg.SegmentAssetCandidate
 	bestRank := 0
 	for _, candidate := range all {
+		// A failed Drive upload is not a failed image: when the bytes were
+		// verified and the source URL is still available, keep the binding and
+		// let RenderingGen materialize it through the content hash. The old
+		// persisted-only gate silently turned every transient upload error into
+		// a text-only entity card.
+		verifiedWithoutDrive := candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted &&
+			strings.TrimSpace(candidate.ContentSHA256) != "" &&
+			(strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != "") &&
+			candidate.AcquisitionStatus == scriptpkg.VidRushStatusAcquired &&
+			candidate.VerificationStatus == scriptpkg.VidRushStatusVerified
+		semanticStatus := strings.ToLower(strings.TrimSpace(candidate.SemanticStatus))
+		// The identity/face adjudicator only runs on PERSON candidates. GPE and
+		// ORG searches legitimately leave the field empty while still carrying
+		// acquired, byte-verified, persisted place/agency photography. Treat an
+		// empty verdict as "not applicable" for non-person kinds, never as a
+		// rejection; an explicit non-accepted verdict still fails closed.
+		semanticOK := semanticStatus == "accepted" ||
+			(semanticStatus == "" && !strings.EqualFold(strings.TrimSpace(kind), "PERSON"))
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) ||
-			strings.TrimSpace(candidate.DriveLink) == "" || strings.TrimSpace(candidate.ContentSHA256) == "" ||
+			(strings.TrimSpace(candidate.DriveLink) == "" && !verifiedWithoutDrive) ||
+			strings.TrimSpace(candidate.ContentSHA256) == "" ||
 			candidate.AcquisitionStatus != scriptpkg.VidRushStatusAcquired ||
 			candidate.VerificationStatus != scriptpkg.VidRushStatusVerified ||
-			candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted ||
-			!strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") ||
-			strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), "failed") ||
+			(candidate.PersistenceStatus != scriptpkg.VidRushStatusPersisted && !verifiedWithoutDrive) ||
+			!semanticOK ||
+			(strings.EqualFold(strings.TrimSpace(candidate.IndexStatus), "failed") && !verifiedWithoutDrive) ||
 			strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected") {
 			continue
 		}
 		entity := normalizeEntityImageName(candidate.Entity)
-		if entity != want {
+		entityMatches := entity == want
+		// A single-token ORG acronym (ANSA) often gets an enriched provider
+		// query such as "ANSA news agency"; the returned candidate is still the
+		// same identity. Only accept that suffix for an actual acronym, so a
+		// place called "Corte" can never claim a candidate for "Corte d'Assise".
+		if !entityMatches && isUppercaseAcronym(strings.TrimSpace(name)) && strings.HasPrefix(entity, want+" ") {
+			entityMatches = true
+		}
+		if !entityMatches {
 			continue
 		}
 		// Preserve provider order among equally identity-scoped candidates; the
@@ -236,28 +263,6 @@ func entityImageBindingFor(name string, seg scriptpkg.VidRushSegmentResult) *scr
 		}
 	}
 	return nil
-}
-
-func isUppercaseAcronym(value string) bool {
-	letters := 0
-	for _, r := range value {
-		if r < 'A' || r > 'Z' {
-			return false
-		}
-		letters++
-	}
-	return letters >= 2 && letters <= 6
-}
-
-func startsWithEntityAcronym(value string) bool {
-	fields := strings.Fields(strings.TrimSpace(value))
-	return len(fields) > 1 && isUppercaseAcronym(fields[0])
-}
-
-func normalizeEntityImageName(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.TrimSuffix(strings.TrimSuffix(value, "'s"), "’s")
-	return strings.Join(strings.Fields(value), " ")
 }
 
 func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {
@@ -349,24 +354,6 @@ func findEntitySpan(text, value string) (scriptpkg.AnnotationSpan, bool) {
 		startRune++
 	}
 	return scriptpkg.AnnotationSpan{}, false
-}
-
-// advanceRunes returns the byte offset n runes after start, or -1 when the
-// string ends first. It lets a caller compare a fixed-rune-length window
-// without allocating a rune slice for the text.
-func advanceRunes(text string, start, n int) int {
-	offset := start
-	for i := 0; i < n; i++ {
-		if offset >= len(text) {
-			return -1
-		}
-		_, size := utf8.DecodeRuneInString(text[offset:])
-		if size <= 0 {
-			return -1
-		}
-		offset += size
-	}
-	return offset
 }
 
 // findAllEntitySpans returns every case-insensitive occurrence of value in

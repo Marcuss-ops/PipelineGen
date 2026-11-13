@@ -1,0 +1,854 @@
+{
+  "videos": {
+    "1": {
+      "attempt": 0,
+      "n": 1,
+      "video_id": "xOl7HTXuLvk",
+      "url": "https://www.youtube.com/watch?v=xOl7HTXuLvk",
+      "status": "done",
+      "started_at": "2026-11-13T12:03:01Z",
+      "job_id": "job_1794571383277272172_8f57fe99",
+      "items": [
+        {
+          "id": "yt_xOl7HTXuLvk_88_122_v1",
+          "status": "processed",
+          "start": "01:28",
+          "end": "02:02",
+          "name": "Obama ribalta i ruoli e chiede se Ryan Clark ha un gemello",
+          "filename": "yt_xOl7HTXuLvk_88_122_v1_obama-ribalta-i-ruoli-e-chiede-se-ryan-c.mp4",
+          "drive_file_id": "1Mk371Zsi1j89e5QDjxg5HEMvJ41hPKIE",
+          "drive_link": "https://drive.google.com/file/d/1Mk371Zsi1j89e5QDjxg5HEMvJ41hPKIE/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_170_228_v1",
+          "status": "processed",
+          "start": "02:50",
+          "end": "03:48",
+          "name": "Prese in giro sulla moda il Tan Suit e i gioielli",
+          "filename": "yt_xOl7HTXuLvk_170_228_v1_prese-in-giro-sulla-moda-il-tan-suit-e-i.mp4",
+          "drive_file_id": "1v-y8lcGYKE40pINwiRL2YXTPpeZ7wAaF",
+          "drive_link": "https://drive.google.com/file/d/1v-y8lcGYKE40pINwiRL2YXTPpeZ7wAaF/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_500_544_v1",
+          "status": "processed",
+          "start": "08:20",
+          "end": "09:04",
+          "name": "Il fascino presidenziale e la paura di Michelle",
+          "filename": "yt_xOl7HTXuLvk_500_544_v1_il-fascino-presidenziale-e-la-paura-di-m.mp4",
+          "drive_file_id": "1sugbEPlTbpZqyfeB9n-Bo1I72xLc6f_5",
+          "drive_link": "https://drive.google.com/file/d/1sugbEPlTbpZqyfeB9n-Bo1I72xLc6f_5/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_604_664_v1",
+          "status": "processed",
+          "start": "10:04",
+          "end": "11:04",
+          "name": "Le signore anziane che toccavano il sedere al Presidente",
+          "filename": "yt_xOl7HTXuLvk_604_664_v1_le-signore-anziane-che-toccavano-il-sede.mp4",
+          "drive_file_id": "1cf-43atr9RjTutAzvk_H3yTrCRV8G6HJ",
+          "drive_link": "https://drive.google.com/file/d/1cf-43atr9RjTutAzvk_H3yTrCRV8G6HJ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_1193_1230_v1",
+          "status": "processed",
+          "start": "19:53",
+          "end": "20:30",
+          "name": "Travestirsi con i dreadlock e il problema delle orecchie grandi",
+          "filename": "yt_xOl7HTXuLvk_1193_1230_v1_travestirsi-con-i-dreadlock-e-il-problem.mp4",
+          "drive_file_id": "1x5lbLWgmR6XP6Q0HI1FTifCHYn8yrQXz",
+          "drive_link": "https://drive.google.com/file/d/1x5lbLWgmR6XP6Q0HI1FTifCHYn8yrQXz/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_1895_1925_v1",
+          "status": "processed",
+          "start": "31:35",
+          "end": "32:05",
+          "name": "Confessare ai liceali di aver fatto bravate da adolescente",
+          "filename": "yt_xOl7HTXuLvk_1895_1925_v1_confessare-ai-liceali-di-aver-fatto-brav.mp4",
+          "drive_file_id": "1T9btYdc2cb63QAGNVxCsifPGr4Jveap8",
+          "drive_link": "https://drive.google.com/file/d/1T9btYdc2cb63QAGNVxCsifPGr4Jveap8/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_2838_2885_v1",
+          "status": "processed",
+          "start": "47:18",
+          "end": "48:05",
+          "name": "La difesa speciale a basket i 12 punti al labbro e Michelle",
+          "filename": "yt_xOl7HTXuLvk_2838_2885_v1_la-difesa-speciale-a-basket-i-12-punti-a.mp4",
+          "drive_file_id": "1ChMIpe6EbJI0n19_a_yoKb4VQRMc2k-p",
+          "drive_link": "https://drive.google.com/file/d/1ChMIpe6EbJI0n19_a_yoKb4VQRMc2k-p/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3249_3309_v1",
+          "status": "processed",
+          "start": "54:09",
+          "end": "55:09",
+          "name": "Fuorionda finale sfide a basket e il nome completo di KK",
+          "filename": "yt_xOl7HTXuLvk_3249_3309_v1_fuorionda-finale-sfide-a-basket-e-il-nom.mp4",
+          "drive_file_id": "1PZj8nFJlTO6YGGIZSoMl_GZD3wCzUR3G",
+          "drive_link": "https://drive.google.com/file/d/1PZj8nFJlTO6YGGIZSoMl_GZD3wCzUR3G/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_88_102_v1",
+          "status": "processed",
+          "start": "01:28",
+          "end": "01:42",
+          "name": "Hook Ryan Clark ha un gemello",
+          "filename": "yt_xOl7HTXuLvk_88_102_v1_hook-ryan-clark-ha-un-gemello.mp4",
+          "drive_file_id": "1n9DEXf3CMHVjLbWooZjMILt34EeZvptR",
+          "drive_link": "https://drive.google.com/file/d/1n9DEXf3CMHVjLbWooZjMILt34EeZvptR/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_176_191_v1",
+          "status": "processed",
+          "start": "02:56",
+          "end": "03:11",
+          "name": "Hook Volevo mettere il famoso abito beige",
+          "filename": "yt_xOl7HTXuLvk_176_191_v1_hook-volevo-mettere-il-famoso-abito-beig.mp4",
+          "drive_file_id": "1KwHqh-wOj6o3Z-gIXDc3FFT4X_6LZbUD",
+          "drive_link": "https://drive.google.com/file/d/1KwHqh-wOj6o3Z-gIXDc3FFT4X_6LZbUD/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_534_544_v1",
+          "status": "processed",
+          "start": "08:54",
+          "end": "09:04",
+          "name": "Hook Ho paura di Michelle",
+          "filename": "yt_xOl7HTXuLvk_534_544_v1_hook-ho-paura-di-michelle.mp4",
+          "drive_file_id": "1LEnDaFcH384nF8W3mbnDn4BYYCZwdENY",
+          "drive_link": "https://drive.google.com/file/d/1LEnDaFcH384nF8W3mbnDn4BYYCZwdENY/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_604_618_v1",
+          "status": "processed",
+          "start": "10:04",
+          "end": "10:18",
+          "name": "Hook Le foto delle signore che mi toccavano il sedere",
+          "filename": "yt_xOl7HTXuLvk_604_618_v1_hook-le-foto-delle-signore-che-mi-toccav.mp4",
+          "drive_file_id": "1OBdv7aOpnfJGttzdk5rDpqTqN3XsAOGV",
+          "drive_link": "https://drive.google.com/file/d/1OBdv7aOpnfJGttzdk5rDpqTqN3XsAOGV/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_979_993_v1",
+          "status": "processed",
+          "start": "16:19",
+          "end": "16:33",
+          "name": "Hook Malia pensava che nessuno la riconoscesse",
+          "filename": "yt_xOl7HTXuLvk_979_993_v1_hook-malia-pensava-che-nessuno-la-ricono.mp4",
+          "drive_file_id": "1KVQjZ4tTS0RBGdKq79ob7odHrSTwIrIO",
+          "drive_link": "https://drive.google.com/file/d/1KVQjZ4tTS0RBGdKq79ob7odHrSTwIrIO/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_1216_1228_v1",
+          "status": "processed",
+          "start": "20:16",
+          "end": "20:28",
+          "name": "Hook Le mie orecchie sono troppo grandi per travestirmi",
+          "filename": "yt_xOl7HTXuLvk_1216_1228_v1_hook-le-mie-orecchie-sono-troppo-grandi.mp4",
+          "drive_file_id": "1s2eFTDYDqw26u4k54aIBVAN4e8DFmLXm",
+          "drive_link": "https://drive.google.com/file/d/1s2eFTDYDqw26u4k54aIBVAN4e8DFmLXm/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_2849_2864_v1",
+          "status": "processed",
+          "start": "47:29",
+          "end": "47:44",
+          "name": "Hook 12 punti di sutura al labbro prima di un discorso",
+          "filename": "yt_xOl7HTXuLvk_2849_2864_v1_hook-12-punti-di-sutura-al-labbro-prima.mp4",
+          "drive_file_id": "1Bw2priTew72zHvy4ayTWsW3Tb-sHyyZl",
+          "drive_link": "https://drive.google.com/file/d/1Bw2priTew72zHvy4ayTWsW3Tb-sHyyZl/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3104_3118_v1",
+          "status": "processed",
+          "start": "51:44",
+          "end": "51:58",
+          "name": "Hook Michelle non era il mio capo usava la fotocopiatrice",
+          "filename": "yt_xOl7HTXuLvk_3104_3118_v1_hook-michelle-non-era-il-mio-capo-usava.mp4",
+          "drive_file_id": "10KaE50gh_m5iPfKzo98pkld_r-kEkHmc",
+          "drive_link": "https://drive.google.com/file/d/10KaE50gh_m5iPfKzo98pkld_r-kEkHmc/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3259_3271_v1",
+          "status": "processed",
+          "start": "54:19",
+          "end": "54:31",
+          "name": "Hook I giocatori NFL non sanno giocare a basket",
+          "filename": "yt_xOl7HTXuLvk_3259_3271_v1_hook-i-giocatori-nfl-non-sanno-giocare-a.mp4",
+          "drive_file_id": "1CgS5cjXItnUBW9lhQqBVgq39zyNFRmKP",
+          "drive_link": "https://drive.google.com/file/d/1CgS5cjXItnUBW9lhQqBVgq39zyNFRmKP/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_xOl7HTXuLvk_88_122_v1",
+        "yt_xOl7HTXuLvk_170_228_v1",
+        "yt_xOl7HTXuLvk_500_544_v1",
+        "yt_xOl7HTXuLvk_604_664_v1",
+        "yt_xOl7HTXuLvk_1193_1230_v1",
+        "yt_xOl7HTXuLvk_1895_1925_v1",
+        "yt_xOl7HTXuLvk_2838_2885_v1",
+        "yt_xOl7HTXuLvk_3249_3309_v1",
+        "yt_xOl7HTXuLvk_88_102_v1",
+        "yt_xOl7HTXuLvk_176_191_v1",
+        "yt_xOl7HTXuLvk_534_544_v1",
+        "yt_xOl7HTXuLvk_604_618_v1",
+        "yt_xOl7HTXuLvk_979_993_v1",
+        "yt_xOl7HTXuLvk_1216_1228_v1",
+        "yt_xOl7HTXuLvk_2849_2864_v1",
+        "yt_xOl7HTXuLvk_3104_3118_v1",
+        "yt_xOl7HTXuLvk_3259_3271_v1"
+      ],
+      "backfill": {
+        "processed": 17,
+        "source_ready_count": 17,
+        "source_acquired_count": 17,
+        "created_total": 0,
+        "index_repaired_total": 17,
+        "reindex_requested_total": 17,
+        "subtitles_delivered_total": 17,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 188185
+      },
+      "assets": [
+        {
+          "id": "yt_xOl7HTXuLvk_88_122_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_170_228_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_500_544_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_604_664_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_1193_1230_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_1895_1925_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_2838_2885_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3249_3309_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_88_102_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_176_191_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_534_544_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_604_618_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_979_993_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_1216_1228_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_2849_2864_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3104_3118_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3259_3271_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T12:12:41Z"
+    },
+    "2": {
+      "attempt": 0,
+      "n": 2,
+      "video_id": "yvYCzh0BcmM",
+      "url": "https://www.youtube.com/watch?v=yvYCzh0BcmM",
+      "status": "done",
+      "started_at": "2026-11-13T12:12:46Z",
+      "job_id": "job_1794571966321577265_7f867aa3",
+      "items": [
+        {
+          "id": "yt_yvYCzh0BcmM_64_93_v1",
+          "status": "processed",
+          "start": "01:04",
+          "end": "01:33",
+          "name": "Troppo giovane per un mausoleo senza vita",
+          "filename": "yt_yvYCzh0BcmM_64_93_v1_troppo-giovane-per-un-mausoleo-senza-vit.mp4",
+          "drive_file_id": "1yueSp1BMBsLYLziKg2-bT4Tzq9z1w0q-",
+          "drive_link": "https://drive.google.com/file/d/1yueSp1BMBsLYLziKg2-bT4Tzq9z1w0q-/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_117_134_v1",
+          "status": "processed",
+          "start": "01:57",
+          "end": "02:14",
+          "name": "Obama legge storie ai bambini con gli artigli terribili",
+          "filename": "yt_yvYCzh0BcmM_117_134_v1_obama-legge-storie-ai-bambini-con-gli-ar.mp4",
+          "drive_file_id": "1dqA-1En7frAiku_USwJTMgx4L_1gNimY",
+          "drive_link": "https://drive.google.com/file/d/1dqA-1En7frAiku_USwJTMgx4L_1gNimY/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1134_1165_v1",
+          "status": "processed",
+          "start": "18:54",
+          "end": "19:25",
+          "name": "Il lato nerd da professore di educazione civica",
+          "filename": "yt_yvYCzh0BcmM_1134_1165_v1_il-lato-nerd-da-professore-di-educazione.mp4",
+          "drive_file_id": "1olTVZAmL2VrfNXkUqbEP77gNYUX86H6a",
+          "drive_link": "https://drive.google.com/file/d/1olTVZAmL2VrfNXkUqbEP77gNYUX86H6a/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1454_1488_v1",
+          "status": "processed",
+          "start": "24:14",
+          "end": "24:48",
+          "name": "Costruire il centro come una partita gigante a Scarabeo",
+          "filename": "yt_yvYCzh0BcmM_1454_1488_v1_costruire-il-centro-come-una-partita-gig.mp4",
+          "drive_file_id": "1wiGkusD4iw3PSVEFY4V73DTu-7itcUPl",
+          "drive_link": "https://drive.google.com/file/d/1wiGkusD4iw3PSVEFY4V73DTu-7itcUPl/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1504_1556_v1",
+          "status": "processed",
+          "start": "25:04",
+          "end": "25:56",
+          "name": "Lo stivale intrappolato per sempre nel cemento del garage",
+          "filename": "yt_yvYCzh0BcmM_1504_1556_v1_lo-stivale-intrappolato-per-sempre-nel-c.mp4",
+          "drive_file_id": "10sjwZe9ZGVvEZQm075zq-qs2y1xdvS5N",
+          "drive_link": "https://drive.google.com/file/d/10sjwZe9ZGVvEZQm075zq-qs2y1xdvS5N/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1869_1929_v1",
+          "status": "processed",
+          "start": "31:09",
+          "end": "32:09",
+          "name": "Obama collaudatore ufficiale di tutte le sedie del museo",
+          "filename": "yt_yvYCzh0BcmM_1869_1929_v1_obama-collaudatore-ufficiale-di-tutte-le.mp4",
+          "drive_file_id": "1C5yrGLKdkNpt6ReujBj0s8QNUrph7b44",
+          "drive_link": "https://drive.google.com/file/d/1C5yrGLKdkNpt6ReujBj0s8QNUrph7b44/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2066_2087_v1",
+          "status": "processed",
+          "start": "34:26",
+          "end": "34:47",
+          "name": "La mossa diplomatica per non offendere nessun artista",
+          "filename": "yt_yvYCzh0BcmM_2066_2087_v1_la-mossa-diplomatica-per-non-offendere-n.mp4",
+          "drive_file_id": "1xtzesZKSnIHWEnIac2sZJBs_5omN28r_",
+          "drive_link": "https://drive.google.com/file/d/1xtzesZKSnIHWEnIac2sZJBs_5omN28r_/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2105_2158_v1",
+          "status": "processed",
+          "start": "35:05",
+          "end": "35:58",
+          "name": "La ricetta del chili di Obama e il libro preferito di Michelle",
+          "filename": "yt_yvYCzh0BcmM_2105_2158_v1_la-ricetta-del-chili-di-obama-e-il-libro.mp4",
+          "drive_file_id": "1cJL_IDH_lgZOX36EXYFKAmWb3Kazcedf",
+          "drive_link": "https://drive.google.com/file/d/1cJL_IDH_lgZOX36EXYFKAmWb3Kazcedf/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2160_2180_v1",
+          "status": "processed",
+          "start": "36:00",
+          "end": "36:20",
+          "name": "Da Obamacare all edificio chiamato Obamalisco",
+          "filename": "yt_yvYCzh0BcmM_2160_2180_v1_da-obamacare-all-edificio-chiamato-obama.mp4",
+          "drive_file_id": "1DJKDrk4Xhjpzs1KhpfHEgfuxtT2lrG6s",
+          "drive_link": "https://drive.google.com/file/d/1DJKDrk4Xhjpzs1KhpfHEgfuxtT2lrG6s/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_64_73_v1",
+          "status": "processed",
+          "start": "01:04",
+          "end": "01:13",
+          "name": "Hook Sono troppo giovane per un mausoleo",
+          "filename": "yt_yvYCzh0BcmM_64_73_v1_hook-sono-troppo-giovane-per-un-mausoleo.mp4",
+          "drive_file_id": "1dwyqbc8fSMG8cB2Xhx1NUXMDatOlUKKO",
+          "drive_link": "https://drive.google.com/file/d/1dwyqbc8fSMG8cB2Xhx1NUXMDatOlUKKO/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_122_131_v1",
+          "status": "processed",
+          "start": "02:02",
+          "end": "02:11",
+          "name": "Hook Obama fa le vocine dei mostri ai bambini",
+          "filename": "yt_yvYCzh0BcmM_122_131_v1_hook-obama-fa-le-vocine-dei-mostri-ai-ba.mp4",
+          "drive_file_id": "14KvlzDvhfXnQ62NnRbX9YKktvnJalXkc",
+          "drive_link": "https://drive.google.com/file/d/14KvlzDvhfXnQ62NnRbX9YKktvnJalXkc/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_358_370_v1",
+          "status": "processed",
+          "start": "05:58",
+          "end": "06:10",
+          "name": "Hook Aspetti ma sta parlando davvero di lei",
+          "filename": "yt_yvYCzh0BcmM_358_370_v1_hook-aspetti-ma-sta-parlando-davvero-di.mp4",
+          "drive_file_id": "1kJLnTbnRWqEl4LCuT3wYqSfgyRVqV3ca",
+          "drive_link": "https://drive.google.com/file/d/1kJLnTbnRWqEl4LCuT3wYqSfgyRVqV3ca/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1152_1162_v1",
+          "status": "processed",
+          "start": "19:12",
+          "end": "19:22",
+          "name": "Hook Il mio lato nerd da professore di educazione civica",
+          "filename": "yt_yvYCzh0BcmM_1152_1162_v1_hook-il-mio-lato-nerd-da-professore-di-e.mp4",
+          "drive_file_id": "14Uq0KyotxzlP4vOq4TezZ1-jf_g9ZyDG",
+          "drive_link": "https://drive.google.com/file/d/14Uq0KyotxzlP4vOq4TezZ1-jf_g9ZyDG/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1520_1534_v1",
+          "status": "processed",
+          "start": "25:20",
+          "end": "25:34",
+          "name": "Hook C e un mio stivale murato nel parcheggio",
+          "filename": "yt_yvYCzh0BcmM_1520_1534_v1_hook-c-e-un-mio-stivale-murato-nel-parch.mp4",
+          "drive_file_id": "1mMMhFPvwId7PJ-RS5G3ggUduX_1v-Mmf",
+          "drive_link": "https://drive.google.com/file/d/1mMMhFPvwId7PJ-RS5G3ggUduX_1v-Mmf/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1874_1886_v1",
+          "status": "processed",
+          "start": "31:14",
+          "end": "31:26",
+          "name": "Hook Obama che corre a provare tutte le sedie",
+          "filename": "yt_yvYCzh0BcmM_1874_1886_v1_hook-obama-che-corre-a-provare-tutte-le.mp4",
+          "drive_file_id": "1lyx21fU-PorCzo4uR6gzbss23Kwjve8C",
+          "drive_link": "https://drive.google.com/file/d/1lyx21fU-PorCzo4uR6gzbss23Kwjve8C/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1923_1934_v1",
+          "status": "processed",
+          "start": "32:03",
+          "end": "32:14",
+          "name": "Hook Belle da vedere scomode da sedersi",
+          "filename": "yt_yvYCzh0BcmM_1923_1934_v1_hook-belle-da-vedere-scomode-da-sedersi.mp4",
+          "drive_file_id": "1NpU2q5ncLIlSlhWTM5d92i9ikXvhdQ5K",
+          "drive_link": "https://drive.google.com/file/d/1NpU2q5ncLIlSlhWTM5d92i9ikXvhdQ5K/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2119_2129_v1",
+          "status": "processed",
+          "start": "35:19",
+          "end": "35:29",
+          "name": "Hook Aspetta ma Obama sa cucinare",
+          "filename": "yt_yvYCzh0BcmM_2119_2129_v1_hook-aspetta-ma-obama-sa-cucinare.mp4",
+          "drive_file_id": "1PdFKuy8EqMhmAuJswmSLfAFU8-5QTNAo",
+          "drive_link": "https://drive.google.com/file/d/1PdFKuy8EqMhmAuJswmSLfAFU8-5QTNAo/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2145_2158_v1",
+          "status": "processed",
+          "start": "35:45",
+          "end": "35:58",
+          "name": "Hook Il libro preferito in biblioteca Quello di Michelle",
+          "filename": "yt_yvYCzh0BcmM_2145_2158_v1_hook-il-libro-preferito-in-biblioteca-qu.mp4",
+          "drive_file_id": "1wvLIyRwXmeiv4Wjp_CZcxHJJGNyxSvrn",
+          "drive_link": "https://drive.google.com/file/d/1wvLIyRwXmeiv4Wjp_CZcxHJJGNyxSvrn/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2170_2180_v1",
+          "status": "processed",
+          "start": "36:10",
+          "end": "36:20",
+          "name": "Hook Lo chiamano Obamalisco e a me va benissimo",
+          "filename": "yt_yvYCzh0BcmM_2170_2180_v1_hook-lo-chiamano-obamalisco-e-a-me-va-be.mp4",
+          "drive_file_id": "1EGZo8c_sr7ascyk08Wm6Ui8GiHuLAFbU",
+          "drive_link": "https://drive.google.com/file/d/1EGZo8c_sr7ascyk08Wm6Ui8GiHuLAFbU/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_yvYCzh0BcmM_64_93_v1",
+        "yt_yvYCzh0BcmM_117_134_v1",
+        "yt_yvYCzh0BcmM_1134_1165_v1",
+        "yt_yvYCzh0BcmM_1454_1488_v1",
+        "yt_yvYCzh0BcmM_1504_1556_v1",
+        "yt_yvYCzh0BcmM_1869_1929_v1",
+        "yt_yvYCzh0BcmM_2066_2087_v1",
+        "yt_yvYCzh0BcmM_2105_2158_v1",
+        "yt_yvYCzh0BcmM_2160_2180_v1",
+        "yt_yvYCzh0BcmM_64_73_v1",
+        "yt_yvYCzh0BcmM_122_131_v1",
+        "yt_yvYCzh0BcmM_358_370_v1",
+        "yt_yvYCzh0BcmM_1152_1162_v1",
+        "yt_yvYCzh0BcmM_1520_1534_v1",
+        "yt_yvYCzh0BcmM_1874_1886_v1",
+        "yt_yvYCzh0BcmM_1923_1934_v1",
+        "yt_yvYCzh0BcmM_2119_2129_v1",
+        "yt_yvYCzh0BcmM_2145_2158_v1",
+        "yt_yvYCzh0BcmM_2170_2180_v1"
+      ],
+      "backfill": {
+        "processed": 19,
+        "source_ready_count": 19,
+        "source_acquired_count": 19,
+        "created_total": 0,
+        "index_repaired_total": 19,
+        "reindex_requested_total": 19,
+        "subtitles_delivered_total": 19,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 181208
+      },
+      "assets": [
+        {
+          "id": "yt_yvYCzh0BcmM_64_93_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_117_134_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1134_1165_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1454_1488_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1504_1556_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1869_1929_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2066_2087_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2105_2158_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2160_2180_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_64_73_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_122_131_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_358_370_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1152_1162_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1520_1534_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1874_1886_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_1923_1934_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2119_2129_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2145_2158_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2170_2180_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending_outbox_events": 0,
+          "has_embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T12:22:39Z"
+    }
+  },
+  "folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr",
+  "started_at": "2026-11-13T12:03:01Z"
+}

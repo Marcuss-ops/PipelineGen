@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "entities": {
+    "Francis Kaufmann": [
+      {
+        "asset_id": "d5fb2780130a78b28bd4f9d9eed78298294f4d850a8a578859012878f8dd3bbc",
+        "sha256": "d5fb2780130a78b28bd4f9d9eed78298294f4d850a8a578859012878f8dd3bbc",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/kaufmann-court-april.jpg",
+        "media_type": "image/jpeg"
+      },
+      {
+        "asset_id": "c7a1e4ba2f6a37f0a0ba9f9eefe5c17848ce0ec3635fbb1f83aa9ba2bd44c402",
+        "sha256": "c7a1e4ba2f6a37f0a0ba9f9eefe5c17848ce0ec3635fbb1f83aa9ba2bd44c402",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/kaufmann-trial-stol.jpg",
+        "media_type": "image/jpeg"
+      },
+      {
+        "asset_id": "c26ec9f6fd1f3295627405e83c41bd5f09dfa63ca20f510db567580a98dd2768",
+        "sha256": "c26ec9f6fd1f3295627405e83c41bd5f09dfa63ca20f510db567580a98dd2768",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/kaufmann-court-february.png",
+        "media_type": "image/png"
+      }
+    ],
+    "Villa Pamphili": [
+      {
+        "asset_id": "4177a184cdbf68d409eab747d6ce1ee0fb2158929590f12ef6da2031da2d4683",
+        "sha256": "4177a184cdbf68d409eab747d6ce1ee0fb2158929590f12ef6da2031da2d4683",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/villa-pamphili-park.png",
+        "media_type": "image/png"
+      },
+      {
+        "asset_id": "9e31adc1c73cc4b8de441853480b3f99b4661df8759f27d30b388bbade03cb68",
+        "sha256": "9e31adc1c73cc4b8de441853480b3f99b4661df8759f27d30b388bbade03cb68",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/villa-pamphili-investigation.jpg",
+        "media_type": "image/jpeg"
+      },
+      {
+        "asset_id": "de8060600b692c92247239a762d1826de849880326d09ec1a641007d50798347",
+        "sha256": "de8060600b692c92247239a762d1826de849880326d09ec1a641007d50798347",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/villa-pamphili-path.jpg",
+        "media_type": "image/jpeg"
+      },
+      {
+        "asset_id": "ab4c78ed7466771ef4ab1825f23f9a5d5eb35c164c564840092ba80187a5f1bb",
+        "sha256": "ab4c78ed7466771ef4ab1825f23f9a5d5eb35c164c564840092ba80187a5f1bb",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/villa-pamphili-memorial.jpg",
+        "media_type": "image/jpeg"
+      }
+    ],
+    "Anastasia Trofimova": [
+      {
+        "asset_id": "ffd3c8d13121d95d66e50c300ec8bed93d4c9b4f8079ba1588dd130853248b9f",
+        "sha256": "ffd3c8d13121d95d66e50c300ec8bed93d4c9b4f8079ba1588dd130853248b9f",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/anastasia-portrait.jpg",
+        "media_type": "image/jpeg"
+      }
+    ],
+    "Rexal Ford": [
+      {
+        "asset_id": "dad6c761f1b735c7bdbe9b8b674a8f3d4c4e4a8ac5389bab14649d0a1093dc48",
+        "sha256": "dad6c761f1b735c7bdbe9b8b674a8f3d4c4e4a8ac5389bab14649d0a1093dc48",
+        "path": "../../ops/assets-store/francis-kaufmann-20261111/film-funds.jpg",
+        "media_type": "image/jpeg"
+      }
+    ]
+  }
+}

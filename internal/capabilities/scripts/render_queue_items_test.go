@@ -43,6 +43,25 @@ func manifestTestPlan() capmodel.OverlayPlan {
 // whose renderable-candidate list is empty has no third legacy render route —
 // the background must be declared in the plan's Background block, and the
 // per-item enqueue fails closed instead of submitting the raw plan to the queue.
+func TestLongPhraseClipKeepsFullSpokenWindow(t *testing.T) {
+	plan := manifestTestPlan()
+	plan.Items = []capmodel.OverlayItem{{
+		ID: "long-phrase", SceneID: "scene-01", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
+		StartUS: 10_000_000, DurationUS: 20_000_000,
+	}}
+	child, metadata, err := separateOverlayItemPlan(plan, plan.Items[0], 0)
+	if err != nil {
+		t.Fatalf("long phrase child plan: %v", err)
+	}
+	// Spoken 20s + the one-second settled tail; the old 8s clip cap cut it short.
+	if child.DurationMS != 21_000 || child.Items[0].DurationUS != 21_000_000 {
+		t.Fatalf("long phrase clip = %dms/%dus, want 21000ms/21000000us", child.DurationMS, child.Items[0].DurationUS)
+	}
+	if metadata.TargetDurationUS != 21_000_000 {
+		t.Fatalf("published target duration = %dus, want 21000000us", metadata.TargetDurationUS)
+	}
+}
+
 func TestEnqueueChrononPlanItemsRejectsBackgroundOnlyPlan(t *testing.T) {
 	e := &QueueRenderEnqueuer{}
 	plan := manifestTestPlan()

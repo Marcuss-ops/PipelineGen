@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -21,10 +22,24 @@ import (
 // Jordan's pool). When dimensions or quality scores are present, they must
 // also meet the minimum retrieval quality.
 func filterPersonEntityImageCandidates(identity entitycatalog.PersonIdentity, results []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	accepted, _ := filterPersonEntityImageCandidatesWithRejections(identity, results)
+	return accepted
+}
+
+// filterPersonEntityImageCandidatesWithRejections applies the same gate as
+// filterPersonEntityImageCandidates but returns the rejection histogram. The
+// histogram is persisted in the catalog refresh error so a zero-candidate
+// refresh names the dominant gate instead of reporting only "no candidate".
+func filterPersonEntityImageCandidatesWithRejections(identity entitycatalog.PersonIdentity, results []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, map[string]int) {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
+	rejected := make(map[string]int)
 	for _, result := range results {
 		accepted, semanticScore, technicalScore, reason := evaluatePersonImageCandidate(identity, result)
 		if !accepted {
+			if strings.TrimSpace(reason) == "" {
+				reason = "rejected by PERSON identity/quality gate"
+			}
+			rejected[reason]++
 			continue
 		}
 		result.SemanticStatus = entitycatalog.CandidateSemanticAccepted
@@ -33,7 +48,40 @@ func filterPersonEntityImageCandidates(identity entitycatalog.PersonIdentity, re
 		result.QualityReason = reason
 		out = append(out, result)
 	}
-	return out
+	return out, rejected
+}
+
+// formatPersonImageRejectionSummary renders a deterministic rejection
+// breakdown: count descending, then reason ascending. It is part of the
+// durable catalog error, so the ordering must not depend on map iteration.
+func formatPersonImageRejectionSummary(total int, rejected map[string]int) string {
+	if total <= 0 {
+		return "provider returned no candidates"
+	}
+	type rejectionRow struct {
+		reason string
+		count  int
+	}
+	rows := make([]rejectionRow, 0, len(rejected))
+	rejectedTotal := 0
+	for reason, count := range rejected {
+		rows = append(rows, rejectionRow{reason: reason, count: count})
+		rejectedTotal += count
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].count != rows[j].count {
+			return rows[i].count > rows[j].count
+		}
+		return rows[i].reason < rows[j].reason
+	})
+	parts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		parts = append(parts, fmt.Sprintf("%s (%d)", row.reason, row.count))
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("provider returned %d candidate(s); no rejection reason recorded", total)
+	}
+	return fmt.Sprintf("provider returned %d candidate(s), rejected %d: %s", total, rejectedTotal, strings.Join(parts, "; "))
 }
 
 func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candidate scriptpkg.SegmentAssetCandidate) (bool, float64, float64, string) {

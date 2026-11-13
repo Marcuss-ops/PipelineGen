@@ -137,7 +137,7 @@ func TestVidRushRegistryMediaResolverSearchImagesUsesOnlyRequestedQuery(t *testi
 	}
 	registry.Freeze()
 
-	query := "Alberto Stasi single-person portrait headshot photo"
+	query := "Alberto Stasi photo"
 	got, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchImages(context.Background(), InternetImageSearchRequest{
 		Query: query, Entity: "Alberto Stasi", Limit: 2,
 	})
@@ -382,8 +382,8 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 	}
 }
 
-func TestPersonImageSearchQueryAddsPortraitHintWithoutChangingIdentity(t *testing.T) {
-	if got := personImageSearchQuery("  Chiara Poggi  ", true); got != "Chiara Poggi single-person portrait headshot photo" {
+func TestPersonImageSearchQueryUsesBroadPhotoHintWithoutChangingIdentity(t *testing.T) {
+	if got := personImageSearchQuery("  Chiara Poggi  ", true); got != "Chiara Poggi photo" {
 		t.Fatalf("person image provider query = %q", got)
 	}
 	if got := personImageSearchQuery("Pavia", false); got != "Pavia" {

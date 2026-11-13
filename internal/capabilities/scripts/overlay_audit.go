@@ -65,6 +65,7 @@ type OverlayAuditEntity struct {
 	SelectedForVideo       bool     `json:"selected_for_video"`
 	ImageRequired          bool     `json:"image_required"`
 	ImageDriveRequired     bool     `json:"image_drive_required,omitempty"`
+	ImageLocalVerified     bool     `json:"image_local_verified,omitempty"`
 	ImageAcquisitionStatus string   `json:"image_acquisition_status,omitempty"`
 	HasVerifiedImage       bool     `json:"has_verified_image"`
 	ImageStatus            string   `json:"image_status,omitempty"`
@@ -188,6 +189,12 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 					continue
 				}
 				entry.AssetIDs = append(entry.AssetIDs, asset.AssetID)
+				// The registry loader hashes reviewed producer-local bytes before
+				// attaching them to the plan. They are verified delivery assets even
+				// though they intentionally have no Drive id.
+				if strings.TrimSpace(asset.LocalPath) != "" && strings.TrimSpace(asset.SHA256) != "" {
+					verifiedAssetIDs[asset.AssetID] = true
+				}
 			}
 			entry.ImageCount = len(item.AssetRefs) + len(item.ImageLayers)
 			if entry.ImageCount > 0 || strings.Contains(kind, "image") || strings.Contains(kind, "product") || strings.Contains(kind, "logo") {
@@ -197,7 +204,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 					entry.Class = "image"
 				}
 			}
-			if entry.ImageCount > 0 && item.EntityRef != nil {
+			if entry.ImageCount > 0 && overlayAuditEntityKind(kind) {
 				keys := overlayAuditIdentityKeys(item.EntityID, item.EntityRef)
 				for _, key := range keys {
 					if key == "" {
@@ -208,15 +215,23 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 						selectedAssets[key] = appendUniqueAuditValue(selectedAssets[key], assetID)
 					}
 				}
-				for _, surface := range []string{item.EntityRef.SurfaceText, item.EntityRef.Name} {
+				surfaces := []string{item.Text}
+				entityID := strings.TrimSpace(item.EntityID)
+				entityType := ""
+				if item.EntityRef != nil {
+					surfaces = append(surfaces, item.EntityRef.SurfaceText, item.EntityRef.Name)
+					entityID = firstNonEmptyAuditValue(item.EntityRef.CanonicalEntityID, item.EntityRef.EntityID, item.EntityID)
+					entityType = item.EntityRef.Type
+				}
+				for _, surface := range surfaces {
 					if normalizedAuditSurface(surface) != "" {
 						selectedImageEntity[normalizedAuditSurface(surface)] = true
 					}
 				}
 				imageBindings = append(imageBindings, OverlayAuditImage{
-					EntityID:   firstNonEmptyAuditValue(item.EntityRef.CanonicalEntityID, item.EntityRef.EntityID, item.EntityID),
+					EntityID:   entityID,
 					Entity:     firstNonEmptyAuditValue(entry.Entity, item.Text),
-					EntityType: item.EntityRef.Type,
+					EntityType: entityType,
 					SceneID:    item.SceneID,
 					OverlayID:  item.ID,
 					AssetIDs:   append([]string(nil), entry.AssetIDs...),
@@ -278,6 +293,7 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 			imageFailureReason := entity.ImageFailureReason
 			imageDriveFileID := entity.ImageDriveFileID
 			imageSHA256 := entity.ImageSHA256
+			imageLocalVerified := false
 			// A chain item renders its entity images from nested segments. Those
 			// bindings are absent from the annotation projection and from the
 			// item-level EntityRef, so the audit must take them from the compiled
@@ -289,6 +305,15 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 				imageDriveFileID = planned.DriveFileID
 				imageSHA256 = planned.SHA256
 				assetIDs = appendUniqueAuditValue(assetIDs, firstNonEmptyAuditValue(planned.AssetID, planned.SHA256))
+				// A reviewed registry asset is producer-local: it has a content
+				// hash but intentionally no Drive locator. Mark it only for the
+				// scene-scoped binding, not for a run-level fallback from another
+				// scene.
+				imageLocalVerified = strings.TrimSpace(planned.SceneID) == strings.TrimSpace(entity.SceneID) &&
+					strings.TrimSpace(planned.SHA256) != "" &&
+					strings.TrimSpace(planned.LocalPath) != "" &&
+					strings.TrimSpace(planned.ProviderURL) == "" &&
+					strings.TrimSpace(planned.DriveFileID) == ""
 			}
 			audit.DetectedEntities = append(audit.DetectedEntities, OverlayAuditEntity{
 				ID: entity.EntityID, OccurrenceID: entity.OccurrenceID, Type: entityType,
@@ -302,7 +327,8 @@ func buildOverlayAuditWithLineage(bundle *capabilityoverlay.SemanticRenderBundle
 				ImageSelectionReason: entity.ImageSelectionReason, ImageFailureReason: imageFailureReason,
 				ImageAcquisitionStatus: entity.ImageStatus,
 				ImageSHA256:            imageSHA256, ImageDriveFileID: imageDriveFileID,
-				OverlayItemID: strings.Join(selectedOverlayIDs[entity.EntityID], ","),
+				ImageLocalVerified: imageLocalVerified,
+				OverlayItemID:      strings.Join(selectedOverlayIDs[entity.EntityID], ","),
 			})
 		}
 		audit.DetectedEntityCount = len(bundle.Entities)
@@ -340,6 +366,19 @@ func overlayAuditIdentityKeys(entityID string, ref *capmodel.OverlayEntityRef) [
 		keys = appendUniqueAuditValue(keys, capabilityentities.FoldCanonicalEntityID(ref.CanonicalEntityID))
 	}
 	return keys
+}
+
+// overlayAuditEntityKind keeps image-binding coverage on entity surfaces even
+// when the plan item has no EntityRef (the entity timeline cards use only
+// EntityID + Text).
+func overlayAuditEntityKind(kind string) bool {
+	kind = strings.ToLower(strings.TrimSpace(kind))
+	switch kind {
+	case "entity_card", "entity_image", "location", "organization", "concept", "lower_third":
+		return true
+	default:
+		return strings.Contains(kind, "entity")
+	}
 }
 
 func appendUniqueAuditValue(values []string, value string) []string {

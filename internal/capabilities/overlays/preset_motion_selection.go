@@ -380,6 +380,14 @@ func selectHeavyPhraseMotion(jobID, sceneID string, ordinal int, pool []string) 
 	// Heavy copy is long copy in practice, so a motion proven to crash the
 	// render daemon on long text must never be dealt here either.
 	candidates := excludeLongCopyCrashingMotions(visiblePhraseEntrancePool(pool))
+	if len(pool) == 0 {
+		// Heavy phrases are long copy in practice. With no caller pool, draw
+		// from the same family-interleaved long-copy safe catalog as the calm
+		// lane; using visiblePhraseEntrancePool(nil) here left only the
+		// Apple-clean defaults and made every heavy phrase look identical.
+		candidates = excludeLongCopyCrashingMotions(
+			visiblePhraseEntrancePool(text3DFreeLongPhraseMotions(longPhraseMotionCandidates)))
+	}
 	if len(candidates) == 0 {
 		candidates = excludeLongCopyCrashingMotions(visiblePhraseEntrancePool(nil))
 	}

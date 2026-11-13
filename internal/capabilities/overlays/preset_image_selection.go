@@ -22,11 +22,29 @@ func automaticEntityCaptionMotionCandidates() []string {
 		if !AnimationAutomaticallySelectable(id) {
 			continue
 		}
+		// Side-caption recipes are catalog-valid for explicit showcase plans,
+		// but the generated documentary lane must keep every caption below the
+		// portrait. Remove only the side-family motion; the rest of the random
+		// caption pool is untouched.
+		if normalizeGeneratedCaptionMotion(id) == "" {
+			continue
+		}
 		if AnimationLaneCompatible(id, "entity.caption.automatic") {
 			pool = append(pool, id)
 		}
 	}
 	return pool
+}
+
+// normalizeGeneratedCaptionMotion rejects recipes whose horizontal split moves
+// the caption into a side column. Keeping this filter in the automatic pool
+// (rather than pinning one caption motion) preserves random variety.
+func normalizeGeneratedCaptionMotion(id string) string {
+	normalized := strings.ToLower(strings.TrimSpace(id))
+	if strings.Contains(normalized, "split_side") || strings.HasSuffix(normalized, "_side") {
+		return ""
+	}
+	return id
 }
 
 func selectWordPreset(jobID, sceneID, itemID string) string {
