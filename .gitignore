@@ -441,3 +441,6 @@ ops/jobs/*/drive_upload/
 
 # Local build artifact (2026-11-03): the velox-knobs CLI is compiled, not source.
 /velox-knobs
+
+# Local build output of ./cmd/overlaystatus (not source).
+/overlaystatus
