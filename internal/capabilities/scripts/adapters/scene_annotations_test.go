@@ -12,12 +12,29 @@ func TestClassifyDiscoveredEntityPortuguesePlacesAndOperations(t *testing.T) {
 		{"Brasília", "GPE"},
 		{"Operação Vectura Corrupta", "EVENT"},
 		{"Operacao Decurio", "EVENT"},
+		{"Villa Pamphili", "GPE"},
 		{"Milton Leite", "PERSON"},
 	} {
 		if got := classifyDiscoveredEntity(tc.name); got != tc.want {
 			t.Errorf("classifyDiscoveredEntity(%q) = %q, want %q", tc.name, got, tc.want)
 		}
 	}
+}
+
+func TestSceneAnnotationsCorrectsPlaceShapedPerson(t *testing.T) {
+	text := "Il 7 giugno 2025 i corpi furono trovati a Villa Pamphili."
+	ann := sceneAnnotations(text, "it", scriptpkg.VidRushSegmentResult{SegmentID: "scene-1", Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+		{Value: "Villa Pamphili", Type: "PERSON", Confidence: .9},
+	}}})
+	for _, entity := range ann.PrimaryEntities {
+		if entity.CanonicalName == "Villa Pamphili" {
+			if entity.Type != "GPE" {
+				t.Fatalf("Villa Pamphili type = %q, want GPE", entity.Type)
+			}
+			return
+		}
+	}
+	t.Fatalf("Villa Pamphili missing from primary entities: %+v", ann.PrimaryEntities)
 }
 
 func TestSceneAnnotationsCorrectsKnownPortugueseEntityTypesFromNLP(t *testing.T) {

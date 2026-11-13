@@ -109,7 +109,7 @@ func TestAlignFinalJobCompiledPlanAssetIDsUsesRuntimeIdentity(t *testing.T) {
 		FinalAudio: finalJobPlanAudio{AssetID: "audio-old", SHA256: strings.Repeat("c", 64), SizeBytes: 10},
 		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: []finalJobPlanSegment{{
 			SegmentID: "segment-0000", AssetID: "final-fragment-old", SHA256: sha,
-			TimelineStartFrame: 12, FrameCount: 48, SourceInUS: 500, SourceDurationUS: 2_000_000,
+			TimelineStartFrame: 12, FrameCount: 48, SourceInUS: 500, SourceDurationUS: 1_999_500,
 		}}}},
 		Assets: []finalJobPlanAsset{{
 			AssetID: "final-fragment-old", SHA256: sha, SizeBytes: 10,
@@ -138,7 +138,57 @@ func TestAlignFinalJobCompiledPlanAssetIDsUsesRuntimeIdentity(t *testing.T) {
 		t.Fatalf("assets = %+v, want canonical SHA asset/key with V1 profile and segment timeline start", got.Assets)
 	}
 	segment := got.VideoTracks[0].Segments[0]
-	if segment.AssetID != sha || segment.SHA256 != sha || segment.SourceInUS != 500 || segment.SourceDurationUS != 2_000_000 || segment.TimelineStartFrame != 12 {
+	if segment.AssetID != sha || segment.SHA256 != sha || segment.SourceInUS != 500 || segment.SourceDurationUS != 1_999_500 || segment.TimelineStartFrame != 12 {
 		t.Fatalf("segment = %+v, want SHA id, preserved source offset and exact runtime metadata", segment)
+	}
+}
+
+// TestAlignFinalJobCompiledPlanAssetIDsClampsRuntimeDurationRounding pins the
+// r41c boundary: 98 frames at 24 fps end at 4,083,333us on the frame grid, but
+// the encoded artifact reports 4,083,332us. The manifest-aligned plan passes,
+// then the runtime ref replaces the duration. The rebinding must clamp the
+// source window by the one-microsecond container rounding tick, keeping all 98
+// output frames, instead of failing the whole handoff.
+func TestAlignFinalJobCompiledPlanAssetIDsClampsRuntimeDurationRounding(t *testing.T) {
+	sha := strings.Repeat("e", 64)
+	timelineSHA := strings.Repeat("b", 64)
+	plan := finalJobCompiledPlan{
+		PlanVersion: 2, TimelineRevision: 1, TimelineSHA256: timelineSHA, DurationUS: 4_083_333,
+		VideoTracks: []finalJobPlanVideoTrack{{TrackID: "main-video", Segments: []finalJobPlanSegment{{
+			SegmentID: "segment-0020", AssetID: "overlay-old", SHA256: sha,
+			TimelineStartFrame: 2060, FrameCount: 98, SourceInUS: 0, SourceDurationUS: 4_083_333,
+		}}}},
+		Assets: []finalJobPlanAsset{{
+			AssetID: "overlay-old", SHA256: sha, SizeBytes: 369521, Kind: "video",
+			DurationUS: 4_083_333, FrameCount: 98,
+		}},
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aligned, err := alignFinalJobCompiledPlanAssetIDs(string(raw), []any{map[string]any{
+		"asset_id": sha, "sha256": sha, "size_bytes": int64(369521),
+		"kind": "video", "mime": "video/mp4", "duration_us": int64(4_083_332),
+		"width": 1920, "height": 1080, "profile_id": kernelmedia.OverlayVideoOnlyProfileID,
+		"frame_count": int64(98), "timeline_revision": int64(1), "timeline_sha256": timelineSHA,
+		"timeline_start_frame": int64(2060), "role": "overlay",
+	}})
+	if err != nil {
+		t.Fatalf("alignFinalJobCompiledPlanAssetIDs: %v", err)
+	}
+	var got finalJobCompiledPlan
+	if err := json.Unmarshal([]byte(aligned), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Assets) != 1 || got.Assets[0].DurationUS != 4_083_332 {
+		t.Fatalf("assets = %+v, want the runtime duration 4083332", got.Assets)
+	}
+	segment := got.VideoTracks[0].Segments[0]
+	if segment.SourceInUS != 0 || segment.SourceDurationUS != 4_083_332 || segment.FrameCount != 98 {
+		t.Fatalf("segment = %+v, want 0 + 4083332 over 98 frames", segment)
+	}
+	if err := validateFinalJobPlanBindingRules(got); err != nil {
+		t.Fatalf("runtime-aligned plan must satisfy binding rules: %v", err)
 	}
 }

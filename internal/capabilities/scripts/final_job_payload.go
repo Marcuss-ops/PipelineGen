@@ -8,6 +8,7 @@ import (
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
+	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"strings"
@@ -138,7 +139,18 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 		return nil, nil, fmt.Errorf("final_job has no generated scenes")
 	}
 	imageRequested := finalJobImageRequested(req)
+	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
+		status.Stage = "preflight"
+		status.Requested = overlayStatusRequest(req)
+		status.Audit = result.OverlayAudit
+		status.Plan = overlayStatusPlanSummary(result.OverlayPlan)
+	})
 	if err := finalJobEntityImageGate(result.OverlayAudit, imageRequested); err != nil {
+		overlaystatus.Update(runID, func(status *overlaystatus.Status) {
+			status.Stage = "preflight_failed"
+			status.Error = err.Error()
+			status.Preflight = &overlaystatus.Preflight{Passed: false, Error: err.Error()}
+		})
 		return nil, nil, err
 	}
 	if imageRequested {
@@ -151,9 +163,19 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			overlayItems = result.OverlayPlan.Items
 		}
 		if err := finalJobImagePreflight(overlayItems, clipScenes, true); err != nil {
+			overlaystatus.Update(runID, func(status *overlaystatus.Status) {
+				status.Stage = "preflight_failed"
+				status.Error = err.Error()
+				status.Preflight = &overlaystatus.Preflight{Passed: false, Error: err.Error()}
+			})
 			return nil, nil, err
 		}
 	}
+	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
+		status.Stage = "preflight_passed"
+		status.Error = ""
+		status.Preflight = &overlaystatus.Preflight{Passed: true}
+	})
 	scenesByID := make(map[string]Scene, len(result.Scenes))
 	for _, scene := range result.Scenes {
 		scenesByID[scene.ID] = scene

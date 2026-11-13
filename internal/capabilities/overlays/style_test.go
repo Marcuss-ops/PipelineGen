@@ -106,6 +106,57 @@ func TestStyleParamsProjectsCursorAndBoundedImage(t *testing.T) {
 	require.True(t, IsRuntimeTextStyleParam("cursor_width_px"))
 }
 
+func TestImageBackdropProjectsOnlyForStandaloneImages(t *testing.T) {
+	zoom, blur, spacing, opacity := 1.2, 24.0, 64.0, 0.12
+	style := &scriptpkg.OverlayImageStyleSpec{Backdrop: &scriptpkg.OverlayImageBackdropSpec{
+		Zoom: &zoom, BlurPX: &blur,
+		Grid: &scriptpkg.OverlayImageBackdropGridSpec{Color: "#7FA8C8", SpacingPX: &spacing, Opacity: &opacity},
+	}}
+	standalone := capmodel.OverlayItem{Kind: "image", Params: map[string]any{}}
+	ApplyImageStyle(&standalone, style)
+	backdrop, ok := standalone.Params["image_backdrop"].(map[string]any)
+	require.True(t, ok, "standalone image must carry the backdrop block")
+	require.Equal(t, 1.2, backdrop["zoom"])
+	require.Equal(t, 24.0, backdrop["blur_px"])
+	grid := backdrop["grid"].(map[string]any)
+	require.Equal(t, "#7FA8C8", grid["color"])
+	require.Equal(t, 64.0, grid["spacing_px"])
+	require.Equal(t, 0.12, grid["opacity"])
+	require.NotContains(t, grid, "enabled", "nil enabled keeps the renderer default")
+
+	composite := capmodel.OverlayItem{
+		Kind:        "image",
+		Params:      map[string]any{},
+		ImageLayers: []capmodel.OverlayImageLayer{{ID: "left", Params: map[string]any{}}},
+	}
+	ApplyImageStyle(&composite, style)
+	require.NotContains(t, composite.Params, "image_backdrop")
+	require.NotContains(t, composite.ImageLayers[0].Params, "image_backdrop")
+}
+
+func TestOverlayImageBackdropValidation(t *testing.T) {
+	zoom, blur := 1.15, 18.0
+	valid := &scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{Backdrop: &scriptpkg.OverlayImageBackdropSpec{
+		Zoom: &zoom, BlurPX: &blur,
+		Grid: &scriptpkg.OverlayImageBackdropGridSpec{Style: "dots", DotRadiusPX: floatPointer(2), Opacity: floatPointer(0.1)},
+	}}}
+	require.NoError(t, valid.Validate())
+
+	badSpacing := 2.0
+	valid.Image.Backdrop.Grid = &scriptpkg.OverlayImageBackdropGridSpec{SpacingPX: &badSpacing}
+	require.ErrorContains(t, valid.Validate(), "spacing_px")
+
+	lineWidth := 1.0
+	valid.Image.Backdrop.Grid = &scriptpkg.OverlayImageBackdropGridSpec{Style: "dots", LineWidthPX: &lineWidth}
+	require.ErrorContains(t, valid.Validate(), "line_width_px")
+
+	dotRadius := 2.0
+	valid.Image.Backdrop.Grid = &scriptpkg.OverlayImageBackdropGridSpec{Style: "lines", DotRadiusPX: &dotRadius}
+	require.ErrorContains(t, valid.Validate(), "dot_radius_px")
+}
+
+func floatPointer(value float64) *float64 { return &value }
+
 func TestOverlayKindPolicies(t *testing.T) {
 	require.True(t, IsRuntimeTextStyleParam("font_size_px"))
 	require.False(t, IsRuntimeTextStyleParam("image_width"))

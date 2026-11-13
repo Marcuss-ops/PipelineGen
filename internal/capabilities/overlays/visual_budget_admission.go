@@ -57,6 +57,19 @@ func rankedUniqueOverlayIndices(items []capmodel.OverlayItem, images bool, limit
 				return leftLong
 			}
 		}
+		// Entity portraits are the editorial subject of the run; generic
+		// scene stills are contextual B-roll. A resolver card carries no
+		// planner score (its Params are cleared when the image is attached),
+		// so without this arm every generic still outranks every portrait
+		// and a full image budget silently drops all entity cards. Admit the
+		// portraits first, then let the stills fill the remaining slots.
+		if images {
+			leftEntity := items[left].Kind == string(capmodel.KindEntityImage)
+			rightEntity := items[right].Kind == string(capmodel.KindEntityImage)
+			if leftEntity != rightEntity {
+				return leftEntity
+			}
+		}
 		if lp, rp := itemPriority(items[left]), itemPriority(items[right]); lp != rp {
 			return lp > rp
 		}

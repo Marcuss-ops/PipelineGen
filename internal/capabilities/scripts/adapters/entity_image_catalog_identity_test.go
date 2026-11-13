@@ -301,6 +301,65 @@ func TestEntityImageCatalogNormalizesPersonVariantsWithoutCreatingAnotherPool(t 
 	}
 }
 
+type discoveryBudgetSearcher struct {
+	requestedLimit int
+}
+
+func (s *discoveryBudgetSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
+	s.requestedLimit = req.Limit
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, req.Limit)
+	for i := 0; i < req.Limit; i++ {
+		out = append(out, scriptpkg.SegmentAssetCandidate{
+			AssetID:   fmt.Sprintf("budget-%02d", i),
+			Provider:  scriptpkg.VidRushProviderInternetImages,
+			Query:     req.Query,
+			Entity:    req.Entity,
+			SourceURL: fmt.Sprintf("https://images.example/budget/%02d.jpg", i),
+		})
+	}
+	return out, nil
+}
+
+func TestEntityImageCatalogDiscoveryBudgetExceedsDurablePool(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	repo := newIntegrationEntityImageCatalog()
+	searcher := &discoveryBudgetSearcher{}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	plan := catalogPersonPlan()
+
+	result, err := processor.Process(context.Background(), plan, catalogPersonInput("budget-cold", "Michael Jordan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searcher.requestedLimit != entityImageCatalogDiscoveryLimit {
+		t.Fatalf("provider request limit = %d, want %d", searcher.requestedLimit, entityImageCatalogDiscoveryLimit)
+	}
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != entityImageCatalogDiscoveryLimit {
+		t.Fatalf("catalog rows = %d, want %d discovered candidates", len(rows), entityImageCatalogDiscoveryLimit)
+	}
+
+	// The durable pool remains bounded: a warm run serves at most pool size,
+	// even though the catalog kept the wider discovery set.
+	warm, err := processor.Process(context.Background(), plan, catalogPersonInput("budget-warm", "Michael Jordan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(warm.VidRushSegments[0].Assets.SecondaryImages); got != entityImageCatalogPoolSize {
+		t.Fatalf("warm pool = %d, want %d", got, entityImageCatalogPoolSize)
+	}
+	if got := len(result.VidRushSegments[0].Assets.SecondaryImages); got == 0 {
+		t.Fatal("cold discovery returned no candidates")
+	}
+}
+
 func TestEntityImageCatalogMiddleNameCreatesDistinctURLPool(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()

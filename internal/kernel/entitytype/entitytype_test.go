@@ -57,3 +57,16 @@ func TestAliasesEnumeratesEverySpellingOfOneFamily(t *testing.T) {
 	require.Equal(t, []string{"SATELLITE"}, Aliases("satellite"))
 	require.Nil(t, Aliases(""))
 }
+
+func TestCorrectSurfaceTypeUsesOnlyStrongSurfaceCues(t *testing.T) {
+	require.Equal(t, Place, CorrectSurfaceType("Villa Pamphili", Person))
+	require.Equal(t, Place, CorrectSurfaceType("Parco Sempione", Person))
+	require.Equal(t, Place, CorrectSurfaceType("Corso Buenos Aires", Person))
+	require.Equal(t, Place, CorrectSurfaceType("Piazza San Marco", Person))
+	require.Equal(t, Org, CorrectSurfaceType("Associated Press", Person))
+	require.Equal(t, Org, CorrectSurfaceType("L’Associated Press", Person))
+	require.Equal(t, Person, CorrectSurfaceType("Francis Kaufmann", Person))
+	require.Equal(t, Person, CorrectSurfaceType("Village People", Person))
+	require.Equal(t, Person, CorrectSurfaceType("Villa", Person))
+	require.Equal(t, Org, CorrectSurfaceType("Villa Pamphili", Org), "an explicit non-PERSON kind is never rewritten")
+}

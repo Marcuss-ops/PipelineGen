@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -97,6 +98,30 @@ func TestProjectChapterBulletsRespectsDisabledBulletCategory(t *testing.T) {
 	require.Empty(t, sceneBulletRole(got[0].Phrases))
 	require.True(t, covered["s2"], "scenes without an explicit opt-out still get their chapter bullet")
 	require.NotNil(t, sceneBulletRole(got[1].Phrases))
+}
+
+func TestProjectChapterBulletsHoldCertifiedSpokenDuration(t *testing.T) {
+	result, scenes, resolved, inputs := chapterBulletFixture()
+	text := scenes[0].Text["it"]
+	words := strings.Fields(text)
+	boundaries := make([]capabilityaudio.SpeechWordTiming, len(words))
+	for i, word := range words {
+		boundaries[i] = capabilityaudio.SpeechWordTiming{Index: i, Text: word, StartUS: int64(i)*300_000 + 100_000, EndUS: int64(i+1)*300_000 + 100_000}
+	}
+	timing := capabilityaudio.SpeechTimingArtifact{
+		Version: capabilityaudio.SpeechTimingVersion, Provider: "test", BoundaryMode: capabilityaudio.BoundaryWord,
+		Language: "it", TextSHA256: "text", AudioSHA256: "audio",
+		DurationUS: int64(len(words))*300_000 + 100_000, Words: boundaries,
+	}
+	scenes[0].Voiceover = map[Language]AudioReference{"it": {ID: "vo-s1", Timing: &timing}}
+
+	got, covered := projectChapterBullets(result, "it", scenes, resolved, inputs)
+	require.True(t, covered["s1"])
+	bullet := sceneBulletRole(got[0].Phrases)
+	require.NotNil(t, bullet)
+	// The card holds the complete certified reading time, not the old 4s beat.
+	require.Equal(t, timing.DurationUS-100_000, bullet.DurationUS)
+	require.Greater(t, bullet.DurationUS, chapterBulletWindowUS)
 }
 
 func TestProjectChapterBulletsAnchorsToFirstPhrase(t *testing.T) {

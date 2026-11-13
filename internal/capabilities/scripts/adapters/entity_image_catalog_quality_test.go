@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -71,6 +72,19 @@ func TestEntityImageCatalogRejectsTechnicallyInsufficientCandidate(t *testing.T)
 	if len(rows) != 0 {
 		t.Fatalf("low-quality candidates persisted = %d, want 0", len(rows))
 	}
+	entity, err := repo.GetEntity(context.Background(), identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entity.RefreshStatus != entitycatalog.RefreshStatusFailed {
+		t.Fatalf("refresh status = %q, want failed", entity.RefreshStatus)
+	}
+	if !strings.Contains(entity.LastError, "dimensions below PERSON catalog minimum") {
+		t.Fatalf("refresh error = %q, want the dominant rejection reason", entity.LastError)
+	}
+	if !strings.Contains(entity.LastError, "provider returned 1 candidate(s)") {
+		t.Fatalf("refresh error = %q, want the provider candidate count", entity.LastError)
+	}
 }
 
 func TestEntityImageCatalogAcceptsExactPersonAndPersistsQualityMetadata(t *testing.T) {
@@ -106,4 +120,19 @@ func entitycatalogIdentityForTest(name string) (string, error) {
 		return "", err
 	}
 	return identity.CanonicalEntityID, nil
+}
+
+func TestFormatPersonImageRejectionSummaryIsDeterministic(t *testing.T) {
+	if got := formatPersonImageRejectionSummary(0, nil); got != "provider returned no candidates" {
+		t.Fatalf("empty summary = %q", got)
+	}
+	got := formatPersonImageRejectionSummary(4, map[string]int{
+		"technical quality score below minimum":                      1,
+		"image dimensions below PERSON catalog minimum":              2,
+		"candidate query does not contain requested PERSON identity": 1,
+	})
+	want := "provider returned 4 candidate(s), rejected 4: image dimensions below PERSON catalog minimum (2); candidate query does not contain requested PERSON identity (1); technical quality score below minimum (1)"
+	if got != want {
+		t.Fatalf("summary = %q, want %q", got, want)
+	}
 }

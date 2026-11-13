@@ -89,9 +89,11 @@ const (
 	// shortPhraseAnimationMinDurationUS is the shortest a phrase clip may be.
 	// A two-second annotation otherwise ends before its entrance is readable.
 	shortPhraseAnimationMinDurationUS int64 = 3_500_000
-	// maxPhraseOverlayDurationUS bounds one phrase clip so a very long spoken
-	// window keeps a sane tail ceiling.
-	maxPhraseOverlayDurationUS int64 = 8_000_000
+	// maxPhraseOverlayDurationUS is deliberately zero: the certified spoken
+	// window is the authority for a phrase clip. A fixed 8s ceiling truncated
+	// a 20s narration card to half its reading time. Overlap protection stays
+	// in phraseWindowLimitUS, which never cuts below the spoken window.
+	maxPhraseOverlayDurationUS int64 = 0
 	maxOverlayItemDurationUS   int64 = 5_000_000
 )
 
@@ -182,7 +184,7 @@ func separateOverlayItemPlan(parent capmodel.OverlayPlan, source capmodel.Overla
 		if limit := phraseWindowLimitUS(parent, source.ID, startUS, durationUS); limit < targetUS {
 			targetUS = limit
 		}
-		if targetUS > maxPhraseOverlayDurationUS {
+		if maxPhraseOverlayDurationUS > 0 && targetUS > maxPhraseOverlayDurationUS {
 			targetUS = maxPhraseOverlayDurationUS
 		}
 		maxDurationUS = targetUS

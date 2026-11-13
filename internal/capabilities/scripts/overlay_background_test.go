@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -21,6 +22,29 @@ func TestOverlayStyleParamsExposeTextRuntimeControls(t *testing.T) {
 	style, ok := got["style"].(map[string]any)
 	if !ok || style["font_size"] != 64.0 {
 		t.Fatalf("nested style font size = %#v, want 64", got["style"])
+	}
+}
+
+func TestOverlayStyleProjectsImageBackdropOnlyForStandaloneImages(t *testing.T) {
+	zoom, blur := 1.2, 24.0
+	items := []capmodel.OverlayItem{
+		{ID: "solo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}}},
+		{ID: "duo", Kind: "image", AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "a"}, {AssetID: "b"}}, ImageLayers: []capmodel.OverlayImageLayer{{ID: "left"}, {ID: "right"}}},
+	}
+	canvas := OverlayCanvasSpec{Style: &scriptpkg.OverlayStyleSpec{Image: &scriptpkg.OverlayImageStyleSpec{
+		Backdrop: &scriptpkg.OverlayImageBackdropSpec{Zoom: &zoom, BlurPX: &blur,
+			Grid: &scriptpkg.OverlayImageBackdropGridSpec{Color: "#7FA8C8"}},
+	}}}
+	applyOverlayStyleToItems(items, canvas)
+	backdrop, ok := items[0].Params["image_backdrop"].(map[string]any)
+	if !ok {
+		t.Fatalf("standalone image params = %#v, want image_backdrop", items[0].Params)
+	}
+	if backdrop["zoom"] != 1.2 || backdrop["blur_px"] != 24.0 {
+		t.Fatalf("backdrop = %#v, want zoom 1.2 / blur 24", backdrop)
+	}
+	if _, ok := items[1].Params["image_backdrop"]; ok {
+		t.Fatalf("composite image must not receive image_backdrop: %#v", items[1].Params)
 	}
 }
 

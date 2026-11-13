@@ -249,15 +249,15 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 
 func TestAutomaticCaptionAndImageRecipePoolsAreUnlocked(t *testing.T) {
 	captions := CertifiedAutomaticEntityCaptionMotions()
-	if len(captions) != 9 {
-		t.Fatalf("automatic caption pool = %d, want 9", len(captions))
+	if len(captions) != 8 {
+		t.Fatalf("automatic caption pool = %d, want 8 after removing the side-split recipe", len(captions))
 	}
 	for _, id := range captions {
 		if !AnimationAutomaticallySelectable(id) {
 			t.Errorf("automatic caption pool contains retired motion %q", id)
 		}
 	}
-	for _, retired := range []string{"entity_parallax_caption", "text_fade_up", "trump_entity_text_01", "trump_entity_text_15"} {
+	for _, retired := range []string{"entity_parallax_caption", "entity_split_side", "text_fade_up", "trump_entity_text_01", "trump_entity_text_15"} {
 		if containsMotion(captions, retired) {
 			t.Errorf("automatic caption pool contains retired motion %q", retired)
 		}

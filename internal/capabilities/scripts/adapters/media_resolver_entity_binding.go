@@ -13,9 +13,6 @@ package adapters
 import (
 	"hash/fnv"
 	"strings"
-	"unicode"
-
-	"golang.org/x/text/unicode/norm"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
@@ -529,7 +526,7 @@ func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scrip
 		// Drive/SQLite/Qdrant materialization. Prefer the durable candidate on
 		// the second pass; otherwise an early discovered hit can leave the
 		// document with an asset_id but no drive_link.
-		if !readyVidRushCandidate(candidate) {
+		if !readyVidRushCandidate(candidate) && !verifiedImageCandidateWithoutDrive(candidate) {
 			continue
 		}
 		if key := vidRushCandidateIdentity(candidate); key != "" {
@@ -566,6 +563,23 @@ func entityVariantOffset(seed string, poolSize int) int {
 	return int(hasher.Sum32() % uint32(poolSize))
 }
 
+// verifiedImageCandidateWithoutDrive keeps a verified, content-addressed
+// internet image bindable when only the Drive persistence step failed. The
+// original source URL is a renderable fallback; RenderingGen still verifies
+// the SHA-256 before using the bytes. Without this, a transient upload error
+// silently destroys an otherwise valid entity image.
+func verifiedImageCandidateWithoutDrive(candidate scriptpkg.SegmentAssetCandidate) bool {
+	if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+		return false
+	}
+	return strings.TrimSpace(candidate.ContentSHA256) != "" &&
+		(strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != "") &&
+		strings.EqualFold(strings.TrimSpace(candidate.AcquisitionStatus), scriptpkg.VidRushStatusAcquired) &&
+		strings.EqualFold(strings.TrimSpace(candidate.VerificationStatus), scriptpkg.VidRushStatusVerified) &&
+		strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") &&
+		!strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected")
+}
+
 // entityImagePreviewURL returns the direct image URL used for inline rendering:
 // the candidate's source image first, then its preview URL. It never falls back
 // to the Drive view-page link, which is not a renderable image.
@@ -574,19 +588,4 @@ func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {
 		return url
 	}
 	return strings.TrimSpace(candidate.PreviewURL)
-}
-
-func normalizeEntityMatch(value string) string {
-	decomposed := norm.NFD.String(strings.ToLower(strings.TrimSpace(value)))
-	var b strings.Builder
-	for _, r := range decomposed {
-		if unicode.Is(unicode.Mn, r) {
-			continue
-		}
-		b.WriteRune(r)
-	}
-	// NER commonly emits an English possessive when the name is the subject
-	// of a sentence ("Dwayne Johnson's journey"), while image candidates are
-	// keyed by the canonical identity ("Dwayne Johnson").
-	return strings.TrimSuffix(strings.TrimSuffix(b.String(), "'s"), "’s")
 }

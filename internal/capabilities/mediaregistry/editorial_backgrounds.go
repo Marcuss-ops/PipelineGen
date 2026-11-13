@@ -57,7 +57,6 @@ var editorialBackgroundAssets = []EditorialBackgroundAsset{
 	{ID: "drive-background-05", DriveFileID: "1_zY3WNxbkDfIUA0692ZPexpqRXq55oHG", Filename: "drive-background-05.mp4", SHA256: "0dffb796fbb3137ba4949facfa01b6cb7bca1a7a375600df2da4eb1258df74c5", MediaType: "video/mp4", Role: "soft-light"},
 	{ID: "drive-background-06", DriveFileID: "1bwq06sbP845PQB4t59pPoAJSZ3vs-ej2", Filename: "drive-background-06.mp4", SHA256: "768c962ceab221caf7f7d5f20bf3d98056998615817a1ebd7c6f7b12a0d12476", MediaType: "video/mp4", Role: "soft-light"},
 	{ID: "drive-background-boxe", DriveFileID: "1_w4IIqCn7z4zG2U_RsG85c0clyhb-otW", Filename: "background-boxe.mp4", SHA256: "c5ccaa3a024059a081923ffc25786642b8ed597e6d25ba3ac7cca92e896fbcba", MediaType: "video/mp4", Role: "channel-boxe"},
-	{ID: "drive-background-crime", DriveFileID: "1VVXMvyAl57pUyM49jgD22Wk7RixMWuaM", Filename: "background-crime.mp4", SHA256: "9080390bfdfbda049f4926189d4e05c57e01e50b525cdf0cde02970a86192529", MediaType: "video/mp4", Role: "channel-crime"},
 	{ID: "drive-background-music", DriveFileID: "1uTRyOi12d3J55f_XxGOCArnx2on2otDZ", Filename: "background-music.mp4", SHA256: "bbdc74d29cd0bcf0e439c20ddcfba97902e2cb81b382ccd0687853dd26808990", MediaType: "video/mp4", Role: "channel-music"},
 	{ID: "drive-background-wwe", DriveFileID: "1ykYsbTjBEyynwy12jy_d_-XQqawwgKCw", Filename: "background-wwe.mp4", SHA256: "193626b148a92da7764a21f61898dbd609009ae62ee8a5112bd21a2987070c5a", MediaType: "video/mp4", Role: "channel-wwe"},
 	{ID: "drive-background-discovery", DriveFileID: "1q6MKUZAHL1CjME2kGotK6sKacH94ViIh", Filename: "background-discovery.mp4", SHA256: "4e6e3b9c9e3d72852841e3d07009347ce905d3f6445ca3ef6eaf6927a51bb93c", MediaType: "video/mp4", Role: "channel-discovery"},
@@ -108,7 +107,6 @@ func ResolveEditorialBackgroundReference(reference string) (EditorialBackgroundA
 	if id, ok := map[string]string{
 		"boxe":        "drive-background-boxe",
 		"boxing":      "drive-background-boxe",
-		"crime":       "drive-background-crime",
 		"music":       "drive-background-music",
 		"rap":         "drive-background-music",
 		"wwe":         "drive-background-wwe",

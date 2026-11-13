@@ -138,7 +138,7 @@ func projectChapterBullets(result *GenerateResult, language Language, scenes []S
 				inputIndex = len(inputs) - 1
 				byInput[scene.ID] = inputIndex
 			}
-			startUS, durationUS := chapterBulletWindow(inputs[inputIndex], window)
+			startUS, durationUS := chapterBulletWindow(inputs[inputIndex], window, chapterBulletSpokenDuration(scene, language, bulletText))
 			if durationUS <= 0 {
 				continue
 			}
@@ -159,7 +159,7 @@ func projectChapterBullets(result *GenerateResult, language Language, scenes []S
 // chapterBulletWindow anchors the card at the scene window start, linked to
 // the first phrase when one opens the scene. The card never overflows the
 // scene window and never has a non-positive duration (fail closed).
-func chapterBulletWindow(input capabilityoverlay.SceneInput, window [2]int64) (int64, int64) {
+func chapterBulletWindow(input capabilityoverlay.SceneInput, window [2]int64, spokenUS int64) (int64, int64) {
 	startUS := window[0]
 	for _, phrase := range input.Phrases {
 		if phrase.DurationUS <= 0 || phrase.StartUS < window[0] || phrase.StartUS >= window[1] {
@@ -168,11 +168,38 @@ func chapterBulletWindow(input capabilityoverlay.SceneInput, window [2]int64) (i
 		startUS = phrase.StartUS
 		break // linked to the first phrase, then stop
 	}
-	durationUS := min(chapterBulletWindowUS, window[1]-startUS)
+	// The chapter text is read aloud: hold it for the certified spoken span,
+	// not the old fixed four-second beat (a 25s bullet vanished after 4s).
+	// Only a bullet that is not verbatim in the scene timing keeps the fixed
+	// readable fallback.
+	if spokenUS <= 0 {
+		spokenUS = chapterBulletWindowUS
+	}
+	durationUS := min(spokenUS, window[1]-startUS)
 	if durationUS <= 0 {
 		return 0, 0
 	}
 	return startUS, durationUS
+}
+
+// chapterBulletSpokenDuration locates the bullet verbatim in the scene's
+// certified voiceover timing. The output is the actual reading time of the
+// text; 0 means no certified match and the caller falls back to the fixed
+// readable beat.
+func chapterBulletSpokenDuration(scene Scene, language Language, text string) int64 {
+	ref, ok := scene.Voiceover[language]
+	if !ok || ref.Timing == nil {
+		return 0
+	}
+	located, err := locatePhraseTimingWithEndpointFallback(scene.Index, 0, *ref.Timing, strings.TrimSpace(text))
+	if err != nil || located == nil {
+		return 0
+	}
+	durationUS := located.GlobalEndUS - located.GlobalStartUS
+	if durationUS <= 0 {
+		return 0
+	}
+	return durationUS
 }
 
 // chapterBulletGroundsInScene decides whether a transcript-global bullet may

@@ -18,6 +18,8 @@ type overlayPlannedEntityImage struct {
 	AssetID     string
 	SHA256      string
 	DriveFileID string
+	LocalPath   string
+	ProviderURL string
 }
 
 func overlayPlanEntityImageIndex(plan *capmodel.OverlayPlan) map[string]overlayPlannedEntityImage {
@@ -66,7 +68,7 @@ func overlayAddPlannedEntityImage(index map[string]overlayPlannedEntityImage, sc
 	}
 	binding.SceneID = strings.TrimSpace(sceneID)
 	binding.EntityID = entityID
-	if binding.AssetID == "" && binding.SHA256 == "" && binding.DriveFileID == "" {
+	if binding.AssetID == "" && binding.SHA256 == "" && binding.DriveFileID == "" && binding.LocalPath == "" {
 		return
 	}
 	sceneKey := overlayPlannedEntityImageKey(sceneID, entityID)
@@ -102,6 +104,8 @@ func overlayPlanBindingFromAssetRefs(refs []capmodel.OverlayAssetRef, assetID st
 			AssetID:     strings.TrimSpace(ref.AssetID),
 			SHA256:      sha,
 			DriveFileID: overlayPlanDriveFileID(ref.URL),
+			LocalPath:   strings.TrimSpace(ref.LocalPath),
+			ProviderURL: strings.TrimSpace(ref.URL),
 		}
 		if binding.AssetID == "" {
 			binding.AssetID = sha
@@ -127,6 +131,8 @@ func overlayPlanBindingFromChainSegment(segment map[string]any) (overlayPlannedE
 		return overlayPlannedEntityImage{
 			AssetID:     overlayPlanString(segment, "asset_id"),
 			DriveFileID: overlayPlanDriveFileID(rawURL),
+			LocalPath:   overlayPlanString(segment, "local_path"),
+			ProviderURL: rawURL,
 		}, true
 	}
 	asset := assets[0]
@@ -134,10 +140,13 @@ func overlayPlanBindingFromChainSegment(segment map[string]any) (overlayPlannedE
 	assetID := firstNonEmptyAuditValue(overlayPlanString(asset, "asset_id"), overlayPlanString(segment, "asset_id"), sha)
 	rawURL := firstNonEmptyAuditValue(overlayPlanString(asset, "url"), overlayPlanString(asset, "source_url"), overlayPlanString(segment, "url"))
 	driveID := firstNonEmptyAuditValue(overlayPlanString(asset, "drive_file_id"), overlayPlanString(segment, "drive_file_id"), overlayPlanDriveFileID(rawURL))
+	localPath := firstNonEmptyAuditValue(overlayPlanString(asset, "local_path"), overlayPlanString(segment, "local_path"))
 	return overlayPlannedEntityImage{
 		AssetID:     assetID,
 		SHA256:      sha,
 		DriveFileID: driveID,
+		LocalPath:   localPath,
+		ProviderURL: rawURL,
 	}, true
 }
 

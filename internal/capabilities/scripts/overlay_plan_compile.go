@@ -513,6 +513,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	sceneItems := capabilityoverlay.LimitOverlayItemsPerScene(items, canvas.MaxOverlaysPerScene)
 	intake.stage(capmodel.OverlayDropPerSceneCap, len(items), len(sceneItems))
 	items = sceneItems
+	// The scene/editorial budget can cut a final scene after its entity asset
+	// was already verified. Fill a remaining image slot with that verified
+	// intent instead of silently losing the subject.
+	items = appendVerifiedIntentImages(items, result.OverlayIntents, result.EntityTimeline, planID, imageCeiling)
 	// Apply effects after final item admission and entity asset attachment,
 	// before chain fusion, so each source image gets its own deterministic
 	// effect selection.
@@ -578,6 +582,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		capabilityoverlay.AttachRandomImageEffects(planID, items)
 	}
 
+	// Structural editorial policy: verified assets or text fallback, below
+	// captions, Playfair/soft-black typography, and long-text splitting. The
+	// random style and animation pools are deliberately preserved.
+	items = applyOverlayPresentation(items, planID)
+	plannerPlan.Items = items
 	// The master audio/timeline extent derivation and the plan sealing live in
 	// overlay_plan_seal.go (split under the 600-line file gate; same behavior).
 	sealed, err := sealOverlayPlan(result, language, plannerPlan, resolved, items, canvas, planID, videoID, projectID)

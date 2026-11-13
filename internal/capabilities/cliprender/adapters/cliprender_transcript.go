@@ -27,6 +27,7 @@ import (
 
 	"go.uber.org/zap"
 
+	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -49,6 +50,11 @@ type ClipRenderStreamingTranscriber struct {
 	ffmpegPath string
 	timeout    time.Duration
 	log        *zap.Logger
+	// cache is the shared derived-artifact cache (SQLite mapping + local CAS
+	// bytes). The streaming path used to bypass the cached Whisper decorator,
+	// so a retry over identical source bytes paid a full ASR pass again.
+	cache        capcache.Cache
+	cacheVersion string
 }
 
 // NewClipRenderStreamingTranscriber constructs the streaming transcriber.
@@ -85,6 +91,15 @@ func NewClipRenderStreamingTranscriber(cfg *config.Config, log *zap.Logger) (*Cl
 func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, source *cliprender.MaterializedAsset, language string) (*cliprender.TranscriptResult, error) {
 	if source == nil || source.LocalPath == "" {
 		return nil, errors.New("clip.render: streaming transcribe requires a materialized source")
+	}
+	// The cache address is the SOURCE BYTES (never the local path, which may be
+	// a fresh materialization each run) plus the requested language: a forced
+	// decode for one language must never satisfy another language's request.
+	cacheKey, cacheable := streamingWhisperCacheKey(source.SHA256, language, s.cacheVersion)
+	if s.cache != nil && cacheable {
+		if cached, hit := s.lookupCachedTranscript(ctx, cacheKey, source); hit {
+			return cached, nil
+		}
 	}
 	execCtx := ctx
 	if s.timeout > 0 {
@@ -203,7 +218,7 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 	for _, c := range res.Cues {
 		cues = append(cues, cliprender.Cue{StartMs: c.StartMs, EndMs: c.EndMs, Text: c.Text})
 	}
-	return &cliprender.TranscriptResult{
+	result := &cliprender.TranscriptResult{
 		Language:         lang,
 		DetectedLanguage: detected,
 		LanguageForced:   res.LanguageForced,
@@ -212,7 +227,11 @@ func (s *ClipRenderStreamingTranscriber) TranscribeStream(ctx context.Context, s
 		Confidence:       confPtr,
 		DurationMS:       res.DurationMs,
 		StreamSourceType: string(detail.TextSourceWhisper),
-	}, nil
+	}
+	if s.cache != nil && cacheable {
+		s.storeCachedTranscript(ctx, cacheKey, result)
+	}
+	return result, nil
 }
 
 // ── TranscriptResolver ───────────────────────────────────────────────

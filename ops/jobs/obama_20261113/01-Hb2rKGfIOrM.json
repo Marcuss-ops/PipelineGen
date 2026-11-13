@@ -1,0 +1,54 @@
+{
+  "segments": [
+    {
+      "kind": "moment",
+      "start": "00:11",
+      "end": "00:26",
+      "name": "Battuta sul completo elegante di Obama",
+      "summary": "Marc Maron ironizza sul fatto che Obama si sia presentato in giacca e cravatta mentre lui indossa una camicia casual.",
+      "topics": ["Barack Obama", "Marc Maron", "abito", "giacca e cravatta", "lavatrice", "podcast"],
+      "tags": ["Obama", "Marc Maron", "WTF Podcast", "comedy"],
+      "mentioned_people": ["Barack Obama", "Marc Maron"]
+    },
+    {
+      "kind": "moment",
+      "start": "03:22",
+      "end": "03:55",
+      "name": "Il documento di commutazione e liberazione di Brendan",
+      "summary": "Marc Maron fa firmare a Obama un documento pseudo-legale per liberare il produttore Brendan dal dovere di ascoltarlo.",
+      "topics": ["Barack Obama", "Marc Maron", "documento legale", "Brendan McDonald", "podcast"],
+      "tags": ["Obama", "Marc Maron", "WTF Podcast", "comedy"],
+      "mentioned_people": ["Barack Obama", "Marc Maron", "Brendan McDonald"]
+    },
+    {
+      "kind": "moment",
+      "start": "14:12",
+      "end": "14:29",
+      "name": "Il cervello e l'impatto di TikTok",
+      "summary": "Obama e Maron scherzano sul fatto che i loro cervelli non riescano a comprendere o registrare TikTok.",
+      "topics": ["Barack Obama", "Marc Maron", "cervello", "TikTok", "social media", "generazione digitale"],
+      "tags": ["Obama", "Marc Maron", "TikTok", "comedy"],
+      "mentioned_people": ["Barack Obama", "Marc Maron"]
+    },
+    {
+      "kind": "moment",
+      "start": "23:12",
+      "end": "23:35",
+      "name": "Word with Friends durante le negoziazioni nucleari",
+      "summary": "Obama racconta di come rispondesse alle notifiche di Word with Friends anche in piena trattativa per un trattato nucleare.",
+      "topics": ["Barack Obama", "Word with Friends", "trattato nucleare", "smartphone", "Casa Bianca"],
+      "tags": ["Obama", "Marc Maron", "Word with Friends", "nuclear treaty"],
+      "mentioned_people": ["Barack Obama", "Marc Maron"]
+    },
+    {
+      "kind": "moment",
+      "start": "29:37",
+      "end": "29:55",
+      "name": "Essere fastidiosi e il fascismo",
+      "summary": "Obama fa una battuta fulminante su come i progressisti siano riusciti ad annoiare l'americano medio fino al fascismo.",
+      "topics": ["Barack Obama", "progressisti", "politica", "retorica", "ironia", "fascismo"],
+      "tags": ["Obama", "Marc Maron", "politics", "comedy"],
+      "mentioned_people": ["Barack Obama", "Marc Maron"]
+    }
+  ]
+}

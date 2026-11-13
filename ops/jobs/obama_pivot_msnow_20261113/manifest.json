@@ -1,0 +1,564 @@
+{
+  "batch": "obama_pivot_msnow_20261113",
+  "folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr",
+  "notes": [
+    "Tre momenti sono gia coperti da asset esistenti e non vengono duplicati: xOl7 16:00-16:39, xOl7 50:52-52:40, yvYC 05:38-06:14.",
+    "Gli hook nuovi restano tutti, anche quando ricadono dentro un momento gia coperto.",
+    "Le finestre oltre 60s sono state accorciate conservando lo start: xOl7 10:04-11:09 -> 10:04-11:04; xOl7 54:09-55:22 -> 54:09-55:09; yvYC 31:09-32:15 -> 31:09-32:09."
+  ],
+  "videos": [
+    {
+      "n": 1,
+      "id": "xOl7HTXuLvk",
+      "url": "https://www.youtube.com/watch?v=xOl7HTXuLvk",
+      "title": "Barack Obama shares personal stories & experiences: Family, leadership, sports & marriage | The Pivot",
+      "channel": "The Pivot Podcast",
+      "category": "interview",
+      "source_duration_s": 3347,
+      "skipped_existing": [
+        {
+          "kind": "moment",
+          "start": "16:00",
+          "end": "16:39",
+          "reason": "coperto da yt_xOl7HTXuLvk_940_1000_v1 (15:40-16:40)"
+        },
+        {
+          "kind": "moment",
+          "start": "50:52",
+          "end": "52:40",
+          "reason": "coperto da yt_xOl7HTXuLvk_3060_3120_v1 (51:00-52:00)"
+        }
+      ],
+      "clips": [
+        {
+          "start": "01:28",
+          "end": "02:02",
+          "name": "Obama ribalta i ruoli e chiede se Ryan Clark ha un gemello",
+          "summary": "Prima ancora di iniziare l'intervista, Obama prende in mano il microfono e chiede scherzosamente se Ryan Clark abbia un gemello visto che appare in TV giorno e notte.",
+          "topics": [
+            "Barack Obama",
+            "Ryan Clark",
+            "gemello",
+            "The Pivot",
+            "battuta",
+            "TV"
+          ]
+        },
+        {
+          "start": "02:50",
+          "end": "03:48",
+          "name": "Prese in giro sulla moda, il Tan Suit e i gioielli",
+          "summary": "Obama prende in giro lo stile appariscente di Ryan Clark, cita ironicamente il suo celebre abito beige ('tan suit') e scherza sui gioielli personalizzati dell'ex giocatore NFL.",
+          "topics": [
+            "Barack Obama",
+            "Ryan Clark",
+            "moda",
+            "tan suit",
+            "abito beige",
+            "gioielli"
+          ]
+        },
+        {
+          "start": "08:20",
+          "end": "09:04",
+          "name": "Il fascino presidenziale e la paura di Michelle",
+          "summary": "Channing Crowder definisce se stesso e Obama i due piu belli dello studio chiedendogli come gestisca le attenzioni femminili, ma Obama taglia corto confessando di avere paura di Michelle.",
+          "topics": [
+            "Barack Obama",
+            "Channing Crowder",
+            "Michelle Obama",
+            "fascino",
+            "matrimonio",
+            "paura"
+          ]
+        },
+        {
+          "start": "10:04",
+          "end": "11:04",
+          "requested_end": "11:09",
+          "name": "Le signore anziane che toccavano il sedere al Presidente",
+          "summary": "Obama rivela tra le risate che esistono foto online di signore anziane che gli toccavano il sedere mentre era Presidente, spiegando che il Secret Service non poteva certo placcarle a terra.",
+          "topics": [
+            "Barack Obama",
+            "Secret Service",
+            "signore anziane",
+            "sedere",
+            "foto",
+            "fedelta"
+          ]
+        },
+        {
+          "start": "19:53",
+          "end": "20:30",
+          "name": "Travestirsi con i dreadlock e il problema delle orecchie grandi",
+          "summary": "Obama scherza sull'idea di uscire in incognito con dreadlock e barba finta, ammettendo pero che la sua voce e soprattutto le sue orecchie grandi lo tradiscono sempre.",
+          "topics": [
+            "Barack Obama",
+            "anonimato",
+            "travestimento",
+            "dreadlock",
+            "orecchie grandi",
+            "felpa"
+          ]
+        },
+        {
+          "start": "31:35",
+          "end": "32:05",
+          "name": "Confessare ai liceali di aver fatto bravate da adolescente",
+          "summary": "Obama racconta lo shock di un gruppo di liceali quando ha ammesso candidamente di aver fumato e combinato guai alla loro eta, nonostante avessero la sua foto appesa a scuola fin dalle elementari.",
+          "topics": [
+            "Barack Obama",
+            "liceali",
+            "adolescenza",
+            "bravate",
+            "scuola",
+            "foto"
+          ]
+        },
+        {
+          "start": "47:18",
+          "end": "48:05",
+          "name": "La difesa speciale a basket, i 12 punti al labbro e Michelle",
+          "summary": "Accusato dagli ex giocatori NFL di ricevere una 'difesa morbida' a basket, Obama ribatte ricordando quando prese una gomitata da 12 punti di sutura al labbro facendo arrabbiare Michelle.",
+          "topics": [
+            "Barack Obama",
+            "basket",
+            "labbro",
+            "12 punti",
+            "Michelle Obama",
+            "NFL"
+          ]
+        },
+        {
+          "start": "54:09",
+          "end": "55:09",
+          "requested_end": "55:22",
+          "name": "Fuorionda finale: sfide a basket e il nome completo di KK",
+          "summary": "Nel fuorionda finale Obama punzecchia i giocatori di football dicendo che a basket sanno solo fare fallo e scherza con un membro della troupe emozionato nel dirgli il suo vero nome nigeriano.",
+          "topics": [
+            "Barack Obama",
+            "Ryan Clark",
+            "basket",
+            "football",
+            "falli",
+            "fuorionda"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "01:28",
+          "end": "01:42",
+          "name": "Ryan Clark ha un gemello?",
+          "summary": "Obama apre l'intervista chiedendo se Ryan Clark abbia un gemello visto che e in TV sia di mattina che di sera.",
+          "topics": [
+            "Barack Obama",
+            "Ryan Clark",
+            "gemello",
+            "TV",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "02:56",
+          "end": "03:11",
+          "name": "Volevo mettere il famoso abito beige",
+          "summary": "Obama scherza sul voler indossare il suo famigerato abito beige e prende in giro i completi bicolore di Ryan Clark.",
+          "topics": [
+            "Barack Obama",
+            "tan suit",
+            "abito beige",
+            "moda",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "08:54",
+          "end": "09:04",
+          "name": "Ho paura di Michelle",
+          "summary": "Di fronte alle domande sulle ammiratrici, Obama mette subito le mani avanti confessando di avere paura di Michelle.",
+          "topics": [
+            "Barack Obama",
+            "Michelle Obama",
+            "paura",
+            "matrimonio",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "10:04",
+          "end": "10:18",
+          "name": "Le foto delle signore che mi toccavano il sedere",
+          "summary": "Obama rivela che su internet girano foto di donne che gli toccavano il sedere mentre era Presidente.",
+          "topics": [
+            "Barack Obama",
+            "foto",
+            "signore anziane",
+            "sedere",
+            "Presidente"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "16:19",
+          "end": "16:33",
+          "name": "Malia pensava che nessuno la riconoscesse",
+          "summary": "Obama prende in giro la figlia Malia per aver tolto il cognome dai titoli del suo film pensando di passare inosservata.",
+          "topics": [
+            "Barack Obama",
+            "Malia Obama",
+            "Sundance",
+            "cognome",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "20:16",
+          "end": "20:28",
+          "name": "Le mie orecchie sono troppo grandi per travestirmi",
+          "summary": "Obama spiega che nessun travestimento funziona con lui perche le sue orecchie grandi lo fanno riconoscere subito.",
+          "topics": [
+            "Barack Obama",
+            "orecchie grandi",
+            "travestimento",
+            "felpa",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "47:29",
+          "end": "47:44",
+          "name": "12 punti di sutura al labbro prima di un discorso",
+          "summary": "Obama smentisce che lo facciano vincere a basket raccontando di aver preso 12 punti sul labbro prima di un discorso.",
+          "topics": [
+            "Barack Obama",
+            "basket",
+            "labbro",
+            "12 punti",
+            "sutura"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "51:44",
+          "end": "51:58",
+          "name": "Michelle non era il mio capo, usava la fotocopiatrice",
+          "summary": "Obama ridimensiona il ruolo di Michelle al loro primo incontro dicendo che gli mostrava solo dove fosse la Xerox.",
+          "topics": [
+            "Barack Obama",
+            "Michelle Obama",
+            "studio legale",
+            "fotocopiatrice",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "54:19",
+          "end": "54:31",
+          "name": "I giocatori NFL non sanno giocare a basket",
+          "summary": "Obama sfotte gli ex giocatori di football americano dicendo che sul campo da basket sanno solo fare fallo.",
+          "topics": [
+            "Barack Obama",
+            "NFL",
+            "basket",
+            "falli",
+            "presa in giro"
+          ]
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "id": "yvYCzh0BcmM",
+      "url": "https://www.youtube.com/watch?v=yvYCzh0BcmM",
+      "title": "EXCLUSIVE: Barack Obama in his own words | MS NOW FULL INTERVIEW",
+      "channel": "MS NOW",
+      "category": "interview",
+      "source_duration_s": 2651,
+      "skipped_existing": [
+        {
+          "kind": "moment",
+          "start": "05:38",
+          "end": "06:14",
+          "reason": "coperto da yt_yvYCzh0BcmM_338_375_v1 (05:38-06:15)"
+        }
+      ],
+      "clips": [
+        {
+          "start": "01:04",
+          "end": "01:33",
+          "name": "Troppo giovane per un mausoleo senza vita",
+          "summary": "Obama spiega di aver progettato il suo centro presidenziale evitando l'effetto di un mausoleo polveroso e senza vita, dichiarando ironicamente di sentirsi ancora troppo giovane per una cosa del genere.",
+          "topics": [
+            "Barack Obama",
+            "Obama Presidential Center",
+            "Chicago",
+            "mausoleo",
+            "giovane",
+            "arte"
+          ]
+        },
+        {
+          "start": "01:57",
+          "end": "02:14",
+          "name": "Obama legge storie ai bambini con gli artigli terribili",
+          "summary": "Durante l'inaugurazione a Chicago, Obama intrattiene un gruppo di bambini leggendo ad alta voce uno dei suoi libri illustrati preferiti e imitando con enfasi gli 'artigli terribili' dei mostri.",
+          "topics": [
+            "Barack Obama",
+            "bambini",
+            "lettura",
+            "libro",
+            "artigli",
+            "Chicago"
+          ]
+        },
+        {
+          "start": "18:54",
+          "end": "19:25",
+          "name": "Il lato nerd da professore di educazione civica",
+          "summary": "Obama ammette ridendo che nel suo museo avrebbe inserito ancora meno cose su se stesso, attribuendo la colpa al suo lato 'nerd da professore di educazione civica'.",
+          "topics": [
+            "Barack Obama",
+            "museo",
+            "nerd",
+            "educazione civica",
+            "autoironia",
+            "storia"
+          ]
+        },
+        {
+          "start": "24:14",
+          "end": "24:48",
+          "name": "Costruire il centro come una partita gigante a Scarabeo",
+          "summary": "Un carpentiere del cantiere racconta con umorismo come fondere nel cemento le lettere giganti del discorso di Selma sembrasse una partita settimanale a Scarabeo ('ci servono quattro S e sette T').",
+          "topics": [
+            "Louis Dean",
+            "carpentiere",
+            "Chicago",
+            "lettere",
+            "cemento",
+            "Selma",
+            "Scarabeo"
+          ]
+        },
+        {
+          "start": "25:04",
+          "end": "25:56",
+          "name": "Lo stivale intrappolato per sempre nel cemento del garage",
+          "summary": "Un operaio racconta l'aneddoto esilarante di quando rimase incastrato nell'argilla durante gli scavi e dovette farsi tirare su dalla ruspa lasciando il suo stivale sepolto per sempre nel parcheggio.",
+          "topics": [
+            "operaio",
+            "cantiere",
+            "Chicago",
+            "stivale",
+            "fango",
+            "parcheggio"
+          ]
+        },
+        {
+          "start": "31:09",
+          "end": "32:09",
+          "requested_end": "32:15",
+          "name": "Obama collaudatore ufficiale di tutte le sedie del museo",
+          "summary": "Nel botta e risposta veloce, Obama conferma di aver personalmente provato quasi tutte le sedie del museo pensando alle mamme stanche, ammettendo di averne fatte sostituire alcune perche belle ma scomode.",
+          "topics": [
+            "Barack Obama",
+            "Michele Norris",
+            "sedie",
+            "museo",
+            "comfort",
+            "mamma",
+            "design"
+          ]
+        },
+        {
+          "start": "34:26",
+          "end": "34:47",
+          "name": "La mossa diplomatica per non offendere nessun artista",
+          "summary": "Dopo aver citato due opere d'arte del centro, Obama si blocca di colpo dicendo che smettera di fare nomi per evitare che gli altri artisti si sentano trascurati, strappando una risata alla giornalista.",
+          "topics": [
+            "Barack Obama",
+            "Michele Norris",
+            "artisti",
+            "museo",
+            "diplomazia",
+            "battuta"
+          ]
+        },
+        {
+          "start": "35:05",
+          "end": "35:58",
+          "name": "La ricetta del chili di Obama e il libro preferito di Michelle",
+          "summary": "Obama svela che il suo piatto preferito al ristorante del centro e il chili fatto con la sua ricetta personale ('Aspetta, lui cucina? Beh, non piu') e indica furbescamente 'Becoming' di Michelle come libro preferito.",
+          "topics": [
+            "Barack Obama",
+            "ristorante",
+            "Tafari Campbell",
+            "chili",
+            "ricetta",
+            "Becoming",
+            "Michelle Obama"
+          ]
+        },
+        {
+          "start": "36:00",
+          "end": "36:20",
+          "name": "Da Obamacare all'edificio chiamato Obamalisco",
+          "summary": "Ricordando come trasformo in positivo il soprannome 'Obamacare', la giornalista gli chiede se adottera anche il nomignolo 'Obamalisco' dato dai critici all'edificio principale, e Obama accetta divertito.",
+          "topics": [
+            "Barack Obama",
+            "Obamacare",
+            "Obamalisco",
+            "soprannome",
+            "architettura",
+            "ironia"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "01:04",
+          "end": "01:13",
+          "name": "Sono troppo giovane per un mausoleo",
+          "summary": "Obama scherza sul design del suo centro presidenziale dicendo di essere ancora troppo giovane per un mausoleo senza vita.",
+          "topics": [
+            "Barack Obama",
+            "mausoleo",
+            "troppo giovane",
+            "Chicago",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "02:02",
+          "end": "02:11",
+          "name": "Obama fa le vocine dei mostri ai bambini",
+          "summary": "Obama legge un libro ai bambini imitando con voce teatrale gli 'artigli terribili' dei personaggi.",
+          "topics": [
+            "Barack Obama",
+            "bambini",
+            "lettura",
+            "artigli",
+            "mostri"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "05:58",
+          "end": "06:10",
+          "name": "Aspetti, ma sta parlando davvero di lei?",
+          "summary": "Un liceale chiede incredulo a Obama se stesse parlando davvero di se stesso mentre raccontava le sue bravate giovanili.",
+          "topics": [
+            "Barack Obama",
+            "liceali",
+            "bravate",
+            "droghe",
+            "stupore"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "19:12",
+          "end": "19:22",
+          "name": "Il mio lato nerd da professore di educazione civica",
+          "summary": "Obama prende in giro se stesso definendosi un 'nerd da professore di educazione civica'.",
+          "topics": [
+            "Barack Obama",
+            "nerd",
+            "educazione civica",
+            "autoironia"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "25:20",
+          "end": "25:34",
+          "name": "C'e un mio stivale murato nel parcheggio",
+          "summary": "Un operaio del cantiere svela che uno dei suoi stivali e rimasto sepolto per sempre nel parcheggio dell'edificio.",
+          "topics": [
+            "operaio",
+            "stivale",
+            "parcheggio",
+            "Obama Center",
+            "aneddoto"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "31:14",
+          "end": "31:26",
+          "name": "Obama che corre a provare tutte le sedie",
+          "summary": "La giornalista confessa di immaginare Obama che corre per tutto il museo a sedersi su ogni singola sedia per testarla.",
+          "topics": [
+            "Michele Norris",
+            "Barack Obama",
+            "sedie",
+            "museo",
+            "collaudo"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "32:03",
+          "end": "32:14",
+          "name": "Belle da vedere, scomode da sedersi",
+          "summary": "Obama ammette di aver fatto sostituire alcune sedie di design del museo perche erano belle solo finche non ti ci sedevi.",
+          "topics": [
+            "Barack Obama",
+            "sedie",
+            "design",
+            "comfort",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "35:19",
+          "end": "35:29",
+          "name": "Aspetta, ma Obama sa cucinare?",
+          "summary": "Obama ironizza sullo stupore della gente nello scoprire che il chili del ristorante e fatto con una sua ricetta.",
+          "topics": [
+            "Barack Obama",
+            "chili",
+            "ricetta",
+            "cucina",
+            "battuta"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "35:45",
+          "end": "35:58",
+          "name": "Il libro preferito in biblioteca? Quello di Michelle",
+          "summary": "Alla domanda sul suo libro preferito nella nuova biblioteca, Obama risponde senza esitare 'Becoming' di Michelle.",
+          "topics": [
+            "Barack Obama",
+            "Michelle Obama",
+            "Becoming",
+            "libro",
+            "biblioteca"
+          ]
+        },
+        {
+          "kind": "hook",
+          "start": "36:10",
+          "end": "36:20",
+          "name": "Lo chiamano Obamalisco e a me va benissimo",
+          "summary": "Obama accetta divertito il soprannome 'Obamalisco' affibbiato dai critici alla torre del suo centro presidenziale.",
+          "topics": [
+            "Barack Obama",
+            "Obamalisco",
+            "soprannome",
+            "edificio",
+            "battuta"
+          ]
+        }
+      ]
+    }
+  ]
+}

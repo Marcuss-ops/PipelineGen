@@ -110,9 +110,8 @@ func imageSearchSubject(entity, query string) string {
 		return entity
 	}
 	// The per-segment path appends a retrieval hint to the canonical entity
-	// ("Chiara Poggi single-person portrait headshot photo"). Those variants
-	// must collapse to the entity; a genuine context query ("Pavia
-	// courthouse") must not.
+	// ("Chiara Poggi photo"). Those variants must collapse to the entity; a
+	// genuine context query ("Pavia courthouse") must not.
 	if strings.HasPrefix(query, entity+" ") {
 		if suffix := strings.TrimSpace(strings.TrimPrefix(query, entity)); imageSearchHintOnly(suffix) {
 			return entity

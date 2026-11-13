@@ -242,6 +242,49 @@ func ImageFrame(style *scriptpkg.OverlayImageStyleSpec) *capmodel.OverlayItemFra
 	return frame
 }
 
+// ImageBackdropParams projects the standalone-image backdrop treatment into
+// the renderer's params.image_backdrop block. Unset values stay absent so the
+// renderer's verified defaults apply; the grid is emitted as its own nested
+// object because line/dot geometry is a closed contract.
+func ImageBackdropParams(backdrop *scriptpkg.OverlayImageBackdropSpec) map[string]any {
+	if backdrop == nil {
+		return nil
+	}
+	params := map[string]any{}
+	if backdrop.Zoom != nil {
+		params["zoom"] = *backdrop.Zoom
+	}
+	if backdrop.BlurPX != nil {
+		params["blur_px"] = *backdrop.BlurPX
+	}
+	if grid := backdrop.Grid; grid != nil {
+		gridParams := map[string]any{}
+		if grid.Enabled != nil {
+			gridParams["enabled"] = *grid.Enabled
+		}
+		if grid.Style != "" {
+			gridParams["style"] = grid.Style
+		}
+		if grid.Color != "" {
+			gridParams["color"] = grid.Color
+		}
+		if grid.SpacingPX != nil {
+			gridParams["spacing_px"] = *grid.SpacingPX
+		}
+		if grid.LineWidthPX != nil {
+			gridParams["line_width_px"] = *grid.LineWidthPX
+		}
+		if grid.DotRadiusPX != nil {
+			gridParams["dot_radius_px"] = *grid.DotRadiusPX
+		}
+		if grid.Opacity != nil {
+			gridParams["opacity"] = *grid.Opacity
+		}
+		params["grid"] = gridParams
+	}
+	return params
+}
+
 // ImageStyleParams returns the image-specific runtime overrides from the
 // same style projection used for standalone image items.
 func ImageStyleParams(style *scriptpkg.OverlayImageStyleSpec) map[string]any {
@@ -304,6 +347,15 @@ func ApplyImageStyle(item *capmodel.OverlayItem, style *scriptpkg.OverlayImageSt
 				item.Params[strings.TrimPrefix(key, "image_")] = value
 			}
 		}
+	}
+	// image_backdrop reuses one asset as a full-canvas blurred background.
+	// It is valid only for a standalone image: composites and groups own
+	// independent member frames, and RenderingGen rejects the key there.
+	if backdrop := ImageBackdropParams(style.Backdrop); backdrop != nil && len(item.ImageLayers) == 0 {
+		if item.Params == nil {
+			item.Params = map[string]any{}
+		}
+		item.Params["image_backdrop"] = backdrop
 	}
 	item.Frame = ImageFrame(style)
 	for i := range item.ImageLayers {

@@ -39,6 +39,7 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
+	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
@@ -60,11 +61,30 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		cause := fmt.Errorf("entity timeline compilation failed: %w", err)
 		return cause
 	}
+	requestedBackground := ""
+	if req.OverlayBackground != nil {
+		requestedBackground = req.OverlayBackground.AssetID
+	}
+	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
+		status.JobID = jobID
+		status.Stage = "background_resolving"
+		status.Requested = overlayStatusRequest(req)
+	})
 	background, bgErr := r.resolveOverlayBackground(ctx, req.OverlayBackground)
 	if bgErr != nil {
 		cause := fmt.Errorf("resolve overlay background failed: %w", bgErr)
+		overlaystatus.Update(runID, func(status *overlaystatus.Status) {
+			status.Stage = "background_failed"
+			status.Background = overlayStatusBackground(requestedBackground, nil, bgErr)
+			status.Error = cause.Error()
+		})
 		return cause
 	}
+	overlaystatus.Update(runID, func(status *overlaystatus.Status) {
+		status.Stage = "background_resolved"
+		status.Background = overlayStatusBackground(requestedBackground, background, nil)
+		status.Error = ""
+	})
 	canvas := r.overlayCanvas
 	canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
 	canvas.Background = overlayBackgroundFromPayload(background)
@@ -152,6 +172,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		zap.Float64("heavy_phrase_priority", canvas.HeavyPhrasePriority),
 		zap.Any("animation_counts", canvas.AnimationCounts),
 	)
+	overlaystatus.Update(runID, func(status *overlaystatus.Status) { status.Stage = "planning" })
 	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 		return cause

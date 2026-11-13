@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"strings"
 	"testing"
 )
 
@@ -40,14 +41,34 @@ func TestIdentityImagesAreAdmittedByTheProductionPlan(t *testing.T) {
 		textOnly,
 	}
 	got := admitIdentityImagesByProductionPlan(items, plan)
-	if len(got) != 2 {
-		t.Fatalf("only the admitted identity keeps its image: %+v", got)
+	if len(got) != 3 {
+		t.Fatalf("a non-admitted identity keeps its text card instead of disappearing: %+v", got)
 	}
-	if got[0].EntityRef == nil || got[0].EntityRef.Name != "Alberto Stasi" {
-		t.Fatalf("the searched identity must survive: %+v", got[0])
+	if got[0].EntityRef == nil || got[0].EntityRef.Name != "Alberto Stasi" || len(got[0].AssetRefs) == 0 {
+		t.Fatalf("the searched identity must keep its image: %+v", got[0])
 	}
-	if len(got[1].AssetRefs) != 0 || got[1].EntityCaption != "Andrea Sempio" {
-		t.Fatalf("a text-only card spends no search and stays: %+v", got[1])
+	if len(got[1].AssetRefs) != 0 || got[1].Kind != string(capmodel.KindEntityCard) || got[1].Text != "Andrea Sempio" {
+		t.Fatalf("an unverified non-admitted image must degrade to a text card: %+v", got[1])
+	}
+	if len(got[2].AssetRefs) != 0 || got[2].EntityCaption != "Andrea Sempio" {
+		t.Fatalf("a text-only card spends no search and stays: %+v", got[2])
+	}
+}
+
+// The bundle is the primary, already-verified asset source. A semantic search
+// budget that did not allocate a media unit to this identity must not delete
+// produced bytes: the overlay remains an image card.
+func TestVerifiedIdentityImageSurvivesUnadmittedProductionPlan(t *testing.T) {
+	plan := &SemanticProductionPlan{Schema: SemanticProductionPlanSchema, Identity: []SemanticPlannedIdentity{{
+		ID: "person_02", Surface: "Andrea Sempio", Kind: "PERSON", Media: false,
+	}}}
+	item := identityImageItem("Andrea Sempio")
+	sha := strings.Repeat("a", 64)
+	item.AssetRefs[0].AssetID = sha
+	item.AssetRefs[0].SHA256 = sha
+	got := admitIdentityImagesByProductionPlan([]capmodel.OverlayItem{item}, plan)
+	if len(got) != 1 || got[0].Kind != string(capmodel.KindEntityImage) || len(got[0].AssetRefs) != 1 {
+		t.Fatalf("a verified bundle image must survive the semantic budget: %+v", got)
 	}
 }
 

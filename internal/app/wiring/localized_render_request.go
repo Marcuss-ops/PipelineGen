@@ -15,10 +15,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"go.uber.org/zap"
 )
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
-)
+import "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/texttracks"
 
 type localizedRenderRequest struct {
 	identity           localizedRenderIdentity
@@ -432,15 +429,10 @@ func (a *localizedRenderEnqueuerAdapter) resolveRenderIdentity(ctx context.Conte
 	if resolved != "" {
 		sourceLang = resolved
 	}
-	if sourceLang != targetLang && localizedRenderSubtitlesEnabled(in) {
-		track, cues, findErr := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
-		if findErr != nil {
-			return localizedRenderIdentity{}, fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, findErr)
-		}
-		if track == nil || len(cues) == 0 {
-			return localizedRenderIdentity{}, fmt.Errorf("localized render: no timed subtitles for requested language %q on %q; refusing source-language fallback", targetLang, assetID)
-		}
-	}
+	// The requested language is validated (and, when missing, materialized)
+	// after the source transcript exists: see ensureDatabaseSubtitles. Keeping
+	// the check there means a missing target can be created on demand instead
+	// of aborting the render before the canonical backfill pipeline runs.
 	return localizedRenderIdentity{assetID: assetID, clipID: clipID, clipIDChild: clipID, sourceLang: sourceLang, targetLang: targetLang}, nil
 }
 

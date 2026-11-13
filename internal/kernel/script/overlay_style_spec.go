@@ -105,6 +105,32 @@ type OverlayImageStyleSpec struct {
 	Shadow    *OverlayShadowSpec  `json:"shadow,omitempty"`
 	Bounded   *bool               `json:"bounded,omitempty"`
 	Fit       string              `json:"fit,omitempty"`
+	// Backdrop reuses a standalone image as a softly blurred full-canvas
+	// background and can add one light canvas grid over it. Composite images
+	// and groups keep their independent member frames, so the field is applied
+	// only to a single-asset image item.
+	Backdrop *OverlayImageBackdropSpec `json:"backdrop,omitempty"`
+}
+
+// OverlayImageBackdropSpec mirrors params.image_backdrop on the RenderingGen
+// side. Zoom is capped at 10x; blur must stay subtle. Grid defaults are owned
+// by the renderer so an omitted value keeps the verified editorial treatment.
+type OverlayImageBackdropSpec struct {
+	Zoom   *float64                      `json:"zoom,omitempty"`
+	BlurPX *float64                      `json:"blur_px,omitempty"`
+	Grid   *OverlayImageBackdropGridSpec `json:"grid,omitempty"`
+}
+
+// OverlayImageBackdropGridSpec is the light full-canvas grid drawn over the
+// backdrop and the card. Line and dot geometries are mutually exclusive.
+type OverlayImageBackdropGridSpec struct {
+	Enabled     *bool    `json:"enabled,omitempty"`
+	Style       string   `json:"style,omitempty"`
+	Color       string   `json:"color,omitempty"`
+	SpacingPX   *float64 `json:"spacing_px,omitempty"`
+	LineWidthPX *float64 `json:"line_width_px,omitempty"`
+	DotRadiusPX *float64 `json:"dot_radius_px,omitempty"`
+	Opacity     *float64 `json:"opacity,omitempty"`
 }
 
 type OverlayImageBorder struct {
@@ -225,6 +251,53 @@ func (s *OverlayStyleSpec) Validate() error {
 				return fmt.Errorf("overlay_style.image.shadow.color must be #RRGGBB")
 			}
 		}
+		if err := validateImageBackdrop(image.Backdrop); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateImageBackdrop pins the renderer's published image_backdrop bounds so
+// a bad payload fails at script.generate instead of at render admission.
+func validateImageBackdrop(backdrop *OverlayImageBackdropSpec) error {
+	if backdrop == nil {
+		return nil
+	}
+	if backdrop.Zoom != nil && (math.IsNaN(*backdrop.Zoom) || math.IsInf(*backdrop.Zoom, 0) || *backdrop.Zoom < 1 || *backdrop.Zoom > 10) {
+		return fmt.Errorf("overlay_style.image.backdrop.zoom must be between 1 and 10")
+	}
+	if backdrop.BlurPX != nil && (math.IsNaN(*backdrop.BlurPX) || math.IsInf(*backdrop.BlurPX, 0) || *backdrop.BlurPX < 6 || *backdrop.BlurPX > 48) {
+		return fmt.Errorf("overlay_style.image.backdrop.blur_px must be between 6 and 48 pixels")
+	}
+	grid := backdrop.Grid
+	if grid == nil {
+		return nil
+	}
+	if grid.Style != "" && grid.Style != "lines" && grid.Style != "line" && grid.Style != "grid" && grid.Style != "dots" && grid.Style != "dot_grid" {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.style must be lines or dots")
+	}
+	if grid.Color != "" && !isStyleHexColor(grid.Color) {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.color must be #RRGGBB")
+	}
+	if grid.SpacingPX != nil && (math.IsNaN(*grid.SpacingPX) || math.IsInf(*grid.SpacingPX, 0) || *grid.SpacingPX < 4 || *grid.SpacingPX > 512) {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.spacing_px must be between 4 and 512 pixels")
+	}
+	if grid.LineWidthPX != nil && (math.IsNaN(*grid.LineWidthPX) || math.IsInf(*grid.LineWidthPX, 0) || *grid.LineWidthPX < 0.25 || *grid.LineWidthPX > 32) {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.line_width_px must be between 0.25 and 32 pixels")
+	}
+	if grid.DotRadiusPX != nil && (math.IsNaN(*grid.DotRadiusPX) || math.IsInf(*grid.DotRadiusPX, 0) || *grid.DotRadiusPX < 0.5 || *grid.DotRadiusPX > 64) {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.dot_radius_px must be between 0.5 and 64 pixels")
+	}
+	if grid.Opacity != nil && (math.IsNaN(*grid.Opacity) || math.IsInf(*grid.Opacity, 0) || *grid.Opacity < 0 || *grid.Opacity > 1) {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.opacity must be between 0 and 1")
+	}
+	isDots := grid.Style == "dots" || grid.Style == "dot_grid"
+	if isDots && grid.LineWidthPX != nil {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.line_width_px is valid only for line grids")
+	}
+	if !isDots && grid.DotRadiusPX != nil {
+		return fmt.Errorf("overlay_style.image.backdrop.grid.dot_radius_px is valid only for dot grids")
 	}
 	return nil
 }

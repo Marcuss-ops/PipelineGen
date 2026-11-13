@@ -16,6 +16,7 @@ Usage:
   velox poll     <job_id> [--m2m] [--timeout 30m] [--interval 3s] [--json]
   velox replay   <job_id> [--json]
   velox download <asset_id> [--source SOURCE] [-o FILE]
+  velox download-final <job_id> [-o FILE] [--token-file FILE] [--json]
   velox search   "<query>" [--source SOURCE] [--kind ASSET_KIND] [--role SEMANTIC_ROLE]
                  [--limit N] [--universe U] [--json]
   velox jobs     [--json]
@@ -23,7 +24,12 @@ Usage:
 
 Environment:
   VELOX_BASE_URL      server base URL (default http://127.0.0.1:$VELOX_PORT or :8000)
-  VELOX_ADMIN_TOKEN   admin bearer token
+  VELOX_ADMIN_TOKEN   admin bearer token (job metadata)
+  VELOX_ARTIFACT_TOKEN / VELOX_MASTER_ADMIN_TOKEN
+                      bearer accepted by the remote Master artifact route
+  VELOX_MASTER_TOKEN_FILE
+                      optional KEY=VALUE file with the artifact bearer
+                      (default fallback: ~/creator-77-master.env)
   VELOX_M2M_SECRET    scoped remote submit/poll bearer token
   VELOX_M2M           set true to use /api/v1/jobs for remote submit/poll
   VELOX_HOME          job-store directory (default ~/.velox)

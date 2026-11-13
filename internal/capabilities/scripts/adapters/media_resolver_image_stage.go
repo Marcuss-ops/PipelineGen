@@ -12,6 +12,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -22,6 +25,23 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 )
+
+// normalizeEntityMatch is the identity join for entity-image candidates:
+// case-folded, accent-stripped and English-possessive-stripped.
+func normalizeEntityMatch(value string) string {
+	decomposed := norm.NFD.String(strings.ToLower(strings.TrimSpace(value)))
+	var b strings.Builder
+	for _, r := range decomposed {
+		if unicode.Is(unicode.Mn, r) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	// NER commonly emits an English possessive when the name is the subject
+	// of a sentence ("Dwayne Johnson's journey"), while image candidates are
+	// keyed by the canonical identity ("Dwayne Johnson").
+	return strings.TrimSuffix(strings.TrimSuffix(b.String(), "'s"), "’s")
+}
 
 // internetImageCachePayload stores only the image-provider delta so a cache
 type internetImageCachePayload struct {
@@ -408,8 +428,8 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				p.metrics.IncProviderRequest("internet_images")
 			}
 			imageLimit := perQueryLimit
-			if catalogEligible && imageLimit < entityImageCatalogPoolSize {
-				imageLimit = entityImageCatalogPoolSize
+			if catalogEligible && imageLimit < entityImageCatalogDiscoveryLimit {
+				imageLimit = entityImageCatalogDiscoveryLimit
 			}
 			var results []scriptpkg.SegmentAssetCandidate
 			err := measureVidRushProvider(ctx, p.metrics, kernobs.OperationInfo{
@@ -431,8 +451,9 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				if catalogEligible {
 					addEntityImageCatalogCandidates(p.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeFound, len(results))
 					incEntityImageCatalogLifecycle(p.metrics, scriptmetrics.EntityImageStageDiscovery, scriptmetrics.EntityImageOutcomeSuccess)
+					rawResults := results
 					results = filterPersonEntityImageCandidatesMeasured(catalogIdentity, results, p.metrics)
-					if catalogErr := persistEntityImageCatalogCandidatesMeasured(ctx, p.catalog, catalogIdentity, results, p.metrics); catalogErr != nil {
+					if catalogErr := persistEntityImageCatalogCandidatesMeasured(ctx, p.catalog, catalogIdentity, rawResults, p.metrics); catalogErr != nil {
 						return queryResult{}, catalogErr
 					}
 					filteredResults, filterErr := excludeUnavailableEntityImageCatalogCandidates(ctx, p.catalog, catalogIdentity, results)

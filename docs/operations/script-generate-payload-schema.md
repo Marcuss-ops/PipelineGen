@@ -78,6 +78,29 @@ caption is run-level `overlay_style`, then explicit item/child runtime style,
 then legacy `caption_font_family`, then the language-aware default; entity
 composition styles only supply layout, motion, and fallback color.
 
+`overlay_style.image` tunes generated image cards: `width`, `height`,
+`position_x`, `position_y`, `radius`, `fit` (`cover`/`contain`/`fill`),
+`bounded`, plus `border`, `stroke` and `shadow` (color, opacity, blur,
+offset). For a **standalone** image only, `backdrop` reuses the same asset as
+a softly blurred full-canvas background and may add a light canvas grid:
+
+```json
+"overlay_style": {"image": {
+  "bounded": true, "fit": "contain",
+  "backdrop": {"zoom": 1.15, "blur_px": 18,
+    "grid": {"style": "lines", "color": "#7FA8C8", "spacing_px": 120,
+      "line_width_px": 1, "opacity": 0.1}},
+  "shadow": {"enabled": true, "color": "#000000", "opacity": 0.6,
+    "blur": 10, "offset": [0, 6]}
+}}
+```
+
+Grid geometry is closed: `style` is `lines` or `dots`; use `line_width_px`
+(`0.25..32`) for lines or `dot_radius_px` (`0.5..64`) for dots. `spacing_px`
+is `4..512`, `opacity` is `0..1`, and `enabled:false` disables the grid while
+keeping the blurred backdrop. `backdrop` is ignored for composites and groups,
+which keep independent per-layer frames.
+
 - `version` is always `2`. `items` must contain **at least one** entry.
 - A single-item envelope maps to the unified `/generate` flow; multiple
   items map to batch generation.

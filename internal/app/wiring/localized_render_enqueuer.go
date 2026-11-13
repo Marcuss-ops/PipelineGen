@@ -8,11 +8,11 @@ package wiring
 // Rust starts on that clip without waiting for the other scenes/languages.
 //
 // The LocalizationService resolves the source clip + transcript/subtitle text
-// tracks from the canonical stores by (asset_id, language). The runner holds
-// the freshly translated text in memory only, so the adapter persists the
-// source transcript + translated subtitle text tracks (READY, idempotent)
-// and their full-span timed cues BEFORE delegating to Localize — otherwise
-// the plan builder would find no READY track and fail closed.
+// tracks from the canonical stores by (asset_id, language). This adapter
+// ensures the source transcript exists, then delegates a MISSING requested
+// language to the canonical BackfillService (translate → align cues →
+// persist) BEFORE Localize — otherwise the plan builder would find no READY
+// track and fail closed. It never falls back to the source-language track.
 //
 // godlike/07 fail-closed: an enqueue error is returned to the runner (which
 // fails the run), never a silent skip. A scene with no source clip (audio-only)
@@ -51,6 +51,14 @@ type localizedLocalizer interface {
 
 type localizedArtifactUploader interface {
 	UploadRendered(ctx context.Context, artifact localization.LocalizedClipArtifact, folderID string) (localization.LocalizedClipArtifact, error)
+}
+
+// localizedSubtitleMaterializer is the narrow seam for creating a missing
+// requested-language subtitle track through the canonical backfill pipeline.
+// The implementation re-reads the track after writing, so a nil error is a
+// verified success rather than a best-effort write.
+type localizedSubtitleMaterializer interface {
+	EnsureTranslatedSubtitleTrack(ctx context.Context, assetID, sourceLang, targetLang string) error
 }
 
 var _ localizedLocalizer = (*LocalizationService)(nil)
@@ -97,7 +105,11 @@ type localizedRenderEnqueuerAdapter struct {
 	material          cliprender.AssetMaterializer
 	transcript        cliprender.TranscriptResolver
 	subtitleArtifacts detail.SubtitleArtifactRepository
-	committer         persistence.AssetCommitter
+	// backfill is the canonical text-track materialization pipeline used when
+	// the requested language's subtitle track is missing. Optional: nil keeps
+	// the documented fail-closed behavior (never burn the source language).
+	backfill  localizedSubtitleMaterializer
+	committer persistence.AssetCommitter
 
 	folderMu    sync.Mutex
 	folderCache map[string]string
@@ -147,6 +159,16 @@ func newLocalizedRenderEnqueuerAdapter(svc localizedLocalizer, tracks detail.Tex
 }
 
 var _ scriptgeneration.LocalizedRenderEnqueuer = (*localizedRenderEnqueuerAdapter)(nil)
+
+// SetSubtitleMaterializer attaches the canonical text-track pipeline used to
+// create a missing requested-language track on demand. Passing nil preserves
+// the fail-closed contract: a missing track is an error, never a fallback to
+// the source-language track.
+func (a *localizedRenderEnqueuerAdapter) SetSubtitleMaterializer(m localizedSubtitleMaterializer) {
+	if a != nil {
+		a.backfill = m
+	}
+}
 
 // ReplaceTranscriptCues keeps the policy adapter compatible with the
 // canonical cue-writer port while preserving the concrete writer ownership in
@@ -443,15 +465,42 @@ func (a *localizedRenderEnqueuerAdapter) ensureDatabaseSubtitles(ctx context.Con
 		generated = false
 	}
 	if targetLang != sourceLang {
-		target, targetCues, err := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
-		if err != nil {
-			return false, fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, err)
-		}
-		if target == nil || len(targetCues) == 0 {
-			return false, fmt.Errorf("localized render: no timed database subtitles for target language %q on %q", targetLang, assetID)
+		if err := a.ensureTargetSubtitleTrack(ctx, assetID, sourceLang, targetLang); err != nil {
+			return false, err
 		}
 	}
 	return generated, nil
+}
+
+// ensureTargetSubtitleTrack makes the requested language's timed subtitle
+// track exist, using the canonical BackfillService when it is missing. The
+// re-read after the write is the success signal: BackfillService reports
+// per-asset failures in its result rather than as a transport error, so a nil
+// error alone would be a fake success. If no pipeline is wired, or the write
+// still leaves no timed cues, the render fails closed instead of burning the
+// source language.
+func (a *localizedRenderEnqueuerAdapter) ensureTargetSubtitleTrack(ctx context.Context, assetID, sourceLang, targetLang string) error {
+	track, cues, err := a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
+	if err != nil {
+		return fmt.Errorf("localized render: find translated subtitles for %q/%q: %w", assetID, targetLang, err)
+	}
+	if track != nil && len(cues) > 0 {
+		return nil
+	}
+	if a.backfill == nil {
+		return fmt.Errorf("localized render: no timed subtitles for requested language %q on %q; refusing source-language fallback (on-demand subtitle materialization is not wired)", targetLang, assetID)
+	}
+	if err := a.backfill.EnsureTranslatedSubtitleTrack(ctx, assetID, sourceLang, targetLang); err != nil {
+		return fmt.Errorf("localized render: materialize requested subtitles %q on %q: %w", targetLang, assetID, err)
+	}
+	track, cues, err = a.tracks.FindReady(ctx, assetID, targetLang, detail.TextTrackTranscript)
+	if err != nil {
+		return fmt.Errorf("localized render: verify translated subtitles for %q/%q: %w", assetID, targetLang, err)
+	}
+	if track == nil || len(cues) == 0 {
+		return fmt.Errorf("localized render: no timed subtitles for requested language %q on %q after materialization; refusing source-language fallback", targetLang, assetID)
+	}
+	return nil
 }
 
 func invalidSubtitleText(trackText string, cues []detail.TimedCue) bool {
@@ -513,6 +562,7 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		transcriptResolver.SetCueWriter(root.Domains.CueWriter)
 	}
 	if streaming, streamErr := clipadapters.NewClipRenderStreamingTranscriber(cfg, log); streamErr == nil {
+		streaming.SetArtifactCache(clipRenderArtifactCache(cfg, root, log), whisperBridgeVersion("scripts/bridges/whisper_transcriber.py"))
 		transcriptResolver.SetStreaming(streaming)
 	} else {
 		log.Warn("wireScriptFlow: streaming subtitle generation unavailable; using acquisition fallback", zap.Error(streamErr))
@@ -526,6 +576,18 @@ func wireLocalizedRenderEnqueuer(cfg *config.Config, root *ComposeRoot, log *zap
 		Concurrency:       cfg.Scripts.LocalizedRenderConcurrency,
 		GlobalConcurrency: cfg.Scripts.LocalizedRenderGlobalConcurrency,
 	}, log, resolver, materializer, transcriptResolver, root.Repos.SubtitleArtifactRepo, root.CanonicalAssetWriter)
+	// A requested language whose track the fan-out has not created yet is
+	// materialized on demand through the SAME canonical pipeline as
+	// asset.text.materialize and the operator backfill. Without this seam a
+	// first render could fail closed even though the source transcript is
+	// already READY and the translation is one call away.
+	if root.TextTracks != nil && root.TextTracks.JobHandler != nil {
+		if backfill := root.TextTracks.JobHandler.Backfill(); backfill != nil {
+			adapter.SetSubtitleMaterializer(backfill)
+		} else {
+			log.Warn("wireScriptFlow: on-demand localized subtitle materialization not wired (text-track backfill unavailable)")
+		}
+	}
 	runner.SetLocalizedRenderEnqueuer(adapter)
 	log.Info("wireScriptFlow: localized render fan-out wired to LocalizationService (RenderingGen/Chronon)",
 		zap.String("source_language", LocalizationConfigFromConfig(cfg).SourceLanguage),

@@ -11,13 +11,13 @@ func TestEditorialBackgroundCatalogIsCanonicalAndCollisionFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	assets := EditorialBackgroundAssets()
-	if len(assets) != 11 {
-		t.Fatalf("editorial background assets = %d, want 11 canonical plates", len(assets))
+	if len(assets) != 10 {
+		t.Fatalf("editorial background assets = %d, want 10 canonical plates", len(assets))
 	}
 	want := []string{
 		"drive-background-01", "drive-background-02", "drive-background-03",
 		"drive-background-04", "drive-background-05", "drive-background-06",
-		"drive-background-boxe", "drive-background-crime", "drive-background-music",
+		"drive-background-boxe", "drive-background-music",
 		"drive-background-wwe", "drive-background-discovery",
 	}
 	if got := EditorialBackgroundIDs(); !reflect.DeepEqual(got, want) {
@@ -42,7 +42,6 @@ func TestEditorialBackgroundCatalogIsCanonicalAndCollisionFree(t *testing.T) {
 func TestResolveEditorialBackgroundReferenceAcceptsChannelLabels(t *testing.T) {
 	tests := map[string]string{
 		"Boxe":                 "drive-background-boxe",
-		"background: Crime":    "drive-background-crime",
 		"background_music":     "drive-background-music",
 		"background-wrestling": "drive-background-wwe",
 		"DOCUMENTARY":          "drive-background-discovery",

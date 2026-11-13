@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	assetswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/assets"
 	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
+	capcache "github.com/Marcuss-ops/PipelineGen/internal/capabilities/artifactcache"
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 	clipadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender/adapters"
@@ -29,6 +31,23 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// clipRenderArtifactCache builds the shared derived-artifact cache for the
+// streaming Whisper path. It is optional: without both SQLite handles the
+// transcriber still runs, it just cannot reuse a previous transcript.
+func clipRenderArtifactCache(cfg *config.Config, root *ComposeRoot, log *zap.Logger) capcache.Cache {
+	if cfg == nil || root == nil || root.CacheDB == nil || root.CacheDB.DB == nil || root.DB == nil || root.DB.DB == nil {
+		return nil
+	}
+	cache, err := assetswiring.NewArtifactCache(cfg, root.CacheDB.DB, root.DB.DB, log)
+	if err != nil {
+		if log != nil {
+			log.Warn("clip.render: streaming Whisper cache unavailable; ASR results will not be reused", zap.Error(err))
+		}
+		return nil
+	}
+	return cache
+}
 
 func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, idempotencyHandler gin.HandlerFunc) error {
 	if !cfg.Features.ClipRenderEnabled {
@@ -76,6 +95,7 @@ func registerClipRender(registry *module.Registry, log *zap.Logger, cfg *config.
 		log.Warn("registerClipRender: streaming transcriber unavailable; transcript generation will use the WAV chain",
 			zap.String("reason", err.Error()))
 	} else {
+		streaming.SetArtifactCache(clipRenderArtifactCache(cfg, root, log), whisperBridgeVersion("scripts/bridges/whisper_transcriber.py"))
 		transcriptResolver.SetStreaming(streaming)
 	}
 

@@ -44,12 +44,15 @@ func entityCardKind(kind capmodel.OverlayKind) bool {
 }
 
 // admitIdentityImagesByProductionPlan enforces the semantic production plan on
-// identity imagery: an entity card keeps its image only when the plan admitted
-// that canonical identity for media — that is the run-level decision that the
-// identity is worth an external search, not the mere existence of a binding.
-// Text-only cards are unaffected because they spend no search. A nil or empty
-// plan is a no-op, so deployments without the consolidated view keep producing
-// exactly the plans they produced before.
+// identity imagery without ever deleting a card. The semantic plan governs
+// external SEARCH: a verified content-addressed asset was already produced,
+// either by the runtime media stage or by the bundle, so its bytes must render
+// even when the search budget did not allocate a media unit to that identity.
+// A non-admitted item that has no verified content address is demoted to a
+// text-only card: the identity and its timing stay visible, but no unverified
+// image reaches the renderer. A nil or empty plan is a no-op, so deployments
+// without the consolidated view keep producing exactly the plans they produced
+// before.
 func admitIdentityImagesByProductionPlan(items []capmodel.OverlayItem, plan *SemanticProductionPlan) []capmodel.OverlayItem {
 	if plan == nil || len(plan.Identity) == 0 || len(items) == 0 {
 		return items
@@ -74,12 +77,50 @@ func admitIdentityImagesByProductionPlan(items []capmodel.OverlayItem, plan *Sem
 			out = append(out, item)
 			continue
 		}
-		if _, ok := admitted[normalizeIdentitySurface(name)]; !ok {
+		if _, ok := admitted[normalizeIdentitySurface(name)]; ok {
+			out = append(out, item)
 			continue
 		}
-		out = append(out, item)
+		// The asset already exists in verified form. The semantic plan's media
+		// budget controls acquisition, not whether produced bytes may render.
+		if overlayItemHasVerifiedIdentityAsset(item) {
+			out = append(out, item)
+			continue
+		}
+		out = append(out, demoteEntityImageToTextCard(item, name))
 	}
 	return out
+}
+
+// overlayItemHasVerifiedIdentityAsset reports whether the item carries a
+// content-addressed asset reference. Such a reference is the result of the
+// verified bundle/annotation binding; it is not an unproven search hit.
+func overlayItemHasVerifiedIdentityAsset(item capmodel.OverlayItem) bool {
+	for _, ref := range item.AssetRefs {
+		if overlayLooksLikeSHA256(ref.SHA256) || overlayLooksLikeSHA256(ref.AssetID) {
+			return true
+		}
+	}
+	return false
+}
+
+// demoteEntityImageToTextCard keeps the identity and its certified timing when
+// the image lacks verified bytes and the production plan did not admit it. The
+// alternative used to be deleting the whole overlay, which made a planned
+// person disappear from the run with no audit row and no text fallback.
+func demoteEntityImageToTextCard(item capmodel.OverlayItem, name string) capmodel.OverlayItem {
+	item.AssetRefs = nil
+	item.ImageLayers = nil
+	item.EntityCaption = ""
+	item.Text = name
+	if item.EntityRef != nil {
+		kind := capmodel.EntityTypeToKind(item.EntityRef.Type)
+		item.Kind = string(kind)
+		if entry, err := capmodel.DefaultChrononOverlayRegistry.Resolve(string(kind)); err == nil {
+			item.TemplateID = entry.Template
+		}
+	}
+	return item
 }
 
 // entityCardMediaIndex builds the run-scoped, canonical_entity_id-keyed media
@@ -112,6 +153,11 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capa
 			}
 		}
 	}
+	// The verified bundle is the single asset source. It is built before the
+	// plan, so the planner sees the same bytes the renderer will receive even
+	// when annotations were cleared or are only localized aliases.
+	catalog := newEntityBundleCatalog(result.SemanticRenderBundle)
+	bundleAssets := catalog.enabled()
 	for i := range result.Scenes {
 		indexAnnotations := func(ann *scriptpkg.SceneAnnotations) {
 			if ann == nil {
@@ -122,14 +168,28 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capa
 					continue
 				}
 				binding := entity.Image
-				if binding == nil || strings.TrimSpace(binding.AssetID) == "" {
+				stable := annotationStableEntityID(entity)
+				var bundleEntry entityBundleCatalogEntry
+				useBundle := false
+				if bundleAssets {
+					if entry, ok := catalog.assetFor(stable, binding); ok {
+						bundleEntry, useBundle = entry, true
+					}
+				}
+				// The bundle is the primary asset source, but an old timeline can
+				// still carry a verified annotation binding under a different
+				// occurrence id. Never lose that image just because the bundle join
+				// could not name it; fall back to the annotation binding.
+				if !useBundle && (binding == nil || strings.TrimSpace(binding.AssetID) == "") {
 					continue
 				}
 				canonical := annotationCanonicalEntityID(entity)
+				if canonical == "" && useBundle {
+					canonical = catalog.canonicalFor(stable)
+				}
 				if canonical == "" {
 					continue
 				}
-				stable := annotationStableEntityID(entity)
 				lookupID := canonical
 				if sceneScoped {
 					lookupID = strings.TrimSpace(result.Scenes[i].ID) + "::" + canonical
@@ -150,6 +210,16 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capa
 					}
 				} else {
 					canonicalByStable[stable] = lookupID
+				}
+				if useBundle {
+					if err := catalog.indexAsset(index, lookupID, bundleEntry, localPathByAsset, entity.Confidence); err != nil {
+						logger.Warn("overlay plan: bundle entity asset not indexed (card stays text-only)",
+							zap.String("entity", entity.CanonicalName),
+							zap.String("canonical_entity_id", lookupID),
+							zap.Error(err),
+						)
+					}
+					continue
 				}
 				url := entityImageURL(binding)
 				if url == "" || strings.TrimSpace(binding.SHA256) == "" {
@@ -188,6 +258,41 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capa
 		indexAnnotations(result.Scenes[i].Annotations)
 		for _, localized := range result.Scenes[i].LocalizedAnnotations {
 			indexAnnotations(localized)
+		}
+	}
+	// Bundle assets without a surviving annotation still belong to the
+	// certified render contract. Index them under the identity the bundle
+	// carries, so a plan compiled after annotation cleanup does not lose an
+	// image that the bundle already verified.
+	if catalog.enabled() {
+		for _, entry := range catalog.entries {
+			lookupID := entry.lookupID(sceneScoped)
+			if lookupID == "" {
+				continue
+			}
+			if canonicalByStable[entry.stable] == "" {
+				canonicalByStable[entry.stable] = lookupID
+			}
+			// Resolver cards can expose only the display name (no canonical
+			// id). Index the bundle's own entity spelling under a name key so
+			// a verified AP/agency asset is not lost when its occurrence id
+			// differs from the resolver card id.
+			if entity, ok := catalog.entityByID[entry.stable]; ok {
+				for _, name := range []string{entity.CanonicalText, entity.Text} {
+					if key := normalizeEntityAssetKey(name); key != "" {
+						if canonicalByStable["bundle-name:"+key] == "" {
+							canonicalByStable["bundle-name:"+key] = lookupID
+						}
+					}
+				}
+			}
+			if err := catalog.indexAsset(index, lookupID, entry, localPathByAsset, 0.9); err != nil {
+				logger.Warn("overlay plan: bundle-only entity asset not indexed (card stays text-only)",
+					zap.String("entity_id", entry.stable),
+					zap.String("canonical_entity_id", lookupID),
+					zap.Error(err),
+				)
+			}
 		}
 	}
 	media.SetIndex(index)

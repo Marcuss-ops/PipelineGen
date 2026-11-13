@@ -1,0 +1,1741 @@
+{
+  "videos": {
+    "1": {
+      "n": 1,
+      "video_id": "Hb2rKGfIOrM",
+      "url": "https://www.youtube.com/watch?v=Hb2rKGfIOrM",
+      "status": "done",
+      "job_id": "job_1794560922193535111_d512a6b2",
+      "asset_ids": [
+        "yt_Hb2rKGfIOrM_11_26_v1",
+        "yt_Hb2rKGfIOrM_202_235_v1",
+        "yt_Hb2rKGfIOrM_852_869_v1",
+        "yt_Hb2rKGfIOrM_1392_1415_v1",
+        "yt_Hb2rKGfIOrM_1777_1795_v1"
+      ],
+      "note": "processed before batch; text-tracks-backfill en applied, 5/5 INDEXED",
+      "assets": [
+        {
+          "id": "yt_Hb2rKGfIOrM_11_26_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_202_235_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_852_869_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1392_1415_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_Hb2rKGfIOrM_1777_1795_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ]
+    },
+    "2": {
+      "n": 2,
+      "video_id": "uI-hgSE5QIw",
+      "url": "https://www.youtube.com/watch?v=uI-hgSE5QIw",
+      "status": "done",
+      "started_at": "2026-11-13T09:23:08Z",
+      "job_id": "job_1794561796575740731_8723aa79",
+      "items": [
+        {
+          "id": "yt_uI-hgSE5QIw_8_46_v1",
+          "status": "processed",
+          "start": "00:08",
+          "end": "00:46",
+          "name": "Il degrado del discorso politico e gli attacchi personali",
+          "filename": "yt_uI-hgSE5QIw_8_46_v1_il-degrado-del-discorso-politico-e-gli-a.mp4",
+          "drive_file_id": "1nk9-UdshQQ0bxsw18sp4WnAtGcC0S1Bw",
+          "drive_link": "https://drive.google.com/file/d/1nk9-UdshQQ0bxsw18sp4WnAtGcC0S1Bw/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_270_315_v1",
+          "status": "processed",
+          "start": "04:30",
+          "end": "05:15",
+          "name": "Il ruolo dei cittadini e la speranza nella democrazia",
+          "filename": "yt_uI-hgSE5QIw_270_315_v1_il-ruolo-dei-cittadini-e-la-speranza-nel.mp4",
+          "drive_file_id": "1Jw1iCEP0jktldERAA07-WCIA-7Ctku7d",
+          "drive_link": "https://drive.google.com/file/d/1Jw1iCEP0jktldERAA07-WCIA-7Ctku7d/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_810_855_v1",
+          "status": "processed",
+          "start": "13:30",
+          "end": "14:15",
+          "name": "Perché il lavoro dei Democratici è più difficile",
+          "filename": "yt_uI-hgSE5QIw_810_855_v1_perché-il-lavoro-dei-democratici-è-più-d.mp4",
+          "drive_file_id": "1Skf6MAl9ew0g5gZrhFgrL8vmzGTCJFoP",
+          "drive_link": "https://drive.google.com/file/d/1Skf6MAl9ew0g5gZrhFgrL8vmzGTCJFoP/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_1638_1690_v1",
+          "status": "processed",
+          "start": "27:18",
+          "end": "28:10",
+          "name": "L età dei leader politici e la connessione con i giovani",
+          "filename": "yt_uI-hgSE5QIw_1638_1690_v1_l-età-dei-leader-politici-e-la-connessio.mp4",
+          "drive_file_id": "1rwPfgSHpnm2-8ENPcBXtsgdxsgMiVMCI",
+          "drive_link": "https://drive.google.com/file/d/1rwPfgSHpnm2-8ENPcBXtsgdxsgMiVMCI/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_2643_2661_v1",
+          "status": "processed",
+          "start": "44:03",
+          "end": "44:21",
+          "name": "La domanda sugli alieni e l Area 51",
+          "filename": "yt_uI-hgSE5QIw_2643_2661_v1_la-domanda-sugli-alieni-e-l-area-51.mp4",
+          "drive_file_id": "1h1UHY9Q90csJLENUTcJ84HUpBVX0-QAe",
+          "drive_link": "https://drive.google.com/file/d/1h1UHY9Q90csJLENUTcJ84HUpBVX0-QAe/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_uI-hgSE5QIw_8_46_v1",
+        "yt_uI-hgSE5QIw_270_315_v1",
+        "yt_uI-hgSE5QIw_810_855_v1",
+        "yt_uI-hgSE5QIw_1638_1690_v1",
+        "yt_uI-hgSE5QIw_2643_2661_v1"
+      ],
+      "backfill": {
+        "processed": 5,
+        "source_ready_count": 5,
+        "source_acquired_count": 5,
+        "created_total": 0,
+        "index_repaired_total": 5,
+        "reindex_requested_total": 5,
+        "subtitles_delivered_total": 5,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 54299
+      },
+      "assets": [
+        {
+          "id": "yt_uI-hgSE5QIw_8_46_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_270_315_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_810_855_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_1638_1690_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_uI-hgSE5QIw_2643_2661_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T09:26:54Z"
+    },
+    "3": {
+      "n": 3,
+      "video_id": "2TtdPbeKNFc",
+      "url": "https://www.youtube.com/watch?v=2TtdPbeKNFc",
+      "status": "done",
+      "started_at": "2026-11-13T09:26:59Z",
+      "job_id": "job_1794562025368252615_073f50e5",
+      "items": [
+        {
+          "id": "yt_2TtdPbeKNFc_0_15_v1",
+          "status": "processed",
+          "start": "00:00",
+          "end": "00:15",
+          "name": "Il primo imbarazzante incontro alla Casa Bianca",
+          "filename": "yt_2TtdPbeKNFc_0_15_v1_il-primo-imbarazzante-incontro-alla-casa.mp4",
+          "drive_file_id": "13gZEVnHRimN9QWNskMZMhvtTjMCxxaTT",
+          "drive_link": "https://drive.google.com/file/d/13gZEVnHRimN9QWNskMZMhvtTjMCxxaTT/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_2TtdPbeKNFc_60_97_v1",
+          "status": "processed",
+          "start": "01:00",
+          "end": "01:37",
+          "name": "Michelle Obama che sistema la cravatta sudata di Jimmy",
+          "filename": "yt_2TtdPbeKNFc_60_97_v1_michelle-obama-che-sistema-la-cravatta-s.mp4",
+          "drive_file_id": "19ftUq0xo_paglziGMM7F2MTJPquHF9j9",
+          "drive_link": "https://drive.google.com/file/d/19ftUq0xo_paglziGMM7F2MTJPquHF9j9/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_2TtdPbeKNFc_110_125_v1",
+          "status": "processed",
+          "start": "01:50",
+          "end": "02:05",
+          "name": "La battuta di Obama sul picco dell imbarazzo",
+          "filename": "yt_2TtdPbeKNFc_110_125_v1_la-battuta-di-obama-sul-picco-dell-imbar.mp4",
+          "drive_file_id": "1S81g8_gJgUefcGgimvYH9bILq4fAmr-y",
+          "drive_link": "https://drive.google.com/file/d/1S81g8_gJgUefcGgimvYH9bILq4fAmr-y/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_2TtdPbeKNFc_130_165_v1",
+          "status": "processed",
+          "start": "02:10",
+          "end": "02:45",
+          "name": "Cosa farà Obama subito dopo aver lasciato l incarico",
+          "filename": "yt_2TtdPbeKNFc_130_165_v1_cosa-farà-obama-subito-dopo-aver-lasciat.mp4",
+          "drive_file_id": "1HtbefGKkP-SkVXvwSrWrUMxuUvm4aZvo",
+          "drive_link": "https://drive.google.com/file/d/1HtbefGKkP-SkVXvwSrWrUMxuUvm4aZvo/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_2TtdPbeKNFc_0_15_v1",
+        "yt_2TtdPbeKNFc_60_97_v1",
+        "yt_2TtdPbeKNFc_110_125_v1",
+        "yt_2TtdPbeKNFc_130_165_v1"
+      ],
+      "backfill": {
+        "processed": 4,
+        "source_ready_count": 4,
+        "source_acquired_count": 4,
+        "created_total": 0,
+        "index_repaired_total": 4,
+        "reindex_requested_total": 4,
+        "subtitles_delivered_total": 3,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 41330
+      },
+      "assets": [
+        {
+          "id": "yt_2TtdPbeKNFc_0_15_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_2TtdPbeKNFc_60_97_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_2TtdPbeKNFc_110_125_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_2TtdPbeKNFc_130_165_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T09:29:56Z"
+    },
+    "4": {
+      "n": 4,
+      "video_id": "3dZ2sYvpjCg",
+      "url": "https://www.youtube.com/watch?v=3dZ2sYvpjCg",
+      "status": "done",
+      "started_at": "2026-11-13T09:30:01Z",
+      "job_id": "job_1794562208416725733_b77e251e",
+      "items": [
+        {
+          "id": "yt_3dZ2sYvpjCg_0_37_v1",
+          "status": "processed",
+          "start": "00:00",
+          "end": "00:37",
+          "name": "La battuta sulle origini irlandesi di Barack Obama",
+          "filename": "yt_3dZ2sYvpjCg_0_37_v1_la-battuta-sulle-origini-irlandesi-di-ba.mp4",
+          "drive_file_id": "11x83hI8cxy-OGY-8MZlF09_z3WADHm4d",
+          "drive_link": "https://drive.google.com/file/d/11x83hI8cxy-OGY-8MZlF09_z3WADHm4d/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_199_240_v1",
+          "status": "processed",
+          "start": "03:19",
+          "end": "04:00",
+          "name": "La figlia che definisce noioso il discorso del padre",
+          "filename": "yt_3dZ2sYvpjCg_199_240_v1_la-figlia-che-definisce-noioso-il-discor.mp4",
+          "drive_file_id": "1e0gU-2BP2Ji_ICHUHO5zwyarnuYrYN0M",
+          "drive_link": "https://drive.google.com/file/d/1e0gU-2BP2Ji_ICHUHO5zwyarnuYrYN0M/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_265_315_v1",
+          "status": "processed",
+          "start": "04:25",
+          "end": "05:15",
+          "name": "I fallimenti nei discorsi pubblici e il parlare a vuoto",
+          "filename": "yt_3dZ2sYvpjCg_265_315_v1_i-fallimenti-nei-discorsi-pubblici-e-il.mp4",
+          "drive_file_id": "12Nr9GNNknKZzXQ9av1UkVU9vGwpouUg5",
+          "drive_link": "https://drive.google.com/file/d/12Nr9GNNknKZzXQ9av1UkVU9vGwpouUg5/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_348_380_v1",
+          "status": "processed",
+          "start": "05:48",
+          "end": "06:20",
+          "name": "I soprannomi del Presidente Bush e l impronunciabilità del nome",
+          "filename": "yt_3dZ2sYvpjCg_348_380_v1_i-soprannomi-del-presidente-bush-e-l-imp.mp4",
+          "drive_file_id": "1E5L9m9ARqmuCWFVov-RZq3yEGRh4jtQR",
+          "drive_link": "https://drive.google.com/file/d/1E5L9m9ARqmuCWFVov-RZq3yEGRh4jtQR/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_480_500_v1",
+          "status": "processed",
+          "start": "08:00",
+          "end": "08:20",
+          "name": "L ipotetica ticket elettorale Obama O Brien",
+          "filename": "yt_3dZ2sYvpjCg_480_500_v1_l-ipotetica-ticket-elettorale-obama-o-br.mp4",
+          "drive_file_id": "1JfQgvTBYza1OP-sLa9ZN3A23Q7KbNuol",
+          "drive_link": "https://drive.google.com/file/d/1JfQgvTBYza1OP-sLa9ZN3A23Q7KbNuol/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_3dZ2sYvpjCg_0_37_v1",
+        "yt_3dZ2sYvpjCg_199_240_v1",
+        "yt_3dZ2sYvpjCg_265_315_v1",
+        "yt_3dZ2sYvpjCg_348_380_v1",
+        "yt_3dZ2sYvpjCg_480_500_v1"
+      ],
+      "backfill": {
+        "processed": 5,
+        "source_ready_count": 5,
+        "source_acquired_count": 5,
+        "created_total": 0,
+        "index_repaired_total": 5,
+        "reindex_requested_total": 5,
+        "subtitles_delivered_total": 5,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 69858
+      },
+      "assets": [
+        {
+          "id": "yt_3dZ2sYvpjCg_0_37_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_199_240_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_265_315_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_348_380_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_3dZ2sYvpjCg_480_500_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T09:33:46Z"
+    },
+    "5": {
+      "n": 5,
+      "video_id": "wuECw_UB0P4",
+      "url": "https://www.youtube.com/watch?v=wuECw_UB0P4",
+      "status": "done",
+      "started_at": "2026-11-13T09:33:51Z",
+      "job_id": "job_1794562437348742787_aed1eb10",
+      "items": [
+        {
+          "id": "yt_wuECw_UB0P4_270_285_v1",
+          "status": "processed",
+          "start": "04:30",
+          "end": "04:45",
+          "name": "La battuta iniziale sulle donne de The View",
+          "filename": "yt_wuECw_UB0P4_270_285_v1_la-battuta-iniziale-sulle-donne-de-the-v.mp4",
+          "drive_file_id": "1AcY7PCJAyHOoNGchjnFFlaZIhC60RCd9",
+          "drive_link": "https://drive.google.com/file/d/1AcY7PCJAyHOoNGchjnFFlaZIhC60RCd9/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_wuECw_UB0P4_1020_1065_v1",
+          "status": "processed",
+          "start": "17:00",
+          "end": "17:45",
+          "name": "Identità razziale ed essere il primo presidente afroamericano",
+          "filename": "yt_wuECw_UB0P4_1020_1065_v1_identità-razziale-ed-essere-il-primo-pre.mp4",
+          "drive_file_id": "1aVWT0rBS2em5vFCsDHxgK1NQRitmSNWD",
+          "drive_link": "https://drive.google.com/file/d/1aVWT0rBS2em5vFCsDHxgK1NQRitmSNWD/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_wuECw_UB0P4_1770_1815_v1",
+          "status": "processed",
+          "start": "29:30",
+          "end": "30:15",
+          "name": "L uso limitato del Blackberry e dei social media alla Casa Bianca",
+          "filename": "yt_wuECw_UB0P4_1770_1815_v1_l-uso-limitato-del-blackberry-e-dei-soci.mp4",
+          "drive_file_id": "1nhHz8QlxrVqwGKpOe7M68d3Pjxo3dTXL",
+          "drive_link": "https://drive.google.com/file/d/1nhHz8QlxrVqwGKpOe7M68d3Pjxo3dTXL/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_wuECw_UB0P4_1860_1905_v1",
+          "status": "processed",
+          "start": "31:00",
+          "end": "31:45",
+          "name": "La battuta sul matrimonio di Chelsea Clinton e la privacy delle figlie",
+          "filename": "yt_wuECw_UB0P4_1860_1905_v1_la-battuta-sul-matrimonio-di-chelsea-cli.mp4",
+          "drive_file_id": "15MnOCPymIkHlkg5D3AwbtmzzCCZLUelQ",
+          "drive_link": "https://drive.google.com/file/d/15MnOCPymIkHlkg5D3AwbtmzzCCZLUelQ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_wuECw_UB0P4_2120_2165_v1",
+          "status": "processed",
+          "start": "35:20",
+          "end": "36:05",
+          "name": "Sondaggi politici e visione della propria presidenza",
+          "filename": "yt_wuECw_UB0P4_2120_2165_v1_sondaggi-politici-e-visione-della-propri.mp4",
+          "drive_file_id": "1_8qqPbOVFONoL9qHIHl8IrivxxhqHAnR",
+          "drive_link": "https://drive.google.com/file/d/1_8qqPbOVFONoL9qHIHl8IrivxxhqHAnR/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_wuECw_UB0P4_270_285_v1",
+        "yt_wuECw_UB0P4_1020_1065_v1",
+        "yt_wuECw_UB0P4_1770_1815_v1",
+        "yt_wuECw_UB0P4_1860_1905_v1",
+        "yt_wuECw_UB0P4_2120_2165_v1"
+      ],
+      "backfill": {
+        "processed": 5,
+        "source_ready_count": 5,
+        "source_acquired_count": 5,
+        "created_total": 0,
+        "index_repaired_total": 5,
+        "reindex_requested_total": 5,
+        "subtitles_delivered_total": 5,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 68983
+      },
+      "assets": [
+        {
+          "id": "yt_wuECw_UB0P4_270_285_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_wuECw_UB0P4_1020_1065_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_wuECw_UB0P4_1770_1815_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_wuECw_UB0P4_1860_1905_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_wuECw_UB0P4_2120_2165_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T09:38:16Z"
+    },
+    "6": {
+      "n": 6,
+      "video_id": "UnW3xkHxIEQ",
+      "url": "https://www.youtube.com/watch?v=UnW3xkHxIEQ",
+      "status": "done",
+      "started_at": "2026-11-13T09:38:22Z",
+      "job_id": "job_1794562707961697024_cb2787a6",
+      "items": [
+        {
+          "id": "yt_UnW3xkHxIEQ_68_83_v1",
+          "status": "processed",
+          "start": "01:08",
+          "end": "01:23",
+          "name": "La domanda provocatoria sul ultimo presidente nero",
+          "filename": "yt_UnW3xkHxIEQ_68_83_v1_la-domanda-provocatoria-sul-ultimo-presi.mp4",
+          "drive_file_id": "1BBjXUULZsFvPCOWOgsaH33QZTeVEc-Ed",
+          "drive_link": "https://drive.google.com/file/d/1BBjXUULZsFvPCOWOgsaH33QZTeVEc-Ed/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_80_93_v1",
+          "status": "processed",
+          "start": "01:20",
+          "end": "01:33",
+          "name": "Paragone con il film Una notte da leoni",
+          "filename": "yt_UnW3xkHxIEQ_80_93_v1_paragone-con-il-film-una-notte-da-leoni.mp4",
+          "drive_file_id": "1_ipOZRgQoX7UxGlyJrRtm2KWzNYZQSMZ",
+          "drive_link": "https://drive.google.com/file/d/1_ipOZRgQoX7UxGlyJrRtm2KWzNYZQSMZ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_136_157_v1",
+          "status": "processed",
+          "start": "02:16",
+          "end": "02:37",
+          "name": "La battuta sul certificato di nascita e il Kenya",
+          "filename": "yt_UnW3xkHxIEQ_136_157_v1_la-battuta-sul-certificato-di-nascita-e.mp4",
+          "drive_file_id": "1Ap3AYYa-63DCPlROMFVIvmf05FddneCW",
+          "drive_link": "https://drive.google.com/file/d/1Ap3AYYa-63DCPlROMFVIvmf05FddneCW/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_205_250_v1",
+          "status": "processed",
+          "start": "03:25",
+          "end": "04:10",
+          "name": "La promozione di Healthcare gov e la bolletta del telefono",
+          "filename": "yt_UnW3xkHxIEQ_205_250_v1_la-promozione-di-healthcare-gov-e-la-bol.mp4",
+          "drive_file_id": "1TSaKDhDyZoYA8R_dvyVMrIYGJT9npZFV",
+          "drive_link": "https://drive.google.com/file/d/1TSaKDhDyZoYA8R_dvyVMrIYGJT9npZFV/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_301_318_v1",
+          "status": "processed",
+          "start": "05:01",
+          "end": "05:18",
+          "name": "Il morso di ragno disgustoso di Zach",
+          "filename": "yt_UnW3xkHxIEQ_301_318_v1_il-morso-di-ragno-disgustoso-di-zach.mp4",
+          "drive_file_id": "1HrbObKo1cLfyKpJBOkmFM9Ym_HqpIky3",
+          "drive_link": "https://drive.google.com/file/d/1HrbObKo1cLfyKpJBOkmFM9Ym_HqpIky3/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_UnW3xkHxIEQ_68_83_v1",
+        "yt_UnW3xkHxIEQ_80_93_v1",
+        "yt_UnW3xkHxIEQ_136_157_v1",
+        "yt_UnW3xkHxIEQ_205_250_v1",
+        "yt_UnW3xkHxIEQ_301_318_v1"
+      ],
+      "backfill": {
+        "processed": 5,
+        "source_ready_count": 5,
+        "source_acquired_count": 5,
+        "created_total": 0,
+        "index_repaired_total": 5,
+        "reindex_requested_total": 5,
+        "subtitles_delivered_total": 5,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 51782
+      },
+      "assets": [
+        {
+          "id": "yt_UnW3xkHxIEQ_68_83_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_80_93_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_136_157_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_205_250_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_UnW3xkHxIEQ_301_318_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T09:41:30Z"
+    },
+    "7": {
+      "n": 7,
+      "video_id": "X0a4GHqOlOg",
+      "url": "https://www.youtube.com/watch?v=X0a4GHqOlOg",
+      "status": "done",
+      "started_at": "2026-11-13T09:41:35Z",
+      "job_id": "job_1794562905156848235_b76dc53b",
+      "items": [
+        {
+          "id": "yt_X0a4GHqOlOg_0_35_v1",
+          "status": "processed",
+          "start": "00:00",
+          "end": "00:35",
+          "name": "L inaugurazione del Centro Presidenziale degli Obama",
+          "filename": "yt_X0a4GHqOlOg_0_35_v1_l-inaugurazione-del-centro-presidenziale.mp4",
+          "drive_file_id": "1iZdMNYMEGhUoaFT_UQerGW7DP8q0sR9j",
+          "drive_link": "https://drive.google.com/file/d/1iZdMNYMEGhUoaFT_UQerGW7DP8q0sR9j/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_35_89_v1",
+          "status": "processed",
+          "start": "00:35",
+          "end": "01:29",
+          "name": "Il bilancio dei mandati presidenziali e il tono stabilito",
+          "filename": "yt_X0a4GHqOlOg_35_89_v1_il-bilancio-dei-mandati-presidenziali-e.mp4",
+          "drive_file_id": "1hkNTP7Lu41YFlP2WvD5CO9cKRqXjIZxQ",
+          "drive_link": "https://drive.google.com/file/d/1hkNTP7Lu41YFlP2WvD5CO9cKRqXjIZxQ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_130_179_v1",
+          "status": "processed",
+          "start": "02:10",
+          "end": "02:59",
+          "name": "La speranza e il cambiamento nella storia americana",
+          "filename": "yt_X0a4GHqOlOg_130_179_v1_la-speranza-e-il-cambiamento-nella-stori.mp4",
+          "drive_file_id": "1yEA6DkYcpbxJvVRrN8DbEwRmobZp7dad",
+          "drive_link": "https://drive.google.com/file/d/1yEA6DkYcpbxJvVRrN8DbEwRmobZp7dad/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_234_283_v1",
+          "status": "processed",
+          "start": "03:54",
+          "end": "04:43",
+          "name": "Passare da giocatore a coach e il ruolo pubblico",
+          "filename": "yt_X0a4GHqOlOg_234_283_v1_passare-da-giocatore-a-coach-e-il-ruolo.mp4",
+          "drive_file_id": "1IMW_YZfY-aDG_UgjOYcMnQZVEBHmk6LG",
+          "drive_link": "https://drive.google.com/file/d/1IMW_YZfY-aDG_UgjOYcMnQZVEBHmk6LG/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_348_381_v1",
+          "status": "processed",
+          "start": "05:48",
+          "end": "06:21",
+          "name": "Il ricambio generazionale e l importanza di farsi da parte",
+          "filename": "yt_X0a4GHqOlOg_348_381_v1_il-ricambio-generazionale-e-l-importanza.mp4",
+          "drive_file_id": "1dAb_HuL0z03wEWoKhE-tYLLjbO22rS2L",
+          "drive_link": "https://drive.google.com/file/d/1dAb_HuL0z03wEWoKhE-tYLLjbO22rS2L/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_X0a4GHqOlOg_0_35_v1",
+        "yt_X0a4GHqOlOg_35_89_v1",
+        "yt_X0a4GHqOlOg_130_179_v1",
+        "yt_X0a4GHqOlOg_234_283_v1",
+        "yt_X0a4GHqOlOg_348_381_v1"
+      ],
+      "backfill": {
+        "processed": 5,
+        "source_ready_count": 5,
+        "source_acquired_count": 5,
+        "created_total": 0,
+        "index_repaired_total": 5,
+        "reindex_requested_total": 5,
+        "subtitles_delivered_total": 5,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 59821
+      },
+      "assets": [
+        {
+          "id": "yt_X0a4GHqOlOg_0_35_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_35_89_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_130_179_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_234_283_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_X0a4GHqOlOg_348_381_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T09:45:08Z"
+    },
+    "8": {
+      "n": 8,
+      "video_id": "mgfO4nnPL3Y",
+      "url": "https://www.youtube.com/watch?v=mgfO4nnPL3Y",
+      "status": "blocked",
+      "started_at": "2026-11-13T09:45:13Z",
+      "job_id": "job_1794564036288300657_412f1e01",
+      "finished_at": "2026-11-13T10:03:33Z",
+      "attempt": 1,
+      "error": "YouTube source unavailable: yt-dlp reports Video unavailable; 0/6 segments processed",
+      "blocked_reason": "youtube_source_unavailable",
+      "asset_ids": [],
+      "backfill": null
+    },
+    "9": {
+      "attempt": 0,
+      "n": 9,
+      "video_id": "xOl7HTXuLvk",
+      "url": "https://www.youtube.com/watch?v=xOl7HTXuLvk",
+      "status": "done",
+      "started_at": "2026-11-13T10:13:36Z",
+      "job_id": "job_1794564824349801928_e730f91c",
+      "finished_at": "2026-11-13T10:26:49Z",
+      "items": [
+        {
+          "id": "yt_xOl7HTXuLvk_0_30_v1",
+          "status": "processed",
+          "start": "00:00",
+          "end": "00:30",
+          "name": "L arrivo al podcast The Pivot e le battute iniziali",
+          "filename": "yt_xOl7HTXuLvk_0_30_v1_l-arrivo-al-podcast-the-pivot-e-le-battu.mp4",
+          "drive_file_id": "1YZsvICKLby6nMfX1KSHqFKL5snLmRtxB",
+          "drive_link": "https://drive.google.com/file/d/1YZsvICKLby6nMfX1KSHqFKL5snLmRtxB/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_680_725_v1",
+          "status": "processed",
+          "start": "11:20",
+          "end": "12:05",
+          "name": "Il bilanciamento tra la presidenza e la vita familiare",
+          "filename": "yt_xOl7HTXuLvk_680_725_v1_il-bilanciamento-tra-la-presidenza-e-la.mp4",
+          "drive_file_id": "1MaXnST75vb-ZSv71PRlKsTg_QRFFNsJ4",
+          "drive_link": "https://drive.google.com/file/d/1MaXnST75vb-ZSv71PRlKsTg_QRFFNsJ4/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_940_1000_v1",
+          "status": "processed",
+          "start": "15:40",
+          "end": "16:40",
+          "name": "La figlia Malia e la scelta di usare il suo secondo nome nel cinema",
+          "filename": "yt_xOl7HTXuLvk_940_1000_v1_la-figlia-malia-e-la-scelta-di-usare-il.mp4",
+          "drive_file_id": "1F3EnlpNbRAkQWo-dHzNl-ZFQcrg5Stu0",
+          "drive_link": "https://drive.google.com/file/d/1F3EnlpNbRAkQWo-dHzNl-ZFQcrg5Stu0/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_2895_2955_v1",
+          "status": "processed",
+          "start": "48:15",
+          "end": "49:15",
+          "name": "Il grande punto di svolta nella vita giovanile di Obama",
+          "filename": "yt_xOl7HTXuLvk_2895_2955_v1_il-grande-punto-di-svolta-nella-vita-gio.mp4",
+          "drive_file_id": "1pI_dgJbe5vES3uadFcBXwFEm17Fjnkvk",
+          "drive_link": "https://drive.google.com/file/d/1pI_dgJbe5vES3uadFcBXwFEm17Fjnkvk/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3060_3120_v1",
+          "name": "Come ha corteggiato Michelle a inizio carriera",
+          "start": "51:00",
+          "end": "52:00",
+          "start_seconds": 3060,
+          "end_seconds": 3120,
+          "duration_seconds": 60,
+          "filename": "yt_xOl7HTXuLvk_3060_3120_v1_come-ha-corteggiato-michelle-a-inizio-ca.mp4",
+          "content_sha256": "0d23e8c9d9ba6baa81b6b2f7f3f09d2418285faf261966be1a38b98366171e52",
+          "size_bytes": 24681001,
+          "local_path": "data/media/clips/general/yt_xOl7HTXuLvk/yt_xOl7HTXuLvk_3060_3120_v1_come-ha-corteggiato-michelle-a-inizio-ca.mp4",
+          "drive_link": "https://drive.google.com/file/d/1KwQFk7t15yPs6x8LD3P7ye2uEo60rZ4M/view?usp=drivesdk",
+          "drive_file_id": "1KwQFk7t15yPs6x8LD3P7ye2uEo60rZ4M",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_0_15_v1",
+          "status": "processed",
+          "start": "00:00",
+          "end": "00:15",
+          "name": "Hook L entusiasmo per l arrivo di Obama",
+          "filename": "yt_xOl7HTXuLvk_0_15_v1_hook-l-entusiasmo-per-l-arrivo-di-obama.mp4",
+          "drive_file_id": "1EcFdCvDfMpyDykJp9ATRYfQ2fGfyDi7S",
+          "drive_link": "https://drive.google.com/file/d/1EcFdCvDfMpyDykJp9ATRYfQ2fGfyDi7S/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_680_692_v1",
+          "status": "processed",
+          "start": "11:20",
+          "end": "11:32",
+          "name": "Hook Vivere e lavorare alla Casa Bianca",
+          "filename": "yt_xOl7HTXuLvk_680_692_v1_hook-vivere-e-lavorare-alla-casa-bianca.mp4",
+          "drive_file_id": "13yn2-DRyc7ILOncVg3UtOa8-LzKwvXiz",
+          "drive_link": "https://drive.google.com/file/d/13yn2-DRyc7ILOncVg3UtOa8-LzKwvXiz/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_xOl7HTXuLvk_0_30_v1",
+        "yt_xOl7HTXuLvk_680_725_v1",
+        "yt_xOl7HTXuLvk_940_1000_v1",
+        "yt_xOl7HTXuLvk_2895_2955_v1",
+        "yt_xOl7HTXuLvk_3060_3120_v1",
+        "yt_xOl7HTXuLvk_0_15_v1",
+        "yt_xOl7HTXuLvk_680_692_v1"
+      ],
+      "assets": [
+        {
+          "id": "yt_xOl7HTXuLvk_0_30_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_680_725_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_940_1000_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_2895_2955_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_3060_3120_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_0_15_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_xOl7HTXuLvk_680_692_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "backfill": {
+        "processed": 7,
+        "source_ready_count": 7,
+        "source_acquired_count": 7,
+        "created_total": 0,
+        "index_repaired_total": 7,
+        "reindex_requested_total": 7,
+        "subtitles_delivered_total": 7,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 82258
+      },
+      "fix": {
+        "job_id": "job_1794566907752914156_0a23bf5d",
+        "replaced": [
+          {
+            "old_id": "yt_xOl7HTXuLvk_3060_3135_v1",
+            "old_drive_file_id": "1e3V8_iv7ygDxZUKJfjh1Dmn2ijbThuCE",
+            "new_id": "yt_xOl7HTXuLvk_3060_3120_v1",
+            "new_drive_file_id": "1KwQFk7t15yPs6x8LD3P7ye2uEo60rZ4M",
+            "old_start": "51:00",
+            "old_end": "52:15",
+            "new_end": "52:00"
+          }
+        ],
+        "deleted_old": "trashed",
+        "at": "2026-11-13T10:59:46Z"
+      },
+      "backfill_fix": {
+        "9": {
+          "processed": 1,
+          "source_ready_count": 1,
+          "source_acquired_count": 1,
+          "created_total": 0,
+          "index_repaired_total": 1,
+          "reindex_requested_total": 1,
+          "subtitles_delivered_total": 1,
+          "failed_lang_total": 0,
+          "failed_asset_ids": null,
+          "duration_ms": 17250
+        }
+      }
+    },
+    "10": {
+      "attempt": 0,
+      "n": 10,
+      "video_id": "NxFkEj7KPC0",
+      "url": "https://www.youtube.com/watch?v=NxFkEj7KPC0",
+      "status": "done",
+      "started_at": "2026-11-13T10:26:56Z",
+      "job_id": "job_1794565622342088491_0ea8a8f7",
+      "items": [
+        {
+          "id": "yt_NxFkEj7KPC0_241_258_v1",
+          "status": "processed",
+          "start": "04:01",
+          "end": "04:18",
+          "name": "Il paragone con Justin Trudeau",
+          "filename": "yt_NxFkEj7KPC0_241_258_v1_il-paragone-con-justin-trudeau.mp4",
+          "drive_file_id": "1X4zW26cibcfMPgDtLfcx-bhEI48IGU6H",
+          "drive_link": "https://drive.google.com/file/d/1X4zW26cibcfMPgDtLfcx-bhEI48IGU6H/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_405_420_v1",
+          "status": "processed",
+          "start": "06:45",
+          "end": "07:00",
+          "name": "L incontro con il Principe George in vestaglia",
+          "filename": "yt_NxFkEj7KPC0_405_420_v1_l-incontro-con-il-principe-george-in-ves.mp4",
+          "drive_file_id": "15G997G7GzgDp-_9zU879RRacunqw-DHW",
+          "drive_link": "https://drive.google.com/file/d/15G997G7GzgDp-_9zU879RRacunqw-DHW/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_613_628_v1",
+          "status": "processed",
+          "start": "10:13",
+          "end": "10:28",
+          "name": "La battuta su Joe Biden e le armi",
+          "filename": "yt_NxFkEj7KPC0_613_628_v1_la-battuta-su-joe-biden-e-le-armi.mp4",
+          "drive_file_id": "1CCoi6qiDe3_jN6ADZ5Ntnz2xEylzDJhG",
+          "drive_link": "https://drive.google.com/file/d/1CCoi6qiDe3_jN6ADZ5Ntnz2xEylzDJhG/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_900_920_v1",
+          "status": "processed",
+          "start": "15:00",
+          "end": "15:20",
+          "name": "La battuta su Bernie Sanders e le donazioni",
+          "filename": "yt_NxFkEj7KPC0_900_920_v1_la-battuta-su-bernie-sanders-e-le-donazi.mp4",
+          "drive_file_id": "1ut5fMOVORs5oXL6-5mqOtll9kb1pyHpE",
+          "drive_link": "https://drive.google.com/file/d/1ut5fMOVORs5oXL6-5mqOtll9kb1pyHpE/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_1935_1955_v1",
+          "status": "processed",
+          "start": "32:15",
+          "end": "32:35",
+          "name": "La conclusione iconica Obama out",
+          "filename": "yt_NxFkEj7KPC0_1935_1955_v1_la-conclusione-iconica-obama-out.mp4",
+          "drive_file_id": "1HopXfZjdlAt35WHVyXisNmrRrKqxJ6mG",
+          "drive_link": "https://drive.google.com/file/d/1HopXfZjdlAt35WHVyXisNmrRrKqxJ6mG/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_8_18_v1",
+          "status": "processed",
+          "start": "00:08",
+          "end": "00:18",
+          "name": "Hook L apertura sulla fine della Repubblica",
+          "filename": "yt_NxFkEj7KPC0_8_18_v1_hook-l-apertura-sulla-fine-della-repubbl.mp4",
+          "drive_file_id": "1Aq4kWRStRPklp48yCwlOjfdS3qq1GUVJ",
+          "drive_link": "https://drive.google.com/file/d/1Aq4kWRStRPklp48yCwlOjfdS3qq1GUVJ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_1940_1952_v1",
+          "status": "processed",
+          "start": "32:20",
+          "end": "32:32",
+          "name": "Hook Il gesto finale Obama out",
+          "filename": "yt_NxFkEj7KPC0_1940_1952_v1_hook-il-gesto-finale-obama-out.mp4",
+          "drive_file_id": "1RT79_qixpdRhslY10UFNyde0SzfLGFpO",
+          "drive_link": "https://drive.google.com/file/d/1RT79_qixpdRhslY10UFNyde0SzfLGFpO/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_NxFkEj7KPC0_241_258_v1",
+        "yt_NxFkEj7KPC0_405_420_v1",
+        "yt_NxFkEj7KPC0_613_628_v1",
+        "yt_NxFkEj7KPC0_900_920_v1",
+        "yt_NxFkEj7KPC0_1935_1955_v1",
+        "yt_NxFkEj7KPC0_8_18_v1",
+        "yt_NxFkEj7KPC0_1940_1952_v1"
+      ],
+      "backfill": {
+        "processed": 7,
+        "source_ready_count": 7,
+        "source_acquired_count": 7,
+        "created_total": 0,
+        "index_repaired_total": 7,
+        "reindex_requested_total": 7,
+        "subtitles_delivered_total": 7,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 55165
+      },
+      "assets": [
+        {
+          "id": "yt_NxFkEj7KPC0_241_258_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_405_420_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_613_628_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_900_920_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_1935_1955_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_8_18_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_NxFkEj7KPC0_1940_1952_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T10:30:21Z"
+    },
+    "11": {
+      "attempt": 0,
+      "n": 11,
+      "video_id": "XeQlFEkdQFo",
+      "url": "https://www.youtube.com/watch?v=XeQlFEkdQFo",
+      "status": "done",
+      "started_at": "2026-11-13T10:30:26Z",
+      "job_id": "job_1794565832388343036_13d15b9a",
+      "items": [
+        {
+          "id": "yt_XeQlFEkdQFo_64_80_v1",
+          "status": "processed",
+          "start": "01:04",
+          "end": "01:20",
+          "name": "Presentazione del Colbert Questionnaire",
+          "filename": "yt_XeQlFEkdQFo_64_80_v1_presentazione-del-colbert-questionnaire.mp4",
+          "drive_file_id": "18pmCiACufuacT1ChIOTYV3-sP3Q0vvQQ",
+          "drive_link": "https://drive.google.com/file/d/18pmCiACufuacT1ChIOTYV3-sP3Q0vvQQ/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_82_97_v1",
+          "status": "processed",
+          "start": "01:22",
+          "end": "01:37",
+          "name": "Il miglior panino secondo Obama",
+          "filename": "yt_XeQlFEkdQFo_82_97_v1_il-miglior-panino-secondo-obama.mp4",
+          "drive_file_id": "1QiH9UW3IhYMSOB_6_zTmgV1O799RdujC",
+          "drive_link": "https://drive.google.com/file/d/1QiH9UW3IhYMSOB_6_zTmgV1O799RdujC/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_98_123_v1",
+          "status": "processed",
+          "start": "01:38",
+          "end": "02:03",
+          "name": "Il primo concerto visto da adolescente",
+          "filename": "yt_XeQlFEkdQFo_98_123_v1_il-primo-concerto-visto-da-adolescente.mp4",
+          "drive_file_id": "1xSKvjjsCGdGDLqIdDIno7FkoV4bV3XDz",
+          "drive_link": "https://drive.google.com/file/d/1xSKvjjsCGdGDLqIdDIno7FkoV4bV3XDz/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_165_210_v1",
+          "status": "processed",
+          "start": "02:45",
+          "end": "03:30",
+          "name": "L autografo di Dr J e la sfida a basket",
+          "filename": "yt_XeQlFEkdQFo_165_210_v1_l-autografo-di-dr-j-e-la-sfida-a-basket.mp4",
+          "drive_file_id": "1ktif80vJI2Khcd9WWdu7Jr4VJkDdLMUu",
+          "drive_link": "https://drive.google.com/file/d/1ktif80vJI2Khcd9WWdu7Jr4VJkDdLMUu/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_275_305_v1",
+          "status": "processed",
+          "start": "04:35",
+          "end": "05:05",
+          "name": "Il profumo preferito e la risposta su Michelle",
+          "filename": "yt_XeQlFEkdQFo_275_305_v1_il-profumo-preferito-e-la-risposta-su-mi.mp4",
+          "drive_file_id": "128jS2w2mlqIzbYktWIS6epzIzeO47VBk",
+          "drive_link": "https://drive.google.com/file/d/128jS2w2mlqIzbYktWIS6epzIzeO47VBk/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_395_418_v1",
+          "status": "processed",
+          "start": "06:35",
+          "end": "06:58",
+          "name": "Definire il resto della vita in cinque parole",
+          "filename": "yt_XeQlFEkdQFo_395_418_v1_definire-il-resto-della-vita-in-cinque-p.mp4",
+          "drive_file_id": "1BA6Qx3P68LIcuO5mWBjHOMcBge_-uiDH",
+          "drive_link": "https://drive.google.com/file/d/1BA6Qx3P68LIcuO5mWBjHOMcBge_-uiDH/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_82_94_v1",
+          "status": "processed",
+          "start": "01:22",
+          "end": "01:34",
+          "name": "Hook Il cheeseburger perfetto",
+          "filename": "yt_XeQlFEkdQFo_82_94_v1_hook-il-cheeseburger-perfetto.mp4",
+          "drive_file_id": "1v7FPSt8Vf6YjsQK0dt1I4SmBi2s1Uswd",
+          "drive_link": "https://drive.google.com/file/d/1v7FPSt8Vf6YjsQK0dt1I4SmBi2s1Uswd/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_400_412_v1",
+          "status": "processed",
+          "start": "06:40",
+          "end": "06:52",
+          "name": "Hook La vita in poche parole",
+          "filename": "yt_XeQlFEkdQFo_400_412_v1_hook-la-vita-in-poche-parole.mp4",
+          "drive_file_id": "1W8Yo3OgMPbAU9NLN3lDeu-aMwhg-cAuK",
+          "drive_link": "https://drive.google.com/file/d/1W8Yo3OgMPbAU9NLN3lDeu-aMwhg-cAuK/view?usp=drivesdk",
+          "error": null
+        }
+      ],
+      "asset_ids": [
+        "yt_XeQlFEkdQFo_64_80_v1",
+        "yt_XeQlFEkdQFo_82_97_v1",
+        "yt_XeQlFEkdQFo_98_123_v1",
+        "yt_XeQlFEkdQFo_165_210_v1",
+        "yt_XeQlFEkdQFo_275_305_v1",
+        "yt_XeQlFEkdQFo_395_418_v1",
+        "yt_XeQlFEkdQFo_82_94_v1",
+        "yt_XeQlFEkdQFo_400_412_v1"
+      ],
+      "backfill": {
+        "processed": 8,
+        "source_ready_count": 8,
+        "source_acquired_count": 8,
+        "created_total": 0,
+        "index_repaired_total": 8,
+        "reindex_requested_total": 8,
+        "subtitles_delivered_total": 8,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 68301
+      },
+      "assets": [
+        {
+          "id": "yt_XeQlFEkdQFo_64_80_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_82_97_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_98_123_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_165_210_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_275_305_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_395_418_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_82_94_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_XeQlFEkdQFo_400_412_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T10:34:03Z"
+    },
+    "12": {
+      "attempt": 0,
+      "n": 12,
+      "video_id": "yvYCzh0BcmM",
+      "url": "https://www.youtube.com/watch?v=yvYCzh0BcmM",
+      "status": "done",
+      "started_at": "2026-11-13T10:34:08Z",
+      "job_id": "job_1794566071680297314_e29881f7",
+      "items": [
+        {
+          "id": "yt_yvYCzh0BcmM_39_81_v1",
+          "status": "processed",
+          "start": "00:39",
+          "end": "01:21",
+          "name": "L apertura del Centro Presidenziale Obama",
+          "filename": "yt_yvYCzh0BcmM_39_81_v1_l-apertura-del-centro-presidenziale-obam.mp4",
+          "drive_file_id": "15-H-IowP7aazASqUpVCDHRXq_FrkR1Uj",
+          "drive_link": "https://drive.google.com/file/d/15-H-IowP7aazASqUpVCDHRXq_FrkR1Uj/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_338_375_v1",
+          "status": "processed",
+          "start": "05:38",
+          "end": "06:15",
+          "name": "L incontro formativo con i giovani della Hyde Park Academy",
+          "filename": "yt_yvYCzh0BcmM_338_375_v1_l-incontro-formativo-con-i-giovani-della.mp4",
+          "drive_file_id": "1wIBU4UoQtbsy35aKTr3KIqKIwHkJdAmR",
+          "drive_link": "https://drive.google.com/file/d/1wIBU4UoQtbsy35aKTr3KIqKIwHkJdAmR/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_682_735_v1",
+          "status": "processed",
+          "start": "11:22",
+          "end": "12:15",
+          "name": "Le due narrazioni contrapposte della storia americana",
+          "filename": "yt_yvYCzh0BcmM_682_735_v1_le-due-narrazioni-contrapposte-della-sto.mp4",
+          "drive_file_id": "1Y_UOzfCo--F2TG_RuVvsjfXy8aVsn15K",
+          "drive_link": "https://drive.google.com/file/d/1Y_UOzfCo--F2TG_RuVvsjfXy8aVsn15K/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2304_2355_v1",
+          "status": "processed",
+          "start": "38:24",
+          "end": "39:15",
+          "name": "La tradizione delle dieci lettere quotidiane alla Casa Bianca",
+          "filename": "yt_yvYCzh0BcmM_2304_2355_v1_la-tradizione-delle-dieci-lettere-quotid.mp4",
+          "drive_file_id": "1gDuCmey8yYcmgPMarPLtInaOdTU8ggXb",
+          "drive_link": "https://drive.google.com/file/d/1gDuCmey8yYcmgPMarPLtInaOdTU8ggXb/view?usp=drivesdk",
+          "error": null
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2462_v1",
+          "name": "La lettera toccante del veterano ferito in Afghanistan",
+          "start": "40:02",
+          "end": "41:02",
+          "start_seconds": 2402,
+          "end_seconds": 2462,
+          "duration_seconds": 60,
+          "filename": "yt_yvYCzh0BcmM_2402_2462_v1_la-lettera-toccante-del-veterano-ferito.mp4",
+          "content_sha256": "e5956bfe8f3987a74765d63126e518cae8017962eb8c9ec0bba19bc56f6ce512",
+          "size_bytes": 10774900,
+          "local_path": "data/media/clips/general/yt_yvYCzh0BcmM/yt_yvYCzh0BcmM_2402_2462_v1_la-lettera-toccante-del-veterano-ferito.mp4",
+          "drive_link": "https://drive.google.com/file/d/1h7biHI7A48T3RDCpRk5oYEh7ZasxHRv9/view?usp=drivesdk",
+          "drive_file_id": "1h7biHI7A48T3RDCpRk5oYEh7ZasxHRv9",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_39_54_v1",
+          "name": "Hook Introduzione allo speciale Hope Comes Home",
+          "start": "00:39",
+          "end": "00:54",
+          "start_seconds": 39,
+          "end_seconds": 54,
+          "duration_seconds": 15,
+          "filename": "yt_yvYCzh0BcmM_39_54_v1_hook-introduzione-allo-speciale-hope-com.mp4",
+          "content_sha256": "24539580a35e12f6fb083267475921dfea8361268f041e2b3f55899aebabdc1e",
+          "size_bytes": 11606023,
+          "local_path": "data/media/clips/general/yt_yvYCzh0BcmM/yt_yvYCzh0BcmM_39_54_v1_hook-introduzione-allo-speciale-hope-com.mp4",
+          "drive_link": "https://drive.google.com/file/d/1QKijiLM0yVoEwqi2ueJ9jXTjh-8GILHc/view?usp=drivesdk",
+          "drive_file_id": "1QKijiLM0yVoEwqi2ueJ9jXTjh-8GILHc",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2417_v1",
+          "name": "Hook Il racconto emotivo del veterano",
+          "start": "40:02",
+          "end": "40:17",
+          "start_seconds": 2402,
+          "end_seconds": 2417,
+          "duration_seconds": 15,
+          "filename": "yt_yvYCzh0BcmM_2402_2417_v1_hook-il-racconto-emotivo-del-veterano.mp4",
+          "content_sha256": "ca80d482fcf3a2545238c83c49b58f6ab608f853bdb4d908d0d49cce96e7db9c",
+          "size_bytes": 3914320,
+          "local_path": "data/media/clips/general/yt_yvYCzh0BcmM/yt_yvYCzh0BcmM_2402_2417_v1_hook-il-racconto-emotivo-del-veterano.mp4",
+          "drive_link": "https://drive.google.com/file/d/1SP95H6ZLyawKXw87rCPLZqmGlTNXVR42/view?usp=drivesdk",
+          "drive_file_id": "1SP95H6ZLyawKXw87rCPLZqmGlTNXVR42",
+          "status": "processed",
+          "drive_folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr"
+        }
+      ],
+      "asset_ids": [
+        "yt_yvYCzh0BcmM_39_81_v1",
+        "yt_yvYCzh0BcmM_338_375_v1",
+        "yt_yvYCzh0BcmM_682_735_v1",
+        "yt_yvYCzh0BcmM_2304_2355_v1",
+        "yt_yvYCzh0BcmM_2402_2462_v1",
+        "yt_yvYCzh0BcmM_39_54_v1",
+        "yt_yvYCzh0BcmM_2402_2417_v1"
+      ],
+      "backfill": {
+        "processed": 7,
+        "source_ready_count": 7,
+        "source_acquired_count": 6,
+        "created_total": 0,
+        "index_repaired_total": 7,
+        "reindex_requested_total": 7,
+        "subtitles_delivered_total": 7,
+        "failed_lang_total": 0,
+        "failed_asset_ids": null,
+        "duration_ms": 83746
+      },
+      "assets": [
+        {
+          "id": "yt_yvYCzh0BcmM_39_81_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_338_375_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_682_735_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2304_2355_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2462_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_39_54_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        },
+        {
+          "id": "yt_yvYCzh0BcmM_2402_2417_v1",
+          "index_state": "INDEXED",
+          "index_health": "STALE",
+          "pending": 0,
+          "embedding": true,
+          "languages": [
+            "en"
+          ]
+        }
+      ],
+      "finished_at": "2026-11-13T10:39:52Z",
+      "fix": {
+        "job_id": "job_1794566970038827594_c5c8d8c5",
+        "replaced": [
+          {
+            "old_id": "yt_yvYCzh0BcmM_2402_2475_v1",
+            "old_drive_file_id": "12Hw7qpu2bqSN32h36WSOnS5R0JV7Y6PY",
+            "new_id": "yt_yvYCzh0BcmM_2402_2462_v1",
+            "new_drive_file_id": "1h7biHI7A48T3RDCpRk5oYEh7ZasxHRv9",
+            "old_start": "40:02",
+            "old_end": "41:15",
+            "new_end": "41:02"
+          },
+          {
+            "old_id": "yt_yvYCzh0BcmM_39_55_v1",
+            "old_drive_file_id": "1PT-bw0TTxA-mMi6dW043kgb0sOpw1DqH",
+            "new_id": "yt_yvYCzh0BcmM_39_54_v1",
+            "new_drive_file_id": "1QKijiLM0yVoEwqi2ueJ9jXTjh-8GILHc",
+            "old_start": "00:39",
+            "old_end": "00:55",
+            "new_end": "00:54"
+          },
+          {
+            "old_id": "yt_yvYCzh0BcmM_2402_2439_v1",
+            "old_drive_file_id": "1PqRpZ07hOgVs5tO7o1NxHhtTKPyC_bVr",
+            "new_id": "yt_yvYCzh0BcmM_2402_2417_v1",
+            "new_drive_file_id": "1SP95H6ZLyawKXw87rCPLZqmGlTNXVR42",
+            "old_start": "40:02",
+            "old_end": "40:39",
+            "new_end": "40:17"
+          }
+        ],
+        "deleted_old": "trashed",
+        "at": "2026-11-13T10:59:46Z"
+      },
+      "backfill_fix": {
+        "12": {
+          "processed": 3,
+          "source_ready_count": 3,
+          "source_acquired_count": 3,
+          "created_total": 0,
+          "index_repaired_total": 3,
+          "reindex_requested_total": 3,
+          "subtitles_delivered_total": 3,
+          "failed_lang_total": 0,
+          "failed_asset_ids": null,
+          "duration_ms": 33627
+        }
+      }
+    }
+  },
+  "folder_id": "1n4YRewXB7F7nC5QozS8RmTF2tBLFDfFr",
+  "started_at": "2026-11-13T09:23:08Z",
+  "fixed_at": "2026-11-13T10:59:46Z",
+  "video_8_blocked_reason": "YouTube source unavailable (yt-dlp: Video unavailable); 0/6 segments processed"
+}

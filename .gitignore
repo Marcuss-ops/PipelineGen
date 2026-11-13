@@ -407,6 +407,7 @@ TODO[0-9]*.go
 
 # Local config backups (not source code)
 config.yaml.bak*
+config.yaml.before-*
 
 # PR-CURRENT-YAML-PARSE-FIX-PART-7 (2026-07-08): rollback backup of pre-split wave-tracker
 architecture/*.bak

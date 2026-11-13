@@ -36,6 +36,7 @@ package entitytype
 import (
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // Canonical entity families. They are the values Fold maps every spelling
@@ -198,6 +199,76 @@ func Fold(raw string) string {
 		return family
 	}
 	return normalized
+}
+
+// Surface heads that are strong evidence for a place or an organisation when
+// the extractor has already claimed PERSON. The table is intentionally small
+// and conservative: it only corrects a multi-token surface, never a bare word
+// that may be a surname ("Villa", "Corte").
+var surfacePlaceHeads = map[string]bool{
+	"villa": true, "parco": true, "piazza": true, "piazzale": true,
+	"via": true, "viale": true, "corso": true, "largo": true,
+	"palazzo": true, "castello": true, "torre": true, "ponte": true,
+	"museo": true, "teatro": true, "chiesa": true, "basilica": true,
+	"cattedrale": true, "duomo": true, "stazione": true, "aeroporto": true,
+	"porto": true, "lago": true, "fiume": true, "monte": true, "monti": true,
+	"isola": true, "spiaggia": true, "riserva": true, "giardino": true,
+	"giardini": true, "cimitero": true, "foro": true, "anfiteatro": true,
+	"terme": true, "fontana": true, "obelisco": true, "arco": true,
+	"mura": true, "borgo": true, "località": true, "localita": true,
+	"regione": true, "provincia": true, "quartiere": true, "lungomare": true,
+	"riva": true, "cala": true, "golfo": true, "stretto": true, "passo": true,
+	"valle": true, "collina": true, "pianura": true, "deserto": true,
+	"foresta": true, "bosco": true, "cascata": true, "ghiacciaio": true,
+	"vulcano": true,
+}
+
+var surfaceOrganizationHeads = map[string]bool{
+	"corte": true, "tribunale": true, "procura": true, "ministero": true,
+	"governo": true, "parlamento": true, "commissione": true,
+	"fondazione": true, "società": true, "societa": true, "compagnia": true,
+	"associazione": true, "agenzia": true, "press": true, "university": true,
+	"università": true, "universita": true, "polizia": true,
+	"carabinieri": true, "guardia": true, "esercito": true, "banca": true,
+	"partito": true, "sindacato": true, "federazione": true,
+	"confederazione": true, "istituto": true, "ospedale": true,
+	"azienda": true, "impresa": true, "gruppo": true,
+}
+
+// CorrectSurfaceType corrects a PERSON claim only when the surface itself
+// carries a strong, unambiguous place or organisation head. It runs on the
+// projection boundary so the entity timeline, annotations and image queries
+// consume one kind; it never promotes a single token, because "Villa" or
+// "Corte" may be a surname.
+func CorrectSurfaceType(surface, current string) string {
+	family := Fold(current)
+	if family != Person {
+		return family
+	}
+	tokens := surfaceTypeTokens(surface)
+	if len(tokens) < 2 {
+		return Person
+	}
+	if surfacePlaceHeads[tokens[0]] || surfacePlaceHeads[tokens[len(tokens)-1]] {
+		return Place
+	}
+	if surfaceOrganizationHeads[tokens[0]] || surfaceOrganizationHeads[tokens[len(tokens)-1]] {
+		return Org
+	}
+	return Person
+}
+
+func surfaceTypeTokens(surface string) []string {
+	fields := strings.FieldsFunc(strings.ToLower(strings.TrimSpace(surface)), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	out := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if field != "" {
+			out = append(out, field)
+		}
+	}
+	return out
 }
 
 // Is reports whether raw folds onto the given canonical family. A blank raw

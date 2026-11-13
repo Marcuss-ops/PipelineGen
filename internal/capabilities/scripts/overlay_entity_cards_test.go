@@ -66,6 +66,113 @@ func TestAttachEntityCardAssetCarriesVerifiedLocalPathWithoutSerializingIt(t *te
 	}
 }
 
+func TestEntityCardMediaIndexUsesSemanticBundleAssets(t *testing.T) {
+	stableID := capabilityentities.StableEntityID("PERSON", "Francis Kaufmann")
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{
+		Entities: []capabilityoverlay.ResolvedEntity{{
+			EntityID: stableID, CanonicalEntityID: "person:francis-kaufmann", Type: "PERSON",
+			Text: "Francis Kaufmann", CanonicalText: "Francis Kaufmann", SceneID: "scene-1",
+		}},
+		Assets: []capabilityoverlay.BoundAsset{{
+			EntityID: stableID, AssetID: "asset-francis", ContentHash: strings.Repeat("b", 64),
+			SourceURL: "https://drive.google.com/uc?export=download&id=francis", Verified: true,
+		}},
+	}
+	result := &GenerateResult{SemanticRenderBundle: bundle}
+	media, canonicalByStable := entityCardMediaIndex(result)
+	item := attachEntityCardAsset(capmodel.OverlayItem{
+		ID: "francis-card", EntityID: stableID, Kind: string(capmodel.KindEntityCard),
+		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann"},
+	}, media, canonicalByStable, "plan-1")
+	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
+		t.Fatalf("bundle-only entity image = %#v, want resolved image card", item)
+	}
+	if item.AssetRefs[0].URL != "https://drive.google.com/uc?export=download&id=francis" {
+		t.Fatalf("bundle-only asset URL = %q, want the verified bundle URL", item.AssetRefs[0].URL)
+	}
+	if item.EntityRef == nil || item.EntityRef.CanonicalEntityID != "person:francis-kaufmann" {
+		t.Fatalf("bundle-only entity ref = %#v, want the bundle canonical identity", item.EntityRef)
+	}
+}
+
+func TestEntityCardMediaIndexUsesSemanticBundleAssetsPerScene(t *testing.T) {
+	stableID := capabilityentities.StableEntityID("PERSON", "Francis Kaufmann")
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{
+		Entities: []capabilityoverlay.ResolvedEntity{{
+			EntityID: stableID, CanonicalEntityID: "person:francis-kaufmann", Type: "PERSON",
+			Text: "Francis Kaufmann", CanonicalText: "Francis Kaufmann", SceneID: "scene-1",
+		}},
+		Assets: []capabilityoverlay.BoundAsset{{
+			EntityID: stableID, AssetID: "asset-francis", ContentHash: strings.Repeat("c", 64),
+			SourceURL: "https://drive.google.com/uc?export=download&id=francis", Verified: true,
+		}},
+	}
+	result := &GenerateResult{SemanticRenderBundle: bundle}
+	media, canonicalByStable := entityCardMediaIndex(result, true)
+	item := attachEntityCardAsset(capmodel.OverlayItem{
+		ID: "francis-card", SceneID: "scene-1", EntityID: stableID, Kind: string(capmodel.KindEntityCard),
+		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann"},
+	}, media, canonicalByStable, "plan-1")
+	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
+		t.Fatalf("per-scene bundle-only entity image = %#v, want resolved image card", item)
+	}
+}
+
+func TestAttachEntityCardAssetResolvesCanonicalIdentityFallback(t *testing.T) {
+	stableID := capabilityentities.StableEntityID("PERSON", "Ada Lovelace")
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{
+		Entities: []capabilityoverlay.ResolvedEntity{{
+			EntityID: stableID, CanonicalEntityID: "person:ada-lovelace", Type: "PERSON",
+			Text: "Ada Lovelace", CanonicalText: "Ada Lovelace", SceneID: "scene-1",
+		}},
+		Assets: []capabilityoverlay.BoundAsset{{
+			EntityID: stableID, AssetID: "asset-ada", ContentHash: strings.Repeat("d", 64),
+			SourceURL: "https://drive.google.com/uc?export=download&id=ada", Verified: true,
+		}},
+	}
+	media, canonicalByStable := entityCardMediaIndex(&GenerateResult{SemanticRenderBundle: bundle})
+	item := attachEntityCardAsset(capmodel.OverlayItem{
+		ID: "ada-card", SceneID: "scene-1", Kind: string(capmodel.KindEntityCard),
+		EntityRef: &capmodel.OverlayEntityRef{Type: "PERSON", Name: "Ada Lovelace", CanonicalEntityID: "person:ada-lovelace"},
+	}, media, canonicalByStable, "plan-1")
+	if item.Kind != string(capmodel.KindEntityImage) || len(item.AssetRefs) != 1 {
+		t.Fatalf("canonical-only entity image = %#v, want resolved image card", item)
+	}
+}
+
+func TestPersonEntityCardReachesPlanFromAdmittedIdentity(t *testing.T) {
+	stableID := capabilityentities.StableEntityID("PERSON", "Francis Kaufmann")
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{
+		Entities: []capabilityoverlay.ResolvedEntity{{
+			EntityID: stableID, CanonicalEntityID: "person:francis-kaufmann", Type: "PERSON",
+			Text: "Francis Kaufmann", CanonicalText: "Francis Kaufmann", SceneID: "scene-1",
+		}},
+		Assets: []capabilityoverlay.BoundAsset{{
+			EntityID: stableID, AssetID: "asset-francis", ContentHash: strings.Repeat("e", 64),
+			SourceURL: "https://drive.google.com/uc?export=download&id=francis", Verified: true,
+		}},
+	}
+	result := &GenerateResult{
+		SemanticRenderBundle: bundle,
+		SemanticProductionPlan: &SemanticProductionPlan{Identity: []SemanticPlannedIdentity{{
+			ID: stableID, Surface: "Francis Kaufmann", Kind: "PERSON", Media: true,
+		}}},
+	}
+	media, canonicalByStable := entityCardMediaIndex(result)
+	card := attachEntityCardAsset(capmodel.OverlayItem{
+		ID: "overlay-scene-1-francis-kaufmann", SceneID: "scene-1", EntityID: stableID,
+		Kind: string(capmodel.KindEntityCard), TemplateID: "person_default", Text: "Francis Kaufmann",
+		EntityRef: &capmodel.OverlayEntityRef{EntityID: stableID, Type: "PERSON", Name: "Francis Kaufmann"},
+	}, media, canonicalByStable, "plan-1")
+	got := admitIdentityImagesByProductionPlan([]capmodel.OverlayItem{card}, result.SemanticProductionPlan)
+	if len(got) != 1 || got[0].Kind != string(capmodel.KindEntityImage) || len(got[0].AssetRefs) != 1 {
+		t.Fatalf("admitted person card = %#v, want an image card with its bundle asset", got)
+	}
+	if got[0].EntityRef == nil || got[0].EntityRef.CanonicalEntityID != "person:francis-kaufmann" {
+		t.Fatalf("admitted person identity = %#v, want canonical entity id", got[0].EntityRef)
+	}
+}
+
 func TestAttachEntityCardAssetResolvesLocalizedStableIdentity(t *testing.T) {
 	image := &scriptpkg.EntityImageBinding{
 		Status: "resolved", AssetID: "asset-mike-tyson", SHA256: strings.Repeat("a", 64),

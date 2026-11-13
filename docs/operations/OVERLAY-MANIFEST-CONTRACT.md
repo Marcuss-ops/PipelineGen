@@ -248,3 +248,41 @@ Nessuna invariante dell'handoff finale viene indebolita:
 - `internal/platform/sqlite/overlayrendercache/integration_test.go` — una
   riga di cache per composizione (ownership manifest), retry senza lavoro
   ripetuto, kill switch.
+
+## 8. Decisione P2 — overlay opaco `replace` vs alpha/composizione (2026-11-13)
+
+Il job reale `job_1794566101470926420_740228ca` ha certificato il contratto
+attuale end-to-end: 32 overlay pianificati, 18 entity image su 18 bound,
+`missing=0`, remote final job `SUCCEEDED` e MP4 finale servito dal Master
+(`268.930.121` byte, SHA-256 `693601aa1c09528a2586c5ad13786132aafe77b3112f96730398097d940d61e8`).
+Il video finale resta nel Master artifact store protetto da M2M; il final job
+non pubblica artefatti su Drive (§4), quindi l'upload Drive verificato riguarda
+script e audio locali.
+
+Stato deliberato: gli artefatti overlay sono ancora video-only 1920×1080
+opachi e il final job li consuma come sostituzione (`mode=replace`). Durante
+una card il footage base viene quindi sostituito, non composto sopra. È il
+comportamento del contratto corrente, non un difetto del renderer.
+
+**Decisione:** non introdurre alpha né una seconda composizione in questa
+iterazione. Il contratto resta `replace` opaco finché il prodotto non sceglie
+esplicitamente una delle due strade:
+
+- **A — overlay con alpha:** nuovo profilo/container con canale alpha,
+  producer, lowering, manifest e worker aggiornati insieme, con gate visivo
+  e migrazione del contratto;
+- **B — overlay-only + composizione sulla base:** il renderer produce solo il
+  layer e il final worker lo compone sul footage, cambiando il passo di
+  assemblaggio e la validazione delle finestre.
+
+Nessuna delle due è attivabile senza una scelta di prodotto e una migrazione
+versionata: abilitarla di nascosto cambierebbe i pixel consegnati sotto la
+stessa identità di piano.
+
+### 8.1 Proiezione `EntityRef` per l'audit
+
+`OverlayItem.EntityRef` resta `json:"-"` sul wire overlay-plan.v1: il worker
+non ne ha bisogno. L'audit espone già `image_bindings[].entity_id` e
+`planned_overlays[].entity/entity_type`; una proiezione completa di
+`EntityRef` (entity_id, canonical_entity_id, surface_text) è un miglioramento
+di debug separato dal contratto di rendering, non un cambio del wire.
