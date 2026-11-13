@@ -32,8 +32,8 @@ func TestProjectEntityImageBindings_StripsPromptPrefixFromEntity(t *testing.T) {
 
 	got := projectEntityImageBindings(spec, segments, entityImagePolicyForTest())
 	image := got.Scenes[0].Annotations.PrimaryEntities[0].Image
-	if image == nil || image.Status != "resolved" || image.AssetID != "asset-john-cena" || image.DriveLink == "" {
-		t.Fatalf("entity image binding = %+v, want resolved persisted Drive image", image)
+	if image == nil || image.Status != "resolved" || image.AssetID != "asset-john-cena" || image.DriveLink == "" || image.DriveFileID != "john-cena" {
+		t.Fatalf("entity image binding = %+v, want resolved persisted Drive image with canonical file id", image)
 	}
 }
 
@@ -94,7 +94,11 @@ func TestProjectEntityImageBindings_RepeatedEntityGetsDistinctCandidates(t *test
 	}
 }
 
-func TestProjectEntityImageBindings_PerSceneScopeDoesNotReuseSingleCandidate(t *testing.T) {
+// TestProjectEntityImageBindings_PerSceneScopeReusesSingleCandidate pins the
+// corrected contract: per_scene chooses where the overlay sits, it does not
+// require a different photograph of the same person in every scene. A single
+// verified portrait is reused rather than degrading later scenes to text-only.
+func TestProjectEntityImageBindings_PerSceneScopeReusesSingleCandidate(t *testing.T) {
 	person := func() *scriptpkg.SceneAnnotations {
 		return &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Milton Leite", CanonicalName: "Milton Leite", Type: "PERSON"}}}
 	}
@@ -116,8 +120,8 @@ func TestProjectEntityImageBindings_PerSceneScopeDoesNotReuseSingleCandidate(t *
 	if first == nil || first.Status != "resolved" || first.AssetID != "milton-only" {
 		t.Fatalf("first per-scene binding = %+v, want resolved candidate", first)
 	}
-	if second == nil || second.Status != "not_found" {
-		t.Fatalf("second per-scene binding = %+v, want not_found instead of cross-scene reuse", second)
+	if second == nil || second.Status != "resolved" || second.AssetID != "milton-only" {
+		t.Fatalf("second per-scene binding = %+v, want the same verified portrait reused", second)
 	}
 }
 

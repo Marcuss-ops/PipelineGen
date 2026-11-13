@@ -146,8 +146,8 @@ func (e *QueueRenderEnqueuer) SetFreshRender(on bool) {
 	}
 }
 
-// SetOverlayRenderCache wires the content-addressed reuse index for individual
-// clips and fused batch compositions. Passing nil keeps renders uncached.
+// SetOverlayRenderCache wires the content-addressed reuse index for per-item
+// overlay clips. Passing nil keeps renders uncached.
 // An empty epoch resolves at call time from OverlayRenderCacheEpoch().
 func (e *QueueRenderEnqueuer) SetOverlayRenderCache(cache OverlayRenderCache, epoch string) {
 	if e != nil {

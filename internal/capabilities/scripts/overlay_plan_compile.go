@@ -13,23 +13,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-const maxGenericSceneImagesPerScene = 10
-
-// resolveImageOverlayCeiling makes the two run-level image budgets agree.
-// max_image_overlays is the caller's request; overlay_group_limits.images is
-// the group cap. Before this gate the group silently overwrote the max, so a
-// payload asking for 12 images could render 3 without saying so. Zero keeps
-// the certified default and is not a disagreement.
-func resolveImageOverlayCeiling(maxImageOverlays int, limits map[string]int) (int, error) {
-	if n, ok := overlayGroupLimit(limits, overlayGroupImages); ok && n > 0 {
-		if maxImageOverlays > 0 && n != maxImageOverlays {
-			return 0, fmt.Errorf("overlay plan: max_image_overlays=%d and overlay_group_limits.%s=%d disagree; remove one or make them equal so the run cannot silently render a different image count", maxImageOverlays, overlayGroupImages, n)
-		}
-		return n, nil
-	}
-	return maxImageOverlays, nil
-}
-
 // compileOverlayPlanWithMotionOffset derives motion entropy deterministically
 // from immutable plan identity (plan + video + project). Identical inputs
 // compile byte-identical plans and retries stay bit-identical; a new plan ID
@@ -106,7 +89,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	if genericImageCeiling < 0 {
 		genericImageCeiling = 0
 	}
-	genericImageCount := 0
+	sceneImagesEnabled := len(perSceneImages) < 2 || perSceneImages[1]
 	for i := range result.Scenes {
 		scene := result.Scenes[i]
 		ref, ok := scene.Voiceover[language]
@@ -134,6 +117,24 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		timelineStartUS[scene.ID] = scene.TimelineStartUS
 		timelineEndUS[scene.ID] = scene.TimelineStartUS + scene.DurationUS
 	}
+	// Collect every scene's ready stills first, then allocate the run-level
+	// image ceiling round-robin. The old loop spent the whole ceiling on the
+	// first scene, so later scenes had no contextual image at all.
+	imagesByScene := make(map[string][]capabilityoverlay.ImageCandidate)
+	if sceneImagesEnabled && genericImageCeiling > 0 {
+		sets := make([]sceneImageCandidateSet, 0, len(timedScenes))
+		for _, scene := range timedScenes {
+			startUS, ok := timelineStartUS[scene.ID]
+			if !ok {
+				continue
+			}
+			candidates := sceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], maxGenericSceneImagesPerScene)
+			if len(candidates) > 0 {
+				sets = append(sets, sceneImageCandidateSet{SceneID: scene.ID, Candidates: candidates})
+			}
+		}
+		imagesByScene = allocateSceneImageCandidates(sets, genericImageCeiling, perSceneImageHashes)
+	}
 	// Recap briefs run parallel to timedScenes: each scene's top-score phrase
 	// stands in for its chapter bullet. Scenes without phrases contribute no
 	// recap source — the builder invents nothing.
@@ -153,7 +154,6 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			if !exists || endUS <= startUS {
 				return nil, fmt.Errorf("overlay plan: short phrase scene %q has no positive canonical duration", scene.ID)
 			}
-			text := strings.TrimSpace(scene.Text[language])
 			// Short-phrase scenes still carry grounded annotations and entity
 			// occurrences. Project those surfaces as usual so location candidates
 			// can produce maps; only the phrase timing uses the canonical whole-
@@ -169,10 +169,12 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			if sceneInput == nil {
 				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
 			}
-			sceneInput.Phrases = []capabilityoverlay.TimedAnnotation{{
-				Text: text, StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000,
-				StartUS: startUS, DurationUS: endUS - startUS, Score: 1,
-			}}
+			if text, ok := wholeScenePhraseText(scene.Text[language]); ok {
+				sceneInput.Phrases = []capabilityoverlay.TimedAnnotation{{
+					Text: text, StartMs: startUS / 1000, EndMs: (endUS + 999) / 1000,
+					StartUS: startUS, DurationUS: endUS - startUS, Score: 1,
+				}}
+			}
 		} else {
 			var timing capabilityaudio.SpeechTimingArtifact
 			if !noWordTiming {
@@ -221,20 +223,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		// The first flag controls entity-image scope. The optional second flag
 		// controls generic scene stills; explicit images_per_scene=0 must keep
 		// those disabled even when entity cards use per-scene scope.
-		sceneImagesEnabled := len(perSceneImages) < 2 || perSceneImages[1]
-		if sceneImagesEnabled && genericImageCount < genericImageCeiling {
+		if images := imagesByScene[scene.ID]; len(images) > 0 {
 			if sceneInput == nil {
 				sceneInput = &capabilityoverlay.SceneInput{ID: scene.ID}
 			}
-			remaining := genericImageCeiling - genericImageCount
-			if remaining > maxGenericSceneImagesPerScene {
-				remaining = maxGenericSceneImagesPerScene
-			}
-			for _, image := range sceneImageCandidates(result, scene.ID, startUS, perSceneImageHashes, timelineEndUS[scene.ID], remaining) {
-				sceneInput.Images = append(sceneInput.Images, image)
-				perSceneImageHashes[strings.ToLower(image.SHA256)] = struct{}{}
-				genericImageCount++
-			}
+			sceneInput.Images = append(sceneInput.Images, images...)
 		}
 		brief := capabilityoverlay.RecapSceneBrief{ID: scene.ID}
 		if start, ok := timelineStartUS[scene.ID]; ok {
@@ -261,6 +254,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			}
 		}
 		if sceneInput != nil {
+			sceneInput.EndUS = timelineEndUS[scene.ID]
 			scenes = append(scenes, *sceneInput)
 		}
 		recapBriefs = append(recapBriefs, brief)
@@ -543,6 +537,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		Width: canvas.Width, Height: canvas.Height,
 		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily,
 		AnimationCounts: canvas.AnimationCounts,
+		Scenes:          scenes,
 	}
 	items = capabilityoverlay.PrepareCompiledAnimationLayout(items, animationLayoutInput, canvas.FPSNum, canvas.FPSDen)
 	// Canonical animation contract lives in the overlay subpackage: validate

@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=gL01xq0Jeis",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "07:55",
+      "end": "09:05",
+      "name": "Perché Canelo ha affrontato Mayweather a 22 anni",
+      "category": "boxing_interview",
+      "source_title": "Full interview: Boxing legend Canelo Alvarez on motivations, love for his sport",
+      "source_channel": "CBS Mornings",
+      "summary": "Da quindicenne sognava il titolo mondiale, poi volle subito i migliori: a 22 anni affrontò Mayweather perché per essere il migliore devi battere il migliore, e perdere fa parte dell'apprendimento.",
+      "topics": [
+        "Canelo Mayweather early career learning loss motivation best fighters"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "Floyd Mayweather",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

@@ -19,6 +19,9 @@ func CertifiedAutomaticEntityCaptionMotions() []string {
 func automaticEntityCaptionMotionCandidates() []string {
 	pool := make([]string, 0, len(generatedEntityCaptionMotionCandidates))
 	for _, id := range generatedEntityCaptionMotionCandidates {
+		if !AnimationAutomaticallySelectable(id) {
+			continue
+		}
 		if AnimationLaneCompatible(id, "entity.caption.automatic") {
 			pool = append(pool, id)
 		}
@@ -55,14 +58,20 @@ func SelectImageAnimation(jobID, sceneID, itemID string) string {
 // CertifiedImageMotions returns the complete certified image motion pool.
 // Callers receive a copy.
 func CertifiedImageMotions() []string {
-	return append([]string(nil), renderSafeImageMotions...)
+	return CertifiedSingleImageMotions()
 }
 
-// CertifiedSingleImageMotions returns the complete certified layer-only
-// catalog. Automatic runtime planning uses a smaller 2D pool; explicit plans
-// and channel-profile overrides may select any certified motion.
+// CertifiedSingleImageMotions returns the complete certified single-image
+// catalog, including the recipe families whose recipe lowers on one image.
+// Multi-image stacks stay in the group lane and are not part of this pool.
 func CertifiedSingleImageMotions() []string {
-	return append([]string(nil), renderSafeImageMotions...)
+	return uniqueMotionPool(append(append([]string(nil), renderSafeImageMotions...), imageRecipeMotionCandidates...))
+}
+
+// CertifiedImageRecipeMotions returns the certified recipe motions admitted by
+// automatic single-image planning. Callers receive a copy.
+func CertifiedImageRecipeMotions() []string {
+	return append([]string(nil), imageRecipeMotionCandidates...)
 }
 
 // CertifiedLightLeakMotions returns the RenderingGen-supported light_leak_v1

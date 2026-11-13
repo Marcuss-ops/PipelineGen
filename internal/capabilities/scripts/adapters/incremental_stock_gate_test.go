@@ -140,7 +140,10 @@ func TestMaterializePortKeepsStockVideoAndMaterializesExplicitImageSidecar(t *te
 	if got.Assets.PrimaryVideo == nil || got.Assets.PrimaryVideo.AssetID != "stock-video" {
 		t.Fatalf("stock primary video changed during image materialization: %+v", got.Assets.PrimaryVideo)
 	}
-	if len(got.Assets.SecondaryImages) != 1 || got.Assets.SecondaryImages[0].Provider != scriptpkg.VidRushProviderInternetImages {
+	if len(got.Assets.SecondaryImages) != 0 {
+		t.Fatalf("stock-bound scene leaked provider image selections: %+v", got.Assets.SecondaryImages)
+	}
+	if len(got.Assets.Candidates) != 1 || got.Assets.Candidates[0].Provider != scriptpkg.VidRushProviderInternetImages || got.Assets.Candidates[0].DriveLink == "" {
 		t.Fatalf("explicit image sidecar was not materialized: cache=%+v images=%+v candidates=%+v warnings=%v", got.Cache, got.Assets.SecondaryImages, got.Assets.Candidates, got.Warnings)
 	}
 }

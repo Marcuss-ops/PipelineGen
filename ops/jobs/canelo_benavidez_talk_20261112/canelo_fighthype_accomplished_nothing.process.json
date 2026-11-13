@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=9y_Ae3nydi4",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "02:55",
+      "end": "03:40",
+      "name": "Canelo: Benavidez non ha combinato niente",
+      "category": "boxing_interview",
+      "source_title": "Canelo RIPS Benavidez & REVEALS WHY Crawford GETTING SHOT instead of him: “HE ACCOMPLISHED NOTHING”",
+      "source_channel": "FightHype",
+      "summary": "Canelo liquida Benavidez: parla come Superman, manca di rispetto a tutti, non è campione né nella sua categoria. A questo punto della carriera può fare ciò che vuole.",
+      "topics": [
+        "Canelo Benavidez accomplished nothing not champion disrespect"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

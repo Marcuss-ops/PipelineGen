@@ -76,10 +76,12 @@ func TestAlignFinalJobCompiledPlanAcceptsWholeStockFileAtItsSavedDuration(t *tes
 	}
 }
 
-// TestAlignFinalJobSegmentSourceWindowsClampsOneFrameDurationShortfall pins
-// the case where source metadata carries 119 frames while a segment asks for
-// 120. Keep the plan within the declared source extent before Master fetches it.
-func TestAlignFinalJobSegmentSourceWindowsAllowsOneFrameDurationRounding(t *testing.T) {
+// TestAlignFinalJobSegmentSourceWindowsHoldsOneFrameAtWholeFileTail pins the
+// case where source metadata carries 119 frames while the trailing segment
+// asks for 120. The whole-file source window is clamped to the declared
+// extent, but the output frame count stays 120: the worker holds the last
+// displayed frame instead of the plan inventing a sub-window stock segment.
+func TestAlignFinalJobSegmentSourceWindowsHoldsOneFrameAtWholeFileTail(t *testing.T) {
 	plan := finalJobCompiledPlan{
 		Assets: []finalJobPlanAsset{{
 			AssetID: "stock-4990", SHA256: strings.Repeat("d", 64), SizeBytes: 2048,
@@ -94,8 +96,8 @@ func TestAlignFinalJobSegmentSourceWindowsAllowsOneFrameDurationRounding(t *test
 		t.Fatalf("alignFinalJobSegmentSourceWindows: %v", err)
 	}
 	segment := plan.VideoTracks[0].Segments[0]
-	if segment.SourceInUS != 0 || segment.SourceDurationUS != 4_958_333 || segment.FrameCount != 119 {
-		t.Fatalf("aligned window = %d + %d over %d frames, want 0 + 4958333 over 119", segment.SourceInUS, segment.SourceDurationUS, segment.FrameCount)
+	if segment.SourceInUS != 0 || segment.SourceDurationUS != 4_990_000 || segment.FrameCount != 120 {
+		t.Fatalf("aligned window = %d + %d over %d frames, want the whole file 0 + 4990000 over 120 with the last frame held", segment.SourceInUS, segment.SourceDurationUS, segment.FrameCount)
 	}
 }
 

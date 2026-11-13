@@ -106,6 +106,11 @@ type OverlayCanvasSpec struct {
 	// MaxImageOverlays overrides the run-level image ceiling; zero keeps the
 	// certified default (capabilityoverlay.MaxImageOverlaysPerRun).
 	MaxImageOverlays int
+	// RequireEntityImages makes the entity-image expectation originate in the
+	// request policy, even when no entity_image overlay was successfully built.
+	RequireEntityImages      bool
+	EntityImagesRequireDrive bool
+	RequiredEntityTypes      []string
 	// OverlayGroupLimits carries the per-group caps (see overlay_group_limits).
 	OverlayGroupLimits      map[string]int
 	AnimationCounts         map[string]int

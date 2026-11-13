@@ -31,34 +31,42 @@ func TestNoLocalFullVideoExecutionPath(t *testing.T) {
 		"assemble_copy",
 	}
 
-	base := filepath.Join(root, "internal")
-	err := filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
+	// A `cmd/` entry point can concatenate a film just as easily as an internal
+	// package, so both authored Go roots are scanned. The old walk covered only
+	// `internal/`, which left the command tree outside the permanent guardrail.
+	for _, tree := range []string{"internal", "cmd"} {
+		base := filepath.Join(root, tree)
+		if _, statErr := os.Stat(base); statErr != nil {
+			continue
+		}
+		err := filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			if info.IsDir() {
+				if info.Name() == "testdata" || strings.Contains(path, string(filepath.Separator)+".git") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(info.Name(), ".go") || strings.HasSuffix(info.Name(), "_test.go") {
+				return nil
+			}
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return nil
+			}
+			text := string(data)
+			for _, symbol := range forbidden {
+				if strings.Contains(text, symbol) {
+					rel, _ := filepath.Rel(root, path)
+					t.Errorf("%s reintroduces local full-video execution symbol %q", rel, symbol)
+				}
+			}
+			return nil
+		})
 		if err != nil {
-			return nil
+			t.Fatalf("walk %s: %v", tree, err)
 		}
-		if info.IsDir() {
-			if info.Name() == "testdata" || strings.Contains(path, string(filepath.Separator)+".git") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(info.Name(), ".go") || strings.HasSuffix(info.Name(), "_test.go") {
-			return nil
-		}
-		data, readErr := os.ReadFile(path)
-		if readErr != nil {
-			return nil
-		}
-		text := string(data)
-		for _, symbol := range forbidden {
-			if strings.Contains(text, symbol) {
-				rel, _ := filepath.Rel(root, path)
-				t.Errorf("%s reintroduces local full-video execution symbol %q", rel, symbol)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walk internal: %v", err)
 	}
 }

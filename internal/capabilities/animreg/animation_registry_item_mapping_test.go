@@ -106,6 +106,82 @@ func TestNumberMotionGroupsFollowTemplateRules(t *testing.T) {
 	}
 }
 
+func TestAutomaticCaptionAndImageRecipePoolsAreDerived(t *testing.T) {
+	captions := canonicalAnimationRegistry.Candidates("entity.caption")
+	if len(captions) != 31 {
+		t.Fatalf("entity.caption = %d motions, want 31 across the three caption families", len(captions))
+	}
+	for _, id := range []string{"entity_caption_rise", "text_word_rise", "trump_entity_text_04"} {
+		if !containsMotion(captions, id) {
+			t.Errorf("entity.caption is missing %q", id)
+		}
+	}
+	automatic := 0
+	for _, id := range captions {
+		if canonicalAnimationRegistry.AutomaticallySelectable(id) {
+			automatic++
+		}
+	}
+	if automatic != 9 {
+		t.Fatalf("automatic caption pool = %d, want 9 after retirement and automatic-lane exclusions", automatic)
+	}
+	for id := range retiredAutomaticMotions {
+		if canonicalAnimationRegistry.AutomaticallySelectable(id) {
+			t.Errorf("retired automatic motion %q remains automatically selectable", id)
+		}
+	}
+
+	recipes := canonicalAnimationRegistry.Candidates("image.recipe")
+	if len(recipes) != 69 {
+		t.Fatalf("image.recipe = %d motions, want 69 single-image recipe entrances", len(recipes))
+	}
+	for _, id := range []string{"image_border_draw_in", "brush_arrow_point", "web_browser_depth_dolly", "web_rect_border_trace", "paint_blob_reveal"} {
+		if !containsMotion(recipes, id) {
+			t.Errorf("image.recipe is missing %q", id)
+		}
+	}
+	for _, excluded := range []string{"image_caption_frame_combo", "image_stack_focus"} {
+		if containsMotion(recipes, excluded) {
+			t.Errorf("image.recipe contains preconditioned motion %q", excluded)
+		}
+	}
+}
+
+func TestPresentationFamilyGroupsAreDerivedFromChrononTemplateFamily(t *testing.T) {
+	hasPrefix := func(ids []string, prefix string) bool {
+		for _, id := range ids {
+			if len(id) >= len(prefix) && id[:len(prefix)] == prefix {
+				return true
+			}
+		}
+		return false
+	}
+
+	date := canonicalAnimationRegistry.Candidates("entity.date")
+	for _, id := range []string{"date_fade_rise", "date_didone_archive_fade", "date_typewriter_year_type"} {
+		if !containsMotion(date, id) {
+			t.Errorf("entity.date is missing %q", id)
+		}
+		if !canonicalAnimationRegistry.Selectable(id, "entity.date") {
+			t.Errorf("%q is not selectable in entity.date", id)
+		}
+	}
+	if !hasPrefix(date, "date_didone_") || !hasPrefix(date, "date_typewriter_") {
+		t.Errorf("entity.date does not cover every date presentation family: %v", date)
+	}
+	if !containsMotion(date, "date_calendar_flip") {
+		t.Error("date_calendar_flip must stay certified in entity.date; the planner excludes it at selection time")
+	}
+
+	metric := canonicalAnimationRegistry.Candidates("entity.metric")
+	if !containsMotion(metric, "metric_counter_scale_settle") {
+		t.Error("entity.metric is missing metric_counter_scale_settle")
+	}
+	if !hasPrefix(metric, "metric_didone_") || !hasPrefix(metric, "metric_typewriter_") {
+		t.Errorf("entity.metric does not cover every metric presentation family: %v", metric)
+	}
+}
+
 // TestChartUpgradeIsRegistryAuthored pins the chart upgrade data and the fact
 // that the chart/data kinds already resolve to the same group.
 func TestChartUpgradeIsRegistryAuthored(t *testing.T) {

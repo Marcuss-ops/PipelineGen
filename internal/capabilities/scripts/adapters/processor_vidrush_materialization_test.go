@@ -919,6 +919,80 @@ func TestVidRushMaterializationEntityImageFullLifecycleChain(t *testing.T) {
 	}
 }
 
+// TestVidRushMaterializationStockBoundEntityImagesStayOverlays pins the
+// separation between scene media and entity overlays: on a stock-bound scene
+// the verified portrait may bind to the annotation, but it must never appear
+// as SecondaryImages/GeneratedImages or as the scene winner. That is what lets
+// STOCK ISOLATION certify the stock scene without dropping the entity card.
+func TestVidRushMaterializationStockBoundEntityImagesStayOverlays(t *testing.T) {
+	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(internetImageMaterializationProviderStub{}); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := newTestMaterializationProcessor(registry, materializationFinalizerStub{})
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Language:       "en",
+		ImagesPerScene: 1,
+		Segments: []scriptpkg.ScriptSegment{{
+			ID: "scene-dwayne", StockFolderID: "stock-folder",
+		}},
+		StockBindings: []scriptpkg.StockBindingInput{{SegmentID: "scene-dwayne"}},
+		MediaPlan: mediadomain.MediaPlanSpec{
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+			Extraction: mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{
+				Enabled: true, EntityTypes: []string{"PERSON"}, Scope: "per_scene",
+			}},
+		},
+	}
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
+			ID: "scene-dwayne", SegmentID: "scene-dwayne", Index: 0,
+			Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+				CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON",
+			}}},
+		}}},
+		VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+			SegmentID: "scene-dwayne", SceneID: "scene-dwayne", Position: 0,
+			Text:     "Dwayne Johnson trained in Los Angeles.",
+			TextHash: "stock-overlay-dwayne-hash",
+			Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
+				AssetID:        "asset-dwayne-overlay",
+				Provider:       scriptpkg.VidRushProviderInternetImages,
+				Entity:         "Dwayne Johnson",
+				Query:          "Dwayne Johnson",
+				SourceURL:      "https://images.example/dwayne-overlay.jpg",
+				RightsStatus:   "unknown",
+				SemanticStatus: "accepted",
+			}}},
+		}},
+	}
+
+	result, err := processor.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.VidRushSegments) != 1 {
+		t.Fatalf("segments = %d, want 1", len(result.VidRushSegments))
+	}
+	seg := result.VidRushSegments[0]
+	if len(seg.Assets.SecondaryImages) != 0 || len(seg.Assets.GeneratedImages) != 0 {
+		t.Fatalf("stock-bound scene leaked provider image selections: secondary=%d generated=%d", len(seg.Assets.SecondaryImages), len(seg.Assets.GeneratedImages))
+	}
+	if seg.Assets.PrimaryVideo != nil {
+		t.Fatalf("stock-bound scene gained provider winner %+v", seg.Assets.PrimaryVideo)
+	}
+	if len(seg.Assets.Candidates) == 0 {
+		t.Fatal("entity candidate must remain available for annotation binding")
+	}
+	img := result.UpdatedSpecScene.Scenes[0].Annotations.PrimaryEntities[0].Image
+	if img == nil || img.Status != "resolved" || img.AssetID != "asset-dwayne-overlay" {
+		t.Fatalf("entity overlay binding = %+v, want resolved asset-dwayne-overlay", img)
+	}
+}
+
 type catalogReuseImageProvider struct {
 	acquireCalls atomic.Int32
 }

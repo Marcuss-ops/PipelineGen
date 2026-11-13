@@ -50,6 +50,18 @@ func alignFinalJobSegmentSourceWindows(plan *finalJobCompiledPlan) error {
 			if shortfall > 1 || (shortfall == 1 && startFrame != 0) {
 				return fmt.Errorf("segment %q asks for %d frames from asset %q, which carries %d", segment.SegmentID, segment.FrameCount, asset.AssetID, totalFrames)
 			}
+			if shortfall == 1 && segmentIndex == len(plan.VideoTracks[trackIndex].Segments)-1 {
+				// The worker holds the last displayed frame when the certified
+				// audio stretches the final scene one frame past a whole source
+				// file. Keep the output frame count and clamp only the source
+				// window: a second, sub-window segment would violate the
+				// whole-file stock contract the Master packet-copies. Only the
+				// trailing segment may hold; an earlier one would overlap its
+				// successor on the timeline.
+				segment.SourceInUS = 0
+				segment.SourceDurationUS = asset.DurationUS
+				continue
+			}
 			if shortfall > 0 {
 				segment.FrameCount = totalFrames
 			}
@@ -90,12 +102,15 @@ func finalJobFrameStartUS(frame, fpsNum, fpsDen int64) int64 {
 	return (numerator + fpsNum/2) / fpsNum
 }
 
-// finalJobCompleteVideoFrameCoverage adds the minimum source frames needed
-// for the worker's whole-frame duration contract. Audio duration remains the
-// plan SSOT; this only uses already-declared source frames at the timeline end.
-func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64) error {
+// finalJobCompleteVideoFrameCoverage closes the output timeline through the
+// final audio frame. Audio duration remains the plan SSOT. When the trailing
+// source still has frames, extend its window; when it is already exhausted,
+// hold its last displayed frame for the one missing output frame instead of
+// inventing a sub-window segment (the whole-file stock contract refuses one).
+// More than one frame is a real coverage gap and stays fail-closed.
+func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets []finalJobPlanAsset, durationUS, fpsNum, fpsDen int64) ([]finalJobPlanSegment, error) {
 	if len(segments) == 0 || durationUS <= 0 || fpsNum <= 0 || fpsDen <= 0 {
-		return fmt.Errorf("final_job V2 cannot complete video coverage without segments and a valid output clock")
+		return nil, fmt.Errorf("final_job V2 cannot complete video coverage without segments and a valid output clock")
 	}
 	denominator := int64(1_000_000) * fpsDen
 	neededFrames := (durationUS*fpsNum + denominator - 1) / denominator
@@ -107,10 +122,10 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 		}
 	}
 	if endFrame >= neededFrames {
-		return nil
+		return segments, nil
 	}
 	if lastIndex < 0 || segments[lastIndex].TimelineStartFrame+segments[lastIndex].FrameCount != endFrame {
-		return fmt.Errorf("final_job V2 video has no trailing segment at frame %d", endFrame)
+		return nil, fmt.Errorf("final_job V2 video has no trailing segment at frame %d", endFrame)
 	}
 	segment := &segments[lastIndex]
 	assetIndex := -1
@@ -121,7 +136,7 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 		}
 	}
 	if assetIndex < 0 {
-		return fmt.Errorf("final_job V2 trailing segment %q has no source asset", segment.SegmentID)
+		return nil, fmt.Errorf("final_job V2 trailing segment %q has no source asset", segment.SegmentID)
 	}
 	asset := assets[assetIndex]
 	totalFrames := asset.FrameCount
@@ -132,16 +147,30 @@ func finalJobCompleteVideoFrameCoverage(segments []finalJobPlanSegment, assets [
 		}
 	}
 	sourceStartFrame := finalJobFrameAtUS(segment.SourceInUS, fpsNum, fpsDen)
+	missing := neededFrames - endFrame
 	available := totalFrames - sourceStartFrame - segment.FrameCount
-	if available < neededFrames-endFrame {
-		return fmt.Errorf("final_job V2 trailing segment %q needs %d more frames but source %q has %d", segment.SegmentID, neededFrames-endFrame, segment.AssetID, max(available, int64(0)))
+	if available > 0 {
+		extend := min(available, missing)
+		segment.FrameCount += extend
+		segment.SourceDurationUS = finalJobFrameStartUS(sourceStartFrame+segment.FrameCount, fpsNum, fpsDen) - segment.SourceInUS
+		if segment.SourceInUS+segment.SourceDurationUS > asset.DurationUS {
+			return nil, fmt.Errorf("final_job V2 trailing segment %q frame completion exceeds source %q duration", segment.SegmentID, segment.AssetID)
+		}
+		missing -= extend
+		endFrame += extend
 	}
-	segment.FrameCount += neededFrames - endFrame
-	segment.SourceDurationUS = finalJobFrameStartUS(sourceStartFrame+segment.FrameCount, fpsNum, fpsDen) - segment.SourceInUS
-	if segment.SourceInUS+segment.SourceDurationUS > asset.DurationUS {
-		return fmt.Errorf("final_job V2 trailing segment %q frame completion exceeds source %q duration", segment.SegmentID, segment.AssetID)
+	if missing == 0 {
+		return segments, nil
 	}
-	return nil
+	if missing > 1 {
+		return nil, fmt.Errorf("final_job V2 trailing segment %q needs %d more frames but source %q has no spare frames", segment.SegmentID, missing, segment.AssetID)
+	}
+	// The source bytes are fully consumed. The worker holds the last displayed
+	// frame for this one output frame; leave the whole-file source window
+	// untouched and do not append a sub-window segment the copy-only assembler
+	// cannot materialize.
+	segment.FrameCount++
+	return segments, nil
 }
 
 // alignFinalJobCompiledPlanAssetIDs binds the compiled plan to the exact

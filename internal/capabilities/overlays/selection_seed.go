@@ -50,6 +50,18 @@ func SelectImageGroupMotion(motionSeed, videoID, groupID string, count int, prev
 	return pool[SeededGroupIndex(motionSeed, videoID, groupID, len(pool))]
 }
 
+// SelectEntitySequenceCameraMotion picks the certified photo-documentary
+// camera recipe for a shared multi-image entity sequence. The draw is seeded by
+// the group identity so retries replay it byte-identically; an uncertified or
+// empty catalog returns "".
+func SelectEntitySequenceCameraMotion(motionSeed, videoID, groupID string) string {
+	pool := AnimationCandidates("entity.sequence_camera")
+	if len(pool) == 0 {
+		return ""
+	}
+	return pool[SeededGroupIndex(motionSeed, videoID, groupID, len(pool))]
+}
+
 func hexNibbleValue(digit byte) byte {
 	if digit >= '0' && digit <= '9' {
 		return digit - '0'

@@ -61,6 +61,10 @@ type SceneInput struct {
 	// They are lowered to the existing image_layers and important_phrase
 	// primitives; they do not create new renderer kinds.
 	MultiEntityGroups []MultiEntityGroup
+	// EndUS is the owning scene's absolute plan end. The producer sets it so
+	// date cards can be capped at the scene boundary; zero keeps the legacy
+	// uncapped behavior for standalone planner callers.
+	EndUS int64
 }
 
 // PlanInput is the minimal upstream projection required by the overlay

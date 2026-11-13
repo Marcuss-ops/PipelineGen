@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=NlcyrNrjisw",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "13:06",
+      "end": "13:34",
+      "name": "Benavidez: non penso a Canelo, penso alle cinture",
+      "category": "boxing_interview",
+      "source_title": "EXCLUSIVE: David Benavidez CALLS For Team Canelo Investigation Over PEDS Claims, Talks Anthony Yarde",
+      "source_channel": "Ring Magazine",
+      "summary": "Benavidez dice che se il fight con Canelo non arriverà mai, starà bene lo stesso; ora ha un titolo a 175 e Canelo dice di combattere per la grandezza, quindi il tavolo è pronto.",
+      "topics": [
+        "Benavidez Canelo 175 title greatness not thinking ready"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

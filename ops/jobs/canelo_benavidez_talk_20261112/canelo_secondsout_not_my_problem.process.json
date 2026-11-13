@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=WdMj9QS_KRw",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "02:02",
+      "end": "02:26",
+      "name": "Canelo: Benavidez non è un mio problema",
+      "category": "boxing_interview",
+      "source_title": "Canelo Alvarez SHUTS DOWN David Benavidez CALL OUT: 'NOT MY PROBLEM!'",
+      "source_channel": "Seconds Out",
+      "summary": "Alla domanda su Benavidez che continua a chiamarlo anche da cruiserweight, Canelo risponde che non può più fare 175 libbre e che la cosa non lo riguarda.",
+      "topics": [
+        "Canelo Benavidez not my problem 175 cruiserweight"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

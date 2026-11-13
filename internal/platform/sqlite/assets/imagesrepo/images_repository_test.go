@@ -20,6 +20,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // AGENTS.md driver lock (mattn/go-sqlite3)
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
@@ -737,4 +738,179 @@ func TestListImagesByOrigin_DifferentOriginsIsolated(t *testing.T) {
 			t.Errorf("row %q has non-generated origin %q (filter broken)", row.Hash, row.Origin)
 		}
 	}
+}
+
+type recordingImageAssetMutator struct {
+	patch           persistence.AssetPatch
+	reconcile       []persistence.DriveLocationPatch
+	delivery        persistence.DriveDeliveryMutation
+	deliveryAssetID string
+}
+
+func (m *recordingImageAssetMutator) PatchAsset(_ context.Context, patch persistence.AssetPatch) error {
+	m.patch = patch
+	return nil
+}
+func (m *recordingImageAssetMutator) PatchAssetTx(context.Context, persistence.Transaction, persistence.AssetPatch) error {
+	return errors.New("unexpected transaction patch")
+}
+func (m *recordingImageAssetMutator) ReconcileDriveLocations(_ context.Context, changes []persistence.DriveLocationPatch) error {
+	m.reconcile = append(m.reconcile, changes...)
+	return nil
+}
+func (m *recordingImageAssetMutator) ReconcileDriveLocationsTx(context.Context, persistence.Transaction, []persistence.DriveLocationPatch) error {
+	return errors.New("unexpected transaction drive reconcile")
+}
+func (m *recordingImageAssetMutator) UpdateDriveDeliveryByAssetID(_ context.Context, assetID string, mutation persistence.DriveDeliveryMutation) error {
+	m.deliveryAssetID = assetID
+	m.delivery = mutation
+	return nil
+}
+
+// assertNoSQLiteMediaRows proves the mutation did not depend on the legacy
+// SQLite read plane: the test database has an empty media_assets table.
+func assertNoSQLiteMediaRows(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var rows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM media_assets`).Scan(&rows); err != nil {
+		t.Fatalf("count media_assets: %v", err)
+	}
+	if rows != 0 {
+		t.Fatalf("mutation unexpectedly depended on a SQLite media row; found %d", rows)
+	}
+}
+
+func TestUpdateImageMetadataPatchesCanonicalHashWithoutSQLiteRead(t *testing.T) {
+	db := testDB(t)
+	mutator := &recordingImageAssetMutator{}
+	repo := NewImagesRepository(db)
+	repo.SetCanonicalMutator(mutator)
+
+	const hash = "c2bc189f9ffa5c96881599411482d1f2befeed034d92b36d06e5bf0c9764ccbb"
+	const metadata = `{"source_url":"https://images.example/person.jpg"}`
+	if err := repo.UpdateImageMetadata(context.Background(), hash, metadata); err != nil {
+		t.Fatalf("UpdateImageMetadata: %v", err)
+	}
+	if mutator.patch.AssetID != hash || mutator.patch.MetadataJSON != nil || mutator.patch.MetadataPatchJSON == nil || *mutator.patch.MetadataPatchJSON != metadata {
+		t.Fatalf("patch = %+v, want canonical hash and a metadata merge patch", mutator.patch)
+	}
+	assertNoSQLiteMediaRows(t, db)
+}
+
+func TestUpdateDriveDeliveryUsesCanonicalHashWithoutSQLiteRead(t *testing.T) {
+	db := testDB(t)
+	mutator := &recordingImageAssetMutator{}
+	repo := NewImagesRepository(db)
+	repo.SetCanonicalMutator(mutator)
+
+	const hash = "8d1f0d6c4b9a4f7e8c2a1b3d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f"
+	if err := repo.UpdateDriveDelivery(context.Background(), hash, "drive-1", "https://drive.example/1", "https://download.example/1", "ready"); err != nil {
+		t.Fatalf("UpdateDriveDelivery: %v", err)
+	}
+	if mutator.deliveryAssetID != hash {
+		t.Fatalf("delivery asset id = %q, want %q", mutator.deliveryAssetID, hash)
+	}
+	if mutator.delivery.DriveFileID != "drive-1" || mutator.delivery.DriveLink != "https://drive.example/1" || mutator.delivery.DownloadLink != "https://download.example/1" || mutator.delivery.Status != "ready" {
+		t.Fatalf("delivery = %+v", mutator.delivery)
+	}
+	assertNoSQLiteMediaRows(t, db)
+}
+
+func TestUpdateDriveDeliveryFailureUsesMetadataPatchWithoutSQLiteRead(t *testing.T) {
+	db := testDB(t)
+	mutator := &recordingImageAssetMutator{}
+	repo := NewImagesRepository(db)
+	repo.SetCanonicalMutator(mutator)
+
+	const hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := repo.UpdateDriveDelivery(context.Background(), hash, "", "", "", "delivery_failed: upload boom"); err != nil {
+		t.Fatalf("UpdateDriveDelivery failure path: %v", err)
+	}
+	if mutator.patch.AssetID != hash || mutator.patch.MetadataPatchJSON == nil {
+		t.Fatalf("patch = %+v, want canonical hash metadata patch", mutator.patch)
+	}
+	if mutator.patch.DriveFileID != nil || mutator.patch.DriveLink != nil || mutator.patch.DownloadLink != nil {
+		t.Fatalf("failure path must preserve the durable Drive identity, patch = %+v", mutator.patch)
+	}
+	assertNoSQLiteMediaRows(t, db)
+}
+
+func TestUpdateEmbeddingStatusUsesCanonicalHashWithoutSQLiteRead(t *testing.T) {
+	db := testDB(t)
+	mutator := &recordingImageAssetMutator{}
+	repo := NewImagesRepository(db)
+	repo.SetCanonicalMutator(mutator)
+
+	const hash = "11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff"
+	if err := repo.UpdateEmbeddingStatus(context.Background(), hash, "indexed"); err != nil {
+		t.Fatalf("UpdateEmbeddingStatus: %v", err)
+	}
+	if mutator.patch.AssetID != hash || mutator.patch.MetadataJSON != nil || mutator.patch.MetadataPatchJSON == nil {
+		t.Fatalf("patch = %+v, want canonical hash metadata patch", mutator.patch)
+	}
+	assertNoSQLiteMediaRows(t, db)
+}
+
+func TestUpdateEmbeddingDataUsesAssetIDWithoutSQLiteRead(t *testing.T) {
+	db := testDB(t)
+	mutator := &recordingImageAssetMutator{}
+	repo := NewImagesRepository(db)
+	repo.SetCanonicalMutator(mutator)
+
+	const assetID = "asset-1"
+	const embedding = `[0.1,0.2]`
+	if err := repo.UpdateEmbeddingData(context.Background(), assetID, embedding, "indexed"); err != nil {
+		t.Fatalf("UpdateEmbeddingData: %v", err)
+	}
+	if mutator.patch.AssetID != assetID || mutator.patch.MetadataPatchJSON == nil || mutator.patch.EmbeddingJSON == nil || *mutator.patch.EmbeddingJSON != embedding {
+		t.Fatalf("patch = %+v, want asset id, metadata patch and embedding", mutator.patch)
+	}
+	assertNoSQLiteMediaRows(t, db)
+}
+
+type stubMediaImageReader struct {
+	byHash  *detail.ImageAsset
+	byID    *detail.ImageAsset
+	byDrive *detail.ImageAsset
+}
+
+func (s *stubMediaImageReader) GetImageByHash(context.Context, string) (*detail.ImageAsset, error) {
+	return s.byHash, nil
+}
+
+func (s *stubMediaImageReader) GetImageByID(context.Context, string) (*detail.ImageAsset, error) {
+	return s.byID, nil
+}
+
+func (s *stubMediaImageReader) GetImageByDriveFileID(context.Context, string) (*detail.ImageAsset, error) {
+	return s.byDrive, nil
+}
+
+// TestImageIdentityLookupsUsePostgresReaderWithEmptySQLite pins the dedup
+// fix: hash/id/Drive identity lookups must resolve the PostgreSQL media SSOT
+// without requiring a SQLite media_assets row. The in-memory database is
+// intentionally empty; a lookup that still reads it returns nothing.
+func TestImageIdentityLookupsUsePostgresReaderWithEmptySQLite(t *testing.T) {
+	db := testDB(t)
+	repo := NewImagesRepository(db)
+	repo.SetMediaReader(&stubMediaImageReader{
+		byHash:  &detail.ImageAsset{Hash: "pg-hash"},
+		byID:    &detail.ImageAsset{Hash: "pg-id"},
+		byDrive: &detail.ImageAsset{Hash: "pg-drive"},
+	})
+	ctx := context.Background()
+
+	byHash, err := repo.GetImageByHash(ctx, "pg-hash")
+	if err != nil || byHash == nil || byHash.Hash != "pg-hash" {
+		t.Fatalf("GetImageByHash = %+v, %v; want pg-hash from media reader", byHash, err)
+	}
+	byID, err := repo.GetByID(ctx, "asset-1")
+	if err != nil || byID == nil || byID.Hash != "pg-id" {
+		t.Fatalf("GetByID = %+v, %v; want pg-id from media reader", byID, err)
+	}
+	byDrive, err := repo.GetByDriveFileID(ctx, "drive-1")
+	if err != nil || byDrive == nil || byDrive.Hash != "pg-drive" {
+		t.Fatalf("GetByDriveFileID = %+v, %v; want pg-drive from media reader", byDrive, err)
+	}
+	assertNoSQLiteMediaRows(t, db)
 }

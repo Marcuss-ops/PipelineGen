@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=cpCIFXfBVu0",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "06:03",
+      "end": "06:37",
+      "name": "Benavidez: Canelo è andato via prima del mio match",
+      "category": "boxing_interview",
+      "source_title": "David Benavidez MOCKS Canelo For Leaving Arena, Slams Zuffa Title, Wants Bivol Next",
+      "source_channel": "The Ariel Helwani Show",
+      "summary": "Benavidez racconta che Canelo ha lasciato l’arena prima del suo main event contro Zurdo Ramirez; secondo lui è la prova che lo evita, in mezzo alla rivalità messicano/messicano-americano.",
+      "topics": [
+        "Benavidez Canelo left arena before fight scared Zurdo"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

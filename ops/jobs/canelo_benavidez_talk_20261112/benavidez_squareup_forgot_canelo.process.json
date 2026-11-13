@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=WzAcgCkdKrA",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "06:23",
+      "end": "07:01",
+      "name": "Benavidez: ho dimenticato Canelo, non è l’unico",
+      "category": "boxing_interview",
+      "source_title": "DAVID BENAVIDEZ: New Face of Boxing, Zurdo & Canelo | Square Up with Andre Berto",
+      "source_channel": "Square Up with Andre Berto",
+      "summary": "Benavidez conferma di aver messo da parte il fight con Canelo: non pensa che accadrà, e intanto punta agli altri grandi nomi e a costruirsi un nome ancora più grande.",
+      "topics": [
+        "Benavidez forgot Canelo not only fighter big names path"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

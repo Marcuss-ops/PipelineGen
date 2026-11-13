@@ -4427,6 +4427,23 @@
           "data_area_fill_rise",
           "data_chart_focus_pulse"
         ]
+      },
+      {
+        "id": "text_3d_v1",
+        "name": "Text 3D",
+        "description": "Yaw, pitch e roll: testi 3D animati nello spazio con camera prospettica.",
+        "motion_ids": [
+          "text_3d_camera_push",
+          "text_3d_double_axis_reveal",
+          "text_3d_orbit_lock",
+          "text_3d_perspective_drop",
+          "text_3d_pitch_lift",
+          "text_3d_roll_depth",
+          "text_3d_tilt_rise",
+          "text_3d_word_cascade",
+          "text_3d_yaw_flip_in",
+          "text_3d_yaw_sweep"
+        ]
       }
     ]
   },

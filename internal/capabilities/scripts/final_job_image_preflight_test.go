@@ -102,17 +102,18 @@ func TestFinalJobImagePreflight_NoImagesPlannedPasses(t *testing.T) {
 	}
 }
 
-func TestFinalJobImagePreflight_PartialUnverifiedStaysFailOpen(t *testing.T) {
-	// One of two promised cards is verified: the documented fail-open policy
-	// (one invalid binding keeps its card text-only) must keep the run going.
+func TestFinalJobImagePreflight_PartialUnverifiedFailsClosed(t *testing.T) {
+	// One of two promised cards is verified. A partial miss is still a silent
+	// visual loss: the delivered video would carry one text-only card while
+	// claiming the image contract was satisfied.
 	localPath, localSHA := preflightPNGFile(t)
 	items := []capmodel.OverlayItem{
 		imagePreflightItem("img-1", "entity_image", localSHA, ""),
 		imagePreflightItem("img-2", "entity_image", "", ""),
 	}
 	items[0].AssetRefs[0].LocalPath = localPath
-	if err := finalJobImagePreflight(items, nil, false); err != nil {
-		t.Fatalf("partial image miss must stay fail-open, got: %v", err)
+	if err := finalJobImagePreflight(items, nil, false); err == nil {
+		t.Fatal("partial image miss must fail closed")
 	}
 }
 
@@ -183,6 +184,10 @@ func TestFinalJobEntityImageGateRejectsPartialCoverage(t *testing.T) {
 	if err := finalJobEntityImageGate(audit, true); err != nil {
 		t.Fatalf("fully bound audit must pass: %v", err)
 	}
+	zeroAudit := &OverlayAudit{EntityImages: &OverlayAuditEntityImages{Selected: 0}}
+	if err := finalJobEntityImageGate(zeroAudit, true); err == nil {
+		t.Fatal("requested images with zero selected entity occurrences must fail closed (0/0 is not a pass)")
+	}
 	audit.EntityImages.Missing = 1
 	audit.EntityImages.Bound = 2
 	audit.EntityImages.Reasons = map[string]int{
@@ -215,6 +220,12 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 	if !finalJobImageRequested(zeroBudget) {
 		t.Fatal("zero image budget with the images category enabled is still an image request")
 	}
+	entitySurfaceOnly := req
+	entitySurfaceOnly.MaxImageOverlays = 0
+	entitySurfaceOnly.OverlayCategories = nil
+	if !finalJobImageRequested(entitySurfaceOnly) {
+		t.Fatal("an enabled entity-image extraction surface is an image request without a second overlay toggle")
+	}
 	zeroBudget.OverlayCategories[scriptpkg.OverlayCategoryImages] = scriptpkg.ToggleDisabled
 	if finalJobImageRequested(zeroBudget) {
 		t.Fatal("an explicit images=disabled category must not arm the preflight")
@@ -223,6 +234,12 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 	groupDisabled.OverlayGroupLimits = map[string]int{overlayGroupImages: 0}
 	if finalJobImageRequested(groupDisabled) {
 		t.Fatal("overlay_group_limits.images=0 disables the group and must not arm the preflight")
+	}
+	entityOnly := GenerateRequest{}
+	entityOnly.MediaPlan.ProviderPolicy.InternetImages = media.MediaToggleEnabled
+	entityOnly.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{Enabled: true, EntityTypes: []string{"PERSON"}}
+	if !finalJobImageRequested(entityOnly) {
+		t.Fatal("an explicit entity_images request must arm the preflight without a second overlay toggle")
 	}
 	// The same payload with the legacy toggle absent must still reach the
 	// preflight with zero planned images: that is the fail-closed path.
@@ -236,7 +253,6 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 		name string
 		mute func(*GenerateRequest)
 	}{
-		{name: "no image budget and no category", mute: func(r *GenerateRequest) { r.MaxImageOverlays = 0 }},
 		{name: "images category disabled", mute: func(r *GenerateRequest) {
 			r.OverlayCategories = map[scriptpkg.OverlayCategory]scriptpkg.Toggle{
 				scriptpkg.OverlayCategoryImages: scriptpkg.ToggleDisabled,
@@ -246,6 +262,7 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 			r.MediaPlan.ProviderPolicy.InternetImages = media.MediaToggleDisabled
 		}},
 		{name: "no identity surface", mute: func(r *GenerateRequest) {
+			r.MaxImageOverlays = 0
 			r.MediaPlan.Extraction.Include = []string{media.ExtractionIncludeLocations}
 		}},
 	}

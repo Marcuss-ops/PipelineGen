@@ -71,6 +71,12 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *Databases, lo
 	assetsStore := imagesregistry.NewAssetStoreSQLite(dbs.DualPool.Writer, log)
 	assetsSvc := detail.NewService(assetsStore, log)
 	imageRepo := imagesrepo.NewImagesRepository(dbs.DualPool.Writer)
+	if len(mediaPostgres) > 0 && mediaPostgres[0] != nil {
+		// Identity/dedup reads must resolve the PostgreSQL media SSOT: the
+		// canonical image commit lives there, and the SQLite operational copy
+		// no longer receives every image row.
+		imageRepo.SetMediaReader(pgmedia.NewImageReader(mediaPostgres[0]))
+	}
 	voiceoverRepo := imagesregistry.NewVoiceoversRepository(dbs.DualPool.Writer)
 	monitorsRepo := monitors.NewMonitorsRepository(dbs.DualPool.Writer)
 	clipsRepo := imagesregistry.NewClipsRepositoryCanonical(dbs.DualPool.Writer, log, assetsSvc.Repository())

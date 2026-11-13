@@ -20,10 +20,10 @@ const (
 	// may widen the provider scope.
 	ImageSearchModeExplicitOnly string = "explicit_only"
 	// ImageSearchModeAutomatic derives queries from entity/scene extraction
-	// and ignores caller-provided searches.
+	// and keeps caller-provided context searches as a separate lane.
 	ImageSearchModeAutomatic string = "automatic"
-	// ImageSearchModeExplicitThenFallback prefers explicit queries and
-	// derives automatic ones only when the caller supplied none.
+	// ImageSearchModeExplicitThenFallback derives entity/context queries while
+	// preserving caller-provided context searches in parallel.
 	ImageSearchModeExplicitThenFallback string = "explicit_then_fallback"
 	// ImageSearchModeDisabled performs no image search at all.
 	ImageSearchModeDisabled string = "disabled"
@@ -207,11 +207,10 @@ type MediaExtractionPolicy struct {
 	ImportantPhrases            []string `json:"important_phrases,omitempty"`
 	MaxImportantWordsPerSegment int      `json:"max_important_words_per_segment,omitempty"`
 	MaxImageQueriesPerSegment   int      `json:"max_image_queries_per_segment,omitempty"`
-	// ImageSearchMode is the retrieval authority for still images. Empty
-	// preserves the historical behavior; explicit_only makes caller queries
-	// exclusive, automatic ignores caller queries, explicit_then_fallback
-	// derives only when no explicit query exists, and disabled performs no
-	// image search.
+	// ImageSearchMode controls still-image retrieval. Empty preserves the
+	// historical behavior; explicit_only makes caller queries exclusive;
+	// automatic and explicit_then_fallback keep context queries beside
+	// entity-derived searches; disabled performs no image search.
 	ImageSearchMode string            `json:"image_search_mode,omitempty"`
 	Strategy        string            `json:"strategy,omitempty"`
 	EntityImages    EntityImagePolicy `json:"entity_images,omitempty"`

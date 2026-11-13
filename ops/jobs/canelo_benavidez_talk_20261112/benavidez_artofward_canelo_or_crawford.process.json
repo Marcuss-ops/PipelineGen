@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=oRM53PP7eXU",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "48:13",
+      "end": "49:05",
+      "name": "Benavidez: dammi Canelo o Crawford",
+      "category": "boxing_interview",
+      "source_title": "David Benavidez: The Emotional Road to Facing Morell & Will He Get Canelo? | THE ART OF WARD",
+      "source_channel": "ALL THE SMOKE FIGHT",
+      "summary": "Alla domanda su un possibile Crawford-Canelo, Benavidez dice che se non arriva Canelo gli vanno bene quelle due sfide: Canelo-Benavidez o Canelo-Crawford, una delle due.",
+      "topics": [
+        "Benavidez Canelo Crawford give me one two fights"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

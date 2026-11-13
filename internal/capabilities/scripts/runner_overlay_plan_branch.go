@@ -46,6 +46,7 @@ import (
 )
 
 func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string, req GenerateRequest, jobID string, result *GenerateResult) error {
+	result.OverlayImages = append([]scriptpkg.OverlayImageAsset(nil), req.OverlayImages...)
 	reportTimingSkip := func(skip timingProjectionSkip) {
 		observability.ScriptTimingProjectionSkipTotal.WithLabelValues(skip.SceneID, skip.Surface).Inc()
 		r.log.Warn("voiceover timing projection skipped an unanchored surface",
@@ -67,6 +68,9 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas := r.overlayCanvas
 	canvas.ForegroundScalePercent = req.Render.ForegroundScalePercent
 	canvas.Background = overlayBackgroundFromPayload(background)
+	canvas.RequireEntityImages = finalJobImageRequested(req) && req.MediaPlan.Extraction.EntityImages.Enabled
+	canvas.EntityImagesRequireDrive = canvas.RequireEntityImages && req.MediaPlan.Extraction.EntityImages.UploadToDrive
+	canvas.RequiredEntityTypes = append([]string(nil), req.MediaPlan.Extraction.EntityImages.EntityTypes...)
 	// The final job composites this plan onto the source video and encodes it
 	// opaque (H.264/yuv420p, no audio), so that is the profile the artifact
 	// will be certified against — declared HERE, with the other output-shape
@@ -135,10 +139,12 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	if !r.shouldGeocodeScriptLocations(req) {
 		plates = nil
 	}
-	imageProviderEnabled := req.MediaPlan.ProviderPolicy.InternetImages.AsBool() || req.MediaPlan.ProviderPolicy.ImageGeneration.AsBool()
+	// Context stills are rendered from already-bound assets (including local,
+	// offline-verified manifest pins); image-provider policy controls discovery,
+	// not whether those available bytes may appear in the overlay plan.
 	// Context stills and identity portraits are separate overlay lanes. The
 	// shared run image budget and content-hash dedupe prevent duplicate bytes.
-	genericSceneImagesEnabled := req.MaxImageOverlays > 0 && imageProviderEnabled
+	genericSceneImagesEnabled := req.MaxImageOverlays > 0
 	r.log.Info("runner: overlay canvas motion inputs",
 		zap.String("run_id", runID),
 		zap.String("phrase_motion_family", canvas.PhraseMotionFamily),

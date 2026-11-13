@@ -9,15 +9,9 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 source "$DIR/scripts/lib/dotenv.sh"
 load_dotenv_missing "$DIR/.env"
 
-# Max-throughput overlay (TICKET-MAX-THROUGHPUT-OVERLAY-ARCHITECTURE): enable
-# the per-scene split render gate and fill the worker's 3 GPU lanes
-# (gpu_lanes=3; GPU admission stays the throughput authority). A 30-10
-# canary with 6 submission workers raised lane utilization from ~53-56% to
-# 73,5% but did not beat the certified rate median within variance (86,11 /
-# 73,18 vs 77,32 item/min), so the default stays 3. Default-only so an
-# explicit caller env wins.
-export OVERLAY_RENDER_PER_SCENE="${OVERLAY_RENDER_PER_SCENE:-enabled}"
-export OVERLAY_RENDER_PER_SCENE_WORKERS="${OVERLAY_RENDER_PER_SCENE_WORKERS:-3}"
+# Local overlay rendering is per-item only. The former per-scene split was
+# removed with the whole-timeline canvas path; no local run may encode a
+# scene or master timeline.
 # Language submit-barrier (TICKET-OVERLAY-QUEUE-OVERLAP): the render fork
 # submits the frozen language plans from the P1 plan branch while the master
 # audio compile is still running, instead of only after the OnPlanReady

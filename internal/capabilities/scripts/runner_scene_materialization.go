@@ -298,7 +298,7 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 	// media contract without requiring narration text.
 	if req.Intro != nil {
 		if !req.Intro.NormalizedPlayback().Valid() {
-			return nil, fmt.Errorf("intro.playback must use audio_mode=original_clip with a valid source window")
+			return nil, fmt.Errorf("intro.playback must use audio_mode=original_clip or silence with a valid source window")
 		}
 		ids := req.Intro.NormalizedClipIDs()
 		if len(ids) == 0 {
@@ -307,7 +307,7 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 	}
 	if req.Outro != nil {
 		if !req.Outro.NormalizedPlayback().Valid() {
-			return nil, fmt.Errorf("outro.playback must use audio_mode=original_clip with a valid source window")
+			return nil, fmt.Errorf("outro.playback must use audio_mode=original_clip or silence with a valid source window")
 		}
 		ids := req.Outro.NormalizedClipIDs()
 		if len(ids) == 0 {
@@ -385,7 +385,10 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 // projection on SpecScene; script.generate single-item jobs use this runner
 // directly and must retain the same mixed-media contract.
 func applyDurableStockBindings(req GenerateRequest, scenes []Scene) {
-	if req.MediaMode == scriptpkg.MediaModeClipOnly || len(req.StockBindings) == 0 {
+	// Overlay-only runs must not acquire or bind scene video: stock folders are
+	// base-video input, not overlay input. Leaving the scenes unbound is what
+	// keeps the two pipelines independent.
+	if req.Render.OverlaysOnly || req.MediaMode == scriptpkg.MediaModeClipOnly || len(req.StockBindings) == 0 {
 		return
 	}
 	body := make([]int, 0, len(scenes))
@@ -438,22 +441,26 @@ func fixedMediaClipProjection(ids []string, playback scriptpkg.FixedPlaybackPoli
 	var durationUS int64
 	for i, id := range ids {
 		clip := &ClipReference{ID: id}
+		windowUS := fixedPlaybackDurationUS(playback)
 		intent := capabilityaudio.AudioIntent{
 			Mode:                   capabilityaudio.AudioClip,
 			ClipAssetID:            id,
 			SourceInUS:             playback.SourceInMS * 1000,
-			SourceDurationUS:       fixedPlaybackDurationUS(playback),
+			SourceDurationUS:       windowUS,
 			TimelineOffsetUS:       durationUS,
-			UseOriginalAudio:       true,
-			ProtectedOriginalAudio: true,
+			UseOriginalAudio:       playback.AudioMode == scriptpkg.FixedPlaybackOriginalClip,
+			ProtectedOriginalAudio: playback.AudioMode == scriptpkg.FixedPlaybackOriginalClip,
 		}
-		if intent.SourceDurationUS > 0 {
-			intent.TimelineDurationUS = intent.SourceDurationUS
-			clip.SourceInMS = playback.SourceInMS
-			clip.SourceOutMS = playback.SourceOutMS
-			durationUS += intent.SourceDurationUS
+		if playback.AudioMode == scriptpkg.FixedPlaybackSilence {
+			intent = capabilityaudio.AudioIntent{Mode: capabilityaudio.AudioSilence, TimelineOffsetUS: durationUS, TimelineDurationUS: windowUS}
 		}
-		if i == 0 {
+		if windowUS > 0 {
+			intent.TimelineDurationUS = windowUS
+			durationUS += windowUS
+		}
+		clip.SourceInMS = playback.SourceInMS
+		clip.SourceOutMS = playback.SourceOutMS
+		if i == 0 && playback.AudioMode == scriptpkg.FixedPlaybackOriginalClip {
 			clip.AudioAssetID = id
 		}
 		clips = append(clips, clip)

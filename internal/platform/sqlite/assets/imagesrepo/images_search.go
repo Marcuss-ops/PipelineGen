@@ -18,6 +18,9 @@ import (
 // GetImageByHash recupera un'immagine tramite il suo hash.
 // FASE 1B: reads origin + provider first-class columns (migration 115).
 func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*detail.ImageAsset, error) {
+	if r.mediaReader != nil {
+		return r.mediaReader.GetImageByHash(ctx, hash)
+	}
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, content_sha256, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
@@ -31,6 +34,9 @@ func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*de
 // GetByID recupera un'immagine tramite il suo ID stringa.
 // FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*detail.ImageAsset, error) {
+	if r.mediaReader != nil {
+		return r.mediaReader.GetImageByID(ctx, fmt.Sprint(id))
+	}
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, content_sha256, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
@@ -92,6 +98,9 @@ func (r *ImagesRepository) Delete(ctx context.Context, id any) error {
 // GetByDriveFileID recupera un'immagine tramite Drive file ID.
 // FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*detail.ImageAsset, error) {
+	if r.mediaReader != nil {
+		return r.mediaReader.GetImageByDriveFileID(ctx, fileID)
+	}
 	query := `
 		SELECT id, name, url, tags, metadata_json, created_at, content_sha256, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets

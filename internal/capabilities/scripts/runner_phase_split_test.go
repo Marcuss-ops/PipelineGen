@@ -26,6 +26,10 @@ type sleepingRenderEnqueuer struct {
 	calls int
 }
 
+func (e *sleepingRenderEnqueuer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	return e.EnqueueChrononPlan(ctx, plan)
+}
+
 func (e *sleepingRenderEnqueuer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	e.calls++
 	if e.delay > 0 {
@@ -178,6 +182,10 @@ type barrierOverlayRenderer struct {
 	started, release, drained chan struct{}
 	err                       error
 	calls                     atomic.Int32
+}
+
+func (r *barrierOverlayRenderer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	return r.EnqueueChrononPlan(ctx, plan)
 }
 
 func (r *barrierOverlayRenderer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {

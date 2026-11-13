@@ -52,6 +52,9 @@ type GenerateResult struct {
 	// enrichment results. Each entry preserves insights.entities for legacy
 	// consumers; it is never a second extraction source.
 	Segments []scriptpkg.VidRushSegmentResult `json:"segments,omitempty"`
+	// OverlayImages are explicit local still assets bound to overlay scenes;
+	// they never enter stock-video resolution or provider selection.
+	OverlayImages []scriptpkg.OverlayImageAsset `json:"overlay_images,omitempty"`
 
 	// Artifacts contains compatibility projections derived from this result.
 	Artifacts *GenerateArtifacts `json:"artifacts,omitempty"`

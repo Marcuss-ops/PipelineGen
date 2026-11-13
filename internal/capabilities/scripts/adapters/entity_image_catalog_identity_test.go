@@ -33,7 +33,7 @@ func TestPersonImageSourceNameMismatchRejectsConflictingNamedImage(t *testing.T)
 	}
 }
 
-func TestPersonImageSourceIdentityFailsClosedWithoutCanonicalProvenance(t *testing.T) {
+func TestPersonImageSourceIdentityAllowsGenericFilenameForVisualVerification(t *testing.T) {
 	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestPersonImageSourceIdentityFailsClosedWithoutCanonicalProvenance(t *testi
 		sourcePageURL string
 		wantRejected  bool
 	}{
-		{name: "generic materialized filename", sourceURL: "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg", wantRejected: true},
+		{name: "generic materialized filename", sourceURL: "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg", wantRejected: false},
 		{name: "explicitly different person", sourceURL: "https://www.aobmagazine.it/Angela-Tuccia-1.jpg", wantRejected: true},
 		{name: "double escaped canonical filename", sourceURL: "https://media.example/angela%2520taccia.jpg"},
 		{name: "canonical source page without durable image URL provenance", sourceURL: "https://cdn.example/IMG_6075.jpeg", sourcePageURL: "https://news.example/angela-taccia-avvocata-sempio"},
@@ -59,7 +59,7 @@ func TestPersonImageSourceIdentityFailsClosedWithoutCanonicalProvenance(t *testi
 	}
 }
 
-func TestEntityImageCatalogRejectsCachedGenericFilename(t *testing.T) {
+func TestEntityImageCatalogAcceptsCachedGenericFilenameWithVisualVerdict(t *testing.T) {
 	repo := newIntegrationEntityImageCatalog()
 	identity, err := entitycatalog.CanonicalizePersonName("Angela Taccia")
 	if err != nil {
@@ -83,15 +83,15 @@ func TestEntityImageCatalogRejectsCachedGenericFilename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pool.Candidates) != 0 {
-		t.Fatalf("cached generic source returned %d person image candidates, want none", len(pool.Candidates))
+	if len(pool.Candidates) != 1 {
+		t.Fatalf("cached generic source returned %d person image candidates, want 1", len(pool.Candidates))
 	}
 	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("catalog rows=%d err=%v, want original candidate retained", len(rows), err)
 	}
-	if rows[0].SemanticStatus != entitycatalog.CandidateSemanticRejected || !strings.Contains(rows[0].QualityReason, "does not establish canonical PERSON identity") {
-		t.Fatalf("cached candidate verdict = %q / %q, want persisted provenance rejection", rows[0].SemanticStatus, rows[0].QualityReason)
+	if rows[0].SemanticStatus != entitycatalog.CandidateSemanticAccepted {
+		t.Fatalf("cached candidate verdict = %q, want the visual acceptance preserved", rows[0].SemanticStatus)
 	}
 }
 

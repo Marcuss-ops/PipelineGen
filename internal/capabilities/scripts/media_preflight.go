@@ -207,7 +207,7 @@ func RunMediaPreflight(ctx context.Context, in MediaPreflightInput) PreflightRes
 		if !section.Playback.Valid() {
 			failures = append(failures, PreflightFailure{
 				Category: "fixed_media", AssetID: name,
-				Detail: "playback must use audio_mode=original_clip with a valid source window",
+				Detail: "playback must use audio_mode=original_clip or silence with a valid source window",
 			})
 		}
 	}

@@ -182,6 +182,31 @@ func TestApplyEditingAssetPolicyFillsOverlayBackground(t *testing.T) {
 	}
 }
 
+// TestApplyEditingAssetPolicySelectsChannelBackgroundForOverlay pins the
+// regression where a crime documentary received a random boxing plate because
+// the overlay fill ignored the channel. Final-job overlays are opaque replace
+// windows, so the plate must still be present and must be the channel plate.
+func TestApplyEditingAssetPolicySelectsChannelBackgroundForOverlay(t *testing.T) {
+	policy := mediaregistry.DefaultEditingAssetsPolicy()
+	req := combinedTimelineRequest("crime-overlay")
+	req.ChannelID = "crime"
+	req.Render.Enabled = true
+	req.Render.Background = &scriptpkg.VideoBackgroundSpec{Mode: "none"}
+	if err := ApplyEditingAssetPolicy(&req, policy); err != nil {
+		t.Fatalf("ApplyEditingAssetPolicy: %v", err)
+	}
+	bg := req.OverlayBackground
+	if bg == nil {
+		t.Fatal("overlay background was not selected")
+	}
+	if bg.Kind != overlayBackgroundPlateKind || bg.AssetID != "drive-background-crime" || !bg.Loop {
+		t.Fatalf("overlay background = %+v, want the crime channel plate", bg)
+	}
+	if req.Render.Background == nil || req.Render.Background.Mode != "none" {
+		t.Fatalf("explicit render background changed: %+v", req.Render.Background)
+	}
+}
+
 // TestApplyEditingAssetPolicyOverlayBackgroundIsGatedOnRender is the guardrail
 // that keeps the fill from being a back door: the overlay pipeline compiles a
 // plan as soon as OverlayBackground is non-nil, so a job that never asked for a

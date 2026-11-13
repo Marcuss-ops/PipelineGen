@@ -30,7 +30,13 @@ func (r *Runner) runExecutionPhases(ctx context.Context, runID string, req Gener
 	// join lives at the first stock consumer (sceneTextReady) with an
 	// explicit budget; this defer only drains the tail without blocking the
 	// critical path indefinitely.
-	e.stockPrefetchDone = r.startStockPrefetch(ctx, req.StockBindings)
+	//
+	// An overlay-only run never consumes a scene clip: its deliverable is the
+	// overlay artifacts. Warming stock would download and cut base-video input
+	// the run must not render, so the prefetch is not started at all.
+	if !req.Render.OverlaysOnly {
+		e.stockPrefetchDone = r.startStockPrefetch(ctx, req.StockBindings)
+	}
 	defer func() {
 		done := e.stockPrefetchDone
 		e.stockPrefetchDone = nil

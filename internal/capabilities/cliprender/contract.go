@@ -458,6 +458,13 @@ func resolveAssemblyContract(req *RenderRequest, c kernelmedia.AssemblyMediaCont
 		resolved.Height = req.Output.Height
 		resolved.FPS = kernelmedia.FrameRate{Num: req.Output.FPSNum, Den: req.Output.FPSDen}
 	}
+	// copy_if_compatible copies the source audio stream verbatim (this lane has
+	// no audio transcode), so the certified bitrate is the source's, not the
+	// contract's. Pinning 128k rejected every clip whose source carried a
+	// higher-bitrate AAC track after the render had already succeeded.
+	if req != nil && req.Audio != nil && req.Audio.Mode == AudioModeCopyIfCompatible {
+		resolved.AudioBitrate = ""
+	}
 	return resolved, nil
 }
 
@@ -472,7 +479,15 @@ func validateRequestedFPS(contract kernelmedia.AssemblyMediaContract, req *Rende
 }
 
 func resolveVeloxAssemblyReadyV1(req *RenderRequest) (*ResolvedContract, error) {
-	return resolveAssemblyContract(req, kernelmedia.DefaultAssemblyMediaContract())
+	c := kernelmedia.DefaultAssemblyMediaContract()
+	// V1 is the frozen assembly lane: 1920x1080@24/1. A request that asks for
+	// another frame rate cannot be honoured by the contract, so it must fail at
+	// resolve time instead of rendering 25 fps bytes that the canonical emission
+	// gate then rejects after the GPU work is already spent.
+	if err := validateRequestedFPS(c, req); err != nil {
+		return nil, err
+	}
+	return resolveAssemblyContract(req, c)
 }
 
 func resolveVeloxAssemblyReadyV2(req *RenderRequest) (*ResolvedContract, error) {

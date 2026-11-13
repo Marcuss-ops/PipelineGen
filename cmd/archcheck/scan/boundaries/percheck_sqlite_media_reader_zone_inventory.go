@@ -151,7 +151,6 @@ var sqliteMediaReaderInventoriedZoneFiles = map[string]bool{
 	"internal/platform/sqlite/assets/imagesregistry/store_helpers.go":            true,
 	"internal/platform/sqlite/assets/imagesrepo/images_aggregate.go":             true,
 	"internal/platform/sqlite/assets/imagesrepo/images_generated.go":             true,
-	"internal/platform/sqlite/assets/imagesrepo/images_insert_update.go":         true,
 	"internal/platform/sqlite/assets/imagesrepo/images_search.go":                true,
 	"internal/platform/sqlite/controlplane/verifier.go":                          true,
 	"internal/platform/sqlite/deletion/stuck_row_scanner.go":                     true,

@@ -40,7 +40,13 @@ func PrepareCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInpu
 // combined render set.
 func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInput) []capmodel.OverlayItem {
 	MoveImagesAsideForOverlappingDateCards(items, input.Width)
-	items = capmodel.CoalesceChainedOverlays(items, input.AnimationCounts)
+	sceneEnds := make(map[string]int64, len(input.Scenes))
+	for _, scene := range input.Scenes {
+		if scene.EndUS > 0 {
+			sceneEnds[scene.ID] = scene.EndUS
+		}
+	}
+	items = capmodel.CoalesceChainedOverlaysWithSceneEnds(items, input.AnimationCounts, sceneEnds)
 	return items
 }
 

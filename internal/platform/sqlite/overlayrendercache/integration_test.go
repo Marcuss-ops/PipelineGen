@@ -107,7 +107,7 @@ func TestConsecutiveRunsReuseTheRealSQLiteCache(t *testing.T) {
 	}}
 	ctx := context.Background()
 
-	first, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlan(ctx, integrationPlan("CIAO MONDO"))
+	first, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlanItems(ctx, integrationPlan("CIAO MONDO"))
 	if err != nil {
 		t.Fatalf("first run: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestConsecutiveRunsReuseTheRealSQLiteCache(t *testing.T) {
 
 	// A NEW enqueuer instance: the next run must consult the durable index,
 	// not in-memory state.
-	second, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlan(ctx, integrationPlan("CIAO MONDO"))
+	second, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlanItems(ctx, integrationPlan("CIAO MONDO"))
 	if err != nil {
 		t.Fatalf("second run: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestConsecutiveRunsReuseTheRealSQLiteCache(t *testing.T) {
 	}
 
 	// Content is the key: different text is a different render.
-	third, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlan(ctx, integrationPlan("TESTO DIVERSO"))
+	third, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlanItems(ctx, integrationPlan("TESTO DIVERSO"))
 	if err != nil {
 		t.Fatalf("third run: %v", err)
 	}
@@ -181,11 +181,11 @@ func TestKillSwitchBypassesTheRealSQLiteCache(t *testing.T) {
 	plan := integrationPlan("CIAO MONDO")
 
 	t.Setenv(scriptgen.OverlayRenderCacheKillSwitch, "1")
-	if _, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlan(ctx, plan); err != nil {
+	if _, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlanItems(ctx, plan); err != nil {
 		t.Fatalf("enabled run: %v", err)
 	}
 	t.Setenv(scriptgen.OverlayRenderCacheKillSwitch, "0")
-	if _, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlan(ctx, plan); err != nil {
+	if _, err := newIntegrationEnqueuer(t, client, cache).EnqueueChrononPlanItems(ctx, plan); err != nil {
 		t.Fatalf("disabled run: %v", err)
 	}
 	if client.submitCount() != 2 {

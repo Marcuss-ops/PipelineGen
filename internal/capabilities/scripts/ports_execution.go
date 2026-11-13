@@ -41,10 +41,13 @@ type OverlayPrepareEnqueuer interface {
 }
 
 // OverlayRenderEnqueuer submits the timing-frozen OverlayPlan to
-// RenderingGen and returns the certified Chronon artifact. Prepare is
+// RenderingGen and returns the certified per-item artifacts. Prepare is
 // fire-and-forget; render is allowed only after canonical timing exists.
+//
+// The whole-timeline and per-scene canvas submissions were removed: local
+// rendering only produces independent overlay item clips.
 type OverlayRenderEnqueuer interface {
-	EnqueueChrononPlan(context.Context, capmodel.OverlayPlan) (RenderReference, error)
+	EnqueueChrononPlanItems(context.Context, capmodel.OverlayPlan) (RenderReference, error)
 }
 
 // LocalizedRenderInput is one ready-to-render localized unit: a scene whose

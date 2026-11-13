@@ -28,7 +28,9 @@ func TestFindLocalizedEntitySpanRequiresBoundaryForSingleLetterNameToken(t *test
 // carries the canonical word-level timing artifact (100ms per
 // whitespace-delimited word) so the runner can project the entity timeline
 // from REAL word boundaries.
-type entityTimelineVoiceoverGenerator struct{}
+type entityTimelineVoiceoverGenerator struct {
+	tailUS int64
+}
 
 func (g *entityTimelineVoiceoverGenerator) Generate(_ context.Context, input VoiceoverInput) (AudioReference, error) {
 	words := strings.Fields(input.Text)
@@ -41,11 +43,12 @@ func (g *entityTimelineVoiceoverGenerator) Generate(_ context.Context, input Voi
 			EndUS:   int64(i+1) * 100_000,
 		}
 	}
+	durationUS := int64(len(words))*100_000 + g.tailUS
 	return AudioReference{
 		ID:       "vo-" + input.SceneID + "-en",
 		URL:      "https://drive.google.com/file/d/vo-" + input.SceneID + "-en",
 		FilePath: "/tmp/vo-" + input.SceneID + "-en.mp3",
-		Duration: float64(len(words)) * 0.1,
+		Duration: float64(durationUS) / 1_000_000,
 		Timing: &capabilityaudio.SpeechTimingArtifact{
 			Version:      capabilityaudio.SpeechTimingVersion,
 			Provider:     "edge_tts",
@@ -53,7 +56,7 @@ func (g *entityTimelineVoiceoverGenerator) Generate(_ context.Context, input Voi
 			Language:     string(input.Language),
 			TextSHA256:   "text-hash-" + input.SceneID,
 			AudioSHA256:  "audio-hash-" + input.SceneID,
-			DurationUS:   int64(len(words)) * 100_000,
+			DurationUS:   durationUS,
 			Words:        boundaries,
 		},
 	}, nil

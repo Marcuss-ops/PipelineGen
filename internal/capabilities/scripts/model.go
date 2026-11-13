@@ -77,6 +77,7 @@ type GenerateRequest struct {
 	RandomLightLeakOnOverlayStart bool                                           `json:"random_light_leak_on_overlay_start,omitempty"`
 	RandomImageEffects            bool                                           `json:"random_image_effects,omitempty"`
 	OverlayCategories             map[scriptpkg.OverlayCategory]scriptpkg.Toggle `json:"overlay_categories,omitempty"`
+	OverlayImages                 []scriptpkg.OverlayImageAsset                  `json:"overlay_images,omitempty"`
 	MapType                       string                                         `json:"map_type,omitempty"`
 	MapCameraAnimation            string                                         `json:"map_camera_animation,omitempty"`
 	MapLabelAnimation             string                                         `json:"map_label_animation,omitempty"`

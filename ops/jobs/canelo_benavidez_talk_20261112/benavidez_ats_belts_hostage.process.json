@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=HEgWHvnzfCY",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "27:03",
+      "end": "28:23",
+      "name": "Benavidez: Canelo tiene in ostaggio le cinture",
+      "category": "boxing_interview",
+      "source_title": "David Benavidez Speaks Out On Canelo Snub, Upcoming Fight & Strong Family Bond | ATS Fight",
+      "source_channel": "ALL THE SMOKE FIGHT",
+      "summary": "Benavidez dice di rispettare Canelo come uno dei migliori messicani, ma che il rifiuto di affrontarlo è un modo per tenere in ostaggio le cinture e scegliere gli avversari; chiede perché le sanzioni lo permettano.",
+      "topics": [
+        "Benavidez Canelo holding belts hostage sanctioning bodies respect"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

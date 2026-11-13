@@ -124,9 +124,6 @@ func finalJobImageRequested(req GenerateRequest) bool {
 	if !req.MediaPlan.ProviderPolicy.InternetImages.AsBool() {
 		return false
 	}
-	if !req.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
-		return false
-	}
 	// Present 0 disables the group in the payload contract. Temporal absence
 	// is not a budget mismatch; the zero value keeps the certified default.
 	if limit, ok := req.OverlayGroupLimits[overlayGroupImages]; ok && limit == 0 {
@@ -138,7 +135,12 @@ func finalJobImageRequested(req GenerateRequest) bool {
 	if hasCategory && toggle == scriptpkg.ToggleDisabled {
 		return false
 	}
-	if req.MaxImageOverlays > 0 {
+	// Any explicit entity-image request is an image contract by itself. Do not
+	// make it depend on a second, unrelated overlay budget/category toggle.
+	if req.MediaPlan.Extraction.EntityImages.Enabled || req.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+		return true
+	}
+	if req.MaxImageOverlays > 0 || req.GenerateSceneImages == scriptpkg.ToggleEnabled {
 		return true
 	}
 	// Zero is the certified default (capabilityoverlay.MaxImageOverlaysPerRun,
@@ -158,11 +160,17 @@ func finalJobImageRequested(req GenerateRequest) bool {
 // ship text-only cards for some of its selected entities. Partial coverage is
 // the r20minuti failure mode that a zero-image check alone cannot see.
 func finalJobEntityImageGate(audit *OverlayAudit, imageRequested bool) error {
-	if !imageRequested || audit == nil || audit.EntityImages == nil {
+	if !imageRequested {
 		return nil
 	}
+	if audit == nil || audit.EntityImages == nil {
+		return fmt.Errorf("final_job preflight: entity images were requested but no entity-image audit was produced")
+	}
 	info := audit.EntityImages
-	if info.Selected == 0 || info.Missing == 0 {
+	if info.Selected == 0 {
+		return fmt.Errorf("final_job preflight: entity images were requested but the audit selected zero entity-image occurrences; refusing a false 0/0 pass")
+	}
+	if info.Missing == 0 {
 		return nil
 	}
 	reasons := make([]string, 0, len(info.Reasons))
@@ -180,7 +188,8 @@ func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]
 	expected, unverified := 0, 0
 	firstUnverified := ""
 	for _, item := range items {
-		if item.Kind != string(capmodel.KindEntityImage) {
+		kind := strings.ToLower(strings.TrimSpace(item.Kind))
+		if !strings.Contains(kind, "image") && len(item.ImageLayers) == 0 {
 			continue
 		}
 		if _, dropped := clipScenes[strings.TrimSpace(item.SceneID)]; dropped {
@@ -200,11 +209,12 @@ func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]
 		}
 		return nil
 	}
-	// Fail closed on the TOTAL class only. A partial miss is the documented
-	// fail-open policy (one invalid binding keeps its card text-only); the
-	// stronger content validation above must not turn that into a run failure.
-	if unverified == expected {
-		return fmt.Errorf("final_job preflight: %d of %d selected image overlays failed download/content/hash/image validation; first invalid overlay %q; predicted silent visual loss; refusing to count unverified photo coverage", unverified, expected, firstUnverified)
+	// A promised image that is not verified is a silent visual loss whether it
+	// is the only one or one of many. Fail closed on ANY unverified image when
+	// the job requested images; the old total-only check let a 9/10 coverage
+	// pass as if the missing portrait had been rendered.
+	if unverified > 0 {
+		return fmt.Errorf("final_job preflight: %d of %d selected image overlays failed download/content/hash/image validation; first invalid overlay %q; predicted silent visual loss; refusing to ship unverified promised images", unverified, expected, firstUnverified)
 	}
 	return nil
 }

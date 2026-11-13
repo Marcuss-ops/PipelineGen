@@ -66,6 +66,41 @@ func TestGroupNearbyEntities_DuoImages(t *testing.T) {
 	}
 }
 
+func TestWireMultiEntityAddsSequenceCameraForMultiImageGroups(t *testing.T) {
+	group := MultiEntityGroup{
+		GroupID: "camera-group", SceneID: "scene-camera", GroupType: MultiEntityKindImage,
+		Count: 2, StartMS: 0, EndMS: 5000,
+		Items: []MultiEntityCandidate{
+			{ID: "a", SceneID: "scene-camera", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "a", SHA256: strings.Repeat("a", 64)}},
+			{ID: "b", SceneID: "scene-camera", Kind: MultiEntityKindImage, StartMS: 0, EndMS: 4000, AssetRef: &capmodel.OverlayAssetRef{AssetID: "b", SHA256: strings.Repeat("b", 64)}},
+		},
+	}
+	items, err := WireMultiEntityOverlays(group, 1280, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, item := range items {
+		if item.CameraMotionID == "" {
+			t.Fatalf("image %d lost the sequence camera", i)
+		}
+		if !AnimationSelectable(item.CameraMotionID, "entity.sequence_camera") {
+			t.Fatalf("image %d camera %q is not certified", i, item.CameraMotionID)
+		}
+	}
+
+	single := group
+	single.Items = group.Items[:1]
+	single.Count = 1
+	single.GroupID = "single-camera"
+	singleItems, err := WireMultiEntityOverlays(single, 1280, 720)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if singleItems[0].CameraMotionID != "" {
+		t.Fatalf("single image received a sequence camera: %q", singleItems[0].CameraMotionID)
+	}
+}
+
 func TestGroupNearbyEntities_TrioQuadPenta(t *testing.T) {
 	var candidates []MultiEntityCandidate
 	for i := 0; i < 5; i++ {

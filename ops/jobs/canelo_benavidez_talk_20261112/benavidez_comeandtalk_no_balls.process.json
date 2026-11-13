@@ -1,0 +1,32 @@
+{
+  "url": "https://www.youtube.com/watch?v=2HYr4Qfutvw",
+  "strategy": "verify",
+  "concurrency": 2,
+  "force_keyframes": true,
+  "keep_audio": true,
+  "write_summary": true,
+  "destination": {
+    "folder_id": "1ycvns4dxplL42rTpLR3YeLlw-Ee0pzyk",
+    "create_subfolder": false
+  },
+  "segments": [
+    {
+      "start": "00:53",
+      "end": "01:47",
+      "name": "Benavidez: Canelo non ha coraggio",
+      "category": "boxing_interview",
+      "source_title": "David Benavidez Talks Canelo, Upcoming Fight & Friendship Formed With Dame Lillard | BEST OF IIWII",
+      "source_channel": "Come And Talk 2 Me",
+      "summary": "Benavidez dice che Canelo lo evita per paura: è stato primo contendente in due categorie per anni, poi è salito di peso. Non pretende rispetto, ma il fight che tutti vogliono.",
+      "topics": [
+        "Benavidez Canelo scared no balls ducking number one contender"
+      ],
+      "tags": [
+        "Canelo Alvarez",
+        "David Benavidez",
+        "boxing",
+        "interview"
+      ]
+    }
+  ]
+}

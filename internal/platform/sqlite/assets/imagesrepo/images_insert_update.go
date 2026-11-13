@@ -118,94 +118,97 @@ func (r *ImagesRepository) UpdateDriveDelivery(ctx context.Context, hash, driveF
 	if r == nil || r.canonicalMutate == nil {
 		return fmt.Errorf("UpdateDriveDelivery: canonical asset mutator is required")
 	}
-	assetID, metadataJSON, err := r.assetIdentityByHash(ctx, hash)
+	// Canonical image ingestion commits AssetID == content hash, so the
+	// mutation identity is the hash itself. Reading media_assets first would
+	// reintroduce the PostgreSQL/SQLite split this method must not depend on.
+	assetID := strings.TrimSpace(hash)
+	statusPatch, err := imageMetadataPatch("delivery_status", status)
 	if err != nil {
-		return err
+		return fmt.Errorf("UpdateDriveDelivery: encode metadata patch: %w", err)
 	}
-	merged, err := mergeMetadataString(metadataJSON, "delivery_status", status)
-	if err != nil {
-		return fmt.Errorf("UpdateDriveDelivery: merge metadata: %w", err)
+	preserveIdentity := strings.HasPrefix(status, "delivery_failed:") && driveFileID == "" && driveLink == "" && downloadLink == ""
+	if preserveIdentity {
+		return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataPatchJSON: &statusPatch})
 	}
-	if strings.HasPrefix(status, "delivery_failed:") && driveFileID == "" && driveLink == "" && downloadLink == "" {
-		return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &merged})
+	mutation := persistence.DriveDeliveryMutation{
+		DriveFileID: driveFileID, DriveLink: driveLink, DownloadLink: downloadLink, Status: status,
+	}
+	// The canonical writer owns the atomic delivery projection (metadata merge
+	// + asset_locations). Use the asset identity carried by the outbox; the
+	// content-hash variant is only a legacy fallback.
+	if delivery, ok := r.canonicalMutate.(interface {
+		UpdateDriveDeliveryByAssetID(context.Context, string, persistence.DriveDeliveryMutation) error
+	}); ok {
+		return delivery.UpdateDriveDeliveryByAssetID(ctx, assetID, mutation)
+	}
+	if delivery, ok := r.canonicalMutate.(interface {
+		UpdateDriveDeliveryByLegacyHash(context.Context, string, persistence.DriveDeliveryMutation) error
+	}); ok {
+		return delivery.UpdateDriveDeliveryByLegacyHash(ctx, assetID, mutation)
 	}
 	if err := r.canonicalMutate.ReconcileDriveLocations(ctx, []persistence.DriveLocationPatch{{
 		AssetID: assetID, DriveFileID: driveFileID, DriveLink: driveLink, DownloadURL: downloadLink,
 	}}); err != nil {
 		return err
 	}
-	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &merged})
+	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataPatchJSON: &statusPatch})
 }
 
 func (r *ImagesRepository) UpdateImageMetadata(ctx context.Context, hash, metadataJSON string) error {
 	if r == nil || r.canonicalMutate == nil {
 		return fmt.Errorf("UpdateImageMetadata: canonical asset mutator is required")
 	}
-	assetID, _, err := r.assetIdentityByHash(ctx, hash)
-	if err != nil {
-		return err
+	// Canonical image ingestion commits AssetID == content hash. The patch is
+	// a JSON MERGE, not a snapshot replacement: concurrent enrichment writers
+	// (provenance + delivery/embedding) can no longer lose each other's keys,
+	// and no SQLite read is needed to build the merged object.
+	if strings.TrimSpace(hash) == "" {
+		return fmt.Errorf("UpdateImageMetadata: content hash is required")
 	}
-	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &metadataJSON})
+	if strings.TrimSpace(metadataJSON) == "" {
+		return fmt.Errorf("UpdateImageMetadata: metadata JSON is required")
+	}
+	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: strings.TrimSpace(hash), MetadataPatchJSON: &metadataJSON})
 }
 
 func (r *ImagesRepository) UpdateEmbeddingStatus(ctx context.Context, hash, status string) error {
 	if r == nil || r.canonicalMutate == nil {
 		return fmt.Errorf("UpdateEmbeddingStatus: canonical asset mutator is required")
 	}
-	assetID, metadataJSON, err := r.assetIdentityByHash(ctx, hash)
-	if err != nil {
-		return err
+	if strings.TrimSpace(hash) == "" {
+		return fmt.Errorf("UpdateEmbeddingStatus: content hash is required")
 	}
-	merged, err := mergeMetadataString(metadataJSON, "embedding_status", status)
+	statusPatch, err := imageMetadataPatch("embedding_status", status)
 	if err != nil {
-		return err
+		return fmt.Errorf("UpdateEmbeddingStatus: encode metadata patch: %w", err)
 	}
-	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: assetID, MetadataJSON: &merged})
+	return r.canonicalMutate.PatchAsset(ctx, persistence.AssetPatch{AssetID: strings.TrimSpace(hash), MetadataPatchJSON: &statusPatch})
 }
 
 func (r *ImagesRepository) UpdateEmbeddingData(ctx context.Context, assetID, embeddingJSON, status string) error {
 	if r == nil || r.canonicalMutate == nil {
 		return fmt.Errorf("UpdateEmbeddingData: canonical asset mutator is required")
 	}
-	var metadataJSON string
-	if err := r.db.QueryRowContext(ctx, `SELECT COALESCE(metadata_json,'{}') FROM media_assets WHERE id = ?`, assetID).Scan(&metadataJSON); err != nil {
-		return fmt.Errorf("UpdateEmbeddingData: read asset %q: %w", assetID, err)
+	if strings.TrimSpace(assetID) == "" {
+		return fmt.Errorf("UpdateEmbeddingData: asset id is required")
 	}
-	merged, err := mergeMetadataString(metadataJSON, "embedding_status", status)
+	statusPatch, err := imageMetadataPatch("embedding_status", status)
 	if err != nil {
-		return err
+		return fmt.Errorf("UpdateEmbeddingData: encode metadata patch: %w", err)
 	}
-	patch := persistence.AssetPatch{AssetID: assetID, MetadataJSON: &merged}
+	patch := persistence.AssetPatch{AssetID: strings.TrimSpace(assetID), MetadataPatchJSON: &statusPatch}
 	if embeddingJSON != "" {
 		patch.EmbeddingJSON = &embeddingJSON
 	}
 	return r.canonicalMutate.PatchAsset(ctx, patch)
 }
 
-func (r *ImagesRepository) assetIdentityByHash(ctx context.Context, hash string) (string, string, error) {
-	var assetID, metadataJSON string
-	err := r.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(metadata_json,'{}')
-		FROM media_assets
-		WHERE source='image' AND (content_sha256=? OR id=?)
-		ORDER BY CASE WHEN content_sha256=? THEN 0 ELSE 1 END
-		LIMIT 1`, hash, hash, hash).
-		Scan(&assetID, &metadataJSON)
-	if err != nil {
-		return "", "", fmt.Errorf("image asset with identity %q not found: %w", hash, err)
-	}
-	return assetID, metadataJSON, nil
-}
-
-func mergeMetadataString(raw, key string, value any) (string, error) {
-	metadata := map[string]any{}
-	if strings.TrimSpace(raw) != "" {
-		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
-			return "", err
-		}
-	}
-	metadata[key] = value
-	encoded, err := json.Marshal(metadata)
+// imageMetadataPatch encodes one key as a JSON merge patch. The canonical
+// PostgreSQL writer applies it with the jsonb || operator, so concurrent
+// enrichment writers (provenance, delivery, embedding) can never overwrite
+// each other's keys with a stale metadata snapshot.
+func imageMetadataPatch(key string, value any) (string, error) {
+	encoded, err := json.Marshal(map[string]any{key: value})
 	if err != nil {
 		return "", err
 	}

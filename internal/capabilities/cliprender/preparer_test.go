@@ -185,8 +185,8 @@ func TestPrepare_ConcurrentMaterialization(t *testing.T) {
 	}
 }
 
-// TestPrepare_TranscriptReuse verifies the reuse fast path: when a READY
-// track exists, Generate is never invoked and Reused=true is reported.
+// TestPrepare_TranscriptReuse verifies the default `auto` fast path: when a
+// READY track exists, Generate is never invoked and Reused=true is reported.
 func TestPrepare_TranscriptReuse(t *testing.T) {
 	resolver := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
 	mat := &fakeMaterializer{}
@@ -196,7 +196,7 @@ func TestPrepare_TranscriptReuse(t *testing.T) {
 	}
 	p := newTestPreparer(resolver, mat, tr)
 
-	req := baseRenderRequest() // reuse default
+	req := baseRenderRequest() // auto default, READY lookup hits
 	prepared, err := p.Prepare(context.Background(), req, "run-1")
 	if err != nil {
 		t.Fatalf("Prepare failed: %v", err)
@@ -212,9 +212,9 @@ func TestPrepare_TranscriptReuse(t *testing.T) {
 	}
 }
 
-// TestPrepare_TranscriptGenerateOnMiss verifies generation: on a reuse miss
-// the Generate port is invoked with the materialized source and the result
-// is returned.
+// TestPrepare_TranscriptGenerateOnMiss verifies explicit generation: the
+// Generate port is invoked with the materialized source and the result is
+// returned.
 func TestPrepare_TranscriptGenerateOnMiss(t *testing.T) {
 	resolver := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
 	mat := &fakeMaterializer{}
@@ -238,6 +238,63 @@ func TestPrepare_TranscriptGenerateOnMiss(t *testing.T) {
 	}
 	if prepared.Transcript == nil || prepared.Transcript.Text != "generated" {
 		t.Fatalf("expected generated transcript, got %+v", prepared.Transcript)
+	}
+}
+
+// TestPrepare_AutoGeneratesWhenLookupMisses verifies the fallback: the
+// default auto policy looks up the READY track, then generates and persists
+// the transcript when the lookup misses.
+func TestPrepare_AutoGeneratesWhenLookupMisses(t *testing.T) {
+	resolver := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
+	mat := &fakeMaterializer{}
+	tr := &fakeTranscriptResolver{
+		genResult: &TranscriptResult{AssetID: "asset-source", Language: "en", Text: "generated", Cues: []Cue{{StartMs: 0, EndMs: 500, Text: "hi"}}},
+	}
+	p := newTestPreparer(resolver, mat, tr)
+
+	req := baseRenderRequest() // auto default
+	prepared, err := p.Prepare(context.Background(), req, "run-1")
+	if err != nil {
+		t.Fatalf("Prepare failed: %v", err)
+	}
+	if tr.lookupCalls != 1 {
+		t.Fatalf("auto must perform exactly 1 READY lookup, got %d", tr.lookupCalls)
+	}
+	if len(tr.genSources) != 1 {
+		t.Fatalf("auto miss must generate exactly once, got %d", len(tr.genSources))
+	}
+	if prepared.Transcript == nil || prepared.Transcript.Text != "generated" {
+		t.Fatalf("expected generated transcript, got %+v", prepared.Transcript)
+	}
+	if prepared.Transcript.Reused {
+		t.Fatal("a generated transcript must not be marked Reused")
+	}
+}
+
+// TestPrepare_AutoReusesWhenLookupHits pins the other half of the policy:
+// auto never pays for ASR when a READY track already exists.
+func TestPrepare_AutoReusesWhenLookupHits(t *testing.T) {
+	resolver := newFakeAssetResolver(map[string]AssetRef{"asset-source": {AssetID: "asset-source"}})
+	mat := &fakeMaterializer{}
+	tr := &fakeTranscriptResolver{
+		existing:   &TranscriptResult{AssetID: "asset-source", Language: "en", Text: "existing", Reused: true},
+		existingOK: true,
+	}
+	p := newTestPreparer(resolver, mat, tr)
+
+	req := baseRenderRequest() // auto default
+	prepared, err := p.Prepare(context.Background(), req, "run-1")
+	if err != nil {
+		t.Fatalf("Prepare failed: %v", err)
+	}
+	if tr.lookupCalls != 1 {
+		t.Fatalf("auto must perform exactly 1 READY lookup, got %d", tr.lookupCalls)
+	}
+	if len(tr.genSources) != 0 {
+		t.Fatalf("auto hit must never generate, got %d Generate calls", len(tr.genSources))
+	}
+	if prepared.Transcript == nil || prepared.Transcript.Text != "existing" || !prepared.Transcript.Reused {
+		t.Fatalf("expected the reused READY transcript, got %+v", prepared.Transcript)
 	}
 }
 

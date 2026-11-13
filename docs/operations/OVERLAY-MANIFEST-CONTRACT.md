@@ -186,8 +186,11 @@ Decisioni documentate del cutover (cambiamenti rispetto al percorso per-item):
 2. **La politica di placement è a monte.** Il vecchio handoff spostava le
    phrase callout prima delle scene clip-intermediate a payload time; con il
    placement congelato nel render, la stessa regola vive in
-   `normalizeFinalJobOverlayWindows` (runner, prima del render) ed è
-   idempotente. Le immagini-scheda su quelle scene restano omesse (punto 1).
+   `FrozenFinalJobOverlayPlan` (piano finale congelato, prima dello snapshot
+   del render) ed è idempotente. La fase di render non normalizza più il piano:
+   piano persistito, input del renderer e manifest descrivono lo stesso
+   documento, legati da `OverlayPlanRenderDigest`. Le immagini-scheda su quelle
+   scene restano omesse (punto 1).
 3. **I chart group sono pre-composti per costruzione.** Card + barre vivono
    come voci dello stesso artefatto: il gate "split chart" del vecchio percorso
    («pre-compose the chart into a single certified artifact») è soddisfatto dal

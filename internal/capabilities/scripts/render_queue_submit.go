@@ -240,12 +240,12 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 		Assets:      assets,
 	}
 
-	// Content-addressed reuse: a single-item or fused-batch plan whose render
-	// identity already names a certified artifact skips submit + wait and flows
-	// through this run's publication step. A miss is the historical path.
+	// Content-addressed reuse: a single-item plan whose render identity already
+	// names a certified artifact skips submit + wait and flows through this
+	// run's publication step. A miss is the historical path.
 	var cacheKey OverlayRenderCacheKey
 	cacheable := false
-	if e.renderCache != nil && !(metadata != nil && metadata.ManifestOwnedCache) {
+	if e.renderCache != nil {
 		cacheKey, cacheable = overlayRenderCacheKeyForPlan(semanticPlan, e.renderCacheEpochValue())
 	}
 	cacheHit := false
@@ -294,9 +294,9 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 		}
 		// Store BEFORE publication: the render is already certified, and a Drive
 		// failure must not throw away the GPU work that produced it. Only a
-		// cacheable item or fused-batch plans own a key. A dynamic map fold has
-		// no semantic item after its video is installed as the background, so it
-		// is not addressable here and must not be counted as a store error.
+		// cacheable item owns a key. A dynamic map fold has no semantic item
+		// after its video is installed as the background, so it is not
+		// addressable here and must not be counted as a store error.
 		if cacheable {
 			var storeOutcome string
 			cacheTiming.store, storeOutcome = e.storeOverlayRenderCacheTimed(ctx, cacheKey, done.Artifact)

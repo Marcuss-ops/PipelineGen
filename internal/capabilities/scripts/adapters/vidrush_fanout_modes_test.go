@@ -52,15 +52,21 @@ func TestImageSearchModeExplicitOnlyIsExclusive(t *testing.T) {
 	}
 }
 
-func TestImageSearchModeAutomaticIgnoresManualPins(t *testing.T) {
-	fanout := buildVidRushFanoutPlan(imageModePlan(mediadomain.ImageSearchModeAutomatic), imageModeSegment(), &gatedImageSearcher{}, nil)
-	if len(fanout.imageQueries) == 0 {
-		t.Fatal("automatic mode must derive queries from the segment")
-	}
+func TestImageSearchModeAutomaticKeepsIdentityAndContextLanes(t *testing.T) {
+	plan := imageModePlan(mediadomain.ImageSearchModeAutomatic)
+	plan.MediaPlan.Extraction.MaxImageQueriesPerSegment = 10
+	fanout := buildVidRushFanoutPlan(plan, imageModeSegment(), &gatedImageSearcher{}, nil)
+	hasPerson, hasContext := false, false
 	for _, query := range fanout.imageQueries {
-		if query == "Alberto Stasi portrait" || query == "Garlasco piazza" {
-			t.Fatalf("automatic mode leaked a manual pin %q into %#v", query, fanout.imageQueries)
+		if query == "Alberto Stasi" {
+			hasPerson = true
 		}
+		if query == "Alberto Stasi portrait" || query == "Garlasco piazza" {
+			hasContext = true
+		}
+	}
+	if !hasPerson || !hasContext {
+		t.Fatalf("automatic queries = %#v, want both identity and caller context searches", fanout.imageQueries)
 	}
 	if !fanout.imagesEnabled {
 		t.Fatal("automatic mode with derived queries must enable image retrieval")
@@ -73,6 +79,15 @@ func TestImageSearchModeExplicitThenFallbackUsesAutomaticOnlyWhenEmpty(t *testin
 	fanout := buildVidRushFanoutPlan(plan, imageModeSegment(), &gatedImageSearcher{}, nil)
 	if len(fanout.imageQueries) == 0 {
 		t.Fatal("explicit_then_fallback with no pins must fall back to derived queries")
+	}
+}
+
+func TestImageSearchModeExplicitThenFallbackDoesNotSuppressIdentitySearch(t *testing.T) {
+	plan := imageModePlan(mediadomain.ImageSearchModeExplicitThenFallback)
+	plan.MediaPlan.Extraction.MaxImageQueriesPerSegment = 10
+	fanout := buildVidRushFanoutPlan(plan, imageModeSegment(), &gatedImageSearcher{}, nil)
+	if len(fanout.imageQueries) < 3 || fanout.imageQueries[0] != "Alberto Stasi" {
+		t.Fatalf("explicit_then_fallback queries = %#v, want identity first plus context", fanout.imageQueries)
 	}
 }
 

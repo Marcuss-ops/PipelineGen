@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
 )
 
@@ -64,11 +66,20 @@ func (s *ImageStorageService) SearchAndDownloadManyDetailedFromProvider(ctx cont
 			// candidates. The caller receives the number actually acquired.
 			continue
 		}
-		updatedJSON := detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, imgURL, string(provider), query)
-		if err := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, updatedJSON); err != nil {
-			continue
+		// Send ONLY the provenance keys: the canonical writer merges them into
+		// the stored metadata with jsonb ||, so a concurrent delivery/embedding
+		// writer cannot be overwritten by this snapshot.
+		provenancePatch := detail.AppendImageProvenance("{}", imgURL, imgURL, string(provider), query)
+		// Provenance enrichment is a secondary write. The bytes are already
+		// committed canonically under imgAsset.Hash; a failed metadata patch
+		// must not discard an otherwise verified candidate.
+		if updateErr := s.repo.UpdateImageMetadata(ctx, imgAsset.Hash, provenancePatch); updateErr != nil {
+			if s.log != nil {
+				s.log.Warn("retrieved image provenance update failed; keeping committed asset",
+					zap.String("hash", imgAsset.Hash), zap.String("source", string(provider)), zap.Error(updateErr))
+			}
 		}
-		imgAsset.MetadataJSON = updatedJSON
+		imgAsset.MetadataJSON = detail.AppendImageProvenance(imgAsset.MetadataJSON, imgURL, imgURL, string(provider), query)
 		results = append(results, &SearchResult{
 			Asset:             imgAsset,
 			CacheHit:          false,

@@ -15,19 +15,86 @@ var animationRegistryJSON []byte
 // definitions remain owned by ChrononTemplate; this registry owns selection,
 // lane, family, and renderer-admission metadata for the whole PipelineGen.
 type AnimationEntry struct {
-	ID                string         `json:"id"`
-	Families          []string       `json:"families"`
-	Lanes             []string       `json:"lanes"`
-	Status            string         `json:"status"`
-	RendererSupported bool           `json:"renderer_supported"`
-	Targets           []string       `json:"targets"`
-	WordCount         int            `json:"word_count,omitempty"`
-	Order             map[string]int `json:"order,omitempty"`
-	Random            []string       `json:"random,omitempty"`
-	BlockedLanes      []string       `json:"blocked_lanes,omitempty"`
-	Kind              string         `json:"kind,omitempty"`
-	MinPinCount       int            `json:"min_pin_count,omitempty"`
-	MaxPinCount       int            `json:"max_pin_count,omitempty"`
+	ID                    string         `json:"id"`
+	ChrononTemplateFamily string         `json:"chronontemplate_family,omitempty"`
+	Families              []string       `json:"families"`
+	Lanes                 []string       `json:"lanes"`
+	Status                string         `json:"status"`
+	RendererSupported     bool           `json:"renderer_supported"`
+	Targets               []string       `json:"targets"`
+	WordCount             int            `json:"word_count,omitempty"`
+	Order                 map[string]int `json:"order,omitempty"`
+	Random                []string       `json:"random,omitempty"`
+	BlockedLanes          []string       `json:"blocked_lanes,omitempty"`
+	Kind                  string         `json:"kind,omitempty"`
+	MinPinCount           int            `json:"min_pin_count,omitempty"`
+	MaxPinCount           int            `json:"max_pin_count,omitempty"`
+}
+
+// chrononTemplateFamilyGroups derives each target-wide selection group from the
+// canonical ChrononTemplate presentation family. The registry JSON already
+// carries chronontemplate_family on every presentation motion; deriving the
+// union here removes the second hand-maintained family list that used to make
+// entity.date/entity.metric silently narrower than the certified catalog.
+var chrononTemplateFamilyGroups = map[string][]string{
+	"date_v1":              {"entity.date"},
+	"date_didone_v1":       {"entity.date"},
+	"date_typewriter_v1":   {"entity.date"},
+	"metric_v1":            {"entity.metric"},
+	"metric_didone_v1":     {"entity.metric"},
+	"metric_typewriter_v1": {"entity.metric"},
+}
+
+// automaticFamilyGroups derives the wider automatic pools from the authored
+// family tags. These are selection groups, not authoring provenance: keeping
+// them here means the caption and image-recipe pools cannot drift from the
+// family data that owns the motions.
+var automaticFamilyGroups = map[string][]string{
+	"authored.entity_caption_v1":    {"entity.caption"},
+	"authored.trump_entity_text_v1": {"entity.caption"},
+	"authored.image_premium_v1":     {"image.recipe"},
+	"authored.brush_v1":             {"image.recipe"},
+	"authored.web":                  {"image.recipe"},
+	"authored.web_rect_v1":          {"image.recipe"},
+	"authored.paint_v1":             {"image.recipe"},
+}
+
+// automaticFamilyGroupExclusions keeps recipe motions that need a precondition
+// (a caption or multiple image layers) out of the single-image automatic pool.
+// They remain explicit-only, because selecting them without that precondition
+// would fail closed in RenderingGen.
+var automaticFamilyGroupExclusions = map[string]map[string]struct{}{
+	"image.recipe": {
+		"image_caption_frame_combo": {},
+		"image_stack_focus":         {},
+	},
+}
+
+// retiredAutomaticMotions are certified motions that RenderingGen removed from
+// its automatic picker because another motion performs the same visual move or
+// the recipe draws no promised shape. They stay explicit-only; the producer
+// filters them from every automatic caption rotation.
+var retiredAutomaticMotions = map[string]struct{}{
+	"entity_yaw_caption":         {},
+	"entity_parallax_caption":    {},
+	"entity_name_underline":      {},
+	"entity_name_pill":           {},
+	"entity_border_then_caption": {},
+	"entity_glow_focus":          {},
+	"entity_focus_frame":         {}, "text_depth_in": {},
+	"text_fade_up":         {},
+	"text_word_stagger":    {},
+	"text_yaw_in":          {},
+	"trump_entity_text_01": {},
+	"trump_entity_text_02": {},
+	"trump_entity_text_03": {},
+	"trump_entity_text_05": {}, "trump_entity_text_06": {},
+	"trump_entity_text_07": {},
+	"trump_entity_text_08": {},
+	"trump_entity_text_11": {},
+	"trump_entity_text_13": {},
+	"trump_entity_text_14": {},
+	"trump_entity_text_15": {},
 }
 
 // ItemMotionGroupRule is one ordered rule of the number-kind mapping: the first
@@ -113,6 +180,21 @@ func loadAnimationRegistry(raw []byte) (*AnimationRegistry, error) {
 		}
 		if e.Status == "active" && len(e.Families) == 0 {
 			return nil, fmt.Errorf("animation registry: active entry %q has no family", e.ID)
+		}
+		for _, group := range chrononTemplateFamilyGroups[e.ChrononTemplateFamily] {
+			if !containsMotion(e.Families, group) {
+				e.Families = append(e.Families, group)
+			}
+		}
+		for _, source := range append([]string(nil), e.Families...) {
+			for _, group := range automaticFamilyGroups[source] {
+				if _, excluded := automaticFamilyGroupExclusions[group][e.ID]; excluded {
+					continue
+				}
+				if !containsMotion(e.Families, group) {
+					e.Families = append(e.Families, group)
+				}
+			}
 		}
 		r.byID[e.ID] = e
 		if e.Status != "active" || !e.RendererSupported {
@@ -413,6 +495,22 @@ func (r *AnimationRegistry) SupportsMapType(mapType string) bool {
 	return ok
 }
 
+// AutomaticallySelectable reports whether a certified motion may be chosen by
+// a generated plan without an explicit request. Retired-automatic motions stay
+// fully resolvable for saved plans and channel overrides.
+func (r *AnimationRegistry) AutomaticallySelectable(id string) bool {
+	if r == nil {
+		return false
+	}
+	id = strings.TrimSpace(id)
+	entry, ok := r.byID[id]
+	if !ok || entry.Status != "active" || !entry.RendererSupported {
+		return false
+	}
+	_, retired := retiredAutomaticMotions[id]
+	return !retired
+}
+
 func (r *AnimationRegistry) IsRetired(id string) bool {
 	e, ok := r.byID[id]
 	return ok && e.Status == "retired"
@@ -460,100 +558,6 @@ func (r *AnimationRegistry) MapCompositionEligible(pinCount int) []string {
 	}
 	return out
 }
-
-// AnimationCandidates is the package-level read-only projection used by
-// planners and render adapters. All animation groups query this same registry.
-func AnimationCandidates(group string) []string {
-	return canonicalAnimationRegistry.Candidates(group)
-}
-
-func AnimationSelectable(id, group string) bool {
-	return canonicalAnimationRegistry.Selectable(id, group)
-}
-
-func AnimationRendererSupported(id string) bool {
-	return canonicalAnimationRegistry.RendererSupported(id)
-}
-
-func AnimationRandomCandidates(group string) []string {
-	return canonicalAnimationRegistry.RandomCandidates(group)
-}
-
-func AnimationIsRetired(id string) bool { return canonicalAnimationRegistry.IsRetired(id) }
-
-func RetiredAnimationCandidates(group string) []string {
-	return canonicalAnimationRegistry.RetiredCandidates(group)
-}
-
-// AnimationEntryFamilies returns the registry families of one animation id.
-// The second result is false when the id is unknown to the registry.
-func AnimationEntryFamilies(id string) ([]string, bool) {
-	return canonicalAnimationRegistry.FamiliesOf(id)
-}
-
-func AnimationWordCount(id string) (int, bool) { return canonicalAnimationRegistry.WordCount(id) }
-
-func AnimationLaneCompatible(id, lane string) bool {
-	return canonicalAnimationRegistry.LaneCompatible(id, lane)
-}
-
-func AnimationTargetCandidates(target string) []string {
-	return canonicalAnimationRegistry.TargetCandidates(target)
-}
-
-func AnimationSupportsTarget(id, target string) bool {
-	return canonicalAnimationRegistry.SupportsTarget(id, target)
-}
-
-func AnimationMapTypeBasemap(mapType string) (string, bool) {
-	return canonicalAnimationRegistry.MapTypeBasemap(mapType)
-}
-
-func AnimationRegistryMapTypeDefault() string {
-	if canonicalAnimationRegistry == nil {
-		return ""
-	}
-	return canonicalAnimationRegistry.mapTypeDefault
-}
-
-func AnimationSupportsMapType(mapType string) bool {
-	return canonicalAnimationRegistry.SupportsMapType(mapType)
-}
-
-func AnimationMapCompositionCandidates(pinCount int) []string {
-	return canonicalAnimationRegistry.MapCompositionEligible(pinCount)
-}
-
-// ItemMotionGroups is the package-level projection of the registry-owned
-// overlay-kind → motion-group mapping.
-func ItemMotionGroups(kind string) []string {
-	return canonicalAnimationRegistry.ItemMotionGroups(kind)
-}
-
-func ItemDefaultMotionGroups() []string {
-	return canonicalAnimationRegistry.ItemDefaultMotionGroups()
-}
-
-func ItemNumberMotionGroups(template string) []string {
-	return canonicalAnimationRegistry.ItemNumberMotionGroups(template)
-}
-
-func ItemChartGroups() []string {
-	return canonicalAnimationRegistry.ItemChartGroups()
-}
-
-func ItemChartParams() []string {
-	return canonicalAnimationRegistry.ItemChartParams()
-}
-
-// VisualIntents is the package-level projection of the registry-owned
-// semantic-type → visual-intent table.
-func VisualIntents() map[string]VisualIntentSpec {
-	return canonicalAnimationRegistry.VisualIntents()
-}
-
-// Canonical returns the process-wide registry loaded from the embedded JSON.
-func Canonical() *AnimationRegistry { return canonicalAnimationRegistry }
 
 // Entries returns every registry entry (active and retired) in document order.
 func (r *AnimationRegistry) Entries() []AnimationEntry {

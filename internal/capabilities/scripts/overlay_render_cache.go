@@ -1,7 +1,7 @@
 package scriptgeneration
 
 // overlay_render_cache.go owns the CONTENT-ADDRESSED reuse contract for
-// per-item clips and fused batch compositions.
+// per-item overlay clips.
 //
 // A certified overlay clip is fully determined by its RenderKey (item content:
 // template, text, params, asset digests, timing, canvas) plus the plan-level
@@ -158,7 +158,7 @@ func overlayRenderCacheEpochFromIdentity(identity buildinfo.Identity) string {
 }
 
 // overlayRenderCacheKeyForPlan derives a content-addressed cache identity for
-// both individual items and fused compositions. A batch key includes every
+// per-item overlay clips. A cache key includes every
 // ordered item identity/render key plus the shared plan context, so a cached
 // composition can never satisfy a different grouping or z-order.
 func overlayRenderCacheKeyForPlan(plan capmodel.OverlayPlan, epoch string) (OverlayRenderCacheKey, bool) {

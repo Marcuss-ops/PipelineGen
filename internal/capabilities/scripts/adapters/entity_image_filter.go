@@ -83,21 +83,15 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 	return true, semanticScore, technicalScore, reason
 }
 
-// personImageSourceIdentityFailure fails closed unless the durable image URL
-// or persisted editorial source page carries the full canonical name. Search
-// query/entity fields are not provenance: providers and cache adapters may
-// copy them from the requested query even when the returned image is unrelated.
-func personImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL string) string {
-	if mismatch := personImageSourceNameMismatch(canonicalName, sourceURL); mismatch != "" {
-		return mismatch
-	}
-	if sourcePathHasCanonicalPersonName(canonicalName, sourceURL) {
-		return ""
-	}
-	if sourcePageURL != "" && sourcePathHasCanonicalPersonName(canonicalName, sourcePageURL) {
-		return ""
-	}
-	return fmt.Sprintf("image source URL does not establish canonical PERSON identity %q", canonicalName)
+// personImageSourceIdentityFailure rejects only a high-confidence provenance
+// conflict: an image filename that explicitly names the requested person with
+// a different surname (for example Angela-Tuccia for Angela Taccia). A generic
+// editorial filename (IMG_6075.jpeg) is NOT proof of a wrong identity — the
+// pixel/visual verifier owns that decision. Requiring the canonical name in
+// every URL made the catalog drop valid portraits before the VLM could see
+// them, which is the Kaufmann zero-image failure mode.
+func personImageSourceIdentityFailure(canonicalName, sourceURL, _ string) string {
+	return personImageSourceNameMismatch(canonicalName, sourceURL)
 }
 
 func sourcePathHasCanonicalPersonName(canonicalName, source string) bool {
@@ -242,26 +236,31 @@ func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult
 
 func personCatalogIdentityForQuery(spec scriptpkg.SpecSceneOutput, idx sceneIdentityIndex, segment scriptpkg.VidRushSegmentResult, query string) (entitycatalog.PersonIdentity, bool, error) {
 	best := idx.sceneFor(segment)
-	if best == -1 || best >= len(spec.Scenes) || spec.Scenes[best].Annotations == nil {
-		return entitycatalog.PersonIdentity{}, false, nil
-	}
 	query = strings.TrimSpace(query)
-	for _, entity := range spec.Scenes[best].Annotations.PrimaryEntities {
-		if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson {
-			continue
+	if best >= 0 && best < len(spec.Scenes) && spec.Scenes[best].Annotations != nil {
+		for _, entity := range spec.Scenes[best].Annotations.PrimaryEntities {
+			if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson {
+				continue
+			}
+			name := strings.TrimSpace(entity.CanonicalName)
+			if name == "" {
+				name = strings.TrimSpace(entity.Text)
+			}
+			if name == "" || (normalizeEntityMatch(name) != normalizeEntityMatch(query) && normalizeEntityMatch(entity.Text) != normalizeEntityMatch(query)) {
+				continue
+			}
+			identity, err := entitycatalog.CanonicalizePersonIdentity(name, entity.CanonicalEntityID)
+			if err != nil {
+				return entitycatalog.PersonIdentity{}, false, err
+			}
+			return identity, true, nil
 		}
-		name := strings.TrimSpace(entity.CanonicalName)
-		if name == "" {
-			name = strings.TrimSpace(entity.Text)
-		}
-		if name == "" || (normalizeEntityMatch(name) != normalizeEntityMatch(query) && normalizeEntityMatch(entity.Text) != normalizeEntityMatch(query)) {
-			continue
-		}
-		identity, err := entitycatalog.CanonicalizePersonIdentity(name, entity.CanonicalEntityID)
-		if err != nil {
-			return entitycatalog.PersonIdentity{}, false, err
-		}
-		return identity, true, nil
 	}
-	return entitycatalog.PersonIdentity{}, false, nil
+	// The media stage can run before the semantic annotations are projected
+	// onto SpecScene. The same PERSON is already present in segment.Insights
+	// (it is what produced the image query), so use it as the identity source
+	// instead of silently downgrading the query to a non-catalog search. This
+	// is the Kaufmann r15 gap: 28 provider candidates were found, but the
+	// query was not catalog-eligible and the durable pool stayed empty.
+	return personCatalogIdentityForSegmentQuery(segment, query)
 }

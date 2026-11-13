@@ -97,6 +97,12 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 	if resolver == nil || len(candidates) == 0 {
 		return nil
 	}
+	// A street name is ambiguous without a city: "via Pascoli" geocoded to
+	// Treviso while the same scene explicitly named Garlasco and Pavia. When
+	// the scene also contains an administrative place, never let the street
+	// win the single-map plate (or a pin) over the town/province. A street-only
+	// scene keeps its street map because there is no better candidate.
+	candidates = preferAdministrativeMapCandidates(candidates)
 	// A generated map is limited to one plate for this run. Use repeated,
 	// grounded mentions as a relevance signal so a secondary place named once
 	// (for example, the city where a document is held) cannot displace the
@@ -205,6 +211,42 @@ func mapPlansForScene(resolver PlateResolver, candidates []MapCandidate, canvasW
 		plans = append(plans, MapPlan{Plate: plate, Place: place})
 	}
 	return plans
+}
+
+func preferAdministrativeMapCandidates(candidates []MapCandidate) []MapCandidate {
+	if len(candidates) < 2 {
+		return candidates
+	}
+	hasAdministrative := false
+	for _, candidate := range candidates {
+		if !isStreetLevelMapLabel(candidate.Label) {
+			hasAdministrative = true
+			break
+		}
+	}
+	if !hasAdministrative {
+		return candidates
+	}
+	filtered := make([]MapCandidate, 0, len(candidates))
+	for _, candidate := range candidates {
+		if !isStreetLevelMapLabel(candidate.Label) {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+func isStreetLevelMapLabel(label string) bool {
+	fields := strings.Fields(strings.ToLower(strings.TrimSpace(label)))
+	if len(fields) == 0 {
+		return false
+	}
+	switch fields[0] {
+	case "via", "viale", "piazza", "strada", "corso", "vicolo", "largo", "lungomare", "rotonda", "traversa":
+		return true
+	default:
+		return false
+	}
 }
 
 func mapCandidateTrace(candidates []MapCandidate) []string {

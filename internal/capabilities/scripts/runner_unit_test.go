@@ -102,6 +102,24 @@ func TestApplyDurableStockBindingsPreservesMixedClipOwnership(t *testing.T) {
 	}
 }
 
+func TestApplyDurableStockBindingsSkipsOverlayOnlyRuns(t *testing.T) {
+	req := GenerateRequest{
+		MediaMode: scriptpkg.MediaModeMixed,
+		Render:    scriptpkg.VideoRenderSpec{OverlaysOnly: true},
+		StockBindings: []scriptpkg.StockBindingInput{{
+			Index: 0, SceneID: "scene-0", FolderID: "folder-1", StartMs: 0, EndMs: 5000,
+		}},
+	}
+	scenes := []Scene{{ID: "scene-0"}}
+	applyDurableStockBindings(req, scenes)
+	if scenes[0].Stock != nil {
+		t.Fatalf("overlay-only run must not bind scene stock: %#v", scenes[0].Stock)
+	}
+	if scenes[0].DurationMS != 0 || scenes[0].DurationUS != 0 {
+		t.Fatalf("overlay-only run must not adopt the stock window as duration: %dms/%dus", scenes[0].DurationMS, scenes[0].DurationUS)
+	}
+}
+
 func TestContainsAny(t *testing.T) {
 	assert.True(t, containsAny("hello world", "world"))
 	assert.True(t, containsAny("timeout error", "timeout", "deadline"))

@@ -14,6 +14,7 @@
 package cliprender
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -52,14 +53,15 @@ const (
 	// Background asset KINDS live in background.go — the single owner of the
 	// media-family decision.
 
-	// Transcript policies. clip.render is a RENDER step: the canonical
-	// transcript must already exist, so `reuse` is the default and a missing
-	// READY track FAILS CLOSED. `generate` remains only as an explicit manual
-	// repair request; there is no implicit ASR inside a render.
+	// Transcript policies. `auto` is the default: reuse a READY canonical
+	// text track, and generate + persist one only when the lookup misses
+	// (intro clips often have no track yet). `reuse` is the strict,
+	// deterministic lane: no ASR, missing READY fails closed. `generate`
+	// forces a fresh ASR pass and skips the lookup.
 	//
-	// The legacy `reuse_or_generate` mode was DELETED in the 2026-09-13
-	// clip.render audit (P1): an ASR miss could silently turn a 5s render into
-	// a 20-40s one, which made the render path non-deterministic.
+	// The old `reuse_or_generate` name was retired; `auto` is the explicit
+	// policy and its fallback is bounded by the same ASR path/timeout.
+	TranscriptModeAuto     = "auto"
 	TranscriptModeReuse    = "reuse"
 	TranscriptModeGenerate = "generate"
 
@@ -178,7 +180,7 @@ func (r *RenderRequest) Normalize() {
 		r.Transcript = &TranscriptSpec{}
 	}
 	if r.Transcript.Mode == "" {
-		r.Transcript.Mode = TranscriptModeReuse
+		r.Transcript.Mode = TranscriptModeAuto
 	}
 	if r.Transcript.Language == "" {
 		r.Transcript.Language = DefaultLanguage
@@ -311,9 +313,9 @@ func (r *RenderRequest) Validate() error {
 	}
 
 	switch r.Transcript.Mode {
-	case TranscriptModeReuse, TranscriptModeGenerate:
+	case TranscriptModeAuto, TranscriptModeReuse, TranscriptModeGenerate:
 	default:
-		return fmt.Errorf("%w: transcript.mode must be one of reuse, generate (got %q)", ErrInvalidRequest, r.Transcript.Mode)
+		return fmt.Errorf("%w: transcript.mode must be one of auto, reuse, generate (got %q)", ErrInvalidRequest, r.Transcript.Mode)
 	}
 	if r.Transcript.Language == "" {
 		return fmt.Errorf("%w: transcript.language is required (default en)", ErrInvalidRequest)
@@ -385,6 +387,15 @@ func (r *RenderRequest) Validate() error {
 		if overlay.StartUS < 0 || overlay.EndUS <= overlay.StartUS {
 			return fmt.Errorf("%w: overlay %d requires a valid compositing window (end_us > start_us >= 0)", ErrInvalidRequest, i)
 		}
+	}
+
+	// Resolve the declared assembly contract at the request boundary. The
+	// registry is closed, and the frozen V1 lane accepts exactly 24/1: without
+	// this check an unsupported contract or a 25 fps V1 request would be
+	// accepted (202), rendered on the GPU, and only then rejected by the
+	// canonical emission gate at the end of the pipeline.
+	if _, err := NewContractResolver().Resolve(context.Background(), r); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 
 	return nil

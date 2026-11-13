@@ -13,9 +13,9 @@ import (
 // automatic-runtime subcatalogs. Pool sizes are literal drift gates because
 // they define what the planner emits across the producer→renderer boundary.
 func TestAssignEntityImageMotionsUsesCertifiedCatalog(t *testing.T) {
-	// Entity cards use the ten authored entity_card_v1 presets (see
-	// preset_selection.go); other caption families are not selected for them.
-	const wantImages, wantCaptions = 9, 10
+	// Entity cards rotate over the complete certified caption catalog: the
+	// entity_card_v1, entity_caption_v1 and trump_entity_text_v1 families.
+	const wantImages, wantCaptions = 9, 31
 
 	certified := capabilityoverlay.CertifiedEntityImageMotions()
 	captionCertified := capabilityoverlay.CertifiedEntityCaptionMotions()

@@ -136,23 +136,31 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		updated.Cache.YouTube = "BYPASSED"
 		updated.Cache.Binding = "STOCK_BOUND"
 	}
+	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.images, f.youtube)
 	// Pinned-media fast path (opt-in, see media_manifest_shim.go): a pinned
 	// segment is discovery-complete by construction, so it must return before
 	// ANY provider is scheduled (YouTube included), not merely before image
 	// search. Pins carry the durable verdicts the scorer would recompute.
+	//
+	// The pin is a CONTEXTUAL verdict, not an entity one. When a stock-bound
+	// scene explicitly requests per-scene entity images, preserve the pinned
+	// candidate and still run the identity search; returning here left every
+	// PERSON overlay with SEARCH_EMPTY while the manifest pin satisfied the
+	// scene image.
 	if pinned := f.pinnedCandidates(plan, updated); len(pinned) > 0 {
 		updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, pinned)
 		updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, pinned)
-		updated.Cache.InternetImages = MediaManifestCacheState
-		updated.Cache.InternetImagesProviderSearches = 0
-		return updated, nil
+		if !stockBoundEntityImageMaterializationEnabled(plan) || !fanoutPlan.imagesEnabled {
+			updated.Cache.InternetImages = MediaManifestCacheState
+			updated.Cache.InternetImagesProviderSearches = 0
+			return updated, nil
+		}
 	}
 
 	// Provider work is represented by a small outcome value and merged only
 	// by the caller, keeping concurrent providers away from shared state.
 
 	profile := updated.CanonicalSemanticProfile()
-	fanoutPlan := buildVidRushFanoutPlan(plan, updated, f.images, f.youtube)
 	imagesEnabled := fanoutPlan.imagesEnabled
 	youtubeEnabled := fanoutPlan.youtubeEnabled
 	outcomes := make(chan vidRushProviderOutcome, 3)

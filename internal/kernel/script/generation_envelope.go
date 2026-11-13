@@ -67,6 +67,9 @@ type GenerationItemV2 struct {
 	// OverlayCategories is the item-level default for scene category toggles.
 	// Per-segment settings inherit these values unless explicitly overridden.
 	OverlayCategories map[OverlayCategory]Toggle `json:"overlay_categories,omitempty"`
+	// OverlayImages are explicit scene-bound stills for the overlay planner;
+	// they are independent of video stock bindings and media-provider search.
+	OverlayImages []OverlayImageAsset `json:"overlay_images,omitempty"`
 
 	// ── Identity ──────────────────────────────────────────────────────
 	Title string `json:"title,omitempty"`
@@ -395,6 +398,9 @@ const (
 	// FixedPlaybackOriginalClip keeps the clip's original audio authoritative;
 	// it is never replaced by generated voiceover.
 	FixedPlaybackOriginalClip FixedPlaybackAudioMode = "original_clip"
+	// FixedPlaybackSilence keeps the fixed clip as video only. The canonical
+	// final audio mix (for example, narration) remains authoritative.
+	FixedPlaybackSilence FixedPlaybackAudioMode = "silence"
 )
 
 // FixedPlaybackPolicy is the explicit playback contract for fixed media.
@@ -427,7 +433,7 @@ func (p FixedPlaybackPolicy) Normalize() FixedPlaybackPolicy {
 // have both endpoints and a strictly positive duration.
 func (p FixedPlaybackPolicy) Valid() bool {
 	p = p.Normalize()
-	if p.AudioMode != FixedPlaybackOriginalClip || p.SourceInMS < 0 || p.SourceOutMS < 0 {
+	if (p.AudioMode != FixedPlaybackOriginalClip && p.AudioMode != FixedPlaybackSilence) || p.SourceInMS < 0 || p.SourceOutMS < 0 {
 		return false
 	}
 	if p.SourceOutMS == 0 {

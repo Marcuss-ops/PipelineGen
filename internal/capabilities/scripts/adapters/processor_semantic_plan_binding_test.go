@@ -88,3 +88,32 @@ func TestProjectEntityImageBindingsDoesNotPreserveUnhashedBinding(t *testing.T) 
 		t.Fatalf("binding = %+v, want not_found for an unhashed binding", got)
 	}
 }
+
+// TestProjectEntityImageBindingsPerSceneReusesOnePortrait pins the Kaufmann
+// failure mode: scope=per_scene must not require a distinct photograph of the
+// same person in every scene. One verified portrait is reused across
+// occurrences; the budget counts unique images, not scene count.
+func TestProjectEntityImageBindingsPerSceneReusesOnePortrait(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{
+		{ID: "scene-1", SegmentID: "scene-1", Index: 0, Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Anastasia Trofimova", Text: "Anastasia Trofimova", Type: "PERSON",
+		}}}},
+		{ID: "scene-2", SegmentID: "scene-2", Index: 1, Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{
+			CanonicalName: "Anastasia Trofimova", Text: "Anastasia Trofimova", Type: "PERSON",
+		}}}},
+	}}
+	portrait := readyEntityImageCandidate("portrait-anastasia", "Anastasia Trofimova", "Anastasia Trofimova")
+	segments := []scriptpkg.VidRushSegmentResult{
+		{SegmentID: "scene-1", SceneID: "scene-1", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{portrait}}},
+		{SegmentID: "scene-2", SceneID: "scene-2", Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{portrait}}},
+	}
+	policy := entityImagePolicyForTest()
+	policy.Scope = "per_scene"
+	out := projectEntityImageBindings(spec, segments, policy)
+	for i, scene := range out.Scenes {
+		got := scene.Annotations.PrimaryEntities[0].Image
+		if got == nil || got.Status != "resolved" || got.AssetID != "portrait-anastasia" {
+			t.Fatalf("scene %d binding = %+v, want the single verified portrait reused", i, got)
+		}
+	}
+}

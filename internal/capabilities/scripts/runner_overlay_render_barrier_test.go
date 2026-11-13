@@ -56,6 +56,10 @@ func newBarrierOverlayTestRenderer() *barrierOverlayTestRenderer {
 	}
 }
 
+func (r *barrierOverlayTestRenderer) EnqueueChrononPlanItems(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
+	return r.EnqueueChrononPlan(ctx, plan)
+}
+
 func (r *barrierOverlayTestRenderer) EnqueueChrononPlan(ctx context.Context, plan capmodel.OverlayPlan) (RenderReference, error) {
 	r.calls.Add(1)
 	r.startedOnce.Do(func() { close(r.started) })

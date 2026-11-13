@@ -23,6 +23,19 @@ func TestStyleParamsProjectsRuntimeTextAndImageValues(t *testing.T) {
 	require.Equal(t, 320, got["image_width"])
 }
 
+func TestStyleParamsProjectsPerTextCardBackground(t *testing.T) {
+	opacity, radius := 1.0, 8.0
+	got := StyleParams(&scriptpkg.OverlayStyleSpec{
+		CardBackground: &scriptpkg.OverlayCardBackgroundSpec{Color: "#000000", Opacity: &opacity, Radius: &radius, Padding: []float64{20, 12}},
+	})
+	style := got["style"].(map[string]any)
+	plate := style["background"].(map[string]any)
+	require.Equal(t, "#000000", plate["color"])
+	require.Equal(t, 1.0, plate["opacity"])
+	require.Equal(t, 8.0, plate["radius"])
+	require.Equal(t, []float64{20, 12}, plate["padding"])
+}
+
 func TestStyleParamsOmitsDisabledTextEffects(t *testing.T) {
 	zero := 0.0
 	got := StyleParams(&scriptpkg.OverlayStyleSpec{

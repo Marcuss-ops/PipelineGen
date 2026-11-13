@@ -71,14 +71,20 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 			if start < 0 {
 				continue
 			}
+			image := semanticEntityImageBinding(result.Scenes, occurrence.SceneID, entityID)
+			canonicalEntityID := semanticEntityCanonicalID(result.Scenes, occurrence.SceneID, entityID)
 			occurrenceID := ""
 			if sceneScopedImages {
 				occurrenceID = sceneScopedEntityOccurrenceID(occurrence.SceneID, entityID)
 			}
 			bundle.Entities = append(bundle.Entities, capabilityoverlay.ResolvedEntity{
-				EntityID: entityID, OccurrenceID: occurrenceID, Type: occurrence.Type, Text: text, CanonicalText: text,
+				EntityID: entityID, CanonicalEntityID: canonicalEntityID, OccurrenceID: occurrenceID, Type: occurrence.Type, Text: text, CanonicalText: text,
 				Evidence: text, Start: start, End: start + len(text), Confidence: occurrence.Confidence,
-				SceneID: occurrence.SceneID,
+				SceneID:     occurrence.SceneID,
+				ImageStatus: entityImageBindingStatus(image),
+				ImageQuery:  imageQuery(image), ImageCandidateID: imageCandidateID(image),
+				ImageSelectionReason: imageSelectionReason(image), ImageFailureReason: imageFailureReason(image),
+				ImageAssetID: imageAssetID(image), ImageSHA256: imageSHA256(image), ImageDriveFileID: imageDriveFileID(image),
 			})
 			preset := bundlePresetForType(occurrence.Type)
 			bundle.Timeline = append(bundle.Timeline, capabilityoverlay.TimelineEvent{
@@ -168,6 +174,85 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 	}
 	_ = videoID // retained in the caller's OverlayPlan identity.
 	return bundle, nil
+}
+
+func semanticEntityImageBinding(scenes []Scene, sceneID, entityID string) *scriptpkg.EntityImageBinding {
+	for _, scene := range scenes {
+		if scene.ID != sceneID || scene.Annotations == nil {
+			continue
+		}
+		entities := append(append([]scriptpkg.AnnotatedEntity(nil), scene.Annotations.PrimaryEntities...), scene.Annotations.SecondaryEntities...)
+		for _, entity := range entities {
+			if annotationStableEntityID(entity) == entityID {
+				return entity.Image
+			}
+		}
+	}
+	return nil
+}
+
+func semanticEntityCanonicalID(scenes []Scene, sceneID, entityID string) string {
+	for _, scene := range scenes {
+		if scene.ID != sceneID || scene.Annotations == nil {
+			continue
+		}
+		entities := append(append([]scriptpkg.AnnotatedEntity(nil), scene.Annotations.PrimaryEntities...), scene.Annotations.SecondaryEntities...)
+		for _, entity := range entities {
+			if annotationStableEntityID(entity) == entityID {
+				return strings.TrimSpace(entity.CanonicalEntityID)
+			}
+		}
+	}
+	return ""
+}
+
+func entityImageBindingStatus(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.Status
+}
+func imageQuery(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.Query
+}
+func imageCandidateID(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.CandidateID
+}
+func imageSelectionReason(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.SelectionReason
+}
+func imageFailureReason(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.FailureReason
+}
+func imageAssetID(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.AssetID
+}
+func imageSHA256(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.SHA256
+}
+func imageDriveFileID(binding *scriptpkg.EntityImageBinding) string {
+	if binding == nil {
+		return ""
+	}
+	return binding.DriveFileID
 }
 
 func sceneScopedEntityOccurrenceID(sceneID, entityID string) string {

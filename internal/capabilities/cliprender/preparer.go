@@ -117,9 +117,10 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 
 	watermarkEnabled := req.Watermark != nil && req.Watermark.Enabled
 	backgroundAsset := req.Background != nil && req.Background.Mode == BackgroundModeAsset
-	// Only `reuse` looks the track up. `generate` is an explicit manual repair
-	// that deliberately skips the lookup and re-runs ASR.
-	lookupTranscript := req.Transcript.Mode == TranscriptModeReuse
+	// `auto` and `reuse` look the canonical track up. `generate` is an explicit
+	// manual repair that deliberately skips the lookup and re-runs ASR.
+	lookupTranscript := req.Transcript.Mode == TranscriptModeReuse ||
+		req.Transcript.Mode == TranscriptModeAuto
 
 	var wave1 errgroup.Group
 	wave1.Go(func() error {
@@ -203,10 +204,11 @@ func (p *Preparer) Prepare(ctx context.Context, req *RenderRequest, runID string
 	sourceReady := make(chan struct{})
 	var sourceErr error
 
-	// ASR never runs implicitly inside a render: only the explicit `generate`
-	// repair request generates. (The legacy `reuse_or_generate` implicit-ASR
-	// branch was DELETED in the 2026-09-13 audit.)
-	generateTranscript := req.Transcript.Mode == TranscriptModeGenerate
+	// `generate` forces ASR; `auto` generates only when the READY lookup missed
+	// (or returned an empty track); `reuse` never generates. The fallback is
+	// explicit in the policy, not a silent upgrade of a strict reuse request.
+	generateTranscript := req.Transcript.Mode == TranscriptModeGenerate ||
+		(req.Transcript.Mode == TranscriptModeAuto && (!existingFound || existing == nil || !existing.HasText()))
 
 	var wave2 errgroup.Group
 	wave2.Go(func() error {

@@ -101,6 +101,21 @@ func TestOverlayAuditEntityImagesExplainsEveryMissingImage(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestRequestedEntityImageDenominatorComesFromEligibleDetectedEntities(t *testing.T) {
+	bundle := &capabilityoverlay.SemanticRenderBundleV1{Entities: []capabilityoverlay.ResolvedEntity{
+		auditTestEntity("Ana Rossi"), auditTestEntity("Marco Bianchi"),
+	}}
+	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{auditTestEntityCard("card-1", "scene-1", "Ana Rossi")}}
+	audit := buildOverlayAuditWithLineage(bundle, plan, nil)
+	applyRequestedEntityImageContract(audit, bundle, plan, true, false, []string{"PERSON"})
+	if audit.EntityImages == nil || !audit.EntityImages.Required || audit.EntityImages.Selected != 2 || audit.EntityImages.Missing != 2 {
+		t.Fatalf("requested person-image audit = %+v; want required denominator from both eligible entities", audit.EntityImages)
+	}
+	if audit.EntityImages.Reasons[EntityImageReasonNotSelected] != 1 {
+		t.Fatalf("unplanned eligible person reason = %+v, want entity_not_selected", audit.EntityImages.Reasons)
+	}
+}
+
 // TestFreezeOverlayIntentsReportsWhyAnIntentDidNotFreeze pins the lineage: an
 // authored intent that never became a timed item is a PROPOSAL, and the reason
 // distinguishes "the entity was never planned" from "the planner rewrote the
@@ -219,4 +234,41 @@ func TestOverlayAuditEntityImagesCountsOnlyImagePlans(t *testing.T) {
 			require.Equal(t, 0, audit.EntityImages.Missing)
 		})
 	}
+}
+
+// TestRequestedEntityImageContractSkipsUnadmittedVerifiedAssets pins the
+// boundary between media acquisition and the gate: an asset can be verified
+// while the semantic production plan deliberately did not admit that identity
+// for a card. The audit must not turn that policy decision into a missing-image
+// failure.
+func TestRequestedEntityImageContractSkipsUnadmittedVerifiedAssets(t *testing.T) {
+	audit := &OverlayAudit{DetectedEntities: []OverlayAuditEntity{{
+		ID: "ent-italia", Type: "PERSON", Text: "Italia", CanonicalText: "Italia",
+		SelectedForVideo: true, ImageStatus: "verified_asset_not_planned",
+	}}}
+	applyRequestedEntityImageContract(audit, nil, nil, true, true, []string{"PERSON"},
+		map[string]struct{}{"anastasia trofimova": {}})
+
+	require.NotNil(t, audit.EntityImages)
+	require.False(t, audit.DetectedEntities[0].ImageRequired)
+	require.Equal(t, 0, audit.EntityImages.Selected)
+	require.Equal(t, 0, audit.EntityImages.Missing)
+}
+
+// TestRequestedEntityImageContractStillAuditsPlannedUnadmittedImage proves the
+// filter only removes identities that never entered the plan. Once an image
+// item exists, the Drive contract is audited even if the identity was not
+// admitted: the plan already promised those bytes.
+func TestRequestedEntityImageContractStillAuditsPlannedUnadmittedImage(t *testing.T) {
+	audit := &OverlayAudit{DetectedEntities: []OverlayAuditEntity{{
+		ID: "ent-italia", Type: "PERSON", Text: "Italia", CanonicalText: "Italia",
+		SelectedForVideo: true, ImageStatus: "planned",
+	}}}
+	applyRequestedEntityImageContract(audit, nil, nil, true, true, []string{"PERSON"},
+		map[string]struct{}{"anastasia trofimova": {}})
+
+	require.True(t, audit.DetectedEntities[0].ImageRequired)
+	require.Equal(t, 1, audit.EntityImages.Selected)
+	require.Equal(t, 1, audit.EntityImages.Missing)
+	require.Equal(t, EntityImageReasonUploadFailed, audit.EntityImages.MissingEntities[0].Reason)
 }

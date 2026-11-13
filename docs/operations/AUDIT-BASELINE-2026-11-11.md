@@ -340,3 +340,151 @@ are not a substitute for those actions.
 - **History rewrite** for large historical blobs remains a separate coordinated
   operation; the current remediation removed 259 MP4 files from the indexed
   tree with a SHA manifest, without rewriting Git history.
+
+## 10. Reachability closeout — 2026-11-12 (second pass)
+
+Status: **every locally reachable gate is green; the remaining checklist items
+need an operator, a product decision, or a tool that is not installed on this
+host.** No remote CI mutation, branch-protection change, credential operation,
+history rewrite, bulk deletion or fabricated delivery was performed.
+
+### 10.1 Identities at re-verification
+
+| Repository | HEAD | Dirty paths |
+| --- | --- | ---: |
+| PipelineGen (`refactored`) | `dc354ab22b2b46d74b97b23d9433fdc4b567da0d` | 7 (three corrected docs, audit, overlay model, migration 291 and its test) |
+| RenderingGen | `0b659e87a646426cd8ee0cde76b1ebdc2bdb407d` | 8 (six generated demo logs, worker drain change and test) |
+| Chronon3d | `0ac4ef26a6e97e067b5f9a2f8e9b3a98601e3e7c` | 16 (worktree) |
+| Monorepo | `a043a2b55a74ee9b86a0975a742ff23b0eb6ba41` | 56 (submodule gitlinks, retention policy/tool and ops artifacts) |
+
+Toolchain observed: Go `1.26.10` resolved through the module's `toolchain`
+directive, ffprobe/ffmpeg `7.0.2`, 62 GiB free (80% used), GPU devices
+`/dev/dri/card0`, `card1`, `renderD128`. `govulncheck`, `staticcheck` and
+`golangci-lint` are not installed on this host.
+
+### 10.2 Gates actually run in this pass
+
+| Repository / surface | Command | Result |
+| --- | --- | --- |
+| PipelineGen | `make verify-main` | **PASS**, exit 0 (`verify_main_exit=0`) |
+| PipelineGen | `bash scripts/tests/submit-and-poll_test.sh` | **PASS**, six transport misses recovered on the same job id; deadline exits 4 |
+| PipelineGen | `make verify-rust-contract` | **PASS**, 3 shared goldens validated |
+| PipelineGen | `make verify-rust-muscles`, `make verify-rust-fetch` | **PASS**; fetch fixture installs BrainRust v9.9.9 with ICU 72 |
+| PipelineGen | `go test ./internal/platform/sqlite -run 'TestMigrations_291\|TestMigrationHistory_OnlyTablesWithALiveClaimAreReported\|TestMigrations_DeclaredTables\|TestMigrations_Smoke_Baseline'` | **PASS**, migration 291 append-only trigger test |
+| RenderingGen | `go test ./renderinggen/cmd/renderinggen` | **PASS**, shutdown drain registration test |
+| RenderingGen | `make verify` | **PASS**, exit 0 (`verify_exit=0`) |
+| Chronon3d | `chronon3d_media_video_tests` | **PASS**, 153/153 cases, 22,232/22,232 assertions |
+| PipelineGen | shared conformance + five-image chain tests | **PASS** |
+| RenderingGen | five-image lowering + map rejection tests | **PASS** |
+| PipelineGen | four motion-catalog parity tests | **PASS** |
+| PipelineGen | explicit-pin fanout test | **PASS** |
+| PipelineGen | audio, voiceover service, atomicwrite, workerruntime, lifecycle | **PASS** |
+| RenderingGen | queue service + server (replay/dedup/artifact validation) | **PASS** |
+| RenderingGen | delivery manifest verifier tests | **PASS**, 6/6 |
+| Monorepo | `python3 ops/tools/reconcile_tickets.py --check` | **PASS**, 87 sheets |
+| Monorepo | `python3 ops/tools/retention_inventory.py --check-policy` | **PASS**, 16/16 jobs classified, 0 approved for deletion |
+| Both | `git diff --check` | clean |
+
+### 10.3 The 26-criterion checklist
+
+Statuses are `PASS` only where an executed command or an inspected artifact
+proves the criterion. `OPERATOR`, `NOT VERIFIED` and `PRODUCT DECISION` are not
+passes.
+
+| # | Criterion | Status | Evidence / remaining gap |
+| ---: | --- | --- | --- |
+| 1 | Credenziali esposte ruotate e dump bonificati | **OPERATOR** | No tracked `.env` or private key. Two ignored transcripts each contained one GitHub token; both were redacted in place on 2026-11-12 and a rescan finds zero matches. Rotation and host access-log audit remain external. |
+| 2 | CI verde e branch protection configurata | **PARTIAL** | Both local gates PASS. Remote workflows and branch protection need an admin token. |
+| 3 | Vulnerabilità e crash del linter risolti | **NOT VERIFIED** | CI pins `govulncheck v1.1.4` and `golangci-lint v2.13.2`; neither tool is installed here, so `GO-2026-6859` and SA4023 cannot be reproduced locally. |
+| 4 | Toolchain Go/Rust/ICU/ffmpeg riproducibile | **PARTIAL** | Go pinned to `1.26.10`; ffmpeg/ffprobe `7.0.2`. `verify-rust-contract` validates 3 shared goldens and `verify-rust-muscles` / `verify-rust-fetch` PASS (the fetch fixture installs ICU 72). The host still has ICU 70 and no `rustc`, so the production Rust/ICU runtime is not certified here. |
+| 5 | Preflight disco e risorse GPU verificato | **PASS** | `workerruntime` preflight tests PASS; 35 GiB free; `/dev/dri` present. |
+| 6 | Nessun composer immagini legacy con caller di produzione | **PASS** | `composeNearbyEntityImages` / `AutoImageGroups` appear only in the historical note of the corrected doc; no Go caller. |
+| 7 | Unico processo di ammissione, deduplica e quote | **PASS** | Planner/budget suites inside `make verify-main`; no second admission path added. |
+| 8 | Pin immagine esclusivi e chapter_id stabili | **PARTIAL** | `TestVidRushFanoutPlanExplicitImageQueriesAreExclusive` PASS. The tree has no separate `chapter_id` field; scene IDs are the stable join key, so a rename is a contract change, not a test fix. |
+| 9 | Golden 5 immagini → 5 segmenti → 5 motion | **PASS** | Producer and consumer tests PASS; shared fixture SHA-256 `c8b8195d…`. |
+| 10 | Schema `chain_segments` validato sui due repository | **PASS** | Byte-identical fixture validated by PipelineGen and compiled by RenderingGen; both copies hash-match. |
+| 11 | Mappe off per default e separate dalle chain miste | **PRODUCT DECISION** | Map-in-chain rejection PASS. `overlayCategoryEnabled` keeps the established default enabled when the category is omitted; turning maps off by default changes product behaviour and needs approval. |
+| 12 | Background decoder sicuro e senza workaround permanenti | **PASS** | `chronon3d_media_video_tests` 153/153, including clamp, authorized loop and `source_start` cases. |
+| 13 | Unica edit map con trasformazione applicata una volta | **PASS** | `internal/capabilities/audio` suite PASS. |
+| 14 | Test 73,3 s → 64,7 s certificato | **PASS** | `TestRemapTiming_Garlasco73_3To64_7` PASS inside the audio suite. |
+| 15 | Cache TTS versionata per provider, voce, velocità e silenzi | **PASS** | `internal/capabilities/voiceover/service` PASS (fingerprint V4). |
+| 16 | Watchdog zero frame e stale RUNNING automatico | **PASS** | Lifecycle sweeper tests PASS; queue artifact validation rejects `frame_count <= 0`. |
+| 17 | SIGTERM drain e resume automatico | **PARTIAL** | Pools drain on context cancellation, and shutdown now re-registers the full worker identity as `draining` (`TestMarkWorkerDrainingPreservesIdentity` PASS). No signal-delivery test yet proves SIGTERM interrupts an in-flight render and the same job resumes. |
+| 18 | Retry M2M e riconciliazione sul Master | **PASS** | `submit-and-poll_test.sh` injects six consecutive transport failures (curl exit 7), reports `POLLING_UNAVAILABLE`, recovers on the same job id with `POLLING_RECOVERED`, and a deadline exits 4 instead of 1. This is a replay at the script boundary; a live Master partition was not exercised. |
+| 19 | Notifiche task/attempt deduplicate | **PASS** | Queue replay/duplicate-submit tests PASS. |
+| 20 | Prepared media atomici con quarantena | **PASS** | `pkg/atomicwrite` plus enforcement/publish tests PASS. |
+| 21 | Nessun `SUCCEEDED` senza SHA, probe e frame | **PASS** | Queue artifact validation and delivery-manifest verifier reject missing/zero facts. |
+| 22 | MP4 derivati trasferiti fuori da Git | **PASS** | 259 files / 225,168,502 bytes removed from the index; 16 reviewed MP4 remain; manifest present. |
+| 23 | Dump e cache sotto retention controllata | **PASS** | Chat dumps are ignored and the two token-bearing transcripts were redacted. `retention_inventory.py` measured `ops/jobs` at 5.89 GB / 8,599 files, and 35.5 GB of regenerable TTS weights and scratch were removed. `policy.json` classifies all 16 job directories and blocks deletion; `--check-policy` PASS (16/16, 0 approved). No job was deleted: this closes control, not a deletion approval. |
+| 24 | Stato e ticket allineati e storici archiviati | **PASS** | Ticket index regenerated to 87 sheets; `--check` exit 0; stale composition docs corrected. |
+| 25 | Artefatto canonico verificato per commessa | **OPERATOR** | Garlasco r151 master was not fetched/frame-checked; Kaufmann r12 is `CANCELLED` with no artifact. |
+| 26 | Report immutabile di ogni run disponibile | **PASS** | Migration 291 adds `run_report_snapshots` plus INSERT/UPDATE triggers on `run_observability`: every `StartReport`, `SaveReport` and `RecoverAbandoned` version is copied before the live row changes. `TestMigrations_291_RunReportSnapshotsAreAppendOnly` PASS (insert captured, changed body appended, unchanged body not duplicated, snapshot UPDATE rejected). The live `report_json` remains the current projection; the snapshot table is the immutable history. |
+
+Tally: **18 PASS, 4 PARTIAL, 2 OPERATOR, 1 PRODUCT DECISION, 1 NOT VERIFIED**
+(26 total).
+
+### 10.4 Changes landed in this pass
+
+- Promoted criterion 18 to PASS after the M2M transport-failure replay, and
+  recorded the Rust contract/muscles/fetch results without promoting the ICU
+  runtime.
+- Redacted one GitHub token from each of two ignored transcripts and rescanned
+  the transcript set to zero matching secrets; rotation remains external.
+- Added shutdown drain registration to the RenderingGen worker: it re-sends the
+  full worker identity with `status=draining` on a fresh context after the pools
+  exit, with a unit test proving identity and versions are preserved.
+- Added migration 291: append-only `run_report_snapshots` fed by INSERT and
+  `report_json` UPDATE triggers, with an append-only guard and a focused test.
+- Added `ops/jobs/_retention/policy.json` and `retention_inventory.py
+  --check-policy`: every job directory must be classified, and any policy
+  entry marked `approved` fails the check unless separately reviewed.
+- Regenerated the canonical ticket index (86 → 87 sheets) and confirmed
+  `reconcile_tickets.py --check` exits 0.
+- Corrected three operations documents that still described automatic
+  entity-image grouping as a production path:
+  `docs/operations/entity-overlay-composition.md`,
+  `docs/operations/script-generate-payload-schema.md` and
+  `docs/entity-image-catalog-state-policy.md`. The corrected contract is one
+  identity per item, chains keep one segment per image, and composites exist
+  only for explicitly authored `MultiEntityGroups`.
+- Recorded this closeout in the canonical state file and linked it from
+  `docs/stato/README.md`.
+
+### 10.5 Operator-only next steps, in order
+
+1. Rotate the exposed sudo password and audit the affected host's access logs.
+   Never commit either value.
+2. Commit the two worktrees, push the remediation SHAs, rerun both CI workflows
+   on that exact commit, then enable branch protection with required checks.
+3. Install the pinned `govulncheck v1.1.4` and `golangci-lint v2.13.2`; rerun
+   both jobs. If `GO-2026-6859` persists, move the module to the patched Go
+   toolchain; reproduce SA4023 on `artifactsinfra` before changing the linter.
+4. Fetch the Garlasco r151 master by SHA-256
+   `e877d90423c0f5a6bf7fdd80964e18165386b5a7bb2d16173e5eeef52adbdfed`,
+   probe it, hash the first/middle/last frames, then issue the delivery
+   manifest. Reconcile Kaufmann r12 from `CANCELLED` or authorize a new
+   generation; do not fabricate a `SUCCEEDED` row.
+5. Deletion remains blocked by `ops/jobs/_retention/policy.json`. Approve a
+   per-job deletion only after resolving its manifest and recording the
+   approval in a new policy version; the read-only inventory is
+   `ops/tools/retention_inventory.py` and the classification is in
+   `ops/jobs/_retention/2026-11-12/REPORT.md`.
+6. Decide whether maps must be off by default. If yes, change
+   `overlayCategoryEnabled` and its tests as a product change; do not sneak it
+   into the decoder.
+7. Add a signal-delivery SIGTERM test that interrupts an in-flight render and
+   proves the same job resumes. The drain status update itself is covered.
+8. Decide whether a separate `chapter_id` belongs to the result contract. If
+   yes, add it to `ChapterManifestEntry` and the Rust consumer together; if no,
+   record scene IDs as the sole authority.
+9. Treat a Git history rewrite for the 225 MB of removed media blobs as a
+   separate coordinated operation: backup, rewrite, force-push, re-clone.
+
+### 10.6 Explicit non-claims
+
+Local green tests do not certify remote CI, branch protection, credential
+rotation, GPU delivery frames, or a history rewrite. Redacting a token from a
+local dump is not rotation: the exposed token must still be revoked. The
+retention PASS means every retained job is classified and deletion is blocked;
+it is not approval to delete. `PARTIAL`, `OPERATOR`, `PRODUCT DECISION` and
+`NOT VERIFIED` remain open; none is reported as `PASS`.

@@ -396,7 +396,12 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 			zap.String("id", rec.ID))
 		return nil, nil
 	}
-	durationMs := int64(rec.DurationSeconds * 1000)
+	var meta map[string]any
+	metaErr := error(nil)
+	if rec.Metadata != "" {
+		metaErr = json.Unmarshal([]byte(rec.Metadata), &meta)
+	}
+	durationMs := voiceoverCacheDurationMs(rec.DurationSeconds, meta)
 	if durationMs <= 0 {
 		// Older or interrupted TTS runs can leave a reusable status with a
 		// zero-duration projection. Returning that row makes script generation
@@ -433,13 +438,12 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 		return nil, nil
 	}
 
-	var meta map[string]any
 	if timingRequired {
-		if err := json.Unmarshal([]byte(rec.Metadata), &meta); err != nil || timingArtifactSource(meta) == "" {
+		if metaErr != nil || timingArtifactSource(meta) == "" {
 			a.log.Debug("voiceover cache: fingerprint match but timing not hydrated",
 				zap.String("fingerprint", fingerprint),
 				zap.String("id", rec.ID),
-				zap.Bool("meta_parse_ok", err == nil))
+				zap.Bool("meta_parse_ok", metaErr == nil))
 			return nil, nil
 		}
 	}
@@ -459,13 +463,8 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 
 	// Extract cleaned_path from voiceovers metadata (not in media_assets).
 	cleanedPath := loc.LocalPath
-	if rec.Metadata != "" {
-		var meta map[string]any
-		if err := json.Unmarshal([]byte(rec.Metadata), &meta); err == nil {
-			if cp, ok := meta["cleaned_path"].(string); ok && cp != "" {
-				cleanedPath = cp
-			}
-		}
+	if cp, ok := meta["cleaned_path"].(string); ok && cp != "" {
+		cleanedPath = cp
 	}
 
 	filename := loc.Name
@@ -496,6 +495,23 @@ func (a *VoiceoverCacheAdapter) Lookup(ctx context.Context, fingerprint string, 
 		MetaJSON:      []byte(rec.Metadata),
 		Artifact:      timingArtifact,
 	}, nil
+}
+
+// voiceoverCacheDurationMs prefers the post-cleanup duration recorded in the
+// voiceovers metadata. duration_seconds is written before AudioPostProcessor
+// strips silence and can be longer than the cleaned file; trusting it made the
+// audio compiler ask the Rust worker for a source range the cleaned MP3 cannot
+// cover. The timing duration is the fallback for rows without a cleanup report.
+func voiceoverCacheDurationMs(durationSeconds float64, meta map[string]any) int64 {
+	if cleanup, ok := meta["silence_cleanup"].(map[string]any); ok {
+		if durationUS, ok := cleanup["clean_duration_us"].(float64); ok && durationUS > 0 {
+			return int64(durationUS) / 1000
+		}
+	}
+	if durationUS, ok := meta["timing_duration_us"].(float64); ok && durationUS > 0 {
+		return int64(durationUS) / 1000
+	}
+	return int64(durationSeconds * 1000)
 }
 
 func driveFileIDFromLink(raw string) (string, error) {

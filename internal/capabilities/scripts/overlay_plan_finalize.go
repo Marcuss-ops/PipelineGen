@@ -170,7 +170,8 @@ func applyOverlayStyleToItems(items []capmodel.OverlayItem, canvas OverlayCanvas
 			merged[k] = v
 		}
 		for k, v := range styleParams {
-			if isRuntimeTextStyleParam(k) && (isImageOverlayItem(items[i]) || (!isTextOverlayKind(items[i].Kind) && strings.TrimSpace(items[i].EntityCaption) == "" && items[i].Map == nil)) {
+			hasEntityCaption := strings.TrimSpace(items[i].EntityCaption) != ""
+			if isRuntimeTextStyleParam(k) && ((isImageOverlayItem(items[i]) && !hasEntityCaption) || (!isTextOverlayKind(items[i].Kind) && !hasEntityCaption && items[i].Map == nil)) {
 				continue
 			}
 			if strings.HasPrefix(k, "image_") {

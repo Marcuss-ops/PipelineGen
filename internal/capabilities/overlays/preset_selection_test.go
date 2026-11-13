@@ -6,7 +6,6 @@ import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 )
 
@@ -248,21 +247,87 @@ func TestDateAndMetricEntityTypesRouteToCertifiedPresentationTemplates(t *testin
 	}
 }
 
-func TestDateAndMetricPresentationPoolsAreCuratedCanonicalSubsets(t *testing.T) {
-	wantDates := []string{
-		"date_fade_rise", "date_timeline_tick", "date_chronology_focus",
-		"date_calendar_drop", "date_month_wipe", "date_era_zoom",
+func TestAutomaticCaptionAndImageRecipePoolsAreUnlocked(t *testing.T) {
+	captions := CertifiedAutomaticEntityCaptionMotions()
+	if len(captions) != 9 {
+		t.Fatalf("automatic caption pool = %d, want 9", len(captions))
 	}
-	wantMetrics := []string{
-		"metric_counter_scale_settle", "metric_odometer_vertical", "metric_digits_stagger",
-		"metric_delta_reveal", "metric_focus_punch", "metric_before_after",
-		"metric_count_flip", "metric_split_odometer",
+	for _, id := range captions {
+		if !AnimationAutomaticallySelectable(id) {
+			t.Errorf("automatic caption pool contains retired motion %q", id)
+		}
 	}
-	if !reflect.DeepEqual(DatePresentationMotionCandidates(), wantDates) {
-		t.Fatalf("date premium pool=%v, want curated date_v1 subset %v", DatePresentationMotionCandidates(), wantDates)
+	for _, retired := range []string{"entity_parallax_caption", "text_fade_up", "trump_entity_text_01", "trump_entity_text_15"} {
+		if containsMotion(captions, retired) {
+			t.Errorf("automatic caption pool contains retired motion %q", retired)
+		}
 	}
-	if !reflect.DeepEqual(MetricPresentationMotionCandidates(), wantMetrics) {
-		t.Fatalf("metric premium pool=%v, want curated metric_v1 subset %v", MetricPresentationMotionCandidates(), wantMetrics)
+
+	recipes := CertifiedImageRecipeMotions()
+	if len(recipes) != 69 {
+		t.Fatalf("certified image recipe pool = %d, want 69", len(recipes))
+	}
+	for _, id := range []string{"image_border_draw_in", "brush_arrow_point", "web_browser_depth_dolly", "web_rect_border_trace", "paint_blob_reveal"} {
+		if !containsMotion(recipes, id) {
+			t.Errorf("image recipe pool is missing %q", id)
+		}
+		if !containsMotion(automaticSingleImageMotionCandidates, id) {
+			t.Errorf("automatic image pool is missing unlocked recipe %q", id)
+		}
+	}
+	for _, excluded := range []string{"image_caption_frame_combo", "image_stack_focus"} {
+		if containsMotion(recipes, excluded) || containsMotion(automaticSingleImageMotionCandidates, excluded) {
+			t.Errorf("automatic image pool contains preconditioned motion %q", excluded)
+		}
+	}
+	if len(automaticSingleImageMotionCandidates) != len(uniqueMotionPool(automaticSingleImageMotionCandidates)) {
+		t.Fatalf("automatic image pool contains duplicates: %v", automaticSingleImageMotionCandidates)
+	}
+}
+
+func TestPresentationPoolsCoverEveryCertifiedFamily(t *testing.T) {
+	hasPrefix := func(ids []string, prefix string) bool {
+		for _, id := range ids {
+			if len(id) >= len(prefix) && id[:len(prefix)] == prefix {
+				return true
+			}
+		}
+		return false
+	}
+
+	datePool := DatePresentationMotionCandidates()
+	if len(datePool) != 39 {
+		t.Fatalf("date pool=%d, want 39 (all certified date families minus the visual-QA and content-specific exclusions)", len(datePool))
+	}
+	for _, want := range []string{"date_fade_rise", "date_didone_archive_fade", "date_typewriter_year_type"} {
+		if !containsString(datePool, want) {
+			t.Errorf("date pool is missing %q", want)
+		}
+	}
+	if !hasPrefix(datePool, "date_didone_") || !hasPrefix(datePool, "date_typewriter_") {
+		t.Errorf("date pool does not cover every date presentation family: %v", datePool)
+	}
+	for _, excluded := range []string{"date_calendar_flip", "date_oil_crisis_stamp"} {
+		if containsString(datePool, excluded) {
+			t.Errorf("date pool contains excluded motion %q", excluded)
+		}
+	}
+	if len(uniqueMotionPool(datePool)) != len(datePool) {
+		t.Errorf("date pool contains duplicates: %v", datePool)
+	}
+
+	metricPool := MetricPresentationMotionCandidates()
+	if len(metricPool) != 40 {
+		t.Fatalf("metric pool=%d, want 40 (all certified metric families)", len(metricPool))
+	}
+	if !containsString(metricPool, "metric_counter_scale_settle") {
+		t.Error("metric pool is missing metric_counter_scale_settle")
+	}
+	if !hasPrefix(metricPool, "metric_didone_") || !hasPrefix(metricPool, "metric_typewriter_") {
+		t.Errorf("metric pool does not cover every metric presentation family: %v", metricPool)
+	}
+	if len(uniqueMotionPool(metricPool)) != len(metricPool) {
+		t.Errorf("metric pool contains duplicates: %v", metricPool)
 	}
 }
 
@@ -308,25 +373,31 @@ func TestDateAndMetricPresentationPoolsMatchChrononTemplateCatalog(t *testing.T)
 		}
 	}
 	for _, tc := range []struct {
-		family string
-		pool   []string
-	}{{"date_v1", DatePresentationMotionCandidates()}, {"metric_v1", MetricPresentationMotionCandidates()}} {
-		canonical := make(map[string]bool, len(familyIDs[tc.family]))
-		for _, id := range familyIDs[tc.family] {
-			canonical[id] = true
+		name     string
+		families []string
+		pool     []string
+	}{
+		{"date", []string{"date_v1", "date_didone_v1", "date_typewriter_v1"}, DatePresentationMotionCandidates()},
+		{"metric", []string{"metric_v1", "metric_didone_v1", "metric_typewriter_v1"}, MetricPresentationMotionCandidates()},
+	} {
+		canonical := make(map[string]bool)
+		for _, family := range tc.families {
+			for _, id := range familyIDs[family] {
+				canonical[id] = true
+			}
 		}
-		if len(canonical) != 20 {
-			t.Fatalf("ChrononTemplate %s catalog contains %d motions, want 20", tc.family, len(canonical))
+		if len(canonical) != 40 {
+			t.Fatalf("%s families contain %d motions, want 40 (20+10+10)", tc.name, len(canonical))
 		}
 		for _, id := range tc.pool {
 			if !canonical[id] {
-				t.Errorf("%s selected motion %q outside ChrononTemplate's canonical family", tc.family, id)
+				t.Errorf("%s selected motion %q outside ChrononTemplate's certified families", tc.name, id)
 			}
 		}
 	}
 }
 
-func TestPresentationSamplerUsesCuratedMotionsWithStablePerValueVariation(t *testing.T) {
+func TestPresentationSamplerUsesCertifiedMotionsWithStablePerValueVariation(t *testing.T) {
 	pool := DatePresentationMotionCandidates()
 	seen := make(map[string]bool, len(pool))
 	for i := 0; i < 512; i++ {
@@ -336,15 +407,28 @@ func TestPresentationSamplerUsesCuratedMotionsWithStablePerValueVariation(t *tes
 		_, first := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "DATE", 5)
 		_, retry := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "DATE", 5)
 		if !containsString(pool, first) {
-			t.Fatalf("date %q selected motion %q outside date_v1 catalog", itemID, first)
+			t.Fatalf("date %q selected motion %q outside certified date families", itemID, first)
 		}
 		if retry != first {
 			t.Fatalf("retry changed date %q motion: %q != %q", itemID, first, retry)
 		}
 		seen[first] = true
 	}
-	if len(seen) != min(5, len(pool)) {
-		t.Fatalf("default date styles covered %d, want the five-style cap: %v", len(seen), seen)
+	if len(seen) <= 5 {
+		t.Fatalf("default date styles covered only %d; the five-style window must rotate across jobs: %v", len(seen), seen)
+	}
+	hasFamily := func(ids map[string]bool, prefix string) bool {
+		for id := range ids {
+			if len(id) >= len(prefix) && id[:len(prefix)] == prefix {
+				return true
+			}
+		}
+		return false
+	}
+	for _, familyPrefix := range []string{"date_didone_", "date_typewriter_"} {
+		if !hasFamily(seen, familyPrefix) {
+			t.Fatalf("date sampler never reached %s styles: %v", familyPrefix, seen)
+		}
 	}
 	metricSeen := make(map[string]bool, len(MetricPresentationMotionCandidates()))
 	for i := 0; i < 512; i++ {
@@ -354,15 +438,20 @@ func TestPresentationSamplerUsesCuratedMotionsWithStablePerValueVariation(t *tes
 		_, first := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "METRIC", 5)
 		_, retry := NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, "METRIC", 5)
 		if !containsString(MetricPresentationMotionCandidates(), first) {
-			t.Fatalf("metric %q selected motion %q outside curated metric_v1 pool", itemID, first)
+			t.Fatalf("metric %q selected motion %q outside certified metric families", itemID, first)
 		}
 		if retry != first {
 			t.Fatalf("retry changed metric %q motion: %q != %q", itemID, first, retry)
 		}
 		metricSeen[first] = true
 	}
-	if len(metricSeen) != min(5, len(MetricPresentationMotionCandidates())) {
-		t.Fatalf("default metric styles covered %d, want the five-style cap", len(metricSeen))
+	if len(metricSeen) <= 5 {
+		t.Fatalf("default metric styles covered only %d; the five-style window must rotate across jobs", len(metricSeen))
+	}
+	for _, familyPrefix := range []string{"metric_didone_", "metric_typewriter_"} {
+		if !hasFamily(metricSeen, familyPrefix) {
+			t.Fatalf("metric sampler never reached %s styles", familyPrefix)
+		}
 	}
 	for i := 0; i < len(pool); i++ {
 		itemID := fmt.Sprintf("unique-date-%d", i)

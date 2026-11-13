@@ -29,10 +29,22 @@ const (
 	// EntityImageReasonBound is the success case: the plan carries at least
 	// one image for this entity.
 	EntityImageReasonBound = "bound"
+	// EntityImageReasonNotSelected distinguishes a detected eligible entity
+	// that never entered the video plan from an acquisition or binding failure.
+	EntityImageReasonNotSelected = "entity_not_selected"
 	// EntityImageReasonNoVerifiedAsset means the resolver left no verified
 	// content-addressed asset for this entity: discovery, download or the
 	// visual verdict did not produce one.
-	EntityImageReasonNoVerifiedAsset = "no_verified_asset"
+	EntityImageReasonNoVerifiedAsset  = "no_verified_asset"
+	EntityImageReasonUploadFailed     = "UPLOAD_FAILED"
+	EntityImageReasonSearchEmpty      = "SEARCH_EMPTY"
+	EntityImageReasonDownloadFailed   = "DOWNLOAD_FAILED"
+	EntityImageReasonUnverified       = "UNVERIFIED_IMAGE"
+	EntityImageReasonIdentityMismatch = "IDENTITY_MISMATCH"
+	EntityImageReasonBudgetExhausted  = "BUDGET_EXHAUSTED"
+	EntityImageReasonBindingMissing   = "BINDING_MISSING"
+	EntityImageReasonSegmentMissing   = "SEGMENT_MISSING"
+	EntityImageReasonNotMaterialized  = "NOT_MATERIALIZED"
 	// EntityImageReasonVerifiedNotBound means a verified asset EXISTS in the
 	// bundle but the plan did not bind it to this entity. That is a planner
 	// bug, not a media miss.
@@ -190,6 +202,9 @@ func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverla
 // are not image promises: counting them here made final jobs fail even when
 // every planned entity-image overlay had a verified asset.
 func entityExpectsImage(entity OverlayAuditEntity) bool {
+	if entity.ImageRequired {
+		return true
+	}
 	if !entity.SelectedForVideo {
 		return false
 	}
@@ -202,10 +217,66 @@ func entityExpectsImage(entity OverlayAuditEntity) bool {
 	return false
 }
 
+// applyRequestedEntityImageContract derives the audit denominator from the
+// request's eligible entity types, not from overlays that happened to survive
+// planning. It preserves SelectedForVideo separately so a missing selection
+// remains distinguishable from a failed search or binding.
+func applyRequestedEntityImageContract(audit *OverlayAudit, bundle *capabilityoverlay.SemanticRenderBundleV1, plan *capmodel.OverlayPlan, required, requireDrive bool, types []string, admittedSets ...map[string]struct{}) {
+	if audit == nil || !required {
+		return
+	}
+	wanted := make(map[string]struct{}, len(types))
+	for _, typ := range types {
+		wanted[strings.ToUpper(strings.TrimSpace(typ))] = struct{}{}
+	}
+	if len(wanted) == 0 {
+		for _, typ := range []string{"PERSON", "ORG", "GPE", "LOC", "CITY", "LANDMARK", "LOGO"} {
+			wanted[typ] = struct{}{}
+		}
+	}
+	var admitted map[string]struct{}
+	if len(admittedSets) > 0 {
+		admitted = admittedSets[0]
+	}
+	for i := range audit.DetectedEntities {
+		entityType := strings.ToUpper(strings.TrimSpace(audit.DetectedEntities[i].Type))
+		_, imageRequired := wanted[entityType]
+		// The semantic production plan is the run-level admission decision for
+		// identity imagery. When it deliberately excluded an identity from
+		// media, the resolver drops its image card and the audit must not turn
+		// that policy into a missing-image failure. A planned image is still
+		// audited: once the plan carries bytes, the Drive contract must hold.
+		if imageRequired && len(admitted) > 0 && audit.DetectedEntities[i].ImageStatus != "planned" {
+			surface := normalizeIdentitySurface(firstNonEmptyAuditValue(audit.DetectedEntities[i].Text, audit.DetectedEntities[i].CanonicalText))
+			if _, ok := admitted[surface]; !ok {
+				imageRequired = false
+			}
+		}
+		audit.DetectedEntities[i].ImageRequired = imageRequired
+		audit.DetectedEntities[i].ImageDriveRequired = requireDrive && audit.DetectedEntities[i].ImageRequired
+	}
+	audit.EntityImages = buildOverlayAuditEntityImages(audit, bundle, plan)
+	if audit.EntityImages != nil {
+		audit.EntityImages.Required = true
+	}
+}
+
 // entityImageOutcome maps the audit's image_status onto the gate vocabulary.
 // The status already distinguishes "no asset" from "verified but not planned";
 // this keeps that distinction in the reason the gate reports.
 func entityImageOutcome(entity OverlayAuditEntity, verified map[string]bool) string {
+	switch strings.ToUpper(strings.TrimSpace(entity.ImageFailureReason)) {
+	case EntityImageReasonSearchEmpty, EntityImageReasonDownloadFailed, EntityImageReasonUnverified,
+		EntityImageReasonUploadFailed, EntityImageReasonIdentityMismatch, EntityImageReasonBudgetExhausted,
+		EntityImageReasonBindingMissing, EntityImageReasonSegmentMissing, EntityImageReasonNotMaterialized:
+		return strings.ToUpper(strings.TrimSpace(entity.ImageFailureReason))
+	}
+	if entity.ImageDriveRequired && entity.ImageStatus == "planned" && strings.TrimSpace(entity.ImageDriveFileID) == "" {
+		return EntityImageReasonUploadFailed
+	}
+	if entity.ImageRequired && !entity.SelectedForVideo && entity.ImageStatus == "missing" {
+		return EntityImageReasonNotSelected
+	}
 	if !verified[entity.ID] && entity.ImageStatus == "planned" {
 		return EntityImageReasonUnverifiedBound
 	}
@@ -213,14 +284,14 @@ func entityImageOutcome(entity OverlayAuditEntity, verified map[string]bool) str
 	case "planned":
 		return EntityImageReasonBound
 	case "planned_without_verified_asset":
-		return EntityImageReasonUnverifiedBound
+		return EntityImageReasonUnverified
 	case "verified_asset_not_planned":
-		return EntityImageReasonVerifiedNotBound
+		return EntityImageReasonBindingMissing
 	}
 	if verified[entity.ID] {
-		return EntityImageReasonVerifiedNotBound
+		return EntityImageReasonBindingMissing
 	}
-	return EntityImageReasonNoVerifiedAsset
+	return EntityImageReasonSearchEmpty
 }
 
 // buildOverlayAuditOverlayTiming projects the intent lineage. A nil lineage

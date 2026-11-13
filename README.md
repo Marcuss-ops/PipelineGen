@@ -89,9 +89,12 @@ PipelineGen → RenderingGen → Chronon3d:
 curl -fsS -X POST "$BASE_URL/api/clips/render" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $VELOX_ADMIN_TOKEN" \
-  -d '{"asset_id":"SOURCE_ASSET_ID"}'
+  -d '{"source_asset_id":"SOURCE_ASSET_ID"}'
 ```
 
+> Il campo di ingresso è `source_asset_id` (non `asset_id`): il decoder è
+> strict, quindi un campo sconosciuto restituisce `400 UNKNOWN_FIELD`.
+>
 > Il vecchio helper shell `scripts/recreate_clip_chronon.sh` è stato eliminato dal
 > commit `7e6965aab` ("purge 94% shell"); l'endpoint HTTP `POST /api/clips/render`
 > resta l'unico entry point canonico e viene invocato direttamente.

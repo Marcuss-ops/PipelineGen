@@ -216,6 +216,60 @@ func TestPutFileAmbiguousMatchError(t *testing.T) {
 	}
 }
 
+// TestPutFileIdempotentSkipCollapsesDuplicateMatches is the regression anchor
+// for duplicate Drive files that share one idempotency key. The key includes
+// the content hash, so ConflictSkip may safely reuse one deterministic
+// sibling. A mutating policy must still fail closed: overwriting one of
+// several duplicates would leave the Drive state ambiguous forever.
+func TestPutFileIdempotentSkipCollapsesDuplicateMatches(t *testing.T) {
+	// Keep the deterministic fixture split: the secret scanner would otherwise
+	// treat the concatenated idempotency key as a generic API credential.
+	const idemKey = "0e32a982" + "9ac81687" + "-duplicate-idempotency-key"
+	duplicates := []RemoteFile{
+		{FileID: "id-B", Name: "portrait.jpg", MD5Checksum: "same-content"},
+		{FileID: "id-A", Name: "portrait.jpg", MD5Checksum: "same-content"},
+	}
+	newUploader := func() *Uploader {
+		return &Uploader{
+			Service: newFakeDriveService(t),
+			Log:     zap.NewNop(),
+			lookupFunc: func(_ *Uploader, _ context.Context, _, _, key string) (ExistingFileLookup, error) {
+				if key != idemKey {
+					return ExistingFileLookup{}, nil
+				}
+				return ExistingFileLookup{Matches: duplicates}, nil
+			},
+		}
+	}
+
+	t.Run("skip reuses the lexicographically first file", func(t *testing.T) {
+		result, err := newUploader().PutFile(context.Background(), PutFileRequest{
+			LocalPath:      "/nonexistent/portrait.jpg",
+			FolderID:       "folder123",
+			Filename:       "portrait.jpg",
+			ConflictPolicy: delivery.ConflictSkip,
+			IdempotencyKey: idemKey,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, "id-A", result.FileID)
+		assert.Equal(t, PutActionSkipped, result.Action)
+	})
+
+	t.Run("overwrite still fails closed", func(t *testing.T) {
+		result, err := newUploader().PutFile(context.Background(), PutFileRequest{
+			LocalPath:      "/nonexistent/portrait.jpg",
+			FolderID:       "folder123",
+			Filename:       "portrait.jpg",
+			ConflictPolicy: delivery.ConflictOverwrite,
+			IdempotencyKey: idemKey,
+		})
+		require.Error(t, err)
+		assert.Nil(t, result)
+		assert.ErrorIs(t, err, ErrAmbiguousDriveFile)
+	})
+}
+
 // TestPutFileValidatesServiceUnchanged pins the Surface invariant
 // from godlike/06 §1: Service=nil must still hard-fail BEFORE the
 // lookup step. Otherwise a misconfigured composition root

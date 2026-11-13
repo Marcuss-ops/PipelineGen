@@ -224,7 +224,7 @@ func validateFixedSections(item GenerationItemV2, ref string) []string {
 			d = append(d, ref+": "+pair.name+".text is deprecated; use "+pair.name+".display_text (fixed sections carry no speakable text)")
 		}
 		if !sec.NormalizedPlayback().Valid() {
-			d = append(d, ref+": "+pair.name+".playback must use audio_mode=original_clip with a valid source window")
+			d = append(d, ref+": "+pair.name+".playback must use audio_mode=original_clip or silence with a valid source window")
 		}
 		ids := sec.NormalizedClipIDs()
 		if len(ids) == 0 {

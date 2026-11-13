@@ -420,7 +420,7 @@ func (uc *GenerateOneUseCase) Execute(
 				return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,
 					fmt.Errorf("overlay render requested but Chronon enqueuer is not configured"), tracker)
 			}
-			ref, enqueueErr := uc.overlayRenderEnqueuer.EnqueueChrononPlan(ctx, *overlayPlan)
+			ref, enqueueErr := uc.overlayRenderEnqueuer.EnqueueChrononPlanItems(ctx, *overlayPlan)
 			if enqueueErr != nil {
 				return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed,
 					fmt.Errorf("enqueue Chronon overlay: %w", enqueueErr), tracker)

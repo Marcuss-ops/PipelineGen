@@ -218,7 +218,11 @@ func buildPostprocessorList(output scriptpkg.OutputSpec) []adapters.ProcessorNam
 		processors = append(processors, adapters.ProcessorMetadata)
 	}
 	processors = append(processors, adapters.ProcessorClipBindings)
-	if output.StockEnabled == scriptpkg.ToggleEnabled || output.StockEnabled == scriptpkg.ToggleDisabled || len(output.StockBindings) > 0 {
+	// Overlay-only runs never render a scene clip, so binding stock assets
+	// would only acquire base-video input they cannot consume. Keep the stock
+	// processor out of that plan entirely.
+	if !output.Render.OverlaysOnly &&
+		(output.StockEnabled == scriptpkg.ToggleEnabled || output.StockEnabled == scriptpkg.ToggleDisabled || len(output.StockBindings) > 0) {
 		processors = append(processors, adapters.ProcessorStockBindings)
 	}
 	if extractEntities {

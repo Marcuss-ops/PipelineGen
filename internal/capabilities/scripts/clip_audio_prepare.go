@@ -8,6 +8,7 @@ import (
 	"time"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // mergeAudioCompileTimings re-asserts the subtimings that the compile
@@ -199,6 +200,7 @@ func rebuildFixedMediaTiming(scene *Scene) error {
 	if len(clips) == 0 {
 		return fmt.Errorf("no fixed-media clips")
 	}
+	silent := scene.FixedPlayback != nil && scene.FixedPlayback.Normalize().AudioMode == scriptpkg.FixedPlaybackSilence
 	var offsetUS int64
 	for _, clip := range clips {
 		if clip == nil || strings.TrimSpace(clip.ID) == "" {
@@ -208,23 +210,25 @@ func rebuildFixedMediaTiming(scene *Scene) error {
 			return fmt.Errorf("clip %s has no resolved source window", clip.ID)
 		}
 		windowUS := (clip.SourceOutMS - clip.SourceInMS) * 1000
-		matched := false
-		for i := range scene.AudioIntents {
-			intent := &scene.AudioIntents[i]
-			if intent.Mode != capabilityaudio.AudioClip || intent.ClipAssetID != clip.ID {
-				continue
+		if !silent {
+			matched := false
+			for i := range scene.AudioIntents {
+				intent := &scene.AudioIntents[i]
+				if intent.Mode != capabilityaudio.AudioClip || intent.ClipAssetID != clip.ID {
+					continue
+				}
+				intent.SourceInUS = clip.SourceInMS * 1000
+				intent.SourceDurationUS = windowUS
+				intent.TimelineOffsetUS = offsetUS
+				intent.TimelineDurationUS = windowUS
+				intent.UseOriginalAudio = true
+				intent.ProtectedOriginalAudio = true
+				intent.GainDB = 0
+				matched = true
 			}
-			intent.SourceInUS = clip.SourceInMS * 1000
-			intent.SourceDurationUS = windowUS
-			intent.TimelineOffsetUS = offsetUS
-			intent.TimelineDurationUS = windowUS
-			intent.UseOriginalAudio = true
-			intent.ProtectedOriginalAudio = true
-			intent.GainDB = 0
-			matched = true
-		}
-		if !matched {
-			return fmt.Errorf("clip %s has no original-audio intent", clip.ID)
+			if !matched {
+				return fmt.Errorf("clip %s has no original-audio intent", clip.ID)
+			}
 		}
 		if offsetUS > int64(^uint64(0)>>1)-windowUS {
 			return fmt.Errorf("fixed-media duration overflows")
@@ -233,6 +237,9 @@ func rebuildFixedMediaTiming(scene *Scene) error {
 	}
 	if offsetUS <= 0 {
 		return fmt.Errorf("fixed-media duration is empty")
+	}
+	if silent {
+		scene.AudioIntents = []capabilityaudio.AudioIntent{{Mode: capabilityaudio.AudioSilence, TimelineDurationUS: offsetUS}}
 	}
 	scene.DurationUS = offsetUS
 	scene.DurationMS = offsetUS / 1000

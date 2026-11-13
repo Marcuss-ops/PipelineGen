@@ -177,6 +177,118 @@ func (s *ImageStorageService) runRetrievalRung(ctx context.Context, query, lang 
 	return s.legacyRetrievalFanOut(ctx, query, lang)
 }
 
+// retrievalCandidate is one downloadable hit with the provenance the ingest
+// path needs. The provider chain can return several candidates; the single
+// image path tries them in order instead of failing the whole request when the
+// first origin refuses the download (402/403/timeout).
+type retrievalCandidate struct {
+	URL     string
+	Source  string
+	PageURL string
+}
+
+// maxRetrievalCandidateAttempts bounds how many origins one single-image
+// request may try. The first few DDG hits normally include at least one
+// reachable origin; ten keeps the request bounded without retrying forever.
+const maxRetrievalCandidateAttempts = 10
+
+func retrievalCandidatesFromResults(results []retrieved.RetrievalSearchResult, fallback detail.ImageProvider) []retrievalCandidate {
+	out := make([]retrievalCandidate, 0, len(results))
+	seen := make(map[string]struct{}, len(results))
+	for _, hit := range results {
+		imageURL := strings.TrimSpace(hit.PreviewURL)
+		if imageURL == "" {
+			imageURL = strings.TrimSpace(hit.ImageURL)
+		}
+		if imageURL == "" {
+			imageURL = strings.TrimSpace(hit.ThumbnailURL)
+		}
+		if imageURL == "" {
+			continue
+		}
+		key := strings.ToLower(imageURL)
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		source := string(hit.Provider)
+		if source == "" {
+			source = string(fallback)
+		}
+		pageURL := strings.TrimSpace(hit.PageURL)
+		if pageURL == "" {
+			pageURL = strings.TrimSpace(hit.SourcePageURL)
+		}
+		if pageURL == "" {
+			pageURL = imageURL
+		}
+		out = append(out, retrievalCandidate{URL: imageURL, Source: source, PageURL: pageURL})
+		if len(out) >= maxRetrievalCandidateAttempts {
+			break
+		}
+	}
+	return out
+}
+
+// runRetrievalCandidatesForProvider is the candidate-producing form of
+// runRetrievalFallbackForProvider. It preserves the same provider selection and
+// query-recession semantics, but returns every ranked hit so the caller can
+// fail over per origin rather than per query.
+func (s *ImageStorageService) runRetrievalCandidatesForProvider(ctx context.Context, query, lang string, provider detail.ImageProvider) []retrievalCandidate {
+	if provider != "" {
+		if s.retrievalRegistry == nil {
+			s.log.Warn("explicit retrieved provider skipped: retrieval registry is not wired", zap.String("provider", string(provider)), zap.String("query", query))
+			return nil
+		}
+		p := s.retrievalRegistry.SearchByName(provider)
+		if p == nil {
+			s.log.Warn("explicit retrieved provider not found in registry", zap.String("provider", string(provider)), zap.String("query", query))
+			return nil
+		}
+		results, err := p.Search(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
+		if err != nil {
+			s.log.Warn("explicit retrieved provider search failed", zap.String("provider", string(provider)), zap.String("query", query), zap.Error(err))
+			return nil
+		}
+		return retrievalCandidatesFromResults(results, p.Name())
+	}
+
+	rungs := retrieved.RelaxImageQuery(query)
+	if len(rungs) == 0 {
+		return nil
+	}
+	if len(rungs) > maxImageQueryRecessionRungs {
+		rungs = rungs[:maxImageQueryRecessionRungs]
+	}
+	for i, rung := range rungs {
+		candidates := s.retrievalCandidatesForRung(ctx, rung, lang)
+		if len(candidates) > 0 {
+			if i > 0 {
+				s.log.Info("retrieval receded to a relaxed query",
+					zap.String("original_query", query), zap.String("relaxed_query", rung))
+			}
+			return candidates
+		}
+	}
+	return nil
+}
+
+func (s *ImageStorageService) retrievalCandidatesForRung(ctx context.Context, query, lang string) []retrievalCandidate {
+	if s.retrievalRegistry != nil {
+		results, err := s.retrievalRegistry.SearchBest(ctx, query, retrieved.RetrievalSearchOptions{Lang: lang})
+		if err != nil {
+			s.log.Warn("retrieval best search failed", zap.String("query", query), zap.Error(err))
+			return nil
+		}
+		return retrievalCandidatesFromResults(results, "")
+	}
+	imgURL, source, pageURL := s.legacyRetrievalFanOut(ctx, query, lang)
+	if imgURL == "" {
+		return nil
+	}
+	return []retrievalCandidate{{URL: imgURL, Source: source, PageURL: pageURL}}
+}
+
 // legacyRetrievalFanOut is the no-registry engine cascade (Wikipedia →
 // SearXNG → DuckDuckGo). It is only reached when the canonical provider
 // registry is unwired; the registry path runs through SearchBest instead.
