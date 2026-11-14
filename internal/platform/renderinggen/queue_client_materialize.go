@@ -115,10 +115,12 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 // and re-uploading it would burn bandwidth, a full RAM buffer and a disk pass
 // for zero benefit. Only absent objects are uploaded, streamed straight from
 // the source file (constant memory — the historical os.ReadFile path buffered
-// every asset in RAM). The declared SHA-256s are certified upstream by the
-// plan resolver, so no full-file hash pass is repeated at this boundary; the
-// RenderingGen worker independently re-verifies the content address when it
-// materializes the asset, so wrong bytes can never reach Chronon.
+// every asset in RAM). Source/background/subtitle hashes are certified
+// upstream by the plan resolver; overlay segments and fonts are producer-local
+// files referenced only by LocalPath, so their bytes ARE verified here before
+// the PUT. A content-address mismatch discovered by the worker is a 422 after
+// the job has already been claimed, which is exactly the late failure this
+// boundary must prevent.
 func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, refs []assetRef) error {
 	store := strings.TrimRight(os.Getenv("RENDERINGGEN_STORE_URL"), "/")
 	if store == "" {
@@ -158,10 +160,15 @@ func prefetchClipAssets(ctx context.Context, plan cliprender.ClipRenderPlanV1, r
 			path := paths[ref.Hash]
 			if path == "" {
 				// overlayPlanAssets carries a LocalPath for assets it reads directly
-				// (subtitle/watermark fonts); the paths map above only knows the
-				// plan-owned files. Prefer the ref's own source so a Poppins
-				// subtitle font is uploaded like any other font.
+				// (overlay segments and subtitle/watermark fonts); the paths map
+				// above only knows the plan-owned files. Prefer the ref's own source
+				// so an overlay clip or Poppins subtitle font is uploaded like any
+				// other asset.
 				path = ref.LocalPath
+			}
+			if ref.LocalPath != "" && verifiedLocalPath(ref.LocalPath, ref.Hash) == "" {
+				return fmt.Errorf("%w: overlay asset %s at %q does not hash to its content address",
+					ErrAssetSourceUnavailable, ref.Hash, ref.LocalPath)
 			}
 			if path == "" {
 				return fmt.Errorf("asset %s has no resolved local path", ref.Hash)

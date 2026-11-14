@@ -34,16 +34,16 @@ Before=pipelinegen.service
 
 [Service]
 Type=simple
-User=pierone
+User=@VELOX_USER@
 # Same effective env as the primary unit's 10-commit-pinned.conf drop-in: the
 # NVIDIA ICD must be pinned or a headless service can resolve the loader to a
 # different (or absent) Vulkan implementation.
 Environment=VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
-WorkingDirectory=/home/pierone/src/go-master/projects/Pyt/VeloxEditing/Chronon3d
+WorkingDirectory=@VELOX_ROOT@/Chronon3d
 RuntimeDirectory=chronon3d-b
 RuntimeDirectoryMode=0755
 # Same binary, same device (0), DIFFERENT socket: one execution domain each.
-ExecStart=/usr/local/bin/chronon3d_cli daemon -s /run/chronon3d-b/chronon.sock -a /home/pierone/src/go-master/projects/Pyt/VeloxEditing/RenderingGen/testdata/golden --backend vulkan --gpu-device 0
+ExecStart=/usr/local/bin/chronon3d_cli daemon -s /run/chronon3d-b/chronon.sock -a @VELOX_ROOT@/RenderingGen/testdata/golden --backend vulkan --gpu-device 0
 Restart=always
 RestartSec=2
 KillSignal=SIGTERM

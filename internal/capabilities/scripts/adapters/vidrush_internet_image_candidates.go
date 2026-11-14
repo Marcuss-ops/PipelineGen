@@ -26,7 +26,11 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 	segmentCacheKeyStr := vidRushFanoutImageCacheKey(&fanoutPlan, plan)
 	if !fanoutPlan.parallelQueryChild && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh {
 		if cached, ok := cacheLoad(vidrushImageCache, segmentCacheKeyStr); ok {
-			if payload, ok := cached.(internetImageCachePayload); ok {
+			// An empty payload was cached under a plan that did not require an
+			// entity-image surface. It is a negative observation, not a hit: a
+			// plan that now enables entity images must search instead of
+			// inheriting the empty result.
+			if payload, ok := cached.(internetImageCachePayload); ok && (len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
 				candidates, err := f.verifyPersonImageCandidates(ctx, payload.Candidates)
 				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: err, allCacheHits: true}
 				return
@@ -41,9 +45,11 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			if len(persisted.Candidates) > 0 {
 				cacheStore(vidrushImageCache, segmentCacheKeyStr, persisted)
 			}
-			candidates, scoreErr := f.verifyPersonImageCandidates(ctx, persisted.Candidates)
-			outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: scoreErr, allCacheHits: true}
-			return
+			if len(persisted.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+				candidates, scoreErr := f.verifyPersonImageCandidates(ctx, persisted.Candidates)
+				outcomes <- vidRushProviderOutcome{provider: "internet_images", candidates: candidates, err: scoreErr, allCacheHits: true}
+				return
+			}
 		}
 	}
 	if len(imageQueries) > 1 && !fanoutPlan.parallelQueryChild {
@@ -87,7 +93,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: err}
 					return
 				}
-				if pool.Sufficient {
+				if entityImageCatalogPoolMeetsDemand(pool, plan.ImagesPerScene) {
 					if catalogMetrics != nil {
 						catalogMetrics.IncEntityImageCatalogLookup(true)
 					}
@@ -104,7 +110,8 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 		}
 		if !catalogRefreshRequired && !plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh && !fromCache {
 			if cached, ok := cacheLoad(entityImageCache, entityCacheKey); ok {
-				if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok {
+				if cachedCandidates, ok := cached.([]scriptpkg.SegmentAssetCandidate); ok &&
+					(len(cachedCandidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
 					results = append([]scriptpkg.SegmentAssetCandidate(nil), cachedCandidates...)
 					fromCache = true
 				}
@@ -122,8 +129,10 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 					if len(persisted) > 0 {
 						cacheStore(entityImageCache, entityCacheKey, persisted)
 					}
-					results = persisted
-					fromCache = true
+					if len(persisted) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
+						results = persisted
+						fromCache = true
+					}
 				}
 			}
 		}
@@ -162,7 +171,11 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			if f.metrics != nil {
 				f.metrics.IncProviderRequest("internet_images")
 			}
-			searchQuery := personImageSearchQuery(query, catalogEligible)
+			entityName := query
+			if catalogEligible {
+				entityName = catalogIdentity.CanonicalName
+			}
+			searchQuery := personImageSearchQuery(entityName, catalogEligible)
 			imageLimit := perQueryLimit
 			if catalogEligible && imageLimit < entityImageCatalogDiscoveryLimit {
 				imageLimit = entityImageCatalogDiscoveryLimit
@@ -170,7 +183,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			searched, err := f.images.SearchImages(ctx, InternetImageSearchRequest{
 				// Entity remains canonical; the provider query may include a
 				// retrieval hint but candidates are normalized to canonical identity.
-				SegmentID: segmentID, Position: workerInput.Position, Query: searchQuery, Entity: query,
+				SegmentID: segmentID, Position: workerInput.Position, Query: searchQuery, Entity: entityName,
 				TextHash: textHash, Language: plan.Language, Limit: imageLimit,
 				Provider: "internet_images",
 				// A refresh must not resurrect recorded hashes from the

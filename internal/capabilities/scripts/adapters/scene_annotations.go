@@ -65,6 +65,12 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		kind := normalizeAnnotationType(entity.Type)
 		kind = correctKnownPortugueseEntityType(value, kind)
 		kind = normalizeAnnotationType(entitytype.CorrectSurfaceType(value, kind))
+		if resolvedKind := canonicalImageEntityType(seg, value); resolvedKind != "" {
+			// The image-intent resolver has stronger typed identity grounding
+			// than the baseline NER surface. Use its canonical family so a
+			// place or venue is not projected as a PERSON portrait.
+			kind = resolvedKind
+		}
 		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
 			// KEYWORD / VISUAL_SUBJECT are search/index surfaces, never
 			// spoken entities (mirror of the runner projection).
@@ -86,6 +92,9 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		canonical := value
 		if kind == "PERSON" {
 			canonical = expandPersonCanonicalName(text, value)
+			if resolved := canonicalImageEntityName(seg, canonical); resolved != "" {
+				canonical = resolved
+			}
 		}
 		// CONCEPT is an NLP hint, not a renderable entity type. A grounded
 		// multi-word concept is promoted to the editorial emphasis surface so

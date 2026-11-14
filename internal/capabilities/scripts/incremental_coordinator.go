@@ -40,6 +40,10 @@ type VidRushIncrementalCoordinator struct {
 	backpressure VidRushBackpressure
 	gate         *GenerationGate
 
+	// providerResolveBudget bounds one scene's provider fan-out. Zero uses
+	// vidRushProviderResolveTimeout; tests shorten it to exercise degradation.
+	providerResolveBudget time.Duration
+
 	// imageSearchResolver is the deterministic Image Search Intent resolver
 	// (capabilities/imagesearch) whose canonical_entity_id decisions are
 	// stamped into every segment's insights, so the annotation projection
@@ -194,6 +198,7 @@ func (c *VidRushIncrementalCoordinator) stampImageSearchDecision(ctx context.Con
 		result.Insights.ImagePrimaryCanonicalID = decision.Primary.CanonicalID
 	}
 	ids := make(map[string]string, len(decision.Entities)+len(decision.Visual))
+	names := make(map[string]string, len(decision.Entities)+len(decision.Visual))
 	stamp := func(entities []capabilityimagesearch.ResolvedEntity) {
 		for _, e := range entities {
 			if strings.TrimSpace(e.CanonicalID) == "" {
@@ -201,9 +206,19 @@ func (c *VidRushIncrementalCoordinator) stampImageSearchDecision(ctx context.Con
 			}
 			if key := strings.ToLower(strings.TrimSpace(e.Text)); key != "" {
 				ids[key] = e.CanonicalID
+				canonicalName := strings.TrimSpace(e.QueryName)
+				if canonicalName == "" {
+					canonicalName = strings.TrimSpace(e.Text)
+				}
+				names[key] = canonicalName
 			}
 			if verbatim := strings.ToLower(strings.TrimSpace(e.Verbatim)); verbatim != "" {
 				ids[verbatim] = e.CanonicalID
+				canonicalName := strings.TrimSpace(e.QueryName)
+				if canonicalName == "" {
+					canonicalName = strings.TrimSpace(e.Text)
+				}
+				names[verbatim] = canonicalName
 			}
 		}
 	}
@@ -211,6 +226,7 @@ func (c *VidRushIncrementalCoordinator) stampImageSearchDecision(ctx context.Con
 	stamp(decision.Visual)
 	if len(ids) > 0 {
 		result.Insights.ImageEntityCanonicalIDs = ids
+		result.Insights.ImageEntityCanonicalNames = names
 	}
 	return result, nil
 }

@@ -87,7 +87,7 @@ func TestEntityImageCatalogRejectsTechnicallyInsufficientCandidate(t *testing.T)
 	}
 }
 
-func TestEntityImageCatalogAcceptsExactPersonAndPersistsQualityMetadata(t *testing.T) {
+func TestEntityImageCatalogKeepsExactPersonPendingUntilVisualVerdict(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &qualityCatalogSearcher{result: []scriptpkg.SegmentAssetCandidate{{
@@ -109,8 +109,48 @@ func TestEntityImageCatalogAcceptsExactPersonAndPersistsQualityMetadata(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].SemanticStatus != "accepted" || rows[0].SemanticScore < 0.99 || rows[0].TechnicalScore < 0.99 {
-		t.Fatalf("persisted quality metadata = %+v, want accepted semantic/technical quality", rows)
+	// A provider entity/query echo is necessary to keep another person out,
+	// but it is not proof that the pixels depict this person. Without a
+	// visual scorer the row must stay pending and non-reusable.
+	if len(rows) != 1 || rows[0].SemanticStatus != entitycatalog.CandidateSemanticUnknown || rows[0].SemanticScore != 0 || rows[0].TechnicalScore < 0.99 {
+		t.Fatalf("persisted quality metadata = %+v, want unknown semantic identity with technical quality", rows)
+	}
+	if entitycatalog.IsUsableCandidateQuality(rows[0]) {
+		t.Fatalf("pending row %+v is catalog-reusable without a visual verdict", rows[0])
+	}
+}
+
+func TestEntityImageCatalogRejectsNonRasterImageSource(t *testing.T) {
+	resetEntityImageCatalogCaches()
+	repo := newIntegrationEntityImageCatalog()
+	searcher := &qualityCatalogSearcher{result: []scriptpkg.SegmentAssetCandidate{{
+		AssetID: "document-source", Provider: scriptpkg.VidRushProviderInternetImages,
+		Entity: "Michael Jordan", Query: "Michael Jordan",
+		SourceURL: "https://images.example/michael-jordan-profile.pdf", Width: 1920, Height: 1080,
+	}}}
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+
+	result, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("semantic-document", "Michael Jordan"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(result.VidRushSegments[0].Assets.SecondaryImages); got != 0 {
+		t.Fatalf("non-raster candidates returned = %d, want 0", got)
+	}
+	identity, _ := entitycatalogIdentityForTest("Michael Jordan")
+	rows, err := repo.ListCandidates(context.Background(), identity, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("non-raster candidates persisted = %d, want 0", len(rows))
+	}
+	entity, err := repo.GetEntity(context.Background(), identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entity.RefreshStatus != entitycatalog.RefreshStatusFailed || !strings.Contains(entity.LastError, "not a raster image") {
+		t.Fatalf("refresh state = %q / %q, want failed with the non-raster rejection reason", entity.RefreshStatus, entity.LastError)
 	}
 }
 

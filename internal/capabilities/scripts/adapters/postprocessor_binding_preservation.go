@@ -287,6 +287,18 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	if len(src.Insights.Entities) > 0 {
 		out.Insights.Entities = append([]scriptpkg.ExtractedEntity(nil), src.Insights.Entities...)
 	}
+	if len(src.Insights.ImageEntityCanonicalIDs) > 0 {
+		out.Insights.ImageEntityCanonicalIDs = make(map[string]string, len(src.Insights.ImageEntityCanonicalIDs))
+		for surface, canonicalID := range src.Insights.ImageEntityCanonicalIDs {
+			out.Insights.ImageEntityCanonicalIDs[surface] = canonicalID
+		}
+	}
+	if len(src.Insights.ImageEntityCanonicalNames) > 0 {
+		out.Insights.ImageEntityCanonicalNames = make(map[string]string, len(src.Insights.ImageEntityCanonicalNames))
+		for surface, canonicalName := range src.Insights.ImageEntityCanonicalNames {
+			out.Insights.ImageEntityCanonicalNames[surface] = canonicalName
+		}
+	}
 	if src.Insights.VisualProfile != nil {
 		visualProfile := *src.Insights.VisualProfile
 		visualProfile.Terms = append([]string(nil), src.Insights.VisualProfile.Terms...)

@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 type ExternalConfig struct {
@@ -239,5 +241,5 @@ func (c *ExternalConfig) ResolvedMasterURL() string {
 	if c.VeloxMasterURL != "" {
 		return c.VeloxMasterURL
 	}
-	return "http://127.0.0.1:8000"
+	return defaults.DefaultBaseURL
 }

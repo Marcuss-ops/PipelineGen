@@ -75,7 +75,7 @@ func TestEntityImageCatalogAcceptsCachedGenericFilenameWithVisualVerdict(t *test
 		SourceURL:         "https://www.newspeople.it/wp-content/uploads/2026/05/IMG_6075-1-scaled.jpeg",
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
-		QualityReason:     "canonical PERSON metadata matched; Ollama visual verification confirmed one portrait subject and no collage",
+		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +114,7 @@ func TestDurableEntityImagePoolForSegmentAttachesVerifiedRows(t *testing.T) {
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
 		SemanticScore:     0.9,
+		QualityReason:     "Ollama visual identity verification confirmed one dominant subject",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +275,7 @@ func TestEntityImageCatalogNormalizesPersonVariantsWithoutCreatingAnotherPool(t 
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &rankedIdentitySearcher{}
-	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
 	plan := catalogPersonPlan()
 
 	first, err := processor.Process(context.Background(), plan, catalogPersonInput("jordan-original", "Michael Jordan"))
@@ -324,7 +325,7 @@ func TestEntityImageCatalogDiscoveryBudgetExceedsDurablePool(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &discoveryBudgetSearcher{}
-	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
 	plan := catalogPersonPlan()
 
 	result, err := processor.Process(context.Background(), plan, catalogPersonInput("budget-cold", "Michael Jordan"))

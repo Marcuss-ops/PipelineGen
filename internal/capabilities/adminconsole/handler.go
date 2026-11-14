@@ -3,7 +3,10 @@ package adminconsole
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -57,15 +60,90 @@ func (h *Handler) handleSchema(c *gin.Context) {
 
 func (h *Handler) handleList(c *gin.Context) {
 	entity := c.Param("entity")
-	opts := ListOptions{}
-	// TODO: parse filters, orderBy, orderDir, limit, offset from query string
+	desc, ok := h.service.Registry().Get(entity)
+	if !ok {
+		apiutil.NotFound(c, "unknown entity: "+entity)
+		return
+	}
+	opts, err := parseListOptions(c, desc)
+	if err != nil {
+		apiutil.BadRequest(c, err.Error())
+		return
+	}
 	result, err := h.service.List(c.Request.Context(), entity, opts)
 	if err != nil {
+		var optionErr *ListOptionError
+		if errors.As(err, &optionErr) {
+			apiutil.BadRequest(c, err.Error())
+			return
+		}
+		if errors.Is(err, ErrNotSupported) {
+			// The entity is advertised by the registry but has no wired reader.
+			// An empty 200 would claim the dataset is empty; 501 states the truth.
+			c.JSON(http.StatusNotImplemented, gin.H{"error": err.Error()})
+			return
+		}
 		h.log.Error("failed to list entity", zap.String("entity", entity), zap.Error(err))
 		apiutil.InternalError(c, err)
 		return
 	}
 	apiutil.OK(c, result)
+}
+
+// parseListOptions turns the query string into ListOptions and rejects every
+// parameter the entity schema does not advertise. A repeated key is ambiguous,
+// so it fails closed rather than silently picking one value.
+func parseListOptions(c *gin.Context, desc EntityDescriptor) (ListOptions, error) {
+	opts := ListOptions{Filters: map[string]string{}}
+	for key, values := range c.Request.URL.Query() {
+		if len(values) != 1 {
+			return opts, &ListOptionError{Parameter: key, Reason: "must be specified exactly once"}
+		}
+		value := values[0]
+		switch {
+		case key == "limit":
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 1 || n > 500 {
+				return opts, &ListOptionError{Parameter: key, Reason: "must be an integer between 1 and 500"}
+			}
+			opts.Limit = n
+		case key == "offset":
+			n, err := strconv.Atoi(value)
+			if err != nil || n < 0 {
+				return opts, &ListOptionError{Parameter: key, Reason: "must be a non-negative integer"}
+			}
+			opts.Offset = n
+		case key == "order_by":
+			if !listFieldSupports(desc.ListFields, value, func(f FieldDescriptor) bool { return f.Sortable }) {
+				return opts, &ListOptionError{Parameter: key, Reason: fmt.Sprintf("field %q is not sortable for entity %q", value, desc.Key)}
+			}
+			opts.OrderBy = value
+		case key == "order_dir":
+			dir := strings.ToLower(value)
+			if dir != "asc" && dir != "desc" {
+				return opts, &ListOptionError{Parameter: key, Reason: `must be "asc" or "desc"`}
+			}
+			opts.OrderDir = dir
+		case strings.HasPrefix(key, "filter."):
+			field := strings.TrimPrefix(key, "filter.")
+			if field == "" {
+				return opts, &ListOptionError{Parameter: key, Reason: "filter key is empty"}
+			}
+			if !listFieldSupports(desc.ListFields, field, func(f FieldDescriptor) bool { return f.Filterable }) {
+				return opts, &ListOptionError{Parameter: key, Reason: fmt.Sprintf("field %q is not filterable for entity %q", field, desc.Key)}
+			}
+			if strings.TrimSpace(value) == "" {
+				return opts, &ListOptionError{Parameter: key, Reason: "requires a non-empty value"}
+			}
+			opts.Filters[field] = value
+		default:
+			return opts, &ListOptionError{Parameter: key, Reason: "unknown query parameter"}
+		}
+	}
+	if opts.OrderDir != "" && opts.OrderBy == "" {
+		return opts, &ListOptionError{Parameter: "order_dir", Reason: "requires order_by"}
+	}
+	return opts, nil
 }
 
 func (h *Handler) handleGet(c *gin.Context) {

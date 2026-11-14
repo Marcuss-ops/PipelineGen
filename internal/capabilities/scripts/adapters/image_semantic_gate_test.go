@@ -103,7 +103,7 @@ func TestScoreInternetImageCandidatesSkipsDefinitiveVerdicts(t *testing.T) {
 	accepted := semanticGateCandidate("accepted")
 	accepted.SemanticStatus = entitycatalog.CandidateSemanticAccepted
 	accepted.SemanticScore = 0.92
-	accepted.QualityReason = "Ollama visual verification confirmed one dominant subject"
+	accepted.QualityReason = "Ollama visual identity verification confirmed the requested person and one dominant subject"
 	rejected := semanticGateCandidate("rejected")
 	rejected.SemanticStatus = entitycatalog.CandidateSemanticRejected
 	rejected.QualityReason = "Ollama visual verification detected a split panel or collage"

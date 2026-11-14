@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -273,6 +274,14 @@ func TestEnqueueAndIndex_ProviderFromClipSource(t *testing.T) {
 	}
 }
 
+// newLegacyRecordingDispatcher builds a dispatcher WITHOUT the canonical
+// PostgreSQL media committer. That is the only composition in which the
+// legacy SQLite asset.index.requested envelope is still legal; with the
+// canonical committer wired, EnqueueIndexEvent must fail closed.
+func newLegacyRecordingDispatcher(rec *recordingOutboxEventsRepo) *Dispatcher {
+	return NewDispatcher(rec, &txMgrRun{}, zap.NewNop(), nil)
+}
+
 // ── EnqueueIndexEvent: OutboxKey shape ────────────────────────────────
 
 // TestEnqueueIndexEvent_UsesOutboxKeyShape pins the wire-in for
@@ -281,7 +290,7 @@ func TestEnqueueAndIndex_ProviderFromClipSource(t *testing.T) {
 // assetID prefix via DetectSourceFromAssetID.
 func TestEnqueueIndexEvent_UsesOutboxKeyShape(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := newRecordingDispatcher(rec, nil)
+	d := newLegacyRecordingDispatcher(rec)
 	const assetID = "vo_voiceover_xyz"
 	const contentHash = "sha256:deadbeef"
 
@@ -321,7 +330,7 @@ func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			rec := &recordingOutboxEventsRepo{}
-			d := newRecordingDispatcher(rec, nil)
+			d := newLegacyRecordingDispatcher(rec)
 			const contentHash = "sha256:1234"
 			if err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), tc.assetID, tc.wantSegment, contentHash); err != nil {
 				t.Fatalf("EnqueueIndexEvent(%q): %v", tc.assetID, err)
@@ -343,7 +352,7 @@ func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 // EnqueueIndexEvent must surface that as a wrapped error.
 func TestEnqueueIndexEvent_UnknownPrefixFailsClosed(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := newRecordingDispatcher(rec, nil)
+	d := newLegacyRecordingDispatcher(rec)
 	err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), "weird_unknown_xyz", "", "sha256:1234")
 	if err == nil {
 		t.Fatal("EnqueueIndexEvent with unknown assetID prefix must fail-closed (ErrEmptyProvider via OutboxKey)")
@@ -364,24 +373,42 @@ func TestEnqueueIndexEvent_UnknownPrefixFailsClosed(t *testing.T) {
 // contentHash) tuple.
 func TestEnqueueAndIndex_AndEnqueueIndexEvent_ProduceSameEventKey(t *testing.T) {
 	rec := &recordingOutboxEventsRepo{}
-	d := newRecordingDispatcher(rec, nil)
+	dCanonical := newRecordingDispatcher(rec, nil)
+	dLegacy := newLegacyRecordingDispatcher(rec)
 	const assetID = "yt_vid_0_60_v1" // DetectSourceFromAssetID → "youtube"
 	const contentHash = "sha256:abcdef"
 
 	// Path 1: EnqueueAndIndex with a *asset.Asset
 	clip := &asset.Asset{ID: assetID, Source: asset.Source("youtube")}
-	if err := d.EnqueueAndIndex(context.Background(), clip, contentHash); err != nil {
+	if err := dCanonical.EnqueueAndIndex(context.Background(), clip, contentHash); err != nil {
 		t.Fatalf("EnqueueAndIndex: %v", err)
 	}
 	k1 := rec.calls[len(rec.calls)-1].EventKey
 
 	// Path 2: EnqueueIndexEvent with just (assetID, contentHash)
-	if err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), assetID, "youtube", contentHash); err != nil {
+	if err := dLegacy.EnqueueIndexEvent(context.Background(), new(sql.Tx), assetID, "youtube", contentHash); err != nil {
 		t.Fatalf("EnqueueIndexEvent: %v", err)
 	}
 	k2 := rec.calls[len(rec.calls)-1].EventKey
 
 	if k1 != k2 {
 		t.Errorf("EnqueueAndIndex and EnqueueIndexEvent MUST produce the same event_key for identical inputs:\n  EnqueueAndIndex     = %q\n  EnqueueIndexEvent   = %q", k1, k2)
+	}
+}
+
+// TestEnqueueIndexEvent_FailsClosedWhenCanonicalCommitterWired pins the
+// POSTGRES-MEDIA-CUTOVER invariant: once the canonical PostgreSQL committer
+// is wired, the SQLite outbox has no media index consumer, so writing
+// asset.index.requested there must fail instead of producing an orphan event.
+func TestEnqueueIndexEvent_FailsClosedWhenCanonicalCommitterWired(t *testing.T) {
+	rec := &recordingOutboxEventsRepo{}
+	d := newRecordingDispatcher(rec, nil)
+
+	err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), "vo_voiceover_xyz", "voiceover", "sha256:deadbeef")
+	if !errors.Is(err, ErrSQLiteMediaIndexEmissionDisabled) {
+		t.Fatalf("expected ErrSQLiteMediaIndexEmissionDisabled, got %v", err)
+	}
+	if len(rec.calls) != 0 {
+		t.Fatalf("no SQLite outbox event may be written when the canonical committer is wired; got %d", len(rec.calls))
 	}
 }

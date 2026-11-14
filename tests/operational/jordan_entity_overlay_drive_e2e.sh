@@ -35,7 +35,8 @@ RUN_ID="jordan-entity-overlay-drive-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
 # The caller-selected Drive folder is part of the job contract. Production
 # code carries it through the frozen overlay plan and creates the overlay
 # child automatically; this canary only supplies the destination.
-DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS}"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/ops/lib/common.sh"
+DRIVE_FOLDER_ID="${DRIVE_FOLDER_ID:-$VELOX_DRIVE_OVERLAY_ROOT}"
 SOURCE_TEXT='Michael Jordan became a defining figure in basketball because his career combined elite scoring, defensive intensity, competitive focus, and a public standard of preparation. He was born in Brooklyn and grew up in Wilmington, where sport became a daily discipline rather than a shortcut to fame. His early development was shaped by repetition, physical conditioning, and the pressure of learning to compete against stronger opponents. Those lessons later became part of the story told about his professional career.
 
 The history of basketball began decades earlier when James Naismith designed an indoor game that could keep students active during winter. The original experiment was simple, but its structure created a sport in which coordination, spacing, passing, and decision-making mattered as much as strength. Over time the game changed from a local activity into an international spectacle. The evolution of the sport gave exceptional players a stage on which individual skill could influence an entire team and, eventually, an entire culture.

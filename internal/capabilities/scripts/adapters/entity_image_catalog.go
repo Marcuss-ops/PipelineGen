@@ -15,7 +15,8 @@ import (
 const entityImageCatalogProvider = "duckduckgo"
 
 const (
-	entityImageCatalogPoolSize = 10
+	entityImageCatalogPoolSize         = 10
+	entityImageCatalogMinimumReusePool = 4
 	// Ask the provider for more rows than the durable pool exposes. The gate
 	// rejects most web results before vision, so a ten-row request left fewer
 	// than ten usable portraits; twenty rows keep the same bounded pool while
@@ -40,13 +41,22 @@ func entityImageCatalogPoolTarget(limit int) int {
 	if limit <= 1 {
 		return 1
 	}
-	// Keep a small reserve below the provider query limit. Eight healthy URLs
-	// out of a ten-entry pool are enough; shorter but fully usable existing
-	// pools remain valid fallback while the caller decides whether to refresh.
+	// Keep the reusable-pool target below the provider query limit, but do not
+	// force a fresh provider/VLM pass every run once a modest verified pool can
+	// already serve normal per-scene demand. Larger pools still add choice when
+	// available.
 	if target := limit - 2; target > 0 {
-		return target
+		return min(target, entityImageCatalogMinimumReusePool)
 	}
 	return 1
+}
+
+// entityImageCatalogPoolMeetsDemand avoids another provider call when the
+// catalog already has enough visually verified candidates for this scene's
+// configured image count. The larger reusable-pool target remains useful for
+// jobs that do not declare a per-scene demand.
+func entityImageCatalogPoolMeetsDemand(pool entityImageCatalogPool, imagesPerScene int) bool {
+	return pool.Sufficient || (imagesPerScene > 0 && pool.UsableCount >= imagesPerScene)
 }
 
 // entityImageCatalogCandidates converts durable catalog rows into the normal
@@ -330,6 +340,9 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 		if !strings.EqualFold(strings.TrimSpace(result.Provider), scriptpkg.VidRushProviderInternetImages) ||
 			strings.TrimSpace(result.Entity) == "" || strings.TrimSpace(result.SourceURL) == "" ||
 			(result.SemanticStatus != entitycatalog.CandidateSemanticAccepted && result.SemanticStatus != entitycatalog.CandidateSemanticRejected) {
+			continue
+		}
+		if result.SemanticStatus == entitycatalog.CandidateSemanticAccepted && !ReusablePersonImageVerdict(result) {
 			continue
 		}
 		identity, err := entitycatalog.CanonicalizePersonName(result.Entity)

@@ -152,6 +152,21 @@ func (c *integrationEntityImageCatalog) GetMaterialization(_ context.Context, ca
 
 var _ entitycatalog.Repository = (*integrationEntityImageCatalog)(nil)
 
+// acceptingPersonImageScorer is the test double for a scorer that certified
+// every retrieved portrait. It stamps the same provenance the real parser
+// writes, so the resulting rows are deliberately reusable by the catalog.
+type acceptingPersonImageScorer struct{}
+
+func (acceptingPersonImageScorer) ScoreImageCandidates(_ context.Context, _ string, in []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	out := append([]scriptpkg.SegmentAssetCandidate(nil), in...)
+	for i := range out {
+		out[i].SemanticStatus = entitycatalog.CandidateSemanticAccepted
+		out[i].SemanticScore = 0.95
+		out[i].QualityReason = "Ollama visual identity verification confirmed one portrait subject"
+	}
+	return out, nil
+}
+
 type catalogIntegrationSearcher struct {
 	calls atomic.Int32
 }
@@ -159,8 +174,8 @@ type catalogIntegrationSearcher struct {
 func (s *catalogIntegrationSearcher) SearchImages(_ context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	s.calls.Add(1)
 	return []scriptpkg.SegmentAssetCandidate{
-		{AssetID: "provider-1", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/1.jpg"},
-		{AssetID: "provider-2", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/2.jpg"},
+		{AssetID: "provider-1", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/1.jpg", SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, QualityReason: "manual visual identity review confirmed"},
+		{AssetID: "provider-2", Provider: scriptpkg.VidRushProviderInternetImages, Query: req.Query, Entity: req.Entity, SourceURL: "https://images.example/" + req.Query + "/2.jpg", SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, QualityReason: "manual visual identity review confirmed"},
 	}, nil
 }
 
@@ -209,7 +224,7 @@ func seedCatalogPerson(t *testing.T, repo *integrationEntityImageCatalog, name s
 			parsed.Path = "/" + nameSlug + "/" + strings.TrimLeft(parsed.Path, "/")
 			url = parsed.String()
 		}
-		if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{CanonicalEntityID: identity.CanonicalEntityID, Provider: "duckduckgo", Rank: i + 1, SourceURL: url, Status: entitycatalog.CandidateStatusActive, SemanticStatus: entitycatalog.CandidateSemanticAccepted}); err != nil {
+		if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{CanonicalEntityID: identity.CanonicalEntityID, Provider: "duckduckgo", Rank: i + 1, SourceURL: url, Status: entitycatalog.CandidateStatusActive, SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 1, QualityReason: "manual visual identity review confirmed"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -330,7 +345,7 @@ func TestInternetImagesProcessorCatalogMissPopulatesAndReusesCanonicalEntity(t *
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
 	plan := catalogPersonPlan()
 
 	if _, err := processor.Process(context.Background(), plan, catalogPersonInput("mj-1", "Michael Jordan")); err != nil {
@@ -377,7 +392,7 @@ func TestInternetImagesProcessorCatalogLockSharesFirstPopulation(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
 	plan := catalogPersonPlan()
 
 	var wg sync.WaitGroup

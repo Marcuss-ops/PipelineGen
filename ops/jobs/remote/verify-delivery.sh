@@ -47,14 +47,14 @@ if [[ -z "$JOB_ID" ]]; then
   exit 1
 fi
 
-DRIVE_CREDENTIALS="${VELOX_DRIVE_CREDENTIALS_FILE:-/home/pierone/.config/velox/credentials.json}"
-DRIVE_TOKEN="${VELOX_DRIVE_TOKEN_FILE:-/home/pierone/.config/velox/token.json}"
+DRIVE_CREDENTIALS="${VELOX_DRIVE_CREDENTIALS_FILE:-$HOME/.config/velox/credentials.json}"
+DRIVE_TOKEN="${VELOX_DRIVE_TOKEN_FILE:-$HOME/.config/velox/token.json}"
 DRIVE_API="https://www.googleapis.com/drive/v3/files"
 OAUTH_TOKEN_URL="https://oauth2.googleapis.com/token"
 
 resolve_creds() {
   local candidate
-  for candidate in "${VELOX_M2M_ENV:-}" "$HOME/creator-77-master.env" "/home/pierone/creator-77-master.env"; do
+  for candidate in "${VELOX_M2M_ENV:-}" "$HOME/creator-77-master.env"; do
     [[ -n "$candidate" && -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
   done
   printf '%s' "${VELOX_M2M_ENV:-$HOME/creator-77-master.env}"

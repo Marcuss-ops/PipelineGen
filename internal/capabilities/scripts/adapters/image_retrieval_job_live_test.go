@@ -3,12 +3,15 @@ package adapters
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +23,8 @@ import (
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/types"
 	sqliteinfra "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/assets/entitycatalog"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
@@ -28,6 +33,70 @@ import (
 type liveJobImageSearcher struct {
 	delegate imagesapp.ImageSearcher
 	calls    atomic.Int32
+	rawHits  atomic.Int32
+	maxItems int
+}
+
+type liveJobIdentityScorer struct {
+	client *ollamaclient.Client
+	http   *http.Client
+}
+
+func (s *liveJobIdentityScorer) ScoreImageCandidates(ctx context.Context, query string, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	out := append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)
+	for i := range out {
+		candidate := &out[i]
+		identity, err := entitycatalog.CanonicalizePersonName(candidate.Entity)
+		if err != nil {
+			candidate.SemanticStatus = entitycatalog.CandidateSemanticRejected
+			candidate.QualityReason = "live probe rejected invalid person identity"
+			continue
+		}
+		data, mime, err := DownloadVidRushImageForCandidate(ctx, s.http, *candidate, DefaultVidRushImagePolicy())
+		if err != nil {
+			candidate.SemanticStatus = entitycatalog.CandidateSemanticRejected
+			candidate.QualityReason = "image could not be downloaded for visual verification: " + err.Error()
+			continue
+		}
+		verified, err := VerifyVidRushImageBytes(*candidate, data, mime, DefaultVidRushImagePolicy())
+		if err != nil {
+			candidate.SemanticStatus = entitycatalog.CandidateSemanticRejected
+			candidate.QualityReason = "technical image verification rejected candidate: " + err.Error()
+			continue
+		}
+		candidate.Width, candidate.Height = verified.Width, verified.Height
+		var verdict struct {
+			IdentityMatch bool    `json:"identity_match"`
+			SinglePerson  bool    `json:"single_person_headshot"`
+			Collage       bool    `json:"split_panel_or_collage"`
+			Confidence    float64 `json:"confidence"`
+		}
+		prompt := fmt.Sprintf(`Inspect the attached image pixels for identity and layout. Requested person: %q. Retrieval query: %q. Ignore URLs, titles, and search metadata. Set identity_match only when the visible person is recognizable as the requested person. Require one dominant person and no collage. If uncertain, return false. Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.0}`, identity.CanonicalName, query)
+		response, err := s.client.Chat(ctx, []types.Message{
+			{Role: "system", Content: "Conservatively verify public-person identity from image pixels. Return only JSON."},
+			{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(data)}},
+		}, map[string]any{"model": s.client.Model(), "temperature": 0, "num_predict": 128, "num_ctx": 4096}, json.RawMessage(`"json"`))
+		if err != nil {
+			candidate.SemanticStatus = entitycatalog.CandidateSemanticRejected
+			candidate.QualityReason = "visual verification failed: " + err.Error()
+			continue
+		}
+		if err := json.Unmarshal([]byte(response), &verdict); err != nil {
+			candidate.SemanticStatus = entitycatalog.CandidateSemanticRejected
+			candidate.QualityReason = "visual verification failed: invalid JSON verdict"
+			continue
+		}
+		if verdict.IdentityMatch && verdict.SinglePerson && !verdict.Collage && verdict.Confidence >= 0.85 {
+			candidate.SemanticStatus = entitycatalog.CandidateSemanticAccepted
+			candidate.SemanticScore = verdict.Confidence
+			candidate.QualityReason = "Ollama visual identity verification confirmed the requested person and one dominant subject"
+			continue
+		}
+		candidate.SemanticStatus = entitycatalog.CandidateSemanticRejected
+		candidate.SemanticScore = verdict.Confidence
+		candidate.QualityReason = "Ollama visual identity verification did not confirm the requested person and layout"
+	}
+	return out, nil
 }
 
 func newLiveJobImageSearcher(t *testing.T) *liveJobImageSearcher {
@@ -52,7 +121,15 @@ func newLiveJobImageSearcher(t *testing.T) *liveJobImageSearcher {
 	if err != nil {
 		t.Fatalf("live retrieved searcher: %v", err)
 	}
-	return &liveJobImageSearcher{delegate: delegate}
+	maxItems := 20
+	if configured := strings.TrimSpace(os.Getenv("PERSON_CATALOG_VERIFY_LIMIT")); configured != "" {
+		parsed, parseErr := strconv.Atoi(configured)
+		if parseErr != nil || parsed < 1 {
+			t.Fatalf("PERSON_CATALOG_VERIFY_LIMIT must be a positive integer, got %q", configured)
+		}
+		maxItems = parsed
+	}
+	return &liveJobImageSearcher{delegate: delegate, maxItems: maxItems}
 }
 
 func (s *liveJobImageSearcher) SearchImages(ctx context.Context, req InternetImageSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -61,6 +138,7 @@ func (s *liveJobImageSearcher) SearchImages(ctx context.Context, req InternetIma
 	if err != nil {
 		return nil, err
 	}
+	s.rawHits.Store(int32(len(hits)))
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(hits))
 	for i, hit := range hits {
 		url := strings.TrimSpace(hit.PreviewURL)
@@ -73,6 +151,9 @@ func (s *liveJobImageSearcher) SearchImages(ctx context.Context, req InternetIma
 			SourcePageURL: hit.SourcePageURL, Width: hit.Width, Height: hit.Height,
 			Score: hit.Score, RightsStatus: "unknown_allowed",
 		})
+	}
+	if s.maxItems > 0 && len(out) > s.maxItems {
+		out = out[:s.maxItems]
 	}
 	return out, nil
 }
@@ -110,26 +191,59 @@ func liveJobInput(segmentID, name string) ProcessInput {
 // touched. The finalizer is an isolated local equivalent of the canonical
 // persistence port, so this gate covers job behavior without external writes.
 //
-//	Run with PERSON_CATALOG_LIVE=1 go test ./internal/capabilities/scripts/adapters \
+//	Run with PERSON_CATALOG_LIVE=1 PERSON_CATALOG_QUERY="John Cena" go test ./internal/capabilities/scripts/adapters \
 //	  -run '^TestLiveImageRetrievalJobPersistsAndReusesAssets$' -v -count=1 -timeout 4m
 func TestLiveImageRetrievalJobPersistsAndReusesAssets(t *testing.T) {
 	if os.Getenv("PERSON_CATALOG_LIVE") != "1" {
 		t.Skip("set PERSON_CATALOG_LIVE=1 to run the isolated live retrieval job")
 	}
+	entityName := strings.TrimSpace(os.Getenv("PERSON_CATALOG_QUERY"))
+	if entityName == "" {
+		t.Fatal("set PERSON_CATALOG_QUERY to one person name, for example 'John Cena'")
+	}
+	identity, err := entitycatalog.CanonicalizePersonName(entityName)
+	if err != nil {
+		t.Fatalf("invalid PERSON_CATALOG_QUERY %q: %v", entityName, err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 	defer cancel()
 	resetEntityImageCatalogCaches()
 	root := t.TempDir()
+	if artifactDir := strings.TrimSpace(os.Getenv("PERSON_CATALOG_ARTIFACT_DIR")); artifactDir != "" {
+		root = artifactDir
+		if err := os.MkdirAll(root, 0o700); err != nil {
+			t.Fatalf("create PERSON_CATALOG_ARTIFACT_DIR: %v", err)
+		}
+	}
 	dbPath := filepath.Join(root, "job-catalog.db")
 	db := openPersistentEntityImageCatalog(t, dbPath)
 	repo := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db)
 	searcher := newLiveJobImageSearcher(t)
 	plan := liveJobPlan()
-	plan.ImagesPerScene = 2
-	input := liveJobInput("job-trump-cold", "Donald Trump")
+	plan.ImagesPerScene = 1
+	segmentID := "entity-" + strings.ToLower(strings.ReplaceAll(identity.CanonicalName, " ", "-"))
+	input := liveJobInput(segmentID+"-cold", identity.CanonicalName)
+	ollamaURL := strings.TrimSpace(os.Getenv("OLLAMA_ADDR"))
+	if ollamaURL == "" {
+		ollamaURL = "http://localhost:11434"
+	}
+	ollamaModel := strings.TrimSpace(os.Getenv("OLLAMA_MODEL"))
+	if ollamaModel == "" {
+		ollamaModel = "gemma4:e4b"
+	}
+	ollamaTimeout := 180
+	if configured := strings.TrimSpace(os.Getenv("OLLAMA_TIMEOUT")); configured != "" {
+		if parsed, parseErr := strconv.Atoi(configured); parseErr == nil && parsed > 0 {
+			ollamaTimeout = parsed
+		}
+	}
+	scorer := &liveJobIdentityScorer{
+		client: ollamaclient.NewClient(ollamaURL, ollamaModel, ollamaTimeout),
+		http:   &http.Client{Timeout: 30 * time.Second},
+	}
 
 	// Exercise the semantic image-resolution stage used by a generation job.
-	searchStage := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	searchStage := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(scorer)
 	discoveryResult, err := searchStage.Process(ctx, plan, input)
 	if err != nil {
 		t.Fatalf("cold job search: %v", err)
@@ -139,10 +253,14 @@ func TestLiveImageRetrievalJobPersistsAndReusesAssets(t *testing.T) {
 	}
 	discovered := discoveryResult.VidRushSegments[0]
 	if len(discovered.Assets.Candidates) == 0 {
-		t.Fatal("cold job search returned no candidates")
+		t.Fatalf("cold job search returned no visually verified candidates for %q", identity.CanonicalName)
 	}
-	// Search persists a larger reuse pool; this isolated job requests and
-	// materializes only two candidates to keep the live write set bounded.
+	t.Logf("identity: query=%q canonical_id=%s model=%s provider_calls=%d provider_hits=%d visually_checked=%d verified_candidates=%d", entityName, identity.CanonicalEntityID, ollamaModel, searcher.calls.Load(), searcher.rawHits.Load(), min(searcher.maxItems, int(searcher.rawHits.Load())), len(discovered.Assets.Candidates))
+	for i, candidate := range discovered.Assets.Candidates {
+		t.Logf("verified[%d]: keyword=%q entity=%q status=%s score=%.2f reason=%q source=%s", i+1, candidate.Query, candidate.Entity, candidate.SemanticStatus, candidate.SemanticScore, candidate.QualityReason, candidate.SourceURL)
+	}
+	// Search persists a larger reuse pool; this isolated probe requests one
+	// image and materializes at most one alternate to keep writes bounded.
 	if len(discovered.Assets.Candidates) > 2 {
 		discovered.Assets.Candidates = discovered.Assets.Candidates[:2]
 	}
@@ -177,7 +295,7 @@ func TestLiveImageRetrievalJobPersistsAndReusesAssets(t *testing.T) {
 			t.Fatalf("persisted asset missing at %q: %v", asset.LocalPath, err)
 		}
 	}
-	rows, err := repo.ListCandidates(ctx, "person:donald-trump", 20)
+	rows, err := repo.ListCandidates(ctx, identity.CanonicalEntityID, 20)
 	if err != nil {
 		t.Fatalf("read persisted catalog: %v", err)
 	}
@@ -206,16 +324,18 @@ func TestLiveImageRetrievalJobPersistsAndReusesAssets(t *testing.T) {
 	}
 
 	// Simulate a new worker/job process: reopen the durable catalog and clear
-	// process-local pools. Equivalent person spelling and topic must reuse it.
+	// process-local pools. The normal replay should meet the scene's requested
+	// image count from the durable catalog without another provider request.
 	resetEntityImageCatalogCaches()
 	db = openPersistentEntityImageCatalog(t, dbPath)
 	defer db.Close()
 	repo = sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db)
-	replayInput := liveJobInput("job-trump-replay", "Donald Trump")
-	replayInput.VidRushSegments[0].Text = "Donald Trump and the White House"
+	replayInput := liveJobInput(segmentID+"-replay", identity.CanonicalName)
+	replayInput.VidRushSegments[0].Text = identity.CanonicalName + " and related events"
 	replayPlan := liveJobPlan()
-	replayPlan.Topic = "US presidents and Washington landmarks"
-	replayDiscovery, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).Process(ctx, replayPlan, replayInput)
+	replayPlan.ImagesPerScene = 1
+	replayPlan.Topic = "unrelated topic for catalog replay"
+	replayDiscovery, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(scorer).Process(ctx, replayPlan, replayInput)
 	if err != nil {
 		t.Fatalf("warm job search/reuse: %v", err)
 	}
