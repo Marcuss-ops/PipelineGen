@@ -45,6 +45,7 @@ type SemanticSearchOutcome struct {
 type SemanticSearchAttempt struct {
 	CandidateID, AssetKey string
 	SceneID               string
+	Evidence              string
 	Query, QueryKind      string
 	QueryOrigin           string
 	TemplateID            string
@@ -139,7 +140,8 @@ func (p *SemanticProductionPlan) attemptForUnit(unit *SemanticProductionUnit) (S
 	query := unit.Queries[unit.Rung]
 	attempt := SemanticSearchAttempt{
 		CandidateID: unit.CandidateID, AssetKey: unit.AssetKey, SceneID: unit.SceneID,
-		Query: query.Text, QueryKind: query.Kind, QueryOrigin: query.Origin, TemplateID: query.TemplateID,
+		Evidence: unit.Evidence,
+		Query:    query.Text, QueryKind: query.Kind, QueryOrigin: query.Origin, TemplateID: query.TemplateID,
 		Illustrative: query.Illustrative, Rung: unit.Rung,
 		Rank: unit.Rank, Class: SearchClassGeneric,
 	}

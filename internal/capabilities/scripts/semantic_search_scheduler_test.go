@@ -219,14 +219,13 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 		}
 	}
 
-	// The cache is keyed on the normalized entity, not on the query text: a
-	// different rung for the same person must still reuse the answer.
-	warmQuery := SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
-	coldPlan := schedulerPlan(t, identities, planCandidate(
-		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", warmQuery,
+	// The cache is scoped to the grounded query: repeating the same query for
+	// the same person must not hit the provider again.
+	warmPlan := schedulerPlan(t, identities, planCandidate(
+		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact,
 	))
 	clock.Advance(time.Minute)
-	warm, err := planner.Run(context.Background(), coldPlan, "it")
+	warm, err := planner.Run(context.Background(), warmPlan, "it")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,6 +236,21 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 		t.Fatalf("warm attempt = %+v, want a zero-latency cache hit", warm.Attempts[0])
 	}
 
+	// A different query/context for the same person is a different retrieval
+	// question and must not reuse the exact-surface answer.
+	contextQuery := SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
+	contextPlan := schedulerPlan(t, identities, planCandidate(
+		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", contextQuery,
+	))
+	clock.Advance(time.Minute)
+	contextRun, err := planner.Run(context.Background(), contextPlan, "it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contextRun.Metrics.CacheHits != 0 || contextRun.Attempts[0].Cached || len(port.calls) != 2 {
+		t.Fatalf("different-context run = %+v calls=%d, want a provider call and no cache hit", contextRun.Metrics, len(port.calls))
+	}
+
 	expiredPlan := schedulerPlan(t, identities, planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact,
 	))
@@ -245,7 +259,7 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if expired.Metrics.CacheHits != 0 || len(port.calls) != 2 {
+	if expired.Metrics.CacheHits != 0 || len(port.calls) != 3 {
 		t.Fatalf("expired run = %+v calls=%d, want a fresh provider call", expired.Metrics, len(port.calls))
 	}
 }

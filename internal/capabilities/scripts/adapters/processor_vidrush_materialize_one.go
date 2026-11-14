@@ -78,7 +78,7 @@ func (p *VidRushMaterializationProcessor) materializeOne(ctx context.Context, pl
 		updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, generated)
 	}
 	materialized := updated.Assets.Candidates
-	updated.Assets.SecondaryImages = selectExactVidRushImages(materialized, imageTarget, plan)
+	updated.Assets.SecondaryImages = selectExactVidRushImages(materialized, imageTarget, plan, updated)
 	logVidRushSelectedImages(p.log, segment.SegmentID, updated.Assets.SecondaryImages)
 	updated.Assets.GeneratedImages = filterVidRushGeneratedImages(updated.Assets.SecondaryImages)
 	if imageTarget > 0 && len(updated.Assets.SecondaryImages) != imageTarget {
