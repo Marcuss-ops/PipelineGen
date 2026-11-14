@@ -391,12 +391,37 @@ func deduplicateVisualEntities(entities []VisualEntity) []VisualEntity {
 	if len(entities) < 2 {
 		return entities
 	}
+	// A surname-only mention is an alias when exactly one full PERSON name in
+	// this segment ends with that surname. VisualNER deliberately preserves
+	// mention spans for annotation rebasing, but the image-search surface must
+	// not turn "Donald Trump" and "Trump" into two independent identities.
+	fullPeopleBySurname := make(map[string]map[string]struct{}, len(entities))
+	for _, entity := range entities {
+		if scriptpkg.NormalizeAnnotationType(string(entity.Type)) != "PERSON" {
+			continue
+		}
+		name := strings.Fields(normalizeVisualPersonName(entity.Text))
+		if len(name) < 2 {
+			continue
+		}
+		surname := strings.ToLower(name[len(name)-1])
+		if fullPeopleBySurname[surname] == nil {
+			fullPeopleBySurname[surname] = make(map[string]struct{})
+		}
+		fullPeopleBySurname[surname][strings.ToLower(strings.Join(name, " "))] = struct{}{}
+	}
 	out := make([]VisualEntity, 0, len(entities))
 	seen := make(map[string]struct{}, len(entities))
 	for _, entity := range entities {
 		value := strings.TrimSpace(entity.Text)
-		if entity.Type == scriptpkg.EntityTypePerson {
+		if scriptpkg.NormalizeAnnotationType(string(entity.Type)) == "PERSON" {
 			value = normalizeVisualPersonName(value)
+			name := strings.Fields(value)
+			if len(name) == 1 {
+				if owners := fullPeopleBySurname[strings.ToLower(name[0])]; len(owners) == 1 {
+					continue
+				}
+			}
 		}
 		key := strings.ToLower(strings.Join(strings.Fields(value), " "))
 		if key == "" {

@@ -401,16 +401,24 @@ func sortAttemptRows(rows []SemanticSearchAttemptResult) {
 	})
 }
 
-// cacheKey keys the answer on the normalized entity surface, not the raw query
-// text: the same person or institution is the same retrieval question even when
-// the ladder rung changes between runs. A composition without a single
-// canonical identity falls back to its query text.
+// cacheKey scopes an answer to both the canonical identity and the grounded
+// retrieval context. A name alone is not a safe cache identity: short or
+// translated place names can refer to different subjects, and a previous
+// exact-surface hit must not override a more specific query/evidence pair.
 func cacheKey(attempt SemanticSearchAttempt, language string) string {
 	subject := normalizeIdentitySurface(attempt.Entity)
 	if subject == "" {
 		subject = normalizeIdentitySurface(attempt.Query)
 	}
-	return strings.Join([]string{subject, string(attempt.Class), strings.ToLower(strings.TrimSpace(language))}, "\x00")
+	return strings.Join([]string{
+		"semantic-search-v2",
+		subject,
+		string(attempt.Class),
+		strings.ToLower(strings.TrimSpace(language)),
+		normalizeIdentitySurface(attempt.Query),
+		strings.ToLower(strings.TrimSpace(attempt.QueryOrigin)),
+		normalizeIdentitySurface(attempt.Evidence),
+	}, "\x00")
 }
 
 // summarizeSemanticSearchBatch derives the aggregate hit rate and latency

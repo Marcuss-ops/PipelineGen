@@ -282,6 +282,8 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 		SourceURL:         "https://images.example/michael-jordan-drive.jpg",
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		SemanticScore:     0.9,
+		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -311,6 +313,9 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
 	input := ProcessInput{VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 		SegmentID: "persistent-drive-reuse",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{
+			Value: "Michael Jordan", Type: "PERSON",
+		}}},
 		Assets: scriptpkg.SegmentAssetSelection{Candidates: []scriptpkg.SegmentAssetCandidate{{
 			AssetID:      "discovery-id",
 			Provider:     scriptpkg.VidRushProviderInternetImages,
