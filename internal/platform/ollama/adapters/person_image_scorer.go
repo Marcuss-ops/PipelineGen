@@ -107,20 +107,22 @@ func (s *OllamaPersonImageScorer) ScoreImageCandidates(ctx context.Context, quer
 			rejectPersonImage(candidate, "visual verification failed: "+err.Error())
 			continue
 		}
-		if verdict.SinglePerson && !verdict.Collage && verdict.Confidence >= 0.75 {
+		if verdict.SinglePerson && verdict.IdentityMatch && !verdict.Collage && verdict.Confidence >= 0.85 {
 			candidate.SemanticStatus = entitycatalog.CandidateSemanticAccepted
 			candidate.SemanticScore = verdict.Confidence
-			candidate.QualityReason = "canonical identity appears in source URL; Ollama visual verification confirmed one dominant subject and no collage"
+			candidate.QualityReason = "Ollama visual identity verification confirmed the requested person and one dominant subject"
 			continue
 		}
 		reason := "Ollama visual verification rejected candidate"
 		switch {
+		case !verdict.IdentityMatch:
+			reason = "Ollama visual identity verification could not confirm the requested person"
 		case verdict.Collage:
 			reason = "Ollama visual verification detected a split panel or collage"
 		case !verdict.SinglePerson:
 			reason = "Ollama visual verification did not find one clear person"
-		case verdict.Confidence < 0.75:
-			reason = "Ollama visual verification confidence below 0.75"
+		case verdict.Confidence < 0.85:
+			reason = "Ollama visual identity verification confidence below 0.85"
 		}
 		rejectPersonImage(candidate, reason)
 	}
@@ -143,18 +145,18 @@ func normalizePersonImageForVision(data []byte) ([]byte, error) {
 }
 
 type personImageVerdict struct {
-	SinglePerson bool    `json:"single_person_headshot"`
-	Collage      bool    `json:"split_panel_or_collage"`
-	Confidence   float64 `json:"confidence"`
+	SinglePerson  bool    `json:"single_person_headshot"`
+	IdentityMatch bool    `json:"identity_match"`
+	Collage       bool    `json:"split_panel_or_collage"`
+	Confidence    float64 `json:"confidence"`
 }
 
 func (s *OllamaPersonImageScorer) classify(ctx context.Context, model, identity, query string, imageBytes []byte) (personImageVerdict, error) {
 	var verdict personImageVerdict
-	prompt := fmt.Sprintf(`Inspect only the attached image pixels for subject layout. The durable image URL contains the requested canonical name %q; do not try to identify the person's face or infer identity from search context %q.
-Return a conservative image-layout verdict. "single_person_headshot" is true when one clearly visible human is the dominant primary subject, even in a full-body or contextual editorial/news photograph; incidental background people, reporters, camera operators, or passersby do not disqualify it when they are not co-primary subjects. Do not require a tight headshot crop. It is false when multiple people are equally prominent foreground subjects, the person is too small or unclear, or no clear primary person is visible. "split_panel_or_collage" is true for multiple photos or panels combined into one image. If uncertain, use false and low confidence.
-Return exactly JSON: {"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.0}`, identity, query)
+	prompt := fmt.Sprintf(`Inspect the attached image pixels for both identity and layout. The requested person is %q and the retrieval query was %q. Do not use the URL, page title, or search metadata as proof of identity. Set "identity_match" true only when the visible person is recognizable as the requested person from the pixels themselves; if you cannot confidently distinguish the person from another individual, set it false. Set "single_person_headshot" true when one clearly visible human is the dominant primary subject, including full-body or contextual editorial/news photographs; incidental background people do not disqualify it. Set "split_panel_or_collage" true when multiple photos or panels are combined. Confidence must reflect the weaker of the identity and layout judgments. If uncertain, use false and low confidence.
+Return exactly JSON: {"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.0}`, identity, query)
 	messages := []types.Message{
-		{Role: "system", Content: "You are a strict image quality verifier. Inspect image pixels, ignore provider metadata, and do not guess identities. Return only the requested JSON object."},
+		{Role: "system", Content: "You are a conservative public-person image identity and layout verifier. Inspect the pixels; never infer identity from provider metadata. Return only the requested JSON object."},
 		{Role: "user", Content: prompt, Images: []string{base64.StdEncoding.EncodeToString(imageBytes)}},
 	}
 	opts := map[string]any{"model": model, "temperature": 0, "num_predict": 128, "num_ctx": 4096}

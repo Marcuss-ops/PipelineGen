@@ -192,12 +192,28 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 	return nil
 }
 
+// ErrSQLiteMediaIndexEmissionDisabled is returned by EnqueueIndexEvent when
+// the dispatcher is wired to the canonical PostgreSQL media committer. The
+// SQLite outbox registers no media index consumer (assertSingleMediaIndexOwner
+// aborts boot if it does), so emitting asset.index.requested here would persist
+// an event no worker can drain. The canonical producer is
+// AssetCommitter.CommitAndIndex.
+var ErrSQLiteMediaIndexEmissionDisabled = errors.New("outbox: SQLite asset.index.requested emission is disabled while the canonical PostgreSQL media committer is wired")
+
 // EnqueueIndexEvent delegates a tx-bound indexing request to the canonical
 // AssetCommitter emitter. The caller must already have persisted the matching
 // media_assets state in tx before invoking this method.
+//
+// Fail-closed: when the dispatcher holds the canonical PostgreSQL media
+// committer, this SQLite envelope has no owner and MUST NOT be written. The
+// method remains only for legacy compositions that have not wired the
+// canonical committer yet; it never silently succeeds in the Postgres plane.
 func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID, source, contentHash string) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
+	}
+	if d.committer != nil {
+		return fmt.Errorf("%w (asset_id=%s)", ErrSQLiteMediaIndexEmissionDisabled, assetID)
 	}
 	if d.outboxEventsRepo == nil {
 		return errors.New("outbox.Dispatcher: outbox events repo not configured")

@@ -104,8 +104,8 @@ for n in "${!COPY_ID[@]}"; do
 done
 
 # OAuth is needed only for Drive recovery or the default publish operation.
-CREDS="${VELOX_DRIVE_CREDENTIALS_FILE:-/home/pierone/.config/velox/credentials.json}"
-TOKEN="${VELOX_DRIVE_TOKEN_FILE:-/home/pierone/.config/velox/token.json}"
+CREDS="${VELOX_DRIVE_CREDENTIALS_FILE:-$HOME/.config/velox/credentials.json}"
+TOKEN="${VELOX_DRIVE_TOKEN_FILE:-$HOME/.config/velox/token.json}"
 ACCESS=""
 if [[ ${#MISSING[@]} -gt 0 || "$LOCAL_ONLY" != 1 ]]; then
   [[ -r "$CREDS" && -r "$TOKEN" ]] || { echo "materialize-scene-clips: Drive OAuth files are required" >&2; exit 4; }
@@ -157,7 +157,8 @@ if [[ -z "$FOLDER" ]]; then
   drive_get "$source_id" "$WORK/source-video.mp4" || { echo "materialize-scene-clips: could not read source video for identity check" >&2; exit 5; }
   [[ "$(sha256sum -- "$WORK/source-video.mp4" | cut -d' ' -f1)" == "$VIDEO_SHA" ]] || { echo "materialize-scene-clips: Drive source video SHA-256 does not match the local input" >&2; exit 5; }
 fi
-[[ "$FOLDER" =~ ^[A-Za-z0-9_-]{1,200}$ ]] || { echo "materialize-scene-clips: invalid/missing job folder ID" >&2; exit 5; }  listing="$(curl -fSs --max-time 30 -G "$API" --data-urlencode "q=trashed=false and '$FOLDER' in parents and name='$NAME'" --data-urlencode 'fields=files(id,size,mimeType,md5Checksum,parents),nextPageToken' --data-urlencode pageSize=1000 --data-urlencode spaces=drive -H "Authorization: Bearer $ACCESS")" || { echo "materialize-scene-clips: output Drive lookup failed" >&2; exit 5; }
+[[ "$FOLDER" =~ ^[A-Za-z0-9_-]{1,200}$ ]] || { echo "materialize-scene-clips: invalid/missing job folder ID" >&2; exit 5; }
+listing="$(curl -fSs --max-time 30 -G "$API" --data-urlencode "q=trashed=false and '$FOLDER' in parents and name='$NAME'" --data-urlencode 'fields=files(id,size,mimeType,md5Checksum,parents),nextPageToken' --data-urlencode pageSize=1000 --data-urlencode spaces=drive -H "Authorization: Bearer $ACCESS")" || { echo "materialize-scene-clips: output Drive lookup failed" >&2; exit 5; }
 
 [[ "$(jq -r '.nextPageToken // empty' <<<"$listing")" == "" ]] || { echo "materialize-scene-clips: output lookup is incomplete; refusing publication" >&2; exit 5; }
 count="$(jq -r '.files // [] | length' <<<"$listing")"; [[ "$count" -le 1 ]] || { echo "materialize-scene-clips: duplicate output entries; refusing publication" >&2; exit 5; }

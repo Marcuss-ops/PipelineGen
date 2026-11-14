@@ -19,14 +19,11 @@
 package governance
 
 import (
-	"bufio"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/textban"
 )
 
 // versionStringsSSOTRe matches the canonical resolution pipeline
@@ -59,95 +56,14 @@ const versionStringsSSOTScanScope = "internal/"
 // and emits a violation for any production file that contains a
 // hardcoded pipeline version string outside the canonical registry.
 func ScanVersionStringsBan(root string, _ *policy.Policy, r *report.Report) {
-
-	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			base := filepath.Base(path)
-			if versionStringsSSOTSkipDirs[base] {
-				return filepath.SkipDir
-			}
-			rel, relErr := filepath.Rel(root, path)
-			if relErr == nil {
-				relSlash := filepath.ToSlash(rel)
-				if hasAnyPathPrefix(relSlash, versionStringsSSOTSkipPathPrefixes) {
-					return filepath.SkipDir
-				}
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return nil
-		}
-		relSlash := filepath.ToSlash(rel)
-		if strings.HasSuffix(relSlash, "_test.go") {
-			return nil
-		}
-		if !strings.HasPrefix(relSlash, versionStringsSSOTScanScope) {
-			return nil
-		}
-		if hasAnyPathPrefix(relSlash, versionStringsSSOTExemptPathPrefixes) {
-			return nil
-		}
-		scanVersionStringsBanFile(path, relSlash, r)
-		return nil
-	}); err != nil {
-		r.Warnings = append(r.Warnings, versionStringsSSOTRule+" scan "+root+": "+err.Error())
-	}
-}
-
-func scanVersionStringsBanFile(path, relPath string, r *report.Report) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	lineNo := 0
-
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
-		trimmed := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-			continue
-		}
-		if !versionStringsSSOTRe.MatchString(line) {
-			continue
-		}
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     pkgFromVersionStringsBanRel(relPath),
-			File:        relPath,
-			Line:        lineNo,
-			Rule:        versionStringsSSOTRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "version_strings_ssot_gate",
-			Note:        versionStringsSSOTNote + " | snippet: " + truncateVersionStringsBan(line),
-		})
-	}
-}
-
-func pkgFromVersionStringsBanRel(rel string) string {
-	dir := filepath.Dir(rel)
-	if dir == "." || dir == "" {
-		return "."
-	}
-	return filepath.ToSlash(dir)
-}
-
-func truncateVersionStringsBan(s string) string {
-	const maxLen = 120
-	const marker = " <<<"
-	if len(s) > maxLen {
-		return s[:maxLen] + marker
-	}
-	return s
+	textban.Scan(root, textban.Spec{
+		RuleID:             versionStringsSSOTRule,
+		MatchedRule:        "version_strings_ssot_gate",
+		Note:               versionStringsSSOTNote,
+		ScanPrefixes:       []string{versionStringsSSOTScanScope},
+		SkipDirs:           versionStringsSSOTSkipDirs,
+		SkipPathPrefixes:   versionStringsSSOTSkipPathPrefixes,
+		ExemptPathPrefixes: versionStringsSSOTExemptPathPrefixes,
+		Match:              versionStringsSSOTRe.MatchString,
+	}, r)
 }

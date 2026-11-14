@@ -96,6 +96,12 @@ func CloneVidRushSegmentResult(in scriptpkg.VidRushSegmentResult) scriptpkg.VidR
 			out.Insights.ImageEntityCanonicalIDs[key] = id
 		}
 	}
+	if in.Insights.ImageEntityCanonicalNames != nil {
+		out.Insights.ImageEntityCanonicalNames = make(map[string]string, len(in.Insights.ImageEntityCanonicalNames))
+		for key, name := range in.Insights.ImageEntityCanonicalNames {
+			out.Insights.ImageEntityCanonicalNames[key] = name
+		}
+	}
 	out.Assets.SecondaryImages = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.SecondaryImages...)
 	out.Assets.GeneratedImages = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.GeneratedImages...)
 	out.Assets.Candidates = append([]scriptpkg.SegmentAssetCandidate(nil), in.Assets.Candidates...)

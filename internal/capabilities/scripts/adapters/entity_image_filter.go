@@ -34,7 +34,7 @@ func filterPersonEntityImageCandidatesWithRejections(identity entitycatalog.Pers
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(results))
 	rejected := make(map[string]int)
 	for _, result := range results {
-		accepted, semanticScore, technicalScore, reason := evaluatePersonImageCandidate(identity, result)
+		accepted, _, technicalScore, reason := evaluatePersonImageCandidate(identity, result)
 		if !accepted {
 			if strings.TrimSpace(reason) == "" {
 				reason = "rejected by PERSON identity/quality gate"
@@ -42,10 +42,16 @@ func filterPersonEntityImageCandidatesWithRejections(identity entitycatalog.Pers
 			rejected[reason]++
 			continue
 		}
-		result.SemanticStatus = entitycatalog.CandidateSemanticAccepted
-		result.SemanticScore = semanticScore
+		// This gate checks only retrieval metadata (query identity, source
+		// filename conflicts and technical dimensions). It cannot certify the
+		// depicted person. Keep the candidate pending until the pixel verifier
+		// returns an explicit identity verdict.
+		if !ReusablePersonImageVerdict(result) {
+			result.SemanticStatus = entitycatalog.CandidateSemanticUnknown
+			result.SemanticScore = 0
+			result.QualityReason = reason
+		}
 		result.TechnicalQualityScore = technicalScore
-		result.QualityReason = reason
 		out = append(out, result)
 	}
 	return out, rejected
@@ -88,9 +94,23 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 	if reason := personImageSourceIdentityFailure(identity.CanonicalName, candidate.SourceURL, candidate.SourcePageURL); reason != "" {
 		return false, 0, 0, reason
 	}
+	if reason := personImageSourceNotRaster(candidate.SourceURL); reason != "" {
+		return false, 0, 0, reason
+	}
+	// A definitive visual rejection is final: metadata must never resurrect
+	// it. A rejection caused by a scorer outage stays retryable (its reason
+	// is one of the transient shapes) and falls through to the unknown path.
+	if strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), entitycatalog.CandidateSemanticRejected) &&
+		ReusablePersonImageVerdict(candidate) {
+		reason := strings.TrimSpace(candidate.QualityReason)
+		if reason == "" {
+			reason = "candidate was rejected by visual identity verification"
+		}
+		return false, 0, 0, reason
+	}
 	expectedID := identity.CanonicalEntityID
-	semanticScore := 0.5
-	reason := "PERSON identity inferred from query; technical dimensions not supplied"
+	semanticScore := 0.0
+	reason := "candidate is a retrieval match only; pixel identity remains unverified"
 
 	if entity := strings.TrimSpace(candidate.Entity); entity != "" {
 		cleanEntity := strings.TrimSpace(strings.TrimSuffix(strings.TrimSuffix(entity, "'s"), "’s"))
@@ -98,14 +118,12 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 		if err != nil || actual.CanonicalEntityID != expectedID {
 			return false, 0, 0, "candidate entity does not match requested PERSON identity"
 		}
-		semanticScore = 1
-		reason = "explicit PERSON entity matches canonical identity"
+		reason = "candidate entity label matches canonical PERSON query; pixels remain unverified"
 	} else if query := strings.TrimSpace(candidate.Query); query != "" {
 		if !personQueryContainsCanonicalName(query, identity.CanonicalName) {
 			return false, 0, 0, "candidate query does not contain requested PERSON identity"
 		}
-		semanticScore = 0.85
-		reason = "candidate query contains canonical PERSON identity"
+		reason = "candidate query contains canonical PERSON identity; pixels remain unverified"
 	}
 
 	technicalScore := 0.0
@@ -129,6 +147,24 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 		reason += "; dimensions meet minimum"
 	}
 	return true, semanticScore, technicalScore, reason
+}
+
+// personImageSourceNotRaster rejects provider links that resolve to a
+// document viewer instead of an image file. HTML/PDF pages were being
+// downloaded as if they were pixels: the decoder then either failed late or
+// produced a non-image asset, which is exactly the class of failure the
+// identity gate must stop at discovery time.
+func personImageSourceNotRaster(sourceURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(sourceURL))
+	if err != nil || parsed.Path == "" {
+		return ""
+	}
+	switch strings.ToLower(path.Ext(parsed.Path)) {
+	case ".pdf", ".html", ".htm", ".xhtml", ".txt", ".doc", ".docx", ".ppt", ".pptx":
+		return "source URL points to a document, not a raster image"
+	default:
+		return ""
+	}
 }
 
 // personImageSourceIdentityFailure rejects only a high-confidence provenance
@@ -258,6 +294,28 @@ func normalizeInternetImageCatalogResults(results []scriptpkg.SegmentAssetCandid
 	return out
 }
 
+func canonicalImageEntityName(segment scriptpkg.VidRushSegmentResult, surface string) string {
+	for alias, canonical := range segment.Insights.ImageEntityCanonicalNames {
+		if normalizeEntityMatch(alias) == normalizeEntityMatch(surface) {
+			return strings.TrimSpace(canonical)
+		}
+	}
+	return ""
+}
+
+func canonicalImageEntityType(segment scriptpkg.VidRushSegmentResult, surface string) string {
+	for alias, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+		if normalizeEntityMatch(alias) != normalizeEntityMatch(surface) {
+			continue
+		}
+		parts := strings.SplitN(strings.TrimSpace(canonicalID), ":", 2)
+		if len(parts) == 2 {
+			return normalizeAnnotationType(parts[0])
+		}
+	}
+	return ""
+}
+
 func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult, query string) (entitycatalog.PersonIdentity, bool, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -265,10 +323,20 @@ func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult
 	}
 	if len(segment.Insights.ImageEntityCanonicalIDs) > 0 {
 		for name, id := range segment.Insights.ImageEntityCanonicalIDs {
-			if normalizeEntityMatch(name) != normalizeEntityMatch(query) || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(id)), "person:") {
+			if normalizeEntityMatch(name) != normalizeEntityMatch(query) {
 				continue
 			}
-			identity, err := entitycatalog.CanonicalizePersonIdentity(query, id)
+			if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(id)), "person:") {
+				// The canonical resolver is authoritative over the baseline NER
+				// type. Do not fall through and resurrect a venue/place that the
+				// weaker extractor labeled PERSON.
+				return entitycatalog.PersonIdentity{}, false, nil
+			}
+			canonicalName := canonicalImageEntityName(segment, name)
+			if canonicalName == "" {
+				canonicalName = query
+			}
+			identity, err := entitycatalog.CanonicalizePersonIdentity(canonicalName, id)
 			return identity, err == nil, err
 		}
 	}

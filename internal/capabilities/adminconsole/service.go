@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Service is the application-layer entry point for admin entity operations.
@@ -69,8 +70,11 @@ func (s *Service) List(ctx context.Context, entity string, opts ListOptions) (Li
 	if !ok {
 		return ListResponse{}, fmt.Errorf("unknown entity: %s", entity)
 	}
-	if desc.Repository == nil {
-		return ListResponse{Items: []map[string]any{}, Total: 0}, nil
+	if err := ValidateListOptions(desc, opts); err != nil {
+		return ListResponse{}, err
+	}
+	if !desc.Readable || desc.Repository == nil {
+		return ListResponse{}, ErrNotSupported
 	}
 	if opts.Limit <= 0 {
 		opts.Limit = 25
@@ -88,6 +92,49 @@ func (s *Service) List(ctx context.Context, entity string, opts ListOptions) (Li
 		Limit:  opts.Limit,
 		Offset: opts.Offset,
 	}, nil
+}
+
+// ValidateListOptions rejects options the entity descriptor does not declare
+// as supported. It is the shared guard behind the HTTP handler and any
+// non-HTTP caller: an unsupported option must fail closed, never produce an
+// unfiltered or unsorted page that looks successful.
+func ValidateListOptions(desc EntityDescriptor, opts ListOptions) error {
+	if opts.Limit < 0 {
+		return &ListOptionError{Parameter: "limit", Reason: "must be >= 0"}
+	}
+	if opts.Offset < 0 {
+		return &ListOptionError{Parameter: "offset", Reason: "must be >= 0"}
+	}
+	if opts.OrderBy != "" && !listFieldSupports(desc.ListFields, opts.OrderBy, func(f FieldDescriptor) bool { return f.Sortable }) {
+		return &ListOptionError{Parameter: "order_by", Reason: fmt.Sprintf("field %q is not sortable for entity %q", opts.OrderBy, desc.Key)}
+	}
+	if opts.OrderDir != "" {
+		if opts.OrderBy == "" {
+			return &ListOptionError{Parameter: "order_dir", Reason: "requires order_by"}
+		}
+		switch strings.ToLower(opts.OrderDir) {
+		case "asc", "desc":
+		default:
+			return &ListOptionError{Parameter: "order_dir", Reason: `must be "asc" or "desc"`}
+		}
+	}
+	for key := range opts.Filters {
+		if !listFieldSupports(desc.ListFields, key, func(f FieldDescriptor) bool { return f.Filterable }) {
+			return &ListOptionError{Parameter: "filter." + key, Reason: fmt.Sprintf("field %q is not filterable for entity %q", key, desc.Key)}
+		}
+	}
+	return nil
+}
+
+// listFieldSupports reports whether the named list field exists and satisfies
+// the caller's capability predicate (filterable or sortable).
+func listFieldSupports(fields []FieldDescriptor, key string, supported func(FieldDescriptor) bool) bool {
+	for _, f := range fields {
+		if f.Key == key {
+			return supported(f)
+		}
+	}
+	return false
 }
 
 // Get returns a single entity row.

@@ -47,15 +47,11 @@
 package boundaries
 
 import (
-	"bufio"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strconv"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/textban"
 )
 
 // qdrantImportBanSkipDirs mirrors the standard sibling scanning
@@ -217,130 +213,17 @@ func qdrantImportBanWarnBucket(r *report.Report, label, msg string) {
 // application types and may be imported freely. Only the literal
 // `internal/platform/qdrant` import is banned.
 func ScanQdrantIndexImportBan(root string, _ *policy.Policy, r *report.Report) {
-
-	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			base := filepath.Base(path)
-			if qdrantImportBanSkipDirs[base] {
-				return filepath.SkipDir
-			}
-			rel, relErr := filepath.Rel(root, path)
-			if relErr == nil {
-				relSlash := filepath.ToSlash(rel)
-				// SkipDirs-stringent: even if the directory is
-				// under the scan scope, it MUST NOT be the
-				// scanner's own package OR a doc/ scratch root.
-				if hasAnyPathPrefix(relSlash, qdrantImportBanSkipPathPrefixes) {
-					return filepath.SkipDir
-				}
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return nil
-		}
-		relSlash := filepath.ToSlash(rel)
-		// Test files are exempt — regression-guard surface
-		// legitimately needs fixture import setups.
-		if strings.HasSuffix(relSlash, "_test.go") {
-			return nil
-		}
-		// Out-of-scope (NOT under internal/application/): skip
-		// without scanning. The walk is broad; the gate is
-		// narrow. Per AGENTS.md, application-zone is the
-		// canonical scope for this ban; composition root,
-		// CLIs, infrastructure, and docs are all out of scope.
-		if !strings.HasPrefix(relSlash, qdrantImportBanScope) && !strings.HasPrefix(relSlash, qdrantImportBanLegacyScope) {
-			return nil
-		}
-		// Exempt subzones (cmd/admin/** + the outbox worker):
-		// these packages MAY import the qdrant infrastructure
-		// for legitimate operator / outbox-driven concerns.
-		if hasAnyPathPrefix(relSlash, qdrantImportBanExemptPathPrefixes) {
-			return nil
-		}
-		scanQdrantImportBanFile(path, relSlash, r)
-		return nil
-	}); err != nil {
-		r.Warnings = append(r.Warnings, qdrantImportBanRule+" scan "+root+": "+err.Error())
-	}
-}
-
-// scanQdrantImportBanFile opens a single .go file and emits
-// percheck_qdrant_index_import_ban violations for any line whose
-// content matches qdrantImportBanRe. Comment-only references
-// are residue-accounted as WARN (godlike/07 discipline).
-func scanQdrantImportBanFile(path, relPath string, r *report.Report) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-
-	lineNo := 0
-	commentOnly := 0
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
-		trimmed := strings.TrimLeft(line, " \t")
-		// Residue accounting (godlike/07): comment-only
-		// references to the banned import path are descriptive
-		// prose, not real imports. WARN, do NOT violate.
-		if (strings.HasPrefix(trimmed, "//") ||
-			strings.HasPrefix(trimmed, "/*") ||
-			strings.HasPrefix(trimmed, "*")) &&
-			strings.Contains(line, qdrantImportPath) {
-			commentOnly++
-			continue
-		}
-		if !qdrantImportBanRe.MatchString(line) {
-			continue
-		}
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     pkgFromQdrantImportBanRel(relPath),
-			File:        relPath,
-			Line:        lineNo,
-			Rule:        qdrantImportBanRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "qdrant_index_import_attempt",
-			Note:        qdrantImportBanNote + " | snippet: " + truncateQdrantImportBan(line),
-		})
-	}
-	if commentOnly > 0 {
-		qdrantImportBanWarnBucket(r, "qdrant-import-comments:",
-			strconv.Itoa(commentOnly)+" comment-only reference(s) in "+relPath+
-				" (descriptive prose; non-fatal per godlike/07 no-fake-availability)")
-	}
-}
-
-// truncateQdrantImportBan bounds the snippet surface at 120 chars
-// to keep report JSON size stable. Mirrors truncateForReport in
-// percheck_asset_state_no_shadow_enum.go.
-func truncateQdrantImportBan(s string) string {
-	const maxLen = 120
-	const marker = " <<<"
-	if len(s) > maxLen {
-		return s[:maxLen] + marker
-	}
-	return s
-}
-
-// pkgFromQdrantImportBanRel extracts the package identifier from
-// a repo-relative file path. Mirrors pkgFromAssetStateRel.
-func pkgFromQdrantImportBanRel(rel string) string {
-	dir := filepath.Dir(rel)
-	if dir == "." || dir == "" {
-		return "."
-	}
-	return filepath.ToSlash(dir)
+	textban.Scan(root, textban.Spec{
+		RuleID:             qdrantImportBanRule,
+		MatchedRule:        "qdrant_index_import_attempt",
+		Note:               qdrantImportBanNote,
+		ScanPrefixes:       []string{qdrantImportBanScope, qdrantImportBanLegacyScope},
+		SkipDirs:           qdrantImportBanSkipDirs,
+		SkipPathPrefixes:   qdrantImportBanSkipPathPrefixes,
+		ExemptPathPrefixes: qdrantImportBanExemptPathPrefixes,
+		Match:              qdrantImportBanRe.MatchString,
+		CommentReference:   qdrantImportPath,
+		WarnLabel:          "qdrant-import-comments:",
+		CommentWarn:        textban.CountCommentResidue,
+	}, r)
 }

@@ -25,14 +25,11 @@
 package governance
 
 import (
-	"bufio"
-	"os"
-	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/scan/textban"
 )
 
 // slotStringsSSOTRe matches the distinctive canonical slot string literals
@@ -76,97 +73,17 @@ const slotStringsSSOTScanScope = "internal/"
 // outside the canonical slot.go that contains a hardcoded slot
 // string literal.
 func ScanSlotStringsBan(root string, _ *policy.Policy, r *report.Report) {
-
-	if err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			base := filepath.Base(path)
-			if slotStringsSSOTSkipDirs[base] {
-				return filepath.SkipDir
-			}
-			rel, relErr := filepath.Rel(root, path)
-			if relErr == nil {
-				relSlash := filepath.ToSlash(rel)
-				if hasAnyPathPrefix(relSlash, slotStringsSSOTSkipPathPrefixes) {
-					return filepath.SkipDir
-				}
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return nil
-		}
-		relSlash := filepath.ToSlash(rel)
-		if strings.HasSuffix(relSlash, "_test.go") {
-			return nil
-		}
-		if !strings.HasPrefix(relSlash, slotStringsSSOTScanScope) {
-			return nil
-		}
-		if relSlash == slotStringsSSOTCanonicalPath {
-			return nil
-		}
-		scanSlotStringsBanFile(path, relSlash, r)
-		return nil
-	}); err != nil {
-		r.Warnings = append(r.Warnings, "percheck_slot_strings_ban scan "+root+": "+err.Error())
-	}
-}
-
-func scanSlotStringsBanFile(path, relPath string, r *report.Report) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer func() { _ = f.Close() }()
-
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	lineNo := 0
-
-	for sc.Scan() {
-		lineNo++
-		line := sc.Text()
-		trimmed := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
-			continue
-		}
-		if slotStringsDistinctRe.MatchString(line) || (slotStringsContextRe.MatchString(line) && slotStringsGenericRe.MatchString(line)) {
-			// fallthrough to violation
-		} else {
-			continue
-		}
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     pkgFromSlotStringsBanRel(relPath),
-			File:        relPath,
-			Line:        lineNo,
-			Rule:        slotStringsSSOTRule,
-			Severity:    string(report.SeverityError),
-			MatchedRule: "slot_strings_ssot_gate",
-			Note:        slotStringsSSOTNote + " | snippet: " + truncateSlotStringsBan(line),
-		})
-	}
-}
-
-func pkgFromSlotStringsBanRel(rel string) string {
-	dir := filepath.Dir(rel)
-	if dir == "." || dir == "" {
-		return "."
-	}
-	return filepath.ToSlash(dir)
-}
-
-func truncateSlotStringsBan(s string) string {
-	const maxLen = 120
-	const marker = " <<<"
-	if len(s) > maxLen {
-		return s[:maxLen] + marker
-	}
-	return s
+	textban.Scan(root, textban.Spec{
+		RuleID:           slotStringsSSOTRule,
+		MatchedRule:      "slot_strings_ssot_gate",
+		Note:             slotStringsSSOTNote,
+		ScanPrefixes:     []string{slotStringsSSOTScanScope},
+		SkipDirs:         slotStringsSSOTSkipDirs,
+		SkipPathPrefixes: slotStringsSSOTSkipPathPrefixes,
+		ExemptPaths:      []string{slotStringsSSOTCanonicalPath},
+		Match: func(line string) bool {
+			return slotStringsDistinctRe.MatchString(line) ||
+				(slotStringsContextRe.MatchString(line) && slotStringsGenericRe.MatchString(line))
+		},
+	}, r)
 }

@@ -100,7 +100,7 @@ func TestEntityImageCatalogOperationalMetricsLookupRefreshAndProvider(t *testing
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
 	metrics := &entityImageCatalogMetricsProbe{}
-	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo, metrics)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo, metrics).WithSemanticScorer(acceptingPersonImageScorer{})
 
 	if _, err := processor.Process(context.Background(), catalogPersonPlan(), catalogPersonInput("metrics-cold", "Michael Jordan")); err != nil {
 		t.Fatal(err)
@@ -151,7 +151,7 @@ func TestEntityImageCatalogMetricsCoverFullSQLiteDriveLifecycle(t *testing.T) {
 		Entity: "Michael Jordan", Query: "Michael Jordan", SourceURL: candidateURL, RightsStatus: "unknown_allowed",
 		AcquisitionStatus: scriptpkg.VidRushStatusCandidateFound,
 	}}
-	stage := NewMediaResolverImageStageWithCatalog(searcherResult, nil, repo, metrics)
+	stage := NewMediaResolverImageStageWithCatalog(searcherResult, nil, repo, metrics).WithSemanticScorer(acceptingPersonImageScorer{})
 	plan := catalogPersonPlan()
 	plan.ImagesPerScene = 1
 	plan.MediaPlan.Extraction.EntityImages.MaxPerEntity = 1
@@ -233,7 +233,7 @@ func TestEntityImageCatalogMetricsCoverFullSQLiteDriveLifecycle(t *testing.T) {
 	// A second request rehydrates the Drive row: it must emit reuse, not repeat
 	// search/acquire/verify/finalize.
 	resetEntityImageCatalogCaches()
-	warm, err := NewMediaResolverImageStageWithCatalog(searcherResult, nil, repo, metrics).Process(
+	warm, err := NewMediaResolverImageStageWithCatalog(searcherResult, nil, repo, metrics).WithSemanticScorer(acceptingPersonImageScorer{}).Process(
 		context.Background(), plan, catalogPersonInput("metric-lifecycle-warm", "Michael Jordan"),
 	)
 	if err != nil {

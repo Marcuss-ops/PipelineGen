@@ -35,6 +35,22 @@ func (e *VersionConflictError) Unwrap() error {
 	return ErrVersionConflict
 }
 
+// ListOptionError reports a list query option that the entity descriptor or
+// its repository cannot honor. Handlers translate it to HTTP 400 instead of
+// returning a page that silently ignores the requested filter or ordering.
+type ListOptionError struct {
+	Parameter string
+	Reason    string
+}
+
+// Error implements the error interface.
+func (e *ListOptionError) Error() string {
+	if e.Reason == "" {
+		return "adminconsole: unsupported list option " + e.Parameter
+	}
+	return "adminconsole: " + e.Parameter + ": " + e.Reason
+}
+
 // FieldType is the canonical wire type for a schema field.
 type FieldType string
 

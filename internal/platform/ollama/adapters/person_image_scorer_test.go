@@ -36,8 +36,8 @@ func (f *personImageScorerFakeClient) Chat(_ context.Context, messages []types.M
 
 func TestOllamaPersonImageScorerRejectsCollageAndKeepsSinglePortrait(t *testing.T) {
 	client := &personImageScorerFakeClient{responses: []string{
-		`{"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.94}`,
-		`{"single_person_headshot":false,"split_panel_or_collage":true,"confidence":0.97}`,
+		`{"identity_match":true,"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.94}`,
+		`{"identity_match":true,"single_person_headshot":false,"split_panel_or_collage":true,"confidence":0.97}`,
 	}}
 	scorer := NewOllamaPersonImageScorer(client)
 	imageBytes := testPersonScorerJPEG(t)
@@ -70,8 +70,8 @@ func TestOllamaPersonImageScorerRejectsCollageAndKeepsSinglePortrait(t *testing.
 		t.Fatalf("Ollama did not receive image pixels: %+v", client.messages[0])
 	}
 	prompt := client.messages[0][1].Content
-	if !strings.Contains(prompt, "full-body") || !strings.Contains(prompt, "background people") || !strings.Contains(prompt, "not co-primary subjects") {
-		t.Fatalf("image layout prompt still excludes contextual single-subject news photos: %q", prompt)
+	if !strings.Contains(prompt, "full-body") || !strings.Contains(prompt, "background people") || !strings.Contains(prompt, "identity_match") {
+		t.Fatalf("identity/layout prompt is missing a required visual check: %q", prompt)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestOllamaPersonImageScorerSkipsDefinitiveVerdicts(t *testing.T) {
 		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
 		SourceURL:      "https://images.example/chiara-poggi-portrait.jpg",
 		SemanticStatus: "accepted", SemanticScore: 0.94,
-		QualityReason: "Ollama visual verification confirmed one dominant subject",
+		QualityReason: "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	}
 	rejected := scriptpkg.SegmentAssetCandidate{
 		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi",
@@ -110,7 +110,7 @@ func TestOllamaPersonImageScorerSkipsDefinitiveVerdicts(t *testing.T) {
 
 func TestOllamaPersonImageScorerRetriesTransientRejection(t *testing.T) {
 	client := &personImageScorerFakeClient{responses: []string{
-		`{"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.94}`,
+		`{"identity_match":true,"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.94}`,
 	}}
 	scorer := NewOllamaPersonImageScorer(client)
 	downloads := 0

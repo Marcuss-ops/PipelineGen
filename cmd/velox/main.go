@@ -22,6 +22,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 const (
@@ -87,7 +89,7 @@ func loadConfig() config {
 	if base == "" {
 		port := strings.TrimSpace(os.Getenv("VELOX_PORT"))
 		if port == "" {
-			port = "8000"
+			port = defaults.DefaultPort
 		}
 		base = "http://127.0.0.1:" + port
 	}

@@ -39,6 +39,9 @@ func stockGateSegment() scriptpkg.VidRushSegmentResult {
 // stock-bound segment must leave provider discovery with BYPASSED markers and
 // no candidates, while the same segment WITHOUT the binding keeps searching.
 func TestIncrementalFanoutStockBoundSegmentNeverSearches(t *testing.T) {
+	// Both L1 caches are package-global; a preceding test must not turn the
+	// control search into a HIT_EXACT replay.
+	resetEntityImageCatalogCaches()
 	images := &stockGateImageSearcher{}
 	fanout := NewVidRushProviderFanout(images)
 
@@ -73,6 +76,10 @@ func TestIncrementalFanoutStockBoundSegmentNeverSearches(t *testing.T) {
 }
 
 func TestIncrementalFanoutAllowsOnlyExplicitEntityImageSidecarForStock(t *testing.T) {
+	// The fanout's per-query L1 caches are package-global. A preceding test
+	// can leave an authoritative HIT_EXACT for this text hash, which would
+	// suppress the explicit sidecar search this test exists to prove.
+	resetEntityImageCatalogCaches()
 	images := &stockGateImageSearcher{}
 	fanout := NewVidRushProviderFanout(images)
 	plan := stockGatePlan()

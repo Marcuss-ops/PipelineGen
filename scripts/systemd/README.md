@@ -3,6 +3,11 @@
 Idempotent migration from unstable nohup/tmux-managed processes to
 **systemd-managed services** with auto-restart on crash.
 
+> **Templates:** the tracked unit and drop-in files contain `@VELOX_ROOT@`,
+> `@VELOX_HOME@` and `@VELOX_USER@` instead of a machine path/user. Render and
+> install them with `sudo ./scripts/systemd/install.sh` (`--dry-run` prints the
+> diff). Do not `install` the raw files: systemd would reject the placeholders.
+
 > ### Retired helper scripts (2026-09-13)
 >
 > Commit `7e6965aab` ("purge 94% shell + 87% python dust") deleted several
@@ -15,7 +20,7 @@ Idempotent migration from unstable nohup/tmux-managed processes to
 > | Former helper | Manual replacement |
 > |---|---|
 > | `install_operator_access.sh --install/--check` | edit + `sudo visudo -cf` the policy, then `sudo install -m 0440 -o root -g root scripts/systemd/sudoers/pipelinegen-operator /etc/sudoers.d/pipelinegen-operator` |
-> | `migrate_to_systemd.sh` | stop the manual processes, `sudo install` the unit files, `sudo systemctl daemon-reload`, `sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service` |
+> | `migrate_to_systemd.sh` | stop the manual processes, `sudo ./scripts/systemd/install.sh`, `sudo systemctl daemon-reload`, `sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service` |
 > | `rotate_token.sh` | generate a fresh 64-hex value, replace `VELOX_ADMIN_TOKEN=` in `/etc/pipelinegen/pipelinegen.env`, `sudo systemctl restart pipelinegen`, verify the restarted PID environment and `make auth-check` |
 > | `pipelinegenctl_test.sh` | none — run `scripts/systemd/pipelinegenctl verify` on the host |
 >
@@ -39,9 +44,7 @@ are managed independently from the supporting Compose infrastructure.
 #    (kill the PIDs you started by hand; do not touch unrelated processes).
 
 # 2. Ask the operator to install/refresh the unit files, with password:
-sudo install -m 0644 scripts/systemd/pipelinegen.service /etc/systemd/system/pipelinegen.service
-sudo install -m 0644 scripts/systemd/pipelinegen-worker.service /etc/systemd/system/pipelinegen-worker.service
-sudo systemctl daemon-reload
+sudo ./scripts/systemd/install.sh
 sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service
 
 # 3. Verify
@@ -92,7 +95,7 @@ password and should not be automated by pasting credentials into a shell:
 |---|---|
 | Install restricted daily access | manually `sudo install -m 0440 -o root -g root scripts/systemd/sudoers/pipelinegen-operator /etc/sudoers.d/pipelinegen-operator` (the former `install_operator_access.sh` helper was deleted by commit `7e6965aab`) |
 | Validate policy without changing host | `sudo visudo -cf scripts/systemd/sudoers/pipelinegen-operator` (read-only check) |
-| Migrate manually started services | stop the hand-started PIDs, `sudo install` the unit files, `sudo systemctl daemon-reload`, `sudo systemctl enable --now ...` (the former `migrate_to_systemd.sh` was deleted by commit `7e6965aab`) |
+| Migrate manually started services | stop the hand-started PIDs, `sudo ./scripts/systemd/install.sh`, `sudo systemctl daemon-reload`, `sudo systemctl enable --now ...` (the former `migrate_to_systemd.sh` was deleted by commit `7e6965aab`) |
 | Reload changed unit/drop-in files | `sudo systemctl daemon-reload` |
 | Enable/start services after migration | `sudo systemctl enable --now pipelinegen.service pipelinegen-worker.service` |
 | Rotate credentials | no rotation helper exists in the tree (`scripts/rotate_token.sh` was deleted by commit `7e6965aab`): generate a fresh 64-hex value, replace `VELOX_ADMIN_TOKEN=` in `/etc/pipelinegen/pipelinegen.env`, `sudo systemctl restart pipelinegen`, verify the restarted PID environment and `make auth-check` |

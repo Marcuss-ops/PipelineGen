@@ -433,7 +433,7 @@ func TestVidRushFanoutHydratesDurableVerdictsAndSkipsReverification(t *testing.T
 		CanonicalEntityID: "person:michael-jordan", Provider: "duckduckgo", Rank: 1,
 		SourceURL:      "https://images.example/mj/certified.jpg",
 		SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 0.9,
-		QualityReason: "Ollama visual verification confirmed one dominant subject",
+		QualityReason: "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	}); err != nil {
 		t.Fatal(err)
 	}

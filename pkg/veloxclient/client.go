@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
@@ -55,7 +56,7 @@ func New(baseURL, token string, opts ...Option) *Client {
 		// services and align with the cross-worker-compose patterns).
 		// Operators override via the baseURL argument, env (New caller
 		// wires it), or VELOX_MASTER_URL / VELOX_PORT in the shell.
-		baseURL = "http://127.0.0.1:8000"
+		baseURL = defaults.DefaultBaseURL
 	}
 	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
 		baseURL = "http://" + baseURL

@@ -97,7 +97,7 @@ func TestEntityImageCatalogPersistsAcrossRestartAndIgnoresTopicChanges(t *testin
 	repo1 := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db1)
 	plan1 := catalogPersonPlan()
 	plan1.Topic = "Michael Jordan career"
-	coldResult, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo1).Process(
+	coldResult, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo1).WithSemanticScorer(acceptingPersonImageScorer{}).Process(
 		context.Background(), plan1, catalogPersonInput("restart-before", "Michael Jordan"),
 	)
 	if err != nil {
@@ -117,7 +117,7 @@ func TestEntityImageCatalogPersistsAcrossRestartAndIgnoresTopicChanges(t *testin
 	repo2 := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db2)
 	plan2 := catalogPersonPlan()
 	plan2.Topic = "NBA legends and iconic athletes"
-	result, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo2).Process(
+	result, err := NewMediaResolverImageStageWithCatalog(searcher, nil, repo2).WithSemanticScorer(acceptingPersonImageScorer{}).Process(
 		context.Background(), plan2, catalogPersonInput("restart-after", "MICHAEL   JORDAN"),
 	)
 	if err != nil {
@@ -139,7 +139,7 @@ func TestEntityImageCatalogSerializesConcurrentFirstPopulationOnPersistentSQLite
 	db := openPersistentEntityImageCatalog(t, filepath.Join(t.TempDir(), "concurrent.db"))
 	repo := sqliteinfra.NewSQLiteEntityImageCatalogAdapter(db)
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
 	plan := catalogPersonPlan()
 
 	var wg sync.WaitGroup
@@ -362,7 +362,7 @@ func TestEntityImageCatalogReusesMaterializedImageWhenSourceIsBroken(t *testing.
 		SourceURL:         "https://images.example/michael-jordan-expired.jpg",
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
-		QualityReason:     "previously verified image",
+		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -395,7 +395,7 @@ func TestEntityImageCatalogTopicVariantsShareCanonicalPool(t *testing.T) {
 	resetEntityImageCatalogCaches()
 	repo := newIntegrationEntityImageCatalog()
 	searcher := &catalogIntegrationSearcher{}
-	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo)
+	processor := NewMediaResolverImageStageWithCatalog(searcher, nil, repo).WithSemanticScorer(acceptingPersonImageScorer{})
 
 	for i, topic := range []string{"Michael Jordan biography", "NBA legends", "Chicago Bulls history"} {
 		plan := catalogPersonPlan()

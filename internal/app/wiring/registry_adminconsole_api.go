@@ -51,12 +51,16 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		BulkEditable: true,
 		PrimaryKey:   "id",
 		ListFields: []adminconsole.FieldDescriptor{
-			{Key: "id", Type: adminconsole.FieldString, Label: "ID", Filterable: true, Sortable: true},
-			{Key: "name", Type: adminconsole.FieldString, Label: "Name", Filterable: true, Sortable: true, Editable: true},
-			{Key: "category", Type: adminconsole.FieldString, Label: "Category", Filterable: true, Sortable: true, Editable: true},
-			{Key: "group", Type: adminconsole.FieldString, Label: "Group", Filterable: true, Sortable: true, Editable: true},
-			{Key: "review_status", Type: adminconsole.FieldString, Label: "Review Status", Filterable: true, Sortable: true, Editable: true},
-			{Key: "lifecycle_state", Type: adminconsole.FieldString, Label: "Lifecycle", Filterable: true, Sortable: true},
+			// Sortable is deliberately absent on every field: the canonical
+			// media read projection has no ORDER BY contract, so advertising
+			// it would make the handler accept a parameter the store ignores.
+			// Filterable mirrors what assetFilterFromOptions can actually map.
+			{Key: "id", Type: adminconsole.FieldString, Label: "ID", Filterable: true},
+			{Key: "name", Type: adminconsole.FieldString, Label: "Name", Editable: true},
+			{Key: "category", Type: adminconsole.FieldString, Label: "Category", Filterable: true, Editable: true},
+			{Key: "group", Type: adminconsole.FieldString, Label: "Group", Filterable: true, Editable: true},
+			{Key: "review_status", Type: adminconsole.FieldString, Label: "Review Status", Editable: true},
+			{Key: "lifecycle_state", Type: adminconsole.FieldString, Label: "Lifecycle", Filterable: true},
 		},
 		DetailFields: []adminconsole.FieldDescriptor{
 			{Key: "id", Type: adminconsole.FieldString, Label: "ID"},
@@ -89,7 +93,10 @@ func registerAdminConsoleAPI(registry *module.Registry, log *zap.Logger, cfg *co
 		},
 		Repository: &adminconsole.Adapter{
 			ListFn: func(ctx context.Context, opts adminconsole.ListOptions) (adminconsole.ListResult, error) {
-				filter := assetFilterFromOptions(opts)
+				filter, err := assetFilterFromOptions(opts)
+				if err != nil {
+					return adminconsole.ListResult{}, err
+				}
 				assets, err := assetStore.List(ctx, filter)
 				if err != nil {
 					return adminconsole.ListResult{}, err
@@ -350,11 +357,36 @@ func logAudit(ctx context.Context, audit adminconsole.AuditLogger, entityType, e
 
 // assetFilterFromOptions translates admin list options into the asset
 // domain filter. Currently only limit/offset are propagated.
-func assetFilterFromOptions(opts adminconsole.ListOptions) asset.Filter {
-	return asset.Filter{
-		Limit:  opts.Limit,
-		Offset: opts.Offset,
+// assetFilterFromOptions maps the admin-console list contract onto the
+// canonical media filter. Only fields the PostgreSQL read projection can
+// actually honor are accepted; unsupported filters and every ordering request
+// fail closed instead of returning a page that silently ignores them.
+func assetFilterFromOptions(opts adminconsole.ListOptions) (asset.Filter, error) {
+	filter := asset.Filter{Limit: opts.Limit, Offset: opts.Offset}
+	if opts.OrderBy != "" {
+		return filter, &adminconsole.ListOptionError{
+			Parameter: "order_by",
+			Reason:    "the media asset repository does not support ordering",
+		}
 	}
+	for key, value := range opts.Filters {
+		switch key {
+		case "id":
+			filter.IDs = []string{value}
+		case "category":
+			filter.Category = value
+		case "group":
+			filter.Group = value
+		case "lifecycle_state":
+			filter.States = []string{value}
+		default:
+			return filter, &adminconsole.ListOptionError{
+				Parameter: "filter." + key,
+				Reason:    "not supported by the media asset repository",
+			}
+		}
+	}
+	return filter, nil
 }
 
 // applyAssetChanges updates the mutable fields of an asset from a

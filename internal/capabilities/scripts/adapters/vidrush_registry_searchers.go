@@ -239,18 +239,25 @@ func (f *VidRushProviderFanout) verifySegmentImageCandidates(ctx context.Context
 }
 
 func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
-	if f == nil || len(candidates) == 0 {
-		return append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), nil
+	if len(candidates) == 0 {
+		return nil, nil
 	}
-	if f.semanticScorer == nil {
-		recordEntityImageVisualOutcomes(f.metrics, candidates, nil)
-		return append([]scriptpkg.SegmentAssetCandidate(nil), candidates...), nil
+	if f == nil {
+		return filterVerifiedPersonImageCandidates(candidates), nil
 	}
 	// Cached/provider candidates arrive PRE-verification: stamp the durable
 	// catalog verdicts first so a warm reuse skips the download + VLM call
 	// entirely (the scorer itself honors the same ReusablePersonImageVerdict
 	// contract per candidate).
 	hydratePersonImageVisualVerdicts(ctx, f.catalog, candidates)
+	if f.semanticScorer == nil {
+		// No scorer, no verdict. Keep discovery candidates pending so the
+		// downstream stage/materializer can decide; the catalog still refuses
+		// to reuse them until a real pixel verdict exists.
+		out := append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)
+		recordEntityImageVisualOutcomes(f.metrics, out, nil)
+		return out, nil
+	}
 	if allCandidatesHaveReusableVerdict(candidates) {
 		// Every candidate carries a definitive pixel verdict already —
 		// re-running the visual scorer is exactly the double download + VLM
@@ -260,8 +267,9 @@ func (f *VidRushProviderFanout) verifyPersonImageCandidates(ctx context.Context,
 	}
 	scored, err := f.semanticScorer.ScoreImageCandidates(ctx, "person entity image", candidates)
 	if err != nil {
-		recordEntityImageVisualOutcomes(f.metrics, candidates, err)
-		return candidates, err
+		verified := filterVerifiedPersonImageCandidates(candidates)
+		recordEntityImageVisualOutcomes(f.metrics, verified, err)
+		return verified, err
 	}
 	if scored == nil {
 		scored = candidates

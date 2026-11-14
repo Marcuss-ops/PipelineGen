@@ -28,10 +28,13 @@ package voiceover
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	asset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -53,6 +56,34 @@ type ScriptVoiceoverGenerator struct {
 	OutDir string
 	Log    *zap.Logger
 	voices map[string]string
+}
+
+const (
+	// A TTS failure that the pipeline classified as retryable (connection
+	// reset, provider timeout, transient Drive/upload error) is retried in
+	// place before the scene is failed. Three attempts keep the per-scene
+	// budget bounded while surviving the one-off Edge TTS disconnects that
+	// used to abort an entire job on scene-02.
+	voiceoverTTSMaxAttempts    = 3
+	voiceoverTTSInitialBackoff = 250 * time.Millisecond
+	voiceoverTTSMaxBackoff     = 2 * time.Second
+)
+
+// isRetryableVoiceoverTTS honors the per-item pipeline's own retryability
+// verdict first, then the canonical typed classifier. Unknown errors are
+// fail-closed (no retry) so a validation failure is never repeated.
+func isRetryableVoiceoverTTS(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	var pipelineErr *voiceover.PipelineError
+	if errors.As(err, &pipelineErr) {
+		return pipelineErr.Retryable
+	}
+	if decision, ok := retry.Decision(err); ok && decision.Retryable {
+		return true
+	}
+	return retry.IsTransient(err)
 }
 
 // NewScriptVoiceoverGenerator constructs the ScriptVoiceoverGenerator.
@@ -219,7 +250,22 @@ func (g *ScriptVoiceoverGenerator) Generate(
 		zap.String("text_preview", truncateText(input.Text, 80)),
 	)
 
-	result, err := g.Exec.Execute(ctx, cmd)
+	result, err := retry.DoWithValue(ctx, func() (*voiceover.VoiceoverItemResult, error) {
+		return g.Exec.Execute(ctx, cmd)
+	}, retry.Options{
+		MaxAttempts:    voiceoverTTSMaxAttempts,
+		InitialBackoff: voiceoverTTSInitialBackoff,
+		MaxBackoff:     voiceoverTTSMaxBackoff,
+		IsRetryable:    isRetryableVoiceoverTTS,
+		OnRetry: func(attempt int, retryErr error) {
+			g.Log.Warn("voiceover scriptgen: retrying TTS after transient failure",
+				zap.Int("retry", attempt+1),
+				zap.String("scene_id", input.SceneID),
+				zap.String("language", string(input.Language)),
+				zap.Error(retryErr),
+			)
+		},
+	})
 	if err != nil {
 		return scriptgen.AudioReference{}, fmt.Errorf("voiceover scriptgen: TTS generation for scene %s language %s failed: %w",
 			input.SceneID, input.Language, err)

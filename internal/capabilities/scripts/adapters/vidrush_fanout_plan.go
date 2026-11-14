@@ -305,10 +305,24 @@ func sceneScopedImageQueriesForTypes(segment scriptpkg.VidRushSegmentResult, ent
 	queries := make([]string, 0, len(segment.Insights.Entities))
 	for _, entity := range segment.Insights.Entities {
 		kind := normalizeAnnotationType(entity.Type)
+		value := strings.TrimSpace(entity.Value)
+		for alias, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+			if normalizeEntityMatch(alias) != normalizeEntityMatch(value) {
+				continue
+			}
+			if split := strings.SplitN(strings.ToUpper(strings.TrimSpace(canonicalID)), ":", 2); len(split) == 2 {
+				if resolvedKind := normalizeAnnotationType(split[0]); resolvedKind != "" {
+					kind = resolvedKind
+				}
+			}
+			if canonicalName := canonicalImageEntityName(segment, alias); canonicalName != "" {
+				value = canonicalName
+			}
+			break
+		}
 		if _, ok := allowed[kind]; !ok {
 			continue
 		}
-		value := strings.TrimSpace(entity.Value)
 		queries = appendUniqueImageQueries(queries, []string{value})
 		// A bare agency acronym is a poor image query: providers return zero
 		// results for "ANSA" while a named-agency query retrieves its verified
@@ -355,7 +369,11 @@ func sceneScopedImageQueries(segment scriptpkg.VidRushSegmentResult) []string {
 	}
 	for _, entity := range segment.Insights.Entities {
 		if normalizeAnnotationType(entity.Type) == "PERSON" {
-			add(entity.Value)
+			name := canonicalImageEntityName(segment, entity.Value)
+			if name == "" {
+				name = entity.Value
+			}
+			add(name)
 		}
 	}
 	if len(queries) == 0 {

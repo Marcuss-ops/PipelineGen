@@ -14,6 +14,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	entitycatalog "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -50,6 +51,17 @@ func (s *liveCatalogDDGSearcher) SearchImages(ctx context.Context, req adapters.
 			SourceURL:  rawURL,
 			PreviewURL: rawURL,
 			Score:      1.0 / float64(i+1),
+			// This live test exercises catalog reuse and concurrent refresh
+			// coalescing, not the VLM. Mark the fixture as an already-verified
+			// portrait so the durable catalog can reuse it; otherwise every
+			// candidate is correctly held pending and the warm rounds have
+			// nothing reusable by design.
+			Width:                 1200,
+			Height:                1600,
+			SemanticStatus:        entitycatalog.CandidateSemanticAccepted,
+			SemanticScore:         0.99,
+			TechnicalQualityScore: 0.90,
+			QualityReason:         "ollama visual identity verification confirmed",
 		})
 	}
 	return out, nil
@@ -87,6 +99,7 @@ func openLiveEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			provider TEXT NOT NULL,
 			rank INTEGER NOT NULL CHECK (rank >= 1),
 			source_url TEXT NOT NULL,
+			source_page_url TEXT NOT NULL DEFAULT '',
 			thumbnail_url TEXT NOT NULL DEFAULT '',
 			width INTEGER NOT NULL DEFAULT 0 CHECK (width >= 0),
 			height INTEGER NOT NULL DEFAULT 0 CHECK (height >= 0),

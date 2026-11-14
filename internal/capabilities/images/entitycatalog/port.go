@@ -238,6 +238,16 @@ func IsUsableCandidateQuality(candidate Candidate) bool {
 	if semanticStatus != CandidateSemanticAccepted {
 		return false
 	}
+	// The accepted bit is reusable only when its provenance records a visual
+	// identity decision. Historical catalog writes also set `accepted` from a
+	// query/name match plus dimensions; those rows are useful for audit and
+	// refresh, but cannot be served as verified identity images.
+	qualityReason := strings.ToLower(strings.TrimSpace(candidate.QualityReason))
+	if !strings.Contains(qualityReason, "ollama visual identity verification confirmed") &&
+		!strings.Contains(qualityReason, "manual visual identity review confirmed") &&
+		!strings.Contains(qualityReason, "pinned by media_manifest.v1: offline sha256 verify") {
+		return false
+	}
 	if candidate.SemanticScore > 0 && candidate.SemanticScore < 0.60 {
 		return false
 	}

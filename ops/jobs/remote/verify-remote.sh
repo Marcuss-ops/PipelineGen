@@ -67,7 +67,7 @@ command -v jq >/dev/null 2>&1 || { echo "verify-remote: FAIL — jq is required"
 
 resolve_creds() {
   local candidate
-  for candidate in "${VELOX_M2M_ENV:-}" "$HOME/creator-77-master.env" "/home/pierone/creator-77-master.env"; do
+  for candidate in "${VELOX_M2M_ENV:-}" "$HOME/creator-77-master.env"; do
     [[ -n "$candidate" && -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
   done
   printf '%s' "${VELOX_M2M_ENV:-$HOME/creator-77-master.env}"
