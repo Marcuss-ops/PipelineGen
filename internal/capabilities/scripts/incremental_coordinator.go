@@ -83,9 +83,10 @@ type segmentResultRecord struct {
 // for the whole job, but a remote/provider stall must never hold the terminal
 // job transition (or its lease) forever. Image materialization tries a bounded
 // set of fallback URLs, with each acquisition and verification independently
-// time-limited; six minutes gives those per-candidate budgets room to run while
-// still bounding a stalled scene.
-const vidRushSceneEnrichmentTimeout = 6 * time.Minute
+// time-limited. A 20-minute, five-scene job with entity images can fan out to
+// dozens of candidates per scene; fifteen minutes gives those per-candidate
+// budgets room to run while still bounding a stalled scene.
+const vidRushSceneEnrichmentTimeout = 15 * time.Minute
 
 // NewVidRushIncrementalCoordinator constructs an incremental coordinator.
 // maxConcurrency bounds the provider-search stage; values <= 0 default to 4.

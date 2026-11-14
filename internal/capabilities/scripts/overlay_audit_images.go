@@ -338,10 +338,7 @@ func applyRequestedEntityImageContract(audit *OverlayAudit, bundle *capabilityov
 			}
 		}
 		entity.ImageRequired = imageRequired
-		// upload_to_drive applies to acquired assets. A reviewed local registry
-		// asset is already producer-local and content-addressed; its empty Drive
-		// id is not an upload failure.
-		entity.ImageDriveRequired = requireDrive && imageRequired && !entity.ImageLocalVerified
+		entity.ImageDriveRequired = requireDrive && imageRequired
 	}
 	audit.EntityImages = buildOverlayAuditEntityImages(audit, bundle, plan)
 }
@@ -356,13 +353,13 @@ func entityImageOutcome(entity OverlayAuditEntity, verified map[string]bool) str
 		EntityImageReasonBindingMissing, EntityImageReasonSegmentMissing, EntityImageReasonNotMaterialized:
 		return strings.ToUpper(strings.TrimSpace(entity.ImageFailureReason))
 	}
-	if entity.ImageDriveRequired && entity.ImageStatus == "planned" && strings.TrimSpace(entity.ImageDriveFileID) == "" && !entity.ImageLocalVerified {
+	if entity.ImageDriveRequired && entity.ImageStatus == "planned" && strings.TrimSpace(entity.ImageDriveFileID) == "" {
 		return EntityImageReasonUploadFailed
 	}
 	if entity.ImageRequired && !entity.SelectedForVideo && entity.ImageStatus == "missing" {
 		return EntityImageReasonNotSelected
 	}
-	if !verified[entity.ID] && entity.ImageStatus == "planned" && !entity.ImageLocalVerified {
+	if !verified[entity.ID] && entity.ImageStatus == "planned" {
 		return EntityImageReasonUnverifiedBound
 	}
 	switch entity.ImageStatus {

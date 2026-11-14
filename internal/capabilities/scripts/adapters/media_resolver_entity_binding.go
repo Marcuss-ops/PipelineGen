@@ -12,6 +12,7 @@ package adapters
 
 import (
 	"hash/fnv"
+	"net/url"
 	"strings"
 
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
@@ -580,12 +581,17 @@ func verifiedImageCandidateWithoutDrive(candidate scriptpkg.SegmentAssetCandidat
 		!strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected")
 }
 
-// entityImagePreviewURL returns the direct image URL used for inline rendering:
-// the candidate's source image first, then its preview URL. It never falls back
-// to the Drive view-page link, which is not a renderable image.
+// entityImagePreviewURL returns the durable download URL for inline rendering.
+// A Drive-backed candidate is preferred because the provider URL is not stable
+// for a content-addressed asset; a later fetch of the same provider URL can
+// return different bytes and fail RenderingGen's prefetch. Source/Preview URLs
+// remain the fallback only when no Drive copy exists.
 func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {
-	if url := strings.TrimSpace(candidate.SourceURL); url != "" {
-		return url
+	if id, err := urlutil.FileIDFromDriveLink(candidate.DriveLink); err == nil && strings.TrimSpace(id) != "" {
+		return "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(strings.TrimSpace(id))
+	}
+	if source := strings.TrimSpace(candidate.SourceURL); source != "" {
+		return source
 	}
 	return strings.TrimSpace(candidate.PreviewURL)
 }

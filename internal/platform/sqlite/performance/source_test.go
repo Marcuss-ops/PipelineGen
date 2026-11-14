@@ -26,6 +26,9 @@ func testSourceDBs(t *testing.T) (jobs, obs *sql.DB) {
 	if _, err = jobs.Exec(`CREATE TABLE job_steps (step_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, step_name TEXT NOT NULL, step_type TEXT NOT NULL, status TEXT NOT NULL, started_at TEXT, completed_at TEXT, duration_ms INTEGER NOT NULL, input_count INTEGER NOT NULL, output_count INTEGER NOT NULL, input_bytes INTEGER NOT NULL, output_bytes INTEGER NOT NULL, metrics_json TEXT NOT NULL, error_code TEXT NOT NULL, error_message TEXT NOT NULL, created_at TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err = jobs.Exec(`CREATE TABLE jobs (id TEXT PRIMARY KEY, type TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = obs.Exec(`CREATE TABLE run_observability (run_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, job_type TEXT NOT NULL, attempt_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, report_json TEXT NOT NULL, workflow_payload_json TEXT NOT NULL, updated_at TEXT NOT NULL)`); err != nil {
 		t.Fatal(err)
 	}
@@ -58,6 +61,9 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := jobs.Exec(`INSERT INTO jobs (id,type) VALUES (?,?)`, jobID, report.JobType); err != nil {
+		t.Fatal(err)
+	}
 
 	checkpoint := struct {
 		Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
@@ -85,8 +91,8 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 	}
 
 	now := "2026-08-14T10:00:00Z"
-	if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		report.RunID, jobID, report.JobType, "attempt-1", report.Status, now, now, string(reportJSON), string(payloadJSON), now); err != nil {
+	if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,finished_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		report.RunID, jobID, report.JobType, "attempt-1", report.Status, now, now, now, string(reportJSON), string(payloadJSON), now); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,6 +143,66 @@ func TestSourceLoadProjectsRunAudioAndSteps(t *testing.T) {
 	}
 }
 
+func TestSourceLoadSelectsCanonicalRunAmongChildren(t *testing.T) {
+	jobs, obs := testSourceDBs(t)
+	defer func() { _ = jobs.Close() }()
+	defer func() { _ = obs.Close() }()
+
+	jobID := "job-multi-run"
+	jobType := "script.generate"
+	if _, err := jobs.Exec(`INSERT INTO jobs (id,type) VALUES (?,?)`, jobID, jobType); err != nil {
+		t.Fatal(err)
+	}
+	canonical := kernobs.RunReport{
+		RunID:      "run-canonical",
+		JobID:      jobID,
+		JobType:    jobType,
+		Status:     kernobs.StatusSucceeded,
+		WallTimeMs: 4321,
+		FinishedAt: time.Date(2026, 11, 13, 17, 1, 0, 0, time.UTC),
+	}
+	canonicalJSON, err := canonical.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := kernobs.RunReport{
+		RunID:   "run-drive-child",
+		JobID:   jobID,
+		JobType: "finalize.drive_delivery.requested.v1",
+		Status:  kernobs.StatusRunning,
+	}
+	childJSON, err := child.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	insert := func(runID, runType, attemptID, status, created, started string, finished any, reportJSON string) {
+		t.Helper()
+		if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,finished_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'{}',?)`,
+			runID, jobID, runType, attemptID, status, created, started, finished, reportJSON, created); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The old selector took the newest row by created_at: the delivery child
+	// below would win even though it is a derived RUNNING run. The synthetic
+	// row is the other trap: same job type, but never finalized.
+	insert("run-synthetic", jobType, "run-synthetic:script", "SUCCEEDED", "2026-11-13T17:00:00Z", "2026-11-13T17:00:00Z", nil, `{}`)
+	insert(canonical.RunID, jobType, "attempt-canonical", "SUCCEEDED", "2026-11-13T17:00:01Z", "2026-11-13T17:00:01Z", "2026-11-13T17:00:10Z", string(canonicalJSON))
+	insert(child.RunID, child.JobType, "attempt-child", "RUNNING", "2026-11-13T17:00:11Z", "2026-11-13T17:00:11Z", nil, string(childJSON))
+
+	src, err := NewSource(jobs, obs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, _, _, err := src.Load(context.Background(), jobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.RunID != canonical.RunID || run.WallTimeMs != canonical.WallTimeMs {
+		t.Fatalf("selected run = %+v, want canonical %s", run, canonical.RunID)
+	}
+}
+
 func TestSourceLoadRequiresIdentityAndReportsMissingRun(t *testing.T) {
 	jobs, obs := testSourceDBs(t)
 	defer func() { _ = jobs.Close() }()
@@ -165,9 +231,12 @@ func TestSourceLoadHandlesEmptyAudioMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := jobs.Exec(`INSERT INTO jobs (id,type) VALUES (?,?)`, jobID, report.JobType); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,'{}',?)`,
-		report.RunID, jobID, report.JobType, "attempt-nometric", report.Status, now, now, string(reportJSON), now); err != nil {
+	if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,finished_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'{}',?)`,
+		report.RunID, jobID, report.JobType, "attempt-nometric", report.Status, now, now, now, string(reportJSON), now); err != nil {
 		t.Fatal(err)
 	}
 

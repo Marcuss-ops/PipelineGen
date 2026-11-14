@@ -60,13 +60,30 @@ func (s *Source) Load(ctx context.Context, jobID string) (kernobs.RunReport, scr
 }
 
 func (s *Source) loadRun(ctx context.Context, jobID string) (kernobs.RunReport, scriptgeneration.AudioPipelineMetrics, error) {
+	// A job owns more than one run_observability row: the canonical worker
+	// run, a pre-job synthetic run, and finalize/delivery child runs. Their
+	// created_at ordering is not the job's execution order (a delivery child
+	// can be newer than the job run), so selecting the newest row blindly
+	// projected a RUNNING child and skipped the job. Select the terminal run
+	// whose job_type matches the job itself: that is the canonical worker run.
+	var jobType string
+	if err := s.jobs.QueryRowContext(ctx, `SELECT type FROM jobs WHERE id=?`, jobID).Scan(&jobType); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: no job for id %s", jobID)
+		}
+		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: read job %s: %w", jobID, err)
+	}
+
 	var reportJSON string
 	err := s.obs.QueryRowContext(ctx,
-		`SELECT report_json FROM run_observability WHERE job_id=? ORDER BY created_at DESC LIMIT 1`,
-		jobID).Scan(&reportJSON)
+		`SELECT report_json FROM run_observability
+		 WHERE job_id=? AND job_type=? AND status IN ('SUCCEEDED','FAILED','CANCELLED','ABANDONED')
+		   AND finished_at IS NOT NULL AND finished_at <> ''
+		 ORDER BY started_at DESC, created_at DESC LIMIT 1`,
+		jobID, jobType).Scan(&reportJSON)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: no run for job %s", jobID)
+			return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: no finalized run for job %s", jobID)
 		}
 		return kernobs.RunReport{}, scriptgeneration.AudioPipelineMetrics{}, fmt.Errorf("performance source: read run %s: %w", jobID, err)
 	}

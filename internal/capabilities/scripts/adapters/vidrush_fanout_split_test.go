@@ -259,3 +259,31 @@ func TestVidRushFanoutPlanDropsUnusableImageQueries(t *testing.T) {
 		}
 	}
 }
+
+// TestVidRushFanoutPlanPlannerCeilingDoesNotAddGenericLadder pins the r44
+// regression: planner.max_images_per_scene is a ceiling, not a request for
+// generic scene imagery. In entity-image mode only the explicit
+// images_per_scene cadence may widen the retrieval scope; otherwise a
+// 20-image entity plan searches and publishes the whole 10-per-scene budget.
+func TestVidRushFanoutPlanPlannerCeilingDoesNotAddGenericLadder(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		MediaPlan: mediadomain.MediaPlanSpec{
+			Planner: mediadomain.MediaPlannerPolicy{MaxImagesPerScene: 10},
+			Extraction: mediadomain.MediaExtractionPolicy{EntityImages: mediadomain.EntityImagePolicy{
+				Enabled: true, Scope: "per_scene", EntityTypes: []string{"PERSON"},
+			}},
+			ProviderPolicy: mediadomain.MediaProviderPolicy{InternetImages: mediadomain.MediaToggleEnabled},
+		},
+	}
+	segment := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1", TextHash: "hash-1", Text: "Francis Kaufmann arriva in villa.",
+		Insights: scriptpkg.SegmentInsights{
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Francis Kaufmann", Type: "PERSON"}},
+			ImageQueries: []string{"Francis Kaufmann"},
+		},
+	}
+	fanout := buildVidRushFanoutPlan(plan, segment, &gatedImageSearcher{}, nil)
+	if len(fanout.imageQueries) != 1 || fanout.imageQueries[0] != "Francis Kaufmann" {
+		t.Fatalf("planner ceiling widened the entity lane: %#v", fanout.imageQueries)
+	}
+}

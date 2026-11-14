@@ -149,6 +149,23 @@ func TestProjectEntityAnnotations_LogoIsPrimary(t *testing.T) {
 // TestImageCandidateCarriesSHA256 certifies the product/logo bridge keeps the
 // binding's verified content address: an image candidate without SHA256 would
 // silently lose its asset from the queue render manifest.
+func TestEntityImageURLPrefersDurableDriveDownload(t *testing.T) {
+	binding := &scriptpkg.EntityImageBinding{
+		PreviewURL: "https://cdn.example/volatile.jpg",
+		DriveLink:  "https://drive.google.com/file/d/drive-manny-pacquiao/view?usp=drivesdk",
+	}
+	want := "https://drive.google.com/uc?export=download&id=drive-manny-pacquiao"
+	if got := entityImageURL(binding); got != want {
+		t.Fatalf("entityImageURL() = %q, want durable Drive URL %q", got, want)
+	}
+	binding.DriveLink = ""
+	binding.DriveFileID = "drive-from-id"
+	want = "https://drive.google.com/uc?export=download&id=drive-from-id"
+	if got := entityImageURL(binding); got != want {
+		t.Fatalf("entityImageURL() with DriveFileID = %q, want %q", got, want)
+	}
+}
+
 func TestImageCandidateCarriesSHA256(t *testing.T) {
 	binding := &scriptpkg.EntityImageBinding{
 		Status: "resolved", AssetID: "vision-pro-img",

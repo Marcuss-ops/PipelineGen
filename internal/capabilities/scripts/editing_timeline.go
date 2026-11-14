@@ -484,7 +484,7 @@ func sceneEntityInput(sceneID string, sceneIndex int, ann *scriptpkg.SceneAnnota
 			image = &capmodel.EntityImageOverlayInput{
 				EntityName: name,
 				AssetID:    entity.Image.AssetID,
-				URL:        entity.Image.PreviewURL,
+				URL:        entityImageURL(entity.Image),
 				SHA256:     entity.Image.SHA256,
 			}
 		}

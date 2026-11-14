@@ -273,6 +273,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			if hit, cacheErr := loadVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, &persisted); cacheErr != nil {
 				return nil, cacheErr
 			} else if hit {
+				persisted = sanitizeInternetImageCachePayload(persisted)
 				persisted.Candidates = append([]scriptpkg.SegmentAssetCandidate(nil), persisted.Candidates...)
 				updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, persisted.Candidates)
 				updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, persisted.Candidates)
@@ -376,6 +377,7 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				if hit, err := loadVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, &persisted); err != nil {
 					return queryResult{}, err
 				} else if hit {
+					persisted = sanitizeVidRushDiscoveryCandidates(persisted)
 					// Never promote an empty result into the no-TTL L1 map: a
 					// persistent empty hit is re-read from L2 on each warm replay.
 					if len(persisted) > 0 {
@@ -480,7 +482,10 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 				// Keep negative caching for ordinary editorial image queries, but
 				// retry empty entity-image searches on the next run.
 				if len(results) > 0 || !entityImagesEnabled {
-					if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
+					// L1 keeps the run-scoped materialized candidate for binding; L2
+					// persists discovery only, never a stale Drive/content-address.
+					cacheResults := sanitizeVidRushDiscoveryCandidates(results)
+					if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "entity_images", entityCacheKey, cacheResults); cacheErr != nil {
 						return queryResult{}, cacheErr
 					}
 				}
@@ -562,9 +567,10 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 		// Empty provider results are durable-cached in L2 (TTL 48h) so a warm
 		// replay of the same segment is deterministic and does not re-call the
 		// provider, but they stay out of the no-TTL L1 map to avoid unbounded
-		// growth of empty in-memory entries.
+		// growth of empty in-memory entries. L2 carries discovery only.
 		if !entityPoolLookup {
-			if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, payload); cacheErr != nil {
+			cachePayload := sanitizeInternetImageCachePayload(payload)
+			if cacheErr := storeVidRushPersistentJSON(ctx, p.cache, "internet_images", cacheKey, cachePayload); cacheErr != nil {
 				return nil, cacheErr
 			}
 		}
