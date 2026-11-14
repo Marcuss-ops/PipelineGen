@@ -100,17 +100,14 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	// entity-only run because it bypasses entity cache identity and creates
 	// dozens of unrelated provider downloads.
 	if perSceneImages && automaticImageSearch && !manualImageExclusive {
-		// The source-grounded scene query above is the complete retrieval scope;
-		// do not collapse it back to an entity-only canonical query. Entity
-		// searches still yield one image per identity, so an explicit scene
-		// image budget larger than the provider default would silently stop at
-		// one frame for a scene with a single person/place. The generic semantic
-		// ladder fills the remaining frames AFTER the identity queries, which
-		// stay first because they feed the entity cards.
-		budget := plan.MediaPlan.Planner.MaxImagesPerScene
-		if budget <= vidRushDefaultImagesPerScene {
-			budget = plan.ImagesPerScene
-		}
+		// Entity-image mode is an explicit narrow surface. The planner's
+		// MaxImagesPerScene is a CEILING, not a request for generic scene
+		// imagery: only the explicit images_per_scene cadence may widen the
+		// entity lane with the semantic ladder. Treating the ceiling as a
+		// quota made an entity-only run search, acquire and publish dozens
+		// of unrelated photos per scene (r44: 420 acquires / 326 Drive
+		// publishes for the 20 images the final plan actually used).
+		budget := plan.ImagesPerScene
 		if budget > vidRushDefaultImagesPerScene {
 			imageQueries = appendUniqueImageQueries(imageQueries, plausibleSceneImageQueries(scriptpkg.QueriesForImages(profile, budget)))
 		}

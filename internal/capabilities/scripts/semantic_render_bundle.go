@@ -132,10 +132,7 @@ func BuildSemanticRenderBundleFromResult(result *GenerateResult, language Langua
 			if identity.AssetID == "" || !identity.IsCanonicalDigest() {
 				continue
 			}
-			url := entity.Image.PreviewURL
-			if url == "" {
-				url = entity.Image.DriveLink
-			}
+			url := entityImageURL(entity.Image)
 			// The asset's join key is the entity's StableEntityID as projected
 			// into bundle.Entities (the EntityTimeline occurrence id), derived
 			// here through the ONE identity owner (annotationStableEntityID) so

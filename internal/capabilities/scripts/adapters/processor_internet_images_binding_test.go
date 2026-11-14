@@ -8,6 +8,15 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+func TestEntityImagePreviewURLPrefersDriveDownload(t *testing.T) {
+	candidate := readyEntityImageCandidate("manny-pacquiao", "Manny Pacquiao", "Manny Pacquiao")
+	candidate.SourceURL = "https://cdn.example/volatile.jpg"
+	want := "https://drive.google.com/uc?export=download&id=manny-pacquiao"
+	if got := entityImagePreviewURL(candidate); got != want {
+		t.Fatalf("entityImagePreviewURL() = %q, want durable Drive URL %q", got, want)
+	}
+}
+
 func TestProjectEntityImageBindings_StripsPromptPrefixFromEntity(t *testing.T) {
 	spec := scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{
 		ID: "scene-0", SegmentID: "john-cena", Index: 0,

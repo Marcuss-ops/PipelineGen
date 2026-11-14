@@ -348,40 +348,6 @@ func TestRequestedEntityImageContractStillAuditsPlannedUnadmittedImage(t *testin
 	require.Equal(t, EntityImageReasonUploadFailed, audit.EntityImages.MissingEntities[0].Reason)
 }
 
-// TestRequestedEntityImageContractAcceptsLocalVerifiedAssetWithoutDriveID
-// covers the Kaufmann shape: the reviewed registry binds a local, hashed file
-// to every scene, while the payload asks for Drive upload. The local bytes are
-// a valid delivery and must not be reported as UPLOAD_FAILED just because the
-// registry deliberately has no Drive locator.
-func TestRequestedEntityImageContractAcceptsLocalVerifiedAssetWithoutDriveID(t *testing.T) {
-	t.Setenv(requireEntityImagesEnv, "1")
-	name := "Francis Kaufmann"
-	entityID := auditPersonID(name)
-	sha := strings.Repeat("a", 64)
-	bundle := &capabilityoverlay.SemanticRenderBundleV1{
-		Entities: []capabilityoverlay.ResolvedEntity{{
-			EntityID: entityID, Type: "PERSON", Text: name, CanonicalText: name,
-			SceneID: "scene-1", Confidence: 1,
-		}},
-	}
-	plan := &capmodel.OverlayPlan{Items: []capmodel.OverlayItem{{
-		ID: "francis-local", SceneID: "scene-1", Kind: "entity_image", EntityID: entityID,
-		AssetRefs: []capmodel.OverlayAssetRef{{
-			AssetID: "local-asset", SHA256: sha, LocalPath: "/tmp/francis.jpg",
-		}},
-	}}}
-
-	audit := buildOverlayAuditWithLineage(bundle, plan, nil)
-	require.NotNil(t, audit)
-	applyRequestedEntityImageContract(audit, bundle, plan, true, true, []string{"PERSON"})
-	require.True(t, audit.DetectedEntities[0].ImageLocalVerified)
-	require.False(t, audit.DetectedEntities[0].ImageDriveRequired)
-	require.Equal(t, 1, audit.EntityImages.Selected)
-	require.Equal(t, 1, audit.EntityImages.Bound)
-	require.Equal(t, 0, audit.EntityImages.Missing)
-	require.NoError(t, enforceEntityImageGate(audit))
-}
-
 // TestOverlayAuditBindsEntityCardImageWithoutEntityRef covers the plan shape
 // the entity timeline emits: the card carries EntityID + Text, not an
 // EntityRef. Once the reviewed registry binds bytes, the audit must report the

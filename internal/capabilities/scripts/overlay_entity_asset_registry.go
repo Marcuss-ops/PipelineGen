@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,10 +24,12 @@ type entityAssetManifest struct {
 }
 
 type entityAssetEntry struct {
-	AssetID   string `json:"asset_id"`
-	SHA256    string `json:"sha256"`
-	Path      string `json:"path"`
-	MediaType string `json:"media_type"`
+	AssetID     string `json:"asset_id"`
+	SHA256      string `json:"sha256"`
+	Path        string `json:"path"`
+	MediaType   string `json:"media_type"`
+	DriveFileID string `json:"drive_file_id,omitempty"`
+	DriveLink   string `json:"drive_link,omitempty"`
 }
 
 var entityAssetRegistryCandidates = []string{
@@ -106,8 +109,13 @@ func verifyEntityAssetEntry(baseDir string, entry entityAssetEntry) (capmodel.Ov
 	if mediaType == "" {
 		mediaType = entityAssetMediaType(path)
 	}
+	resourceURL := strings.TrimSpace(entry.DriveLink)
+	if driveID := strings.TrimSpace(entry.DriveFileID); driveID != "" {
+		resourceURL = "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(driveID)
+	}
 	return capmodel.OverlayAssetRef{
 		AssetID:   assetID,
+		URL:       resourceURL,
 		SHA256:    sum,
 		MediaType: mediaType,
 		LocalPath: path,
@@ -315,12 +323,12 @@ func setChainSegmentAsset(segment map[string]any, ref capmodel.OverlayAssetRef) 
 	segment["asset_id"] = ref.AssetID
 	segment["sha256"] = ref.SHA256
 	segment["media_type"] = ref.MediaType
-	segment["url"] = ""
+	segment["url"] = ref.URL
 	segment["assets"] = []any{map[string]any{
 		"asset_id":   ref.AssetID,
 		"sha256":     ref.SHA256,
 		"media_type": ref.MediaType,
-		"url":        "",
+		"url":        ref.URL,
 	}}
 }
 

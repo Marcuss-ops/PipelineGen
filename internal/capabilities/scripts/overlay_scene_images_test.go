@@ -51,6 +51,30 @@ func TestCompileOverlayPlanAddsPerSceneImageWithoutChangingEntityCardScope(t *te
 	}
 }
 
+func TestSceneImageCandidatePrefersDurableDriveOverProviderURL(t *testing.T) {
+	const sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{
+		SceneID: "scene-drive",
+		Assets: scriptpkg.SegmentAssetSelection{SecondaryImages: []scriptpkg.SegmentAssetCandidate{{
+			AssetID: "manny-pacquiao", Provider: scriptpkg.VidRushProviderInternetImages,
+			SourceURL:     "https://cdn.example/volatile.jpg",
+			DriveLink:     "https://drive.google.com/file/d/drive-manny-pacquiao/view?usp=drivesdk",
+			ContentSHA256: sha, MIMEType: "image/jpeg",
+			AcquisitionStatus: scriptpkg.VidRushStatusAcquired, VerificationStatus: scriptpkg.VidRushStatusVerified,
+			PersistenceStatus: scriptpkg.VidRushStatusPersisted, IndexStatus: scriptpkg.VidRushStatusIndexed,
+		}}},
+	}}}
+
+	image, ok := sceneImageCandidate(result, "scene-drive", 0, nil, 0)
+	if !ok {
+		t.Fatal("Drive-backed scene image was not projected")
+	}
+	want := "https://drive.google.com/uc?export=download&id=drive-manny-pacquiao"
+	if image.URL != want {
+		t.Fatalf("scene image URL = %q, want durable Drive URL %q", image.URL, want)
+	}
+}
+
 func TestSceneImageCandidateUsesMaterializedAssetAndSceneTiming(t *testing.T) {
 	const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	result := &GenerateResult{Segments: []scriptpkg.VidRushSegmentResult{{

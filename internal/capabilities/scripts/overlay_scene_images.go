@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"encoding/hex"
+	"net/url"
 	"os"
 	"strings"
 
@@ -125,9 +126,21 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 			if _, duplicate := localHashes[digest]; duplicate {
 				continue
 			}
-			url := strings.TrimSpace(candidate.SourceURL)
-			if url == "" {
-				url = strings.TrimSpace(candidate.PreviewURL)
+			// Prefer the durable Drive copy: the provider URL is not stable for
+			// a content-addressed asset and can return different bytes later,
+			// failing the renderer's prefetch with HTTP 422.
+			resourceURL := ""
+			if id := driveFileID(candidate.DriveLink); id != "" {
+				resourceURL = "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(id)
+			}
+			if resourceURL == "" {
+				resourceURL = strings.TrimSpace(candidate.DriveLink)
+			}
+			if resourceURL == "" {
+				resourceURL = strings.TrimSpace(candidate.SourceURL)
+			}
+			if resourceURL == "" {
+				resourceURL = strings.TrimSpace(candidate.PreviewURL)
 			}
 			// Entity cards keep the opening beat. Context images start after the
 			// five-second card window, then run sequentially without overlap.
@@ -143,7 +156,7 @@ func sceneImageCandidates(result *GenerateResult, sceneID string, startUS int64,
 				}
 			}
 			out = append(out, capabilityoverlay.ImageCandidate{
-				AssetID: digest, URL: url, LocalPath: strings.TrimSpace(candidate.LocalPath),
+				AssetID: digest, URL: resourceURL, LocalPath: strings.TrimSpace(candidate.LocalPath),
 				SHA256: digest, MediaType: strings.TrimSpace(candidate.MIMEType),
 				StartMs: nextStartUS / 1000, EndMs: (nextStartUS + durationUS + 999) / 1000,
 				StartUS: nextStartUS, DurationUS: durationUS,
@@ -235,5 +248,6 @@ func sceneImageCandidateReady(candidate scriptpkg.SegmentAssetCandidate, digest 
 	if err != nil {
 		return false
 	}
-	return strings.TrimSpace(candidate.LocalPath) != "" || strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != ""
+	return strings.TrimSpace(candidate.LocalPath) != "" || strings.TrimSpace(candidate.DriveLink) != "" ||
+		strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != ""
 }

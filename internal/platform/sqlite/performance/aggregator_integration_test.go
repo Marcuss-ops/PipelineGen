@@ -44,6 +44,9 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := jobs.Exec(`INSERT INTO jobs (id,type) VALUES (?,?)`, jobID, report.JobType); err != nil {
+		t.Fatal(err)
+	}
 
 	checkpoint := struct {
 		Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
@@ -71,8 +74,8 @@ func TestAggregatorProjectsRunAndAudioEndToEnd(t *testing.T) {
 	}
 
 	now := "2026-08-14T10:00:00Z"
-	if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		report.RunID, jobID, report.JobType, "attempt-e2e", report.Status, now, now, string(reportJSON), string(payloadJSON), now); err != nil {
+	if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,finished_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		report.RunID, jobID, report.JobType, "attempt-e2e", report.Status, now, now, now, string(reportJSON), string(payloadJSON), now); err != nil {
 		t.Fatal(err)
 	}
 	for _, st := range []struct {
@@ -149,6 +152,9 @@ func TestAggregatorComparesAcrossJobs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if _, err := jobs.Exec(`INSERT INTO jobs (id,type) VALUES (?,?)`, jobID, report.JobType); err != nil {
+			t.Fatal(err)
+		}
 		cp := struct {
 			Result *scriptgeneration.GenerateResult `json:"result,omitempty"`
 		}{Result: &scriptgeneration.GenerateResult{AudioMetrics: &scriptgeneration.AudioPipelineMetrics{MixMS: mix}}}
@@ -157,8 +163,8 @@ func TestAggregatorComparesAcrossJobs(t *testing.T) {
 			t.Fatal(err)
 		}
 		now := "2026-08-14T10:00:00Z"
-		if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-			report.RunID, jobID, report.JobType, "attempt-"+jobID, report.Status, now, now, string(reportJSON), string(payloadJSON), now); err != nil {
+		if _, err := obs.Exec(`INSERT INTO run_observability (run_id,job_id,job_type,attempt_id,status,created_at,started_at,finished_at,report_json,workflow_payload_json,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			report.RunID, jobID, report.JobType, "attempt-"+jobID, report.Status, now, now, now, string(reportJSON), string(payloadJSON), now); err != nil {
 			t.Fatal(err)
 		}
 	}

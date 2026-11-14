@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/cacheutil"
 )
 
@@ -37,6 +38,36 @@ func storeVidRushPersistentJSON(ctx context.Context, cache scriptports.VidRushCa
 		return fmt.Errorf("vidrush cache %s/%s: validate: %w", namespace, key, err)
 	}
 	return cache.Put(ctx, namespace, key, raw)
+}
+
+// sanitizeVidRushDiscoveryCandidates strips durable materialization state from
+// provider discovery cache payloads. Discovery may remember URLs, provenance
+// and scores; it must never persist a Drive link, content address, local path
+// or lifecycle state. Those facts belong to the entity catalog/materialization
+// and can be invalidated independently. Reusing them from a discovery cache
+// bypasses catalog invalidation and can submit a stale content address to
+// RenderingGen, where prefetch fails with an asset content address mismatch.
+func sanitizeVidRushDiscoveryCandidates(candidates []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
+	if len(candidates) == 0 {
+		return candidates
+	}
+	out := make([]scriptpkg.SegmentAssetCandidate, len(candidates))
+	for i, candidate := range candidates {
+		candidate.DriveLink = ""
+		candidate.ContentSHA256 = ""
+		candidate.LocalPath = ""
+		candidate.AcquisitionStatus = ""
+		candidate.VerificationStatus = ""
+		candidate.PersistenceStatus = ""
+		candidate.IndexStatus = ""
+		out[i] = candidate
+	}
+	return out
+}
+
+func sanitizeInternetImageCachePayload(payload internetImageCachePayload) internetImageCachePayload {
+	payload.Candidates = sanitizeVidRushDiscoveryCandidates(payload.Candidates)
+	return payload
 }
 
 // ── L1 caches (bounded LRU) ────────────────────────────────────────────

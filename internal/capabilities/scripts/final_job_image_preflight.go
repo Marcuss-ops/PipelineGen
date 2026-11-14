@@ -2,10 +2,12 @@ package scriptgeneration
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -59,13 +61,7 @@ func finalJobImageVerifiedRef(ref capmodel.OverlayAssetRef) bool {
 		}
 	}
 	if location := strings.TrimSpace(ref.URL); location != "" {
-		client := &http.Client{Timeout: 12 * time.Second}
-		response, err := getFinalJobImageWithRetry(client, location)
-		if err != nil {
-			return false
-		}
-		defer response.Body.Close()
-		return finalJobImageBytesVerified(response.Body, sha)
+		return finalJobImageURLVerified(location, sha)
 	}
 	return false
 }
@@ -82,28 +78,47 @@ func finalJobImageBytesVerified(reader io.Reader, sha string) bool {
 	return err == nil && config.Width > 0 && config.Height > 0 && (format == "jpeg" || format == "png" || format == "gif")
 }
 
-// getFinalJobImageWithRetry keeps one transient Drive/provider failure from
-// turning a valid, content-addressed image into a failed final job. The gate
-// downloads every selected image sequentially; a single 429/5xx or timeout
-// must not reject bytes that are otherwise proven by their SHA-256.
-func getFinalJobImageWithRetry(client *http.Client, location string) (*http.Response, error) {
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+const (
+	// finalJobImagePreflightWorkers bounds the preflight fan-out. The gate
+	// used to verify every selected image sequentially; a 20-image plan could
+	// spend up to 12 minutes in Drive timeouts before failing the whole run
+	// (r47). Eight concurrent downloads keep the same verification contract
+	// while making the gate a short, bounded step.
+	finalJobImagePreflightWorkers = 8
+	// finalJobImageFetchTimeout is the per-attempt network bound. It mirrors
+	// the historical 12 s client timeout.
+	finalJobImageFetchTimeout = 12 * time.Second
+	// finalJobImageFetchAttempts covers transient Drive/provider failures:
+	// 429/5xx, timeouts, and a 200 response that carries an HTML/error page
+	// instead of the image bytes.
+	finalJobImageFetchAttempts = 3
+)
+
+// finalJobImageURLVerified fetches the remote bytes and verifies the content
+// address. The retry wraps the WHOLE fetch+verify, not only the HTTP status:
+// a 200 response with an HTML interstitial or a truncated body is exactly the
+// r47 failure class, and it must not turn a valid image into a full-run
+// preflight rejection on the first attempt.
+func finalJobImageURLVerified(location, sha string) bool {
+	client := &http.Client{Timeout: finalJobImageFetchTimeout}
+	for attempt := 0; attempt < finalJobImageFetchAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 300 * time.Millisecond)
+		}
 		response, err := client.Get(location)
-		if err == nil && response != nil && response.StatusCode >= 200 && response.StatusCode < 300 {
-			return response, nil
+		if err != nil {
+			continue
 		}
-		if response != nil {
-			response.Body.Close()
-			lastErr = fmt.Errorf("HTTP %d", response.StatusCode)
-		} else {
-			lastErr = err
+		verified := false
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			verified = finalJobImageBytesVerified(response.Body, sha)
 		}
-		if attempt < 2 {
-			time.Sleep(time.Duration(attempt+1) * 300 * time.Millisecond)
+		response.Body.Close()
+		if verified {
+			return true
 		}
 	}
-	return nil, lastErr
+	return false
 }
 
 func anyFinalJobImageVerifiedRef(refs []capmodel.OverlayAssetRef) bool {
@@ -222,8 +237,7 @@ func finalJobEntityImageGate(audit *OverlayAudit, imageRequested bool) error {
 }
 
 func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]struct{}, imageRequested bool) error {
-	expected, unverified := 0, 0
-	firstUnverified := ""
+	candidates := make([]capmodel.OverlayItem, 0, len(items))
 	for _, item := range items {
 		kind := strings.ToLower(strings.TrimSpace(item.Kind))
 		if !strings.Contains(kind, "image") && len(item.ImageLayers) == 0 {
@@ -232,19 +246,38 @@ func finalJobImagePreflight(items []capmodel.OverlayItem, clipScenes map[string]
 		if _, dropped := clipScenes[strings.TrimSpace(item.SceneID)]; dropped {
 			continue
 		}
-		expected++
-		if !finalJobImageVerifiedItem(item) {
-			unverified++
-			if firstUnverified == "" {
-				firstUnverified = strings.TrimSpace(item.ID)
-			}
-		}
+		candidates = append(candidates, item)
 	}
+	expected := len(candidates)
 	if expected == 0 {
 		if imageRequested {
 			return fmt.Errorf("final_job preflight: image overlays were enabled and requested, but the compiled plan contains zero verified image overlays; refusing a silent image-free render")
 		}
 		return nil
+	}
+	// Verify the selected images concurrently. The callback always returns a
+	// nil error: a failed image is data for the aggregate verdict, not a
+	// reason to cancel the remaining checks (the error would hide how many
+	// assets are actually invalid).
+	verified, err := concurrent.Map(context.Background(), candidates, finalJobImagePreflightWorkers,
+		func(_ context.Context, _ int, item capmodel.OverlayItem) (bool, error) {
+			return finalJobImageVerifiedItem(item), nil
+		})
+	if err != nil {
+		// The callback never returns an error; a recovered panic/abort must
+		// fail closed instead of admitting an unvalidated image plan.
+		return fmt.Errorf("final_job preflight: image verification aborted: %w", err)
+	}
+	unverified := 0
+	firstUnverified := ""
+	for i, ok := range verified {
+		if ok {
+			continue
+		}
+		unverified++
+		if firstUnverified == "" {
+			firstUnverified = strings.TrimSpace(candidates[i].ID)
+		}
 	}
 	// A promised image that is not verified is a silent visual loss whether it
 	// is the only one or one of many. Fail closed on ANY unverified image when

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -352,5 +353,67 @@ func TestFinalJobImagePreflight_NonHexHashIsNotVerified(t *testing.T) {
 	}
 	if err := finalJobImagePreflight(items, nil, false); err == nil {
 		t.Fatal("a non-hex content address is not a verified asset")
+	}
+}
+
+// TestFinalJobImagePreflight_VerifiesImagesInParallel pins the r47 latency
+// fix: the gate must not spend one 12 s timeout per image in sequence. The
+// server holds every request briefly and records the maximum overlap; a
+// sequential implementation can only ever reach 1.
+func TestFinalJobImagePreflight_VerifiesImagesInParallel(t *testing.T) {
+	remoteBytes, remoteSHA := preflightPNGBytes(t)
+	var inFlight, maxInFlight atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		current := inFlight.Add(1)
+		for {
+			observed := maxInFlight.Load()
+			if current <= observed || maxInFlight.CompareAndSwap(observed, current) {
+				break
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+		inFlight.Add(-1)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(remoteBytes)
+	}))
+	defer server.Close()
+	const count = 8
+	items := make([]capmodel.OverlayItem, 0, count)
+	for i := 0; i < count; i++ {
+		items = append(items, imagePreflightItem(
+			fmt.Sprintf("img-parallel-%d", i), "entity_image", remoteSHA, server.URL+"/image.png"))
+	}
+	if err := finalJobImagePreflight(items, nil, false); err != nil {
+		t.Fatalf("parallel preflight failed: %v", err)
+	}
+	if maxInFlight.Load() < 2 {
+		t.Fatalf("preflight verified images sequentially (max in-flight %d)", maxInFlight.Load())
+	}
+}
+
+// TestFinalJobImagePreflight_RetriesHashMismatch pins the second half of the
+// r47 fix: a 200 response whose bytes do not match the content address (an
+// HTML interstitial, a truncated body, a transient Drive copy) must be
+// retried before the whole run is rejected.
+func TestFinalJobImagePreflight_RetriesHashMismatch(t *testing.T) {
+	good, sha := preflightPNGBytes(t)
+	bad := append([]byte(nil), good...)
+	bad[len(bad)-1] ^= 0xff
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		if calls.Add(1) == 1 {
+			_, _ = w.Write(bad)
+			return
+		}
+		_, _ = w.Write(good)
+	}))
+	defer server.Close()
+	item := imagePreflightItem("img-hash-retry", "entity_image", sha, server.URL+"/image.png")
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{item}, nil, false); err != nil {
+		t.Fatalf("a transient hash mismatch must be retried: %v", err)
+	}
+	if calls.Load() < 2 {
+		t.Fatalf("preflight made %d request(s), want at least 2", calls.Load())
 	}
 }

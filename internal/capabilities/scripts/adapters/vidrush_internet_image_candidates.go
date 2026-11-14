@@ -37,6 +37,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			outcomes <- vidRushProviderOutcome{provider: "internet_images", err: err}
 			return
 		} else if hit {
+			persisted = sanitizeInternetImageCachePayload(persisted)
 			if len(persisted.Candidates) > 0 {
 				cacheStore(vidrushImageCache, segmentCacheKeyStr, persisted)
 			}
@@ -117,6 +118,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 					outcomes <- vidRushProviderOutcome{provider: "internet_images", err: err}
 					return
 				} else if hit {
+					persisted = sanitizeVidRushDiscoveryCandidates(persisted)
 					if len(persisted) > 0 {
 						cacheStore(entityImageCache, entityCacheKey, persisted)
 					}
@@ -251,7 +253,11 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 			// not stable catalog facts. Avoid poisoning later scenes/jobs with a
 			// 48h negative cache entry when the provider's index changes.
 			if len(results) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
-				if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, results); cacheErr != nil {
+				// L1 keeps the run-scoped materialized candidate for binding; the
+				// durable L2 cache is a discovery projection and must never carry
+				// a Drive/content-address that can outlive catalog invalidation.
+				cacheResults := sanitizeVidRushDiscoveryCandidates(results)
+				if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "entity_images", entityCacheKey, cacheResults); cacheErr != nil {
 					// The per-query cache is only a replay projection. Keep the
 					// live provider results and continue fan-out when that
 					// projection is unavailable.
@@ -322,7 +328,8 @@ func (f *VidRushProviderFanout) finishInternetImageCandidates(ctx context.Contex
 		cacheStore(vidrushImageCache, segmentCacheKeyStr, payload)
 	}
 	if queryErr == nil && (len(payload.Candidates) > 0 || !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
-		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, payload); cacheErr != nil {
+		cachePayload := sanitizeInternetImageCachePayload(payload)
+		if cacheErr := storeVidRushPersistentJSON(ctx, f.cache, "internet_images", segmentCacheKeyStr, cachePayload); cacheErr != nil {
 			// Cache persistence is a projection, not the source of truth for
 			// provider discovery. Preserve the live candidates so a cache
 			// outage cannot erase usable media before materialization.

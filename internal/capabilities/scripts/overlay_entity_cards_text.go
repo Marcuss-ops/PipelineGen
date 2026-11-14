@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -159,10 +160,19 @@ func entityImageURL(binding *scriptpkg.EntityImageBinding) string {
 	if binding == nil {
 		return ""
 	}
-	if strings.TrimSpace(binding.PreviewURL) != "" {
-		return binding.PreviewURL
+	// The durableDrive copy is the only location whose bytes are stable for
+	// the content address. Provider URLs can return different bytes later,
+	// which makes RenderingGen reject the prefetch with HTTP 422.
+	if id := strings.TrimSpace(binding.DriveFileID); id != "" {
+		return "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(id)
 	}
-	return binding.DriveLink
+	if id := driveFileID(binding.DriveLink); id != "" {
+		return "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(id)
+	}
+	if preview := strings.TrimSpace(binding.PreviewURL); preview != "" {
+		return preview
+	}
+	return strings.TrimSpace(binding.DriveLink)
 }
 
 // PhraseAnchoringDiagnostic reports one important-phrase candidate considered
