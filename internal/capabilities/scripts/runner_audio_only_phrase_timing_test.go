@@ -71,6 +71,7 @@ func TestRunner_AudioOnly_PhraseTimingsProducedWithoutVideoRender(t *testing.T) 
 	renderEnq := newStubRenderEnqueuer()
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 

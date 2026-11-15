@@ -50,6 +50,7 @@ func TestRunner_VoiceoverRequiresProjectBeforeTTS(t *testing.T) {
 	voiceoverGen := &recordingProjectGenerator{}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 
 	req := defaultTestRequest()
@@ -82,6 +83,7 @@ func TestRunner_ProjectPropagatesToEverySceneVoiceover(t *testing.T) {
 	voiceoverGen := &recordingProjectGenerator{}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 

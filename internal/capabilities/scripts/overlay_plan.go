@@ -31,37 +31,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// CompileOverlayPlan derives the full semantic OverlayPlan for a completed
-// real result. It returns nil (no-op) when the result carries no derivable
-// overlay surface (no annotations, no word timing, no entity timeline) and
-// an error when a scene that DID carry timing/annotations cannot be
-// projected — fail-closed like the phrase and entity timeline projections.
-//
-// Timestamps come exclusively from certified surfaces:
-//
-//   - Phrase and keyword candidates are located against the scene's real word
-//     timing (LocatePhraseTimings). A phrase the voiceover did not speak is
-//     skipped — never timestamped. The run-level editorial contract admits
-//     phrase overlays and images only.
-//   - Image candidates use their certified occurrence windows and require a
-//     materialized asset before they can enter the final plan.
-//
-// The returned plan is sealed (render keys + fingerprint) and ready to
-// enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
-func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(context.Background(), result, language, canvas, planID, videoID, projectID, nil, nil, nil, perSceneImages...)
-}
-
-// CompileOverlayPlanWithPlates is CompileOverlayPlan with the run's certified
-// basemap plate resolver wired: grounded place annotations covered by a plate
-// become map overlay items. A nil resolver behaves exactly like
-// CompileOverlayPlan (no maps — the fail-closed default deployment).
-func CompileOverlayPlanWithPlates(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, resolver capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(context.Background(), result, language, canvas, planID, videoID, projectID, nil, resolver, nil, perSceneImages...)
-}
-
 // CompileOverlayPlanWithRustResolver compiles and seals a plan using the
-// configured BrainRust map-overlap resolver.
+// configured BrainRust map-overlap resolver. The resolver is mandatory: map
+// window trimming, collision resolution, entrance cascading and entity
+// ranking are owned by the semantic engine — there is no Go-only fallback.
 func CompileOverlayPlanWithRustResolver(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, resolver capabilityoverlay.MapOverlapResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
 	return compileOverlayPlanWithMotionOffset(ctx, result, language, canvas, planID, videoID, projectID, nil, plates, resolver, perSceneImages...)
 }

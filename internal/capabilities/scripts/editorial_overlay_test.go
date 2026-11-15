@@ -1,6 +1,8 @@
 package scriptgeneration
 
 import (
+	"context"
+
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
@@ -180,7 +182,7 @@ func TestCompileBulletOnlyPlayfairCameraPushAcceptance(t *testing.T) {
 		Size: &scriptpkg.OverlaySizeSpec{FontSize: &fontSize}, GlowSize: &glow, GlowColor: "#FFFFFF",
 	}
 	canvas.Background = &capmodel.OverlayBackground{Kind: "color", Color: []float64{0, 0, 0, 1}, Opacity: func() *float64 { value := 1.0; return &value }()}
-	plan, err := CompileOverlayPlan(result, "it", canvas, "bullet-acceptance", "video-bullet-acceptance", "garlasco")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "it", canvas, "bullet-acceptance", "video-bullet-acceptance", "garlasco", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.Len(t, plan.Items, len(texts), "every source scene must materialize exactly one bullet and no other overlay")

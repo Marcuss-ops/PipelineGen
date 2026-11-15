@@ -79,6 +79,7 @@ func TestCanonicalTimeline_WaitsForTTS(t *testing.T) {
 	voiceoverGen := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
 	req := defaultTestRequest()
@@ -183,6 +184,7 @@ func TestOverlayRender_WaitsForFrozenTimingNotPrepare(t *testing.T) {
 	})
 	renderEnq := &recordingOverlayRenderEnqueuer{}
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetLocalizedRenderEnqueuer(&recordingLocalizedRenderEnqueuer{})
@@ -239,6 +241,7 @@ func TestOverlayRender_DisabledKeepsSemanticPlanWithoutEnqueue(t *testing.T) {
 	})
 	renderEnq := &recordingOverlayRenderEnqueuer{}
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
 	runner.SetOverlayRenderEnqueuer(renderEnq)

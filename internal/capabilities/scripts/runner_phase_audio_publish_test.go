@@ -32,6 +32,7 @@ func testRoutingContext() kernelscript.ArtifactRoutingContext {
 func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{
 		AssetID:     "final-audio-canonical-01k",
@@ -66,6 +67,7 @@ func TestRunnerPublishFinalAudioSetsCanonicalAssetID(t *testing.T) {
 func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{DriveFileID: "abc", DriveLink: "https://drive.google.com/file/d/abc"}}
 	runner.SetFinalAudioPublisher(publisher)
@@ -95,6 +97,7 @@ func TestRunnerPublishFinalAudioFailsClosedOnEmptyCanonicalAssetID(t *testing.T)
 func TestRunnerPublishFinalAudioFailsClosedWithoutDriveFileID(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetFinalAudioPublisher(&stubFinalAudioPublisher{result: FinalAudioPublishResult{
 		AssetID: "canonical-audio", DriveLink: "https://drive.google.com/file/d/abc",
@@ -117,6 +120,7 @@ func TestRunnerPublishFinalAudioFailsClosedWithoutDriveFileID(t *testing.T) {
 func TestRunnerPublishFinalAudioDoesNotTreatDriveLocatorWithoutCanonicalAssetAsPublished(t *testing.T) {
 	repo := newInMemRunRepository()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), newStubVoiceoverGenerator())
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	publisher := &stubFinalAudioPublisher{result: FinalAudioPublishResult{
 		AssetID: "canonical-audio", DriveFileID: "drive-audio", DriveLink: "https://drive.google.com/file/d/drive-audio",

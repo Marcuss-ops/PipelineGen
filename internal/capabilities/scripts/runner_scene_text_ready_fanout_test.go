@@ -90,6 +90,7 @@ func TestImportantPhraseHintsReachTTSBeforeSceneReadyConsumers(t *testing.T) {
 	translator := newStubTranslator()
 	voiceover := newStubVoiceoverGenerator()
 	runner := NewRunner(repo, streamer, translator, voiceover)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	req := defaultTestRequest()
 	req.Languages = []Language{"en"}
@@ -207,6 +208,7 @@ func TestSceneTextReady_TranslatedNLPOverlapsTTS(t *testing.T) {
 	repo := newInMemRunRepository()
 	voGen := newBlockingVoiceoverGenerator()
 	runner := NewRunner(repo, newStubTextGenerator(defaultTestScenes()), newStubTranslator(), voGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	ner := newSignalingTranslatedNER()
 	runner.SetVidRushPipeline(&VidRushPipeline{

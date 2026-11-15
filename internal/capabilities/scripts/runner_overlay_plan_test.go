@@ -309,6 +309,7 @@ func TestRunner_OverlayPlanAppliesRunLevelEditorialBudget(t *testing.T) {
 	// earlier card is sequenced to end before the next spoken date, so the
 	// word boundaries themselves stay at 100ms.
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{tailUS: 5_000_000})
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
@@ -505,6 +506,7 @@ func TestRunner_OverlayIntents_PersistedBeforePlanEnqueue(t *testing.T) {
 		},
 	})
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	// The canonical registry is wired the same way the composition root does.
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
@@ -590,6 +592,7 @@ func TestRunner_OverlayPrepare_EnqueuedBeforeTTS(t *testing.T) {
 	})
 	prepEnq := &fakeOverlayPrepareEnqueuer{}
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
@@ -655,6 +658,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 		},
 	})
 	runner := NewRunner(repo, textGen, newStubTranslator(), &entityTimelineVoiceoverGenerator{})
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	runner.SetOverlayRegistry(capmodel.DefaultChrononOverlayRegistry)
@@ -678,7 +682,7 @@ func TestRunner_OverlayPrepare_EnqueueErrorFailsClosed(t *testing.T) {
 // plan (nil, not an error) — the same legitimate no-op the phrase and entity
 // projections implement.
 func TestCompileOverlayPlan_NilOrSurfacelessIsNoOp(t *testing.T) {
-	plan, err := CompileOverlayPlan(nil, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), nil, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.Nil(t, plan)
 
@@ -686,7 +690,7 @@ func TestCompileOverlayPlan_NilOrSurfacelessIsNoOp(t *testing.T) {
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Tim Cook speaks."}, Annotations: overlayScene0Annotations()},
 	}}
-	plan, err = CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
+	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.Nil(t, plan)
 }
@@ -734,7 +738,7 @@ func TestCompileOverlayPlan_UnspokenPhraseSkipped(t *testing.T) {
 		}},
 		ResolvedScenes: []ResolvedScene{{ID: "scene-0", Index: 0, TimelineStartUS: 0, DurationUS: 300_000}},
 	}
-	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.Nil(t, plan, "unspoken phrase and non-contract word overlay produce no plan")
 }
@@ -869,7 +873,7 @@ func TestCompileOverlayPlanUsesTranslatedPhraseAndVoiceoverTiming(t *testing.T) 
 		}},
 	}
 
-	plan, err := CompileOverlayPlan(result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.Equal(t, "es", plan.Language)
@@ -903,7 +907,7 @@ func TestCompileOverlayPlanDoesNotReuseSourceAnnotationsForMissingTranslation(t 
 		}},
 	}
 
-	plan, err := CompileOverlayPlan(result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "es", GoldenOverlayCanvas, "run-es", "video-es", "project", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.Nil(t, plan, "an absent translated annotation must not leak a source-language overlay")
 }
@@ -930,7 +934,7 @@ func TestCompileOverlayPlanDoesNotReuseUnlabelledSourceEntitiesForTranslation(t 
 			},
 		}},
 	}
-	plan, err := CompileOverlayPlan(result, "pl", GoldenOverlayCanvas, "run-pl", "video-pl", "project")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "pl", GoldenOverlayCanvas, "run-pl", "video-pl", "project", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.Nil(t, plan, "unlabelled source entities must not be matched against translated timing")
 }
@@ -1002,7 +1006,7 @@ func TestCompileOverlayPlan_ChosenEntityImageCarriesResolvedAsset(t *testing.T) 
 		},
 	}
 
-	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "video-1", "", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan, "the spoken entity must still produce a plan")
 	byID := map[string]capmodel.OverlayItem{}
@@ -1047,8 +1051,8 @@ func TestCompileOverlayPlan_RequiresPlanAndVideoID(t *testing.T) {
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "Tim Cook speaks."}, Annotations: overlayScene0Annotations()},
 	}}
-	_, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "", "video-1", "")
+	_, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "", "video-1", "", nil, passthroughMapOverlapResolver{})
 	require.Error(t, err)
-	_, err = CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-1", "", "")
+	_, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-1", "", "", nil, passthroughMapOverlapResolver{})
 	require.Error(t, err)
 }

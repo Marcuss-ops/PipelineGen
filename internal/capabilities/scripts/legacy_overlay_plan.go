@@ -17,46 +17,10 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// CompileOverlayPlanFromGenerationResultWithStyle is the batch bridge used by
-// script.generate_item. It keeps the legacy signature above source-compatible
-// while carrying the same caller-owned overlay style that the durable Runner
-// already applies. The style is a render override only; preset selection and
-// timing remain owned by the canonical overlay compiler.
-func CompileOverlayPlanFromGenerationResultWithStyle(
-	result *scriptpkg.GenerationResult,
-	language Language,
-	timingArtifacts map[string]*capabilityaudio.SpeechTimingArtifact,
-	background *scriptpkg.OverlayBackgroundSpec,
-	style *scriptpkg.OverlayStyleSpec,
-	planID string,
-	projectID string,
-) (*capmodel.OverlayPlan, error) {
-	return CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
-		result, language, timingArtifacts, background, style, 0, planID, projectID)
-}
-
-// CompileOverlayPlanFromGenerationResultWithStyleAndLimit is
-// CompileOverlayPlanFromGenerationResultWithStyle with the caller-selected
-// run-level grounded-phrase ceiling (item max_phrase_overlays). A
-// maxPhraseOverlays of zero keeps the certified default ceiling.
-func CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
-	result *scriptpkg.GenerationResult,
-	language Language,
-	timingArtifacts map[string]*capabilityaudio.SpeechTimingArtifact,
-	background *scriptpkg.OverlayBackgroundSpec,
-	style *scriptpkg.OverlayStyleSpec,
-	maxPhraseOverlays int,
-	planID string,
-	projectID string,
-) (*capmodel.OverlayPlan, error) {
-	return CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver(
-		context.Background(), result, language, timingArtifacts, background, style,
-		maxPhraseOverlays, planID, projectID, nil,
-	)
-}
-
 // CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver is the
-// batch bridge with an explicit Rust map-overlap resolver.
+// batch bridge with an explicit Rust map-overlap resolver. The resolver is
+// mandatory: overlay semantics (window trimming, collision resolution,
+// entrance cascading, entity ranking) are owned by the semantic engine.
 func CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver(
 	ctx context.Context,
 	result *scriptpkg.GenerationResult,

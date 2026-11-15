@@ -1,6 +1,8 @@
 package scriptgeneration
 
 import (
+	"context"
+
 	"strings"
 	"testing"
 
@@ -23,7 +25,7 @@ func TestCompileOverlayPlanAddsPerSceneImageWithoutChangingEntityCardScope(t *te
 	}}
 	// Leave room after the five-second entity-card opening for the scene still.
 	result.ResolvedScenes[0].DurationUS = 7_000_000
-	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-scene-image", "video", "project", true, true)
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-scene-image", "video", "project", nil, passthroughMapOverlapResolver{}, true, true)
 	if err != nil {
 		t.Fatalf("compile plan: %v", err)
 	}
@@ -40,7 +42,7 @@ func TestCompileOverlayPlanAddsPerSceneImageWithoutChangingEntityCardScope(t *te
 	if images != 1 {
 		t.Fatalf("generic per-scene images = %d, want 1", images)
 	}
-	withoutSceneStills, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-entity-images-only", "video", "project", true, false)
+	withoutSceneStills, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-entity-images-only", "video", "project", nil, passthroughMapOverlapResolver{}, true, false)
 	if err != nil {
 		t.Fatalf("compile entity-only plan: %v", err)
 	}
