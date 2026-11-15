@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
 	"math"
 	"strings"
 	"time"
@@ -256,12 +257,8 @@ func ValidateChunkedVoiceoversForLanguages(result GenerateResult, languages []La
 // AudioCompileTimings captures the per-stage wall-clock of the combined-audio
 // compilation: timeline build, clip/voiceover audio asset preparation, and
 // final audio plan compile. It feeds the durable AudioPipelineMetrics fields.
-type AudioCompileTimings struct {
-	AudioAssetResolveMS int64
-	TimelineCompileMS   int64
-	ClipAudioPrepareMS  int64
-	AudioPlanCompileMS  int64
-}
+// AudioCompileTimings is the canonical compile-timing contract.
+type AudioCompileTimings = audiocontract.CompileTimings
 
 // CompileCanonicalAudioPlan is the timing-insensitive spelling of
 // CompileCanonicalAudioPlanWithTimings, retained for existing callers.

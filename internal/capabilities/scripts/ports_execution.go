@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	audiocontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/audio"
 	"time"
 
 	"github.com/google/uuid"
@@ -233,7 +234,7 @@ type LocalizedRenderRecoveryEnqueuer interface {
 // return a probed, certified final audio artifact; the runner never falls
 // back to chunked mixing when this port is unavailable or fails.
 type CombinedAudioRenderer interface {
-	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (FinalAudioReference, AudioPipelineMetrics, error)
+	Render(ctx context.Context, plan audio.CompiledAudioPlan, assets audio.ResolvedAudioAssets) (audiocontract.FinalAudioReference, AudioPipelineMetrics, error)
 }
 
 // AudioAssetSource resolves ONE background-music or sound-effect asset_id
@@ -322,7 +323,7 @@ type FinalAudioPublishResult struct {
 // Drive file ID, and public Drive link. voiceoverFolderID is the caller-explicit Drive folder
 // (output.voiceover_folder_id); empty means "use the configured default".
 type FinalAudioPublisher interface {
-	PublishFinalAudio(context.Context, string, Language, FinalAudioReference, string) (FinalAudioPublishResult, error)
+	PublishFinalAudio(context.Context, string, Language, audiocontract.FinalAudioReference, string) (FinalAudioPublishResult, error)
 }
 
 // ExecutionContext is the immutable correlation envelope propagated through
@@ -466,7 +467,7 @@ func CompileCanonicalAudioPlanAudioOnlyWithIntents(
 	bgm []scriptpkg.BackgroundMusicIntent,
 	sfx []scriptpkg.SoundEffectIntent,
 	randomSFXOnClipStart ...bool,
-) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, AudioCompileTimings, error) {
+) (audio.CanonicalTimeline, audio.CompiledAudioPlan, audio.ResolvedAudioAssets, audiocontract.CompileTimings, error) {
 	// Audio-only narration runs may be compiled before clip materialization.
 	// With VOICEOVER_ONLY there is deliberately no dependency on a local clip
 	// audio path: the master is narration + optional BGM, while the rendered
