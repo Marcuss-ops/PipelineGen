@@ -49,7 +49,9 @@ type CandidateStateAssessment struct {
 //
 // Legacy rows with no LastSeenAt retain their stored state. This prevents a
 // migration or a partial fixture from inventing an age while still allowing
-// rows with a real timestamp to decay deterministically.
+// rows with a real timestamp to decay deterministically. An unrecognized
+// stored status (including an empty legacy value) classifies as unknown and
+// is never persisted by the lookup path.
 func ClassifyCandidateStatus(now time.Time, candidate Candidate) string {
 	stored := strings.ToLower(strings.TrimSpace(candidate.Status))
 	switch stored {
@@ -60,7 +62,9 @@ func ClassifyCandidateStatus(now time.Time, candidate Candidate) string {
 	case CandidateStatusFresh, CandidateStatusStale:
 		// keep the normalized stored state until the timestamp check below
 	default:
-		stored = CandidateStatusFresh
+		// Unrecognized stored statuses (including an empty legacy value) must
+		// fail closed. Treating them as fresh made an uncertified row selectable.
+		return CandidateStatusUnknown
 	}
 	if candidate.LastSeenAt.IsZero() {
 		return stored
