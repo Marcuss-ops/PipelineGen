@@ -53,7 +53,7 @@ func TestTransitionCandidateStatusEvents(t *testing.T) {
 		{name: "acquire failure", from: CandidateStatusFresh, event: CandidateEventValidationFailed, want: CandidateStatusBroken},
 		{name: "broken remains recoverable only by explicit success", from: CandidateStatusBroken, event: CandidateEventValidationSucceeded, want: CandidateStatusFresh},
 		{name: "manual retirement", from: CandidateStatusStale, event: CandidateEventManualRetirement, want: CandidateStatusRetired},
-		{name: "retired is terminal", from: CandidateStatusRetired, event: CandidateEventProviderAccepted, want: CandidateStatusRetired},
+		{name: "explicit revive is the only exit from retired", from: CandidateStatusRetired, event: CandidateEventRevive, want: CandidateStatusFresh},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -65,6 +65,18 @@ func TestTransitionCandidateStatusEvents(t *testing.T) {
 				t.Fatalf("transition = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestTransitionCandidateStatusRetiredIsTerminal(t *testing.T) {
+	for _, event := range []CandidateStateEvent{
+		CandidateEventProviderAccepted,
+		CandidateEventValidationSucceeded,
+		CandidateEventValidationFailed,
+	} {
+		if got, err := TransitionCandidateStatus(CandidateStatusRetired, event); err != ErrInvalidCandidateTransition {
+			t.Fatalf("retired + %s = (%q, %v), want (%q, %v)", event, got, err, "", ErrInvalidCandidateTransition)
+		}
 	}
 }
 

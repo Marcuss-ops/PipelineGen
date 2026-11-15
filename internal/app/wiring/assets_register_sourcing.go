@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 
 	mediasub "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/media"
@@ -141,7 +142,7 @@ func newAssetRegisterService(
 	// off the request thread.
 	//
 	// PR-BATCH-REGISTER-ASYNC-CONSTANT (closed July 2026): clipRegisterJobType
-	// is now appjobs.TypeClipRegister (canonical SSOT per godlike/06).
+	// is now jobscheduling.TypeClipRegister (canonical SSOT per godlike/06).
 	batchEnqueuer := &clipJobEnqueuerAdapter{svc: jobsSvc}
 	batchSvc := batch.NewService(batchEnqueuer, ytadapters.NewZapSourcingLogger(log))
 
@@ -153,7 +154,7 @@ func newAssetRegisterService(
 	// (the batch enqueuer adapter also returns ErrEnqueuerNotWired on
 	// nil svc, so the surface is consistent).
 	if jobsSvc != nil {
-		if err := jobsSvc.RegisterHandler(appjobs.TypeClipRegister, appjobs.HandlerFunc(func(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
+		if err := jobsSvc.RegisterHandler(jobscheduling.TypeClipRegister, appjobs.HandlerFunc(func(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 			var cmd sourcing.RegisterClipCommand
 			if len(j.Payload) > 0 {
 				if err := json.Unmarshal(j.Payload, &cmd); err != nil {
@@ -357,7 +358,7 @@ func (a *clipJobEnqueuerAdapter) EnqueueClip(ctx context.Context, cmd sourcing.R
 		cid = baseID + ":" + cid
 	}
 	job, err := a.svc.Enqueue(ctx, &job.EnqueueRequest{
-		Type:          appjobs.TypeClipRegister,
+		Type:          jobscheduling.TypeClipRegister,
 		Payload:       json.RawMessage(payload),
 		CorrelationID: cid,
 	})

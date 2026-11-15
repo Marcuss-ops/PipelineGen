@@ -6,11 +6,10 @@ import (
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// prefetchRecordingResolver is the stock-folder resolver with the optional
-// warm-up path: it records the identities the builder asks it to warm.
+// prefetchRecordingResolver is the stock resolver with the optional warm-up
+// path: it records the identities the builder asks it to warm.
 type prefetchRecordingResolver struct {
 	finalJobPayloadResolver
 	mu   sync.Mutex
@@ -29,17 +28,17 @@ func (r *prefetchRecordingResolver) prefetched() []string {
 	return append([]string(nil), r.seen...)
 }
 
-// TestBuildFinalJobPayloadsDoesNotPrefetchTheFolderItListed pins the current
+// TestBuildFinalJobPayloadsDoesNotPrefetchConcreteStock pins the current
 // contract: final-job stock is passed by Drive reference, so building the
-// payload must not eagerly resolve or stage the folder's sources.
-func TestBuildFinalJobPayloadsDoesNotPrefetchTheFolderItListed(t *testing.T) {
+// payload must not eagerly resolve or stage the selected source.
+func TestBuildFinalJobPayloadsDoesNotPrefetchConcreteStock(t *testing.T) {
 	result := &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 2_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 2_000_000}}},
 		FinalAudio:        certifiedFinalAudio(2000),
 		Scenes: []Scene{{
 			ID:    "scene-1",
 			Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
-			Stock: &scriptpkg.StockBinding{FolderID: "folder-1"},
+			Stock: concreteStockBinding("drive-asset", 0, 2000),
 		}},
 	}
 	resolver := &prefetchRecordingResolver{}
@@ -62,7 +61,7 @@ func TestBuildFinalJobPayloadsSkipsPrefetchForResolversWithoutIt(t *testing.T) {
 		Scenes: []Scene{{
 			ID:    "scene-1",
 			Clips: []*ClipReference{{ID: "stock-clip", AsStock: true, DurationUS: 10_000_000}},
-			Stock: &scriptpkg.StockBinding{FolderID: "folder-1"},
+			Stock: concreteStockBinding("drive-asset", 0, 2000),
 		}},
 	}
 	pre, _, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})

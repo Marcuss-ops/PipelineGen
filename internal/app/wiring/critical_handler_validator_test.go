@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -77,8 +78,8 @@ func TestValidateCriticalHandlers_OneErrorAmongThree(t *testing.T) {
 	// stubs in this test). The validator's Bind closure for those
 	// success paths then performs a post-call HasHandler check, which
 	// returns true after the pre-registration.
-	require.NoError(t, svc.RegisterHandler(appjobs.TypeMediaStock, appjobs.HandlerFunc(noopHandlerFunc)))
-	require.NoError(t, svc.RegisterHandler(appjobs.TypeImageGenerateGoogle, appjobs.HandlerFunc(noopHandlerFunc)))
+	require.NoError(t, svc.RegisterHandler(jobscheduling.TypeMediaStock, appjobs.HandlerFunc(noopHandlerFunc)))
+	require.NoError(t, svc.RegisterHandler(jobscheduling.TypeImageGenerateGoogle, appjobs.HandlerFunc(noopHandlerFunc)))
 
 	handlers := []CriticalHandler{
 		{
@@ -92,7 +93,7 @@ func TestValidateCriticalHandlers_OneErrorAmongThree(t *testing.T) {
 			Name: "stockpipeline.media_stock",
 			Bind: func(s *appjobs.Service) error {
 				stockSeen = true
-				if !s.HasHandler(appjobs.TypeMediaStock) {
+				if !s.HasHandler(jobscheduling.TypeMediaStock) {
 					return fmt.Errorf("media.stock not bound (post-call HasHandler check)")
 				}
 				return nil
@@ -102,7 +103,7 @@ func TestValidateCriticalHandlers_OneErrorAmongThree(t *testing.T) {
 			Name: "images.image_generate_google",
 			Bind: func(s *appjobs.Service) error {
 				imageSeen = true
-				if !s.HasHandler(appjobs.TypeImageGenerateGoogle) {
+				if !s.HasHandler(jobscheduling.TypeImageGenerateGoogle) {
 					return fmt.Errorf("image.generate.google not bound (post-call HasHandler check)")
 				}
 				return nil
@@ -147,7 +148,7 @@ func TestValidateCriticalHandlers_AllOK(t *testing.T) {
 		{
 			Name: "stockpipeline.media_stock",
 			Bind: func(s *appjobs.Service) error {
-				if err := s.RegisterHandler(appjobs.TypeMediaStock, appjobs.HandlerFunc(noopHandlerFunc)); err != nil {
+				if err := s.RegisterHandler(jobscheduling.TypeMediaStock, appjobs.HandlerFunc(noopHandlerFunc)); err != nil {
 					return fmt.Errorf("media.stock bind: %w", err)
 				}
 				return nil
@@ -156,7 +157,7 @@ func TestValidateCriticalHandlers_AllOK(t *testing.T) {
 		{
 			Name: "images.image_generate_google",
 			Bind: func(s *appjobs.Service) error {
-				if err := s.RegisterHandler(appjobs.TypeImageGenerateGoogle, appjobs.HandlerFunc(noopHandlerFunc)); err != nil {
+				if err := s.RegisterHandler(jobscheduling.TypeImageGenerateGoogle, appjobs.HandlerFunc(noopHandlerFunc)); err != nil {
 					return fmt.Errorf("image.generate.google bind: %w", err)
 				}
 				return nil
@@ -167,9 +168,9 @@ func TestValidateCriticalHandlers_AllOK(t *testing.T) {
 	err := ValidateCriticalHandlers(svc, zap.NewNop(), handlers)
 
 	require.NoError(t, err, "all-OK scenario must yield nil aggregated error")
-	require.True(t, svc.HasHandler(appjobs.TypeMediaStock),
+	require.True(t, svc.HasHandler(jobscheduling.TypeMediaStock),
 		"production-side RegisterHandler call in the Bind closure must have bound media.stock")
-	require.True(t, svc.HasHandler(appjobs.TypeImageGenerateGoogle),
+	require.True(t, svc.HasHandler(jobscheduling.TypeImageGenerateGoogle),
 		"production-side RegisterHandler call in the Bind closure must have bound image.generate.google")
 }
 

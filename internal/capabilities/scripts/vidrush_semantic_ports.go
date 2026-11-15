@@ -39,12 +39,15 @@ import (
 // VisualEntity is the common source-grounded entity returned by every NER
 // backend and projected through the scene pipeline.
 type VisualEntity struct {
-	Text     string               `json:"text"`
-	Type     scriptpkg.EntityType `json:"type"`
-	Score    float32              `json:"score"`
-	Start    int                  `json:"start"`
-	End      int                  `json:"end"`
-	Evidence string               `json:"evidence,omitempty"`
+	Text          string               `json:"text"`
+	Type          scriptpkg.EntityType `json:"type"`
+	Score         float32              `json:"score"`
+	Start         int                  `json:"start"`
+	End           int                  `json:"end"`
+	Evidence      string               `json:"evidence,omitempty"`
+	IdentityID    string               `json:"identity_id,omitempty"`
+	CanonicalID   string               `json:"canonical_id,omitempty"`
+	SearchIntents []string             `json:"search_intents,omitempty"`
 }
 
 // NERBackend is the shared extraction contract for interchangeable named-

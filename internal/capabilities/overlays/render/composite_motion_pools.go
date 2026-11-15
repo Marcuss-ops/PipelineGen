@@ -3,35 +3,34 @@ package render
 import capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 
 // Composite image groups are shown as one overlay with 2 to 5 images placed
-// side by side. Each group size has its own entrance pool, so a 2-image group,
-// a 3-image group, and so on never share the same entrance family and each
-// group reads as its own sequence, the way text and entity-caption treatments
-// already do.
+// side by side. Each group size rotates the certified image catalog from its
+// own starting point, so a 2-image group, a 3-image group, and so on read as
+// their own sequence while every member of the group still gets a distinct
+// entrance.
 const (
 	minCompositeGroupSize = 2
 	maxCompositeGroupSize = 5
 )
 
 // CompositeImageMotionPool returns the certified entrance pool reserved for a
-// composite group of size images. The pools are a deterministic, disjoint
-// partition of the certified entity image catalog by position: entry i belongs
-// to size minCompositeGroupSize + (i mod 4). Sizes outside 2..5 return the full
-// catalog. When the catalog has fewer entries than sizes, every size shares the
-// full catalog (there is nothing to partition).
+// composite group of size images. The pool is a deterministic rotation of the
+// complete certified entity-image catalog, offset by group size.
+//
+// It deliberately does NOT slice the catalog into disjoint per-size pools: a
+// 9-motion catalog cannot give 2, 3, 4 and 5-image groups two or more distinct
+// entrances each (that would need 14 entries). The former partition left the
+// 3-, 4- and 5-image groups with only two motions, so a larger composite
+// always repeated an entrance. Rotation gives every group at least `size`
+// distinct motions; the size-specific start keeps the group sizes from opening
+// on the same entrance.
 func CompositeImageMotionPool(size int) []string {
 	catalog := capoverlay.CertifiedEntityImageMotions()
-	if size < minCompositeGroupSize || size > maxCompositeGroupSize {
+	if size < minCompositeGroupSize || size > maxCompositeGroupSize || len(catalog) == 0 {
 		return catalog
 	}
-	groupCount := maxCompositeGroupSize - minCompositeGroupSize + 1
-	if len(catalog) < groupCount {
-		return catalog
-	}
-	pool := make([]string, 0, len(catalog)/groupCount+1)
-	for index, id := range catalog {
-		if index%groupCount == size-minCompositeGroupSize {
-			pool = append(pool, id)
-		}
-	}
+	offset := (size - minCompositeGroupSize) % len(catalog)
+	pool := make([]string, 0, len(catalog))
+	pool = append(pool, catalog[offset:]...)
+	pool = append(pool, catalog[:offset]...)
 	return pool
 }

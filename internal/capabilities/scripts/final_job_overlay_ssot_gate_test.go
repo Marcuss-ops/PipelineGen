@@ -2,12 +2,12 @@ package scriptgeneration
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	overlaymodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
 // The 2026-09-30 "one shot and done" hardening, re-pinned on the
@@ -32,7 +32,7 @@ func ssotGateResult(items []overlaymodel.OverlayItem, artifact *RenderArtifact) 
 	return &GenerateResult{
 		CanonicalTimeline: &capabilityaudio.CanonicalTimeline{DurationUS: 5_000_000, Segments: []capabilityaudio.TimelineSegment{{ID: "scene-1", DurationUS: 5_000_000}}},
 		FinalAudio:        certifiedFinalAudio(5000),
-		Scenes:            []Scene{{ID: "scene-1", Stock: &scriptpkg.StockBinding{FolderID: "folder-1"}}},
+		Scenes:            []Scene{{ID: "scene-1", Stock: concreteStockBinding("drive-asset-5000", 0, 5000)}},
 		OverlayPlan: &overlaymodel.OverlayPlan{
 			SchemaVersion: overlaymodel.SchemaVersionPlan, PlanID: "plan-1", VideoID: "run-1",
 			Width: 1920, Height: 1080, FPSNum: 24, FPSDen: 1,
@@ -44,6 +44,14 @@ func ssotGateResult(items []overlaymodel.OverlayItem, artifact *RenderArtifact) 
 
 func ssotTimelineArtifact(sha string) *RenderArtifact {
 	return &RenderArtifact{ID: "timeline-artifact", DriveFileID: "timeline-drive", SHA256: sha, SizeBytes: 50, FrameCount: 120, CopyEligible: true}
+}
+
+// ssotBindStockToTimeline moves the fixture's stock binding to the test's
+// canonical duration. The binding is the stockpipeline handoff; the Producer
+// must not stretch it to a different scene.
+func ssotBindStockToTimeline(result *GenerateResult) {
+	ms := (result.CanonicalTimeline.DurationUS + 999) / 1000
+	result.Scenes[0].Stock = concreteStockBinding(fmt.Sprintf("drive-asset-%d", ms), 0, ms)
 }
 
 func TestFinalJobMultiArtifactManifestHandoff(t *testing.T) {
@@ -190,6 +198,7 @@ func TestFinalJobManifestAdmitsOverlappingEntriesInShortScene(t *testing.T) {
 	result.CanonicalTimeline.DurationUS = 3_900_000
 	result.CanonicalTimeline.Segments[0].DurationUS = 3_900_000
 	result.FinalAudio = certifiedFinalAudio(3_900)
+	ssotBindStockToTimeline(result)
 	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
@@ -212,6 +221,7 @@ func TestFinalJobManifestAdmitsDistinctEntriesOnTheFrameGrid(t *testing.T) {
 	result.CanonicalTimeline.DurationUS = 15_000_000
 	result.CanonicalTimeline.Segments[0].DurationUS = 15_000_000
 	result.FinalAudio = certifiedFinalAudio(15_000)
+	ssotBindStockToTimeline(result)
 	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "pt"}, result, finalJobPayloadResolver{})
 	if err != nil {
 		t.Fatalf("BuildFinalJobPayloads: %v", err)
@@ -244,6 +254,7 @@ func TestFinalJobManifestKeepsEntityCardOverDateCard(t *testing.T) {
 	result.CanonicalTimeline.DurationUS = 10_000_000
 	result.CanonicalTimeline.Segments[0].DurationUS = 10_000_000
 	result.FinalAudio = certifiedFinalAudio(10_000)
+	ssotBindStockToTimeline(result)
 
 	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err != nil {
@@ -291,6 +302,7 @@ func TestFinalJobChartGroupArrivesPreComposed(t *testing.T) {
 	result.CanonicalTimeline.DurationUS = 10_000_000
 	result.CanonicalTimeline.Segments[0].DurationUS = 10_000_000
 	result.FinalAudio = certifiedFinalAudio(10_000)
+	ssotBindStockToTimeline(result)
 
 	_, finalize, err := BuildFinalJobPayloads(context.Background(), "run-1", GenerateRequest{Title: "A story", SourceLanguage: "en"}, result, finalJobPayloadResolver{})
 	if err != nil {

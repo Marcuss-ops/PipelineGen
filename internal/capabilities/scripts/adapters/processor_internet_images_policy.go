@@ -25,6 +25,21 @@ func internetImageCandidateLimit(plan *scriptpkg.ResolvedGenerationPlan) int {
 	return limit
 }
 
+// internetImagePerQueryLimit divides the scene candidate budget over its
+// entity queries. CandidateLimit is a segment budget; applying it separately
+// to every entity multiplied a 30-candidate request into hundreds of remote
+// downloads and visual checks.
+func internetImagePerQueryLimit(segmentLimit, queryCount int) int {
+	if segmentLimit <= 0 {
+		segmentLimit = 10
+	}
+	if queryCount <= 1 {
+		return min(segmentLimit, 50)
+	}
+	limit := (segmentLimit + queryCount - 1) / queryCount
+	return max(1, min(limit, 50))
+}
+
 func internetImageCacheReadable(plan *scriptpkg.ResolvedGenerationPlan, options internetImageProcessOptions) bool {
 	return options.cacheOnly || (!plan.MediaPlan.ForceRefreshAssets && !plan.ForceRefresh)
 }

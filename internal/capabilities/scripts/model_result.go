@@ -18,6 +18,10 @@ import (
 )
 
 type GenerateResult struct {
+	// Build provenance is captured once at the durable-result boundary so a
+	// job report can prove which executable and Rust release produced it.
+	BinarySHA256 string `json:"binary_sha256,omitempty"`
+	RustRelease  string `json:"rust_release,omitempty"`
 	// renderFirstStartedAt/renderLastFinishedAt are runtime-only aggregation
 	// state. They are deliberately not serialized; RenderMetrics exposes the
 	// derived wall/work values.
@@ -47,6 +51,14 @@ type GenerateResult struct {
 	// Global Summary/BulletPoints above stay untouched for compatibility.
 	SceneHighlights []scriptpkg.SceneHighlight   `json:"scene_highlights,omitempty"`
 	Editorial       *scriptpkg.EditorialManifest `json:"editorial,omitempty"`
+	// SemanticBindingIssues records plan hits that need acquisition or a
+	// target before they can become annotation images. It is a diagnosis, not
+	// a second binding path.
+	SemanticBindingIssues []SemanticBindingIssue `json:"semantic_binding_issues,omitempty"`
+	// EntityImageDecisionOwner names the one flow allowed to select and bind
+	// entity images for this run. It is resolved from the requested surface,
+	// never from which flow happened to find a hit first.
+	EntityImageDecisionOwner EntityImageDecisionOwner `json:"entity_image_decision_owner,omitempty"`
 
 	// Segments is the compatibility projection of the canonical VidRush
 	// enrichment results. Each entry preserves insights.entities for legacy
@@ -119,7 +131,7 @@ type GenerateResult struct {
 	SemanticProductionPlan *SemanticProductionPlan `json:"semantic_production_plan,omitempty"`
 	// SemanticSearchFeedback reports the planner's retrieval outcomes in the
 	// engine's handshake contract (`pending` / `satisfied` / `failed` plus a
-	// `broaden` / `drop_entity` / `skip_visual` retry). Nil without a plan.
+	// `broaden` / `skip_visual` retry). Nil without a plan.
 	SemanticSearchFeedback *SemanticSearchFeedback `json:"semantic_search_feedback,omitempty"`
 	// SemanticSearchReport is the measured result of executing the plan's
 	// queries against the real retrieval provider: every attempt with its
@@ -161,6 +173,12 @@ type GenerateResult struct {
 	// the semantic overlays admitted to the render plan. It is derived from
 	// the same sealed bundle and plan; it does not perform a second extraction.
 	OverlayAudit *OverlayAudit `json:"overlay_audit,omitempty"`
+	// FinalJobPreflight is the durable marker that the image contract of the
+	// sealed OverlayPlan was verified BEFORE the overlay render was submitted.
+	// It is keyed by the plan's render digest, so a repaired or re-frozen plan
+	// re-arms the gate; the late handoff checks reuse it instead of downloading
+	// the same images twice.
+	FinalJobPreflight *FinalJobPreflight `json:"final_job_preflight,omitempty"`
 
 	// OverlayRender is populated after the timing-frozen Chronon render has
 	// completed and its media contract has been certified.
@@ -481,6 +499,13 @@ type RenderReference struct {
 	JobID    string          `json:"job_id"`
 	Status   string          `json:"status"`
 	Artifact *RenderArtifact `json:"artifact,omitempty"`
+	// CacheHits and RenderedItems split the per-item overlay renders behind
+	// this reference into work reused from the content-addressed cache and
+	// work that paid for a new Chronon render. The pair is the per-run
+	// evidence that reuse is actually working; zero/zero is a legacy
+	// reference that predates the counters.
+	CacheHits     int `json:"cache_hits,omitempty"`
+	RenderedItems int `json:"rendered_items,omitempty"`
 	// PlanDigest names the EXACT plan version these bytes were rendered from
 	// (OverlayPlanRenderDigest). It is the identity that makes reuse safe: a
 	// reference whose digest differs from the current plan describes different

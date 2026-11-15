@@ -205,7 +205,13 @@ func localizedRevision(localized LocalizedClipPlan) string {
 	}
 	// Include the concrete overlay compiler revision so renderer fixes cannot
 	// silently reuse an artifact produced by an older worker binary.
-	return localized.ClipID + ":" + localized.TargetLanguage + ":overlay-v3:" + fingerprint
+	//
+	// overlay-v4 (2026-11-14): the source resolver now normalizes ffprobe's
+	// noisy avg_frame_rate to a bounded rational before the plan is sealed.
+	// The render canvas therefore changed for sources whose average rate
+	// exceeded 1001/1; reusing a v3 job id would collide with a request built
+	// from the pre-fix plan.
+	return localized.ClipID + ":" + localized.TargetLanguage + ":overlay-v4:" + fingerprint
 }
 
 // canonicalSHA256 folds an opaque profile/style hash string into a canonical

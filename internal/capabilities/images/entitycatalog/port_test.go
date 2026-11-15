@@ -1,6 +1,9 @@
 package entitycatalog
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCanonicalizePersonNameCollapsesCaseAndWhitespace(t *testing.T) {
 	variants := []string{
@@ -67,5 +70,47 @@ func TestValidateEntityRequiresPersonAndMatchingCanonicalName(t *testing.T) {
 		CanonicalName:     "Michael B. Jordan",
 	}); err == nil {
 		t.Fatal("expected name/ID collision to be rejected")
+	}
+}
+
+func TestValidateMaterializationRejectsInvalidContentSHA(t *testing.T) {
+	materialization := Materialization{CandidateID: 1, Status: MaterializationStatusPending}
+	if err := ValidateMaterialization(materialization); err != nil {
+		t.Fatalf("pending materialization without a hash rejected: %v", err)
+	}
+	materialization.ContentSHA256 = "sha-mj"
+	if err := ValidateMaterialization(materialization); err == nil {
+		t.Fatal("non-SHA materialization hash was accepted")
+	}
+	materialization.ContentSHA256 = strings.Repeat("a", 64)
+	if err := ValidateMaterialization(materialization); err != nil {
+		t.Fatalf("valid 64-hex materialization hash rejected: %v", err)
+	}
+}
+
+func TestIsUsableCandidateQualityRequiresCurrentVerifierVersion(t *testing.T) {
+	base := Candidate{
+		CanonicalEntityID: "person:michael-jordan",
+		Provider:          "wikimedia_commons",
+		Rank:              1,
+		SourceURL:         "https://images.example/michael-jordan/portrait.jpg",
+		Status:            CandidateStatusFresh,
+		SemanticStatus:    CandidateSemanticAccepted,
+		SemanticScore:     0.9,
+		TechnicalScore:    0.9,
+		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
+		Width:             1200,
+		Height:            800,
+	}
+	if IsUsableCandidateQuality(base) {
+		t.Fatal("an unversioned accepted row must not be usable")
+	}
+	base.VerifierVersion = CandidateVerifierVersion
+	if !IsUsableCandidateQuality(base) {
+		t.Fatal("a current-verifier accepted row must be usable")
+	}
+	base.VerifierVersion = "legacy-pre-2026-11-14"
+	if IsUsableCandidateQuality(base) {
+		t.Fatal("a stale-verifier accepted row must not be usable")
 	}
 }

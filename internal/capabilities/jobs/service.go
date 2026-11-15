@@ -32,6 +32,7 @@
 package jobs
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -43,7 +44,7 @@ import (
 // SQLite store. Any future broker adapter (e.g. PostgreSQL) can be injected
 // without touching this file.
 //
-// Issue 4 (June 2026, P1): optional `registry *Registry` carries the
+// Issue 4 (June 2026, P1): optional `registry *jobscheduling.Registry` carries the
 // per-job-type default retries. Wired via the fluent WithRegistry(reg)
 // builder (mirrors the HC-1 Worker.WithRegistry precedent) so the
 // legacy NewService(repo, dispatcher, log) signature stays stable for
@@ -52,7 +53,7 @@ type Service struct {
 	repo       job.JobBroker
 	dispatcher *Dispatcher
 	log        *zap.Logger
-	registry   *Registry
+	registry   *jobscheduling.Registry
 	// scheduleStore/stageStatusStore are the OPTIONAL deferred-scheduling
 	// ports. They are derived from the broker at construction time when the
 	// adapter implements them (the SQLite jobs plane does). A broker that
@@ -75,7 +76,7 @@ type Service struct {
 //
 // Composition root wiring contract:
 //
-//	svc, err := appjobs.NewService(repo, dispatcher, log, appjobs.Compose())
+//	svc, err := appjobs.NewService(repo, dispatcher, log, jobscheduling.Compose())
 //	if err != nil {
 //	    return fmt.Errorf("build jobs bundle: %w", err)
 //	}
@@ -85,7 +86,7 @@ type Service struct {
 // pre-Issue-4 hard-coded 3-retry safety net for ANY job type — a
 // godlike/07 silent-success risk if the composition root forgot the
 // WithRegistry call. The 4-arg signature eliminates that risk entirely.
-func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger, reg *Registry) (*Service, error) {
+func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger, reg *jobscheduling.Registry) (*Service, error) {
 	if reg == nil {
 		return nil, ErrRegistryRequired
 	}
@@ -131,7 +132,7 @@ func (s *Service) StageStatusStore() job.JobStageStatusStore {
 	return s.stageStatusStore
 }
 
-// WithRegistry attaches the canonical job-type *Registry to this Service.
+// WithRegistry attaches the canonical job-type *jobscheduling.Registry to this Service.
 //
 // Deprecated: the registry is now REQUIRED at construction time via the
 // 4-arg NewService signature (PR-jobs-retry-contract, July 2026). This
@@ -141,14 +142,14 @@ func (s *Service) StageStatusStore() job.JobStageStatusStore {
 // constructor-set registry (last writer wins — unsafe-but-tolerated for
 // composition-only use).
 //
-// Mirrors HC-1 Worker.WithRegistry(reg *Registry) precedent. Nil-tolerant.
+// Mirrors HC-1 Worker.WithRegistry(reg *jobscheduling.Registry) precedent. Nil-tolerant.
 // Calling WithRegistry(nil) clears the field (test fixture path); do NOT
 // call nil-WithRegistry in production — the 4-arg NewService enforces the
 // canonical fail-closed surface.
 //
 // Forward-pointer: future CUTOVER removes this setter entirely once all
 // composition-root callers migrate to the 4-arg signature.
-func (s *Service) WithRegistry(reg *Registry) *Service {
+func (s *Service) WithRegistry(reg *jobscheduling.Registry) *Service {
 	if s == nil {
 		return s
 	}

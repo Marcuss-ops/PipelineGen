@@ -88,14 +88,14 @@ func (c *TypedCodec[T, R]) DecodeResult(raw json.RawMessage) (R, error) {
 
 // ── C2: job-type string constants ──────────────────────────────────
 //
-// The canonical Type* job-type constants (TypeScriptGenerate,
-// TypeImagesGenerate, TypeAssetsResolve) are
+// The canonical Type* job-type constants (jobscheduling.TypeScriptGenerate,
+// jobscheduling.TypeImagesGenerate, jobscheduling.TypeAssetsResolve) are
 // used by registry_codec_completeness_test.go as bare identifiers.
 // They are NOT declared here — the canonical re-export surface lives
 // in this package's registry.go (alongside the other 26 Type* alias
 // constants already declared there, e.g.
 //
-//     TypeScriptGenerate = job.TypeScriptGenerate
+//     jobscheduling.TypeScriptGenerate = job.TypeScriptGenerate
 //
 // per godlike/02 §“Capability-specific constants stay in their owning
 // domain package”. Adding a 5th canonical family means adding ONE line

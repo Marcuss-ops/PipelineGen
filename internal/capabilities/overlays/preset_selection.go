@@ -3,6 +3,8 @@ package overlays
 import (
 	"fmt"
 	"strings"
+
+	capanimreg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/animreg"
 )
 
 const (
@@ -142,9 +144,21 @@ func NumberPresentationForEntityType(jobID, sceneID, itemID, entityType string) 
 }
 
 func NumberPresentationForEntityTypeWithLimit(jobID, sceneID, itemID, entityType string, limit int) (templateID, motionID string) {
+	return NumberPresentationForEntityTypeWithDateMotions(jobID, sceneID, itemID, entityType, nil, limit)
+}
+
+// NumberPresentationForEntityTypeWithDateMotions is the planner form: an
+// explicit dateMotions pool (already resolved from date_motion_family)
+// replaces the full date catalog for TIMELINE_DATE_CARD. Metric routing is
+// unchanged.
+func NumberPresentationForEntityTypeWithDateMotions(jobID, sceneID, itemID, entityType string, dateMotions []string, limit int) (templateID, motionID string) {
 	switch NumberPresentationTemplateForEntityType(entityType) {
 	case "TIMELINE_DATE_CARD":
-		return "TIMELINE_DATE_CARD", selectPresentationMotion(jobID, sceneID, itemID, "date_presentation", datePresentationMotionCandidates, limit)
+		candidates := datePresentationMotionCandidates
+		if len(dateMotions) > 0 {
+			candidates = dateMotions
+		}
+		return "TIMELINE_DATE_CARD", selectPresentationMotion(jobID, sceneID, itemID, "date_presentation", candidates, limit)
 	case "METRIC_STAT_CARD":
 		return "METRIC_STAT_CARD", selectPresentationMotion(jobID, sceneID, itemID, "metric_presentation", metricPresentationMotionCandidates, limit)
 	default:
@@ -168,6 +182,43 @@ func selectPresentationMotion(jobID, sceneID, itemID, family string, candidates 
 // expose read-only catalog-id projections for contract tests and diagnostics.
 func DatePresentationMotionCandidates() []string {
 	return append([]string(nil), datePresentationMotionCandidates...)
+}
+
+// DateMotionFamilyCandidates returns the certified date-card motions that
+// belong to one ChrononTemplate date family. Empty or "auto" returns the full
+// pool; "typewriter" returns exactly the ten date_typewriter_* presets,
+// "didone" the date_didone_* presets, and "date_v1" the classic date presets.
+// Unknown families return nil so the planner can fail closed.
+func DateMotionFamilyCandidates(family string) []string {
+	switch strings.ToLower(strings.TrimSpace(family)) {
+	case "", "auto":
+		return DatePresentationMotionCandidates()
+	case "typewriter", "date_typewriter_v1":
+		return dateMotionsInFamily("entity.date_typewriter_v1")
+	case "didone", "date_didone_v1":
+		return dateMotionsInFamily("entity.date_didone_v1")
+	case "classic", "date_v1":
+		return dateMotionsInFamily("entity.date_v1")
+	default:
+		return nil
+	}
+}
+
+func dateMotionsInFamily(family string) []string {
+	out := make([]string, 0, len(datePresentationMotionCandidates))
+	for _, id := range datePresentationMotionCandidates {
+		families, ok := capanimreg.AnimationEntryFamilies(id)
+		if !ok {
+			continue
+		}
+		for _, candidate := range families {
+			if candidate == family {
+				out = append(out, id)
+				break
+			}
+		}
+	}
+	return uniqueMotionPool(out)
 }
 
 func MetricPresentationMotionCandidates() []string {

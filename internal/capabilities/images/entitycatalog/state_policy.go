@@ -28,6 +28,10 @@ const (
 	CandidateEventValidationSucceeded CandidateStateEvent = "validation_succeeded"
 	CandidateEventValidationFailed    CandidateStateEvent = "validation_failed"
 	CandidateEventManualRetirement    CandidateStateEvent = "manual_retirement"
+	// CandidateEventRevive is the only event allowed to leave the terminal
+	// retired state. Ordinary validation/provider writes must not resurrect a
+	// retired row by accident.
+	CandidateEventRevive CandidateStateEvent = "revive"
 )
 
 // CandidateStateAssessment is the deterministic result of evaluating one
@@ -94,11 +98,14 @@ func TransitionCandidateStatus(current string, event CandidateStateEvent) (strin
 		return "", err
 	}
 	if current == CandidateStatusRetired {
-		return CandidateStatusRetired, nil
+		if event == CandidateEventRevive {
+			return CandidateStatusFresh, nil
+		}
+		return "", ErrInvalidCandidateTransition
 	}
 
 	switch event {
-	case CandidateEventProviderAccepted, CandidateEventValidationSucceeded:
+	case CandidateEventProviderAccepted, CandidateEventValidationSucceeded, CandidateEventRevive:
 		return CandidateStatusFresh, nil
 	case CandidateEventValidationFailed:
 		return CandidateStatusBroken, nil

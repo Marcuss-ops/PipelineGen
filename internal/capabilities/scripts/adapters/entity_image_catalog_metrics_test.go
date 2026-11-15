@@ -281,7 +281,7 @@ func (*lifecycleCatalogImageProvider) Search(context.Context, scriptports.VidRus
 func (p *lifecycleCatalogImageProvider) Acquire(_ context.Context, candidate scriptpkg.SegmentAssetCandidate) (scriptports.LocalArtifact, error) {
 	p.acquireCalls.Add(1)
 	candidate.AcquisitionStatus = scriptpkg.VidRushStatusAcquired
-	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/entity-image.jpg", MIMEType: "image/jpeg", SizeBytes: 123, ContentSHA256: "entity-image-hash"}, nil
+	return scriptports.LocalArtifact{Candidate: candidate, LocalPath: "/tmp/entity-image.jpg", MIMEType: "image/jpeg", SizeBytes: 123, ContentSHA256: canonicalAdapterTestContentSHA}, nil
 }
 func (p *lifecycleCatalogImageProvider) Verify(_ context.Context, artifact scriptports.LocalArtifact) (scriptports.VerifiedArtifact, error) {
 	p.verifyCalls.Add(1)
@@ -322,7 +322,7 @@ func TestEntityImageCatalogOperationalMetricsDriveReuseAndBrokenDownload(t *test
 	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
 		CandidateID:    rows[0].ID,
 		AssetID:        "metrics-drive-asset",
-		ContentSHA256:  "metrics-drive-hash",
+		ContentSHA256:  canonicalAdapterTestContentSHA,
 		DriveLink:      "https://drive.google.com/file/d/metrics-drive-asset/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(),

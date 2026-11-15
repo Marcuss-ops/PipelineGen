@@ -171,6 +171,20 @@ func assignEntityImageMotions(items []capmodel.OverlayItem, offset, width, heigh
 		}
 		if len(item.ImageLayers) > 0 {
 			item.CameraMotionID = ""
+			if strings.TrimSpace(item.GroupMotionID) != "" {
+				for layerIndex := range item.ImageLayers {
+					layer := &item.ImageLayers[layerIndex]
+					layer.MotionID = ""
+					layer.MotionParams = nil
+					if strings.TrimSpace(layer.Caption) != "" {
+						layer.CaptionMotionID = captionMotionAt(captionOrdinal)
+						captionOrdinal++
+					} else {
+						layer.CaptionMotionID = ""
+					}
+				}
+				continue
+			}
 			for layerIndex := range item.ImageLayers {
 				layer := &item.ImageLayers[layerIndex]
 				if len(requested) > 0 {

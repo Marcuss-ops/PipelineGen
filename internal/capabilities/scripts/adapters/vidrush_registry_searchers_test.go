@@ -18,8 +18,9 @@ import (
 )
 
 type roundRobinImageSearchProvider struct {
-	mu      sync.Mutex
-	queries []string
+	mu       sync.Mutex
+	queries  []string
+	requests []scriptports.VidRushSearchRequest
 }
 
 func (*roundRobinImageSearchProvider) Name() string { return scriptpkg.VidRushProviderInternetImages }
@@ -27,6 +28,7 @@ func (*roundRobinImageSearchProvider) Name() string { return scriptpkg.VidRushPr
 func (p *roundRobinImageSearchProvider) Search(_ context.Context, req scriptports.VidRushSearchRequest) ([]scriptpkg.SegmentAssetCandidate, error) {
 	p.mu.Lock()
 	p.queries = append(p.queries, req.Query)
+	p.requests = append(p.requests, req)
 	p.mu.Unlock()
 	slug := strings.NewReplacer(" ", "-", ":", "").Replace(strings.ToLower(req.Query))
 	return []scriptpkg.SegmentAssetCandidate{{
@@ -139,13 +141,16 @@ func TestVidRushRegistryMediaResolverSearchImagesUsesOnlyRequestedQuery(t *testi
 
 	query := "Alberto Stasi photo"
 	got, err := (&VidRushRegistryMediaResolver{Registry: registry}).SearchImages(context.Background(), InternetImageSearchRequest{
-		Query: query, Entity: "Alberto Stasi", Limit: 2,
+		Query: query, Entity: "Alberto Stasi", QueryClass: "person", Language: "it", ForceRefresh: true, Limit: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(provider.queries) != 1 || provider.queries[0] != query {
 		t.Fatalf("image queries = %v, want only the requested query %q", provider.queries, query)
+	}
+	if len(provider.requests) != 1 || provider.requests[0].QueryClass != "person" || provider.requests[0].Language != "it" || !provider.requests[0].ForceRefresh {
+		t.Fatalf("registry request lost semantic routing or refresh fields: %+v", provider.requests)
 	}
 	if len(got) != 1 || got[0].Query != query {
 		t.Fatalf("candidates = %+v, want one candidate for the requested query", got)
@@ -382,15 +387,6 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 	}
 }
 
-func TestPersonImageSearchQueryUsesBroadPhotoHintWithoutChangingIdentity(t *testing.T) {
-	if got := personImageSearchQuery("  Chiara Poggi  ", true); got != "Chiara Poggi photo" {
-		t.Fatalf("person image provider query = %q", got)
-	}
-	if got := personImageSearchQuery("Pavia", false); got != "Pavia" {
-		t.Fatalf("non-person image provider query = %q", got)
-	}
-}
-
 type rejectAllPersonImages struct{ calls int }
 
 func (s *rejectAllPersonImages) ScoreImageCandidates(_ context.Context, _ string, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
@@ -433,7 +429,8 @@ func TestVidRushFanoutHydratesDurableVerdictsAndSkipsReverification(t *testing.T
 		CanonicalEntityID: "person:michael-jordan", Provider: "duckduckgo", Rank: 1,
 		SourceURL:      "https://images.example/mj/certified.jpg",
 		SemanticStatus: entitycatalog.CandidateSemanticAccepted, SemanticScore: 0.9,
-		QualityReason: "Ollama visual identity verification confirmed the requested person and one dominant subject",
+		VerifierVersion: entitycatalog.CandidateVerifierVersion,
+		QualityReason:   "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	}); err != nil {
 		t.Fatal(err)
 	}

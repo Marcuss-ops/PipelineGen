@@ -11,10 +11,12 @@
 package adapters
 
 import (
+	"fmt"
 	"hash/fnv"
 	"net/url"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
@@ -87,10 +89,9 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			continue
 		}
 		seg := findSegmentForScene(out.Scenes[i], segments, bySegmentID, bySceneID)
-		for entityIndex := range out.Scenes[i].Annotations.PrimaryEntities {
-			entity := &out.Scenes[i].Annotations.PrimaryEntities[entityIndex]
+		bindEntity := func(entity *scriptpkg.AnnotatedEntity) {
 			if !allowed[normalizeAnnotationType(entity.Type)] {
-				continue
+				return
 			}
 			// A content-addressed binding written by the semantic production
 			// plan is a fallback the media stage must not erase when it has no
@@ -100,7 +101,7 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			entity.Image = &scriptpkg.EntityImageBinding{Status: "not_found"}
 			if seg == nil {
 				entity.Image = missingEntityImageBinding(previousImage, "SEGMENT_MISSING")
-				continue
+				return
 			}
 			variantSeed := strings.TrimSpace(out.Scenes[i].ID) + "|" + entityImageIdentity(*entity)
 			candidate, ok := findEntityImageCandidateFrom(*entity, *seg, variantSeed, usedCandidates)
@@ -124,7 +125,7 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 							// full. Reusing an already-admitted asset stays free: the budget
 							// counts unique images, not scene occurrences.
 							entity.Image = missingEntityImageBinding(previousImage, "BUDGET_EXHAUSTED", candidate.Query, candidate.AssetID, candidate.SelectionReason)
-							continue
+							return
 						}
 						resolvedEntityAssets[assetKey] = struct{}{}
 					}
@@ -154,6 +155,12 @@ func projectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 			} else {
 				entity.Image = missingEntityImageBinding(previousImage, entityImageFailureReason(*entity, *seg), entityImageSearchQuery(*entity, *seg))
 			}
+		}
+		for entityIndex := range out.Scenes[i].Annotations.PrimaryEntities {
+			bindEntity(&out.Scenes[i].Annotations.PrimaryEntities[entityIndex])
+		}
+		for entityIndex := range out.Scenes[i].Annotations.SecondaryEntities {
+			bindEntity(&out.Scenes[i].Annotations.SecondaryEntities[entityIndex])
 		}
 	}
 	return out
@@ -217,13 +224,21 @@ func entityImageSearchQuery(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidR
 	return strings.TrimSpace(entity.CanonicalName)
 }
 
+// entityImageFailureReason distinguishes why an entity image could not bind.
+// NO_QUERY, PROVIDER_EMPTY, IDENTITY_MISMATCH, UNVERIFIED and NOT_MATERIALIZED
+// are different operational problems; collapsing them into SEARCH_EMPTY made
+// a provider outage look like a missing plan query.
 func entityImageFailureReason(entity scriptpkg.AnnotatedEntity, seg scriptpkg.VidRushSegmentResult) string {
 	want := normalizeEntityMatch(entity.CanonicalName)
 	if want == "" {
 		want = normalizeEntityMatch(entity.Text)
 	}
 	want = strings.TrimSpace(strings.TrimPrefix(want, "describe "))
-	for _, candidate := range append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...) {
+	candidates := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
+	matching := 0
+	unverified := false
+	unmaterialized := false
+	for _, candidate := range candidates {
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 			continue
 		}
@@ -232,6 +247,7 @@ func entityImageFailureReason(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 		if want != "" && identity != want && !strings.Contains(query, want) {
 			continue
 		}
+		matching++
 		switch strings.ToLower(strings.TrimSpace(candidate.LifecycleFailureStage)) {
 		case scriptpkg.VidRushLifecycleStageAcquire:
 			return "DOWNLOAD_FAILED"
@@ -249,32 +265,27 @@ func entityImageFailureReason(entity scriptpkg.AnnotatedEntity, seg scriptpkg.Vi
 		if strings.EqualFold(candidate.PersistenceStatus, "failed") {
 			return "UPLOAD_FAILED"
 		}
-	}
-	matching := 0
-	for _, candidate := range append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...) {
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
-			continue
-		}
-		identity := normalizeEntityMatch(candidate.Entity)
-		query := normalizeEntityMatch(candidate.Query)
-		if want != "" && identity != want && !strings.Contains(query, want) {
-			continue
-		}
-		matching++
 		if !validVidRushCandidate(candidate) || !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
-			return "UNVERIFIED_IMAGE"
+			unverified = true
+			continue
 		}
-		if !readyVidRushCandidate(candidate) {
-			return "NOT_MATERIALIZED"
+		if !readyVidRushCandidate(candidate) && !verifiedImageCandidateWithoutDrive(candidate) {
+			unmaterialized = true
 		}
 	}
-	if matching > 0 {
-		return "IDENTITY_MISMATCH"
+	if matching == 0 {
+		if len(seg.Insights.ImageQueries) == 0 {
+			return "NO_QUERY"
+		}
+		return "PROVIDER_EMPTY"
 	}
-	if len(seg.Insights.ImageQueries) == 0 {
-		return "SEARCH_EMPTY"
+	if unverified {
+		return "UNVERIFIED"
 	}
-	return "SEARCH_EMPTY"
+	if unmaterialized {
+		return "NOT_MATERIALIZED"
+	}
+	return "IDENTITY_MISMATCH"
 }
 
 func firstNonEmptyImageValue(values ...string) string {
@@ -307,10 +318,25 @@ func ProjectEntityImageBindings(spec scriptpkg.SpecSceneOutput, segments []scrip
 // every segment. firstNoID records the first scene carrying neither
 // identity key (the "matches any segment" fallback).
 type sceneIdentityIndex struct {
-	bySegmentID map[string]int
-	bySceneID   map[string]int
-	byIndex     map[int]int
-	firstNoID   int
+	bySegmentID   map[string]int
+	bySceneID     map[string]int
+	byIndex       map[int]int
+	firstNoID     int
+	duplicateKeys []string
+}
+
+func (idx *sceneIdentityIndex) recordDuplicate(kind, key string) {
+	idx.duplicateKeys = append(idx.duplicateKeys, kind+"="+key)
+}
+
+// diagnostic names the first ambiguous identity key. A caller that sees a
+// duplicate cannot safely choose either scene: the old first-occurrence rule
+// silently attached an entity image to the wrong scene.
+func (idx sceneIdentityIndex) diagnostic() string {
+	if len(idx.duplicateKeys) == 0 {
+		return ""
+	}
+	return "duplicate scene identity: " + strings.Join(idx.duplicateKeys, ", ")
 }
 
 // buildSceneIdentityIndex builds the scene identity index. First-occurrence
@@ -324,16 +350,22 @@ func buildSceneIdentityIndex(spec scriptpkg.SpecSceneOutput) sceneIdentityIndex 
 	}
 	for i := range spec.Scenes {
 		s := spec.Scenes[i]
-		if _, ok := idx.byIndex[s.Index]; !ok {
+		if _, ok := idx.byIndex[s.Index]; ok {
+			idx.recordDuplicate("Index", fmt.Sprintf("%d", s.Index))
+		} else {
 			idx.byIndex[s.Index] = i
 		}
 		switch {
 		case s.SegmentID != "":
-			if _, ok := idx.bySegmentID[s.SegmentID]; !ok {
+			if _, ok := idx.bySegmentID[s.SegmentID]; ok {
+				idx.recordDuplicate("SegmentID", s.SegmentID)
+			} else {
 				idx.bySegmentID[s.SegmentID] = i
 			}
 		case s.ID != "":
-			if _, ok := idx.bySceneID[s.ID]; !ok {
+			if _, ok := idx.bySceneID[s.ID]; ok {
+				idx.recordDuplicate("SceneID", s.ID)
+			} else {
 				idx.bySceneID[s.ID] = i
 			}
 		default:
@@ -349,6 +381,9 @@ func buildSceneIdentityIndex(spec scriptpkg.SpecSceneOutput) sceneIdentityIndex 
 // mirroring the original linear-scan precedence: SegmentID match, then
 // ID match, then the first identity-less scene — whichever is earliest.
 func (idx sceneIdentityIndex) sceneFor(segment scriptpkg.VidRushSegmentResult) int {
+	if len(idx.duplicateKeys) > 0 {
+		return -1
+	}
 	best := -1
 	// The durable SpecScene uses the segment id as the scene id (`cold-case`),
 	// while the VidRush result may carry it in either SegmentID or SceneID.
@@ -376,42 +411,22 @@ func (idx sceneIdentityIndex) sceneFor(segment scriptpkg.VidRushSegmentResult) i
 	return best
 }
 
-func scenePrimaryEntityQueries(spec scriptpkg.SpecSceneOutput, idx sceneIdentityIndex, segment scriptpkg.VidRushSegmentResult) []string {
-	best := idx.sceneFor(segment)
+func scenePrimaryEntityQueries(_ scriptpkg.SpecSceneOutput, _ sceneIdentityIndex, segment scriptpkg.VidRushSegmentResult) []string {
 	queries := make([]string, 0, len(segment.Insights.Entities))
 	seen := make(map[string]struct{}, cap(queries))
-	add := func(query string) {
-		query = strings.TrimSpace(query)
-		key := strings.ToLower(query)
-		if query == "" {
-			return
-		}
-		if _, exists := seen[key]; exists {
-			return
-		}
-		seen[key] = struct{}{}
-		queries = append(queries, query)
-	}
-	// Include every grounded imageable entity found by segment extraction.
-	// Scene annotations can be incomplete at this pipeline stage (often only
-	// the lead person has been projected); using them as the sole source drops
-	// co-present entities before their image searches can run.
 	for _, entity := range segment.Insights.Entities {
 		if !isPersonOrgOrPlace(entity.Type) {
 			continue
 		}
-		add(entity.Value)
-	}
-	if best >= 0 && spec.Scenes[best].Annotations != nil {
-		for _, entity := range spec.Scenes[best].Annotations.PrimaryEntities {
-			if !isPersonOrgOrPlace(entity.Type) {
+		for _, intent := range entity.SearchIntents {
+			if strings.TrimSpace(intent) == "" {
 				continue
 			}
-			query := strings.TrimSpace(entity.CanonicalName)
-			if query == "" {
-				query = strings.TrimSpace(entity.Text)
+			if _, exists := seen[intent]; exists {
+				continue
 			}
-			add(query)
+			seen[intent] = struct{}{}
+			queries = append(queries, intent)
 		}
 	}
 	return queries
@@ -474,7 +489,7 @@ func findEntityImageCandidateFrom(entity scriptpkg.AnnotatedEntity, seg scriptpk
 	if len(used) > 0 {
 		excluded = used[0]
 	}
-	matches := entityImageMatches(want, seg)
+	matches := entityImageMatches(want, entity.Type, seg)
 	if len(matches) == 0 {
 		return scriptpkg.SegmentAssetCandidate{}, false
 	}
@@ -497,12 +512,19 @@ func findEntityImageCandidateFrom(entity scriptpkg.AnnotatedEntity, seg scriptpk
 
 // entityImageMatches returns the identity-matching, ready, internet-images-only
 // candidates for an entity, de-duplicated by candidate identity and preserving
-// their upstream order.
-func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+// their upstream order. Matching goes through the canonical identity/alias
+// surfaces: a provider may return "Teflon Don" for a person whose annotation
+// is "John Gotti", and an ORG/GPE may legitimately be an uppercase acronym.
+func entityImageMatches(want, entityType string, seg scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+	kind := normalizeAnnotationType(entityType)
 	fields := strings.Fields(strings.TrimSpace(want))
-	if len(fields) > 1 && isUppercaseAcronym(fields[0]) {
+	if kind == entitycatalog.EntityTypePerson && len(fields) > 1 && isUppercaseAcronym(fields[0]) {
+		// An acronym is not a person name; an ORG/GPE acronym is handled by
+		// canonicalEntitySurfaceMatch below.
 		return nil
 	}
+	wantSurface := canonicalEntitySurfaceMatch(want, kind)
+	aliases := entityAliasSurfaces(seg, want, kind)
 	all := append(append([]scriptpkg.SegmentAssetCandidate(nil), seg.Assets.Candidates...), seg.Assets.SecondaryImages...)
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(all))
 	seen := make(map[string]struct{}, len(all))
@@ -516,11 +538,13 @@ func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scrip
 		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 			continue
 		}
+		rawCandidateEntity := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(candidate.Entity), "describe "))
 		candidateEntity := strings.TrimSpace(strings.TrimPrefix(normalizeEntityMatch(candidate.Entity), "describe "))
 		// Query is retrieval provenance, not identity evidence. In particular,
 		// a query such as "Milano" can return a title containing "Rotmilan";
 		// substring/query matches must never bind that result to an entity.
-		if candidateEntity != want || !strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
+		if !entitySurfaceMatches(candidateEntity, rawCandidateEntity, wantSurface, aliases, kind) ||
+			!strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") {
 			continue
 		}
 		// Search results are projected once before acquisition and again after
@@ -539,6 +563,83 @@ func entityImageMatches(want string, seg scriptpkg.VidRushSegmentResult) []scrip
 		out = append(out, candidate)
 	}
 	return out
+}
+
+// canonicalEntitySurfaceMatch folds a surface onto the identity space used by
+// the catalog: PERSON names go through CanonicalizePersonName, every other
+// kind uses the shared normalized surface.
+func canonicalEntitySurfaceMatch(value, kind string) string {
+	value = strings.TrimSpace(strings.TrimPrefix(normalizeEntityMatch(value), "describe "))
+	if kind == entitycatalog.EntityTypePerson {
+		if identity, err := entitycatalog.CanonicalizePersonName(value); err == nil {
+			return normalizeEntityMatch(identity.CanonicalName)
+		}
+	}
+	return value
+}
+
+// entityAliasSurfaces expands the wanted surface with the planner's alias map
+// for this segment, so "Teflon Don" and "John Gotti" resolve to one identity.
+func entityAliasSurfaces(seg scriptpkg.VidRushSegmentResult, want, kind string) map[string]struct{} {
+	surfaces := map[string]struct{}{canonicalEntitySurfaceMatch(want, kind): {}}
+	wantNormalized := normalizeEntityMatch(want)
+	for alias, canonical := range seg.Insights.ImageEntityCanonicalNames {
+		if normalizeEntityMatch(alias) == wantNormalized || normalizeEntityMatch(canonical) == wantNormalized {
+			surfaces[canonicalEntitySurfaceMatch(alias, kind)] = struct{}{}
+			surfaces[canonicalEntitySurfaceMatch(canonical, kind)] = struct{}{}
+		}
+	}
+	return surfaces
+}
+
+func entitySurfaceMatches(candidate, rawCandidate, want string, aliases map[string]struct{}, kind string) bool {
+	canonical := canonicalEntitySurfaceMatch(candidate, kind)
+	if canonical == want {
+		return true
+	}
+	if _, ok := aliases[canonical]; ok {
+		return true
+	}
+	switch kind {
+	case "ORG", "GPE", "LOCATION", "PLACE":
+		// Check the original surface: the normalized form is lowercase, so
+		// an uppercase acronym would otherwise be classified as a non-acronym.
+		if isUppercaseAcronym(rawCandidate) {
+			return acronymMatchesSurface(rawCandidate, want)
+		}
+	}
+	return false
+}
+
+func acronymMatchesSurface(acronym, surface string) bool {
+	fields := strings.Fields(normalizeEntityMatch(surface))
+	if len(fields) == 0 {
+		return false
+	}
+	initials := make([]byte, 0, len(fields))
+	for _, field := range fields {
+		field = strings.Trim(field, ".,;:()[]{}\"'")
+		if field == "" || acronymConnectorWord(field) {
+			continue
+		}
+		initials = append(initials, field[0])
+	}
+	if len(initials) == 0 {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(acronym), string(initials))
+}
+
+// acronymConnectorWord lists the lowercase connectors that do not contribute
+// a letter to an organization/place acronym. Without this, "Federal Bureau of
+// Investigation" produced FBOI and never matched its canonical FBI surface.
+func acronymConnectorWord(word string) bool {
+	switch word {
+	case "of", "the", "and", "for", "de", "del", "della", "di", "da", "van", "von", "la", "le", "les", "du", "des", "&":
+		return true
+	default:
+		return false
+	}
 }
 
 func isUppercaseAcronym(value string) bool {
@@ -573,12 +674,7 @@ func verifiedImageCandidateWithoutDrive(candidate scriptpkg.SegmentAssetCandidat
 	if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
 		return false
 	}
-	return strings.TrimSpace(candidate.ContentSHA256) != "" &&
-		(strings.TrimSpace(candidate.SourceURL) != "" || strings.TrimSpace(candidate.PreviewURL) != "") &&
-		strings.EqualFold(strings.TrimSpace(candidate.AcquisitionStatus), scriptpkg.VidRushStatusAcquired) &&
-		strings.EqualFold(strings.TrimSpace(candidate.VerificationStatus), scriptpkg.VidRushStatusVerified) &&
-		strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), "accepted") &&
-		!strings.EqualFold(strings.TrimSpace(candidate.RightsStatus), "rejected")
+	return readyVidRushCandidateWithMode(candidate, true)
 }
 
 // entityImagePreviewURL returns the durable download URL for inline rendering.

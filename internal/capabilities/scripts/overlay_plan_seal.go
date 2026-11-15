@@ -35,6 +35,18 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capm
 		sceneWindows[scene.ID] = [2]int64{scene.TimelineStartUS, scene.TimelineStartUS + scene.DurationUS}
 	}
 	items = capabilityoverlay.ResolveMapOverlaps(items, sceneWindows, canvas.FPSNum, canvas.FPSDen)
+	// Entity cards may be reintroduced or shifted by late compile stages after
+	// the main animation-layout pass. Run their dedicated sequence fusion at
+	// the final sealing boundary so nearby image-backed captions cannot escape
+	// the chain pass. This is idempotent when the earlier pass already fused
+	// them, and still honors an explicit chain_disabled request.
+	if canvas.AnimationCounts["chain_disabled"] <= 0 {
+		sceneEnds := make(map[string]int64, len(sceneWindows))
+		for sceneID, window := range sceneWindows {
+			sceneEnds[sceneID] = window[1]
+		}
+		items = capmodel.CoalesceCaptionedEntityImageCards(items, sceneEnds)
+	}
 	// Preserve the scene extent as a defensive lower bound when a malformed or
 	// legacy result has no final-audio reference.
 	var durationUS int64

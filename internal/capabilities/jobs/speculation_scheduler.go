@@ -1,8 +1,6 @@
 package jobs
 
-import (
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
-)
+import scheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 // Type aliases to the canonical lower layer.
 type (

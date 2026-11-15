@@ -100,7 +100,7 @@ import (
 //   - JobMaxRetries: -1 = unlimited, 0 = no retry, N = retry
 //     up to N times. Mirrored on the jobs.max_retries
 //     column. The pre-FASE-2 path sourced this from
-//     `appjobs.Registry.DefaultMaxRetries(jType)` — the
+//     `jobscheduling.Registry.DefaultMaxRetries(jType)` — the
 //     FASE 2 caller MUST pass the resolved value explicitly
 //     (the submission service does NOT inspect the
 //     canonical registry to keep the service scope-agnostic).

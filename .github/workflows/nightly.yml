@@ -128,3 +128,26 @@ jobs:
               body: lines.join('\n'),
               labels: ['dependencies'],
             });
+
+  person-catalog-live:
+    name: Real PERSON image catalog (nightly, secret-gated)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: read
+    env:
+      PERSON_CATALOG_LIVE: ${{ secrets.PERSON_CATALOG_LIVE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.11'
+      - name: Run the real catalog lane
+        if: env.PERSON_CATALOG_LIVE == '1'
+        run: go test ./internal/capabilities/images -run TestPersonImageCatalogLiveRounds_6_8 -count=1 -v
+      - name: Record the deliberate skip
+        if: env.PERSON_CATALOG_LIVE != '1'
+        run: echo "::notice::PERSON_CATALOG_LIVE secret is not set; the live lane was not exercised."

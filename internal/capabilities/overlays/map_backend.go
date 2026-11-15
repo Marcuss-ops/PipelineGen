@@ -91,13 +91,16 @@ func NativeMapCompositions(id string) bool {
 }
 
 // NativeMapBasemaps is the single projection of the basemap styles the native
-// renderer draws: the editorial vector basemap only. The retired Python
-// renderer fetched Esri raster tiles; raster styles are demolition debt and
-// resolve to a typed error at the render boundary — never a silent style
-// swap — so "random" draws from this subset and an explicit raster style
-// fails closed by name.
+// renderer draws: the editorial vector basemap plus the real Esri World Topo
+// Map (esri_topo) and World Imagery (esri_sat) tile pyramids. The retired
+// Python renderer is gone; these three are the native servable subset, so
+// "random" draws from them and any other style fails closed by name.
 func NativeMapBasemaps() map[string]bool {
-	return map[string]bool{"chronon_editorial": true}
+	return map[string]bool{
+		"chronon_editorial": true,
+		"esri_topo":         true,
+		"esri_sat":          true,
+	}
 }
 
 // DynamicMapCapabilities: the native dynamic map renderer of ChrononPlugin

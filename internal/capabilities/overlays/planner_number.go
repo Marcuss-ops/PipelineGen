@@ -131,15 +131,15 @@ func isTimelineDateCardType(entityType string) bool {
 	return NumberPresentationTemplateForEntityType(entityType) == "TIMELINE_DATE_CARD"
 }
 
-func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int, dateWindowCapUS ...int64) capmodel.OverlayItem {
+func numberOverlayItem(planID, sceneID string, number TimedAnnotation, animationCounts map[string]int, dateMotions []string, dateWindowCapUS ...int64) capmodel.OverlayItem {
 	id := itemID(sceneID, "number", number.Text)
 	templateID, motionID := "NUMBER", SelectTextMotion(planID, sceneID, id)
 	if numberType := strings.TrimSpace(number.Type); numberType != "" {
-		limit := animationCounts["metric_stat"]
+		limit := laneAnimationCount(animationCounts, laneMetricStat)
 		if NumberPresentationTemplateForEntityType(numberType) == "TIMELINE_DATE_CARD" {
-			limit = animationCounts["timeline_date"]
+			limit = laneAnimationCount(animationCounts, laneTimelineDate)
 		}
-		if presentationTemplate, presentationMotion := NumberPresentationForEntityTypeWithLimit(planID, sceneID, id, numberType, limit); presentationTemplate != "" {
+		if presentationTemplate, presentationMotion := NumberPresentationForEntityTypeWithDateMotions(planID, sceneID, id, numberType, dateMotions, limit); presentationTemplate != "" {
 			templateID, motionID = presentationTemplate, presentationMotion
 		}
 	}
@@ -275,7 +275,11 @@ func italianCardinalValue(word string) (int, bool) {
 }
 
 // minimumDatePresentationDuration preserves the word-aligned start while
-// keeping a Date card on screen for at least five seconds.
+// keeping a Date card on screen for at least five seconds. A positive cap is
+// a hard visual boundary even when it is shorter than two seconds: consecutive
+// spoken dates must sequence instead of stacking their five-second cards on
+// top of one another. Scene-end caps below two seconds are handled separately
+// by dateSceneEndCap, which drops the unreadable card.
 func minimumDatePresentationDuration(date TimedAnnotation, maxDurationUS int64) TimedAnnotation {
 	const minimumDurationUS int64 = 5_000_000
 	if date.DurationUS <= 0 {
@@ -283,14 +287,13 @@ func minimumDatePresentationDuration(date TimedAnnotation, maxDurationUS int64) 
 		date.DurationUS = (date.EndMs - date.StartMs) * 1000
 	}
 	target := minimumDurationUS
-	const minimumReadableDateUS int64 = 2_000_000
-	if maxDurationUS >= minimumReadableDateUS && maxDurationUS < target {
+	if maxDurationUS > 0 && maxDurationUS < target {
 		target = maxDurationUS
 	}
 	// A timing cap is a hard visual boundary. Merely using it as the minimum
 	// target leaves longer source annotations unchanged, which lets a date
-	// remain underneath a later image overlay.
-	if maxDurationUS >= minimumReadableDateUS && date.DurationUS > maxDurationUS {
+	// remain underneath a later date or image overlay.
+	if maxDurationUS > 0 && date.DurationUS > maxDurationUS {
 		date.DurationUS = maxDurationUS
 	}
 	if date.DurationUS < target {
@@ -303,7 +306,10 @@ func minimumDatePresentationDuration(date TimedAnnotation, maxDurationUS int64) 
 
 // dateCardWindowCap keeps a run of date cards readable while ending each card
 // shortly before the next spoken date in the same scene. A single date keeps
-// the established five-second presentation window.
+// the established five-second presentation window. When several dates are
+// closer than two seconds the cap intentionally returns a sub-two-second
+// window: sequencing the cards is preferable to stacking them, because a
+// stacked card hides every preceding animation.
 func dateCardWindowCap(date TimedAnnotation, all []TimedAnnotation) int64 {
 	if !strings.EqualFold(strings.TrimSpace(date.Type), "DATE") {
 		return 0
@@ -329,7 +335,7 @@ func dateCardWindowCap(date TimedAnnotation, all []TimedAnnotation) int64 {
 	}
 	if nearestGap > 0 {
 		capUS := nearestGap - guardUS
-		if capUS >= 2_000_000 {
+		if capUS > 0 {
 			return capUS
 		}
 	}

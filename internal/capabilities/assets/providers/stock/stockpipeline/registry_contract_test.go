@@ -42,11 +42,10 @@
 package stockpipeline
 
 import (
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 	"testing"
 	"time"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 )
 
 // SAFE compile-time pins (no nil-deref panic at package init).
@@ -75,24 +74,24 @@ var (
 // *finalizer.CompleteWithArtifacts directly, NOT the legacy
 // SQLiteStore.Complete path.
 func TestMediaStock_KeepsProducesArtifactsTrue_ForSpineFlow(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	if reg == nil {
-		t.Fatal("appjobs.Compose() returned nil registry")
+		t.Fatal("jobscheduling.Compose() returned nil registry")
 	}
-	if !reg.IsRegistered(appjobs.TypeMediaStock) {
-		t.Fatalf("job type %q must be registered (Compose missing this entry)", appjobs.TypeMediaStock)
+	if !reg.IsRegistered(jobscheduling.TypeMediaStock) {
+		t.Fatalf("job type %q must be registered (Compose missing this entry)", jobscheduling.TypeMediaStock)
 	}
-	entry, _ := reg.Get(appjobs.TypeMediaStock)
+	entry, _ := reg.Get(jobscheduling.TypeMediaStock)
 
 	// INVERSE of the voiceover test: ProducesArtifacts must be TRUE.
-	if !reg.ProducesArtifacts(appjobs.TypeMediaStock) {
-		t.Fatalf("registry.ProducesArtifacts(%q) = false; want true (spine flow requires it; a false value would re-route the broker through the legacy Complete path which the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115 REJECTS, breaking every stock job)", appjobs.TypeMediaStock)
+	if !reg.ProducesArtifacts(jobscheduling.TypeMediaStock) {
+		t.Fatalf("registry.ProducesArtifacts(%q) = false; want true (spine flow requires it; a false value would re-route the broker through the legacy Complete path which the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115 REJECTS, breaking every stock job)", jobscheduling.TypeMediaStock)
 	}
-	if got, want := reg.Timeout(appjobs.TypeMediaStock), 60*time.Minute; got != want {
-		t.Fatalf("registry.Timeout(%q) = %s; want %s", appjobs.TypeMediaStock, got, want)
+	if got, want := reg.Timeout(jobscheduling.TypeMediaStock), 60*time.Minute; got != want {
+		t.Fatalf("registry.Timeout(%q) = %s; want %s", jobscheduling.TypeMediaStock, got, want)
 	}
-	if got, want := reg.DefaultMaxRetries(appjobs.TypeMediaStock), 3; got != want {
-		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", appjobs.TypeMediaStock, got, want)
+	if got, want := reg.DefaultMaxRetries(jobscheduling.TypeMediaStock), 3; got != want {
+		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", jobscheduling.TypeMediaStock, got, want)
 	}
 
 	// Audit-pin: the Description string must name the canonical
@@ -117,16 +116,16 @@ func TestMediaStock_KeepsProducesArtifactsTrue_ForSpineFlow(t *testing.T) {
 // REJECTS the legacy Complete call for media.stock, forcing the
 // worker to use the spine path.
 func TestMediaStock_IsInProducesArtifactsMap_ForSpineFlow(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	if reg == nil {
-		t.Fatal("appjobs.Compose() returned nil registry")
+		t.Fatal("jobscheduling.Compose() returned nil registry")
 	}
 	m := reg.ProducesArtifactsMap()
 	if m == nil {
 		t.Fatal("ProducesArtifactsMap() returned nil map")
 	}
 	// INVERSE of the voiceover test: media.stock MUST be in the map.
-	if !m[appjobs.TypeMediaStock] {
-		t.Fatalf("ProducesArtifactsMap() excludes %q; want present (the SQL-layer gate would let the legacy Complete path through, bypassing the spine and breaking every stock job)", appjobs.TypeMediaStock)
+	if !m[jobscheduling.TypeMediaStock] {
+		t.Fatalf("ProducesArtifactsMap() excludes %q; want present (the SQL-layer gate would let the legacy Complete path through, bypassing the spine and breaking every stock job)", jobscheduling.TypeMediaStock)
 	}
 }

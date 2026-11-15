@@ -101,6 +101,25 @@ type OverlayAuditEntityImages struct {
 	// Reasons counts the outcome per entity, including "bound".
 	Reasons         map[string]int             `json:"reasons,omitempty"`
 	MissingEntities []OverlayAuditMissingImage `json:"missing_entities,omitempty"`
+	// Pipeline is the explicit retrieval→binding ledger. It is entity-level:
+	// the audit owns one row per selected image promise, not the raw provider
+	// result set. The per-candidate detail remains in segments[].assets.
+	Pipeline *OverlayAuditImagePipeline `json:"pipeline,omitempty"`
+}
+
+// OverlayAuditImagePipeline is the report contract operators use to see where
+// image promises stop. Retrieved means a discovery candidate exists; verified
+// means a usable visual verdict; selected means the planner emitted an image;
+// materialized means a durable Drive/content-addressed asset exists; bound
+// means both selected and verified; skipped means an image promise had no
+// planned image.
+type OverlayAuditImagePipeline struct {
+	Retrieved    int `json:"retrieved"`
+	Verified     int `json:"verified"`
+	Selected     int `json:"selected"`
+	Materialized int `json:"materialized"`
+	Bound        int `json:"bound"`
+	Skipped      int `json:"skipped"`
 }
 
 // OverlayAuditMissingImage names one selected entity whose image is absent and
@@ -208,7 +227,50 @@ func buildOverlayAuditEntityImages(audit *OverlayAudit, bundle *capabilityoverla
 		}
 		return left.SceneID < right.SceneID
 	})
+	info.Pipeline = buildOverlayAuditImagePipeline(audit)
 	return info
+}
+
+// buildOverlayAuditImagePipeline projects the same selected-identity groups the
+// audit already uses, so the counters cannot disagree with the missing list.
+// It deliberately does not count every provider hit: a candidate is a retrieval
+// fact, while this ledger answers whether the promised image became bindable.
+func buildOverlayAuditImagePipeline(audit *OverlayAudit) *OverlayAuditImagePipeline {
+	if audit == nil {
+		return nil
+	}
+	out := &OverlayAuditImagePipeline{}
+	seen := make(map[string]struct{}, len(audit.DetectedEntities))
+	for _, entity := range audit.DetectedEntities {
+		if !entityExpectsImage(entity) {
+			continue
+		}
+		key := auditEntityImageGroupKey(entity)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		if strings.TrimSpace(entity.ImageCandidateID) != "" || len(entity.ImageAssetIDs) > 0 || strings.TrimSpace(entity.ImageStatus) != "" {
+			out.Retrieved++
+		}
+		if entity.HasVerifiedImage || strings.TrimSpace(entity.ImageSHA256) != "" {
+			out.Verified++
+		}
+		planned := strings.EqualFold(strings.TrimSpace(entity.ImageStatus), "planned")
+		if planned {
+			out.Selected++
+			if entity.HasVerifiedImage || strings.TrimSpace(entity.ImageSHA256) != "" {
+				out.Bound++
+			}
+		}
+		if strings.TrimSpace(entity.ImageDriveFileID) != "" {
+			out.Materialized++
+		}
+		if entity.ImageRequired && !planned {
+			out.Skipped++
+		}
+	}
+	return out
 }
 
 // entityExpectsImage reports whether the compiled plan actually assigns this

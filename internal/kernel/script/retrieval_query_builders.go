@@ -25,11 +25,9 @@ func BuildYouTubeQueries(profile SegmentSemanticProfile, limit int) []string {
 	return uniqueQueries(queries, limit)
 }
 
-// QueriesForImages merges the profile's retrieval intent with the deterministic
-// entity-first ladder. Retrieval images alone are NOT a complete surface: they
-// can be a short list of raw provider queries (sometimes one per entity), so a
-// caller that budgets ten scene images would still receive two. The ladder adds
-// the semantic joins without dropping the retrieval intent.
+// Deprecated: image provider queries are owned by BrainRust's semantic
+// manifest. This remains for source compatibility; PipelineGen must not call
+// it because it composes query text from entity and profile strings.
 func QueriesForImages(profile SegmentSemanticProfile, limit int) []string {
 	limit = normalizedQueryLimit(limit, defaultImageQueryLimit)
 	queries := make([]string, 0, limit)
@@ -72,10 +70,8 @@ func BuildYouTubeQueriesWithExplicit(profile SegmentSemanticProfile, explicit st
 	return uniqueQueries(queries, normalizedQueryLimit(limit, defaultYouTubeQueryLimit))
 }
 
-// BuildImageQueries creates entity-first image queries, then falls back to
-// visual/context terms. Dates are included only when they accompany an entity
-// or visual concept, preventing bare years from becoming image searches.
-// Editorial narrative phrases remain outside the provider projection.
+// Deprecated: image provider queries are emitted by BrainRust and consumed
+// verbatim by PipelineGen. This remains for source compatibility only.
 func BuildImageQueries(profile SegmentSemanticProfile, limit int) []string {
 	limit = normalizedQueryLimit(limit, defaultImageQueryLimit)
 	var queries []string

@@ -51,6 +51,7 @@ func Fingerprint(plan LocalizedClipPlan) string {
 		strings.TrimSpace(plan.RendererVersion),
 		watermarkFingerprint(plan),
 		backgroundFingerprint(plan),
+		sourceFrameFingerprint(plan),
 		subtitleStyleFingerprint(plan),
 		overlayFingerprint(plan),
 		strings.TrimSpace(plan.Version),
@@ -123,6 +124,43 @@ func backgroundFingerprint(plan LocalizedClipPlan) string {
 		strings.TrimSpace(assetID),
 		strings.TrimSpace(sha),
 	}, "\x1f")
+}
+
+// sourceFrameFingerprint folds the clip card declaration. The frame changes
+// the rendered pixels (it paints a plate, a shadow and a stroke around the
+// clip), so it belongs to the digest exactly like the background does.
+func sourceFrameFingerprint(plan LocalizedClipPlan) string {
+	frame := plan.SourceFrame
+	if frame == nil {
+		return ""
+	}
+	parts := []string{fmt.Sprintf("radius:%.6f", frame.ClipRadiusPX)}
+	if frame.Border != nil {
+		parts = append(parts, strings.Join([]string{
+			"border",
+			strings.TrimSpace(frame.Border.Color),
+			fmt.Sprintf("%.6f", frame.Border.WidthPX),
+			fmt.Sprintf("%.6f", frame.Border.RadiusPX),
+		}, "\x1e"))
+	}
+	if frame.Shadow != nil {
+		parts = append(parts, strings.Join([]string{
+			"shadow",
+			strings.TrimSpace(frame.Shadow.Color),
+			fmt.Sprintf("%.6f", frame.Shadow.Opacity),
+			fmt.Sprintf("%.6f", frame.Shadow.BlurPX),
+			fmt.Sprintf("%.6f", frame.Shadow.OffsetXP),
+			fmt.Sprintf("%.6f", frame.Shadow.OffsetYP),
+		}, "\x1e"))
+	}
+	if frame.Stroke != nil {
+		parts = append(parts, strings.Join([]string{
+			"stroke",
+			strings.TrimSpace(frame.Stroke.Color),
+			fmt.Sprintf("%.6f", frame.Stroke.WidthPX),
+		}, "\x1e"))
+	}
+	return strings.Join(parts, "\x1f")
 }
 
 // subtitleStyleFingerprint folds the caller's subtitle visual overrides.

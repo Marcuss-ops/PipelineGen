@@ -258,8 +258,8 @@ type SemanticSearchFeedbackEntry struct {
 }
 
 // SemanticSearchRetry is the planner's instruction after an exhausted ladder:
-// `broaden` (widen the query), `drop_entity` (search the remaining name) or
-// `skip_visual` (leave the composition unproduced).
+// `broaden` (widen the BrainRust query) or `skip_visual` (leave the composition
+// unproduced).
 type SemanticSearchRetry struct {
 	Action, Reason string
 }

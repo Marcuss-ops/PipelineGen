@@ -63,6 +63,7 @@ import (
 	"context"
 	"database/sql" // ← positive test anchor; pinned by var _ compile-pin below
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"os"
 	"path/filepath"
 
@@ -288,7 +289,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 			return nil, nil, fmt.Errorf("creator: register handler %q in worker registry: %w", jobType, err)
 		}
 	}
-	reg.SeedProducesArtifacts(appjobs.Compose().ProducesArtifactsMap())
+	reg.SeedProducesArtifacts(jobscheduling.Compose().ProducesArtifactsMap())
 	reg.Freeze()
 
 	caps := appjobs.WorkerCapabilities{JobTypes: reg.JobTypes()}

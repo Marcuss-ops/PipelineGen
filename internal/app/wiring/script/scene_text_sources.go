@@ -310,6 +310,11 @@ func (g *SceneTextGenerator) buildPlan(ctx context.Context, req scriptgen.Genera
 		Guidelines:        req.ScriptParams.Guidelines,
 		NumClips:          req.Source.NumClips,
 		MediaPlan:         req.MediaPlan.Clone(),
+		// The incremental VidRush coordinator needs the same fixed sections
+		// as the runner: applyFixedSections commits each non-empty intro/outro
+		// as an additional scene around the generated body.
+		Intro: scriptpkg.CloneFixedSection(req.Intro),
+		Outro: scriptpkg.CloneFixedSection(req.Outro),
 		// The direct stock-binding gate (search + materialization) runs in the
 		// incremental VidRush coordinator against THIS plan, so the caller's
 		// stock bindings — explicit stock_bindings AND the per-segment

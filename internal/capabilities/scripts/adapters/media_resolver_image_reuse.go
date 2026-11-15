@@ -107,7 +107,7 @@ func fanoutCoversImageQueries(queries []string, segment *scriptpkg.VidRushSegmen
 		return false
 	}
 	for _, query := range queries {
-		if len(entityImageMatches(normalizeEntityMatch(query), *segment)) == 0 {
+		if len(entityImageMatches(normalizeEntityMatch(query), "", *segment)) == 0 {
 			return false
 		}
 	}

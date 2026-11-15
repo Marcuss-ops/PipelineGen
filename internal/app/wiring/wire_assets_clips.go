@@ -5,6 +5,7 @@ package wiring
 import (
 	"context"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 
 	clipswiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/clips"
@@ -19,7 +20,6 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/capabilities/clips/upload"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	ytadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/asset/detail"
@@ -198,7 +198,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		params.Clips.Publisher,
 		clipswiring.NewClipsRepoAdapter(params.Clips.Repositories.ClipsRepo),
 		clipswiring.NewHashAdapter(),
-		clipswiring.NewConfigAdapter(params.Cfg, appjobs.Compose()),
+		clipswiring.NewConfigAdapter(params.Cfg, jobscheduling.Compose()),
 		mutationsDisp,
 		params.Log,
 	)
@@ -207,7 +207,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		Artifact:      clipswiring.NewArtifactServiceAdapter(params.Clips.ArtifactService),
 		Publisher:     params.Clips.Publisher,
 		Dispatcher:    clipsDispatcherPort,
-		Config:        clipswiring.NewConfigAdapter(params.Cfg, appjobs.Compose()),
+		Config:        clipswiring.NewConfigAdapter(params.Cfg, jobscheduling.Compose()),
 		TreeBuilder:   clipswiring.NewAssetTreeAdapter(params.Clips.AssetTreeService),
 		JobsSvc:       params.Jobs.Facade,
 		ProcessRunner: processRunnerAdapter,

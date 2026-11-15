@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -93,7 +94,26 @@ var (
 	vidrushImageCache        = cacheutil.NewLRU(vidrushImageL1Capacity)
 	vidrushBindingCache      = cacheutil.NewLRU(vidrushBindingL1Capacity)
 	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
+
+	vidrushCacheHits   atomic.Int64
+	vidrushCacheMisses atomic.Int64
+	vidrushCacheStores atomic.Int64
 )
+
+// VidRushCacheStats is the bounded-cache observability snapshot. The caches
+// themselves are fixed-capacity LRUs; eviction is implicit when Put exceeds
+// capacity, so stores are the forward signal for that pressure.
+type VidRushCacheStats struct {
+	Hits   int64 `json:"hits"`
+	Misses int64 `json:"misses"`
+	Stores int64 `json:"stores"`
+}
+
+func VidRushCacheMetrics() VidRushCacheStats {
+	return VidRushCacheStats{
+		Hits: vidrushCacheHits.Load(), Misses: vidrushCacheMisses.Load(), Stores: vidrushCacheStores.Load(),
+	}
+}
 
 // weightedKeywordValues projects a profile's weighted keyword stream onto the
 // legacy string surface consumed by SegmentInsights and the ad-hoc query
@@ -117,12 +137,19 @@ func cacheLoad(cache *cacheutil.LRU, key string) (any, bool) {
 	if cache == nil || key == "" {
 		return nil, false
 	}
-	return cache.Get(key)
+	value, ok := cache.Get(key)
+	if ok {
+		vidrushCacheHits.Add(1)
+	} else {
+		vidrushCacheMisses.Add(1)
+	}
+	return value, ok
 }
 
 func cacheStore(cache *cacheutil.LRU, key string, value any) {
 	if cache == nil || key == "" {
 		return
 	}
+	vidrushCacheStores.Add(1)
 	cache.Put(key, value)
 }

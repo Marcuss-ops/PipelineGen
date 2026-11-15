@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
@@ -82,13 +83,13 @@ func (h *GenerateItemJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("GenerateItemJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeVoiceoverGenerateItem, appjobs.HandlerFunc(h.HandleJob)); err != nil {
+	if err := jobsSvc.RegisterHandler(jobscheduling.TypeVoiceoverGenerateItem, appjobs.HandlerFunc(h.HandleJob)); err != nil {
 		return fmt.Errorf("GenerateItemJobHandler.Register: bind %q to dispatcher: %w",
-			appjobs.TypeVoiceoverGenerateItem, err)
+			jobscheduling.TypeVoiceoverGenerateItem, err)
 	}
 	if h.logger != nil {
 		h.logger.Info("registered voiceover.generate_item handler",
-			zap.String("job_type", appjobs.TypeVoiceoverGenerateItem))
+			zap.String("job_type", jobscheduling.TypeVoiceoverGenerateItem))
 	}
 	return nil
 }

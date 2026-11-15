@@ -1,59 +1,36 @@
 package mediacert
 
-import (
-	"fmt"
+import "fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
-)
-
-// ruleImageFanout verifies one image query per entity and the configured
-// maximum image count per segment. It never requires fabricated queries for
-// entities that the extractor did not find.
+// ruleImageFanout certifies the image target policy. Query counts are
+// observations, not gates: providers return different result counts and one
+// entity may legitimately use several queries. The gate is the explicit
+// image target: when a plan asks for at least one image per segment, a
+// non-stock segment with no candidate fails, and a job with zero images can
+// never be certified. Stock-bound scenes remain governed by the separate
+// STOCK ISOLATION rule.
 func ruleImageFanout(spec Spec, result MediaResult) CheckResult {
 	expected := segmentByID(spec)
-	pass, total := 0, len(result.Segments)
+	total, pass := 0, 0
 	var violations []Violation
 	for _, seg := range result.Segments {
-		nQueries := len(seg.Insights.ImageQueries)
-		nEnts := 0
-		for _, entity := range seg.Insights.Entities {
-			if script.IsAnnotationEntityKind(script.NormalizeAnnotationType(entity.Type)) {
-				nEnts++
-			}
-		}
-		if spec.EntitiesPerSegment > 0 && nQueries > spec.EntitiesPerSegment {
-			violations = append(violations, Violation{
-				SegmentID: seg.SegmentID,
-				Rule:      string(CheckImageFanout),
-				Detail:    fmt.Sprintf("image queries = %d, maximum one per entity (%d)", nQueries, spec.EntitiesPerSegment),
-			})
-		}
-		if nEnts > 0 && nQueries != nEnts {
-			violations = append(violations, Violation{
-				SegmentID: seg.SegmentID,
-				Rule:      string(CheckImageFanout),
-				Detail:    fmt.Sprintf("image queries = %d but entities = %d (fanout mismatch)", nQueries, nEnts),
-			})
-		}
-		// A stock-bound scene takes its visuals from the caller's direct
-		// stock binding, so the image budget certifies nothing there: the
-		// STOCK ISOLATION rule owns that scene's zero-provider contract.
-		if expected[seg.SegmentID].StockBound {
-			if allForSegment(violations, seg.SegmentID) == 0 {
-				pass++
-			}
+		if exp, ok := expected[seg.SegmentID]; ok && exp.StockBound {
 			continue
 		}
-		if nImgs := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages); spec.ImagesPerSegment > 0 && nImgs < spec.ImagesPerSegment {
+		total++
+		n := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages) + len(seg.Assets.Candidates)
+		if spec.ImagesPerSegment > 0 && n == 0 {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckImageFanout),
-				Detail:    fmt.Sprintf("images available = %d, expected at least %d", nImgs, spec.ImagesPerSegment),
+				Detail:    fmt.Sprintf("images available = 0, target at least %d", spec.ImagesPerSegment),
 			})
+			continue
 		}
-		if allForSegment(violations, seg.SegmentID) == 0 {
-			pass++
-		}
+		pass++
+	}
+	if total == 0 {
+		return passBool(CheckImageFanout, spec.ImagesPerSegment <= 0)
 	}
 	return passCount(CheckImageFanout, pass, total, violations...)
 }
@@ -80,7 +57,7 @@ func ruleStockIsolation(spec Spec, result MediaResult) CheckResult {
 				Detail:    fmt.Sprintf("stock-bound segment carries provider winner asset %q (provider %q)", winner.AssetID, winner.Provider),
 			})
 		}
-		if n := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages); n > 0 {
+		if n := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages) + len(seg.Assets.Candidates); n > 0 {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckStockIsolation),

@@ -3,7 +3,6 @@ package adapters
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 
@@ -193,7 +192,7 @@ func TestInternetImagesProcessorKeepsManualSearchWithEntityExpansion(t *testing.
 	}
 }
 
-func TestSelectExactVidRushImagesImagesOnlyKeepsOnePerEntity(t *testing.T) {
+func TestSelectExactVidRushImagesImagesOnlyUsesSceneBudgetPerGroup(t *testing.T) {
 	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 3, MediaPlan: media.MediaPlanSpec{
 		ProviderPolicy: media.MediaProviderPolicy{InternetImages: media.MediaToggleEnabled},
 	}}
@@ -213,18 +212,21 @@ func TestSelectExactVidRushImagesImagesOnlyKeepsOnePerEntity(t *testing.T) {
 	if len(selected) != 3 {
 		t.Fatalf("selected image count = %d, want 3: %+v", len(selected), selected)
 	}
-	seenQueries := map[string]bool{}
+	// Generic scene mode uses the scene budget per query group; it is not the
+	// entity lane's one-per-identity contract. The highest-scored candidate
+	// must win its group, and the selection must be unique/provider-safe.
+	if selected[0].AssetID != "high-feta cheese" {
+		t.Fatalf("first selected asset = %q, want the highest-scored candidate", selected[0].AssetID)
+	}
+	seenAssets := map[string]bool{}
 	for _, candidate := range selected {
 		if candidate.Provider != scriptpkg.VidRushProviderInternetImages {
 			t.Fatalf("selected provider = %q, want internet_images", candidate.Provider)
 		}
-		if !strings.HasPrefix(candidate.AssetID, "low-") {
-			t.Fatalf("selected asset = %q, want first discovered candidate", candidate.AssetID)
+		if seenAssets[candidate.AssetID] {
+			t.Fatalf("asset %q selected more than once", candidate.AssetID)
 		}
-		if seenQueries[candidate.Query] {
-			t.Fatalf("query %q selected more than once", candidate.Query)
-		}
-		seenQueries[candidate.Query] = true
+		seenAssets[candidate.AssetID] = true
 	}
 }
 

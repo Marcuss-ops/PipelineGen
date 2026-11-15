@@ -432,7 +432,9 @@ func TestShortPhraseWordGroupsMatchCatalog(t *testing.T) {
 
 // TestAnimationLaneAliasesResolveToOneLimit pins the single alias table: every
 // alias of a lane resolves to the same limit, and the first positive alias
-// wins regardless of which planner branch reads the lane.
+// wins regardless of which planner branch reads the lane. Phrase lanes are the
+// deliberate exception: their counts are preview hints, so every alias resolves
+// to zero and the runtime walks the full compatible pool.
 func TestAnimationLaneAliasesResolveToOneLimit(t *testing.T) {
 	for lane, keys := range animationLaneKeys {
 		if len(keys) == 0 {
@@ -445,16 +447,23 @@ func TestAnimationLaneAliasesResolveToOneLimit(t *testing.T) {
 			}
 			seen[key] = true
 		}
+		wantAliasLimit := 3
+		wantPrecedence := 2
+		if lane == laneImportantPhrase || lane == laneShortPhrase {
+			wantAliasLimit = 0
+			wantPrecedence = 0
+		}
 		// Each alias alone must produce the same limit.
 		for _, key := range keys {
-			if got := laneAnimationCount(map[string]int{key: 3}, lane); got != 3 {
-				t.Errorf("lane %s alias %q alone = %d, want 3", lane, key, got)
+			if got := laneAnimationCount(map[string]int{key: 3}, lane); got != wantAliasLimit {
+				t.Errorf("lane %s alias %q alone = %d, want %d", lane, key, got, wantAliasLimit)
 			}
 		}
-		// First positive alias wins, in table order.
+		// First positive alias wins, in table order; phrase preview counts never
+		// reach the runtime rotation.
 		counts := map[string]int{keys[len(keys)-1]: 7, keys[0]: 2}
-		if got := laneAnimationCount(counts, lane); got != 2 {
-			t.Errorf("lane %s precedence = %d, want 2 (first positive alias wins)", lane, got)
+		if got := laneAnimationCount(counts, lane); got != wantPrecedence {
+			t.Errorf("lane %s precedence = %d, want %d (first positive alias wins)", lane, got, wantPrecedence)
 		}
 		if got := laneAnimationCount(nil, lane); got != 0 {
 			t.Errorf("lane %s empty counts = %d, want 0 (full catalog)", lane, got)

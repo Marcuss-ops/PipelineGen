@@ -117,11 +117,19 @@ func TestTerritoryAndAreaGlowDataAdmission(t *testing.T) {
 	}
 	withTerritory := base
 	withTerritory.TerritoryFeature = "Roma (RM)"
+	withTerritory.TerritoryScope = "city"
 	if err := AdmitMapComposition("territory_glow_reveal", withTerritory, MapCompositionCertified()); err != nil {
 		t.Fatalf("explicit territory request with a resolved territory must be admitted, got %v", err)
 	}
-	if err := AdmitMapComposition("territory_glow_reveal", base, MapCompositionCertified()); err == nil || !strings.Contains(err.Error(), "territory_feature") {
-		t.Fatalf("explicit territory request without a territory must fail closed with the reason, got %v", err)
+	missingFeature := base
+	missingFeature.TerritoryScope = "city"
+	if err := AdmitMapComposition("territory_glow_reveal", missingFeature, MapCompositionCertified()); err == nil || !strings.Contains(err.Error(), "territory_feature") {
+		t.Fatalf("explicit territory request without a territory_feature must fail closed with the reason, got %v", err)
+	}
+	missingScope := base
+	missingScope.TerritoryFeature = "Roma (RM)"
+	if err := AdmitMapComposition("territory_glow_reveal", missingScope, MapCompositionCertified()); err == nil || !strings.Contains(err.Error(), "scope") {
+		t.Fatalf("explicit territory request without a locality scope must fail closed with the reason, got %v", err)
 	}
 
 	// Area glow: only a positive radius admits area_glow_pulse.

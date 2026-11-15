@@ -102,7 +102,10 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	}
 	canvas.Style = req.OverlayStyle
 	canvas.PhraseMotions = req.PhraseMotions
+	canvas.ShortPhraseMotion = req.ShortPhraseMotion
+	canvas.LongPhraseMotion = req.LongPhraseMotion
 	canvas.PhraseMotionFamily = req.PhraseMotionFamily
+	canvas.DateMotionFamily = req.DateMotionFamily
 	canvas.MotionSeed = strings.TrimSpace(req.MotionSeed)
 	canvas.CoherenceSeed = strings.TrimSpace(req.CoherenceSeed)
 	// Goal E2: the phrases the semantic profile grounded as most relevant take
@@ -118,6 +121,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		canvas.HeavyPhrasePriority = req.HeavyPhrasePriority
 	}
 	canvas.ImageMotions = req.ImageMotions
+	canvas.ImageWithTextMotions = req.ImageWithTextMotions
 	canvas.EntityImageMotions = req.EntityImageMotions
 	canvas.EntityCaptionMotions = req.EntityCaptionMotions
 	canvas.AnimationPolicies = req.AnimationPolicies
@@ -128,6 +132,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 	canvas.MapCameraAnimation = req.MapCameraAnimation
 	canvas.MapLabelAnimation = req.MapLabelAnimation
 	canvas.MapAnimation = req.MapAnimation
+	canvas.MapLevel = req.MapLevel
 	canvas.MapPresentation = req.MapPresentation
 	canvas.MaxPhraseOverlays = req.MaxPhraseOverlays
 	canvas.MaxOverlaysPerScene = req.MaxOverlaysPerScene
@@ -169,6 +174,8 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		zap.String("run_id", runID),
 		zap.String("phrase_motion_family", canvas.PhraseMotionFamily),
 		zap.Int("phrase_motions", len(canvas.PhraseMotions)),
+		zap.String("short_phrase_motion", canvas.ShortPhraseMotion),
+		zap.String("long_phrase_motion", canvas.LongPhraseMotion),
 		zap.Float64("heavy_phrase_priority", canvas.HeavyPhrasePriority),
 		zap.Any("animation_counts", canvas.AnimationCounts),
 	)

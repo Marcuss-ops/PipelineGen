@@ -265,10 +265,10 @@ func startupWarmModels(configured string) []string {
 	return out
 }
 
-// buildOllamaWarmStep makes model residency a startup contract for worker
-// mode. A job runner must not accept expensive generation work while the
-// first request is still paying the model load. WarmModel owns the /api/ps
-// check, singleflight and post-warm residency verification.
+// buildOllamaWarmStep attempts to make model residency available before
+// worker mode accepts generation work. Warming is an optimization, not a
+// service-availability contract: if Ollama is slow or unavailable, startup
+// continues and the first request can pay the cold-load cost.
 func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger) *StartupStep {
 	if cfg == nil || root == nil || root.AI == nil || root.AI.OllamaClient == nil {
 		return nil
@@ -283,27 +283,33 @@ func buildOllamaWarmStep(cfg *config.Config, root *ComposeRoot, log *zap.Logger)
 	}
 	return &StartupStep{
 		Name:     "ollama-model-warm",
-		Required: true,
+		Required: false,
 		Start: func(startCtx context.Context) error {
-			warmTimeout := time.Duration(cfg.External.OllamaWarmTimeoutSeconds) * time.Second
-			if warmTimeout <= 0 {
-				warmTimeout = 10 * time.Minute
-			}
-			ctx, cancel := context.WithTimeout(startCtx, warmTimeout)
-			defer cancel()
-			started := time.Now()
-			for _, model := range models {
-				if err := root.AI.OllamaClient.WarmModel(ctx, model); err != nil {
-					return fmt.Errorf("warm Ollama model %q: %w", model, err)
+			go func() {
+				warmTimeout := time.Duration(cfg.External.OllamaWarmTimeoutSeconds) * time.Second
+				if warmTimeout <= 0 {
+					warmTimeout = 10 * time.Minute
 				}
-			}
-			if log != nil {
-				log.Info("StartupStep: Ollama model resident",
-					zap.Strings("models", models),
-					zap.Duration("warm_timeout", warmTimeout),
-					zap.Int64("warm_ms", time.Since(started).Milliseconds()),
-				)
-			}
+				ctx, cancel := context.WithTimeout(startCtx, warmTimeout)
+				defer cancel()
+				started := time.Now()
+				for _, model := range models {
+					if err := root.AI.OllamaClient.WarmModel(ctx, model); err != nil {
+						if log != nil {
+							log.Warn("background Ollama model warm failed; service remains available",
+								zap.String("model", model), zap.Error(err))
+						}
+						return
+					}
+				}
+				if log != nil {
+					log.Info("StartupStep: Ollama model resident",
+						zap.Strings("models", models),
+						zap.Duration("warm_timeout", warmTimeout),
+						zap.Int64("warm_ms", time.Since(started).Milliseconds()),
+					)
+				}
+			}()
 			return nil
 		},
 		Stop: func(context.Context) error { return nil },

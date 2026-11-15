@@ -40,10 +40,39 @@ func applyOverlayPresentation(items []capmodel.OverlayItem, planID string) []cap
 	items = applyVerifiedEntityAssets(items, planID)
 	items = splitLongOverlayText(items, planID)
 	for index := range items {
+		ensureEntityImageMotionMatchesAssets(&items[index], planID)
 		normalizePresentationFonts(&items[index])
 		applyPresentationTypography(&items[index])
 	}
 	return items
+}
+
+// Entity-card kinds can render either as text cards or as image-backed cards.
+// The same location/organization kind therefore needs a motion selected for
+// the renderer target that the resolved item actually carries. A text motion
+// is rejected when the card has acquired a verified image layer.
+func ensureEntityImageMotionMatchesAssets(item *capmodel.OverlayItem, planID string) {
+	if item == nil {
+		return
+	}
+	kind := strings.TrimSpace(item.Kind)
+	entityImage := kind == "entity_image"
+	if !entityImage && len(item.AssetRefs) == 0 && len(item.ImageLayers) == 0 {
+		return
+	}
+	switch kind {
+	case "entity_image", "entity_card", "location", "organization", "concept":
+	default:
+		return
+	}
+	current := strings.TrimSpace(item.MotionID)
+	for _, candidate := range capabilityoverlay.CertifiedImageMotions() {
+		if current != "" && current == candidate {
+			return
+		}
+	}
+	item.MotionID = capabilityoverlay.SelectEntityImageAnimation(planID, item.SceneID, item.ID)
+	item.MotionParams = nil
 }
 
 // splitLongOverlayText turns a long phrase or a text-only chain into several
@@ -225,18 +254,46 @@ func overlayItemWindow(item capmodel.OverlayItem) (int64, int64) {
 
 func applyPresentationTypography(item *capmodel.OverlayItem) {
 	switch strings.TrimSpace(item.Kind) {
-	case "entity_image":
-		applyEntityCaptionTypography(item)
+	case "entity_image", "entity_card":
+		if hasOverlayImageMedia(*item) {
+			promoteEntityCaption(item)
+			applyEntityCaptionTypography(item)
+		} else if strings.TrimSpace(item.EntityCaption) != "" {
+			applyEntityCaptionTypography(item)
+		} else {
+			applyTextTypography(item, 96, 1200, 320)
+		}
 	case "image_chain", "mixed_chain", "phrase_chain":
 		applyChainCaptionTypography(item)
 	case "text_phrase", "important_phrase":
 		applyPhraseTypography(item)
 	case "location", "organization", "concept":
-		applyTextTypography(item, 96, 1200, 320)
+		// When an entity item carries an image, RenderingGen lowers its visible
+		// name through the entity-caption path. PipelineGen may provide that
+		// name as Text, so promote it before attaching caption typography.
+		if hasOverlayImageMedia(*item) {
+			promoteEntityCaption(item)
+			applyEntityCaptionTypography(item)
+		} else {
+			applyTextTypography(item, 96, 1200, 320)
+		}
 	case "number":
 		applyTextTypography(item, 140, 900, 260)
 	case "quote":
 		applyTextTypography(item, 72, 1500, 700)
+	}
+}
+
+func hasOverlayImageMedia(item capmodel.OverlayItem) bool {
+	return len(item.AssetRefs) > 0 || len(item.ImageLayers) > 0
+}
+
+func promoteEntityCaption(item *capmodel.OverlayItem) {
+	if strings.TrimSpace(item.EntityCaption) == "" && strings.TrimSpace(item.Text) != "" {
+		item.EntityCaption = strings.TrimSpace(item.Text)
+	}
+	if strings.TrimSpace(item.EntityCaption) != "" {
+		item.CaptionLayout = "below"
 	}
 }
 
@@ -262,11 +319,36 @@ func applyEntityCaptionTypography(item *capmodel.OverlayItem) {
 		item.CaptionMotionID = ""
 	}
 	item.CaptionColor = presentationTextFill
-	item.Params = presentationParams(item.Params)
+	item.Params = entityCaptionParams(item.Params)
 	item.Params["caption_layout"] = "below"
 	item.Params["position_x"] = 0.0
-	item.Style = presentationStyle(item.Style, 0)
+	item.Style = entityCaptionStyle(item.Style)
 	item.RenderKey = ""
+}
+
+// Entity captions use their dedicated font/color/layout fields. Generic text
+// runtime overrides in Params/Style are applied to the portrait layer by the
+// renderer and are rejected as invalid font controls on an image. The hero
+// box is geometry, not a text override: keep the box the planner/preset
+// computed or the portrait falls back to the renderer's default frame.
+func entityCaptionParams(base map[string]any) map[string]any {
+	params := make(map[string]any, len(base)+3)
+	for key, value := range base {
+		params[key] = value
+	}
+	// Drop only generic text overrides; geometry, effects and renderer options
+	// must survive on the image item.
+	stripPresentationTextKeys(params)
+	params["caption_layout"] = "below"
+	params["position_x"] = 0.0
+	if _, ok := params["position_y"]; !ok {
+		params["position_y"] = 0.0
+	}
+	return params
+}
+
+func entityCaptionStyle(_ map[string]any) map[string]any {
+	return nil
 }
 
 func imageLayersHaveCaption(layers []capmodel.OverlayImageLayer) bool {
@@ -489,10 +571,17 @@ func applyTextTypography(item *capmodel.OverlayItem, fontSize float64, width, he
 	item.Params["font_size_px"] = fontSize
 	item.Params["width"] = width
 	item.Params["height"] = height
-	// Text-only entity cards inherited the preset's default horizontal slot;
-	// centering them keeps every entity label on the same axis.
+	// Text layers use canvas-absolute coordinates. Leaving position_x at zero
+	// places the text center on the left edge and clips most of the copy.
+	// `position: center` is the renderer's canonical centered layout.
 	item.Params["position"] = "center"
-	item.Params["position_x"] = 0.0
+	delete(item.Params, "position_x")
+	// The date/image collision resolver owns the date card's lower lane. Keep
+	// that vertical placement across the final typography pass; deleting it
+	// collapses the date back onto the portrait.
+	if !strings.EqualFold(strings.TrimSpace(item.TemplateID), "TIMELINE_DATE_CARD") {
+		delete(item.Params, "position_y")
+	}
 	item.Style = presentationStyle(item.Style, fontSize)
 	item.RenderKey = ""
 }

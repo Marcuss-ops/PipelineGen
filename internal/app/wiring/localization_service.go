@@ -148,6 +148,9 @@ type LocalizeInput struct {
 	BackgroundKind         string
 	SubtitlesStyle         *scriptpkg.VideoVisualStyleSpec
 	ForegroundScalePercent int
+	// SourceFrame is the clip card treatment (bounding frame, shadow, stroke,
+	// radius) requested by the payload; it is sealed into every language plan.
+	SourceFrame *cliprender.PlanSourceFrame
 	// Overlays carries the certified, LANGUAGE-INDEPENDENT entity overlay
 	// lineages every language plan of this source reuses, one per semantic
 	// overlay item. Empty means the source carries no overlay (or it is not
@@ -196,6 +199,7 @@ func (s *LocalizationService) Localize(ctx context.Context, in LocalizeInput) (*
 		BackgroundMode:         in.BackgroundMode,
 		BackgroundKind:         in.BackgroundKind,
 		ForegroundScalePercent: in.ForegroundScalePercent,
+		SourceFrame:            in.SourceFrame,
 		SubtitlesStyle:         in.SubtitlesStyle,
 		Overlays:               in.Overlays,
 	}

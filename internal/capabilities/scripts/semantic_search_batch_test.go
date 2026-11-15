@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -35,8 +37,20 @@ func (p *batchTestPort) Search(_ context.Context, req SemanticAssetSearchRequest
 	if err := p.errors[req.Query]; err != nil {
 		return SemanticAssetSearchResponse{}, err
 	}
-	hits := p.results[req.Query]
+	hits := verifiedSemanticSearchFixtures(p.results[req.Query])
 	return SemanticAssetSearchResponse{Hits: hits, Provider: "fake-provider"}, nil
+}
+
+func verifiedSemanticSearchFixtures(in []SemanticAssetHit) []SemanticAssetHit {
+	out := append([]SemanticAssetHit(nil), in...)
+	for i := range out {
+		if digest.IsSHA256(out[i].SHA256) && out[i].SemanticStatus == "" {
+			out[i].SemanticStatus = entitycatalog.CandidateSemanticAccepted
+			out[i].VerifierVersion = entitycatalog.CandidateVerifierVersion
+			out[i].SemanticScore = 1
+		}
+	}
+	return out
 }
 
 func batchPlan(t *testing.T, candidates ...SemanticProductionCandidate) (*SemanticProductionPlan, *batchTestClock) {
@@ -115,15 +129,16 @@ func TestSemanticSearchBatchMeasuresRealProviderOutcomes(t *testing.T) {
 	}
 }
 
-func TestSemanticSearchBatchTreatsProviderErrorsAsMissesAndSkips(t *testing.T) {
+func TestSemanticSearchBatchReportsProviderErrorsAsTypedFailure(t *testing.T) {
 	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	plan, clock := batchPlan(t,
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact),
 	)
 	port := &batchTestPort{clock: clock, errors: map[string]error{exact.Text: errors.New("provider exploded")}}
 	report, err := batchPlanner(t, port, clock).Run(context.Background(), plan, "it")
-	if err != nil {
-		t.Fatalf("a provider outage must not fail the batch: %v", err)
+	var providerErr *SemanticSearchProviderError
+	if !errors.As(err, &providerErr) {
+		t.Fatalf("a provider outage must be a typed failure, got %v", err)
 	}
 	if len(report.Attempts) != 1 || report.Attempts[0].Status != "error" || !strings.Contains(report.Attempts[0].Error, "provider exploded") {
 		t.Fatalf("error attempt: %+v", report.Attempts)
@@ -131,8 +146,11 @@ func TestSemanticSearchBatchTreatsProviderErrorsAsMissesAndSkips(t *testing.T) {
 	if report.Attempts[0].RetryAction != "skip_visual" {
 		t.Fatalf("an unrecoverable error must skip the visual: %+v", report.Attempts[0])
 	}
-	if report.Metrics.Errors != 1 || report.Metrics.Skipped != 1 || report.Metrics.HitRate != 0 {
+	if report.Metrics.Errors != 1 || report.Metrics.Misses != 0 || report.Metrics.Skipped != 1 || report.Metrics.HitRate != 0 {
 		t.Fatalf("error metrics: %+v", report.Metrics)
+	}
+	if report.ProviderErrors != 1 || !strings.Contains(report.ProviderError, "provider exploded") {
+		t.Fatalf("provider error report: %+v", report)
 	}
 	if report.Feedback == nil || len(report.Feedback.Entries) != 1 || report.Feedback.Entries[0].Status != "failed" {
 		t.Fatalf("feedback must report the failure: %+v", report.Feedback)
@@ -242,7 +260,7 @@ func TestRunnerExecutesTheSemanticSearchBatch(t *testing.T) {
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact),
 	)
 	port := &batchTestPort{clock: clock, results: map[string][]SemanticAssetHit{
-		exact.Text: {{AssetID: "asset_7", URL: "https://assets.invalid/7.jpg"}},
+		exact.Text: {{AssetID: "asset_7", URL: "https://assets.invalid/7.jpg", SHA256: strings.Repeat("7", 64)}},
 	}}
 	runner := &Runner{semanticSearchPlanner: batchPlanner(t, port, clock)}
 	result := &GenerateResult{SemanticProductionPlan: plan, SemanticSearchFeedback: plan.SearchFeedback()}

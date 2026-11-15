@@ -41,6 +41,7 @@ package jobs
 
 import (
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"net/http"
 	"sort"
 	"strconv"
@@ -155,7 +156,7 @@ func (s *Service) AutomationCatalog() *AutomationCatalog {
 // Nil-tolerant: nil receiver, nil dispatcher, and nil registry all
 // return nil (the belt-and-suspenders check runs later, after the
 // composition root has wired both).
-func (s *Service) ValidateHandlerCompleteness(reg *Registry) error {
+func (s *Service) ValidateHandlerCompleteness(reg *jobscheduling.Registry) error {
 	if s == nil || s.dispatcher == nil || reg == nil {
 		return nil
 	}
@@ -428,7 +429,7 @@ type AutomationCatalog struct {
 // the process' live handlers. The allow-list is intentionally explicit:
 // internal maintenance, child, and persistence jobs never become agent tools
 // merely because a handler happens to be registered.
-func NewAutomationCatalog(reg *Registry, liveTypes []string) *AutomationCatalog {
+func NewAutomationCatalog(reg *jobscheduling.Registry, liveTypes []string) *AutomationCatalog {
 	live := make(map[string]struct{}, len(liveTypes))
 	for _, typ := range liveTypes {
 		live[typ] = struct{}{}
@@ -443,32 +444,32 @@ func NewAutomationCatalog(reg *Registry, liveTypes []string) *AutomationCatalog 
 	// assembles the workflow output, and advertising a type without a durable
 	// local handler would create fake availability.
 	safe := map[string]AutomationCapability{
-		TypeScriptGenerate: {
-			Type: TypeScriptGenerate, Version: "v1", Description: "Generate a script and editorial plan",
+		jobscheduling.TypeScriptGenerate: {
+			Type: jobscheduling.TypeScriptGenerate, Version: "v1", Description: "Generate a script and editorial plan",
 			InputSchema: "script.generate.v1", ResultSchema: "script.generate.result.v1", ArtifactKinds: []string{"script"}, EstimatedResourceClass: "llm",
 		},
-		TypeVoiceoverGenerate: {
-			Type: TypeVoiceoverGenerate, Version: "v1", Description: "Generate voiceover audio",
+		jobscheduling.TypeVoiceoverGenerate: {
+			Type: jobscheduling.TypeVoiceoverGenerate, Version: "v1", Description: "Generate voiceover audio",
 			InputSchema: "voiceover.generate.v1", ResultSchema: "voiceover.generate.result.v1", ArtifactKinds: []string{"audio"}, EstimatedResourceClass: "audio",
 		},
-		TypeMediaStock: {
-			Type: TypeMediaStock, Version: "v1", Description: "Acquire stock media",
+		jobscheduling.TypeMediaStock: {
+			Type: jobscheduling.TypeMediaStock, Version: "v1", Description: "Acquire stock media",
 			InputSchema: "media.stock.v1", ResultSchema: "media.stock.result.v1", ArtifactKinds: []string{"video", "image"}, EstimatedResourceClass: "network",
 		},
-		TypeYouTubeClipExtract: {
-			Type: TypeYouTubeClipExtract, Version: "v1", Description: "Extract a YouTube clip",
+		jobscheduling.TypeYouTubeClipExtract: {
+			Type: jobscheduling.TypeYouTubeClipExtract, Version: "v1", Description: "Extract a YouTube clip",
 			InputSchema: "youtube_clip.extract.v1", ResultSchema: "youtube_clip.extract.result.v1", ArtifactKinds: []string{"video"}, EstimatedResourceClass: "media",
 		},
-		TypeYouTubeUpload: {
-			Type: TypeYouTubeUpload, Version: "v1", Description: "Upload and publish a video to a YouTube channel through InstaEdit",
+		jobscheduling.TypeYouTubeUpload: {
+			Type: jobscheduling.TypeYouTubeUpload, Version: "v1", Description: "Upload and publish a video to a YouTube channel through InstaEdit",
 			InputSchema: "youtube.upload.v1", ResultSchema: "youtube.upload.result.v1", ArtifactKinds: []string{"video"}, EstimatedResourceClass: "network",
 		},
-		TypeImageGenerateGoogle: {
-			Type: TypeImageGenerateGoogle, Version: "v1", Description: "Generate an image",
+		jobscheduling.TypeImageGenerateGoogle: {
+			Type: jobscheduling.TypeImageGenerateGoogle, Version: "v1", Description: "Generate an image",
 			InputSchema: "image.generate.google.v1", ResultSchema: "image.generate.google.result.v1", ArtifactKinds: []string{"image"}, EstimatedResourceClass: "gpu",
 		},
-		TypeClipRender: {
-			Type: TypeClipRender, Version: "v1", Description: "Render a localized clip",
+		jobscheduling.TypeClipRender: {
+			Type: jobscheduling.TypeClipRender, Version: "v1", Description: "Render a localized clip",
 			InputSchema: "clip.render.v1", ResultSchema: "clip.render.result.v1", ArtifactKinds: []string{"video"}, EstimatedResourceClass: "render",
 		}}
 	for typ, item := range safe {

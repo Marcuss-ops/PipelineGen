@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 	"testing"
 	"time"
@@ -134,13 +135,13 @@ var _ job.JobBroker = (*stubJobBroker)(nil)
 // PR-jobs-retry-contract (July 2026): the 4-arg NewService signature
 // (REGISTRY required, fail-closed) replaces the pre-PR 3-arg shape.
 // Tests that do not depend on a specific registry type use
-// appjobs.Compose() — the canonical composition root registry used
+// jobscheduling.Compose() — the canonical composition root registry used
 // across production  Enqueue with a non-registered jobType
 // will surface ErrMaxRetriesUnknown at Enqueue time (not at
 // construction), so tests that exercise Enqueue must wire a
 // registry whose composition knows the test jobType ("media.clip").
 func newTestService(broker *stubJobBroker) *appjobs.Service {
-	svc, err := appjobs.NewService(broker, nil /* dispatcher: Enqueue does not use */, zap.NewNop(), appjobs.Compose())
+	svc, err := appjobs.NewService(broker, nil /* dispatcher: Enqueue does not use */, zap.NewNop(), jobscheduling.Compose())
 	if err != nil {
 		panic(fmt.Sprintf("newTestService: appjobs.NewService returned err=%v — test fixture should never fail construction", err))
 	}

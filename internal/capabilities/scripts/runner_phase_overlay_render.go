@@ -62,6 +62,10 @@ type overlayRenderOutcome struct {
 	// planDigest is the identity of the plan this render was produced from. It
 	// is written by the caller that owns the plan, never by the worker.
 	planDigest string
+	// preflight carries the digest-bound image verification performed before
+	// the first submission on the snapshot. The joined caller copies it onto
+	// the durable result so the late handoff does not repeat the downloads.
+	preflight *FinalJobPreflight
 }
 
 // runOverlayRenderPhase renders the frozen semantic OverlayPlan and records the
@@ -129,12 +133,22 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, re
 	if len(pending) == 0 {
 		return nil, nil
 	}
+	// Fail BEFORE paying for the first GPU render. A final job whose promised
+	// images are not verifiable can never ship them: the late handoff would
+	// reject it after the overlay stage had already charged the full render.
+	// The gate is digest-bound, so the late fail-closed checks still run when
+	// the plan changes but do not repeat the downloads when it does not.
+	if req.FinalJob {
+		if err := finalJobPreRenderPreflight(ctx, req, result); err != nil {
+			return nil, err
+		}
+	}
 	// The render phase deliberately performs NO plan normalization: the
 	// final-job placement policy already ran on the durable plan (see the freeze
 	// above), and the output identity (certification profile + derived media
 	// contract) is stamped once at the plan seal (OverlayPlan.StampOutputProfile).
 	// Restating either here is how the renderer and the checkpoint diverged.
-	return concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
+	outcomes, err := concurrent.Map(ctx, pending, r.overlayRenderWorkers(),
 		func(renderCtx context.Context, _ int, item languageOverlayPlan) (overlayRenderOutcome, error) {
 			// The plan size and boundary wall time are measured HERE, at the only
 			// place that performs the blocking hand-off, so no consumer has to
@@ -167,6 +181,19 @@ func (r *Runner) renderOverlayPlans(ctx context.Context, req GenerateRequest, re
 				planDigest: planDigest,
 			}, nil
 		})
+	if err != nil {
+		return nil, err
+	}
+	// The preflight ran on the render snapshot. Attach its marker to the
+	// outcomes so applyOverlayRenderOutcomes can publish it on the durable
+	// result: the late handoff then trusts the same verified plan instead of
+	// downloading its images a second time.
+	if result.FinalJobPreflight != nil {
+		for i := range outcomes {
+			outcomes[i].preflight = result.FinalJobPreflight
+		}
+	}
+	return outcomes, nil
 }
 
 func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult, outcomes []overlayRenderOutcome) {
@@ -175,6 +202,9 @@ func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult
 	// accident of which render returned first.
 	sourceLanguage := result.overlayPlanLanguage()
 	for _, outcome := range outcomes {
+		if outcome.preflight != nil {
+			result.FinalJobPreflight = outcome.preflight
+		}
 		if outcome.language == sourceLanguage {
 			ref := outcome.ref
 			ref.PlanDigest = outcome.planDigest
@@ -194,6 +224,8 @@ func (r *Runner) applyOverlayRenderOutcomes(runID string, result *GenerateResult
 			zap.String("status", outcome.ref.Status),
 			zap.Duration("boundary_wall", outcome.boundaryWall),
 			zap.Int("plan_items", outcome.planItems),
+			zap.Int("cache_hits", outcome.ref.CacheHits),
+			zap.Int("rendered_items", outcome.ref.RenderedItems),
 		)
 	}
 }

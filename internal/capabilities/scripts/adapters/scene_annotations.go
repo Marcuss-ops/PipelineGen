@@ -6,7 +6,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -63,14 +62,13 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 	for _, entity := range seg.Insights.Entities {
 		value := strings.TrimSpace(entity.Value)
 		kind := normalizeAnnotationType(entity.Type)
-		kind = correctKnownPortugueseEntityType(value, kind)
-		kind = normalizeAnnotationType(entitytype.CorrectSurfaceType(value, kind))
 		if resolvedKind := canonicalImageEntityType(seg, value); resolvedKind != "" {
 			// The image-intent resolver has stronger typed identity grounding
 			// than the baseline NER surface. Use its canonical family so a
 			// place or venue is not projected as a PERSON portrait.
 			kind = resolvedKind
 		}
+		kind = normalizeAnnotationType(kind)
 		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
 			// KEYWORD / VISUAL_SUBJECT are search/index surfaces, never
 			// spoken entities (mirror of the runner projection).
@@ -197,10 +195,21 @@ func expandPersonCanonicalName(text, value string) string {
 	if len(strings.Fields(value)) > 1 {
 		return value
 	}
+	matches := make(map[string]string)
 	for _, candidate := range capitalizedNameRE.FindAllString(text, -1) {
+		candidate = strings.TrimSpace(candidate)
 		if strings.EqualFold(candidate, value) || strings.Contains(strings.ToLower(candidate), strings.ToLower(value)) {
-			return strings.TrimSpace(candidate)
+			matches[strings.ToLower(candidate)] = candidate
 		}
+	}
+	// A surname shared by two people is ambiguous: expanding it to the first
+	// capitalized window invented an identity the text never established.
+	// Stay on the extracted surface and let the canonical resolver decide.
+	if len(matches) != 1 {
+		return value
+	}
+	for _, candidate := range matches {
+		return candidate
 	}
 	return value
 }
@@ -263,15 +272,6 @@ func rebaseSceneAnnotations(in *scriptpkg.SceneAnnotations, text string) *script
 			phraseSpans = append(phraseSpans, span)
 		}
 	}
-	if len(phraseSpans) == 0 && strings.TrimSpace(text) != "" {
-		if phrase := bestGroundedAnnotationSentence(text); phrase != "" {
-			span, _ := findAnnotationSpan(text, phrase)
-			span.ID = fmt.Sprintf("phrase-final-%03d", 1)
-			span.Score = 0.80
-			span.Kind = "key_statement"
-			phraseSpans = append(phraseSpans, span)
-		}
-	}
 	out.ImportantPhrases = phraseSpans
 
 	entitySpans := make([]scriptpkg.AnnotationSpan, 0)
@@ -308,34 +308,6 @@ func rebaseSceneAnnotations(in *scriptpkg.SceneAnnotations, text string) *script
 			entitySpans = append(entitySpans, grounded.Mentions...)
 		}
 	}
-	for _, entity := range discoverGroundedEntities(text) {
-		canonical := entity.CanonicalName
-		duplicate := false
-		for _, existing := range append(out.PrimaryEntities, out.SecondaryEntities...) {
-			if strings.EqualFold(existing.CanonicalName, canonical) && existing.Type == entity.Type {
-				duplicate = true
-				break
-			}
-			// An explicit brand/logo annotation owns its grounded span. Do
-			// not reclassify the same surface as an acronym ORG or a generic
-			// title-case PERSON during the final discovery pass.
-			if (existing.Type == "BRAND" || existing.Type == "LOGO") &&
-				annotationSpansOverlap(existing.Mentions, entity.Mentions) {
-				duplicate = true
-				break
-			}
-		}
-		if duplicate {
-			continue
-		}
-		if scriptpkg.IsAnnotationEntityKind(entity.Type) {
-			out.PrimaryEntities = append(out.PrimaryEntities, entity)
-		} else {
-			out.SecondaryEntities = append(out.SecondaryEntities, entity)
-		}
-		entitySpans = append(entitySpans, entity.Mentions...)
-	}
-
 	for _, word := range in.ImportantWords {
 		grounded, ok := findAnnotationSpan(text, word.Text)
 		if !ok || annotationSpanOverlapsAny(grounded, phraseSpans) || annotationSpanOverlapsAny(grounded, entitySpans) {
@@ -355,9 +327,6 @@ func rebaseSceneAnnotations(in *scriptpkg.SceneAnnotations, text string) *script
 		}
 	}
 	deduplicateGroundedEntities(&out)
-	if len(out.ImportantWords) == 0 {
-		out.ImportantWords = fallbackDistinctKeywords(text, phraseSpans, entitySpans, out.Language)
-	}
 	return &out
 }
 
@@ -417,127 +386,6 @@ func annotationSpansOverlap(left, right []scriptpkg.AnnotationSpan) bool {
 	return false
 }
 
-func bestGroundedAnnotationSentence(text string) string {
-	best, bestScore := "", -1
-	for _, raw := range regexp.MustCompile(`[^.!?]+(?:[.!?]+|$)`).FindAllString(text, -1) {
-		candidate := strings.TrimSpace(raw)
-		words := strings.Fields(candidate)
-		if len(words) == 0 {
-			continue
-		}
-		score := len(words)
-		if capitalizedNameRE.MatchString(candidate) {
-			score += 8
-		}
-		if score > bestScore {
-			best, bestScore = candidate, score
-		}
-	}
-	return best
-}
-
-func discoverGroundedEntities(text string) []scriptpkg.AnnotatedEntity {
-	values := make([]struct{ value, kind string }, 0)
-	seen := map[string]bool{}
-	add := func(value, kind string) {
-		key := kind + "\x00" + strings.ToLower(strings.TrimSpace(value))
-		if strings.TrimSpace(value) == "" || seen[key] {
-			return
-		}
-		seen[key] = true
-		values = append(values, struct{ value, kind string }{value, kind})
-	}
-	for _, value := range capitalizedNameRE.FindAllString(text, -1) {
-		add(strings.TrimSpace(value), classifyDiscoveredEntity(value))
-	}
-	for _, value := range regexp.MustCompile(`\b[A-Z]{2,8}\b`).FindAllString(text, -1) {
-		add(value, "ORG")
-	}
-	for _, value := range regexp.MustCompile(`\b(?:1[89]\d{2}|20\d{2})\b`).FindAllString(text, -1) {
-		add(value, "DATE")
-	}
-	result := make([]scriptpkg.AnnotatedEntity, 0, len(values))
-	for _, item := range values {
-		mentions := findAllAnnotationSpans(text, item.value)
-		if len(mentions) == 0 {
-			continue
-		}
-		canonical := item.value
-		if item.kind == "PERSON" {
-			mentions = appendDistinctPersonAliasMentions(text, canonical, mentions)
-		}
-		result = append(result, scriptpkg.AnnotatedEntity{
-			ID: "entity-" + safeAnnotationID(canonical), Text: canonical,
-			CanonicalName: canonical, Type: item.kind, Confidence: 0.85,
-			Mentions: mentions,
-		})
-	}
-	return result
-}
-
-func classifyDiscoveredEntity(value string) string {
-	lower := strings.ToLower(strings.TrimSpace(value))
-	current := correctKnownPortugueseEntityType(value, func() string {
-		if strings.HasPrefix(lower, "oper") {
-			return "EVENT"
-		}
-		return "PERSON"
-	}())
-	return normalizeAnnotationType(entitytype.CorrectSurfaceType(value, current))
-}
-
-func correctKnownPortugueseEntityType(value, current string) string {
-	lower := strings.ToLower(strings.TrimSpace(value))
-	if strings.HasPrefix(lower, "operação ") || strings.HasPrefix(lower, "operacao ") ||
-		strings.HasPrefix(lower, "operación ") || strings.HasPrefix(lower, "operacion ") ||
-		strings.HasPrefix(lower, "operation ") {
-		return "EVENT"
-	}
-	switch lower {
-	case "las vegas", "new york", "los angeles", "roma", "parigi", "londra",
-		"são paulo", "sao paulo", "brasília", "brasilia", "rio de janeiro",
-		"belo horizonte", "curitiba", "porto alegre", "salvador", "recife",
-		"fortaleza", "manaus", "belém", "belem", "goiânia", "goiania":
-		return "GPE"
-	}
-	return current
-}
-
-func fallbackDistinctKeywords(text string, phrases, entities []scriptpkg.AnnotationSpan, language string) []scriptpkg.AnnotationSpan {
-	runes := []rune(text)
-	result := make([]scriptpkg.AnnotationSpan, 0, 3)
-	seen := map[string]bool{}
-	for i := 0; i < len(runes) && len(result) < 3; {
-		for i < len(runes) && !unicode.IsLetter(runes[i]) {
-			i++
-		}
-		start := i
-		for i < len(runes) && (unicode.IsLetter(runes[i]) || runes[i] == '\'' || runes[i] == '’') {
-			i++
-		}
-		if start == i {
-			continue
-		}
-		value := strings.Trim(string(runes[start:i]), "'’")
-		key := strings.ToLower(value)
-		if len([]rune(value)) < 6 {
-			continue
-		}
-		if seen[key] {
-			continue
-		}
-		span := scriptpkg.AnnotationSpan{Text: value, StartRune: start, EndRune: i}
-		if annotationSpanOverlapsAny(span, phrases) || annotationSpanOverlapsAny(span, entities) {
-			continue
-		}
-		seen[key] = true
-		span.Lemma = key
-		span.Score = float64(3-len(result)) / 3
-		result = append(result, span)
-	}
-	return result
-}
-
 func annotationSpanOverlapsAny(span scriptpkg.AnnotationSpan, others []scriptpkg.AnnotationSpan) bool {
 	for _, other := range others {
 		if span.StartRune < other.EndRune && other.StartRune < span.EndRune {
@@ -565,10 +413,11 @@ func findAnnotationSpan(text, value string) (scriptpkg.AnnotationSpan, bool) {
 			return scriptpkg.AnnotationSpan{Text: string(want), StartRune: start, EndRune: start + len(want)}, true
 		}
 	}
-	// Hints may differ only in capitalization from the final generated text.
-	// Return the actual text slice so grounding and offsets remain canonical.
+	// Hints may differ only in capitalization or diacritics from the final
+	// generated text (Cafe vs Cafe with an accent). Return the actual slice so
+	// grounding and offsets remain canonical.
 	for start := 0; start+len(want) <= len(runes); start++ {
-		if strings.EqualFold(string(runes[start:start+len(want)]), value) {
+		if equalsFoldAccents(string(runes[start:start+len(want)]), value) {
 			return scriptpkg.AnnotationSpan{
 				Text:      string(runes[start : start+len(want)]),
 				StartRune: start,
@@ -577,6 +426,44 @@ func findAnnotationSpan(text, value string) (scriptpkg.AnnotationSpan, bool) {
 		}
 	}
 	return scriptpkg.AnnotationSpan{}, false
+}
+
+// equalsFoldAccents compares case-insensitively after folding common Latin
+// diacritics. The comparison never changes the returned span text, so the
+// document keeps its original spelling while the annotation stays grounded.
+func equalsFoldAccents(left, right string) bool {
+	a, b := []rune(left), []rune(right)
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if foldAnnotationRune(a[i]) != foldAnnotationRune(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func foldAnnotationRune(r rune) rune {
+	switch r {
+	case 'à', 'á', 'â', 'ã', 'ä', 'å', 'À', 'Á', 'Â', 'Ã', 'Ä', 'Å':
+		return 'a'
+	case 'è', 'é', 'ê', 'ë', 'È', 'É', 'Ê', 'Ë':
+		return 'e'
+	case 'ì', 'í', 'î', 'ï', 'Ì', 'Í', 'Î', 'Ï':
+		return 'i'
+	case 'ò', 'ó', 'ô', 'õ', 'ö', 'Ò', 'Ó', 'Ô', 'Õ', 'Ö':
+		return 'o'
+	case 'ù', 'ú', 'û', 'ü', 'Ù', 'Ú', 'Û', 'Ü':
+		return 'u'
+	case 'ç', 'Ç':
+		return 'c'
+	case 'ñ', 'Ñ':
+		return 'n'
+	case 'ý', 'ÿ', 'Ý', 'Ÿ':
+		return 'y'
+	}
+	return unicode.ToLower(r)
 }
 
 // normalizeAnnotationType maps an extracted entity type onto the canonical

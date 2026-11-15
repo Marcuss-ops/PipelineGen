@@ -6,9 +6,16 @@
     "chronon": "chronon_editorial",
     "chronon_editorial": "chronon_editorial",
     "editorial": "chronon_editorial",
+    "classic": "chronon_editorial",
+    "modern": "esri_topo",
+    "modern_map_1": "esri_topo",
+    "modernmap1": "esri_topo",
+    "topo": "esri_topo",
+    "esri_topo": "esri_topo",
     "satellite": "esri_sat",
+    "esri_sat": "esri_sat",
     "roadmap": "esri_light",
-    "terrain": "esri_light"
+    "terrain": "esri_topo"
   },
   "map_type_default": "esri_light",
   "item_motion_groups": {
@@ -9592,6 +9599,20 @@
       "renderer_supported": true,
       "targets": [],
       "kind": "basemap"
+    },
+    {
+      "id": "esri_topo",
+      "families": [
+        "map.basemap"
+      ],
+      "lanes": [],
+      "status": "active",
+      "renderer_supported": true,
+      "targets": [],
+      "kind": "basemap",
+      "order": {
+        "map.basemap": 4
+      }
     },
     {
       "id": "duo_split_reveal",

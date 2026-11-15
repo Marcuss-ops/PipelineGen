@@ -194,7 +194,7 @@ type StockFeatureGate struct {
 // resolved (override > real adapter > stub), BuildStockBundle wires
 // the canonical EnrichmentHandler
 // (stockenrich.EnrichmentHandler) and registers it on the jobs
-// dispatcher for appjobs.TypeMediaStockRLMEnrich
+// dispatcher for jobscheduling.TypeMediaStockRLMEnrich
 // ("media.stock_rlm_enrich"). Field count: 3.
 type StockEnrichmentDeps struct {
 	// EnrichmentLLMClient is the canonical Pattern-0 typed port.

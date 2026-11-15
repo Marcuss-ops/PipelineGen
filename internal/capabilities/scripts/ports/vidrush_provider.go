@@ -30,7 +30,10 @@ type VidRushSearchRequest struct {
 	// QueryClass preserves the semantic retrieval lane through provider routing.
 	// Empty retains the provider's default behavior.
 	QueryClass string `json:"query_class,omitempty"`
-	Limit      int
+	Language   string `json:"language,omitempty"`
+	// ForceRefresh bypasses provider-side discovery caches for this search.
+	ForceRefresh bool `json:"force_refresh,omitempty"`
+	Limit        int
 	// TargetDurationMs is the desired clip length derived from the
 	// segment timing budget (voiceover > scene > estimated). Zero means
 	// the provider falls back to its own default.

@@ -32,6 +32,28 @@ func TestFrameResolverSupportsExactRationalRates(t *testing.T) {
 	}
 }
 
+func TestFrameRateNormalizeBoundsDenominator(t *testing.T) {
+	cases := []struct {
+		name string
+		in   FrameRate
+		want FrameRate
+	}{
+		{name: "noisy avg rate snaps to 24", in: FrameRate{Numerator: 81920, Denominator: 3399}, want: FrameRate{Numerator: 24, Denominator: 1}},
+		{name: "ntsc 23.976 preserved", in: FrameRate{Numerator: 24000, Denominator: 1001}, want: FrameRate{Numerator: 24000, Denominator: 1001}},
+		{name: "ntsc 29.97 preserved", in: FrameRate{Numerator: 30000, Denominator: 1001}, want: FrameRate{Numerator: 30000, Denominator: 1001}},
+		{name: "reducible fraction reduced", in: FrameRate{Numerator: 48000, Denominator: 2000}, want: FrameRate{Numerator: 24, Denominator: 1}},
+		{name: "noisy ntsc avg snaps to 23.976", in: FrameRate{Numerator: 23980, Denominator: 1001}, want: FrameRate{Numerator: 24000, Denominator: 1001}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in.Normalize(MaxRenderFrameRateDenominator)
+			if got != tc.want {
+				t.Fatalf("Normalize(%d/%d) = %d/%d; want %d/%d", tc.in.Numerator, tc.in.Denominator, got.Numerator, got.Denominator, tc.want.Numerator, tc.want.Denominator)
+			}
+		})
+	}
+}
+
 func TestFrameResolverUsesDurationForStableRangeCounts(t *testing.T) {
 	resolver, err := NewFrameResolver(FrameRate{Numerator: 30000, Denominator: 1001})
 	if err != nil {

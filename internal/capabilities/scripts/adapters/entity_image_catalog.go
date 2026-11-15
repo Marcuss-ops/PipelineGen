@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -12,7 +13,36 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-const entityImageCatalogProvider = "duckduckgo"
+// entityImageCatalogProviderFor is the one provider-identity rule for the
+// durable catalog. The concrete retrieval backend is the provenance; the
+// lifecycle bucket (internet_images) is only a fallback when no backend was
+// recorded. A single helper prevents discovery and visual-verdict writes from
+// stamping different providers for the same candidate.
+func entityImageCatalogProviderFor(candidate scriptpkg.SegmentAssetCandidate) string {
+	provider := strings.ToLower(strings.TrimSpace(candidate.RetrievalProvider))
+	if provider == "" {
+		provider = strings.ToLower(strings.TrimSpace(candidate.Provider))
+	}
+	if provider == "" {
+		return scriptpkg.VidRushProviderInternetImages
+	}
+	return provider
+}
+
+// entityImageCatalogContentSHA256 keeps only a real 64-hex content address.
+// Test doubles and legacy call sites sometimes carry short placeholder hashes;
+// those are absence of content identity, not a digest, and must not reach the
+// catalog's verdict boundary.
+func entityImageCatalogContentSHA256(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) != 64 {
+		return ""
+	}
+	if _, err := hex.DecodeString(value); err != nil {
+		return ""
+	}
+	return value
+}
 
 const (
 	entityImageCatalogPoolSize         = 10
@@ -30,8 +60,22 @@ const (
 
 // entityImageCatalogPool is the durable candidate pool plus its usable count.
 // Broken and retired URLs are never returned as fallback candidates.
+// EntityImageCatalogDecision is one row-level trace. Aggregate metrics say
+// how many candidates were rejected; this ledger says which query produced a
+// candidate, which gate decided it, and whether it reached the pool.
+type EntityImageCatalogDecision struct {
+	Query           string
+	CandidateID     int64
+	SourceURL       string
+	Gate            string
+	Verdict         string
+	Selection       string
+	Materialization string
+}
+
 type entityImageCatalogPool struct {
 	Candidates  []scriptpkg.SegmentAssetCandidate
+	Decisions   []EntityImageCatalogDecision
 	UsableCount int
 	KnownCount  int
 	Sufficient  bool
@@ -67,48 +111,76 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 	if repo == nil || identity.CanonicalEntityID == "" {
 		return entityImageCatalogPool{}, nil
 	}
-	rows, err := repo.ListCandidates(ctx, identity.CanonicalEntityID, 100)
-	if err != nil {
-		if errors.Is(err, entitycatalog.ErrEntityNotFound) {
-			return entityImageCatalogPool{}, nil
+	var rows []entitycatalog.Candidate
+	if pager, ok := repo.(entitycatalog.CandidatePageReader); ok {
+		const pageSize = 100
+		for offset := 0; ; offset += pageSize {
+			page, err := pager.ListCandidatesPage(ctx, identity.CanonicalEntityID, offset, pageSize)
+			if err != nil {
+				if errors.Is(err, entitycatalog.ErrEntityNotFound) {
+					return entityImageCatalogPool{}, nil
+				}
+				return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: page %s at %d: %w", identity.CanonicalEntityID, offset, err)
+			}
+			rows = append(rows, page...)
+			if len(page) < pageSize {
+				break
+			}
 		}
-		return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: list %s: %w", identity.CanonicalEntityID, err)
+	} else {
+		var err error
+		rows, err = repo.ListCandidates(ctx, identity.CanonicalEntityID, 100)
+		if err != nil {
+			if errors.Is(err, entitycatalog.ErrEntityNotFound) {
+				return entityImageCatalogPool{}, nil
+			}
+			return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: list %s: %w", identity.CanonicalEntityID, err)
+		}
 	}
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(rows))
+	decisions := make([]EntityImageCatalogDecision, 0, len(rows))
 	known := 0
+	materializations := make(map[int64]*entitycatalog.Materialization, len(rows))
+	canBatchMaterials := false
+	if batch, ok := repo.(entitycatalog.MaterializationBatchReader); ok {
+		ids := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.ID)
+		}
+		batchMaterials, batchErr := batch.GetMaterializations(ctx, ids)
+		if batchErr != nil {
+			return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: batch materializations: %w", batchErr)
+		}
+		materializations = batchMaterials
+		canBatchMaterials = true
+	}
 	for _, row := range rows {
 		known++
+		decision := EntityImageCatalogDecision{Query: identity.CanonicalName, CandidateID: row.ID, SourceURL: row.SourceURL, Verdict: row.SemanticStatus, Materialization: "missing"}
 		if reason := personImageSourceIdentityFailure(identity.CanonicalName, row.SourceURL, row.SourcePageURL); reason != "" {
-			if row.SemanticStatus != entitycatalog.CandidateSemanticRejected || row.QualityReason != reason {
-				if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
-					CanonicalEntityID: row.CanonicalEntityID,
-					Provider:          row.Provider,
-					Rank:              row.Rank,
-					SourceURL:         row.SourceURL,
-					SourcePageURL:     row.SourcePageURL,
-					ThumbnailURL:      row.ThumbnailURL,
-					Width:             row.Width,
-					Height:            row.Height,
-					Status:            row.Status,
-					SemanticStatus:    entitycatalog.CandidateSemanticRejected,
-					TechnicalScore:    row.TechnicalScore,
-					QualityReason:     reason,
-				}); err != nil {
-					return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: reject unverified source identity for candidate %d: %w", row.ID, err)
-				}
-			}
+			// Catalog reads are pure. Rejection persistence belongs to the
+			// refresh/recertification command, never to a lookup.
+			decision.Gate, decision.Selection = "identity", "rejected"
+			decisions = append(decisions, decision)
 			continue
 		}
 		// A broken source URL does not invalidate the durable image already
 		// copied to Drive. Reuse a fully materialized, visually accepted asset
 		// without asking the provider to serve that URL again.
-		materialization, matErr := repo.GetMaterialization(ctx, row.ID)
-		if matErr != nil {
-			return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: get materialization %d: %w", row.ID, matErr)
+		materialization, batched := materializations[row.ID]
+		if !batched && !canBatchMaterials {
+			var matErr error
+			materialization, matErr = repo.GetMaterialization(ctx, row.ID)
+			if matErr != nil {
+				return entityImageCatalogPool{}, fmt.Errorf("entity image catalog: get materialization %d: %w", row.ID, matErr)
+			}
 		}
 		_, durableImage := applyEntityImageCatalogMaterialization(scriptpkg.SegmentAssetCandidate{}, materialization)
 		durableImage = durableImage && row.SemanticStatus == entitycatalog.CandidateSemanticAccepted &&
 			entitycatalog.IsUsableCandidateQuality(row)
+		if durableImage {
+			decision.Materialization = "materialized"
+		}
 
 		assessment := entitycatalog.AssessCandidateState(nowUTC(), row)
 		if assessment.State != row.Status && !row.LastSeenAt.IsZero() &&
@@ -121,9 +193,13 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 		recertifyLayout := personImageLayoutNeedsRecertification(row.QualityReason)
 		if (!entitycatalog.IsUsableCandidateStatus(assessment.State) && !durableImage) ||
 			(!entitycatalog.IsUsableCandidateQuality(row) && !recertifyLayout && !durableImage) {
+			decision.Gate, decision.Selection = "lifecycle_quality", "rejected"
+			decisions = append(decisions, decision)
 			continue
 		}
 		if strings.TrimSpace(row.SourceURL) == "" {
+			decision.Gate, decision.Selection = "source_url", "rejected"
+			decisions = append(decisions, decision)
 			continue
 		}
 		semanticStatus, semanticScore, qualityReason := row.SemanticStatus, row.SemanticScore, row.QualityReason
@@ -135,6 +211,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 		candidate := scriptpkg.SegmentAssetCandidate{
 			AssetID:               fmt.Sprintf("entity-image-%d", row.ID),
 			Provider:              scriptpkg.VidRushProviderInternetImages,
+			RetrievalProvider:     row.Provider,
 			Query:                 identity.CanonicalName,
 			Entity:                identity.CanonicalName,
 			Score:                 1.0 / float64(max(1, row.Rank)),
@@ -143,6 +220,8 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			PreviewURL:            row.ThumbnailURL,
 			Width:                 row.Width,
 			Height:                row.Height,
+			ContentSHA256:         row.ContentSHA256,
+			VerifierVersion:       row.VerifierVersion,
 			SemanticStatus:        semanticStatus,
 			SemanticScore:         semanticScore,
 			TechnicalQualityScore: row.TechnicalScore,
@@ -154,6 +233,8 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			candidate = hydrated
 		}
 		out = append(out, candidate)
+		decision.Gate, decision.Selection = "quality", "pool"
+		decisions = append(decisions, decision)
 		// Every usable row above costs one materialization lookup. Once the
 		// requested pool size is satisfied there is nothing left to hydrate:
 		// stopping here keeps a warm catalog replay at `limit` lookups instead
@@ -162,7 +243,17 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 			break
 		}
 	}
-	usableCount := len(out)
+	// `out` also carries rows the selector cannot use yet (for example a
+	// layout-recertification row whose verdict is deliberately reset to
+	// unknown). Counting those as usable made poolMeetsDemand skip the refresh
+	// and then selection dropped them, leaving the scene with no image at all.
+	// Supply means an accepted verdict; unknown remains a retry state.
+	usableCount := 0
+	for _, candidate := range out {
+		if strings.EqualFold(strings.TrimSpace(candidate.SemanticStatus), entitycatalog.CandidateSemanticAccepted) {
+			usableCount++
+		}
+	}
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
@@ -170,7 +261,7 @@ func entityImageCatalogCandidates(ctx context.Context, repo entitycatalog.Reposi
 	if known > 0 && known < target {
 		target = known
 	}
-	return entityImageCatalogPool{Candidates: out, UsableCount: usableCount, KnownCount: known, Sufficient: known > 0 && usableCount >= target}, nil
+	return entityImageCatalogPool{Candidates: out, Decisions: decisions, UsableCount: usableCount, KnownCount: known, Sufficient: known > 0 && usableCount >= target}, nil
 }
 
 // durableEntityImagePoolForSegment loads the durable per-person catalog pool
@@ -185,6 +276,7 @@ func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Re
 	if repo == nil {
 		return nil
 	}
+	aliasGraph := segmentPersonAliasGraph(segment)
 	seenQueries := make(map[string]struct{})
 	seenIdentities := make(map[string]struct{})
 	var out []scriptpkg.SegmentAssetCandidate
@@ -232,7 +324,7 @@ func durableEntityImagePoolForSegment(ctx context.Context, repo entitycatalog.Re
 		if !strings.EqualFold(strings.TrimSpace(entity.Type), "PERSON") {
 			continue
 		}
-		identity, err := entitycatalog.CanonicalizePersonName(entity.Value)
+		identity, err := entitycatalog.CanonicalizePersonNameWithAliases(entity.Value, aliasGraph)
 		if err == nil {
 			appendIdentityPool(identity)
 		}
@@ -273,7 +365,7 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 		rank++
 		if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
 			CanonicalEntityID: identity.CanonicalEntityID,
-			Provider:          entityImageCatalogProvider,
+			Provider:          entityImageCatalogProviderFor(result),
 			Rank:              rank,
 			SourceURL:         result.SourceURL,
 			SourcePageURL:     result.SourcePageURL,
@@ -283,6 +375,8 @@ func persistEntityImageCatalogCandidates(ctx context.Context, repo entitycatalog
 			Status:            entitycatalog.CandidateStatusFresh,
 			SemanticStatus:    result.SemanticStatus,
 			SemanticScore:     result.SemanticScore,
+			ContentSHA256:     entityImageCatalogContentSHA256(result.ContentSHA256),
+			VerifierVersion:   result.VerifierVersion,
 			TechnicalScore:    result.TechnicalQualityScore,
 			QualityReason:     result.QualityReason,
 		}); err != nil {
@@ -358,7 +452,7 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 		}
 		if _, err := repo.UpsertCandidate(ctx, entitycatalog.Candidate{
 			CanonicalEntityID: identity.CanonicalEntityID,
-			Provider:          entityImageCatalogProvider,
+			Provider:          entityImageCatalogProviderFor(result),
 			Rank:              rank + 1,
 			SourceURL:         result.SourceURL,
 			SourcePageURL:     result.SourcePageURL,
@@ -368,6 +462,8 @@ func persistPersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 			Status:            entitycatalog.CandidateStatusFresh,
 			SemanticStatus:    result.SemanticStatus,
 			SemanticScore:     result.SemanticScore,
+			ContentSHA256:     entityImageCatalogContentSHA256(result.ContentSHA256),
+			VerifierVersion:   entitycatalog.CandidateVerifierVersion,
 			TechnicalScore:    result.TechnicalQualityScore,
 			QualityReason:     result.QualityReason,
 		}); err != nil {
@@ -423,7 +519,7 @@ func hydratePersonImageVisualVerdicts(ctx context.Context, repo entitycatalog.Re
 		}
 		for _, p := range pending {
 			row, ok := verdicts[p.url]
-			if !ok {
+			if !ok || !entitycatalog.IsCurrentCandidateVerifierVersion(row.VerifierVersion) {
 				continue
 			}
 			verdict := scriptpkg.SegmentAssetCandidate{
@@ -509,8 +605,8 @@ func applyEntityImageCatalogMaterialization(candidate scriptpkg.SegmentAssetCand
 }
 
 const (
-	minimumPersonImageLongSide = 800
-	minimumPersonImagePixels   = 400000
+	minimumPersonImageLongSide = entitycatalog.CatalogImageMinLongSide
+	minimumPersonImagePixels   = entitycatalog.CatalogImageMinPixels
 	minimumQualityScore        = 0.50
 )
 

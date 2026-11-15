@@ -119,35 +119,25 @@ func TestSemanticSearchFeedbackSettlesASatisfiedAsset(t *testing.T) {
 	}
 }
 
-func TestSemanticSearchFeedbackDropsAnEntityOnlyWhenANameWasNotSearched(t *testing.T) {
-	// The main ladder searched Alberto Stasi and the source sentence; Andrea
-	// Sempio was mentioned but the ladder never carried his name, so a failure
-	// narrows the composition to him instead of dropping the visual.
+func TestSemanticSearchFeedbackUsesOnlyTheBrainRustQueryLadder(t *testing.T) {
+	// Go must not invent an exact-name retry for an identity that BrainRust did
+	// not include in the source-grounded query ladder.
 	plan := feedbackPlan(t, []SemanticSearchQuery{
 		{Kind: "exact_mention", Text: "Alberto Stasi"},
 		{Kind: "source_sentence", Text: "Alberto Stasi e Andrea Sempio nel procedimento."},
 	}, "person_01", "person_02")
-	if len(plan.Units[0].EntityLadders) != 1 || plan.Units[0].EntityLadders[0].EntityID != "person_02" {
-		t.Fatalf("the untried name must become the drop fallback: %+v", plan.Units[0].EntityLadders)
+	if len(plan.Units[0].Queries) != 2 || plan.Units[0].Queries[0].Text != "Alberto Stasi" ||
+		plan.Units[0].Queries[1].Text != "Alberto Stasi e Andrea Sempio nel procedimento." {
+		t.Fatalf("planner changed BrainRust's query ladder: %+v", plan.Units[0].Queries)
 	}
 	if _, _, err := plan.RecordSearchOutcome(SemanticSearchOutcome{CandidateID: "vc_0001", Rung: 0}); err != nil {
 		t.Fatal(err)
 	}
-	next, more, err := plan.RecordSearchOutcome(SemanticSearchOutcome{CandidateID: "vc_0001", Rung: 1})
-	if err != nil || !more {
-		t.Fatalf("exhausted ladder must drop the searched name: more=%v err=%v", more, err)
-	}
-	if next.Query != "Andrea Sempio" || plan.Units[0].Retry == nil || plan.Units[0].Retry.Action != "drop_entity" {
-		t.Fatalf("drop_entity retries the remaining identity: %+v retry=%+v", next, plan.Units[0].Retry)
-	}
-	if len(plan.Units[0].EntityIDs) != 1 || plan.Units[0].EntityIDs[0] != "person_02" || plan.Metrics.EntityDrops != 1 {
-		t.Fatalf("the composition keeps only the remaining identity: %+v", plan.Units[0])
-	}
-	if _, more, err := plan.RecordSearchOutcome(SemanticSearchOutcome{CandidateID: "vc_0001", Rung: 0}); err != nil || more {
-		t.Fatalf("the last name settles the plan: more=%v err=%v", more, err)
+	if _, more, err := plan.RecordSearchOutcome(SemanticSearchOutcome{CandidateID: "vc_0001", Rung: 1}); err != nil || more {
+		t.Fatalf("exhausted BrainRust ladder should settle: more=%v err=%v", more, err)
 	}
 	if plan.Units[0].Retry == nil || plan.Units[0].Retry.Action != "skip_visual" {
-		t.Fatalf("an exhausted last name skips the visual: %+v", plan.Units[0].Retry)
+		t.Fatalf("Go must not invent entity retries: unit=%+v metrics=%+v", plan.Units[0], plan.Metrics)
 	}
 }
 

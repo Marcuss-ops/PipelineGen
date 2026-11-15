@@ -195,10 +195,8 @@ func visualSlots(plan mediadomain.MediaPlanSpec, segmentID string) []mediadomain
 			add(string(a.Slot))
 		}
 	}
-	for _, s := range plan.Searches {
-		if s.SegmentID == segmentID {
-			add(string(s.Slot))
-		}
+	for _, slot := range ManualSearchSlots(plan, segmentID) {
+		seen[slot] = true
 	}
 	if len(seen) == 0 {
 		add(string(mediadomain.SlotPrimaryVideo))

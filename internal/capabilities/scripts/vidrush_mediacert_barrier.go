@@ -52,6 +52,14 @@ func (b *MediaCertBarrier) WaitForVidRush(ctx context.Context, runID string) ([]
 	if err != nil {
 		return nil, err
 	}
+	// A barrier must not turn a partially committed run into a successful one.
+	// The inner coordinator only knows the scenes it observed; the spec owns
+	// the expected count, so a missing scene is a hard error here instead of a
+	// silently shorter result set. An unknown/zero count keeps the historical
+	// best-effort behavior for callers that cannot declare one.
+	if expected := b.spec.Segments; expected > 0 && len(segments) != expected {
+		return nil, fmt.Errorf("scriptgeneration: VidRush barrier expected %d committed scene(s), got %d", expected, len(segments))
+	}
 	// Per-scene entity overlays may reuse their catalog candidates when the
 	// entity's distinct image pool is exhausted. The binder prefers unused
 	// images, but certification must not erase repeated candidates and then
@@ -121,26 +129,25 @@ func filterEntityRenderSurface(segments []scriptpkg.VidRushSegmentResult) []scri
 		// entity-only run. The caller can run those providers in a separate
 		// clip path, but they are not extracted here.
 		out[i].Insights.YouTubeQueries = nil
-		// The entity value is the only allowed image query at this boundary.
-		// Do not trust provider-generated/enriched queries: they can introduce
-		// a second subject or a generic scene image and break entity↔asset
-		// provenance. One deterministic query is emitted per imageable entity.
+		// BrainRust owns image query intent. Preserve its primary query strings
+		// verbatim; this boundary only projects them to the render surface.
 		queries := make([]string, 0, len(entities))
 		seenQueries := make(map[string]struct{}, len(entities))
 		for _, entity := range entities {
 			if !scriptpkg.IsAnnotationEntityKind(entity.Type) {
 				continue
 			}
-			q := strings.TrimSpace(entity.Value)
-			key := strings.ToLower(q)
-			if q == "" || key == "" {
-				continue
+			for _, query := range entity.SearchIntents {
+				key := strings.ToLower(strings.TrimSpace(query))
+				if key == "" {
+					continue
+				}
+				if _, ok := seenQueries[key]; ok {
+					continue
+				}
+				seenQueries[key] = struct{}{}
+				queries = append(queries, query)
 			}
-			if _, ok := seenQueries[key]; ok {
-				continue
-			}
-			seenQueries[key] = struct{}{}
-			queries = append(queries, q)
 		}
 		out[i].Insights.ImageQueries = queries
 	}

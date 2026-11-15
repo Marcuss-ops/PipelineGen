@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +51,8 @@ func openEntityImageCatalogTestDB(t *testing.T) *sql.DB {
 			semantic_score REAL NOT NULL DEFAULT 0 CHECK (semantic_score >= 0 AND semantic_score <= 1),
 			technical_score REAL NOT NULL DEFAULT 0 CHECK (technical_score >= 0 AND technical_score <= 1),
 			quality_reason TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
+			verifier_version TEXT NOT NULL DEFAULT '',
 			validation_attempts INTEGER NOT NULL DEFAULT 0,
 			last_validation_at TEXT NOT NULL DEFAULT '',
 			next_retry_at TEXT NOT NULL DEFAULT '',
@@ -74,6 +77,16 @@ func openEntityImageCatalogTestDB(t *testing.T) *sql.DB {
 			last_error TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
+		);
+		CREATE TABLE entity_image_catalog_materialization_attempts (
+			attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			candidate_id INTEGER NOT NULL,
+			asset_id TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT '',
+			last_error TEXT NOT NULL DEFAULT '',
+			attempted_at TEXT NOT NULL,
 			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
 		)`,
 	} {
@@ -166,7 +179,7 @@ func TestSQLiteEntityImageCatalogRoundTripAndIdentitySeparation(t *testing.T) {
 	materializedAt := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	verifiedAt := materializedAt.Add(time.Minute)
 	if err := repo.UpsertMaterialization(ctx, capentity.Materialization{
-		CandidateID: firstID, AssetID: "asset-mj-1", ContentSHA256: "sha-mj-1",
+		CandidateID: firstID, AssetID: "asset-mj-1", ContentSHA256: canonicalTestContentSHA,
 		DriveFileID: "drive-mj-1", DriveLink: "https://drive.google.com/file/d/drive-mj-1/view",
 		Status:         capentity.MaterializationStatusMaterialized,
 		MaterializedAt: materializedAt, LastVerifiedAt: verifiedAt,
@@ -316,5 +329,108 @@ func TestSQLiteEntityImageCatalogUpsertPreservesDurableVerdicts(t *testing.T) {
 	}
 	if rows[0].SemanticStatus != capentity.CandidateSemanticAccepted || rows[0].SemanticScore != 0.8 {
 		t.Fatalf("verdict = %s/%v, want accepted/0.8 after re-certification", rows[0].SemanticStatus, rows[0].SemanticScore)
+	}
+}
+
+func TestSQLiteEntityImageCatalogProviderContentAndVerifierVersion(t *testing.T) {
+	repo := NewSQLiteEntityImageCatalogAdapter(openEntityImageCatalogTestDB(t))
+	ctx := context.Background()
+	const entityID = "person:michael-jordan"
+	if err := repo.UpsertEntity(ctx, capentity.Entity{
+		CanonicalEntityID: entityID,
+		EntityType:        capentity.EntityTypePerson,
+		CanonicalName:     "Michael Jordan",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	url := "https://images.example/michael-jordan/verdict.jpg"
+	hashA := strings.Repeat("a", 64)
+	hashB := strings.Repeat("b", 64)
+	base := capentity.Candidate{
+		CanonicalEntityID: entityID,
+		Provider:          "wikimedia_commons",
+		Rank:              1,
+		SourceURL:         url,
+		Status:            capentity.CandidateStatusFresh,
+		SemanticStatus:    capentity.CandidateSemanticAccepted,
+		SemanticScore:     0.9,
+		TechnicalScore:    0.9,
+		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
+		ContentSHA256:     hashA,
+		VerifierVersion:   capentity.CandidateVerifierVersion,
+	}
+	if _, err := repo.UpsertCandidate(ctx, base); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(ctx, entityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%d err=%v, want 1", len(rows), err)
+	}
+	if rows[0].Provider != "wikimedia_commons" || rows[0].ContentSHA256 != hashA || rows[0].VerifierVersion != capentity.CandidateVerifierVersion {
+		t.Fatalf("identity = provider=%q content=%q verifier=%q, want wikimedia_commons/%s/%s",
+			rows[0].Provider, rows[0].ContentSHA256, rows[0].VerifierVersion, hashA, capentity.CandidateVerifierVersion)
+	}
+
+	// The same URL resolving to different bytes must not keep a verdict about
+	// the old bytes. A discovery write carries no new verdict, so it invalidates.
+	changed := base
+	changed.ContentSHA256 = hashB
+	changed.SemanticStatus = capentity.CandidateSemanticUnknown
+	changed.SemanticScore = 0
+	changed.QualityReason = ""
+	changed.VerifierVersion = ""
+	if _, err := repo.UpsertCandidate(ctx, changed); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.ListCandidates(ctx, entityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%d err=%v, want 1 after content change", len(rows), err)
+	}
+	if rows[0].ContentSHA256 != hashB || rows[0].SemanticStatus != capentity.CandidateSemanticUnknown ||
+		rows[0].VerifierVersion != "" || !strings.Contains(rows[0].QualityReason, "content changed") {
+		t.Fatalf("content change = content=%q verdict=%q verifier=%q reason=%q",
+			rows[0].ContentSHA256, rows[0].SemanticStatus, rows[0].VerifierVersion, rows[0].QualityReason)
+	}
+
+	// A fresh verdict for the new bytes is a real re-certification and must be
+	// stored together with its content identity.
+	changed.SemanticStatus = capentity.CandidateSemanticAccepted
+	changed.SemanticScore = 0.9
+	changed.QualityReason = "Ollama visual identity verification confirmed the requested person and one dominant subject"
+	changed.VerifierVersion = capentity.CandidateVerifierVersion
+	if _, err := repo.UpsertCandidate(ctx, changed); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.ListCandidates(ctx, entityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%d err=%v, want 1 after re-certification", len(rows), err)
+	}
+	if rows[0].ContentSHA256 != hashB || rows[0].SemanticStatus != capentity.CandidateSemanticAccepted ||
+		rows[0].VerifierVersion != capentity.CandidateVerifierVersion {
+		t.Fatalf("re-certification = content=%q verdict=%q verifier=%q",
+			rows[0].ContentSHA256, rows[0].SemanticStatus, rows[0].VerifierVersion)
+	}
+
+	// The materializer is the authoritative byte producer. If it yields bytes
+	// other than the verified ones, the verdict must be invalidated.
+	hashC := strings.Repeat("d", 64)
+	if err := repo.UpsertMaterialization(ctx, capentity.Materialization{
+		CandidateID:   rows[0].ID,
+		AssetID:       "asset-mj",
+		ContentSHA256: hashC,
+		DriveLink:     "https://drive.google.com/file/d/asset-mj/view",
+		Status:        capentity.MaterializationStatusMaterialized,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = repo.ListCandidates(ctx, entityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("rows=%d err=%v, want 1 after materialization", len(rows), err)
+	}
+	if rows[0].ContentSHA256 != hashC || rows[0].SemanticStatus != capentity.CandidateSemanticUnknown ||
+		rows[0].VerifierVersion != "" || !strings.Contains(rows[0].QualityReason, "materialization bytes differ") {
+		t.Fatalf("materialization content change = content=%q verdict=%q verifier=%q reason=%q",
+			rows[0].ContentSHA256, rows[0].SemanticStatus, rows[0].VerifierVersion, rows[0].QualityReason)
 	}
 }

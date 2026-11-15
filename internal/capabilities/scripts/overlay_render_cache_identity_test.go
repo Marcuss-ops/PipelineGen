@@ -80,6 +80,52 @@ func TestOverlayRenderCacheIdentityPreservesBackgroundAssetOrder(t *testing.T) {
 	}
 }
 
+// TestOverlayRenderCacheKeyIsStableAcrossUnrelatedItemChanges pins the reuse
+// boundary that makes the per-item cache useful on a fix loop: changing one
+// overlay must not invalidate the other overlays' cache keys. The child plan
+// is the real submission unit (one item per render), so this test exercises
+// separateOverlayItemPlan rather than a synthetic single-item plan.
+func TestOverlayRenderCacheKeyIsStableAcrossUnrelatedItemChanges(t *testing.T) {
+	base := manifestTestPlan()
+	changed := base
+	changed.Items = append([]capmodel.OverlayItem(nil), base.Items...)
+	changed.Items[1].Text = "a different phrase"
+
+	firstChild, _, err := separateOverlayItemPlan(base, base.Items[0], 0)
+	if err != nil {
+		t.Fatalf("base child plan: %v", err)
+	}
+	changedChild, _, err := separateOverlayItemPlan(changed, changed.Items[0], 0)
+	if err != nil {
+		t.Fatalf("changed child plan: %v", err)
+	}
+	firstKey, okFirst := overlayRenderCacheKeyForPlan(firstChild, "stable-epoch")
+	changedKey, okChanged := overlayRenderCacheKeyForPlan(changedChild, "stable-epoch")
+	if !okFirst || !okChanged {
+		t.Fatalf("cache key unavailable: base=%t changed=%t", okFirst, okChanged)
+	}
+	if firstKey.Digest() != changedKey.Digest() {
+		t.Fatal("changing an unrelated overlay invalidated the unchanged item's cache key")
+	}
+
+	// The item's own content must still change its key: only cross-item
+	// invalidation is forbidden, not content sensitivity.
+	selfChanged := base
+	selfChanged.Items = append([]capmodel.OverlayItem(nil), base.Items...)
+	selfChanged.Items[0].Text = "the item itself changed"
+	selfChild, _, err := separateOverlayItemPlan(selfChanged, selfChanged.Items[0], 0)
+	if err != nil {
+		t.Fatalf("self-changed child plan: %v", err)
+	}
+	selfKey, okSelf := overlayRenderCacheKeyForPlan(selfChild, "stable-epoch")
+	if !okSelf {
+		t.Fatal("self-changed cache key unavailable")
+	}
+	if selfKey.Digest() == firstKey.Digest() {
+		t.Fatal("changing the item's own text must change its cache key")
+	}
+}
+
 // TestOverlayRenderCacheIdentityIgnoresRunIdentity pins the reuse contract at
 // the cache boundary: plan ids are per-run (run_f…), so a context digest that
 // mixed them in would name the same pixels differently on every retry and the

@@ -633,7 +633,6 @@ pkg:
     - pkg/retry
     - pkg/similarity
     - pkg/sliceutil
-    - pkg/sqlutil
     - pkg/testutil
     - pkg/textutil
     - pkg/timeutil

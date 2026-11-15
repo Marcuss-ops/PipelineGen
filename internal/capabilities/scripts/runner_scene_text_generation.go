@@ -130,7 +130,21 @@ func (r *Runner) adoptSemanticPlannerView(out *phraseImpactEnrichment, bundles m
 		return
 	}
 	out.productionPlan = plan
-	out.searchFeedback = feedback
+	callerSearchesAdded := ApplyCallerImageSearches(plan, req.MediaPlan.Searches, req.MediaPlan.Assignments)
+	if len(req.MediaPlan.Searches) > 0 && callerSearchesAdded == 0 && r.log != nil {
+		r.log.Warn("caller image searches did not match a planned media scene",
+			zap.Int("searches", len(req.MediaPlan.Searches)))
+	} else if callerSearchesAdded > 0 && r.log != nil {
+		r.log.Info("caller image searches added to semantic production plan",
+			zap.Int("searches", len(req.MediaPlan.Searches)),
+			zap.Int("added", callerSearchesAdded),
+			zap.Int("planned_queries", plan.Metrics.PlannedQueries))
+	}
+	if len(req.MediaPlan.Searches) > 0 {
+		out.searchFeedback = plan.SearchFeedback()
+	} else {
+		out.searchFeedback = feedback
+	}
 }
 
 func (r *Runner) computePhraseImpactEnrichment(ctx context.Context, transcript string, scenes []Scene, req GenerateRequest) (*phraseImpactEnrichment, error) {

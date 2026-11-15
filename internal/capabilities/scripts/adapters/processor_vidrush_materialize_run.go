@@ -46,20 +46,19 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 		if candidate.Provider != scriptpkg.VidRushProviderInternetImages && candidate.Provider != scriptpkg.VidRushProviderImageGeneration {
 			return
 		}
+		group := vidRushReadyImageGroupFor(candidate, r.perSceneImageScope, r.processor.catalog != nil)
+		if group == "" {
+			readyByProvider[strings.ToLower(strings.TrimSpace(candidate.Provider))]++
+			return
+		}
+		if _, duplicate := readyImageGroups[group]; duplicate {
+			// Duplicate bytes/images count once for this scene. The provider
+			// counter and the target must not be advanced by a second copy.
+			r.warnings = append(r.warnings, fmt.Sprintf("vidrush_materialization: duplicate ready image content for %s ignored: %s", r.segment.SegmentID, group))
+			return
+		}
+		readyImageGroups[group] = struct{}{}
 		readyByProvider[strings.ToLower(strings.TrimSpace(candidate.Provider))]++
-		group := vidRushImageGroup(candidate)
-		if r.processor.catalog != nil && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) &&
-			(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")) {
-			group = vidRushCandidateIdentity(candidate)
-		} else if r.perSceneImageScope {
-			group = strings.ToLower(strings.TrimSpace(candidate.ContentSHA256))
-			if group == "" {
-				group = strings.ToLower(strings.TrimSpace(candidate.AssetID))
-			}
-		}
-		if group != "" {
-			readyImageGroups[group] = struct{}{}
-		}
 	}
 	for _, candidate := range candidates {
 		// Materialized caches are shared across runs, so a cached artifact is
@@ -100,6 +99,14 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 			candidate.PersistenceStatus = ""
 			candidate.IndexStatus = ""
 		}
+		semanticStatus := strings.TrimSpace(candidate.SemanticStatus)
+		if catalogImage && semanticStatus != "" && !strings.EqualFold(semanticStatus, entitycatalog.CandidateSemanticAccepted) {
+			// Discovery already downloaded and visually scored this entity
+			// candidate. Re-acquiring an unknown/rejected image here repeats the
+			// expensive network transfer but cannot make it bindable this run.
+			materialized = append(materialized, candidate)
+			continue
+		}
 		if isImage && targetImages > 0 && len(readyImageGroups) >= targetImages && (!catalogImage || wasReady) && !belowSourceMinimum(candidate.Provider) {
 			// Keep the remaining remote hits for diagnostics/candidate-set
 			// hashing, but do not download or persist surplus images. This
@@ -137,7 +144,7 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 		}
 		if !refreshMaterialized {
 			if key := vidRushCandidateIdentity(candidate); key != "" {
-				if cached, ok := vidrushMaterializedCache.Get(key); ok {
+				if cached, ok := cacheLoad(vidrushMaterializedCache, key); ok {
 					if persisted, ok := cached.(scriptpkg.SegmentAssetCandidate); ok &&
 						(strings.TrimSpace(persisted.SegmentID) == "" || strings.TrimSpace(persisted.SegmentID) == strings.TrimSpace(r.segment.SegmentID)) &&
 						readyVidRushCandidate(persisted) {
@@ -159,7 +166,7 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 						incEntityImageCatalogLifecycle(r.processor.metrics, scriptmetrics.EntityImageStageReuse, scriptmetrics.EntityImageOutcomeSuccess)
 					}
 					materialized = append(materialized, persisted)
-					vidrushMaterializedCache.Put(key, persisted)
+					cacheStore(vidrushMaterializedCache, key, persisted)
 					markReadyImage(persisted)
 					continue
 				}
@@ -177,7 +184,8 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 				acquireBudget = segmentTarget + vidRushImageAcquireSlack
 			}
 		}
-		if attempts[providerName] >= acquireBudget {
+		budgetKey := vidRushAcquisitionBudgetKey(providerName, candidate.Entity, r.segment.SegmentID)
+		if attempts[budgetKey] >= acquireBudget {
 			// Preserve the discovered candidate for diagnostics and a future
 			// retry, but do not turn every remote search hit into a download.
 			// Recorded lifecycles were already stripped above on refresh,
@@ -185,7 +193,7 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 			materialized = append(materialized, candidate)
 			continue
 		}
-		attempts[providerName]++
+		attempts[budgetKey]++
 
 		provider, err := r.processor.providers.Provider(providerName)
 		if err != nil {
@@ -259,6 +267,20 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 		}
 
 		verified := lifecycle.verified
+		// Person/entity catalog images are reusable only after a semantic
+		// identity verdict. Publishing a technically valid but unknown image
+		// costs a slow Drive write and can never satisfy entity binding. Keep
+		// it in diagnostics for a later refresh, but do not finalize it.
+		semanticStatus = strings.TrimSpace(verified.Candidate.SemanticStatus)
+		if semanticStatus == "" {
+			semanticStatus = strings.TrimSpace(candidate.SemanticStatus)
+		}
+		if catalogImage && semanticStatus != "" && !strings.EqualFold(semanticStatus, entitycatalog.CandidateSemanticAccepted) {
+			verified.Candidate.PersistenceStatus = ""
+			r.warnings = append(r.warnings, fmt.Sprintf("vidrush_materialization: deferred unaccepted entity image for %s (%s)", r.segment.SegmentID, verified.Candidate.Entity))
+			materialized = append(materialized, verified.Candidate)
+			continue
+		}
 		// One dispatch for every artifact family: the provider clips the
 		// run used land in <Title>/<Language>/clips under
 		// r.plan.DriveFolderID, while entity images are pulled back OUT of the
@@ -303,13 +325,13 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 			markReadyImage(persisted)
 		}
 		if key := vidRushCandidateIdentity(persisted); key != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
-			vidrushMaterializedCache.Put(key, persisted)
+			cacheStore(vidrushMaterializedCache, key, persisted)
 			if cacheErr := storeVidRushPersistentJSON(ctx, r.processor.cache, "materialized", key, persisted); cacheErr != nil {
 				r.warnings = append(r.warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", key, cacheErr))
 			}
 		}
 		if cacheKey != "" && strings.TrimSpace(persisted.PersistenceStatus) == scriptpkg.VidRushStatusPersisted && strings.TrimSpace(persisted.DriveLink) != "" {
-			vidrushMaterializedCache.Put(cacheKey, persisted)
+			cacheStore(vidrushMaterializedCache, cacheKey, persisted)
 			if cacheErr := storeVidRushPersistentJSON(ctx, r.processor.cache, "materialized", cacheKey, persisted); cacheErr != nil {
 				r.warnings = append(r.warnings, fmt.Sprintf("vidrush_materialization: durable cache write %s: %v", cacheKey, cacheErr))
 			}
@@ -332,4 +354,32 @@ func (r *vidRushMaterializationRun) materialize(ctx context.Context, candidates 
 	}
 	return materialized, nil
 
+}
+
+// vidRushAcquisitionBudgetKey charges an acquisition to the entity that
+// requested it, or to the scene when the candidate has no entity. A provider
+// counter shared by every entity let one person's downloads consume the
+// budget of every other person in the same segment.
+func vidRushAcquisitionBudgetKey(provider, entity, segment string) string {
+	scene := strings.TrimSpace(segment)
+	entity = strings.ToLower(strings.Join(strings.Fields(entity), " "))
+	return strings.ToLower(strings.TrimSpace(provider)) + "\x00scene:" + scene + "\x00entity:" + entity
+}
+
+// vidRushReadyImageGroupFor is the one grouping rule for ready images. In
+// per-scene scope the content hash is the identity, so duplicate bytes count
+// once; catalog entity images are grouped by canonical identity instead.
+func vidRushReadyImageGroupFor(candidate scriptpkg.SegmentAssetCandidate, perScene, catalog bool) string {
+	if catalog && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) &&
+		(strings.TrimSpace(candidate.Entity) != "" || strings.HasPrefix(strings.TrimSpace(candidate.AssetID), "entity-image-")) {
+		return vidRushCandidateIdentity(candidate)
+	}
+	if perScene {
+		group := strings.ToLower(strings.TrimSpace(candidate.ContentSHA256))
+		if group == "" {
+			group = strings.ToLower(strings.TrimSpace(candidate.AssetID))
+		}
+		return group
+	}
+	return vidRushImageGroup(candidate)
 }

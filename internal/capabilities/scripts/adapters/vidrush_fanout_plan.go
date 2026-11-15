@@ -1,7 +1,6 @@
 package adapters
 
 import (
-	"strconv"
 	"strings"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
@@ -30,7 +29,6 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	if segment.ExecutionMode.IsFixedMedia() {
 		return vidRushFanoutPlan{segmentID: segment.SegmentID, textHash: segment.TextHash, text: segment.Text, title: plan.Title, perQueryLimit: 0}
 	}
-	profile := segment.CanonicalSemanticProfile()
 	manualImageQueries := ResolveManualSegmentQueries(plan, scriptpkg.CanonicalSegment{ID: segment.SegmentID}, scriptpkg.VidRushProviderInternetImages, mediadomain.SlotSecondaryImage)
 	perSceneImages := plan.MediaPlan.Extraction.EntityImages.PerScene()
 	imageSearchMode := plan.MediaPlan.Extraction.ImageSearchMode
@@ -74,7 +72,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	}
 	imageQueries := []string(nil)
 	if automaticImageSearch {
-		imageQueries = plausibleSceneImageQueries(segment.Insights.ImageQueries)
+		imageQueries = append([]string(nil), segment.Insights.ImageQueries...)
 	}
 	// Explicit searches authored in the media plan define this segment's image
 	// scope. Do not mix them with inferred entities or broad semantic queries:
@@ -84,97 +82,17 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	// searches. A courthouse/town query cannot retrieve a verified portrait,
 	// and replacing the identity queries here silently removed every entity
 	// image whenever a caller also supplied contextual image searches.
-	if perSceneImages && automaticImageSearch && !manualImageExclusive {
+	if entityImageLaneRequested(perSceneImages, automaticImageSearch, manualImageExclusive) {
 		// Entity-image searches use the canonical person identity. Adding the
 		// scene's opening prose created queries like "Chiara Poggi Presenta ..."
 		// and let collages/news cards bind as identity portraits. Variant
-		// selection happens within the canonical entity pool downstream. Caller
-		// supplied contextual searches are appended below and remain distinct.
-		if queries := sceneScopedImageQueriesForTypes(segment, plan.MediaPlan.Extraction.EntityImages.EntityTypes); len(queries) > 0 {
-			imageQueries = queries
-		}
-	}
-	// Entity-image mode is an explicit narrow surface: preserve only the
-	// entity queries emitted by VisualNER. The broad semantic profile ladder
-	// is useful for generic scene imagery, but must not leak into an
-	// entity-only run because it bypasses entity cache identity and creates
-	// dozens of unrelated provider downloads.
-	if perSceneImages && automaticImageSearch && !manualImageExclusive {
-		// Entity-image mode is an explicit narrow surface. The planner's
-		// MaxImagesPerScene is a CEILING, not a request for generic scene
-		// imagery: only the explicit images_per_scene cadence may widen the
-		// entity lane with the semantic ladder. Treating the ceiling as a
-		// quota made an entity-only run search, acquire and publish dozens
-		// of unrelated photos per scene (r44: 420 acquires / 326 Drive
-		// publishes for the 20 images the final plan actually used).
-		budget := plan.ImagesPerScene
-		if budget > vidRushDefaultImagesPerScene {
-			imageQueries = appendUniqueImageQueries(imageQueries, plausibleSceneImageQueries(scriptpkg.QueriesForImages(profile, budget)))
-		}
-	} else if automaticImageSearch && !manualImageExclusive && !perSceneImages && !plan.MediaPlan.Extraction.EntityImageSurfaceEnabled() {
-		for _, query := range plausibleSceneImageQueries(scriptpkg.QueriesForImages(profile, 7)) {
-			duplicate := false
-			for _, existing := range imageQueries {
-				if strings.EqualFold(strings.TrimSpace(existing), strings.TrimSpace(query)) {
-					duplicate = true
-					break
-				}
-			}
-			if !duplicate {
-				imageQueries = append(imageQueries, query)
-			}
-		}
-	} else if automaticImageSearch && !manualImageExclusive && !perSceneImages {
-		// Identity-image mode only materializes explicit person/brand/org
-		// queries; numeric/value overlays and generic concepts cannot consume
-		// the verified image budget.
-		identityQueries := make(map[string]struct{})
-		for _, entity := range segment.Insights.Entities {
-			kind := normalizeAnnotationType(entity.Type)
-			if !isPersonOrgOrPlace(kind) && kind != "LOGO" {
-				continue
-			}
-			name := normalizeEntityMatch(trimEnglishPossessive(entity.Value))
-			if name != "" {
-				identityQueries[name] = struct{}{}
-			}
-		}
-		for query, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
-			canonical := strings.ToLower(strings.TrimSpace(canonicalID))
-			if strings.HasPrefix(canonical, "person:") || strings.HasPrefix(canonical, "brand:") || strings.HasPrefix(canonical, "org:") {
-				if name := normalizeEntityMatch(trimEnglishPossessive(query)); name != "" {
-					identityQueries[name] = struct{}{}
-				}
-			}
-		}
-		filtered := make([]string, 0, len(imageQueries))
-		seenQueries := make(map[string]struct{})
-		for _, query := range imageQueries {
-			key := normalizeEntityMatch(trimEnglishPossessive(query))
-			if _, ok := identityQueries[key]; ok {
-				filtered = append(filtered, query)
-				seenQueries[strings.ToLower(strings.TrimSpace(query))] = struct{}{}
-			}
-		}
-		for _, entity := range segment.Insights.Entities {
-			kind := normalizeAnnotationType(entity.Type)
-			if !isPersonOrgOrPlace(kind) && kind != "LOGO" {
-				continue
-			}
-			query := strings.TrimSpace(entity.Value)
-			key := strings.ToLower(query)
-			if query == "" {
-				continue
-			}
-			if _, ok := seenQueries[key]; ok {
-				continue
-			}
-			if _, ok := identityQueries[normalizeEntityMatch(trimEnglishPossessive(query))]; ok {
-				filtered = append(filtered, query)
-				seenQueries[key] = struct{}{}
-			}
-		}
-		imageQueries = filtered
+		// selection happens within the canonical entity pool downstream. This
+		// fan-out can run before VisualNER has populated the segment; in that
+		// case an empty identity list must stay empty and let the later image
+		// stage search after extraction. Retaining the earlier contextual
+		// fallback here turns the whole narration into an image query and admits
+		// unrelated icons/photos into an entity-only lane.
+		imageQueries = sceneScopedImageQueriesForTypes(segment, plan.MediaPlan.Extraction.EntityImages.EntityTypes)
 	}
 	switch {
 	case imageSearchMode == mediadomain.ImageSearchModeDisabled:
@@ -195,38 +113,34 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 		// searches are independent lanes. Only explicit_only grants the caller
 		// authority to suppress entity-derived queries.
 		imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
-		// A complete source sentence is a final provider fallback for scenes
-		// whose extracted entity terms are too generic (for example "wide
-		// pan"). It is still source-grounded and bounded by the same provider
-		// result limit. It is never appended to an explicit-only search.
-		if source := strings.TrimSpace(segment.Text); source != "" && len(imageQueries) >= 3 {
-			duplicate := false
-			for _, existing := range imageQueries {
-				if strings.EqualFold(strings.TrimSpace(existing), source) {
-					duplicate = true
-					break
-				}
-			}
-			if !duplicate {
-				imageQueries = append(imageQueries, source)
-			}
-		}
 		if maxQueries := plan.MediaPlan.Extraction.MaxImageQueriesPerSegment; maxQueries > 0 && len(imageQueries) > maxQueries {
 			imageQueries = imageQueries[:maxQueries]
 		}
 	}
+	// Final identity-scope guard. The incremental fan-out can be planned while
+	// semantic extraction is still in flight, and the automatic fallback above
+	// can append the whole narration once it has several identity queries. An
+	// entity-image surface must never inherit that contextual/narrative query:
+	// search only identities already grounded on this segment, then let the
+	// later image stage handle identities that become available after extraction.
+	if automaticImageSearch && !manualImageExclusive &&
+		(perSceneImages || plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
+		imageQueries = sceneScopedImageQueriesForTypes(segment, plan.MediaPlan.Extraction.EntityImages.EntityTypes)
+		imageQueries = appendUniqueImageQueries(imageQueries, manualImageQueries)
+	}
 	limit := 10
 	if plan.MediaPlan.Planner.CandidateLimit > 0 {
 		limit = plan.MediaPlan.Planner.CandidateLimit
+	}
+	if automaticImageSearch && !manualImageExclusive &&
+		(perSceneImages || plan.MediaPlan.Extraction.EntityImageSurfaceEnabled()) {
+		limit = internetImagePerQueryLimit(limit, len(imageQueries))
 	}
 	if limit > 50 {
 		limit = 50
 	}
 	firstEntity := ""
 	entities := segment.Insights.Entities
-	if len(entities) == 0 {
-		entities = profile.Entities
-	}
 	if len(entities) > 0 {
 		firstEntity = strings.TrimSpace(entities[0].Value)
 	}
@@ -243,29 +157,16 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 // picture: a one-character token (an article such as the Italian "I") and
 // overlay metadata echoed back by the LLM ("Overlay 25 100 1 2"). Both were
 // observed retrieving unrelated stock photos that consumed the scene budget.
+func entityImageLaneRequested(perSceneImages, automaticImageSearch, manualImageExclusive bool) bool {
+	return perSceneImages && automaticImageSearch && !manualImageExclusive
+}
+
+func contextualImageLaneRequested(perSceneImages, automaticImageSearch, manualImageExclusive bool) bool {
+	return automaticImageSearch && !manualImageExclusive && !perSceneImages
+}
+
 func plausibleSceneImageQueries(queries []string) []string {
-	out := make([]string, 0, len(queries))
-	for _, query := range queries {
-		query = strings.Join(strings.Fields(strings.TrimSpace(query)), " ")
-		if query == "" || len([]rune(query)) < 3 {
-			continue
-		}
-		fields := strings.Fields(query)
-		if len(fields) > 1 && strings.EqualFold(fields[0], "overlay") {
-			numeric := true
-			for _, field := range fields[1:] {
-				if _, err := strconv.Atoi(field); err != nil {
-					numeric = false
-					break
-				}
-			}
-			if numeric {
-				continue
-			}
-		}
-		out = append(out, query)
-	}
-	return out
+	return append([]string(nil), queries...)
 }
 
 func appendUniqueImageQueries(existing, extra []string) []string {
@@ -305,47 +206,12 @@ func sceneScopedImageQueriesForTypes(segment scriptpkg.VidRushSegmentResult, ent
 	queries := make([]string, 0, len(segment.Insights.Entities))
 	for _, entity := range segment.Insights.Entities {
 		kind := normalizeAnnotationType(entity.Type)
-		value := strings.TrimSpace(entity.Value)
-		for alias, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
-			if normalizeEntityMatch(alias) != normalizeEntityMatch(value) {
-				continue
-			}
-			if split := strings.SplitN(strings.ToUpper(strings.TrimSpace(canonicalID)), ":", 2); len(split) == 2 {
-				if resolvedKind := normalizeAnnotationType(split[0]); resolvedKind != "" {
-					kind = resolvedKind
-				}
-			}
-			if canonicalName := canonicalImageEntityName(segment, alias); canonicalName != "" {
-				value = canonicalName
-			}
-			break
-		}
 		if _, ok := allowed[kind]; !ok {
 			continue
 		}
-		queries = appendUniqueImageQueries(queries, []string{value})
-		// A bare agency acronym is a poor image query: providers return zero
-		// results for "ANSA" while a named-agency query retrieves its verified
-		// newsroom/logo imagery. Keep the identity prefix so the binder can
-		// attach the result to the original ORG annotation.
-		if kind == "ORG" && isUppercaseAcronymQuery(value) {
-			queries = appendUniqueImageQueries(queries, []string{value + " news agency", value + " Roma"})
-		}
+		queries = appendUniqueImageQueries(queries, entity.SearchIntents)
 	}
 	return queries
-}
-
-func isUppercaseAcronymQuery(value string) bool {
-	value = strings.TrimSpace(value)
-	if len(value) < 2 || len(value) > 6 {
-		return false
-	}
-	for _, r := range value {
-		if r < 'A' || r > 'Z' {
-			return false
-		}
-	}
-	return true
 }
 
 // sceneScopedImageQueries retains every imageable person in the scene. The

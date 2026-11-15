@@ -41,11 +41,11 @@ package wiring
 import (
 	"context"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"time"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/finalize"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
@@ -243,7 +243,7 @@ func initCompositionMinimalWithContext(_ context.Context, cfg *config.Config, lo
 		// CompleteWithArtifacts time) would orphan every such job in
 		// RUNNING until lease expiry (~5 min), creating a silent outage
 		// that is much harder to diagnose than a boot-time crash loop.
-		spineTypes := appjobs.SpineJobTypes()
+		spineTypes := jobscheduling.SpineJobTypes()
 		if len(spineTypes) > 0 {
 			partialCleanup()
 			return nil, nil, nil, fmt.Errorf(

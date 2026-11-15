@@ -175,6 +175,57 @@ func testPersonScorerJPEG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+func TestOllamaEntityImageScorerVerifiesOrganizationPixels(t *testing.T) {
+	client := &personImageScorerFakeClient{responses: []string{
+		`{"identity_match":true,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.93}`,
+	}}
+	scorer := NewOllamaPersonImageScorer(client)
+	scorer.download = func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		return testPersonScorerJPEG(t), "image/jpeg", nil
+	}
+	candidate := scriptpkg.SegmentAssetCandidate{
+		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "NASA",
+		Query: "NASA", EntityContext: "NASA and ESA collaborate on orbital missions.",
+		SourceURL: "https://images.example/nasa-logo.png", SourcePageURL: "https://nasa.gov/",
+	}
+	got, err := scorer.ScoreImageCandidates(context.Background(), "entity image class=organization", []scriptpkg.SegmentAssetCandidate{candidate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].SemanticStatus != "accepted" || got[0].SemanticScore != 0.93 {
+		t.Fatalf("organization image verdict = (%q, %.2f), want accepted at .93", got[0].SemanticStatus, got[0].SemanticScore)
+	}
+	if !strings.Contains(client.messages[0][1].Content, "official visual representation") || !strings.Contains(client.messages[0][1].Content, "generic activity") || !strings.Contains(client.messages[0][1].Content, "NASA") || !strings.Contains(client.messages[0][1].Content, "orbital missions") {
+		t.Fatalf("entity-specific prompt missing: %q", client.messages[0][1].Content)
+	}
+}
+
+func TestOllamaBrandVerifierUsesSceneEvidenceWithoutTurningItIntoQuery(t *testing.T) {
+	client := &personImageScorerFakeClient{responses: []string{
+		`{"identity_match":false,"single_person_headshot":false,"split_panel_or_collage":false,"confidence":0.2}`,
+	}}
+	scorer := NewOllamaPersonImageScorer(client)
+	scorer.download = func(context.Context, scriptpkg.SegmentAssetCandidate) ([]byte, string, error) {
+		return testPersonScorerJPEG(t), "image/jpeg", nil
+	}
+	candidate := scriptpkg.SegmentAssetCandidate{
+		Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Nike", Query: "Nike",
+		EntityContext: "Nike partnered with Michael Jordan on basketball shoes.",
+		SourceURL:     "https://images.example/nike-of-samothrace.jpg",
+	}
+	got, err := scorer.ScoreImageCandidates(context.Background(), "entity image class=brand", []scriptpkg.SegmentAssetCandidate{candidate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].SemanticStatus != "rejected" {
+		t.Fatalf("unmatched brand candidate status = %q, want rejected", got[0].SemanticStatus)
+	}
+	prompt := client.messages[0][1].Content
+	if !strings.Contains(prompt, "Target type: brand") || !strings.Contains(prompt, `Target identity: "Nike"`) || !strings.Contains(prompt, "basketball shoes") || !strings.Contains(prompt, "mythological") {
+		t.Fatalf("brand verification omitted identity disambiguation context: %q", prompt)
+	}
+}
+
 var errUnexpectedImageScorerFormat = &imageScorerFormatError{}
 
 type imageScorerFormatError struct{}

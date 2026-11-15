@@ -9,6 +9,7 @@ import (
 
 	imagestyles "github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/styles"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
@@ -91,8 +92,8 @@ func (h *JobHandler) RegisterHandler(jobsSvc *jobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("images.JobHandler.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", jobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(jobs.TypeImageGenerateGoogle, jobs.HandlerFunc(h.HandleJob)); err != nil {
-		return fmt.Errorf("images.JobHandler.RegisterHandler: bind %q to dispatcher: %w", jobs.TypeImageGenerateGoogle, err)
+	if err := jobsSvc.RegisterHandler(jobscheduling.TypeImageGenerateGoogle, jobs.HandlerFunc(h.HandleJob)); err != nil {
+		return fmt.Errorf("images.JobHandler.RegisterHandler: bind %q to dispatcher: %w", jobscheduling.TypeImageGenerateGoogle, err)
 	}
 	h.log.Info("registered image.generate.google job handler")
 	return nil

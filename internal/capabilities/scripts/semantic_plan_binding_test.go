@@ -63,6 +63,9 @@ func TestApplySemanticResolvedImagesRequiresContentAddress(t *testing.T) {
 	if result.Scenes[0].Annotations.PrimaryEntities[0].Image != nil {
 		t.Fatal("URL-only hit was promoted to an entity image")
 	}
+	if len(result.SemanticBindingIssues) != 1 || result.SemanticBindingIssues[0].Reason != "UNBOUND_REQUIRES_ACQUISITION" {
+		t.Fatalf("binding issues = %+v, want UNBOUND_REQUIRES_ACQUISITION", result.SemanticBindingIssues)
+	}
 }
 
 func TestApplySemanticResolvedImagesPreservesVerifiedBinding(t *testing.T) {

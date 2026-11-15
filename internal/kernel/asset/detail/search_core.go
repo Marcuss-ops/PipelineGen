@@ -42,8 +42,8 @@ import (
 // accepts on q.Filters. Category was already present (the only
 // non-Q/Source metadata filter the repo honoured pre-PR-2); Language
 // joins via exact-match equality (BCP-47 string compare) and Tags
-// join via pkg/sqlutil.BuildFallbackLikeConditions over the JSON
-// tags column (FTS5 is banned per project policy). godlike/06 SSOT:
+// join via LIKE conditions over the JSON tags column (FTS5 is banned
+// per project policy). godlike/06 SSOT:
 // this DTO is the canonical owner-of-fact for the local-backend
 // filter set; do not introduce a parallel Filter struct.
 type AdvancedSearchRequest struct {

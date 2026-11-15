@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"sync/atomic"
 	"testing"
@@ -1241,6 +1242,99 @@ func (p *refreshFailingAcquireProvider) Verify(context.Context, scriptports.Loca
 // the stale hash can never bind into selection or overlay plans as a ready
 // asset. The run degrades to fewer images (visible warning) instead of
 // failing the whole job at L3 with a dead content address.
+// TestVidRushForceRefreshDiagnosticCandidateNeverSelected pins the remaining
+// force-refresh edge: once the scene target is met, a catalog cache-hit that
+// still carried a recorded lifecycle is preserved for diagnostics with those
+// fields stripped. It must remain visible in Candidates but never become a
+// selected SecondaryImage or an entity binding.
+func TestVidRushForceRefreshDiagnosticCandidateNeverSelected(t *testing.T) {
+	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
+	repo := newIntegrationEntityImageCatalog()
+	seedCatalogPerson(t, repo, "Michael Jordan", "https://images.example/michael-jordan.jpg")
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.ListCandidates(context.Background(), identity.CanonicalEntityID, 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("catalog rows = %d, err=%v", len(rows), err)
+	}
+	if err := repo.UpsertMaterialization(context.Background(), entitycatalog.Materialization{
+		CandidateID:    rows[0].ID,
+		AssetID:        "drive-asset-michael-jordan",
+		ContentSHA256:  "recorded-cache-hash",
+		DriveLink:      "https://drive.google.com/file/d/drive-asset-michael-jordan/view",
+		Status:         entitycatalog.MaterializationStatusMaterialized,
+		MaterializedAt: time.Now().UTC(), LastVerifiedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &refreshReacquireImageProvider{}
+	registry := NewVidRushAssetProviderRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	registry.Freeze()
+	processor := NewVidRushMaterializationProcessorWithCatalog(registry, &refreshReacquireFinalizer{}, nil, repo)
+	plan := &scriptpkg.ResolvedGenerationPlan{ImagesPerScene: 1, ForceRefresh: true}
+	plan.MediaPlan.ProviderPolicy.InternetImages = "enabled"
+	plan.MediaPlan.ForceRefreshAssets = true
+	run := &vidRushMaterializationRun{
+		processor: processor,
+		plan:      plan,
+		segment:   scriptpkg.VidRushSegmentResult{SegmentID: "refresh-diagnostic"},
+	}
+	candidates := []scriptpkg.SegmentAssetCandidate{
+		{
+			AssetID: "scene-first", Provider: scriptpkg.VidRushProviderInternetImages,
+			SourceURL: "https://images.example/first.jpg", RightsStatus: "unknown",
+		},
+		{
+			AssetID: fmt.Sprintf("entity-image-%d", rows[0].ID), Provider: scriptpkg.VidRushProviderInternetImages,
+			Entity: "Michael Jordan", Query: "Michael Jordan", SourceURL: "https://images.example/michael-jordan.jpg",
+			RightsStatus: "unknown_allowed", DriveLink: "https://drive.google.com/file/d/recorded/view",
+			ContentSHA256: "recorded-cache-hash", AcquisitionStatus: scriptpkg.VidRushStatusAcquired,
+			VerificationStatus: scriptpkg.VidRushStatusVerified, PersistenceStatus: scriptpkg.VidRushStatusPersisted,
+			IndexStatus: scriptpkg.VidRushStatusIndexed,
+		},
+	}
+
+	materialized, err := run.materialize(context.Background(), candidates, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := provider.acquireCalls.Load(); got != 1 {
+		t.Fatalf("acquire calls = %d, want 1: the surplus catalog hit must not be re-downloaded", got)
+	}
+	foundDiagnostic := false
+	for _, candidate := range materialized {
+		if candidate.Entity != "Michael Jordan" {
+			continue
+		}
+		foundDiagnostic = true
+		if candidate.DriveLink == "" || candidate.ContentSHA256 == "" {
+			t.Fatalf("diagnostic candidate lost its durable locator: %+v", candidate)
+		}
+		if candidate.AcquisitionStatus != "" || candidate.VerificationStatus != "" || candidate.PersistenceStatus != "" {
+			t.Fatalf("diagnostic candidate kept a stale lifecycle: %+v", candidate)
+		}
+	}
+	if !foundDiagnostic {
+		t.Fatal("surplus catalog hit was not retained for diagnostics")
+	}
+	selected := selectExactVidRushImages(materialized, 1, plan, run.segment)
+	if len(selected) != 1 {
+		t.Fatalf("selected images = %d, want 1", len(selected))
+	}
+	if selected[0].Entity == "Michael Jordan" {
+		t.Fatalf("stripped diagnostic candidate was selected: %+v", selected[0])
+	}
+	if !readyVidRushCandidate(selected[0]) {
+		t.Fatalf("selected image is not ready: %+v", selected[0])
+	}
+}
+
 func TestVidRushMaterializationForceRefreshStripsRecordedLifecycle(t *testing.T) {
 	vidrushMaterializedCache = cacheutil.NewLRU(vidrushMaterializedL1Capacity)
 	repo := newIntegrationEntityImageCatalog()

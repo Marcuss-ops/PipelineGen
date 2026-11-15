@@ -163,6 +163,10 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		segments = append(segments, item.result)
 		warnings = append(warnings, item.warnings...)
 	}
+	// Per-scene materialization can pick the same durable asset in two scenes.
+	// Collapse the reuse after all scenes are known and refill from each later
+	// scene's materialized pool, so uniqueness does not trade away image slots.
+	dedupeMaterializedImagesAcrossSegments(plan, segments)
 
 	// Internet-image discovery runs before materialization, when candidates
 	// still have only remote provenance. Re-project entity bindings after the

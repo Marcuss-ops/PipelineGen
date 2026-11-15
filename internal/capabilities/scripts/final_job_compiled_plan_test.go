@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// TestFinalJobCompiledPlanRejectsStockSceneThatDoesNotMatchTheWholeFile pins
-// the r53/r56 closure: a 5.000s scene may never be built against 4.979s stock
-// bytes. The old plan padded the source extent to 5.000s and the Master
-// rejected the out-of-bounds/partial window; the Producer now fails first.
-func TestFinalJobCompiledPlanRejectsStockSceneThatDoesNotMatchTheWholeFile(t *testing.T) {
+// TestFinalJobCompiledPlanRejectsStockWindowPastSavedFile pins the remaining
+// Producer check: the stockpipeline binding must fit the saved file. The
+// Producer does not enforce whole-file windows; it rejects only a window that
+// runs past the bytes the binding names.
+func TestFinalJobCompiledPlanRejectsStockWindowPastSavedFile(t *testing.T) {
 	const videoSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	const audioSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	scenes := []map[string]any{{
@@ -24,8 +24,8 @@ func TestFinalJobCompiledPlanRejectsStockSceneThatDoesNotMatchTheWholeFile(t *te
 	audio := FinalAudioReference{DurationUS: 5_000_000, DurationMS: 5000, CopyEligible: true, FinalMix: true, PlanSHA256: strings.Repeat("d", 64)}
 	audioRef := map[string]any{"asset_id": "final-audio", "sha256": audioSHA, "size_bytes": int64(200), "duration_ms": int64(5000)}
 	_, _, err := finalJobCompiledPlanPayload(scenes, nil, nil, audio, audioRef, 5_000_000)
-	if err == nil || !strings.Contains(err.Error(), "whole stock file") {
-		t.Fatalf("finalJobCompiledPlanPayload error = %v, want a whole-stock-file mismatch", err)
+	if err == nil || !strings.Contains(err.Error(), "exceeds saved file duration") {
+		t.Fatalf("finalJobCompiledPlanPayload error = %v, want a binding window past the saved stock file", err)
 	}
 }
 

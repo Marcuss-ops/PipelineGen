@@ -70,10 +70,10 @@ RUN mkdir -p /out \
 # The Rust binaries are built and released by BrainRust on Debian Bookworm
 # with ICU 72. This stage downloads the pinned release bundle and verifies its
 # checksums and ICU ABI; no cargo, rustup or submodule build runs in the image.
-# Override RUST_VERSION / RUST_FETCH_BASE_URL to consume a different release
+# Override BRAINRUST_VERSION / RUST_FETCH_BASE_URL to consume a different release
 # or a mirror. The release tag must exist on BrainRust before building.
 FROM debian:bookworm-slim AS rust-artifacts
-ARG RUST_VERSION=v0.1.0
+ARG BRAINRUST_VERSION=v0.2.0
 ARG RUST_FETCH_BASE_URL=https://github.com/Marcuss-ops/BrainRust/releases/download
 ARG RUST_ICU_MAJOR_VERSION_NUMBER=72
 ARG TARGETARCH=amd64
@@ -81,6 +81,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
+      python3 \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /out
 RUN set -eu; \
@@ -88,8 +89,8 @@ RUN set -eu; \
       echo "BrainRust releases are linux/amd64 only; TARGETARCH=$TARGETARCH is not supported" >&2; \
       exit 1; \
     fi; \
-    base="${RUST_FETCH_BASE_URL%/}/${RUST_VERSION}"; \
-    for asset in pipelinegen-muscles visualner mediasampler semantic-engine sha256sums.txt ICU_MAJOR TOOLCHAIN; do \
+    base="${RUST_FETCH_BASE_URL%/}/${BRAINRUST_VERSION}"; \
+    for asset in pipelinegen-muscles visualner mediasampler semantic-engine sha256sums.txt ICU_MAJOR TOOLCHAIN BRAINRUST_RELEASE.json; do \
       curl -fsSL --retry 3 --retry-delay 2 "$base/$asset" -o "$asset"; \
     done; \
     sha256sum --check --strict sha256sums.txt; \
@@ -98,6 +99,7 @@ RUN set -eu; \
       echo "release links ICU $major, runtime expects ICU $RUST_ICU_MAJOR_VERSION_NUMBER" >&2; \
       exit 1; \
     fi; \
+    python3 -c 'import hashlib,json,pathlib,sys; p,v,i=sys.argv[1:]; m=json.loads(pathlib.Path(p).read_text()); assert m["version"]==v and m["semantic_schema"]=="semantic_manifest.v2" and str(m["icu_major"])==i and len(m["git_sha"])==40; assert all(hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==m["binaries"][n] for n in ("pipelinegen-muscles","visualner","mediasampler","semantic-engine"))' BRAINRUST_RELEASE.json "$BRAINRUST_VERSION" "$major"; \
     chmod 0755 pipelinegen-muscles visualner mediasampler semantic-engine
 
 # ─── server-runtime ───────────────────────────────────────────────

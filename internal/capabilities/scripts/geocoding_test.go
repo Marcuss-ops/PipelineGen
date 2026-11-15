@@ -116,6 +116,55 @@ func TestGeocodePlaceAnnotationsUsesGroundedSceneContext(t *testing.T) {
 	}
 }
 
+// TestGeocodePlaceAnnotationsAdoptsCountryCodeFromResolvedCity pins the
+// end-to-end fix for "La Toscana": the city resolved first contributes its
+// provider country code, the region is normalized to "Toscana" and the lookup
+// carries Italy as grounded context.
+func TestGeocodePlaceAnnotationsAdoptsCountryCodeFromResolvedCity(t *testing.T) {
+	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
+		switch req.Query {
+		case "Milano":
+			return capabilitygeocoding.Result{
+				Latitude: 45.4641943, Longitude: 9.1896346, Scope: "city",
+				DisplayName: "Milano, Italia", Country: "Italia", CountryCode: "it",
+			}, nil
+		case "Toscana":
+			if req.Context.CountryCode == "it" {
+				return capabilitygeocoding.Result{
+					Latitude: 43.4586541, Longitude: 11.1389204, Scope: "region",
+					DisplayName: "Toscana, Italia", Country: "Italia", CountryCode: "it",
+				}, nil
+			}
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		default:
+			return capabilitygeocoding.Result{}, capabilitygeocoding.ErrNoResult
+		}
+	}}
+	runner := NewRunner(newInMemRunRepository(), nil, nil, nil)
+	runner.SetGeocoder(geocoder)
+	annotations := map[int]*scriptpkg.SceneAnnotations{0: {
+		Version: 1, Language: "it", Status: "completed",
+		PrimaryEntities: []scriptpkg.AnnotatedEntity{
+			{CanonicalName: "Milano", Type: "GPE"},
+			{CanonicalName: "La Toscana", Type: "LOCATION"},
+		},
+	}}
+	if err := runner.geocodePlaceAnnotations(context.Background(), annotations, "it"); err != nil {
+		t.Fatal(err)
+	}
+	if len(geocoder.requests) != 2 {
+		t.Fatalf("geocoder calls = %d, want 2: %+v", len(geocoder.requests), geocoder.requests)
+	}
+	second := geocoder.requests[1]
+	if second.Query != "Toscana" || second.Context.CountryCode != "it" || second.Context.Country != "Italia" {
+		t.Fatalf("region lookup context = query %q context %+v, want Toscana under Italia/it", second.Query, second.Context)
+	}
+	region := annotations[0].PrimaryEntities[1].Geo
+	if region == nil || region.Scope != "region" || region.CountryCode != "it" || region.Latitude != 43.4586541 {
+		t.Fatalf("region was not grounded in Italy: %+v", region)
+	}
+}
+
 func TestGeocodePlaceAnnotationsRetriesCityAfterCountryContextAppears(t *testing.T) {
 	geocoder := &contextRecordingGeocoder{answer: func(req capabilitygeocoding.Request) (capabilitygeocoding.Result, error) {
 		switch req.Query {

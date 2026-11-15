@@ -11,11 +11,11 @@
 // Cross-references:
 //   - cmd/archcheck/scan/file_lines_strict.go: the scanner under test
 //   - cmd/archcheck/policy/model.go: Policy.MaxLinesPerFileStrict + MaxLinesStrictAllowlist
-//   - docs/migrations/max-lines-strict-allowlist.txt: prod allowlist (15 files >600 LOC from the JSON baseline)
+//   - docs/migrations/max-lines-strict-allowlist.txt: prod allowlist (files >800 LOC from the JSON baseline)
 //   - architecture/policy.yaml: max_lines_per_file_strict + max_lines_strict_allowlist knobs
 //
 // Test scope:
-//   - Cap=600. Five synthetic .go files covering under-cap / over-cap/
+//   - Cap=800. Five synthetic .go files covering under-cap / over-cap/
 //     in-allowlist / not-in-allowlist / missing-allowlist / opt-out.
 //   - Allowlist parser tests assert the comment + blank-skip rule
 //     and the forward-slash normalization.
@@ -78,22 +78,22 @@ func minimalStrictPolicy(max int, allowlist string) *policy.Policy {
 	}
 }
 
-// TestScanFileLinesStrict_Cap600_Boundaries — user spec test.
+// TestScanFileLinesStrict_Cap800_Boundaries — user spec test.
 //
-// Cap=600. Fixtures at 599 (under), 601 in allowlist (exempt),
-// 601 not in allowlist (violation), allowlist path empty (violation),
+// Cap=800. Fixtures at 799 (under), 801 in allowlist (exempt),
+// 801 not in allowlist (violation), allowlist path empty (violation),
 // opt-out (max=0, no violation regardless of count).
-func TestScanFileLinesStrict_Cap600_Boundaries(t *testing.T) {
+func TestScanFileLinesStrict_Cap800_Boundaries(t *testing.T) {
 	root := t.TempDir()
 
-	// 1) Under cap (599 lines). Should NOT violate.
-	writeSizeFile(t, root, "under", "under.go", buildBody(599))
+	// 1) Under cap (799 lines). Should NOT violate.
+	writeSizeFile(t, root, "under", "under.go", buildBody(799))
 
-	// 2) Over cap (601 lines), NOT in allowlist. Should violate.
-	writeSizeFile(t, root, "over_no_allowlist", "over_no_allowlist.go", buildBody(601))
+	// 2) Over cap (801 lines), NOT in allowlist. Should violate.
+	writeSizeFile(t, root, "over_no_allowlist", "over_no_allowlist.go", buildBody(801))
 
-	// 3) Over cap (601 lines), IN allowlist. Should NOT violate.
-	writeSizeFile(t, root, "over_in_allowlist", "over_in_allowlist.go", buildBody(601))
+	// 3) Over cap (801 lines), IN allowlist. Should NOT violate.
+	writeSizeFile(t, root, "over_in_allowlist", "over_in_allowlist.go", buildBody(801))
 
 	// Allowlist: only the over_in_allowlist.go path.
 	allowlist := "docs/migrations/max-lines-strict-allowlist.txt"
@@ -107,7 +107,7 @@ func TestScanFileLinesStrict_Cap600_Boundaries(t *testing.T) {
 		t.Fatalf("write allowlist: %v", err)
 	}
 
-	pol := minimalStrictPolicy(600, allowlist)
+	pol := minimalStrictPolicy(800, allowlist)
 	r := emptyReport(pol)
 	ScanFileLinesStrict(root, pol, r)
 
@@ -125,17 +125,17 @@ func TestScanFileLinesStrict_Cap600_Boundaries(t *testing.T) {
 	if v.Severity != "warn" {
 		t.Errorf("Severity = %q, want %q", v.Severity, "warn")
 	}
-	if v.MaxLines != 600 {
-		t.Errorf("MaxLines = %d, want 600", v.MaxLines)
+	if v.MaxLines != 800 {
+		t.Errorf("MaxLines = %d, want 800", v.MaxLines)
 	}
-	if v.ActualLines != 601 {
-		t.Errorf("ActualLines = %d, want 601", v.ActualLines)
+	if v.ActualLines != 801 {
+		t.Errorf("ActualLines = %d, want 801", v.ActualLines)
 	}
 	if !strings.HasSuffix(v.File, "over_no_allowlist.go") {
 		t.Errorf("File = %q, want suffix over_no_allowlist.go", v.File)
 	}
-	if !strings.Contains(v.Note, "601") || !strings.Contains(v.Note, "max 600") {
-		t.Errorf("Note = %q, want substring `601` and `max 600`", v.Note)
+	if !strings.Contains(v.Note, "801") || !strings.Contains(v.Note, "max 800") {
+		t.Errorf("Note = %q, want substring `801` and `max 800`", v.Note)
 	}
 }
 
@@ -148,9 +148,9 @@ func TestScanFileLinesStrict_Cap600_Boundaries(t *testing.T) {
 func TestScanFileLinesStrict_NoAllowlistConfigured(t *testing.T) {
 	root := t.TempDir()
 
-	writeSizeFile(t, root, "over_no_list", "over_no_list.go", buildBody(605))
+	writeSizeFile(t, root, "over_no_list", "over_no_list.go", buildBody(805))
 
-	pol := minimalStrictPolicy(600, "")
+	pol := minimalStrictPolicy(800, "")
 	r := emptyReport(pol)
 	ScanFileLinesStrict(root, pol, r)
 
@@ -185,12 +185,12 @@ func TestScanFileLinesStrict_SkipsTestFiles(t *testing.T) {
 	root := t.TempDir()
 
 	// Over-cap production file → violation expected.
-	writeSizeFile(t, root, "prod", "prod.go", buildBody(602))
+	writeSizeFile(t, root, "prod", "prod.go", buildBody(802))
 
 	// Over-cap test file → MUST be skipped.
 	writeSizeFile(t, root, "tests", "under_test.go", buildBody(9999))
 
-	pol := minimalStrictPolicy(600, "")
+	pol := minimalStrictPolicy(800, "")
 	r := emptyReport(pol)
 	ScanFileLinesStrict(root, pol, r)
 

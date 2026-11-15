@@ -23,10 +23,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -95,7 +95,7 @@ func (e *clipRenderContinuationEnqueuer) EnqueueContinuation(ctx context.Context
 		CorrelationID: cliprender.SettleCorrelationID(
 			submission.CorrelationID, submission.RenderJobID, submission.Attempt,
 		),
-		MaxRetries: appjobs.Compose().DefaultMaxRetries(cliprender.TypeClipRender),
+		MaxRetries: jobscheduling.Compose().DefaultMaxRetries(cliprender.TypeClipRender),
 		ActiveKey:  req.ActiveKey,
 		Scheduling: &job.SchedulingDescriptor{
 			JobType: cliprender.TypeClipRender, ResourceClass: cliprender.SchedulingResourceClass,

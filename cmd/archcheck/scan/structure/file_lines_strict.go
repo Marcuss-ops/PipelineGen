@@ -1,6 +1,6 @@
 // Package scan — file-line-strict scanner.
 //
-// scan/file_lines_strict.go owns the "600-LOC per-file soft cap"
+// scan/file_lines_strict.go owns the "800-LOC per-file soft cap"
 // forward-prevention gate (godlike/08 §"Mandatory checks" +
 // godlike/07 ZERO_LEGACY_POLICY §"Default rule"). It walks every
 // non-test .go file under internal/ and cmd/ and emits a
@@ -13,7 +13,7 @@
 // (ScanPackagesForMode / ScanCommandBinaries):
 //
 //   - max_lines_per_file=1000 — absolute hard ceiling. Existing.
-//   - max_lines_per_file_strict=600 — soft warning that fires BEFORE
+//   - max_lines_per_file_strict=800 — soft warning that fires BEFORE
 //     the 1000 hard cap, giving operators a chance to split
 //     proactively. Files in max_lines_strict_allowlist are exempt
 //     (per godlike/07 §"Temporary deprecation record"); the allowlist

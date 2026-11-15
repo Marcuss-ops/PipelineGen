@@ -20,6 +20,7 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 	"time"
 
@@ -77,7 +78,7 @@ func TestWorker_RecoverAbandonedMarksRunJobRunAbandoned(t *testing.T) {
 	broker.jobStatus = job.StatusRunning
 	broker.revision = 1
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(TypeScriptGenerate, handler); err != nil {
+	if err := dispatcher.Register(jobscheduling.TypeScriptGenerate, handler); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
 	observer := kernobs.NewRunObserver(recorder)
@@ -89,7 +90,7 @@ func TestWorker_RecoverAbandonedMarksRunJobRunAbandoned(t *testing.T) {
 		LeaseTTL:   5 * time.Minute, // renew tick = 100s — never fires during the test
 		PollEvery:  2 * time.Second,
 		Backoff:    BackoffConfig{},
-		Types:      []string{TypeScriptGenerate},
+		Types:      []string{jobscheduling.TypeScriptGenerate},
 	}).WithObserver(observer)
 
 	// Lease already expired: RecoverAbandoned(now) with now >= lease_expiry
@@ -104,7 +105,7 @@ func TestWorker_RecoverAbandonedMarksRunJobRunAbandoned(t *testing.T) {
 		defer close(done)
 		worker.runJob(context.Background(), &job.Job{
 			ID:          "obs-recover-1",
-			Type:        TypeScriptGenerate,
+			Type:        jobscheduling.TypeScriptGenerate,
 			Status:      job.StatusRunning,
 			LeaseID:     "lease-recover-1",
 			LeaseExpiry: &leaseExpiry,

@@ -37,6 +37,9 @@ type SemanticSearchOutcome struct {
 	Found       bool
 	// AssetID is the certified content-addressed asset on success.
 	AssetID string
+	// VerifierVersion is mandatory on success; it identifies the pixel-level
+	// policy that produced the accepted verdict.
+	VerifierVersion string
 	// Error is the provider's failure description on failure.
 	Error string
 }
@@ -188,10 +191,8 @@ func (p *SemanticProductionPlan) SkipUnsupportedUnit(candidateID, reason string)
 //   - success settles the composition (`satisfied`) and the asset is reused by
 //     every later composition sharing its asset key;
 //   - a failure before the last rung widens the query (`broaden`);
-//   - an exhausted ladder drops one name when the composition still holds
-//     another identity (`drop_entity`);
-//   - an exhausted single-name ladder leaves the composition unproduced
-//     (`skip_visual`) instead of retrying forever.
+//   - an exhausted ladder leaves the composition unproduced (`skip_visual`)
+//     instead of inventing identity-specific fallback queries.
 func (p *SemanticProductionPlan) RecordSearchOutcome(outcome SemanticSearchOutcome) (SemanticSearchAttempt, bool, error) {
 	if p == nil {
 		return SemanticSearchAttempt{}, false, fmt.Errorf("semantic production plan: nil plan")
@@ -210,7 +211,6 @@ func (p *SemanticProductionPlan) RecordSearchOutcome(outcome SemanticSearchOutco
 	case outcome.Found:
 		unit.SearchStatus = ProductionSearchSatisfied
 		unit.ResolvedAssetID = strings.TrimSpace(outcome.AssetID)
-		unit.DroppedEntities = 0
 		p.Metrics.SearchAttempts++
 		p.Metrics.SearchesSatisfied++
 	case unit.Rung+1 < len(unit.Queries):
@@ -220,20 +220,6 @@ func (p *SemanticProductionPlan) RecordSearchOutcome(outcome SemanticSearchOutco
 		unit.Retry = &SemanticSearchRetry{
 			Action: "broaden",
 			Reason: fmt.Sprintf("rung %d (%s) did not resolve; widening to %s", unit.Rung-1, unit.Queries[unit.Rung-1].Kind, unit.Queries[unit.Rung].Kind),
-		}
-	case unit.DroppedEntities < len(unit.EntityLadders):
-		// The name is not searchable: keep the composition and search the
-		// remaining identity on its own exact mention.
-		remaining := unit.EntityLadders[unit.DroppedEntities]
-		unit.DroppedEntities++
-		unit.Queries = append([]SemanticSearchQuery(nil), remaining.Queries...)
-		unit.Rung = 0
-		unit.EntityIDs = []string{remaining.EntityID}
-		p.Metrics.SearchAttempts++
-		p.Metrics.EntityDrops++
-		unit.Retry = &SemanticSearchRetry{
-			Action: "drop_entity",
-			Reason: "the name did not resolve; searching the remaining identity alone",
 		}
 	default:
 		unit.SearchStatus = ProductionSearchFailed
@@ -266,12 +252,17 @@ func (p *SemanticProductionPlan) SearchFeedback() *SemanticSearchFeedback {
 	feedback := &SemanticSearchFeedback{Entries: make([]SemanticSearchFeedbackEntry, 0, len(p.Units))}
 	for index := range p.Units {
 		unit := &p.Units[index]
-		if !unit.RequiresMedia || unit.SearchStatus == ProductionSearchReuse {
+		if !unit.RequiresMedia || unit.Status == ProductionUnitReuse || unit.SearchStatus == ProductionSearchReuse {
 			continue
 		}
 		if unit.Status == ProductionUnitDroppedBudget || unit.Status == ProductionUnitDroppedSceneBudget {
 			// Budget-dropped compositions never searched: there is no outcome
 			// to report in the retrieval handshake.
+			continue
+		}
+		if unit.Status == ProductionUnitSkipped && len(unit.Queries) == 0 {
+			// A composition dropped before planning (weak entity query) was
+			// never searched and has no ladder to report.
 			continue
 		}
 		status := unit.SearchStatus
@@ -286,6 +277,11 @@ func (p *SemanticProductionPlan) SearchFeedback() *SemanticSearchFeedback {
 		if unit.Retry != nil {
 			retry := *unit.Retry
 			entry.Retry = &retry
+		}
+		if status == ProductionSearchFailed && entry.Retry == nil {
+			// A failed search must always tell the engine what to do next;
+			// never leave a failed entry without skip_visual.
+			entry.Retry = &SemanticSearchRetry{Action: "skip_visual", Reason: "search failed without a produced visual"}
 		}
 		feedback.Entries = append(feedback.Entries, entry)
 	}

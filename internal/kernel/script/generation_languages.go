@@ -62,6 +62,37 @@ func DecodeEnvelopeV2(raw json.RawMessage) (*GenerationEnvelopeV2, error) {
 	if len(raw) == 0 {
 		return nil, ErrInvalidPayload
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, err
+	}
+	for _, required := range []string{"version", "correlation_id"} {
+		value, ok := fields[required]
+		if !ok {
+			continue
+		}
+		switch required {
+		case "version":
+			var version int
+			if err := json.Unmarshal(value, &version); err != nil {
+				return nil, &PlanInvalidError{Details: []string{"version: expected integer 2"}}
+			}
+		case "correlation_id":
+			var correlation string
+			if err := json.Unmarshal(value, &correlation); err != nil {
+				return nil, &PlanInvalidError{Details: []string{"correlation_id: expected string"}}
+			}
+		}
+	}
+	accepted := map[string]struct{}{
+		"version": {}, "preset": {}, "correlation_id": {},
+		"force_refresh": {}, "final_job": {}, "items": {},
+	}
+	for field := range fields {
+		if _, ok := accepted[field]; !ok {
+			return nil, &PlanInvalidError{Details: []string{field + ": unknown field (accepted schema: version, preset, correlation_id, force_refresh, final_job, items)"}}
+		}
+	}
 	var env GenerationEnvelopeV2
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return nil, err

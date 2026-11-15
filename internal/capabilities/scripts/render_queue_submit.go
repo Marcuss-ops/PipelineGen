@@ -454,7 +454,14 @@ func (e *QueueRenderEnqueuer) enqueueChrononPlan(ctx context.Context, plan capmo
 	// as submit + wait + Σ worker phases.
 	recordRenderingGenPhases(ctx, done.Artifact)
 	recordQueueBoundaryPhases(ctx, submitAcceptedAt.Sub(submitStartedAt).Milliseconds(), wait.CompletionWait.Milliseconds())
-	return RenderReference{JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact}, nil
+	cacheHits, renderedItems := 0, 1
+	if cacheHit {
+		cacheHits, renderedItems = 1, 0
+	}
+	return RenderReference{
+		JobID: jobID, Status: "COMPLETED", Artifact: done.Artifact,
+		CacheHits: cacheHits, RenderedItems: renderedItems,
+	}, nil
 }
 
 // RenderRequestIdentity is the queue-neutral result projected from the

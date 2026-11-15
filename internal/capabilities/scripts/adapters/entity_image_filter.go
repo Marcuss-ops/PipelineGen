@@ -134,11 +134,7 @@ func evaluatePersonImageCandidate(identity entitycatalog.PersonIdentity, candida
 		technicalScore = candidate.TechnicalQualityScore
 	}
 	if candidate.Width > 0 && candidate.Height > 0 {
-		longSide := candidate.Width
-		if candidate.Height > longSide {
-			longSide = candidate.Height
-		}
-		if longSide < minimumPersonImageLongSide || candidate.Width*candidate.Height < minimumPersonImagePixels {
+		if !entitycatalog.ImageMeetsCatalogMinimum(candidate.Width, candidate.Height) {
 			return false, semanticScore, technicalScore, "image dimensions below PERSON catalog minimum"
 		}
 		if technicalScore == 0 {
@@ -233,15 +229,52 @@ func personImageSourceNameMismatch(canonicalName, sourceURL string) string {
 			basename = decoded
 		}
 	}
-	tokens := strings.FieldsFunc(strings.ToLower(basename), func(r rune) bool { return !unicode.IsLetter(r) })
+	basename = strings.TrimSuffix(basename, path.Ext(basename))
+	tokens := strings.FieldsFunc(strings.ToLower(basename), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsNumber(r) })
 	if len(tokens) < 2 || tokens[0] != name[0] {
 		return ""
 	}
 	second := tokens[1]
-	if second == name[len(name)-1] || len([]rune(second)) < 3 || personImageFilenameQualifier(second) {
+	if second != name[len(name)-1] && (len([]rune(second)) < 3 || personImageFilenameQualifier(second)) {
 		return ""
 	}
-	return fmt.Sprintf("image source filename names %s %s, not requested person %s", name[0], second, canonicalName)
+	// A filename may contain one canonical surname plus generic qualifiers
+	// ("john-gotti-photo-2020"). Two additional name-like tokens are not a
+	// qualifier: "john-gotti-sammy-gravano" names a second person and must not
+	// be reusable as John Gotti's portrait.
+	consumed := 1
+	for consumed < len(name) && consumed < len(tokens) && tokens[consumed] == name[consumed] {
+		consumed++
+	}
+	if consumed < len(name) && second == name[len(name)-1] {
+		consumed = 2
+	}
+	extraNames := 0
+	for _, token := range tokens[consumed:] {
+		if len([]rune(token)) < 3 || personImageFilenameQualifier(token) || isASCIIDigits(token) {
+			continue
+		}
+		extraNames++
+	}
+	if extraNames >= 2 {
+		return fmt.Sprintf("image source filename names multiple people, not only requested person %s", canonicalName)
+	}
+	if second != name[len(name)-1] {
+		return fmt.Sprintf("image source filename names %s %s, not requested person %s", name[0], second, canonicalName)
+	}
+	return ""
+}
+
+func isASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // PersonImageSourceIdentityFailure exposes the fail-closed source-provenance
@@ -252,7 +285,7 @@ func PersonImageSourceIdentityFailure(canonicalName, sourceURL, sourcePageURL st
 
 func personImageFilenameQualifier(token string) bool {
 	switch token {
-	case "foto", "photo", "portrait", "headshot", "image", "img", "profile", "person", "persona", "ritratto", "avvocato", "avvocata", "di", "della", "de", "del", "la", "il", "e", "the", "for", "case", "news", "ufficiale", "ufficiali", "ansa", "ipa":
+	case "foto", "photo", "portrait", "headshot", "image", "img", "profile", "person", "persona", "ritratto", "di", "della", "de", "del", "la", "il", "e", "the", "for", "case", "news", "ufficiale", "ufficiali":
 		return true
 	default:
 		return false
@@ -304,7 +337,17 @@ func canonicalImageEntityName(segment scriptpkg.VidRushSegmentResult, surface st
 }
 
 func canonicalImageEntityType(segment scriptpkg.VidRushSegmentResult, surface string) string {
-	for alias, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+	return canonicalImageEntityTypeFromIDs(segment.Insights.ImageEntityCanonicalIDs, surface)
+}
+
+// canonicalImageEntityTypeFromIDs resolves an entity surface through the
+// canonical IDs produced by the image-intent resolver. It is the ONE type
+// resolver for surfaces discovered outside the NER list: a canonical
+// "place:...", "event:...", "org:..." id wins over a fallible NER claim.
+// Only when no canonical id exists does the caller fall back to generic
+// surface cues.
+func canonicalImageEntityTypeFromIDs(canonicalIDs map[string]string, surface string) string {
+	for alias, canonicalID := range canonicalIDs {
 		if normalizeEntityMatch(alias) != normalizeEntityMatch(surface) {
 			continue
 		}
@@ -316,38 +359,144 @@ func canonicalImageEntityType(segment scriptpkg.VidRushSegmentResult, surface st
 	return ""
 }
 
+func segmentPersonAliasGraph(segment scriptpkg.VidRushSegmentResult) *entitycatalog.PersonAliasGraph {
+	graph := entitycatalog.NewPersonAliasGraph()
+	for alias, canonicalID := range segment.Insights.ImageEntityCanonicalIDs {
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(canonicalID)), "person:") {
+			_ = graph.Register(canonicalID, alias)
+		}
+	}
+	return graph
+}
+
 func personCatalogIdentityForSegmentQuery(segment scriptpkg.VidRushSegmentResult, query string) (entitycatalog.PersonIdentity, bool, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return entitycatalog.PersonIdentity{}, false, nil
 	}
+	aliasGraph := segmentPersonAliasGraph(segment)
+	// Resolve against the segment's actual PERSON mentions before consulting
+	// aliases produced by retrieval planning. A provider query can be shortened
+	// ("Floyd Mayweather") while VisualNER extracted the unambiguous full name
+	// ("Floyd Mayweather Jr"). Using the retrieval alias as the catalog key
+	// created a second PERSON pool that the annotation binder could never join.
+	var exactEntityName string
+	exactEntityWords := 0
+	for _, entity := range segment.Insights.Entities {
+		if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson {
+			continue
+		}
+		words := personQueryIdentityMatchWords(query, entity.Value)
+		if words > exactEntityWords || (words == exactEntityWords && words > 0 && strings.ToLower(entity.Value) < strings.ToLower(exactEntityName)) {
+			exactEntityName, exactEntityWords = entity.Value, words
+		}
+	}
+	if exactEntityName == "" {
+		// A query may itself be the shorter alias. Promote it to a longer
+		// extracted identity only when that match is unique in this segment.
+		// Ambiguous surnames are left unresolved rather than guessed.
+		var aliasEntityName string
+		aliasEntityWords := 0
+		ambiguous := false
+		for _, entity := range segment.Insights.Entities {
+			if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson ||
+				personQueryIdentityMatchWords(entity.Value, query) == 0 {
+				continue
+			}
+			words := len(strings.Fields(normalizeEntityMatch(entity.Value)))
+			if words > aliasEntityWords {
+				aliasEntityName, aliasEntityWords, ambiguous = entity.Value, words, false
+			} else if words == aliasEntityWords && !strings.EqualFold(aliasEntityName, entity.Value) {
+				ambiguous = true
+			}
+		}
+		if aliasEntityName != "" && !ambiguous {
+			exactEntityName = aliasEntityName
+		}
+	}
+	if exactEntityName != "" {
+		identity, err := entitycatalog.CanonicalizePersonNameWithAliases(exactEntityName, aliasGraph)
+		return identity, err == nil, err
+	}
+	// Provider adapters commonly expand an exact identity query with a
+	// retrieval qualifier ("photo", "portrait", etc.) and keep that expanded
+	// value on each candidate. Resolve the canonical identity from the query's
+	// full token sequence instead of requiring byte-for-byte equality. Prefer
+	// the longest match so "Floyd Mayweather Jr photo" resolves to Floyd Jr,
+	// not the shorter Floyd Mayweather alias.
+	bestName, bestID, bestWords, bestNonPersonWords := "", "", 0, 0
 	if len(segment.Insights.ImageEntityCanonicalIDs) > 0 {
 		for name, id := range segment.Insights.ImageEntityCanonicalIDs {
-			if normalizeEntityMatch(name) != normalizeEntityMatch(query) {
+			words := personQueryIdentityMatchWords(query, name)
+			if words == 0 {
 				continue
 			}
 			if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(id)), "person:") {
-				// The canonical resolver is authoritative over the baseline NER
-				// type. Do not fall through and resurrect a venue/place that the
-				// weaker extractor labeled PERSON.
-				return entitycatalog.PersonIdentity{}, false, nil
+				if words > bestNonPersonWords {
+					bestNonPersonWords = words
+				}
+				continue
 			}
-			canonicalName := canonicalImageEntityName(segment, name)
-			if canonicalName == "" {
-				canonicalName = query
+			if words > bestWords || bestName == "" || strings.ToLower(name) < strings.ToLower(bestName) {
+				bestName, bestID, bestWords = name, id, words
 			}
-			identity, err := entitycatalog.CanonicalizePersonIdentity(canonicalName, id)
-			return identity, err == nil, err
 		}
 	}
+	if bestNonPersonWords >= bestWords && bestNonPersonWords > 0 {
+		// The canonical resolver is authoritative over baseline NER. Do not
+		// resurrect a location/organization as a person image from a weaker
+		// extracted entity match.
+		return entitycatalog.PersonIdentity{}, false, nil
+	}
+	if bestName != "" {
+		if candidates := aliasGraph.Candidates(bestName); len(candidates) > 1 {
+			return entitycatalog.PersonIdentity{CanonicalName: bestName, Unresolved: true, Candidates: candidates}, false, entitycatalog.ErrAmbiguousPersonName
+		}
+		canonicalName := canonicalImageEntityName(segment, bestName)
+		if canonicalName == "" {
+			canonicalName = bestName
+		}
+		identity, err := entitycatalog.CanonicalizePersonIdentityWithAliases(canonicalName, bestID, aliasGraph)
+		return identity, err == nil, err
+	}
+	// Fall back to the extracted entity list only when the canonical ID map
+	// has no matching person. The canonical resolver's non-PERSON matches
+	// remain authoritative and cannot be resurrected from weaker baseline NER.
 	for _, entity := range segment.Insights.Entities {
-		if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson || normalizeEntityMatch(entity.Value) != normalizeEntityMatch(query) {
+		if normalizeAnnotationType(entity.Type) != entitycatalog.EntityTypePerson {
 			continue
 		}
-		identity, err := entitycatalog.CanonicalizePersonName(entity.Value)
+		words := personQueryIdentityMatchWords(query, entity.Value)
+		if words > bestWords || (words == bestWords && words > 0 && strings.ToLower(entity.Value) < strings.ToLower(bestName)) {
+			bestName, bestWords = entity.Value, words
+		}
+	}
+	if bestName != "" && bestWords > 0 {
+		identity, err := entitycatalog.CanonicalizePersonName(bestName)
 		return identity, err == nil, err
 	}
 	return entitycatalog.PersonIdentity{}, false, nil
+}
+
+func personQueryIdentityMatchWords(query, identity string) int {
+	want := strings.Fields(normalizeEntityMatch(identity))
+	got := strings.Fields(normalizeEntityMatch(query))
+	if len(want) == 0 || len(got) < len(want) {
+		return 0
+	}
+	for start := 0; start <= len(got)-len(want); start++ {
+		match := true
+		for i := range want {
+			if strings.Trim(got[start+i], ".,;:!?\"'") != strings.Trim(want[i], ".,;:!?\"'") {
+				match = false
+				break
+			}
+		}
+		if match {
+			return len(want)
+		}
+	}
+	return 0
 }
 
 func personCatalogIdentityForQuery(spec scriptpkg.SpecSceneOutput, idx sceneIdentityIndex, segment scriptpkg.VidRushSegmentResult, query string) (entitycatalog.PersonIdentity, bool, error) {

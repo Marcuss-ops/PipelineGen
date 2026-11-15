@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"strings"
 
 	"go.uber.org/zap"
@@ -80,8 +81,8 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 		// handler prefix.
 		return fmt.Errorf("catalogsync.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeCatalogSync, appjobs.HandlerFunc(s.HandleJob)); err != nil {
-		return fmt.Errorf("catalogsync.Service.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeCatalogSync, err)
+	if err := jobsSvc.RegisterHandler(jobscheduling.TypeCatalogSync, appjobs.HandlerFunc(s.HandleJob)); err != nil {
+		return fmt.Errorf("catalogsync.Service.RegisterHandler: bind %q to dispatcher: %w", jobscheduling.TypeCatalogSync, err)
 	}
 	s.log.Info("registered catalog.sync job handler")
 	return nil
@@ -99,8 +100,8 @@ func (s *Service) RegisterDriveFolderSyncHandler(jobsSvc *appjobs.Service) error
 		// handler prefix.
 		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeDriveFolderSync, appjobs.HandlerFunc(s.HandleDriveFolderSyncJob)); err != nil {
-		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: bind %q to dispatcher: %w", appjobs.TypeDriveFolderSync, err)
+	if err := jobsSvc.RegisterHandler(jobscheduling.TypeDriveFolderSync, appjobs.HandlerFunc(s.HandleDriveFolderSyncJob)); err != nil {
+		return fmt.Errorf("catalogsync.Service.RegisterDriveFolderSyncHandler: bind %q to dispatcher: %w", jobscheduling.TypeDriveFolderSync, err)
 	}
 	s.log.Info("registered drive.folder.sync job handler")
 	return nil

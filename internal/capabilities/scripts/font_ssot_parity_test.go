@@ -113,10 +113,10 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 			t.Errorf("run style %s = %v, want %v", key, got, want)
 		}
 	}
-	// A disabled run glow is omitted entirely (an explicit zero renders black
-	// frames in Chronon), so the animation's glow must not survive it.
-	if _, ok := params["glow_size"]; ok {
-		t.Errorf("run style disabled glow but glow_size = %v survived", params["glow_size"])
+	// A disabled run glow travels as an explicit zero; the renderer clears the
+	// preset/role glow on it, so the animation's glow must not survive either.
+	if got, ok := params["glow_size"]; !ok || got != 0.0 {
+		t.Errorf("run style disabled glow = %v (present=%v), want explicit 0", got, ok)
 	}
 	style, _ := params["style"].(map[string]any)
 	if style["fill"] != "#FFFFFF" {
@@ -130,9 +130,9 @@ func TestRunStyleWinsOverAnimationSpecificTextParams(t *testing.T) {
 	entityParams := capoverlay.MergeRuntimeTextStyleParams(map[string]any{
 		"font_family": "inter_bold", "position_x": 10.0, "glow_size": 8.0,
 	}, overlayStyleParams(canvas.Style))
-	// The merge applies canonical runtime keys only; a disabled glow is omitted
-	// from the run style, so it injects no glow_size of its own.
-	if entityParams["font_family"] != "poppins" || entityParams["glow_size"] != 8.0 || entityParams["stroke_size"] != 3.0 {
+	// The merge applies canonical runtime keys only; an explicit run zero wins
+	// over the animation's glow, exactly like the flat text path.
+	if entityParams["font_family"] != "poppins" || entityParams["glow_size"] != 0.0 || entityParams["stroke_size"] != 3.0 {
 		t.Errorf("entity caption style = %v, want canonical run style", entityParams)
 	}
 	if entityParams["position_x"] != 10.0 {

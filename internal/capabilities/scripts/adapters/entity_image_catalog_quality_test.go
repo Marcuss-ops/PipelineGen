@@ -176,3 +176,51 @@ func TestFormatPersonImageRejectionSummaryIsDeterministic(t *testing.T) {
 		t.Fatalf("summary = %q, want %q", got, want)
 	}
 }
+
+// TestEntityImageCatalogPoolDoesNotCountRecertifyingUnknownAsUsable pins the
+// silent-empty mechanism: a layout-recertification row is returned to the
+// caller as unknown (so it can be retried), but it is not supply. Counting it
+// as usable made the pool look sufficient, skipped the provider refresh, and
+// then the selector dropped it because PERSON selection requires accepted.
+func TestEntityImageCatalogPoolDoesNotCountRecertifyingUnknownAsUsable(t *testing.T) {
+	repo := newIntegrationEntityImageCatalog()
+	identity, err := entitycatalog.CanonicalizePersonName("Michael Jordan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.UpsertEntity(context.Background(), entitycatalog.Entity{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		EntityType:        entitycatalog.EntityTypePerson,
+		CanonicalName:     identity.CanonicalName,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.UpsertCandidate(context.Background(), entitycatalog.Candidate{
+		CanonicalEntityID: identity.CanonicalEntityID,
+		Provider:          "duckduckgo",
+		Rank:              1,
+		SourceURL:         "https://images.example/michael-jordan/recheck.jpg",
+		Width:             1920,
+		Height:            1080,
+		Status:            entitycatalog.CandidateStatusFresh,
+		SemanticStatus:    entitycatalog.CandidateSemanticUnknown,
+		TechnicalScore:    1,
+		QualityReason:     "Ollama visual verification did not find one clear person",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	pool, err := entityImageCatalogCandidates(context.Background(), repo, identity, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pool.UsableCount != 0 {
+		t.Fatalf("usable count = %d, want 0 for an unknown recertification row", pool.UsableCount)
+	}
+	if pool.Sufficient {
+		t.Fatal("an unknown-only pool must not satisfy demand; the caller must refresh")
+	}
+	if len(pool.Candidates) != 1 {
+		t.Fatalf("candidates = %d, want the unknown row kept for retry", len(pool.Candidates))
+	}
+}

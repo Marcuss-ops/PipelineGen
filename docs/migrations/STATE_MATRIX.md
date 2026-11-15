@@ -77,6 +77,7 @@ ripetuta qui.
 | entity_image_catalog_candidates | semantic_status | sqlite | unknown | unknown,accepted,rejected | lower | - |
 | entity_image_catalog_entities | refresh_status | sqlite | never | never,running,succeeded,failed | lower | succeeded,failed |
 | entity_image_catalog_materializations | status | sqlite | pending | pending,materialized,failed | lower | materialized,failed |
+| entity_image_catalog_materialization_attempts | status | sqlite |  | - | - | - |
 | execution_steps | status | sqlite | pending | - | lower | - |
 | idempotency_keys | status | sqlite | in_flight | - | lower | - |
 | job_attempts | status | sqlite | - | - | - | - |

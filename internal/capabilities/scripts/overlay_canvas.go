@@ -53,17 +53,26 @@ type OverlayCanvasSpec struct {
 	// the request's channel profile (empty = the certified default pool). It
 	// lives here because the canvas is the run-level render context this
 	// function already receives; the planner validates the ids fail-closed.
-	PhraseMotions      []string
+	PhraseMotions []string
+	// ShortPhraseMotion and LongPhraseMotion pin one certified motion for
+	// every phrase in the matching word-count lane. Empty keeps the
+	// deterministic pool/rotation behaviour for that lane.
+	ShortPhraseMotion  string
+	LongPhraseMotion   string
 	PhraseMotionFamily string
+	DateMotionFamily   string
 	// MotionSeed is the per-render entropy for automatic motion rotation,
 	// carried from the request. Empty preserves historical plan-identity
 	// sampling; a fresh value per render rotates every lane.
 	MotionSeed string
 	// CoherenceSeed carries the explicit dominant-direction seed from the
 	// request; empty derives the direction from MotionSeed.
-	CoherenceSeed      string
-	ImageMotions       []string
-	EntityImageMotions []string
+	CoherenceSeed string
+	ImageMotions  []string
+	// ImageWithTextMotions is the run-level pool for captioned images; empty
+	// keeps the certified full seeded catalog.
+	ImageWithTextMotions []string
+	EntityImageMotions   []string
 	// EntityCaptionMotions is the run-level caption pool carried from the
 	// request (empty = the certified automatic pool). It lives here because
 	// the canvas is the run-level render context this function already
@@ -86,6 +95,7 @@ type OverlayCanvasSpec struct {
 	MapCameraAnimation string
 	MapLabelAnimation  string
 	MapAnimation       string
+	MapLevel           string
 	// MapPresentation is the RESOLVED unified map configuration; when set it
 	// also owns the map-grouping policy fed to the planner.
 	MapPresentation *scriptpkg.MapPresentation

@@ -728,6 +728,23 @@ func TestMediaCertBarrierPassesCertifiedRun(t *testing.T) {
 	require.Len(t, segs, 1)
 }
 
+// TestMediaCertBarrierRejectsMissingCommittedScene pins the expected-count
+// contract: the coordinator only observes committed scenes, so a run that
+// silently omits one must fail at the barrier rather than certify a shorter
+// result set.
+func TestMediaCertBarrierRejectsMissingCommittedScene(t *testing.T) {
+	inner := stubBarrier{segments: []scriptpkg.VidRushSegmentResult{{
+		SegmentID: "scene-0", Position: 0, TextHash: "scene-0-hash",
+	}}}
+	certifier := stubMediaCertifier{report: mediacert.Report{JobStatus: "SUCCEEDED", Certified: true}}
+	barrier, err := NewMediaCertBarrier(inner, certifier, mediacert.Spec{Segments: 2})
+	require.NoError(t, err)
+
+	_, err = barrier.WaitForVidRush(context.Background(), "run-missing-scene")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expected 2 committed scene")
+}
+
 func TestMediaCertBarrierPrunesReusedImagesBeforeCertification(t *testing.T) {
 	shared := scriptpkg.SegmentAssetCandidate{AssetID: "shared-image"}
 	firstOnly := scriptpkg.SegmentAssetCandidate{AssetID: "first-only"}

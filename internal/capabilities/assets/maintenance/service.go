@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	"go.uber.org/zap"
 
@@ -94,7 +95,7 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 // RegisterHandler registers the maintenance job handler.
 func (s *Service) RegisterHandler() error {
 	if s.jobsSvc != nil {
-		if err := s.jobsSvc.RegisterHandler(appjobs.TypeSystemCleanup, appjobs.HandlerFunc(s.HandleJob)); err != nil {
+		if err := s.jobsSvc.RegisterHandler(jobscheduling.TypeSystemCleanup, appjobs.HandlerFunc(s.HandleJob)); err != nil {
 			return err
 		}
 		s.log.Info("Registered system maintenance job handler")

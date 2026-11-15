@@ -158,7 +158,7 @@ type LocalizedRenderResult struct {
 	Language   Language `json:"language"`
 	ClipID     string   `json:"clip_id"`
 	// RenderJobID is the render-plan identity of the job that produced these
-	// bytes (localization's plan revision: `<clip>:<language>:overlay-v3:`
+	// bytes (localization's plan revision: `<clip>:<language>:overlay-v4:`
 	// + the plan fingerprint prefix — `:` separators because the revision IS
 	// the RenderingGen queue job id, which must be one valid filename
 	// component). It is projected here so the run result

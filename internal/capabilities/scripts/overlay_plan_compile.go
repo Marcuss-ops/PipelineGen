@@ -222,8 +222,10 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		Charts:        chartPlacements,
 		Background:    canvas.Background,
 		MapGroups:     mapGroups,
-		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily, ImageMotions: canvas.ImageMotions,
-		HeavyPhrasePriority: canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts, EntityStyleID: canvas.EntityStyleID,
+		PhraseMotions: canvas.PhraseMotions, ShortPhraseMotion: canvas.ShortPhraseMotion, LongPhraseMotion: canvas.LongPhraseMotion,
+		PhraseMotionFamily: canvas.PhraseMotionFamily, DateMotionFamily: canvas.DateMotionFamily, ImageMotions: canvas.ImageMotions,
+		ImageWithTextMotions: canvas.ImageWithTextMotions,
+		HeavyPhrasePriority:  canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts, EntityStyleID: canvas.EntityStyleID,
 		PlateResolver: plates,
 	}, plannerConfig)
 	if err != nil {
@@ -265,7 +267,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// owned by overlay_plan_finalize.go so this file stays inside the strict
 	// 600-line cap; the call is the same one this block performed inline.
 	applyOverlayStyleToItems(items, canvas)
-	if err := applyMapPresentationToItems(items, canvas.MapType, canvas.MapCameraAnimation, canvas.MapLabelAnimation, canvas.MapAnimation); err != nil {
+	if err := applyMapPresentationToItems(items, canvas.MapType, canvas.MapCameraAnimation, canvas.MapLabelAnimation, canvas.MapAnimation, canvas.MapLevel); err != nil {
 		return nil, err
 	}
 
@@ -322,9 +324,11 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	animationLayoutInput := capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, CoherenceSeed: strings.TrimSpace(canvas.CoherenceSeed),
 		Width: canvas.Width, Height: canvas.Height,
-		PhraseMotions: canvas.PhraseMotions, PhraseMotionFamily: canvas.PhraseMotionFamily,
-		AnimationCounts: canvas.AnimationCounts,
-		Scenes:          scenes,
+		PhraseMotions: canvas.PhraseMotions, ShortPhraseMotion: canvas.ShortPhraseMotion, LongPhraseMotion: canvas.LongPhraseMotion,
+		PhraseMotionFamily: canvas.PhraseMotionFamily,
+		DateMotionFamily:   canvas.DateMotionFamily,
+		AnimationCounts:    canvas.AnimationCounts,
+		Scenes:             scenes,
 	}
 	items = capabilityoverlay.PrepareCompiledAnimationLayout(items, animationLayoutInput, canvas.FPSNum, canvas.FPSDen)
 	// Canonical animation contract lives in the overlay subpackage: validate

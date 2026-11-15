@@ -128,8 +128,12 @@ type overlayBackground struct {
 
 type overlaySubtitles struct {
 	AssetRefs []overlayAssetRef `json:"asset_refs,omitempty"`
-	StyleID   string            `json:"style_id,omitempty"`
-	Mode      string            `json:"mode,omitempty"`
+	// FontRef is the content-addressed font the cues are burned with. It is
+	// REQUIRED for burn mode: without it the worker used whichever .ttf it
+	// materialized first, so the requested family was silently ignored.
+	FontRef *overlayAssetRef `json:"font_ref,omitempty"`
+	StyleID string           `json:"style_id,omitempty"`
+	Mode    string           `json:"mode,omitempty"`
 	// Style is the caller's typed visual override (font, size, color, shadow,
 	// position, width…). It MUST travel with the plan: dropping it here
 	// historically caused the RenderingGen compiler to fall back to its own

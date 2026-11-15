@@ -108,6 +108,8 @@ func openLiveEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			semantic_score REAL NOT NULL DEFAULT 0 CHECK (semantic_score >= 0 AND semantic_score <= 1),
 			technical_score REAL NOT NULL DEFAULT 0 CHECK (technical_score >= 0 AND technical_score <= 1),
 			quality_reason TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
+			verifier_version TEXT NOT NULL DEFAULT '',
 			first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
 			last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -128,6 +130,16 @@ func openLiveEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			last_error TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
+		);
+		CREATE TABLE IF NOT EXISTS entity_image_catalog_materialization_attempts (
+			attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			candidate_id INTEGER NOT NULL,
+			asset_id TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT '',
+			last_error TEXT NOT NULL DEFAULT '',
+			attempted_at TEXT NOT NULL,
 			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
 		);
 	`)

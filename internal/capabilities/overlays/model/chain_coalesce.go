@@ -77,6 +77,7 @@ const (
 	// 5s: fuse same-scene overlays with at most five seconds of empty
 	// timeline between them into one multi-animation chain item.
 	defaultChainGapUS         int64 = 5_000_000
+	defaultEntityCardGapUS    int64 = 7_500_000
 	maxChainGapUS             int64 = 5_000_000
 	minChainSegmentDurationUS int64 = 2_500_000
 	chainHandoffGapUS         int64 = 400_000
@@ -194,6 +195,13 @@ func chainable(item OverlayItem) bool {
 	if strings.TrimSpace(item.TemplateID) == "TIMELINE_DATE_CARD" {
 		return false
 	}
+	// A composite image group is one render surface with one choreography.
+	// Chain segments have no group_motion_id, so fusing the composite would
+	// silently drop that choreography (and its child layers would then fail
+	// the single-owner animation boundary).
+	if len(item.ImageLayers) > 0 || strings.TrimSpace(item.GroupMotionID) != "" {
+		return false
+	}
 	family := chainFamily(item.Kind)
 	if family == "" {
 		return false
@@ -242,6 +250,7 @@ func CoalesceChainedOverlays(items []OverlayItem, counts map[string]int) []Overl
 // that projection crosses the scene end, the items stay standalone instead of
 // bleeding into the next scene. Nil/zero ends preserve the legacy behavior.
 func CoalesceChainedOverlaysWithSceneEnds(items []OverlayItem, counts map[string]int, sceneEnds map[string]int64) []OverlayItem {
+	items = attachResolvedEntityImages(items)
 	maxGapUS, maxSegments, disabled := chainConfig(counts)
 	if disabled || len(items) < 2 {
 		return items
@@ -303,7 +312,11 @@ func CoalesceChainedOverlaysWithSceneEnds(items []OverlayItem, counts map[string
 			// measured against the furthest end seen so far, and any
 			// overlap (negative gap) is always fusable.
 			gap := next.StartUSValue() - groupEnd
-			if gap > maxGapUS {
+			gapLimit := maxGapUS
+			if maxGapUS >= defaultChainGapUS && isImageBackedEntityCard(group[len(group)-1]) && isImageBackedEntityCard(next) {
+				gapLimit = max(gapLimit, defaultEntityCardGapUS)
+			}
+			if gap > gapLimit {
 				break
 			}
 			group = append(group, next)
@@ -330,6 +343,161 @@ func CoalesceChainedOverlaysWithSceneEnds(items []OverlayItem, counts map[string
 		i = j
 	}
 	return out
+}
+
+func isImageBackedEntityCard(item OverlayItem) bool {
+	return chainFamily(item.Kind) == "card" && len(item.AssetRefs) > 0
+}
+
+// attachResolvedEntityImages gives a text-only named entity card the portrait
+// another plan item already resolved for the SAME entity. The entity-image
+// sequence is planned separately from the text card, so a nearby mixed chain
+// could otherwise carry `entity_card` + name with no asset at all: the card
+// rendered as bare text and the viewer saw a name with no face. Only verified
+// refs already present on the plan are copied; no lookup or guess is invented.
+func attachResolvedEntityImages(items []OverlayItem) []OverlayItem {
+	donors := make(map[string][]OverlayAssetRef)
+	for _, item := range items {
+		id := strings.TrimSpace(item.EntityID)
+		if id == "" || len(item.AssetRefs) == 0 {
+			continue
+		}
+		if chainFamily(item.Kind) != "card" && chainFamily(item.Kind) != "image" {
+			continue
+		}
+		if _, seen := donors[id]; !seen {
+			donors[id] = append([]OverlayAssetRef(nil), item.AssetRefs...)
+		}
+	}
+	if len(donors) == 0 {
+		return items
+	}
+	out := append([]OverlayItem(nil), items...)
+	for i := range out {
+		item := &out[i]
+		if len(item.AssetRefs) > 0 || !chainNamedEntityCardKind(item.Kind) {
+			continue
+		}
+		donor, ok := donors[strings.TrimSpace(item.EntityID)]
+		if !ok {
+			continue
+		}
+		item.AssetRefs = append([]OverlayAssetRef(nil), donor...)
+	}
+	return out
+}
+
+// chainNamedEntityCardKind mirrors the text-only entity-card arm without
+// importing the planner package (the model owns chain fusion, not budgets).
+func chainNamedEntityCardKind(kind string) bool {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "entity_card", "organization", "location", "concept":
+		return true
+	default:
+		return false
+	}
+}
+
+// CoalesceCaptionedEntityImageCards preserves the dedicated image-card
+// sequence contract after the general chain pass. Those cards are resolved
+// from the entity timeline later than ordinary overlay candidates, so they
+// receive their own bounded same-scene pass with per-segment captions and
+// image motions intact.
+func CoalesceCaptionedEntityImageCards(items []OverlayItem, sceneEnds map[string]int64) []OverlayItem {
+	if len(items) < 2 {
+		return items
+	}
+	sorted := append([]OverlayItem(nil), items...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		si, sj := sorted[i].StartUSValue(), sorted[j].StartUSValue()
+		if si != sj {
+			return si < sj
+		}
+		return sorted[i].ID < sorted[j].ID
+	})
+	// Build runs from the card lane per scene, rather than requiring cards to
+	// be adjacent in the full overlay list. A phrase or location overlay can
+	// sit between two cards by start time without breaking their image sequence.
+	indicesByScene := make(map[string][]int)
+	for i := range sorted {
+		if captionedEntityImageCard(sorted[i]) {
+			indicesByScene[sorted[i].SceneID] = append(indicesByScene[sorted[i].SceneID], i)
+		}
+	}
+	scenes := make([]string, 0, len(indicesByScene))
+	for scene := range indicesByScene {
+		scenes = append(scenes, scene)
+	}
+	sort.Strings(scenes)
+	type fusedGroup struct {
+		start   int
+		members map[int]bool
+		item    OverlayItem
+	}
+	var fused []fusedGroup
+	for _, scene := range scenes {
+		indices := indicesByScene[scene]
+		for i := 0; i < len(indices); {
+			group := []OverlayItem{sorted[indices[i]]}
+			members := map[int]bool{indices[i]: true}
+			groupEnd := sorted[indices[i]].EndUSValue()
+			j := i + 1
+			for j < len(indices) {
+				nextIndex := indices[j]
+				next := sorted[nextIndex]
+				gap := next.StartUSValue() - groupEnd
+				if gap > defaultEntityCardGapUS {
+					break
+				}
+				group = append(group, next)
+				members[nextIndex] = true
+				if next.EndUSValue() > groupEnd {
+					groupEnd = next.EndUSValue()
+				}
+				j++
+			}
+			if len(group) > 1 && !chainExceedsSceneEnd(group, sceneEnds[group[0].SceneID]) {
+				fused = append(fused, fusedGroup{
+					start: indices[i], members: members,
+					item: fuseChain(group, 1000+indices[i]),
+				})
+			}
+			i = j
+		}
+	}
+	fusedAt := make(map[int]fusedGroup, len(fused))
+	suppressed := make(map[int]bool)
+	for _, group := range fused {
+		fusedAt[group.start] = group
+		for index := range group.members {
+			if index != group.start {
+				suppressed[index] = true
+			}
+		}
+	}
+	out := make([]OverlayItem, 0, len(sorted)-len(suppressed))
+	for i, item := range sorted {
+		if group, ok := fusedAt[i]; ok {
+			out = append(out, group.item)
+			continue
+		}
+		if !suppressed[i] {
+			out = append(out, item)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		si, sj := out[i].StartUSValue(), out[j].StartUSValue()
+		if si != sj {
+			return si < sj
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func captionedEntityImageCard(item OverlayItem) bool {
+	return chainFamily(item.Kind) == "card" && len(item.AssetRefs) > 0 &&
+		strings.TrimSpace(item.EntityCaption) != "" && item.SoundEffect == nil
 }
 
 // fuseChain builds the single chain item with segments laid out sequentially.

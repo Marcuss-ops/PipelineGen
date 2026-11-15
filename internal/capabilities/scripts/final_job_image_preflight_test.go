@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"image"
 	"image/png"
@@ -58,6 +59,14 @@ func preflightPNGFile(t *testing.T) (string, string) {
 	return path, sha
 }
 
+// allowFinalJobImageLoopbackForTest lets httptest servers through the SSRF
+// guard for the duration of one test. Production keeps the guard closed.
+func allowFinalJobImageLoopbackForTest(t *testing.T) {
+	t.Helper()
+	previous := finalJobImageAllowLoopback.Swap(true)
+	t.Cleanup(func() { finalJobImageAllowLoopback.Store(previous) })
+}
+
 func TestFinalJobImagePreflight_UnverifiedPromisedImagesFailClosed(t *testing.T) {
 	items := []capmodel.OverlayItem{
 		imagePreflightItem("img-1", "entity_image", "", ""),
@@ -77,6 +86,7 @@ func TestFinalJobImagePreflight_UnverifiedPromisedImagesFailClosed(t *testing.T)
 }
 
 func TestFinalJobImagePreflight_VerifiedAssetsAdmitted(t *testing.T) {
+	allowFinalJobImageLoopbackForTest(t)
 	localPath, localSHA := preflightPNGFile(t)
 	remoteBytes, remoteSHA := preflightPNGBytes(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -95,6 +105,7 @@ func TestFinalJobImagePreflight_VerifiedAssetsAdmitted(t *testing.T) {
 }
 
 func TestFinalJobImagePreflight_RetriesTransientURL(t *testing.T) {
+	allowFinalJobImageLoopbackForTest(t)
 	remoteBytes, remoteSHA := preflightPNGBytes(t)
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -116,6 +127,7 @@ func TestFinalJobImagePreflight_RetriesTransientURL(t *testing.T) {
 }
 
 func TestFinalJobImagePreflight_FallsBackFromStaleLocalPath(t *testing.T) {
+	allowFinalJobImageLoopbackForTest(t)
 	// A reconciled catalog can leave an old local copy beside a newer Drive
 	// object. The stale local bytes must not reject the verified remote asset.
 	remoteBytes, remoteSHA := preflightPNGBytes(t)
@@ -326,8 +338,10 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 				scriptpkg.OverlayCategoryImages: scriptpkg.ToggleDisabled,
 			}
 		}},
-		{name: "internet images disabled", mute: func(r *GenerateRequest) {
+		{name: "no image provider or entity surface", mute: func(r *GenerateRequest) {
 			r.MediaPlan.ProviderPolicy.InternetImages = media.MediaToggleDisabled
+			r.MediaPlan.Extraction.Include = []string{media.ExtractionIncludeLocations}
+			r.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{}
 		}},
 		{name: "no identity surface", mute: func(r *GenerateRequest) {
 			r.MaxImageOverlays = 0
@@ -342,6 +356,25 @@ func TestFinalJobImageRequested_R20MinutiPayloadShape(t *testing.T) {
 				t.Fatal("a payload without an image request must not arm the preflight")
 			}
 		})
+	}
+}
+
+func TestFinalJobImagePreflight_CoversEntityKindWithAssetRefs(t *testing.T) {
+	item := capmodel.OverlayItem{
+		ID: "entity-card", Kind: "entity", SceneID: "scene-1",
+		AssetRefs: []capmodel.OverlayAssetRef{{AssetID: "entity-asset"}},
+	}
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{item}, nil, false); err == nil {
+		t.Fatal("an entity card with an unverified asset reference must be validated regardless of its kind")
+	}
+}
+
+func TestFinalJobImageRequested_EntitySurfaceWinsWithoutInternetProvider(t *testing.T) {
+	req := GenerateRequest{}
+	req.MediaPlan.ProviderPolicy.InternetImages = media.MediaToggleDisabled
+	req.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{Enabled: true, EntityTypes: []string{"PERSON"}}
+	if !finalJobImageRequested(req) {
+		t.Fatal("an explicit entity-image surface must arm the preflight even when the generic internet provider is disabled")
 	}
 }
 
@@ -361,6 +394,7 @@ func TestFinalJobImagePreflight_NonHexHashIsNotVerified(t *testing.T) {
 // server holds every request briefly and records the maximum overlap; a
 // sequential implementation can only ever reach 1.
 func TestFinalJobImagePreflight_VerifiesImagesInParallel(t *testing.T) {
+	allowFinalJobImageLoopbackForTest(t)
 	remoteBytes, remoteSHA := preflightPNGBytes(t)
 	var inFlight, maxInFlight atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -396,6 +430,7 @@ func TestFinalJobImagePreflight_VerifiesImagesInParallel(t *testing.T) {
 // HTML interstitial, a truncated body, a transient Drive copy) must be
 // retried before the whole run is rejected.
 func TestFinalJobImagePreflight_RetriesHashMismatch(t *testing.T) {
+	allowFinalJobImageLoopbackForTest(t)
 	good, sha := preflightPNGBytes(t)
 	bad := append([]byte(nil), good...)
 	bad[len(bad)-1] ^= 0xff
@@ -415,5 +450,39 @@ func TestFinalJobImagePreflight_RetriesHashMismatch(t *testing.T) {
 	}
 	if calls.Load() < 2 {
 		t.Fatalf("preflight made %d request(s), want at least 2", calls.Load())
+	}
+}
+
+// TestFinalJobImageBytesVerifiedAcceptsWebP pins the acquisition/preflight
+// MIME contract: the download path already allows WebP, so the preflight must
+// decode the same bytes instead of rejecting a valid selected asset.
+func TestFinalJobImageBytesVerifiedAcceptsWebP(t *testing.T) {
+	// Real 2x2 WebP produced by ffmpeg from a solid source.
+	const encoded = "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoCAAIAAgA0JaACdLoB+AADsAD+8Oj3/yC5YXXI1/8gP+QH/ID/+PIAAAA="
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("decode WebP fixture: %v", err)
+	}
+	sha := fmt.Sprintf("%x", sha256.Sum256(data))
+	if !finalJobImageBytesVerified(bytes.NewReader(data), sha) {
+		t.Fatal("a real WebP image must pass the preflight decoder; acquisition already allows WebP")
+	}
+}
+
+// TestFinalJobImageURLVerifiedBlocksLoopback pins the SSRF contract: a plan
+// image URL that resolves to loopback/private space must never be fetched by
+// the preflight, even though the bytes would otherwise be valid.
+func TestFinalJobImageURLVerifiedBlocksLoopback(t *testing.T) {
+	previous := finalJobImageAllowLoopback.Swap(false)
+	defer finalJobImageAllowLoopback.Store(previous)
+	remoteBytes, remoteSHA := preflightPNGBytes(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(remoteBytes)
+	}))
+	defer server.Close()
+	item := imagePreflightItem("img-ssrf", "entity_image", remoteSHA, server.URL+"/image.png")
+	if err := finalJobImagePreflight([]capmodel.OverlayItem{item}, nil, false); err == nil {
+		t.Fatal("preflight must block loopback/private image hosts")
 	}
 }

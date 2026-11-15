@@ -21,7 +21,7 @@
 // Test map (per the original Italian audit action plan):
 //
 //  1. TestVoiceoverGenerate_RoutesToLegacyComplete
-//     Verifies that the canonical registry (appjobs.Compose) declares
+//     Verifies that the canonical registry (jobscheduling.Compose) declares
 //     job.TypeVoiceoverGenerate with ProducesArtifacts=false post-fix.
 //     The runner's runLease uses registry.ProducesArtifacts(jobType)
 //     to decide between tools.Complete and tools.CompleteWithArtifacts;
@@ -62,17 +62,16 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service"
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/voiceover/service/persistence"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -117,7 +116,7 @@ import (
 // — any revert breaks tests (a) Test 1 + (b) Test 2 at the
 // registry-contract level.
 func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	require.NotNil(t, reg)
 	require.True(t, reg.IsRegistered(job.TypeVoiceoverGenerate),
 		"job.TypeVoiceoverGenerate MUST be registered in the canonical registry (Compose())")
@@ -136,9 +135,9 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 	entry, ok := reg.Get(job.TypeVoiceoverGenerate)
 	require.True(t, ok, "job.TypeVoiceoverGenerate must be a registered entry")
 	assert.Equal(t, "voiceover.generate", entry.Completion.JobType)
-	assert.Equal(t, appjobs.ArtifactOwnershipApplication, entry.Completion.ArtifactOwnership,
+	assert.Equal(t, jobscheduling.ArtifactOwnershipApplication, entry.Completion.ArtifactOwnership,
 		"registry entry must declare application-owned artifact persistence")
-	assert.Equal(t, appjobs.FinalizationStrategyLegacyComplete, entry.Completion.FinalizationStrategy,
+	assert.Equal(t, jobscheduling.FinalizationStrategyLegacyComplete, entry.Completion.FinalizationStrategy,
 		"application-owned voiceover artifacts must use legacy broker completion")
 	assert.Contains(t, entry.Description, "voiceover.Finalizer",
 		"registry entry's Description MUST mention voiceover.Finalizer as the canonical artifact owner (godlike/06 SSOT documentation discipline)")
@@ -162,12 +161,12 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 // (canonical "Path A rejected" record; 3 documented reasons; see
 // Test 1's forward-pointer block for the full rationale).
 func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
-	reg := appjobs.Compose()
+	reg := jobscheduling.Compose()
 	require.NotNil(t, reg)
-	require.True(t, reg.IsRegistered(appjobs.TypeVoiceoverGenerateItem),
+	require.True(t, reg.IsRegistered(jobscheduling.TypeVoiceoverGenerateItem),
 		"job.TypeVoiceoverGenerateItem MUST be registered in the canonical registry (Compose())")
 
-	assert.False(t, reg.ProducesArtifacts(appjobs.TypeVoiceoverGenerateItem),
+	assert.False(t, reg.ProducesArtifacts(jobscheduling.TypeVoiceoverGenerateItem),
 		"job.TypeVoiceoverGenerateItem MUST have ProducesArtifacts=false post-PR-VO-COMPLETEPATH-FIX (commit db2f3b1e, 2026-07-04). "+
 			"Each per-language child persists its own voiceovers row + media_assets projection + outbox events inside "+
 			"its own per-item tx via the unified finalizer. The broker's legacy Complete is the canonical mark-SUCCEEDED "+
@@ -176,12 +175,12 @@ func TestVoiceoverGenerateItem_RoutesToLegacyComplete(t *testing.T) {
 			"internal/platform/sqlite/jobs/repository_lifecycle.go:115 will reject the legacy Complete "+
 			"with domainremote.ErrCompleteJobPathViolation, mirroring the parent-type bug.")
 
-	entry, ok := reg.Get(appjobs.TypeVoiceoverGenerateItem)
+	entry, ok := reg.Get(jobscheduling.TypeVoiceoverGenerateItem)
 	require.True(t, ok)
 	assert.Equal(t, "voiceover.generate_item", entry.Completion.JobType)
-	assert.Equal(t, appjobs.ArtifactOwnershipApplication, entry.Completion.ArtifactOwnership,
+	assert.Equal(t, jobscheduling.ArtifactOwnershipApplication, entry.Completion.ArtifactOwnership,
 		"registry entry must declare application-owned artifact persistence")
-	assert.Equal(t, appjobs.FinalizationStrategyLegacyComplete, entry.Completion.FinalizationStrategy,
+	assert.Equal(t, jobscheduling.FinalizationStrategyLegacyComplete, entry.Completion.FinalizationStrategy,
 		"application-owned voiceover artifacts must use legacy broker completion")
 	assert.Equal(t, 4, entry.Concurrency,
 		"job.TypeVoiceoverGenerateItem Concurrency MUST remain 4 (per-language sibling throttle — production canonical)")

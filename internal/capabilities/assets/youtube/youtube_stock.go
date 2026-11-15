@@ -3,9 +3,9 @@ package youtube
 import (
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockplan"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	transport "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/transport"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -37,6 +37,6 @@ func (h *YouTubeClipHandler) SubmitStock(c *gin.Context) {
 		return
 	}
 	transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type: appjobs.TypeYouTubeStock, Payload: payload,
+		Type: jobscheduling.TypeYouTubeStock, Payload: payload,
 	}, "YouTube stock job enqueued.")
 }

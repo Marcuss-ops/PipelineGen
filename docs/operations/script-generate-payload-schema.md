@@ -80,8 +80,11 @@ composition styles only supply layout, motion, and fallback color.
 
 `overlay_style.image` tunes generated image cards: `width`, `height`,
 `position_x`, `position_y`, `radius`, `fit` (`cover`/`contain`/`fill`),
-`bounded`, plus `border`, `stroke` and `shadow` (color, opacity, blur,
-offset). For a **standalone** image only, `backdrop` reuses the same asset as
+`bounded`, `glow` (`radius` 0..256, `intensity` 0..4, `color` #RRGGBB;
+radius 0 disables it), plus `border`, `stroke` and `shadow` (color, opacity,
+blur, offset). The `glow` block is image-only: it lowers to Chronon's native
+media glow effect and never changes caption text. For a **standalone** image
+only, `backdrop` reuses the same asset as
 a softly blurred full-canvas background and may add a light canvas grid:
 
 ```json
@@ -90,6 +93,7 @@ a softly blurred full-canvas background and may add a light canvas grid:
   "backdrop": {"zoom": 1.15, "blur_px": 18,
     "grid": {"style": "lines", "color": "#7FA8C8", "spacing_px": 120,
       "line_width_px": 1, "opacity": 0.1}},
+  "glow": {"radius": 24, "intensity": 0.25, "color": "#FFFFFF"},
   "shadow": {"enabled": true, "color": "#000000", "opacity": 0.6,
     "blur": 10, "offset": [0, 6]}
 }}
@@ -108,8 +112,9 @@ which keep independent per-layer frames.
   `audio`, `media_plan`, `overlay_background`, `overlay_style`,
   `map_type`, `map_camera_animation`, `map_label_animation`,
   `map_animation`,
-  `phrase_motions`, `image_motions`, `entity_image_motions`,
-  `phrase_motion_family`, `animation_contract_version`,
+  `phrase_motions`, `short_phrase_motion`, `long_phrase_motion`,
+  `image_motions`, `image_with_text_motions`, `entity_image_motions`,
+  `phrase_motion_family`, `date_motion_family`, `animation_contract_version`,
   `animation_directives`, `animation_catalog_digest`,
   `random_light_leak_on_clip_start`, `max_phrase_overlays`,
   `video_metadata`, `intro`, `outro`) is optional unless its own
@@ -124,14 +129,105 @@ highlight. `documentary_highlighting_v1` selects only that documentary family.
 Retired typewriter motions and the whole Brush line-treatment family are not
 callable.
 Long phrases (six words or more) rotate across Apple, documentary highlights,
-and spatial 3D motions. Their
-family is filtered before the requested animation-count window is selected, so
-the window does not collapse to the most numerous family. Phrases shorter than
-six words always use the Short Phrases lane, including phrases marked high
-priority. Retries with the same job identity keep the same selection. Image
-motions are sampled independently per image item.
+and spatial 3D motions. Their family is filtered before the certified phrase
+pool is walked, so the rotation does not collapse to the most numerous family.
+Phrases shorter than six words always use the Short Phrases lane, including
+phrases marked high priority. `animation_counts.short_important_phrase` and
+`animation_counts.important_phrase` are UI preview hints, not runtime caps:
+the runtime always walks the full compatible phrase pool. Dates, images, maps,
+entities and metrics still honor their counts as window sizes. Retries with
+the same job identity keep the same selection. Image motions are sampled
+independently per image item.
+
+`short_phrase_motion` and `long_phrase_motion` pin one catalog animation for
+the whole run instead of rotating:
+
+```json
+"short_phrase_motion": "phrase_apple_clean_01_blur_soft_reveal",
+"long_phrase_motion": "phrase_apple_clean_26_opacity_depth_push"
+```
+
+Every 1-5-word phrase uses `short_phrase_motion`; every 6+-word phrase uses
+`long_phrase_motion`. A pin bypasses `phrase_motions`, `phrase_motion_family`
+compatibility is still enforced, and neither the seeded rotation nor the
+final duplicate-rotation pass may replace the pinned id. An unknown id, a
+long-only id used as a short pin, or a word-count-specific short recipe is
+rejected for a lane-wide pin unless every short phrase in the run has that
+recipe's exact word count. Otherwise use a general short-phrase entrance.
+Leave either field empty to keep the existing rotation for that lane.
 `modern_apple` remains available when a payload explicitly wants only that
 style family.
+
+### Choosing the animation per category
+
+Every animated lane accepts an optional caller choice. **Omitting the field is
+the default**: the runtime walks that lane's certified pool with the seeded
+rotation (`motion_seed`, or the job identity when it is absent), so retries of
+the same job stay byte-identical. An explicit choice replaces the rotation for
+that lane; an unknown or lane-incompatible id fails closed at plan compilation.
+
+| Lane | Payload field | Shape | Omitted means |
+|---|---|---|---|
+| Short phrases (1–5 words) | `short_phrase_motion` | one id | seeded rotation; `phrase_motions`/family still apply |
+| Long phrases (6+ words) | `long_phrase_motion` | one id | seeded rotation; `phrase_motions`/family still apply |
+| Phrase pool | `phrase_motions` | array of ids | full certified catalog (or the selected `phrase_motion_family`) |
+| Dates (timeline date cards) | `date_motion_family` | `auto`, `date_v1`, `didone`, `typewriter` | full certified date pool (39 presets), seeded per card |
+| Single images without caption | `image_motions` | array of ids | certified automatic image pool, seeded per image |
+| Images with caption | `image_with_text_motions` | array of ids | certified image-with-text pool, seeded per image |
+| Entity images | `entity_image_motions` | array of ids | full certified entity-image catalog, seeded per card |
+| Entity captions | `entity_caption_motions` | array of ids | certified automatic caption pool, seeded per card |
+| Entity card composition | `entity_style_id` | `random`, a tag selector, or `01`..`25` | `random` (full 25-card registry) |
+| Maps | `map_presentation.animation` / `.camera` / `.style` | composition id or `random`; camera `slow_approach`/`auto`/`random`; style `chronon_editorial`/`random` | `random` (seeded family draw; the native renderer serves the base flyover today) |
+
+A one-element `image_motions`, `entity_image_motions`, or
+`entity_caption_motions` array pins that lane to the single id; a longer array
+rotates through it. `short_phrase_motion` and `long_phrase_motion` are scalar
+pins and take precedence over `phrase_motions` for their lane.
+`map_presentation` cannot be mixed with the legacy `map_type`,
+`map_camera_animation`, `map_label_animation` or `map_animation` fields: the
+mixture fails closed instead of guessing a winner.
+
+`date_motion_family: "typewriter"` restricts date cards to the ten certified
+`date_typewriter_*` presets. With `animation_counts.dates` omitted or set to
+`10`, a run with at least ten date cards rotates all ten; a lower count keeps
+the lane window that size. `didone` and `date_v1` select the other two date
+families. Unknown families fail closed.
+
+Entity cards take `entity_image_motions` and `entity_caption_motions` through
+the compile-path assignment.
+
+```json
+{
+  "short_phrase_motion": "phrase_apple_clean_01_blur_soft_reveal",
+  "long_phrase_motion": "phrase_apple_clean_26_opacity_depth_push",
+  "date_motion_family": "typewriter",
+  "image_motions": ["image_fade_reveal"],
+  "image_with_text_motions": ["image_fade_reveal"],
+  "entity_image_motions": ["image_scale_reveal"],
+  "entity_style_id": "camera",
+  "map_presentation": {"animation": "random", "camera": "slow_approach"}
+}
+```
+
+The `random` literal is accepted only where a field documents it
+(`map_presentation`, `entity_style_id`); for the phrase and image fields leave
+the field out instead of sending `random`.
+
+Ops payloads can be filled from a uniform CLI:
+
+```bash
+python3 ops/tools/apply_animation_choices.py payload.json \
+  --short-phrase-motion phrase_apple_clean_01_blur_soft_reveal \
+  --long-phrase-motion phrase_apple_clean_26_opacity_depth_push \
+  --date-motion-family typewriter \
+  --image-motions image_fade_reveal \
+  --image-with-text-motions image_fade_reveal \
+  --entity-style-id camera \
+  --out payload-animations.json
+```
+
+Only the flags passed are written; unset categories keep the seeded random
+pool.
 
 `script_params.segments[].extract_entities` optionally overrides the
 item-wide `output.extract_entities` tri-state for that scene. Omitted or

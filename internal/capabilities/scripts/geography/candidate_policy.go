@@ -128,6 +128,8 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 		Latitude: result.Latitude, Longitude: result.Longitude,
 		DisplayName: strings.TrimSpace(result.DisplayName),
 		Scope:       result.Scope,
+		Country:     strings.TrimSpace(result.Country),
+		CountryCode: strings.ToLower(strings.TrimSpace(result.CountryCode)),
 	}
 	if name != strings.Join(strings.Fields(strings.TrimSpace(entity.CanonicalName)), " ") {
 		entity.CanonicalName = name
@@ -142,6 +144,12 @@ func geocodeAnnotatedEntity(ctx context.Context, geocoder capabilitygeocoding.Ge
 // normalizeGeocodePlaceQuery removes the Portuguese sentence article in the
 // observed country phrase "O Brasil". Nominatim ranked a locality in Galicia
 // for that full phrase; the query should name the country itself, Brasil.
+//
+// It also removes the Italian article from a known administrative region:
+// "La Toscana" matched a town in Venezuela before the Italian region, while
+// "Toscana" resolves to the region. The article is stripped only when the
+// remainder is a known Italian region, so "La Spezia" and "L'Aquila" keep
+// their official names.
 func normalizeGeocodePlaceQuery(value, language string) string {
 	words := strings.Fields(strings.TrimSpace(value))
 	lang := strings.ToLower(strings.TrimSpace(language))
@@ -149,14 +157,59 @@ func normalizeGeocodePlaceQuery(value, language string) string {
 	if lang == "pt" && len(words) == 2 && strings.EqualFold(words[0], "o") && strings.EqualFold(words[1], "Brasil") {
 		words = words[1:]
 	}
+	if lang == "it" {
+		words = stripItalianRegionArticle(words)
+	}
 	return strings.Join(words, " ")
+}
+
+var italianRegions = map[string]struct{}{
+	"toscana": {}, "lombardia": {}, "lazio": {}, "veneto": {}, "campania": {},
+	"piemonte": {}, "sicilia": {}, "sardegna": {}, "puglia": {}, "calabria": {},
+	"liguria": {}, "marche": {}, "abruzzo": {}, "umbria": {}, "basilicata": {},
+	"molise": {}, "trentino-alto adige": {}, "friuli-venezia giulia": {},
+	"valle d'aosta": {}, "emilia-romagna": {},
+}
+
+// stripItalianRegionArticle removes a leading Italian article only when the
+// remaining phrase is an administrative region. It never rewrites a city or a
+// generic proper name.
+func stripItalianRegionArticle(words []string) []string {
+	if len(words) == 0 {
+		return words
+	}
+	first := strings.ToLower(words[0])
+	if len(words) > 1 {
+		switch first {
+		case "la", "lo", "il", "le":
+			rest := strings.Join(words[1:], " ")
+			if _, ok := italianRegions[strings.ToLower(rest)]; ok {
+				return words[1:]
+			}
+		}
+	}
+	for _, prefix := range []string{"l'", "l’"} {
+		if !strings.HasPrefix(first, prefix) {
+			continue
+		}
+		rest := words[0][len(prefix):]
+		if len(words) > 1 {
+			rest += " " + strings.Join(words[1:], " ")
+		}
+		if _, ok := italianRegions[strings.ToLower(rest)]; ok {
+			out := make([]string, 0, len(words))
+			out = append(out, rest)
+			return append(out, words[1:]...)
+		}
+	}
+	return words
 }
 
 func isGenericPlaceLabel(name string) bool {
 	switch strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(name)), " ")) {
 	case "here", "there", "local", "nearby", "home", "workplace", "city", "town", "village", "region", "area", "location",
 		"paese", "paesi", "nesta", "neste", "nessa", "nesse", "esta", "este", "essa", "esse",
-		"dopo", "capire":
+		"dopo", "capire", "ergastolo", "l'ergastolo", "l’ergastolo":
 		return true
 	default:
 		return false

@@ -563,8 +563,8 @@ func TestBuildPlanMergesCrossSceneRouteIntoOneMapItem(t *testing.T) {
 
 	scenes := []SceneInput{
 		{ID: "scene-1", Maps: []MapCandidate{groundedCandidate(t, "city:paris", "Paris", parisLat, parisLon, 0, 1_000_000)}},
-		{ID: "scene-2", Maps: []MapCandidate{groundedCandidate(t, "city:london", "London", 51.5074, -0.1278, 10_000_000, 1_000_000)}},
-		{ID: "scene-3", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 20_000_000, 1_000_000)}},
+		{ID: "scene-2", Maps: []MapCandidate{groundedCandidate(t, "city:london", "London", 51.5074, -0.1278, 3_000_000, 1_000_000)}},
+		{ID: "scene-3", Maps: []MapCandidate{groundedCandidate(t, "city:rome", "Rome", romeLat, romeLon, 6_000_000, 1_000_000)}},
 	}
 	plan, err := BuildPlan(PlanInput{
 		PlanID: "map-plan", VideoID: "map-video",

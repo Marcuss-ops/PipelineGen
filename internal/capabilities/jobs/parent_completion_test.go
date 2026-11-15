@@ -151,7 +151,7 @@ func (s *recordingStore) Complete(_ context.Context, id, _, _ string, _ int, _ j
 
 // TestFinalizeLegacyCompleteNotifiesParent pins the wiring point that matters
 // most for clip.render: clip.render completes through the legacy path (its
-// registry policy is FinalizationStrategyLegacyComplete), so the notification
+// registry policy is jobscheduling.FinalizationStrategyLegacyComplete), so the notification
 // must fire from there — not only from the artifact-producing path.
 func TestFinalizeLegacyCompleteNotifiesParent(t *testing.T) {
 	store := &recordingStore{}

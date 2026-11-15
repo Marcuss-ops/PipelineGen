@@ -296,6 +296,11 @@ type GeoCoordinate struct {
 	Longitude   float64 `json:"longitude"`
 	DisplayName string  `json:"display_name,omitempty"`
 	Scope       string  `json:"scope,omitempty"`
+	// Country and CountryCode are the geocoder's addressed country for this
+	// point. They are grounded context for the places that follow in the same
+	// scene; empty values mean the provider did not report one.
+	Country     string `json:"country,omitempty"`
+	CountryCode string `json:"country_code,omitempty"`
 }
 
 type EntityImageBinding struct {

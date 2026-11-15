@@ -17,7 +17,6 @@ import (
 	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/persistence"
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
-	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediacert"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	documentadapters "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/adapters"
@@ -30,9 +29,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/observability"
-	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/platform/ollama/adapters"
 	pgmedia "github.com/Marcuss-ops/PipelineGen/internal/platform/postgres/media"
 	sqlitecheckpoint "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/checkpoint"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/jobregistry"
@@ -410,14 +407,8 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 	// engine as the script batch analyzer. Exact source matches reuse the
 	// batch entity projection; translated/different text is analyzed by that
 	// same engine on demand.
-	vidRushEntityExtractor, err := nlp.NewEntityExtractorAdapter(semanticAnalyzer)
-	if err != nil {
-		return fmt.Errorf("build NER entity extractor port: %w", err)
-	}
-	imageSearchResolver := capabilityimagesearch.NewResolver(vidRushEntityExtractor)
-	runner.SetImageSearchResolver(imageSearchResolver)
-	log.Info("image search intent resolver wired (capabilities/imagesearch, deterministic path)")
-	scriptwiring.WireSemanticSearchPlanner(runner, cfg, scriptCacheDB(root), vidrushInternetImageSearcher(root, log), log)
+	semanticCandidateScorer := scriptVisualCandidateScorer(root)
+	scriptwiring.WireSemanticSearchPlanner(runner, cfg, scriptCacheDB(root), vidrushInternetImageSearcher(root, log), semanticCandidateScorer, log)
 
 	vidRushMetrics := observability.NewVidRushMetricsAdapter()
 	var vidRushFanout scriptgen.SegmentProviderResolver
@@ -442,11 +433,9 @@ func wireScriptGenerationVidRush(runner *scriptgen.Runner, cfg *config.Config, r
 			fanout.WithMediaManifestPins(pins)
 			log.Info("VidRush image fanout media_manifest fast-path enabled", zap.Int("pinned_entries", pins.EntryCount()))
 		}
-		if root.AI != nil && root.AI.ScriptGen != nil {
-			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-				fanout.WithSemanticScorer(ollamaadapters.NewOllamaPersonImageScorer(ollamaClient))
-				log.Info("VidRush image fanout wired with GPU-capable person-image verification", zap.String("model", ollamaClient.Model()))
-			}
+		if semanticCandidateScorer != nil {
+			fanout.WithSemanticScorer(semanticCandidateScorer)
+			log.Info("VidRush image fanout and semantic planner wired with visual identity verification")
 		}
 		vidRushFanout = fanout
 	}

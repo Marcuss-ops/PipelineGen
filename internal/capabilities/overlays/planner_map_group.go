@@ -52,11 +52,15 @@ func groupMapPlacesByNarrativeProximity(places []MapCandidate, size int) [][]Map
 	ordered := sortedMapPlacesSpokenOrder(places)
 	clusters := make([][]MapCandidate, 0, len(ordered))
 	current := []MapCandidate{ordered[0]}
+	clusterStart := ordered[0].StartUS
 	for _, place := range ordered[1:] {
 		previousEnd := current[len(current)-1].StartUS + current[len(current)-1].DurationUS
-		if place.StartUS-previousEnd > maxMapNarrativeGapUS {
+		placeEnd := place.StartUS + place.DurationUS
+		if place.StartUS-previousEnd > maxMapNarrativeGapUS || placeEnd-clusterStart > mapMaxPresentationUS {
 			clusters = append(clusters, current)
-			current = nil
+			current = []MapCandidate{place}
+			clusterStart = place.StartUS
+			continue
 		}
 		current = append(current, place)
 	}
@@ -66,6 +70,24 @@ func groupMapPlacesByNarrativeProximity(places []MapCandidate, size int) [][]Map
 		groups = append(groups, chunkMapPlaces(cluster, size)...)
 	}
 	return groups
+}
+
+// mapPlacesForShortPresentation keeps the first occurrence of each grounded
+// candidate as the map's timing anchor. Entity spans can cover repeat mentions
+// over a whole scene; only a span longer than the map's ten-second ceiling is
+// shortened to the readable pin slot, because that span cannot fit any single
+// map item. Short repeats stay intact so a pin mentioned twice still covers
+// both spoken moments. The camera remains on screen for its normal eight-
+// second presentation.
+func mapPlacesForShortPresentation(places []MapCandidate) []MapCandidate {
+	shotPlaces := append([]MapCandidate(nil), places...)
+	for i := range shotPlaces {
+		if shotPlaces[i].DurationUS > mapMaxPresentationUS {
+			shotPlaces[i].DurationUS = mapPinReadDurationUS
+			shotPlaces[i].EndMs = (shotPlaces[i].StartUS + shotPlaces[i].DurationUS + 999) / 1000
+		}
+	}
+	return shotPlaces
 }
 
 // sortedMapPlacesSpokenOrder is the ONE spoken-order sort shared by grouping,
@@ -80,6 +102,54 @@ func sortedMapPlacesSpokenOrder(places []MapCandidate) []MapCandidate {
 		return ordered[i].EntityID < ordered[j].EntityID
 	})
 	return ordered
+}
+
+// splitMapChunksByPresentationDuration applies the hard render ceiling to
+// already-formed map groups. Each group keeps its spoken order and is split
+// only when its span would exceed maxDurationUS; every place lands in exactly
+// one output chunk. Pin durations are bounded before this call, so a single
+// place can always fit the ceiling.
+func splitMapChunksByPresentationDuration(chunks [][]MapCandidate, maxDurationUS int64) [][]MapCandidate {
+	if len(chunks) == 0 || maxDurationUS <= 0 {
+		return chunks
+	}
+	out := make([][]MapCandidate, 0, len(chunks))
+	for _, chunk := range chunks {
+		out = append(out, splitMapPlacesByPresentationDuration(chunk, maxDurationUS)...)
+	}
+	return out
+}
+
+// splitMapPlacesByPresentationDuration splits one spoken-order chunk so every
+// result spans at most maxDurationUS. The boundary is taken from the actual
+// grounded starts and ends, never from an estimate or a scene label.
+func splitMapPlacesByPresentationDuration(places []MapCandidate, maxDurationUS int64) [][]MapCandidate {
+	if len(places) == 0 || maxDurationUS <= 0 {
+		return nil
+	}
+	ordered := sortedMapPlacesSpokenOrder(places)
+	chunks := make([][]MapCandidate, 0, len(ordered))
+	current := make([]MapCandidate, 0, len(ordered))
+	var startUS int64
+	for _, place := range ordered {
+		if len(current) == 0 {
+			current = append(current, place)
+			startUS = place.StartUS
+			continue
+		}
+		endUS := place.StartUS + place.DurationUS
+		if endUS-startUS > maxDurationUS {
+			chunks = append(chunks, current)
+			current = []MapCandidate{place}
+			startUS = place.StartUS
+			continue
+		}
+		current = append(current, place)
+	}
+	if len(current) > 0 {
+		chunks = append(chunks, current)
+	}
+	return chunks
 }
 
 // chunkMapPlaces splits places, in spoken order, into consecutive chunks of at

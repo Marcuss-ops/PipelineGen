@@ -308,13 +308,18 @@ func rankedUniqueKindIndices(items []capmodel.OverlayItem, kind string, cap int)
 // rankedUniqueMapIndices ranks map items for the run: the same plate inside
 // one scene is ONE map (the highest-priority occurrence wins), the same plate
 // in another scene is a distinct map, and the cap bounds the total unique
-// count. The returned indices are deterministic: descending priority, ties
-// broken by ascending original index.
+// count. Consecutive segments of one bounded MapGroup are distinct by their
+// group index, so a long spoken span is not collapsed back to a single map
+// after the planner has split it. The returned indices are deterministic:
+// descending priority, ties broken by ascending original index.
 func rankedUniqueMapIndices(items []capmodel.OverlayItem, cap int) []int {
 	if cap <= 0 {
 		return nil
 	}
-	type sceneKey struct{ scene, plate string }
+	type sceneKey struct {
+		scene, plate string
+		segment      int
+	}
 	seen := make(map[sceneKey]int)
 	for i, item := range items {
 		if item.Kind != "map" || item.Map == nil {
@@ -325,6 +330,12 @@ func rankedUniqueMapIndices(items []capmodel.OverlayItem, cap int) []int {
 			continue
 		}
 		key := sceneKey{scene: strings.TrimSpace(item.SceneID), plate: plate}
+		if group := MapGroupPayload(item.Params); group != nil {
+			count, index := mapGroupInt(group["count"]), mapGroupInt(group["index"])
+			if count > 1 && index > 0 {
+				key.segment = index
+			}
+		}
 		if current, ok := seen[key]; ok {
 			if itemPriority(item) > itemPriority(items[current]) {
 				seen[key] = i
@@ -348,6 +359,22 @@ func rankedUniqueMapIndices(items []capmodel.OverlayItem, cap int) []int {
 		indices = indices[:cap]
 	}
 	return indices
+}
+
+// mapGroupInt projects the planner's integer map-group fields. JSON-decoded
+// plans may carry float64, so accept every numeric representation the
+// planner/budget boundary uses.
+func mapGroupInt(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
+	}
 }
 
 // ApplyEditorialOverlayBudgetWithLimit is ApplyEditorialOverlayBudget with a

@@ -55,6 +55,8 @@ func openPersistentEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			next_retry_at TEXT NOT NULL DEFAULT '',
 			last_validation_error TEXT NOT NULL DEFAULT '',
 			quality_reason TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
+			verifier_version TEXT NOT NULL DEFAULT '',
 			first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
 			last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -75,6 +77,16 @@ func openPersistentEntityImageCatalog(t *testing.T, path string) *sql.DB {
 			last_error TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT (datetime('now')),
 			updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE IF NOT EXISTS entity_image_catalog_materialization_attempts (
+			attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			candidate_id INTEGER NOT NULL,
+			asset_id TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT '',
+			last_error TEXT NOT NULL DEFAULT '',
+			attempted_at TEXT NOT NULL,
 			FOREIGN KEY (candidate_id) REFERENCES entity_image_catalog_candidates(candidate_id) ON DELETE CASCADE
 		)`,
 	}
@@ -283,6 +295,7 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
 		SemanticScore:     0.9,
+		VerifierVersion:   entitycatalog.CandidateVerifierVersion,
 		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	})
 	if err != nil {
@@ -291,7 +304,7 @@ func TestEntityImageCatalogDriveReuseWithPersistentSQLite(t *testing.T) {
 	materialization := entitycatalog.Materialization{
 		CandidateID:    candidateID,
 		AssetID:        "drive-michael-jordan",
-		ContentSHA256:  "sha256-michael-jordan",
+		ContentSHA256:  canonicalAdapterTestContentSHA,
 		DriveLink:      "https://drive.google.com/file/d/drive-michael-jordan/view",
 		Status:         entitycatalog.MaterializationStatusMaterialized,
 		MaterializedAt: time.Now().UTC(),
@@ -367,13 +380,14 @@ func TestEntityImageCatalogReusesMaterializedImageWhenSourceIsBroken(t *testing.
 		SourceURL:         "https://images.example/michael-jordan-expired.jpg",
 		Status:            entitycatalog.CandidateStatusFresh,
 		SemanticStatus:    entitycatalog.CandidateSemanticAccepted,
+		VerifierVersion:   entitycatalog.CandidateVerifierVersion,
 		QualityReason:     "Ollama visual identity verification confirmed the requested person and one dominant subject",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := repo.UpsertMaterialization(ctx, entitycatalog.Materialization{
-		CandidateID: candidateID, AssetID: "drive-michael-jordan", ContentSHA256: "sha256-michael-jordan",
+		CandidateID: candidateID, AssetID: "drive-michael-jordan", ContentSHA256: canonicalAdapterTestContentSHA,
 		DriveLink: "https://drive.google.com/file/d/drive-michael-jordan/view",
 		Status:    entitycatalog.MaterializationStatusMaterialized,
 	}); err != nil {

@@ -50,7 +50,7 @@ func (p *schedulerTestPort) Search(ctx context.Context, req SemanticAssetSearchR
 	if remaining > 0 {
 		return SemanticAssetSearchResponse{}, &providerbudget.RateLimited{Provider: "test", RetryAfter: 15 * time.Millisecond}
 	}
-	return SemanticAssetSearchResponse{Hits: p.hits[req.Query], Provider: "test-provider"}, nil
+	return SemanticAssetSearchResponse{Hits: verifiedSemanticSearchFixtures(p.hits[req.Query]), Provider: "test-provider"}, nil
 }
 
 func schedulerPlan(t *testing.T, identities []SemanticIdentity, candidates ...SemanticProductionCandidate) *SemanticProductionPlan {
@@ -95,6 +95,18 @@ func TestSemanticSearchClassesRouteToTheLaneThatCanAnswer(t *testing.T) {
 	}
 	if got := SearchClassFromQuery("un bosco di notte"); got != SearchClassGeneric {
 		t.Fatalf("free-text query class = %q, want generic", got)
+	}
+}
+
+func TestSemanticSearchSelectsBestRankedHitInsteadOfFirstProviderHit(t *testing.T) {
+	response := rankSemanticAssetHits(SemanticAssetSearchResponse{Hits: []SemanticAssetHit{
+		{AssetID: "first", Score: 1, SemanticStatus: "unknown"},
+		{AssetID: "rejected", SemanticStatus: "rejected", SemanticScore: 1},
+		{AssetID: "best", SHA256: strings.Repeat("b", 64), VerifierVersion: "verifier-v1", SemanticStatus: "accepted", SemanticScore: .8, RelevanceScore: .7},
+		{AssetID: "accepted-lower", SHA256: strings.Repeat("a", 64), VerifierVersion: "verifier-v1", SemanticStatus: "accepted", SemanticScore: .6, RelevanceScore: .7},
+	}})
+	if len(response.Hits) != 2 || response.Hits[0].AssetID != "best" || response.Hits[1].AssetID != "accepted-lower" {
+		t.Fatalf("ranked hits = %+v, want only verified accepted hits in score order", response.Hits)
 	}
 }
 
@@ -281,7 +293,7 @@ func TestStableLocationCacheOutlivesOrdinaryQueryTTL(t *testing.T) {
 	attempt := SemanticSearchAttempt{
 		CandidateID: "location-pavia", Entity: "Pavia", Class: SearchClassLocation, Query: query,
 	}
-	key := cacheKey(attempt, "it")
+	key := cacheKey(attempt, "it", attempt.Class.ProviderLane(), planner.cfg.Limit, semanticPlanFingerprint(nil))
 	if _, _, _, _, err := planner.fetch(context.Background(), attempt, "it", key); err != nil {
 		t.Fatalf("initial fetch: %v", err)
 	}

@@ -226,6 +226,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	// replaces the legacy map_* fields. Mixing both spellings fails closed
 	// instead of guessing which one wins.
 	mapType, mapCamera, mapLabel, mapAnimation := item.MapType, item.MapCameraAnimation, item.MapLabelAnimation, item.MapAnimation
+	mapLevel := ""
 	var mapPresentation *scriptpkg.MapPresentation
 	if item.MapPresentation != nil {
 		if strings.TrimSpace(mapType) != "" || strings.TrimSpace(mapCamera) != "" ||
@@ -240,6 +241,7 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 		// The legacy fields remain the compatibility projection consumed by
 		// the existing runtime pipeline; the spec resolves them once, here.
 		mapType = resolved.Style
+		mapLevel = resolved.Level
 		mapLabel = "none"
 		mapAnimation = resolved.Animation
 		if resolved.Camera != "auto" {
@@ -248,22 +250,28 @@ func BuildGenerateRequest(env *scriptpkg.GenerationEnvelopeV2, idempotencyKey st
 	}
 
 	req := GenerateRequest{
-		Model:              item.Model,
-		Tone:               item.Tone,
-		Style:              item.Style,
-		Render:             item.Output.Render,
-		OverlayBackground:  item.OverlayBackground,
-		OverlayStyle:       item.OverlayStyle,
-		MapType:            mapType,
-		MapCameraAnimation: mapCamera,
-		MapLabelAnimation:  mapLabel,
-		MapAnimation:       mapAnimation,
-		MapPresentation:    mapPresentation,
-		PhraseMotions:      append([]string(nil), item.PhraseMotions...),
-		PhraseMotionFamily: item.PhraseMotionFamily,
-		MotionSeed:         strings.TrimSpace(item.MotionSeed),
-		CoherenceSeed:      strings.TrimSpace(item.CoherenceSeed),
-		ImageMotions:       append([]string(nil), item.ImageMotions...), EntityImageMotions: append([]string(nil), item.EntityImageMotions...),
+		Model:                         item.Model,
+		Tone:                          item.Tone,
+		Style:                         item.Style,
+		Render:                        item.Output.Render,
+		OverlayBackground:             item.OverlayBackground,
+		OverlayStyle:                  item.OverlayStyle,
+		MapType:                       mapType,
+		MapCameraAnimation:            mapCamera,
+		MapLabelAnimation:             mapLabel,
+		MapAnimation:                  mapAnimation,
+		MapLevel:                      mapLevel,
+		MapPresentation:               mapPresentation,
+		PhraseMotions:                 append([]string(nil), item.PhraseMotions...),
+		ShortPhraseMotion:             strings.TrimSpace(item.ShortPhraseMotion),
+		LongPhraseMotion:              strings.TrimSpace(item.LongPhraseMotion),
+		PhraseMotionFamily:            item.PhraseMotionFamily,
+		DateMotionFamily:              item.DateMotionFamily,
+		MotionSeed:                    strings.TrimSpace(item.MotionSeed),
+		CoherenceSeed:                 strings.TrimSpace(item.CoherenceSeed),
+		ImageMotions:                  append([]string(nil), item.ImageMotions...),
+		ImageWithTextMotions:          append([]string(nil), item.ImageWithTextMotions...),
+		EntityImageMotions:            append([]string(nil), item.EntityImageMotions...),
 		EntityCaptionMotions:          append([]string(nil), item.EntityCaptionMotions...),
 		AnimationPolicies:             append([]scriptpkg.AnimationPolicy(nil), item.AnimationPolicies...),
 		RandomLightLeakOnClipStart:    item.RandomLightLeakOnClipStart,

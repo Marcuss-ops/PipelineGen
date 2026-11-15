@@ -172,6 +172,15 @@ func sceneGeoContext(annotation *scriptpkg.SceneAnnotations) capabilitygeocoding
 		if entity.Geo == nil {
 			continue
 		}
+		// A grounded city also grounds its country: use the provider's
+		// addressed country as context for the namesakes that follow, even
+		// when the scene never spelled the country out.
+		if ctx.CountryCode == "" && strings.TrimSpace(entity.Geo.CountryCode) != "" {
+			ctx.CountryCode = strings.ToLower(strings.TrimSpace(entity.Geo.CountryCode))
+		}
+		if ctx.Country == "" && strings.TrimSpace(entity.Geo.Country) != "" {
+			ctx.Country = strings.TrimSpace(entity.Geo.Country)
+		}
 		name := strings.TrimSpace(entity.CanonicalName)
 		if name == "" {
 			continue
@@ -195,6 +204,15 @@ func sceneGeoContext(annotation *scriptpkg.SceneAnnotations) capabilitygeocoding
 func AdoptGeoContext(ctx *capabilitygeocoding.Context, entity *scriptpkg.AnnotatedEntity) {
 	if ctx == nil || entity == nil || entity.Geo == nil {
 		return
+	}
+	// Any resolved place carries a grounded country. Adopt it before the
+	// scope switch so a city resolved first disambiguates the region that
+	// follows ("Milano" -> "La Toscana").
+	if ctx.CountryCode == "" && strings.TrimSpace(entity.Geo.CountryCode) != "" {
+		ctx.CountryCode = strings.ToLower(strings.TrimSpace(entity.Geo.CountryCode))
+	}
+	if ctx.Country == "" && strings.TrimSpace(entity.Geo.Country) != "" {
+		ctx.Country = strings.TrimSpace(entity.Geo.Country)
 	}
 	name := strings.TrimSpace(entity.CanonicalName)
 	if name == "" {
@@ -232,6 +250,13 @@ func capitalizedNameFragment(sceneText, candidate string) bool {
 	}
 	for _, span := range capitalizedNameRE.FindAllString(sceneText, -1) {
 		parts := strings.Fields(strings.ToLower(strings.TrimSpace(span)))
+		// A leading article is not part of a proper name. Without this,
+		// "La Toscana" looks like a two-token name and the correct single-token
+		// annotation "Toscana" is discarded as if it were a person-name
+		// fragment (e.g. "Chiara" from "Chiara Poggi").
+		if len(parts) >= 2 && isCapitalizedNameArticle(parts[0]) {
+			parts = parts[1:]
+		}
 		if len(parts) < 2 {
 			continue
 		}
@@ -242,6 +267,16 @@ func capitalizedNameFragment(sceneText, candidate string) bool {
 		}
 	}
 	return false
+}
+
+func isCapitalizedNameArticle(part string) bool {
+	switch part {
+	case "il", "lo", "la", "i", "gli", "le", "l'", "l’", "un", "uno", "una", "un'", "un’",
+		"the", "a", "an", "el", "los", "las", "les", "der", "die", "das":
+		return true
+	default:
+		return false
+	}
 }
 
 func stripPersonNameMapCandidates(annotation *scriptpkg.SceneAnnotations, sceneText string) {
@@ -420,7 +455,11 @@ func GeocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 		if result.Scope != "continent" && result.Scope != "country" && result.Scope != "region" && result.Scope != "city" {
 			continue
 		}
-		geo := &scriptpkg.GeoCoordinate{Latitude: result.Latitude, Longitude: result.Longitude, DisplayName: result.DisplayName, Scope: result.Scope}
+		geo := &scriptpkg.GeoCoordinate{
+			Latitude: result.Latitude, Longitude: result.Longitude,
+			DisplayName: result.DisplayName, Scope: result.Scope,
+			Country: result.Country, CountryCode: result.CountryCode,
+		}
 		if index, exists := entityIndexes[strings.ToLower(name)]; exists {
 			annotation.PrimaryEntities[index].Geo = geo
 			annotation.PrimaryEntities[index].CanonicalName = name
@@ -434,45 +473,10 @@ func GeocodeGroundedPlaceNames(ctx context.Context, geocoder capabilitygeocoding
 			Geo: geo,
 		})
 	}
-	// When a map has multiple city stops, country/region mentions are context
-	// for those stops rather than extra pins in the animation.
-	cities := 0
-	countries := 0
-	regions := 0
-	for _, entity := range annotation.PrimaryEntities {
-		if entity.Geo != nil {
-			switch entity.Geo.Scope {
-			case "city":
-				cities++
-			case "country":
-				countries++
-			case "region":
-				regions++
-			}
-		}
-	}
-	// A scene map should focus on its most specific grounded place level.
-	// Country and continent mentions provide context for city pins; they are
-	// not separate pins that send the camera to an unrelated map.
-	if cities > 0 || countries > 0 || regions > 0 {
-		kept := annotation.PrimaryEntities[:0]
-		for _, entity := range annotation.PrimaryEntities {
-			keep := entity.Geo == nil
-			if entity.Geo != nil {
-				switch {
-				case cities > 0:
-					keep = entity.Geo.Scope == "city"
-				case countries > 0:
-					keep = entity.Geo.Scope == "country"
-				case regions > 0:
-					keep = entity.Geo.Scope == "region"
-				}
-			}
-			if keep {
-				kept = append(kept, entity)
-			}
-		}
-		annotation.PrimaryEntities = kept
-	}
+	// Keep every grounded scope. A city, its region and its country are
+	// distinct map candidates; collapsing them here silently lost regional
+	// maps such as "La Toscana" whenever the same scene named a city. The
+	// planner groups candidates by certified plate and the run budget bounds
+	// how many maps are admitted.
 	return nil
 }

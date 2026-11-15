@@ -111,6 +111,25 @@ func TestLocalizationSourceResolver_ResolvesVerifiedFacts(t *testing.T) {
 	}
 }
 
+func TestLocalizationSourceResolver_NormalizesNoisyAverageFrameRate(t *testing.T) {
+	sha := srcTestSHA(0)
+	// ffprobe reports 24 fps CFR clips with a noisy avg_frame_rate whose
+	// denominator exceeds the render canvas limit. The resolver must hand the
+	// compiler a bounded rate so the sealed plan is renderable.
+	r := newTestSourceResolver(t,
+		&fakeLocalizationAssetResolver{ref: srcTestRef(sha)},
+		&fakeLocalizationAssetMaterializer{mat: srcTestMaterial(sha)},
+		&fakeLocalizationMediaProber{info: srcTestInfo(81920, 3399)},
+	)
+	facts, err := r.ResolveSource(context.Background(), "source-1")
+	if err != nil {
+		t.Fatalf("ResolveSource: %v", err)
+	}
+	if facts.FrameRate.Numerator != 24 || facts.FrameRate.Denominator != 1 {
+		t.Fatalf("frame rate: got %d/%d, want 24/1", facts.FrameRate.Numerator, facts.FrameRate.Denominator)
+	}
+}
+
 func TestLocalizationSourceResolver_RejectsRegistryHashMismatch(t *testing.T) {
 	sha := srcTestSHA(0)
 	other := srcTestSHA(1)

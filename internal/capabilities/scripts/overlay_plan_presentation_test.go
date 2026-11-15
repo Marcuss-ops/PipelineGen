@@ -253,14 +253,16 @@ func TestApplyOverlayPresentationBindsVerifiedAssetsAndSplitsLongText(t *testing
 	if francis.CaptionLayout != "below" || francis.EntityStyleID != capabilityoverlay.IdentityEntityStyleBelowSelector {
 		t.Fatalf("entity presentation not normalized: %+v", francis)
 	}
-	if francis.Params["fill"] != presentationTextFill || francis.Params["glow_color"] != presentationTextGlowColor {
-		t.Fatalf("entity typography = fill %v glow %v, want black with a white glow", francis.Params["fill"], francis.Params["glow_color"])
+	if francis.CaptionColor != presentationTextFill {
+		t.Fatalf("entity caption color = %q, want %q", francis.CaptionColor, presentationTextFill)
 	}
-	if _, shadows := francis.Params["shadow_color"]; shadows {
-		t.Fatalf("black shadow survived the white-glow treatment: %+v", francis.Params)
+	for _, key := range []string{"fill", "glow_color", "font_family", "font_size_px"} {
+		if _, ok := francis.Params[key]; ok {
+			t.Fatalf("text-layer override %q survived on the entity image: %+v", key, francis.Params)
+		}
 	}
-	if style, _ := francis.Style["fill"].(string); style != presentationTextFill {
-		t.Fatalf("entity style fill = %q, want %q", style, presentationTextFill)
+	if francis.Style != nil {
+		t.Fatalf("entity style = %+v, want nil on an image-backed card", francis.Style)
 	}
 	if francis.CaptionFontFamily != playfairRuntimeFamily {
 		t.Fatalf("entity caption font = %q, want %q", francis.CaptionFontFamily, playfairRuntimeFamily)

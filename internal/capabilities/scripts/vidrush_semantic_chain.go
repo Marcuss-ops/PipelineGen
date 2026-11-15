@@ -24,7 +24,6 @@ import (
 
 	phrasepkg "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/phrases"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/entitytype"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/sceneir"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -206,20 +205,18 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			entityType = scriptpkg.EntityTypeVisualConcept
 		}
 		extractedEntities = append(extractedEntities, scriptpkg.ExtractedEntity{
-			Value:      ve.Text,
-			Type:       string(entityType),
-			Confidence: float64(ve.Score),
+			Value:         ve.Text,
+			Type:          string(entityType),
+			Confidence:    float64(ve.Score),
+			IdentityID:    ve.IdentityID,
+			CanonicalID:   ve.CanonicalID,
+			SearchIntents: append([]string(nil), ve.SearchIntents...),
 		})
 	}
 	imageEntities := imageSearchEntities(entities, extraction.HasCategoryOnlyIncludes() || hasAdditionalEntityCategory(extraction))
 	imageQueries := make([]string, 0, len(imageEntities))
-	imageAnchor := visualImageAnchor(sourceForExtraction)
 	for _, ve := range imageEntities {
-		query := strings.TrimSpace(ve.Text)
-		if !extraction.EntityImageSurfaceEnabled() && imageAnchor != "" && query != "" && !strings.Contains(strings.ToLower(query), strings.ToLower(imageAnchor)) {
-			query = imageAnchor + " " + query
-		}
-		imageQueries = append(imageQueries, query)
+		imageQueries = append(imageQueries, ve.SearchIntents...)
 	}
 	if extraction.HasCategoryOnlyIncludes() && !categoryIncludesImageableIdentity(extraction) {
 		imageQueries = nil
@@ -320,14 +317,11 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 // before the entity/image fanout. VisualNER may return both a canonical name
 // and a sentence surface such as "While Dolly Parton's"; those are one
 // person, hence one image query and one overlay.
-// normalizeVisualEntityTypes corrects the extractor's PERSON default when the
-// surface itself is a strong place or organisation name. The correction stays
-// on the Go projection boundary so the entity timeline, annotations and image
-// queries all consume the same kind.
+// normalizeVisualEntityTypes normalizes the extractor's taxonomy labels while
+// preserving the semantic type assigned by BrainRust.
 func normalizeVisualEntityTypes(entities []VisualEntity) {
 	for i := range entities {
-		corrected := entitytype.CorrectSurfaceType(entities[i].Text, string(entities[i].Type))
-		entities[i].Type = scriptpkg.EntityType(scriptpkg.NormalizeAnnotationType(corrected))
+		entities[i].Type = scriptpkg.EntityType(scriptpkg.NormalizeAnnotationType(string(entities[i].Type)))
 	}
 }
 
@@ -411,7 +405,7 @@ func deduplicateVisualEntities(entities []VisualEntity) []VisualEntity {
 		fullPeopleBySurname[surname][strings.ToLower(strings.Join(name, " "))] = struct{}{}
 	}
 	out := make([]VisualEntity, 0, len(entities))
-	seen := make(map[string]struct{}, len(entities))
+	seen := make(map[string]int, len(entities))
 	for _, entity := range entities {
 		value := strings.TrimSpace(entity.Text)
 		if scriptpkg.NormalizeAnnotationType(string(entity.Type)) == "PERSON" {
@@ -427,32 +421,30 @@ func deduplicateVisualEntities(entities []VisualEntity) []VisualEntity {
 		if key == "" {
 			continue
 		}
-		if _, exists := seen[key]; exists {
+		if existing, exists := seen[key]; exists {
+			if out[existing].IdentityID == "" {
+				out[existing].IdentityID = entity.IdentityID
+				out[existing].CanonicalID = entity.CanonicalID
+			}
+			for _, intent := range entity.SearchIntents {
+				out[existing].SearchIntents = appendUniqueSemanticIntents(out[existing].SearchIntents, intent)
+			}
 			continue
 		}
-		seen[key] = struct{}{}
+		seen[key] = len(out)
 		entity.Text = value
 		out = append(out, entity)
 	}
 	return out
 }
 
-// visualImageAnchor extracts the subject phrase from the first source clause.
-// VisualNER may return useful ingredients or actions while omitting the main
-// subject; retaining this short source-grounded anchor prevents searches for
-// "olive oil" or "wide pan" from drifting to unrelated stock imagery.
-func visualImageAnchor(source string) string {
-	first := strings.TrimSpace(strings.SplitN(source, ".", 2)[0])
-	if first == "" {
-		return ""
-	}
-	lower := strings.ToLower(first)
-	for _, marker := range []string{" consists ", " contains ", " combines ", " is ", " are ", " was ", " were "} {
-		if idx := strings.Index(lower, marker); idx > 0 {
-			return strings.TrimSpace(first[:idx])
+func appendUniqueSemanticIntents(existing []string, intent string) []string {
+	for _, value := range existing {
+		if value == intent {
+			return existing
 		}
 	}
-	return first
+	return append(existing, intent)
 }
 
 // canonicalSourceText selects the source wording committed by the plan.

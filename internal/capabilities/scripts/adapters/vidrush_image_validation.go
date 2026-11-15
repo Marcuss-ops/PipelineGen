@@ -230,7 +230,10 @@ func newVidRushImageRequestMethod(ctx context.Context, method, rawURL, sourcePag
 		return nil, err
 	}
 	request.Header.Set("User-Agent", vidRushImageUserAgent)
-	request.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+	// Advertise only formats the verifier can decode. CDNs honour AVIF in
+	// Accept and serve it for a .jpg URL; the Go decoder cannot verify AVIF,
+	// so requesting it turns valid candidates into ErrVidRushImageInvalid.
+	request.Header.Set("Accept", "image/webp,image/png,image/jpeg,image/gif")
 	request.Header.Set("Accept-Language", "en-US,en;q=0.8")
 	if strings.TrimSpace(sourcePageURL) != "" && ValidateVidRushRemoteImageURL(sourcePageURL) == nil {
 		request.Header.Set("Referer", sourcePageURL)

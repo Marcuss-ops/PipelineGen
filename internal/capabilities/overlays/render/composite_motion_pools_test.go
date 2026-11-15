@@ -4,25 +4,45 @@ import capoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/over
 
 import "testing"
 
-// Each composite group size gets its own non-empty entrance pool drawn from
-// the certified entity image catalog, and no entrance serves two sizes.
-func TestCompositeImageMotionPoolsAreDisjointPerGroupSize(t *testing.T) {
+// Every composite group size gets the complete certified catalog rotated from
+// a size-specific start. The first `size` entries must therefore be distinct:
+// a 5-image group cannot deliver five independent entrances from a two-motion
+// slice, which is exactly the regression this test pins.
+func TestCompositeImageMotionPoolsCoverEveryGroupSizeWithoutRepeats(t *testing.T) {
 	catalog := capoverlay.CertifiedEntityImageMotions()
-	owner := make(map[string]int)
+	if len(catalog) < maxCompositeGroupSize {
+		t.Fatalf("certified catalog has %d motions, need at least %d", len(catalog), maxCompositeGroupSize)
+	}
+	starts := map[string]int{}
 	for size := minCompositeGroupSize; size <= maxCompositeGroupSize; size++ {
 		pool := CompositeImageMotionPool(size)
-		if len(pool) == 0 {
-			t.Fatalf("size %d pool is empty", size)
+		if len(pool) != len(catalog) {
+			t.Fatalf("size %d pool has %d motions, want the complete catalog (%d)", size, len(pool), len(catalog))
 		}
-		for _, id := range pool {
+		seen := map[string]bool{}
+		first := map[string]bool{}
+		for index, id := range pool {
 			if !containsString(catalog, id) {
 				t.Fatalf("size %d pool contains %q outside the certified catalog", size, id)
 			}
-			if other, taken := owner[id]; taken {
-				t.Fatalf("motion %q is shared by sizes %d and %d", id, other, size)
+			if seen[id] {
+				t.Fatalf("size %d pool repeats %q", size, id)
 			}
-			owner[id] = size
+			seen[id] = true
+			if index < size {
+				if first[id] {
+					t.Fatalf("size %d repeats motion %q inside its first %d entrances", size, id, size)
+				}
+				first[id] = true
+			}
 		}
+		if len(first) != size {
+			t.Fatalf("size %d covers %d distinct entrances, want %d", size, len(first), size)
+		}
+		if other, exists := starts[pool[0]]; exists {
+			t.Fatalf("sizes %d and %d start on the same motion %q", other, size, pool[0])
+		}
+		starts[pool[0]] = size
 	}
 }
 

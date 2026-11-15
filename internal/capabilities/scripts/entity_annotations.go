@@ -234,13 +234,6 @@ func entityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult
 		}
 		entity := normalizeEntityImageName(candidate.Entity)
 		entityMatches := entity == want
-		// A single-token ORG acronym (ANSA) often gets an enriched provider
-		// query such as "ANSA news agency"; the returned candidate is still the
-		// same identity. Only accept that suffix for an actual acronym, so a
-		// place called "Corte" can never claim a candidate for "Corte d'Assise".
-		if !entityMatches && isUppercaseAcronym(strings.TrimSpace(name)) && strings.HasPrefix(entity, want+" ") {
-			entityMatches = true
-		}
 		if !entityMatches {
 			continue
 		}

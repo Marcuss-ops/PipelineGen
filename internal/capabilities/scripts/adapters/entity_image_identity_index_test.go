@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"strings"
 	"testing"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -34,6 +35,20 @@ func TestSceneIdentityIndexFallsBackToOrdinal(t *testing.T) {
 	segment := scriptpkg.VidRushSegmentResult{SegmentID: "regenerated-a", SceneID: "regenerated-b", Position: 1}
 	if got := idx.sceneFor(segment); got != 1 {
 		t.Fatalf("sceneFor = %d, want the ordinal fallback to scene 1", got)
+	}
+}
+
+func TestSceneIdentityIndexFailsClosedOnDuplicateIDs(t *testing.T) {
+	spec := scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{
+		{ID: "duplicate", SegmentID: "duplicate", Index: 0},
+		{ID: "duplicate", SegmentID: "duplicate", Index: 0},
+	}}
+	idx := buildSceneIdentityIndex(spec)
+	if got := idx.sceneFor(scriptpkg.VidRushSegmentResult{SegmentID: "duplicate", SceneID: "duplicate", Position: 0}); got != -1 {
+		t.Fatalf("sceneFor = %d, want -1 for an ambiguous scene identity", got)
+	}
+	if diagnostic := idx.diagnostic(); !strings.Contains(diagnostic, "SegmentID=duplicate") {
+		t.Fatalf("diagnostic = %q, want the duplicate key named", diagnostic)
 	}
 }
 

@@ -97,12 +97,23 @@ func (r *SourceResolver) ResolveSource(ctx context.Context, assetID string) (loc
 			durationMS = probedMS
 		}
 	}
+	// The probe reports ffprobe's avg_frame_rate, which for a VFR or remuxed
+	// source can be a noisy rational with a denominator far beyond what the
+	// render canvas accepts (e.g. 81920/3399 for a CFR 24 fps clip). Normalize
+	// it here, before it reaches the frame resolver and the sealed render plan,
+	// so the plan, the frame count and the Chronon canvas all agree on one
+	// bounded rate.
+	frameRate := audio.FrameRate{
+		Numerator:   int64(info.FPSNum),
+		Denominator: int64(info.FPSDen),
+	}.Normalize(audio.MaxRenderFrameRateDenominator)
+
 	facts := localization.SourceFacts{
 		AssetID:    ref.AssetID,
 		LocalPath:  mat.LocalPath,
 		SHA256:     mat.SHA256,
 		DurationMS: durationMS,
-		FrameRate:  audio.FrameRate{Numerator: int64(info.FPSNum), Denominator: int64(info.FPSDen)},
+		FrameRate:  frameRate,
 	}
 	r.factsCache.Store(strings.TrimSpace(assetID), facts)
 	return facts, nil

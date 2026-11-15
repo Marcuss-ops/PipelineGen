@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 )
 
 // batchJobResponse is the per-job entry in the 202 response.
@@ -155,7 +155,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 		}
 
 		enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
-			Type:          jobs.TypeImageGenerateGoogle,
+			Type:          jobscheduling.TypeImageGenerateGoogle,
 			CorrelationID: correlationID,
 			Payload:       payload,
 			MaxRetries:    2,

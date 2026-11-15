@@ -15,6 +15,13 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// SemanticBindingIssue reports a resolved retrieval hit that could not become
+// an annotation image. UNBOUND_REQUIRES_ACQUISITION is the overlay-only case:
+// the plan found a URL but has no verified content address yet.
+type SemanticBindingIssue struct {
+	UnitID, SceneID, EntityID, Reason string
+}
+
 // ApplySemanticResolvedImages projects the plan's resolved, content-addressed
 // hits onto the annotations of the scene each composition belongs to. It never
 // overwrites an already-bound asset: the durable media pipeline is the
@@ -24,7 +31,14 @@ func ApplySemanticResolvedImages(result *GenerateResult) int {
 	if result == nil || result.SemanticProductionPlan == nil || len(result.Scenes) == 0 {
 		return 0
 	}
+	// The media pipeline owns every entity-image decision whenever the run
+	// requests that surface. The semantic plan may still produce diagnostics,
+	// but it must never write a second binding or replace the media selection.
+	if result.EntityImageDecisionOwner == EntityImageDecisionMediaPipeline {
+		return 0
+	}
 	plan := result.SemanticProductionPlan
+	result.SemanticBindingIssues = nil
 	surfaces := make(map[string]string, len(plan.Identity))
 	for _, identity := range plan.Identity {
 		id := strings.TrimSpace(identity.ID)
@@ -44,7 +58,14 @@ func ApplySemanticResolvedImages(result *GenerateResult) int {
 	for index := range plan.Units {
 		unit := &plan.Units[index]
 		hit := unit.ResolvedImage
-		if hit == nil || strings.TrimSpace(hit.SHA256) == "" || unit.SearchStatus != ProductionSearchSatisfied {
+		if hit == nil {
+			continue
+		}
+		if strings.TrimSpace(hit.SHA256) == "" || unit.SearchStatus != ProductionSearchSatisfied {
+			result.SemanticBindingIssues = append(result.SemanticBindingIssues, SemanticBindingIssue{
+				UnitID: unit.CandidateID, SceneID: unit.SceneID,
+				EntityID: firstString(unit.EntityIDs), Reason: "UNBOUND_REQUIRES_ACQUISITION",
+			})
 			continue
 		}
 		// A composition naming several identities was retrieved with one
@@ -132,6 +153,13 @@ func sameEntitySurface(entity *scriptpkg.AnnotatedEntity, surface string) bool {
 		}
 	}
 	return false
+}
+
+func firstString(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(values[0])
 }
 
 func normalizeEntitySurface(value string) string {

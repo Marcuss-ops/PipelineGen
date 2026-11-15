@@ -111,7 +111,7 @@ func TestLocalizedRenderRevisionIsAValidRenderingGenJobID(t *testing.T) {
 	if len(fingerprint) > 16 {
 		fingerprint = fingerprint[:16]
 	}
-	want := plan.ClipID + ":" + plan.TargetLanguage + ":overlay-v3:" + fingerprint
+	want := plan.ClipID + ":" + plan.TargetLanguage + ":overlay-v4:" + fingerprint
 	if revision != want {
 		t.Fatalf("revision = %q, want %q", revision, want)
 	}
@@ -119,7 +119,7 @@ func TestLocalizedRenderRevisionIsAValidRenderingGenJobID(t *testing.T) {
 	// Negative control: the pre-fix spelling MUST fail the foreign validator.
 	// Without this the test could pass against a validator that accepts
 	// everything, i.e. it could not detect the regression it exists to catch.
-	preFix := plan.ClipID + "/" + plan.TargetLanguage + "/overlay-v3/" + fingerprint
+	preFix := plan.ClipID + "/" + plan.TargetLanguage + "/overlay-v4/" + fingerprint
 	if err := queueclient.ValidateJobID(preFix); err == nil {
 		t.Fatalf("RenderingGen accepts the pre-fix '/'-separated id %q; this contract test can no longer detect the outage it pins", preFix)
 	}

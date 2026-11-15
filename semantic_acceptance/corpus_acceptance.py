@@ -42,7 +42,6 @@ REPO_ROOT = os.path.dirname(HERE)
 DEFAULT_ROOTS = [
     "data/tclip/transcripts",
     "data/tclip/poggi/transcripts",
-    "ops/jobs/hiphop_36/cache/transcripts",
 ]
 REPORT_DIR = os.path.join(HERE, "reports")
 YEAR_RE = re.compile(r"(?<![\d.,])((?:19|20)\d{2})(?![\d.,])")

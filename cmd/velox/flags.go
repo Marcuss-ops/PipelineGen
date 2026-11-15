@@ -17,6 +17,8 @@ Usage:
   velox replay   <job_id> [--json]
   velox download <asset_id> [--source SOURCE] [-o FILE]
   velox download-final <job_id> [-o FILE] [--token-file FILE] [--json]
+  velox burn-subtitles --input FILE --out FILE (--job-full FILE | --ass FILE)
+                 [--font NAME] [--font-size PX] [--keep-ass DIR] [--no-verify] [--json]
   velox search   "<query>" [--source SOURCE] [--kind ASSET_KIND] [--role SEMANTIC_ROLE]
                  [--limit N] [--universe U] [--json]
   velox jobs     [--json]

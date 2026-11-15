@@ -16,6 +16,7 @@ func TestIngressPhraseMotionFamilySurvives(t *testing.T) {
 	raw := []byte(`{"correlation_id":"ingress-family-probe","items":[{` +
 		`"id":"probe","project":"probe","title":"Probe","language":"it",` +
 		`"phrase_motion_family":"modern_product_v1",` +
+		`"date_motion_family":"typewriter",` +
 		`"animation_counts":{"important_phrase":10,"short_important_phrase":5,"maps":1},` +
 		`"source":{"type":"text","topic":"Probe","source_text":"Probe text for ingress."},` +
 		`"script_params":{"target_words":50,"min_words":10},` +
@@ -25,8 +26,8 @@ func TestIngressPhraseMotionFamilySurvives(t *testing.T) {
 	if err := json.Unmarshal(raw, &env); err != nil {
 		t.Fatal(err)
 	}
-	if len(env.Items) != 1 || env.Items[0].PhraseMotionFamily != "modern_product_v1" {
-		t.Fatalf("envelope lost phrase_motion_family: %+v", env.Items)
+	if len(env.Items) != 1 || env.Items[0].PhraseMotionFamily != "modern_product_v1" || env.Items[0].DateMotionFamily != "typewriter" {
+		t.Fatalf("envelope lost phrase/date motion family: %+v", env.Items)
 	}
 	req, err := BuildGenerateRequest(&env, "ingress-family-probe")
 	if err != nil {
@@ -34,5 +35,8 @@ func TestIngressPhraseMotionFamilySurvives(t *testing.T) {
 	}
 	if req.PhraseMotionFamily != "modern_product_v1" {
 		t.Fatalf("BuildGenerateRequest lost phrase_motion_family: %q", req.PhraseMotionFamily)
+	}
+	if req.DateMotionFamily != "typewriter" {
+		t.Fatalf("BuildGenerateRequest lost date_motion_family: %q", req.DateMotionFamily)
 	}
 }

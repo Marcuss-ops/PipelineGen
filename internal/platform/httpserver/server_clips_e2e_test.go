@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,7 +12,6 @@ import (
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets"
 	cliphttp "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/youtube"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/capabilities/system/health"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/youtube/ports"
@@ -592,7 +592,7 @@ func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testi
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.NotNil(t, jobsSvc.lastReq)
-	require.Equal(t, appjobs.TypeYouTubeClipExtract, jobsSvc.lastReq.Type)
+	require.Equal(t, jobscheduling.TypeYouTubeClipExtract, jobsSvc.lastReq.Type)
 
 	payload, ok := jobsSvc.lastReq.Payload.(map[string]any)
 	require.True(t, ok, "payload must be a JSON object map")

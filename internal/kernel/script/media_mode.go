@@ -59,8 +59,12 @@ func validateMediaMode(item GenerationItemV2, ref string) error {
 			return mediaModeError(item, "STOCK_ONLY_BINDINGS_REQUIRED", ref+": stock_only requires stock_enabled=enabled and stock_bindings")
 		}
 		for i, binding := range item.Output.StockBindings {
+			// A direct clip or Drive file is also a valid stock source: the
+			// caller has already selected the exact asset, so no folder lookup
+			// is needed. Folder bindings remain supported for stockpipeline
+			// selection, but they are no longer the only accepted shape.
 			if strings.TrimSpace(binding.AssetID) != "" || strings.TrimSpace(binding.DriveLink) != "" {
-				return mediaModeError(item, "STOCK_ONLY_FILE_REFERENCE_FORBIDDEN", fmt.Sprintf("%s: stock_bindings[%d] cannot contain asset_id or drive_link", ref, i))
+				continue
 			}
 			folderID, folderLink := strings.TrimSpace(binding.FolderID), strings.TrimSpace(binding.FolderLink)
 			if folderID == "" {

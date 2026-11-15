@@ -35,10 +35,32 @@ type SemanticCandidateScorer interface {
 	ScoreImageCandidates(ctx context.Context, query string, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error)
 }
 
+// resolveEntityVisualCandidates is the shared semantic-verification boundary
+// used by the batch planner, VidRush fanout and MediaResolver. It keeps source
+// context separate from retrieval text and does not choose a winner; callers
+// apply their existing lifecycle and catalog policies to the returned verdicts.
+func resolveEntityVisualCandidates(ctx context.Context, scorer SemanticCandidateScorer, class, sourceContext string, candidates []scriptpkg.SegmentAssetCandidate) ([]scriptpkg.SegmentAssetCandidate, error) {
+	out := append([]scriptpkg.SegmentAssetCandidate(nil), candidates...)
+	if contextText := strings.TrimSpace(sourceContext); contextText != "" {
+		for i := range out {
+			out[i].EntityContext = contextText
+		}
+	}
+	if scorer == nil {
+		return out, nil
+	}
+	class = strings.TrimSpace(class)
+	if class == "" {
+		class = "generic"
+	}
+	return scoreInternetImageCandidates(ctx, scorer, "entity image class="+class, out)
+}
+
 // applyInternetImageSemanticGate drops only candidates a scorer explicitly
-// rejected or scored below MinInternetImageSemanticScore. A candidate with no
-// verdict (empty SemanticStatus, zero SemanticScore) is kept, so an unwired or
-// failing scorer cannot empty a run.
+// rejected or scored below MinInternetImageSemanticScore. Discovery is a
+// recall stage: an unwired or failing scorer must not empty a run. Entity
+// images are fail-closed later, at selection time, where an accepted verdict
+// is required before a candidate may consume an entity slot.
 func applyInternetImageSemanticGate(in []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(in))
 	for _, candidate := range in {

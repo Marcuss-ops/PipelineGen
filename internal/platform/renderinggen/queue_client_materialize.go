@@ -73,6 +73,10 @@ func materializeArtifact(ctx context.Context, rawURL, outputPath string, expecte
 	if err != nil {
 		return "", 0, err
 	}
+	// The certified artifact is served by the same authenticated object store
+	// that receives the upload. Without this header a protected store answers
+	// 401 and the render is discarded after the GPU work already succeeded.
+	setObjectStoreAuth(req)
 	resp, err := objectStoreHTTPClient.Do(req)
 	if err != nil {
 		return "", 0, err

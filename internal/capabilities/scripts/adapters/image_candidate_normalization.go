@@ -25,6 +25,12 @@ func normalizeInternetImageCandidates(in []scriptpkg.SegmentAssetCandidate, quer
 		if strings.TrimSpace(candidate.Provider) == "" {
 			candidate.Provider = scriptpkg.VidRushProviderInternetImages
 		}
+		// Preserve the concrete backend before any layer rewrites Provider to
+		// the internet_images lifecycle bucket.
+		if strings.TrimSpace(candidate.RetrievalProvider) == "" &&
+			!strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) {
+			candidate.RetrievalProvider = strings.ToLower(strings.TrimSpace(candidate.Provider))
+		}
 		if strings.TrimSpace(candidate.Query) == "" {
 			candidate.Query = query
 		}
@@ -37,6 +43,40 @@ func normalizeInternetImageCandidates(in []scriptpkg.SegmentAssetCandidate, quer
 		out = append(out, candidate)
 	}
 	return out
+}
+
+// isPlaceholderImageReference rejects the vector-icon and spacer assets that
+// image search backends sometimes return for generic queries. They are not
+// photographs, cannot satisfy a documentary image slot, and must never become
+// a semantic-plan ResolvedImage. The check is deliberately narrow: it targets
+// SVG/icon hosts and explicit placeholder names, not ordinary small photos.
+func isPlaceholderImageReference(rawURL, mimeType string) bool {
+	if strings.Contains(strings.ToLower(strings.TrimSpace(mimeType)), "svg") {
+		return true
+	}
+	u := strings.ToLower(strings.TrimSpace(rawURL))
+	if u == "" {
+		return false
+	}
+	if strings.HasPrefix(u, "data:") {
+		return true
+	}
+	path := u
+	if i := strings.IndexAny(path, "?#"); i >= 0 {
+		path = path[:i]
+	}
+	if strings.HasSuffix(path, ".svg") {
+		return true
+	}
+	for _, marker := range []string{
+		"lucide-static", "/devicons/", "/icons/", "icon-", "placeholder",
+		"spacer.", "/1x1.", "pixel.gif", "transparent.png",
+	} {
+		if strings.Contains(u, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func deduplicateInternetImageCandidates(in []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
@@ -59,9 +99,18 @@ func deduplicateInternetImageCandidates(in []scriptpkg.SegmentAssetCandidate) []
 func filterInternetImageCandidates(in []scriptpkg.SegmentAssetCandidate) []scriptpkg.SegmentAssetCandidate {
 	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(in))
 	for _, candidate := range in {
-		if !strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) || !validVidRushCandidate(candidate) {
+		provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+		if !isInternetImageSourceProvider(provider) || !validVidRushCandidate(candidate) {
 			continue
 		}
+		if isPlaceholderImageReference(candidate.SourceURL, candidate.MIMEType) ||
+			isPlaceholderImageReference(candidate.PreviewURL, candidate.MIMEType) {
+			continue
+		}
+		if strings.TrimSpace(candidate.RetrievalProvider) == "" && provider != scriptpkg.VidRushProviderInternetImages {
+			candidate.RetrievalProvider = provider
+		}
+		candidate.Provider = scriptpkg.VidRushProviderInternetImages
 		out = append(out, candidate)
 	}
 	// The semantic gate runs last: a candidate must first be a well-formed

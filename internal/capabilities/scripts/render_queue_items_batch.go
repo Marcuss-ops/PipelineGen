@@ -152,8 +152,14 @@ func (e *QueueRenderEnqueuer) enqueueStandaloneOverlayItems(ctx context.Context,
 		order[candidate.source.ID] = candidate.index
 	}
 	sortRenderItemsByPlanOrder(items, order)
+	cacheHits := 0
+	for _, result := range results {
+		cacheHits += result.full.CacheHits
+	}
 	first := results[0].full
 	first.Items = items
+	first.CacheHits = cacheHits
+	first.RenderedItems = len(results) - cacheHits
 	return first, nil
 }
 

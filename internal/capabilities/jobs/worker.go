@@ -49,7 +49,7 @@
 // of a typed Registry on the Worker: composition root calls
 // `WithRegistry(Compose())` (or any TimeoutResolver port) and
 // the runJob path looks up `j.Type` in the snapshot `timeouts
-// TimeoutMap`.
+// jobscheduling.TimeoutMap`.
 //
 // Anti-reintro gate: Check 40 in scripts/ci-architectural-checks.sh
 // fails CI on any new `var jobTimeoutRegistry = ` /
@@ -102,12 +102,12 @@ func init() {
 //     channel close = Broadcast on Enqueue / Retry / RequeueExpired).
 //
 // HC-1 (June 2026) additions:
-//   - reg     *Registry      — the typed config-port for per-job-type
+//   - reg     *jobscheduling.Registry      — the typed config-port for per-job-type
 //     execution timeouts. Set via WithRegistry()
 //     at composition time. If nil, the worker
 //     falls back to the canonical 10-minute
 //     default for every job type.
-//   - timeouts TimeoutMap    — cached snapshot of reg.Compose() taken
+//   - timeouts jobscheduling.TimeoutMap    — cached snapshot of reg.Compose() taken
 //     at WithRegistry() time. The worker's
 //     runJob path indexes this map by j.Type;
 //     a zero value falls through to the
@@ -131,8 +131,8 @@ type Worker struct {
 	// Empty = no exclusion.
 	notMatch job.PayloadNotMatch
 	notifier job.QueueNotifier
-	reg      *Registry
-	timeouts TimeoutMap
+	reg      *jobscheduling.Registry
+	timeouts jobscheduling.TimeoutMap
 
 	// broker is the typed narrow port (CompletionPort) consumed by
 	// the Worker for artifact-producing job finalization. nil = legacy
@@ -213,7 +213,7 @@ type WorkerDeps struct {
 //   - `types []string` is unchanged.
 //
 // HC-1 (June 2026): the per-job-type timeout lookup is NOT a constructor
-// arg — callers must use `WithRegistry(reg *Registry) *Worker` to
+// arg — callers must use `WithRegistry(reg *jobscheduling.Registry) *Worker` to
 // attach the typed config-port. This keeps NewWorker under the PR-D
 // 8-arg cap. Composition root (internal/app/registry.go::WireRegistry)
 // is required to call WithRegistry(Compose()) AFTER NewWorker.
@@ -257,7 +257,7 @@ func NewWorker(deps WorkerDeps) *Worker {
 //
 // Returns the receiver to allow builder-style chaining at the
 // composition site.
-func (w *Worker) WithRegistry(reg *Registry) *Worker {
+func (w *Worker) WithRegistry(reg *jobscheduling.Registry) *Worker {
 	w.reg = reg
 	if reg != nil {
 		w.timeouts = reg.Compose()

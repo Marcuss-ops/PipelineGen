@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	jobscheduling "github.com/Marcuss-ops/PipelineGen/internal/capabilities/jobs/scheduling"
 	"time"
 
 	"go.uber.org/zap"
@@ -57,10 +58,10 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("stockpipeline.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(appjobs.TypeMediaStock, appjobs.HandlerFunc(s.HandleJob)); err != nil {
-		return fmt.Errorf("stockpipeline.Service.RegisterHandler: bind %q to dispatcher: %w", appjobs.TypeMediaStock, err)
+	if err := jobsSvc.RegisterHandler(jobscheduling.TypeMediaStock, appjobs.HandlerFunc(s.HandleJob)); err != nil {
+		return fmt.Errorf("stockpipeline.Service.RegisterHandler: bind %q to dispatcher: %w", jobscheduling.TypeMediaStock, err)
 	}
-	s.log.Info("registered media.stock job handler", zap.String("type", appjobs.TypeMediaStock))
+	s.log.Info("registered media.stock job handler", zap.String("type", jobscheduling.TypeMediaStock))
 	return nil
 }
 
