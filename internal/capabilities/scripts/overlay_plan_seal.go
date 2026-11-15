@@ -9,6 +9,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
@@ -248,7 +249,7 @@ func entityCardLookupIDs(item capmodel.OverlayItem, canonicalByStable map[string
 	if name == "" {
 		name = strings.TrimSpace(item.Text)
 	}
-	if key := normalizeEntityAssetKey(name); key != "" {
+	if key := entitycatalog.NormalizeVerifiedAssetKey(name); key != "" {
 		appendID(canonicalByStable["bundle-name:"+key])
 	}
 	return out

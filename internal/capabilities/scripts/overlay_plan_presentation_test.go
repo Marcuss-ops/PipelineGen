@@ -43,7 +43,10 @@ func TestApplyOverlayPresentationNormalizesChainFontsAndSideCaptions(t *testing.
 			},
 		}},
 	}
-	got := applyOverlayPresentation([]capmodel.OverlayItem{item}, "plan-chain")
+	got, err := applyOverlayPresentation([]capmodel.OverlayItem{item}, "plan-chain")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("chain was rewritten: %+v", got)
 	}
@@ -82,7 +85,10 @@ func TestApplyOverlayPresentationNormalizesTypedImageChainCaptionStyle(t *testin
 			Style:  map[string]any{"fill": "#FFFFFF"},
 		}}},
 	}
-	got := applyOverlayPresentation([]capmodel.OverlayItem{item}, "plan-typed-chain")
+	got, err := applyOverlayPresentation([]capmodel.OverlayItem{item}, "plan-typed-chain")
+	if err != nil {
+		t.Fatal(err)
+	}
 	segments, ok := capmodel.DecodeChainSegments(got[0].Params)
 	if !ok || len(segments) != 1 {
 		t.Fatalf("typed chain segments not preserved: %+v", got[0].Params["chain_segments"])
@@ -114,7 +120,10 @@ func TestApplyOverlayPresentationKeepsImageChainContainersImageOnly(t *testing.T
 			}},
 		},
 	}
-	got := applyOverlayPresentation([]capmodel.OverlayItem{item}, "plan-image-chain")
+	got, err := applyOverlayPresentation([]capmodel.OverlayItem{item}, "plan-image-chain")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("image chain was rewritten: %+v", got)
 	}
@@ -168,7 +177,10 @@ func TestApplyOverlayPresentationBindsVerifiedAssetsToImageEntityCards(t *testin
 		{ID: "villa-text", SceneID: "discovery", Kind: "entity_card", Text: "Villa Pamphili"},
 		{ID: "unregistered-image", SceneID: "discovery", Kind: "entity_card", Text: "Unregistered", ImagePresetID: "image_fade_in"},
 	}
-	got := applyOverlayPresentation(items, "plan-villa")
+	got, err := applyOverlayPresentation(items, "plan-villa")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 3 {
 		t.Fatalf("presentation returned %d items, want 3", len(got))
 	}
@@ -236,7 +248,10 @@ func TestApplyOverlayPresentationBindsVerifiedAssetsAndSplitsLongText(t *testing
 			MotionID: "text_word_rise",
 		},
 	}
-	got := applyOverlayPresentation(items, "plan-test")
+	got, err := applyOverlayPresentation(items, "plan-test")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var francis, ap *capmodel.OverlayItem
 	for index := range got {

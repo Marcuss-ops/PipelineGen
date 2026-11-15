@@ -47,7 +47,8 @@ func TestRegistryDriveLocatorFeedsAudit(t *testing.T) {
 		ID: "francis-image", SceneID: "scene-1", Kind: "entity_image",
 		EntityID: entityID, EntityCaption: name,
 	}}}
-	plan.Items = applyVerifiedEntityAssets(plan.Items, "plan-registry-drive")
+	plan.Items, err = applyVerifiedEntityAssets(plan.Items, "plan-registry-drive")
+	require.NoError(t, err)
 	require.Len(t, plan.Items, 1)
 	require.Len(t, plan.Items[0].AssetRefs, 1)
 	require.Equal(t, "https://drive.google.com/uc?export=download&id=drive-francis-1", plan.Items[0].AssetRefs[0].URL)

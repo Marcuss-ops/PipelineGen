@@ -33,18 +33,21 @@ const (
 // pools. It only removes invalid surfaces (unverified images, side captions),
 // applies the requested type treatment, and splits text that would otherwise
 // be clipped by the renderer.
-func applyOverlayPresentation(items []capmodel.OverlayItem, planID string) []capmodel.OverlayItem {
+func applyOverlayPresentation(items []capmodel.OverlayItem, planID string) ([]capmodel.OverlayItem, error) {
 	if len(items) == 0 {
-		return items
+		return items, nil
 	}
-	items = applyVerifiedEntityAssets(items, planID)
+	items, err := applyVerifiedEntityAssets(items, planID)
+	if err != nil {
+		return nil, err
+	}
 	items = splitLongOverlayText(items, planID)
 	for index := range items {
 		ensureEntityImageMotionMatchesAssets(&items[index], planID)
 		normalizePresentationFonts(&items[index])
 		applyPresentationTypography(&items[index])
 	}
-	return items
+	return items, nil
 }
 
 // Entity-card kinds can render either as text cards or as image-backed cards.

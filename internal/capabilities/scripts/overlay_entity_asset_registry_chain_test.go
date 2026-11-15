@@ -43,7 +43,8 @@ func TestApplyVerifiedEntityAssetsBindsPortraitInsideMixedChain(t *testing.T) {
 			},
 		}},
 	}
-	got := applyVerifiedEntityAssets([]capmodel.OverlayItem{chain}, "plan-chain")
+	got, err := applyVerifiedEntityAssets([]capmodel.OverlayItem{chain}, "plan-chain")
+	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Len(t, got[0].AssetRefs, 1)
 	require.Equal(t, sha, got[0].AssetRefs[0].SHA256)

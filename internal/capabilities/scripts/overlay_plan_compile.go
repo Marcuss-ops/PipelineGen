@@ -395,7 +395,10 @@ func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateRes
 	// Structural editorial policy: verified assets or text fallback, below
 	// captions, Playfair/soft-black typography, and long-text splitting. The
 	// random style and animation pools are deliberately preserved.
-	items = applyOverlayPresentation(items, planID)
+	items, err = applyOverlayPresentation(items, planID)
+	if err != nil {
+		return nil, fmt.Errorf("overlay plan: %w", err)
+	}
 	plannerPlan.Items = items
 	// The master audio/timeline extent derivation and the plan sealing live in
 	// overlay_plan_seal.go (split under the 600-line file gate; same behavior).

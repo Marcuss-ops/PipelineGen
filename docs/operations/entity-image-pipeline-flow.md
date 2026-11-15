@@ -21,6 +21,12 @@ provider search
 The durable catalog is the replay projection between discovery and selection.
 It is not a second planner and it does not own pixels.
 
+The reviewed local asset registry (`VELOX_ENTITY_ASSET_REGISTRY`) follows the
+same ownership rule: `internal/capabilities/images/entitycatalog` loads and
+re-hashes it in `verified_asset_registry.go`, and the overlay presentation
+layer only binds the verified entries to cards. A malformed or unsupported
+registry is an error, not a silent empty catalog.
+
 `BrainRust/imagecatalog` is **experimental and not wired** into PipelineGen.
 It consumes an exported snapshot and returns a standalone plan; no Go
 composition root calls it. The live path above is the only flow that may

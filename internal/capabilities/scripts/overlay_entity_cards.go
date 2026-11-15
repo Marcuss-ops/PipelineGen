@@ -7,6 +7,7 @@
 package scriptgeneration
 
 import (
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"os"
 	"strings"
@@ -279,7 +280,7 @@ func entityCardMediaIndex(result *GenerateResult, perSceneImages ...bool) (*capa
 			// differs from the resolver card id.
 			if entity, ok := catalog.entityByID[entry.stable]; ok {
 				for _, name := range []string{entity.CanonicalText, entity.Text} {
-					if key := normalizeEntityAssetKey(name); key != "" {
+					if key := entitycatalog.NormalizeVerifiedAssetKey(name); key != "" {
 						if canonicalByStable["bundle-name:"+key] == "" {
 							canonicalByStable["bundle-name:"+key] = lookupID
 						}

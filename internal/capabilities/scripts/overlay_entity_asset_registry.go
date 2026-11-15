@@ -1,162 +1,40 @@
 package scriptgeneration
 
 import (
-	"encoding/json"
-	"net/url"
-	"os"
-	"path/filepath"
+	"fmt"
 	"strings"
-	"unicode"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/images/entitycatalog"
 	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
 
-// entityAssetManifest is the reviewed bridge between a named identity and a
-// local file whose bytes have already been checked by an operator. A hash in
-// the semantic bundle proves that some bytes exist; it does not prove that the
-// picture depicts the person or place. This registry is the semantic gate.
-type entityAssetManifest struct {
-	Version  int                           `json:"version"`
-	Entities map[string][]entityAssetEntry `json:"entities"`
-}
-
-type entityAssetEntry struct {
-	AssetID     string `json:"asset_id"`
-	SHA256      string `json:"sha256"`
-	Path        string `json:"path"`
-	MediaType   string `json:"media_type"`
-	DriveFileID string `json:"drive_file_id,omitempty"`
-	DriveLink   string `json:"drive_link,omitempty"`
-}
-
-var entityAssetRegistryCandidates = []string{
-	"config/entity_asset_registry.json",
-	"refactored/config/entity_asset_registry.json",
-	"../ops/assets-store/entity-asset-registry.json",
-	"ops/assets-store/entity-asset-registry.json",
-}
-
-// loadVerifiedEntityAssets resolves the registry from VELOX_ENTITY_ASSET_REGISTRY
-// or the deployment-local candidates. Every entry is hashed again before use:
-// a stale path or a modified file is skipped instead of being rendered.
-func loadVerifiedEntityAssets() map[string][]capmodel.OverlayAssetRef {
-	path := strings.TrimSpace(os.Getenv("VELOX_ENTITY_ASSET_REGISTRY"))
-	if path == "" {
-		for _, candidate := range entityAssetRegistryCandidates {
-			if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
-				path = candidate
-				break
-			}
-		}
-	}
-	if path == "" {
-		return nil
-	}
-	raw, err := os.ReadFile(path)
+// loadVerifiedEntityAssets adapts the entitycatalog-owned registry to the
+// overlay reference the presentation layer carries. The registry policy
+// (paths, SHA-256 re-verification, Drive locator, key normalization) lives in
+// entitycatalog; this package only binds the verified entries to overlay items.
+func loadVerifiedEntityAssets() (map[string][]capmodel.OverlayAssetRef, error) {
+	assets, err := entitycatalog.LoadVerifiedAssetRegistry()
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	var manifest entityAssetManifest
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return nil
+	if len(assets) == 0 {
+		return nil, nil
 	}
-	baseDir := filepath.Dir(path)
-	registry := make(map[string][]capmodel.OverlayAssetRef, len(manifest.Entities))
-	for name, entries := range manifest.Entities {
-		key := normalizeEntityAssetKey(name)
-		if key == "" {
-			continue
-		}
+	registry := make(map[string][]capmodel.OverlayAssetRef, len(assets))
+	for key, entries := range assets {
 		for _, entry := range entries {
-			ref, ok := verifyEntityAssetEntry(baseDir, entry)
-			if !ok {
-				continue
-			}
-			registry[key] = append(registry[key], ref)
+			registry[key] = append(registry[key], capmodel.OverlayAssetRef{
+				AssetID:   entry.AssetID,
+				URL:       entry.URL,
+				SHA256:    entry.SHA256,
+				MediaType: entry.MediaType,
+				LocalPath: entry.LocalPath,
+			})
 		}
 	}
-	if len(registry) == 0 {
-		return nil
-	}
-	return registry
-}
-
-func verifyEntityAssetEntry(baseDir string, entry entityAssetEntry) (capmodel.OverlayAssetRef, bool) {
-	sha := strings.ToLower(strings.TrimSpace(entry.SHA256))
-	if len(sha) != 64 || strings.TrimSpace(entry.Path) == "" {
-		return capmodel.OverlayAssetRef{}, false
-	}
-	path := strings.TrimSpace(entry.Path)
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(baseDir, path)
-	}
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return capmodel.OverlayAssetRef{}, false
-	}
-	sum, err := sha256File(path)
-	if err != nil || !strings.EqualFold(sum, sha) {
-		return capmodel.OverlayAssetRef{}, false
-	}
-	assetID := strings.TrimSpace(entry.AssetID)
-	if assetID == "" {
-		assetID = sum
-	}
-	mediaType := strings.TrimSpace(entry.MediaType)
-	if mediaType == "" {
-		mediaType = entityAssetMediaType(path)
-	}
-	resourceURL := strings.TrimSpace(entry.DriveLink)
-	if driveID := strings.TrimSpace(entry.DriveFileID); driveID != "" {
-		resourceURL = "https://drive.google.com/uc?export=download&id=" + url.QueryEscape(driveID)
-	}
-	return capmodel.OverlayAssetRef{
-		AssetID:   assetID,
-		URL:       resourceURL,
-		SHA256:    sum,
-		MediaType: mediaType,
-		LocalPath: path,
-	}, true
-}
-
-func sha256File(path string) (string, error) {
-	sum, _, err := digest.SHA256File(path)
-	return sum, err
-}
-
-func entityAssetMediaType(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".png":
-		return "image/png"
-	case ".webp":
-		return "image/webp"
-	default:
-		return "image/jpeg"
-	}
-}
-
-// normalizeEntityAssetKey makes apostrophes, accents and punctuation
-// irrelevant for the identity join: "L’Associated Press" and
-// "l associated press" must address the same registry row.
-func normalizeEntityAssetKey(value string) string {
-	value = strings.NewReplacer("’", "'", "‘", "'", "`", "'").Replace(strings.ToLower(strings.TrimSpace(value)))
-	var out strings.Builder
-	space := false
-	for _, r := range value {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			out.WriteRune(r)
-			space = false
-			continue
-		}
-		if !space && out.Len() > 0 {
-			out.WriteByte(' ')
-			space = true
-		}
-	}
-	return strings.TrimSpace(out.String())
+	return registry, nil
 }
 
 // overlayItemWantsCertifiedImage limits registry binding to cards that already
@@ -196,13 +74,16 @@ func entityCaptionOf(item capmodel.OverlayItem) string {
 // of falling back to an unrelated search result. Plans with no registered
 // identity are left untouched, so this local editorial registry cannot change
 // unrelated jobs.
-func applyVerifiedEntityAssets(items []capmodel.OverlayItem, planID string) []capmodel.OverlayItem {
-	registry := loadVerifiedEntityAssets()
+func applyVerifiedEntityAssets(items []capmodel.OverlayItem, planID string) ([]capmodel.OverlayItem, error) {
+	registry, err := loadVerifiedEntityAssets()
+	if err != nil {
+		return nil, fmt.Errorf("verified entity asset registry: %w", err)
+	}
 	if len(registry) == 0 || len(items) == 0 {
-		return items
+		return items, nil
 	}
 	if !planUsesRegisteredEntity(items, registry) {
-		return items
+		return items, nil
 	}
 	seen := map[string]int{}
 	out := make([]capmodel.OverlayItem, 0, len(items))
@@ -217,7 +98,7 @@ func applyVerifiedEntityAssets(items []capmodel.OverlayItem, planID string) []ca
 				continue
 			}
 			name := overlayItemEntityName(item)
-			key := normalizeEntityAssetKey(name)
+			key := entitycatalog.NormalizeVerifiedAssetKey(name)
 			refs := registry[key]
 			if len(refs) == 0 {
 				// The local registry only overrides identities it reviewed. A
@@ -244,13 +125,13 @@ func applyVerifiedEntityAssets(items []capmodel.OverlayItem, planID string) []ca
 			out = append(out, item)
 		}
 	}
-	return out
+	return out, nil
 }
 
 func planUsesRegisteredEntity(items []capmodel.OverlayItem, registry map[string][]capmodel.OverlayAssetRef) bool {
 	for _, item := range items {
 		if overlayItemWantsCertifiedImage(item) {
-			if len(registry[normalizeEntityAssetKey(overlayItemEntityName(item))]) > 0 {
+			if len(registry[entitycatalog.NormalizeVerifiedAssetKey(overlayItemEntityName(item))]) > 0 {
 				return true
 			}
 			continue
@@ -259,7 +140,7 @@ func planUsesRegisteredEntity(items []capmodel.OverlayItem, registry map[string]
 			if !chainEntitySegment(segment) {
 				continue
 			}
-			if len(registry[normalizeEntityAssetKey(chainSegmentName(segment))]) > 0 {
+			if len(registry[entitycatalog.NormalizeVerifiedAssetKey(chainSegmentName(segment))]) > 0 {
 				return true
 			}
 		}
@@ -280,7 +161,7 @@ func bindVerifiedChainAssets(item capmodel.OverlayItem, registry map[string][]ca
 		if assets, _ := segment["assets"].([]any); len(assets) > 0 {
 			continue
 		}
-		key := normalizeEntityAssetKey(chainSegmentName(segment))
+		key := entitycatalog.NormalizeVerifiedAssetKey(chainSegmentName(segment))
 		refs := registry[key]
 		if len(refs) == 0 {
 			continue
