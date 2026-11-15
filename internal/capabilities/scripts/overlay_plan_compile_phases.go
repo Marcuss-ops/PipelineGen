@@ -171,6 +171,51 @@ func resolveOverlayEntityCardItems(
 	perSceneEntityImages bool,
 	ranker capabilityentities.EntityOverlayRanker,
 ) ([]capmodel.OverlayItem, error) {
+	return resolveOverlayEntityCardItemsWithRanker(ctx, result, language, canvas, entityTimeline, planID, videoID, projectID, perSceneEntityImages, ranker, true)
+}
+
+// resolveOverlayEntityCardCandidates returns every named entity card that the
+// certified timeline can produce. It deliberately skips the per-scene named
+// card cap so the single-call Rust compiler can rank the complete set.
+func resolveOverlayEntityCardCandidates(
+	ctx context.Context,
+	result *GenerateResult,
+	language Language,
+	canvas OverlayCanvasSpec,
+	entityTimeline *capabilityentities.EntityTimeline,
+	planID, videoID, projectID string,
+	perSceneEntityImages bool,
+) ([]capmodel.OverlayItem, error) {
+	return resolveOverlayEntityCardItemsWithRanker(ctx, result, language, canvas, entityTimeline, planID, videoID, projectID, perSceneEntityImages, allEntityCandidatesRanker{}, false)
+}
+
+// allEntityCandidatesRanker asks the entity resolver for every occurrence in
+// canonical order. The resolver still validates the selection contract; it
+// simply has no editorial preference of its own.
+type allEntityCandidatesRanker struct{}
+
+func (allEntityCandidatesRanker) RankEntityOverlays(_ context.Context, scenes []capabilityentities.EntityOverlayRankingScene) ([][]int, error) {
+	selected := make([][]int, len(scenes))
+	for sceneIndex, scene := range scenes {
+		selected[sceneIndex] = make([]int, len(scene.Entities))
+		for entityIndex := range scene.Entities {
+			selected[sceneIndex][entityIndex] = entityIndex
+		}
+	}
+	return selected, nil
+}
+
+func resolveOverlayEntityCardItemsWithRanker(
+	ctx context.Context,
+	result *GenerateResult,
+	language Language,
+	canvas OverlayCanvasSpec,
+	entityTimeline *capabilityentities.EntityTimeline,
+	planID, videoID, projectID string,
+	perSceneEntityImages bool,
+	ranker capabilityentities.EntityOverlayRanker,
+	capCards bool,
+) ([]capmodel.OverlayItem, error) {
 	owned := plannerOwnedEntityIDs(result, language)
 	media, canonicalByStable := entityCardMediaIndex(result, perSceneEntityImages)
 	var entityPlanItems []capmodel.OverlayItem
@@ -216,6 +261,9 @@ func resolveOverlayEntityCardItems(
 	// The semantic production plan owns run-level identity admission: an
 	// identity image survives only when the plan judged it worth producing.
 	namedCardItems = admitIdentityImagesByProductionPlan(namedCardItems, result.SemanticProductionPlan)
+	if !capCards {
+		return namedCardItems, nil
+	}
 	return capNamedEntityCardsPerScene(namedCardItems, maxNamedEntityCardsPerScene), nil
 }
 

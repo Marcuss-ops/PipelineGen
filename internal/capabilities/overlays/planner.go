@@ -467,6 +467,9 @@ func appendSceneOverlayItems(plan *capmodel.OverlayPlan, input PlanInput, config
 				params["style"] = "headline"
 				params["editorial_role"] = ChapterBulletRole
 			}
+			if candidate.EditorialCandidate != "" {
+				params["editorial_candidate"] = candidate.EditorialCandidate
+			}
 			plan.Items = append(plan.Items, capmodel.OverlayItem{
 				ID: id, SceneID: scene.ID, PresetID: selectPhrasePreset(input.PlanID, scene.ID, id),
 				Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE", Text: candidate.Text,

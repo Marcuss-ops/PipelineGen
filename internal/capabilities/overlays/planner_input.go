@@ -16,6 +16,11 @@ type TimedAnnotation struct {
 	// PresentationRole is an internal producer hint for grounded editorial
 	// title/bullet placement; it does not create a new wire kind.
 	PresentationRole string
+	// EditorialCandidate identifies one of several mutually exclusive
+	// editorial surfaces produced from the same scene (title, bullet or
+	// opening). The single-call Rust compiler selects one; the legacy planner
+	// ignores this hint.
+	EditorialCandidate string
 }
 
 type ImageCandidate struct {
