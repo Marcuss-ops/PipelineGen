@@ -131,10 +131,17 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// process-group cancellation, bounded diagnostics, and .part cleanup are
 	// owned by this composition root rather than each adapter separately.
 	rustExecutor := rustexec.NewExecutor(cfg.External.RustMusclesPath, ffmpegPath, log)
+	// Stock clips are packet-copy assembly inputs. Their canonical certificate
+	// is produced by the CPU libx264/veryfast lane, so do not inherit the
+	// user-facing render encoder (which may be NVENC when GPU rendering is
+	// required) for this separate acquisition/cut pipeline.
+	stockMediaConfig := mediaConfig
+	stockMediaConfig.Policy.Codec = config.CanonicalStockEncoderCodec
+	stockMediaConfig.Policy.Preset = config.CanonicalStockEncoderPreset
 	stockCutter, cutterErr := render.NewConfiguredCutterWithExecutionConfig(
 		cfg.External.RustMusclesPath,
 		ffmpegPath,
-		mediaConfig,
+		stockMediaConfig,
 		log,
 		rustExecutor,
 	)
