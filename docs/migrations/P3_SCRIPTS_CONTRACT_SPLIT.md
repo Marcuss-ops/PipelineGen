@@ -47,6 +47,16 @@ must not import another phase's implementation package.
 | Final-job | compiled plan assets, materialization request/result, completion declaration | generation, overlay, stock | delivery/rendering | final-job implementation imports contracts only |
 | VidRush | segment result, provider fanout request, cache identity | generation, media resolver | final-job | VidRush imports no sibling implementation package |
 
+## Phase 3 executed (2026-11-15)
+
+- Canonical contract: `internal/capabilities/scripts/contracts/generation`.
+- Moved the serializable DTOs: production unit, planned identity, resolved
+  image, coverage, deferred fact, metrics, search query/component and retry.
+- `SemanticProductionPlan` remains in the root as the planner wrapper because
+  it carries private revocation state (`factsByCandidate`, `coveredFacts`,
+  `identityByID`); its public DTO fields now use the contract types.
+- Existing constructors and tests stay source-compatible through type aliases.
+
 ## Existing canonical owners (no new package needed)
 
 The phase map is not five greenfield packages; three phases already have a
