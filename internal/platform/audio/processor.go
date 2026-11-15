@@ -136,10 +136,10 @@ const DefaultTTSRequestConcurrency = 4
 
 // DefaultTTSPostprocessConcurrency bounds the local post-processing pool
 // that now runs OUTSIDE the provider slots. 12 matches the per-scene chunk
-// fan-out: the MP3 duration path is in-process (mp3Duration), so the only
-// expensive local step left is the loudness gate's ffmpeg pass (~0.4 s per
-// sentence). A wider pool would only increase simultaneous ffmpeg decodes
-// without shortening the stage, which is now network-bound.
+// fan-out: duration probing is delegated to the authoritative shared media
+// executor, and the remaining local step is the loudness gate's ffmpeg pass
+// (~0.4 s per sentence). A wider pool would only increase simultaneous
+// ffmpeg decodes without shortening the stage.
 const DefaultTTSPostprocessConcurrency = 12
 
 func (p *Processor) SetMediaExecutor(media mediaexec.AudioProcessor) {
@@ -390,14 +390,10 @@ func (p *Processor) postprocessSynthesizedAudio(ctx context.Context, input *Audi
 			}
 		}
 		var durationProbeErr error
-		// Fast path: the Edge bridge writes MPEG Layer III. Walking the frame
-		// headers is exact and costs microseconds, so the shared Rust media
-		// executor (4 runners, also used by the audio render) is not on the
-		// per-chunk critical path. Any unexpected shape falls back to the
-		// authoritative probe below, preserving the previous behaviour.
-		if fastDuration, fastErr := mp3Duration(result.LocalPath); fastErr == nil {
-			result.Duration = fastDuration
-		} else if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
+		// The shared Rust media executor is the single duration authority for
+		// synthesized audio. Do not parse container bytes locally: a second
+		// duration rule would drift from the probe used by the render path.
+		if media, mediaErr := p.mediaExecutor(); mediaErr == nil {
 			if info, probeErr := media.Probe(ctx, result.LocalPath); probeErr != nil {
 				durationProbeErr = probeErr
 			} else if info == nil {
