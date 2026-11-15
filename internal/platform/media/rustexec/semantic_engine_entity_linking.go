@@ -94,6 +94,8 @@ func projectSemanticLinkedEntities(texts map[string]string, entities []semanticE
 			SurfaceKey: entity.SurfaceKey, CanonicalID: canonicalID, LinkStatus: status,
 			CanonicalName: entity.CanonicalName, Role: role, DisambiguationGloss: gloss,
 			NegativeConstraints: append([]string(nil), entity.NegativeConstraints...), SearchIntents: intents,
+			EditorialDecision: true, EditorialSurface: entity.EditorialSurface, EditorialType: entity.EditorialType,
+			PromptEcho: entity.PromptEcho, VisualAdmission: entity.VisualAdmission,
 		})
 	}
 	return projected, nil

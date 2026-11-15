@@ -62,7 +62,15 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 	for _, entity := range seg.Insights.Entities {
 		value := strings.TrimSpace(entity.Value)
 		kind := normalizeAnnotationType(entity.Type)
-		if resolvedKind := canonicalImageEntityType(seg, value); resolvedKind != "" {
+		admitted := true
+		if entity.EditorialDecision {
+			value = strings.TrimSpace(entity.EditorialSurface)
+			kind = normalizeAnnotationType(entity.EditorialType)
+			if value == "" || entity.PromptEcho || kind == "" {
+				continue
+			}
+			admitted = entity.VisualAdmission
+		} else if resolvedKind := canonicalImageEntityType(seg, value); resolvedKind != "" {
 			// The image-intent resolver has stronger typed identity grounding
 			// than the baseline NER surface. Use its canonical family so a
 			// place or venue is not projected as a PERSON portrait.
@@ -73,12 +81,6 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 			// KEYWORD / VISUAL_SUBJECT are search/index surfaces, never
 			// spoken entities (mirror of the runner projection).
 			continue
-		}
-		if kind == "PERSON" {
-			fields := strings.Fields(strings.TrimSpace(value))
-			if len(fields) > 1 && isUppercaseAcronym(fields[0]) {
-				kind = "CONCEPT"
-			}
 		}
 		if value == "" {
 			continue
@@ -125,14 +127,16 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 			ID: "entity-" + safeAnnotationID(canonical), Text: canonical,
 			CanonicalName: canonical, Type: kind, Role: entity.Role,
 			Confidence: entity.Confidence, Mentions: mentions,
+			EditorialDecision: entity.EditorialDecision, EditorialSurface: entity.EditorialSurface,
+			EditorialType: entity.EditorialType, PromptEcho: entity.PromptEcho, VisualAdmission: entity.VisualAdmission,
 		}
 		if kind == "LOGO" {
-			if hasVerifiedBrandImage(canonical, seg) {
+			if admitted && hasVerifiedBrandImage(canonical, seg) {
 				item.Type = "LOGO"
 			} else {
 				item.Type = "BRAND"
 			}
-		} else if kind == "BRAND" && hasVerifiedBrandImage(canonical, seg) {
+		} else if kind == "BRAND" && admitted && hasVerifiedBrandImage(canonical, seg) {
 			item.Type = "LOGO"
 		}
 		// Carry BrainRust's linked identity through to the overlay media index.

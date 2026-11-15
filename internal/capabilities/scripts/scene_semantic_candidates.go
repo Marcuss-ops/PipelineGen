@@ -185,6 +185,13 @@ type SemanticIdentity struct {
 	DisambiguationGloss string
 	NegativeConstraints []string
 	SearchIntents       []SemanticSearchIntent
+	// EditorialDecision is true when BrainRust supplied the v3 editorial
+	// projection. Consumers must not re-run NER repair or prompt-echo rules.
+	EditorialDecision bool
+	EditorialSurface  string
+	EditorialType     string
+	PromptEcho        bool
+	VisualAdmission   bool
 }
 
 type SemanticCoMention struct {

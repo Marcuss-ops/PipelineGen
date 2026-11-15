@@ -51,10 +51,10 @@ func TestProjectEntityAnnotations_DropsPromptEchoEntityNames(t *testing.T) {
 	text := "Overlay Check: Scheda Entità Overlay. Mappa Pertinente Andrea Sempio. Andrea Sempio è indagato."
 	seg := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{
 		Entities: []scriptpkg.ExtractedEntity{
-			{Value: "Overlay Check", Type: "PERSON", Confidence: 1},
-			{Value: "Scheda Entità Overlay", Type: "PERSON", Confidence: 1},
-			{Value: "Mappa Pertinente Andrea Sempio", Type: "PERSON", Confidence: 1},
-			{Value: "Andrea Sempio", Type: "PERSON", Confidence: 0.9},
+			{Value: "Overlay Check", Type: "PERSON", Confidence: 1, EditorialDecision: true, PromptEcho: true},
+			{Value: "Scheda Entità Overlay", Type: "PERSON", Confidence: 1, EditorialDecision: true, PromptEcho: true},
+			{Value: "Mappa Pertinente Andrea Sempio", Type: "PERSON", Confidence: 1, EditorialDecision: true, PromptEcho: true},
+			{Value: "Andrea Sempio", Type: "PERSON", Confidence: 0.9, EditorialDecision: true, EditorialSurface: "Andrea Sempio", EditorialType: "PERSON", VisualAdmission: true},
 		},
 	}}
 

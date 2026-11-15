@@ -291,6 +291,9 @@ func (a *SemanticEngineAdapter) Extract(
 		canonicalID := ""
 		role := ""
 		var searchIntents []string
+		editorialDecision := false
+		editorialSurface, editorialType := "", ""
+		promptEcho, visualAdmission := false, false
 		if entity.IdentityID != "" {
 			canonicalID = "local:" + bundle.Fingerprint + ":" + entity.IdentityID
 			identity, ok := identitiesByID[entity.IdentityID]
@@ -301,6 +304,9 @@ func (a *SemanticEngineAdapter) Extract(
 			if role != "named_entity" && role != "visual_concept" {
 				return nil, fmt.Errorf("semantic-engine: identity %q has unsupported role %q", entity.IdentityID, role)
 			}
+			editorialDecision = identity.EditorialDecision
+			editorialSurface, editorialType = identity.EditorialSurface, identity.EditorialType
+			promptEcho, visualAdmission = identity.PromptEcho, identity.VisualAdmission
 			if identity.CanonicalID != "" {
 				canonicalID = identity.CanonicalID
 			}
@@ -312,9 +318,14 @@ func (a *SemanticEngineAdapter) Extract(
 		out = append(out, scriptgen.VisualEntity{
 			Text: entity.Text, Type: scriptpkg.EntityType(entity.Kind), Score: float32(entity.Score),
 			Start: entity.Start, End: entity.End, Evidence: entity.Evidence, IdentityID: entity.IdentityID, CanonicalID: canonicalID,
-			Role:          role,
-			SearchIntents: append([]string(nil), searchIntents...),
-			EntityIndex:   bundle.Analyzers.EntityIndex,
+			Role:              role,
+			SearchIntents:     append([]string(nil), searchIntents...),
+			EntityIndex:       bundle.Analyzers.EntityIndex,
+			EditorialDecision: editorialDecision,
+			EditorialSurface:  editorialSurface,
+			EditorialType:     editorialType,
+			PromptEcho:        promptEcho,
+			VisualAdmission:   visualAdmission,
 		})
 	}
 	return out, nil

@@ -68,9 +68,14 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			continue
 		}
 		kind := normalizeEntityAnnotationType(entity.Type)
-		value, kind = normalizeEditorialEntity(value, kind)
-		if value == "" || isPromptEchoEntityName(value) {
-			continue
+		admitted := true
+		if entity.EditorialDecision {
+			value = strings.TrimSpace(entity.EditorialSurface)
+			kind = normalizeEntityAnnotationType(entity.EditorialType)
+			if value == "" || entity.PromptEcho || kind == "" {
+				continue
+			}
+			admitted = entity.VisualAdmission
 		}
 		if kind == "KEYWORD" || kind == "VISUAL_SUBJECT" {
 			// KEYWORD and VISUAL_SUBJECT are not spoken entities: they
@@ -79,9 +84,6 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			// Annotations would make the entity timeline WORD gate demand a
 			// phrase the narration never said (e.g. "PERSON").
 			continue
-		}
-		if kind == "PERSON" && startsWithEntityAcronym(value) {
-			kind = "CONCEPT"
 		}
 		span, ok := findEntitySpan(text, value)
 		if !ok {
@@ -116,10 +118,12 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			ID: "entity-" + safeEntityID(canonical), Text: canonical,
 			CanonicalName: canonical, Type: kind, Role: entity.Role,
 			Confidence: entity.Confidence, Mentions: mentions,
+			EditorialDecision: entity.EditorialDecision, EditorialSurface: entity.EditorialSurface,
+			EditorialType: entity.EditorialType, PromptEcho: entity.PromptEcho, VisualAdmission: entity.VisualAdmission,
 		}
 		// Carry BrainRust's linked identity through to the overlay media index.
 		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
-		if scriptpkg.IsAnnotationEntityKind(kind) {
+		if scriptpkg.IsAnnotationEntityKind(kind) && admitted {
 			item.Image = entityImageBindingFor(canonical, kind, seg)
 		}
 		if kind == "LOGO" && item.Image == nil {
@@ -146,58 +150,11 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 	return ann
 }
 
-// normalizeEditorialEntity repairs recurring NER errors before any entity can
-// reserve a visual or text slot. These phrases describe concepts, while the
-// generic Italian verbs/adverbs are not place names.
-func normalizeEditorialEntity(value, kind string) (string, string) {
-	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
-	normalized := strings.ToLower(strings.Trim(value, " \t.,;:!?()[]{}\"'“”"))
-	switch normalized {
-	case "dopo", "capire":
-		if kind == "LOCATION" || kind == "GPE" || kind == "PLACE" {
-			return "", ""
-		}
-	case "dna di chiara":
-		return value, "CONCEPT"
-	}
-	return value, kind
-}
-
-// isPromptEchoEntityName rejects entity strings that are really instructions
-// or template labels echoed back by the language model. They are grounded in
-// the contaminated script, so the ordinary text gate cannot distinguish them
-// from a person; rendering them produces cards such as "Overlay Check" or
-// "Mappa Pertinente Andrea Sempio". Keep this list narrow and explicit: a real
-// entity is never named like an overlay instruction.
-func isPromptEchoEntityName(value string) bool {
-	name := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
-	switch {
-	case name == "overlay check", name == "data documentata":
-		return true
-	case strings.HasPrefix(name, "overlay:"),
-		strings.HasPrefix(name, "scheda entit"),
-		strings.HasPrefix(name, "mappa pertinente"),
-		strings.HasPrefix(name, "frase breve"),
-		strings.HasPrefix(name, "frase lunga"),
-		strings.HasPrefix(name, "immagine ("):
-		return true
-	default:
-		return false
-	}
-}
-
 // entityImageBindingFor projects only a durable, semantically approved,
 // identity-scoped internet image onto an annotation. Search queries are not
 // identity evidence: a location mentioned in a person's image query must not
 // bind that person's image to the location annotation (or vice versa).
 func entityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult) *scriptpkg.EntityImageBinding {
-	// NLP occasionally labels a named evidentiary object as a PERSON (for
-	// example, "DNA di Chiara"). An all-caps acronym at the start is not a
-	// human identity, so never attach a portrait to that annotation.
-	fields := strings.Fields(strings.TrimSpace(name))
-	if len(fields) > 1 && isUppercaseAcronym(fields[0]) {
-		return nil
-	}
 	want := normalizeEntityImageName(name)
 	if want == "" {
 		return nil

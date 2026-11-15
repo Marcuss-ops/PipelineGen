@@ -213,7 +213,12 @@ func localizedSourceVisualEntities(matches []localizedSourceMatch) []VisualEntit
 	}
 	out := make([]VisualEntity, 0, len(matches))
 	for _, match := range matches {
-		out = append(out, VisualEntity{Text: match.Surface, Type: match.Kind, Score: float32(match.Source.Confidence), Role: match.Source.Role})
+		out = append(out, VisualEntity{
+			Text: match.Surface, Type: match.Kind, Score: float32(match.Source.Confidence), Role: match.Source.Role,
+			EditorialDecision: match.Source.EditorialDecision, EditorialSurface: match.Source.EditorialSurface,
+			EditorialType: match.Source.EditorialType, PromptEcho: match.Source.PromptEcho,
+			VisualAdmission: match.Source.VisualAdmission,
+		})
 	}
 	return out
 }
@@ -242,6 +247,13 @@ func stampLocalizedSourceIdentity(ann *scriptpkg.SceneAnnotations, matches []loc
 				entity.CanonicalEntityID = annotationCanonicalEntityID(match.Source)
 			}
 			entity.Mentions = prependLocalizedMention(match.Span, entity.Mentions)
+			if !entity.EditorialDecision && match.Source.EditorialDecision {
+				entity.EditorialDecision = true
+				entity.EditorialSurface = match.Source.EditorialSurface
+				entity.EditorialType = match.Source.EditorialType
+				entity.PromptEcho = match.Source.PromptEcho
+				entity.VisualAdmission = match.Source.VisualAdmission
+			}
 			if entity.Image == nil && match.Source.Image != nil {
 				binding := *match.Source.Image
 				entity.Image = &binding

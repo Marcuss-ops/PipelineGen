@@ -274,10 +274,17 @@ type AnnotatedEntity struct {
 	// Role is BrainRust's EntityRole projection (named_entity/visual_concept).
 	// The primary/secondary lists already apply it; this field keeps the
 	// provenance available to the localized merge and downstream consumers.
-	Role       string              `json:"role,omitempty"`
-	Confidence float64             `json:"confidence,omitempty"`
-	Mentions   []AnnotationSpan    `json:"mentions,omitempty"`
-	Image      *EntityImageBinding `json:"image,omitempty"`
+	Role       string  `json:"role,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+	// EditorialDecision preserves the v3 linker decision through localization
+	// and durable projections. Consumers copy it; they do not re-run the rules.
+	EditorialDecision bool                `json:"editorial_decision,omitempty"`
+	EditorialSurface  string              `json:"editorial_surface,omitempty"`
+	EditorialType     string              `json:"editorial_type,omitempty"`
+	PromptEcho        bool                `json:"prompt_echo,omitempty"`
+	VisualAdmission   bool                `json:"visual_admission,omitempty"`
+	Mentions          []AnnotationSpan    `json:"mentions,omitempty"`
+	Image             *EntityImageBinding `json:"image,omitempty"`
 	// CanonicalEntityID carries the linked identity emitted by BrainRust when
 	// one is available. Unlinked entities leave it empty; overlay compilation
 	// then uses the deterministic local identity derivation.

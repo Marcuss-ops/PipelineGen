@@ -129,6 +129,14 @@ type ExtractedEntity struct {
 	// re-derive it from Type when it is present.
 	Role          string   `json:"role,omitempty"`
 	SearchIntents []string `json:"search_intents,omitempty"`
+	// EditorialDecision marks the v3 linker decision. EditorialSurface and
+	// EditorialType are projected verbatim; PromptEcho drops the entity and
+	// VisualAdmission gates the image slot. Go must not re-run these rules.
+	EditorialDecision bool   `json:"editorial_decision,omitempty"`
+	EditorialSurface  string `json:"editorial_surface,omitempty"`
+	EditorialType     string `json:"editorial_type,omitempty"`
+	PromptEcho        bool   `json:"prompt_echo,omitempty"`
+	VisualAdmission   bool   `json:"visual_admission,omitempty"`
 	// EntityIndex is the packaged analyzer index that produced the linked ids
 	// and intents. Empty on values produced before v3 provenance.
 	EntityIndex string `json:"entity_index,omitempty"`

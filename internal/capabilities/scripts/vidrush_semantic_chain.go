@@ -205,14 +205,19 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			entityType = scriptpkg.EntityTypeVisualConcept
 		}
 		extractedEntities = append(extractedEntities, scriptpkg.ExtractedEntity{
-			Value:         ve.Text,
-			Type:          string(entityType),
-			Confidence:    float64(ve.Score),
-			IdentityID:    ve.IdentityID,
-			CanonicalID:   ve.CanonicalID,
-			Role:          ve.Role,
-			SearchIntents: append([]string(nil), ve.SearchIntents...),
-			EntityIndex:   ve.EntityIndex,
+			Value:             ve.Text,
+			Type:              string(entityType),
+			Confidence:        float64(ve.Score),
+			IdentityID:        ve.IdentityID,
+			CanonicalID:       ve.CanonicalID,
+			Role:              ve.Role,
+			SearchIntents:     append([]string(nil), ve.SearchIntents...),
+			EntityIndex:       ve.EntityIndex,
+			EditorialDecision: ve.EditorialDecision,
+			EditorialSurface:  ve.EditorialSurface,
+			EditorialType:     ve.EditorialType,
+			PromptEcho:        ve.PromptEcho,
+			VisualAdmission:   ve.VisualAdmission,
 		})
 	}
 	imageEntities := imageSearchEntities(entities, extraction.HasCategoryOnlyIncludes() || hasAdditionalEntityCategory(extraction))
@@ -428,6 +433,13 @@ func deduplicateVisualEntities(entities []VisualEntity) []VisualEntity {
 			if out[existing].IdentityID == "" {
 				out[existing].IdentityID = entity.IdentityID
 				out[existing].CanonicalID = entity.CanonicalID
+			}
+			if !out[existing].EditorialDecision && entity.EditorialDecision {
+				out[existing].EditorialDecision = true
+				out[existing].EditorialSurface = entity.EditorialSurface
+				out[existing].EditorialType = entity.EditorialType
+				out[existing].PromptEcho = entity.PromptEcho
+				out[existing].VisualAdmission = entity.VisualAdmission
 			}
 			for _, intent := range entity.SearchIntents {
 				out[existing].SearchIntents = appendUniqueSemanticIntents(out[existing].SearchIntents, intent)

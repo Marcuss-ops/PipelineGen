@@ -262,6 +262,10 @@ type semanticEngineAnalyzerVersions struct {
 
 type semanticEngineLinkedEntity struct {
 	LocalID             string                       `json:"local_id"`
+	EditorialSurface    string                       `json:"editorial_surface"`
+	EditorialType       string                       `json:"editorial_type"`
+	PromptEcho          bool                         `json:"prompt_echo"`
+	VisualAdmission     bool                         `json:"visual_admission"`
 	SurfaceKey          string                       `json:"surface_key"`
 	CanonicalSurface    string                       `json:"canonical_surface"`
 	CanonicalID         *string                      `json:"canonical_id"`

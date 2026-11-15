@@ -386,7 +386,12 @@ func (r *Runner) computeLocalizedAnnotations(ctx context.Context, req GenerateRe
 			}
 			insights.Entities = append(insights.Entities, scriptpkg.ExtractedEntity{
 				Value: entity.Text, Type: string(entityType), Confidence: float64(entity.Score),
-				Role: entity.Role,
+				Role:              entity.Role,
+				EditorialDecision: entity.EditorialDecision,
+				EditorialSurface:  entity.EditorialSurface,
+				EditorialType:     entity.EditorialType,
+				PromptEcho:        entity.PromptEcho,
+				VisualAdmission:   entity.VisualAdmission,
 			})
 		}
 		annotation := projectEntityAnnotations(item.text, string(item.lang), scriptpkg.VidRushSegmentResult{
