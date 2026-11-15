@@ -142,24 +142,15 @@ func (a *SearchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 		return nil, fmt.Errorf("qdrant hybrid search: compile filter: %w", err)
 	}
 
-	var sparseVec *schema.SparseQueryVector
-	if req.SparseVector != nil {
-		sparseVec = &schema.SparseQueryVector{
-			Indices: req.SparseVector.Indices,
-			Values:  req.SparseVector.Values,
-		}
-	}
-
 	qReq := schema.HybridSearchRequest{
-		DenseVector:       req.DenseVector,
-		DenseVectorName:   req.DenseVectorName,
-		SparseVectorName:  req.SparseVectorName,
-		SparseText:        req.SparseText,
-		SparseModel:       req.SparseModel,
-		SparseQueryVector: sparseVec,
-		Limit:             req.Limit,
-		MinScore:          req.MinScore,
-		Filter:            filter,
+		DenseVector:      req.DenseVector,
+		DenseVectorName:  req.DenseVectorName,
+		SparseVectorName: req.SparseVectorName,
+		SparseText:       req.SparseText,
+		SparseModel:      req.SparseModel,
+		Limit:            req.Limit,
+		MinScore:         req.MinScore,
+		Filter:           filter,
 	}
 
 	results, err := a.searcher.HybridSearch(ctx, qReq)

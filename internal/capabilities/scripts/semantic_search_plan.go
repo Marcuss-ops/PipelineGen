@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"fmt"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/searchpolicy"
@@ -66,7 +67,7 @@ type SemanticSearchAttempt struct {
 	Class SemanticSearchClass
 }
 
-func (p *SemanticProductionPlan) mediaUnit(candidateID string) *SemanticProductionUnit {
+func (p *SemanticProductionPlan) mediaUnit(candidateID string) *generationcontract.SemanticProductionUnit {
 	if p == nil {
 		return nil
 	}
@@ -130,7 +131,7 @@ func (p *SemanticProductionPlan) NextAttemptForCandidate(candidateID string) (Se
 // attemptForUnit projects one pending unit into the next executable attempt.
 // It is the single owner of the rung/query/class/entity projection, so the
 // sequential and concurrent paths can never disagree about what comes next.
-func (p *SemanticProductionPlan) attemptForUnit(unit *SemanticProductionUnit) (SemanticSearchAttempt, bool) {
+func (p *SemanticProductionPlan) attemptForUnit(unit *generationcontract.SemanticProductionUnit) (SemanticSearchAttempt, bool) {
 	if p == nil || unit == nil {
 		return SemanticSearchAttempt{}, false
 	}
@@ -178,7 +179,7 @@ func (p *SemanticProductionPlan) SkipUnsupportedUnit(candidateID, reason string)
 	}
 	unit.SearchStatus = ProductionSearchFailed
 	unit.Status = ProductionUnitSkipped
-	unit.Retry = &SemanticSearchRetry{Action: "skip_visual", Reason: reason}
+	unit.Retry = &generationcontract.SemanticSearchRetry{Action: "skip_visual", Reason: reason}
 	p.Metrics.SearchesSkipped++
 	p.Metrics.AdmittedUnits--
 	p.revokeSkippedUnit(unit, reason)
@@ -217,7 +218,7 @@ func (p *SemanticProductionPlan) RecordSearchOutcome(outcome SemanticSearchOutco
 		unit.Rung++
 		p.Metrics.SearchAttempts++
 		p.Metrics.SearchBroadens++
-		unit.Retry = &SemanticSearchRetry{
+		unit.Retry = &generationcontract.SemanticSearchRetry{
 			Action: "broaden",
 			Reason: fmt.Sprintf("rung %d (%s) did not resolve; widening to %s", unit.Rung-1, unit.Queries[unit.Rung-1].Kind, unit.Queries[unit.Rung].Kind),
 		}
@@ -232,7 +233,7 @@ func (p *SemanticProductionPlan) RecordSearchOutcome(outcome SemanticSearchOutco
 		if trimmed := strings.TrimSpace(outcome.Error); trimmed != "" {
 			reason = "every exact-source query failed: " + trimmed
 		}
-		unit.Retry = &SemanticSearchRetry{Action: "skip_visual", Reason: reason}
+		unit.Retry = &generationcontract.SemanticSearchRetry{Action: "skip_visual", Reason: reason}
 		p.revokeSkippedUnit(unit, reason)
 	}
 	if next, ok := p.NextSearchAttempt(); ok {
@@ -271,7 +272,7 @@ func (p *SemanticProductionPlan) SearchFeedback() *SemanticSearchFeedback {
 		}
 		entry := SemanticSearchFeedbackEntry{
 			ProposalID: unit.CandidateID, SceneID: unit.SceneID,
-			Queries: append([]SemanticSearchQuery(nil), unit.Queries...),
+			Queries: append([]generationcontract.SemanticSearchQuery(nil), unit.Queries...),
 			Status:  status,
 		}
 		if unit.Retry != nil {
@@ -281,7 +282,7 @@ func (p *SemanticProductionPlan) SearchFeedback() *SemanticSearchFeedback {
 		if status == ProductionSearchFailed && entry.Retry == nil {
 			// A failed search must always tell the engine what to do next;
 			// never leave a failed entry without skip_visual.
-			entry.Retry = &SemanticSearchRetry{Action: "skip_visual", Reason: "search failed without a produced visual"}
+			entry.Retry = &generationcontract.SemanticSearchRetry{Action: "skip_visual", Reason: "search failed without a produced visual"}
 		}
 		feedback.Entries = append(feedback.Entries, entry)
 	}

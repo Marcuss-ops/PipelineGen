@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
 	"time"
@@ -80,8 +81,8 @@ func batchPlanner(t *testing.T, port *batchTestPort, clock *batchTestClock, conf
 }
 
 func TestSemanticSearchBatchMeasuresRealProviderOutcomes(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
-	sentence := SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	sentence := generationcontract.SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
 	plan, clock := batchPlan(t,
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact, sentence),
 	)
@@ -130,7 +131,7 @@ func TestSemanticSearchBatchMeasuresRealProviderOutcomes(t *testing.T) {
 }
 
 func TestSemanticSearchBatchReportsProviderErrorsAsTypedFailure(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	plan, clock := batchPlan(t,
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact),
 	)
@@ -161,8 +162,8 @@ func TestSemanticSearchBatchReportsProviderErrorsAsTypedFailure(t *testing.T) {
 }
 
 func TestSemanticSearchBatchHonorsTheQueryBudget(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
-	sentence := SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	sentence := generationcontract.SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
 	plan, clock := batchPlan(t,
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact, sentence),
 	)
@@ -177,7 +178,7 @@ func TestSemanticSearchBatchHonorsTheQueryBudget(t *testing.T) {
 }
 
 func TestSemanticSearchBatchStopsOnCancellation(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	plan, clock := batchPlan(t,
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact),
 	)
@@ -221,7 +222,7 @@ func TestSemanticSearchBatchWithNothingToSearchIsANoop(t *testing.T) {
 // address must survive the batch, and the plan must be able to bind it to the
 // scene entity it belongs to.
 func TestSemanticSearchBatchResolvedHitBecomesAnOverlayBinding(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	plan, clock := batchPlan(t,
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact),
 	)
@@ -255,7 +256,7 @@ func TestSemanticSearchBatchResolvedHitBecomesAnOverlayBinding(t *testing.T) {
 }
 
 func TestRunnerExecutesTheSemanticSearchBatch(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	plan, clock := batchPlan(t,
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact),
 	)

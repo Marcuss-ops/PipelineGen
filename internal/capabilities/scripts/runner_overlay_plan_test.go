@@ -695,7 +695,7 @@ func TestCompileResultOverlayPlanPersistsPhraseBudgetEvenWhenNoPhraseIsGrounded(
 	result := &GenerateResult{Scenes: []Scene{
 		{ID: "scene-0", Index: 0, Text: map[Language]string{"en": "A scene without certified timing."}},
 	}}
-	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-1", "project-1", "", GoldenOverlayCanvas, nil))
+	require.NoError(t, compileResultOverlayPlan(context.Background(), result, "en", "plan-1", "project-1", "", GoldenOverlayCanvas, nil, nil))
 	require.Nil(t, result.OverlayPlan)
 	require.NotNil(t, result.PhraseOverlayBudget)
 	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{

@@ -36,8 +36,8 @@ func (f *personImageScorerFakeClient) Chat(_ context.Context, messages []types.M
 
 func TestOllamaPersonImageScorerRejectsCollageAndKeepsSinglePortrait(t *testing.T) {
 	client := &personImageScorerFakeClient{responses: []string{
-		`{"identity_match":true,"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.94}`,
 		`{"identity_match":true,"single_person_headshot":false,"split_panel_or_collage":true,"confidence":0.97}`,
+		`{"identity_match":true,"single_person_headshot":true,"split_panel_or_collage":false,"confidence":0.94}`,
 	}}
 	scorer := NewOllamaPersonImageScorer(client)
 	imageBytes := testPersonScorerJPEG(t)
@@ -45,8 +45,8 @@ func TestOllamaPersonImageScorerRejectsCollageAndKeepsSinglePortrait(t *testing.
 		return imageBytes, "image/jpeg", nil
 	}
 	candidates := []scriptpkg.SegmentAssetCandidate{
-		{Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi", SourceURL: "https://images.example/chiara-poggi-portrait.jpg"},
 		{Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi", SourceURL: "https://images.example/chiara-poggi-collage.jpg"},
+		{Provider: scriptpkg.VidRushProviderInternetImages, Entity: "Chiara Poggi", SourceURL: "https://images.example/chiara-poggi-portrait.jpg"},
 		{Provider: scriptpkg.VidRushProviderInternetImages, SourceURL: "https://images.example/generic.jpg"},
 	}
 
@@ -54,11 +54,11 @@ func TestOllamaPersonImageScorerRejectsCollageAndKeepsSinglePortrait(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got[0].SemanticStatus != "accepted" || got[0].SemanticScore != 0.94 {
-		t.Fatalf("verified portrait verdict = (%q, %v), want accepted at 0.94", got[0].SemanticStatus, got[0].SemanticScore)
+	if got[0].SemanticStatus != "rejected" || !strings.Contains(got[0].QualityReason, "collage") {
+		t.Fatalf("collage verdict = (%q, %q), want rejected with collage reason", got[0].SemanticStatus, got[0].QualityReason)
 	}
-	if got[1].SemanticStatus != "rejected" || !strings.Contains(got[1].QualityReason, "collage") {
-		t.Fatalf("collage verdict = (%q, %q), want rejected with collage reason", got[1].SemanticStatus, got[1].QualityReason)
+	if got[1].SemanticStatus != "accepted" || got[1].SemanticScore != 0.94 {
+		t.Fatalf("verified portrait verdict = (%q, %v), want accepted at 0.94", got[1].SemanticStatus, got[1].SemanticScore)
 	}
 	if got[2].SemanticStatus != "" {
 		t.Fatalf("generic image was scored as a person image: %+v", got[2])

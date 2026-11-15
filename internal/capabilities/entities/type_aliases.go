@@ -3,7 +3,7 @@
 //
 // The table itself is not restated here: entitytype.Fold is the single
 // spelling → family mapping shared by kernel/script (annotation kinds),
-// platform/nlp, overlays, imagesearch and this package. What lives here is the
+// overlays and this package. What lives here is the
 // identity layer:
 //
 //   - NormalizeType folds a raw extractor spelling onto the identity type;

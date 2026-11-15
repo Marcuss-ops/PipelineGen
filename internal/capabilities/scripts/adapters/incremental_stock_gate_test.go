@@ -90,7 +90,7 @@ func TestIncrementalFanoutAllowsOnlyExplicitEntityImageSidecarForStock(t *testin
 	// explicit policy authorizes, otherwise the entity-only fanout correctly
 	// has no query and the test would assert the wrong contract.
 	segment := stockGateSegment()
-	segment.Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON"}}
+	segment.Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON", SearchIntents: []string{"Milton Leite"}}}
 	got, err := fanout.ResolveProviders(context.Background(), plan, segment)
 	if err != nil {
 		t.Fatal(err)

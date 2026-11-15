@@ -8,7 +8,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 )
 
-const ProtocolVersion = "mediaexec.v1"
+const ProtocolVersion = "mediaexec.v2"
 
 type Operation string
 
@@ -238,12 +238,14 @@ type cutRequestJob struct {
 }
 
 type cutItem struct {
-	JobID       string  `json:"job_id"`
-	OutputPath  string  `json:"output_path"`
-	Status      string  `json:"status"`
-	SizeBytes   int64   `json:"size_bytes"`
-	DurationSec float64 `json:"duration_sec"`
-	Error       string  `json:"error"`
+	JobID                string  `json:"job_id"`
+	OutputPath           string  `json:"output_path"`
+	Status               string  `json:"status"`
+	SizeBytes            int64   `json:"size_bytes"`
+	DurationSec          float64 `json:"duration_sec"`
+	SHA256               string  `json:"sha256"`
+	VideoExtradataSHA256 string  `json:"video_extradata_sha256"`
+	Error                string  `json:"error"`
 }
 
 type mediaMetadata struct {
@@ -322,5 +324,5 @@ type audioEditMetadata struct {
 	OutputEndUS   int64 `json:"output_end_us"`
 }
 
-// Wire DTOs for mediaexec.v1. These types intentionally contain only the
+// Wire DTOs for mediaexec.v2. These types intentionally contain only the
 // transport contract; capability adapters live in the neighboring files.

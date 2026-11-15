@@ -135,10 +135,7 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		} else if kind == "BRAND" && hasVerifiedBrandImage(canonical, seg) {
 			item.Type = "LOGO"
 		}
-		// Stamp the canonical_entity_id the Image Search Intent resolver
-		// chose for this entity (the join key of the overlay media index), so
-		// the overlay compile resolves the card asset under the SAME identity
-		// — never a re-derivation from a possibly-different surface.
+		// Carry BrainRust's linked identity through to the overlay media index.
 		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
 		if item.CanonicalEntityID == "" && scriptpkg.NormalizeAnnotationType(kind) == "LOGO" {
 			item.CanonicalEntityID = "logo:" + normalizeBrandAssetName(canonical)

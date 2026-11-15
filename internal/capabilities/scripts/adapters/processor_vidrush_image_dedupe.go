@@ -14,6 +14,13 @@ func dedupeMaterializedImagesAcrossSegments(plan *scriptpkg.ResolvedGenerationPl
 	}
 	seen := make(map[string]struct{}, len(segments)*4)
 	for i := range segments {
+		if _, stockBound := stockBindingForSegment(plan, nil, segments[i]); stockBound {
+			// Candidate pools on stock-bound scenes are only a source for entity
+			// overlays. They must never be promoted back onto the scene-media
+			// surface by the refill pass below.
+			clearStockBoundSceneImages(&segments[i])
+			continue
+		}
 		target := vidRushImageTargetForSegment(plan, segments[i])
 		if target <= 0 {
 			target = len(segments[i].Assets.SecondaryImages)

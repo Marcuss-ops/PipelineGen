@@ -271,7 +271,7 @@ func TestCompileOverlayPlanGoldenThroughputMixMaterializes100Items(t *testing.T)
 	require.Equal(t, canvas.OverlayGroupLimits, item.OverlayGroupLimits)
 	require.Equal(t, canvas.AnimationCounts, item.AnimationCounts)
 	result, resolver := goldenMixResult(t)
-	plan, err := CompileOverlayPlanWithPlates(result, "en", canvas,
+	plan, err := compileMapPlanForTest(result, "en", canvas,
 		"plan-golden-mix", "video-golden-mix", "project-golden-mix", resolver, true, true)
 	require.NoError(t, err)
 	require.NotNil(t, plan)

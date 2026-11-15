@@ -274,13 +274,9 @@ type AnnotatedEntity struct {
 	Confidence    float64             `json:"confidence,omitempty"`
 	Mentions      []AnnotationSpan    `json:"mentions,omitempty"`
 	Image         *EntityImageBinding `json:"image,omitempty"`
-	// CanonicalEntityID is the stable canonical identity of the entity in
-	// the entities-package spelling (e.g. "person:floyd-mayweather"). It is
-	// stamped from the Image Search Intent resolver's decision so the media
-	// index / overlay resolver join on the SAME identity the resolver
-	// chose, never a re-derivation from a possibly-different surface. Empty
-	// when the resolver was not wired or the entity was not part of its
-	// decision (the overlay compile then derives the id deterministically).
+	// CanonicalEntityID carries the linked identity emitted by BrainRust when
+	// one is available. Unlinked entities leave it empty; overlay compilation
+	// then uses the deterministic local identity derivation.
 	CanonicalEntityID string `json:"canonical_entity_id,omitempty"`
 	// Geo is the geocoder-validated WGS84 enrichment of a grounded place
 	// (GPE/LOCATION) annotation. It is present only when the request enabled

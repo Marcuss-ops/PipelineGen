@@ -153,6 +153,7 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 	}
 	semanticAnalyzer.SetPassageEmbedder(phraseEmbedder)
 	runner.SetSceneSemanticAnalyzer(semanticAnalyzer)
+	runner.SetMapOverlapResolver(semanticAnalyzer)
 	// Location overlays use the real Nominatim adapter and the only accepted
 	// basemap source: operator-certified local plates. The capability layer
 	// still gates all lookups and map planning on request-level geocoding opt-in.
@@ -280,16 +281,8 @@ func BuildScriptGenerationRuntime(cfg *config.Config, root *ComposeRoot, runRepo
 		scriptGenerationConcurrency = scriptgen.DefaultGenerationConcurrency
 	}
 	ollamaScriptGate := scriptgen.NewGenerationGateWithCapacity(scriptGenerationConcurrency)
-	ollamaNLPGate := scriptgen.NewGenerationGateWithCapacity(nlpConcurrency)
-	// The scene-text gate is owned by the generator engine (below); the runner
-	// owns ONLY the independent entity-extraction gate. Wiring the script gate
-	// onto the runner as well existed solely for the retired compatibility
-	// fallback in beginVidRush.
-	runner.SetNLPGenerationGate(ollamaNLPGate)
-	// The gate bounds the provider calls; the coordinator's own fan-out is
-	// sized separately, so the configured value must reach BOTH. Without this
-	// the extraction pools stayed pinned to the certified default and lowering
-	// nlp_concurrency could not protect the TTS/LLM inference budget.
+	// Rust semantic extraction has its own bounded fan-out and does not contend
+	// for the local Ollama model used by scene-text generation.
 	runner.SetNLPConcurrency(nlpConcurrency)
 	if root.AI != nil && root.AI.SceneTextGenerator != nil {
 		root.AI.SceneTextGenerator.SetSegmentConcurrency(scriptGenerationConcurrency)

@@ -4,8 +4,8 @@
 // max_lines_per_file_strict=600 (godlike/08) while giving the §7.3 per-scene
 // trace its own home.
 //
-// The chain is: extraction → canonical identity stamping → research (the
-// semantic/NLP work that reads the committed text and produces insights), then
+// The chain is: Rust semantic extraction → research (the work that reads the
+// committed text and produces insights), then
 // provider fan-out → acquire/verify/finalize (the asset work that turns those
 // insights into certified media). The two blocks are recorded as the scene's
 // nlp and asset stages so the critical path can chain nlp → asset exactly as
@@ -25,7 +25,7 @@ import (
 //
 // §7.3 trace:
 //   - nlp   — readyAt is the committed scene's text-ready instant; the stage
-//     covers extraction, identity stamping and research.
+//     covers semantic extraction and research.
 //   - asset — chains to the completed analysis (its readyAt) and covers the
 //     provider fan-out plus the acquire/verify/finalize stage.
 //
@@ -33,17 +33,10 @@ import (
 // the stage's own bounded-pool waits, and carries the stage error (if any) so
 // a failed scene is visible in the trace instead of silently absent.
 func (c *VidRushIncrementalCoordinator) enrichAndMaterialize(ctx context.Context, event SceneCommitted, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
-	// Stage 1 — entity extraction. Single-slot by default (local Ollama),
-	// and low-priority against the generation gate so scene generation is
-	// never starved when both share the same model.
+	// Stage 1 — bounded BrainRust semantic extraction. This CPU worker is
+	// independent from the local Ollama model used for scene generation.
 	nlpStartedAt := time.Now().UTC()
 	result, err := c.enrichSegment(ctx, scene)
-	if err == nil {
-		// Stage 1b — canonical identity stamping: the Image Search Intent
-		// resolver's canonical_entity_id choices travel with the segment
-		// (never re-derived downstream by the annotation projection).
-		result, err = c.stampImageSearchDecision(ctx, result, scene.Text, event.Language)
-	}
 	if err == nil {
 		result, err = c.researchSegment(ctx, result)
 	}

@@ -24,9 +24,4 @@ type LexiconProfile struct {
 	// absent from the map rather than present and empty; callers treat the
 	// returned sets as read-only.
 	WordSets map[string]map[string]struct{}
-	// PhraseSets holds the named multi-word lists loaded from
-	// config/lexicons/<lang>/<name>.txt, tokenised on whitespace at load
-	// time (for example "instead of" becomes {"instead", "of"}). Like
-	// WordSets, a missing file leaves the name absent.
-	PhraseSets map[string][][]string
 }

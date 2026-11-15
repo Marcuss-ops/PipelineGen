@@ -20,7 +20,6 @@
   cc=53   cog=110   loc=204   nest=6  ch=15  *HT* internal/capabilities/scripts/runner_phase_script.go:163 runSceneTextPhase()
   cc=53   cog=78    loc=194   nest=4  ch=3   *HT* internal/app/wiring/wire_script.go:114 error()
   cc=52   cog=90    loc=223   nest=4  ch=4   *HT* internal/app/wiring/localized_render_enqueuer.go:170 EnqueueLocalizedRender()
-  cc=52   cog=7     loc=136   nest=2  ch=5        internal/capabilities/imagesearch/knowledge.go:258 bool()
   cc=51   cog=136   loc=222   nest=5  ch=1   *HT* internal/capabilities/scripts/adapters/postprocessor_composite_run.go:63 run()
   cc=51   cog=89    loc=256   nest=4  ch=5   *HT* internal/capabilities/scripts/usecase/source_resolver_search.go:107 Resolve()
 

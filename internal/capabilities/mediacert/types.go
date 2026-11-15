@@ -32,6 +32,11 @@ type SpecSegment struct {
 	// STOCK ISOLATION check certifies that absence positively, and IMAGE
 	// FANOUT skips its image budget.
 	StockBound bool `json:"stock_bound,omitempty"`
+	// AllowEntityImageCandidates marks the explicit per-scene entity-image
+	// sidecar lane on a stock-bound scene. Its candidate pool may contain
+	// provider images for annotation overlays, while selected scene-image
+	// fields remain forbidden by STOCK ISOLATION.
+	AllowEntityImageCandidates bool `json:"allow_entity_image_candidates,omitempty"`
 }
 
 // Spec is the top-level certification specification. It declares the

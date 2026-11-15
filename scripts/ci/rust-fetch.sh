@@ -8,7 +8,7 @@
 # unless every check passes.
 #
 # Required:
-#   BRAINRUST_VERSION     release tag, e.g. v0.2.0
+#   BRAINRUST_VERSION     release tag, e.g. v0.3.0
 #   RUST_ICU_MAJOR        ICU major the binaries must link (e.g. 72)
 # Optional:
 #   RUST_FETCH_BASE_URL   default
@@ -33,14 +33,30 @@ verify_semantic_manifest() {
     local probe='{"operation":"analyze_script","language":"en","scenes":[{"scene_id":"contract","text":"Ada Lovelace was born in 1815 in London."}]}'
     local output
     output="$(printf '%s\n' "$probe" | "$binary" 2>/dev/null)" || return 1
-    printf '%s' "$output" | grep -q '"schema_version":"semantic_manifest.v2"' || return 1
-    printf '%s' "$output" | grep -q '"contextual_image_queries"' || return 1
-    printf '%s' "$output" | grep -q '"composed_image_queries"' || return 1
-    printf '%s' "$output" | grep -q '"important_segments"' || return 1
+    printf '%s' "$output" | python3 -c '
+import json, sys
+try:
+    response = json.load(sys.stdin)
+except (json.JSONDecodeError, UnicodeDecodeError):
+    raise SystemExit(1)
+manifest = response.get("manifest", response)
+if not isinstance(manifest, dict):
+    raise SystemExit(1)
+schema = manifest.get("schema_version")
+if schema != "semantic_manifest.v3":
+    raise SystemExit(1)
+scenes = manifest.get("scenes", [])
+surfaces = [manifest, *scenes] if isinstance(scenes, list) else [manifest]
+for field in ("contextual_image_queries", "composed_image_queries", "important_segments"):
+    if not any(field in surface for surface in surfaces if isinstance(surface, dict)):
+        raise SystemExit(1)
+if not manifest.get("analyzers", {}).get("entity_index") or not isinstance(manifest.get("entities"), list):
+    raise SystemExit(1)
+' || return 1
     return 0
 }
 
-: "${BRAINRUST_VERSION:?BRAINRUST_VERSION is required (e.g. v0.2.0)}"
+: "${BRAINRUST_VERSION:?BRAINRUST_VERSION is required (e.g. v0.3.0)}"
 : "${RUST_ICU_MAJOR:?RUST_ICU_MAJOR is required (the libicu major the binaries must link)}"
 RUST_FETCH_BASE_URL="${RUST_FETCH_BASE_URL:-https://github.com/Marcuss-ops/BrainRust/releases/download}"
 RUST_BIN_DIR="${RUST_BIN_DIR:-bin}"
@@ -66,7 +82,10 @@ if [ -f "$stamp" ] \
     done
     if [ "$installed" = 1 ]; then
         verify_semantic_manifest "$RUST_BIN_DIR/semantic-engine" \
-            || die "installed BrainRust $BRAINRUST_VERSION semantic-engine does not emit the current manifest contract (schema v2 + contextual/composed/important_segments); pin a matching release"
+            || die "installed BrainRust $BRAINRUST_VERSION semantic-engine does not emit the current manifest contract (semantic_manifest.v3 with entity_index and contextual/composed/important_segments); pin a matching release"
+        python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m.get("version")==sys.argv[2] and m.get("mediaexec_schema")=="mediaexec.v2"' \
+            "$RUST_BIN_DIR/BRAINRUST_RELEASE.json" "$BRAINRUST_VERSION" \
+            || die "installed BrainRust $BRAINRUST_VERSION does not publish the mediaexec.v2 cut checksum contract; pin a matching release"
         echo "✅ BrainRust $BRAINRUST_VERSION already installed in $RUST_BIN_DIR (ICU $RUST_ICU_MAJOR)"
         exit 0
     fi
@@ -122,7 +141,8 @@ manifest_path, version, icu_major, directory = sys.argv[1:]
 manifest = json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8"))
 root = pathlib.Path(directory)
 assert manifest.get("version") == version
-assert manifest.get("semantic_schema") == "semantic_manifest.v2"
+assert manifest.get("semantic_schema") == "semantic_manifest.v3"
+assert manifest.get("mediaexec_schema") == "mediaexec.v2"
 assert str(manifest.get("icu_major")) == icu_major
 assert manifest.get("git_sha") and len(manifest["git_sha"]) == 40
 for name in ("pipelinegen-muscles", "visualner", "mediasampler", "semantic-engine"):
@@ -141,7 +161,7 @@ for asset in "${ASSETS[@]}"; do
 done
 install -m 0644 "$src/BRAINRUST_RELEASE.json" "$staging/BRAINRUST_RELEASE.json"
 verify_semantic_manifest "$staging/semantic-engine" \
-    || die "BrainRust $BRAINRUST_VERSION semantic-engine does not emit the current manifest contract (schema v2 + contextual/composed/important_segments); update BRAINRUST_VERSION to a release built from the current semantic-core manifest"
+    || die "BrainRust $BRAINRUST_VERSION semantic-engine does not emit the current manifest contract (semantic_manifest.v3 with entity_index and contextual/composed/important_segments); update BRAINRUST_VERSION to a matching release"
 {
     printf 'version=%s\n' "$BRAINRUST_VERSION"
     printf 'icu_major=%s\n' "$artifact_icu"

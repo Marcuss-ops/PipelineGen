@@ -406,6 +406,9 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			return nil, nil, fmt.Errorf("final_job scene %q: %w", segment.ID, err)
 		}
 		sceneMS := (segment.DurationUS + 999) / 1000
+		if localScene.Stock != nil && localScene.Stock.DurationMs <= 0 && localScene.Stock.EndMs <= localScene.Stock.StartMs && sceneMS > 0 {
+			stockWindowMS = sceneMS
+		}
 		if stockWindowMS != sceneMS {
 			return nil, nil, fmt.Errorf("final_job scene %q stock binding window %dms does not match canonical scene duration %dms; the stockpipeline must bind the scene window", segment.ID, stockWindowMS, sceneMS)
 		}

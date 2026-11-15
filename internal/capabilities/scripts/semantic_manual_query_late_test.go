@@ -1,13 +1,14 @@
 package scriptgeneration
 
 import (
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"testing"
 
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 func TestApplyCallerImageSearchesReportsLateQuery(t *testing.T) {
-	plan := &SemanticProductionPlan{Units: []SemanticProductionUnit{{
+	plan := &SemanticProductionPlan{Units: []generationcontract.SemanticProductionUnit{{
 		SceneID: "scene-1", RequiresMedia: true, Status: ProductionUnitPlanned,
 		SearchStatus: ProductionSearchSatisfied,
 	}}}

@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"sort"
 	"strconv"
 	"strings"
@@ -253,7 +254,7 @@ type SemanticSearchBatchReport struct {
 	Metrics        SemanticSearchBatchMetrics
 	Attempts       []SemanticSearchAttemptResult
 	Feedback       *SemanticSearchFeedback
-	PlanMetrics    SemanticProductionMetrics
+	PlanMetrics    generationcontract.SemanticProductionMetrics
 	AbortedError   string
 	ProviderErrors int
 	ProviderError  string

@@ -219,6 +219,15 @@ func (p *VidRushMaterializationProcessor) Process(ctx context.Context, plan *scr
 		}
 	}
 	updatedSpecScene := projectEntityImageBindings(input.SpecScene, segments, entityImagePolicy)
+	// Entity-image candidates have now been projected onto their owning
+	// annotations. A stock-bound scene may carry them during that projection,
+	// but they are not scene media and must not cross the certification
+	// boundary as provider candidates.
+	for i := range segments {
+		if _, stockBound := stockBindingForSegment(plan, nil, segments[i]); stockBound {
+			segments[i].Assets.Candidates = nil
+		}
+	}
 	return &PostProcessResult{
 		VidRushSegments:  segments,
 		UpdatedSpecScene: updatedSpecScene,

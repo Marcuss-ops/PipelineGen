@@ -125,6 +125,9 @@ type ExtractedEntity struct {
 	IdentityID    string   `json:"identity_id,omitempty"`
 	CanonicalID   string   `json:"canonical_id,omitempty"`
 	SearchIntents []string `json:"search_intents,omitempty"`
+	// EntityIndex is the packaged analyzer index that produced the linked ids
+	// and intents. Empty on values produced before v3 provenance.
+	EntityIndex string `json:"entity_index,omitempty"`
 }
 
 // NormalizeAnnotationType is the SINGLE canonical owner of the NLP entity
@@ -325,23 +328,25 @@ func BuildSegmentVisualProfile(profile SegmentSemanticProfile) SegmentVisualProf
 // SegmentInsights collects the per-segment semantic extractions and
 // generated queries used by VidRush.
 type SegmentInsights struct {
-	SegmentID                 string                `json:"segment_id"`
-	VisualProfile             *SegmentVisualProfile `json:"visual_profile,omitempty"`
-	TextHash                  string                `json:"text_hash"`
-	Entities                  []ExtractedEntity     `json:"entities,omitempty"`
-	ImportantPhrases          []string              `json:"important_phrases,omitempty"`
-	ImportantWords            []string              `json:"important_words,omitempty"`
-	SpecialNames              []string              `json:"special_names,omitempty"`
-	NounChunks                []string              `json:"noun_chunks,omitempty"`
-	YouTubeQueries            []string              `json:"youtube_queries,omitempty"`
-	ImageQueries              []string              `json:"image_queries,omitempty"`
-	ImageSearchRequired       bool                  `json:"image_search_required,omitempty"`
-	ImageSearchNoImageReason  string                `json:"image_search_no_image_reason,omitempty"`
-	ImagePrimaryCanonicalID   string                `json:"image_primary_canonical_id,omitempty"`
-	ImageEntityCanonicalIDs   map[string]string     `json:"image_entity_canonical_ids,omitempty"`
-	ImageEntityCanonicalNames map[string]string     `json:"image_entity_canonical_names,omitempty"`
-	ResearchSources           []ResearchWebSource   `json:"research_sources,omitempty"`
-	EntityMediaLinks          []EntityMediaLink     `json:"entity_media_links,omitempty"`
+	SegmentID     string                `json:"segment_id"`
+	VisualProfile *SegmentVisualProfile `json:"visual_profile,omitempty"`
+	TextHash      string                `json:"text_hash"`
+	// EntityIndex is the packaged index version carried by the v3 manifest.
+	EntityIndex               string              `json:"entity_index,omitempty"`
+	Entities                  []ExtractedEntity   `json:"entities,omitempty"`
+	ImportantPhrases          []string            `json:"important_phrases,omitempty"`
+	ImportantWords            []string            `json:"important_words,omitempty"`
+	SpecialNames              []string            `json:"special_names,omitempty"`
+	NounChunks                []string            `json:"noun_chunks,omitempty"`
+	YouTubeQueries            []string            `json:"youtube_queries,omitempty"`
+	ImageQueries              []string            `json:"image_queries,omitempty"`
+	ImageSearchRequired       bool                `json:"image_search_required,omitempty"`
+	ImageSearchNoImageReason  string              `json:"image_search_no_image_reason,omitempty"`
+	ImagePrimaryCanonicalID   string              `json:"image_primary_canonical_id,omitempty"`
+	ImageEntityCanonicalIDs   map[string]string   `json:"image_entity_canonical_ids,omitempty"`
+	ImageEntityCanonicalNames map[string]string   `json:"image_entity_canonical_names,omitempty"`
+	ResearchSources           []ResearchWebSource `json:"research_sources,omitempty"`
+	EntityMediaLinks          []EntityMediaLink   `json:"entity_media_links,omitempty"`
 }
 
 // SegmentAssetCandidate is a single candidate found for a segment.

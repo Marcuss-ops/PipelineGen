@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"fmt"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"sort"
 	"strings"
 	"sync"
@@ -113,6 +114,7 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 	row.LatencyMS = latency
 	row.RateLimited = rateLimited
 
+	best, hasVerified := bestVerifiedSemanticHit(response.Hits)
 	outcome := SemanticSearchOutcome{CandidateID: attempt.CandidateID, Rung: attempt.Rung}
 	switch {
 	case searchErr != nil:
@@ -120,29 +122,28 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 		row.ProviderError = true
 		row.Error = searchErr.Error()
 		outcome.Error = row.Error
-	case len(response.Hits) == 0:
+	case !hasVerified:
 		row.Status = "miss"
-		outcome.Error = "provider returned no candidate"
+		outcome.Error = "provider returned no pixel-verified candidate"
 	default:
 		row.Status = "hit"
 		row.Hits = len(response.Hits)
 		row.Provider = strings.TrimSpace(response.Provider)
 		outcome.Found = true
-		outcome.AssetID = strings.TrimSpace(response.Hits[0].AssetID)
-		outcome.VerifierVersion = strings.TrimSpace(response.Hits[0].VerifierVersion)
+		outcome.AssetID = strings.TrimSpace(best.AssetID)
+		outcome.VerifierVersion = strings.TrimSpace(best.VerifierVersion)
 		for _, hit := range response.Hits {
 			if id := strings.TrimSpace(hit.AssetID); id != "" {
 				row.AssetIDs = append(row.AssetIDs, id)
 			}
 		}
 		if outcome.AssetID == "" {
-			outcome.AssetID = strings.TrimSpace(response.Hits[0].URL)
+			outcome.AssetID = strings.TrimSpace(best.URL)
 		}
 	}
 
 	p.planMu.Lock()
-	next, _, recordErr := plan.RecordSearchOutcome(outcome)
-	_ = next
+	_, _, recordErr := plan.RecordSearchOutcome(outcome)
 	if recordErr != nil {
 		row.Status = "error"
 		row.Error = recordErr.Error()
@@ -153,19 +154,18 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 			row.RetryAction = unit.Retry.Action
 		}
 		if row.Status == "hit" && unit.ResolvedImage == nil {
-			first := response.Hits[0]
-			provider := strings.TrimSpace(first.Provider)
+			provider := strings.TrimSpace(best.Provider)
 			if provider == "" {
 				provider = strings.TrimSpace(response.Provider)
 			}
-			unit.ResolvedImage = &SemanticResolvedImage{
-				AssetID: outcome.AssetID, URL: strings.TrimSpace(first.URL),
-				DriveLink: strings.TrimSpace(first.DriveLink), SHA256: strings.TrimSpace(first.SHA256),
-				MediaType: strings.TrimSpace(first.MediaType), Provider: provider,
-				VerifierVersion: strings.TrimSpace(first.VerifierVersion),
+			unit.ResolvedImage = &generationcontract.SemanticResolvedImage{
+				AssetID: outcome.AssetID, URL: strings.TrimSpace(best.URL),
+				DriveLink: strings.TrimSpace(best.DriveLink), SHA256: strings.TrimSpace(best.SHA256),
+				MediaType: strings.TrimSpace(best.MediaType), Provider: provider,
+				VerifierVersion: strings.TrimSpace(best.VerifierVersion),
 				Query:           attempt.Query, QueryOrigin: attempt.QueryOrigin, TemplateID: attempt.TemplateID,
-				Illustrative: attempt.Illustrative, Entity: strings.TrimSpace(first.Entity),
-				Width: first.Width, Height: first.Height,
+				Illustrative: attempt.Illustrative, Entity: strings.TrimSpace(best.Entity),
+				Width: best.Width, Height: best.Height,
 			}
 		}
 	}
@@ -178,6 +178,28 @@ func (p *SemanticSearchBatchPlanner) runAttempt(ctx context.Context, plan *Seman
 	return row, &nextAttempt
 }
 
+// isVerifiedSemanticHit is the ONE admission rule for a retrieval result. A
+// provider order, a query match or a downloaded image is not identity
+// evidence: the verifier must have stamped an accepted verdict with a named
+// policy and a content address.
+func isVerifiedSemanticHit(hit SemanticAssetHit) bool {
+	return strings.EqualFold(strings.TrimSpace(hit.SemanticStatus), "accepted") &&
+		strings.TrimSpace(hit.VerifierVersion) != "" &&
+		digest.IsSHA256(hit.SHA256)
+}
+
+// bestVerifiedSemanticHit returns the best admissible hit after
+// rankSemanticAssetHits. It never falls back to Hits[0]: an unverified first
+// result is not a candidate.
+func bestVerifiedSemanticHit(hits []SemanticAssetHit) (SemanticAssetHit, bool) {
+	for _, hit := range hits {
+		if isVerifiedSemanticHit(hit) {
+			return hit, true
+		}
+	}
+	return SemanticAssetHit{}, false
+}
+
 // rankSemanticAssetHits applies the same evidence ordering to fresh and cached
 // answers. Provider order is not an editorial quality signal. Explicitly
 // rejected candidates are removed; accepted visual verdicts, relevance,
@@ -188,8 +210,7 @@ func rankSemanticAssetHits(response SemanticAssetSearchResponse) SemanticAssetSe
 	for _, hit := range response.Hits {
 		// Search results are untrusted candidates. Only a pixel-level accepted
 		// verdict with a named verifier may satisfy a plan or enter its cache.
-		if strings.EqualFold(strings.TrimSpace(hit.SemanticStatus), "accepted") &&
-			strings.TrimSpace(hit.VerifierVersion) != "" && digest.IsSHA256(hit.SHA256) {
+		if isVerifiedSemanticHit(hit) {
 			kept = append(kept, hit)
 		}
 	}
@@ -242,8 +263,7 @@ func (p *SemanticSearchBatchPlanner) fetch(ctx context.Context, attempt Semantic
 
 func hasVerifiedSemanticAssetHit(response SemanticAssetSearchResponse) bool {
 	for _, hit := range response.Hits {
-		if strings.EqualFold(strings.TrimSpace(hit.SemanticStatus), "accepted") &&
-			strings.TrimSpace(hit.VerifierVersion) != "" && digest.IsSHA256(hit.SHA256) {
+		if isVerifiedSemanticHit(hit) {
 			return true
 		}
 	}
@@ -377,7 +397,7 @@ func semanticPlanFingerprint(plan *SemanticProductionPlan) string {
 	return digest.SHA256Bytes([]byte(b.String()))[:16]
 }
 
-func planUnitByCandidate(plan *SemanticProductionPlan, candidateID string) *SemanticProductionUnit {
+func planUnitByCandidate(plan *SemanticProductionPlan, candidateID string) *generationcontract.SemanticProductionUnit {
 	if plan == nil {
 		return nil
 	}

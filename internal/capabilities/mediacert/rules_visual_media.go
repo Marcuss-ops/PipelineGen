@@ -1,6 +1,11 @@
 package mediacert
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
+)
 
 // ruleImageFanout certifies the image target policy. Query counts are
 // observations, not gates: providers return different result counts and one
@@ -57,11 +62,22 @@ func ruleStockIsolation(spec Spec, result MediaResult) CheckResult {
 				Detail:    fmt.Sprintf("stock-bound segment carries provider winner asset %q (provider %q)", winner.AssetID, winner.Provider),
 			})
 		}
-		if n := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages) + len(seg.Assets.Candidates); n > 0 {
+		if n := len(seg.Assets.SecondaryImages) + len(seg.Assets.GeneratedImages); n > 0 {
 			violations = append(violations, Violation{
 				SegmentID: seg.SegmentID,
 				Rule:      string(CheckStockIsolation),
-				Detail:    fmt.Sprintf("stock-bound segment carries %d provider image candidate(s)", n),
+				Detail:    fmt.Sprintf("stock-bound segment carries %d provider image selection(s)", n),
+			})
+		}
+		for _, candidate := range seg.Assets.Candidates {
+			if stockBoundEntityOverlayCandidate(seg, candidate) ||
+				(exp.AllowEntityImageCandidates && strings.EqualFold(strings.TrimSpace(candidate.Provider), scriptpkg.VidRushProviderInternetImages) && strings.TrimSpace(candidate.Entity) != "") {
+				continue
+			}
+			violations = append(violations, Violation{
+				SegmentID: seg.SegmentID,
+				Rule:      string(CheckStockIsolation),
+				Detail:    fmt.Sprintf("stock-bound segment carries provider candidate %q outside an entity overlay (provider=%q entity=%q entity_id=%q query=%q)", candidate.AssetID, candidate.Provider, candidate.Entity, candidate.EntityID, candidate.Query),
 			})
 		}
 		if allForSegment(violations, seg.SegmentID) == 0 {
@@ -72,6 +88,56 @@ func ruleStockIsolation(spec Spec, result MediaResult) CheckResult {
 		return passBool(CheckStockIsolation, true)
 	}
 	return passCount(CheckStockIsolation, pass, total, violations...)
+}
+
+// Entity overlay candidates are a separate surface from scene media: they
+// can bind a portrait to an extracted entity card on a stock-backed scene.
+// Accept only internet-image candidates whose entity name is present among
+// the segment's imageable semantic entities; all other provider candidates
+// remain a stock-isolation violation.
+func stockBoundEntityOverlayCandidate(seg ResultSegment, candidate scriptpkg.SegmentAssetCandidate) bool {
+	provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+	if provider != scriptpkg.VidRushProviderInternetImages && provider != "media_manifest" {
+		return false
+	}
+	entityName := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(candidate.Entity)), " "))
+	query := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(candidate.Query)), " "))
+	if entityName == "" && query == "" {
+		return false
+	}
+	if candidate.EntityID != "" {
+		for _, canonicalID := range seg.Insights.ImageEntityCanonicalIDs {
+			if strings.EqualFold(strings.TrimSpace(candidate.EntityID), strings.TrimSpace(canonicalID)) {
+				return true
+			}
+		}
+		for _, link := range seg.Insights.EntityMediaLinks {
+			if strings.EqualFold(strings.TrimSpace(candidate.EntityID), strings.TrimSpace(link.CanonicalEntityID)) {
+				return true
+			}
+		}
+	}
+	for _, entity := range seg.Insights.Entities {
+		if !scriptpkg.IsAnnotationEntityKind(scriptpkg.NormalizeAnnotationType(entity.Type)) {
+			continue
+		}
+		entityID := strings.TrimSpace(candidate.EntityID)
+		if entityID != "" && (strings.EqualFold(entityID, strings.TrimSpace(entity.IdentityID)) || strings.EqualFold(entityID, strings.TrimSpace(entity.CanonicalID))) {
+			return true
+		}
+		got := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(entity.Value)), " "))
+		if got == entityName && entityName != "" || got == query && query != "" ||
+			got != "" && (strings.Contains(query, got) || strings.Contains(entityName, got)) {
+			return true
+		}
+		for _, intent := range entity.SearchIntents {
+			intent = strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(intent)), " "))
+			if intent != "" && (query == intent || strings.Contains(query, intent)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // allForSegment counts how many violations already belong to a segment.

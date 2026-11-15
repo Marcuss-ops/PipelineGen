@@ -87,6 +87,22 @@ func (r *Runner) SetMapPlateResolver(resolver capabilityoverlay.PlateResolver) {
 	}
 }
 
+// SetMapOverlapResolver wires BrainRust's frame-accurate map collision pass.
+func (r *Runner) SetMapOverlapResolver(resolver capabilityoverlay.MapOverlapResolver) {
+	if r != nil {
+		r.mapOverlapResolver = resolver
+	}
+}
+
+// OverlayMapOverlapResolver returns the configured Rust timing resolver for
+// composition paths that share the durable runner's semantic worker.
+func (r *Runner) OverlayMapOverlapResolver() capabilityoverlay.MapOverlapResolver {
+	if r == nil {
+		return nil
+	}
+	return r.mapOverlapResolver
+}
+
 // SetVoiceoverPublishDrainer wires the async voiceover publish pool
 // (P0.4: separate TTS pool from publish pool). After the voiceover
 // phase, the runner drains the pool so Drive links are hydrated before

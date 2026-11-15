@@ -52,12 +52,15 @@ func BuildRuntimeMediaCertSpec(plan *scriptpkg.ResolvedGenerationPlan) mediacert
 			id = fmt.Sprintf("scene-%d", i)
 		}
 		subject := strings.TrimSpace(segment.Topic)
+		stockBound := strings.TrimSpace(segment.StockFolderID) != "" || strings.TrimSpace(segment.StockFolderLink) != ""
 		spec.SegmentsExpected = append(spec.SegmentsExpected, mediacert.SpecSegment{
 			ID: id, Subject: subject, WinnerSubjectMatch: subject,
 			// A per-segment stock folder is the visual source of record for
 			// the scene: the certifier must demand NO provider media for it
 			// (STOCK ISOLATION) instead of an image budget it can never meet.
-			StockBound: strings.TrimSpace(segment.StockFolderID) != "" || strings.TrimSpace(segment.StockFolderLink) != "",
+			StockBound: stockBound,
+			AllowEntityImageCandidates: stockBound && plan.MediaPlan.ProviderPolicy.InternetImages.AsBool() &&
+				plan.MediaPlan.Extraction.EntityImages.Enabled && plan.MediaPlan.Extraction.EntityImages.PerScene(),
 		})
 	}
 	return spec

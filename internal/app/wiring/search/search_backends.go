@@ -78,6 +78,7 @@ type SearchBackendBuildOpts struct {
 	// absent no local backend is registered (fail closed), because a
 	// SQLite media read would be a mirror of the PostgreSQL SSOT.
 	MediaLocalStore PostgresLocalSearchPort
+	LocalScorer     search.LocalScorer
 
 	// CanonicalResolver is the source→asset identity resolver consumed
 	// by providerSearchBackend. nil is fail-safe (identity unknown).
@@ -116,7 +117,10 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 		}
 	}
 	if opts.MediaLocalStore != nil {
-		if err := reg.Register(&pgLocalSearchBackend{store: opts.MediaLocalStore, log: log}); err != nil {
+		if opts.LocalScorer == nil {
+			return nil, fmt.Errorf("BuildSearchBackends: PostgreSQL local search requires the Rust local scorer")
+		}
+		if err := reg.Register(&pgLocalSearchBackend{store: opts.MediaLocalStore, scorer: opts.LocalScorer, log: log}); err != nil {
 			log.Error("BuildSearchBackends: postgres local backend register failed (fail-closed)", zap.Error(err))
 			return nil, fmt.Errorf("BuildSearchBackends: postgres local backend: %w", err)
 		}

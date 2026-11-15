@@ -2,13 +2,14 @@ package scriptgeneration
 
 import (
 	"context"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestSemanticSearchBatchForceRefreshBypassesPlannerCache(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	candidate := planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact)
 	port := &batchTestPort{results: map[string][]SemanticAssetHit{
 		exact.Text: {{AssetID: "asset_42", URL: "https://assets.invalid/42.jpg", SHA256: strings.Repeat("a", 64)}},

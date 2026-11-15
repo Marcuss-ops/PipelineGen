@@ -63,7 +63,7 @@ func (f *VidRushProviderFanout) resolveInternetImageCandidates(ctx context.Conte
 		// Discovery cache identity follows the canonical entity and verifier,
 		// so language and surrounding scene prose cannot fragment reuse.
 		queryClass := searchClassForEntityQuery(workerInput.Insights.Entities, query)
-		entityCacheKey := entityImageDiscoveryCacheKey(canonicalImageSearchEntityID(workerInput, query, queryClass), queryClass)
+		entityCacheKey := entityImageDiscoveryCacheKey(newEntityImageCacheIdentity(workerInput, query), queryClass)
 		catalogIdentity, catalogEligible, catalogErr := personCatalogIdentityForSegmentQuery(workerInput, query)
 		if catalogErr != nil {
 			outcomes <- vidRushProviderOutcome{provider: "internet_images", err: catalogErr}

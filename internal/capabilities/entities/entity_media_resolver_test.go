@@ -23,7 +23,6 @@ func TestEntityMediaIndex_IndexForEntityDerivesCanonicalID(t *testing.T) {
 	// The asset is retrievable by the human-readable canonical id, and its
 	// EntityID was derived — never caller-supplied.
 	require.Equal(t, []string{"floyd_001"}, assetIDs(ix.Assets("person:floyd-mayweather-jr")))
-	require.Equal(t, 1, ix.Len())
 }
 
 func TestEntityMediaIndex_IndexForEntityEmptyCanonicalID(t *testing.T) {
@@ -34,11 +33,9 @@ func TestEntityMediaIndex_IndexForEntityEmptyCanonicalID(t *testing.T) {
 
 func TestEntityMediaResolver_ResolveBestByQuality(t *testing.T) {
 	r := NewEntityMediaResolver()
-	require.NoError(t, r.index.IndexAllForEntity("PERSON", "Tim Cook",
-		testAsset("tim_001", 0.84),
-		testAsset("tim_002", 0.91),
-		testAsset("tim_003", 0.77),
-	))
+	for _, asset := range []EntityAsset{testAsset("tim_001", 0.84), testAsset("tim_002", 0.91), testAsset("tim_003", 0.77)} {
+		require.NoError(t, r.index.IndexForEntity("PERSON", "Tim Cook", asset))
+	}
 
 	best, err := r.ResolveBest("person:tim-cook")
 	require.NoError(t, err)
@@ -53,25 +50,15 @@ func TestEntityMediaResolver_ResolveBestNoAssets(t *testing.T) {
 	require.ErrorIs(t, err, ErrEntityHasNoAssets)
 }
 
-func TestEntityMediaResolver_ResolveTopQualityOrder(t *testing.T) {
-	r := NewEntityMediaResolver()
-	require.NoError(t, r.index.IndexAllForEntity("PERSON", "Tim Cook",
-		testAsset("a", 0.5),
-		testAsset("b", 0.9),
-		testAsset("c", 0.7),
-	))
-
-	top := r.ResolveTop("person:tim-cook", 2)
-	require.Equal(t, []string{"b", "c"}, resolvedAssetIDs(top))
-}
-
 func TestEntityMediaResolver_Deterministic(t *testing.T) {
 	r := NewEntityMediaResolver()
-	require.NoError(t, r.index.IndexAllForEntity("PERSON", "Tim Cook",
+	for _, asset := range []EntityAsset{
 		testAsset("a", 0.5),
 		testAsset("b", 0.9),
 		testAsset("c", 0.9), // tie with b → asset id asc keeps b before c
-	))
+	} {
+		require.NoError(t, r.index.IndexForEntity("PERSON", "Tim Cook", asset))
+	}
 	first, err := r.ResolveBest("person:tim-cook")
 	require.NoError(t, err)
 	for i := 0; i < 100; i++ {
@@ -110,14 +97,6 @@ func assetIDs(assets []EntityAsset) []string {
 	out := make([]string, len(assets))
 	for i, a := range assets {
 		out[i] = a.AssetID
-	}
-	return out
-}
-
-func resolvedAssetIDs(refs []ResolvedAssetRef) []string {
-	out := make([]string, len(refs))
-	for i, r := range refs {
-		out[i] = r.AssetID
 	}
 	return out
 }

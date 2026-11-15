@@ -112,7 +112,7 @@ func TestMediaManifestPinsDoNotSuppressEntityImageDiscovery(t *testing.T) {
 
 	input := manifestTestInput()
 	input.VidRushSegments[0].Insights.Entities = []scriptpkg.ExtractedEntity{{
-		Value: "Chiara Binda", Type: "PERSON", Confidence: 1,
+		Value: "Chiara Binda", Type: "PERSON", Confidence: 1, SearchIntents: []string{"Chiara Binda"},
 	}}
 	plan := manifestTestPlan(false)
 	plan.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{Enabled: true, Scope: "per_scene"}
@@ -136,7 +136,7 @@ func TestVidRushProviderFanoutPinnedEntityImagesStillSearch(t *testing.T) {
 
 	input := manifestTestInput()
 	input.VidRushSegments[0].Insights.Entities = []scriptpkg.ExtractedEntity{{
-		Value: "Chiara Binda", Type: "PERSON", Confidence: 1,
+		Value: "Chiara Binda", Type: "PERSON", Confidence: 1, SearchIntents: []string{"Chiara Binda"},
 	}}
 	plan := manifestTestPlan(false)
 	plan.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{Enabled: true, Scope: "per_scene"}
@@ -244,6 +244,32 @@ func TestVidRushProviderFanoutPinsBypassProviders(t *testing.T) {
 	require.Len(t, out.Assets.Candidates, 1)
 	require.Equal(t, MediaManifestProvider, out.Assets.Candidates[0].Provider)
 	require.Equal(t, 0, searcher.calls, "pinned segments must never reach the provider")
+}
+
+func TestVidRushProviderFanoutStockBindingIgnoresBackgroundPins(t *testing.T) {
+	path := writeTestManifest(t, map[string]any{
+		"schema": "media_manifest.v1",
+		"entries": []map[string]any{
+			{"id": "background", "role": "background", "scene_id": "SCN-01", "entity": "Chiara Binda", "query": "Chiara Binda", "sha256": "437d7377a2a8adbe7f5be03a99aebff4ccb9f6edb8cf884da1ccc2c2e45de533", "source": map[string]any{"provider": "internet_images"}},
+			{"id": "portrait", "role": "entity_image", "scene_id": "SCN-01", "entity": "Chiara Binda", "query": "Chiara Binda ritratto", "sha256": "537d7377a2a8adbe7f5be03a99aebff4ccb9f6edb8cf884da1ccc2c2e45de533", "source": map[string]any{"provider": "internet_images"}},
+		},
+	})
+	pins, err := LoadMediaManifestPins(path)
+	require.NoError(t, err)
+	searcher := &panickingImageSearcher{}
+	fanout := NewVidRushProviderFanout(searcher).WithMediaManifestPins(pins)
+	plan := manifestTestPlan(false)
+	plan.StockBindings = []scriptpkg.StockBindingInput{{SceneID: "SCN-01"}}
+	plan.MediaPlan.Extraction.EntityImages = media.EntityImagePolicy{Enabled: true, EntityTypes: []string{"PERSON"}, Scope: "per_scene"}
+	input := manifestTestInput()
+	input.VidRushSegments[0].Insights.Entities = []scriptpkg.ExtractedEntity{{Value: "Chiara Binda", Type: "PERSON"}}
+
+	out, err := fanout.ResolveProviders(context.Background(), plan, input.VidRushSegments[0])
+	require.NoError(t, err)
+	require.Empty(t, out.Assets.SecondaryImages, "stock-bound media must not inherit scene-background pins")
+	require.Len(t, out.Assets.Candidates, 1)
+	require.Equal(t, "manifest_portrait_537d7377a2a8", out.Assets.Candidates[0].AssetID)
+	require.Equal(t, "Chiara Binda", out.Assets.Candidates[0].Entity)
 }
 
 // TestVidRushProviderFanoutUnpinnedKeepsProviders: without pins the fan-out

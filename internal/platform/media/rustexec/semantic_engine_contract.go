@@ -32,8 +32,7 @@ type semanticEngineResponse struct {
 	Manifest *semanticEngineManifest `json:"manifest,omitempty"`
 }
 
-// The wire structs mirror semantic-core::manifest. The complete current V2
-// surface is retained by the scripts contract, and every source offset is
+// The wire structs mirror semantic-core::manifest.v3. Source offsets are
 // re-verified before a candidate is exposed to planning.
 type semanticEngineManifest struct {
 	SchemaVersion       string                            `json:"schema_version"`
@@ -42,6 +41,7 @@ type semanticEngineManifest struct {
 	Discourse           json.RawMessage                   `json:"discourse,omitempty"`
 	Analyzers           semanticEngineAnalyzerVersions    `json:"analyzers"`
 	Scenes              []semanticEngineSceneManifest     `json:"scenes"`
+	Entities            []semanticEngineLinkedEntity      `json:"entities"`
 	StoryGraph          *scriptgen.SemanticStoryGraph     `json:"story_graph,omitempty"`
 	VisualCoverage      *scriptgen.SemanticVisualCoverage `json:"visual_coverage,omitempty"`
 	VisualConsolidation *semanticEngineConsolidation      `json:"visual_consolidation,omitempty"`
@@ -257,6 +257,28 @@ type semanticEngineAnalyzerVersions struct {
 	SemanticCore string `json:"semantic_core"`
 	PhraseImpact string `json:"phrase_impact"`
 	Lexicon      string `json:"lexicon"`
+	EntityIndex  string `json:"entity_index,omitempty"`
+}
+
+type semanticEngineLinkedEntity struct {
+	LocalID             string                       `json:"local_id"`
+	SurfaceKey          string                       `json:"surface_key"`
+	CanonicalSurface    string                       `json:"canonical_surface"`
+	CanonicalID         *string                      `json:"canonical_id"`
+	LinkStatus          string                       `json:"link_status"`
+	CanonicalName       string                       `json:"canonical_name"`
+	EntityType          string                       `json:"entity_type"`
+	Role                string                       `json:"role"`
+	DisambiguationGloss *string                      `json:"disambiguation_gloss"`
+	NegativeConstraints []string                     `json:"negative_constraints"`
+	Mentions            []semanticEngineMention      `json:"mentions"`
+	SearchIntents       []semanticEngineSearchIntent `json:"search_intents"`
+}
+
+type semanticEngineSearchIntent struct {
+	Kind  string `json:"kind"`
+	Query string `json:"query"`
+	Lang  string `json:"lang"`
 }
 
 type semanticEngineSceneManifest struct {
@@ -371,6 +393,7 @@ type semanticEngineEntityFact struct {
 type semanticEngineIdentity struct {
 	ID               string                  `json:"id"`
 	CanonicalSurface string                  `json:"canonical_surface"`
+	CanonicalID      *string                 `json:"canonical_id,omitempty"`
 	Kind             string                  `json:"type"`
 	Mentions         []semanticEngineMention `json:"mentions"`
 }

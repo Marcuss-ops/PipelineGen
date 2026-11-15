@@ -50,7 +50,7 @@ func TestVidRushFanoutPlanEntityImagesExcludeVisualConceptQueries(t *testing.T) 
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1", TextHash: "hash-1", Text: "Donald Trump's public life",
 		Insights: scriptpkg.SegmentInsights{
-			Entities:                []scriptpkg.ExtractedEntity{{Value: "Donald Trump's", Type: "PERSON"}, {Value: "Donald Trump’s", Type: "PERSON"}},
+			Entities:                []scriptpkg.ExtractedEntity{{Value: "Donald Trump's", Type: "PERSON", SearchIntents: []string{"Donald Trump's"}}, {Value: "Donald Trump’s", Type: "PERSON", SearchIntents: []string{"Donald Trump’s"}}},
 			ImageQueries:            []string{"Donald Trump's", "important public life"},
 			ImageEntityCanonicalIDs: map[string]string{"donald trump's": "person:donald-trump"},
 		},
@@ -69,7 +69,7 @@ func TestVidRushFanoutPlanIncludesBrandImageQueries(t *testing.T) {
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "brand-scene", Text: "Apple released a new product.",
 		Insights: scriptpkg.SegmentInsights{
-			Entities:     []scriptpkg.ExtractedEntity{{Value: "Apple", Type: "LOGO"}, {Value: "25%", Type: "PERCENT"}},
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Apple", Type: "LOGO", SearchIntents: []string{"Apple"}}, {Value: "25%", Type: "PERCENT"}},
 			ImageQueries: []string{"Apple", "25%"},
 		},
 	}
@@ -82,8 +82,10 @@ func TestVidRushFanoutPlanIncludesBrandImageQueries(t *testing.T) {
 func TestVidRushAcronymOrganizationQueriesDoNotInjectTopicSpecificTerms(t *testing.T) {
 	segment := scriptpkg.VidRushSegmentResult{Insights: scriptpkg.SegmentInsights{
 		Entities: []scriptpkg.ExtractedEntity{
-			{Value: "NASA", Type: "ORG"}, {Value: "ESA", Type: "ORG"},
-			{Value: "CERN", Type: "ORG"}, {Value: "ANSA", Type: "ORG"},
+			{Value: "NASA", Type: "ORG", SearchIntents: []string{"NASA"}},
+			{Value: "ESA", Type: "ORG", SearchIntents: []string{"ESA"}},
+			{Value: "CERN", Type: "ORG", SearchIntents: []string{"CERN"}},
+			{Value: "ANSA", Type: "ORG", SearchIntents: []string{"ANSA"}},
 		},
 	}}
 	queries := sceneScopedImageQueriesForTypes(segment, []string{"ORG"})
@@ -106,7 +108,7 @@ func TestVidRushFanoutPlanPerSceneImagesUsesCanonicalEntityQuery(t *testing.T) {
 	base := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-2", TextHash: "hash-2", Text: "Milton Leite compareceu ao tribunal para a audiência de custódia.",
 		SourceText: "A operação Vectura Corrupta cumpriu dezesseis mandados e prendeu Milton Leite.",
-		Insights:   scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON"}}, ImageQueries: []string{"Milton Leite"}},
+		Insights:   scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{Value: "Milton Leite", Type: "PERSON", SearchIntents: []string{"Milton Leite"}}}, ImageQueries: []string{"Milton Leite"}},
 	}
 	first := buildVidRushFanoutPlan(plan, base, &gatedImageSearcher{}, nil)
 	base.SegmentID, base.TextHash = "scene-3", "hash-3"
@@ -127,8 +129,8 @@ func TestVidRushFanoutPlanPerSceneImagesKeepsBothPeople(t *testing.T) {
 		SegmentID: "pair-01", TextHash: "pair-hash",
 		Insights: scriptpkg.SegmentInsights{
 			Entities: []scriptpkg.ExtractedEntity{
-				{Value: "Alberto Stasi", Type: "PERSON"},
-				{Value: "Giada Bocellari", Type: "PERSON"},
+				{Value: "Alberto Stasi", Type: "PERSON", SearchIntents: []string{"Alberto Stasi"}},
+				{Value: "Giada Bocellari", Type: "PERSON", SearchIntents: []string{"Giada Bocellari"}},
 			},
 			ImageQueries: []string{"Alberto Stasi", "Giada Bocellari"},
 		},
@@ -147,7 +149,7 @@ func TestVidRushFanoutPlanPerSceneImageQueryIgnoresNarrativeSuffix(t *testing.T)
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "delitto-e-luogo", TextHash: "hash", SourceText: "Presenta Chiara Poggi, ventiseienne uccisa nella sua abitazione a Garlasco.",
 		Insights: scriptpkg.SegmentInsights{
-			Entities:     []scriptpkg.ExtractedEntity{{Value: "Chiara Poggi", Type: "PERSON"}},
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Chiara Poggi", Type: "PERSON", SearchIntents: []string{"Chiara Poggi"}}},
 			ImageQueries: []string{"Chiara Poggi Presenta Chiara Poggi, ventiseienne uccisa"},
 		},
 	}
@@ -198,7 +200,7 @@ func TestVidRushFanoutPlanEntityModeDoesNotAddGenericLadder(t *testing.T) {
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1", TextHash: "hash-1", Text: "Garlasco, piazza duomo",
 		Insights: scriptpkg.SegmentInsights{
-			Entities:     []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON"}, {Value: "Garlasco", Type: "GPE"}},
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON", SearchIntents: []string{"Alberto Stasi"}}, {Value: "Garlasco", Type: "GPE", SearchIntents: []string{"Garlasco"}}},
 			NounChunks:   []string{"piazza duomo"},
 			ImageQueries: []string{"Alberto Stasi", "Garlasco"},
 		},
@@ -290,7 +292,7 @@ func TestVidRushFanoutPlanPlannerCeilingDoesNotAddGenericLadder(t *testing.T) {
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1", TextHash: "hash-1", Text: "Francis Kaufmann arriva in villa.",
 		Insights: scriptpkg.SegmentInsights{
-			Entities:     []scriptpkg.ExtractedEntity{{Value: "Francis Kaufmann", Type: "PERSON"}},
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Francis Kaufmann", Type: "PERSON", SearchIntents: []string{"Francis Kaufmann"}}},
 			ImageQueries: []string{"Francis Kaufmann"},
 		},
 	}

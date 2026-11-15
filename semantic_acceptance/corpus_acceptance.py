@@ -251,7 +251,7 @@ def audit(manifest, scenes):
         "consolidation_facts": 0,
         "consolidation_covered": 0,
     }
-    if manifest.get("schema_version") != "semantic_manifest.v2":
+    if manifest.get("schema_version") not in ("semantic_manifest.v2", "semantic_manifest.v3"):
         hard.append("schema_version=%r" % manifest.get("schema_version"))
         return hard, notes, stats
     if len(manifest.get("scenes") or []) != len(scenes):

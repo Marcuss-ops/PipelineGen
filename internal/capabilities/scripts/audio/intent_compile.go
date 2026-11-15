@@ -72,8 +72,14 @@ func CompileWithIntents(
 				return fail(fmt.Errorf("sfx %s has no explicit duration and its source duration is unknown", sfx.AssetID))
 			}
 		}
-		if sfx.TimelineStartUS > timeline.DurationUS-duration {
-			return fail(fmt.Errorf("sfx %s placement [%d,%d) exceeds the %dus timeline", sfx.AssetID, sfx.TimelineStartUS, sfx.TimelineStartUS+duration, timeline.DurationUS))
+		if sfx.TimelineStartUS < 0 || sfx.TimelineStartUS >= timeline.DurationUS {
+			return fail(fmt.Errorf("sfx %s placement starts at %dus outside the %dus timeline", sfx.AssetID, sfx.TimelineStartUS, timeline.DurationUS))
+		}
+		if remaining := timeline.DurationUS - sfx.TimelineStartUS; duration > remaining {
+			// The source duration is only known here, after asset resolution.
+			// Keep a valid final-frame cue anchored and trim its inaudible tail
+			// past the video end; an out-of-timeline start still fails above.
+			duration = remaining
 		}
 		if sourceDuration := durationByID[sfx.AssetID]; sourceDuration > 0 && sfx.SourceInUS > sourceDuration-duration {
 			return fail(fmt.Errorf("sfx %s source trim [%d,%d) overruns the %dus source", sfx.AssetID, sfx.SourceInUS, sfx.SourceInUS+duration, sourceDuration))

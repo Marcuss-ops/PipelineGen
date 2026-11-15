@@ -228,6 +228,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		}
 		root.ScriptGenerationRunner = durableRunner
 		oneUC.SetOverlayBackgroundSource(durableRunner.OverlayBackgroundSource())
+		oneUC.SetMapOverlapResolver(durableRunner.OverlayMapOverlapResolver())
 		if overlayEnqueuer := durableRunner.OverlayRenderEnqueuer(); overlayEnqueuer != nil {
 			oneUC.SetOverlayRenderEnqueuer(overlayEnqueuer)
 			log.Info("wireScriptFlow: batch script.generate_item overlay rendering wired through RenderingGen")

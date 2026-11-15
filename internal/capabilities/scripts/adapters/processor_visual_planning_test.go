@@ -30,15 +30,9 @@ func (r *countingVisualResolver) Resolve(_ context.Context, req mediamemory.Reso
 	return mediamemory.ResolveResult{Plans: plans}, nil
 }
 
-type fixedPlanner struct{ id string }
-
-func (p fixedPlanner) Select(context.Context, VisualSelectionRequest) (string, error) {
-	return p.id, nil
-}
-
 func TestVisualPlanningProcessorResolvesAllScenesInOneBatch(t *testing.T) {
 	resolver := &countingVisualResolver{}
-	proc := NewVisualPlanningProcessor(resolver, nil, nil, nil)
+	proc := NewVisualPlanningProcessor(resolver, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "job", Language: "it", MediaPlan: mediadomain.MediaPlanSpec{Mode: mediadomain.MediaPlanModeHybrid}}
 	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{
 		{ID: "s1", SegmentID: "seg-1", Text: "uno"}, {ID: "s2", SegmentID: "seg-2", Text: "due"}, {ID: "s3", SegmentID: "seg-3", Text: "tre"},
@@ -57,7 +51,7 @@ func TestVisualPlanningProcessorResolvesAllScenesInOneBatch(t *testing.T) {
 
 func TestVisualPlanningProcessorPopulatesVisualPlanWithLayersAndColdCandidates(t *testing.T) {
 	resolver := &countingVisualResolver{}
-	proc := NewVisualPlanningProcessor(resolver, nil, nil, nil)
+	proc := NewVisualPlanningProcessor(resolver, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "job", Language: "it", MediaPlan: mediadomain.MediaPlanSpec{Mode: mediadomain.MediaPlanModeHybrid}}
 	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{
 		{ID: "s1", SegmentID: "seg-1", Text: "uno"},
@@ -87,9 +81,9 @@ func TestVisualPlanningProcessorPopulatesVisualPlanWithLayersAndColdCandidates(t
 	}
 }
 
-func TestVisualPlanningLockedAssignmentSkipsResolverAndPlannerCannotInvent(t *testing.T) {
+func TestVisualPlanningLockedAssignmentSkipsResolverAndKeepsResolverWinner(t *testing.T) {
 	resolver := &countingVisualResolver{}
-	proc := NewVisualPlanningProcessor(resolver, fixedPlanner{id: "invented"}, nil, nil)
+	proc := NewVisualPlanningProcessor(resolver, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "job", Language: "it", Segments: []scriptpkg.ScriptSegment{{ID: "seg-1"}, {ID: "seg-2"}}, MediaPlan: mediadomain.MediaPlanSpec{
 		Mode:        mediadomain.MediaPlanModeHybrid,
 		Assignments: []mediadomain.SegmentMediaAssignment{{SegmentID: "seg-1", Slot: "primary_video", Locked: true, Asset: mediadomain.MediaRef{Kind: "stock", AssetID: "locked-drive", Provider: "drive"}}},
@@ -112,13 +106,13 @@ func TestVisualPlanningLockedAssignmentSkipsResolverAndPlannerCannotInvent(t *te
 		t.Fatalf("locked primary-video clip binding=%+v", result.SynthesizedScenes[0].Bindings.Clip)
 	}
 	if result.VisualPlans[1].Layers[0].AssetID != "resolver-winner" {
-		t.Fatalf("invalid planner changed asset=%q", result.VisualPlans[1].Layers[0].AssetID)
+		t.Fatalf("resolver winner changed asset=%q", result.VisualPlans[1].Layers[0].AssetID)
 	}
 }
 
 func TestVisualPlanningYouTubeDisabledSkipsImplicitPrimaryVideo(t *testing.T) {
 	resolver := &countingVisualResolver{}
-	proc := NewVisualPlanningProcessor(resolver, nil, nil, nil)
+	proc := NewVisualPlanningProcessor(resolver, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{
 		ID:       "job",
 		Language: "en",

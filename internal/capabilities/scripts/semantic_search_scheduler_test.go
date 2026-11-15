@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	"context"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"sync"
 	"testing"
@@ -113,7 +114,7 @@ func TestSemanticSearchSelectsBestRankedHitInsteadOfFirstProviderHit(t *testing.
 func TestPendingSearchAttemptsCarryRankEntityAndClass(t *testing.T) {
 	plan := schedulerPlan(t, schedulerIdentities(), planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"org_01"}, "entity:org_01",
-		SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"},
+		generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"},
 	))
 	attempts := plan.PendingSearchAttempts()
 	if len(attempts) != 1 {
@@ -129,7 +130,7 @@ func TestPendingSearchAttemptsClassifyUntypedInstitutionalQuery(t *testing.T) {
 	identities := []SemanticIdentity{{ID: "entity_01", CanonicalSurface: "Corte d'Appello", Kind: ""}}
 	plan := schedulerPlan(t, identities, planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"entity_01"}, "entity:entity_01",
-		SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"},
+		generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"},
 	))
 	attempt, ok := plan.NextSearchAttempt()
 	if !ok || attempt.Class != SearchClassOrganization {
@@ -138,12 +139,12 @@ func TestPendingSearchAttemptsClassifyUntypedInstitutionalQuery(t *testing.T) {
 }
 
 func TestSemanticSearchBatchRunsIndependentLaddersConcurrently(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
-	sempio := SemanticSearchQuery{Kind: "exact_mention", Text: "Andrea Sempio"}
-	corte := SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"}
-	vigevano := SemanticSearchQuery{Kind: "exact_mention", Text: "Vigevano"}
-	sentence := func(text string) SemanticSearchQuery {
-		return SemanticSearchQuery{Kind: "source_sentence", Text: text + " nel procedimento."}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	sempio := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Andrea Sempio"}
+	corte := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"}
+	vigevano := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Vigevano"}
+	sentence := func(text string) generationcontract.SemanticSearchQuery {
+		return generationcontract.SemanticSearchQuery{Kind: "source_sentence", Text: text + " nel procedimento."}
 	}
 	plan := schedulerPlan(t, schedulerIdentities(),
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi, sentence("Alberto Stasi")),
@@ -193,7 +194,7 @@ func TestSemanticSearchBatchRunsIndependentLaddersConcurrently(t *testing.T) {
 }
 
 func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	identities := []SemanticIdentity{{ID: "person_01", CanonicalSurface: "Alberto Stasi", Kind: "PERSON"}}
 	plan := schedulerPlan(t, identities, planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact,
@@ -250,7 +251,7 @@ func TestSemanticSearchBatchCacheAvoidsTheSecondProviderRun(t *testing.T) {
 
 	// A different query/context for the same person is a different retrieval
 	// question and must not reuse the exact-surface answer.
-	contextQuery := SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
+	contextQuery := generationcontract.SemanticSearchQuery{Kind: "source_sentence", Text: "Alberto Stasi nel procedimento."}
 	contextPlan := schedulerPlan(t, identities, planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", contextQuery,
 	))
@@ -316,7 +317,7 @@ func TestStableLocationCacheOutlivesOrdinaryQueryTTL(t *testing.T) {
 }
 
 func TestSemanticSearchBatchRetries429OnTheSameRung(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Corte d'Appello"}
 	identities := []SemanticIdentity{{ID: "org_01", CanonicalSurface: "Corte d'Appello", Kind: "ORG"}}
 	plan := schedulerPlan(t, identities, planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"org_01"}, "entity:org_01", exact,
@@ -357,7 +358,7 @@ func (p *routeSupportPort) SupportsClass(class SemanticSearchClass) bool {
 }
 
 func TestSemanticSearchBatchSkipsClassesThePortCannotAnswer(t *testing.T) {
-	exact := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	exact := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	identities := []SemanticIdentity{{ID: "person_01", CanonicalSurface: "Alberto Stasi", Kind: "PERSON"}}
 	plan := schedulerPlan(t, identities, planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", exact,

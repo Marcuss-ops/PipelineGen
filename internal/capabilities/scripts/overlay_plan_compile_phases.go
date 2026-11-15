@@ -4,6 +4,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -161,12 +162,14 @@ func buildOverlaySceneSurfaces(
 // named entity cards, attaches verified media, admits identities through the
 // semantic production plan and applies the per-scene named-card cap.
 func resolveOverlayEntityCardItems(
+	ctx context.Context,
 	result *GenerateResult,
 	language Language,
 	canvas OverlayCanvasSpec,
 	entityTimeline *capabilityentities.EntityTimeline,
 	planID, videoID, projectID string,
 	perSceneEntityImages bool,
+	ranker capabilityentities.EntityOverlayRanker,
 ) ([]capmodel.OverlayItem, error) {
 	owned := plannerOwnedEntityIDs(result, language)
 	media, canonicalByStable := entityCardMediaIndex(result, perSceneEntityImages)
@@ -180,14 +183,14 @@ func resolveOverlayEntityCardItems(
 		for _, scene := range entityTimeline.Scenes {
 			sceneTimeline := *entityTimeline
 			sceneTimeline.Scenes = []capabilityentities.SceneEntityTimeline{scene}
-			entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(sceneTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
+			entityPlan, err := capabilityentities.ResolveEntityOverlayPlanWithRanker(ctx, sceneTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen, ranker)
 			if err != nil {
 				return nil, fmt.Errorf("overlay plan: resolve entity overlays for scene %q: %w", scene.SceneID, err)
 			}
 			entityPlanItems = append(entityPlanItems, entityPlan.Items...)
 		}
 	} else {
-		entityPlan, err := capabilityentities.ResolveEntityOverlayPlan(*entityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen)
+		entityPlan, err := capabilityentities.ResolveEntityOverlayPlanWithRanker(ctx, *entityTimeline, planID, videoID, projectID, canvas.Width, canvas.Height, canvas.FPSNum, canvas.FPSDen, ranker)
 		if err != nil {
 			return nil, fmt.Errorf("overlay plan: resolve entity overlays: %w", err)
 		}

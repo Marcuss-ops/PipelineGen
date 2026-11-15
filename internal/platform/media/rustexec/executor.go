@@ -109,6 +109,26 @@ func NewExecutorWithOutputLimit(binaryPath, ffmpegPath string, slots int, output
 	return executor
 }
 
+// NewMultiplexedExecutorWithOutputLimit uses one ordered NDJSON worker with a
+// bounded number of in-flight requests. It is intended for CPU-only workers
+// whose protocol guarantees one response line per request in input order.
+func NewMultiplexedExecutorWithOutputLimit(binaryPath, ffmpegPath string, maxInFlight int, outputLimit int64, log *zap.Logger) *Executor {
+	if log == nil {
+		log = zap.NewNop()
+	}
+	if outputLimit <= 0 {
+		outputLimit = defaultRustOutputLimit
+	}
+	if ffmpegPath == "" {
+		ffmpegPath = "ffmpeg"
+	}
+	return &Executor{
+		binaryPath: binaryPath, ffmpegPath: ffmpegPath, log: log,
+		runner:      rustworker.NewMultiplexedPersistentRunner(maxInFlight),
+		outputLimit: outputLimit, timeout: defaultRustTimeout,
+	}
+}
+
 // Run executes one line-delimited JSON request and removes deterministic .part
 // outputs if the Rust process fails or is cancelled. The cleanup is performed
 // by Go because SIGKILL cannot run Rust destructors.
@@ -165,9 +185,7 @@ func (e *Executor) Close() {
 	}
 	e.closed = true
 	if e.runnerPool == nil {
-		if runner, ok := e.runner.(*persistentRustProcessRunner); ok {
-			runner.reset()
-		}
+		resetRustRunner(e.runner)
 		return
 	}
 	workers := make([]RustProcessRunner, 0, cap(e.runnerPool))
@@ -175,10 +193,18 @@ func (e *Executor) Close() {
 		workers = append(workers, <-e.runnerPool)
 	}
 	for _, worker := range workers {
-		if runner, ok := worker.(*persistentRustProcessRunner); ok {
-			runner.reset()
-		}
+		resetRustRunner(worker)
 		e.runnerPool <- worker
+	}
+}
+
+func resetRustRunner(runner RustProcessRunner) {
+	if resetter, ok := runner.(interface{ Reset() }); ok {
+		resetter.Reset()
+		return
+	}
+	if persistent, ok := runner.(*persistentRustProcessRunner); ok {
+		persistent.reset()
 	}
 }
 
@@ -215,6 +241,8 @@ func (r *persistentRustProcessRunner) reset() {
 		runner.Reset()
 	}
 }
+
+func (r *persistentRustProcessRunner) Reset() { r.reset() }
 
 func newPersistentRustProcessRunner() RustProcessRunner {
 	return &persistentRustProcessRunner{}

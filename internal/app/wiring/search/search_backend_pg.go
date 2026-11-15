@@ -7,6 +7,8 @@ package search
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"strings"
 
 	search "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/search"
@@ -23,8 +25,9 @@ type PostgresLocalSearchPort interface {
 }
 
 type pgLocalSearchBackend struct {
-	store PostgresLocalSearchPort
-	log   *zap.Logger
+	store  PostgresLocalSearchPort
+	scorer search.LocalScorer
+	log    *zap.Logger
 }
 
 var _ search.SearchBackend = (*pgLocalSearchBackend)(nil)
@@ -80,6 +83,9 @@ func (b *pgLocalSearchBackend) searchByHash(ctx context.Context, q search.Query)
 }
 
 func (b *pgLocalSearchBackend) searchByText(ctx context.Context, q search.Query) ([]search.Candidate, error) {
+	if b.scorer == nil {
+		return nil, fmt.Errorf("postgres local search: Rust local scorer is not configured")
+	}
 	limit := q.Limit
 	if limit <= 0 {
 		limit = search.DefaultLimit
@@ -108,15 +114,38 @@ func (b *pgLocalSearchBackend) searchByText(ctx context.Context, q search.Query)
 	if err != nil {
 		return nil, err
 	}
+	scoreCandidates := make([]search.LocalScoreCandidate, 0, len(hits))
+	for i := range hits {
+		rec := &hits[i]
+		scoreCandidates = append(scoreCandidates, search.LocalScoreCandidate{
+			ID: rec.ID, Title: rec.Name, Tags: rec.Tags, Source: rec.Source, DurationMS: rec.DurationMS,
+		})
+	}
+	scores, err := b.scorer.ScoreLocal(ctx, search.LocalScoreQuery{
+		Text: q.Text, Tags: q.Filters.Tags, Source: q.Filters.Source, MinDurationMS: q.Filters.DurationMsMin,
+	}, scoreCandidates)
+	if err != nil {
+		return nil, fmt.Errorf("postgres local search: Rust score batch: %w", err)
+	}
+	if len(scores) != len(hits) {
+		return nil, fmt.Errorf("postgres local search: Rust scorer returned %d scores for %d rows", len(scores), len(hits))
+	}
+	scoreByID := make(map[string]float64, len(scores))
+	for _, result := range scores {
+		if _, exists := scoreByID[result.ID]; exists {
+			return nil, fmt.Errorf("postgres local search: Rust scorer returned duplicate id %q", result.ID)
+		}
+		if math.IsNaN(result.Score) || math.IsInf(result.Score, 0) || result.Score < 0 || result.Score > 1 {
+			return nil, fmt.Errorf("postgres local search: Rust scorer returned invalid score %v for %q", result.Score, result.ID)
+		}
+		scoreByID[result.ID] = result.Score
+	}
 	out := make([]search.Candidate, 0, len(hits))
 	for i := range hits {
 		rec := &hits[i]
-		sig := search.LocalSignal{
-			Title:       rec.Name,
-			Tags:        rec.Tags,
-			Source:      rec.Source,
-			DurationMs:  int(rec.DurationMS),
-			MinDuration: q.Filters.DurationMsMin,
+		score, ok := scoreByID[rec.ID]
+		if !ok {
+			return nil, fmt.Errorf("postgres local search: Rust scorer omitted id %q", rec.ID)
 		}
 		out = append(out, search.Candidate{
 			AssetID:      rec.ID,
@@ -129,7 +158,7 @@ func (b *pgLocalSearchBackend) searchByText(ctx context.Context, q search.Query)
 			MediaType:    rec.MediaType,
 			ThumbnailURL: rec.ThumbnailURL,
 			DriveLink:    rec.DriveLink,
-			Score:        search.LocalScore(sig, q),
+			Score:        score,
 		})
 	}
 	return out, nil

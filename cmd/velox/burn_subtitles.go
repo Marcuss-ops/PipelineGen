@@ -20,6 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 	platformconfig "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/deliveryburn"
+	"github.com/Marcuss-ops/PipelineGen/pkg/atomicwrite"
 )
 
 const captionPixelThreshold = 250
@@ -117,7 +118,7 @@ func cmdBurnSubtitles(args []string) int {
 	}
 	defer os.RemoveAll(tmpDir)
 	assFile := filepath.Join(tmpDir, "subtitles.ass")
-	if err := os.WriteFile(assFile, assText, 0o600); err != nil {
+	if err := atomicwrite.WriteFile(assFile, assText, 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "velox burn-subtitles: write ASS: %v\n", err)
 		return exitFailure
 	}
@@ -126,7 +127,7 @@ func cmdBurnSubtitles(args []string) int {
 			fmt.Fprintf(os.Stderr, "velox burn-subtitles: keep-ass: %v\n", err)
 			return exitFailure
 		}
-		if err := os.WriteFile(filepath.Join(dir, "velox-subtitles.ass"), assText, 0o644); err != nil {
+		if err := atomicwrite.WriteFile(filepath.Join(dir, "velox-subtitles.ass"), assText, 0o644); err != nil {
 			fmt.Fprintf(os.Stderr, "velox burn-subtitles: keep-ass: %v\n", err)
 			return exitFailure
 		}

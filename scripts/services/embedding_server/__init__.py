@@ -97,8 +97,8 @@ nlp = None
 if importlib.util.find_spec("en_core_web_sm") is not None:
     nlp = spacy.load("en_core_web_sm")
 else:
-    # spaCy is optional for the embedding-only routes when the NER challenger
-    # is installed separately; keep normalization available without a model.
+    # spaCy is optional for text normalization; embeddings can still run
+    # without the small English model.
     print("en_core_web_sm is not installed; using identity text normalization")
 
 nlp_it = None
@@ -225,8 +225,7 @@ async def health():
 # algorithms; we just attach them to the FastAPI app here. This pattern
 # avoids `from . import app` relative-import edge cases (where `app` could
 # be ambiguously a submodule or an attribute).
-from . import text, visual, audio, ner  # noqa: E402, F401
+from . import text, visual, audio  # noqa: E402, F401
 app.include_router(text.router)
 app.include_router(visual.router)
 app.include_router(audio.router)
-app.include_router(ner.router)

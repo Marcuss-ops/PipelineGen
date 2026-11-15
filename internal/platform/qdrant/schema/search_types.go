@@ -48,8 +48,7 @@ type SearchRequest struct {
 // sparse vector ON THE SERVER. The legacy client-side Raw vector
 // path (SparseQueryVector) is preserved for diagnostic / bulk-from-csv
 // flows that already have a pre-computed sparse representation; live
-// retrieval MUST go through SparseText. See pkg/bm25 for the
-// deprecation status of the client-side tokenizer.
+// retrieval MUST go through SparseText.
 type HybridSearchRequest struct {
 	DenseVector          []float32 `json:"dense_vector"`
 	DenseVectorName      string    `json:"dense_vector_name"`

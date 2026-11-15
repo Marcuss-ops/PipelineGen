@@ -370,11 +370,11 @@ func TestVidRushProviderFanoutRunsProvidersInParallel(t *testing.T) {
 		t.Fatalf("ResolveProviders error: %v", err)
 	}
 
-	// The image provider is invoked once per planned query: the retrieval
-	// intent plus the deterministic ladder query for this segment. Two calls
-	// still prove each provider was entered exactly once as a provider.
-	if youtube.calls.Load() != 1 || images.calls.Load() != 2 {
-		t.Fatalf("youtube calls=%d images calls=%d, want 1 youtube / 2 image queries", youtube.calls.Load(), images.calls.Load())
+	// The image provider is invoked once for the single planned query. The
+	// identity-only fanout intentionally does not append a generic ladder;
+	// one call still proves the provider entered alongside YouTube.
+	if youtube.calls.Load() != 1 || images.calls.Load() != 1 {
+		t.Fatalf("youtube calls=%d images calls=%d, want 1 youtube / 1 image query", youtube.calls.Load(), images.calls.Load())
 	}
 	if result.Assets.PrimaryVideo != nil {
 		t.Fatalf("provider fanout selected a primary: %+v", result.Assets.PrimaryVideo)
@@ -585,7 +585,7 @@ func TestVidRushProviderFanoutRetriesEmptyEntityImageResults(t *testing.T) {
 		SegmentID: "scene-0", TextHash: "same-hash", Text: "Alberto Stasi al processo",
 		Insights: scriptpkg.SegmentInsights{
 			ImageQueries: []string{"Alberto Stasi"},
-			Entities:     []scriptpkg.ExtractedEntity{{Type: "PERSON", Value: "Alberto Stasi"}},
+			Entities:     []scriptpkg.ExtractedEntity{{Type: "PERSON", Value: "Alberto Stasi", SearchIntents: []string{"Alberto Stasi"}}},
 		},
 	}
 	for i := 0; i < 2; i++ {

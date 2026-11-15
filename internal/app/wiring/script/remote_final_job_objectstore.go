@@ -10,6 +10,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaregistry"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/platform/drive"
+	"go.uber.org/zap"
 )
 
 // ResolveFinalJobObjectStoreAsset publishes Creator-local media bytes into the
@@ -52,6 +54,26 @@ func (a *RemoteFinalJobAdapter) ResolveFinalJobObjectStoreAsset(ctx context.Cont
 		return nil, fmt.Errorf("asset %q has no canonical SHA-256", id)
 	}
 	path := strings.TrimSpace(mediaAsset.LocalPath())
+	if path == "" && a.stock != nil && strings.TrimSpace(mediaAsset.DriveFileID()) != "" {
+		ext := filepath.Ext(mediaAsset.Filename)
+		if ext == "" {
+			ext = ".mp4"
+		}
+		mat, matErr := drivepkg.NewCanonicalAssetMaterializer(a.stock, "scratch", zap.NewNop())
+		if matErr != nil {
+			return nil, fmt.Errorf("asset %q materializer init: %w", id, matErr)
+		}
+		res, matErr := mat.Materialize(ctx, drivepkg.MaterializeRequest{
+			AssetID:        mediaAsset.ID,
+			DriveFileID:    strings.TrimSpace(mediaAsset.DriveFileID()),
+			ExpectedSHA256: sha,
+			Extension:      ext,
+		})
+		if matErr != nil {
+			return nil, fmt.Errorf("asset %q materialize from Drive: %w", id, matErr)
+		}
+		path = res.LocalPath
+	}
 	if path == "" {
 		return nil, fmt.Errorf("asset %q has no Creator-local bytes; direct Objectstore mode does not pass Drive references to Velox", id)
 	}

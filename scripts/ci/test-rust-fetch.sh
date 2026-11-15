@@ -21,7 +21,7 @@ make_release() {
             cat > "$dir/$bin" <<'STUB'
 #!/bin/sh
 cat >/dev/null
-printf '%s\n' '{"schema_version":"semantic_manifest.v2","contextual_image_queries":[],"composed_image_queries":[],"important_segments":[]}'
+printf '%s\n' '{"schema_version":"semantic_manifest.v3","analyzers":{"entity_index":"entity_index.v1"},"entities":[],"contextual_image_queries":[],"composed_image_queries":[],"important_segments":[]}'
 STUB
         else
             printf '#!/bin/sh\necho %s\n' "$bin" > "$dir/$bin"
@@ -41,8 +41,8 @@ root = pathlib.Path(sys.argv[1])
 version = sys.argv[2]
 binaries = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in
             ("pipelinegen-muscles", "visualner", "mediasampler", "semantic-engine")}
-manifest = {"version": version, "git_sha": "1" * 40, "semantic_schema": "semantic_manifest.v2",
-            "mediaexec_schema": "mediaexec.v1", "image_plan_schema": "image_plan.v1",
+manifest = {"version": version, "git_sha": "1" * 40, "semantic_schema": "semantic_manifest.v3",
+            "mediaexec_schema": "mediaexec.v2", "image_plan_schema": "image_plan.v1",
             "icu_major": int((root / "ICU_MAJOR").read_text()), "binaries": binaries}
 (root / "BRAINRUST_RELEASE.json").write_text(json.dumps(manifest) + "\n")
 (root / "sha256sums.txt").write_text("")
@@ -50,7 +50,7 @@ PY
 ( cd "$dir" && sha256sum "${RELEASE_BINARIES[@]}" BRAINRUST_RELEASE.json TOOLCHAIN ICU_MAJOR > sha256sums.txt )
 }
 
-make_stale_contract() { # <release_dir>: valid checksums, pre-v2 semantic-engine
+make_stale_contract() { # <release_dir>: valid checksums, pre-v3 semantic-engine
     local dir=$1
     printf '#!/bin/sh\necho semantic-engine\n' > "$dir/semantic-engine"
     chmod 0755 "$dir/semantic-engine"
@@ -120,7 +120,7 @@ bin="$tmp/bin-missing"
 expect_fail "missing asset" fetch "$release" "$bin" 72
 [ ! -e "$bin/pipelinegen-muscles" ] || fail "missing asset installed a binary"
 
-# 6. A checksum-valid release with a pre-v2 semantic-engine must fail closed.
+# 6. A checksum-valid release with a pre-v3 semantic-engine must fail closed.
 release="$tmp/release-stale-contract"
 make_release "$release" 72
 make_stale_contract "$release"

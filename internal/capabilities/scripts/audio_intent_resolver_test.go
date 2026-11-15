@@ -99,6 +99,30 @@ func TestAudioIntentResolver_TrimsNormalizedToMicroseconds(t *testing.T) {
 	}
 }
 
+// TestAudioIntentResolver_ClipsSFXTailAtTimelineEnd certifies the final-frame
+// policy: a cue anchored near the cut keeps its start and loses only the tail
+// that would play after the video ends. This is the real 1.25s impact at
+// 500ms before the cut, not a special case for one job.
+func TestAudioIntentResolver_ClipsSFXTailAtTimelineEnd(t *testing.T) {
+	out := resolveSFX(t, sfxTestTimeline(),
+		scriptpkg.SoundEffectIntent{AssetID: "whop", SceneID: "scene_3", Anchor: scriptpkg.SFXAnchorEnd, OffsetMS: -500, DurationMS: 1250},
+		scriptpkg.SoundEffectIntent{AssetID: "boom", AtMS: 25000, DurationMS: 6000},
+	)
+	wantStarts := []int64{29_500_000, 25_000_000}
+	wantDurations := []int64{500_000, 5_000_000}
+	for i := range out {
+		if out[i].TimelineStartUS != wantStarts[i] {
+			t.Fatalf("%s start = %dus, want %dus", out[i].AssetID, out[i].TimelineStartUS, wantStarts[i])
+		}
+		if out[i].DurationUS != wantDurations[i] {
+			t.Fatalf("%s duration = %dus, want %dus", out[i].AssetID, out[i].DurationUS, wantDurations[i])
+		}
+		if out[i].TimelineStartUS+out[i].DurationUS != 30_000_000 {
+			t.Fatalf("%s end = %dus, want timeline end 30000000", out[i].AssetID, out[i].TimelineStartUS+out[i].DurationUS)
+		}
+	}
+}
+
 func TestAudioIntentResolver_EmptyIntentsYieldEmptyResult(t *testing.T) {
 	out := resolveSFX(t, sfxTestTimeline())
 	if len(out) != 0 {
@@ -121,7 +145,6 @@ func TestAudioIntentResolver_FailClosed(t *testing.T) {
 		{name: "absolute_beyond_timeline", intents: []scriptpkg.SoundEffectIntent{{AssetID: "whoosh", AtMS: 30000}}},
 		{name: "end_anchor_beyond_timeline", intents: []scriptpkg.SoundEffectIntent{{AssetID: "whoosh", SceneID: "scene_3", Anchor: scriptpkg.SFXAnchorEnd, OffsetMS: 100}}},
 		{name: "start_anchor_before_timeline", intents: []scriptpkg.SoundEffectIntent{{AssetID: "whoosh", SceneID: "scene_1", Anchor: scriptpkg.SFXAnchorStart, OffsetMS: -200}}},
-		{name: "explicit_duration_exceeds_timeline", intents: []scriptpkg.SoundEffectIntent{{AssetID: "whoosh", AtMS: 25000, DurationMS: 6000}}},
 		{name: "negative_source_in", intents: []scriptpkg.SoundEffectIntent{{AssetID: "whoosh", AtMS: 1000, SourceInMS: -50}}},
 		{name: "negative_duration", intents: []scriptpkg.SoundEffectIntent{{AssetID: "whoosh", AtMS: 1000, DurationMS: -50}}},
 		{name: "missing_asset_id", intents: []scriptpkg.SoundEffectIntent{{AtMS: 1000}}},

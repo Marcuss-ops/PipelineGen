@@ -4,12 +4,6 @@ import (
 	"testing"
 )
 
-// TestVerifyCanonicalVideoExtradata pins the publication gate on the bytes.
-// The canonical fixture is encoded with the same effective profile the stock
-// normalization pass and the fragment producer pin (libx264 veryfast, High
-// 4.0, ref=1, fixed closed GOP, bt709 VUI); the drifted fixture keeps the same
-// codec name, profile and geometry but changes the reference count and level,
-// which is exactly the class the nominal profile checks cannot see.
 // TestCanonicalVideoProfileRevisionIsPinned ties the human-readable encoder
 // lane revision to the contract it claims to name. The revision is part of the
 // fragment work identity, so changing it must never silently describe a

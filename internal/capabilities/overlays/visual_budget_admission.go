@@ -355,7 +355,11 @@ func selectNonOverlappingPhraseLane(indices []int, items []capmodel.OverlayItem,
 // because the render-queue boundary must not re-derive which timing field is
 // authoritative.
 func OverlayItemWindowUS(item capmodel.OverlayItem) (int64, int64) {
-	start, duration := itemWindowUS(item)
+	start, duration := item.StartUS, item.DurationUS
+	if duration <= 0 {
+		start = item.StartMs * 1000
+		duration = (item.EndMs - item.StartMs) * 1000
+	}
 	return start, start + duration
 }
 
@@ -448,20 +452,3 @@ func dedupeImageIndicesByContent(items []capmodel.OverlayItem, imageIndices []in
 	}
 	return out
 }
-
-// VisualBudget caps how many visual overlays a scene may carry. A cap of 0
-// means "unlimited" (no cap for that dimension); a positive cap is enforced.
-type VisualBudget struct {
-	SceneID string `json:"scene_id"`
-	// MaxEntityImages caps entity-bound image cards (ENTITY_IMAGE kind).
-	MaxEntityImages int `json:"max_entity_images"`
-	// MaxTextCallouts caps text callouts (every non-image, non-number kind).
-	MaxTextCallouts int `json:"max_text_callouts"`
-	// MaxNumberCards caps number/stat cards (IMPORTANT_NUMBER kind).
-	MaxNumberCards int `json:"max_number_cards"`
-	// MaxOverlaysTotal caps the total number of overlays regardless of kind.
-	MaxOverlaysTotal int `json:"max_overlays_total"`
-}
-
-// DefaultVisualBudget returns the canonical per-scene budget: at most 4 entity
-// images, 2 text callouts, 1 number card and 7 overlays in total.

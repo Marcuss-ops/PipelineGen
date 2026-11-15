@@ -74,36 +74,24 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/nlp"
 	topicsourcecache "github.com/Marcuss-ops/PipelineGen/internal/platform/sqlite/topicsourcecache"
 
 	"go.uber.org/zap"
 )
 
-// buildVisualNERBackend resolves one explicitly configured backend from the
-// shared platform registry. Both generated narration and legacy entity search
-// call this factory so they use the same selection policy without fallback.
+// buildVisualNERBackend returns the canonical BrainRust extractor. Both
+// generated narration and entity search share this adapter.
 func buildVisualNERBackend(cfg *config.Config, log *zap.Logger) (scriptgen.NERBackend, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("build VisualNER backend: config is required")
 	}
-	registry, err := nlp.NewBackendRegistry(
-		cfg.External.VisualNERBackend,
-		cfg.External.RustVisualNERPath,
-		cfg.External.FfmpegPath,
-		cfg.External.SpacyNERURL,
-		log,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("build VisualNER backend registry: %w", err)
+	binaryPath := strings.TrimSpace(cfg.External.RustVisualNERPath)
+	if binaryPath == "" {
+		binaryPath = "bin/visualner"
 	}
-	selected := strings.ToLower(strings.TrimSpace(cfg.External.VisualNERBackend))
-	if selected == "" {
-		selected = "rust"
-	}
-	backend, err := registry.Resolve(selected)
+	backend, err := rustexec.NewVisualNERAdapter(rustexec.NewExecutor(binaryPath, cfg.External.FfmpegPath, log))
 	if err != nil {
-		return nil, fmt.Errorf("resolve VisualNER backend: %w", err)
+		return nil, fmt.Errorf("build BrainRust VisualNER backend: %w", err)
 	}
 	return backend, nil
 }
@@ -154,7 +142,7 @@ func buildScriptUseCases(
 		return nil, nil, nil, fmt.Errorf("wireScriptFlow: build SceneIR enricher: %w", enrichErr)
 	} else {
 		oneUC.SetSegmentEnricher(enricher)
-		log.Info("wireScriptFlow: batch SceneIR/VisualNER enricher wired", zap.String("backend", strings.TrimSpace(cfg.External.VisualNERBackend)))
+		log.Info("wireScriptFlow: batch SceneIR/VisualNER enricher wired", zap.String("backend", "brainrust"))
 	}
 	if cfg.External.RustMusclesPath != "" {
 		oneUC.SetAudioProcessor(rustexec.NewConfiguredVideoProcessor(cfg.External.RustMusclesPath, cfg.External.FfmpegPath, root.MediaExec.Policy, root.MediaExec.Profile, log))

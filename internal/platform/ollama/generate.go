@@ -151,7 +151,8 @@ func (g *Generator) GenerateVisualPrompt(ctx context.Context, text, topic, style
 	// P1-4 (anti-muda): bound the output. A visual prompt is 1-2 sentences
 	// by contract; an unbounded num_predict lets the model ramble into an
 	// essay and burns the dominant per-scene cost. 128 matches the visual
-	// planner adapter (adapters/visual_planner.go).
+	// per-scene visual candidate planner has been retired; this cap belongs to
+	// the separate image-prompt generation request below.
 	options := map[string]any{
 		"num_predict": 128,
 		"temperature": 0.3,

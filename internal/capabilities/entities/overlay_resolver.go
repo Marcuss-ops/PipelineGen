@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"context"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
@@ -48,38 +49,15 @@ func EntitySpokenWindowDuration(audioStartUS, audioEndUS int64) int64 {
 	return ((duration + 999) / 1000) * 1000
 }
 
-// ResolveEntityOverlayPlan is the OverlayResolver: it turns the canonical
-// EntityTimeline into the semantic OverlayPlan the rendering layer consumes.
-// Every distinct entity in a scene becomes one entity_card item whose
-// start/end are the first ranked occurrence's certified global audio
-// positions — the resolver never guesses WHEN to show a person, an
-// organization or a place. Repeated mentions of the same entity in one scene
-// share the same semantic overlay identity, so only the highest-ranked
-// occurrence is retained. It is the unlimited variant for distinct entities
-// (see ResolveRankedEntityOverlayPlan for the ranked, per-scene-capped path).
-//
-// Times cross the microsecond→millisecond boundary deterministically: the
-// start is floor(us/1000) and the end is ceil(us/1000), so the millisecond
-// item strictly covers the certified microsecond span. The plan is sealed
-// (render keys + fingerprint) by its own Validate, so the caller can enqueue
-// it directly.
-func ResolveEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int) (capmodel.OverlayPlan, error) {
-	return ResolveRankedEntityOverlayPlan(timeline, planID, videoID, projectID, width, height, fpsNum, fpsDen, RankConfig{})
-}
-
-// ResolveRankedEntityOverlayPlan is the ranked OverlayResolver: it turns the
-// canonical EntityTimeline into the semantic OverlayPlan, ranking the entity
-// occurrences of every scene by the canonical importance score (see
-// ImportanceScore) and applying the per-scene caps of cfg. With a zero cfg
-// it is byte-identical to ResolveEntityOverlayPlan (no ranking, no caps).
-//
-// The plan's editorial rule: PipelineGen decides WHO is important — a scene
-// never renders every extracted entity. Distinct entities are ranked by their
-// highest-scoring occurrence, then the top-N survive per scene
-// (cfg.MaxEntityOverlaysPerScene) with that occurrence's certified timing.
-func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int, cfg RankConfig) (capmodel.OverlayPlan, error) {
+// ResolveEntityOverlayPlanWithRanker builds entity render DTOs after
+// BrainRust ranks and deduplicates occurrences. Go applies certified audio
+// timing and the local renderer/template policy.
+func ResolveEntityOverlayPlanWithRanker(ctx context.Context, timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int, ranker EntityOverlayRanker) (capmodel.OverlayPlan, error) {
 	if err := timeline.Validate(); err != nil {
 		return capmodel.OverlayPlan{}, err
+	}
+	if ranker == nil {
+		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: BrainRust ranker is required")
 	}
 	if strings.TrimSpace(planID) == "" || strings.TrimSpace(videoID) == "" {
 		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: plan_id and video_id are required")
@@ -87,20 +65,32 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 	if width <= 0 || height <= 0 || fpsNum <= 0 || fpsDen <= 0 {
 		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: width, height and frame rate must be positive")
 	}
+	return resolveEntityOverlayPlan(ctx, timeline, planID, videoID, projectID, width, height, fpsNum, fpsDen, ranker)
+}
 
-	// Run-level context: frequency / novelty / asset quality are derived
-	// from the whole timeline, never per scene.
-	allOccurrences := allOccurrences(timeline)
-	ctx := NewRankContext(allOccurrences)
+// resolveEntityOverlayPlan applies BrainRust's stable occurrence order to the
+// canonical render DTO while retaining Go-owned timing and decoration.
+func resolveEntityOverlayPlan(ctx context.Context, timeline EntityTimeline, planID, videoID, projectID string, width, height, fpsNum, fpsDen int, ranker EntityOverlayRanker) (capmodel.OverlayPlan, error) {
+	rankingScenes := make([]EntityOverlayRankingScene, len(timeline.Scenes))
+	for sceneIndex, scene := range timeline.Scenes {
+		rankingScenes[sceneIndex].Entities = make([]EntityOverlayRankingOccurrence, 0, len(scene.Entities))
+		for _, occurrence := range scene.Entities {
+			rankingScenes[sceneIndex].Entities = append(rankingScenes[sceneIndex].Entities, EntityOverlayRankingOccurrence{
+				EntityID: occurrence.EntityID, OverlayID: overlayItemID(occurrence),
+				EntityType: NormalizeType(occurrence.Type), Confidence: occurrence.Confidence,
+			})
+		}
+	}
+	rankedIndices, err := ranker.RankEntityOverlays(ctx, rankingScenes)
+	if err != nil {
+		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: BrainRust ranker: %w", err)
+	}
+	if len(rankedIndices) != len(timeline.Scenes) {
+		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: BrainRust returned %d scene rankings for %d scenes", len(rankedIndices), len(timeline.Scenes))
+	}
 
 	var items []capmodel.OverlayItem
 	for sceneIndex, scene := range timeline.Scenes {
-		// Apply the resolver's cap after semantic deduplication. Passing it into
-		// RankScene would let repeated mentions of one entity consume several
-		// slots and crowd out distinct people or places in the same scene.
-		rankConfig := cfg
-		rankConfig.MaxEntityOverlaysPerScene = 0
-		ranked := RankScene(scene.Entities, ctx, rankConfig)
 		// seenOverlayIdentities is keyed by the overlay ID, not by the entity
 		// hash. An entity can be grounded at several word spans in one scene,
 		// AND the same entity can reach the pipeline under more than one
@@ -112,17 +102,20 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 		// hash alone therefore emitted two items carrying the same id and the
 		// plan failed validation with `duplicate item id`. The overlay
 		// identity is the id, so one entity yields exactly one card.
-		seenOverlayIdentities := make(map[string]struct{}, len(ranked))
-		for _, rankedOccurrence := range ranked {
-			occurrence := rankedOccurrence.Occurrence
-			// Keep the highest-ranked mention (ties retain RankScene's stable
-			// source order) so duplicates do not produce repeated cards.
+		seenIndices := make(map[int]struct{}, len(rankedIndices[sceneIndex]))
+		seenOverlayIdentities := make(map[string]struct{}, len(rankedIndices[sceneIndex]))
+		for _, occurrenceIndex := range rankedIndices[sceneIndex] {
+			if occurrenceIndex < 0 || occurrenceIndex >= len(scene.Entities) {
+				return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: BrainRust returned occurrence index %d outside scene %q", occurrenceIndex, scene.SceneID)
+			}
+			if _, duplicate := seenIndices[occurrenceIndex]; duplicate {
+				return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: BrainRust repeated occurrence index %d in scene %q", occurrenceIndex, scene.SceneID)
+			}
+			seenIndices[occurrenceIndex] = struct{}{}
+			occurrence := scene.Entities[occurrenceIndex]
 			identity := overlayItemID(occurrence)
 			if _, duplicate := seenOverlayIdentities[identity]; duplicate {
-				continue
-			}
-			if cfg.MaxEntityOverlaysPerScene > 0 && len(seenOverlayIdentities) >= cfg.MaxEntityOverlaysPerScene {
-				break
+				return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: BrainRust repeated overlay identity %q in scene %q", identity, scene.SceneID)
 			}
 			seenOverlayIdentities[identity] = struct{}{}
 			// Dynamic duration: the card lasts as long as the certified mention
@@ -182,6 +175,13 @@ func ResolveRankedEntityOverlayPlan(timeline EntityTimeline, planID, videoID, pr
 				},
 			})
 		}
+		expected := make(map[string]struct{}, len(scene.Entities))
+		for _, occurrence := range scene.Entities {
+			expected[overlayItemID(occurrence)] = struct{}{}
+		}
+		if len(seenOverlayIdentities) != len(expected) {
+			return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: BrainRust selected %d overlay identities for %d unique identities in scene %q", len(seenOverlayIdentities), len(expected), scene.SceneID)
+		}
 	}
 	if len(items) == 0 {
 		return capmodel.OverlayPlan{}, fmt.Errorf("entity overlay resolver: timeline carries no entity occurrences")
@@ -222,16 +222,6 @@ func entitySceneEndUS(timeline EntityTimeline, sceneIndex int) int64 {
 		return timeline.Scenes[sceneIndex+1].TimelineStartUS
 	}
 	return timeline.DurationUS
-}
-
-// allOccurrences flattens every scene's occurrences into one slice, in scene
-// order, for the run-level ranking context.
-func allOccurrences(timeline EntityTimeline) []EntityOccurrence {
-	var out []EntityOccurrence
-	for _, scene := range timeline.Scenes {
-		out = append(out, scene.Entities...)
-	}
-	return out
 }
 
 // overlayItemID derives the deterministic, collision-free overlay id for one

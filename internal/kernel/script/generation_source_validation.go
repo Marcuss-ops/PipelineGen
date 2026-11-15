@@ -70,6 +70,9 @@ func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
 		if details := validateSegmentStockClipIDs(segment, i, ref); len(details) > 0 {
 			return &PlanInvalidError{ItemID: item.ID, Details: details}
 		}
+		if details := validateSegmentNoVoiceover(segment, i, ref); len(details) > 0 {
+			return &PlanInvalidError{ItemID: item.ID, Details: details}
+		}
 	}
 	// Explicit segment ownership wins over the legacy root field. Keep
 	// accepting source.clip_ids for compatibility, but never redistribute
@@ -203,6 +206,26 @@ func validateSegmentStockClipIDs(segment ScriptSegment, index int, ref string) [
 		if _, ok := owned[id]; !ok {
 			d = append(d, prefix+" clip_id "+id+" is not declared in this segment's clip_ids")
 		}
+	}
+	return d
+}
+
+// validateSegmentNoVoiceover enforces the editorial clip-cutaway contract:
+// a no-voiceover segment must name its clip and carry the explicit duration
+// that the final job uses for the native clip window. Without both, the
+// scene cannot become a deterministic fixed-media cutaway and would either
+// acquire TTS or have no timeline duration.
+func validateSegmentNoVoiceover(segment ScriptSegment, index int, ref string) []string {
+	if !segment.NoVoiceover {
+		return nil
+	}
+	prefix := ref + ": segments[" + strconv.Itoa(index) + "]."
+	var d []string
+	if segment.DurationMS <= 0 {
+		d = append(d, prefix+"duration_ms must be > 0 when no_voiceover=true")
+	}
+	if len(segment.ClipIDs) == 0 {
+		d = append(d, prefix+"clip_ids must contain the clip shown for a no_voiceover cutaway")
 	}
 	return d
 }

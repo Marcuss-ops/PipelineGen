@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Acceptance harness for the Rust semantic-engine worker (semantic_manifest.v2).
+"""Acceptance harness for the Rust semantic-engine worker (manifest v2/v3).
 
 Subcommands:
   selftest                      check the harness itself on a built-in sample
@@ -95,7 +95,7 @@ def check_offsets(results, manifest, scenes):
 
 
 def check_contract(results, manifest, scenes):
-    ok = manifest.get("schema_version") == "semantic_manifest.v2"
+    ok = manifest.get("schema_version") in ("semantic_manifest.v2", "semantic_manifest.v3")
     check(results, "schema_version", "PASS" if ok else "FAIL", str(manifest.get("schema_version")))
     counts = len(manifest.get("scenes", [])) == len(scenes)
     check(results, "scene_count", "PASS" if counts else "FAIL",

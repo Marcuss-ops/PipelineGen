@@ -399,9 +399,10 @@ func (uc *GenerateOneUseCase) Execute(
 		}
 		// The run-level grounded-phrase ceiling is caller-selected
 		// (item.max_phrase_overlays); zero keeps the certified default.
-		overlayPlan, overlayErr := scriptgen.CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
+		overlayPlan, overlayErr := scriptgen.CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver(
+			ctx,
 			result, scriptgen.Language(plan.Language), timingArtifacts,
-			background, item.OverlayStyle, item.MaxPhraseOverlays, planID, plan.Project,
+			background, item.OverlayStyle, item.MaxPhraseOverlays, planID, plan.Project, uc.mapOverlapResolver,
 		)
 		if overlayErr != nil {
 			return nil, uc.logPhaseError(item, "overlay_render", scriptpkg.ErrGenerationFailed, overlayErr, tracker)

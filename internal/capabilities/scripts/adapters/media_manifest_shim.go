@@ -222,6 +222,21 @@ func (p *MediaManifestPins) pinCandidates(seg scriptpkg.VidRushSegmentResult) []
 	return out
 }
 
+func (p *MediaManifestPins) pinEntityOverlayCandidates(seg scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+	entries := p.ForSceneID(seg.SceneID)
+	if len(entries) == 0 {
+		entries = p.ForSceneID(seg.SegmentID)
+	}
+	out := make([]scriptpkg.SegmentAssetCandidate, 0, len(entries))
+	for _, entry := range entries {
+		if !strings.EqualFold(strings.TrimSpace(entry.Role), "entity_image") || strings.TrimSpace(entry.Entity) == "" {
+			continue
+		}
+		out = append(out, segmentAssetCandidateFromPin(entry, seg, len(out)))
+	}
+	return out
+}
+
 func segmentAssetCandidateFromPin(entry mediaManifestEntry, seg scriptpkg.VidRushSegmentResult, position int) scriptpkg.SegmentAssetCandidate {
 	sourceURL := strings.TrimSpace(entry.Source.SourceURL)
 	link := sourceURL
@@ -291,6 +306,13 @@ func (f *VidRushProviderFanout) pinnedCandidates(plan *scriptpkg.ResolvedGenerat
 		return nil
 	}
 	return f.manifestPins.pinCandidates(seg)
+}
+
+func (f *VidRushProviderFanout) pinnedEntityOverlayCandidates(plan *scriptpkg.ResolvedGenerationPlan, seg scriptpkg.VidRushSegmentResult) []scriptpkg.SegmentAssetCandidate {
+	if f == nil || f.manifestPins == nil || !f.manifestPins.Enabled() || !f.manifestPins.AppliesTo(plan) {
+		return nil
+	}
+	return f.manifestPins.pinEntityOverlayCandidates(seg)
 }
 
 // pinnedInternetImageState returns pre-verified candidates for a segment when

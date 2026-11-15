@@ -77,31 +77,6 @@ func TestFinalizePlannerAnimationLayoutDefersNearbyPhraseFusion(t *testing.T) {
 	}
 }
 
-// The compile pre-policy stage shapes explicit entrances before chain fusion;
-// the segment keeps the shaped value, so the second rank settles one step
-// (12 frames at 24 fps) after the first.
-func TestPrepareCompiledAnimationLayoutCascadesBeforeFusion(t *testing.T) {
-	items := []capmodel.OverlayItem{
-		{
-			ID: "a", SceneID: "s1", Kind: "text_phrase", TemplateID: "IMPORTANT_PHRASE",
-			Text: "One", MotionID: "text_fade_up", StartMs: 0, EndMs: 3_000,
-			MotionParams: map[string]any{"enter_frames": 8},
-		},
-		{
-			ID: "b", SceneID: "s1", Kind: "number", TemplateID: "METRIC_STAT_CARD",
-			Text: "42", MotionID: "metric_pop", StartMs: 0, EndMs: 3_000,
-			MotionParams: map[string]any{"enter_frames": 8},
-		},
-	}
-	got := PrepareCompiledAnimationLayout(items, layoutChainInput(), 24, 1)
-	if got[0].MotionParams["enter_frames"] != 8 {
-		t.Fatalf("rank zero entrance = %v, want 8", got[0].MotionParams["enter_frames"])
-	}
-	if got[1].MotionParams["enter_frames"] != 20 {
-		t.Fatalf("rank one entrance = %v, want 20 (8 + 12-frame step)", got[1].MotionParams["enter_frames"])
-	}
-}
-
 // Phrase entrances retain the one-third share for short windows and cap long
 // windows so their text settles within 700ms.
 func TestPhraseEntranceFramesCapsLongClipEntrances(t *testing.T) {

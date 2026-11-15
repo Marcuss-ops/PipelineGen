@@ -10,7 +10,7 @@ import (
 	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 )
 
-func TestRequestValidateMediaexecV1Operations(t *testing.T) {
+func TestRequestValidateMediaexecV2Operations(t *testing.T) {
 	tests := []struct {
 		name string
 		req  request
@@ -48,7 +48,7 @@ func TestRequestValidateMediaexecV1Operations(t *testing.T) {
 }
 
 func TestRequestValidateRejectsUnsupportedVersionAndOperation(t *testing.T) {
-	if err := (request{Version: "mediaexec.v2", Operation: OperationHealth}).Validate(); err == nil {
+	if err := (request{Version: "mediaexec.v1", Operation: OperationHealth}).Validate(); err == nil {
 		t.Fatal("Validate() accepted unsupported protocol version")
 	}
 	if err := (request{Version: ProtocolVersion, Operation: Operation("run_command")}).Validate(); err == nil {

@@ -7,8 +7,6 @@ package rustexec
 import (
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
@@ -87,44 +85,26 @@ func (p *VideoProcessor) Cut(ctx context.Context, req stockpipeline.CutRequest) 
 		}
 		result.Items[i].DurationSec = item.DurationSec
 		result.Items[i].Status = stockpipeline.CutItemStatusValidated
-		size, hash, hashErr := hashOutput(item.OutputPath)
-		if hashErr != nil {
+		if item.SizeBytes <= 0 || !digest.IsCanonicalSHA256(item.SHA256) {
 			result.Items[i].Status = stockpipeline.CutItemStatusFailed
-			result.Items[i].Err = fmt.Errorf("validate rust cut output: %w", hashErr)
+			result.Items[i].Err = fmt.Errorf("validate rust cut output metadata: size=%d sha256=%q", item.SizeBytes, item.SHA256)
 			continue
 		}
 		// Bitstream identity gate: same codec name, profile and geometry are
 		// not enough — the exact SPS/PPS must be the canonical record, or
 		// `concat -c copy` applies one segment's parameter sets to another
 		// segment's slices. A failed gate makes the clip unpublishable.
-		if gateErr := kernelmedia.VerifyCanonicalVideoExtradata(item.OutputPath); gateErr != nil {
+		if item.VideoExtradataSHA256 != kernelmedia.CanonicalVideoExtradataSHA256 {
 			result.Items[i].Status = stockpipeline.CutItemStatusFailed
-			result.Items[i].Err = fmt.Errorf("validate rust cut bitstream: %w", gateErr)
+			result.Items[i].Err = fmt.Errorf(
+				"validate rust cut bitstream: avcC SHA-256 %q is not canonical %s",
+				item.VideoExtradataSHA256, kernelmedia.CanonicalVideoExtradataSHA256,
+			)
 			continue
 		}
-		result.Items[i].SizeBytes, result.Items[i].SHA256Hex = size, hash
+		result.Items[i].SizeBytes, result.Items[i].SHA256Hex = item.SizeBytes, item.SHA256
 	}
 	return result, nil
-}
-
-func hashOutput(path string) (int64, string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, "", err
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || info.Size() == 0 {
-		if err == nil {
-			err = io.ErrUnexpectedEOF
-		}
-		return 0, "", err
-	}
-	hash, err := digest.SHA256Reader(file)
-	if err != nil {
-		return 0, "", err
-	}
-	return info.Size(), hash, nil
 }
 
 func normalizeProfile(opts mediaexec.NormalizeOptions) mediaexec.VideoProfile {

@@ -25,7 +25,6 @@ import (
 	"strings"
 
 	capcheckpoint "github.com/Marcuss-ops/PipelineGen/internal/capabilities/checkpoint"
-	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	scriptaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/audio"
 	runnerpolicy "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/runner"
 	"go.uber.org/zap"
@@ -395,16 +394,6 @@ func (r *Runner) SetVidRushBarrier(barrier VidRushBarrier) {
 	}
 }
 
-// SetNLPGenerationGate wires the independent gate used only by VidRush
-// entity extraction. It must not be reused as the script-writing gate: the
-// scene-text generation gate belongs to the generator engine
-// (Engine.SetGenerationGate), which owns the per-call limit.
-func (r *Runner) SetNLPGenerationGate(gate *GenerationGate) {
-	if r != nil {
-		r.nlpGenerationGate = gate
-	}
-}
-
 // SetTTSConcurrency sets the TTS voiceover worker-pool size. Values <= 0
 // fall back to the certified default (DefaultTTSConcurrency).
 func (r *Runner) SetTTSConcurrency(concurrency int) {
@@ -486,11 +475,6 @@ func (r *Runner) SetVidRushPipeline(pipeline *VidRushPipeline) {
 	if r != nil {
 		r.vidRushPipeline = pipeline
 	}
-}
-
-// SetImageSearchResolver is retained for source compatibility. Production
-// identity and query semantics are supplied by BrainRust.
-func (r *Runner) SetImageSearchResolver(_ *capabilityimagesearch.Resolver) {
 }
 
 // SetSemanticSearchBatchPlanner wires the real-provider executor for the

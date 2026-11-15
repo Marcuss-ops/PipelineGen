@@ -7,60 +7,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestExternalConfigNERBackendBindingsAndValidation(t *testing.T) {
-	t.Run("defaults to rust baseline", func(t *testing.T) {
-		cfg := &Config{}
-		applyDefaults(cfg)
-		assert.Equal(t, "rust", cfg.External.VisualNERBackend)
-		assert.Empty(t, cfg.External.SpacyNERURL)
-	})
-	t.Run("environment override", func(t *testing.T) {
-		t.Setenv("VELOX_VISUALNER_BACKEND", "spacy")
-		t.Setenv("VELOX_SPACY_NER_URL", "http://127.0.0.1:8001")
-		cfg := &Config{}
-		applyDefaults(cfg)
-		applyEnvVars(cfg)
-		assert.Equal(t, "spacy", cfg.External.VisualNERBackend)
-		assert.Equal(t, "http://127.0.0.1:8001", cfg.External.SpacyNERURL)
-	})
-	t.Run("spacy requires an endpoint", func(t *testing.T) {
-		cfg := validConfigForNERTest()
-		cfg.External.VisualNERBackend = "spacy"
-		assert.ErrorContains(t, cfg.Validate(), "spacy_ner_url is required")
-	})
-	t.Run("unknown backend rejected", func(t *testing.T) {
-		cfg := validConfigForNERTest()
-		cfg.External.VisualNERBackend = "xlm-roberta"
-		assert.ErrorContains(t, cfg.Validate(), "unsupported")
-	})
-	t.Run("malformed or credential-bearing spaCy URL rejected", func(t *testing.T) {
-		for _, endpoint := range []string{"file:///tmp/model", "https://user:secret@example.test", "http://example.test?token=secret"} {
-			cfg := validConfigForNERTest()
-			cfg.External.VisualNERBackend = "spacy"
-			cfg.External.SpacyNERURL = endpoint
-			assert.ErrorContains(t, cfg.Validate(), "valid http(s) base URL")
-		}
-	})
-	t.Run("yaml and environment backend bindings", func(t *testing.T) {
-		cfg := &Config{}
-		applyDefaults(cfg)
-		if err := yaml.Unmarshal([]byte("external:\n  visualner_backend: spacy\n  spacy_ner_url: http://127.0.0.1:8001\n"), cfg); err != nil {
-			t.Fatal(err)
-		}
-		assert.Equal(t, "spacy", cfg.External.VisualNERBackend)
-		assert.Equal(t, "http://127.0.0.1:8001", cfg.External.SpacyNERURL)
-		t.Setenv("VELOX_VISUALNER_BACKEND", "rust")
-		applyEnvVars(cfg)
-		assert.Equal(t, "rust", cfg.External.VisualNERBackend)
-	})
-}
+func TestExternalConfigRustVisualNERPathBindings(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+	assert.Equal(t, "bin/visualner", cfg.External.RustVisualNERPath)
 
-func validConfigForNERTest() *Config {
-	return &Config{
-		Server:   ServerConfig{Port: 8000, ReadTimeout: 30, WriteTimeout: 30, Host: "127.0.0.1"},
-		Security: SecurityConfig{EnableAuth: false, DeliveryInsecureDev: true},
-		External: ExternalConfig{OllamaURL: "http://localhost:11434", VisualNERBackend: "rust"},
+	t.Setenv("VELOX_RUST_VISUALNER_PATH", "/opt/pipelinegen/visualner")
+	applyEnvVars(cfg)
+	assert.Equal(t, "/opt/pipelinegen/visualner", cfg.External.RustVisualNERPath)
+
+	if err := yaml.Unmarshal([]byte("external:\n  rust_visualner_path: /opt/brainrust/visualner\n"), cfg); err != nil {
+		t.Fatal(err)
 	}
+	assert.Equal(t, "/opt/brainrust/visualner", cfg.External.RustVisualNERPath)
 }
 
 func TestExternalConfigLocationOverlayBindings(t *testing.T) {

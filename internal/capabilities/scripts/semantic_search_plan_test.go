@@ -1,11 +1,12 @@
 package scriptgeneration
 
 import (
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
 )
 
-func feedbackPlan(t *testing.T, queries []SemanticSearchQuery, entities ...string) *SemanticProductionPlan {
+func feedbackPlan(t *testing.T, queries []generationcontract.SemanticSearchQuery, entities ...string) *SemanticProductionPlan {
 	t.Helper()
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		{
@@ -22,7 +23,7 @@ func feedbackPlan(t *testing.T, queries []SemanticSearchQuery, entities ...strin
 }
 
 func TestSemanticSearchFeedbackBroadensThenSkipsTheVisual(t *testing.T) {
-	plan := feedbackPlan(t, []SemanticSearchQuery{
+	plan := feedbackPlan(t, []generationcontract.SemanticSearchQuery{
 		{Kind: "exact_mention", Text: "Alberto Stasi"},
 		{Kind: "context_phrase", Text: "Alberto Stasi torna"},
 		{Kind: "source_sentence", Text: "Alberto Stasi torna nel racconto."},
@@ -74,12 +75,12 @@ func TestSemanticSearchFeedbackBroadensThenSkipsTheVisual(t *testing.T) {
 }
 
 func TestContextQueryKeepsItsIllustrativeProvenanceThroughPlanning(t *testing.T) {
-	query := SemanticSearchQuery{
+	query := generationcontract.SemanticSearchQuery{
 		Kind: "context_phrase", Text: "Alberto Stasi processo giudiziario",
 		Origin: "derived_from_source_context", Illustrative: true,
 		Evidence: "Alberto Stasi affronta un processo giudiziario lungo.",
 	}
-	plan := feedbackPlan(t, []SemanticSearchQuery{
+	plan := feedbackPlan(t, []generationcontract.SemanticSearchQuery{
 		{Kind: "exact_mention", Text: "Alberto Stasi", Origin: "literal"}, query,
 	}, "person_01")
 	first, ok := plan.NextSearchAttempt()
@@ -103,7 +104,7 @@ func TestContextQueryKeepsItsIllustrativeProvenanceThroughPlanning(t *testing.T)
 }
 
 func TestSemanticSearchFeedbackSettlesASatisfiedAsset(t *testing.T) {
-	plan := feedbackPlan(t, []SemanticSearchQuery{{Kind: "exact_mention", Text: "Alberto Stasi"}}, "person_01")
+	plan := feedbackPlan(t, []generationcontract.SemanticSearchQuery{{Kind: "exact_mention", Text: "Alberto Stasi"}}, "person_01")
 	if _, more, err := plan.RecordSearchOutcome(SemanticSearchOutcome{CandidateID: "vc_0001", Rung: 0, Found: true, AssetID: "asset_42"}); err != nil || more {
 		t.Fatalf("a hit settles the only search: more=%v err=%v", more, err)
 	}
@@ -122,7 +123,7 @@ func TestSemanticSearchFeedbackSettlesASatisfiedAsset(t *testing.T) {
 func TestSemanticSearchFeedbackUsesOnlyTheBrainRustQueryLadder(t *testing.T) {
 	// Go must not invent an exact-name retry for an identity that BrainRust did
 	// not include in the source-grounded query ladder.
-	plan := feedbackPlan(t, []SemanticSearchQuery{
+	plan := feedbackPlan(t, []generationcontract.SemanticSearchQuery{
 		{Kind: "exact_mention", Text: "Alberto Stasi"},
 		{Kind: "source_sentence", Text: "Alberto Stasi e Andrea Sempio nel procedimento."},
 	}, "person_01", "person_02")
@@ -142,7 +143,7 @@ func TestSemanticSearchFeedbackUsesOnlyTheBrainRustQueryLadder(t *testing.T) {
 }
 
 func TestSemanticSearchFeedbackNeverSpendsAReusedAssetTwice(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 		planCandidate("vc_0002", "entity_search", "s02", 2, []string{"person_01"}, "entity:person_01", stasi),
@@ -168,7 +169,7 @@ func TestSemanticSearchFeedbackRevokesCoverageAndImageAdmissionOnSkip(t *testing
 		{
 			ID: "vc_0001", Recipe: "entity_search", Rank: 1, SceneID: "s01",
 			EntityIDs: []string{"person_01"}, AssetKey: "entity:person_01", RequiresMedia: true,
-			Queries: []SemanticSearchQuery{{Kind: "exact_mention", Text: "Alberto Stasi"}},
+			Queries: []generationcontract.SemanticSearchQuery{{Kind: "exact_mention", Text: "Alberto Stasi"}},
 			FactIDs: []string{"cf_0001"}, CoveredFactIDs: []string{"cf_0001"},
 		},
 	}, []SemanticConsolidatedFact{{

@@ -43,7 +43,6 @@ type Runner struct {
 	sceneCommitObserver     SceneCommitObserver
 	vidRushBarrier          VidRushBarrier
 	vidRushTiming           VidRushTimingRecorder
-	nlpGenerationGate       *GenerationGate
 	// jobStageSink mirrors durable run stages into job_stage_status rows of
 	// the single-item job; jobStages maps runID -> open job stage state.
 	jobStageSink          job.JobStageStatusStore
@@ -138,7 +137,8 @@ type Runner struct {
 	// mapPlates is the run's ONLY map source: the certified basemap plate
 	// resolver wired from the operator manifest. Nil means no map overlay is
 	// ever emitted (the planner's fail-closed default).
-	mapPlates capabilityoverlay.PlateResolver
+	mapPlates          capabilityoverlay.PlateResolver
+	mapOverlapResolver capabilityoverlay.MapOverlapResolver
 	// recorderMu serializes calls into the execution recorder. Production
 	// recorders are expected to be durable, but the port is not required to
 	// implement internal concurrency; serialization also keeps the lineage
@@ -291,14 +291,6 @@ func (r *Runner) beginVidRush(ctx context.Context, runID string, req GenerateReq
 	coordinator.SetSegmentProviderResolver(providerResolver)
 	coordinator.SetSegmentMaterializer(p.Materializer)
 	coordinator.SetMetrics(p.Metrics)
-	coordinator.SetGenerationGate(r.nlpGenerationGate)
-	// Entity extraction uses its OWN gate. There is deliberately NO fallback
-	// to the scene-text generation gate: that compatibility branch was a legacy
-	// seam that survived its migration (Zero Legacy Policy). A nil gate means
-	// "ungated", which is the honest state for a root that wired none — the
-	// scene-text gate itself stays owned by the generator engine, which applies
-	// the per-call limit.
-
 	// Fase 2 barrier wrap: when the MediaCertifierPort is wired, wrap the
 	// coordinator's barrier so a CERTIFIED=false run fails the job even
 	// when the inner barrier returned no error.

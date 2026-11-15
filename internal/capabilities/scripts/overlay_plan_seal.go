@@ -7,6 +7,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
@@ -22,7 +23,7 @@ import (
 // sealOverlayPlan derives the master render extent, resets provisional
 // render keys after post-processing and assembles + validates the final
 // OverlayPlan. Split from compileOverlayPlanWithMotionOffset (same behavior).
-func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capmodel.OverlayPlan, resolved []ResolvedScene, items []capmodel.OverlayItem, canvas OverlayCanvasSpec, planID, videoID, projectID string) (*capmodel.OverlayPlan, error) {
+func sealOverlayPlan(ctx context.Context, result *GenerateResult, language Language, plannerPlan capmodel.OverlayPlan, resolved []ResolvedScene, items []capmodel.OverlayItem, canvas OverlayCanvasSpec, planID, videoID, projectID string, overlapResolver capabilityoverlay.MapOverlapResolver) (*capmodel.OverlayPlan, error) {
 	// Maps are composited in replace mode, so any shared frame makes the final
 	// plan invalid. Resolve those collisions while scene timing is still in
 	// scope: shift ordinary cards after the map within their scene, and drop
@@ -34,7 +35,23 @@ func sealOverlayPlan(result *GenerateResult, language Language, plannerPlan capm
 		}
 		sceneWindows[scene.ID] = [2]int64{scene.TimelineStartUS, scene.TimelineStartUS + scene.DurationUS}
 	}
-	items = capabilityoverlay.ResolveMapOverlaps(items, sceneWindows, canvas.FPSNum, canvas.FPSDen)
+	hasMaps := false
+	for _, item := range items {
+		if item.Map != nil {
+			hasMaps = true
+			break
+		}
+	}
+	if overlapResolver == nil && hasMaps {
+		return nil, fmt.Errorf("overlay plan: BrainRust map-overlap resolver is required when the plan contains maps")
+	}
+	if overlapResolver != nil && hasMaps {
+		shiftedItems, err := overlapResolver.ResolveMapOverlaps(ctx, items, sceneWindows, canvas.FPSNum, canvas.FPSDen)
+		if err != nil {
+			return nil, fmt.Errorf("overlay plan: resolve map overlaps: %w", err)
+		}
+		items = shiftedItems
+	}
 	// Entity cards may be reintroduced or shifted by late compile stages after
 	// the main animation-layout pass. Run their dedicated sequence fusion at
 	// the final sealing boundary so nearby image-backed captions cannot escape

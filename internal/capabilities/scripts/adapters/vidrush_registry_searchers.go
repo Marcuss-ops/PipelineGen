@@ -120,7 +120,8 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 		updated.Cache.YouTube = "BYPASSED"
 		return updated, nil
 	}
-	if _, stockBound := stockBindingForSegment(plan, nil, segment); stockBound {
+	_, stockBound := stockBindingForSegment(plan, nil, segment)
+	if stockBound {
 		// A stock binding owns the scene's video. The explicit entity-image
 		// policy may still fetch verified portrait overlays; keep every video
 		// provider disabled on this sidecar path.
@@ -148,9 +149,18 @@ func (f *VidRushProviderFanout) ResolveProviders(ctx context.Context, plan *scri
 	// candidate and still run the identity search; returning here left every
 	// PERSON overlay with SEARCH_EMPTY while the manifest pin satisfied the
 	// scene image.
-	if pinned := f.pinnedCandidates(plan, updated); len(pinned) > 0 {
+	pinned := f.pinnedCandidates(plan, updated)
+	if stockBound {
+		// Scene-background pins compete with the direct stock binding and must
+		// not enter the stock scene's media surface. Only explicitly typed
+		// entity-image pins may continue as annotation candidates.
+		pinned = f.pinnedEntityOverlayCandidates(plan, updated)
+	}
+	if len(pinned) > 0 {
 		updated.Assets.Candidates = AppendProviderCandidatesUnique(updated.Assets.Candidates, pinned)
-		updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, pinned)
+		if !stockBound {
+			updated.Assets.SecondaryImages = AppendProviderCandidatesUnique(updated.Assets.SecondaryImages, pinned)
+		}
 		if !stockBoundEntityImageMaterializationEnabled(plan) || !fanoutPlan.imagesEnabled {
 			updated.Cache.InternetImages = MediaManifestCacheState
 			updated.Cache.InternetImagesProviderSearches = 0

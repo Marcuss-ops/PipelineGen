@@ -40,8 +40,11 @@ func NewAudioIntentResolver() *AudioIntentResolver {
 //     plus the signed offset_ms.
 //
 // Fail-closed: unknown scenes, invalid anchors, dual placement
-// (at_ms + scene_id), out-of-timeline placements, negative trims, and a
-// missing asset_id all fail the whole resolution.
+// (at_ms + scene_id), starts outside the timeline, negative trims, and a
+// missing asset_id all fail the whole resolution. A cue whose tail crosses
+// the video end is clipped to the remaining timeline instead of failing the
+// whole job: the final-frame impact still plays, just without the inaudible
+// tail past the cut.
 func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeline, intents []scriptpkg.SoundEffectIntent) ([]audio.ResolvedSFX, error) {
 	if err := timeline.Validate(); err != nil {
 		return nil, fmt.Errorf("resolve sound effects: %w", err)
@@ -74,8 +77,14 @@ func (r *AudioIntentResolver) ResolveSoundEffects(timeline audio.CanonicalTimeli
 		if durationUS < 0 {
 			return nil, fmt.Errorf("resolve sound effects: sfx %d (%s): duration_ms must be >= 0", i, assetID)
 		}
-		if durationUS > 0 && startUS > timeline.DurationUS-durationUS {
-			return nil, fmt.Errorf("resolve sound effects: sfx %d (%s): placement [%d,%d) exceeds the %dus timeline", i, assetID, startUS, startUS+durationUS, timeline.DurationUS)
+		if durationUS > timeline.DurationUS-startUS {
+			// Keep the cue anchored where the intent placed it and trim only
+			// the portion that falls after the final video frame. resolveSFXStartUS
+			// guarantees startUS < timeline.DurationUS, so the clipped duration
+			// stays positive. Failing here used to reject an otherwise valid
+			// final-frame impact solely because its source tail was longer
+			// than the remaining timeline.
+			durationUS = timeline.DurationUS - startUS
 		}
 		out = append(out, audio.ResolvedSFX{
 			AssetID:         assetID,

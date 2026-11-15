@@ -8,8 +8,6 @@ package search
 
 import (
 	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/bm25"
 )
 
 // ── SearchBackend & Logger ports ──────────────────────────────────────
@@ -164,12 +162,8 @@ type VectorSearchResult struct {
 // canonical strategy. The orchestrator passes the raw query text via
 // SparseText (plus SparseModel, defaulting to "qdrant/bm25"); Qdrant
 // then tokenizes + weights + projects the sparse vector on the server.
-// The legacy client-side raw vector (SparseVector) is retained ONLY
-// for diagnostic + bulk-from-csv flows that already have a
-// pre-computed SparseVector; live retrieval MUST go through
-// SparseText. Mode=hybrid with SparseVectorName == "" AND
-// SparseVector == nil is a programming error and must fail closed
-// (ErrHybridRequiresSparse) before reaching the adapter.
+// Live hybrid retrieval supplies SparseText; Qdrant performs the sparse
+// projection server-side.
 type HybridSearchRequest struct {
 	QueryText            string
 	DenseVector          []float32
@@ -185,11 +179,7 @@ type HybridSearchRequest struct {
 	// SparseModel is the inference model used to project SparseText
 	// into a sparse vector server-side. Empty falls back to
 	// "qdrant/bm25" (Qdrant server-side default).
-	SparseModel string
-	// SparseVector (PR2 legacy): pre-computed sparse vector from the
-	// deprecated client-side bm25.Tokenize. Used only when SparseText
-	// is empty.
-	SparseVector   *bm25.SparseVector
+	SparseModel    string
 	Limit          int
 	MinScore       float64
 	Source         string

@@ -198,12 +198,23 @@ func catalogPersonPlan() *scriptpkg.ResolvedGenerationPlan {
 }
 
 func catalogPersonInput(segmentID, name string) ProcessInput {
+	identity, _ := entitycatalog.CanonicalizePersonName(name)
+	canonicalID := identity.CanonicalEntityID
 	return ProcessInput{
 		SpecScene: scriptpkg.SpecSceneOutput{Scenes: []scriptpkg.SpecScene{{
 			ID: segmentID, SegmentID: segmentID,
-			Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: name, Text: name, Type: "PERSON"}}},
+			Annotations: &scriptpkg.SceneAnnotations{PrimaryEntities: []scriptpkg.AnnotatedEntity{{CanonicalName: name, Text: name, Type: "PERSON", CanonicalEntityID: canonicalID}}},
 		}}},
-		VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: segmentID, SceneID: segmentID, TextHash: segmentID}},
+		VidRushSegments: []scriptpkg.VidRushSegmentResult{{
+			SegmentID: segmentID, SceneID: segmentID, TextHash: segmentID,
+			Insights: scriptpkg.SegmentInsights{
+				Entities: []scriptpkg.ExtractedEntity{{
+					Value: name, Type: "PERSON", CanonicalID: canonicalID, SearchIntents: []string{name},
+				}},
+				ImageEntityCanonicalIDs: map[string]string{name: canonicalID},
+				ImageQueries:            []string{name},
+			},
+		}},
 	}
 }
 

@@ -253,7 +253,7 @@ func greekSaladEntities() []VisualEntity {
 	text := "Greek salad contains tomatoes, feta cheese and olives."
 	span := func(value string, score float32) VisualEntity {
 		start := strings.Index(text, value)
-		return VisualEntity{Text: value, Score: score, Start: start, End: start + len(value), Evidence: value}
+		return VisualEntity{Text: value, Score: score, Start: start, End: start + len(value), Evidence: value, SearchIntents: []string{value}}
 	}
 	return []VisualEntity{
 		span("feta", 0.9),
@@ -388,7 +388,7 @@ func TestSceneIRSegmentEnricherFiltersSelectedEntityCategory(t *testing.T) {
 	source := "OpenAI reported 25% growth and 42 orders, $2 million revenue for the year 2025."
 	span := func(value string, kind scriptpkg.EntityType) VisualEntity {
 		start := strings.Index(source, value)
-		return VisualEntity{Text: value, Type: kind, Score: 0.9, Start: start, End: start + len(value), Evidence: value}
+		return VisualEntity{Text: value, Type: kind, Score: 0.9, Start: start, End: start + len(value), Evidence: value, SearchIntents: []string{value}}
 	}
 	ner := &recordingVisualNER{entities: []VisualEntity{
 		span("OpenAI", "BRAND"), span("25%", "PERCENT"), span("42 orders", "NUMBER"), span("$2 million", "MONEY"), span("2025", "DATE"),
@@ -438,8 +438,8 @@ func TestSceneIRSegmentEnricherFiltersSelectedEntityCategory(t *testing.T) {
 func TestSceneIRSegmentEnricherUsesAllPersonsForImageSearch(t *testing.T) {
 	entities := []VisualEntity{
 		{Text: "the documentary", Type: scriptpkg.EntityTypeVisualConcept, Score: 0.99, Start: 0, End: 14, Evidence: "The documentary"},
-		{Text: "Ada Lovelace", Type: scriptpkg.EntityTypePerson, Score: 0.72, Start: 15, End: 27, Evidence: "Ada Lovelace"},
-		{Text: "Charles Babbage", Type: scriptpkg.EntityTypePerson, Score: 0.68, Start: 32, End: 47, Evidence: "Charles Babbage"},
+		{Text: "Ada Lovelace", Type: scriptpkg.EntityTypePerson, Score: 0.72, Start: 15, End: 27, Evidence: "Ada Lovelace", SearchIntents: []string{"Ada Lovelace"}},
+		{Text: "Charles Babbage", Type: scriptpkg.EntityTypePerson, Score: 0.68, Start: 32, End: 47, Evidence: "Charles Babbage", SearchIntents: []string{"Charles Babbage"}},
 	}
 	// The test stub uses exact source spans; keep the source aligned with them.
 	source := "The documentary Ada Lovelace met Charles Babbage during a historic meeting."
@@ -548,7 +548,7 @@ func TestFilterEntityRenderSurfaceKeepsOnlyImageableEntitiesAndPhrases(t *testin
 	segments := []scriptpkg.VidRushSegmentResult{{
 		Insights: scriptpkg.SegmentInsights{
 			Entities: []scriptpkg.ExtractedEntity{
-				{Value: "Michael Jordan", Type: "PERSON"},
+				{Value: "Michael Jordan", Type: "PERSON", SearchIntents: []string{"Michael Jordan"}},
 				{Value: "career", Type: "CONCEPT"},
 				{Value: "2025", Type: "DATE"},
 			},
@@ -577,8 +577,8 @@ func TestFilterEntityRenderSurfaceKeepsAllNamedPeople(t *testing.T) {
 	segments := []scriptpkg.VidRushSegmentResult{{
 		Insights: scriptpkg.SegmentInsights{
 			Entities: []scriptpkg.ExtractedEntity{
-				{Value: "Ada Lovelace", Type: "PERSON", Confidence: 0.99},
-				{Value: "Analytical Engine", Type: "PERSON", Confidence: 0.30},
+				{Value: "Ada Lovelace", Type: "PERSON", Confidence: 0.99, SearchIntents: []string{"Ada Lovelace"}},
+				{Value: "Analytical Engine", Type: "PERSON", Confidence: 0.30, SearchIntents: []string{"Analytical Engine"}},
 			},
 			ImageQueries: []string{"Ada Lovelace"},
 		},

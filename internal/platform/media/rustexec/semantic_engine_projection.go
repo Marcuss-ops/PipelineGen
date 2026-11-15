@@ -11,8 +11,8 @@ import (
 func projectSemanticBullets(source string, bullets []semanticEngineCandidate) []scriptgen.BulletCandidate {
 	out := make([]scriptgen.BulletCandidate, 0, len(bullets))
 	for _, bullet := range bullets {
-		// NO EVIDENCE -> NO CANDIDATE: the Rust side already enforced this,
-		// and the Go boundary re-checks it before the text can reach a plan.
+		// Rust enforces this before serialization; retain the Go boundary check
+		// because malformed worker output must not reach the render plan.
 		if bullet.Evidence == "" || bullet.Text != bullet.Evidence {
 			continue
 		}
@@ -189,7 +189,11 @@ func projectSemanticIdentities(texts map[string]string, identities []semanticEng
 		if identity.ID == "" || identity.Kind == "" || identity.CanonicalSurface == "" {
 			return nil, fmt.Errorf("identity has missing id, type, or canonical surface")
 		}
-		projected := scriptgen.SemanticIdentity{ID: identity.ID, CanonicalSurface: identity.CanonicalSurface, Kind: identity.Kind}
+		canonicalID := ""
+		if identity.CanonicalID != nil {
+			canonicalID = strings.TrimSpace(*identity.CanonicalID)
+		}
+		projected := scriptgen.SemanticIdentity{ID: identity.ID, CanonicalSurface: identity.CanonicalSurface, Kind: identity.Kind, CanonicalID: canonicalID}
 		for _, mention := range identity.Mentions {
 			source, ok := texts[mention.SceneID]
 			if !ok || mention.Surface == "" || !groundedSpan(source, mention.StartByte, mention.EndByte, mention.Surface) {

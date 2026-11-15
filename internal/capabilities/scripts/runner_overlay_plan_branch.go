@@ -180,7 +180,7 @@ func (r *Runner) computeOverlayPlanProjection(ctx context.Context, runID string,
 		zap.Any("animation_counts", canvas.AnimationCounts),
 	)
 	overlaystatus.Update(runID, func(status *overlaystatus.Status) { status.Stage = "planning" })
-	if err := compileResultOverlayPlan(result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
+	if err := compileResultOverlayPlan(ctx, result, req.SourceLanguage, runID, req.Project, driveFolderID, canvas, plates, r.mapOverlapResolver, req.MediaPlan.Extraction.EntityImages.PerScene(), genericSceneImagesEnabled); err != nil {
 		cause := fmt.Errorf("overlay plan compilation failed: %w", err)
 		return cause
 	}

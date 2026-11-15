@@ -10,7 +10,7 @@
 verify-no-secrets:
 	@bash scripts/ci/ci-no-secrets-audit.sh
 
-# verify-rust-muscles — Go consumer DTO validation for mediaexec.v1. The
+# verify-rust-muscles — Go consumer DTO validation for mediaexec.v2. The
 # BrainRust workspace and semantic workers are tested in BrainRust CI.
 verify-rust-muscles:
 	@go test ./internal/platform/media/rustexec -run 'TestRequestValidate' -count=1
@@ -29,10 +29,10 @@ verify-rust-contract:
 	 git clone --quiet --no-checkout --filter=blob:none "$(RUST_CONTRACT_REPO)" "$$tmp/brainrust" && \
 	 git -C "$$tmp/brainrust" checkout --quiet --detach "$(RUST_CONTRACT_COMMIT)" && \
 	 python3 -m venv "$$tmp/venv" && \
-	 "$$tmp/venv/bin/pip" install --quiet -r "$$tmp/brainrust/contract/mediaexec.v1/requirements.txt" && \
-	 "$$tmp/venv/bin/python" "$$tmp/brainrust/contract/mediaexec.v1/validate.py" && \
-	 bash "$$tmp/brainrust/contract/mediaexec.v1/check_consumer_copy.sh" testdata/mediaexec/v1 && \
-	 go test ./internal/platform/media/rustexec -run 'TestMediaexecV1SharedGoldens' -count=1
+	 "$$tmp/venv/bin/pip" install --quiet -r "$$tmp/brainrust/contract/mediaexec.v2/requirements.txt" && \
+	 "$$tmp/venv/bin/python" "$$tmp/brainrust/contract/mediaexec.v2/validate.py" && \
+	 bash "$$tmp/brainrust/contract/mediaexec.v2/check_consumer_copy.sh" testdata/mediaexec/v2 && \
+	 go test ./internal/platform/media/rustexec -run 'TestMediaexecV2SharedGoldens' -count=1
 
 # verify-repository-integrity — fail-closed repository metadata checks.
 # The canonical script validates every tracked mode-160000 gitlink against

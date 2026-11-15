@@ -25,6 +25,12 @@ import (
 const (
 	backgroundKindVideo = "video"
 	backgroundFitCover  = "cover"
+
+	// blurSourceRadiusPX is the fixed gaussian radius of a derived
+	// blur_source plate. The plate is the source video at canvas size, so a
+	// 24 px radius removes the sharp duplicate of the foreground without
+	// washing the scene into a flat colour.
+	blurSourceRadiusPX = 24.0
 )
 
 // mapBackground projects the sealed plan's background block onto the wire.
@@ -40,14 +46,12 @@ func mapBackground(plan cliprender.ClipRenderPlanV1) (*overlayBackground, error)
 	case cliprender.BackgroundModeNone:
 		return nil, nil
 	case cliprender.BackgroundModeBlurSource:
-		// blur_source is not a first-class overlay-plan primitive. It is
-		// expressed as a "video" background referencing the source asset with
-		// the ONE fit the renderer actually honours (cover): the historical
-		// "blur_cover" was not a FitMode of the render contract
-		// (cover|contain|stretch|none) and was silently degraded to cover at
-		// the boundary — an unblurred plate with no error anywhere. The fit is
-		// now explicit and honoured; the blur itself needs a real compositor
-		// effect, which the plan contract does not carry yet.
+		// blur_source is expressed as the source video plate at canvas size
+		// plus the renderer's gaussian_blur layer effect. The fit is the ONE
+		// the render contract honours (cover); the historical "blur_cover"
+		// was not a FitMode and was silently degraded to a sharp cover plate.
+		// BlurPX is what turns that plate into the soft backdrop the mode
+		// promises, instead of a visible second copy of the foreground.
 		return &overlayBackground{
 			Kind: backgroundKindVideo,
 			AssetRefs: []overlayAssetRef{{
@@ -56,8 +60,9 @@ func mapBackground(plan cliprender.ClipRenderPlanV1) (*overlayBackground, error)
 				URL:       hashAddressedPath(plan.Source.AssetID, "source.mp4"),
 				MediaType: "video/mp4",
 			}},
-			Fit:  backgroundFitCover,
-			Loop: true,
+			Fit:    backgroundFitCover,
+			Loop:   true,
+			BlurPX: blurSourceRadiusPX,
 		}, nil
 	case cliprender.BackgroundModeAsset:
 		filename, err := backgroundStagedFilename(plan)

@@ -1,10 +1,9 @@
-// Package overlays — deterministic_preset_sampler.go owns the SINGLE
-// deterministic selection of a (preset, animation) pair for a semantic item.
+// Package overlays — deterministic_preset_sampler.go owns deterministic
+// selection of a (preset, animation) pair for a compiled overlay item.
 //
 // Pipeline position (see the semantic-index pipeline):
 //
-//	SemanticItem → Visual Intent Resolver → preset family
-//	             → DeterministicPresetSampler → (preset, animation)
+//	compiled overlay item → candidate family → (preset, animation)
 //
 // Determinism contract: the selection is a pure function of the seed
 //

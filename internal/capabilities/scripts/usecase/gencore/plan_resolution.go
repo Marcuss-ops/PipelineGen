@@ -7,6 +7,7 @@ package gencore
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
 	"go.uber.org/zap"
 
@@ -26,6 +27,7 @@ type GenerateOneUseCase struct {
 	audioProcessor          mediaexec.AudioProcessor
 	overlayRenderEnqueuer   scriptgen.OverlayRenderEnqueuer
 	overlayBackgroundSource scriptgen.OverlayBackgroundSource
+	mapOverlapResolver      capabilityoverlay.MapOverlapResolver
 	stockPrefetcher         scriptports.StockPrefetcher
 }
 
@@ -50,6 +52,14 @@ func (uc *GenerateOneUseCase) SetOverlayRenderEnqueuer(enqueuer scriptgen.Overla
 func (uc *GenerateOneUseCase) SetOverlayBackgroundSource(source scriptgen.OverlayBackgroundSource) {
 	if uc != nil {
 		uc.overlayBackgroundSource = source
+	}
+}
+
+// SetMapOverlapResolver shares the durable runner's Rust timing operation with
+// the batch generation path.
+func (uc *GenerateOneUseCase) SetMapOverlapResolver(resolver capabilityoverlay.MapOverlapResolver) {
+	if uc != nil {
+		uc.mapOverlapResolver = resolver
 	}
 }
 

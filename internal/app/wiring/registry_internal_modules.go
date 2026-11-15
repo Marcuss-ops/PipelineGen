@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	searchwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/search"
 	stockwiring "github.com/Marcuss-ops/PipelineGen/internal/app/wiring/stock"
@@ -20,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/embeddings"
 	module "github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/httpserver/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/media/rustexec"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/platform/qdrant/search"
 	"github.com/gin-gonic/gin"
 
@@ -169,6 +171,19 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		// only for the graceful-degrade path (MEDIA-SSOT P1-8).
 		canonicalResolver = newCanonicalIdentityResolver(root.MediaPostgres, legacyDB)
 	}
+	var localScorer search.LocalScorer
+	if _, ok := mediaRepo.(searchwiring.PostgresLocalSearchPort); ok {
+		if cfg == nil || strings.TrimSpace(cfg.External.RustMediaSamplerPath) == "" {
+			return registryCrossStepState{}, fmt.Errorf("registerInternalModules: PostgreSQL local search requires External.RustMediaSamplerPath")
+		}
+		executor := rustexec.NewExecutorWithLimit(cfg.External.RustMediaSamplerPath, cfg.External.FfmpegPath, 1, log)
+		adapter, err := rustexec.NewLocalScorerAdapter(executor)
+		if err != nil {
+			executor.Close()
+			return registryCrossStepState{}, fmt.Errorf("registerInternalModules: create Rust local scorer: %w", err)
+		}
+		localScorer = adapter
+	}
 
 	// MEDIA-SSOT P1-6: the local media backend is derived from the canonical
 	// PostgreSQL media read repository (mediaRepo) inside Build. The legacy
@@ -183,6 +198,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		deliveryPort,
 		rerankerPort,
 		canonicalResolver,
+		localScorer,
 	)
 	if searchErr != nil {
 		return registryCrossStepState{}, searchErr

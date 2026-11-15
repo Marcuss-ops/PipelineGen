@@ -2,6 +2,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
@@ -12,12 +13,28 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
+// sourceOrderEntityOverlayRanker keeps isolated legacy plan compilation
+// deterministic when no Rust resolver was supplied. Production compilers
+// receive SemanticEngineAdapter, which owns scoring and deduplication.
+type sourceOrderEntityOverlayRanker struct{}
+
+func (sourceOrderEntityOverlayRanker) RankEntityOverlays(_ context.Context, scenes []capabilityentities.EntityOverlayRankingScene) ([][]int, error) {
+	selected := make([][]int, len(scenes))
+	for sceneIndex, scene := range scenes {
+		selected[sceneIndex] = make([]int, len(scene.Entities))
+		for entityIndex := range scene.Entities {
+			selected[sceneIndex][entityIndex] = entityIndex
+		}
+	}
+	return selected, nil
+}
+
 // compileOverlayPlanWithMotionOffset derives motion entropy deterministically
 // from immutable plan identity (plan + video + project). Identical inputs
 // compile byte-identical plans and retries stay bit-identical; a new plan ID
 // rotates the certified motion pools. chooseOffset stays in the internal API
 // for source compatibility, but the plan identity is the entropy source.
-func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
+func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, chooseOffset func() (int, error), plates capabilityoverlay.PlateResolver, overlapResolver capabilityoverlay.MapOverlapResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
 	}
@@ -214,7 +231,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 			NoRoutes:            !canvas.MapPresentation.AllowRoute,
 		}
 	}
-	plannerPlan, err := capabilityoverlay.BuildPlan(capabilityoverlay.PlanInput{
+	plannerInput := capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, ProjectID: projectID,
 		MotionSeed: motionSeed,
 		Width:      canvas.Width, Height: canvas.Height, FPSNum: canvas.FPSNum, FPSDen: canvas.FPSDen, Scenes: scenes,
@@ -227,7 +244,17 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		ImageWithTextMotions: canvas.ImageWithTextMotions,
 		HeavyPhrasePriority:  canvas.HeavyPhrasePriority, AnimationCounts: canvas.AnimationCounts, EntityStyleID: canvas.EntityStyleID,
 		PlateResolver: plates,
-	}, plannerConfig)
+	}
+	var plannerPlan capmodel.OverlayPlan
+	if overlapResolver != nil {
+		trimmer, ok := overlapResolver.(capabilityoverlay.MapWindowTrimmer)
+		if !ok {
+			return nil, fmt.Errorf("overlay plan: configured BrainRust map resolver does not implement the pre-budget trimmer")
+		}
+		plannerPlan, err = capabilityoverlay.BuildPlanWithMapWindowTrimmer(ctx, plannerInput, plannerConfig, trimmer)
+	} else {
+		plannerPlan, err = capabilityoverlay.BuildPlan(plannerInput, plannerConfig)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
@@ -284,7 +311,13 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	// carries it as AssetRefs + EntityRef.CanonicalEntityID. The final editorial
 	// budget admits image cards only when they have materialized media.
 	if entityTimeline != nil && len(entityTimeline.Scenes) > 0 {
-		namedCards, err := resolveOverlayEntityCardItems(result, language, canvas, entityTimeline, planID, videoID, projectID, len(perSceneImages) > 0 && perSceneImages[0])
+		ranker, ok := overlapResolver.(capabilityentities.EntityOverlayRanker)
+		if overlapResolver == nil {
+			ranker = sourceOrderEntityOverlayRanker{}
+		} else if !ok {
+			return nil, fmt.Errorf("overlay plan: configured BrainRust adapter does not implement entity overlay ranking")
+		}
+		namedCards, err := resolveOverlayEntityCardItems(ctx, result, language, canvas, entityTimeline, planID, videoID, projectID, len(perSceneImages) > 0 && perSceneImages[0], ranker)
 		if err != nil {
 			return nil, err
 		}
@@ -318,9 +351,18 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 		return nil, fmt.Errorf("overlay plan: entity image motions: %w", err)
 	}
 	// assignEntityImageMotions re-seeds entity entrances to the fast 8-frame
-	// snap. The pre-policy layout stage re-cascades the co-present settles and
-	// rotates duplicate motions; the cascade must run before a policy can
-	// replace MotionParams.
+	// snap. BrainRust cascades the combined set before a policy can replace
+	// MotionParams; Go then rotates duplicate motion IDs.
+	if overlapResolver != nil {
+		cascadeResolver, ok := overlapResolver.(capabilityoverlay.EntranceCascadeResolver)
+		if !ok {
+			return nil, fmt.Errorf("overlay plan: configured BrainRust adapter does not implement entrance cascading")
+		}
+		items, err = cascadeResolver.CascadeClusteredEntrances(ctx, items, canvas.FPSNum, canvas.FPSDen)
+		if err != nil {
+			return nil, fmt.Errorf("overlay plan: cascade entrances: %w", err)
+		}
+	}
 	animationLayoutInput := capabilityoverlay.PlanInput{
 		PlanID: planID, VideoID: videoID, MotionSeed: motionSeed, CoherenceSeed: strings.TrimSpace(canvas.CoherenceSeed),
 		Width: canvas.Width, Height: canvas.Height,
@@ -376,7 +418,7 @@ func compileOverlayPlanWithMotionOffset(result *GenerateResult, language Languag
 	plannerPlan.Items = items
 	// The master audio/timeline extent derivation and the plan sealing live in
 	// overlay_plan_seal.go (split under the 600-line file gate; same behavior).
-	sealed, err := sealOverlayPlan(result, language, plannerPlan, resolved, items, canvas, planID, videoID, projectID)
+	sealed, err := sealOverlayPlan(ctx, result, language, plannerPlan, resolved, items, canvas, planID, videoID, projectID, overlapResolver)
 	if err != nil {
 		return nil, err
 	}

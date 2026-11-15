@@ -380,6 +380,101 @@ func applyFixedSections(req GenerateRequest, scenes []Scene) ([]Scene, error) {
 	return out, nil
 }
 
+// applySegmentNoVoiceoverScenes turns every explicit no_voiceover segment into
+// an editorial fixed-media clip cutaway. The scene keeps the database clip and
+// its original audio, gets the exact editorial duration, and is excluded from
+// TTS and from the localized-render lane. This is deliberately separate from
+// stock: the clip is the visual, while a stock binding is only the background
+// of a narrated scene.
+func applySegmentNoVoiceoverScenes(req GenerateRequest, scenes []Scene) {
+	for i := range scenes {
+		scene := &scenes[i]
+		if scene.ExecutionMode.IsFixedMedia() {
+			// Protected intro/outro sections are already fixed media; never
+			// reinterpret them as body cutaways by positional matching.
+			continue
+		}
+		segment, ok := segmentForScene(req.ScriptParams.Segments, scene.ID, scene.Index)
+		if !ok || !segment.NoVoiceover {
+			continue
+		}
+		durationMS := segment.DurationMS
+		if durationMS <= 0 {
+			durationMS = scene.DurationMS
+		}
+		if durationMS <= 0 {
+			continue
+		}
+
+		scene.ExecutionMode = scriptpkg.SceneExecutionFixedMedia
+		scene.NativeClip = true
+		scene.Role = scriptpkg.SceneRoleBody
+		scene.DurationMS = durationMS
+		scene.DurationUS = durationMS * 1000
+		// The audio compiler requires the explicit fixed-media playback
+		// contract; without it the cutaway is rejected before the final render.
+		scene.FixedPlayback = &scriptpkg.FixedPlaybackPolicy{
+			AudioMode:   scriptpkg.FixedPlaybackOriginalClip,
+			SourceInMS:  0,
+			SourceOutMS: durationMS,
+		}
+		// A cutaway must not inherit narration captions or TTS from the
+		// segment brief; its only text surface is the clip's own footage.
+		scene.Text = map[Language]string{req.SourceLanguage: ""}
+		scene.Voiceover = nil
+
+		clips := sceneClips(*scene)
+		if len(clips) == 0 && len(segment.ClipIDs) > 0 {
+			clip := &ClipReference{ID: strings.TrimSpace(segment.ClipIDs[0])}
+			scene.Clip = clip
+			scene.Clips = []*ClipReference{clip}
+			clips = scene.Clips
+		}
+		var clipID string
+		for _, clip := range clips {
+			if clip == nil {
+				continue
+			}
+			clip.SourceInMS = 0
+			clip.SourceOutMS = durationMS
+			clip.DurationUS = durationMS * 1000
+			if clip.Duration <= 0 {
+				clip.Duration = float64(durationMS) / 1000
+			}
+			if clipID == "" {
+				clipID = strings.TrimSpace(clip.ID)
+			}
+		}
+		if clipID == "" {
+			continue
+		}
+
+		// Preserve the clip's original audio; prepareClipAudioAssets materializes
+		// remote/Drive clip audio via ResolveClipAudioAsset before
+		// rebuildFixedMediaTiming seals the fixed-media timeline.
+		intent := capabilityaudio.AudioIntent{
+			Mode: capabilityaudio.AudioClip, ClipAssetID: clipID,
+			SourceInUS: 0, SourceDurationUS: durationMS * 1000,
+			TimelineOffsetUS: 0, TimelineDurationUS: durationMS * 1000,
+			UseOriginalAudio: true, ProtectedOriginalAudio: true,
+		}
+		scene.Audio = intent
+		scene.AudioIntents = []capabilityaudio.AudioIntent{intent}
+	}
+}
+
+func segmentForScene(segments []scriptpkg.ScriptSegment, sceneID string, sceneIndex int) (scriptpkg.ScriptSegment, bool) {
+	for _, segment := range segments {
+		if strings.TrimSpace(segment.ID) != "" && strings.TrimSpace(segment.ID) == strings.TrimSpace(sceneID) {
+			return segment, true
+		}
+	}
+	if sceneIndex >= 0 && sceneIndex < len(segments) {
+		return segments[sceneIndex], true
+	}
+	return scriptpkg.ScriptSegment{}, false
+}
+
 // applyDurableStockBindings projects direct stock bindings onto the durable
 // Scene surface. The legacy postprocessor path performs the equivalent
 // projection on SpecScene; script.generate single-item jobs use this runner
@@ -535,6 +630,12 @@ func (r *Runner) generateSceneTextStreamingWithTrace(ctx context.Context, runID 
 	sceneByIndex := make(map[int]Scene)
 	emit := func(scene Scene) error {
 		scene = applyOwnedImportantPhraseHints(req, scene)
+		// A no_voiceover cutaway must become fixed media BEFORE the
+		// SceneTextReady boundary: the ready coordinator dispatches TTS
+		// immediately, and a later batch-only pass would be too late.
+		noVoiceoverScene := []Scene{scene}
+		applySegmentNoVoiceoverScenes(req, noVoiceoverScene)
+		scene = noVoiceoverScene[0]
 		// The SceneTextReady boundary: pin when this scene's text became
 		// final so the streaming overlap is durable and provable (scene N's
 		// translation/TTS must start before scene N+1's text is ready).

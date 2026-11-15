@@ -32,7 +32,7 @@ func SelectMediaSearchStore(cfg *config.Config, pg *sql.DB, log *zap.Logger) (se
 // registerSearchBackend is called only after provider bootstrap and freeze.
 // There is intentionally no extra-provider parameter or late-registration
 // escape hatch.
-func Build(log *zap.Logger, providerReg *providers.Registry, embeddings search.EmbeddingChannelRegistry, vectorStore search.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker RerankerClient, resolver search.CanonicalIdentityResolver) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
+func Build(log *zap.Logger, providerReg *providers.Registry, embeddings search.EmbeddingChannelRegistry, vectorStore search.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker RerankerClient, resolver search.CanonicalIdentityResolver, localScorer search.LocalScorer) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -59,6 +59,7 @@ func Build(log *zap.Logger, providerReg *providers.Registry, embeddings search.E
 		Embeddings: embeddings, VectorStore: vectorStore, MediaRepo: mediaRepo,
 		Delivery: delivery, Reranker: reranker, CanonicalResolver: resolver,
 		MediaLocalStore: localStore,
+		LocalScorer:     localScorer,
 	})
 	if err != nil {
 		log.Error("search.Build: search graph build failed", zap.Error(err))

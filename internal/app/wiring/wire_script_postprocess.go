@@ -387,22 +387,14 @@ func registerAIBackedProcessors(
 	// The processor owns no provider or database implementation: the
 	// composition root supplies the canonical MediaMemory resolver, which
 	// fans out through the shared SearchFanOut exactly once per plan.
-	// Gemma is used as a ranking strategy to choose among the closed
-	// candidate list returned by the resolver; on LLM failure the
-	// adapter deterministically falls back to the top-scoring candidate.
-	var visualPlanner adapters.VisualCandidatePlanner
+	// Candidate ranking and layer selection are already owned by the
+	// resolver. The returned plan is final; no second LLM ranking pass runs.
 	if searchFanOut != nil && root.DB != nil {
 		resolver, err := WireMediaMemoryResolver(searchFanOut, root.DB.DB, log)
 		if err != nil {
 			return fmt.Errorf("register visual_planning: wire resolver: %w", err)
 		}
-		if root.AI != nil && root.AI.ScriptGen != nil {
-			if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-				visualPlanner = ollamaadapters.NewOllamaVisualPlannerAdapter(ollamaClient, log)
-				log.Info("VisualCandidatePlanner wired with real Ollama backend")
-			}
-		}
-		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, visualPlanner, nil, log)) {
+		if !ppReg.Register(adapters.NewVisualPlanningProcessor(resolver, nil, log)) {
 			return fmt.Errorf("register visual_planning processor: composition bug")
 		}
 		log.Info("VisualPlanningProcessor wired with canonical MediaMemory resolver")
@@ -411,7 +403,7 @@ func registerAIBackedProcessors(
 	}
 	// Timeline slots are resolver-local and must remain available for manual
 	// plans even when the external MediaMemory resolver is unavailable.
-	if !ppReg.Register(adapters.NewVisualSlotsProcessor(adapters.NewClosedVisualPlanner(visualPlanner))) {
+	if !ppReg.Register(adapters.NewVisualSlotsProcessor(nil)) {
 		return fmt.Errorf("register visual_slots processor: composition bug")
 	}
 

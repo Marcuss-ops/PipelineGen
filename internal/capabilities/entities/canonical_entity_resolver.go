@@ -1,10 +1,9 @@
-// Package entities — canonical_entity_resolver.go owns the SINGLE derivation
-// of a stable, human-readable canonical entity id for an entity-typed
-// SemanticItem.
+// Package entities — canonical_entity_resolver.go owns the derivation of a
+// stable, human-readable entity id where Go media-catalog boundaries need one.
 //
 // Pipeline position:
 //
-//	Semantic Index → Canonical Entity Resolver → Visual Intent Resolver → ...
+//	Semantic identity → media catalog / overlay asset lookup
 //
 // The resolver is pure and deterministic: it never consults a database or an
 // external model. Given the same (type, name) it always yields the same
@@ -24,8 +23,7 @@
 //	                                      the hash input of StableEntityID)
 //	StableEntityID → "ent_"+16-hex      (content-addressed machine id; the
 //	                                      EntityRecord.EntityID)
-//	CanonicalEntityID → "person:tim-cook" (readable, stable link id; the
-//	                                      SemanticItem.CanonicalEntityID)
+//	CanonicalEntityID → "person:tim-cook" (readable, stable media join id)
 package entities
 
 import "strings"

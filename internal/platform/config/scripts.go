@@ -226,7 +226,7 @@ type ScriptsConfig struct {
 
 	// NLPConcurrency bounds concurrent SceneAnalysis (entity / important phrase
 	// / important word extraction) scenes in the incremental VidRush pipeline.
-	// It is independent from script text generation.
+	// It bounds CPU semantic extraction independently from script text generation.
 	NLPConcurrency int `yaml:"nlp_concurrency" env:"VELOX_SCRIPTS_NLP_CONCURRENCY" default:"4"`
 
 	// ScriptGenerationConcurrency bounds concurrent Ollama calls that write
