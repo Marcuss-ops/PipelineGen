@@ -52,20 +52,7 @@ func (a *SemanticEngineAdapter) CascadeClusteredEntrances(ctx context.Context, i
 	}
 	request := cascadeEntrancesRequest{
 		Operation: "cascade_clustered_entrances", FPSNum: fpsNum, FPSDen: fpsDen,
-		Items: make([]cascadeEntranceItem, len(items)),
-	}
-	for i := range items {
-		item := &items[i]
-		var role any
-		if item.Params != nil {
-			role = item.Params["editorial_role"]
-		}
-		request.Items[i] = cascadeEntranceItem{
-			ID: item.ID, Kind: item.Kind, TemplateID: item.TemplateID,
-			StartMs: item.StartMs, EndMs: item.EndMs, MotionParams: item.MotionParams,
-			ImageLayerCount: len(item.ImageLayers), AssetRefCount: len(item.AssetRefs),
-			EntityCaption: item.EntityCaption, Text: item.Text, EditorialRole: role,
-		}
+		Items: buildCascadeEntranceItems(items),
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -82,29 +69,7 @@ func (a *SemanticEngineAdapter) CascadeClusteredEntrances(ctx context.Context, i
 	if !response.OK {
 		return nil, fmt.Errorf("semantic-engine entrance cascade worker: %s", response.Error)
 	}
-	out := append([]capmodel.OverlayItem(nil), items...)
-	seen := make(map[int]struct{}, len(response.Edits))
-	for _, edit := range response.Edits {
-		if edit.Index < 0 || edit.Index >= len(items) {
-			return nil, fmt.Errorf("semantic-engine entrance cascade returned item index %d outside %d items", edit.Index, len(items))
-		}
-		if _, duplicate := seen[edit.Index]; duplicate {
-			return nil, fmt.Errorf("semantic-engine entrance cascade repeated item index %d", edit.Index)
-		}
-		seen[edit.Index] = struct{}{}
-		if edit.ID != items[edit.Index].ID {
-			return nil, fmt.Errorf("semantic-engine entrance cascade changed item identity at index %d", edit.Index)
-		}
-		if edit.EnterFrames <= 0 || edit.EnterFrames > 240 {
-			return nil, fmt.Errorf("semantic-engine entrance cascade returned invalid enter_frames %d for %q", edit.EnterFrames, edit.ID)
-		}
-		out[edit.Index].MotionParams = cloneCascadeMotionParams(items[edit.Index].MotionParams)
-		if out[edit.Index].MotionParams == nil {
-			return nil, fmt.Errorf("semantic-engine entrance cascade edited item %q without motion parameters", edit.ID)
-		}
-		out[edit.Index].MotionParams["enter_frames"] = edit.EnterFrames
-	}
-	return out, nil
+	return applyCascadeEntranceEdits(items, response.Edits, "semantic-engine entrance cascade")
 }
 
 func cloneCascadeMotionParams(in map[string]any) map[string]any {

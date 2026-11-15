@@ -67,15 +67,7 @@ func (a *SemanticEngineAdapter) mapTiming(ctx context.Context, operation string,
 	}
 	request := resolveMapOverlapsRequest{
 		Operation: operation, FPSNum: fpsNum, FPSDen: fpsDen,
-		SceneWindows: normalizeOverlaySceneWindows(sceneWindows), Items: make([]resolveMapOverlapsItem, len(items)),
-	}
-	for i := range items {
-		item := &items[i]
-		request.Items[i] = resolveMapOverlapsItem{
-			ID: item.ID, SceneID: item.SceneID, Kind: item.Kind, TemplateID: item.TemplateID,
-			StartMs: item.StartMs, EndMs: item.EndMs, StartUS: item.StartUS, DurationUS: item.DurationUS,
-			HasMap: item.Map != nil, Params: item.Params,
-		}
+		SceneWindows: normalizeOverlaySceneWindows(sceneWindows), Items: buildResolveMapOverlapsItems(items),
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -92,42 +84,7 @@ func (a *SemanticEngineAdapter) mapTiming(ctx context.Context, operation string,
 	if !response.OK {
 		return nil, fmt.Errorf("semantic-engine overlay timing worker: %s", strings.TrimSpace(response.Error))
 	}
-	if len(response.Edits) != len(items) {
-		return nil, fmt.Errorf("semantic-engine overlay timing returned %d edits for %d items", len(response.Edits), len(items))
-	}
-	out := append([]capmodel.OverlayItem(nil), items...)
-	seen := make([]bool, len(items))
-	kept := make([]capmodel.OverlayItem, 0, len(items))
-	for _, edit := range response.Edits {
-		if edit.Index < 0 || edit.Index >= len(items) || seen[edit.Index] {
-			return nil, fmt.Errorf("semantic-engine overlay timing returned invalid or duplicate item index %d", edit.Index)
-		}
-		if edit.ID != items[edit.Index].ID {
-			return nil, fmt.Errorf("semantic-engine overlay timing changed item identity at index %d", edit.Index)
-		}
-		seen[edit.Index] = true
-		if !edit.Keep {
-			continue
-		}
-		original := &out[edit.Index]
-		startUS, durationUS := overlayItemWindowUS(*original)
-		if edit.StartUS != startUS || edit.DurationUS != durationUS {
-			if edit.DurationUS <= 0 || edit.StartUS < 0 {
-				return nil, fmt.Errorf("semantic-engine overlay timing returned invalid window for item %q", original.ID)
-			}
-			original.StartUS = edit.StartUS
-			original.DurationUS = edit.DurationUS
-			original.StartMs = edit.StartMs
-			original.EndMs = edit.EndMs
-		}
-		kept = append(kept, *original)
-	}
-	for index, found := range seen {
-		if !found {
-			return nil, fmt.Errorf("semantic-engine overlay timing omitted item index %d", index)
-		}
-	}
-	return kept, nil
+	return applyMapTimingEdits(items, response.Edits, "semantic-engine overlay timing")
 }
 
 func overlayItemWindowUS(item capmodel.OverlayItem) (int64, int64) {

@@ -42,33 +42,8 @@ func (a *SemanticEngineAdapter) RankEntityOverlays(ctx context.Context, scenes [
 	if !response.OK {
 		return nil, fmt.Errorf("semantic-engine entity overlay ranker worker: %s", response.Error)
 	}
-	if len(response.SelectedIndices) != len(scenes) {
-		return nil, fmt.Errorf("semantic-engine entity overlay ranker returned %d scene selections for %d scenes", len(response.SelectedIndices), len(scenes))
-	}
-	for sceneIndex, scene := range scenes {
-		seenIndices := make(map[int]struct{}, len(response.SelectedIndices[sceneIndex]))
-		seenOverlayIDs := make(map[string]struct{}, len(response.SelectedIndices[sceneIndex]))
-		for _, index := range response.SelectedIndices[sceneIndex] {
-			if index < 0 || index >= len(scene.Entities) {
-				return nil, fmt.Errorf("semantic-engine entity overlay ranker returned index %d outside scene %d with %d entities", index, sceneIndex, len(scene.Entities))
-			}
-			if _, duplicate := seenIndices[index]; duplicate {
-				return nil, fmt.Errorf("semantic-engine entity overlay ranker repeated index %d in scene %d", index, sceneIndex)
-			}
-			seenIndices[index] = struct{}{}
-			id := scene.Entities[index].OverlayID
-			if _, duplicate := seenOverlayIDs[id]; duplicate {
-				return nil, fmt.Errorf("semantic-engine entity overlay ranker repeated overlay id %q in scene %d", id, sceneIndex)
-			}
-			seenOverlayIDs[id] = struct{}{}
-		}
-		expected := make(map[string]struct{}, len(scene.Entities))
-		for _, entity := range scene.Entities {
-			expected[entity.OverlayID] = struct{}{}
-		}
-		if len(seenOverlayIDs) != len(expected) {
-			return nil, fmt.Errorf("semantic-engine entity overlay ranker selected %d unique overlays for %d identities in scene %d", len(seenOverlayIDs), len(expected), sceneIndex)
-		}
+	if err := validateEntitySelections(scenes, response.SelectedIndices, "semantic-engine entity overlay ranker"); err != nil {
+		return nil, err
 	}
 	return response.SelectedIndices, nil
 }
