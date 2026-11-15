@@ -150,8 +150,8 @@ func TestSemanticEngineAnalysesEverySceneInOneBatchCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extract scene entities: %v", err)
 	}
-	if len(visualEntities) != 1 || visualEntities[0].Text != "Marco Rossi" || runner.calls != 1 || extractRunner.calls != 1 {
-		t.Fatalf("visual entities=%+v batch calls=%d extract calls=%d; want isolated scene analysis", visualEntities, runner.calls, extractRunner.calls)
+	if len(visualEntities) != 1 || visualEntities[0].Text != "Marco Rossi" || visualEntities[0].Role != "named_entity" || runner.calls != 1 || extractRunner.calls != 1 {
+		t.Fatalf("visual entities=%+v batch calls=%d extract calls=%d; want isolated scene analysis with the linked role", visualEntities, runner.calls, extractRunner.calls)
 	}
 	first := bundles["scene_01"]
 	if len(first.Bullets) != 2 || first.Bullets[0].Text != "Marco Rossi founded the studio." {

@@ -114,8 +114,8 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		}
 		item := scriptpkg.AnnotatedEntity{
 			ID: "entity-" + safeEntityID(canonical), Text: canonical,
-			CanonicalName: canonical, Type: kind, Confidence: entity.Confidence,
-			Mentions: mentions,
+			CanonicalName: canonical, Type: kind, Role: entity.Role,
+			Confidence: entity.Confidence, Mentions: mentions,
 		}
 		// Carry BrainRust's linked identity through to the overlay media index.
 		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
@@ -127,7 +127,13 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 		} else if kind == "BRAND" && item.Image != nil {
 			item.Type = "LOGO"
 		}
-		if scriptpkg.IsAnnotationEntityKind(item.Type) {
+		primary, hasRole := scriptpkg.AnnotationRoleIsPrimary(entity.Role)
+		if !hasRole {
+			// Pre-v3 producers did not carry a role. Keep the legacy kind
+			// fallback for them; v3 always supplies the Rust decision.
+			primary = scriptpkg.IsAnnotationEntityKind(item.Type)
+		}
+		if primary {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)

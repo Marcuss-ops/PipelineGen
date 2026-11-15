@@ -289,12 +289,17 @@ func (a *SemanticEngineAdapter) Extract(
 	}
 	for _, entity := range bundle.Entities {
 		canonicalID := ""
+		role := ""
 		var searchIntents []string
 		if entity.IdentityID != "" {
 			canonicalID = "local:" + bundle.Fingerprint + ":" + entity.IdentityID
 			identity, ok := identitiesByID[entity.IdentityID]
 			if !ok {
 				return nil, fmt.Errorf("semantic-engine: entity %q references missing linked identity %q", entity.Text, entity.IdentityID)
+			}
+			role = strings.TrimSpace(identity.Role)
+			if role != "named_entity" && role != "visual_concept" {
+				return nil, fmt.Errorf("semantic-engine: identity %q has unsupported role %q", entity.IdentityID, role)
 			}
 			if identity.CanonicalID != "" {
 				canonicalID = identity.CanonicalID
@@ -307,6 +312,7 @@ func (a *SemanticEngineAdapter) Extract(
 		out = append(out, scriptgen.VisualEntity{
 			Text: entity.Text, Type: scriptpkg.EntityType(entity.Kind), Score: float32(entity.Score),
 			Start: entity.Start, End: entity.End, Evidence: entity.Evidence, IdentityID: entity.IdentityID, CanonicalID: canonicalID,
+			Role:          role,
 			SearchIntents: append([]string(nil), searchIntents...),
 			EntityIndex:   bundle.Analyzers.EntityIndex,
 		})

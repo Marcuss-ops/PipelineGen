@@ -22,6 +22,26 @@ func TestSceneAnnotationsPreservesBrainRustEntityType(t *testing.T) {
 	t.Fatalf("Villa Pamphili missing from primary entities: %+v", ann.PrimaryEntities)
 }
 
+func TestSceneAnnotationsUsesRustRoleBeforeLegacyKind(t *testing.T) {
+	text := "Miami hosted the championship."
+	ann := sceneAnnotations(text, "en", scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
+			{Value: "Miami", Type: "GPE", Confidence: 0.9, Role: "visual_concept"},
+			{Value: "championship", Type: "EVENT", Confidence: 0.9, Role: "named_entity"},
+		}},
+	})
+	if ann == nil {
+		t.Fatal("annotations must not be nil")
+	}
+	if len(ann.SecondaryEntities) != 1 || ann.SecondaryEntities[0].CanonicalName != "Miami" || ann.SecondaryEntities[0].Role != "visual_concept" {
+		t.Fatalf("secondary entities = %+v, want Miami from visual_concept role", ann.SecondaryEntities)
+	}
+	if len(ann.PrimaryEntities) != 1 || ann.PrimaryEntities[0].CanonicalName != "championship" || ann.PrimaryEntities[0].Role != "named_entity" {
+		t.Fatalf("primary entities = %+v, want championship from named_entity role", ann.PrimaryEntities)
+	}
+}
+
 func TestSceneAnnotationsUsesResolverIdentityType(t *testing.T) {
 	text := "São Paulo recebeu a Operação Vectura Corrupta."
 	ann := sceneAnnotations(text, "pt", scriptpkg.VidRushSegmentResult{SegmentID: "scene-1", Insights: scriptpkg.SegmentInsights{

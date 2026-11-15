@@ -213,7 +213,7 @@ func localizedSourceVisualEntities(matches []localizedSourceMatch) []VisualEntit
 	}
 	out := make([]VisualEntity, 0, len(matches))
 	for _, match := range matches {
-		out = append(out, VisualEntity{Text: match.Surface, Type: match.Kind, Score: float32(match.Source.Confidence)})
+		out = append(out, VisualEntity{Text: match.Surface, Type: match.Kind, Score: float32(match.Source.Confidence), Role: match.Source.Role})
 	}
 	return out
 }

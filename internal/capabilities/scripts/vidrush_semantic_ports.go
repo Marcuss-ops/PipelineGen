@@ -45,6 +45,7 @@ type VisualEntity struct {
 	Evidence      string               `json:"evidence,omitempty"`
 	IdentityID    string               `json:"identity_id,omitempty"`
 	CanonicalID   string               `json:"canonical_id,omitempty"`
+	Role          string               `json:"role,omitempty"`
 	SearchIntents []string             `json:"search_intents,omitempty"`
 	// EntityIndex is the packaged analyzer index that produced the linked ids.
 	EntityIndex string `json:"entity_index,omitempty"`

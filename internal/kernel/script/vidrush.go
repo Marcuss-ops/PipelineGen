@@ -119,11 +119,15 @@ const (
 
 // ExtractedEntity is a typed entity extracted from one segment.
 type ExtractedEntity struct {
-	Value         string   `json:"value"`
-	Type          string   `json:"type"`
-	Confidence    float64  `json:"confidence"`
-	IdentityID    string   `json:"identity_id,omitempty"`
-	CanonicalID   string   `json:"canonical_id,omitempty"`
+	Value       string  `json:"value"`
+	Type        string  `json:"type"`
+	Confidence  float64 `json:"confidence"`
+	IdentityID  string  `json:"identity_id,omitempty"`
+	CanonicalID string  `json:"canonical_id,omitempty"`
+	// Role is BrainRust's EntityRole projection: named_entity or
+	// visual_concept. Empty only on pre-v3 producers; consumers must not
+	// re-derive it from Type when it is present.
+	Role          string   `json:"role,omitempty"`
 	SearchIntents []string `json:"search_intents,omitempty"`
 	// EntityIndex is the packaged analyzer index that produced the linked ids
 	// and intents. Empty on values produced before v3 provenance.
@@ -224,8 +228,24 @@ func AnnotationEntityKinds() []string {
 
 // IsAnnotationEntityKind reports whether a normalized annotation kind is a
 // primary entity-card / media kind: PERSON / ORG / GPE / PRODUCT / LOGO.
+// It is the legacy v2 classification; v3 consumers must use the Rust role.
 func IsAnnotationEntityKind(kind string) bool {
 	return annotationEntityKindSet[kind]
+}
+
+// AnnotationRoleIsPrimary projects BrainRust's EntityRole onto the annotation
+// primary/secondary split. The second result is false when the producer
+// predates the role field (pre-v3), allowing a compatibility fallback to
+// IsAnnotationEntityKind without making Go a second owner for v3 manifests.
+func AnnotationRoleIsPrimary(role string) (primary, known bool) {
+	switch strings.TrimSpace(role) {
+	case "named_entity":
+		return true, true
+	case "visual_concept":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 // EntityMediaLink joins an NLP surface entity to a canonical media identity.

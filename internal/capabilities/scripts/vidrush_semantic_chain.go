@@ -210,6 +210,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			Confidence:    float64(ve.Score),
 			IdentityID:    ve.IdentityID,
 			CanonicalID:   ve.CanonicalID,
+			Role:          ve.Role,
 			SearchIntents: append([]string(nil), ve.SearchIntents...),
 			EntityIndex:   ve.EntityIndex,
 		})

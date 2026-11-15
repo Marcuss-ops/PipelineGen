@@ -32,6 +32,31 @@ func TestProjectEntityAnnotations_StampsResolverCanonicalID(t *testing.T) {
 	assert.Equal(t, "person:floyd-mayweather", ann.PrimaryEntities[0].CanonicalEntityID)
 }
 
+// TestProjectEntityAnnotations_UsesRustRoleBeforeLegacyKind certifies the v3
+// authority boundary: the linked role overrides the legacy kind split in both
+// directions (a GPE visual concept is secondary; an EVENT named entity is
+// primary).
+func TestProjectEntityAnnotations_UsesRustRoleBeforeLegacyKind(t *testing.T) {
+	text := "Miami hosted the championship."
+	seg := scriptpkg.VidRushSegmentResult{
+		SegmentID: "scene-1",
+		Insights: scriptpkg.SegmentInsights{
+			Entities: []scriptpkg.ExtractedEntity{
+				{Value: "Miami", Type: "GPE", Confidence: 0.9, Role: "visual_concept"},
+				{Value: "championship", Type: "EVENT", Confidence: 0.9, Role: "named_entity"},
+			},
+		},
+	}
+	ann := projectEntityAnnotations(text, "en", seg)
+	require.NotNil(t, ann)
+	require.Len(t, ann.SecondaryEntities, 1)
+	assert.Equal(t, "Miami", ann.SecondaryEntities[0].CanonicalName)
+	assert.Equal(t, "visual_concept", ann.SecondaryEntities[0].Role)
+	require.Len(t, ann.PrimaryEntities, 1)
+	assert.Equal(t, "championship", ann.PrimaryEntities[0].CanonicalName)
+	assert.Equal(t, "named_entity", ann.PrimaryEntities[0].Role)
+}
+
 // TestProjectEntityAnnotations_ProductIsPrimaryAndStamped certifies the
 // PRODUCT taxonomy on the runner path: a PRODUCT entity survives the
 // normalizer as PRODUCT (never CONCEPT), lands in PrimaryEntities (the

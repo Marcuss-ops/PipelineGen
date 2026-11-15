@@ -123,8 +123,8 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		}
 		item := scriptpkg.AnnotatedEntity{
 			ID: "entity-" + safeAnnotationID(canonical), Text: canonical,
-			CanonicalName: canonical, Type: kind, Confidence: entity.Confidence,
-			Mentions: mentions,
+			CanonicalName: canonical, Type: kind, Role: entity.Role,
+			Confidence: entity.Confidence, Mentions: mentions,
 		}
 		if kind == "LOGO" {
 			if hasVerifiedBrandImage(canonical, seg) {
@@ -140,7 +140,13 @@ func sceneAnnotations(text, language string, seg scriptpkg.VidRushSegmentResult)
 		if item.CanonicalEntityID == "" && scriptpkg.NormalizeAnnotationType(kind) == "LOGO" {
 			item.CanonicalEntityID = "logo:" + normalizeBrandAssetName(canonical)
 		}
-		if scriptpkg.IsAnnotationEntityKind(item.Type) {
+		primary, hasRole := scriptpkg.AnnotationRoleIsPrimary(entity.Role)
+		if !hasRole {
+			// Pre-v3 producers did not carry a role. Keep the legacy kind
+			// fallback for them; v3 always supplies the Rust decision.
+			primary = scriptpkg.IsAnnotationEntityKind(item.Type)
+		}
+		if primary {
 			ann.PrimaryEntities = append(ann.PrimaryEntities, item)
 		} else {
 			ann.SecondaryEntities = append(ann.SecondaryEntities, item)
