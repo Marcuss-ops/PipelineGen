@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	overlaystatus "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/overlaystatus"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
@@ -429,8 +430,8 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 	}
 	plannedDurationMS = finalJobSceneDurationMS(remoteScenes)
 	if hasFinalAudio {
-		if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -40 || delta > 40 {
-			return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance 40ms)", plannedDurationMS, result.FinalAudio.DurationMS)
+		if delta := plannedDurationMS - result.FinalAudio.DurationMS; delta < -capabilityaudio.FinalAudioDurationToleranceMS || delta > capabilityaudio.FinalAudioDurationToleranceMS {
+			return nil, nil, fmt.Errorf("final_job scene duration %dms does not match certified final audio %dms (tolerance %dms)", plannedDurationMS, result.FinalAudio.DurationMS, capabilityaudio.FinalAudioDurationToleranceMS)
 		}
 		if err := enforceFinalJobPreflight(remoteScenes, result.FinalAudio.DurationMS); err != nil {
 			return nil, nil, err
@@ -441,7 +442,7 @@ func buildFinalJobPayloads(ctx context.Context, runID string, req GenerateReques
 			return nil, nil, err
 		}
 		appendFinalJobRuntimeAsset(&runtimeAssets, seenRuntimeAssets, "final_audio", audioRef)
-	} else if delta := plannedDurationMS*1000 - result.CanonicalTimeline.DurationUS; delta < -40_000 || delta > 40_000 {
+	} else if delta := plannedDurationMS*1000 - result.CanonicalTimeline.DurationUS; delta < -capabilityaudio.FinalAudioDurationToleranceUS || delta > capabilityaudio.FinalAudioDurationToleranceUS {
 		return nil, nil, fmt.Errorf("final_job scene duration %dms does not match canonical timeline %dus", plannedDurationMS, result.CanonicalTimeline.DurationUS)
 	}
 	remoteOverlays, overlayManifest, err := finalJobOverlayHandoff(ctx, result, consumedPhraseOverlays, imageRequested)

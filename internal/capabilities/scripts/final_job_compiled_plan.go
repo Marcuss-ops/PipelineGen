@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/finaljob"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/digest"
 )
@@ -64,7 +65,7 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	// within the existing 40 ms alignment allowance, then use the actual final
 	// audio duration as the worker timeline SSOT. Video coverage is completed
 	// on the output frame grid below without changing this certified duration.
-	if delta := audio.DurationUS - timelineDurationUS; delta < -40_000 || delta > 40_000 {
+	if delta := audio.DurationUS - timelineDurationUS; delta < -capabilityaudio.FinalAudioDurationToleranceUS || delta > capabilityaudio.FinalAudioDurationToleranceUS {
 		return "", "", fmt.Errorf("final_job V2 final audio duration %dus does not match canonical timeline %dus", audio.DurationUS, timelineDurationUS)
 	}
 	timelineDurationUS = audio.DurationUS
@@ -80,7 +81,7 @@ func finalJobCompiledPlanPayload(scenes []map[string]any, overlayRows []any, ove
 	}
 	baseEnd := base[len(base)-1].endUS
 	delta := timelineDurationUS - baseEnd
-	if delta < -40_000 || delta > 40_000 {
+	if delta < -capabilityaudio.FinalAudioDurationToleranceUS || delta > capabilityaudio.FinalAudioDurationToleranceUS {
 		return "", "", fmt.Errorf("final_job V2 scene duration %dus does not match certified final audio %dus", baseEnd, timelineDurationUS)
 	}
 	base[len(base)-1].endUS = timelineDurationUS

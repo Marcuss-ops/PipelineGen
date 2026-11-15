@@ -642,7 +642,7 @@ func TestValidateMasterAudioInvariantsFinalAudioOutOfToleranceFails(t *testing.T
 		t.Fatal(err)
 	}
 	ref := masterAudioRef(plan)
-	ref.DurationUS = timeline.DurationUS + FinalAudioDurationToleranceUS + 1
+	ref.DurationUS = timeline.DurationUS + audio.FinalAudioDurationToleranceUS + 1
 	if err := ValidateMasterAudioInvariants(timeline, plan, ref); err == nil {
 		t.Fatal("final_audio outside the tolerance must fail closed")
 	}
