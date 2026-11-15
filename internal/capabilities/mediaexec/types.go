@@ -3,7 +3,7 @@
 //
 // SINGLE OWNER: the canonical definition of every media-execution contract
 // (VideoProfile, EncoderPolicy, ExecutionConfig, NormalizeOptions,
-// CutAndNormalizeOptions, WatermarkOptions, MediaInfo) lives in
+// CutAndNormalizeOptions, MediaInfo) lives in
 // kernel/media (exec_types.go). This package RE-EXPORTS them as type aliases
 // so capability and composition code keeps the mediaexec.* spelling without a
 // second, drift-prone copy of the structs. Do NOT reintroduce a struct (or a
@@ -41,9 +41,6 @@ type NormalizeOptions = kernelmedia.NormalizeOptions
 
 // CutAndNormalizeOptions is the canonical cut+normalize request.
 type CutAndNormalizeOptions = kernelmedia.CutAndNormalizeOptions
-
-// WatermarkOptions is the canonical watermark request.
-type WatermarkOptions = kernelmedia.WatermarkOptions
 
 // MediaInfo is the canonical probe result of a media file.
 type MediaInfo = kernelmedia.MediaInfo

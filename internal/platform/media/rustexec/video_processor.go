@@ -244,27 +244,6 @@ func (p *VideoProcessor) CutAndNormalize(ctx context.Context, input, output, sta
 	})
 }
 
-func (p *VideoProcessor) ApplyWatermark(ctx context.Context, input, output string, opts mediaexec.WatermarkOptions) error {
-	codec, preset, crf, err := p.policyFor("", "", 0)
-	if err != nil {
-		return err
-	}
-	profile, err := p.resolvedProfile(mediaexec.VideoProfile{})
-	if err != nil {
-		return err
-	}
-	return p.run(ctx, request{Operation: "watermark", SourcePath: input, OutputPath: output, OverlayPath: opts.ImagePath, Opacity: opts.Opacity, Codec: codec, Preset: preset, CRF: crf,
-		Width: uint32(profile.Width), Height: uint32(profile.Height), FPSNum: uint32(profile.FPSNum), FPSDen: uint32(profile.FPSDen), KeyframeInterval: uint32(profile.KeyframeInterval),
-		AudioCodec: profile.AudioCodec, AudioBitrate: profile.AudioBitrate, SampleRate: uint32(profile.SampleRate), Channels: uint32(profile.Channels),
-		// Watermark scaling + green-screen chroma key (YouTube flow):
-		// ScalePercent is % of the main frame width; GreenScreen* drive the
-		// ffmpeg chromakey that removes the backdrop before the alpha pass.
-		ScalePercent:          uint32(opts.ScalePercent),
-		GreenScreenColor:      opts.GreenScreenColor,
-		GreenScreenSimilarity: opts.GreenScreenSimilarity,
-		GreenScreenBlend:      opts.GreenScreenBlend})
-}
-
 func (p *VideoProcessor) RemuxHLS(ctx context.Context, sourceURL, output string) error {
 	return p.run(ctx, request{Operation: "remux_hls", SourcePath: sourceURL, OutputPath: output})
 }

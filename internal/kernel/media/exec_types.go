@@ -127,16 +127,6 @@ type CutAndNormalizeOptions struct {
 	NoAudio        bool
 }
 
-type WatermarkOptions struct {
-	ImagePath             string
-	Opacity               float64
-	Position              string
-	ScalePercent          int
-	GreenScreenColor      string
-	GreenScreenSimilarity float64
-	GreenScreenBlend      float64
-}
-
 type MediaInfo struct {
 	Duration                      time.Duration
 	Width, Height                 int
