@@ -108,11 +108,12 @@ type EditorialManifest struct {
 
 // EditorialScene is one scene's extractive editorial product.
 type EditorialScene struct {
-	SceneID     string            `json:"scene_id"`
-	Title       *string           `json:"title,omitempty"`
-	TitleStatus string            `json:"title_status"`
-	TitleSource string            `json:"title_source"`
-	Bullets     []EditorialBullet `json:"bullets"`
+	SceneID         string            `json:"scene_id"`
+	Title           *string           `json:"title,omitempty"`
+	TitleStatus     string            `json:"title_status"`
+	TitleSource     string            `json:"title_source"`
+	GloballyIndexed bool              `json:"globally_indexed"`
+	Bullets         []EditorialBullet `json:"bullets"`
 }
 
 // EditorialBullet is one extractive editorial sentence span.
@@ -155,4 +156,5 @@ type ScenePhrase struct {
 	DurationUS       int64   `json:"duration_us"`
 	Score            float64 `json:"score"`
 	PresentationRole string  `json:"presentation_role"`
+	Candidate        string  `json:"candidate,omitempty"`
 }

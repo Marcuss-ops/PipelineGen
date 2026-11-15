@@ -149,11 +149,12 @@ func editorialManifestToWire(in *scriptpkg.EditorialManifest) *overlayplan.Edito
 	}
 	for _, scene := range in.Scenes {
 		wire := overlayplan.EditorialScene{
-			SceneID:     scene.SceneID,
-			Title:       scene.Title,
-			TitleStatus: scene.TitleStatus,
-			TitleSource: scene.TitleSource,
-			Bullets:     make([]overlayplan.EditorialBullet, 0, len(scene.Bullets)),
+			SceneID:         scene.SceneID,
+			Title:           scene.Title,
+			TitleStatus:     scene.TitleStatus,
+			TitleSource:     scene.TitleSource,
+			GloballyIndexed: scene.GloballyIndexed,
+			Bullets:         make([]overlayplan.EditorialBullet, 0, len(scene.Bullets)),
 		}
 		for _, bullet := range scene.Bullets {
 			wire.Bullets = append(wire.Bullets, overlayplan.EditorialBullet{
