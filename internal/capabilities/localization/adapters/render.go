@@ -172,7 +172,7 @@ func (a *RenderPlanExecutor) logPhaseFailure(phase, planID string, fields ...zap
 }
 
 // Execute maps the sealed render.RenderPlan + subtitle ASS into a concrete
-// ClipRenderPlanV1 and runs it through the render_clip boundary. The returned
+// ClipRenderPlanV1 and submits it to RenderingGen/Chronon. The returned
 // RenderFacts carry the certified output path, the content SHA-256 (read from
 // the actual bytes on disk), the size, the duration, and the codecs pinned by
 // the output contract (Chronon re-audits these before reporting success).
@@ -180,8 +180,8 @@ func (a *RenderPlanExecutor) Execute(ctx context.Context, plan render.RenderPlan
 	return a.execute(ctx, plan, subtitle, localization.RenderOptions{})
 }
 
-// ExecuteWithWatermark keeps watermarking on the same sealed render_clip
-// invocation as subtitle burn. There is no second device/encode pass.
+// ExecuteWithWatermark keeps watermarking on the same sealed Chronon render
+// request as subtitle burn. There is no second device/encode pass.
 // Deprecated in favor of ExecuteExtended: this watermark-only variant cannot
 // carry background or subtitle style to the sealed plan.
 func (a *RenderPlanExecutor) ExecuteWithWatermark(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, watermark *cliprender.MaterializedAsset, spec *cliprender.WatermarkSpec) (localization.RenderFacts, error) {
@@ -191,7 +191,7 @@ func (a *RenderPlanExecutor) ExecuteWithWatermark(ctx context.Context, plan rend
 	})
 }
 
-// ExecuteExtended runs the full-fidelity render_clip invocation: watermark,
+// ExecuteExtended submits the full-fidelity Chronon render request: watermark,
 // background, and subtitle style all reach the sealed ClipRenderPlanV1 on the
 // same single render pass (no second device/encode pass).
 func (a *RenderPlanExecutor) ExecuteExtended(ctx context.Context, plan render.RenderPlan, subtitle *localization.SubtitleAsset, opts localization.RenderOptions) (localization.RenderFacts, error) {

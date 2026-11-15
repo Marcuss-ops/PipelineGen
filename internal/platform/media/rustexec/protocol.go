@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	cliprender "github.com/Marcuss-ops/PipelineGen/internal/capabilities/cliprender"
 )
 
 const ProtocolVersion = "mediaexec.v2"
@@ -19,13 +17,11 @@ const (
 	OperationNormalize          Operation = "normalize"
 	OperationCutCopy            Operation = "cut_copy"
 	OperationCutAndNormalize    Operation = "cut_and_normalize"
-	OperationWatermark          Operation = "watermark"
 	OperationExtractFrame       Operation = "extract_frame"
 	OperationGenerateProxy      Operation = "generate_proxy"
 	OperationGenerateStoryboard Operation = "generate_storyboard"
 	OperationRemuxHLS           Operation = "remux_hls"
 	OperationTrim               Operation = "trim"
-	OperationRenderClip         Operation = "render_clip"
 	OperationMergeInputs        Operation = "merge_inputs"
 	OperationRemoveSilence      Operation = "remove_silence"
 	OperationRenderAudioPlan    Operation = "render_audio_plan"
@@ -36,9 +32,9 @@ func (o Operation) String() string { return string(o) }
 func (o Operation) valid() bool {
 	switch o {
 	case OperationHealth, OperationProbe, OperationCutBatch, OperationNormalize,
-		OperationCutCopy, OperationCutAndNormalize, OperationWatermark,
+		OperationCutCopy, OperationCutAndNormalize,
 		OperationExtractFrame, OperationGenerateProxy, OperationGenerateStoryboard,
-		OperationRemuxHLS, OperationTrim, OperationRenderClip,
+		OperationRemuxHLS, OperationTrim,
 		OperationMergeInputs, OperationRemoveSilence, OperationRenderAudioPlan:
 		return true
 	default:
@@ -73,30 +69,15 @@ type request struct {
 	// MaxParallelCuts is the Go-owned cut fanout capacity policy. Zero
 	// (omitempty) keeps the Rust executor's historical default (3); the
 	// executor fails closed on values above its validated ceiling.
-	MaxParallelCuts uint32  `json:"max_parallel_cuts,omitempty"`
-	DurationSec     float64 `json:"duration_sec,omitempty"`
-	KeepAudio       bool    `json:"keep_audio,omitempty"`
-	NoAudio         bool    `json:"no_audio,omitempty"`
-	OverlayPath     string  `json:"overlay_path,omitempty"`
-	Opacity         float64 `json:"opacity,omitempty"`
-	// Watermark scaling + green-screen chroma key (YouTube watermark flow).
-	// ScalePercent is the overlay size as a percentage of the MAIN frame
-	// width (0 = leave the overlay at its native size). GreenScreen* drive
-	// the ffmpeg chromakey filter that removes the backdrop before the
-	// alpha/opacity pass.
-	ScalePercent          uint32          `json:"scale_percent,omitempty"`
-	GreenScreenColor      string          `json:"green_screen_color,omitempty"`
-	GreenScreenSimilarity float64         `json:"green_screen_similarity,omitempty"`
-	GreenScreenBlend      float64         `json:"green_screen_blend,omitempty"`
-	InputPaths            []string        `json:"input_paths,omitempty"`
-	Jobs                  []cutRequestJob `json:"jobs,omitempty"`
-	MaxDurationSec        float64         `json:"max_duration_sec,omitempty"`
-	AudioPlan             json.RawMessage `json:"audio_plan,omitempty"`
-	AudioAssets           []audioAsset    `json:"audio_assets,omitempty"`
-	// ClipPlan is the sealed ClipRenderPlanV1 for render_clip. Validated in
-	// this transport (decode + drift) before Rust is invoked; Rust re-audits
-	// the same plan and verifies every referenced artifact fail-closed.
-	ClipPlan json.RawMessage `json:"clip_plan,omitempty"`
+	MaxParallelCuts uint32          `json:"max_parallel_cuts,omitempty"`
+	DurationSec     float64         `json:"duration_sec,omitempty"`
+	KeepAudio       bool            `json:"keep_audio,omitempty"`
+	NoAudio         bool            `json:"no_audio,omitempty"`
+	InputPaths      []string        `json:"input_paths,omitempty"`
+	Jobs            []cutRequestJob `json:"jobs,omitempty"`
+	MaxDurationSec  float64         `json:"max_duration_sec,omitempty"`
+	AudioPlan       json.RawMessage `json:"audio_plan,omitempty"`
+	AudioAssets     []audioAsset    `json:"audio_assets,omitempty"`
 }
 
 // Validate checks the transport envelope and the operation-specific required
@@ -155,30 +136,8 @@ func (r request) Validate() error {
 			return fmt.Errorf("%s: jobs are required", r.Operation)
 		}
 		return nil
-	case OperationRenderClip:
-		if err := requireSource(); err != nil {
-			return err
-		}
-		if err := requireOutput(); err != nil {
-			return err
-		}
-		if len(r.ClipPlan) == 0 || string(r.ClipPlan) == "null" {
-			return fmt.Errorf("%s: clip_plan is required", r.Operation)
-		}
-		// Last Go transport boundary: decode the sealed ClipRenderPlanV1 and
-		// re-validate the complete contract (identity + hashes + enum gates),
-		// so a drifted/tampered plan is rejected before any Rust process
-		// starts — the Rust side then re-audits the same plan fail-closed.
-		var plan cliprender.ClipRenderPlanV1
-		if err := json.Unmarshal(r.ClipPlan, &plan); err != nil {
-			return fmt.Errorf("%s: decode sealed clip_plan: %w", r.Operation, err)
-		}
-		if err := plan.Validate(); err != nil {
-			return fmt.Errorf("%s: sealed clip_plan validation failed: %w", r.Operation, err)
-		}
-		return nil
 	case OperationCutCopy, OperationNormalize, OperationCutAndNormalize,
-		OperationWatermark, OperationExtractFrame, OperationGenerateProxy,
+		OperationExtractFrame, OperationGenerateProxy,
 		OperationGenerateStoryboard, OperationRemuxHLS, OperationTrim:
 		if err := requireSource(); err != nil {
 			return err
@@ -273,25 +232,16 @@ type mediaMetadata struct {
 	// Stage timings populated only by render_audio_plan (mix → AAC encode →
 	// probe → hash). Zero everywhere else; final_audio_sha256 is the digest
 	// Rust computed over the published output.
-	MixMS       int64 `json:"mix_ms"`
-	AACEncodeMS int64 `json:"aac_encode_ms"`
-	ProbeMS     int64 `json:"probe_ms"`
-	HashMS      int64 `json:"hash_ms"`
-	FFmpegMS    int64 `json:"ffmpeg_ms"`
-	// render_clip phase timings (the benchmark decomposition): StartupMS is
-	// the pre-ffmpeg wall inside Rust (plan decode + source probe + graph
-	// build + process spawn), PublishMS the output publish, OpMS the whole
-	// render_clip wall. Pointers: nil when the operation did not report the
-	// phase (NOT_INSTRUMENTED semantics — never a fake zero).
-	StartupMS        *int64 `json:"startup_ms,omitempty"`
-	PublishMS        *int64 `json:"publish_ms,omitempty"`
-	OpMS             *int64 `json:"op_ms,omitempty"`
+	MixMS            int64  `json:"mix_ms"`
+	AACEncodeMS      int64  `json:"aac_encode_ms"`
+	ProbeMS          int64  `json:"probe_ms"`
+	HashMS           int64  `json:"hash_ms"`
+	FFmpegMS         int64  `json:"ffmpeg_ms"`
 	FinalAudioSHA256 string `json:"final_audio_sha256"`
-	// render_clip audio copy policy outcome (copy verbatim vs one certified
-	// conversion) and whether the burn stage rasterized libass (CPU).
+	// Audio copy policy outcome (copy verbatim vs one certified
+	// conversion).
 	AudioCopyEligible *bool `json:"audio_copy_eligible,omitempty"`
 	AudioEncodePasses *int  `json:"audio_encode_passes,omitempty"`
-	SubtitleRasterCPU *bool `json:"subtitle_raster_cpu,omitempty"`
 	// GPU counters are Chronon-owned (the queue artifact metrics). The Rust
 	// zero-copy counters (gpu_copy_bytes / video_zero_copy) were removed with
 	// the PATH B CUDA hybrid.
@@ -308,13 +258,8 @@ type mediaMetadata struct {
 	VRAMUsedPeakMB          *uint64  `json:"vram_used_peak_mb,omitempty"`
 	// Fine-grained render phases are optional until the owning executor
 	// measures them; nil preserves NOT_INSTRUMENTED semantics.
-	DecodeMS          *int64 `json:"decode_ms,omitempty"`
-	FilterGraphMS     *int64 `json:"filter_graph_ms,omitempty"`
-	SubtitleRasterMS  *int64 `json:"subtitle_raster_ms,omitempty"`
-	WatermarkRasterMS *int64 `json:"watermark_raster_ms,omitempty"`
-	FrameConversionMS *int64 `json:"frame_conversion_ms,omitempty"`
-	EncodeMS          *int64 `json:"encode_ms,omitempty"`
-	AudioMuxMS        *int64 `json:"audio_mux_ms,omitempty"`
+	DecodeMS *int64 `json:"decode_ms,omitempty"`
+	EncodeMS *int64 `json:"encode_ms,omitempty"`
 }
 
 type audioEditMetadata struct {

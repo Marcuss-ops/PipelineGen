@@ -10,7 +10,7 @@
 // stage's wall time IS its critical-path contribution
 // within the job: the RunReport breakdown orders them by start time and the
 // benchmark derives the per-phase critical path from exactly these stages.
-// The external technical calls (rust.render_clip, drive upload, ...) are
+// The external technical calls (chronon.render_clip, drive upload, ...) are
 // recorded separately as OperationReport observations so a stage wall time
 // is never confused with an accumulated dependency time.
 //
