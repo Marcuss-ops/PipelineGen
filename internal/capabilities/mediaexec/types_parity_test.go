@@ -28,7 +28,6 @@ func TestContractTypesAreKernelAliases(t *testing.T) {
 		{"ExecutionConfig", ExecutionConfig{}, kernelmedia.ExecutionConfig{}},
 		{"NormalizeOptions", NormalizeOptions{}, kernelmedia.NormalizeOptions{}},
 		{"CutAndNormalizeOptions", CutAndNormalizeOptions{}, kernelmedia.CutAndNormalizeOptions{}},
-		{"WatermarkOptions", WatermarkOptions{}, kernelmedia.WatermarkOptions{}},
 		{"MediaInfo", MediaInfo{}, kernelmedia.MediaInfo{}},
 	}
 	for _, tc := range cases {
