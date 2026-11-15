@@ -5,6 +5,8 @@ package scriptgeneration
 // remain a no-op and never affect the rendering plan.
 
 import (
+	"context"
+
 	"encoding/json"
 	"strings"
 	"testing"
@@ -21,7 +23,7 @@ func editorialRegressionResult(t *testing.T) *GenerateResult {
 
 func marshalPlan(t *testing.T, result *GenerateResult) string {
 	t.Helper()
-	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-fixed", "video-fixed", "project-fixed")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-fixed", "video-fixed", "project-fixed", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	raw, err := json.Marshal(plan)

@@ -7,6 +7,8 @@
 package scriptgeneration
 
 import (
+	"context"
+
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -332,8 +334,8 @@ func TestCompileOverlayPlanMovesResolvedEntityImageAsideFromDate(t *testing.T) {
 		})
 
 	canvas := goldenMixCanvas()
-	plan, err := CompileOverlayPlanWithPlates(result, "en", canvas,
-		"plan-date-entity-collision", "video-date-entity-collision", "project-date-entity-collision", resolver, true, true)
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", canvas,
+		"plan-date-entity-collision", "video-date-entity-collision", "project-date-entity-collision", resolver, passthroughMapOverlapResolver{}, true, true)
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	var date, portrait *capmodel.OverlayItem

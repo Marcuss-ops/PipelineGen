@@ -338,8 +338,9 @@ func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {
 // default: a deployment with no operator manifest emits no map at all, rather
 // than reaching for a tile service or inventing a plate.
 func TestCompileOverlayPlanWithoutPlatesEmitsNoMap(t *testing.T) {
-	plan, err := CompileOverlayPlan(
-		groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
+	plan, err := CompileOverlayPlanWithRustResolver(
+		context.Background(), groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
+		nil, passthroughMapOverlapResolver{},
 	)
 	require.NoError(t, err)
 	// The place contributes nothing else (a GPE card needs a resolved image

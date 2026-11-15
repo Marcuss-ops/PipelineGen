@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -59,9 +60,9 @@ func TestCompileLegacyOverlayPlan_PreservesEntityImagePresetAndTiming(t *testing
 	}
 
 	style := &scriptpkg.OverlayStyleSpec{Color: []float64{0.1, 0.2, 0.3, 1}}
-	plan, err := CompileOverlayPlanFromGenerationResultWithStyle(
-		result, Language("en"), map[string]*capabilityaudio.SpeechTimingArtifact{"en:0": timing},
-		nil, style, "batch-plan", "project",
+	plan, err := CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver(
+		context.Background(), result, Language("en"), map[string]*capabilityaudio.SpeechTimingArtifact{"en:0": timing},
+		nil, style, 0, "batch-plan", "project", passthroughMapOverlapResolver{},
 	)
 	if err != nil {
 		t.Fatalf("compile legacy overlay plan: %v", err)

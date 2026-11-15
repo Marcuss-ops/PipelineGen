@@ -13,22 +13,6 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// sourceOrderEntityOverlayRanker keeps isolated legacy plan compilation
-// deterministic when no Rust resolver was supplied. Production compilers
-// receive SemanticEngineAdapter, which owns scoring and deduplication.
-type sourceOrderEntityOverlayRanker struct{}
-
-func (sourceOrderEntityOverlayRanker) RankEntityOverlays(_ context.Context, scenes []capabilityentities.EntityOverlayRankingScene) ([][]int, error) {
-	selected := make([][]int, len(scenes))
-	for sceneIndex, scene := range scenes {
-		selected[sceneIndex] = make([]int, len(scene.Entities))
-		for entityIndex := range scene.Entities {
-			selected[sceneIndex][entityIndex] = entityIndex
-		}
-	}
-	return selected, nil
-}
-
 // compileOverlayPlanWithMotionOffset derives motion entropy deterministically
 // from immutable plan identity (plan + video + project). Identical inputs
 // compile byte-identical plans and retries stay bit-identical; a new plan ID
@@ -246,15 +230,14 @@ func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateRes
 		PlateResolver: plates,
 	}
 	var plannerPlan capmodel.OverlayPlan
-	if overlapResolver != nil {
-		trimmer, ok := overlapResolver.(capabilityoverlay.MapWindowTrimmer)
-		if !ok {
-			return nil, fmt.Errorf("overlay plan: configured BrainRust map resolver does not implement the pre-budget trimmer")
-		}
-		plannerPlan, err = capabilityoverlay.BuildPlanWithMapWindowTrimmer(ctx, plannerInput, plannerConfig, trimmer)
-	} else {
-		plannerPlan, err = capabilityoverlay.BuildPlan(plannerInput, plannerConfig)
+	if overlapResolver == nil {
+		return nil, fmt.Errorf("overlay plan: BrainRust map resolver is required: map window trimming, collision resolution and entrance cascading are owned by the semantic engine")
 	}
+	trimmer, ok := overlapResolver.(capabilityoverlay.MapWindowTrimmer)
+	if !ok {
+		return nil, fmt.Errorf("overlay plan: configured BrainRust map resolver does not implement the pre-budget trimmer")
+	}
+	plannerPlan, err = capabilityoverlay.BuildPlanWithMapWindowTrimmer(ctx, plannerInput, plannerConfig, trimmer)
 	if err != nil {
 		return nil, fmt.Errorf("overlay plan: plan: %w", err)
 	}
@@ -312,9 +295,7 @@ func compileOverlayPlanWithMotionOffset(ctx context.Context, result *GenerateRes
 	// budget admits image cards only when they have materialized media.
 	if entityTimeline != nil && len(entityTimeline.Scenes) > 0 {
 		ranker, ok := overlapResolver.(capabilityentities.EntityOverlayRanker)
-		if overlapResolver == nil {
-			ranker = sourceOrderEntityOverlayRanker{}
-		} else if !ok {
+		if !ok {
 			return nil, fmt.Errorf("overlay plan: configured BrainRust adapter does not implement entity overlay ranking")
 		}
 		namedCards, err := resolveOverlayEntityCardItems(ctx, result, language, canvas, entityTimeline, planID, videoID, projectID, len(perSceneImages) > 0 && perSceneImages[0], ranker)

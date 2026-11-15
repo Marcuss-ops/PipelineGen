@@ -372,7 +372,9 @@ func newTestRunner() (*Runner, *inMemRunRepository, *stubTextGenerator, *stubTra
 	renderEnq := newStubRenderEnqueuer()
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	return runner, repo, textGen, translator, voiceoverGen, renderEnq
 }
 

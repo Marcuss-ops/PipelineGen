@@ -86,13 +86,13 @@ func TestCompileOverlayPlanHonoursCallerPhraseCeiling(t *testing.T) {
 
 	canvas := GoldenOverlayCanvas
 	canvas.MaxPhraseOverlays = 3
-	plan, err := CompileOverlayPlan(result, "en", canvas, "plan-ceiling-3", "video-ceiling", "project-ceiling")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", canvas, "plan-ceiling-3", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan, "the scene must derive an OverlayPlan")
 	require.Equal(t, 3, countPlanPhrases(plan), "caller ceiling 3 must cap the grounded phrases")
 
 	// Absent ceiling (zero) keeps the certified default.
-	plan, err = CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-ceiling-default", "video-ceiling", "project-ceiling")
+	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-ceiling-default", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.Equal(t, capabilityoverlay.MaxPhraseOverlaysPerRun, countPlanPhrases(plan), "absent ceiling must keep the certified default")
@@ -102,7 +102,7 @@ func TestCompileOverlayPlanHonoursCallerPhraseCeiling(t *testing.T) {
 	for _, group := range []string{"short_phrases", "long_phrases"} {
 		raisedByGroup := GoldenOverlayCanvas
 		raisedByGroup.OverlayGroupLimits = map[string]int{group: 8}
-		plan, err = CompileOverlayPlan(result, "en", raisedByGroup, "plan-ceiling-"+group, "video-ceiling", "project-ceiling")
+		plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", raisedByGroup, "plan-ceiling-"+group, "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
 		require.NoError(t, err)
 		require.NotNil(t, plan)
 		require.Equal(t, 8, countPlanPhrases(plan), "%s alone should raise the default planner ceiling", group)
@@ -111,7 +111,7 @@ func TestCompileOverlayPlanHonoursCallerPhraseCeiling(t *testing.T) {
 	// The explicit run-level hard maximum continues to admit all candidates.
 	raised := GoldenOverlayCanvas
 	raised.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit
-	plan, err = CompileOverlayPlan(result, "en", raised, "plan-ceiling-hard-max", "video-ceiling", "project-ceiling")
+	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", raised, "plan-ceiling-hard-max", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.Equal(t, 8, countPlanPhrases(plan), "the approved hard maximum must admit every grounded candidate")
@@ -119,7 +119,7 @@ func TestCompileOverlayPlanHonoursCallerPhraseCeiling(t *testing.T) {
 	// Oversized caller requests are clamped by the same canonical budget
 	// resolver used by the production planner.
 	raised.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit + 10
-	plan, err = CompileOverlayPlan(result, "en", raised, "plan-ceiling-clamped", "video-ceiling", "project-ceiling")
+	plan, err = CompileOverlayPlanWithRustResolver(context.Background(), result, "en", raised, "plan-ceiling-clamped", "video-ceiling", "project-ceiling", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.Equal(t, 8, countPlanPhrases(plan), "available grounded candidates remain intact after clamping")

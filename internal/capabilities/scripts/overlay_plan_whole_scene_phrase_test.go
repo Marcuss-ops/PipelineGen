@@ -1,6 +1,8 @@
 package scriptgeneration
 
 import (
+	"context"
+
 	"strings"
 	"testing"
 
@@ -42,7 +44,7 @@ func TestCompileOverlayPlanSkipsOverlongUntimedScenePhrase(t *testing.T) {
 		ID: "long-untimed", Index: 1, TimelineStartUS: 2_400_000, DurationUS: 4_000_000,
 	})
 
-	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-long-untimed", "video-long-untimed", "project-long-untimed")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-long-untimed", "video-long-untimed", "project-long-untimed", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	for _, item := range plan.Items {

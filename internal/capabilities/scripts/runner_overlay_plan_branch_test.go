@@ -59,6 +59,7 @@ func runOverlayPlanBranchRun(t *testing.T, runID string) (*Runner, GenerateReque
 	repo := newInMemRunRepository()
 	voiceoverGen := &blockingTimingVoiceoverGenerator{release: make(chan struct{})}
 	runner := NewRunner(repo, newStubTextGenerator(overlayPlanBranchScenes()), newStubTranslator(), voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 
@@ -87,6 +88,7 @@ func runOverlayPlanBranchRun(t *testing.T, runID string) (*Runner, GenerateReque
 // full-run fixture uses, without executing a pipeline.
 func projectionTestRunner() *Runner {
 	runner := NewRunner(newInMemRunRepository(), newStubTextGenerator(overlayPlanBranchScenes()), newStubTranslator(), &blockingTimingVoiceoverGenerator{release: make(chan struct{})})
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 	runner.SetOverlayCanvas(GoldenOverlayCanvas)
 	return runner

@@ -6,6 +6,8 @@
 package scriptgeneration
 
 import (
+	"context"
+
 	"encoding/json"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
@@ -23,7 +25,7 @@ func TestOverlayPlanIntakeAttributesEditorialBudgetDrop(t *testing.T) {
 	canvas := GoldenOverlayCanvas
 	canvas.MaxPhraseOverlays = 3
 
-	plan, err := CompileOverlayPlan(result, "en", canvas, "plan-intake-budget", "video-intake", "project-intake")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", canvas, "plan-intake-budget", "video-intake", "project-intake", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.NotNil(t, plan.Intake, "a compiled plan must carry its intake report")
@@ -52,7 +54,7 @@ func TestOverlayPlanIntakeCountsUntimedScenes(t *testing.T) {
 	})
 	result.ResolvedScenes = append(result.ResolvedScenes, ResolvedScene{ID: "scene-no-timing", Index: 1, TimelineStartUS: 2_400_000, DurationUS: 800_000})
 
-	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-intake-untimed", "video-intake", "project-intake")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-intake-untimed", "video-intake", "project-intake", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.NotNil(t, plan.Intake)
@@ -66,7 +68,7 @@ func TestOverlayPlanIntakeCountsUntimedScenes(t *testing.T) {
 // cannot change render identity or the worker schema.
 func TestOverlayPlanIntakeStaysOffTheWireContract(t *testing.T) {
 	result := phraseCeilingFixture(t)
-	plan, err := CompileOverlayPlan(result, "en", GoldenOverlayCanvas, "plan-intake-wire", "video-intake", "project-intake")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", GoldenOverlayCanvas, "plan-intake-wire", "video-intake", "project-intake", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.NotNil(t, plan.Intake)
@@ -86,7 +88,7 @@ func TestOverlayPlanIntakeKindCountsMatchTheSealedPlan(t *testing.T) {
 	canvas := GoldenOverlayCanvas
 	canvas.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit
 
-	plan, err := CompileOverlayPlan(result, "en", canvas, "plan-intake-kinds", "video-intake", "project-intake")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", canvas, "plan-intake-kinds", "video-intake", "project-intake", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.NotNil(t, plan.Intake)

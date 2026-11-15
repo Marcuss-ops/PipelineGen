@@ -74,6 +74,7 @@ func TestRunner_ForwardsTimingPolicyToVoiceoverInput(t *testing.T) {
 	voiceoverGen := &recordingTimingPolicyGenerator{}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
@@ -109,6 +110,7 @@ func TestRunner_RequiredTimingFailureFailsRun(t *testing.T) {
 	voiceoverGen := &recordingTimingPolicyGenerator{failOnRequired: true}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 
@@ -139,6 +141,7 @@ func TestRunner_BestEffortTimingMissingDoesNotFailRun(t *testing.T) {
 	voiceoverGen := &recordingTimingPolicyGenerator{}
 
 	runner := NewRunner(repo, textGen, translator, voiceoverGen)
+	runner.SetMapOverlapResolver(passthroughMapOverlapResolver{})
 	runner.SetLogger(zap.NewNop())
 	runner.SetCombinedAudioRenderer(&stubCombinedAudioRenderer{})
 

@@ -68,7 +68,7 @@ func TestCompileOverlayPlanRetryKeepsStableIndependentImageMotions(t *testing.T)
 
 	motionsForPlan := func(planID string) ([]string, string) {
 		t.Helper()
-		plan, err := compileOverlayPlanWithMotionOffset(context.Background(), result, "en", GoldenOverlayCanvas, planID, "retry-video", "retry-project", nil, nil, nil)
+		plan, err := compileOverlayPlanWithMotionOffset(context.Background(), result, "en", GoldenOverlayCanvas, planID, "retry-video", "retry-project", nil, nil, passthroughMapOverlapResolver{})
 		if err != nil {
 			t.Fatalf("compile plan %q: %v", planID, err)
 		}

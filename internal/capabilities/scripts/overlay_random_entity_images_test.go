@@ -1,6 +1,8 @@
 package scriptgeneration
 
 import (
+	"context"
+
 	"encoding/json"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strconv"
@@ -57,7 +59,7 @@ func TestRandomImageEffectsReachMultipleEntityImagesAtFullHD(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, planID, "a deterministic plan seed must select at least one of the two image effects")
-	plan, err := CompileOverlayPlan(result, "en", canvas, planID, "video-fullhd", "project-fullhd")
+	plan, err := CompileOverlayPlanWithRustResolver(context.Background(), result, "en", canvas, planID, "video-fullhd", "project-fullhd", nil, passthroughMapOverlapResolver{})
 	require.NoError(t, err)
 	require.NotNil(t, plan)
 	require.Equal(t, 1920, plan.Width)
