@@ -2,18 +2,10 @@ package rustexec
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
-
-type cascadeEntrancesRequest struct {
-	Operation string                `json:"operation"`
-	FPSNum    int                   `json:"fps_num"`
-	FPSDen    int                   `json:"fps_den"`
-	Items     []cascadeEntranceItem `json:"items"`
-}
 
 type cascadeEntranceItem struct {
 	ID              string         `json:"id"`
@@ -27,12 +19,6 @@ type cascadeEntranceItem struct {
 	EntityCaption   string         `json:"entity_caption"`
 	Text            string         `json:"text"`
 	EditorialRole   any            `json:"editorial_role"`
-}
-
-type cascadeEntrancesResponse struct {
-	OK    bool                  `json:"ok"`
-	Error string                `json:"error,omitempty"`
-	Edits []cascadeEntranceEdit `json:"edits"`
 }
 
 type cascadeEntranceEdit struct {
@@ -50,26 +36,11 @@ func (a *SemanticEngineAdapter) CascadeClusteredEntrances(ctx context.Context, i
 	if len(items) == 0 {
 		return []capmodel.OverlayItem{}, nil
 	}
-	request := cascadeEntrancesRequest{
-		Operation: "cascade_clustered_entrances", FPSNum: fpsNum, FPSDen: fpsDen,
-		Items: buildCascadeEntranceItems(items),
-	}
-	payload, err := json.Marshal(request)
+	compilation, err := a.CompileEditorialPlan(ctx, nil, items, nil, nil, fpsNum, fpsDen)
 	if err != nil {
-		return nil, fmt.Errorf("semantic-engine entrance cascade encode: %w", err)
+		return nil, fmt.Errorf("semantic-engine entrance cascade: %w", err)
 	}
-	stdout, _, err := a.executor.Run(ctx, payload)
-	if err != nil {
-		return nil, fmt.Errorf("semantic-engine entrance cascade execute: %w", err)
-	}
-	var response cascadeEntrancesResponse
-	if err := json.Unmarshal(stdout, &response); err != nil {
-		return nil, fmt.Errorf("semantic-engine entrance cascade decode: %w", err)
-	}
-	if !response.OK {
-		return nil, fmt.Errorf("semantic-engine entrance cascade worker: %s", response.Error)
-	}
-	return applyCascadeEntranceEdits(items, response.Edits, "semantic-engine entrance cascade")
+	return compilation.EntranceItems, nil
 }
 
 func cloneCascadeMotionParams(in map[string]any) map[string]any {

@@ -2,20 +2,11 @@ package rustexec
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 )
-
-type resolveMapOverlapsRequest struct {
-	Operation    string                   `json:"operation"`
-	FPSNum       int                      `json:"fps_num"`
-	FPSDen       int                      `json:"fps_den"`
-	SceneWindows map[string][2]int64      `json:"scene_windows"`
-	Items        []resolveMapOverlapsItem `json:"items"`
-}
 
 type resolveMapOverlapsItem struct {
 	ID         string         `json:"id"`
@@ -28,12 +19,6 @@ type resolveMapOverlapsItem struct {
 	DurationUS int64          `json:"duration_us"`
 	HasMap     bool           `json:"has_map"`
 	Params     map[string]any `json:"params"`
-}
-
-type resolveMapOverlapsResponse struct {
-	OK    bool                     `json:"ok"`
-	Error string                   `json:"error,omitempty"`
-	Edits []resolveMapOverlapsEdit `json:"edits"`
 }
 
 type resolveMapOverlapsEdit struct {
@@ -65,26 +50,20 @@ func (a *SemanticEngineAdapter) mapTiming(ctx context.Context, operation string,
 	if len(items) == 0 {
 		return []capmodel.OverlayItem{}, nil
 	}
-	request := resolveMapOverlapsRequest{
-		Operation: operation, FPSNum: fpsNum, FPSDen: fpsDen,
-		SceneWindows: normalizeOverlaySceneWindows(sceneWindows), Items: buildResolveMapOverlapsItems(items),
-	}
-	payload, err := json.Marshal(request)
+	// Every overlay decision travels through the single batch operation; the
+	// per-concern wire operations are no longer part of the Go contract.
+	compilation, err := a.CompileEditorialPlan(ctx, items, nil, nil, sceneWindows, fpsNum, fpsDen)
 	if err != nil {
-		return nil, fmt.Errorf("semantic-engine overlay timing encode: %w", err)
+		return nil, fmt.Errorf("semantic-engine overlay timing: %w", err)
 	}
-	stdout, _, err := a.executor.Run(ctx, payload)
-	if err != nil {
-		return nil, fmt.Errorf("semantic-engine overlay timing execute: %w", err)
+	switch operation {
+	case "trim_map_windows_before_budget":
+		return compilation.PreBudgetItems, nil
+	case "resolve_map_overlaps":
+		return compilation.ResolvedItems, nil
+	default:
+		return nil, fmt.Errorf("semantic-engine overlay timing: unsupported operation %q", operation)
 	}
-	var response resolveMapOverlapsResponse
-	if err := json.Unmarshal(stdout, &response); err != nil {
-		return nil, fmt.Errorf("semantic-engine overlay timing decode: %w", err)
-	}
-	if !response.OK {
-		return nil, fmt.Errorf("semantic-engine overlay timing worker: %s", strings.TrimSpace(response.Error))
-	}
-	return applyMapTimingEdits(items, response.Edits, "semantic-engine overlay timing")
 }
 
 func overlayItemWindowUS(item capmodel.OverlayItem) (int64, int64) {

@@ -80,6 +80,76 @@ func TestCompileEditorialPlanAppliesBatchEdits(t *testing.T) {
 	}
 }
 
+func TestOverlayPortsUseTheSingleBatchOperation(t *testing.T) {
+	items := []capmodel.OverlayItem{
+		{ID: "map", SceneID: "scene-1", Kind: "map", StartMs: 0, EndMs: 2000, StartUS: 0, DurationUS: 2_000_000, Map: &capmodel.MapOverlay{}},
+		{ID: "image", SceneID: "scene-1", Kind: "entity_image", StartMs: 1600, EndMs: 2100, StartUS: 1_600_000, DurationUS: 500_000},
+	}
+	entranceItems := []capmodel.OverlayItem{
+		{ID: "image", SceneID: "scene-1", Kind: "entity_image", StartMs: 100, EndMs: 3000, MotionParams: map[string]any{"enter_frames": 8}},
+		{ID: "phrase", SceneID: "scene-1", Kind: "text_phrase", StartMs: 0, EndMs: 3000, MotionParams: map[string]any{"enter_frames": 8}},
+	}
+	scenes := []capabilityentities.EntityOverlayRankingScene{{Entities: []capabilityentities.EntityOverlayRankingOccurrence{
+		{EntityID: "person-tim", OverlayID: "overlay-s1-tim", EntityType: "PERSON", Confidence: 0.98},
+	}}}
+	timingPlan := `{"ok":true,"plan":{
+		"pre_budget_edits":[
+			{"index":0,"id":"map","keep":true,"start_us":0,"duration_us":1500000,"start_ms":0,"end_ms":1500},
+			{"index":1,"id":"image","keep":true,"start_us":1600000,"duration_us":500000,"start_ms":1600,"end_ms":2100}],
+		"timing_edits":[
+			{"index":0,"id":"map","keep":true,"start_us":0,"duration_us":2000000,"start_ms":0,"end_ms":2000},
+			{"index":1,"id":"image","keep":true,"start_us":2100000,"duration_us":500000,"start_ms":2100,"end_ms":2600}],
+		"ranked_entities":[],"entrance_edits":[]}}`
+	rankPlan := `{"ok":true,"plan":{"pre_budget_edits":[],"timing_edits":[],"ranked_entities":[[0]],"entrance_edits":[]}}`
+	cascadePlan := `{"ok":true,"plan":{"pre_budget_edits":[],"timing_edits":[],"ranked_entities":[],"entrance_edits":[{"index":0,"id":"image","enter_frames":12}]}}`
+	tests := []struct {
+		name   string
+		output string
+		call   func(*SemanticEngineAdapter) error
+	}{
+		{"trim", timingPlan, func(a *SemanticEngineAdapter) error {
+			_, err := a.TrimMapWindowsBeforeBudget(context.Background(), items, 24, 1)
+			return err
+		}},
+		{"overlap", timingPlan, func(a *SemanticEngineAdapter) error {
+			_, err := a.ResolveMapOverlaps(context.Background(), items, map[string][2]int64{"scene-1": {0, 5_000_000}}, 24, 1)
+			return err
+		}},
+		{"rank", rankPlan, func(a *SemanticEngineAdapter) error {
+			_, err := a.RankEntityOverlays(context.Background(), scenes)
+			return err
+		}},
+		{"cascade", cascadePlan, func(a *SemanticEngineAdapter) error {
+			_, err := a.CascadeClusteredEntrances(context.Background(), entranceItems, 24, 1)
+			return err
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runner := &semanticRunner{output: []byte(test.output)}
+			adapter, err := NewSemanticEngineAdapter(executorForSemantic(runner))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := test.call(adapter); err != nil {
+				t.Fatalf("port call: %v", err)
+			}
+			var request struct {
+				Operation string `json:"operation"`
+			}
+			if err := json.Unmarshal(runner.input, &request); err != nil {
+				t.Fatal(err)
+			}
+			if request.Operation != "compile_editorial_plan" {
+				t.Fatalf("operation=%q, want compile_editorial_plan", request.Operation)
+			}
+			if runner.calls != 1 {
+				t.Fatalf("batch used %d worker calls, want 1", runner.calls)
+			}
+		})
+	}
+}
+
 func TestCompileEditorialPlanFailsClosed(t *testing.T) {
 	items := []capmodel.OverlayItem{{ID: "map", Kind: "map", DurationUS: 2_000_000, Map: &capmodel.MapOverlay{}}}
 	scenes := []capabilityentities.EntityOverlayRankingScene{{Entities: []capabilityentities.EntityOverlayRankingOccurrence{
