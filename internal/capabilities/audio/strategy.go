@@ -76,6 +76,16 @@ type FinalAudioAsset struct {
 // FINAL_AUDIO_COPY. It must never be converted into TIMELINE_MIX implicitly.
 var ErrAudioMediaIncompatible = errors.New("AUDIO_MEDIA_INCOMPATIBLE")
 
+// FinalAudioDurationToleranceUS is the single Go-side alignment allowance
+// between the canonical timeline/plan and the AAC container duration. The
+// renderer's authoritative probe uses the same 0.040s window in Rust; every
+// Go gate (final-audio validation, final-job payload, compiled render plan)
+// consumes this constant instead of repeating the literal.
+const (
+	FinalAudioDurationToleranceUS int64 = 40_000
+	FinalAudioDurationToleranceMS       = FinalAudioDurationToleranceUS / 1000
+)
+
 func ValidateFinalAudio(asset FinalAudioAsset, plan CompiledAudioPlan) error {
 	if err := plan.Validate(); err != nil {
 		return err
@@ -84,7 +94,7 @@ func ValidateFinalAudio(asset FinalAudioAsset, plan CompiledAudioPlan) error {
 		return fmt.Errorf("%w: final audio contract does not match plan", ErrAudioMediaIncompatible)
 	}
 	planDurationMS := (plan.DurationUS + 999) / 1000
-	if !asset.FinalMix || !asset.CopyEligible || asset.FinalAudioSHA256 == "" || asset.DurationMS <= 0 || asset.SizeBytes <= 0 || asset.Bitrate <= 0 || asset.StartPTS < 0 || asset.DurationMS < planDurationMS-40 || asset.DurationMS > planDurationMS+40 || asset.Codec != plan.Output.Codec || asset.Profile != plan.Output.Profile || asset.SampleRate != plan.Output.SampleRate || asset.Channels != plan.Output.Channels || asset.ChannelLayout != plan.Output.ChannelLayout {
+	if !asset.FinalMix || !asset.CopyEligible || asset.FinalAudioSHA256 == "" || asset.DurationMS <= 0 || asset.SizeBytes <= 0 || asset.Bitrate <= 0 || asset.StartPTS < 0 || asset.DurationMS < planDurationMS-FinalAudioDurationToleranceMS || asset.DurationMS > planDurationMS+FinalAudioDurationToleranceMS || asset.Codec != plan.Output.Codec || asset.Profile != plan.Output.Profile || asset.SampleRate != plan.Output.SampleRate || asset.Channels != plan.Output.Channels || asset.ChannelLayout != plan.Output.ChannelLayout {
 		return fmt.Errorf("%w: final audio probe failed canonical validation", ErrAudioMediaIncompatible)
 	}
 	return nil

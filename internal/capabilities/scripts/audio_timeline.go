@@ -10,21 +10,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 )
 
-// FinalAudioDurationToleranceUS is the single canonical master/final-audio
-// duration tolerance. The AAC encoder may pad the final m4a by up to a frame
-// or two (~40ms) beyond the canonical timeline without violating the contract.
-// Both ValidateFinalAudioReference (the final-audio reference check) and
-// ValidateMasterAudioInvariants (the master invariant) derive from this
-// constant, matching the Rust render_audio_probe tolerance (0.040s). The
-// copy-only mux keeps its own wider window because it compares the
-// frame-aligned video container against the audio master.
-const FinalAudioDurationToleranceUS int64 = 40_000
-
+// The AAC encoder may pad the final m4a by up to a frame or two (~40ms)
+// beyond the canonical timeline without violating the contract. Both
+// ValidateFinalAudioReference (the final-audio reference check) and
+// ValidateMasterAudioInvariants (the master invariant) consume the single
+// tolerance owned by the audio package, which mirrors the Rust
+// render_audio_probe window (0.040s). The copy-only mux keeps its own wider
+// window because it compares the frame-aligned video container against the
+// audio master.
 func ValidateFinalAudioReference(ref FinalAudioReference, plan audio.CompiledAudioPlan) error {
 	if err := plan.Validate(); err != nil {
 		return err
 	}
-	if ref.AudioContractVersion != audio.AudioContractVersion || ref.AudioPlanVersion != plan.Version || ref.PlanSHA256 != plan.PlanSHA256 || ref.FinalAudioSHA256 == "" || ref.Path == "" || !ref.FinalMix || !ref.CopyEligible || ref.Bitrate <= 0 || ref.SizeBytes <= 0 || ref.StartPTS < 0 || ref.DurationMS <= 0 || math.Abs(float64(ref.DurationMS-(plan.DurationUS/1000))) > float64(FinalAudioDurationToleranceUS)/1000 {
+	if ref.AudioContractVersion != audio.AudioContractVersion || ref.AudioPlanVersion != plan.Version || ref.PlanSHA256 != plan.PlanSHA256 || ref.FinalAudioSHA256 == "" || ref.Path == "" || !ref.FinalMix || !ref.CopyEligible || ref.Bitrate <= 0 || ref.SizeBytes <= 0 || ref.StartPTS < 0 || ref.DurationMS <= 0 || math.Abs(float64(ref.DurationMS-(plan.DurationUS/1000))) > float64(audio.FinalAudioDurationToleranceUS)/1000 {
 		return fmt.Errorf("final audio reference does not satisfy canonical contract")
 	}
 	output := plan.Output
@@ -72,8 +70,8 @@ func ValidateMasterAudioInvariants(timeline audio.CanonicalTimeline, plan audio.
 	if delta < 0 {
 		delta = -delta
 	}
-	if delta > FinalAudioDurationToleranceUS {
-		return fmt.Errorf("master audio invariant: final_audio=%dus diverges from CanonicalTimeline=%dus by %dus (tolerance %dus)", finalUS, timeline.DurationUS, delta, FinalAudioDurationToleranceUS)
+	if delta > audio.FinalAudioDurationToleranceUS {
+		return fmt.Errorf("master audio invariant: final_audio=%dus diverges from CanonicalTimeline=%dus by %dus (tolerance %dus)", finalUS, timeline.DurationUS, delta, audio.FinalAudioDurationToleranceUS)
 	}
 	return nil
 }
