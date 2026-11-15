@@ -11,36 +11,20 @@ import (
 	"go.uber.org/zap"
 )
 
-// VisualCandidatePlanner is deliberately a closed-candidate seam. It may
-// rerank candidates, but it cannot search providers or invent an asset ID.
-type VisualCandidatePlanner interface {
-	Select(context.Context, VisualSelectionRequest) (string, error)
-}
-
-type VisualSelectionRequest struct {
-	SceneID      string
-	SegmentID    string
-	Text         string
-	VisualIntent string
-	Slot         mediadomain.SlotKind
-	Candidates   []mediamemory.CandidateOption
-}
-
 // VisualPlanningProcessor resolves every open scene through one batched
 // MediaMemory request. Locked assignments are applied locally and are never
-// sent to the resolver or planner.
+// sent to the resolver. The resolver owns candidate ranking and layer choice.
 type VisualPlanningProcessor struct {
 	resolver     mediamemory.Resolver
-	planner      VisualCandidatePlanner
 	materializer scriptports.AssetMaterializer
 	log          *zap.Logger
 }
 
-func NewVisualPlanningProcessor(resolver mediamemory.Resolver, planner VisualCandidatePlanner, materializer scriptports.AssetMaterializer, log *zap.Logger) *VisualPlanningProcessor {
+func NewVisualPlanningProcessor(resolver mediamemory.Resolver, materializer scriptports.AssetMaterializer, log *zap.Logger) *VisualPlanningProcessor {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &VisualPlanningProcessor{resolver: resolver, planner: planner, materializer: materializer, log: log}
+	return &VisualPlanningProcessor{resolver: resolver, materializer: materializer, log: log}
 }
 
 func (p *VisualPlanningProcessor) Name() ProcessorName { return ProcessorVisualPlanning }
@@ -112,21 +96,7 @@ func (p *VisualPlanningProcessor) Process(ctx context.Context, plan *scriptpkg.R
 			return &PostProcessResult{Warnings: []string{fmt.Sprintf("visual planning: %v", err)}}, nil
 		}
 		for _, v := range resolved.Plans {
-			if p.planner != nil && len(v.Candidates) > 0 && len(v.Layers) > 0 {
-				for i := range v.Layers {
-					selected, err := p.planner.Select(ctx, VisualSelectionRequest{SceneID: v.SceneID, SegmentID: v.SegmentID, Text: v.Text, VisualIntent: v.Text, Slot: v.Layers[i].Slot, Candidates: v.Candidates})
-					if err == nil && candidateExists(v.Candidates, selected) {
-						v.Layers[i].AssetID = selected
-					} else if err == nil && selected != "" {
-						p.log.Warn("visual planner returned an unknown asset", zap.String("asset_id", selected))
-					}
-				}
-			}
 			plans = append(plans, v)
-		}
-		for _, w := range resolved.Warnings {
-			plansWarning := w
-			_ = plansWarning
 		}
 	}
 
@@ -229,14 +199,6 @@ func visualSlotsForPolicy(plan mediadomain.MediaPlanSpec, segmentID string) []me
 		filtered = append(filtered, slot)
 	}
 	return filtered
-}
-func candidateExists(c []mediamemory.CandidateOption, id string) bool {
-	for _, x := range c {
-		if x.AssetID == id {
-			return true
-		}
-	}
-	return false
 }
 func sceneIndex(s []scriptpkg.SpecScene, id string) int {
 	for i := range s {

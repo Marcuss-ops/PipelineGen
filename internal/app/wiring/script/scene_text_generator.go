@@ -55,6 +55,64 @@ func ensureClipPlanningDuration(clip *scriptgen.ClipReference, fallbackMS int64)
 	clip.FrameCount = int64(math.Round(clip.Duration * 30))
 }
 
+// scopeSegmentPlan isolates one segment's generation plan. A narration-only
+// segment in a clip-source run must not inherit clip-native identity: its
+// accepted clip list is empty by design, and the engine would reject the plan
+// before generation. Convert it to a text plan using the segment brief, then
+// keep clip-native evidence only for segments that actually own clips.
+func scopeSegmentPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scriptpkg.ScriptSegment, index int) scriptpkg.ResolvedGenerationPlan {
+	if plan == nil {
+		return scriptpkg.ResolvedGenerationPlan{}
+	}
+	out := *plan
+	if len(segment.ClipIDs) == 0 {
+		out.ClipEvidence = nil
+		out.SourceKind = string(scriptpkg.SourceText)
+		out.Mode = scriptpkg.ModeForSource(scriptpkg.SourceText)
+		if text := strings.TrimSpace(segment.SourceText); text != "" {
+			out.SourceText = text
+			out.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(scriptpkg.SourceSpec{Type: scriptpkg.SourceText, SourceText: text}, nil))
+		}
+		return out
+	}
+	if plan.ClipEvidence == nil {
+		return out
+	}
+	scoped := scriptpkg.NewClipEvidence(*plan.ClipEvidence)
+	var owned scriptpkg.SegmentClipEvidence
+	found := false
+	if id := strings.TrimSpace(segment.ID); id != "" {
+		for _, candidate := range plan.ClipEvidence.SegmentEvidence {
+			if strings.TrimSpace(candidate.SegmentID) == id && len(candidate.ClipIDs) > 0 {
+				owned = candidate
+				found = true
+				break
+			}
+		}
+	}
+	if !found && index >= 0 && index < len(plan.ClipEvidence.SegmentEvidence) && len(plan.ClipEvidence.SegmentEvidence[index].ClipIDs) > 0 {
+		owned = plan.ClipEvidence.SegmentEvidence[index]
+		found = true
+	}
+	if !found {
+		details := make(map[string]scriptpkg.ClipDetail, len(segment.ClipIDs))
+		for _, clipID := range segment.ClipIDs {
+			if detail, ok := plan.ClipEvidence.ClipDetails[clipID]; ok {
+				details[clipID] = detail
+			}
+		}
+		owned = scriptpkg.SegmentClipEvidence{
+			SegmentID: segment.ID, Kind: segment.Kind, Topic: segment.Topic,
+			SourceText: segment.SourceText, ClipIDs: append([]string(nil), segment.ClipIDs...), Clips: details,
+		}
+	}
+	scoped.SegmentEvidence = []scriptpkg.SegmentClipEvidence{owned}
+	scoped.AcceptedClipIDs = append([]string(nil), segment.ClipIDs...)
+	scoped.ClipCount = len(segment.ClipIDs)
+	out.ClipEvidence = scoped
+	return out
+}
+
 type SceneTextGenerator struct {
 	Engine             *gencore.Engine
 	Registry           *processor.SourceRegistry
@@ -173,7 +231,13 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 			segmentReq.Source.Query = ""
 		}
 
-		segmentPlan := *plan
+		if len(segment.ClipIDs) == 0 {
+			segmentReq.Source.Type = scriptgen.SourceText
+			segmentReq.Source.Topic = textutil.FirstNonEmpty(segment.Topic, segmentReq.Source.Topic)
+			segmentReq.Source.SourceText = segment.SourceText
+			segmentReq.Source.Query = ""
+		}
+		segmentPlan := scopeSegmentPlan(plan, segment, index)
 		if plan.ClipEvidence == nil && req.Source.Type == scriptgen.SourceText && strings.TrimSpace(segmentReq.Source.SourceText) != "" {
 			segmentPlan.SourceText = segmentReq.Source.SourceText
 			segmentPlan.SourceFingerprint = scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(genSourceToSourceSpec(segmentReq.Source), nil))
@@ -182,25 +246,6 @@ func (g *SceneTextGenerator) GenerateSceneTextStreamWithTrace(
 		// complete evidence pack for provenance, but a per-clip generation call
 		// must not expose other segments' transcripts or narrative text; small
 		// models otherwise merge the intro clips or drift into unrelated facts.
-		if plan.ClipEvidence != nil {
-			segmentPlan.ClipEvidence = scriptpkg.NewClipEvidence(*plan.ClipEvidence)
-			if index < len(plan.ClipEvidence.SegmentEvidence) {
-				segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{plan.ClipEvidence.SegmentEvidence[index]}
-			} else {
-				details := make(map[string]scriptpkg.ClipDetail, len(segment.ClipIDs))
-				for _, clipID := range segment.ClipIDs {
-					if detail, ok := plan.ClipEvidence.ClipDetails[clipID]; ok {
-						details[clipID] = detail
-					}
-				}
-				segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{{
-					SegmentID: segment.ID, Kind: segment.Kind, Topic: segment.Topic,
-					SourceText: segment.SourceText, ClipIDs: append([]string(nil), segment.ClipIDs...), Clips: details,
-				}}
-			}
-			segmentPlan.ClipEvidence.AcceptedClipIDs = append([]string(nil), segment.ClipIDs...)
-			segmentPlan.ClipEvidence.ClipCount = len(segment.ClipIDs)
-		}
 		// Keep the segment on the Engine plan so its word-budget validator is
 		// active. The old nil value silently routed this call through the
 		// unvalidated whole-script path, which is why 500-word targets could

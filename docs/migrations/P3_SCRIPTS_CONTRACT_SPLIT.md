@@ -48,6 +48,14 @@ must not import another phase's implementation package.
 | VidRush | segment result, provider fanout request, cache identity | generation, media resolver | final-job | VidRush imports no sibling implementation package |
 
 ## Phase 3 executed (2026-11-15)
+## Phase 4 executed (2026-11-15)
+
+- Removed the root compatibility aliases for all generation DTOs.
+- Every top-level `scriptgeneration` consumer now names
+  `contracts/generation` directly; `rustexec` and `cmd/semantic-extract`
+  import the DTOs from the contract instead of the root package.
+- No new root file was added and the planner wrapper keeps only private state.
+
 
 - Canonical contract: `internal/capabilities/scripts/contracts/generation`.
 - Moved the serializable DTOs: production unit, planned identity, resolved
@@ -56,6 +64,21 @@ must not import another phase's implementation package.
   it carries private revocation state (`factsByCandidate`, `coveredFacts`,
   `identityByID`); its public DTO fields now use the contract types.
 - Existing constructors and tests stay source-compatible through type aliases.
+
+## Verification (2026-11-15)
+
+- `go build ./...`: pass.
+- Targeted semantic planner/search/identity tests, `cmd/semantic-extract`,
+  `contracts/...`, `finaljob` and `audio`: pass.
+- `go run ./cmd/archcheck --strict`: pass, no hard gate.
+- `git diff --check`: pass.
+- Full `go test ./internal/capabilities/scripts` remains red in the
+  entity-image binding/stamp and vidrush semantic-chain lanes. Those tests are
+  outside this type-only migration and remain WIP; they are not reported as
+  green.
+- Full `go test ./internal/platform/media/rustexec` remains red on the
+  two-scene batch fixture test (`manifest has 2 scenes, request had 1`), which
+  is unrelated to the query-DTO import change.
 
 ## Existing canonical owners (no new package needed)
 

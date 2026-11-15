@@ -12,9 +12,9 @@ import (
 )
 
 // SemanticEngineAdapter is the Go boundary of the unified Rust semantic
-// engine (`semantic_manifest.v2`). ONE request carries every scene of a
-// script and returns every grounded projection at once: bullets, chart
-// values, temporal facts and numeric facts.
+// engine (`semantic_manifest.v3`). One request
+// carries every scene of a script and returns every grounded projection at
+// once: bullets, chart values, temporal facts and numeric facts.
 //
 // This replaces the two per-category VisualNER calls (bullet and chart) for
 // the same scene. The engine keeps every candidate; selection (top-N, chart
@@ -25,11 +25,12 @@ type SemanticEngineAdapter struct {
 }
 
 const semanticEngineOutputLimit = 8 << 20
+const semanticEngineMaxInFlight = 8
 
 // NewSemanticEngineExecutor reserves bounded response headroom for whole-
 // script manifests while keeping ordinary media protocol caps conservative.
 func NewSemanticEngineExecutor(binaryPath, ffmpegPath string, log *zap.Logger) *Executor {
-	return NewExecutorWithOutputLimit(binaryPath, ffmpegPath, configuredExecutionSlots(), semanticEngineOutputLimit, log)
+	return NewMultiplexedExecutorWithOutputLimit(binaryPath, ffmpegPath, semanticEngineMaxInFlight, semanticEngineOutputLimit, log)
 }
 
 // NewSemanticEngineAdapter binds the adapter to a dedicated executor for
@@ -42,7 +43,9 @@ func NewSemanticEngineAdapter(executor *Executor) (*SemanticEngineAdapter, error
 	return &SemanticEngineAdapter{executor: executor}, nil
 }
 
-const semanticManifestV2 = "semantic_manifest.v2"
+const (
+	semanticManifestV3 = "semantic_manifest.v3"
+)
 
 // SemanticBundles analyses every scene of a script in ONE worker call and
 // returns the grounded projections keyed by scene id. The whole batch fails
@@ -101,12 +104,18 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 	if manifest == nil {
 		return nil, nil, fmt.Errorf("semantic-engine: response carries no manifest")
 	}
-	if manifest.SchemaVersion != semanticManifestV2 {
+	if manifest.SchemaVersion != semanticManifestV3 {
 		return nil, nil, fmt.Errorf("semantic-engine: unsupported schema_version %q", manifest.SchemaVersion)
 	}
 	if manifest.Language != language || manifest.Fingerprint == "" || manifest.Analyzers.VisualNER == "" ||
 		manifest.Analyzers.SemanticCore == "" || manifest.Analyzers.PhraseImpact == "" {
 		return nil, nil, fmt.Errorf("semantic-engine: manifest metadata is incomplete or does not match request language")
+	}
+	if strings.TrimSpace(manifest.Analyzers.EntityIndex) == "" {
+		return nil, nil, fmt.Errorf("semantic-engine: v3 manifest omits entity index provenance")
+	}
+	if manifest.Entities == nil {
+		return nil, nil, fmt.Errorf("semantic-engine: v3 manifest omits its entity projection")
 	}
 	if len(manifest.Scenes) != len(request.Scenes) {
 		return nil, nil, fmt.Errorf("semantic-engine: manifest has %d scenes, request had %d", len(manifest.Scenes), len(request.Scenes))
@@ -115,6 +124,13 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 	texts := make(map[string]string, len(request.Scenes))
 	for _, scene := range request.Scenes {
 		texts[scene.SceneID] = scene.Text
+	}
+	linkedIdentities, err := projectSemanticLinkedEntities(texts, manifest.Entities)
+	if err != nil {
+		return nil, nil, fmt.Errorf("semantic-engine: linked entities: %w", err)
+	}
+	if err := validateLinkedEntityCoverage(manifest.Scenes, linkedIdentities); err != nil {
+		return nil, nil, fmt.Errorf("semantic-engine: linked entity coverage: %w", err)
 	}
 	bundles := make(map[string]*scriptgen.SemanticCandidateBundle, len(manifest.Scenes))
 	for index, scene := range manifest.Scenes {
@@ -132,6 +148,7 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		bundle.Analyzers = scriptgen.SemanticAnalyzerVersions{
 			VisualNER: manifest.Analyzers.VisualNER, SemanticCore: manifest.Analyzers.SemanticCore,
 			PhraseImpact: manifest.Analyzers.PhraseImpact, Lexicon: manifest.Analyzers.Lexicon,
+			EntityIndex: manifest.Analyzers.EntityIndex,
 		}
 		bundle.Status = scene.Status
 		bundle.RejectedItems = scene.RejectedItems
@@ -206,6 +223,12 @@ func (a *SemanticEngineAdapter) semanticBundles(ctx context.Context, language st
 		}
 		bundles[scene.SceneID] = bundle
 	}
+	// The linker sees the complete script after all scene identities have
+	// registered. Publish that single authoritative projection to every
+	// bundle, including bundles for earlier scenes.
+	for _, bundle := range bundles {
+		bundle.Identities = append([]scriptgen.SemanticIdentity(nil), linkedIdentities...)
+	}
 	if err := validateSemanticScriptViews(texts, manifest.StoryGraph, manifest.VisualCoverage, bundles); err != nil {
 		return nil, nil, fmt.Errorf("semantic-engine: %w", err)
 	}
@@ -260,31 +283,32 @@ func (a *SemanticEngineAdapter) Extract(
 		return nil, err
 	}
 	out := make([]scriptgen.VisualEntity, 0, len(bundle.Entities))
-	queriesByIdentity := make(map[string][]string)
-	if bundle.Consolidation != nil {
-		for _, candidate := range bundle.Consolidation.ProductionCandidates {
-			for _, identityID := range candidate.EntityIDs {
-				for _, query := range candidate.Queries {
-					// The entity image lane has a primary identity intent. Fact
-					// context belongs to later reranking, not provider query text.
-					if query.Kind == "exact_mention" && strings.TrimSpace(query.Text) != "" {
-						if len(queriesByIdentity[identityID]) == 0 {
-							queriesByIdentity[identityID] = []string{query.Text}
-						}
-					}
-				}
-			}
-		}
+	identitiesByID := make(map[string]scriptgen.SemanticIdentity, len(bundle.Identities))
+	for _, identity := range bundle.Identities {
+		identitiesByID[identity.ID] = identity
 	}
 	for _, entity := range bundle.Entities {
 		canonicalID := ""
+		var searchIntents []string
 		if entity.IdentityID != "" {
 			canonicalID = "local:" + bundle.Fingerprint + ":" + entity.IdentityID
+			identity, ok := identitiesByID[entity.IdentityID]
+			if !ok {
+				return nil, fmt.Errorf("semantic-engine: entity %q references missing linked identity %q", entity.Text, entity.IdentityID)
+			}
+			if identity.CanonicalID != "" {
+				canonicalID = identity.CanonicalID
+			}
+			searchIntents = make([]string, 0, len(identity.SearchIntents))
+			for _, intent := range identity.SearchIntents {
+				searchIntents = append(searchIntents, intent.Query)
+			}
 		}
 		out = append(out, scriptgen.VisualEntity{
 			Text: entity.Text, Type: scriptpkg.EntityType(entity.Kind), Score: float32(entity.Score),
 			Start: entity.Start, End: entity.End, Evidence: entity.Evidence, IdentityID: entity.IdentityID, CanonicalID: canonicalID,
-			SearchIntents: append([]string(nil), queriesByIdentity[entity.IdentityID]...),
+			SearchIntents: append([]string(nil), searchIntents...),
+			EntityIndex:   bundle.Analyzers.EntityIndex,
 		})
 	}
 	return out, nil

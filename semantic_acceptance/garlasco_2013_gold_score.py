@@ -546,7 +546,7 @@ def evaluate(manifest, scenes, source_text, gold):
 
     add("gold_provenance", "NEEDS_REVIEW", "reconstructed from historical briefs; not independent human annotation")
     add("word_count", "PASS" if len(source_text.split()) == gold["provenance"]["word_count"] else "FAIL", "%d words (expected %d)" % (len(source_text.split()), gold["provenance"]["word_count"]))
-    add("schema_version", "PASS" if manifest.get("schema_version") == "semantic_manifest.v2" else "FAIL", str(manifest.get("schema_version")))
+    add("schema_version", "PASS" if manifest.get("schema_version") in ("semantic_manifest.v2", "semantic_manifest.v3") else "FAIL", str(manifest.get("schema_version")))
     add("scene_count", "PASS" if len(manifest.get("scenes", [])) == len(scenes) else "FAIL", "%d scenes returned for %d sent" % (len(manifest.get("scenes", [])), len(scenes)))
     check_offsets(results, manifest, scenes)
 

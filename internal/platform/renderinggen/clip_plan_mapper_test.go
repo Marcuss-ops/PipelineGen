@@ -333,6 +333,9 @@ func TestMapClipPlanToOverlayPlan_BlurSourceEmitsHonouredFit(t *testing.T) {
 	if bg.Kind != "video" || bg.Fit != "cover" || !bg.Loop {
 		t.Fatalf("blur_source background = %+v, want kind=video fit=cover loop=true", bg)
 	}
+	if bg.BlurPX != blurSourceRadiusPX {
+		t.Fatalf("blur_source background blur_px = %v, want %v (a sharp plate is the glitch)", bg.BlurPX, blurSourceRadiusPX)
+	}
 	if len(bg.AssetRefs) != 1 || bg.AssetRefs[0].SHA256 != plan.Source.SHA256 {
 		t.Fatalf("blur_source must reuse the source asset: %+v", bg.AssetRefs)
 	}

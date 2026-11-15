@@ -183,10 +183,16 @@ func (p *MediaResolverImageStage) processInternetImageSegments(ctx context.Conte
 			// determine this cache entry.
 			searchQuery := query
 			queryClass := searchClassForEntityQuery(updated.Insights.Entities, query)
-			canonicalID := canonicalImageSearchEntityID(updated, query, queryClass)
+			cacheIdentity := newEntityImageCacheIdentity(updated, query)
+			canonicalID := cacheIdentity.CanonicalEntityID
 			entityCacheKey := ""
 			if canonicalID != "" {
-				entityCacheKey = entityImageDiscoveryCacheKey(canonicalID, queryClass)
+				entityCacheKey = entityImageDiscoveryCacheKey(cacheIdentity, queryClass)
+			} else {
+				// Contextual queries have no canonical identity. Key their
+				// per-query cache on the research-path identity instead of
+				// collapsing every query to the empty key.
+				entityCacheKey = contextualImageDiscoveryCacheKey(plan, query, queryClass)
 			}
 			catalogIdentity, personIdentityQuery, identityErr := personCatalogIdentityForQuery(input.SpecScene, sceneIdx, updated, query)
 			if identityErr != nil {

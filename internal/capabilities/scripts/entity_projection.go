@@ -430,16 +430,8 @@ func projectEntityCompatibility(result *GenerateResult, segments []scriptpkg.Vid
 // annotationCanonicalEntityID returns the canonical, readable identity
 // ("person:floyd-mayweather", "gpe:los-angeles") of one annotation entity.
 //
-// Precedence — one identity owner, never a second spelling:
-//
-//  1. the id the Image Search Intent resolver stamped on the annotation
-//     (AnnotatedEntity.CanonicalEntityID): the DISAMBIGUATED decision (an
-//     Italian surface that canonicalizes to the English identity);
-//  2. the deterministic derivation from (type, canonical name) through the
-//     canonical identity owner (capabilities/entities.CanonicalEntityID), which
-//     is exactly the derivation the image-search resolver and the entity-image
-//     catalog use, so an unstamped annotation still yields the SAME id instead
-//     of a locally invented one.
+// Precedence — use BrainRust's linked ID when available, otherwise the stable
+// local derivation from (type, canonical name) in capabilities/entities.
 //
 // Empty only when the annotation carries no usable (type, name); a caller must
 // then treat the entity as identity-less rather than mint an id itself. Every

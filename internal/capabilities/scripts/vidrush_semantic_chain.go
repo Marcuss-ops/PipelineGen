@@ -211,6 +211,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 			IdentityID:    ve.IdentityID,
 			CanonicalID:   ve.CanonicalID,
 			SearchIntents: append([]string(nil), ve.SearchIntents...),
+			EntityIndex:   ve.EntityIndex,
 		})
 	}
 	imageEntities := imageSearchEntities(entities, extraction.HasCategoryOnlyIncludes() || hasAdditionalEntityCategory(extraction))
@@ -287,6 +288,7 @@ func (e *SceneIRSegmentEnricher) Enrich(ctx context.Context, plan *scriptpkg.Res
 		Insights: scriptpkg.SegmentInsights{
 			SegmentID:     ir.SegmentID,
 			TextHash:      ir.Profile.TextHash,
+			EntityIndex:   entityIndexVersion(extractedEntities),
 			VisualProfile: visualProfile,
 			Entities:      extractedEntities,
 			ImportantPhrases: func() []string {
@@ -445,6 +447,15 @@ func appendUniqueSemanticIntents(existing []string, intent string) []string {
 		}
 	}
 	return append(existing, intent)
+}
+
+func entityIndexVersion(entities []scriptpkg.ExtractedEntity) string {
+	for _, entity := range entities {
+		if version := strings.TrimSpace(entity.EntityIndex); version != "" {
+			return version
+		}
+	}
+	return ""
 }
 
 // canonicalSourceText selects the source wording committed by the plan.

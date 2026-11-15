@@ -46,103 +46,40 @@ func TestVidRushBackpressure_ClampsImageWorkToFifteen(t *testing.T) {
 	assert.Equal(t, MaxVidRushImageConcurrency, resolved.MaterializationLimit)
 }
 
-func TestGenerationGate_HighPriorityPreemptsLowPriority(t *testing.T) {
+func TestGenerationGate_QueuedAcquisition(t *testing.T) {
 	gate := NewGenerationGate()
-
-	// Hold the gate, then queue a low-priority waiter first.
-	require.NoError(t, gate.AcquireLow(context.Background()))
-
-	lowAcquired := make(chan struct{})
-	highAcquired := make(chan struct{})
-
-	go func() {
-		if err := gate.AcquireLow(context.Background()); err != nil {
-			return
-		}
-		close(lowAcquired)
-	}()
-	// Deterministically wait until the low waiter is actually queued.
-	waitForQueued(t, gate, func() int {
-		gate.mu.Lock()
-		defer gate.mu.Unlock()
-		return len(gate.lowWait)
-	}, 1)
-
-	// Now queue a high-priority waiter.
-	go func() {
-		if err := gate.AcquireHigh(context.Background()); err != nil {
-			return
-		}
-		close(highAcquired)
-	}()
-	waitForQueued(t, gate, func() int {
-		gate.mu.Lock()
-		defer gate.mu.Unlock()
-		return len(gate.highWait)
-	}, 1)
-
-	// Release the holder; the high-priority waiter must win even though the
-	// low-priority waiter was queued first.
-	gate.Release()
-
-	select {
-	case <-highAcquired:
-	case <-time.After(2 * time.Second):
-		t.Fatal("high-priority acquisition did not preempt the low-priority waiter")
-	}
-	select {
-	case <-lowAcquired:
-		t.Fatal("low-priority waiter acquired before high-priority waiter")
-	case <-time.After(50 * time.Millisecond):
-	}
-}
-
-func waitForQueued(t *testing.T, gate *GenerationGate, count func() int, want int) {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if count() == want {
-			return
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	t.Fatalf("waiter did not queue: got %d want %d", count(), want)
-}
-
-func TestGenerationGate_FIFOWithinSamePriority(t *testing.T) {
-	gate := NewGenerationGate()
-	require.NoError(t, gate.AcquireHigh(context.Background()))
+	require.NoError(t, gate.Acquire(context.Background()))
 
 	acquired := make(chan struct{})
 	go func() {
-		if err := gate.AcquireHigh(context.Background()); err != nil {
+		if err := gate.Acquire(context.Background()); err != nil {
 			return
 		}
 		close(acquired)
 		gate.Release()
 	}()
 
-	// Release hands the slot to the single queued high-priority waiter; that
-	// waiter acquires and releases, letting us re-acquire cleanly.
+	// Release frees the slot for the blocked waiter, which then releases it
+	// after acquiring it.
 	gate.Release()
 	select {
 	case <-acquired:
 	case <-time.After(2 * time.Second):
-		t.Fatal("queued high-priority waiter did not acquire")
+		t.Fatal("queued waiter did not acquire")
 	}
-	require.NoError(t, gate.AcquireHigh(context.Background()))
+	require.NoError(t, gate.Acquire(context.Background()))
 	gate.Release()
 }
 
 func TestGenerationGate_CapacityAllowsNConcurrentHolders(t *testing.T) {
 	gate := NewGenerationGateWithCapacity(2)
 
-	require.NoError(t, gate.AcquireLow(context.Background()))
-	require.NoError(t, gate.AcquireLow(context.Background()))
+	require.NoError(t, gate.Acquire(context.Background()))
+	require.NoError(t, gate.Acquire(context.Background()))
 
 	thirdAcquired := make(chan struct{})
 	go func() {
-		if err := gate.AcquireLow(context.Background()); err != nil {
+		if err := gate.Acquire(context.Background()); err != nil {
 			return
 		}
 		close(thirdAcquired)
@@ -171,19 +108,19 @@ func TestGenerationGate_CapacityAllowsNConcurrentHolders(t *testing.T) {
 
 func TestGenerationGate_ZeroCapacityFallsBackToSingle(t *testing.T) {
 	gate := NewGenerationGateWithCapacity(0)
-	if gate.capacity != 1 {
-		t.Fatalf("capacity = %d, want 1 (zero falls back to single-slot)", gate.capacity)
+	if gate.Capacity() != 1 {
+		t.Fatalf("capacity = %d, want 1 (zero falls back to single-slot)", gate.Capacity())
 	}
 }
 
 func TestGenerationGate_AcquireCancelledWhileWaiting(t *testing.T) {
 	gate := NewGenerationGate()
-	require.NoError(t, gate.AcquireHigh(context.Background()))
+	require.NoError(t, gate.Acquire(context.Background()))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	waiterErr := make(chan error, 1)
 	go func() {
-		waiterErr <- gate.AcquireLow(ctx)
+		waiterErr <- gate.Acquire(ctx)
 	}()
 	cancel()
 
@@ -197,6 +134,6 @@ func TestGenerationGate_AcquireCancelledWhileWaiting(t *testing.T) {
 	// The gate must remain held by the original holder; releasing it must not
 	// panic or leak a pending waiter.
 	gate.Release()
-	require.NoError(t, gate.AcquireHigh(context.Background()))
+	require.NoError(t, gate.Acquire(context.Background()))
 	gate.Release()
 }

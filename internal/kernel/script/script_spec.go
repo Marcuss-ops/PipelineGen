@@ -19,6 +19,11 @@ type ScriptSegment struct {
 	// DurationMS is an explicit editorial scene duration. It lets verbatim,
 	// no-voiceover runs build a timeline without synthesizing audio.
 	DurationMS int64 `json:"duration_ms,omitempty"`
+	// NoVoiceover marks this segment as an editorial clip cutaway: the bound
+	// clip is shown with its original audio, no TTS is synthesized, and the
+	// clip is delivered natively (never through a localized render).
+	// DurationMS is mandatory for this shape.
+	NoVoiceover bool `json:"no_voiceover,omitempty"`
 	// ShortPhraseOverlay explicitly requests one static short-phrase overlay
 	// for this verbatim segment, using its editorial duration as the display window.
 	ShortPhraseOverlay bool `json:"short_phrase_overlay,omitempty"`

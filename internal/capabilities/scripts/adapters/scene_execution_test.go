@@ -28,7 +28,7 @@ func fixedMediaSegment() scriptpkg.VidRushSegmentResult {
 
 func TestFixedMediaDoesNotEnterVisualPlanning(t *testing.T) {
 	resolver := &countingVisualResolver{}
-	visualProcessor := NewVisualPlanningProcessor(resolver, fixedPlanner{id: "replacement"}, nil, nil)
+	visualProcessor := NewVisualPlanningProcessor(resolver, nil, nil)
 	plan := &scriptpkg.ResolvedGenerationPlan{ID: "job", MediaPlan: mediadomain.MediaPlanSpec{Mode: mediadomain.MediaPlanModeHybrid}}
 	input := ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{fixedMediaScene()}}}
 

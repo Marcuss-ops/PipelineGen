@@ -297,6 +297,12 @@ func (a *RemoteFinalJobAdapter) stockDriveReference(ctx context.Context, id stri
 		}
 	}
 	if saved == nil {
+		if byID, idErr := a.media.ResolveByMediaAssetID(ctx, id); idErr == nil && byID != nil && strings.TrimSpace(byID.DriveFileID()) != "" {
+			saved = byID
+			id = strings.TrimSpace(byID.DriveFileID())
+		}
+	}
+	if saved == nil {
 		return nil, fmt.Errorf("stock Drive file %q has no saved media registry entry; run the stockpipeline first", id)
 	}
 	if saved.Duration <= 0 || len(saved.ContentHash()) != 64 {

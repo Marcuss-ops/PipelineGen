@@ -49,7 +49,7 @@ import (
 // The returned plan is sealed (render keys + fingerprint) and ready to
 // enqueue through QueueRenderEnqueuer.EnqueueChrononPlan.
 func CompileOverlayPlan(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, nil, nil, perSceneImages...)
+	return compileOverlayPlanWithMotionOffset(context.Background(), result, language, canvas, planID, videoID, projectID, nil, nil, nil, perSceneImages...)
 }
 
 // CompileOverlayPlanWithPlates is CompileOverlayPlan with the run's certified
@@ -57,7 +57,13 @@ func CompileOverlayPlan(result *GenerateResult, language Language, canvas Overla
 // become map overlay items. A nil resolver behaves exactly like
 // CompileOverlayPlan (no maps — the fail-closed default deployment).
 func CompileOverlayPlanWithPlates(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, resolver capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
-	return compileOverlayPlanWithMotionOffset(result, language, canvas, planID, videoID, projectID, nil, resolver, perSceneImages...)
+	return compileOverlayPlanWithMotionOffset(context.Background(), result, language, canvas, planID, videoID, projectID, nil, resolver, nil, perSceneImages...)
+}
+
+// CompileOverlayPlanWithRustResolver compiles and seals a plan using the
+// configured BrainRust map-overlap resolver.
+func CompileOverlayPlanWithRustResolver(ctx context.Context, result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, resolver capabilityoverlay.MapOverlapResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
+	return compileOverlayPlanWithMotionOffset(ctx, result, language, canvas, planID, videoID, projectID, nil, plates, resolver, perSceneImages...)
 }
 
 // ── Visual bullet values (merged from editorial_bullet_values.go) ──

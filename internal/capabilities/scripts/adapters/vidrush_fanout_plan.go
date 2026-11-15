@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/ports"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
@@ -72,7 +73,7 @@ func buildVidRushFanoutPlan(plan *scriptpkg.ResolvedGenerationPlan, segment scri
 	}
 	imageQueries := []string(nil)
 	if automaticImageSearch {
-		imageQueries = append([]string(nil), segment.Insights.ImageQueries...)
+		imageQueries = plausibleSceneImageQueries(segment.Insights.ImageQueries)
 	}
 	// Explicit searches authored in the media plan define this segment's image
 	// scope. Do not mix them with inferred entities or broad semantic queries:
@@ -166,7 +167,19 @@ func contextualImageLaneRequested(perSceneImages, automaticImageSearch, manualIm
 }
 
 func plausibleSceneImageQueries(queries []string) []string {
-	return append([]string(nil), queries...)
+	out := make([]string, 0, len(queries))
+	for _, query := range queries {
+		query = strings.TrimSpace(query)
+		if query == "" || utf8.RuneCountInString(query) < 2 {
+			continue
+		}
+		lower := strings.ToLower(query)
+		if strings.HasPrefix(lower, "overlay ") || strings.HasPrefix(lower, "overlay:") {
+			continue
+		}
+		out = appendUniqueImageQueries(out, []string{query})
+	}
+	return out
 }
 
 func appendUniqueImageQueries(existing, extra []string) []string {
@@ -211,7 +224,7 @@ func sceneScopedImageQueriesForTypes(segment scriptpkg.VidRushSegmentResult, ent
 		}
 		queries = appendUniqueImageQueries(queries, entity.SearchIntents)
 	}
-	return queries
+	return plausibleSceneImageQueries(queries)
 }
 
 // sceneScopedImageQueries retains every imageable person in the scene. The

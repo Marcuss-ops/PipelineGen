@@ -316,6 +316,11 @@ type Scene struct {
 	// ExecutionMode is the canonical authorization boundary shared with
 	// SpecScene. Empty is generated for backward compatibility.
 	ExecutionMode scriptpkg.SceneExecutionMode `json:"execution_mode,omitempty"`
+	// NativeClip marks an editorial no_voiceover cutaway: the database clip is
+	// shown natively with its original audio, never through the localized
+	// subtitle-render lane. It is deliberately explicit because legacy fixed
+	// media (intro/outro) does not always carry a Role.
+	NativeClip bool `json:"native_clip,omitempty"`
 	// Role is the explicit editorial timeline position (opening/body/closing).
 	// It is descriptive metadata only — authorization always flows through
 	// ExecutionMode. It replaces the old "intro/outro inferred from scene ID"

@@ -52,38 +52,6 @@ func TestWordSetsLoadFromRepositoryData(t *testing.T) {
 	}
 }
 
-func TestPhraseSetsAreTokenisedAtLoad(t *testing.T) {
-	registry := testRegistry(t)
-
-	phraseSet := registry.PhraseSet("en", "negative_phrases")
-	if len(phraseSet) == 0 {
-		t.Fatal("PhraseSet(en, negative_phrases) is empty")
-	}
-	want := map[string]bool{"instead of": false, "as opposed to": false}
-	for _, phrase := range phraseSet {
-		joined := ""
-		for i, token := range phrase {
-			if i > 0 {
-				joined += " "
-			}
-			joined += token
-		}
-		if _, ok := want[joined]; ok {
-			want[joined] = true
-		}
-	}
-	for phrase, found := range want {
-		if !found {
-			t.Errorf("PhraseSet(en, negative_phrases) is missing %q", phrase)
-		}
-	}
-
-	italian := registry.PhraseSet("it", "negative_phrases")
-	if len(italian) == 0 {
-		t.Fatal("PhraseSet(it, negative_phrases) is empty")
-	}
-}
-
 func TestUnknownWordSetAndLanguageAreNil(t *testing.T) {
 	registry := testRegistry(t)
 	if set := registry.WordSet("en", "does_not_exist"); set != nil {
@@ -91,9 +59,6 @@ func TestUnknownWordSetAndLanguageAreNil(t *testing.T) {
 	}
 	if set := registry.WordSet("xx", "pronouns"); set != nil {
 		t.Errorf("WordSet for an unknown language = %v, want nil", set)
-	}
-	if phrases := registry.PhraseSet("en", "does_not_exist"); phrases != nil {
-		t.Errorf("PhraseSet for an unknown set = %v, want nil", phrases)
 	}
 }
 
@@ -106,12 +71,8 @@ func TestResolvedProfileDeepCopiesNamedSets(t *testing.T) {
 		t.Fatalf("ResolveRequired(en): %v", err)
 	}
 	profile.WordSets["pronouns"]["injected"] = struct{}{}
-	profile.PhraseSets["negative_phrases"][0][0] = "injected"
 
 	if _, ok := registry.WordSet("en", "pronouns")["injected"]; ok {
 		t.Error("mutating a resolved profile changed the registry word set")
-	}
-	if got := registry.PhraseSet("en", "negative_phrases")[0][0]; got == "injected" {
-		t.Error("mutating a resolved profile changed the registry phrase set")
 	}
 }

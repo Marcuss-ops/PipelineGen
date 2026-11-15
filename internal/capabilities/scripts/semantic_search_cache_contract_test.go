@@ -3,6 +3,7 @@ package scriptgeneration
 import (
 	"context"
 	"errors"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"testing"
 )
 
@@ -36,7 +37,7 @@ func TestSemanticProviderFailureIsTypedAndNotAMiss(t *testing.T) {
 	}
 	plan := schedulerPlan(t, schedulerIdentities(), planCandidate(
 		"vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01",
-		SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"},
+		generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"},
 	))
 	report, err := planner.Run(context.Background(), plan, "it")
 	var providerErr *SemanticSearchProviderError

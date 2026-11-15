@@ -332,10 +332,12 @@ misurate su tutti i 156.989 record di `run_operation_observations` e sui
 
 ### 6.2 Ricerca immagini (browser + searching)
 
-La catena certificata (`internal/capabilities/imagesearch`): FRASE → estrazione
-semantica/entità → canonicalizzazione (`person:chiara-poggi`) → query di
-ricerca → risultati → validazione rilevanza → immagine scelta. Il decisore è
-deterministico (knowledge base curata, nessun modello esterno).
+La catena corrente usa BrainRust per estrarre entità, identità locali e intenti
+di ricerca; PipelineGen interroga i provider e verifica i candidati immagine.
+Il vecchio package Go `internal/capabilities/imagesearch` e il suo resolver
+sono stati rimossi perché non avevano più chiamanti runtime. Il linker Rust
+usa un indice seed versionato e a copertura limitata: un'identità non trovata
+resta esplicitamente non collegata.
 
 | Voce | Misura |
 |---|---|

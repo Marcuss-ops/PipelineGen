@@ -54,11 +54,10 @@ func ApplyAnimationConsistencyPinned(items []capmodel.OverlayItem, input PlanInp
 	EnsureDistinctNumberMotionsPinned(items, input, pinned)
 }
 
-// PrepareCompiledAnimationLayout runs the pre-policy stages of the compile
-// boundary. The cascade must run before a policy can replace MotionParams: an
-// explicit policy override owns its own entrance and is not re-shaped.
+// PrepareCompiledAnimationLayout applies Go-owned motion de-duplication before
+// policy projection. BrainRust runs the frame-based entrance cascade at the
+// compile boundary immediately before this stage.
 func PrepareCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInput, fpsNum, fpsDen int) []capmodel.OverlayItem {
-	CascadeClusteredEntrances(items, fpsNum, fpsDen)
 	ApplyAnimationConsistency(items, input)
 	return items
 }
@@ -84,12 +83,11 @@ func FinalizeCompiledAnimationLayout(items []capmodel.OverlayItem, input PlanInp
 
 // FinalizePlannerAnimationLayout is the BuildPlan order. Images are moved
 // aside before fusion so an image that later joins a chain carries its
-// collision-free placement into the segment; the cascade runs last because
-// chain containers are not shaped.
-func FinalizePlannerAnimationLayout(items []capmodel.OverlayItem, input PlanInput, fpsNum, fpsDen int) []capmodel.OverlayItem {
+// collision-free placement into the segment. BrainRust cascades after all
+// entity and planner items have been combined.
+func FinalizePlannerAnimationLayout(items []capmodel.OverlayItem, input PlanInput, _, _ int) []capmodel.OverlayItem {
 	MoveImagesAsideForOverlappingDateCards(items, input.Width)
 	ApplyAnimationConsistency(items, input)
-	CascadeClusteredEntrances(items, fpsNum, fpsDen)
 	return items
 }
 

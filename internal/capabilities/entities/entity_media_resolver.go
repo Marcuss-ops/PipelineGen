@@ -5,8 +5,7 @@
 // Pipeline position:
 //
 //	canonical_entity_id → EntityMediaIndex (available assets + quality)
-//	                    → EntityMediaResolver → asset_id → VisualIntent.AssetID
-//	                    → DeterministicPresetSampler → (preset, animation)
+//	                    → EntityMediaResolver → resolved asset id
 //
 // The index maps a canonical_entity_id (the human-readable identity produced
 // by CanonicalEntityID, e.g. "person:floyd-mayweather-jr") to its available
@@ -14,12 +13,11 @@
 // quality and returns the best content-addressed asset (ResolvedAssetRef) —
 // never a bare URL.
 //
-// It REUSES the existing EntityAsset / AssetRepository / InMemoryAssetRepository
-// / ResolvedAssetRef machinery (asset_resolver.go); only the key derivation is
-// new: IndexForEntity derives the EntityID from (type, name) via
-// CanonicalEntityID, so callers never hand-write an id. This is the media
-// index the semantic-index pipeline reads; AssetResolver (StableEntityID-keyed)
-// remains for the legacy entity-record path.
+// It uses the shared EntityAsset / AssetRepository / InMemoryAssetRepository /
+// ResolvedAssetRef data model (asset_resolver.go). IndexForEntity derives the
+// EntityID from (type, name) via CanonicalEntityID, so callers never hand-write
+// an id. Rust supplies canonical semantic identities; Go keeps the catalog
+// lookup and asset binding at the media boundary.
 package entities
 
 import (
@@ -33,19 +31,16 @@ var ErrEntityHasNoAssets = errors.New("entity media resolver: entity has no asse
 
 // EntityMediaIndex is the canonical_entity_id-keyed media index. It stores the
 // same EntityAsset records as the repository but keys them on the canonical
-// entity id (the slug), which is what flows through
-// SemanticItem.CanonicalEntityID.
+// entity id (the slug) carried by the semantic identity contract.
 type EntityMediaIndex struct {
 	repo AssetRepository
 }
 
 // NewEntityMediaIndex returns an index backed by a fresh in-memory asset
-// repository. The composition root can swap the backend via SetRepository.
+// repository.
 func NewEntityMediaIndex() *EntityMediaIndex {
 	return &EntityMediaIndex{repo: NewInMemoryAssetRepository()}
 }
-
-// SetRepository swaps the backing store, e.g. a durable SQLite adapter.
 
 // IndexForEntity upserts an asset bound to the canonical entity identified by
 // (type, name). The asset's EntityID is derived via CanonicalEntityID — the
@@ -60,22 +55,10 @@ func (ix *EntityMediaIndex) IndexForEntity(entityType, name string, asset Entity
 	return ix.repo.Upsert(asset)
 }
 
-// IndexAllForEntity upserts several assets for the same canonical entity and
-// fails closed on the first invalid one (a poisoned asset never partially
-// indexes).
-func (ix *EntityMediaIndex) IndexAllForEntity(entityType, name string, assets ...EntityAsset) error {
-	for _, asset := range assets {
-		if err := ix.IndexForEntity(entityType, name, asset); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // IndexForCanonicalID upserts an asset under an ALREADY-derived canonical
-// entity id (e.g. the imagesearch resolver's CanonicalID, which may differ
-// from CanonicalEntityID(type, surfaceName) when the surface is not the
-// canonical name) WITHOUT re-deriving it. Fails closed on an empty id — an
+// entity id from the semantic linker, which may differ from
+// CanonicalEntityID(type, surfaceName) when the surface is not the canonical
+// name, WITHOUT re-deriving it. Fails closed on an empty id — an
 // asset is never minted for an unknown identity.
 func (ix *EntityMediaIndex) IndexForCanonicalID(canonicalID string, asset EntityAsset) error {
 	if ix == nil || ix.repo == nil {
@@ -110,14 +93,6 @@ func (ix *EntityMediaIndex) Assets(canonicalEntityID string) []EntityAsset {
 		}
 	}
 	return nil
-}
-
-// Len returns the total number of indexed assets.
-func (ix *EntityMediaIndex) Len() int {
-	if ix == nil || ix.repo == nil {
-		return 0
-	}
-	return ix.repo.Len()
 }
 
 // EntityMediaResolver selects the best asset for a canonical_entity_id. It is
@@ -156,24 +131,4 @@ func (r *EntityMediaResolver) ResolveBest(canonicalEntityID string) (ResolvedAss
 		LocalPath: best.LocalPath,
 		MediaType: mediaTypeFor(best.AssetType),
 	}, nil
-}
-
-// ResolveTop returns the top-n content-addressed assets of the canonical
-// entity in quality order (n <= 0 means all). Empty when the entity has none.
-func (r *EntityMediaResolver) ResolveTop(canonicalEntityID string, n int) []ResolvedAssetRef {
-	all := r.index.Assets(canonicalEntityID)
-	if n > 0 && len(all) > n {
-		all = all[:n]
-	}
-	out := make([]ResolvedAssetRef, 0, len(all))
-	for _, asset := range all {
-		out = append(out, ResolvedAssetRef{
-			AssetID:   asset.AssetID,
-			SHA256:    asset.SHA256,
-			URL:       asset.StorageURL,
-			LocalPath: asset.LocalPath,
-			MediaType: mediaTypeFor(asset.AssetType),
-		})
-	}
-	return out
 }

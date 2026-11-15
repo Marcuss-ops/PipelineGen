@@ -343,7 +343,11 @@ func TestEntityImage_PersonQueryPreservesEntityIdentity(t *testing.T) {
 			CanonicalName: "Dwayne Johnson", Text: "Dwayne Johnson", Type: "PERSON",
 		}}},
 	}}}
-	seg := scriptpkg.VidRushSegmentResult{SegmentID: "scene-dwayne", SceneID: "scene-dwayne"}
+	seg := scriptpkg.VidRushSegmentResult{SegmentID: "scene-dwayne", SceneID: "scene-dwayne",
+		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{{
+			Value: "Dwayne Johnson", Type: "PERSON", SearchIntents: []string{"Dwayne Johnson"},
+		}}},
+	}
 
 	queries := scenePrimaryEntityQueries(spec, buildSceneIdentityIndex(spec), seg)
 	if len(queries) != 1 || queries[0] != "Dwayne Johnson" {
@@ -364,8 +368,8 @@ func TestEntityImage_SceneQueriesIncludeEntitiesMissingFromPartialAnnotations(t 
 	segment := scriptpkg.VidRushSegmentResult{
 		SegmentID: "pair-01", SceneID: "pair-01",
 		Insights: scriptpkg.SegmentInsights{Entities: []scriptpkg.ExtractedEntity{
-			{Value: "Alberto Stasi", Type: "PERSON"},
-			{Value: "Giada Bocellari", Type: "PERSON"},
+			{Value: "Alberto Stasi", Type: "PERSON", SearchIntents: []string{"Alberto Stasi"}},
+			{Value: "Giada Bocellari", Type: "PERSON", SearchIntents: []string{"Giada Bocellari"}},
 		}},
 	}
 	queries := scenePrimaryEntityQueries(spec, buildSceneIdentityIndex(spec), segment)

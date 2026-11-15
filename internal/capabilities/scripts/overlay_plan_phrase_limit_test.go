@@ -5,6 +5,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"testing"
@@ -132,7 +133,7 @@ func TestCompileResultOverlayPlanBudgetEchoesCallerCeiling(t *testing.T) {
 	}}
 	canvas := GoldenOverlayCanvas
 	canvas.MaxPhraseOverlays = capabilityoverlay.MaxPhraseOverlaysHardLimit + 10
-	require.NoError(t, compileResultOverlayPlan(result, "en", "plan-budget", "project-budget", "", canvas, nil))
+	require.NoError(t, compileResultOverlayPlan(context.Background(), result, "en", "plan-budget", "project-budget", "", canvas, nil, nil))
 	require.Nil(t, result.OverlayPlan)
 	require.NotNil(t, result.PhraseOverlayBudget)
 	require.Equal(t, capabilityoverlay.PhraseOverlayBudget{

@@ -2,6 +2,7 @@ package rustexec
 
 import (
 	"fmt"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -79,7 +80,7 @@ func projectSemanticSearchFeedback(
 		for _, suggestion := range proposal.VisualQuerySuggestions {
 			suggested[suggestion] = struct{}{}
 		}
-		queries := make([]scriptgen.SemanticSearchQuery, 0, len(entry.Queries))
+		queries := make([]generationcontract.SemanticSearchQuery, 0, len(entry.Queries))
 		seenQueries := make(map[string]struct{}, len(entry.Queries))
 		previousKind := -1
 		for _, query := range entry.Queries {
@@ -110,7 +111,7 @@ func projectSemanticSearchFeedback(
 				return nil, fmt.Errorf("semantic search feedback: proposal %q repeats query %q", proposalID, text)
 			}
 			seenQueries[text] = struct{}{}
-			queries = append(queries, scriptgen.SemanticSearchQuery{
+			queries = append(queries, generationcontract.SemanticSearchQuery{
 				Kind: kind, Text: text, Origin: query.Origin, Illustrative: query.Illustrative,
 			})
 		}

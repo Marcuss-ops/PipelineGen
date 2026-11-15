@@ -107,6 +107,11 @@ func (r *Runner) runSceneTextPhase(ctx context.Context, runID string, req Genera
 			return result, false
 		}
 		applyDurableStockBindings(req, scenes)
+		// Explicit no_voiceover segments are editorial clip cutaways: keep the
+		// database clip, use its original audio, and never synthesize TTS or a
+		// localized render for it. This runs before render expectations and the
+		// output word budget, so the cutaway is not counted as narration.
+		applySegmentNoVoiceoverScenes(req, scenes)
 		// Caller-provided important phrases are an explicit overlay contract.
 		// Keep them grounded in the final narration text even when a small/local
 		// model paraphrases the brief and drops the requested literal surface.

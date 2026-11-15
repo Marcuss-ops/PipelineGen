@@ -1,5 +1,5 @@
 // Package visual resolves timeline visual slots without provider or renderer
-// dependencies. Gemma receives only the closed candidate set supplied here.
+// dependencies. A planner receives only the closed candidate set supplied here.
 package visual
 
 import (
@@ -53,7 +53,8 @@ type Result struct {
 	Warnings    []string
 }
 
-// Resolve applies Manual first, then Gemma, then a deterministic sampler.
+// Resolve applies manual assignments first, then a configured planner, then
+// a deterministic sampler.
 // Locked assignments are reserved at their requested positions and never
 // passed to Planner.
 func Resolve(ctx context.Context, req Request, planner Planner) (Result, error) {

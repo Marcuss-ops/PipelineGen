@@ -24,7 +24,6 @@ func cloneProfile(p *LexiconProfile) *LexiconProfile {
 		VerbSuffixes:      append([]string(nil), p.VerbSuffixes...),
 		PhrasePolicy:      p.PhrasePolicy,
 		WordSets:          cloneWordSets(p.WordSets),
-		PhraseSets:        clonePhraseSets(p.PhraseSets),
 	}
 	return out
 }
@@ -53,22 +52,6 @@ func cloneWordSets(src map[string]map[string]struct{}) map[string]map[string]str
 	dst := make(map[string]map[string]struct{}, len(src))
 	for name, set := range src {
 		dst[name] = cloneStringSet(set)
-	}
-	return dst
-}
-
-// clonePhraseSets deep-copies the named phrase lists.
-func clonePhraseSets(src map[string][][]string) map[string][][]string {
-	if len(src) == 0 {
-		return map[string][][]string{}
-	}
-	dst := make(map[string][][]string, len(src))
-	for name, phrases := range src {
-		copied := make([][]string, len(phrases))
-		for i, phrase := range phrases {
-			copied[i] = append([]string(nil), phrase...)
-		}
-		dst[name] = copied
 	}
 	return dst
 }

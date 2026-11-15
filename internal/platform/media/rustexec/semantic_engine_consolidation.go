@@ -2,6 +2,7 @@ package rustexec
 
 import (
 	"fmt"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"sort"
 	"strings"
 
@@ -92,7 +93,7 @@ func projectSemanticConsolidation(
 				return nil, fmt.Errorf("semantic consolidation: candidate %q covers unknown fact %q", wireCandidate.ID, factID)
 			}
 		}
-		queries := make([]scriptgen.SemanticSearchQuery, 0, len(wireCandidate.Queries))
+		queries := make([]generationcontract.SemanticSearchQuery, 0, len(wireCandidate.Queries))
 		seenQueries := make(map[string]struct{}, len(wireCandidate.Queries))
 		for _, query := range wireCandidate.Queries {
 			// Exact identity mentions are grounded against the whole script:
@@ -114,7 +115,7 @@ func projectSemanticConsolidation(
 				return nil, fmt.Errorf("semantic consolidation: candidate %q repeats query %q", wireCandidate.ID, query.Text)
 			}
 			seenQueries[query.Text] = struct{}{}
-			projectedQuery := scriptgen.SemanticSearchQuery{
+			projectedQuery := generationcontract.SemanticSearchQuery{
 				Kind: query.Kind, Text: query.Text, Origin: query.Origin,
 				Illustrative: query.Illustrative,
 			}
@@ -132,7 +133,7 @@ func projectSemanticConsolidation(
 			}
 			projectedQuery.DerivedTerms = append(projectedQuery.DerivedTerms, query.DerivedTerms...)
 			for _, component := range query.Components {
-				projectedQuery.Components = append(projectedQuery.Components, scriptgen.SemanticSearchQueryComponent{
+				projectedQuery.Components = append(projectedQuery.Components, generationcontract.SemanticSearchQueryComponent{
 					Kind: component.Kind, ComponentType: component.ComponentType, Text: component.Text,
 					StartByte: component.StartByte, EndByte: component.EndByte,
 				})

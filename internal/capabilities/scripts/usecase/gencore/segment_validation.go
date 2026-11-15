@@ -144,7 +144,7 @@ func (e *Engine) generateSegments(
 	// concurrency gate; it must not re-time the same inference boundary.
 	generate := func(ctx context.Context, req ports.TextGenerationRequest) (*ports.GenerationResult, error) {
 		if e.generationGate != nil {
-			if err := e.generationGate.AcquireHigh(ctx); err != nil {
+			if err := e.generationGate.Acquire(ctx); err != nil {
 				return nil, err
 			}
 			defer e.generationGate.Release()
@@ -186,9 +186,39 @@ func (e *Engine) generateSegments(
 		segmentPlan.Segments = []scriptpkg.ScriptSegment{segment}
 		segmentPlan.TargetWords = segmentBudgetFor(plan, index, settings.segmentTolerancePercent).Target
 		segmentPlan.SegmentWords = 0
-		if plan.ClipEvidence != nil && index < len(plan.ClipEvidence.SegmentEvidence) {
-			segmentPlan.ClipEvidence = scriptpkg.NewClipEvidence(*plan.ClipEvidence)
-			segmentPlan.ClipEvidence.SegmentEvidence = []scriptpkg.SegmentClipEvidence{plan.ClipEvidence.SegmentEvidence[index]}
+		if len(segment.ClipIDs) == 0 {
+			// A narration-only segment inside a clip-source run is a text
+			// plan: it owns no clip evidence, so it must not inherit the
+			// clip-native identity and fail the engine's evidence gate.
+			segmentPlan.ClipEvidence = nil
+			segmentPlan.SourceKind = string(scriptpkg.SourceText)
+			segmentPlan.Mode = scriptpkg.ModeForSource(scriptpkg.SourceText)
+			if text := cleanSegmentSourceText(segment.SourceText); text != "" {
+				segmentPlan.SourceText = text
+			}
+		} else if plan.ClipEvidence != nil {
+			scoped := scriptpkg.NewClipEvidence(*plan.ClipEvidence)
+			var owned scriptpkg.SegmentClipEvidence
+			found := false
+			if id := strings.TrimSpace(segment.ID); id != "" {
+				for _, candidate := range plan.ClipEvidence.SegmentEvidence {
+					if strings.TrimSpace(candidate.SegmentID) == id {
+						owned = candidate
+						found = true
+						break
+					}
+				}
+			}
+			if !found && index < len(plan.ClipEvidence.SegmentEvidence) {
+				owned = plan.ClipEvidence.SegmentEvidence[index]
+				found = true
+			}
+			if found {
+				scoped.SegmentEvidence = []scriptpkg.SegmentClipEvidence{owned}
+			}
+			scoped.AcceptedClipIDs = append([]string(nil), segment.ClipIDs...)
+			scoped.ClipCount = len(segment.ClipIDs)
+			segmentPlan.ClipEvidence = scoped
 		}
 		segmentReq := req
 		// Layout and opening scope are composed by one pure helper so the

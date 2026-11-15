@@ -117,10 +117,7 @@ func projectEntityAnnotations(text, language string, seg scriptpkg.VidRushSegmen
 			CanonicalName: canonical, Type: kind, Confidence: entity.Confidence,
 			Mentions: mentions,
 		}
-		// Stamp the canonical_entity_id the Image Search Intent resolver
-		// chose for this entity (the join key of the overlay media index), so
-		// the overlay compile resolves the card asset under the SAME identity
-		// — never a re-derivation from a possibly-different surface.
+		// Carry BrainRust's linked identity through to the overlay media index.
 		item.CanonicalEntityID = seg.ResolverCanonicalID(canonical, value)
 		if scriptpkg.IsAnnotationEntityKind(kind) {
 			item.Image = entityImageBindingFor(canonical, kind, seg)
@@ -233,7 +230,7 @@ func entityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult
 			continue
 		}
 		entity := normalizeEntityImageName(candidate.Entity)
-		entityMatches := entity == want
+		entityMatches := entity == want || enrichedAcronymIdentityMatches(name, entity)
 		if !entityMatches {
 			continue
 		}
@@ -256,6 +253,28 @@ func entityImageBindingFor(name, kind string, seg scriptpkg.VidRushSegmentResult
 		}
 	}
 	return nil
+}
+
+// enrichedAcronymIdentityMatches accepts a small, explicit class of provider
+// labels that append a descriptive organization type to an exact acronym.
+// It does not use fuzzy matching: the leading acronym must match exactly and
+// the remaining words must be a known generic descriptor.
+func enrichedAcronymIdentityMatches(want, candidate string) bool {
+	fields := strings.Fields(want)
+	if len(fields) != 1 || !isUppercaseAcronym(fields[0]) {
+		return false
+	}
+	candidateFields := strings.Fields(candidate)
+	if len(candidateFields) < 2 || candidateFields[0] != strings.ToLower(fields[0]) {
+		return false
+	}
+	descriptor := strings.Join(candidateFields[1:], " ")
+	switch descriptor {
+	case "news agency", "news service", "wire service", "news organization":
+		return true
+	default:
+		return false
+	}
 }
 
 func entityImagePreviewURL(candidate scriptpkg.SegmentAssetCandidate) string {

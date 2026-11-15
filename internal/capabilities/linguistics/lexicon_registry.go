@@ -55,12 +55,11 @@ type LexiconRegistry struct {
 //	entity_blocklist.txt — words never treated as entities, one per line
 //	phrase_policy.txt    — YAML or simple key=value lines (min_words, max_words, etc.)
 //	<extra_word_set>.txt — one word per line (see extraWordSetFiles)
-//	<extra_phrase_set>.txt — one phrase per line (see extraPhraseSetFiles)
 //
-// The extra word/phrase sets are the remaining linguistic vocabulary that
+// The extra word sets are the remaining linguistic vocabulary that
 // used to live as literals in capability code (subordinate markers, pronouns,
 // articles, possessives, clitic pronouns, pro-drop auxiliaries, contrast
-// openers, negative phrases and the cross-language numeric overlay
+// openers and the cross-language numeric overlay
 // vocabulary). They are loaded by name so a consumer asks for the set it
 // needs instead of keeping a second copy of the words.
 //
@@ -80,12 +79,6 @@ var extraWordSetFiles = []string{
 	"contrast_openers",
 	"numeric_overlay_words",
 	"numeric_overlay_context",
-}
-
-// extraPhraseSetFiles are the named phrase-list files (one phrase per line,
-// tokenised on whitespace at load time). See PhraseSet.
-var extraPhraseSetFiles = []string{
-	"negative_phrases",
 }
 
 func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
@@ -115,7 +108,6 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 			VerbSuffixes:      nil,
 			PhrasePolicy:      DefaultPhraseExtractionPolicy(),
 			WordSets:          make(map[string]map[string]struct{}),
-			PhraseSets:        make(map[string][][]string),
 		}
 
 		if err := loadWordSet(filepath.Join(dir, "stopwords.txt"), profile.StopWords); err != nil {
@@ -152,22 +144,6 @@ func NewLexiconRegistry(rootDir string) (*LexiconRegistry, error) {
 				profile.WordSets[name] = words
 			}
 		}
-		for _, name := range extraPhraseSetFiles {
-			lines, err := loadStringList(filepath.Join(dir, name+".txt"))
-			if err != nil {
-				return nil, err
-			}
-			phrases := make([][]string, 0, len(lines))
-			for _, line := range lines {
-				if fields := strings.Fields(line); len(fields) > 0 {
-					phrases = append(phrases, fields)
-				}
-			}
-			if len(phrases) > 0 {
-				profile.PhraseSets[name] = phrases
-			}
-		}
-
 		profiles[lang] = profile
 	}
 

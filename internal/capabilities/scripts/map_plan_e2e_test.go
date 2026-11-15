@@ -63,6 +63,38 @@ func newOrleansPlate(t *testing.T) capabilityoverlay.MapPlate {
 // composition-root adapter does.
 type plateStub struct{ plates []capabilityoverlay.MapPlate }
 
+// passthroughMapOverlapResolver keeps these producer tests focused on map
+// projection and sealing. BrainRust owns collision resolution in production;
+// protocol and timing behavior are covered at the rustexec adapter boundary.
+type passthroughMapOverlapResolver struct{}
+
+func (passthroughMapOverlapResolver) ResolveMapOverlaps(_ context.Context, items []capmodel.OverlayItem, _ map[string][2]int64, _, _ int) ([]capmodel.OverlayItem, error) {
+	return items, nil
+}
+
+func (passthroughMapOverlapResolver) TrimMapWindowsBeforeBudget(_ context.Context, items []capmodel.OverlayItem, _, _ int) ([]capmodel.OverlayItem, error) {
+	return items, nil
+}
+
+func (passthroughMapOverlapResolver) CascadeClusteredEntrances(_ context.Context, items []capmodel.OverlayItem, _, _ int) ([]capmodel.OverlayItem, error) {
+	return items, nil
+}
+
+func (passthroughMapOverlapResolver) RankEntityOverlays(_ context.Context, scenes []capabilityentities.EntityOverlayRankingScene) ([][]int, error) {
+	selected := make([][]int, len(scenes))
+	for sceneIndex, scene := range scenes {
+		selected[sceneIndex] = make([]int, len(scene.Entities))
+		for entityIndex := range scene.Entities {
+			selected[sceneIndex][entityIndex] = entityIndex
+		}
+	}
+	return selected, nil
+}
+
+func compileMapPlanForTest(result *GenerateResult, language Language, canvas OverlayCanvasSpec, planID, videoID, projectID string, plates capabilityoverlay.PlateResolver, perSceneImages ...bool) (*capmodel.OverlayPlan, error) {
+	return CompileOverlayPlanWithRustResolver(context.Background(), result, language, canvas, planID, videoID, projectID, plates, passthroughMapOverlapResolver{}, perSceneImages...)
+}
+
 func (s plateStub) ResolveFlyover(from, to capmodel.MapCenter, _, _ int) (capabilityoverlay.MapPlate, bool) {
 	if len(s.plates) == 0 || len(s.plates[0].LODs) == 0 {
 		return capabilityoverlay.MapPlate{}, false
@@ -158,7 +190,7 @@ func groundedPlaceResult() *GenerateResult {
 // basemap is the certified local raster with no network reference.
 func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 	plate := newOrleansPlate(t)
-	plan, err := CompileOverlayPlanWithPlates(
+	plan, err := compileMapPlanForTest(
 		groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
 		plateStub{plates: []capabilityoverlay.MapPlate{plate}},
 	)
@@ -205,7 +237,7 @@ func TestCompileOverlayPlanWithPlatesEmitsGroundedMapItem(t *testing.T) {
 func TestCompileOverlayPlanWithShortPhraseSceneKeepsGroundedMap(t *testing.T) {
 	result := groundedPlaceResult()
 	result.Scenes[0].ShortPhraseOverlay = true
-	plan, err := CompileOverlayPlanWithPlates(
+	plan, err := compileMapPlanForTest(
 		result, "en", GoldenOverlayCanvas, "short-map-plan", "short-map-video", "map-project",
 		plateStub{plates: []capabilityoverlay.MapPlate{newOrleansPlate(t)}},
 	)
@@ -229,7 +261,7 @@ func TestCompileOverlayPlanMapsOnlyRemovesLateEntityCards(t *testing.T) {
 	// Reproduce the production failure mode: a map and a phrase in the same
 	// scene are close enough for default chain coalescing to fuse them.
 	result.Scenes[0].ShortPhraseOverlay = true
-	plan, err := CompileOverlayPlanWithPlates(
+	plan, err := compileMapPlanForTest(
 		result, "en", canvas, "maps-only-plan", "maps-only-video", "map-project",
 		plateStub{plates: []capabilityoverlay.MapPlate{newOrleansPlate(t)}},
 	)
@@ -255,7 +287,7 @@ func TestCompileOverlayPlanEmitsExplicitShortPhraseScene(t *testing.T) {
 		scriptpkg.OverlayCategoryPhrases: scriptpkg.ToggleEnabled,
 		scriptpkg.OverlayCategoryMaps:    scriptpkg.ToggleDisabled,
 	}
-	plan, err := CompileOverlayPlanWithPlates(
+	plan, err := compileMapPlanForTest(
 		result, "en", canvas, "short-phrase-plan", "short-phrase-video", "phrase-project", nil,
 	)
 	require.NoError(t, err)
@@ -273,7 +305,7 @@ func TestCompileOverlayPlanEmitsExplicitShortPhraseScene(t *testing.T) {
 
 func TestCompileOverlayPlanWithFlyoverPlatesEmitsNativeCamera(t *testing.T) {
 	canvas := OverlayCanvasSpec{Width: 640, Height: 360, FPSNum: 30, FPSDen: 1}
-	plan, err := CompileOverlayPlanWithPlates(
+	plan, err := compileMapPlanForTest(
 		groundedPlaceResult(), "en", canvas, "map-flyover-plan", "map-flyover-video", "map-project",
 		plateStub{plates: newOrleansFlyoverPlates(t)},
 	)
@@ -324,7 +356,7 @@ func TestCompileOverlayPlanWithPlatesIgnoresUncoveredPlace(t *testing.T) {
 	plate.Window = geodesy.CenteredOn(48.8566, 2.3522, plate.Zoom, plate.Width, plate.Height)
 	plate.Center = capmodel.MapCenter{Latitude: 48.8566, Longitude: 2.3522}
 
-	plan, err := CompileOverlayPlanWithPlates(
+	plan, err := compileMapPlanForTest(
 		groundedPlaceResult(), "en", GoldenOverlayCanvas, "map-plan", "map-video", "map-project",
 		plateStub{plates: []capabilityoverlay.MapPlate{plate}},
 	)

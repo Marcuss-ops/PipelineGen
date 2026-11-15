@@ -284,6 +284,9 @@ func mergeVidRushSegmentResult(dst, src scriptpkg.VidRushSegmentResult) scriptpk
 	if src.TextHash != "" {
 		out.TextHash = src.TextHash
 	}
+	if src.Insights.EntityIndex != "" {
+		out.Insights.EntityIndex = src.Insights.EntityIndex
+	}
 	if len(src.Insights.Entities) > 0 {
 		out.Insights.Entities = append([]scriptpkg.ExtractedEntity(nil), src.Insights.Entities...)
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 
 	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts"
@@ -30,7 +31,7 @@ func buildReport(
 			ProductionCandidates: len(consolidation.ProductionCandidates),
 		}
 	}
-	planByScene := make(map[string][]scriptgen.SemanticProductionUnit)
+	planByScene := make(map[string][]generationcontract.SemanticProductionUnit)
 	if plan != nil {
 		report.Plan = planReport{Schema: plan.Schema, Metrics: planMetricsReport{
 			RawCandidates:           plan.Metrics.RawCandidates,
@@ -116,7 +117,7 @@ func composedReport(query scriptgen.SemanticComposedImageQuery, source string) q
 	return out
 }
 
-func plannedQueries(queries []scriptgen.SemanticSearchQuery) []queryReport {
+func plannedQueries(queries []generationcontract.SemanticSearchQuery) []queryReport {
 	out := make([]queryReport, 0, len(queries))
 	for _, query := range queries {
 		entry := queryReport{Query: query.Text, Evidence: query.Evidence}

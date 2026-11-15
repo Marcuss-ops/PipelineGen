@@ -11,8 +11,8 @@
 //  2. Pre-PR2 legacy raw-vector path: schema.SparseQueryVector with
 //     {indices, values} + POST sparse prefetch = {query: {indices,
 //     values}, using: bm25_text} → assert hit returned (this branch
-//     stays available for diagnostic / bulk-from-csv callers per
-//     pkg/bm25's Deprecated marker).
+//     stays available to low-level diagnostic / bulk-from-csv callers through
+//     schema.SparseQueryVector).
 //     // The mock replaces docker compose qdrant so the test runs in pure
 //
 // unit-test mode without external services.

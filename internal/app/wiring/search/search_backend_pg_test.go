@@ -17,6 +17,16 @@ type fakeLocalStore struct {
 	hashRecs []pgmedia.MediaAssetRecord
 }
 
+type fixedLocalScorer struct{}
+
+func (fixedLocalScorer) ScoreLocal(_ context.Context, _ search.LocalScoreQuery, candidates []search.LocalScoreCandidate) ([]search.LocalScoreResult, error) {
+	results := make([]search.LocalScoreResult, 0, len(candidates))
+	for _, candidate := range candidates {
+		results = append(results, search.LocalScoreResult{ID: candidate.ID, Score: 0.6})
+	}
+	return results, nil
+}
+
 func (f *fakeLocalStore) SearchLocal(_ context.Context, req pgmedia.LocalMediaSearchRequest) ([]pgmedia.MediaAssetRecord, error) {
 	f.textReq = req
 	return f.records, nil
@@ -34,7 +44,7 @@ func TestPgLocalSearchBackend_Text(t *testing.T) {
 		MediaType: "video", DurationMS: 12000, Tags: []string{"boxing"},
 		ThumbnailURL: "https://thumb", DriveLink: "https://drive/a1",
 	}}}
-	b := &pgLocalSearchBackend{store: store, log: zap.NewNop()}
+	b := &pgLocalSearchBackend{store: store, scorer: fixedLocalScorer{}, log: zap.NewNop()}
 
 	cands, err := b.Search(context.Background(), search.Query{
 		Text:  "boxing",
@@ -77,6 +87,7 @@ func TestBuildSearchBackends_PrefersPostgresLocalStore(t *testing.T) {
 	reg, err := BuildSearchBackends(SearchBackendBuildOpts{
 		Logger:          zap.NewNop(),
 		MediaLocalStore: &fakeLocalStore{},
+		LocalScorer:     fixedLocalScorer{},
 	})
 	if err != nil {
 		t.Fatalf("BuildSearchBackends: %v", err)

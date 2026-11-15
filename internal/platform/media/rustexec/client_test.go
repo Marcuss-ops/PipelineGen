@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
+	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 type fakeRunner struct {
@@ -162,7 +164,7 @@ func TestVideoProcessorCutUsesSharedProtocolAndConfiguredPolicy(t *testing.T) {
 	if outBytes, err := exec.Command(ffmpeg, fixture...).CombinedOutput(); err != nil {
 		t.Fatalf("create canonical cut fixture: %v: %s", err, outBytes)
 	}
-	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"cut_batch","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"validated","size_bytes":4,"duration_sec":1}]}`)}
+	runner := &fakeRunner{stdout: []byte(`{"ok":true,"operation":"cut_batch","items":[{"job_id":"` + out + `","output_path":"` + out + `","status":"validated","size_bytes":4,"duration_sec":1,"sha256":"` + strings.Repeat("a", 64) + `","video_extradata_sha256":"` + kernelmedia.CanonicalVideoExtradataSHA256 + `"}]}`)}
 	processor := NewConfiguredVideoProcessor("muscles", "ffmpeg", mediaexec.EncoderPolicy{Codec: "libx264", Preset: "veryfast", CRF: 23}, mediaexec.VideoProfile{}.WithDefaults(), nil)
 	processor.client.runner = runner
 

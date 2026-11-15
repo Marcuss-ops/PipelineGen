@@ -87,8 +87,6 @@ type AssetRepository interface {
 	// All returns every asset of one entity in deterministic order (best
 	// quality first, then asset id).
 	All(entityID string) []EntityAsset
-	// Len returns the total number of indexed assets.
-	Len() int
 }
 
 // InMemoryAssetRepository is the pure, deterministic AssetRepository.
@@ -134,15 +132,6 @@ func (r *InMemoryAssetRepository) All(entityID string) []EntityAsset {
 	return out
 }
 
-// Len returns the total number of indexed assets across all entities.
-func (r *InMemoryAssetRepository) Len() int {
-	n := 0
-	for _, bucket := range r.byEntity {
-		n += len(bucket)
-	}
-	return n
-}
-
 // ResolvedAssetRef is the content-addressed asset reference RenderingGen
 // receives — NEVER a bare URL. The contract: asset_id identifies the asset,
 // sha256 is its content address, url is where the bytes live.
@@ -152,76 +141,6 @@ type ResolvedAssetRef struct {
 	URL       string `json:"url"`
 	LocalPath string `json:"-"`
 	MediaType string `json:"media_type,omitempty"`
-}
-
-// AssetResolver is the plan's asset resolution step: given an entity, it
-// ranks the bound assets by quality and returns the best one as a
-// content-addressed ref. The source of truth stays the structured EntityAsset
-// record — the resolver only ranks and projects it.
-type AssetResolver struct {
-	assets AssetRepository
-}
-
-// NewAssetResolver returns a resolver backed by a fresh in-memory asset
-// repository. The composition root can swap the backend (SQLite adapter) via
-// SetRepository.
-func NewAssetResolver() *AssetResolver {
-	return &AssetResolver{assets: NewInMemoryAssetRepository()}
-}
-
-// SetRepository swaps the backing store, e.g. a durable SQLite adapter.
-
-// Index upserts one asset record (content-addressed dedup by entity+asset).
-func (r *AssetResolver) Index(asset EntityAsset) error {
-	return r.assets.Upsert(asset)
-}
-
-// IndexAll upserts several assets and fails closed on the first invalid one.
-func (r *AssetResolver) IndexAll(assets ...EntityAsset) error {
-	for _, asset := range assets {
-		if err := r.assets.Upsert(asset); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ResolveBest returns the highest-quality content-addressed asset of the
-// entity (the plan's "rank → best image"). Returns false when the entity has
-// no assets.
-func (r *AssetResolver) ResolveBest(entityID string) (ResolvedAssetRef, bool) {
-	all := r.assets.All(entityID)
-	if len(all) == 0 {
-		return ResolvedAssetRef{}, false
-	}
-	best := all[0] // repository order: best quality first, deterministic
-	return ResolvedAssetRef{
-		AssetID:   best.AssetID,
-		SHA256:    best.SHA256,
-		URL:       best.StorageURL,
-		LocalPath: best.LocalPath,
-		MediaType: mediaTypeFor(best.AssetType),
-	}, true
-}
-
-// ResolveTop returns the top-n content-addressed assets of the entity in
-// quality order (n <= 0 means all). Empty when the entity has no assets.
-func (r *AssetResolver) ResolveTop(entityID string, n int) []ResolvedAssetRef {
-	all := r.assets.All(entityID)
-	if n > 0 && len(all) > n {
-		all = all[:n]
-	}
-	out := make([]ResolvedAssetRef, 0, len(all))
-	for _, asset := range all {
-		out = append(out, ResolvedAssetRef{
-			AssetID:   asset.AssetID,
-			SHA256:    asset.SHA256,
-			URL:       asset.StorageURL,
-			LocalPath: asset.LocalPath,
-			MediaType: mediaTypeFor(asset.AssetType),
-		})
-	}
-	return out
 }
 
 // mediaTypeFor maps the semantic asset type to a fetchable media type for

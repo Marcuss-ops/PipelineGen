@@ -1,13 +1,10 @@
 // Package scriptgeneration — backpressure.go owns the VidRush backpressure
-// contract: separate concurrency limits for the three pipeline stages (entity
-// extraction, provider search, materialization) and a single-slot generation
-// priority gate so text generation is never starved by entity extraction when
-// both share the same local single-slot Ollama model.
+// contract: separate concurrency limits for semantic extraction, provider
+// search and materialization, plus a bounded scene-generation model gate.
 package runner
 
 import (
 	"context"
-	"sync"
 )
 
 // ── Certified worker-pool defaults ────────────────────────────────────
@@ -112,125 +109,56 @@ func DefaultVidRushBackpressure() VidRushBackpressure {
 	return VidRushBackpressure{}.Resolved()
 }
 
-// GenerationGate is a capacity-bounded priority gate. Production wiring uses
-// one instance for scene generation and a separate instance for VidRush entity
-// extraction; the priority API remains useful for callers that intentionally
-// share a provider gate. A high-priority acquisition jumps the queue ahead of
-// waiting low-priority acquisitions. The default capacity is 1 (single-slot
-// model); a capacity of N admits N concurrent holders.
+// GenerationGate bounds concurrent scene-generation calls to the local model.
+// A capacity of N admits N concurrent holders.
 type GenerationGate struct {
-	mu       sync.Mutex
-	capacity int
-	held     int
-	highWait []chan struct{}
-	lowWait  []chan struct{}
+	slots chan struct{}
 }
 
-// NewGenerationGate constructs an empty single-slot priority gate. Use
+// NewGenerationGate constructs a single-slot model gate. Use
 // NewGenerationGateWithCapacity for a bounded pool larger than one.
 func NewGenerationGate() *GenerationGate {
 	return NewGenerationGateWithCapacity(1)
 }
 
-// NewGenerationGateWithCapacity constructs an empty priority gate with the
-// given number of slots. Values <= 0 fall back to a single slot.
+// NewGenerationGateWithCapacity constructs a model gate with the given number
+// of slots. Values <= 0 fall back to a single slot.
 func NewGenerationGateWithCapacity(capacity int) *GenerationGate {
 	if capacity <= 0 {
 		capacity = 1
 	}
-	return &GenerationGate{capacity: capacity}
+	return &GenerationGate{slots: make(chan struct{}, capacity)}
 }
 
-// Capacity returns the configured hard ceiling for high-priority Ollama work.
+// Capacity returns the configured hard ceiling.
 func (g *GenerationGate) Capacity() int {
-	if g == nil || g.capacity <= 0 {
+	if g == nil || g.slots == nil {
 		return 1
 	}
-	return g.capacity
+	return cap(g.slots)
 }
 
-// AcquireHigh blocks until the slot is available, with priority over any
-// low-priority waiters. It returns ctx.Err() if the context is cancelled while
-// waiting. Use this for scene generation.
-func (g *GenerationGate) AcquireHigh(ctx context.Context) error {
-	return g.acquire(ctx, true)
+// Acquire blocks until a scene-generation slot is available or ctx is
+// cancelled.
+func (g *GenerationGate) Acquire(ctx context.Context) error {
+	if g == nil {
+		return nil
+	}
+	select {
+	case g.slots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-// AcquireLow blocks until the slot is available, behind any high-priority
-// waiters. It returns ctx.Err() if the context is cancelled while waiting. Use
-// this for entity extraction.
-func (g *GenerationGate) AcquireLow(ctx context.Context) error {
-	return g.acquire(ctx, false)
-}
-
-// Release returns one slot to the pool. The slot is granted to the next
-// high-priority waiter if any, otherwise the next low-priority waiter;
-// otherwise the held count is decremented. Release when no slot is held and
-// no waiter is queued is a no-op.
+// Release returns one slot to the pool. Releasing an empty gate is a no-op.
 func (g *GenerationGate) Release() {
 	if g == nil {
 		return
 	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	var next chan struct{}
-	switch {
-	case len(g.highWait) > 0:
-		next = g.highWait[0]
-		g.highWait = g.highWait[1:]
-	case len(g.lowWait) > 0:
-		next = g.lowWait[0]
-		g.lowWait = g.lowWait[1:]
-	default:
-		if g.held > 0 {
-			g.held--
-		}
-		return
-	}
-	// Hand the released slot directly to the selected waiter; held is
-	// unchanged because the slot is transferred, not freed.
-	close(next)
-}
-
-func (g *GenerationGate) acquire(ctx context.Context, high bool) error {
-	if g == nil {
-		return nil
-	}
-	g.mu.Lock()
-	if g.held < g.capacity {
-		g.held++
-		g.mu.Unlock()
-		return nil
-	}
-	ch := make(chan struct{})
-	if high {
-		g.highWait = append(g.highWait, ch)
-	} else {
-		g.lowWait = append(g.lowWait, ch)
-	}
-	g.mu.Unlock()
-
 	select {
-	case <-ch:
-		return nil
-	case <-ctx.Done():
-		// Cancelled while waiting: drop our queued slot and hand it forward so
-		// the gate never leaks a pending waiter.
-		g.mu.Lock()
-		remove := func(q []chan struct{}, target chan struct{}) []chan struct{} {
-			for i, c := range q {
-				if c == target {
-					return append(q[:i], q[i+1:]...)
-				}
-			}
-			return q
-		}
-		if high {
-			g.highWait = remove(g.highWait, ch)
-		} else {
-			g.lowWait = remove(g.lowWait, ch)
-		}
-		g.mu.Unlock()
-		return ctx.Err()
+	case <-g.slots:
+	default:
 	}
 }

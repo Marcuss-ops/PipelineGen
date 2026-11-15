@@ -298,6 +298,34 @@ func TestCompileAudioWithIntents_NoIntentsCompilesPrimaryPlan(t *testing.T) {
 	}
 }
 
+// TestCompileAudioWithIntents_ClipsImplicitSFXTailAtTimelineEnd covers the
+// actual MVP case: the payload did not specify duration_ms, so the 1.25s
+// whop1 source length is only known after asset resolution. The cue must keep
+// its start at 500ms before the cut and lose only the 750ms tail beyond it.
+func TestCompileAudioWithIntents_ClipsImplicitSFXTailAtTimelineEnd(t *testing.T) {
+	source := intentCompileSource()
+	source.assets["sfx_whop"] = audio.ResolvedAudioAsset{AssetID: "sfx_whop", Path: "/m/whop.m4a", DurationUS: 1_250_000}
+	result, err := CompileAudioWithIntents(
+		context.Background(),
+		intentCompileTimeline(),
+		audio.DefaultAudioProfile(),
+		audio.MixVoiceoverOnly,
+		nil,
+		[]scriptpkg.SoundEffectIntent{{AssetID: "sfx_whop", AtMS: 74_500}},
+		source,
+	)
+	if err != nil {
+		t.Fatalf("compile final-frame SFX: %v", err)
+	}
+	sfx := eventsForRole(result.Plan, audio.TrackSFX)
+	if len(sfx) != 1 {
+		t.Fatalf("compiled SFX events = %d, want 1", len(sfx))
+	}
+	if sfx[0].TimelineStartUS != 74_500_000 || sfx[0].DurationUS != 500_000 {
+		t.Fatalf("final-frame SFX = start %dus duration %dus, want 74500000/500000", sfx[0].TimelineStartUS, sfx[0].DurationUS)
+	}
+}
+
 func TestCompileAudioWithIntents_FailClosed(t *testing.T) {
 	tests := []struct {
 		name   string

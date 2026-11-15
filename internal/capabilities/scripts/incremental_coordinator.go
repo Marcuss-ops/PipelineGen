@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	kernobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/observability"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
@@ -38,7 +37,6 @@ type VidRushIncrementalCoordinator struct {
 	materializer SegmentMaterializer
 	plan         *scriptpkg.ResolvedGenerationPlan
 	backpressure VidRushBackpressure
-	gate         *GenerationGate
 
 	// providerResolveBudget bounds the WHOLE run's provider fan-out, not each
 	// scene independently: a late scene must not get a fresh budget after the
@@ -94,8 +92,8 @@ const vidRushSceneEnrichmentTimeout = 15 * time.Minute
 
 // NewVidRushIncrementalCoordinator constructs an incremental coordinator.
 // maxConcurrency bounds the provider-search stage; values <= 0 default to 4.
-// Extraction is single-slot by default (the local Ollama model) and
-// materialization is bounded at 2.
+// Semantic extraction uses its bounded Rust worker pool and materialization
+// is bounded at 2.
 func NewVidRushIncrementalCoordinator(enricher SegmentEnricher, plan *scriptpkg.ResolvedGenerationPlan, maxConcurrency int) *VidRushIncrementalCoordinator {
 	backpressure := DefaultVidRushBackpressure()
 	if maxConcurrency > 0 {
@@ -150,37 +148,6 @@ func (c *VidRushIncrementalCoordinator) SetSegmentMaterializer(materializer Segm
 	if c != nil {
 		c.materializer = materializer
 	}
-}
-
-// SetGenerationGate wires the capacity-bounded priority gate shared with
-// scene generation. Entity extraction acquires it with low priority, so
-// generation can preempt extraction when both use the same local Ollama
-// model.
-func (c *VidRushIncrementalCoordinator) SetGenerationGate(gate *GenerationGate) {
-	if c != nil {
-		c.gate = gate
-	}
-}
-
-// SetImageSearchResolver is retained for source compatibility. BrainRust now
-// owns semantic identity and query intents; the Go resolver is not wired into
-// this path.
-func (c *VidRushIncrementalCoordinator) SetImageSearchResolver(_ *capabilityimagesearch.Resolver) {
-}
-
-// stampImageSearchDecision runs the Image Search Intent resolver on the
-// scene's narration text and stamps the canonical ids it chose into the
-// segment insights. Keys are the lowercased resolved surface AND the
-// verbatim matched span, so the annotation projection joins by the exact
-// name it grounds (Italian canonicalizes to the English identity while the
-// verbatim Italian span stays a lookup key). Visual value entities (MONEY /
-// DATE / EVENT) are stamped too: their canonical id is the same deterministic
-// derivation, so stamping is harmless and keeps one identity owner.
-func (c *VidRushIncrementalCoordinator) stampImageSearchDecision(ctx context.Context, result scriptpkg.VidRushSegmentResult, text, language string) (scriptpkg.VidRushSegmentResult, error) {
-	// Kept as a compatibility seam for existing coordinator construction.
-	// Identity and query intent are now emitted together by BrainRust; this
-	// stage must not run a second Go-side resolver over the same text.
-	return result, nil
 }
 
 // OnSceneCommitted records the stable scene and launches its enrichment
@@ -329,33 +296,10 @@ func validateVidRushResultIdentity(event SceneCommitted, result scriptpkg.VidRus
 	return nil
 }
 
-// enrichSegment runs the entity-extraction stage under its own bounded
-// semaphore, with low priority against the shared generation gate.
-//
-// Both acquisitions are QUEUE WAIT, not work: before this instrumentation the
-// time spent queued behind the shared generation gate or the extraction slot
-// was charged to the nlp.extract call that follows it — the unattributed
-// scene_analysis queue wait. Each blocked interval is now recorded as a typed
-// wait on the Run (RunReport.Waits → blocked_ms → active_ms = wall − blocked),
-// so the queue wait is finally separable from extraction work.
+// enrichSegment runs semantic extraction under its own bounded semaphore.
+// The semaphore wait is recorded separately so scene-analysis queue time stays
+// distinct from Rust worker time.
 func (c *VidRushIncrementalCoordinator) enrichSegment(ctx context.Context, scene scriptpkg.SpecScene) (scriptpkg.VidRushSegmentResult, error) {
-	if c.gate != nil {
-		// The shared generation gate is a RESOURCE LOCK on the local model
-		// (single-slot, priority-ordered): a low-priority enrichment queued
-		// behind generation is waiting on that resource.
-		gateStart := time.Now().UTC()
-		gateErr := c.gate.AcquireLow(ctx)
-		kernobs.RecordWait(ctx, kernobs.WaitInfo{
-			Kind:       kernobs.WaitResourceLock,
-			Component:  kernobs.ComponentOllama,
-			StartedAt:  gateStart,
-			FinishedAt: time.Now().UTC(),
-		})
-		if gateErr != nil {
-			return scriptpkg.VidRushSegmentResult{}, gateErr
-		}
-		defer c.gate.Release()
-	}
 	releaseExtract, err := kernobs.AcquireSlot(ctx, c.extractSem, kernobs.ComponentNLP, kernobs.WaitSemaphore)
 	if err != nil {
 		return scriptpkg.VidRushSegmentResult{}, err

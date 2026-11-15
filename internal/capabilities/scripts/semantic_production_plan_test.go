@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ func planIdentities() []SemanticIdentity {
 	}
 }
 
-func planCandidate(id, recipe, sceneID string, rank int, entities []string, assetKey string, queries ...SemanticSearchQuery) SemanticProductionCandidate {
+func planCandidate(id, recipe, sceneID string, rank int, entities []string, assetKey string, queries ...generationcontract.SemanticSearchQuery) SemanticProductionCandidate {
 	return SemanticProductionCandidate{
 		ID: id, Recipe: recipe, Rank: rank, SceneID: sceneID, EntityIDs: entities,
 		AssetKey: assetKey, RequiresMedia: len(queries) > 0, Queries: queries,
@@ -31,8 +32,8 @@ func planConsolidation(candidates []SemanticProductionCandidate, facts []Semanti
 }
 
 func TestSemanticProductionPlanAppliesTheRunBudgetDeterministically(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
-	sempio := SemanticSearchQuery{Kind: "exact_mention", Text: "Andrea Sempio"}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	sempio := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Andrea Sempio"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0003", "entity_search", "s03", 3, []string{"person_02"}, "entity:person_02", sempio),
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
@@ -45,7 +46,7 @@ func TestSemanticProductionPlanAppliesTheRunBudgetDeterministically(t *testing.T
 	if plan.Schema != SemanticProductionPlanSchema {
 		t.Fatalf("schema: %q", plan.Schema)
 	}
-	byID := map[string]SemanticProductionUnit{}
+	byID := map[string]generationcontract.SemanticProductionUnit{}
 	for _, unit := range plan.Units {
 		byID[unit.CandidateID] = unit
 	}
@@ -67,16 +68,16 @@ func TestSemanticProductionPlanAppliesTheRunBudgetDeterministically(t *testing.T
 }
 
 func TestGroundedContextQueryWinsScarceSlotOverBareEntity(t *testing.T) {
-	contextual := SemanticSearchQuery{
+	contextual := generationcontract.SemanticSearchQuery{
 		Kind: "context_phrase", Text: "Andrea Sempio treatment plant Toledo",
 		Origin: "derived_from_source_context", Evidence: "Andrea Sempio described a treatment plant in Toledo.",
-		Components: []SemanticSearchQueryComponent{
+		Components: []generationcontract.SemanticSearchQueryComponent{
 			{Kind: "entity", ComponentType: "PERSON", Text: "Andrea Sempio"},
 			{Kind: "object", ComponentType: "OBJECT", Text: "treatment plant"},
 			{Kind: "location", ComponentType: "LOCATION", Text: "Toledo"},
 		},
 	}
-	bare := SemanticSearchQuery{Kind: "exact_mention", Text: "Ann Arbor", Origin: "literal"}
+	bare := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Ann Arbor", Origin: "literal"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_bare", "entity_search", "s01", 1, []string{"person_01"}, "entity:bare", bare),
 		planCandidate("vc_context", "entity_search", "s02", 2, []string{"person_02"}, "context:event", contextual),
@@ -105,17 +106,17 @@ func TestSemanticPlanSkipsBarePlaceAndAbstractVisualQueries(t *testing.T) {
 	}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_place", "entity_search", "s01", 1, []string{"location_01"}, "entity:location_01",
-			SemanticSearchQuery{Kind: "exact_mention", Text: "Stati Uniti", Origin: "literal"}),
+			generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Stati Uniti", Origin: "literal"}),
 		planCandidate("vc_concept", "entity_search", "s01", 2, []string{"concept_01"}, "entity:concept_01",
-			SemanticSearchQuery{Kind: "exact_mention", Text: "biografia sportiva", Origin: "literal"}),
+			generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "biografia sportiva", Origin: "literal"}),
 		planCandidate("vc_context", "entity_search", "s02", 3, []string{"location_02"}, "entity:location_02",
-			SemanticSearchQuery{Kind: "context_phrase", Text: "Floyd Mayweather Grand Rapids", Origin: "derived_from_source_context", Evidence: "Floyd Mayweather was born in Grand Rapids.", Components: []SemanticSearchQueryComponent{{Text: "Floyd Mayweather"}, {Text: "Grand Rapids"}}}),
+			generationcontract.SemanticSearchQuery{Kind: "context_phrase", Text: "Floyd Mayweather Grand Rapids", Origin: "derived_from_source_context", Evidence: "Floyd Mayweather was born in Grand Rapids.", Components: []generationcontract.SemanticSearchQueryComponent{{Text: "Floyd Mayweather"}, {Text: "Grand Rapids"}}}),
 	}, nil)
 	plan, err := BuildSemanticProductionPlan(consolidation, identities, DefaultSemanticProductionPlanConfig())
 	if err != nil {
 		t.Fatalf("plan build failed: %v", err)
 	}
-	byID := map[string]SemanticProductionUnit{}
+	byID := map[string]generationcontract.SemanticProductionUnit{}
 	for _, unit := range plan.Units {
 		byID[unit.CandidateID] = unit
 	}
@@ -131,7 +132,7 @@ func TestSemanticPlanSkipsBarePlaceAndAbstractVisualQueries(t *testing.T) {
 
 func TestDocumentAnchorKeepsItsCrossScenePriority(t *testing.T) {
 	anchor := planCandidate("vc_anchor", "entity_search", "s01", 1, nil, "anchor:toledo",
-		SemanticSearchQuery{Kind: "exact_mention", Text: "Toledo", Origin: "literal"})
+		generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Toledo", Origin: "literal"})
 	anchor.Priority = 0.93
 	anchor.Rationale = []string{"global_document_anchor"}
 	if got := semanticPlannerPriority(anchor, nil); got != 0.93 {
@@ -140,7 +141,7 @@ func TestDocumentAnchorKeepsItsCrossScenePriority(t *testing.T) {
 }
 
 func TestSemanticProductionPlanReusesOneRetrievalPerAsset(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 		planCandidate("vc_0002", "entity_search", "s01", 2, []string{"person_01"}, "entity:person_01", stasi),
@@ -162,8 +163,8 @@ func TestSemanticProductionPlanReusesOneRetrievalPerAsset(t *testing.T) {
 }
 
 func TestSemanticProductionPlanDefersFactsWhoseRepresentationDidNotFit(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
-	sempio := SemanticSearchQuery{Kind: "exact_mention", Text: "Andrea Sempio"}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	sempio := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Andrea Sempio"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 		planCandidate("vc_0002", "entity_search", "s02", 2, []string{"person_02"}, "entity:person_02", sempio),
@@ -193,7 +194,7 @@ func TestSemanticProductionPlanDefersFactsWhoseRepresentationDidNotFit(t *testin
 }
 
 func TestSemanticProductionPlanAdmitsOnlyMediaIdentities(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 		planCandidate("vc_0002", "fact_card", "s01", 2, []string{"person_02"}, "factcard:cf_0001"),
@@ -217,7 +218,7 @@ func TestSemanticProductionPlanAdmitsOnlyMediaIdentities(t *testing.T) {
 }
 
 func TestPlanScriptProductionCarriesTheConsolidatedViewAndFeedback(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 	}, nil)
@@ -244,7 +245,7 @@ func TestPlanScriptProductionCarriesTheConsolidatedViewAndFeedback(t *testing.T)
 }
 
 func TestCallerImageSearchesEnterTheSceneLadderAndRespectLockedAssignments(t *testing.T) {
-	query := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	query := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	candidate := planCandidate("vc_0001", "entity_search", "scene_01", 1, []string{"person_01"}, "entity:person_01", query)
 	candidate.SceneIDs = []string{"segment_01"}
 	plan, err := BuildSemanticProductionPlan(planConsolidation([]SemanticProductionCandidate{candidate}, nil), planIdentities(), DefaultSemanticProductionPlanConfig())
@@ -262,7 +263,7 @@ func TestCallerImageSearchesEnterTheSceneLadderAndRespectLockedAssignments(t *te
 	if !ok || attempt.QueryOrigin != "caller_media_plan" || attempt.Query != "Stasi processo Milano" {
 		t.Fatalf("caller query must pass through unchanged and run first: %+v ok=%v", attempt, ok)
 	}
-	locked := &SemanticProductionPlan{Units: append([]SemanticProductionUnit(nil), plan.Units...), identityByID: plan.identityByID}
+	locked := &SemanticProductionPlan{Units: append([]generationcontract.SemanticProductionUnit(nil), plan.Units...), identityByID: plan.identityByID}
 	locked.Metrics.PlannedQueries = plan.Metrics.PlannedQueries
 	added = ApplyCallerImageSearches(locked, searches, []mediadomain.SegmentMediaAssignment{{SegmentID: "segment_01", Slot: mediadomain.SlotSecondaryImage, Locked: true}})
 	if added != 0 || locked.Metrics.PlannedQueries != plan.Metrics.PlannedQueries {
@@ -271,7 +272,7 @@ func TestCallerImageSearchesEnterTheSceneLadderAndRespectLockedAssignments(t *te
 }
 
 func TestAdoptSemanticPlannerViewRecordsThePlan(t *testing.T) {
-	stasi := SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
+	stasi := generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01", stasi),
 	}, nil)
@@ -304,14 +305,14 @@ func TestSemanticProductionPlanFailsClosedOnBrokenInput(t *testing.T) {
 	}
 	broken := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_99"}, "entity:person_99",
-			SemanticSearchQuery{Kind: "exact_mention", Text: "X"}),
+			generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "X"}),
 	}, nil)
 	if _, err := BuildSemanticProductionPlan(broken, planIdentities(), DefaultSemanticProductionPlanConfig()); err == nil {
 		t.Fatal("an unknown identity must fail closed")
 	}
 	broken = planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01",
-			SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}),
+			generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}),
 	}, []SemanticConsolidatedFact{{ID: "cf_0001", Representation: &SemanticFactRepresentation{CandidateID: "vc_0001"}}})
 	if _, err := BuildSemanticProductionPlan(broken, planIdentities(), DefaultSemanticProductionPlanConfig()); err == nil {
 		t.Fatal("a representation that does not declare its fact must fail closed")

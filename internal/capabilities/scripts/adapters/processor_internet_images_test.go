@@ -440,8 +440,16 @@ func TestInternetImagesProcessorProjectsAndCachesEntityImages(t *testing.T) {
 			Version: 1, Language: "it", PrimaryEntities: []scriptpkg.AnnotatedEntity{{Text: "Mike Tyson", CanonicalName: "Mike Tyson", Type: "PERSON"}},
 		}},
 	}}, VidRushSegments: []scriptpkg.VidRushSegmentResult{
-		{SegmentID: "seg-1", SceneID: "scene-1", Position: 0, TextHash: "h1"},
-		{SegmentID: "seg-2", SceneID: "scene-2", Position: 1, TextHash: "h2"},
+		{SegmentID: "seg-1", SceneID: "scene-1", Position: 0, TextHash: "h1", Insights: scriptpkg.SegmentInsights{
+			Entities:                []scriptpkg.ExtractedEntity{{Value: "Mike Tyson", Type: "PERSON", CanonicalID: "person:mike-tyson", SearchIntents: []string{"Mike Tyson"}}},
+			ImageEntityCanonicalIDs: map[string]string{"Mike Tyson": "person:mike-tyson"},
+			ImageQueries:            []string{"Mike Tyson"},
+		}},
+		{SegmentID: "seg-2", SceneID: "scene-2", Position: 1, TextHash: "h2", Insights: scriptpkg.SegmentInsights{
+			Entities:                []scriptpkg.ExtractedEntity{{Value: "Mike Tyson", Type: "PERSON", CanonicalID: "person:mike-tyson", SearchIntents: []string{"Mike Tyson"}}},
+			ImageEntityCanonicalIDs: map[string]string{"Mike Tyson": "person:mike-tyson"},
+			ImageQueries:            []string{"Mike Tyson"},
+		}},
 	}}
 
 	first, err := processor.Process(context.Background(), plan, input)
@@ -573,6 +581,11 @@ func TestEntityImageCacheColdWarmForcedRefresh(t *testing.T) {
 			}}},
 			VidRushSegments: []scriptpkg.VidRushSegmentResult{{
 				SegmentID: segmentID, SceneID: segmentID, TextHash: textHash,
+				Insights: scriptpkg.SegmentInsights{
+					Entities:                []scriptpkg.ExtractedEntity{{Value: "Dwayne Johnson", Type: "PERSON", CanonicalID: "person:dwayne-johnson", SearchIntents: []string{"Dwayne Johnson"}}},
+					ImageEntityCanonicalIDs: map[string]string{"Dwayne Johnson": "person:dwayne-johnson"},
+					ImageQueries:            []string{"Dwayne Johnson"},
+				},
 			}},
 		}
 	}
@@ -642,7 +655,11 @@ func TestEntityImageCacheRetriesEmptyProviderResult(t *testing.T) {
 					CanonicalName: "Alberto Stasi", Text: "Alberto Stasi", Type: "PERSON",
 				}}},
 			}}},
-			VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: segmentID, SceneID: segmentID, TextHash: segmentID}},
+			VidRushSegments: []scriptpkg.VidRushSegmentResult{{SegmentID: segmentID, SceneID: segmentID, TextHash: segmentID, Insights: scriptpkg.SegmentInsights{
+				Entities:                []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON", CanonicalID: "person:alberto-stasi", SearchIntents: []string{"Alberto Stasi"}}},
+				ImageEntityCanonicalIDs: map[string]string{"Alberto Stasi": "person:alberto-stasi"},
+				ImageQueries:            []string{"Alberto Stasi"},
+			}}},
 		}
 	}
 	for _, scene := range []string{"scene-a", "scene-b"} {

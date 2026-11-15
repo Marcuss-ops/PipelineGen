@@ -2,9 +2,7 @@ package rustexec
 
 import (
 	"context"
-	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +11,6 @@ import (
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/capabilities/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediaexec"
-	kernelmedia "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 )
 
 // TestCutRefusesANonCanonicalEncoderBeforeEncoding pins the stock cutter's
@@ -56,31 +53,6 @@ func TestCutRefusesANonCanonicalPresetBeforeEncoding(t *testing.T) {
 	}
 }
 
-// cutTestBox renders one ISO-BMFF box. The avcC gate reads only the box
-// structure, so a synthetic file proves the post-encode identity check without
-// needing a decodable stream.
-func cutTestBox(typ string, payload []byte) []byte {
-	box := make([]byte, 8+len(payload))
-	binary.BigEndian.PutUint32(box[:4], uint32(len(box)))
-	copy(box[4:8], typ)
-	copy(box[8:], payload)
-	return box
-}
-
-func cutTestMP4(avcC []byte) []byte {
-	sampleEntry := make([]byte, 78)
-	sampleEntry = append(sampleEntry, cutTestBox("avcC", avcC)...)
-	stsdPayload := make([]byte, 8)
-	binary.BigEndian.PutUint32(stsdPayload[4:], 1)
-	stsdPayload = append(stsdPayload, cutTestBox("avc1", sampleEntry)...)
-	hdlrPayload := append(make([]byte, 8), []byte("vide")...)
-	hdlrPayload = append(hdlrPayload, make([]byte, 12)...)
-	mdia := cutTestBox("mdia", append(cutTestBox("hdlr", hdlrPayload),
-		cutTestBox("minf", cutTestBox("stbl", cutTestBox("stsd", stsdPayload)))...))
-	trak := cutTestBox("trak", mdia)
-	return append(cutTestBox("ftyp", []byte("isom\x00\x00\x02\x00isom")), cutTestBox("moov", trak)...)
-}
-
 // cutResponseRunner writes the output the Rust process would have produced and
 // reports the per-item success the real protocol returns.
 type cutResponseRunner struct {
@@ -102,7 +74,11 @@ func (r *cutResponseRunner) Run(_ context.Context, _ string, input []byte) ([]by
 	responsePayload, err := json.Marshal(response{
 		OK:        true,
 		Operation: string(OperationCutBatch),
-		Items:     []cutItem{{JobID: out, OutputPath: out, Status: "succeeded", SizeBytes: int64(len(r.payload))}},
+		Items: []cutItem{{
+			JobID: out, OutputPath: out, Status: "succeeded", SizeBytes: int64(len(r.payload)),
+			SHA256:               strings.Repeat("a", 64),
+			VideoExtradataSHA256: "drifted-avcc-digest",
+		}},
 	})
 	if err != nil {
 		return nil, nil, err
@@ -110,16 +86,12 @@ func (r *cutResponseRunner) Run(_ context.Context, _ string, input []byte) ([]by
 	return responsePayload, nil, nil
 }
 
-// TestCutRejectsANonCanonicalBitstream is the post-encode half of the stock
-// publication gate: the Rust process may report `succeeded`, but if the bytes
-// carry a different SPS/PPS the item must become failed and no SHA may be
-// returned to the publisher. The upload path keys on Status+SHA, so a gate that
-// only logged the mismatch would still publish the clip.
+// TestCutRejectsANonCanonicalBitstream checks the contract boundary: a cut
+// item with a non-canonical avcC digest from Rust is rejected before Go returns
+// the artifact SHA to the publisher.
 func TestCutRejectsANonCanonicalBitstream(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "stock.mp4")
-	runner := &cutResponseRunner{payload: cutTestMP4([]byte{
-		0x01, 0x64, 0x00, 0x28, 0xff, 0xe1, 0x00, 0x04, 0x67, 0x64, 0x00, 0x28,
-	})}
+	runner := &cutResponseRunner{payload: []byte("rust-validated-output")}
 	client := NewClientWithExecutor(nil, nil)
 	client.runner = runner
 	processor := &VideoProcessor{
@@ -144,8 +116,8 @@ func TestCutRejectsANonCanonicalBitstream(t *testing.T) {
 	if item.Status != stockpipeline.CutItemStatusFailed {
 		t.Fatalf("item status = %s, want failed for a non-canonical avcC", item.Status)
 	}
-	if !errors.Is(item.Err, kernelmedia.ErrVideoExtradataNotCanonical) {
-		t.Fatalf("item error = %v, want ErrVideoExtradataNotCanonical", item.Err)
+	if item.Err == nil || !strings.Contains(item.Err.Error(), "avcC SHA-256") {
+		t.Fatalf("item error = %v, want rejected avcC digest", item.Err)
 	}
 	if item.SHA256Hex != "" {
 		t.Fatalf("failed item published SHA %q; a rejected clip must not be certifiable", item.SHA256Hex)

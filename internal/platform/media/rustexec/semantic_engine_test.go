@@ -17,10 +17,13 @@ const semanticSceneTwo = "The hearing was on 15 March 2008."
 const semanticFixture = `{
  "ok": true,
  "manifest": {
-  "schema_version": "semantic_manifest.v2",
+  "schema_version": "semantic_manifest.v3",
   "language": "en",
   "fingerprint": "0123456789abcdef",
-  "analyzers": {"visualner":"visualner","semantic_core":"0.1.0","phrase_impact":"phrase_impact"},
+  "analyzers": {"visualner":"visualner","semantic_core":"0.1.0","phrase_impact":"phrase_impact","entity_index":"entity_index.v1"},
+  "entities": [
+   {"local_id":"person_01","surface_key":"person:marco-rossi","canonical_surface":"Marco Rossi","canonical_id":"person:marco-rossi","link_status":"linked","canonical_name":"Marco Rossi","entity_type":"PERSON","role":"named_entity","disambiguation_gloss":"Italian founder","negative_constraints":[],"mentions":[{"scene_id":"scene_01","surface":"Marco Rossi","start_byte":0,"end_byte":11}],"search_intents":[{"kind":"identity","query":"Marco Rossi","lang":"en"}]}
+  ],
   "scenes": [
    {
     "scene_id": "scene_01", "status": "valid", "reason": null,
@@ -82,6 +85,41 @@ func semanticScenes() []scriptgen.SemanticSceneInput {
 	}
 }
 
+// semanticFixtureWithScenes projects the batch fixture onto the requested
+// scene count. A scene-only extraction must return exactly the scenes in its
+// request; reusing the two-scene batch fixture would make the Go boundary
+// reject an otherwise valid worker response.
+func semanticExtractionFixture(t *testing.T) []byte {
+	t.Helper()
+	raw := string(semanticFixtureWithScenes(t, 1))
+	// SemanticCandidates requests a single scene with the stable id "scene".
+	// Move the projection and every mention onto that id so the linked-entity
+	// coverage check sees the same scene set the worker was asked to analyze.
+	return []byte(strings.ReplaceAll(raw, `"scene_id":"scene_01"`, `"scene_id":"scene"`))
+}
+
+func semanticFixtureWithScenes(t *testing.T, count int) []byte {
+	t.Helper()
+	var response map[string]any
+	if err := json.Unmarshal([]byte(semanticFixture), &response); err != nil {
+		t.Fatal(err)
+	}
+	manifest, ok := response["manifest"].(map[string]any)
+	if !ok {
+		t.Fatal("fixture manifest is not an object")
+	}
+	scenes, ok := manifest["scenes"].([]any)
+	if !ok || count < 1 || count > len(scenes) {
+		t.Fatalf("fixture scene count %d cannot satisfy %d", len(scenes), count)
+	}
+	manifest["scenes"] = scenes[:count]
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
 func TestSemanticEngineAnalysesEverySceneInOneBatchCall(t *testing.T) {
 	// Guard the fixture offsets against drift.
 	if semanticSceneOne[0:31] != "Marco Rossi founded the studio." ||
@@ -103,12 +141,17 @@ func TestSemanticEngineAnalysesEverySceneInOneBatchCall(t *testing.T) {
 	}
 	// A scene-only extraction is isolated from document-level identity context;
 	// same-sentence text in another script must not inherit cached coreference.
-	visualEntities, err := adapter.Extract(context.Background(), "en", semanticSceneOne, 3)
+	extractRunner := &semanticRunner{output: semanticExtractionFixture(t)}
+	extractAdapter, err := NewSemanticEngineAdapter(executorForSemantic(extractRunner))
+	if err != nil {
+		t.Fatal(err)
+	}
+	visualEntities, err := extractAdapter.Extract(context.Background(), "en", semanticSceneOne, 3)
 	if err != nil {
 		t.Fatalf("extract scene entities: %v", err)
 	}
-	if len(visualEntities) != 1 || visualEntities[0].Text != "Marco Rossi" || runner.calls != 2 {
-		t.Fatalf("visual entities=%+v worker calls=%d; want isolated scene analysis and two worker calls", visualEntities, runner.calls)
+	if len(visualEntities) != 1 || visualEntities[0].Text != "Marco Rossi" || runner.calls != 1 || extractRunner.calls != 1 {
+		t.Fatalf("visual entities=%+v batch calls=%d extract calls=%d; want isolated scene analysis", visualEntities, runner.calls, extractRunner.calls)
 	}
 	first := bundles["scene_01"]
 	if len(first.Bullets) != 2 || first.Bullets[0].Text != "Marco Rossi founded the studio." {
@@ -127,7 +170,7 @@ func TestSemanticEngineAnalysesEverySceneInOneBatchCall(t *testing.T) {
 	if len(first.ShortPhrases) != 1 || first.ShortPhrases[0].Evidence != "founded" {
 		t.Fatalf("short phrase was not preserved: %+v", first.ShortPhrases)
 	}
-	if first.SchemaVersion != "semantic_manifest.v2" || first.Fingerprint != "0123456789abcdef" ||
+	if first.SchemaVersion != "semantic_manifest.v3" || first.Fingerprint != "0123456789abcdef" ||
 		first.Analyzers.SemanticCore != "0.1.0" || first.Status != "valid" || first.RejectedItems != 0 {
 		t.Fatalf("manifest provenance was not preserved: %+v", first)
 	}
@@ -241,7 +284,7 @@ func TestSemanticEngineDropsUngroundedBulletButKeepsTheScene(t *testing.T) {
 }
 
 func TestSemanticEngineRejectsWrongSchemaAndBadInputs(t *testing.T) {
-	wrong := strings.Replace(semanticFixture, "semantic_manifest.v2", "semantic_manifest.v1", 1)
+	wrong := strings.Replace(semanticFixture, "semantic_manifest.v3", "semantic_manifest.v1", 1)
 	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(wrong)}))
 	if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "schema_version") {
 		t.Fatalf("expected schema rejection, got %v", err)
@@ -275,7 +318,7 @@ func TestSemanticEngineFailsClosedOnIncompleteManifestAndDanglingIdentity(t *tes
 
 	dangling := strings.Replace(semanticFixture, `"id":"person_01","canonical_surface":"Marco Rossi"`, `"id":"person_99","canonical_surface":"Marco Rossi"`, 1)
 	adapter, _ := NewSemanticEngineAdapter(executorForSemantic(&semanticRunner{output: []byte(dangling)}))
-	if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "unknown identity") {
+	if _, err := adapter.SemanticBundles(context.Background(), "en", semanticScenes()); err == nil || !strings.Contains(err.Error(), "missing from the linked entity projection") {
 		t.Fatalf("expected dangling identity rejection, got %v", err)
 	}
 }

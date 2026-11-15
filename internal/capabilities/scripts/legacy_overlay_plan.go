@@ -7,11 +7,13 @@ package scriptgeneration
 // overlay semantics to the existing SSOT compiler.
 
 import (
+	"context"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 	"strings"
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	capabilityoverlay "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
@@ -46,6 +48,26 @@ func CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
 	maxPhraseOverlays int,
 	planID string,
 	projectID string,
+) (*capmodel.OverlayPlan, error) {
+	return CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver(
+		context.Background(), result, language, timingArtifacts, background, style,
+		maxPhraseOverlays, planID, projectID, nil,
+	)
+}
+
+// CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver is the
+// batch bridge with an explicit Rust map-overlap resolver.
+func CompileOverlayPlanFromGenerationResultWithStyleAndLimitAndResolver(
+	ctx context.Context,
+	result *scriptpkg.GenerationResult,
+	language Language,
+	timingArtifacts map[string]*capabilityaudio.SpeechTimingArtifact,
+	background *scriptpkg.OverlayBackgroundSpec,
+	style *scriptpkg.OverlayStyleSpec,
+	maxPhraseOverlays int,
+	planID string,
+	projectID string,
+	overlapResolver capabilityoverlay.MapOverlapResolver,
 ) (*capmodel.OverlayPlan, error) {
 	if result == nil {
 		return nil, nil
@@ -146,5 +168,5 @@ func CompileOverlayPlanFromGenerationResultWithStyleAndLimit(
 		Style:             style,
 		MaxPhraseOverlays: maxPhraseOverlays,
 	}
-	return CompileOverlayPlan(capResult, language, canvas, planID, planID, projectID)
+	return CompileOverlayPlanWithRustResolver(ctx, capResult, language, canvas, planID, planID, projectID, nil, overlapResolver)
 }

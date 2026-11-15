@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -67,7 +68,7 @@ func TestCompileOverlayPlanRetryKeepsStableIndependentImageMotions(t *testing.T)
 
 	motionsForPlan := func(planID string) ([]string, string) {
 		t.Helper()
-		plan, err := compileOverlayPlanWithMotionOffset(result, "en", GoldenOverlayCanvas, planID, "retry-video", "retry-project", nil, nil)
+		plan, err := compileOverlayPlanWithMotionOffset(context.Background(), result, "en", GoldenOverlayCanvas, planID, "retry-video", "retry-project", nil, nil, nil)
 		if err != nil {
 			t.Fatalf("compile plan %q: %v", planID, err)
 		}

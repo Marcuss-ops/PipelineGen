@@ -30,7 +30,7 @@ func imageModeSegment() scriptpkg.VidRushSegmentResult {
 		SegmentID: "scene-1", TextHash: "hash-1",
 		Text: "Alberto Stasi arriva in tribunale a Garlasco con i giornalisti.",
 		Insights: scriptpkg.SegmentInsights{
-			Entities:     []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON"}},
+			Entities:     []scriptpkg.ExtractedEntity{{Value: "Alberto Stasi", Type: "PERSON", SearchIntents: []string{"Alberto Stasi"}}},
 			ImageQueries: []string{"Alberto Stasi", "Garlasco", "tribunale"},
 		},
 	}

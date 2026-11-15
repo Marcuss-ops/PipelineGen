@@ -317,14 +317,16 @@ func fixedCaptionText(scene Scene, source, lang Language) string {
 }
 
 // fixedMediaNeedsLocalizedRender reports whether a protected fixed-media
-// scene must go through the localized render lane. That lane ALWAYS burns a
+// section must go through the localized render lane. That lane ALWAYS burns a
 // subtitle track (the localization plan requires a timed subtitle and the
 // renderer re-encodes the clip), so a render is only meaningful when the
-// request enables subtitles. With subtitles disabled the final-job payload
-// falls back to the library clip, which is the documented behaviour for
-// protected intros without a render lane. Enqueuing one anyway fails
-// deterministically on a transcript track with no timed cues.
+// request enables subtitles. NativeClip body cutaways are the exception: their
+// database clip is shown as-is and must never be re-encoded by the subtitle
+// lane. Legacy fixed media without a Role keeps the historical behaviour.
 func fixedMediaNeedsLocalizedRender(req GenerateRequest, scene Scene) bool {
+	if scene.NativeClip {
+		return false
+	}
 	return scene.ExecutionMode.IsFixedMedia() && req.Render.Subtitles != nil && req.Render.Subtitles.Enabled
 }
 

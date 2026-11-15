@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -20,7 +21,7 @@ func loadMediaexecGolden(t *testing.T, name string) mediaexecGolden {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "..", "testdata", "mediaexec", "v1", name+".json")
+	path := filepath.Join(filepath.Dir(source), "..", "..", "..", "..", "testdata", "mediaexec", "v2", name+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read shared fixture %s: %v", path, err)
@@ -34,7 +35,7 @@ func loadMediaexecGolden(t *testing.T, name string) mediaexecGolden {
 	return fixture
 }
 
-func TestMediaexecV1SharedGoldens(t *testing.T) {
+func TestMediaexecV2SharedGoldens(t *testing.T) {
 	// render_stock no longer has a golden here: the operation consumes a
 	// sealed render_plan (validated in stock_renderer_plan_test.go and the
 	// real Rust e2e suite), and the legacy transitions/effect_paths
@@ -69,7 +70,7 @@ func TestMediaexecV1SharedGoldens(t *testing.T) {
 					t.Fatal("cut_batch fixture must contain one job and one result")
 				}
 				job, item := fixture.Request.Jobs[0], fixture.Response.Items[0]
-				if job.JobID != "clip-001" || item.JobID != job.JobID || job.OutputPath != item.OutputPath || item.Status != "validated" || item.SizeBytes != 123456 || item.DurationSec != 5 {
+				if job.JobID != "clip-001" || item.JobID != job.JobID || job.OutputPath != item.OutputPath || item.Status != "validated" || item.SizeBytes != 123456 || item.DurationSec != 5 || item.SHA256 != strings.Repeat("a", 64) {
 					t.Fatalf("cut_batch fixture drift: job=%+v item=%+v", job, item)
 				}
 			case "normalize":

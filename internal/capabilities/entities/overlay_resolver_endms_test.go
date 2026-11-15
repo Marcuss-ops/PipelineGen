@@ -1,8 +1,10 @@
 package entities
 
 import (
-	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	"context"
 	"testing"
+
+	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
 
 	"github.com/stretchr/testify/require"
 )
@@ -77,7 +79,7 @@ func TestOverlayResolverEndMsIsCeilProjection(t *testing.T) {
 			}},
 		}},
 	}
-	resolved, err := ResolveEntityOverlayPlan(timeline, "plan-resolver-end-ms", "video-resolver-end-ms", "", 1920, 1080, 30, 1)
+	resolved, err := ResolveEntityOverlayPlanWithRanker(context.Background(), timeline, "plan-resolver-end-ms", "video-resolver-end-ms", "", 1920, 1080, 30, 1, &fixedEntityOverlayRanker{indices: [][]int{{0}}})
 	require.NoError(t, err, "production resolver must emit a plan accepted by OverlayPlan.Validate")
 	require.NoError(t, resolved.Validate())
 	require.Len(t, resolved.Items, 1)

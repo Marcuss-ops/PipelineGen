@@ -133,6 +133,13 @@ type SemanticAnalyzerVersions struct {
 	SemanticCore string
 	PhraseImpact string
 	Lexicon      string
+	EntityIndex  string
+}
+
+// SemanticSearchIntent is a typed, short retrieval query produced by the
+// BrainRust entity linker. Go carries it unchanged to retrieval consumers.
+type SemanticSearchIntent struct {
+	Kind, Query, Lang string
 }
 
 type SemanticEntityFact struct {
@@ -168,6 +175,16 @@ type SemanticIdentityMention struct {
 type SemanticIdentity struct {
 	ID, CanonicalSurface, Kind string
 	Mentions                   []SemanticIdentityMention
+	// Link fields are populated by semantic_manifest.v3. Empty canonical_id
+	// means the entity is ambiguous or unlinked; it must not be treated as a KB ID.
+	SurfaceKey          string
+	CanonicalID         string
+	LinkStatus          string
+	CanonicalName       string
+	Role                string
+	DisambiguationGloss string
+	NegativeConstraints []string
+	SearchIntents       []SemanticSearchIntent
 }
 
 type SemanticCoMention struct {
@@ -250,18 +267,16 @@ type SemanticSearchFeedback struct {
 // SemanticSearchFeedbackEntry is one image-backed proposal's search ladder.
 type SemanticSearchFeedbackEntry struct {
 	ProposalID, SceneID string
-	Queries             []SemanticSearchQuery
+	Queries             []generationcontract.SemanticSearchQuery
 	// Status is `pending` while the engine owns the entry; the planner writes
 	// `satisfied` or `failed` after retrieval.
 	Status string
 	// Retry is nil until a search failed.
-	Retry *SemanticSearchRetry
+	Retry *generationcontract.SemanticSearchRetry
 }
 
-type SemanticSearchRetry = generationcontract.SemanticSearchRetry
-
 // SemanticVisualConsolidation is the script-level selective production view
-// returned in the same `semantic_manifest.v2` response. Raw per-scene
+// returned in the same semantic-engine response (v2 or v3). Raw per-scene
 // collections remain the complete inventory; this view is deduplicated and
 // ranked for the planner. Every candidate still carries an exact source span.
 type SemanticVisualConsolidation struct {
@@ -299,15 +314,12 @@ type SemanticProductionCandidate struct {
 	ChartItems          []SemanticChartItem
 	TemporalSurfaces    []string
 	AssetKey            string
-	Queries             []SemanticSearchQuery
+	Queries             []generationcontract.SemanticSearchQuery
 	RequiresMedia       bool
 	DedupKey            string
 	CoveredFactIDs      []string
 	Rationale           []string
 }
-
-type SemanticSearchQuery = generationcontract.SemanticSearchQuery
-type SemanticSearchQueryComponent = generationcontract.SemanticSearchQueryComponent
 
 // SemanticConsolidatedFact is a canonical fact after duplicate mentions are
 // merged. Representation is nil exactly when UncoveredReason is non-empty.

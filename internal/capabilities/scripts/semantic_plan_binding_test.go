@@ -1,6 +1,7 @@
 package scriptgeneration
 
 import (
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
 
@@ -16,11 +17,11 @@ func semanticBindingResult(binding *scriptpkg.EntityImageBinding) *GenerateResul
 			}}},
 		}},
 		SemanticProductionPlan: &SemanticProductionPlan{
-			Identity: []SemanticPlannedIdentity{{ID: "person:alberto-garlasco", Surface: "Alberto Garlasco", Kind: "person", Media: true}},
-			Units: []SemanticProductionUnit{{
+			Identity: []generationcontract.SemanticPlannedIdentity{{ID: "person:alberto-garlasco", Surface: "Alberto Garlasco", Kind: "person", Media: true}},
+			Units: []generationcontract.SemanticProductionUnit{{
 				CandidateID: "vc_0001", SceneID: "scene-1", EntityIDs: []string{"person:alberto-garlasco"},
 				SearchStatus: ProductionSearchSatisfied, Status: ProductionUnitPlanned,
-				ResolvedImage: &SemanticResolvedImage{
+				ResolvedImage: &generationcontract.SemanticResolvedImage{
 					AssetID: "asset-1", URL: "https://upload.wikimedia.org/garlasco.jpg",
 					SHA256: strings.Repeat("a", 64), MediaType: "image/jpeg", Provider: "wikimedia_commons",
 				},

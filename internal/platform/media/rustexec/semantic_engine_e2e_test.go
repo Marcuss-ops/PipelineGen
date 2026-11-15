@@ -188,29 +188,32 @@ func TestSemanticEngineRealBinaryAnalysesWholeScript(t *testing.T) {
 	if three == nil {
 		t.Fatal("scene s3 missing from semantic result")
 	}
-	contextualSearch := false
-	phraseSearch := false
+	// v3 entity_search is identity-only: the grounded subject surface is the
+	// query, and untyped sentence windows are deliberately not emitted.
+	sawTifosi, sawSpalti := false, false
 	for _, proposal := range three.Proposals {
 		if proposal.Type != "entity_search" {
 			continue
 		}
-		for _, query := range proposal.VisualQuerySuggestions {
-			if query == contextQuery {
-				contextualSearch = true
-			}
-			// The worker emits the grounded concept phrase itself (and the
-			// full sentence above) for a multiword visual subject; an older
-			// leading-prefix form is not the contract.
-			if query == "tifosi festeggiano sugli spalti" {
-				phraseSearch = true
-			}
+		if len(proposal.VisualQuerySuggestions) != 1 {
+			t.Fatalf("entity_search must carry exactly one identity query: %+v", proposal)
+		}
+		query := proposal.VisualQuerySuggestions[0]
+		if query == contextQuery || !strings.Contains(contextQuery, query) {
+			t.Fatalf("entity_search query %q is not a grounded identity surface", query)
+		}
+		switch query {
+		case "tifosi":
+			sawTifosi = true
+		case "spalti":
+			sawSpalti = true
 		}
 	}
-	if !contextualSearch {
-		t.Fatalf("real worker omitted the grounded sentence query for image/stock search: %+v", three.Proposals)
+	if !sawTifosi || !sawSpalti {
+		t.Fatalf("real worker omitted grounded identity searches: %+v", three.Proposals)
 	}
-	if !phraseSearch {
-		t.Fatalf("real worker omitted the grounded multiword concept query for image/stock search: %+v", three.Proposals)
+	if len(three.ContextualImageQueries) != 0 {
+		t.Fatalf("untyped sentence became a contextual query: %+v", three.ContextualImageQueries)
 	}
 }
 

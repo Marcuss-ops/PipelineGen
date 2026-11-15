@@ -128,8 +128,8 @@ func demoteEntityImageToTextCard(item capmodel.OverlayItem, name string) capmode
 // annotation entity with a content-addressed binding (asset id + sha256 +
 // url) is indexed so the EntityMediaResolver can pick the best asset for its
 // card. The join key is the resolver's CanonicalEntityID when the annotation
-// was stamped with one (capabilities/imagesearch), else the deterministic
-// derivation from (type, canonical name) — the two agree whenever the
+// was supplied by BrainRust, else the deterministic derivation from (type,
+// canonical name) — the two agree whenever the
 // surface IS the canonical name. Both come from the ONE identity helper
 // (annotationCanonicalEntityID), so this index and the overlay-intent/bundle
 // joins can never disagree on the spelling. Bindings without a content address are

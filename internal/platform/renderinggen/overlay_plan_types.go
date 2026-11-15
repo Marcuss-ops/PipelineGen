@@ -124,6 +124,11 @@ type overlayBackground struct {
 	Fit       string            `json:"fit,omitempty"`
 	Opacity   *float64          `json:"opacity,omitempty"`
 	Loop      bool              `json:"loop,omitempty"`
+	// BlurPX is the gaussian blur radius of the plate in output pixels. A
+	// blur_source background MUST carry it: without the effect the plate is a
+	// sharp full-frame copy of the source and the card edge shows a duplicate
+	// of the foreground instead of a soft backdrop.
+	BlurPX float64 `json:"blur_px,omitempty"`
 }
 
 type overlaySubtitles struct {

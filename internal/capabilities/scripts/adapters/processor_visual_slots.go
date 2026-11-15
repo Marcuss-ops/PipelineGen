@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/mediamemory"
 	visual "github.com/Marcuss-ops/PipelineGen/internal/capabilities/visual"
 	mediadomain "github.com/Marcuss-ops/PipelineGen/internal/kernel/media"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -14,30 +13,6 @@ import (
 // into the same SpecScene envelope consumed by persistence and rendering.
 type VisualSlotsProcessor struct {
 	planner visual.Planner
-}
-
-type closedPlanner struct{ planner VisualCandidatePlanner }
-
-func NewClosedVisualPlanner(planner VisualCandidatePlanner) visual.Planner {
-	if planner == nil {
-		return nil
-	}
-	return closedPlanner{planner: planner}
-}
-
-func (p closedPlanner) Select(ctx context.Context, req visual.PlannerRequest) (visual.PlannerResult, error) {
-	if p.planner == nil {
-		return visual.PlannerResult{}, nil
-	}
-	candidates := make([]mediamemory.CandidateOption, 0, len(req.CandidateIDs))
-	for _, id := range req.CandidateIDs {
-		candidates = append(candidates, mediamemory.CandidateOption{AssetID: id, CandidateID: id})
-	}
-	id, err := p.planner.Select(ctx, VisualSelectionRequest{SegmentID: req.SegmentID, Slot: mediadomain.SlotKind(req.Slot), Candidates: candidates, VisualIntent: req.Goal})
-	if err != nil {
-		return visual.PlannerResult{}, err
-	}
-	return visual.PlannerResult{SelectedAssetIDs: []string{id}}, nil
 }
 
 func NewVisualSlotsProcessor(planner visual.Planner) *VisualSlotsProcessor {

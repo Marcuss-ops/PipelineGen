@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"os"
 	"path/filepath"
 	"strings"
@@ -154,7 +155,7 @@ func TestPersonEntityCardReachesPlanFromAdmittedIdentity(t *testing.T) {
 	}
 	result := &GenerateResult{
 		SemanticRenderBundle: bundle,
-		SemanticProductionPlan: &SemanticProductionPlan{Identity: []SemanticPlannedIdentity{{
+		SemanticProductionPlan: &SemanticProductionPlan{Identity: []generationcontract.SemanticPlannedIdentity{{
 			ID: stableID, Surface: "Francis Kaufmann", Kind: "PERSON", Media: true,
 		}}},
 	}

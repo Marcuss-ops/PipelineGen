@@ -10,6 +10,7 @@
 package scriptgeneration
 
 import (
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -97,7 +98,7 @@ func ApplySemanticResolvedImages(result *GenerateResult) int {
 // bindSemanticImageToScene writes the binding on the one annotation that names
 // the identity. It preserves a verified existing binding, which is the media
 // stage's output and must win over a plan fallback.
-func bindSemanticImageToScene(scene *Scene, surface string, hit *SemanticResolvedImage) bool {
+func bindSemanticImageToScene(scene *Scene, surface string, hit *generationcontract.SemanticResolvedImage) bool {
 	if scene == nil || hit == nil || strings.TrimSpace(hit.SHA256) == "" {
 		return false
 	}

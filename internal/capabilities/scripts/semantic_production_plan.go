@@ -66,10 +66,10 @@ func (c SemanticProductionPlanConfig) normalized() SemanticProductionPlanConfig 
 // and reused, what remains uncovered, and the planner-owned search outcomes.
 type SemanticProductionPlan struct {
 	Schema   string
-	Units    []SemanticProductionUnit
-	Identity []SemanticPlannedIdentity
-	Coverage SemanticProductionCoverage
-	Metrics  SemanticProductionMetrics
+	Units    []generationcontract.SemanticProductionUnit
+	Identity []generationcontract.SemanticPlannedIdentity
+	Coverage generationcontract.SemanticProductionCoverage
+	Metrics  generationcontract.SemanticProductionMetrics
 
 	// factsByCandidate and coveredFacts make coverage revocable when a
 	// retrieval settles as skipped. They are planner state, never wire data.
@@ -80,14 +80,6 @@ type SemanticProductionPlan struct {
 	// and to key the plan cache on the normalized entity surface.
 	identityByID map[string]SemanticIdentity
 }
-
-// Serializable production-plan DTOs are owned by contracts/generation.
-type SemanticPlannedIdentity = generationcontract.SemanticPlannedIdentity
-type SemanticProductionUnit = generationcontract.SemanticProductionUnit
-type SemanticResolvedImage = generationcontract.SemanticResolvedImage
-type SemanticProductionCoverage = generationcontract.SemanticProductionCoverage
-type SemanticDeferredFact = generationcontract.SemanticDeferredFact
-type SemanticProductionMetrics = generationcontract.SemanticProductionMetrics
 
 // ScriptConsolidationFromBundles returns the shared script-level consolidation
 // projection carried by every scene bundle, or nil when the worker predates it.
@@ -190,8 +182,8 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 
 	plan := &SemanticProductionPlan{
 		Schema:           SemanticProductionPlanSchema,
-		Units:            make([]SemanticProductionUnit, 0, len(candidates)),
-		Coverage:         SemanticProductionCoverage{CanonicalFacts: len(consolidation.Facts)},
+		Units:            make([]generationcontract.SemanticProductionUnit, 0, len(candidates)),
+		Coverage:         generationcontract.SemanticProductionCoverage{CanonicalFacts: len(consolidation.Facts)},
 		factsByCandidate: make(map[string][]string, len(candidates)),
 		coveredFacts:     make(map[string]bool, len(consolidation.Facts)),
 		identityByID:     knownIdentities,
@@ -220,7 +212,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 				return nil, fmt.Errorf("semantic production plan: candidate %q references unknown identity %q", candidate.ID, entityID)
 			}
 		}
-		unit := SemanticProductionUnit{
+		unit := generationcontract.SemanticProductionUnit{
 			CandidateID: candidate.ID, Recipe: candidate.Recipe, Rank: candidate.Rank,
 			Priority:  semanticPlannerPriority(candidate, knownIdentities),
 			SceneID:   candidate.SceneID,
@@ -230,7 +222,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			Title:     candidate.Title, Evidence: candidate.Evidence, Start: candidate.Start, End: candidate.End,
 			AssetKey:      candidate.AssetKey,
 			RequiresMedia: candidate.RequiresMedia,
-			Queries:       append([]SemanticSearchQuery(nil), candidate.Queries...),
+			Queries:       append([]generationcontract.SemanticSearchQuery(nil), candidate.Queries...),
 			Status:        ProductionUnitPlanned,
 			SearchStatus:  ProductionSearchPending,
 		}
@@ -299,7 +291,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 				return nil, fmt.Errorf("semantic production plan: fact %q is neither represented nor explained", fact.ID)
 			}
 			plan.Coverage.UncoveredFacts++
-			plan.Coverage.Uncovered = append(plan.Coverage.Uncovered, SemanticDeferredFact{FactID: fact.ID, Reason: fact.UncoveredReason})
+			plan.Coverage.Uncovered = append(plan.Coverage.Uncovered, generationcontract.SemanticDeferredFact{FactID: fact.ID, Reason: fact.UncoveredReason})
 			continue
 		}
 		if !slices.Contains(candidateFacts[fact.Representation.CandidateID], fact.ID) {
@@ -319,7 +311,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			}
 		}
 		plan.Coverage.DeferredFacts++
-		plan.Coverage.Deferred = append(plan.Coverage.Deferred, SemanticDeferredFact{FactID: fact.ID, Reason: reason})
+		plan.Coverage.Deferred = append(plan.Coverage.Deferred, generationcontract.SemanticDeferredFact{FactID: fact.ID, Reason: reason})
 	}
 	plan.Metrics.CoveredFacts = plan.Coverage.CoveredFacts
 	plan.Metrics.DeferredFacts = plan.Coverage.DeferredFacts
@@ -327,7 +319,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 
 	// Identity admission: an identity image is produced only when one admitted
 	// composition searches or reuses its asset.
-	byIdentity := make(map[string]*SemanticPlannedIdentity, len(knownIdentities))
+	byIdentity := make(map[string]*generationcontract.SemanticPlannedIdentity, len(knownIdentities))
 	for _, unit := range plan.Units {
 		if unit.Status != ProductionUnitPlanned && unit.Status != ProductionUnitReuse {
 			continue
@@ -339,7 +331,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			}
 			planned, exists := byIdentity[entityID]
 			if !exists {
-				planned = &SemanticPlannedIdentity{ID: identity.ID, Surface: identity.CanonicalSurface, Kind: identity.Kind}
+				planned = &generationcontract.SemanticPlannedIdentity{ID: identity.ID, Surface: identity.CanonicalSurface, Kind: identity.Kind}
 				byIdentity[entityID] = planned
 			}
 			planned.CandidateIDs = append(planned.CandidateIDs, unit.CandidateID)
@@ -351,7 +343,7 @@ func BuildSemanticProductionPlan(consolidation *SemanticVisualConsolidation, ide
 			}
 		}
 	}
-	plan.Identity = make([]SemanticPlannedIdentity, 0, len(byIdentity))
+	plan.Identity = make([]generationcontract.SemanticPlannedIdentity, 0, len(byIdentity))
 	for _, identity := range byIdentity {
 		plan.Identity = append(plan.Identity, *identity)
 	}
@@ -443,7 +435,7 @@ func ApplyCallerImageSearches(plan *SemanticProductionPlan, searches []mediadoma
 			}
 		}
 		unit := &plan.Units[selected]
-		unit.Queries = append([]SemanticSearchQuery{{Kind: "context_phrase", Text: query, Origin: "caller_media_plan"}}, unit.Queries...)
+		unit.Queries = append([]generationcontract.SemanticSearchQuery{{Kind: "context_phrase", Text: query, Origin: "caller_media_plan"}}, unit.Queries...)
 		plan.Metrics.PlannedQueries++
 		added++
 	}
@@ -492,7 +484,7 @@ func callerImageSearchLocked(search mediadomain.SegmentMediaSearch, assignments 
 	return false
 }
 
-func unitMatchesScene(unit *SemanticProductionUnit, sceneID string) bool {
+func unitMatchesScene(unit *generationcontract.SemanticProductionUnit, sceneID string) bool {
 	if unit == nil || strings.TrimSpace(sceneID) == "" {
 		return false
 	}
@@ -502,7 +494,7 @@ func unitMatchesScene(unit *SemanticProductionUnit, sceneID string) bool {
 	return false
 }
 
-func semanticQueryPresent(queries []SemanticSearchQuery, query string) bool {
+func semanticQueryPresent(queries []generationcontract.SemanticSearchQuery, query string) bool {
 	want := normalizeIdentitySurface(query)
 	for _, existing := range queries {
 		if normalizeIdentitySurface(existing.Text) == want {
@@ -512,7 +504,7 @@ func semanticQueryPresent(queries []SemanticSearchQuery, query string) bool {
 	return false
 }
 
-func unitHasCallerQuery(unit *SemanticProductionUnit) bool {
+func unitHasCallerQuery(unit *generationcontract.SemanticProductionUnit) bool {
 	if unit == nil {
 		return false
 	}
@@ -563,7 +555,7 @@ func semanticPlannerPriority(candidate SemanticProductionCandidate, identities m
 // retrieval ladder exhausted: the facts the composition represented become
 // deferred with that reason, and an identity loses its image admission unless
 // another admitted media composition still searches it.
-func (p *SemanticProductionPlan) revokeSkippedUnit(unit *SemanticProductionUnit, reason string) {
+func (p *SemanticProductionPlan) revokeSkippedUnit(unit *generationcontract.SemanticProductionUnit, reason string) {
 	if unit == nil {
 		return
 	}
@@ -574,7 +566,7 @@ func (p *SemanticProductionPlan) revokeSkippedUnit(unit *SemanticProductionUnit,
 		delete(p.coveredFacts, factID)
 		p.Coverage.CoveredFacts--
 		p.Coverage.DeferredFacts++
-		p.Coverage.Deferred = append(p.Coverage.Deferred, SemanticDeferredFact{FactID: factID, Reason: reason})
+		p.Coverage.Deferred = append(p.Coverage.Deferred, generationcontract.SemanticDeferredFact{FactID: factID, Reason: reason})
 	}
 	p.Metrics.CoveredFacts = p.Coverage.CoveredFacts
 	p.Metrics.DeferredFacts = p.Coverage.DeferredFacts

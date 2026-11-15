@@ -100,6 +100,28 @@ func GetFromPath(path string) (*Config, error) {
 	if strings.TrimSpace(os.Getenv("VELOX_PRIMARY_DB_PATH")) != "" {
 		return nil, fmt.Errorf("VELOX_PRIMARY_DB_PATH is retired; derive the primary database from VELOX_DATA_DIR")
 	}
+	// VisualNER has one implementation, BrainRust's visualner binary. Reject
+	// explicit settings for the retired spaCy challenger instead of silently
+	// ignoring them and changing the selected extractor at deploy time.
+	var retiredNERConfig struct {
+		External *struct {
+			VisualNERBackend *string `yaml:"visualner_backend"`
+			SpacyNERURL      *string `yaml:"spacy_ner_url"`
+		} `yaml:"external"`
+	}
+	if err := yaml.Unmarshal(data, &retiredNERConfig); err != nil {
+		return nil, fmt.Errorf("config file %q is malformed: %w", path, err)
+	}
+	if retiredNERConfig.External != nil {
+		if retiredNERConfig.External.VisualNERBackend != nil || retiredNERConfig.External.SpacyNERURL != nil {
+			return nil, fmt.Errorf("config file %q sets retired spaCy NER settings; entity extraction now uses BrainRust visualner", path)
+		}
+	}
+	for _, name := range []string{"VELOX_VISUALNER_BACKEND", "VELOX_SPACY_NER_URL"} {
+		if _, set := os.LookupEnv(name); set {
+			return nil, fmt.Errorf("%s is retired; entity extraction now uses BrainRust visualner", name)
+		}
+	}
 
 	// The resolution order is deliberate and uniform:
 	// YAML → environment overrides → defaults for fields still unset.
@@ -216,20 +238,6 @@ func (c *Config) Validate() error {
 	}
 	if c.External.OllamaURL == "" {
 		return fmt.Errorf("ollama url is required")
-	}
-	switch strings.ToLower(strings.TrimSpace(c.External.VisualNERBackend)) {
-	case "", "rust":
-	case "spacy":
-		spacyURL := strings.TrimSpace(c.External.SpacyNERURL)
-		if spacyURL == "" {
-			return fmt.Errorf("external.spacy_ner_url is required when visualner_backend=spacy")
-		}
-		parsedSpacyURL, err := url.Parse(spacyURL)
-		if err != nil || parsedSpacyURL.Host == "" || parsedSpacyURL.User != nil || parsedSpacyURL.RawQuery != "" || parsedSpacyURL.Fragment != "" || (parsedSpacyURL.Scheme != "http" && parsedSpacyURL.Scheme != "https") {
-			return fmt.Errorf("external.spacy_ner_url must be a valid http(s) base URL without credentials, query, or fragment")
-		}
-	default:
-		return fmt.Errorf("external.visualner_backend %q is unsupported; choose rust or spacy", c.External.VisualNERBackend)
 	}
 	if c.External.VeloxMasterURL != "" {
 		if _, err := url.Parse(c.External.VeloxMasterURL); err != nil {

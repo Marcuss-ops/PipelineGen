@@ -1,6 +1,5 @@
-// Package overlays — semantic_resolver.go owns the SINGLE editorial decision
-// PipelineGen is allowed to make about HOW an overlay looks: the
-// semantic_role → Chronon visual-preset mapping. Everything else visual
+// Package overlays — semantic_resolver.go owns the semantic_role → Chronon
+// visual-preset mapping for compiled overlay items. Everything else visual
 // (style, font, anchor/layout, animation defaults) is owned by Chronon's
 // VisualPresetRegistry (ADR-029) and resolved there.
 //
@@ -52,7 +51,7 @@ var semanticPresetTable = map[string]SemanticPreset{
 	"LOCATION":         PresetModernName,
 	"IMAGE_OVERLAY":    PresetModernImage,
 
-	// ── Extended SemanticItem vocabulary (the semantic index) ──────────
+	// ── Extended semantic roles emitted by the active semantic contract ──
 	// Value and editorial-artifact roles map onto the modern Chronon overlay
 	// catalog; no legacy card preset is invented or selected here.
 	"ORGANIZATION": PresetModernName,

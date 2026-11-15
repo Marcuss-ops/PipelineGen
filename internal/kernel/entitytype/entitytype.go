@@ -1,9 +1,9 @@
 // Package entitytype owns the ONE entity-type alias table of the pipeline.
 //
-// The NLP side deliberately keeps its own vocabulary (spaCy emits GPE, LOC,
-// FAC; the semantic profile emits LOCATION; some providers say CITY or
-// COUNTRY), but an entity's IDENTITY must not depend on which extractor saw
-// it. Before this table each layer carried its own switch, so the same place
+// Extractors and providers keep their own vocabulary (legacy data may contain
+// GPE, LOC, FAC, LOCATION, CITY or COUNTRY), but an entity's identity must not
+// depend on which vocabulary supplied it. Before this table each layer carried
+// its own switch, so the same place
 // could be GPE for the annotation merger, LOCATION for the overlay planner and
 // PLACE for the catalog:
 //
@@ -16,15 +16,15 @@
 //
 // The table lives in the kernel because every layer needs it and only the
 // kernel is importable by all of them (kernel/script cannot import
-// capabilities/entities; platform/nlp already depends on capabilities). The
+// capabilities/entities). The
 // layers now PROJECT this single table instead of restating it:
 //
 //   - capabilities/entities folds it into the identity type (PLACE, ORG, …)
 //     used by CanonicalKey / StableEntityID / CanonicalEntityID;
 //   - kernel/script projects the family onto an annotation kind (GPE for
 //     places, WORK_OF_ART for works) for the overlay/media vocabulary;
-//   - the place/entity predicates of scripts, imagesearch, overlays and
-//     kernel/media ask Is(raw, Family) instead of listing spellings again.
+//   - place/entity predicates in scripts, overlays and kernel/media call
+//     Is(raw, Family) instead of listing spellings again.
 //
 // Canonical families are a CLOSED set: every alias maps to a member of
 // canonicalFamilies and every family maps to itself (pinned by test). An

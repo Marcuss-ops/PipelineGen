@@ -73,7 +73,7 @@ RUN mkdir -p /out \
 # Override BRAINRUST_VERSION / RUST_FETCH_BASE_URL to consume a different release
 # or a mirror. The release tag must exist on BrainRust before building.
 FROM debian:bookworm-slim AS rust-artifacts
-ARG BRAINRUST_VERSION=v0.2.0
+ARG BRAINRUST_VERSION=v0.3.0
 ARG RUST_FETCH_BASE_URL=https://github.com/Marcuss-ops/BrainRust/releases/download
 ARG RUST_ICU_MAJOR_VERSION_NUMBER=72
 ARG TARGETARCH=amd64
@@ -99,7 +99,7 @@ RUN set -eu; \
       echo "release links ICU $major, runtime expects ICU $RUST_ICU_MAJOR_VERSION_NUMBER" >&2; \
       exit 1; \
     fi; \
-    python3 -c 'import hashlib,json,pathlib,sys; p,v,i=sys.argv[1:]; m=json.loads(pathlib.Path(p).read_text()); assert m["version"]==v and m["semantic_schema"]=="semantic_manifest.v2" and str(m["icu_major"])==i and len(m["git_sha"])==40; assert all(hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==m["binaries"][n] for n in ("pipelinegen-muscles","visualner","mediasampler","semantic-engine"))' BRAINRUST_RELEASE.json "$BRAINRUST_VERSION" "$major"; \
+    python3 -c 'import hashlib,json,pathlib,sys; p,v,i=sys.argv[1:]; m=json.loads(pathlib.Path(p).read_text()); assert m["version"]==v and m["semantic_schema"]=="semantic_manifest.v3" and m["mediaexec_schema"]=="mediaexec.v2" and str(m["icu_major"])==i and len(m["git_sha"])==40; assert all(hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()==m["binaries"][n] for n in ("pipelinegen-muscles","visualner","mediasampler","semantic-engine"))' BRAINRUST_RELEASE.json "$BRAINRUST_VERSION" "$major"; \
     chmod 0755 pipelinegen-muscles visualner mediasampler semantic-engine
 
 # ─── server-runtime ───────────────────────────────────────────────

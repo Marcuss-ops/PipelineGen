@@ -1,14 +1,8 @@
-// Package scriptgeneration — image_search_stamp_test.go certifies the
-// canonical-identity stamping contract: the Image Search Intent resolver's
-// canonical_entity_id decisions are stamped into every segment's insights by
-// the coordinator, and both annotation projections (projectEntityAnnotations
-// and the batch sceneAnnotations merger) join on that stamped identity —
-// never a re-derivation. It also certifies the PRODUCT/LOGO taxonomy path and
-// the SHA256 propagation into the overlay plan's product/logo candidates.
+// Package scriptgeneration — entity_annotation_projection_test.go certifies
+// entity annotation projection and the PRODUCT/LOGO taxonomy path.
 package scriptgeneration
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,70 +10,12 @@ import (
 
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	capabilityentities "github.com/Marcuss-ops/PipelineGen/internal/capabilities/entities"
-	capabilityimagesearch "github.com/Marcuss-ops/PipelineGen/internal/capabilities/imagesearch"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
 )
 
-// TestIncrementalCoordinator_StampsImageSearchCanonicalIDs certifies that a
-// wired Image Search Intent resolver rides the run: every segment result
-// carries the resolver's canonical_entity_id decisions (keyed by the
-// lowercased surface) plus the primary entity's canonical id, so the
-// annotation projection joins on the SAME identity the resolver chose.
-func TestIncrementalCoordinator_StampsImageSearchCanonicalIDs(t *testing.T) {
-	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
-	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
-	coordinator.SetImageSearchResolver(capabilityimagesearch.NewResolver(nil))
-
-	text := "Floyd Mayweather defeated Manny Pacquiao in the ring."
-	commit(t, coordinator, "run-1", "scene-0", 0, text, 1)
-
-	results, err := coordinator.Wait(context.Background())
-	require.NoError(t, err)
-	require.Len(t, results, 1)
-	ids := results[0].Insights.ImageEntityCanonicalIDs
-	require.NotEmpty(t, ids, "the resolver decision must be stamped into the segment insights")
-	assert.Equal(t, "person:floyd-mayweather", ids["floyd mayweather"])
-	assert.Equal(t, "person:manny-pacquiao", ids["manny pacquiao"])
-	assert.Equal(t, "person:floyd-mayweather", results[0].Insights.ImagePrimaryCanonicalID)
-}
-
-// TestIncrementalCoordinator_StampsProductCanonicalID certifies that the
-// stamped decision covers the PRODUCT taxonomy (product:slug ids), which the
-// planner needs to render the product image under the resolver's identity.
-func TestIncrementalCoordinator_StampsProductCanonicalID(t *testing.T) {
-	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
-	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
-	coordinator.SetImageSearchResolver(capabilityimagesearch.NewResolver(nil))
-
-	commit(t, coordinator, "run-1", "scene-0", 0, "Apple unveiled the Vision Pro at the event.", 1)
-
-	results, err := coordinator.Wait(context.Background())
-	require.NoError(t, err)
-	require.Len(t, results, 1)
-	ids := results[0].Insights.ImageEntityCanonicalIDs
-	require.NotEmpty(t, ids)
-	assert.Equal(t, "product:apple-vision-pro", ids["apple vision pro"])
-}
-
-// TestIncrementalCoordinator_NoResolverKeepsLegacyDerivation certifies that
-// an unwired resolver is a no-op: insights stay unstamped and the annotation
-// projection falls back to the deterministic (type, name) derivation.
-func TestIncrementalCoordinator_NoResolverKeepsLegacyDerivation(t *testing.T) {
-	enricher := &fakeSegmentEnricher{errs: map[string]error{}}
-	coordinator := NewVidRushIncrementalCoordinator(enricher, nil, 4)
-
-	commit(t, coordinator, "run-1", "scene-0", 0, "Floyd Mayweather won the fight.", 1)
-
-	results, err := coordinator.Wait(context.Background())
-	require.NoError(t, err)
-	require.Len(t, results, 1)
-	assert.Empty(t, results[0].Insights.ImageEntityCanonicalIDs)
-	assert.Empty(t, results[0].Insights.ImagePrimaryCanonicalID)
-}
-
 // TestProjectEntityAnnotations_StampsResolverCanonicalID certifies the runner
-// annotation projection stamps the stamped canonical_entity_id onto every
-// annotation entity — the join key of the overlay media index.
+// annotation projection carries the canonical id supplied in segment insights
+// to the overlay media index.
 func TestProjectEntityAnnotations_StampsResolverCanonicalID(t *testing.T) {
 	seg := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1",
@@ -99,8 +35,7 @@ func TestProjectEntityAnnotations_StampsResolverCanonicalID(t *testing.T) {
 // TestProjectEntityAnnotations_ProductIsPrimaryAndStamped certifies the
 // PRODUCT taxonomy on the runner path: a PRODUCT entity survives the
 // normalizer as PRODUCT (never CONCEPT), lands in PrimaryEntities (the
-// primary/media imageable set) and carries the resolver's stamped canonical
-// id.
+// primary/media imageable set) and carries its supplied canonical id.
 func TestProjectEntityAnnotations_ProductIsPrimaryAndStamped(t *testing.T) {
 	seg := scriptpkg.VidRushSegmentResult{
 		SegmentID: "scene-1",

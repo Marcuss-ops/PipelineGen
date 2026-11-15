@@ -985,8 +985,8 @@ func TestVidRushMaterializationStockBoundEntityImagesStayOverlays(t *testing.T) 
 	if seg.Assets.PrimaryVideo != nil {
 		t.Fatalf("stock-bound scene gained provider winner %+v", seg.Assets.PrimaryVideo)
 	}
-	if len(seg.Assets.Candidates) == 0 {
-		t.Fatal("entity candidate must remain available for annotation binding")
+	if len(seg.Assets.Candidates) != 0 {
+		t.Fatalf("stock-bound entity candidates leaked beyond annotation binding: %d", len(seg.Assets.Candidates))
 	}
 	img := result.UpdatedSpecScene.Scenes[0].Annotations.PrimaryEntities[0].Image
 	if img == nil || img.Status != "resolved" || img.AssetID != "asset-dwayne-overlay" {

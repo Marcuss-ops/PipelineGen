@@ -2,6 +2,7 @@ package scriptgeneration
 
 import (
 	capmodel "github.com/Marcuss-ops/PipelineGen/internal/capabilities/overlays/model"
+	generationcontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/generation"
 	"strings"
 	"testing"
 )
@@ -22,7 +23,7 @@ func admissionPlan(t *testing.T) *SemanticProductionPlan {
 	t.Helper()
 	consolidation := planConsolidation([]SemanticProductionCandidate{
 		planCandidate("vc_0001", "entity_search", "s01", 1, []string{"person_01"}, "entity:person_01",
-			SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}),
+			generationcontract.SemanticSearchQuery{Kind: "exact_mention", Text: "Alberto Stasi"}),
 		planCandidate("vc_0002", "entity_card", "s02", 2, []string{"person_02"}, "entity:person_02"),
 	}, nil)
 	plan, err := BuildSemanticProductionPlan(consolidation, planIdentities(), DefaultSemanticProductionPlanConfig())
@@ -59,7 +60,7 @@ func TestIdentityImagesAreAdmittedByTheProductionPlan(t *testing.T) {
 // budget that did not allocate a media unit to this identity must not delete
 // produced bytes: the overlay remains an image card.
 func TestVerifiedIdentityImageSurvivesUnadmittedProductionPlan(t *testing.T) {
-	plan := &SemanticProductionPlan{Schema: SemanticProductionPlanSchema, Identity: []SemanticPlannedIdentity{{
+	plan := &SemanticProductionPlan{Schema: SemanticProductionPlanSchema, Identity: []generationcontract.SemanticPlannedIdentity{{
 		ID: "person_02", Surface: "Andrea Sempio", Kind: "PERSON", Media: false,
 	}}}
 	item := identityImageItem("Andrea Sempio")
