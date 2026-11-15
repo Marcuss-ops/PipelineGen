@@ -12,6 +12,8 @@ package scriptgeneration
 import (
 	"strings"
 
+	scenecontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/scene"
+
 	capabilityaudio "github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
 	kernelasset "github.com/Marcuss-ops/PipelineGen/internal/kernel/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/script"
@@ -19,8 +21,8 @@ import (
 
 // ── Value types ─────────────────────────────────────────────────────
 
-// Language is an ISO 639-1 two-letter code (e.g. "en", "es").
-type Language string
+// Language is the canonical ISO 639-1 code, owned by contracts/scene.
+type Language = scenecontract.Language
 
 // Source describes where the generation input comes from.
 type Source struct {

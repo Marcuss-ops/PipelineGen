@@ -6,35 +6,15 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/capabilities/audio"
+	scenecontract "github.com/Marcuss-ops/PipelineGen/internal/capabilities/scripts/contracts/scene"
 )
 
-// ResolvedScene is the sealed technical projection of an editorial Scene.
-// Once created, downstream timeline/render/audio code must not read legacy
-// millisecond fields or re-derive duration from a clip.
-type ResolvedScene struct {
-	ID    string `json:"id"`
-	Index int    `json:"index"`
-	// FixedMedia is propagated from Scene.ExecutionMode so the canonical
-	// timeline and renderer cannot lose the protected fixed-section boundary.
-	FixedMedia bool `json:"fixed_media,omitempty"`
-	// TimelineStartUS is the absolute timeline placement of this scene: the
-	// cumulative sum of all preceding scene durations. The scene end is always
-	// derived as TimelineStartUS + DurationUS and is never stored.
-	TimelineStartUS int64                `json:"timeline_start_us"`
-	Text            map[Language]string  `json:"text"`
-	DurationUS      int64                `json:"duration_us"`
-	Video           audio.VideoSegment   `json:"video"`
-	VideoSegments   []audio.VideoSegment `json:"video_segments,omitempty"`
-	ClipAudioPaths  map[string]string    `json:"clip_audio_paths,omitempty"`
-	Voiceover       *ResolvedVoiceover   `json:"voiceover,omitempty"`
-	AudioIntents    []audio.AudioIntent  `json:"audio_intents"`
-}
+// ResolvedScene is the canonical scene contract, aliased here for root
+// compatibility while consumers migrate to contracts/scene.
+type ResolvedScene = scenecontract.ResolvedScene
 
-type ResolvedVoiceover struct {
-	AssetID    string `json:"asset_id"`
-	Path       string `json:"path"`
-	DurationUS int64  `json:"duration_us"`
-}
+// ResolvedVoiceover is the canonical voiceover contract.
+type ResolvedVoiceover = scenecontract.ResolvedVoiceover
 
 // SceneDurationResolver is the single policy point for scene timeline
 // duration. The explicit editorial duration wins; legacy milliseconds and
